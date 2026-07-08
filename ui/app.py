@@ -17,9 +17,12 @@ from ui import theme
 from ui.widgets.sidebar import Sidebar
 from ui.screens.monitor_screen import MonitorScreen
 from ui.screens.repair_screen import RepairScreen
+from ui.screens.build_screen import BuildScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
+from workflows.build import BuildWorkflow
+from workflows.rtnode_build import RTNodeBuildWorkflow
 
 
 def _demo_repair_workflow():
@@ -30,6 +33,23 @@ def _demo_repair_workflow():
     conn.rules.insert(0, ("thermal_zone0/temp", 0, "82000", ""))
     conn.rule("^systemctl start rnsd", 0, "")
     return RepairWorkflow(conn, NodeProfile())
+
+
+def _demo_rtnode_build():
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rules.insert(0, ("^ls /dev/cu", 0, "/dev/cu.usbmodem2101", ""))
+    conn.rules.insert(0, ("pio run", 0, "SUCCESS", ""))
+    conn.rules.insert(0, ("rnm-serial-capture", 0,
+                          "[HealthBeacon] announce dst=eabdd142596bcae888242ec1b172d566 "
+                          "data=010000002400c7cc053b3f000602", ""))
+    return RTNodeBuildWorkflow(conn, NodeProfile())
+
+
+def _demo_pi_build():
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rules.insert(0, ("/proc/cpuinfo", 0, "Model : Raspberry Pi 5 Model B", ""))
+    conn.rules.insert(0, ("--info", 0, "[Device] RNode\nFirmware version: 1.80", ""))
+    return BuildWorkflow(conn, NodeProfile())
 
 DEMO_NODES = [
     {"name": "Northcote Hill", "location": "Northcote", "status": "ok",
@@ -69,8 +89,12 @@ class ReticulumNodeMedicApp(App):
         diagnose.add_widget(RepairScreen(workflow_factory=_demo_repair_workflow))
         self.sm.add_widget(diagnose)
 
-        for name, title in (("build", "Build"), ("map", "Map"),
-                            ("clone", "Clone Tool")):
+        build = Screen(name="build")
+        build.add_widget(BuildScreen(workflow_factories={
+            "heltec_v4": _demo_rtnode_build, "pi": _demo_pi_build}))
+        self.sm.add_widget(build)
+
+        for name, title in (("map", "Map"), ("clone", "Clone Tool")):
             scr = Screen(name=name)
             scr.add_widget(_placeholder(title))
             self.sm.add_widget(scr)
