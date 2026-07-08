@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Kivy / OS
+.kivy/
+*.log
+.DS_Store
+
+# Local, carried-in-the-field binaries (kept out of git; placed on the device)
+assets/firmware/*
+!assets/firmware/.gitkeep
+assets/packages/*
+!assets/packages/.gitkeep
