@@ -107,6 +107,20 @@ class HealthBeacon:
     def board_label(self) -> str:
         return BOARD_IDS.get(self.board_id, f"unknown(0x{self.board_id:02x})")
 
+    def to_bytes(self) -> bytes:
+        """Re-encode to the 14-byte wire payload (inverse of decode)."""
+        parts = (self.firmware_version.split(".") + ["0", "0", "0"])[:3]
+        fw = tuple(int(p) if p.isdigit() else 0 for p in parts)
+        return encode(
+            self.uptime_s, self.free_heap_kb, self.wifi_rssi_dbm,
+            self.reset_reason,
+            wifi_up=self.wifi_up, lora_up=self.lora_up,
+            tcp_backbone_up=self.tcp_backbone_up,
+            local_tcp_server_up=self.local_tcp_server_up,
+            wdt_armed=self.wdt_armed, psram=self.psram, fault=self.fault,
+            board_id=self.board_id, airtime_lock=self.airtime_lock,
+            fw=fw, format_version=self.format_version)
+
 
 def encode(
     uptime_s: int,

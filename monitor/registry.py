@@ -13,7 +13,7 @@ the backend is deterministic and unit-testable.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from monitor.health_beacon import HealthBeacon, beacon_status, decode
@@ -29,6 +29,24 @@ _BEACON_RE = re.compile(
 _STATUS_RANK = {"alert": 0, "warn": 1, "ok": 2, "unknown": 3}
 
 
+def version_tuple(v: str):
+    """Parse a dotted version ("0.6.2") into a comparable int tuple."""
+    out = []
+    for part in str(v).split("."):
+        m = re.match(r"\d+", part)
+        out.append(int(m.group()) if m else 0)
+    return tuple(out)
+
+
+@dataclass
+class CommissionEvent:
+    """One entry in a node's provisioning history / field log."""
+    at: float          # epoch seconds
+    kind: str          # build | repair | fix | onboard | note | ...
+    summary: str
+    operator: str = "operator"
+
+
 @dataclass
 class NodeRecord:
     dst_hash: str
@@ -37,6 +55,18 @@ class NodeRecord:
     node_type: str = "rtnode2400"          # "rtnode2400" | "pi"
     latest_beacon: Optional[HealthBeacon] = None
     last_seen: Optional[float] = None       # epoch seconds
+    notes: List[str] = field(default_factory=list)
+    events: List[CommissionEvent] = field(default_factory=list)
+
+    @property
+    def firmware_version(self) -> Optional[str]:
+        return self.latest_beacon.firmware_version if self.latest_beacon else None
+
+    def needs_firmware_update(self, latest: str) -> bool:
+        fw = self.firmware_version
+        if fw is None:
+            return False
+        return version_tuple(fw) < version_tuple(latest)
 
     def last_seen_hours(self, now: float) -> Optional[float]:
         if self.last_seen is None:
@@ -147,3 +177,63 @@ class NodeRegistry:
         for rec in self.nodes.values():
             counts[rec.status(now)] = counts.get(rec.status(now), 0) + 1
         return counts
+
+    # -- commissioning log / field notes / firmware ------------------------
+
+    def add_note(self, dst_hash: str, note: str, now: float,
+                 operator: str = "operator") -> NodeRecord:
+        rec = self.nodes.get(dst_hash) or self.register(dst_hash)
+        rec.notes.append(note)
+        rec.events.append(CommissionEvent(now, "note", note, operator))
+        return rec
+
+    def log_event(self, dst_hash: str, kind: str, summary: str, now: float,
+                  operator: str = "operator") -> NodeRecord:
+        rec = self.nodes.get(dst_hash) or self.register(dst_hash)
+        rec.events.append(CommissionEvent(now, kind, summary, operator))
+        return rec
+
+    def nodes_needing_update(self, latest: str) -> List[NodeRecord]:
+        return [r for r in self.nodes.values()
+                if r.needs_firmware_update(latest)]
+
+    # -- persistence (the monitoring DB the Clone Tool copies) -------------
+
+    def to_dict(self) -> dict:
+        return {"nodes": [
+            {
+                "dst_hash": r.dst_hash,
+                "name": r.name,
+                "location": r.location,
+                "node_type": r.node_type,
+                "last_seen": r.last_seen,
+                "notes": list(r.notes),
+                "events": [
+                    {"at": e.at, "kind": e.kind, "summary": e.summary,
+                     "operator": e.operator}
+                    for e in r.events
+                ],
+                "latest_beacon": (r.latest_beacon.to_bytes().hex()
+                                  if r.latest_beacon else None),
+            }
+            for r in self.nodes.values()
+        ]}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "NodeRegistry":
+        reg = cls()
+        for n in data.get("nodes", []):
+            rec = NodeRecord(
+                dst_hash=n["dst_hash"],
+                name=n.get("name", ""),
+                location=n.get("location", ""),
+                node_type=n.get("node_type", "rtnode2400"),
+                last_seen=n.get("last_seen"),
+            )
+            rec.notes = list(n.get("notes", []))
+            rec.events = [CommissionEvent(**e) for e in n.get("events", [])]
+            lb = n.get("latest_beacon")
+            if lb:
+                rec.latest_beacon = decode(bytes.fromhex(lb))
+            reg.nodes[rec.dst_hash] = rec
+        return reg

@@ -74,6 +74,19 @@ def test_golden_vector_decode():
     assert b.firmware_version == "0.6.2"
 
 
+def test_to_bytes_round_trips_golden():
+    assert decode(GOLDEN).to_bytes() == GOLDEN
+
+
+def test_to_bytes_round_trips_real_hardware():
+    assert decode(REAL_HW).to_bytes() == REAL_HW
+
+
+def test_to_bytes_round_trips_with_airtime_lock():
+    raw = sample_bytes(airtime_lock=True, fault=True)
+    assert decode(raw).to_bytes() == raw
+
+
 def test_airtime_lock_bit7():
     b = decode(sample_bytes(airtime_lock=True))
     assert b.airtime_lock is True
