@@ -6,6 +6,7 @@ access, transport mode, the radio interface and the config file.
 
 from __future__ import annotations
 
+import re
 from typing import List
 
 from diagnostics.base import DiagnosticCheck, Fix, Issue
@@ -65,11 +66,18 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             "for other nodes.",
             severity="warning", auto_fixable=True,
             fix_description="Enable transport mode in the Reticulum config."))
-        # 7
+        # 7 radio interface up. rnstatus lists several interfaces each with a
+        # "Status : Up/Down" line, so "Up" in the whole blob is meaningless
+        # (other interfaces are up while the radio is down). Parse the
+        # RNodeInterface stanza's own Status specifically. Real format:
+        #     RNodeInterface[RNode Interface]
+        #        Status    : Down
         rnstatus = self._cmd_output("rnstatus")
+        m = re.search(r"RNodeInterface\[[^\]]*\]\s*Status\s*:\s*(\S+)", rnstatus)
+        radio_up = bool(m) and m.group(1) == "Up"
         issues.append(self._check(
-            "radio_interface_up", "Up" in rnstatus,
-            "The radio interface is not up in Reticulum.",
+            "radio_interface_up", radio_up,
+            "The radio (RNode) interface is not up in Reticulum.",
             severity="critical"))
         # 8
         port_exists = self._run_cmd(f"test -c {port}")[0] == 0

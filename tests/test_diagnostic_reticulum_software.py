@@ -16,7 +16,9 @@ def healthy_conn():
         .rule("^id -nG", code=0, stdout="pi adm dialout sudo gpio")
         .rule("enable_transport = Yes", code=0, stdout="enable_transport = Yes")
         .rule("RNodeInterface", code=0, stdout="  type = RNodeInterface")
-        .rule("^rnstatus", code=0, stdout="Interface  RNode LoRa\n  Status : Up")
+        .rule("^rnstatus", code=0,
+              stdout=(" AutoInterface[Default Interface]\n    Status    : Up\n"
+                      " RNodeInterface[RNode Interface]\n    Status    : Up"))
         .rule("^test -c", code=0)
         .rule("^test -f", code=0)
         .rule("^which rnsd", code=0, stdout="/usr/local/bin/rnsd")
@@ -99,7 +101,11 @@ def test_transport_mode_disabled():
 
 
 def test_radio_interface_down():
-    conn = broken(("^rnstatus", 0, "Interface RNode\n  Status : Down"))
+    # other interfaces Up, but the RNode radio itself is Down -> must flag
+    # (the old "Up in blob" check wrongly passed this)
+    conn = broken(("^rnstatus", 0,
+                   " AutoInterface[Default Interface]\n    Status    : Up\n"
+                   " RNodeInterface[RNode Interface]\n    Status    : Down"))
     assert "radio_interface_up" in names(run(conn))
 
 
