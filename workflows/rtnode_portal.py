@@ -23,6 +23,7 @@ import urllib.request
 from typing import Callable, Dict, Tuple
 
 from node_profile import NodeProfile
+from monitor.geo import format_coord
 
 PORTAL_HOST = "10.0.0.1"
 PORTAL_PATH = "/save"
@@ -40,6 +41,10 @@ def build_form(
     wifi_ssid: str = "",
     wifi_password: str = "",
     wifi_enabled: bool = None,
+    lat: float = None,
+    lon: float = None,
+    advertise: bool = True,
+    jitter: bool = True,
 ) -> Dict[str, str]:
     """Build the ``POST /save`` form.
 
@@ -47,11 +52,17 @@ def build_form(
     override flows through); node name + WiFi credentials are operator-supplied.
     WiFi is enabled automatically when credentials are given (``wifi_en``),
     unless *wifi_enabled* is set explicitly.
+
+    If *lat*/*lon* are supplied (the Pi's GPS fix at the node) the node is set
+    to advertise its location — with jitter ON by default, so the firmware
+    publishes a ~800 m privacy-fuzzed pin to the public map while keeping the
+    exact coordinates in its own config. With no coordinates, advertisement is
+    left OFF (never write 0,0).
     """
     r = profile.radio
     if wifi_enabled is None:
         wifi_enabled = bool(wifi_ssid)
-    return {
+    form = {
         # operator-supplied
         "node_name": node_name,
         "ssid": wifi_ssid,
@@ -64,6 +75,14 @@ def build_form(
         "cr": str(r.coding_rate),
         "txp": str(r.tx_power_dbm),
     }
+    if advertise and lat is not None and lon is not None:
+        form["advert_en"] = "1"
+        form["advert_lat"] = format_coord(lat)
+        form["advert_lon"] = format_coord(lon)
+        form["advert_jitter"] = "1" if jitter else "0"
+    else:
+        form["advert_en"] = "0"                    # off, not 0,0
+    return form
 
 
 def encode_form(form: Dict[str, str]) -> str:
@@ -116,6 +135,8 @@ def onboard(
     wifi_ssid: str,
     wifi_password: str,
     *,
+    lat: float = None,
+    lon: float = None,
     do_join: bool = True,
     join_ap: Callable[[str], Tuple[bool, str]] = _default_join_ap,
     post: Callable[[str, str, Dict[str, str]], Tuple[int, str]] = _default_post,
@@ -123,9 +144,11 @@ def onboard(
     """End-to-end onboarding: join the ``RTNode-Setup`` AP, then POST the form.
 
     The AP-join and HTTP POST are injected so this is unit-testable without a
-    radio. If the join fails we do NOT post (nothing to talk to).
+    radio. If the join fails we do NOT post (nothing to talk to). *lat*/*lon*
+    (the Pi's GPS fix) enable the node's privacy-fuzzed location advertisement.
     """
-    form = build_form(profile, node_name, wifi_ssid, wifi_password)
+    form = build_form(profile, node_name, wifi_ssid, wifi_password,
+                      lat=lat, lon=lon)
     if do_join:
         joined, jmsg = join_ap(PORTAL_SSID)
         if not joined:

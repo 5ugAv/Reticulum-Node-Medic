@@ -124,3 +124,50 @@ def test_from_dict_tolerates_node_without_beacon():
     r2 = NodeRegistry.from_dict(json.loads(json.dumps(r.to_dict())))
     assert r2.get(HASH).latest_beacon is None
     assert r2.get(HASH).status(NOW) == "unknown"
+
+
+# ---- location / navigation -----------------------------------------------
+
+
+def test_register_with_location_gives_navigation():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH", lat=-37.814, lon=144.963)
+    rec = r.get(HASH)
+    assert rec.has_location()
+    nav = rec.navigation()
+    assert "google.com" in nav["google"]
+    assert nav["raw"] == "-37.814000, 144.963000"
+
+
+def test_no_location_navigation_is_none():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    assert r.get(HASH).navigation() is None
+
+
+def test_location_survives_json_round_trip():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH", lat=-37.814, lon=144.963)
+    r2 = NodeRegistry.from_dict(json.loads(json.dumps(r.to_dict())))
+    assert r2.get(HASH).lat == -37.814
+    assert r2.get(HASH).navigation()["raw"] == "-37.814000, 144.963000"
+
+
+def test_register_from_birth_certificate():
+    cert = {
+        "identity_hash": HASH,
+        "board": "Heltec32 V4",
+        "firmware": "0.6.2",
+        "location": {"lat": -37.814, "lon": 144.963, "source": "pi_gps"},
+    }
+    r = NodeRegistry()
+    rec = r.register_from_birth_certificate(cert, name="TRUTH", now=NOW,
+                                            operator="suga")
+    assert rec.name == "TRUTH"
+    assert rec.has_location()
+    assert any(e.kind == "build" for e in rec.events)
+
+
+def test_register_from_birth_certificate_without_identity_is_noop():
+    r = NodeRegistry()
+    assert r.register_from_birth_certificate({"board": "x"}) is None

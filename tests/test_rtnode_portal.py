@@ -48,6 +48,39 @@ def test_operator_values_flow_in_and_enable_wifi():
     assert form["wifi_en"] == "1"        # creds present -> WiFi enabled
 
 
+def test_location_advertisement_fuzzed_by_default():
+    form = build_form(NodeProfile(), lat=-37.814, lon=144.963)
+    assert form["advert_en"] == "1"
+    assert form["advert_lat"] == "-37.814000"
+    assert form["advert_lon"] == "144.963000"
+    assert form["advert_jitter"] == "1"          # privacy fuzz ON by default
+
+
+def test_location_advertisement_can_publish_exact():
+    form = build_form(NodeProfile(), lat=-37.814, lon=144.963, jitter=False)
+    assert form["advert_jitter"] == "0"
+
+
+def test_no_coordinates_disables_advertisement_not_zero_zero():
+    form = build_form(NodeProfile())
+    assert form["advert_en"] == "0"
+    assert "advert_lat" not in form              # never write 0,0
+
+
+def test_advertise_false_disables_even_with_coords():
+    form = build_form(NodeProfile(), lat=-37.8, lon=144.9, advertise=False)
+    assert form["advert_en"] == "0"
+
+
+def test_onboard_includes_location():
+    def good_post(url, body, headers):
+        assert "advert_lat=-37.814000" in body
+        return (200, "reboot")
+    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                    lat=-37.814, lon=144.963, do_join=False, post=good_post)
+    assert ok is True
+
+
 def test_overridden_radio_params_flow_through():
     p = NodeProfile()
     p.radio.frequency_mhz = 868.0

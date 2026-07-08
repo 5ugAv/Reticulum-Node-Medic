@@ -29,13 +29,14 @@ def _line(text, color="text_primary", size="15sp", bold=False):
 
 
 class NodeDetailScreen(BoxLayout):
-    def __init__(self, record, now, on_poll=None, **kwargs):
+    def __init__(self, record, now, on_poll=None, on_navigate=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
         self.spacing = dp(8)
         self.record = record
         self._on_poll = on_poll
+        self._on_navigate = on_navigate
 
         # header: hex status + name + location
         head = BoxLayout(orientation="horizontal", size_hint_y=None,
@@ -64,6 +65,14 @@ class NodeDetailScreen(BoxLayout):
         for ln in beacon_lines(record):
             col.add_widget(_line("  " + ln, size="14sp"))
 
+        nav = record.navigation()
+        if nav:
+            col.add_widget(_line("Location (exact — repair visit)", bold=True,
+                                 size="17sp"))
+            col.add_widget(_line("  " + nav["raw"], size="14sp"))
+            col.add_widget(_line("  " + nav["google"], color="accent",
+                                 size="12sp"))
+
         if record.notes:
             col.add_widget(_line("Field notes", bold=True, size="17sp"))
             for note in record.notes:
@@ -80,13 +89,28 @@ class NodeDetailScreen(BoxLayout):
         body.add_widget(col)
         self.add_widget(body)
 
-        ping = Button(text="Ping node now", size_hint_y=None, height=dp(52),
-                      font_size="18sp", background_normal="",
+        actions = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(52), spacing=dp(8))
+        ping = Button(text="Ping node now", font_size="18sp",
+                      background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         ping.bind(on_release=lambda *_: self._ping())
-        self.add_widget(ping)
+        actions.add_widget(ping)
+        if record.has_location():
+            nav_btn = Button(text="Navigate", font_size="18sp",
+                             background_normal="",
+                             background_color=theme.hex_to_rgba(
+                                 theme.COLORS["green"]),
+                             color=theme.hex_to_rgba(theme.COLORS["background"]))
+            nav_btn.bind(on_release=lambda *_: self._navigate())
+            actions.add_widget(nav_btn)
+        self.add_widget(actions)
 
     def _ping(self):
         if self._on_poll:
             self._on_poll(self.record.dst_hash)
+
+    def _navigate(self):
+        if self._on_navigate:
+            self._on_navigate(self.record)
