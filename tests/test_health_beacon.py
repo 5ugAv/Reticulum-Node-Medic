@@ -32,6 +32,34 @@ def test_golden_vector_encode_is_byte_exact():
     assert sample_bytes() == GOLDEN
 
 
+# Second golden vector — a REAL capture from a Light-RTnode-2400 (Heltec V4),
+# supplied by the firmware side. identity 378ac3ed…, rtnode.health dst
+# eabdd142596bcae888242ec1b172d566. The dst hash is board-specific; the
+# app_data below is the portable contract artifact.
+REAL_HW = bytes.fromhex("010000002400c7cc053b3f000602")
+REAL_HW_DEST_HASH = "eabdd142596bcae888242ec1b172d566"
+
+
+def test_real_hardware_vector_decodes():
+    b = decode(REAL_HW)
+    assert b.format_version == 1
+    assert b.firmware_version == "0.6.2"
+    assert b.board_label == "Heltec32 V4"
+    assert b.uptime_s == 36
+    assert b.free_heap_kb == 199
+    assert b.wifi_rssi_dbm == -52
+    assert b.reset_reason_label == "other"
+    assert (b.wifi_up, b.lora_up, b.tcp_backbone_up, b.local_tcp_server_up,
+            b.wdt_armed, b.psram, b.fault, b.airtime_lock) == (
+        True, True, False, True, True, True, False, False)
+
+
+def test_real_hardware_vector_status_ok():
+    # tcp_backbone down does NOT affect the traffic-light — only fault/lora/
+    # wifi/wdt do — so a live leaf node still reads "ok".
+    assert beacon_status(decode(REAL_HW)) == "ok"
+
+
 def test_golden_vector_decode():
     b = decode(GOLDEN)
     assert b.uptime_s == 7200

@@ -31,6 +31,18 @@ def test_auto_detect_ip_is_ssh():
     assert isinstance(conn, SSHConnection)
 
 
+def test_auto_detect_ssh_ignores_serial_only_kwargs():
+    # a stray baud/transport must not blow up the SSH branch
+    conn = auto_detect_connection("node.local", baud=115200, transport=object())
+    assert isinstance(conn, SSHConnection)
+
+
+def test_auto_detect_ssh_still_honours_ssh_kwargs():
+    conn = auto_detect_connection("node.local", user="root", port=2222)
+    assert conn.user == "root"
+    assert conn.port == 2222
+
+
 # ---- SSHConnection retry behaviour --------------------------------------
 
 
@@ -146,3 +158,38 @@ def test_serial_push_file_without_lrzsz_returns_false():
 def test_serial_is_a_connection():
     conn = SerialConnection("/dev/ttyUSB0", transport=FakeSerialTransport(""))
     assert isinstance(conn, Connection)
+
+
+class EchoSerialTransport:
+    """Realistic console: echoes the wrapped command, then output, then marker.
+
+    The echoed command line itself contains the sentinel string
+    (``echo CMD_DONE_7f3a $?``), so a naive first-match parse would mis-read it.
+    """
+
+    def __init__(self):
+        self._last = ""
+
+    def write(self, text):
+        self._last = text
+
+    def read_all(self, timeout):
+        return f"{self._last}file1 file2\nCMD_DONE_7f3a 0\n"
+
+
+def test_serial_ignores_sentinel_in_echoed_command():
+    conn = SerialConnection("/dev/ttyUSB0", transport=EchoSerialTransport())
+    code, out, err = conn.run("ls")
+    assert code == 0                      # not -1 from parsing "$?"
+    assert "file1 file2" in out
+    assert "CMD_DONE_7f3a" not in out
+    assert "echo" not in out              # echoed command stripped
+
+
+def test_serial_nonzero_exit_with_echo():
+    class T:
+        def write(self, t): self._c = t
+        def read_all(self, to): return f"{self._c}oops\nCMD_DONE_7f3a 5\n"
+    code, out, err = SerialConnection("/dev/ttyUSB0", transport=T()).run("badcmd")
+    assert code == 5
+    assert "oops" in out
