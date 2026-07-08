@@ -33,6 +33,7 @@ Answers to the tool‑side checklist. Verified against firmware branch `feature/
 Serial/USB is **native USB CDC** (`ARDUINO_USB_CDC_ON_BOOT=1`). **Baud 115200** (Config.h:76) *(#9)*.
 
 **8. Beacon line — exact:**
+> ⚠ **Real‑hardware correction (validated on board "TRUTH"):** this line is emitted **only once the board is running normally (post‑onboarding)**. A fresh / un‑onboarded board is **silent on USB** — it blocks in the captive portal before the beacon code ever runs (see #16). Don't expect any `[HealthBeacon]` output until after `wifi_onboarding`.
 ```
 [HealthBeacon] announce dst=<hash> data=<payload>\r\n        (HealthBeacon.h:106)
 ```
@@ -61,9 +62,9 @@ Serial/USB is **native USB CDC** (`ARDUINO_USB_CDC_ON_BOOT=1`). **Baud 115200** 
 
 **14. Deps to pre‑stage in `~/.platformio`** — platform `espressif32`; `framework-arduinoespressif32`; xtensa‑esp32s3 toolchain; `tool-esptoolpy`; `tool-mklittlefs`; and this env's `lib_deps`: **`XPowersLib@^0.2.1`**, **`adafruit/Adafruit NeoPixel@^1.12.0`** (microReticulum is vendored in‑tree under `lib/`). Exact resolved versions land after one online build — run `pio pkg list -e heltec_V4_boundary-local` and snapshot `~/.platformio/{platforms,packages}`; carry that cache for offline field builds. *(I can produce a pinned version manifest from a build if you want it.)*
 
-**15. Filesystem image** — **No separate `uploadfs` needed.** `board_build.filesystem=littlefs`, partitions `default_16MB.csv`. The firmware mounts LittleFS (formatting if empty) and **self‑generates the Reticulum identity on first boot** — the app image brings the FS up empty and populates it. A first‑ever flash of just the app image is sufficient; `verify_beacon` will see an identity ~30 s after boot.
+**15. Filesystem image** — **No separate `uploadfs` needed.** `board_build.filesystem=littlefs`, partitions `default_16MB.csv`. The firmware mounts LittleFS (formatting if empty) and **self‑generates the Reticulum identity on first boot** — the app image brings the FS up empty and populates it. A first‑ever flash of just the app image is sufficient. (The identity is generated on the first *configured* boot; `verify_beacon` only sees a beacon **after onboarding** — see #16 — not right after flash.)
 
-**16. First‑beacon timing** — `HEALTH_BEACON_INITIAL_DELAY_MS` = **30 s** after boot (once Transport is up). Set the `verify_beacon` capture window to **~45–60 s** to be safe.
+**16. First‑beacon timing** — **Corrected from real‑hardware validation.** A fresh / un‑onboarded board does **not** beacon. In `setup()`, with no saved config the firmware starts the captive portal and **blocks** — `config_portal_start(); while (config_portal_is_active()) config_portal_loop();` (RNode_Firmware.ino ~617‑643) — never reaching `health_beacon_init()` (line 1043) or `loop()`. So a just‑flashed board sits **silent** in the `RTNode-Setup` portal. Only after onboarding (config saved → reboot → portal skipped) does `health_beacon_init()` run, and the first beacon fires **~30 s after that (configured) boot** (`HEALTH_BEACON_INITIAL_DELAY_MS`). ➡ **Run `verify_beacon` *after* `wifi_onboarding`, not right after flash;** capture window ~45–60 s from that reboot. (The USB‑CDC 0‑byte silence on a fresh board is expected — blocked in portal, and early boot prints are lost during USB re‑enumeration.)
 
 **17. Bootloader entry** — ESP32‑S3, native USB CDC. esptool/pio normally auto‑reset into download mode via DTR/RTS. If auto‑reset fails (common on native‑USB S3): hold **PRG (BOOT)**, tap **RST**, release RST, then release PRG → download mode; flash; tap **RST** to run. Good text for the recovery panel.
 
@@ -71,7 +72,7 @@ Serial/USB is **native USB CDC** (`ARDUINO_USB_CDC_ON_BOOT=1`). **Baud 115200** 
 
 ## D. Quick confirmations
 
-**18. Brand‑new board** — confirmed: first flash → first boot → firmware self‑generates the LittleFS identity → beacons with a stable `dst` hash. Identity persists across `pio run -t upload`; only a full chip erase rotates it.
+**18. Brand‑new board** — confirmed: first flash → firmware self‑generates the LittleFS identity and beacons with a stable `dst` hash — **but only once onboarded** (a fresh board blocks in the portal first; see #16). Identity persists across `pio run -t upload`; only a full chip erase rotates it.
 
 **19. Fault bit (b6) after the debounce commit** — heap‑pressure early warning. Threshold `HEALTH_FAULT_HEAP_KB` = **40 KB** free *internal* SRAM (`MALLOC_CAP_INTERNAL`), checked every **30 s** (`HEALTH_FAULT_CHECK_INTERVAL_MS`). Fault **confirms after 3 consecutive** sub‑40 KB checks (`HEALTH_FAULT_STRIKES=3` ≈ 90 s sustained), sets b6=1, and fires an immediate beacon on the false→true edge. Clears (b6=0) at the first check where heap recovers ≥ 40 KB. So `heap_fault` = "internal free heap under 40 KB for ~90 s"; `heap_low` messaging should mirror the 40 KB floor.
 
