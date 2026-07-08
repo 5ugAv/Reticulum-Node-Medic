@@ -29,17 +29,16 @@ class PowerHardwareCheck(DiagnosticCheck):
         p = self.profile
         issues: List[Optional[Issue]] = []
 
-        # 22 CPU temperature (millidegrees C)
+        # 22 CPU temperature (millidegrees C). Routed through _check (dynamic
+        # severity) so it streams in live progress like every other check.
         raw = self._read_int("cat /sys/class/thermal/thermal_zone0/temp")
         temp = raw / 1000.0 if raw is not None else None
-        if temp is not None and temp > 70:
-            issues.append(Issue(
-                check_name="cpu_temperature",
-                category=self.category_name,
-                description=f"The CPU is running hot ({temp:.0f} °C).",
-                severity="critical" if temp > 80 else "warning",
-                raw_detail=f"{temp:.1f} C",
-            ))
+        issues.append(self._check(
+            "cpu_temperature", temp is None or temp <= 70,
+            (f"The CPU is running hot ({temp:.0f} °C)." if temp is not None
+             else "The CPU is running hot."),
+            severity="critical" if (temp is not None and temp > 80) else "warning",
+            raw_detail=(f"{temp:.1f} C" if temp is not None else "")))
 
         # 23 cooling fan (only if fitted)
         if p.has_cooling_fan:
@@ -53,19 +52,21 @@ class PowerHardwareCheck(DiagnosticCheck):
         # 24 battery level (only if battery bank fitted)
         if p.has_battery_bank:
             pct = self._read_int("cat /sys/class/power_supply/BAT0/capacity")
-            if pct is not None and pct <= 20:
-                issues.append(Issue(
-                    check_name="battery_level",
-                    category=self.category_name,
-                    description=f"Battery is low ({pct}%).",
-                    severity="critical" if pct <= 10 else "warning",
-                    raw_detail=f"{pct}%",
-                ))
+            issues.append(self._check(
+                "battery_level", pct is None or pct > 20,
+                (f"Battery is low ({pct}%)." if pct is not None
+                 else "Battery is low."),
+                severity="critical" if (pct is not None and pct <= 10)
+                else "warning",
+                raw_detail=(f"{pct}%" if pct is not None else "")))
 
         # 25 SD card health (dmesg for mmc errors). dmesg is often restricted,
         # so read it privileged; if we still can't read it, report "unverified"
         # (info) rather than silently passing — a denied read is NOT "healthy".
-        code, dmesg_out, _ = self._run_cmd(self._priv("dmesg"))
+        # Filter to serious levels so the transfer stays small over a slow serial
+        # link (mmc/IO errors are err/warn level).
+        code, dmesg_out, _ = self._run_cmd(
+            self._priv("dmesg --level=emerg,alert,crit,err,warn"))
         if code != 0 and not dmesg_out.strip():
             issues.append(Issue(
                 check_name="sd_card_health",

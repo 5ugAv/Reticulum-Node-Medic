@@ -43,6 +43,7 @@ class RepairScreen(BoxLayout):
         self._workflow_factory = workflow_factory
         self._workflow = None
         self._category_boxes = {}   # category name -> (header, checks box)
+        self._fixing = False        # serialises fixes; guards double-taps
 
         self.run_btn = Button(
             text="Run full diagnostic", size_hint_y=None, height=dp(56),
@@ -62,10 +63,13 @@ class RepairScreen(BoxLayout):
     # -- run ---------------------------------------------------------------
 
     def start(self):
+        if self.run_btn.disabled or self._fixing:
+            return
         self.run_btn.disabled = True
         self.run_btn.text = "Running diagnostic..."
         self.list.clear_widgets()
         self._category_boxes = {}
+        self._fixing = False
         self._workflow = self._workflow_factory()
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -137,7 +141,7 @@ class RepairScreen(BoxLayout):
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
-            fix_all.bind(on_release=lambda *_: self._fix_all())
+            fix_all.bind(on_release=lambda *_a, b=fix_all: self._fix_all(b))
             self.list.add_widget(fix_all)
 
         for issue in issues:
@@ -153,14 +157,45 @@ class RepairScreen(BoxLayout):
             btn = Button(text="Fix", size_hint_x=None, width=dp(80),
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]))
-            btn.bind(on_release=lambda *_a, i=issue: self._fix_one(i))
+            btn.bind(on_release=lambda *_a, i=issue, b=btn: self._fix_one(i, b))
             row.add_widget(btn)
         return row
 
-    def _fix_all(self):
-        threading.Thread(
-            target=lambda: self._workflow.fix_all(), daemon=True).start()
+    # -- fixes (serialised; every fix disables its button and reports back) --
 
-    def _fix_one(self, issue):
-        threading.Thread(
-            target=lambda: self._workflow.fix_one(issue), daemon=True).start()
+    def _fix_all(self, button):
+        if self._fixing:
+            return
+        self._fixing = True
+        button.disabled = True
+        button.text = "Fixing..."
+
+        def work():
+            fixes = self._workflow.fix_all()
+            Clock.schedule_once(lambda dt: self._fix_all_done(button, fixes), 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fix_all_done(self, button, fixes):
+        self._fixing = False
+        ok = sum(1 for f in fixes if f.success)
+        button.text = f"Fixed {ok}/{len(fixes)}"
+        button.disabled = True
+
+    def _fix_one(self, issue, button):
+        if self._fixing:
+            return
+        self._fixing = True
+        button.disabled = True
+        button.text = "..."
+
+        def work():
+            fix = self._workflow.fix_one(issue)
+            Clock.schedule_once(lambda dt: self._fix_one_done(button, fix), 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fix_one_done(self, button, fix):
+        self._fixing = False
+        button.text = "✓" if fix.success else "✗"
+        button.disabled = True

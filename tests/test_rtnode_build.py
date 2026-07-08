@@ -61,6 +61,15 @@ def test_detect_fails_when_no_board():
     assert r.success is False
 
 
+def test_detect_warns_on_multiple_boards():
+    c = conn(port="/dev/cu.usbmodem2101 /dev/cu.usbserial-A50285BI")
+    w = wf(c)
+    r = w.steps[0][1](w)
+    assert r.success
+    assert w.profile.connection_port == "/dev/cu.usbmodem2101"   # first, deterministically
+    assert "WARNING" in r.message and "2 USB-serial devices" in r.message
+
+
 def test_flash_uses_platformio_env_and_port():
     c = conn()
     w = wf(c)

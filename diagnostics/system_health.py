@@ -24,16 +24,14 @@ class SystemHealthCheck(DiagnosticCheck):
     def run(self) -> List[Issue]:
         issues: List[Optional[Issue]] = []
 
-        # 29 disk space on /
+        # 29 disk space on / (via _check with dynamic severity -> streams live)
         used = self._percent("df --output=pcent /")
-        if used is not None and used > 80:
-            issues.append(Issue(
-                check_name="disk_space",
-                category=self.category_name,
-                description=f"The root filesystem is {used}% full.",
-                severity="critical" if used > 90 else "warning",
-                raw_detail=f"{used}%",
-            ))
+        issues.append(self._check(
+            "disk_space", used is None or used <= 80,
+            (f"The root filesystem is {used}% full." if used is not None
+             else "Disk usage could not be read."),
+            severity="critical" if (used is not None and used > 90) else "warning",
+            raw_detail=(f"{used}%" if used is not None else "")))
 
         # 30 clock drift (chronyc offset, seconds)
         tracking = self._cmd_output("chronyc tracking")
@@ -97,7 +95,9 @@ class SystemHealthCheck(DiagnosticCheck):
 
         # 62 ext4 journal corruption. dmesg is often restricted -> read
         # privileged; a denied read is reported "unverified" (info), not passed.
-        code, dmesg_out, _ = self._run_cmd(self._priv("dmesg"))
+        # Filter to serious levels to keep the transfer small over serial.
+        code, dmesg_out, _ = self._run_cmd(
+            self._priv("dmesg --level=emerg,alert,crit,err,warn"))
         if code != 0 and not dmesg_out.strip():
             issues.append(Issue(
                 check_name="ext4_journal_corruption",
@@ -114,19 +114,15 @@ class SystemHealthCheck(DiagnosticCheck):
                 "corrupting.",
                 severity="critical"))
 
-        # 74 undervoltage (vcgencmd get_throttled)
+        # 74 undervoltage (vcgencmd get_throttled) — _check with dynamic severity
         thr = self._cmd_output("vcgencmd get_throttled")
         m = re.search(r"throttled=0x([0-9a-fA-F]+)", thr)
         val = int(m.group(1), 16) if m else None
-        if val:
-            issues.append(Issue(
-                check_name="undervoltage",
-                category=self.category_name,
-                description="The Pi is (or has been) under-volted — use a "
-                            "better supply/cable.",
-                severity="critical" if (val & 0xF) else "warning",
-                raw_detail=f"get_throttled=0x{val:x}",
-            ))
+        issues.append(self._check(
+            "undervoltage", not val,
+            "The Pi is (or has been) under-volted — use a better supply/cable.",
+            severity="critical" if (val and (val & 0xF)) else "warning",
+            raw_detail=(f"get_throttled=0x{val:x}" if val else "")))
 
         # 75 swap on SD card
         swap = self._cmd_output("swapon --show").strip()

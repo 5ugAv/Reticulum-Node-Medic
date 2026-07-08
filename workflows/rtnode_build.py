@@ -48,15 +48,23 @@ def rtnode_build_step(func: Callable) -> Callable:
 
 @rtnode_build_step
 def detect_heltec_v4(wf: "RTNodeBuildWorkflow") -> StepResult:
-    port = wf.connection.run(f"ls {' '.join(_PORT_GLOBS)} 2>/dev/null | head -1")[1].strip()
-    if not port:
+    out = wf.connection.run(f"ls {' '.join(_PORT_GLOBS)} 2>/dev/null")[1]
+    ports = out.split()
+    if not ports:
         return StepResult("detect_heltec_v4", False,
                           "No board found — plug in the Heltec V4 (try another "
                           "USB-C cable; some are charge-only).")
+    port = ports[0]
+    # More than one USB-serial device present: don't silently guess.
+    extra = ("" if len(ports) == 1 else
+             f" WARNING: {len(ports)} USB-serial devices seen "
+             f"({', '.join(ports)}); using {port}. Unplug the others to be sure "
+             f"you flash the right board.")
     wf.profile.hardware = NodeHardware.HELTEC_V4
     wf.profile.connection_port = port
     wf.profile.radio.serial_port = port
-    return StepResult("detect_heltec_v4", True, f"Found Heltec V4 on {port}.")
+    return StepResult("detect_heltec_v4", True,
+                      f"Found Heltec V4 on {port}.{extra}")
 
 
 @rtnode_build_step

@@ -8,12 +8,14 @@ from kivy.uix.button import Button
 
 from ui import theme
 
+# Short text labels rather than emoji glyphs (the field Pi's default font has
+# no emoji; no emoji font is carried offline).
 MODES = [
-    ("build", "\U0001F527"),      # wrench
-    ("diagnose", "\U0001FA7A"),   # stethoscope
-    ("monitor", "\U0001F4CA"),    # bar chart
-    ("map", "\U0001F5FA"),        # map
-    ("clone", "\U0001F5D0"),      # card index dividers
+    ("build", "BLD"),
+    ("diagnose", "DIAG"),
+    ("monitor", "MON"),
+    ("map", "MAP"),
+    ("clone", "CLONE"),
 ]
 
 
@@ -31,7 +33,7 @@ class Sidebar(BoxLayout):
         self.bind(pos=self._sync_bg, size=self._sync_bg)
         for name, icon in MODES:
             btn = Button(
-                text=icon, font_size="26sp",
+                text=icon, font_size="13sp",
                 background_normal="", background_color=(0, 0, 0, 0),
                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]),
             )

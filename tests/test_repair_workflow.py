@@ -129,6 +129,16 @@ def broken_conn():
     return conn
 
 
+def test_dynamic_severity_checks_stream_as_progress():
+    # cpu_temperature / disk_space / undervoltage used to build Issue directly
+    # and never emitted progress events; now they route through _check and
+    # stream live like every other check.
+    events = []
+    RepairWorkflow(full_healthy_conn(), NodeProfile()).run(on_progress=events.append)
+    streamed = {e.check_name for e in events if e.type == "check_done"}
+    assert {"cpu_temperature", "disk_space", "undervoltage"} <= streamed
+
+
 def test_all_issues_sorted_critical_first():
     wf = RepairWorkflow(broken_conn(), NodeProfile())
     session = wf.run()
