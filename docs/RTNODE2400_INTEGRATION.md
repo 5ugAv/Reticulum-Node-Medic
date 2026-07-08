@@ -81,3 +81,23 @@ Serial/USB is **native USB CDC** (`ARDUINO_USB_CDC_ON_BOOT=1`). **Baud 115200** 
 ---
 
 *Priority items per the checklist: #1–4 fully answered; #14–15 answered (no `uploadfs`; carry the `~/.platformio` cache — pinned versions available on request).*
+
+---
+
+## E. Location advertisement (map visibility) — for the setup/config flow
+
+The node can advertise its location so it appears on Reticulum map apps (e.g. **Columba**) as a node pin. **All via the existing `POST /save` fields — no firmware change needed.**
+
+| Field | Value | Notes |
+|---|---|---|
+| `advert_en` | `1` | enable device advertisement (`0` = off) |
+| `advert_lat` | decimal degrees, signed | e.g. `-37.814000` — N/E positive, S/W negative. Blank = omit. |
+| `advert_lon` | decimal degrees, signed | e.g. `144.963000` |
+| `advert_jitter` | `1` | privacy offset ON (`0` = publish exact coords) |
+
+- **Jitter:** when on, coordinates are displaced by a **deterministic offset up to ~800 m** (`ADV_JITTER_RADIUS_METERS`, seeded by the node's own hash → the fuzzed pin sits in **one stable spot**, it doesn't wander between announces). Radius is a firmware constant (fixed at 800 m by design), **not** a per‑node field.
+- **Announce mechanism:** RNS 1.1.x interface discovery — announces on the `rnstransport.discovery.interface` destination; msgpack payload = transport ID + lat/lon/height + LoRa params + PoW stamp (`Advertise.h`).
+- **Cadence:** one announce on enable/boot, then **every ~6 h** (LoRa airtime budget). Map pins may read "stale" between announces — this is expected, not a fault.
+- **Columba compatibility (verified in `torlando-tech/columba`):** it parses this as a `DiscoveredInterface` (lat/lon/height + LoRa params + `stampValue`) and renders it as an **`InterfaceMarker`** on its MapLibre map (`MapViewModel.kt`), distinct from LXMF contact pins. **No minimum‑stamp gate** filters it out. So `advert_en=1` + coords + `advert_jitter=1` ⇒ a fuzzed node pin on Columba's map.
+
+**Suggested setup‑flow UI:** a single **"Show approximate location on map"** toggle → sets `advert_en=1`, `advert_jitter=1`, and captures `advert_lat`/`advert_lon` (from the Pi's GPS if present, else manual entry). Off ⇒ `advert_en=0`. (An "exact location" sub‑option would just send `advert_jitter=0`.)
