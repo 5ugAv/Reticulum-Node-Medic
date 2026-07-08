@@ -5,8 +5,10 @@ from workflows.rtnode_portal import (
     build_form,
     encode_form,
     submit_form,
+    onboard,
     PORTAL_HOST,
     PORTAL_PATH,
+    PORTAL_SSID,
     OPERATOR_FIELDS,
     PREFILLED_FIELDS,
 )
@@ -97,3 +99,46 @@ def test_submit_handles_transport_error():
     ok, msg = submit_form(build_form(NodeProfile()), post=fake_post)
     assert ok is False
     assert "unreachable" in msg.lower() or "could not" in msg.lower()
+
+
+# ---- end-to-end onboarding (join AP -> POST) -----------------------------
+
+
+def _good_post(url, body, headers):
+    return (200, "Device will reboot in 3 seconds and connect to your WiFi network.")
+
+
+def test_onboard_joins_then_posts():
+    joined = {}
+
+    def fake_join(ssid):
+        joined["ssid"] = ssid
+        return (True, "connected")
+
+    ok, msg = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                      join_ap=fake_join, post=_good_post)
+    assert ok is True
+    assert joined["ssid"] == PORTAL_SSID
+
+
+def test_onboard_aborts_if_join_fails_and_does_not_post():
+    posted = {"called": False}
+
+    def fake_join(ssid):
+        return (False, "no wifi adapter")
+
+    def fake_post(url, body, headers):
+        posted["called"] = True
+        return (200, "reboot")
+
+    ok, msg = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                      join_ap=fake_join, post=fake_post)
+    assert ok is False
+    assert posted["called"] is False       # never posted — nothing to talk to
+    assert "RTNode-Setup" in msg
+
+
+def test_onboard_skip_join_posts_directly():
+    ok, msg = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                      do_join=False, post=_good_post)
+    assert ok is True
