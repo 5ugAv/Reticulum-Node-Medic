@@ -22,6 +22,7 @@ from node_profile import NodeHardware, NodeProfile
 from transport.connection import Connection
 from diagnostics.rtnode_2400 import CAPTURE_COMMAND
 from monitor.health_beacon import HealthBeacon, decode
+from monitor.geo import GpsFix, read_gps
 from workflows.build import StepResult
 from workflows.rtnode_portal import build_form
 
@@ -80,16 +81,27 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
     # This MUST come before verify_beacon: a fresh, un-onboarded board blocks in
     # the captive portal in setup() and never reaches health_beacon_init(), so
     # it stays silent (both LoRa and USB) until config is saved and it reboots.
-    wf.onboarding = build_form(wf.profile)
+    #
+    # The Pi is physically at the node now, so its GPS fix IS the node's
+    # location. Capture it and pre-fill the advertisement (privacy-fuzzed on the
+    # public map, exact on the birth certificate). No fix -> advertisement off.
+    fix = (read_gps(wf.gps_reader) if wf.gps_reader is not None else read_gps())
+    wf.gps_fix = fix
+    lat = fix.lat if fix else None
+    lon = fix.lon if fix else None
+    wf.onboarding = build_form(wf.profile, lat=lat, lon=lon)
     f = wf.onboarding
+    loc_note = (f"GPS captured ({f['advert_lat']}, {f['advert_lon']}) — "
+                f"advertised fuzzed on the public map."
+                if fix else "No GPS fix — enter location manually or leave off.")
     return StepResult(
         "wifi_onboarding", True, skipped=True,
         message=(
             f"Operator step: connect to WiFi '{ONBOARDING_SSID}', open "
             f"{ONBOARDING_URL}. Recommended LoRa settings are pre-filled — "
             f"freq {f['freq']} MHz, bandwidth {f['bw']} Hz, SF{f['sf']}, "
-            f"CR{f['cr']}, {f['txp']} dBm. You still need to enter the node "
-            f"name and WiFi SSID/password. Dismiss the captive portal after."))
+            f"CR{f['cr']}, {f['txp']} dBm. {loc_note} You still need to enter "
+            f"the node name and WiFi SSID/password. Dismiss the portal after."))
 
 
 @rtnode_build_step
@@ -121,6 +133,12 @@ def verify_beacon(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
     r = wf.profile.radio
+    # Exact, un-fuzzed coordinates — ground truth for a repair visit (the public
+    # map only ever sees the firmware's ~800 m-fuzzed pin).
+    location = None
+    if wf.gps_fix is not None:
+        location = {"lat": wf.gps_fix.lat, "lon": wf.gps_fix.lon,
+                    "source": wf.gps_fix.source}
     wf.birth_certificate = {
         "board": wf.beacon.board_label if wf.beacon else wf.profile.hardware.value,
         "firmware": wf.beacon.firmware_version if wf.beacon else None,
@@ -130,6 +148,7 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         "frequency_mhz": r.frequency_mhz,
         "bandwidth_khz": r.bandwidth_khz,
         "spreading_factor": r.spreading_factor,
+        "location": location,          # exact coords, or None if no GPS fix
         "session_id": wf.profile.session_id,
     }
     return StepResult("birth_certificate", True,
@@ -137,13 +156,18 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
 
 
 class RTNodeBuildWorkflow:
-    def __init__(self, connection: Connection, profile: NodeProfile):
+    def __init__(self, connection: Connection, profile: NodeProfile,
+                 gps_reader=None):
         self.connection = connection
         self.profile = profile
+        # gps_reader() -> (lat, lon) | None. Injected for tests; None uses the
+        # default gpsd reader at run time.
+        self.gps_reader = gps_reader
         self.steps: List[Tuple[str, Callable]] = list(_RTNODE_STEPS)
         self.current_index = 0
         self.results: List[StepResult] = []
         self.beacon: Optional[HealthBeacon] = None
+        self.gps_fix: Optional[GpsFix] = None
         self.onboarding: Optional[dict] = None
         self.birth_certificate: Optional[dict] = None
 

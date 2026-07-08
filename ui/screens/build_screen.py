@@ -89,7 +89,11 @@ class BuildScreen(BoxLayout):
             self.list.add_widget(_line("Onboarding (enter at RTNode-Setup / "
                                        "http://10.0.0.1):", bold=True,
                                        size="16sp"))
-            for k in ("node_name", "ssid", "psk", "freq", "bw", "sf", "cr", "txp"):
+            for k in ("node_name", "ssid", "psk", "freq", "bw", "sf", "cr",
+                      "txp", "advert_en", "advert_lat", "advert_lon",
+                      "advert_jitter"):
+                if k not in onboarding:
+                    continue
                 v = onboarding.get(k, "")
                 shown = v if v != "" else "____  (operator)"
                 self.list.add_widget(_line(f"    {k}: {shown}", size="13sp"))

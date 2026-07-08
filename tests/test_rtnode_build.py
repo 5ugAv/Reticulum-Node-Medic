@@ -30,8 +30,9 @@ def conn(port="/dev/cu.usbmodem2101", flash_code=0, beacon=BEACON_LINE):
     return c
 
 
-def wf(c=None, profile=None):
-    return RTNodeBuildWorkflow(c or conn(), profile or NodeProfile())
+def wf(c=None, profile=None, gps_reader=lambda: None):
+    return RTNodeBuildWorkflow(c or conn(), profile or NodeProfile(),
+                               gps_reader=gps_reader)
 
 
 def test_steps_registered_in_order():
@@ -139,6 +140,37 @@ def test_wifi_onboarding_respects_overridden_radio_params():
     w.steps[2][1](w)
     assert w.onboarding["freq"] == "868.0"
     assert w.onboarding["bw"] == "250000"
+
+
+def test_onboarding_captures_gps_and_fills_advert():
+    w = wf(gps_reader=lambda: (-37.814, 144.963))
+    w.steps[2][1](w)          # wifi_onboarding
+    assert w.gps_fix is not None
+    assert w.onboarding["advert_en"] == "1"
+    assert w.onboarding["advert_lat"] == "-37.814000"
+    assert w.onboarding["advert_lon"] == "144.963000"
+    assert w.onboarding["advert_jitter"] == "1"
+
+
+def test_onboarding_no_gps_disables_advert():
+    w = wf(gps_reader=lambda: None)
+    w.steps[2][1](w)
+    assert w.gps_fix is None
+    assert w.onboarding["advert_en"] == "0"
+    assert "advert_lat" not in w.onboarding
+
+
+def test_birth_certificate_records_exact_location():
+    w = wf(gps_reader=lambda: (-37.814, 144.963))
+    w.run_all()
+    assert w.birth_certificate["location"] == {
+        "lat": -37.814, "lon": 144.963, "source": "pi_gps"}
+
+
+def test_birth_certificate_location_none_without_gps():
+    w = wf(gps_reader=lambda: None)
+    w.run_all()
+    assert w.birth_certificate["location"] is None
 
 
 def test_birth_certificate_summarises_node():

@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 from monitor.health_beacon import HealthBeacon, beacon_status, decode
 from monitor.health_poll import PollResult
+from monitor.geo import navigation_links
 from ui import theme
 
 #: Not heard for longer than this -> red (matches the Monitor spec).
@@ -55,12 +56,24 @@ class NodeRecord:
     node_type: str = "rtnode2400"          # "rtnode2400" | "pi"
     latest_beacon: Optional[HealthBeacon] = None
     last_seen: Optional[float] = None       # epoch seconds
+    lat: Optional[float] = None             # exact coords (from birth cert)
+    lon: Optional[float] = None
     notes: List[str] = field(default_factory=list)
     events: List[CommissionEvent] = field(default_factory=list)
 
     @property
     def firmware_version(self) -> Optional[str]:
         return self.latest_beacon.firmware_version if self.latest_beacon else None
+
+    def has_location(self) -> bool:
+        return self.lat is not None and self.lon is not None
+
+    def navigation(self) -> Optional[dict]:
+        """Turn-by-turn deep links to the node (from its exact birth-cert
+        coordinates), or ``None`` if no location is on file."""
+        if not self.has_location():
+            return None
+        return navigation_links(self.lat, self.lon)
 
     def needs_firmware_update(self, latest: str) -> bool:
         fw = self.firmware_version
@@ -88,12 +101,13 @@ class NodeRegistry:
         self.nodes: Dict[str, NodeRecord] = {}
 
     def register(self, dst_hash: str, name: str = "", location: str = "",
-                 node_type: str = "rtnode2400") -> NodeRecord:
+                 node_type: str = "rtnode2400", lat: Optional[float] = None,
+                 lon: Optional[float] = None) -> NodeRecord:
         """Create or update a node's static metadata (from the birth cert)."""
         rec = self.nodes.get(dst_hash)
         if rec is None:
             rec = NodeRecord(dst_hash=dst_hash, name=name, location=location,
-                             node_type=node_type)
+                             node_type=node_type, lat=lat, lon=lon)
             self.nodes[dst_hash] = rec
         else:
             if name:
@@ -101,6 +115,28 @@ class NodeRegistry:
             if location:
                 rec.location = location
             rec.node_type = node_type
+            if lat is not None:
+                rec.lat = lat
+            if lon is not None:
+                rec.lon = lon
+        return rec
+
+    def register_from_birth_certificate(self, cert: dict, name: str = "",
+                                        now: float = 0.0,
+                                        operator: str = "operator"
+                                        ) -> Optional[NodeRecord]:
+        """Register a freshly-built node from its birth certificate: exact
+        coordinates, and a 'build' entry in the commissioning log."""
+        dst = cert.get("identity_hash")
+        if not dst:
+            return None
+        loc = cert.get("location") or {}
+        rec = self.register(dst, name=name, node_type="rtnode2400",
+                            lat=loc.get("lat"), lon=loc.get("lon"))
+        self.log_event(
+            dst, "build",
+            f"Provisioned {cert.get('board', '')} fw {cert.get('firmware', '')}",
+            now, operator)
         return rec
 
     def get(self, dst_hash: str) -> Optional[NodeRecord]:
@@ -207,6 +243,8 @@ class NodeRegistry:
                 "location": r.location,
                 "node_type": r.node_type,
                 "last_seen": r.last_seen,
+                "lat": r.lat,
+                "lon": r.lon,
                 "notes": list(r.notes),
                 "events": [
                     {"at": e.at, "kind": e.kind, "summary": e.summary,
@@ -229,6 +267,8 @@ class NodeRegistry:
                 location=n.get("location", ""),
                 node_type=n.get("node_type", "rtnode2400"),
                 last_seen=n.get("last_seen"),
+                lat=n.get("lat"),
+                lon=n.get("lon"),
             )
             rec.notes = list(n.get("notes", []))
             rec.events = [CommissionEvent(**e) for e in n.get("events", [])]
