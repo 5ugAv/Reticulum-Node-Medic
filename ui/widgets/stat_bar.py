@@ -14,11 +14,13 @@ from ui import theme
 
 
 class _StatIcon(Label):
-    def __init__(self, emoji, text, status="ok", **kwargs):
+    # Short text labels rather than emoji: the field Pi's default font has no
+    # emoji glyphs (they render as tofu), and no emoji font is carried offline.
+    def __init__(self, text, status="ok", **kwargs):
         super().__init__(**kwargs)
-        self.text = f"{emoji} {text}"
+        self.text = text
         self.color = theme.status_rgba(status)
-        self.font_size = "15sp"
+        self.font_size = "14sp"
 
 
 class StatBar(BoxLayout):
@@ -44,15 +46,15 @@ class StatBar(BoxLayout):
         self.clear_widgets()
         if self.show_battery:
             self.add_widget(_StatIcon(
-                "\U0001F50B", f"{int(self.battery_pct)}%",
+                f"BAT {int(self.battery_pct)}%",
                 theme.battery_status(self.battery_pct)))
         if self.show_solar:
-            self.add_widget(_StatIcon("☀", "", "ok"))
+            self.add_widget(_StatIcon("SOL", "ok"))
         if self.powered_by == "mains":
-            self.add_widget(_StatIcon("\U0001F50C", "", "ok"))
+            self.add_widget(_StatIcon("AC", "ok"))
         self.add_widget(_StatIcon(
-            "\U0001F4F6", f"{int(self.signal_dbm)} dBm",
+            f"SIG {int(self.signal_dbm)}dBm",
             theme.signal_status(self.signal_dbm)))
         self.add_widget(_StatIcon(
-            "\U0001F550", f"{self.last_seen_hours:.1f}h",
+            f"SEEN {self.last_seen_hours:.1f}h",
             theme.last_seen_status(self.last_seen_hours)))
