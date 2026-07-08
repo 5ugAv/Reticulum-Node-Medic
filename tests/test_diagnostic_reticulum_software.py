@@ -177,6 +177,27 @@ def test_serial_acl_missing():
     assert "serial_acl" in names(run(conn))
 
 
+def test_serial_acl_stricter_than_substring():
+    # rw present for owner/other but NOT reachable by our user 'pi' -> flag
+    # (the old "rw in acl" check would have passed this — a false negative)
+    conn = broken(("getfacl", 0,
+                   "# owner: root\nuser::rw-\ngroup::r--\nother::rw-"))
+    assert "serial_acl" in names(run(conn))
+
+
+def test_serial_acl_ok_via_dialout_group():
+    conn = broken(("getfacl", 0,
+                   "# owner: root\n# group: dialout\nuser::rw-\n"
+                   "group:dialout:rw-\nother::---"))
+    assert "serial_acl" not in names(run(conn))
+
+
+def test_serial_acl_ok_via_named_user_entry():
+    conn = broken(("getfacl", 0,
+                   "# owner: root\nuser::rw-\nuser:pi:rw-\ngroup::r--"))
+    assert "serial_acl" not in names(run(conn))
+
+
 def test_rnsd_startup_race():
     conn = broken(("systemctl cat rnsd", 0, "ExecStart=/usr/local/bin/rnsd"))
     assert "rnsd_startup_race" in names(run(conn))
@@ -202,6 +223,13 @@ def test_shared_instance_port_conflict():
     conn = broken(("37428", 0,
                    'LISTEN 0 0 *:37428 users:(("python3",pid=999))'))
     assert "shared_instance_port_conflict" in names(run(conn))
+
+
+def test_port_conflict_not_flagged_when_owner_unidentifiable():
+    # unprivileged `ss` shows the listener but no process (no pid=/users:) —
+    # we must NOT raise a false-positive critical conflict.
+    conn = broken(("37428", 0, "LISTEN 0 0 *:37428 *:*"))
+    assert "shared_instance_port_conflict" not in names(run(conn))
 
 
 def test_identity_permissions_wrong():

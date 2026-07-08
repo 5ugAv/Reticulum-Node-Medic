@@ -58,6 +58,7 @@ class DiagnosticCheck(ABC):
     def __init__(self, connection: Connection, profile: NodeProfile):
         self.connection = connection
         self.profile = profile
+        self._root = None  # cached _is_root() result
 
     # -- required ----------------------------------------------------------
 
@@ -141,3 +142,18 @@ class DiagnosticCheck(ABC):
     def _dir_exists(self, path: str) -> bool:
         code, _, _ = self._run_cmd(f"test -d {path}")
         return code == 0
+
+    # -- privilege ---------------------------------------------------------
+
+    def _is_root(self) -> bool:
+        """True if the session runs as root (cached)."""
+        if self._root is None:
+            code, out, _ = self._run_cmd("id -u")
+            self._root = (code == 0 and out.strip() == "0")
+        return self._root
+
+    def _priv(self, command: str) -> str:
+        """Prefix ``sudo -n`` when not root, so privileged reads work over
+        SSH-as-non-root. ``-n`` fails fast instead of prompting for a password.
+        """
+        return command if self._is_root() else f"sudo -n {command}"

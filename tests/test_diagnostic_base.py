@@ -170,3 +170,33 @@ def test_dir_exists_true():
 def test_dir_exists_false():
     conn = EmulatedConnection().rule("^test -d", code=1)
     assert make(conn=conn)._dir_exists("/etc") is False
+
+
+# ---- privilege helpers ---------------------------------------------------
+
+
+def test_is_root_true():
+    conn = EmulatedConnection().rule("^id -u", code=0, stdout="0")
+    assert make(conn=conn)._is_root() is True
+
+
+def test_is_root_false():
+    conn = EmulatedConnection().rule("^id -u", code=0, stdout="1000")
+    assert make(conn=conn)._is_root() is False
+
+
+def test_priv_wraps_with_sudo_when_not_root():
+    conn = EmulatedConnection().rule("^id -u", code=0, stdout="1000")
+    assert make(conn=conn)._priv("dmesg") == "sudo -n dmesg"
+
+
+def test_priv_no_wrap_when_root():
+    conn = EmulatedConnection().rule("^id -u", code=0, stdout="0")
+    assert make(conn=conn)._priv("dmesg") == "dmesg"
+
+
+def test_is_root_is_cached():
+    conn = EmulatedConnection().rule("^id -u", code=0, stdout="0")
+    c = make(conn=conn)
+    c._is_root(); c._is_root(); c._priv("x")
+    assert conn.history.count("id -u") == 1

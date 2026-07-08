@@ -147,12 +147,34 @@ def test_serial_missing_sentinel_does_not_crash():
     assert "Sentinel not found" in err
 
 
-def test_serial_push_file_without_lrzsz_returns_false():
-    # transport where `which sz` yields nothing -> lrzsz not installed
-    resp = "CMD_DONE_7f3a 1\n"
-    conn = SerialConnection("/dev/ttyUSB0", transport=FakeSerialTransport(resp))
-    ok = conn.push_file("/tmp/local", "/tmp/remote")
-    assert ok is False
+def test_serial_push_file_missing_local_returns_false():
+    conn = SerialConnection("/dev/ttyUSB0",
+                            transport=FakeSerialTransport("CMD_DONE_7f3a 0\n"))
+    assert conn.push_file("/nonexistent/path/xyz", "/tmp/remote") is False
+
+
+def test_serial_push_file_base64_encodes_content(tmp_path):
+    import base64 as _b64
+    p = tmp_path / "asset.bin"
+    p.write_bytes(b"hello node \x00\x01")
+
+    class CapTransport:
+        def __init__(self):
+            self.written = []
+
+        def write(self, text):
+            self.written.append(text)
+
+        def read_all(self, timeout):
+            return "CMD_DONE_7f3a 0\n"
+
+    cap = CapTransport()
+    conn = SerialConnection("/dev/ttyUSB0", transport=cap)
+    ok = conn.push_file(str(p), "/tmp/remote")
+    assert ok is True
+    written = "".join(cap.written)
+    assert _b64.b64encode(b"hello node \x00\x01").decode() in written
+    assert "base64 -d > /tmp/remote" in written
 
 
 def test_serial_is_a_connection():

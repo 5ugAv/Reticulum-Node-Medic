@@ -108,11 +108,14 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             severity="warning", auto_fixable=True,
             fix_description="Restart rnsd to re-apply the radio parameters."))
 
-        # 51 setfacl ACL permission on the serial port
+        # 51 setfacl ACL permission on the serial port. A bare "rw" substring is
+        # too loose (the owner line user::rw- is always present); check that rw
+        # is actually reachable by our user — via a named ACL, the dialout group,
+        # or ownership.
         acl = self._cmd_output(f"getfacl {port}")
         issues.append(self._check(
-            "serial_acl", "rw" in acl,
-            f"No read/write ACL grants access to {port}.",
+            "serial_acl", self._acl_grants_rw(acl, user),
+            f"No read/write ACL grants {user} access to {port}.",
             severity="warning", auto_fixable=True,
             fix_description=f"Grant {user} rw on {port} via setfacl."))
 
@@ -153,11 +156,15 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             severity="warning", auto_fixable=True,
             fix_description="Strip carriage returns from the config."))
 
-        # 82 shared-instance port 37428 conflict
-        ss = self._cmd_output("ss -tlnp | grep 37428")
+        # 82 shared-instance port 37428 conflict. Process names in `ss` need
+        # root, so run privileged; and only flag a conflict when the owner is
+        # actually identifiable and is not rnsd — otherwise we can't tell, so we
+        # don't raise a false alarm.
+        ss = self._cmd_output(self._priv("ss -tlnp | grep 37428"))
+        identifiable = "pid=" in ss or "users:" in ss
+        conflict = bool(ss.strip()) and identifiable and "rnsd" not in ss
         issues.append(self._check(
-            "shared_instance_port_conflict",
-            not (ss and "rnsd" not in ss),
+            "shared_instance_port_conflict", not conflict,
             "Another process is holding Reticulum's shared-instance port "
             "37428.",
             severity="critical"))
@@ -193,6 +200,31 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             severity="warning"))
 
         return [i for i in issues if i is not None]
+
+    @staticmethod
+    def _acl_grants_rw(acl: str, user: str) -> bool:
+        """True if the getfacl output grants *user* read/write, via a named
+        user ACL, the dialout group, or ownership (not just any rw anywhere)."""
+        lines = [ln.strip() for ln in acl.splitlines()]
+
+        def entry_has_rw(prefixes):
+            for ln in lines:
+                for p in prefixes:
+                    if ln.startswith(p) and "rw" in ln.rsplit(":", 1)[-1]:
+                        return True
+            return False
+
+        if entry_has_rw([f"user:{user}:"]):        # explicit ACL for our user
+            return True
+        if entry_has_rw(["group:dialout:", "group::"]):  # via dialout group
+            return True
+        owner = ""
+        for ln in lines:
+            if ln.startswith("# owner:"):
+                owner = ln.split(":", 1)[1].strip()
+        if owner == user and entry_has_rw(["user::"]):
+            return True
+        return False
 
     # -- fixes -------------------------------------------------------------
 

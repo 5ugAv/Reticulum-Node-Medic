@@ -95,13 +95,24 @@ class SystemHealthCheck(DiagnosticCheck):
             severity="warning", auto_fixable=True,
             fix_description="Point the rnsd unit ExecStart at the right binary."))
 
-        # 62 ext4 journal corruption
-        ext4 = self._cmd_output('dmesg | grep -i "EXT4-fs error"')
-        issues.append(self._check(
-            "ext4_journal_corruption", "journal" not in ext4.lower(),
-            "The kernel logged EXT4 journal errors — the filesystem may be "
-            "corrupting.",
-            severity="critical"))
+        # 62 ext4 journal corruption. dmesg is often restricted -> read
+        # privileged; a denied read is reported "unverified" (info), not passed.
+        code, dmesg_out, _ = self._run_cmd(self._priv("dmesg"))
+        if code != 0 and not dmesg_out.strip():
+            issues.append(Issue(
+                check_name="ext4_journal_corruption",
+                category=self.category_name,
+                description="Could not read the kernel log to check the "
+                            "filesystem (needs privileges) — unverified.",
+                severity="info"))
+        else:
+            corrupt = ("EXT4-fs error" in dmesg_out
+                       and "journal" in dmesg_out.lower())
+            issues.append(self._check(
+                "ext4_journal_corruption", not corrupt,
+                "The kernel logged EXT4 journal errors — the filesystem may be "
+                "corrupting.",
+                severity="critical"))
 
         # 74 undervoltage (vcgencmd get_throttled)
         thr = self._cmd_output("vcgencmd get_throttled")

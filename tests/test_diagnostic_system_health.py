@@ -20,7 +20,7 @@ def healthy_conn():
         .rule("which rnsd", code=0, stdout="/usr/local/bin/rnsd")
         .rule("systemctl cat rnsd", code=0,
               stdout="ExecStart=/usr/local/bin/rnsd")
-        .rule("dmesg", code=1, stdout="")
+        .rule("dmesg", code=0, stdout="[    0.000000] Booting Linux 6.1")
         .rule("get_throttled", code=0, stdout="throttled=0x0")
         .rule("swapon --show", code=0, stdout="")
         .rule("Timezone", code=0, stdout="Australia/Melbourne")
@@ -114,8 +114,14 @@ def test_ext4_journal_corruption():
                ("dmesg", 0, "EXT4-fs error (device mmcblk0p2): journal aborted", ""))
     issues = run(conn)
     assert "ext4_journal_corruption" in names(issues)
-    assert next(i for i in issues
-                if i.check_name == "ext4_journal_corruption").severity == "critical"
+    assert sev(issues, "ext4_journal_corruption") == "critical"
+
+
+def test_ext4_unverified_when_dmesg_denied():
+    conn = ins(healthy_conn(),
+               ("dmesg", 1, "", "Operation not permitted"))
+    issues = run(conn)
+    assert sev(issues, "ext4_journal_corruption") == "info"
 
 
 def test_undervoltage_currently_throttled_is_critical():

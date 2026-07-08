@@ -50,7 +50,7 @@ def full_healthy_conn():
         .rule("--loop", 0, "loop ok")
         .rule("--version", 0, "RNode 1.80")
         .rule("thermal_zone0/temp", 0, "45000")
-        .rule("dmesg", 1, "")
+        .rule("dmesg", 0, "[    0.000000] Booting Linux 6.1")
         .rule(".rtt_wtest", 0, "")
         .rule("MemAvailable", 0, "MemAvailable: 512000 kB")
         .rule("/proc/uptime", 0, "123456 60")
