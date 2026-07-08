@@ -2,7 +2,10 @@ import pytest
 
 from node_profile import NodeProfile, NodeHardware
 from transport.connection import EmulatedConnection
-from workflows.build import BuildWorkflow, StepResult, build_step
+from workflows.build import (
+    BuildWorkflow, StepResult, build_step,
+    PACKAGE_DIR, REMOTE_PACKAGE_DIR, REMOTE_ASSET_DIR,
+)
 
 EXPECTED_STEPS = [
     "detect_hardware",
@@ -147,6 +150,28 @@ def test_run_all_fires_progress():
     w = wf(build_conn(rnode=True))
     w.run_all(on_progress=events.append)
     assert len(events) == len(EXPECTED_STEPS)
+
+
+def test_install_stages_packages_on_node_and_uses_remote_path():
+    conn = build_conn(rnode=True)
+    w = wf(conn)
+    for i in range(6):          # detect_hardware .. install_software_stack
+        w.steps[i][1](w)
+    # a carried wheel was actually pushed under the remote package dir
+    assert any(dst.startswith(REMOTE_PACKAGE_DIR) for _, dst in conn.pushed)
+    pip_cmd = next(c for c in conn.history if "pip3 install" in c)
+    assert REMOTE_PACKAGE_DIR in pip_cmd          # installs from the node path
+    assert PACKAGE_DIR not in pip_cmd             # NOT the tool-local path
+
+
+def test_hardening_stages_deb_on_node_and_uses_remote_path():
+    conn = build_conn(rnode=True)
+    w = wf(conn)
+    w.steps[7][1](w)            # apply_system_hardening
+    assert any(dst == f"{REMOTE_ASSET_DIR}/log2ram.deb" for _, dst in conn.pushed)
+    dpkg_cmd = next(c for c in conn.history if "dpkg -i" in c)
+    assert REMOTE_ASSET_DIR in dpkg_cmd
+    assert PACKAGE_DIR not in dpkg_cmd
 
 
 def test_final_verification_runs():

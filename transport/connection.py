@@ -163,7 +163,10 @@ class SerialConnection(Connection):
         self._transport.write(self._wrap(command))
         raw = self._transport.read_all(timeout)
 
-        idx = raw.find(self.CMD_DONE)
+        # Use the LAST occurrence: a console that echoes the command replays the
+        # wrapped command line (which contains the sentinel string), so the
+        # real completion marker is always the final one.
+        idx = raw.rfind(self.CMD_DONE)
         if idx == -1:
             return (-1, raw, "Sentinel not found in serial response")
 
@@ -261,4 +264,8 @@ def auto_detect_connection(target: str, **kwargs) -> Connection:
             k: v for k, v in kwargs.items() if k in ("baud", "transport")
         }
         return SerialConnection(target, **serial_kwargs)
-    return SSHConnection(target, **kwargs)
+    # Filter to SSHConnection's accepted params so a stray serial-only kwarg
+    # (e.g. baud=/transport=) doesn't raise TypeError.
+    ssh_keys = ("user", "port", "retry_count", "retry_delay", "runner", "sleep")
+    ssh_kwargs = {k: v for k, v in kwargs.items() if k in ssh_keys}
+    return SSHConnection(target, **ssh_kwargs)

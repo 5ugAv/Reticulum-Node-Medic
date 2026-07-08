@@ -19,6 +19,29 @@ from transport.connection import Connection
 CONFIG_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "configs")
 PACKAGE_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "packages")
 
+# Where tool-carried assets are staged ON THE NODE. Commands that install from
+# local packages must reference these remote paths, not the tool's PACKAGE_DIR
+# (which does not exist on the target node).
+REMOTE_ASSET_DIR = "/tmp/rnm-assets"
+REMOTE_PACKAGE_DIR = REMOTE_ASSET_DIR + "/packages"
+
+
+def _push_dir(wf: "BuildWorkflow", local_dir: str, remote_dir: str) -> int:
+    """Copy every non-hidden file from a tool-local dir onto the node.
+
+    Returns the number of files pushed. Assets have to physically reach the
+    node before a ``--no-index`` install can find them.
+    """
+    wf.connection.run(f"mkdir -p {remote_dir}")
+    count = 0
+    if os.path.isdir(local_dir):
+        for name in sorted(os.listdir(local_dir)):
+            local_path = os.path.join(local_dir, name)
+            if os.path.isfile(local_path) and not name.startswith("."):
+                wf.connection.push_file(local_path, f"{remote_dir}/{name}")
+                count += 1
+    return count
+
 
 @dataclass
 class StepResult:
@@ -130,8 +153,10 @@ def write_reticulum_config(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def install_software_stack(wf: "BuildWorkflow") -> StepResult:
+    # Stage the carried wheels onto the node, then install from there.
+    _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
     code, out, err = wf.connection.run(
-        f"pip3 install --no-index --find-links {PACKAGE_DIR} "
+        f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
         f"--break-system-packages rns lxmf")
     if code != 0:
         return StepResult("install_software_stack", False,
@@ -170,9 +195,13 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
-    # Log2Ram installed from a local .deb (no internet in the field).
-    wf.connection.run(
-        f"dpkg -i {os.path.join(PACKAGE_DIR, 'log2ram.deb')} || true")
+    # Log2Ram installed from a local .deb (no internet in the field). Stage the
+    # .deb onto the node first, then install from the remote path.
+    wf.connection.run(f"mkdir -p {REMOTE_ASSET_DIR}")
+    wf.connection.push_file(
+        os.path.join(PACKAGE_DIR, "log2ram.deb"),
+        f"{REMOTE_ASSET_DIR}/log2ram.deb")
+    wf.connection.run(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb || true")
     wf.connection.run("systemctl enable log2ram || true")
     wf.connection.run("systemctl enable watchdog || true")
     return StepResult("apply_system_hardening", True,

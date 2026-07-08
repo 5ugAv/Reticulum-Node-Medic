@@ -58,17 +58,21 @@ This project is the **tool**, kept entirely separate from the node firmware
 node_profile.py        dataclasses / enums (foundation)
 transport/connection.py Connection base, SSH / Serial / Emulated, auto-detect
 diagnostics/base.py     DiagnosticCheck, Issue, Fix + helpers
-diagnostics/*.py        6 modules, 49 checks (1-49); more to 93
+diagnostics/*.py        7 modules, 91 checks (6 Pi modules + RTNode-2400)
 workflows/build.py      10 build steps (@build_step)
-workflows/repair.py     RepairWorkflow chaining the 6 modules + ProgressEvents
+workflows/repair.py     RepairWorkflow chaining the 6 Pi modules + ProgressEvents
+monitor/*.py            health-beacon codec + on-demand poll (Type B)
 assets/configs/*.conf   4 Reticulum config templates
 ui/                     Kivy theme, widgets, screens, app shell
 ```
 
-### Diagnostic categories (repair order)
+### Diagnostic categories (Pi nodes, repair order)
 
 Power & hardware → Reticulum software → Radio & firmware → System health →
 Network & mesh → Client connectivity.
+
+A seventh module diagnoses standalone RTNode-2400 (Type B) boards from their
+serial `[HealthBeacon]` line (no text console exists on those boards).
 
 Every check produces a plain-English description, a severity
 (`critical` / `warning` / `info`), and an auto-fix handler where possible.

@@ -47,7 +47,7 @@ Regulatory basis: Australian LIPD Class Licence, 915 MHz band.
 ```
 node_profile.py          dataclasses / enums (foundation)
 transport/connection.py  Connection base, SSH / Serial / Emulated, auto-detect
-diagnostics/             base + 7 modules — 89 checks (Pi + RTNode-2400)
+diagnostics/             base + 7 modules — 91 checks (Pi + RTNode-2400)
 workflows/               build (10 steps), repair (chains 6 modules), warnings
 monitor/                 health-beacon codec + on-demand poll (Type B)
 ui/                      Kivy theme, widgets, screens, app shell, safety panel
@@ -55,11 +55,19 @@ assets/configs/          4 Reticulum config templates
 assets/scripts/          Heltec V4 NeoPixel patch
 ```
 
-Diagnostic categories (repair order): Power & hardware → Reticulum software →
-Radio & firmware → System health → Network & mesh → Client connectivity, plus a
-standalone RTNode-2400 module. 93 numbered items total (89 diagnostics + 4
-build-mode cautions). The **same** diagnostic code runs in all three
-self-healing tiers (on-node systemd timer / remote / physical serial).
+Diagnostic categories for Pi nodes (repair order): Power & hardware → Reticulum
+software → Radio & firmware → System health → Network & mesh → Client
+connectivity. Plus a standalone RTNode-2400 module (see below). 91 diagnostic
+checks + 4 build-mode cautions, each with a plain-English description, a
+severity and — where possible — an auto-fix. The **same** Pi diagnostic code
+runs in all three self-healing tiers (on-node systemd timer / remote / physical
+serial).
+
+The RTNode-2400 module is **beacon-driven**: those boards have no text console,
+so on a physical visit the tool captures the passive serial `[HealthBeacon]`
+line, decodes it with the shared `health_beacon` codec, and derives its checks
+from the decoded fields (plus a boot-log FATAL scan) — the same wire contract
+used over the mesh.
 
 ## Type B health beacons
 
@@ -77,7 +85,7 @@ Test-first throughout. The whole tested core runs headless with no hardware via
 an in-memory `EmulatedConnection`.
 
 ```bash
-python3 -m pytest        # 263 tests, all green
+python3 -m pytest        # 268 tests, all green
 ```
 
 The Kivy UI (`ui/`) is written but needs a display to run; the tested core does

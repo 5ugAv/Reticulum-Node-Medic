@@ -256,13 +256,17 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         return self._simple_fix(
             issue, f"chmod {mode} {path}", f"Set {path} to {mode}.")
 
+    _PAST_TENSE = {"start": "Started", "enable": "Enabled",
+                   "restart": "Restarted", "stop": "Stopped"}
+
     def _systemctl(self, issue: Issue, action: str, service: str) -> Fix:
         code, out, err = self._run_cmd(f"systemctl {action} {service}")
         ok = code == 0
+        past = self._PAST_TENSE.get(action, f"{action}ed")
         return Fix(
             issue=issue,
             success=ok,
-            message=(f"{action}ed {service}" if ok
+            message=(f"{past} {service}" if ok
                      else f"Could not {action} {service}: {err or out}"),
             raw_output=out,
         )
