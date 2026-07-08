@@ -17,6 +17,7 @@ without the Pi having to join the AP). The default poster uses the stdlib.
 
 from __future__ import annotations
 
+import subprocess
 import urllib.parse
 import urllib.request
 from typing import Callable, Dict, Tuple
@@ -96,3 +97,37 @@ def submit_form(
     if status == 200 and "reboot" in text.lower():
         return (True, "Portal accepted the config; the board is rebooting.")
     return (False, f"Portal rejected the config (HTTP {status}).")
+
+
+def _default_join_ap(ssid: str) -> Tuple[bool, str]:
+    """Join an open AP with nmcli (the tool runs on a Pi 5)."""
+    try:
+        proc = subprocess.run(
+            ["nmcli", "device", "wifi", "connect", ssid],
+            capture_output=True, text=True, timeout=30)
+        return (proc.returncode == 0, (proc.stdout or proc.stderr).strip())
+    except Exception as exc:  # nmcli missing / no wifi / timeout
+        return (False, str(exc))
+
+
+def onboard(
+    profile: NodeProfile,
+    node_name: str,
+    wifi_ssid: str,
+    wifi_password: str,
+    *,
+    do_join: bool = True,
+    join_ap: Callable[[str], Tuple[bool, str]] = _default_join_ap,
+    post: Callable[[str, str, Dict[str, str]], Tuple[int, str]] = _default_post,
+) -> Tuple[bool, str]:
+    """End-to-end onboarding: join the ``RTNode-Setup`` AP, then POST the form.
+
+    The AP-join and HTTP POST are injected so this is unit-testable without a
+    radio. If the join fails we do NOT post (nothing to talk to).
+    """
+    form = build_form(profile, node_name, wifi_ssid, wifi_password)
+    if do_join:
+        joined, jmsg = join_ap(PORTAL_SSID)
+        if not joined:
+            return (False, f"Could not join '{PORTAL_SSID}': {jmsg}")
+    return submit_form(form, host=PORTAL_HOST, post=post)

@@ -1,0 +1,169 @@
+import pytest
+
+from monitor.health_beacon import encode, decode
+from monitor.health_poll import PollResult
+from monitor.registry import NodeRegistry, NodeRecord, STALE_ALERT_HOURS
+
+HASH = "eabdd142596bcae888242ec1b172d566"
+HASH2 = "aa11bb22cc33dd44ee55ff6600778899"
+
+HOUR = 3600.0
+NOW = 1_000_000.0
+
+
+def beacon(**over):
+    kw = dict(uptime_s=36, heap_kb=140, wifi_rssi_dbm=-62, reset_reason=0,
+              wifi_up=True, lora_up=True, tcp_backbone_up=True,
+              local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+              board_id=0x3F, fw=(0, 6, 2))
+    kw.update(over)
+    return decode(encode(**kw))
+
+
+def line(dst=HASH, **over):
+    kw = dict(uptime_s=36, heap_kb=140, wifi_rssi_dbm=-62, reset_reason=0,
+              wifi_up=True, lora_up=True, tcp_backbone_up=True,
+              local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+              board_id=0x3F, fw=(0, 6, 2))
+    kw.update(over)
+    return f"[HealthBeacon] announce dst={dst} data={encode(**kw).hex()}"
+
+
+def test_register_creates_node_with_metadata():
+    r = NodeRegistry()
+    rec = r.register(HASH, name="TRUTH", location="Northcote", node_type="rtnode2400")
+    assert isinstance(rec, NodeRecord)
+    assert r.get(HASH).name == "TRUTH"
+    assert r.get(HASH).location == "Northcote"
+
+
+def test_ingest_updates_beacon_and_last_seen():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    r.ingest(HASH, beacon(), NOW)
+    rec = r.get(HASH)
+    assert rec.latest_beacon is not None
+    assert rec.last_seen == NOW
+    assert rec.status(NOW) == "ok"
+
+
+def test_ingest_unknown_hash_auto_registers():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    assert r.get(HASH) is not None      # first-seen node appears
+    assert r.get(HASH).status(NOW) == "ok"
+
+
+def test_fault_beacon_is_alert():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(fault=True), NOW)
+    assert r.get(HASH).status(NOW) == "alert"
+
+
+def test_weak_wifi_is_warn():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(wifi_rssi_dbm=-80), NOW)
+    assert r.get(HASH).status(NOW) == "warn"
+
+
+def test_staleness_over_six_hours_is_alert_even_if_last_ok():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)               # last beacon was OK
+    later = NOW + (STALE_ALERT_HOURS + 0.5) * HOUR
+    assert r.get(HASH).status(later) == "alert"  # not heard -> red
+
+
+def test_recent_ok_within_window_stays_ok():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    assert r.get(HASH).status(NOW + 2 * HOUR) == "ok"
+
+
+def test_never_heard_is_unknown():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    assert r.get(HASH).status(NOW) == "unknown"
+
+
+def test_last_seen_hours():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    assert r.get(HASH).last_seen_hours(NOW + 3 * HOUR) == pytest.approx(3.0)
+
+
+def test_ingest_line_parses_and_stores():
+    r = NodeRegistry()
+    rec = r.ingest_line(line(), NOW)
+    assert rec is not None
+    assert r.get(HASH).status(NOW) == "ok"
+    assert r.get(HASH).latest_beacon.firmware_version == "0.6.2"
+
+
+def test_ingest_line_ignores_non_beacon():
+    r = NodeRegistry()
+    assert r.ingest_line("[WATCHDOG] heap=180000", NOW) is None
+    assert r.ingest_line("garbage", NOW) is None
+
+
+def test_summary_counts_by_status():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)                       # ok
+    r.ingest(HASH2, beacon(fault=True), NOW)            # alert
+    s = r.summary(NOW)
+    assert s["ok"] == 1
+    assert s["alert"] == 1
+    assert s["warn"] == 0
+
+
+def test_filter_by_status_and_search():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    r.ingest(HASH, beacon(), NOW)
+    r.register(HASH2, name="Thornbury")
+    r.ingest(HASH2, beacon(fault=True), NOW)
+    ok_nodes = r.visible(NOW, status="ok")
+    assert [n.name for n in ok_nodes] == ["TRUTH"]
+    found = r.visible(NOW, search="thorn")
+    assert [n.name for n in found] == ["Thornbury"]
+
+
+def test_all_sorted_alert_first():
+    r = NodeRegistry()
+    r.register(HASH, name="Aaa"); r.ingest(HASH, beacon(), NOW)               # ok
+    r.register(HASH2, name="Bbb"); r.ingest(HASH2, beacon(fault=True), NOW)   # alert
+    names = [n.name for n in r.all(NOW)]
+    assert names[0] == "Bbb"    # alert first
+
+
+def test_record_poll_ingests_clean_reply():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    result = PollResult(node_status="ok", reachable=True, attempts=1, beacon=beacon())
+    r.record_poll(HASH, result, NOW)
+    assert r.get(HASH).status(NOW) == "ok"   # cleared to green
+
+
+def test_record_poll_unreachable_does_not_update_last_seen():
+    r = NodeRegistry()
+    r.register(HASH, name="TRUTH")
+    result = PollResult(node_status="unreachable", reachable=False, attempts=3, beacon=None)
+    r.record_poll(HASH, result, NOW)
+    assert r.get(HASH).last_seen is None
+
+
+def test_ingest_announce_adapter_decodes_and_stores():
+    r = NodeRegistry()
+    dst = bytes.fromhex(HASH)
+    app_data = encode(uptime_s=36, heap_kb=140, wifi_rssi_dbm=-62, reset_reason=0,
+                      wifi_up=True, lora_up=True, tcp_backbone_up=True,
+                      local_tcp_server_up=True, wdt_armed=True, psram=True,
+                      fault=False, board_id=0x3F, fw=(0, 6, 2))
+    rec = r.ingest_announce(dst, app_data, NOW)
+    assert rec is not None
+    assert r.get(HASH).status(NOW) == "ok"
+    assert r.get(HASH).latest_beacon.board_label == "Heltec32 V4"
+
+
+def test_ingest_announce_rejects_bad_payload():
+    r = NodeRegistry()
+    assert r.ingest_announce(bytes.fromhex(HASH), b"\x01\x02", NOW) is None
