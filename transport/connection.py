@@ -8,6 +8,7 @@ stderr)`` tuple so diagnostics and workflows are transport-agnostic.
 
 from __future__ import annotations
 
+import base64
 import subprocess
 import time
 from abc import ABC, abstractmethod
@@ -183,13 +184,22 @@ class SerialConnection(Connection):
         return (code, stdout, "")
 
     def push_file(self, local_path: str, remote_path: str) -> bool:
-        # File transfer over a bare serial console relies on lrzsz (sz/rz).
-        code, _, _ = self.run("which sz")
-        if code != 0:
-            # No lrzsz on the node — cannot push over serial.
+        """Push a local file to the node over the serial command channel.
+
+        Rather than lrzsz (which needs a raw ZMODEM byte stream this
+        sentinel-framed transport can't provide, and whose ``rz``/``sz`` roles
+        are easy to get backwards), the file is base64-encoded and written
+        through a heredoc — decoded on the node with ``base64 -d``. Correct for
+        the small assets the tool carries; slow for large files.
+        """
+        try:
+            with open(local_path, "rb") as fh:
+                data = fh.read()
+        except OSError:
             return False
-        # Real transfer would drive `rz`/`sz` here; not exercised in tests.
-        code, _, _ = self.run(f"rz -y > {remote_path}")
+        b64 = base64.b64encode(data).decode("ascii")
+        code, _, _ = self.run(
+            f"base64 -d > {remote_path} <<'RNMEOF'\n{b64}\nRNMEOF")
         return code == 0
 
 

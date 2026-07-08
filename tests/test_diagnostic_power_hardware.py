@@ -11,7 +11,7 @@ def healthy_conn():
         .rule("thermal_zone0/temp", code=0, stdout="45000")
         .rule("fan1_input", code=0, stdout="3200")
         .rule("BAT0/capacity", code=0, stdout="95")
-        .rule("dmesg", code=1, stdout="")  # grep no-match -> healthy
+        .rule("dmesg", code=0, stdout="[    0.000000] Booting Linux 6.1")  # accessible, no errors
         .rule(".rtt_wtest", code=0, stdout="")
         .rule("MemAvailable", code=0, stdout="MemAvailable:   512000 kB")
         .rule("/proc/uptime", code=0, stdout="123456.7 65432.1")
@@ -99,7 +99,19 @@ def test_battery_not_checked_without_bank():
 def test_sd_card_errors_detected():
     conn = healthy_conn()
     conn.rules.insert(0, ("dmesg", 0, "mmc0: error -110 whilst initialising", ""))
-    assert "sd_card_health" in names(run(conn))
+    issues = run(conn)
+    assert "sd_card_health" in names(issues)
+    assert sev(issues, "sd_card_health") == "critical"
+
+
+def test_sd_health_unverified_when_dmesg_denied():
+    # dmesg restricted -> non-zero, empty -> must report info "unverified",
+    # NOT silently pass (the old false-negative that hid a failing SD card).
+    conn = healthy_conn()
+    conn.rules.insert(0, ("dmesg", 1, "", "dmesg: read kernel buffer failed: Operation not permitted"))
+    issues = run(conn)
+    assert "sd_card_health" in names(issues)
+    assert sev(issues, "sd_card_health") == "info"
 
 
 def test_filesystem_readonly_detected():

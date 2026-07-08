@@ -7,6 +7,7 @@ relevant hardware is present.
 
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
 from diagnostics.base import DiagnosticCheck, Issue
@@ -61,13 +62,25 @@ class PowerHardwareCheck(DiagnosticCheck):
                     raw_detail=f"{pct}%",
                 ))
 
-        # 25 SD card health (dmesg for mmc errors)
-        code, _, _ = self._run_cmd(
-            'dmesg | grep -iE "mmc[0-9]+: error|I/O error"')
-        issues.append(self._check(
-            "sd_card_health", code != 0,
-            "The SD card is reporting read/write errors — it may be failing.",
-            severity="critical"))
+        # 25 SD card health (dmesg for mmc errors). dmesg is often restricted,
+        # so read it privileged; if we still can't read it, report "unverified"
+        # (info) rather than silently passing — a denied read is NOT "healthy".
+        code, dmesg_out, _ = self._run_cmd(self._priv("dmesg"))
+        if code != 0 and not dmesg_out.strip():
+            issues.append(Issue(
+                check_name="sd_card_health",
+                category=self.category_name,
+                description="Could not read the kernel log to check the SD card "
+                            "(needs privileges) — SD health unverified.",
+                severity="info"))
+        else:
+            has_err = bool(re.search(r"mmc\d+: error|I/O error", dmesg_out,
+                                     re.IGNORECASE))
+            issues.append(self._check(
+                "sd_card_health", not has_err,
+                "The SD card is reporting read/write errors — it may be "
+                "failing.",
+                severity="critical"))
 
         # 26 filesystem integrity (can we write?)
         code, _, _ = self._run_cmd(
