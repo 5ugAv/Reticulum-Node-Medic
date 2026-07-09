@@ -33,14 +33,27 @@ class SystemHealthCheck(DiagnosticCheck):
             severity="critical" if (used is not None and used > 90) else "warning",
             raw_detail=(f"{used}%" if used is not None else "")))
 
-        # 30 clock drift (chronyc offset, seconds)
+        # 30 clock drift. Prefer chrony's precise offset when present; a default
+        # Raspberry Pi has NO chrony (it uses systemd-timesyncd), in which case
+        # chronyc errors — fall back to the timesyncd sync flag rather than
+        # mis-reading. (Verified on a real Pi: chronyc absent, timedatectl says
+        # "System clock synchronized: yes".)
         tracking = self._cmd_output("chronyc tracking")
         m = re.search(r"System time\s*:\s*([\d.]+)\s*seconds", tracking)
-        drift = float(m.group(1)) if m else 0.0
-        issues.append(self._check(
-            "clock_drift", drift < 300,
-            f"The system clock has drifted by {drift:.0f} seconds.",
-            severity="warning"))
+        if m:
+            drift = float(m.group(1))
+            issues.append(self._check(
+                "clock_drift", drift < 300,
+                f"The system clock has drifted by {drift:.0f} seconds.",
+                severity="warning"))
+        else:
+            synced = self._cmd_output(
+                "timedatectl show -p NTPSynchronized --value").strip() == "yes"
+            issues.append(self._check(
+                "clock_drift", synced,
+                "The clock is not time-synchronised (systemd-timesyncd reports "
+                "it unsynced; chrony is not installed for a precise reading).",
+                severity="warning"))
 
         # 31 NTP synchronised
         ntp = self._cmd_output(
