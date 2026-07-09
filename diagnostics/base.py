@@ -13,6 +13,7 @@ over a physical serial link (Tier 3). Only the ``Connection`` differs.
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
@@ -157,3 +158,34 @@ class DiagnosticCheck(ABC):
         SSH-as-non-root. ``-n`` fails fast instead of prompting for a password.
         """
         return command if self._is_root() else f"sudo -n {command}"
+
+    # -- rnstatus JSON (robust; verified against RNS 1.3.7 on a live node) --
+
+    def _rnstatus_json(self) -> dict:
+        """Parsed ``rnstatus --json`` — far more stable than scraping the human
+        output. Returns ``{}`` if unavailable/undecodable."""
+        out = self._cmd_output("rnstatus --json")
+        try:
+            return json.loads(out) if out.strip() else {}
+        except ValueError:
+            return {}
+
+    def _rnpath_json(self) -> List[dict]:
+        """Parsed ``rnpath -t --json`` — a list of path dicts
+        ({hash, via, hops, expires, interface}). ``[]`` if unavailable."""
+        out = self._cmd_output("rnpath -t --json")
+        try:
+            data = json.loads(out) if out.strip() else []
+            return data if isinstance(data, list) else []
+        except ValueError:
+            return []
+
+    def _rnode_interface(self) -> Optional[dict]:
+        """The RNodeInterface object from rnstatus, or ``None`` if the node has
+        no radio interface. Fields (when up): ``status`` (bool),
+        ``channel_load_short/long`` (0.0-1.0 fraction), ``airtime_short/long``,
+        ``noise_floor`` (dBm int), ``cpu_temp``, ``battery_percent``."""
+        for iface in self._rnstatus_json().get("interfaces", []):
+            if iface.get("type") == "RNodeInterface":
+                return iface
+        return None

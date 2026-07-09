@@ -66,15 +66,12 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             "for other nodes.",
             severity="warning", auto_fixable=True,
             fix_description="Enable transport mode in the Reticulum config."))
-        # 7 radio interface up. rnstatus lists several interfaces each with a
-        # "Status : Up/Down" line, so "Up" in the whole blob is meaningless
-        # (other interfaces are up while the radio is down). Parse the
-        # RNodeInterface stanza's own Status specifically. Real format:
-        #     RNodeInterface[RNode Interface]
-        #        Status    : Down
-        rnstatus = self._cmd_output("rnstatus")
-        m = re.search(r"RNodeInterface\[[^\]]*\]\s*Status\s*:\s*(\S+)", rnstatus)
-        radio_up = bool(m) and m.group(1) == "Up"
+        # 7 radio interface up. Use rnstatus --json and read the RNodeInterface's
+        # own boolean "status" (verified on a live node) — "Up" anywhere in the
+        # human output is meaningless when other interfaces are up but the radio
+        # is down.
+        iface = self._rnode_interface()
+        radio_up = iface is not None and iface.get("status") is True
         issues.append(self._check(
             "radio_interface_up", radio_up,
             "The radio (RNode) interface is not up in Reticulum.",
