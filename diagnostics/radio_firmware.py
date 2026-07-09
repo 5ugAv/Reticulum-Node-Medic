@@ -13,82 +13,124 @@ from typing import List
 from node_profile import NodeHardware
 from diagnostics.base import DiagnosticCheck, Fix, Issue
 
-#: Latest RNode firmware version this tool ships / expects.
-LATEST_FIRMWARE = "1.80"
+#: Latest RNode firmware version this tool ships / expects (verified on real
+#: hardware — rnodeconf --info reports e.g. "Firmware version   : 1.86").
+LATEST_FIRMWARE = "1.86"
+
+
+def _ver_tuple(v: str):
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
 
 
 class RadioFirmwareCheck(DiagnosticCheck):
     category_name = "Radio & firmware"
 
     def _rnode_info(self) -> str:
+        # NOTE: rnodeconf can only open the RNode serial when rnsd is NOT holding
+        # it (build/maintenance). On a live transport node the radio state comes
+        # from rnstatus --json instead.
         port = self.profile.radio.serial_port
         return self._cmd_output(f"rnodeconf {port} --info")
 
+    @staticmethod
+    def _info_str(info: str, pattern: str):
+        """Extract a labelled field from rnodeconf --info. Real format uses
+        aligned columns with a space before the colon, e.g.
+        ``\tSpreading factor : 11`` — so patterns must allow ``\\s*:``."""
+        m = re.search(pattern, info)
+        return m.group(1) if m else None
+
     def run(self) -> List[Issue]:
         r = self.profile.radio
+        port = r.serial_port
         info = self._rnode_info()
+        has_info = bool(info)
         issues = []
 
         # 12
         issues.append(self._check(
-            "serial_responsive", bool(info),
+            "serial_responsive", has_info,
             "The RNode board is not responding over serial.",
             severity="critical"))
-        # 13
+        # 13 firmware present
         issues.append(self._check(
             "firmware_present", "Firmware version" in info,
             "No RNode firmware was detected on the board.",
             severity="critical"))
-        # 14
+        # 14 device signature verified. Real --info shows "Device signature :
+        # Verified/Unverified" — there is NO "Firmware hash" line. When info is
+        # present but the field is missing (format drift), we pass rather than
+        # false-positive; a silent/absent board fails via has_info.
+        sig = self._info_str(info, r"Device signature\s*:\s*(\w+)")
         issues.append(self._check(
-            "firmware_hash_set", "Firmware hash" in info,
-            "The firmware hash is not set — Reticulum may refuse to use this "
-            "board.",
+            "firmware_hash_set", has_info and (sig is None or sig == "Verified"),
+            "The RNode's firmware signature is unverified — reflash from a "
+            "trusted binary to make it verifiable.",
             severity="warning", auto_fixable=True,
-            fix_description="Set the firmware hash with rnodeconf."))
-        # 15
+            fix_description="Re-flash to a verifiable state "
+                            "(rnodeconf <port> --autoinstall)."))
+        # 15 firmware version current (real: "Firmware version   : 1.86")
+        fw = self._info_str(info, r"Firmware version\s*:\s*([\d.]+)")
+        cur_ok = has_info and (fw is None
+                               or _ver_tuple(fw) >= _ver_tuple(LATEST_FIRMWARE))
         issues.append(self._check(
-            "firmware_version_current",
-            f"Firmware version: {LATEST_FIRMWARE}" in info,
-            f"The RNode firmware is out of date (latest is {LATEST_FIRMWARE}).",
+            "firmware_version_current", cur_ok,
+            f"The RNode firmware is out of date (have {fw}, latest "
+            f"{LATEST_FIRMWARE}).",
             severity="warning"))
-        # 16
+
+        # 16-20 configured LoRa params. Real --info aligns "Label : value" with
+        # a space before the colon, so parse with \s*: and compare the value.
+        def _num(pattern):
+            v = self._info_str(info, pattern)
+            try:
+                return float(v) if v is not None else None
+            except ValueError:
+                return None
+
+        # NB: avoid the "Frequency range : ..." and "Max TX power : ..." header
+        # lines — match only the per-mode config values.
+        freq = _num(r"Frequency\s*:\s*([\d.]+)\s*MHz")
         issues.append(self._check(
-            "frequency", f"{r.frequency_mhz} MHz" in info,
-            f"The radio frequency does not match {r.frequency_mhz} MHz.",
+            "frequency", has_info and (freq is None or freq == r.frequency_mhz),
+            f"The radio frequency is {freq} MHz, not {r.frequency_mhz} MHz.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 17
+        bw = _num(r"Bandwidth\s*:\s*([\d.]+)\s*KHz")
         issues.append(self._check(
-            "bandwidth", f"{r.bandwidth_khz} KHz" in info,
-            f"The radio bandwidth does not match {r.bandwidth_khz} kHz.",
+            "bandwidth", has_info and (bw is None or bw == r.bandwidth_khz),
+            f"The radio bandwidth is {bw} kHz, not {r.bandwidth_khz} kHz.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 18
+        sf = _num(r"Spreading factor\s*:\s*(\d+)")
         issues.append(self._check(
             "spreading_factor",
-            f"Spreading factor: {r.spreading_factor}" in info,
-            f"The spreading factor does not match SF{r.spreading_factor}.",
+            has_info and (sf is None or int(sf) == r.spreading_factor),
+            f"The spreading factor is SF{int(sf) if sf else '?'}, not "
+            f"SF{r.spreading_factor}.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 19
+        cr = _num(r"Coding rate\s*:\s*(\d+)")
         issues.append(self._check(
-            "coding_rate", f"Coding rate: {r.coding_rate}" in info,
-            f"The coding rate does not match CR{r.coding_rate}.",
+            "coding_rate",
+            has_info and (cr is None or int(cr) == r.coding_rate),
+            f"The coding rate is CR{int(cr) if cr else '?'}, not "
+            f"CR{r.coding_rate}.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 20
+        txp = _num(r"(?<!Max )TX power\s*:\s*(\d+)\s*dBm")
         issues.append(self._check(
-            "tx_power", f"TX power: {r.tx_power_dbm} dBm" in info,
-            f"The TX power does not match {r.tx_power_dbm} dBm.",
+            "tx_power",
+            has_info and (txp is None or int(txp) == r.tx_power_dbm),
+            f"The TX power is {int(txp) if txp else '?'} dBm, not "
+            f"{r.tx_power_dbm} dBm.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 21
-        port = r.serial_port
-        loop_ok = self._run_cmd(f"rnodeconf {port} --loop")[0] == 0
+        # 21 L1 serial link — the board responded to rnodeconf with a populated
+        # info block. rnodeconf has no --loop flag.
         issues.append(self._check(
-            "radio_loopback", loop_ok,
-            "The radio failed its serial loopback (L1) test.",
+            "radio_loopback", has_info,
+            "The radio did not respond over serial (L1).",
             severity="critical"))
 
         # --- extended checks (57-60, 86-88) ------------------------------
@@ -126,17 +168,28 @@ class RadioFirmwareCheck(DiagnosticCheck):
             "Could not read the Heltec hardware revision (V4.2 and V4.3 differ).",
             severity="info"))
 
-        # 86 serial data-capable (charge-only cables open a port but pass no data)
+        # 86 serial data-capable. A charge-only USB cable (or wrong port) lets
+        # the device node exist but no device data flows. rnodeconf has no
+        # --version device probe, so the real signal is: the port node is
+        # present yet --info came back empty. If the node is absent entirely,
+        # serial_port_exists/serial_responsive own that — don't double-report.
+        port_node = self._run_cmd(f"test -c {port}")[0] == 0
         issues.append(self._check(
             "serial_data_capable",
-            bool(self._cmd_output(f"rnodeconf {port} --version").strip()),
-            "The serial port opens but passes no data — likely a charge-only "
-            "USB cable.",
+            (not port_node) or has_info,
+            "The serial port exists but the device returned no data — likely a "
+            "charge-only USB cable or the wrong port.",
             severity="critical"))
 
-        # 87 antenna pre-transmit warning (anomalous noise floor)
-        m = re.search(r"Noise floor:\s*(-?\d+)", info)
-        floor = int(m.group(1)) if m else None
+        # 87 antenna pre-transmit warning (anomalous noise floor). The live
+        # noise floor comes from rnstatus --json (RNodeInterface.noise_floor);
+        # rnodeconf --info does not report it. Fall back to an info regex only
+        # for offline/emulated cases.
+        iface = self._rnode_interface()
+        floor = iface.get("noise_floor") if iface else None
+        if floor is None:
+            m = re.search(r"[Nn]oise floor\s*:\s*(-?\d+)", info)
+            floor = int(m.group(1)) if m else None
         issues.append(self._check(
             "antenna_rssi",
             floor is None or floor <= -50,

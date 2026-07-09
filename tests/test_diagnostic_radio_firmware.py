@@ -4,17 +4,28 @@ from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from diagnostics.radio_firmware import RadioFirmwareCheck, LATEST_FIRMWARE
 
+# Verbatim shape of `rnodeconf <port> --info` captured from a real RNode
+# (Heltec LoRa32, firmware 1.86). Labels are column-aligned with a SPACE before
+# the colon, and there are decoy "Frequency range" / "Max TX power" header lines
+# the parsers must skip. Values here match NodeProfile() defaults.
 GOOD_INFO = "\n".join([
-    "[Device] RNode",
-    f"Firmware version: {LATEST_FIRMWARE}",
-    "Firmware hash: 0badc0ffee",
-    "Frequency: 915.125 MHz",
-    "Bandwidth: 125.0 KHz",
-    "TX power: 17 dBm",
-    "Spreading factor: 9",
-    "Coding rate: 5",
-    "Serial baud rate: 115200",
-    "Noise floor: -95 dBm",
+    f"Current firmware version: {LATEST_FIRMWARE}",
+    "Device info:",
+    "\tProduct            : RNode",
+    "\tDevice signature   : Verified",
+    f"\tFirmware version   : {LATEST_FIRMWARE}",
+    "\tHardware revision  : 1",
+    "\tSerial number      : 00:00:00:1c",
+    "\tModem chip         : SX1262",
+    "\tFrequency range    : 860.0 MHz - 930.0 MHz",
+    "\tMax TX power       : 28 dBm",
+    "\tDevice mode        : TNC",
+    "\t  Frequency        : 915.125 MHz",
+    "\t  Bandwidth        : 125.0 KHz",
+    "\t  TX power         : 17 dBm (50.119 mW)",
+    "\t  Spreading factor : 9",
+    "\t  Coding rate      : 5",
+    "\t  On-air bitrate   : 1.07 kbps",
 ])
 
 
@@ -23,7 +34,7 @@ def conn_with(info=GOOD_INFO, info_code=0, loop_code=0):
     c.rule("--info", code=info_code, stdout=info)
     c.rule("--loop", code=loop_code, stdout="LOOP OK" if loop_code == 0 else "")
     c.rule("^systemctl is-active ModemManager", code=3, stdout="inactive")
-    c.rule("rnodeconf", code=0, stdout="ok")  # catch-all (covers --version etc.)
+    c.rule("rnodeconf", code=0, stdout="ok")  # catch-all
     return c
 
 
@@ -56,13 +67,15 @@ def test_firmware_not_present():
 
 
 def test_firmware_hash_not_set():
-    info = GOOD_INFO.replace("Firmware hash: 0badc0ffee", "")
+    # real signal is an unverified device signature, not a missing hash line
+    info = GOOD_INFO.replace(
+        "Device signature   : Verified", "Device signature   : Unverified")
     assert "firmware_hash_set" in names(run(conn_with(info=info)))
 
 
 def test_firmware_version_outdated():
     info = GOOD_INFO.replace(
-        f"Firmware version: {LATEST_FIRMWARE}", "Firmware version: 1.10"
+        f"Firmware version   : {LATEST_FIRMWARE}", "Firmware version   : 1.10"
     )
     assert "firmware_version_current" in names(run(conn_with(info=info)))
 
@@ -78,22 +91,40 @@ def test_bandwidth_mismatch():
 
 
 def test_tx_power_mismatch():
-    info = GOOD_INFO.replace("TX power: 17 dBm", "TX power: 22 dBm")
+    # must change the per-mode "TX power", not the "Max TX power" header
+    info = GOOD_INFO.replace("17 dBm (50.119 mW)", "22 dBm (50.119 mW)")
     assert "tx_power" in names(run(conn_with(info=info)))
 
 
 def test_spreading_factor_mismatch():
-    info = GOOD_INFO.replace("Spreading factor: 9", "Spreading factor: 7")
+    info = GOOD_INFO.replace("Spreading factor : 9", "Spreading factor : 7")
     assert "spreading_factor" in names(run(conn_with(info=info)))
 
 
 def test_coding_rate_mismatch():
-    info = GOOD_INFO.replace("Coding rate: 5", "Coding rate: 8")
+    info = GOOD_INFO.replace("Coding rate      : 5", "Coding rate      : 8")
     assert "coding_rate" in names(run(conn_with(info=info)))
 
 
 def test_radio_loopback_fails():
-    assert "radio_loopback" in names(run(conn_with(loop_code=1)))
+    # rnodeconf has no --loop; L1 fails when the board returns no info at all
+    assert "radio_loopback" in names(run(conn_with(info="")))
+
+
+def test_tx_power_ignores_max_tx_power_header():
+    # the "Max TX power : 28 dBm" header must NOT be read as the configured
+    # TX power — with the per-mode value still 17 there is no mismatch.
+    info = GOOD_INFO.replace("Max TX power       : 28 dBm",
+                             "Max TX power       : 30 dBm")
+    assert "tx_power" not in names(run(conn_with(info=info)))
+
+
+def test_frequency_ignores_range_header():
+    # the "Frequency range : 860.0 MHz - 930.0 MHz" header must NOT be read as
+    # the configured frequency; changing the range alone is not a mismatch.
+    info = GOOD_INFO.replace("Frequency range    : 860.0 MHz - 930.0 MHz",
+                             "Frequency range    : 410.0 MHz - 525.0 MHz")
+    assert "frequency" not in names(run(conn_with(info=info)))
 
 
 def test_all_broken_reports_original_ten():
@@ -130,19 +161,20 @@ def test_modemmanager_interference_critical():
 
 
 def test_heltec_baud_mismatch():
-    info = GOOD_INFO.replace("Serial baud rate: 115200", "Serial baud rate: 9600")
+    info = GOOD_INFO + "\n\tSerial baud rate: 9600"
     assert "heltec_baud" in names(run(conn_with(info=info)))
 
 
 def test_serial_data_capable_charge_only_cable():
-    conn = conn_with()
-    # port opens (--info works) but --version returns nothing => charge-only
-    conn.rules.insert(0, ("--version", 1, "", ""))
+    # the serial device node exists but the board returns no --info data
+    conn = conn_with(info="")
+    conn.rules.insert(0, ("^test -c", 0, "", ""))
     assert "serial_data_capable" in names(run(conn))
 
 
 def test_antenna_rssi_anomalous_noise_floor():
-    info = GOOD_INFO.replace("Noise floor: -95 dBm", "Noise floor: -20 dBm")
+    # no rnstatus rule here, so the check falls back to an info noise-floor line
+    info = GOOD_INFO + "\n\tNoise floor : -20 dBm"
     assert "antenna_rssi" in names(run(conn_with(info=info)))
 
 
@@ -152,7 +184,7 @@ def test_heltec_v4_reminders_fire_for_v4_profile():
     p.hardware = NodeHardware.HELTEC_V4
     from diagnostics.radio_firmware import RadioFirmwareCheck
     # info without hardware revision -> both 60 and 88 fire
-    info = GOOD_INFO
+    info = GOOD_INFO.replace("\tHardware revision  : 1\n", "")
     conn = conn_with(info=info)
     issues = RadioFirmwareCheck(conn, p).run()
     n = {i.check_name for i in issues}
