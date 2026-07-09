@@ -204,6 +204,13 @@ def test_serial_acl_ok_via_named_user_entry():
     assert "serial_acl" not in names(run(conn))
 
 
+def test_serial_acl_not_flagged_when_getfacl_absent():
+    # `acl` package not installed on a stock Pi -> getfacl is command-not-found
+    # (empty). Must NOT false-positive (dialout-group check covers access).
+    conn = broken(("getfacl", 127, ""))
+    assert "serial_acl" not in names(run(conn))
+
+
 def test_rnsd_startup_race():
     conn = broken(("systemctl cat rnsd", 0, "ExecStart=/usr/local/bin/rnsd"))
     assert "rnsd_startup_race" in names(run(conn))

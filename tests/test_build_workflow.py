@@ -50,6 +50,40 @@ def test_run_all_healthy_completes_all_steps():
     assert w.current_index == len(EXPECTED_STEPS)
 
 
+def test_detect_rnode_port_by_id_resolves_ttyacm():
+    from workflows.build import detect_rnode_port
+    conn = EmulatedConnection()
+    conn.rule("ls /dev/serial/by-id/", 0,
+              "usb-Espressif_USB_JTAG_serial_debug_unit_F8:5B:1B:A6:85:00-if00")
+    conn.rule("readlink -f", 0, "/dev/ttyACM0")
+    assert detect_rnode_port(conn) == "/dev/ttyACM0"
+
+
+def test_detect_rnode_port_fallback_to_ttyusb():
+    from workflows.build import detect_rnode_port
+    conn = EmulatedConnection()
+    conn.rule("ls /dev/serial/by-id/", 0, "")
+    conn.rule("ls /dev/ttyACM*", 1, "")
+    conn.rule("ls /dev/ttyUSB*", 0, "/dev/ttyUSB0")
+    assert detect_rnode_port(conn) == "/dev/ttyUSB0"
+
+
+def test_detect_rnode_port_none_when_no_serial():
+    from workflows.build import detect_rnode_port
+    conn = EmulatedConnection(default_code=1, default_stdout="")
+    assert detect_rnode_port(conn) is None
+
+
+def test_detect_hardware_sets_ttyacm_port():
+    conn = build_conn(rnode=True)
+    conn.rules.insert(0, ("ls /dev/serial/by-id/", 0,
+        "usb-Espressif_USB_JTAG_serial_debug_unit_F8:5B:1B:A6:85:00-if00", ""))
+    conn.rules.insert(0, ("readlink -f", 0, "/dev/ttyACM0", ""))
+    w = wf(conn)
+    w.steps[0][1](w)
+    assert w.profile.radio.serial_port == "/dev/ttyACM0"   # not the ttyUSB0 default
+
+
 def test_detect_hardware_parses_pi5():
     w = wf(build_conn(cpuinfo=PI5_CPUINFO, rnode=True))
     result = w.steps[0][1](w)
