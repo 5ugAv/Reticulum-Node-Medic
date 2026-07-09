@@ -157,6 +157,39 @@ misparse — they error / silently pass on every real node:
 rnsd` (does rnsd log the word "announce"? what does a param-mismatch line say?),
 and `rnodeconf <port> --info` from a stock-RNode board.
 
+### ★ STRONGLY RECOMMENDED: switch rnstatus/rnpath checks to `--json`
+`rnstatus` and `rnpath` both support `--json`, which is **far more robust than
+scraping human text** (immune to spacing/wording changes across RNS versions).
+Real schemas captured from RNS 1.3.7:
+
+- `rnstatus --json` → `{"interfaces": [ {…}, … ]}`, each interface has:
+  `name` ("RNodeInterface[RNode Interface]"), `type` ("RNodeInterface" /
+  "AutoInterface" / "TCPClientInterface" / "LocalServerInterface"),
+  **`status` (bool — Up=true/Down=false)**, `channel_load_short`,
+  `channel_load_long`, `airtime_short`, `airtime_long`, `noise_floor`,
+  `battery_percent`, `cpu_temp`, `interference`, `peers`, `mode`, `hash`, …
+- `rnpath -t --json` → a **list** of `{"hash","via","hops","expires","interface"}`.
+
+Recommended rewrites (all four network/radio-interface checks):
+- `radio_interface_up`: interface with `type=="RNodeInterface"` and
+  `status==true`. (Unambiguous — safe to switch now.)
+- `peers_heard` / `path_table_populated`: `len(rnpath -t --json) > 0`.
+  (Unambiguous — safe.)
+- `channel_congestion`: use `channel_load_short`. **⚠ OPEN: confirm the scale** —
+  is it a 0.0–1.0 fraction (then threshold `< 0.70`) or 0–100 (`< 70`)? My read
+  of RNS is it's a **fraction** that rnstatus displays ×100 (the text showed
+  "Ch. Load : 0.0%"), but the RNode was Down (load 0.0) so I couldn't confirm.
+  Verify with an **Up** RNode under load before switching this one.
+
+Bonus: the JSON also exposes `battery_percent`, `cpu_temp`, `noise_floor`,
+`interference` per radio — these could feed real power/antenna checks instead of
+the current sysfs/`vcgencmd` reads.
+
+Caveat: `--json` needs the node's RNS to support it (1.x does; the mesh here
+runs current tooling). The current **text** parsers are validated-correct
+(commit `113b098`) and remain the safe default until the JSON switch is
+confirmed.
+
 ---
 
 The tables below are the remaining format assumptions to verify. For each: the
