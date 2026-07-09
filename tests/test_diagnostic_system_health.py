@@ -74,6 +74,21 @@ def test_clock_drift_detected():
     assert "clock_drift" in names(run(conn))
 
 
+def test_clock_drift_falls_back_to_timesyncd_when_no_chrony():
+    # default Pi: chronyc not installed -> command-not-found (empty); timesyncd
+    # reports synced -> clock is fine (no false error from a missing chronyc)
+    conn = healthy_conn()
+    conn.rules.insert(0, ("chronyc tracking", 127, "", "command not found"))
+    assert "clock_drift" not in names(run(conn))
+
+
+def test_clock_drift_flags_unsynced_timesyncd():
+    conn = healthy_conn()
+    conn.rules.insert(0, ("chronyc tracking", 127, "", "command not found"))
+    conn.rules.insert(0, ("NTPSynchronized", 0, "no", ""))
+    assert "clock_drift" in names(run(conn))
+
+
 def test_ntp_not_synced():
     conn = ins(healthy_conn(), ("NTPSynchronized", 0, "no", ""))
     assert "ntp_sync" in names(run(conn))
