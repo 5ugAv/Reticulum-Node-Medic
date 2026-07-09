@@ -11,14 +11,21 @@ from workflows.repair import (
 )
 
 GOOD_INFO = "\n".join([
-    "[Device] RNode",
-    f"Firmware version: {LATEST_FIRMWARE}",
-    "Firmware hash: 0badc0ffee",
-    "Frequency: 915.125 MHz",
-    "Bandwidth: 125.0 KHz",
-    "TX power: 17 dBm",
-    "Spreading factor: 9",
-    "Coding rate: 5",
+    f"Current firmware version: {LATEST_FIRMWARE}",
+    "Device info:",
+    "\tProduct            : RNode",
+    "\tDevice signature   : Verified",
+    f"\tFirmware version   : {LATEST_FIRMWARE}",
+    "\tHardware revision  : 1",
+    "\tModem chip         : SX1262",
+    "\tFrequency range    : 860.0 MHz - 930.0 MHz",
+    "\tMax TX power       : 28 dBm",
+    "\tDevice mode        : TNC",
+    "\t  Frequency        : 915.125 MHz",
+    "\t  Bandwidth        : 125.0 KHz",
+    "\t  TX power         : 17 dBm (50.119 mW)",
+    "\t  Spreading factor : 9",
+    "\t  Coding rate      : 5",
 ])
 
 EXPECTED_ORDER = [
