@@ -152,6 +152,30 @@ misparse — they error / silently pass on every real node:
   build — "RNode did not respond"; the `radio_firmware` frequency/bandwidth/etc.
   parsers need a capture from a board flashed with stock **RNode** firmware).
 
+### ✅ FIXED since (from a live Raspberry Pi + audit)
+- `clock_drift` (30): a default Pi has **no chrony** (uses systemd-timesyncd) —
+  `chronyc tracking` was command-not-found. Now falls back to
+  `timedatectl -p NTPSynchronized`. (commit `973a3e0`)
+- `serial_acl` (51): `getfacl` needs the `acl` package (absent on a stock Pi) —
+  it was false-positiving. A missing getfacl is now treated as unverifiable.
+- **RNode serial port**: the default `/dev/ttyUSB0` is wrong for ESP32-S3
+  native-USB RNodes, which are **`/dev/ttyACM0`** (verified on the Pi).
+  `detect_rnode_port()` now finds it via `/dev/serial/by-id/`. (commit `4885a99`)
+
+### ⚠️⚠️ ARCHITECTURAL — radio_firmware can't rnodeconf a live node's RNode
+The whole `radio_firmware` module (checks 12-21, 57-60, 86-88) queries
+`rnodeconf <port> --info`. **But on a live transport node, `rnsd` holds the
+RNode serial port**, so `rnodeconf` can't open it ("device busy") → the module
+would **false-positive the RNode as dead on every running node**. rnodeconf
+`--info` is only usable at **build time** (before rnsd starts) or with rnsd
+stopped. On a live node the radio state must come from **`rnstatus --json`**,
+whose `RNodeInterface` object exposes exactly what's needed: `status`,
+`channel_load_short/long`, `airtime_short/long`, `noise_floor`, `cpu_temp`,
+`battery_percent`, `interference`. Redesign radio_firmware to read those on a
+live node. **Needs an UP-RNode `rnstatus --json` capture** (the fields were all
+0.0/None when the RNode was Down) — the same live-node session that yields the
+build-time `rnodeconf --info` format.
+
 ### STILL NEED real captures (need a reachable Pi node)
 `chronyc tracking` (regex looks standard-correct but unverified), `journalctl -u
 rnsd` (does rnsd log the word "announce"? what does a param-mismatch line say?),
