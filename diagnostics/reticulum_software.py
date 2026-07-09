@@ -104,10 +104,12 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
 
         # --- extended checks (50-53, 63, 78, 82-85) ----------------------
 
-        # 50 radio-param warm-boot mismatch (rnsd journal)
-        rnsd_journal = self._cmd_output("journalctl -u rnsd -n 300")
+        # 50 radio-param warm-boot mismatch. rnsd writes its operational log to
+        # ~/.reticulum/logfile, NOT the systemd journal (journalctl -u rnsd only
+        # shows the "Started" line), so read the logfile or this always misses.
+        rnsd_log = self._cmd_output("tail -n 300 ~/.reticulum/logfile")
         issues.append(self._check(
-            "warm_boot_param_mismatch", "mismatch" not in rnsd_journal,
+            "warm_boot_param_mismatch", "mismatch" not in rnsd_log.lower(),
             "rnsd logged a radio parameter mismatch after a warm boot "
             "(bandwidth / TX power / SF / radio state).",
             severity="warning", auto_fixable=True,

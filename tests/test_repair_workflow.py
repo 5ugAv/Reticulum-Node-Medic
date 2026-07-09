@@ -71,6 +71,10 @@ def full_healthy_conn():
               '[{"hash":"ad272c","via":"5463bd","hops":1,"expires":1,'
               '"interface":"TCPInterface[everywhere/192.168.1.187:4242]"}]')
         .rule("journalctl -u rnsd", 0, "Sending announce for a1")
+        # rnsd operational log (announces_sending fallback + warm_boot check):
+        # ~/.reticulum/logfile — has an announce line, no "mismatch".
+        .rule("logfile", 0,
+              "[2026-07-09 22:00:00] [Notice] Sending announce for a1")
         .rule("rnping", 0, "Valid reply received")
         .rule("rnprobe", 0, "announce heard")
         .rule("^test -c", 0, "")

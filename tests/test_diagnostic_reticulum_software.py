@@ -178,7 +178,8 @@ def test_run_produces_original_issues_when_everything_broken():
 
 
 def test_warm_boot_param_mismatch():
-    conn = broken(("journalctl -u rnsd", 0,
+    # rnsd operational log lives in ~/.reticulum/logfile, not the journal
+    conn = broken(("logfile", 0,
                    "Radio state mismatch: bandwidth mismatch detected"))
     assert "warm_boot_param_mismatch" in names(run(conn))
 
