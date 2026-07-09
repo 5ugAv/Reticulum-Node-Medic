@@ -65,6 +65,35 @@ def build_step(func: Callable) -> Callable:
 # ---------------------------------------------------------------------------
 
 
+#: Hints in /dev/serial/by-id/ names that identify an RNode's USB serial.
+_RNODE_ID_HINTS = ("RNode", "Espressif", "USB_JTAG", "usbserial", "CP2102",
+                   "CH340", "SLAB", "FTDI", "T-Beam", "Heltec")
+
+
+def detect_rnode_port(connection) -> Optional[str]:
+    """Find the RNode's serial device on the node.
+
+    Modern ESP32-S3 RNodes enumerate as ``/dev/ttyACM*`` (native USB); older
+    USB-UART ones as ``/dev/ttyUSB*`` — so a hardcoded ``/dev/ttyUSB0`` is wrong
+    for many boards. Prefer the stable ``/dev/serial/by-id/`` mapping (verified
+    format: ``usb-Espressif_USB_JTAG_serial_debug_unit_<mac>-if00 -> ttyACM0``),
+    then fall back to the first ttyACM/ttyUSB device.
+    """
+    listing = connection.run("ls /dev/serial/by-id/ 2>/dev/null")[1]
+    for name in listing.split():
+        if any(h.lower() in name.lower() for h in _RNODE_ID_HINTS):
+            resolved = connection.run(
+                f"readlink -f /dev/serial/by-id/{name}")[1].strip()
+            if resolved.startswith("/dev/"):
+                return resolved
+    for pattern in ("/dev/ttyACM*", "/dev/ttyUSB*"):
+        found = [p for p in connection.run(f"ls {pattern} 2>/dev/null")[1].split()
+                 if p.startswith("/dev/")]
+        if found:
+            return found[0]
+    return None
+
+
 @build_step
 def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     cpuinfo = wf.cmd_output("cat /proc/cpuinfo")
@@ -81,10 +110,17 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     else:
         wf.profile.hardware = NodeHardware.UNKNOWN
 
+    # Detect the real RNode serial port (ttyACM0 on ESP32-S3, not ttyUSB0).
+    port = detect_rnode_port(wf.connection)
+    if port:
+        wf.profile.radio.serial_port = port
+        wf.profile.connection_port = port
+
     info = wf.cmd_output(f"rnodeconf {wf.profile.radio.serial_port} --info")
     wf.profile.has_rnode = "RNode" in info
     return StepResult("detect_hardware", True,
-                      f"Detected {wf.profile.hardware.value}; "
+                      f"Detected {wf.profile.hardware.value} on "
+                      f"{wf.profile.radio.serial_port}; "
                       f"RNode={'yes' if wf.profile.has_rnode else 'no'}")
 
 

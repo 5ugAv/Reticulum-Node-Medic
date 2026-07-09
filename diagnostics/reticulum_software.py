@@ -120,9 +120,14 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         # too loose (the owner line user::rw- is always present); check that rw
         # is actually reachable by our user — via a named ACL, the dialout group,
         # or ownership.
+        # getfacl needs the `acl` package, which a stock Pi may not have. If it
+        # produced nothing (not installed / error) don't claim there's no ACL
+        # access — the dialout-group check (serial_port_permission) already
+        # covers the common case, so a missing getfacl must NOT false-positive.
         acl = self._cmd_output(f"getfacl {port}")
+        acl_ok = (not acl.strip()) or self._acl_grants_rw(acl, user)
         issues.append(self._check(
-            "serial_acl", self._acl_grants_rw(acl, user),
+            "serial_acl", acl_ok,
             f"No read/write ACL grants {user} access to {port}.",
             severity="warning", auto_fixable=True,
             fix_description=f"Grant {user} rw on {port} via setfacl."))
