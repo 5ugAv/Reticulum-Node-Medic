@@ -305,8 +305,42 @@ are trustworthy on real hardware.
   bundle an emoji font (currently short text labels instead).
 - **Placeholder repo deletion** (firmware side) — needs a `delete_repo` token.
 
+## Real-hardware parser fixes (2026-07, verified against live nodes)
+Captured real command output and pinned parsers that passed in emulation but
+misread reality ("worse than no check"). Suite now **401 passing**.
+
+- **`rnodeconf --info` (real capture, Heltec LoRa32 fw 1.86)** — labels are
+  column-aligned with a **space before the colon** (`Spreading factor : 11`);
+  the old `Spreading factor: N` checks false-positived on every real device.
+  There is **no "Firmware hash"** field — the real one is
+  `Device signature : Verified/Unverified`. rnodeconf has **no `--loop` or
+  `--version`** flags. Decoy lines `Frequency range : ...` and
+  `Max TX power : ...` must be skipped. All fixed in
+  `diagnostics/radio_firmware.py` (regex + value compare, `(?<!Max )`
+  lookbehind, `has_info` gating) with regression tests. `LATEST_FIRMWARE` →
+  `1.86`. Architectural note: `rnodeconf --info` only works when `rnsd` is NOT
+  holding the port (build/maintenance); live radio state comes from
+  `rnstatus --json`.
+- **journalctl is the wrong source for rnsd log content** — the rnsd systemd
+  unit only journals its "Started" line; rnsd writes operational logs to
+  `~/.reticulum/logfile`. `announces_sending` (37) now keys off the real
+  `rnstatus --json` field `outgoing_announce_frequency > 0` (falling back to the
+  logfile), and `warm_boot_param_mismatch` (50) reads the logfile.
+  lxmd-sourced checks (63, client 76) left on journalctl pending confirmation of
+  lxmd's real log destination on a live node.
+- **`rnstatus --json` shape confirmed** on a live TCP link to FAITH:
+  `{"interfaces":[{...,"status":true,"mode":1,...}], "rxb":..,"txb":..}`;
+  RNodeInterface-only fields (`channel_load_short`, `noise_floor`,
+  `outgoing_announce_frequency`) are correctly absent on non-radio interfaces.
+  `rnpath -t --json` returns a JSON list, `[]` when empty.
+- **RTNode-2400 firmware HTTP `/status`** (FAITH, fork 0.6.2) — rich JSON health
+  endpoint on port 80 (`faults[]`, `lora_online`, `wifi_rssi`,
+  `tcp_backbone_connected`, `board_model:63`, watchdog/heap). Currently unused by
+  the mesh-only monitor; see memory `rtnode-2400-http-status`. A candidate
+  richer poll path for LAN-reachable Type-B nodes.
+
 ## Operating conventions (keep these)
-- **Strict TDD**, suite green at every step; test count only rises (11 → 382).
+- **Strict TDD**, suite green at every step; test count only rises (11 → 401).
 - Every I/O seam injected for testability; each new workflow gets its own step
   registry.
 - Commits are logical batches with clear messages; push via a transient git
