@@ -119,9 +119,49 @@ runs *after* onboarding), plus an ESP32-S3 USB-CDC quirk. Not a fault.
 Several **Pi** diagnostic checks parse command output whose format was authored
 for the emulator, **not** verified against real tools. A parser that passes in
 emulation but misreads real output is **worse than no check** — it gives false
-confidence. **Before deploying to any real node**, capture one sample of each
-command below and paste it into Claude Code; the parsers will be pinned against
-the real formats immediately (and the emulator fixtures updated to match).
+confidence.
+
+### PROGRESS (validated against real hardware / RNS 1.3.7)
+- ✅ **PINNED & FIXED** (commit `113b098`): `radio_interface_up`, `path_table_populated`,
+  `channel_congestion` — real `rnstatus`/`rnpath -t` output exposed three real
+  bugs (radio "Up" matched anywhere while the RNode was Down; no "paths known"
+  line exists — use `rnpath -t` "is N hop" entries; real label is `Ch. Load : X%`).
+  `peers_heard` already matched.
+- ✅ **COMMAND NAMES CONFIRMED** against real `--help`: `rnodeconf -i` == `--info`
+  (both valid); `rnpath -t`, `rnstatus` correct.
+
+### ⚠️ COMMAND-LEVEL BUGS FOUND (real RNS 1.3.7 help) — fix with hardware in the morning
+These checks call commands/flags that **do not exist**, so they don't just
+misparse — they error / silently pass on every real node:
+- **`rnping` DOES NOT EXIST** in RNS 1.3.7 → `mesh_ping_l2` (41) fails
+  "command not found". The real probe tool is **`rnprobe`** (`rnprobe [full_name]
+  [destination_hash]`).
+- **`rnodeconf` has NO `--loop` flag** → `radio_loopback` (21) and `loopback_l1`
+  (40) error. Redefine L1 as "`rnodeconf <port> -i` responds" (real serial
+  round-trip).
+- **`rnodeconf --version` prints the PROGRAM version, not the device** →
+  `serial_data_capable` (86) always passes (defeated). Use `-i` device response.
+- **`rnprobe` needs a REAL destination** (name or hex hash) — the placeholder
+  `"mesh-test"` won't resolve, so L2/L3 need a target strategy (e.g. a known peer
+  from `rnpath -t`, or a profile-configured test destination).
+- **Redundancy to resolve:** `serial_responsive` (12) ≈ `serial_data_capable`
+  (86) ≈ `radio_loopback` (21) all really test "board responds to `-i`". Consider
+  consolidating.
+- **`rnodeconf --info` output format** is still UNVERIFIED (faith, the connected
+  RTNode-2400, doesn't expose the RNode host protocol over USB in the boundary
+  build — "RNode did not respond"; the `radio_firmware` frequency/bandwidth/etc.
+  parsers need a capture from a board flashed with stock **RNode** firmware).
+
+### STILL NEED real captures (need a reachable Pi node)
+`chronyc tracking` (regex looks standard-correct but unverified), `journalctl -u
+rnsd` (does rnsd log the word "announce"? what does a param-mismatch line say?),
+and `rnodeconf <port> --info` from a stock-RNode board.
+
+---
+
+The tables below are the remaining format assumptions to verify. For each: the
+**exact command the tool runs**, and the **exact string / regex** each check
+looks for.
 
 For each command: the **exact command the tool runs**, and the **exact string /
 regex** each check looks for. First thing to verify is the **command name/flags**
