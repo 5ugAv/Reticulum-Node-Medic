@@ -18,15 +18,18 @@ class NetworkMeshCheck(DiagnosticCheck):
 
     def run(self) -> List[Issue]:
         port = self.profile.radio.serial_port
-        rnstatus = self._cmd_output("rnstatus")
-        # Real `rnpath -t` path line (verified against RNS 1.3.7):
-        #   "<hash> is 1 hop  away via <hash> on TCPInterface[...] expires ..."
-        rnpath = self._cmd_output("rnpath -t")
+        # Robust JSON (verified against RNS 1.3.7 on a live node). rnpath -t
+        # --json is a list of {hash, via, hops, expires, interface}.
+        paths = self._rnpath_json()
+        iface = self._rnode_interface()
         issues = []
 
-        # 36 peers heard — any routed destination in the path table
+        # 36 peers heard — a destination learned over a real (non-local)
+        # interface, not just this node's own local destinations.
+        remote = [p for p in paths
+                  if not str(p.get("interface", "")).startswith("LocalInterface")]
         issues.append(self._check(
-            "peers_heard", bool(rnpath.strip()),
+            "peers_heard", len(remote) > 0,
             "No other mesh nodes have been heard from.",
             severity="warning"))
 
@@ -37,21 +40,18 @@ class NetworkMeshCheck(DiagnosticCheck):
             "This node is not sending announces onto the mesh.",
             severity="warning"))
 
-        # 38 path table populated — count real "is N hop away" entries in
-        # `rnpath -t` (rnstatus has no "paths known" line).
-        paths = len(re.findall(r"is\s+\d+\s+hop", rnpath))
+        # 38 path table populated — any known destinations at all.
         issues.append(self._check(
-            "path_table_populated", paths > 0,
+            "path_table_populated", len(paths) > 0,
             "The path table is empty — no destinations are known.",
             severity="warning"))
 
-        # 39 channel congestion — real rnstatus RNodeInterface reports
-        # "Ch. Load  : 12.0% (15s), 8.0% (1h)" (the 15s window is parsed).
-        m = re.search(r"Ch\. Load\s*:\s*([\d.]+)%", rnstatus)
-        load = float(m.group(1)) if m else 0.0
+        # 39 channel congestion — RNodeInterface channel_load_short is a 0.0-1.0
+        # fraction (verified: 0.07 == 7%), so the 70% threshold is 0.70.
+        load = float(iface.get("channel_load_short", 0.0)) if iface else 0.0
         issues.append(self._check(
-            "channel_congestion", load < 70,
-            f"The LoRa channel is congested ({load:.0f}% airtime).",
+            "channel_congestion", load < 0.70,
+            f"The LoRa channel is congested ({load * 100:.0f}% airtime).",
             severity="warning"))
 
         # 40 L1 serial loopback

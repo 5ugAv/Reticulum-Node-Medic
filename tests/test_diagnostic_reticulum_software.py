@@ -1,8 +1,19 @@
+import json
+
 import pytest
 
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from diagnostics.reticulum_software import ReticulumSoftwareCheck
+
+
+def _rnstatus_json(rnode_up=True):
+    return json.dumps({"interfaces": [
+        {"name": "AutoInterface[Default Interface]", "type": "AutoInterface",
+         "status": True},
+        {"name": "RNodeInterface[RNode Interface]", "type": "RNodeInterface",
+         "status": rnode_up, "channel_load_short": 0.07, "noise_floor": -94},
+    ]})
 
 
 def healthy_conn():
@@ -16,9 +27,7 @@ def healthy_conn():
         .rule("^id -nG", code=0, stdout="pi adm dialout sudo gpio")
         .rule("enable_transport = Yes", code=0, stdout="enable_transport = Yes")
         .rule("RNodeInterface", code=0, stdout="  type = RNodeInterface")
-        .rule("^rnstatus", code=0,
-              stdout=(" AutoInterface[Default Interface]\n    Status    : Up\n"
-                      " RNodeInterface[RNode Interface]\n    Status    : Up"))
+        .rule("^rnstatus", code=0, stdout=_rnstatus_json(rnode_up=True))
         .rule("^test -c", code=0)
         .rule("^test -f", code=0)
         .rule("^which rnsd", code=0, stdout="/usr/local/bin/rnsd")
@@ -102,10 +111,7 @@ def test_transport_mode_disabled():
 
 def test_radio_interface_down():
     # other interfaces Up, but the RNode radio itself is Down -> must flag
-    # (the old "Up in blob" check wrongly passed this)
-    conn = broken(("^rnstatus", 0,
-                   " AutoInterface[Default Interface]\n    Status    : Up\n"
-                   " RNodeInterface[RNode Interface]\n    Status    : Down"))
+    conn = broken(("^rnstatus", 0, _rnstatus_json(rnode_up=False)))
     assert "radio_interface_up" in names(run(conn))
 
 

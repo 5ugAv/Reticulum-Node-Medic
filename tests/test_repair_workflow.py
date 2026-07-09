@@ -43,9 +43,10 @@ def full_healthy_conn():
         .rule("^id -nG", 0, "pi dialout gpio")
         .rule("enable_transport = Yes", 0, "enable_transport = Yes")
         .rule("RNodeInterface", 0, "type = RNodeInterface")
-        .rule("rnstatus", 0,
-              " RNodeInterface[RNode Interface]\n    Status    : Up\n"
-              "    Ch. Load  : 12.0% (15s), 8.0% (1h)")
+        .rule("rnstatus --json", 0,
+              '{"interfaces":[{"name":"RNodeInterface[RNode Interface]",'
+              '"type":"RNodeInterface","status":true,'
+              '"channel_load_short":0.07,"noise_floor":-94}]}')
         .rule("^which rnsd", 0, "/usr/local/bin/rnsd")
         .rule("--info", 0, GOOD_INFO)
         .rule("--loop", 0, "loop ok")
@@ -59,9 +60,9 @@ def full_healthy_conn():
         .rule("chronyc tracking", 0, "System time : 0.0001 seconds fast")
         .rule("NTPSynchronized", 0, "yes")
         .rule("ps -eo stat", 0, "0")
-        .rule("rnpath -t", 0,
-              "<ad272c7106cd9d86bbf1cf550f2610d8> is 1 hop  away via "
-              "<5463bddfb8b41e0159c1b867e9981f36> on TCPInterface[x] expires z")
+        .rule("rnpath -t --json", 0,
+              '[{"hash":"ad272c","via":"5463bd","hops":1,"expires":1,'
+              '"interface":"TCPInterface[everywhere/192.168.1.187:4242]"}]')
         .rule("journalctl -u rnsd", 0, "Sending announce for a1")
         .rule("rnping", 0, "Valid reply received")
         .rule("rnprobe", 0, "announce heard")
