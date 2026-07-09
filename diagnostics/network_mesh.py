@@ -19,9 +19,12 @@ class NetworkMeshCheck(DiagnosticCheck):
     def run(self) -> List[Issue]:
         port = self.profile.radio.serial_port
         # Robust JSON (verified against RNS 1.3.7 on a live node). rnpath -t
-        # --json is a list of {hash, via, hops, expires, interface}.
+        # --json is a list of {hash, via, hops, expires, interface}; rnstatus
+        # --json is {"interfaces": [...], ...}. Fetch rnstatus once.
         paths = self._rnpath_json()
-        iface = self._rnode_interface()
+        interfaces = self._rnstatus_json().get("interfaces", [])
+        iface = next((i for i in interfaces
+                      if i.get("type") == "RNodeInterface"), None)
         issues = []
 
         # 36 peers heard — a destination learned over a real (non-local)
@@ -33,10 +36,21 @@ class NetworkMeshCheck(DiagnosticCheck):
             "No other mesh nodes have been heard from.",
             severity="warning"))
 
-        # 37 announces sending
-        journal = self._cmd_output("journalctl -u rnsd -n 200").lower()
+        # 37 announces sending. Primary signal is the rnstatus field
+        # outgoing_announce_frequency (verified present in real rnstatus --json)
+        # — a node originating/forwarding announces reports > 0 on an interface.
+        # Fall back to the rnsd logfile (~/.reticulum/logfile, format
+        # "[YYYY-MM-DD HH:MM:SS] [Level] Sending announce ..."), NOT journalctl:
+        # the rnsd systemd unit only journals its "Started" line, so scraping
+        # journalctl for announce activity always misses it (false negative).
+        announcing = any(
+            float(i.get("outgoing_announce_frequency") or 0) > 0
+            for i in interfaces)
+        if not announcing:
+            log = self._cmd_output("tail -n 500 ~/.reticulum/logfile").lower()
+            announcing = "announce" in log
         issues.append(self._check(
-            "announces_sending", "announce" in journal,
+            "announces_sending", announcing,
             "This node is not sending announces onto the mesh.",
             severity="warning"))
 

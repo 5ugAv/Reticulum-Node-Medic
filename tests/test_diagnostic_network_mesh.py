@@ -10,7 +10,9 @@ import json
 # Real JSON schemas captured from RNS 1.3.7 on a LIVE node (rnsd + RNode up).
 
 
-def rnstatus_json(status=True, chload=0.07):
+def rnstatus_json(status=True, chload=0.07, announce_freq=0.05):
+    # outgoing_announce_frequency is a real rnstatus --json field (confirmed on
+    # a live link); > 0 means this node is announcing onto the mesh.
     return json.dumps({"interfaces": [
         {"name": "AutoInterface[Default Interface]", "type": "AutoInterface",
          "status": True},
@@ -18,7 +20,7 @@ def rnstatus_json(status=True, chload=0.07):
          "status": status, "channel_load_short": chload,
          "channel_load_long": chload, "airtime_short": 0.0,
          "noise_floor": -94, "cpu_temp": 42, "battery_percent": 100,
-         "interference": None},
+         "outgoing_announce_frequency": announce_freq, "interference": None},
     ]})
 
 
@@ -78,7 +80,10 @@ def test_no_peers_heard():
 
 
 def test_no_announces_sending():
-    conn = ins(healthy_conn(), ("journalctl -u rnsd", 0, "nothing here", ""))
+    # no outgoing announces on any interface AND no announce lines in the rnsd
+    # logfile (no logfile rule -> empty) -> flag
+    conn = ins(healthy_conn(),
+               ("rnstatus --json", 0, rnstatus_json(announce_freq=0), ""))
     assert "announces_sending" in names(run(conn))
 
 
