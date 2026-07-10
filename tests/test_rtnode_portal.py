@@ -47,6 +47,19 @@ def test_every_emitted_field_is_a_real_firmware_arg():
         assert not unknown, f"fields the firmware ignores: {unknown}"
 
 
+def test_project_standard_toggles():
+    # every RTNode-2400 in this deployment: local TCP server on :4242, mDNS on
+    # (default name), no backbone, no IFAC.
+    form = build_form(NodeProfile())
+    assert form["ap_tcp_en"] == "1"
+    assert form["ap_tcp_port"] == "4242"
+    assert form["mdns_en"] == "1"
+    assert "mdns_name" not in form               # blank -> firmware default
+    assert form["tcp_mode"] == "0"
+    assert "bb_host" not in form and "bb_port" not in form
+    assert form["ifac_en"] == "0"
+
+
 def test_recommended_lora_values_and_units():
     form = build_form(NodeProfile())
     assert form["freq"] == "915.125"     # MHz decimal string
@@ -200,3 +213,66 @@ def test_onboard_skip_join_posts_directly():
     ok, msg = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
                       do_join=False, post=_good_post)
     assert ok is True
+
+
+# ---- GPS location step (captured at birth, confirmed by the operator) ----
+
+
+def test_onboard_captures_pi_gps_and_advertises_it():
+    body = {}
+
+    def cap_post(url, b, headers):
+        body["b"] = b
+        return (200, "reboot")
+
+    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                    gps_reader=lambda: (-37.814, 144.963),   # the Pi's GPS
+                    do_join=False, post=cap_post)
+    assert ok is True
+    assert "advert_en=1" in body["b"]
+    assert "advert_lat=-37.814000" in body["b"]
+    assert "advert_jitter=1" in body["b"]        # fuzzed public location
+
+
+def test_onboard_operator_can_edit_coordinates_before_send():
+    body = {}
+
+    def cap_post(url, b, headers):
+        body["b"] = b
+        return (200, "reboot")
+
+    # operator overrides a bad fix with corrected coordinates
+    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                    gps_reader=lambda: (0.0, 0.0),
+                    confirm_location=lambda la, lo: (-37.80, 144.90),
+                    do_join=False, post=cap_post)
+    assert "advert_lat=-37.800000" in body["b"]
+    assert "advert_lon=144.900000" in body["b"]
+
+
+def test_onboard_operator_can_decline_location():
+    body = {}
+
+    def cap_post(url, b, headers):
+        body["b"] = b
+        return (200, "reboot")
+
+    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+                    gps_reader=lambda: (-37.8, 144.9),
+                    confirm_location=lambda la, lo: None,     # decline
+                    do_join=False, post=cap_post)
+    assert "advert_en=0" in body["b"]
+    assert "advert_lat" not in body["b"]
+
+
+def test_onboard_no_gps_fix_leaves_advert_off():
+    body = {}
+
+    def cap_post(url, b, headers):
+        body["b"] = b
+        return (200, "reboot")
+
+    onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+            gps_reader=lambda: None,             # no fix
+            do_join=False, post=cap_post)
+    assert "advert_en=0" in body["b"]
