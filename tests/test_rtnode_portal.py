@@ -22,6 +22,31 @@ def test_build_form_uses_real_portal_field_names():
         assert k in form
 
 
+# Every arg the firmware's `POST /save` handler reads (config_server->arg(...)),
+# transcribed from RTNode-2400 FirewallConfig.h @ feature/neopixel-status-led.
+# Any key build_form emits that is NOT here would be silently ignored by the
+# board — a contract drift we want to fail loudly.
+FIRMWARE_SAVE_ARGS = {
+    "ssid", "psk", "wifi_en", "disp_blank", "disp_rot", "tcp_mode", "tcp_port",
+    "bb_host", "bb_port", "ap_tcp_en", "ap_tcp_port", "ifac_en", "ifac_name",
+    "ifac_pass", "advert_en", "advert_lat", "advert_lon", "advert_jitter",
+    "node_name", "mdns_en", "mdns_name", "freq", "bw", "sf", "cr", "txp",
+    "stal", "ltal",
+}
+
+
+def test_every_emitted_field_is_a_real_firmware_arg():
+    # exercise all branches: with and without a GPS/advertisement location
+    forms = [
+        build_form(NodeProfile()),
+        build_form(NodeProfile(), node_name="n", wifi_ssid="s", wifi_password="p",
+                   lat=-37.8, lon=144.9),
+    ]
+    for form in forms:
+        unknown = set(form) - FIRMWARE_SAVE_ARGS
+        assert not unknown, f"fields the firmware ignores: {unknown}"
+
+
 def test_recommended_lora_values_and_units():
     form = build_form(NodeProfile())
     assert form["freq"] == "915.125"     # MHz decimal string
