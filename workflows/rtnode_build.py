@@ -42,7 +42,11 @@ RTNODE_PROJECT_DIR = "~/rnm-assets/RTNode2400"
 ONBOARDING_SSID = "RTNode-Setup"
 ONBOARDING_URL = "http://10.0.0.1"
 
-_PORT_GLOBS = ("/dev/cu.usbmodem*", "/dev/cu.usbserial*",
+# The medic is a Pi (Linux, /dev/ttyACM* — verified: a real Heltec V4 enumerates
+# as ttyACM0), but the tool must also run from a Mac (/dev/cu.*). List Linux
+# globs first so Pi detection wins on the platform the tool actually ships on.
+_PORT_GLOBS = ("/dev/ttyACM*", "/dev/ttyUSB*",
+               "/dev/cu.usbmodem*", "/dev/cu.usbserial*",
                "/dev/cu.wchusbserial*", "/dev/cu.SLAB_USBtoUART*")
 _BEACON_RE = re.compile(r"\[HealthBeacon\][^\n]*dst=([0-9a-fA-F]+)[^\n]*data=([0-9a-fA-F]+)")
 

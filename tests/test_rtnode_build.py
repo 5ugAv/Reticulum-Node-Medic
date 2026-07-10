@@ -26,7 +26,9 @@ EXPECTED_STEPS = [
 
 def conn(port="/dev/cu.usbmodem2101", flash_code=0, beacon=BEACON_LINE):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
-    c.rules.insert(0, ("^ls /dev/cu", 0 if port else 1, port, ""))
+    # detect_heltec_v4 now lists Linux globs first, so the command starts
+    # "ls /dev/ttyACM* ..." — the tool ships on a Pi.
+    c.rules.insert(0, ("^ls /dev/tty", 0 if port else 1, port, ""))
     c.rules.insert(0, ("pio run", flash_code, "SUCCESS" if flash_code == 0 else "err", ""))
     c.rules.insert(0, ("rnm-serial-capture", 0, beacon, ""))
     return c
@@ -55,6 +57,19 @@ def test_detect_sets_heltec_and_port():
     assert w.profile.hardware is NodeHardware.HELTEC_V4
     assert w.profile.connection_port == "/dev/cu.usbmodem2101"
     assert w.profile.radio.serial_port == "/dev/cu.usbmodem2101"
+
+
+def test_detect_finds_linux_ttyacm_port():
+    # the medic is a Pi: a real Heltec V4 enumerates as /dev/ttyACM0
+    w = wf(conn(port="/dev/ttyACM0"))
+    r = w.steps[0][1](w)
+    assert r.success
+    assert w.profile.connection_port == "/dev/ttyACM0"
+
+
+def test_detect_lists_linux_globs_first():
+    from workflows.rtnode_build import _PORT_GLOBS
+    assert _PORT_GLOBS[0] == "/dev/ttyACM*"          # Pi wins on the ship platform
 
 
 def test_detect_fails_when_no_board():
