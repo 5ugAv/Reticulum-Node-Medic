@@ -23,6 +23,7 @@ from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
 from workflows.build import BuildWorkflow
 from workflows.rtnode_build import RTNodeBuildWorkflow
+from workflows.rnode_flash import RNodeFlashWorkflow
 
 
 def _demo_repair_workflow():
@@ -50,6 +51,20 @@ def _demo_pi_build():
     conn.rules.insert(0, ("/proc/cpuinfo", 0, "Model : Raspberry Pi 5 Model B", ""))
     conn.rules.insert(0, ("--info", 0, "[Device] RNode\nFirmware version: 1.80", ""))
     return BuildWorkflow(conn, NodeProfile())
+
+
+def _demo_rnode_flash(board):
+    """Explorable RNode flash over an emulated board (no hardware needed).
+    On a real medic this factory would target the locally attached board."""
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rules.insert(0, ("curl -fsI", 7, "", ""))                 # offline
+    conn.rules.insert(0, ("ls /dev/ttyACM", 0, "/dev/ttyACM0", ""))
+    conn.rules.insert(0, ("ls ~/.config/rnodeconf/update/1.86/*.zip", 0, "fw.zip", ""))
+    conn.rules.insert(0, ("--autoinstall", 0,
+                          "RNode Firmware autoinstallation complete!", ""))
+    conn.rules.insert(0, ("--info", 0,
+                          "Device signature   : Validated\nFirmware version   : 1.86", ""))
+    return RNodeFlashWorkflow(conn, board, port="/dev/ttyACM0")
 
 DEMO_NODES = [
     {"name": "Northcote Hill", "location": "Northcote", "status": "ok",
@@ -90,8 +105,10 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(diagnose)
 
         birth = Screen(name="birth")
-        birth.add_widget(BuildScreen(workflow_factories={
-            "rtnode2400": _demo_rtnode_build, "pi_rnode": _demo_pi_build}))
+        birth.add_widget(BuildScreen(
+            workflow_factories={"rtnode2400": _demo_rtnode_build,
+                                "pi_rnode": _demo_pi_build},
+            rnode_flash_factory=_demo_rnode_flash))
         self.sm.add_widget(birth)
 
         for name, title in (("map", "Map"), ("clone", "Clone Tool")):
