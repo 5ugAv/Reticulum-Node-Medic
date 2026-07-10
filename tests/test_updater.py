@@ -114,6 +114,16 @@ def test_sync_writes_version_marker():
     assert any("1.86" in cmd and "bundle_version" in cmd for cmd in conn.history)
 
 
+def test_sync_writes_per_file_version_sidecar_for_offline_flash():
+    # rnodeconf --autoinstall needs "<file>.version" = "<version> <hash>" or the
+    # offline flash aborts ("No release hash found"). Verified on real hardware.
+    conn = online_conn(cached={f: v["hash"] for f, v in MANIFEST.items()})
+    sync_firmware(conn)
+    for fname, info in MANIFEST.items():
+        assert any(f"{fname}.version" in c and f"1.86 {info['hash']}" in c
+                   for c in conn.history)
+
+
 def test_sync_all_cached_is_up_to_date_no_downloads():
     conn = online_conn(cached={f: v["hash"] for f, v in MANIFEST.items()})
     result = sync_firmware(conn)

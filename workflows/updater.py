@@ -100,16 +100,22 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
         path = f"{dest}/{fname}"
         if not force and _sha256(connection, path) == want:
             res.up_to_date.append(fname)
-            continue
-        url = f"{FIRMWARE_DL_BASE}{version}/{fname}"
-        if connection.run(f"curl -fsSL -m 120 -o {path} {url}")[0] != 0:
-            res.failed.append(fname)
-            continue
-        if _sha256(connection, path) == want:
-            res.changed.append(fname)
         else:
-            res.failed.append(fname)
-            connection.run(f"rm -f {path}")   # don't keep a corrupt/unverified file
+            url = f"{FIRMWARE_DL_BASE}{version}/{fname}"
+            if connection.run(f"curl -fsSL -m 120 -o {path} {url}")[0] != 0:
+                res.failed.append(fname)
+                continue
+            if _sha256(connection, path) == want:
+                res.changed.append(fname)
+            else:
+                res.failed.append(fname)
+                connection.run(f"rm -f {path}")   # don't keep a corrupt file
+                continue
+        # rnodeconf --autoinstall verifies each firmware against a sidecar
+        # "<file>.version" holding "<version> <hash>". Without it the offline
+        # flash aborts ("No release hash found ... integrity could not be
+        # verified"). Write/backfill it for every good file.
+        connection.run(f"printf '%s %s' {version} {want} > {path}.version")
 
     connection.run(f"printf '%s' {version} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
 
