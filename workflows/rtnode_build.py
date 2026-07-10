@@ -26,9 +26,17 @@ from monitor.geo import GpsFix, read_gps
 from workflows.build import StepResult
 from workflows.rtnode_portal import build_form
 
+#: Firmware provenance — the tool flashes this exact repo/branch. Verified
+#: against the firmware source: platformio.ini defines env
+#: ``heltec_V4_boundary-local``, and the carried human flasher
+#: (assets/scripts/flash_rtnode2400.sh) clones the same repo/branch. Keep all
+#: three in lockstep (see test_rtnode_build).
+RTNODE_REPO_URL = "https://github.com/5ugAv/RTNode-2400.git"
+RTNODE_BRANCH = "feature/neopixel-status-led"
 #: PlatformIO build environment for the Heltec V4 RTNode-2400 target.
 RTNODE_BUILD_ENV = "heltec_V4_boundary-local"
-#: Firmware project location on the tool (carried asset).
+#: Firmware project location on the tool (carried/cloned asset). The Pi medic is
+#: headless, so this is under the medic home, not ~/Desktop like the Mac flasher.
 RTNODE_PROJECT_DIR = "~/rnm-assets/RTNode2400"
 #: Onboarding access point the firmware raises after a fresh flash.
 ONBOARDING_SSID = "RTNode-Setup"

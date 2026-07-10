@@ -7,6 +7,8 @@ from transport.connection import EmulatedConnection
 from workflows.rtnode_build import (
     RTNodeBuildWorkflow,
     RTNODE_BUILD_ENV,
+    RTNODE_REPO_URL,
+    RTNODE_BRANCH,
 )
 
 BEACON_LINE = (
@@ -210,4 +212,16 @@ def test_carried_flash_script_exists_and_is_fixed():
     assert "set -o pipefail" in body          # git-in-pipe fix
     assert "CLT_WAIT_MAX" in body             # bounded xcode-select wait
     assert "reset --hard" in body             # robust existing-clone refresh
+    assert RTNODE_BUILD_ENV in body
+
+
+def test_firmware_provenance_matches_carried_flasher():
+    # The programmatic build (rtnode_build.py) and the carried human flasher
+    # must target the SAME firmware repo/branch/env, or the two paths drift
+    # apart from the actual RTNode-2400 firmware.
+    path = os.path.join(os.path.dirname(__file__), "..", "assets", "scripts",
+                        "flash_rtnode2400.sh")
+    body = open(path).read()
+    assert RTNODE_REPO_URL in body
+    assert RTNODE_BRANCH in body
     assert RTNODE_BUILD_ENV in body
