@@ -186,16 +186,51 @@ def test_run_all_fires_progress():
     assert len(events) == len(EXPECTED_STEPS)
 
 
-def test_install_stages_packages_on_node_and_uses_remote_path():
-    conn = build_conn(rnode=True)
-    w = wf(conn)
-    for i in range(6):          # detect_hardware .. install_software_stack
-        w.steps[i][1](w)
-    # a carried wheel was actually pushed under the remote package dir
+def _install_conn(rns=False, lxmf=False, wheels=True, internet=True):
+    """A node with controllable install preconditions."""
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rules.insert(0, ("import RNS", 0 if rns else 1, "", ""))
+    c.rules.insert(0, ("import LXMF", 0 if lxmf else 1, "", ""))
+    c.rules.insert(0, (f"ls {REMOTE_PACKAGE_DIR}/*.whl", 0 if wheels else 2, "", ""))
+    c.rules.insert(0, ("curl -fsI", 0 if internet else 7, "", ""))
+    return c
+
+
+def test_install_uses_remote_wheels_when_missing_and_carried():
+    conn = _install_conn(rns=False, lxmf=False, wheels=True)
+    from workflows.build import install_software_stack
+    install_software_stack(wf(conn))
     assert any(dst.startswith(REMOTE_PACKAGE_DIR) for _, dst in conn.pushed)
     pip_cmd = next(c for c in conn.history if "pip3 install" in c)
+    assert "--no-index" in pip_cmd
     assert REMOTE_PACKAGE_DIR in pip_cmd          # installs from the node path
     assert PACKAGE_DIR not in pip_cmd             # NOT the tool-local path
+    assert "--user" in pip_cmd
+
+
+def test_install_skips_when_already_present():
+    conn = _install_conn(rns=True, lxmf=True)
+    from workflows.build import install_software_stack
+    result = install_software_stack(wf(conn))
+    assert result.success
+    assert not any("pip3 install" in c for c in conn.history)   # nothing to do
+
+
+def test_install_online_fallback_when_no_wheels():
+    conn = _install_conn(rns=False, lxmf=True, wheels=False, internet=True)
+    from workflows.build import install_software_stack
+    result = install_software_stack(wf(conn))
+    assert result.success
+    pip_cmd = next(c for c in conn.history if "pip3 install" in c)
+    assert "--no-index" not in pip_cmd            # online path
+    assert "rns" in pip_cmd and "lxmf" not in pip_cmd  # only the missing one
+
+
+def test_install_fails_without_wheels_or_internet():
+    conn = _install_conn(rns=False, lxmf=False, wheels=False, internet=False)
+    from workflows.build import install_software_stack
+    result = install_software_stack(wf(conn))
+    assert result.success is False
 
 
 def test_hardening_stages_deb_on_node_and_uses_remote_path():

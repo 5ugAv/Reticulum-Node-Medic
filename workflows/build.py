@@ -193,17 +193,43 @@ def write_reticulum_config(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def install_software_stack(wf: "BuildWorkflow") -> StepResult:
-    # Stage the carried wheels onto the node, then install from there.
-    _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
-    code, out, err = wf.connection.run(
-        f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
-        f"--break-system-packages rns lxmf")
-    if code != 0:
-        return StepResult("install_software_stack", False,
-                          f"pip install failed: {err or out}")
-    wf.connection.run(wf.priv("apt-get install -y lrzsz"))
-    return StepResult("install_software_stack", True,
-                      "Installed Reticulum, LXMF and lrzsz from local packages.")
+    # Idempotent: only install what is actually missing. RNS is required; LXMF
+    # is optional (a pure transport node needs only rnsd) but installed if
+    # absent so a propagation node works too.
+    have_rns = wf.connection.run("python3 -c 'import RNS'")[0] == 0
+    have_lxmf = wf.connection.run("python3 -c 'import LXMF'")[0] == 0
+    missing = ([] if have_rns else ["rns"]) + ([] if have_lxmf else ["lxmf"])
+
+    if missing:
+        # Prefer carried wheels (the field build has no internet); stage them
+        # onto the node and install --no-index. If none are carried, fall back
+        # to online pip when the node has connectivity.
+        _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
+        have_wheels = wf.connection.run(f"ls {REMOTE_PACKAGE_DIR}/*.whl")[0] == 0
+        pkgs = " ".join(missing)
+        if have_wheels:
+            cmd = (f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
+                   f"--break-system-packages --user {pkgs}")
+            source = "carried wheels (offline)"
+        elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
+            cmd = f"pip3 install --break-system-packages --user {pkgs}"
+            source = "online pip (no wheels carried)"
+        else:
+            return StepResult(
+                "install_software_stack", False,
+                f"Cannot install {pkgs}: no wheels in assets/packages and the "
+                f"node has no internet. Carry the wheels for a field build.")
+        code, out, err = wf.connection.run(cmd)
+        if code != 0:
+            return StepResult("install_software_stack", False,
+                              f"pip install failed ({source}): {err or out}")
+        installed = f"Installed {pkgs} from {source}."
+    else:
+        installed = "Reticulum and LXMF already installed."
+
+    # lrzsz is only needed for the serial file-push path; best-effort.
+    wf.connection.run(wf.priv("apt-get install -y lrzsz") + " || true")
+    return StepResult("install_software_stack", True, installed)
 
 
 @build_step
