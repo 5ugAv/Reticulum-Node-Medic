@@ -104,6 +104,45 @@ def test_ssh_does_not_retry_normal_nonzero_exit():
     assert len(calls) == 1
 
 
+# ---- SSHConnection remote PATH wrapping ---------------------------------
+# Verified on real hardware: `pip install --user rns` puts rnsd/rnstatus/
+# rnodeconf in ~/.local/bin, which is NOT on PATH in a non-interactive ssh
+# shell (PATH=/usr/local/bin:/usr/bin:/bin:/usr/games). Bare tool commands
+# resolved to "not found" until the connection prepends ~/.local/bin.
+
+
+def _capture_runner(store):
+    def runner(argv, timeout):
+        store["argv"] = argv
+        return (0, "", "")
+    return runner
+
+
+def test_ssh_wraps_remote_command_for_user_local_bin():
+    store = {}
+    SSHConnection("host", runner=_capture_runner(store)).run("rnstatus --json")
+    cmd = store["argv"][-1]
+    assert ".local/bin" in cmd        # ~/.local/bin prepended to PATH
+    assert "rnstatus --json" in cmd   # original command preserved
+
+
+def test_ssh_wrap_preserves_heredoc_quotes():
+    store = {}
+    heredoc = "cat > ~/.reticulum/config <<'RTTEOF'\nfoo = bar\nRTTEOF"
+    SSHConnection("host", runner=_capture_runner(store)).run(heredoc)
+    cmd = store["argv"][-1]
+    # the whole heredoc survives intact as a single token to bash -c
+    assert "RTTEOF" in cmd
+    assert "foo = bar" in cmd
+
+
+def test_ssh_wrap_can_be_disabled():
+    store = {}
+    SSHConnection("host", runner=_capture_runner(store),
+                  login_env=False).run("echo hi")
+    assert store["argv"][-1] == "echo hi"
+
+
 # ---- SerialConnection sentinel parsing ----------------------------------
 
 
