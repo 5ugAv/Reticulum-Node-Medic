@@ -20,10 +20,10 @@ from __future__ import annotations
 import subprocess
 import urllib.parse
 import urllib.request
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from node_profile import NodeProfile
-from monitor.geo import format_coord
+from monitor.geo import format_coord, read_gps
 
 PORTAL_HOST = "10.0.0.1"
 PORTAL_PATH = "/save"
@@ -68,6 +68,20 @@ def build_form(
         "ssid": wifi_ssid,
         "psk": wifi_password,
         "wifi_en": "1" if wifi_enabled else "0",
+        # --- project-standard toggles: every RTNode-2400 built for this
+        # deployment is configured the same way, so nodes come out consistent ---
+        # Local TCP server ON at :4242 — makes the node reachable over the LAN
+        # (this is the "enabling" step; it's how the Monitor polls the node, and
+        # how an rnsd elsewhere connects to it, e.g. FAITH:4242).
+        "ap_tcp_en": "1",
+        "ap_tcp_port": "4242",
+        # mDNS discovery ON; mdns_name deliberately left unset so the firmware
+        # picks its own default name.
+        "mdns_en": "1",
+        # No TCP backbone (bb_host/bb_port left unset) and no IFAC on the LoRa
+        # interface — this build runs standalone by design.
+        "tcp_mode": "0",
+        "ifac_en": "0",
         # recommended LoRa params (firmware units)
         "freq": f"{r.frequency_mhz}",              # MHz decimal string
         "bw": str(int(r.bandwidth_khz * 1000)),    # Hz integer
@@ -137,16 +151,35 @@ def onboard(
     *,
     lat: float = None,
     lon: float = None,
+    gps_reader: Callable[[], Optional[Tuple[float, float]]] = None,
+    confirm_location: Callable[[float, float],
+                               Optional[Tuple[float, float]]] = None,
     do_join: bool = True,
     join_ap: Callable[[str], Tuple[bool, str]] = _default_join_ap,
     post: Callable[[str, str, Dict[str, str]], Tuple[int, str]] = _default_post,
 ) -> Tuple[bool, str]:
-    """End-to-end onboarding: join the ``RTNode-Setup`` AP, then POST the form.
+    """End-to-end onboarding: capture location, join ``RTNode-Setup``, POST.
 
-    The AP-join and HTTP POST are injected so this is unit-testable without a
-    radio. If the join fails we do NOT post (nothing to talk to). *lat*/*lon*
-    (the Pi's GPS fix) enable the node's privacy-fuzzed location advertisement.
+    Location step (the node is "born" where the Pi is standing): unless explicit
+    *lat*/*lon* are given, capture the Pi's own GPS via *gps_reader*, then hand
+    the coordinates to *confirm_location(lat, lon)* so the operator can accept
+    them as-is or edit them (e.g. a poor fix, or provisioning off-site). The
+    callback returns the accepted ``(lat, lon)`` — or ``None`` to skip the
+    advertisement. The advertised location is privacy-fuzzed (~800 m) by the
+    firmware; the exact coordinates belong in the birth certificate. With no
+    fix / no confirmation, advertisement is left off (never 0,0).
+
+    The GPS read, AP-join and HTTP POST are all injected so this is unit-testable
+    without a radio. If the join fails we do NOT post (nothing to talk to).
     """
+    if lat is None and lon is None and gps_reader is not None:
+        fix = read_gps(gps_reader)
+        if fix is not None:
+            accepted = (confirm_location(fix.lat, fix.lon)
+                        if confirm_location is not None
+                        else (fix.lat, fix.lon))
+            if accepted is not None:
+                lat, lon = accepted
     form = build_form(profile, node_name, wifi_ssid, wifi_password,
                       lat=lat, lon=lon)
     if do_join:
