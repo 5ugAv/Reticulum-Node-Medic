@@ -11,7 +11,7 @@ from ui import theme
 # Short text labels rather than emoji glyphs (the field Pi's default font has
 # no emoji; no emoji font is carried offline).
 MODES = [
-    ("build", "BLD"),
+    ("birth", "BIRTH"),
     ("diagnose", "DIAG"),
     ("monitor", "MON"),
     ("map", "MAP"),

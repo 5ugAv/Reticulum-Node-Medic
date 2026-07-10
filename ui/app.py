@@ -89,10 +89,10 @@ class ReticulumNodeMedicApp(App):
         diagnose.add_widget(RepairScreen(workflow_factory=_demo_repair_workflow))
         self.sm.add_widget(diagnose)
 
-        build = Screen(name="build")
-        build.add_widget(BuildScreen(workflow_factories={
-            "heltec_v4": _demo_rtnode_build, "pi": _demo_pi_build}))
-        self.sm.add_widget(build)
+        birth = Screen(name="birth")
+        birth.add_widget(BuildScreen(workflow_factories={
+            "rtnode2400": _demo_rtnode_build, "pi_rnode": _demo_pi_build}))
+        self.sm.add_widget(birth)
 
         for name, title in (("map", "Map"), ("clone", "Clone Tool")):
             scr = Screen(name=name)
