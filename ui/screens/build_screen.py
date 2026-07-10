@@ -1,9 +1,10 @@
-"""Build screen — provision a node, hardware selected first.
+"""Birth screen — provision a brand-new node, type selected first.
 
-Hardware is chosen up front (Heltec V4 -> RTNode-2400 path; Raspberry Pi ->
-full node path). The chosen workflow runs on a background thread with live step
-progress; a Type-B build then shows the pre-filled onboarding form and ends on
-a photographable birth-certificate card.
+Three node types, in order: RTNode-2400, RNode (flash any supported board), and
+Pi + RNode. RTNode-2400 and Pi + RNode run an injected build workflow on a
+background thread with live step progress; RNode first shows the board picker
+(all official boards + the custom Wireless Tracker) and then the per-board flash
+instructions. Type-B builds end on a photographable birth-certificate card.
 
 Workflow factories are injected, so the heavy lifting stays in the tested core
 and this screen is transport-agnostic.
@@ -21,6 +22,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.birth import birth_node_types, rnode_board_choices
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
@@ -37,24 +39,23 @@ class BuildScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(12)
         self.spacing = dp(8)
-        # {"heltec_v4": factory, "pi": factory} — each returns a workflow with
-        # .run_all(on_progress), .birth_certificate, and (optional) .onboarding
+        # {"rtnode2400": factory, "pi_rnode": factory} — each returns a workflow
+        # with .run_all(on_progress), .birth_certificate, and (optionally)
+        # .onboarding. The "rnode" type has no single workflow: it opens the
+        # board picker first.
         self._factories = workflow_factories
         self._workflow = None
 
-        self.add_widget(_line("Select the hardware to provision:", bold=True,
+        self.add_widget(_line("Birth a new node — choose a type:", bold=True,
                               size="18sp"))
         picker = BoxLayout(orientation="horizontal", size_hint_y=None,
                            height=dp(56), spacing=dp(8))
-        for key, label in (("heltec_v4", "Heltec V4  (RTNode-2400)"),
-                           ("pi", "Raspberry Pi  (full node)")):
-            if key not in self._factories:
-                continue
+        for key, label in birth_node_types():        # RTNode-2400, RNode, Pi + RNode
             btn = Button(
                 text=label, background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
-            btn.bind(on_release=lambda *_a, k=key: self.start(k))
+            btn.bind(on_release=lambda *_a, k=key: self.choose(k))
             picker.add_widget(btn)
         self.add_widget(picker)
 
@@ -64,6 +65,53 @@ class BuildScreen(BoxLayout):
         self.list.bind(minimum_height=self.list.setter("height"))
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
+
+    def choose(self, node_type):
+        """Route a chosen Birth type: RNode opens the board picker; the other
+        two run their build workflow directly."""
+        if node_type == "rnode":
+            self.show_boards()
+        elif node_type in self._factories:
+            self.start(node_type)
+
+    def show_boards(self):
+        """List every board the tool can flash as an RNode (official first,
+        the custom Wireless Tracker last)."""
+        self.list.clear_widgets()
+        self.list.add_widget(_line("Select the board to flash as an RNode:",
+                                   bold=True, size="16sp"))
+        for board in rnode_board_choices():
+            tag = "" if board.flash_method == "autoinstall" else "  (custom)"
+            btn = Button(
+                text=f"{board.display_name}  [{board.platform}]{tag}",
+                size_hint_y=None, height=dp(40), halign="left",
+                background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            btn.bind(on_release=lambda *_a, b=board: self.show_board_detail(b))
+            self.list.add_widget(btn)
+
+    def show_board_detail(self, board):
+        """Per-board flash guidance: how it's flashed, buttons, and recovery."""
+        self.list.clear_widgets()
+        self.list.add_widget(_line(board.display_name, bold=True, size="17sp"))
+        self.list.add_widget(_line(f"Platform: {board.platform}   Modem: "
+                                   f"{board.modem}   Bands: {board.bands}",
+                                   size="13sp"))
+        if board.flash_method == "autoinstall":
+            how = ("Flashed from the offline firmware cache via "
+                   "rnodeconf --autoinstall (device menu option "
+                   f"{board.autoinstall_index}).")
+        else:
+            how = ("Custom board — built from patched RNode_Firmware with "
+                   "arduino-cli.")
+        self.list.add_widget(_line(how, size="13sp"))
+        self.list.add_widget(_line("Enter bootloader:", bold=True, size="14sp"))
+        self.list.add_widget(_line(board.bootloader_instructions, size="12sp"))
+        self.list.add_widget(_line("If interrupted:", bold=True, size="14sp"))
+        self.list.add_widget(_line(board.recovery_instructions, size="12sp"))
+        if board.notes:
+            self.list.add_widget(_line(board.notes, color="amber", size="12sp"))
 
     def start(self, hardware_key):
         self.list.clear_widgets()
