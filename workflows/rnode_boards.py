@@ -45,6 +45,10 @@ class RNodeBoard:
     modem: str = ""                          # SX1262 / SX1276 / ...
     bands: str = ""                          # human band-coverage label
     autoinstall_index: int = 0               # rnodeconf device-menu number
+    #: band (MHz) -> the board's band-submenu choice in rnodeconf autoinstall.
+    #: Only set for boards whose sequence is transcribed + intended for use; an
+    #: empty map means "flash sequence not yet verified for this board".
+    autoinstall_bands: Dict[int, int] = field(default_factory=dict)
     experimental: bool = True                # upstream marks dev-board installs so
     recovery_key: str = ""                   # key into ui.safety.recovery_text
     bootloader_instructions: str = ""
@@ -72,6 +76,21 @@ class RNodeBoard:
         from workflows.updater import autoinstall_command
         return autoinstall_command(port, version=version, offline=offline)
 
+    def autoinstall_answers(self, band_mhz: int = 915) -> List[str]:
+        """The stdin answers that drive rnodeconf --autoinstall non-interactively
+        for this board: device-menu index, <enter> past the board blurb, the
+        band choice, then 'y' at the final confirmation. Verified end-to-end on
+        a real Heltec V4 (9 -> enter -> 2 -> y). Raises if the board's flash
+        sequence hasn't been transcribed for *band_mhz* yet."""
+        if self.flash_method != "autoinstall":
+            raise ValueError(f"{self.key} is not an autoinstall board.")
+        if band_mhz not in self.autoinstall_bands:
+            raise ValueError(
+                f"Autoinstall band {band_mhz} MHz not yet verified for "
+                f"{self.key}.")
+        return [str(self.autoinstall_index), "",
+                str(self.autoinstall_bands[band_mhz]), "y"]
+
     # -- custom (arduino-cli) boards ---------------------------------------
 
     def compile_command(self, firmware_dir: str = DEFAULT_FIRMWARE_DIR) -> str:
@@ -98,36 +117,47 @@ class RNodeBoard:
 
 
 def _official(key, name, index, platform, modem, bands, recovery_key="",
-              notes="", bootloader=None):
+              notes="", bootloader=None, band_map=None):
     if bootloader is None:
         bootloader = _NRF52_BOOTLOADER if platform == "nRF52" else _ESP32_BOOTLOADER
     return RNodeBoard(
         key=key, display_name=name, flash_method="autoinstall",
         platform=platform, modem=modem, bands=bands, autoinstall_index=index,
-        recovery_key=recovery_key, bootloader_instructions=bootloader,
-        notes=notes)
+        autoinstall_bands=band_map or {}, recovery_key=recovery_key,
+        bootloader_instructions=bootloader, notes=notes)
 
 
 # Official RNode targets — index = rnodeconf's "What kind of device is this?"
 # device-menu number (1.3.7). Dev-board installs are flagged experimental
 # upstream. Sub-GHz boards cover a 410-525 MHz and an 850-950 MHz variant; the
 # band is chosen during flashing (AU builds use 850-950 / 915.125 MHz).
+# band_map: band (MHz) -> rnodeconf band-submenu choice, transcribed from the
+# firmware's autoinstall menu. Heltec V4 is HARDWARE-VERIFIED (flashed a real
+# board offline: 9 -> enter -> 2 -> y). Others are transcribed from source and
+# verified per board as hardware becomes available; ambiguous multi-chip boards
+# (T-Beam) and un-read menus (Heltec V2, RAK4631, T-Echo) are left blank so
+# autoinstall_answers() refuses rather than guess.
 _OFFICIAL = [
     _official("lora32_v21", "LilyGO LoRa32 v2.1", 3, "ESP32", "SX1276/78",
-              "410-525 / 850-950 MHz"),
+              "410-525 / 850-950 MHz",
+              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
     _official("lora32_v20", "LilyGO LoRa32 v2.0", 4, "ESP32", "SX1276/78",
-              "410-525 / 850-950 MHz"),
+              "410-525 / 850-950 MHz",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("lora32_v10", "LilyGO LoRa32 v1.0", 5, "ESP32", "SX1276/78",
               "410-525 / 850-950 MHz",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4},
               notes="Known faulty battery-charging circuit — avoid if possible."),
     _official("tbeam", "LilyGO T-Beam", 6, "ESP32", "SX1276/78/62/68",
               "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1"),
     _official("heltec32_v2", "Heltec LoRa32 v2", 7, "ESP32", "SX1276/78",
               "410-525 / 850-950 MHz", recovery_key="Heltec V2"),
     _official("heltec32_v3", "Heltec LoRa32 v3", 8, "ESP32", "SX1262/68",
-              "410-525 / 850-950 MHz", recovery_key="Heltec V3"),
+              "410-525 / 850-950 MHz", recovery_key="Heltec V3",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("heltec32_v4", "Heltec LoRa32 v4", 9, "ESP32", "SX1262",
-              "850-950 MHz", recovery_key="Heltec V4"),
+              "850-950 MHz", recovery_key="Heltec V4",
+              band_map={868: 1, 915: 2, 923: 3}),          # verified on hardware
     _official("t3s3", "LilyGO LoRa T3S3", 10, "ESP32-S3", "SX1262/68, SX127x, SX1280",
               "410-525 / 850-950 MHz / 2.4 GHz", recovery_key="T3S3"),
     _official("rak4631", "RAK4631", 11, "nRF52", "SX1262",
@@ -135,13 +165,17 @@ _OFFICIAL = [
     _official("techo", "LilyGO T-Echo", 12, "nRF52", "SX1262",
               "430-510 / 779-928 MHz", recovery_key="T-Echo"),
     _official("tbeam_supreme", "LilyGO T-Beam Supreme", 13, "ESP32-S3", "SX1262/68",
-              "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam Supreme"),
+              "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam Supreme",
+              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
     _official("tdeck", "LilyGO T-Deck", 14, "ESP32-S3", "SX1262/68",
-              "410-525 / 850-950 MHz"),
+              "410-525 / 850-950 MHz",
+              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
     _official("heltec_t114", "Heltec Mesh Node T114", 15, "nRF52", "SX1262/68",
-              "410-525 / 850-950 MHz", recovery_key="T114"),
+              "410-525 / 850-950 MHz", recovery_key="T114",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)", 16, "ESP32-S3",
-              "SX1262", "410-525 / 850-950 MHz"),
+              "SX1262", "410-525 / 850-950 MHz",
+              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
 ]
 
 
