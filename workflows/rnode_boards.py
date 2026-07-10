@@ -68,10 +68,13 @@ RNODE_BOARDS: Dict[str, RNodeBoard] = {
     "heltec_wireless_tracker": RNodeBoard(
         key="heltec_wireless_tracker",
         display_name="Heltec Wireless Tracker",
-        # NOTE: 0x52 is what the flasher compiles with. In the shared RNode
-        # board-id enum (docs/RTNODE2400_INTEGRATION.md) 0x52 == "XIAO nRF", so
-        # if a flashed board later reports id 0x52 the tool would mislabel it.
-        # Confirm against the patched RNode_Firmware/Boards.h and reconcile.
+        # CUSTOM board — user-developed, deliberately NOT in official RNode
+        # firmware. It is flashed from a patched RNode_Firmware via arduino-cli
+        # (not rnodeconf --autoinstall, which only knows official boards).
+        # CAVEAT: board_model 0x52 collides with BOARD_XIAO_NRF in the upstream
+        # board-id enum, so a flashed Tracker identifies as "XIAO nRF" to stock
+        # tooling. Fine as long as the tool special-cases this custom id; revisit
+        # if a unique id becomes available in the patched firmware.
         board_model=0x52,
         fqbn="esp32:esp32:esp32s3:CDCOnBoot=cdc",
         build_properties=[
