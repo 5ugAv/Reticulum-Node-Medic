@@ -158,19 +158,23 @@ def set_firmware_radio_parameters(wf: "BuildWorkflow") -> StepResult:
         return StepResult("set_firmware_radio_parameters", True,
                           "No RNode present.", skipped=True)
     r = wf.profile.radio
+    # Real rnodeconf 2.5.0 has no --set-firmware-hash flag (verified via --help
+    # on hardware; -H/--firmware-hash takes an explicit hash argument). TNC
+    # radio params are applied with --freq/--bw/--sf/--cr/--txp; the firmware
+    # hash is written during --autoinstall (the flash step).
     cmd = (
         f"rnodeconf {r.serial_port} "
         f"--freq {int(r.frequency_mhz * 1_000_000)} "
         f"--bw {int(r.bandwidth_khz * 1000)} "
         f"--sf {r.spreading_factor} --cr {r.coding_rate} "
-        f"--txp {r.tx_power_dbm} --set-firmware-hash"
+        f"--txp {r.tx_power_dbm}"
     )
     code, out, err = wf.connection.run(cmd)
     ok = code == 0
     if ok:
         r.firmware_hash_set = True
     return StepResult("set_firmware_radio_parameters", ok,
-                      "Set firmware radio parameters and hash." if ok
+                      "Applied radio parameters to the RNode." if ok
                       else f"rnodeconf failed: {err or out}")
 
 
@@ -197,36 +201,61 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
     if code != 0:
         return StepResult("install_software_stack", False,
                           f"pip install failed: {err or out}")
-    wf.connection.run("apt-get install -y lrzsz")
+    wf.connection.run(wf.priv("apt-get install -y lrzsz"))
     return StepResult("install_software_stack", True,
                       "Installed Reticulum, LXMF and lrzsz from local packages.")
 
 
 @build_step
 def configure_services(wf: "BuildWorkflow") -> StepResult:
-    for svc, exe in (("rnsd", "rnsd"), ("lxmd", "lxmd --service")):
+    user = wf.run_user()
+    home = "/root" if user == "root" else f"/home/{user}"
+    # Only configure services whose binary actually exists — LXMF/lxmd may not
+    # be installed (RNS alone is enough for a transport node). ExecStart must be
+    # the *resolved* absolute path (pip --user -> ~/.local/bin), and User=/HOME=
+    # must point at the account whose ~/.reticulum holds the config we wrote.
+    services: List[str] = []
+    for svc, tool, args in (("rnsd", "rnsd", ""),
+                            ("lxmd", "lxmd", " --service")):
+        path = wf.tool_path(tool)
+        if not path:
+            continue
         unit = (
             "[Unit]\n"
             f"Description={svc} (Reticulum Node Medic)\n"
-            "After=network.target\n\n"
+            "After=network-online.target\n"
+            "Wants=network-online.target\n\n"
             "[Service]\n"
-            f"ExecStart=/usr/local/bin/{exe}\n"
+            "Type=simple\n"
+            f"User={user}\n"
+            f"Environment=HOME={home}\n"
+            f"ExecStart={path}{args}\n"
             "Restart=always\n"
             "RestartSec=5\n\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n"
         )
-        heredoc = f"cat > /etc/systemd/system/{svc}.service <<'RTTEOF'\n{unit}\nRTTEOF"
+        # Write as root via `sudo tee` (a plain `> /etc/...` redirect happens in
+        # the unprivileged shell before sudo can help).
+        heredoc = (
+            f"{wf.priv(f'tee /etc/systemd/system/{svc}.service')} "
+            f">/dev/null <<'RTTEOF'\n{unit}\nRTTEOF"
+        )
         code, out, err = wf.connection.run(heredoc)
         if code != 0:
             return StepResult("configure_services", False,
                               f"Could not write {svc}.service: {err or out}")
-    wf.connection.run("systemctl daemon-reload")
-    for svc in ("rnsd", "lxmd"):
-        wf.connection.run(f"systemctl enable {svc}")
-        wf.connection.run(f"systemctl start {svc}")
+        services.append(svc)
+
+    if not services:
+        return StepResult("configure_services", False,
+                          "Neither rnsd nor lxmd is installed on the node.")
+    wf.connection.run(wf.priv("systemctl daemon-reload"))
+    for svc in services:
+        wf.connection.run(wf.priv(f"systemctl enable {svc}"))
+        wf.connection.run(wf.priv(f"systemctl start {svc}"))
     return StepResult("configure_services", True,
-                      "Installed and started rnsd and lxmd services.")
+                      f"Installed and started: {', '.join(services)}.")
 
 
 @build_step
@@ -237,9 +266,9 @@ def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
     wf.connection.push_file(
         os.path.join(PACKAGE_DIR, "log2ram.deb"),
         f"{REMOTE_ASSET_DIR}/log2ram.deb")
-    wf.connection.run(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb || true")
-    wf.connection.run("systemctl enable log2ram || true")
-    wf.connection.run("systemctl enable watchdog || true")
+    wf.connection.run(wf.priv(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb") + " || true")
+    wf.connection.run(wf.priv("systemctl enable log2ram") + " || true")
+    wf.connection.run(wf.priv("systemctl enable watchdog") + " || true")
     return StepResult("apply_system_hardening", True,
                       "Applied Log2Ram, log rotation and hardware watchdog.")
 
@@ -250,7 +279,7 @@ def set_hostname(wf: "BuildWorkflow") -> StepResult:
         suffix = wf.profile.session_id[-6:]
         wf.profile.hostname = f"rtt-node-{suffix}"
     code, out, err = wf.connection.run(
-        f"hostnamectl set-hostname {wf.profile.hostname}")
+        wf.priv(f"hostnamectl set-hostname {wf.profile.hostname}"))
     ok = code == 0
     return StepResult("set_hostname", ok,
                       f"Hostname set to {wf.profile.hostname}." if ok
@@ -283,12 +312,41 @@ class BuildWorkflow:
         self.current_index = 0
         self.results: List[StepResult] = []
         self.rendered_config = ""
+        self._root: Optional[bool] = None
+        self._user: Optional[str] = None
 
     # -- helpers -----------------------------------------------------------
 
     def cmd_output(self, command: str) -> str:
         code, out, _ = self.connection.run(command)
         return out if code == 0 else ""
+
+    def _is_root(self) -> bool:
+        """True if the session already runs as root (cached)."""
+        if self._root is None:
+            code, out, _ = self.connection.run("id -u")
+            self._root = (code == 0 and out.strip() == "0")
+        return self._root
+
+    def priv(self, command: str) -> str:
+        """Prefix ``sudo -n`` when not root. Build runs many privileged steps
+        (writing units, systemctl, hostnamectl, dpkg); over SSH as the login
+        user these need sudo. ``-n`` fails fast instead of hanging on a prompt.
+        """
+        return command if self._is_root() else f"sudo -n {command}"
+
+    def run_user(self) -> str:
+        """The account the node is being built as (cached). Services must run
+        as this user so rnsd reads *its* ~/.reticulum, not root's."""
+        if self._user is None:
+            self._user = self.cmd_output("id -un").strip() or "pi"
+        return self._user
+
+    def tool_path(self, name: str) -> str:
+        """Absolute path to an installed console script, or "" if absent.
+        pip --user installs rnsd/lxmd into ~/.local/bin, so a systemd unit must
+        use the resolved absolute path — not a hardcoded /usr/local/bin."""
+        return self.cmd_output(f"command -v {name}").strip()
 
     def _template_name(self) -> str:
         if self.profile.has_meshtastic_bridge:

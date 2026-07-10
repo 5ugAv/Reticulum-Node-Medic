@@ -208,6 +208,96 @@ def test_hardening_stages_deb_on_node_and_uses_remote_path():
     assert PACKAGE_DIR not in dpkg_cmd
 
 
+# ---- privilege + service correctness (real-hardware fixes) --------------
+
+
+def _run_step(w, name):
+    idx = next(i for i, (n, _) in enumerate(w.steps) if n == name)
+    return w.steps[idx][1](w)
+
+
+def nonroot_conn(**extra):
+    """A node where we are a non-root login user (id -u != 0), rnsd/lxmd live
+    in ~/.local/bin, and everything else succeeds."""
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rules.insert(0, ("id -u", 0, "1000", ""))          # not root
+    c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
+    c.rules.insert(0, ("command -v rnsd", 0, "/home/nodemedic/.local/bin/rnsd", ""))
+    c.rules.insert(0, ("command -v lxmd", 0, "/home/nodemedic/.local/bin/lxmd", ""))
+    for pattern, code, out in extra.get("rules", []):
+        c.rules.insert(0, (pattern, code, out, ""))
+    return c
+
+
+def test_configure_services_uses_sudo_when_not_root():
+    conn = nonroot_conn()
+    w = wf(conn)
+    _run_step(w, "configure_services")
+    assert any("sudo -n tee /etc/systemd/system/rnsd.service" in c
+               for c in conn.history)
+    assert any("sudo -n systemctl daemon-reload" in c for c in conn.history)
+    assert any("sudo -n systemctl start rnsd" in c for c in conn.history)
+
+
+def test_configure_services_uses_detected_binary_path_and_user():
+    conn = nonroot_conn()
+    w = wf(conn)
+    _run_step(w, "configure_services")
+    unit_write = next(c for c in conn.history
+                      if "tee /etc/systemd/system/rnsd.service" in c)
+    assert "ExecStart=/home/nodemedic/.local/bin/rnsd" in unit_write
+    assert "User=nodemedic" in unit_write
+    assert "Environment=HOME=/home/nodemedic" in unit_write
+    assert "/usr/local/bin/rnsd" not in unit_write   # not the old hardcode
+
+
+def test_configure_services_skips_lxmd_when_absent():
+    conn = nonroot_conn(rules=[("command -v lxmd", 1, "")])  # lxmd not installed
+    w = wf(conn)
+    result = _run_step(w, "configure_services")
+    assert result.success
+    assert "rnsd" in result.message and "lxmd" not in result.message
+    assert not any("lxmd.service" in c for c in conn.history)
+
+
+def test_configure_services_fails_when_no_rns_tools():
+    conn = nonroot_conn(rules=[("command -v rnsd", 1, ""),
+                               ("command -v lxmd", 1, "")])
+    w = wf(conn)
+    result = _run_step(w, "configure_services")
+    assert result.success is False
+
+
+def test_set_hostname_uses_sudo():
+    conn = nonroot_conn()
+    w = wf(conn)
+    w.profile.hostname = "faith"
+    _run_step(w, "set_hostname")
+    assert any("sudo -n hostnamectl set-hostname faith" in c
+               for c in conn.history)
+
+
+def test_set_firmware_params_has_no_invalid_flag():
+    conn = nonroot_conn()
+    w = wf(conn)
+    w.profile.has_rnode = True
+    _run_step(w, "set_firmware_radio_parameters")
+    rnodeconf_cmd = next(c for c in conn.history
+                         if "rnodeconf" in c and "--freq" in c)
+    assert "--set-firmware-hash" not in rnodeconf_cmd   # flag does not exist
+
+
+def test_root_session_omits_sudo():
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rules.insert(0, ("id -u", 0, "0", ""))          # root
+    conn.rules.insert(0, ("id -un", 0, "root", ""))
+    conn.rules.insert(0, ("command -v rnsd", 0, "/usr/local/bin/rnsd", ""))
+    conn.rules.insert(0, ("command -v lxmd", 1, "", ""))
+    w = wf(conn)
+    _run_step(w, "configure_services")
+    assert not any("sudo" in c for c in conn.history)
+
+
 def test_final_verification_runs():
     w = wf(build_conn(rnode=True))
     result = w.steps[-1][1](w)
