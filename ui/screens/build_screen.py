@@ -34,7 +34,7 @@ def _line(text, color="text_primary", bold=False, size="15sp"):
 
 
 class BuildScreen(BoxLayout):
-    def __init__(self, workflow_factories, **kwargs):
+    def __init__(self, workflow_factories, rnode_flash_factory=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -44,6 +44,8 @@ class BuildScreen(BoxLayout):
         # .onboarding. The "rnode" type has no single workflow: it opens the
         # board picker first.
         self._factories = workflow_factories
+        # rnode_flash_factory(board) -> an RNodeFlashWorkflow for that board.
+        self._rnode_flash_factory = rnode_flash_factory
         self._workflow = None
 
         self.add_widget(_line("Birth a new node — choose a type:", bold=True,
@@ -112,6 +114,24 @@ class BuildScreen(BoxLayout):
         self.list.add_widget(_line(board.recovery_instructions, size="12sp"))
         if board.notes:
             self.list.add_widget(_line(board.notes, color="amber", size="12sp"))
+        # Flash action — only for autoinstall boards with a verified sequence and
+        # an injected flash factory (the tool flashes the locally attached board).
+        if (board.flash_method == "autoinstall" and board.autoinstall_bands
+                and self._rnode_flash_factory is not None):
+            flash_btn = Button(
+                text=f"Flash this board as an RNode", size_hint_y=None,
+                height=dp(48), background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            flash_btn.bind(on_release=lambda *_a, b=board: self.start_flash(b))
+            self.list.add_widget(flash_btn)
+
+    def start_flash(self, board):
+        self.list.clear_widgets()
+        self.list.add_widget(_line(f"Flashing {board.display_name}...",
+                                   bold=True))
+        self._workflow = self._rnode_flash_factory(board)
+        threading.Thread(target=self._run, daemon=True).start()
 
     def start(self, hardware_key):
         self.list.clear_widgets()
