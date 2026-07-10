@@ -6,6 +6,8 @@ from workflows.rnode_boards import (
     RNodeBoard,
     RNODE_BOARDS,
     available_boards,
+    official_boards,
+    custom_boards,
     get_board,
 )
 from ui.safety import recovery_text
@@ -72,6 +74,55 @@ def test_provision_commands_wipe_then_provision():
     assert any("--eeprom-wipe" in c for c in cmds)
     prov = next(c for c in cmds if "--product" in c)
     assert "--platform 0x80" in prov and "--model ca" in prov
+
+
+# ---- full official-board registry ---------------------------------------
+
+
+def test_registry_lists_more_than_just_the_tracker():
+    # the whole point: all official RNode boards, not one custom board
+    assert len(available_boards()) >= 14
+    names = {b.display_name for b in available_boards()}
+    assert {"Heltec LoRa32 v3", "LilyGO T-Beam", "RAK4631",
+            "Seeed XIAO ESP32S3 (Wio-SX1262)"} <= names
+
+
+def test_official_boards_are_autoinstall_with_unique_menu_indices():
+    off = official_boards()
+    assert len(off) >= 14
+    idxs = [b.autoinstall_index for b in off]
+    assert len(idxs) == len(set(idxs))              # no collisions
+    assert all(3 <= i <= 16 for i in idxs)          # real rnodeconf menu range
+    assert all(b.flash_method == "autoinstall" for b in off)
+
+
+def test_official_boards_are_offline_flashable_via_autoinstall():
+    b = get_board("heltec32_v3")
+    assert b.autoinstall_index == 8
+    assert b.platform == "ESP32"
+    cmd = b.autoinstall_command("/dev/ttyACM0", version="1.86")
+    assert "rnodeconf /dev/ttyACM0 --autoinstall" in cmd
+    assert "--nocheck" in cmd                       # offline by default
+    assert "--fw-version 1.86" in cmd
+
+
+def test_every_board_has_bootloader_and_recovery_text():
+    for b in available_boards():
+        assert b.bootloader_instructions.strip()
+        assert b.recovery_instructions.strip()
+
+
+def test_nrf52_boards_use_uf2_recovery_wording():
+    rak = get_board("rak4631")
+    assert rak.platform == "nRF52"
+    assert "UF2" in rak.bootloader_instructions or "double-tap" in \
+        rak.bootloader_instructions.lower()
+
+
+def test_custom_boards_are_the_tracker_only():
+    customs = custom_boards()
+    assert [b.key for b in customs] == ["heltec_wireless_tracker"]
+    assert customs[0].flash_method == "arduino_cli"
 
 
 def test_carried_flasher_script_exists_and_is_hardened():
