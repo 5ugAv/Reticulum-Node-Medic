@@ -9,6 +9,7 @@ stderr)`` tuple so diagnostics and workflows are transport-agnostic.
 from __future__ import annotations
 
 import base64
+import shlex
 import subprocess
 import time
 from abc import ABC, abstractmethod
@@ -79,6 +80,13 @@ class SSHConnection(Connection):
 
     TRANSIENT_EXIT = 255
 
+    #: Prepended to the PATH of every remote command. `pip install --user rns`
+    #: puts the RNS console scripts (rnsd, rnstatus, rnodeconf, rnpath, …) in
+    #: ~/.local/bin, which a non-interactive ssh shell does NOT include
+    #: (verified: PATH=/usr/local/bin:/usr/bin:/bin:/usr/games). Without this,
+    #: every bare RNS command resolves to "command not found".
+    REMOTE_PATH = "$HOME/.local/bin:/usr/local/bin:$PATH"
+
     def __init__(
         self,
         host: str,
@@ -88,6 +96,7 @@ class SSHConnection(Connection):
         retry_delay: float = 5.0,
         runner: Optional[Callable[[List[str], int], Result]] = None,
         sleep: Callable[[float], None] = time.sleep,
+        login_env: bool = True,
     ):
         self.host = host
         self.user = user
@@ -96,6 +105,21 @@ class SSHConnection(Connection):
         self.retry_delay = retry_delay
         self._runner = runner or _default_ssh_runner
         self._sleep = sleep
+        self.login_env = login_env
+
+    def _wrap(self, command: str) -> str:
+        """Run *command* under a shell that has ~/.local/bin on PATH.
+
+        We deliberately export PATH ourselves rather than use a login shell
+        (``bash -lc``): that keeps behaviour deterministic and avoids stdout
+        noise from profile scripts polluting command output. ``shlex.quote``
+        makes the whole payload a single safe token, so heredocs and embedded
+        quotes in *command* pass through untouched.
+        """
+        if not self.login_env:
+            return command
+        payload = f'export PATH="{self.REMOTE_PATH}"; {command}'
+        return f"bash -c {shlex.quote(payload)}"
 
     def _argv(self, command: str) -> List[str]:
         return [
@@ -105,7 +129,7 @@ class SSHConnection(Connection):
             "-o", "StrictHostKeyChecking=accept-new",
             "-p", str(self.port),
             f"{self.user}@{self.host}",
-            command,
+            self._wrap(command),
         ]
 
     def run(self, command: str, timeout: int = 30) -> Result:
@@ -276,6 +300,7 @@ def auto_detect_connection(target: str, **kwargs) -> Connection:
         return SerialConnection(target, **serial_kwargs)
     # Filter to SSHConnection's accepted params so a stray serial-only kwarg
     # (e.g. baud=/transport=) doesn't raise TypeError.
-    ssh_keys = ("user", "port", "retry_count", "retry_delay", "runner", "sleep")
+    ssh_keys = ("user", "port", "retry_count", "retry_delay", "runner", "sleep",
+                "login_env")
     ssh_kwargs = {k: v for k, v in kwargs.items() if k in ssh_keys}
     return SSHConnection(target, **ssh_kwargs)
