@@ -209,6 +209,36 @@ def test_onboard_aborts_if_join_fails_and_does_not_post():
     assert "RTNode-Setup" in msg
 
 
+def test_join_ap_uses_sudo_and_directed_rescan():
+    # verified on hardware: NM blocks `nmcli connect` for the login user
+    # (polkit) and throttles plain rescans, so the medic must sudo + rescan the
+    # exact SSID before connecting.
+    from workflows.rtnode_portal import join_ap_commands
+    rescan, connect = join_ap_commands("RTNode-Setup")
+    assert rescan[:2] == ["sudo", "-n"] and "rescan" in rescan
+    assert connect[:2] == ["sudo", "-n"] and "connect" in connect
+    assert rescan[-1] == "RTNode-Setup" and connect[-1] == "RTNode-Setup"
+
+
+def test_default_join_ap_retries_and_reports(monkeypatch):
+    import workflows.rtnode_portal as p
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+        class R:  # connect fails first round, succeeds second
+            returncode = 0 if ("connect" in argv and calls.count(argv) >= 2) else \
+                         (1 if "connect" in argv else 0)
+            stdout = "activated" if returncode == 0 else ""
+            stderr = "" if returncode == 0 else "Not authorized"
+        return R()
+
+    monkeypatch.setattr(p.subprocess, "run", fake_run)
+    ok, msg = p._default_join_ap("RTNode-Setup", attempts=3, sleep=lambda s: None)
+    assert ok is True
+    assert any("connect" in a for a in calls)
+
+
 def test_onboard_skip_join_posts_directly():
     ok, msg = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
                       do_join=False, post=_good_post)
