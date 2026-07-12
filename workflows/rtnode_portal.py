@@ -18,6 +18,7 @@ without the Pi having to join the AP). The default poster uses the stdlib.
 from __future__ import annotations
 
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from typing import Callable, Dict, Optional, Tuple
@@ -132,15 +133,42 @@ def submit_form(
     return (False, f"Portal rejected the config (HTTP {status}).")
 
 
-def _default_join_ap(ssid: str) -> Tuple[bool, str]:
-    """Join an open AP with nmcli (the tool runs on a Pi 5)."""
-    try:
-        proc = subprocess.run(
-            ["nmcli", "device", "wifi", "connect", ssid],
-            capture_output=True, text=True, timeout=30)
-        return (proc.returncode == 0, (proc.stdout or proc.stderr).strip())
-    except Exception as exc:  # nmcli missing / no wifi / timeout
-        return (False, str(exc))
+def join_ap_commands(ssid: str):
+    """The nmcli commands to join an open AP as the medic. Both verified on real
+    hardware (Pi 5 provisioning an RTNode over WiFi):
+
+    * **sudo** — NetworkManager blocks connection *activation* via polkit for the
+      login user ("Not authorized to control networking"); the medic has
+      passwordless sudo. (`nmcli device wifi connect` without it fails.)
+    * **directed rescan first** — a plain repeated ``--rescan yes`` gets throttled
+      to a stale empty list, so NM won't list the board's AP; a rescan for the
+      *exact* SSID surfaces it (the AP is strong — measured -28 dBm on ch 1 — the
+      issue was discovery, not signal).
+    """
+    return [
+        ["sudo", "-n", "nmcli", "device", "wifi", "rescan", "ssid", ssid],
+        ["sudo", "-n", "nmcli", "device", "wifi", "connect", ssid],
+    ]
+
+
+def _default_join_ap(ssid: str, attempts: int = 3,
+                     sleep: Callable[[float], None] = time.sleep) -> Tuple[bool, str]:
+    """Join an open AP with nmcli (the tool runs on a Pi 5). Rescans for the SSID
+    then connects, retrying so a first throttled scan doesn't lose the AP."""
+    rescan, connect = join_ap_commands(ssid)
+    last = "not attempted"
+    for _ in range(max(1, attempts)):
+        try:
+            subprocess.run(rescan, capture_output=True, text=True, timeout=20)
+            sleep(3)  # let NM's directed scan complete before we connect
+            proc = subprocess.run(connect, capture_output=True, text=True,
+                                  timeout=30)
+            if proc.returncode == 0:
+                return (True, (proc.stdout or proc.stderr).strip())
+            last = (proc.stderr or proc.stdout).strip()
+        except Exception as exc:  # nmcli missing / no wifi / timeout
+            last = str(exc)
+    return (False, last)
 
 
 def onboard(
