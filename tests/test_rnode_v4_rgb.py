@@ -73,6 +73,7 @@ def test_build_installs_toolchain_clones_patches_compiles():
     h = conn.history
     assert any("arduino-cli core install esp32:esp32@2.0.17" in c for c in h)
     assert any('lib install "Adafruit NeoPixel"' in c for c in h)
+    assert any('lib install "Crypto"' in c for c in h)  # provides Ed25519.h
     assert any("git clone" in c for c in h)
     assert any("arduino-cli compile" in c for c in h)
 
