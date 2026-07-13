@@ -7,7 +7,11 @@ the safety panel live at this level so every screen inherits them.
 
 from __future__ import annotations
 
+import subprocess
+import threading
+
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -24,6 +28,16 @@ from workflows.repair import RepairWorkflow
 from workflows.build import BuildWorkflow
 from workflows.rtnode_build import RTNodeBuildWorkflow
 from workflows.rnode_flash import RNodeFlashWorkflow
+from monitor.service import MonitorService
+
+
+def _local_run(command: str) -> str:
+    """Run a shell command on the medic itself (for LAN discovery)."""
+    try:
+        return subprocess.run(["bash", "-c", command], capture_output=True,
+                              text=True, timeout=120).stdout
+    except Exception:
+        return ""
 
 
 def _demo_repair_workflow():
@@ -97,8 +111,13 @@ class ReticulumNodeMedicApp(App):
         self.sm = ScreenManager()
 
         monitor = Screen(name="monitor")
-        monitor.add_widget(MonitorScreen(nodes=DEMO_NODES))
+        # DEMO_NODES render immediately; a background thread then discovers and
+        # polls the real LAN and swaps in live nodes as they're found.
+        self.monitor_screen = MonitorScreen(nodes=DEMO_NODES)
+        monitor.add_widget(self.monitor_screen)
         self.sm.add_widget(monitor)
+        self.monitor_service = MonitorService(run=_local_run)
+        self._start_monitor_polling()
 
         diagnose = Screen(name="diagnose")
         diagnose.add_widget(RepairScreen(workflow_factory=_demo_repair_workflow))
@@ -120,6 +139,33 @@ class ReticulumNodeMedicApp(App):
         root.add_widget(Sidebar(on_select=self.switch_mode))
         root.add_widget(self.sm)
         return root
+
+    def _start_monitor_polling(self, interval: float = 30.0):
+        """Poll the LAN on a background thread; push live nodes to the screen
+        via the Kivy Clock (UI updates must happen on the main thread)."""
+        stop = threading.Event()
+        self._monitor_stop = stop
+
+        def loop():
+            i = 0
+            while not stop.is_set():
+                try:
+                    self.monitor_service.cycle(rediscover=(i % 10 == 0))
+                    dicts = self.monitor_service.dashboard_dicts()
+                    if dicts:
+                        Clock.schedule_once(
+                            lambda dt, d=dicts: self.monitor_screen.set_nodes(d), 0)
+                except Exception:
+                    pass  # never let a poll error kill the loop
+                i += 1
+                stop.wait(interval)
+
+        threading.Thread(target=loop, daemon=True).start()
+
+    def on_stop(self):
+        stop = getattr(self, "_monitor_stop", None)
+        if stop is not None:
+            stop.set()
 
     def switch_mode(self, mode_name):
         if mode_name in [s.name for s in self.sm.screens]:

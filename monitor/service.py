@@ -79,3 +79,8 @@ class MonitorService:
     def dashboard(self) -> List[NodeRecord]:
         """Nodes for the Monitor screen, alert-first then by name."""
         return self.registry.all(self._now())
+
+    def dashboard_dicts(self) -> List[dict]:
+        """The dashboard as plain dicts the Monitor Kivy screen consumes."""
+        now = self._now()
+        return [rec.to_dashboard(now) for rec in self.registry.all(now)]
