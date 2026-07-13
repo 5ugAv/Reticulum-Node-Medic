@@ -152,7 +152,21 @@ def test_all_tiers_fail_reports_overcurrent_diagnosis():
     assert res.success is False
     assert res.tier is None
     assert "over-current" in res.diagnosis
-    assert res.failed_offset is not None
+    # it never even wrote the bootloader -> report 0x0, not the app default,
+    # and call out the stronger hardware-damage signal
+    assert res.failed_offset == 0x0
+    assert "bootloader" in res.diagnosis and "hardware damage" in res.diagnosis
+
+
+def test_app_stage_failure_omits_the_severe_bootloader_note():
+    # writes succeed for the tiny fixed regions but the app never lands -> the
+    # verdict should NOT claim it couldn't take the bootloader.
+    conn = base_conn().rule("APPIMG", 1, "").rule(CHUNK_FILE, 1, "")
+    conn.rule("grep -c over-current", 0, "4")
+    res = rf(conn).flash(FIXED, APP)
+    assert res.success is False
+    assert "bootloader" not in res.diagnosis
+    assert res.failed_offset == 0x10000
 
 
 def test_all_tiers_fail_without_overcurrent_blames_data_link():
