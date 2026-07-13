@@ -84,6 +84,19 @@ def test_build_carries_and_runs_the_neopixel_patcher():
     assert any(REMOTE_PATCH in c and "Boards.h" in c for c in conn.history)
 
 
+def test_build_installs_arduino_cli_when_missing():
+    conn = build_conn(cloned=True)
+    conn.rule("command -v arduino-cli", code=1)  # toolchain not yet installed
+    wf(conn).build()
+    assert any("install.sh" in c for c in conn.history)
+
+
+def test_build_skips_arduino_cli_install_when_present():
+    conn = build_conn(cloned=True)  # default_code 0 -> command -v succeeds
+    wf(conn).build()
+    assert not any("install.sh" in c for c in conn.history)
+
+
 def test_build_skips_clone_when_firmware_already_present():
     conn = build_conn(cloned=True)
     wf(conn).build()
