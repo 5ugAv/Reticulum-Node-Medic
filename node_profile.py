@@ -29,7 +29,8 @@ class ConnectionMethod(Enum):
 
 
 class NodeRole(Enum):
-    TRANSPORT = "Transport node"
+    TRANSPORT = "Transport node"            # RTNode-2400 (microReticulum, no LXMF)
+    PROPAGATION = "LXMF propagation node"   # Pi + RNode (runs rnsd + lxmd)
     GATEWAY = "Gateway node"
     MESHTASTIC_BRIDGE = "Meshtastic bridge node"
     UNKNOWN = "Unknown"

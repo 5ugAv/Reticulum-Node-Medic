@@ -10,6 +10,7 @@ import re
 from typing import List
 
 from diagnostics.base import DiagnosticCheck, Fix, Issue
+from node_profile import NodeRole
 
 
 class ReticulumSoftwareCheck(DiagnosticCheck):
@@ -22,7 +23,14 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         p = self.profile
         cfg = self.config_path
         port = p.radio.serial_port
-        user = p.ssh_user
+        # The ACTUAL user on the node, not the profile's SSH default ('pi'):
+        # verified live that keying off the default false-flagged dialout on a
+        # node whose user is 'nodemedic'.
+        user = self._cmd_output("id -un").strip() or p.ssh_user
+        # LXMF services only apply to a PROPAGATION node (Pi + RNode running
+        # lxmd). A TRANSPORT node (RTNode) has no LXMF layer, so lxmd checks
+        # would false-fail — gate them on the node's role.
+        is_prop = p.role == NodeRole.PROPAGATION
         issues = []
 
         # 1
@@ -39,13 +47,13 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
             fix_description="Enable the rnsd service at boot."))
         # 3
         issues.append(self._check(
-            "lxmd_running", self._service_is_active("lxmd"),
+            "lxmd_running", (not is_prop) or self._service_is_active("lxmd"),
             "The LXMF daemon (lxmd) is not running.",
             severity="critical", auto_fixable=True,
             fix_description="Start the lxmd service."))
         # 4
         issues.append(self._check(
-            "lxmd_enabled", self._service_is_enabled("lxmd"),
+            "lxmd_enabled", (not is_prop) or self._service_is_enabled("lxmd"),
             "lxmd is not set to start automatically on boot.",
             severity="warning", auto_fixable=True,
             fix_description="Enable the lxmd service at boot."))
@@ -144,7 +152,7 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         # 53 lxmd missing --service
         lxmd_unit = self._cmd_output("systemctl cat lxmd")
         issues.append(self._check(
-            "lxmd_service_flag", "--service" in lxmd_unit,
+            "lxmd_service_flag", (not is_prop) or "--service" in lxmd_unit,
             "The lxmd unit is missing the --service flag.",
             severity="warning", auto_fixable=True,
             fix_description="Add --service to the lxmd ExecStart line."))
@@ -153,7 +161,8 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         lxmd_journal = self._cmd_output("journalctl -u lxmd -n 300")
         issues.append(self._check(
             "shared_instance_cascade",
-            "Reticulum will attempt to bring up" not in lxmd_journal,
+            (not is_prop)
+            or "Reticulum will attempt to bring up" not in lxmd_journal,
             "lxmd could not attach to the shared rnsd instance and is trying "
             "to bring up its own — a failure cascade.",
             severity="warning"))

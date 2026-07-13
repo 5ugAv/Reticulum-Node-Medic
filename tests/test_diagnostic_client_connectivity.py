@@ -1,8 +1,14 @@
 import pytest
 
-from node_profile import NodeProfile
+from node_profile import NodeProfile, NodeRole
 from transport.connection import EmulatedConnection
 from diagnostics.client_connectivity import ClientConnectivityCheck
+
+
+def prop_profile():
+    p = NodeProfile()
+    p.role = NodeRole.PROPAGATION
+    return p
 
 
 def healthy_conn():
@@ -31,7 +37,7 @@ def full_profile():
 
 
 def run(conn, prof=None):
-    return ClientConnectivityCheck(conn, prof or NodeProfile()).run()
+    return ClientConnectivityCheck(conn, prof or prop_profile()).run()
 
 
 def names(issues):
@@ -54,15 +60,26 @@ def test_all_healthy_full_profile_no_issues():
 
 
 def test_bare_profile_only_runs_ungated_checks():
-    # with no client flags, only checks 44 & 45 run
+    # a bare TRANSPORT profile: only the always-on, non-LXMF check (TCP iface)
+    # runs; lxmf_delivery is now propagation-gated.
     issues = run(healthy_conn(), NodeProfile())
     assert issues == []
-    # break both ungated to confirm exactly those two are present
     conn = healthy_conn()
     ins(conn, (":4242", 1, "", ""))
     ins(conn, ("pgrep -f lxmd", 1, "", ""))
-    assert names(run(conn, NodeProfile())) == {
-        "tcp_interface_listening", "lxmf_delivery_running"}
+    assert names(run(conn, NodeProfile())) == {"tcp_interface_listening"}
+
+
+def test_transport_role_skips_lxmf_checks():
+    # RTNode = transport node, no LXMF -> lxmf/lxmd checks must not fire
+    conn = healthy_conn()
+    ins(conn, ("pgrep -f lxmd", 1, "", ""))
+    ins(conn, ("journalctl -u lxmd", 0, "LXMF store full", ""))
+    ins(conn, ("systemctl cat lxmd", 0, "ExecStart=/x --service", ""))
+    n = names(run(conn, NodeProfile()))     # default role -> not propagation
+    assert not (n & {"lxmf_delivery_running", "lxmd_store_full",
+                     "lxmd_after_rnsd", "lxmd_statistics_timeout",
+                     "lxmd_peer_limit"})
 
 
 def test_tcp_interface_not_listening():
@@ -141,7 +158,7 @@ def test_fix_lxmd_after_rnsd_adds_dependency():
     conn = ins(healthy_conn(),
                ("systemctl cat lxmd", 0, "ExecStart=/x --service", ""))
     conn.rule("after.conf", code=0, stdout="")
-    check = ClientConnectivityCheck(conn, NodeProfile())
+    check = ClientConnectivityCheck(conn, prop_profile())
     issue = next(i for i in check.run() if i.check_name == "lxmd_after_rnsd")
     fix = check.fix(issue)
     assert fix.success is True

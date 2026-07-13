@@ -2,9 +2,17 @@ import json
 
 import pytest
 
-from node_profile import NodeProfile
+from node_profile import NodeProfile, NodeRole
 from transport.connection import EmulatedConnection
 from diagnostics.reticulum_software import ReticulumSoftwareCheck
+
+
+def prop_profile():
+    # these checks cover a PROPAGATION node (Pi + RNode running lxmd), so lxmd
+    # checks apply; a TRANSPORT node skips them (see test_transport_role_...).
+    p = NodeProfile()
+    p.role = NodeRole.PROPAGATION
+    return p
 
 
 def _rnstatus_json(rnode_up=True):
@@ -59,11 +67,22 @@ def broken(*failing_rules):
 
 
 def run(conn):
-    return ReticulumSoftwareCheck(conn, NodeProfile()).run()
+    return ReticulumSoftwareCheck(conn, prop_profile()).run()
 
 
 def names(issues):
     return {i.check_name for i in issues}
+
+
+def test_transport_role_skips_lxmd_checks():
+    # an RTNode is a transport node with no LXMF layer -> lxmd checks must not
+    # fire even when lxmd is absent.
+    conn = broken(("^systemctl is-active lxmd", 3, "inactive"),
+                  ("^systemctl is-enabled lxmd", 1, "disabled"))
+    p = NodeProfile()          # default role -> not propagation
+    n = {i.check_name for i in ReticulumSoftwareCheck(conn, p).run()}
+    assert "lxmd_running" not in n
+    assert "lxmd_enabled" not in n
 
 
 def test_category_name():
