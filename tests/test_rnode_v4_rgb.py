@@ -10,7 +10,7 @@ from transport.connection import EmulatedConnection
 from workflows.rnode_v4_rgb import (
     HeltecV4RGBWorkflow, compile_command, esptool_flash_command,
     firmware_hash_command, esptool_path, BUILD_BIN, FIRMWARE_DIR, REMOTE_PATCH,
-    LOCAL_PATCH, BOARD_MODEL,
+    LOCAL_PATCH, REMOTE_BOOT_ERR, LOCAL_BOOT_ERR, BOARD_MODEL,
 )
 
 GOOD_INFO = ("Device connected\nCurrent firmware version: 1.86\n"
@@ -83,6 +83,15 @@ def test_build_carries_and_runs_the_neopixel_patcher():
     wf(conn).build()
     assert (LOCAL_PATCH, REMOTE_PATCH) in conn.pushed
     assert any(REMOTE_PATCH in c and "Boards.h" in c for c in conn.history)
+
+
+def test_build_carries_and_runs_the_boot_error_patcher():
+    conn = build_conn()
+    wf(conn).build()
+    assert (LOCAL_BOOT_ERR, REMOTE_BOOT_ERR) in conn.pushed
+    # the dim-red boot-error patch is applied to Utilities.h with a --red value
+    assert any(REMOTE_BOOT_ERR in c and "Utilities.h" in c and "--red" in c
+               for c in conn.history)
 
 
 def test_build_installs_arduino_cli_when_missing():
