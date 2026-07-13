@@ -93,9 +93,16 @@ def test_path_table_empty():
 
 
 def test_channel_congested():
-    # channel_load_short is a 0.0-1.0 fraction -> 0.88 == 88% congested
-    conn = ins(healthy_conn(), ("rnstatus --json", 0, rnstatus_json(chload=0.88), ""))
+    # channel_load_short is a PERCENT (0-100): 85.0 == 85% -> congested
+    conn = ins(healthy_conn(), ("rnstatus --json", 0, rnstatus_json(chload=85.0), ""))
     assert "channel_congestion" in names(run(conn))
+
+
+def test_channel_not_congested_on_normal_percent_load():
+    # a real busy-but-fine node reads e.g. 18.66% -> must NOT flag (the old
+    # fraction logic read this as 1866% congested)
+    conn = ins(healthy_conn(), ("rnstatus --json", 0, rnstatus_json(chload=18.66), ""))
+    assert "channel_congestion" not in names(run(conn))
 
 
 def test_l1_loopback_fails():
