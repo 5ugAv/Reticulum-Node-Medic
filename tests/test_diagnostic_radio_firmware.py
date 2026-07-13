@@ -216,6 +216,45 @@ def test_fix_modemmanager_masks_service():
     assert any("mask ModemManager" in c for c in conn.history)
 
 
+def _eeprom_issue():
+    from diagnostics.base import Issue
+    return Issue(check_name="eeprom_valid", category="Radio & firmware",
+                 description="", severity="critical", auto_fixable=True)
+
+
+def test_fix_eeprom_v4_reflashes_neopixel_firmware():
+    # A Heltec V4 with an invalid EEPROM is repaired by the full RGB reflash:
+    # reprovision the EEPROM (autoinstall) AND restore the NeoPixel firmware
+    # (esptool + firmware-hash) — never left on stock firmware.
+    from node_profile import NodeHardware
+    from workflows.rnode_v4_rgb import FIRMWARE_DIR, BUILD_BIN
+    p = NodeProfile()
+    p.hardware = NodeHardware.HELTEC_V4
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rule(f"test -d {FIRMWARE_DIR}", code=0)          # already cloned
+    conn.rule(f"test -f {BUILD_BIN}", code=0)             # firmware built
+    conn.rule("--autoinstall", code=0, stdout="autoinstallation complete")
+    conn.rule("esptool", code=0, stdout="Hash of data verified.")
+    conn.rule("partition_hashes", code=0, stdout="deadbeef")
+    conn.rule("--firmware-hash", code=0, stdout="ok")
+    conn.rule("--info", code=0, stdout=GOOD_INFO)
+    fix = RadioFirmwareCheck(conn, p).fix(_eeprom_issue())
+    assert fix.success is True
+    assert any("esptool" in c and "0x10000" in c for c in conn.history)
+    assert any("--firmware-hash" in c for c in conn.history)
+
+
+def test_fix_eeprom_non_v4_uses_autoinstall_only():
+    # Any other RNode keeps its stock firmware — reprovision via autoinstall,
+    # no esptool overlay.
+    conn = conn_with()
+    conn.rule("rnodeconf /dev/ttyUSB0 --autoinstall", code=0, stdout="ok")
+    fix = RadioFirmwareCheck(conn, NodeProfile()).fix(_eeprom_issue())
+    assert fix.success is True
+    assert any("--autoinstall" in c for c in conn.history)
+    assert not any("esptool" in c for c in conn.history)
+
+
 def test_fix_frequency_runs_rnodeconf():
     info = GOOD_INFO.replace("915.125 MHz", "868.0 MHz")
     conn = conn_with(info=info)
