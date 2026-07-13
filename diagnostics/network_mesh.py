@@ -39,15 +39,17 @@ class NetworkMeshCheck(DiagnosticCheck):
         # 37 announces sending. Primary signal is the rnstatus field
         # outgoing_announce_frequency (verified present in real rnstatus --json)
         # — a node originating/forwarding announces reports > 0 on an interface.
-        # Fall back to the rnsd logfile (~/.reticulum/logfile, format
-        # "[YYYY-MM-DD HH:MM:SS] [Level] Sending announce ..."), NOT journalctl:
-        # the rnsd systemd unit only journals its "Started" line, so scraping
-        # journalctl for announce activity always misses it (false negative).
+        # Fall back to the rnsd JOURNAL, not ~/.reticulum/logfile. Verified on the
+        # live Pi: rnsd-under-systemd writes NO logfile (the path does not exist)
+        # and logs to the journal (loglevel 4) — so the old `tail ~/.reticulum/
+        # logfile` always read nothing. The rnstatus field is the primary signal;
+        # this only backstops it.
         announcing = any(
             float(i.get("outgoing_announce_frequency") or 0) > 0
             for i in interfaces)
         if not announcing:
-            log = self._cmd_output("tail -n 500 ~/.reticulum/logfile").lower()
+            log = self._cmd_output(
+                "journalctl -u rnsd -n 500 --no-pager").lower()
             announcing = "announce" in log
         issues.append(self._check(
             "announces_sending", announcing,
@@ -71,30 +73,71 @@ class NetworkMeshCheck(DiagnosticCheck):
             f"The LoRa channel is congested ({load:.0f}% airtime).",
             severity="warning"))
 
-        # 40 L1 serial loopback
+        # 40 L1 — the RNode radio interface is actually UP. rnsd reports each
+        # interface's live status as a bool in rnstatus --json; a down radio
+        # (param/config mismatch, lost port, unsupported params) is the single
+        # most important fault and was previously UNCHECKED. The old
+        # `rnodeconf --loop` isn't a real flag and can't run while rnsd holds the
+        # port. When down, surface the cause from the rnsd journal.
+        iface_up = bool(iface and iface.get("status"))
         issues.append(self._check(
-            "loopback_l1", self._run_cmd(f"rnodeconf {port} --loop")[0] == 0,
-            "Level 1 test failed: the radio did not pass a serial loopback.",
+            "loopback_l1", iface_up,
+            "Level 1: the RNode radio interface is DOWN. "
+            + (self._rnsd_down_reason() if not iface_up else ""),
             severity="critical"))
 
-        # 41 L2 mesh ping
-        ping = self._cmd_output("rnping mesh-test").lower()
+        # 41 L2 — actively reach a KNOWN peer over the mesh. rnping needs a real
+        # destination hash; the old "mesh-test" placeholder never resolved, so
+        # this always false-failed. A real L2 fault only exists when the radio is
+        # UP and a known peer won't reply — a DOWN radio is already reported by L1
+        # (verified live: without this gate L2 double-reported a down interface),
+        # and "no peers" by peers_heard.
+        peer_hash = remote[0].get("hash") if remote else None
+        if iface_up and peer_hash:
+            reply = "reply" in self._cmd_output(f"rnping {peer_hash}").lower()
+        else:
+            reply = True
         issues.append(self._check(
-            "mesh_ping_l2", "reply" in ping,
-            "Level 2 test failed: no reply to a Reticulum mesh ping.",
+            "mesh_ping_l2", reply,
+            f"Level 2: no reply from known mesh peer {peer_hash}.",
             severity="critical"))
 
-        # 42 L3 announce heard by the tool
+        # 42 L3 — announces are actually flowing IN. A meshed node hears peers'
+        # announces (rnstatus incoming_announce_frequency), or at least has learnt
+        # paths. The old `rnprobe mesh-test` probed a placeholder that never
+        # existed. Only flag when the radio is UP but nothing is being heard
+        # (a down radio is already reported by L1 — don't double-report).
+        heard = (any(float(i.get("incoming_announce_frequency") or 0) > 0
+                     for i in interfaces) or len(paths) > 0)
         issues.append(self._check(
-            "announce_heard_l3", self._run_cmd("rnprobe mesh-test")[0] == 0,
-            "Level 3 test failed: the tool did not hear this node's announce.",
+            "announce_heard_l3", (not iface_up) or heard,
+            "Level 3: the radio is up but no announces are being heard from the "
+            "mesh.",
             severity="warning"))
 
-        # 43 Reticulum identity present
+        # 43 Reticulum identity present. A transport node stores it at
+        # storage/transport_identity, a client at storage/identity — check BOTH.
+        # Verified on the live Pi: only transport_identity exists, so keying on
+        # `identity` alone false-reported "no identity" on a node that has one.
+        has_identity = (
+            self._run_cmd("test -f ~/.reticulum/storage/identity")[0] == 0
+            or self._run_cmd(
+                "test -f ~/.reticulum/storage/transport_identity")[0] == 0)
         issues.append(self._check(
-            "reticulum_identity",
-            self._run_cmd("test -f ~/.reticulum/storage/identity")[0] == 0,
+            "reticulum_identity", has_identity,
             "The node has no Reticulum identity file.",
             severity="critical"))
 
         return [i for i in issues if i is not None]
+
+    def _rnsd_down_reason(self) -> str:
+        """Why an RNodeInterface is down, from the rnsd JOURNAL (systemd rnsd
+        logs there, not to a logfile). Verified live: a param mismatch reads
+        'Radio state mismatch ... Aborting RNode startup'."""
+        log = self._cmd_output("journalctl -u rnsd -n 200 --no-pager")
+        for marker in ("Aborting RNode startup", "Radio state mismatch",
+                       "hardware actually supports", "could not open port",
+                       "unrecoverable error"):
+            if marker in log:
+                return f"Cause (rnsd journal): \"{marker}\"."
+        return "Check 'journalctl -u rnsd' for the cause."
