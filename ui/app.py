@@ -32,9 +32,10 @@ from monitor.service import MonitorService
 
 
 def _local_run(command: str) -> str:
-    """Run a shell command on the medic itself (for LAN discovery)."""
+    """Run a shell command on the medic itself (LAN + mesh discovery). Login
+    shell so ~/.local/bin (rnpath, rnstatus, curl) is on PATH."""
     try:
-        return subprocess.run(["bash", "-c", command], capture_output=True,
+        return subprocess.run(["bash", "-lc", command], capture_output=True,
                               text=True, timeout=120).stdout
     except Exception:
         return ""

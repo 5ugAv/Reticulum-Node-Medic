@@ -68,6 +68,44 @@ def test_to_dashboard_signal_falls_back_to_beacon():
     reg.ingest(HASH, beacon(wifi_rssi_dbm=-70), NOW)
     assert reg.get(HASH).to_dashboard(NOW)["signal_dbm"] == -70
 
+
+# ---- mesh ingest (rnpath reachability) ----------------------------------
+
+
+def _mesh(dst, hops=1, iface="RNodeInterface[RNode LoRa Interface]"):
+    from monitor.mesh import MeshNode
+    return MeshNode(dst_hash=dst, hops=hops, interface=iface)
+
+
+def test_ingest_mesh_registers_and_marks_reachable():
+    reg = NodeRegistry()
+    rec = reg.ingest_mesh(_mesh(HASH, hops=2), NOW)
+    assert rec.dst_hash == HASH
+    assert rec.mesh_hops == 2
+    assert rec.last_seen == NOW
+    # reachable via mesh, health unknown -> ok (not "unknown")
+    assert rec.status(NOW) == "ok"
+
+
+def test_mesh_only_node_goes_alert_when_stale():
+    reg = NodeRegistry()
+    reg.ingest_mesh(_mesh(HASH), NOW)
+    assert reg.get(HASH).status(NOW + (STALE_ALERT_HOURS + 1) * HOUR) == "alert"
+
+
+def test_http_health_still_preferred_over_mesh_reachability():
+    reg = NodeRegistry()
+    reg.ingest_mesh(_mesh(HASH), NOW)
+    reg.record_http_status(HASH, http(status="warn"), NOW)   # richer signal wins
+    assert reg.get(HASH).status(NOW) == "warn"
+
+
+def test_ingest_mesh_keeps_known_node_name():
+    reg = NodeRegistry()
+    reg.register(HASH, name="EVERYWHERE", location="House")
+    reg.ingest_mesh(_mesh(HASH), NOW)
+    assert reg.get(HASH).name == "EVERYWHERE"    # birth-cert name preserved
+
 HASH = "eabdd142596bcae888242ec1b172d566"
 HASH2 = "aa11bb22cc33dd44ee55ff6600778899"
 
