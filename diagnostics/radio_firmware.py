@@ -228,6 +228,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
     def _fix_handlers(self):
         param_fix = self._apply_radio_params
         return {
+            "eeprom_valid": self._fix_eeprom,
             "firmware_hash_set": self._set_firmware_hash,
             "frequency": param_fix,
             "bandwidth": param_fix,
@@ -237,6 +238,33 @@ class RadioFirmwareCheck(DiagnosticCheck):
             "flow_control_atmega": self._fix_flow_control,
             "modemmanager_interference": self._fix_modemmanager,
         }
+
+    def _fix_eeprom(self, issue: Issue) -> Fix:
+        """Reprovision an invalid/unprovisioned EEPROM. A Heltec V4 gets the full
+        NeoPixel reflash (reprovision the EEPROM AND restore the RGB firmware in
+        one pass — the tool never leaves a V4 on stock firmware); any other RNode
+        is reprovisioned via autoinstall, keeping its stock firmware."""
+        port = self.profile.radio.serial_port
+        if self.profile.hardware is NodeHardware.HELTEC_V4:
+            from workflows.rnode_v4_rgb import HeltecV4RGBWorkflow
+            results = HeltecV4RGBWorkflow(self.connection, port=port).run_all()
+            ok = bool(results) and results[-1].success
+            detail = "; ".join(
+                f"{r.name}:{'ok' if r.success else 'FAIL'}" for r in results)
+            return Fix(
+                issue=issue, success=ok,
+                message=("Reprovisioned the EEPROM and restored the Heltec V4 "
+                         "NeoPixel firmware." if ok
+                         else f"V4 RGB reflash failed at "
+                              f"{results[-1].name}: {results[-1].message}"),
+                raw_output=detail)
+        code, out, err = self._run_cmd(
+            f"rnodeconf {port} --autoinstall", timeout=400)
+        ok = code == 0
+        return Fix(issue=issue, success=ok,
+                   message=("Reprovisioned the EEPROM via autoinstall." if ok
+                            else f"autoinstall failed: {(err or out)[-200:]}"),
+                   raw_output=out)
 
     def _fix_flow_control(self, issue: Issue) -> Fix:
         r = self.profile.radio
