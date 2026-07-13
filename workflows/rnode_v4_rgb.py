@@ -126,6 +126,17 @@ class HeltecV4RGBWorkflow:
     # -- build steps (one-time firmware compile) ---------------------------
 
     def _ensure_toolchain(self) -> StepResult:
+        # Install arduino-cli itself if missing (Linux install script -> the
+        # BINDIR we can reach; ~/.local/bin is already on the wrapped PATH).
+        if self.connection.run("command -v arduino-cli")[0] != 0:
+            code, out, err = self.connection.run(
+                "mkdir -p ~/.local/bin && curl -fsSL "
+                "https://raw.githubusercontent.com/arduino/arduino-cli/master/"
+                "install.sh | BINDIR=$HOME/.local/bin sh",
+                timeout=self.build_timeout)
+            if code != 0:
+                return StepResult("ensure_toolchain", False,
+                                  f"arduino-cli install failed: {(err or out)[-200:]}")
         # arduino-cli core/lib installs are idempotent (no-op when present).
         cmds = [
             f"arduino-cli core install {ESP32_CORE}",
