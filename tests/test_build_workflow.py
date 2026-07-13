@@ -27,10 +27,28 @@ def build_conn(cpuinfo=PI5_CPUINFO, rnode=False):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("/proc/cpuinfo", 0, cpuinfo, ""))
     if rnode:
-        c.rules.insert(0, ("--info", 0, "[Device] RNode\nFirmware version: 1.80", ""))
+        # real rnodeconf --info shape: no literal "RNode", but "Firmware version"
+        c.rules.insert(0, ("--info", 0,
+                           "Device info:\n\tProduct : Heltec LoRa32 v3 850 - 950 MHz\n"
+                           "\tFirmware version   : 1.86", ""))
     else:
         c.rules.insert(0, ("--info", 1, "", ""))
     return c
+
+
+def test_detect_has_rnode_from_real_info_format():
+    # a genuine RNode's --info never contains "RNode" (it says Product/Firmware);
+    # a blank board replies "RNode did not respond". has_rnode must not invert.
+    w = wf(build_conn(rnode=True))
+    w.steps[0][1](w)
+    assert w.profile.has_rnode is True
+
+    blank = build_conn()
+    blank.rules.insert(0, ("--info", 0,
+                           "Serial port opened, but RNode did not respond.", ""))
+    w2 = wf(blank)
+    w2.steps[0][1](w2)
+    assert w2.profile.has_rnode is False        # "RNode did not respond" != present
 
 
 def wf(conn=None, profile=None):

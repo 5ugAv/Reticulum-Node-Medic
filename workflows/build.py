@@ -117,7 +117,11 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
         wf.profile.connection_port = port
 
     info = wf.cmd_output(f"rnodeconf {wf.profile.radio.serial_port} --info")
-    wf.profile.has_rnode = "RNode" in info
+    # A real rnodeconf --info reports "Firmware version : .../Product : Heltec..."
+    # and NEVER the literal "RNode"; a BLANK board replies "RNode did not respond"
+    # — so `"RNode" in info` was inverted (blank->yes, real RNode->no, verified on
+    # a flashed Heltec V3). Key off "Firmware version", as radio_firmware does.
+    wf.profile.has_rnode = "Firmware version" in info
     return StepResult("detect_hardware", True,
                       f"Detected {wf.profile.hardware.value} on "
                       f"{wf.profile.radio.serial_port}; "
