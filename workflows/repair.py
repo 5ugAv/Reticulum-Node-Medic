@@ -13,6 +13,7 @@ from typing import Callable, List, Optional
 
 from node_profile import NodeProfile
 from transport.connection import Connection
+from workflows.build import detect_rnode_port
 from diagnostics.base import DiagnosticCheck, Fix, Issue
 from diagnostics.power_hardware import PowerHardwareCheck
 from diagnostics.reticulum_software import ReticulumSoftwareCheck
@@ -108,6 +109,13 @@ class RepairWorkflow:
 
     def run(self, on_progress: Optional[ProgressCallback] = None) -> RepairSession:
         emit = on_progress or (lambda e: None)
+        # Detect the real RNode serial port up front so EVERY module checks the
+        # same actual port. The profile default is often wrong (ttyUSB0 vs a real
+        # Heltec V4 on ttyACM0), which false-flagged serial_port_exists and made
+        # the radio checks probe the wrong device. Modules share this profile.
+        detected = detect_rnode_port(self.connection)
+        if detected:
+            self.profile.radio.serial_port = detected
         session = RepairSession()
 
         for module in self.modules:
