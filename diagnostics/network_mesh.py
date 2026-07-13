@@ -25,6 +25,12 @@ class NetworkMeshCheck(DiagnosticCheck):
         interfaces = self._rnstatus_json().get("interfaces", [])
         iface = next((i for i in interfaces
                       if i.get("type") == "RNodeInterface"), None)
+        # Is the radio interface up? When it's DOWN, the mesh checks below are all
+        # downstream cascade symptoms (no peers, no announces, empty path table),
+        # so gate them on this. The DOWN radio itself is reported ONCE by
+        # reticulum_software.radio_interface_up (which owns it, with the rnsd
+        # journal cause) — this module no longer double-reports it.
+        iface_up = bool(iface and iface.get("status"))
         issues = []
 
         # 36 peers heard — a destination learned over a real (non-local)
@@ -32,7 +38,7 @@ class NetworkMeshCheck(DiagnosticCheck):
         remote = [p for p in paths
                   if not str(p.get("interface", "")).startswith("LocalInterface")]
         issues.append(self._check(
-            "peers_heard", len(remote) > 0,
+            "peers_heard", (not iface_up) or len(remote) > 0,
             "No other mesh nodes have been heard from.",
             severity="warning"))
 
@@ -47,18 +53,18 @@ class NetworkMeshCheck(DiagnosticCheck):
         announcing = any(
             float(i.get("outgoing_announce_frequency") or 0) > 0
             for i in interfaces)
-        if not announcing:
+        if iface_up and not announcing:
             log = self._cmd_output(
                 "journalctl -u rnsd -n 500 --no-pager").lower()
             announcing = "announce" in log
         issues.append(self._check(
-            "announces_sending", announcing,
+            "announces_sending", (not iface_up) or announcing,
             "This node is not sending announces onto the mesh.",
             severity="warning"))
 
         # 38 path table populated — any known destinations at all.
         issues.append(self._check(
-            "path_table_populated", len(paths) > 0,
+            "path_table_populated", (not iface_up) or len(paths) > 0,
             "The path table is empty — no destinations are known.",
             severity="warning"))
 
@@ -72,19 +78,6 @@ class NetworkMeshCheck(DiagnosticCheck):
             "channel_congestion", load < 70.0,
             f"The LoRa channel is congested ({load:.0f}% airtime).",
             severity="warning"))
-
-        # 40 L1 — the RNode radio interface is actually UP. rnsd reports each
-        # interface's live status as a bool in rnstatus --json; a down radio
-        # (param/config mismatch, lost port, unsupported params) is the single
-        # most important fault and was previously UNCHECKED. The old
-        # `rnodeconf --loop` isn't a real flag and can't run while rnsd holds the
-        # port. When down, surface the cause from the rnsd journal.
-        iface_up = bool(iface and iface.get("status"))
-        issues.append(self._check(
-            "loopback_l1", iface_up,
-            "Level 1: the RNode radio interface is DOWN. "
-            + (self._rnsd_down_reason() if not iface_up else ""),
-            severity="critical"))
 
         # 41 L2 — actively reach a KNOWN peer over the mesh. rnping needs a real
         # destination hash; the old "mesh-test" placeholder never resolved, so
@@ -129,15 +122,3 @@ class NetworkMeshCheck(DiagnosticCheck):
             severity="critical"))
 
         return [i for i in issues if i is not None]
-
-    def _rnsd_down_reason(self) -> str:
-        """Why an RNodeInterface is down, from the rnsd JOURNAL (systemd rnsd
-        logs there, not to a logfile). Verified live: a param mismatch reads
-        'Radio state mismatch ... Aborting RNode startup'."""
-        log = self._cmd_output("journalctl -u rnsd -n 200 --no-pager")
-        for marker in ("Aborting RNode startup", "Radio state mismatch",
-                       "hardware actually supports", "could not open port",
-                       "unrecoverable error"):
-            if marker in log:
-                return f"Cause (rnsd journal): \"{marker}\"."
-        return "Check 'journalctl -u rnsd' for the cause."

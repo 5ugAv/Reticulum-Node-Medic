@@ -82,7 +82,8 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
         radio_up = iface is not None and iface.get("status") is True
         issues.append(self._check(
             "radio_interface_up", radio_up,
-            "The radio (RNode) interface is not up in Reticulum.",
+            "The radio (RNode) interface is not up in Reticulum. "
+            + (self._rnsd_down_reason() if not radio_up else ""),
             severity="critical"))
         # 8
         port_exists = self._run_cmd(f"test -c {port}")[0] == 0
