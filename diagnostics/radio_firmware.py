@@ -25,12 +25,33 @@ def _ver_tuple(v: str):
 class RadioFirmwareCheck(DiagnosticCheck):
     category_name = "Radio & firmware"
 
+    @staticmethod
+    def _device_read(info: str) -> bool:
+        """True only if rnodeconf actually reached a device. Verified live:
+        rnodeconf exits 0 even on 'Could not open port', so exit status and
+        `bool(info)` both lie — 'Device connected' / a firmware line is the real
+        signal."""
+        return "Device connected" in info or "firmware version" in info.lower()
+
     def _rnode_info(self) -> str:
-        # NOTE: rnodeconf can only open the RNode serial when rnsd is NOT holding
-        # it (build/maintenance). On a live transport node the radio state comes
-        # from rnstatus --json instead.
+        # The profile's default serial port is often wrong (ttyUSB0 vs a real
+        # Heltec V4 on ttyACM0), so if it doesn't reach a device, auto-detect:
+        # probe each ttyACM*/ttyUSB* until one responds and remember it. (When
+        # rnsd is holding the port, none respond — the caller's live-mode gate
+        # handles that.)
         port = self.profile.radio.serial_port
-        return self._cmd_output(f"rnodeconf {port} --info")
+        info = self._cmd_output(f"rnodeconf {port} --info")
+        if self._device_read(info):
+            return info
+        listing = self._cmd_output("ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null")
+        for p in listing.split():
+            if p == port:
+                continue
+            alt = self._cmd_output(f"rnodeconf {p} --info")
+            if self._device_read(alt):
+                self.profile.radio.serial_port = p     # remember the real port
+                return alt
+        return info
 
     @staticmethod
     def _info_str(info: str, pattern: str):
@@ -42,10 +63,27 @@ class RadioFirmwareCheck(DiagnosticCheck):
 
     def run(self) -> List[Issue]:
         r = self.profile.radio
+        info = self._rnode_info()          # may auto-correct r.serial_port
         port = r.serial_port
-        info = self._rnode_info()
-        has_info = bool(info)
+        has_info = self._device_read(info)  # NOT bool(info): error text lies
         issues = []
+
+        # Live/service mode gate: if rnsd is running the RNode, it HOLDS the
+        # serial port, so the maintenance-mode rnodeconf probes below cannot read
+        # the device — they'd false-report "no firmware / not responsive" on a
+        # perfectly healthy live node (verified on nodemedic's live rnsd). Report
+        # one info instead; live radio health is covered by the Network & mesh
+        # checks. A genuinely dead board in MAINTENANCE mode (rnsd stopped) still
+        # surfaces normally below.
+        if (not has_info and self._service_is_active("rnsd")
+                and self._rnode_interface() is not None):
+            return [self._check(
+                "radio_in_service", False,
+                "The radio is in live use by a running rnsd, which holds the "
+                "serial port — firmware/parameter checks need maintenance mode "
+                "(stop rnsd first). Live radio health is covered by the Network "
+                "& mesh checks.",
+                severity="info")]
 
         # 12
         issues.append(self._check(

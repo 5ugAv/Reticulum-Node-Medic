@@ -61,6 +61,30 @@ def test_serial_not_responsive():
     assert "serial_responsive" in names(issues)
 
 
+def test_live_mode_defers_instead_of_false_criticals():
+    # rnsd is running the RNode (holds the port) -> rnodeconf can't read it.
+    # Must NOT false-report "no firmware"; reports one info and defers to
+    # Network & mesh. Verified against nodemedic's live rnsd.
+    conn = conn_with(info_code=1, info="")
+    conn.rules.insert(0, ("^systemctl is-active rnsd", 0, "active", ""))
+    conn.rules.insert(0, ("rnstatus --json", 0,
+        '{"interfaces":[{"type":"RNodeInterface","name":"RNode","status":false}]}',
+        ""))
+    n = names(run(conn))
+    assert n == {"radio_in_service"}
+    assert "firmware_present" not in n
+    assert "serial_responsive" not in n
+
+
+def test_maintenance_mode_dead_board_still_flags():
+    # rnsd NOT running -> a truly unresponsive board still reports the real fault
+    conn = conn_with(info_code=1, info="")
+    conn.rules.insert(0, ("^systemctl is-active rnsd", 3, "inactive", ""))
+    n = names(run(conn))
+    assert "serial_responsive" in n
+    assert "radio_in_service" not in n
+
+
 def test_firmware_not_present():
     info = "[Device] RNode\nno version line here"
     assert "firmware_present" in names(run(conn_with(info=info)))
