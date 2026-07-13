@@ -98,3 +98,7 @@ class MonitorService:
         """The dashboard as plain dicts the Monitor Kivy screen consumes."""
         now = self._now()
         return [rec.to_dashboard(now) for rec in self.registry.all(now)]
+
+    def located_nodes(self) -> List[dict]:
+        """Located-node dicts ({lat, lon, name, status}) for the Map screen."""
+        return self.registry.located_nodes(self._now())
