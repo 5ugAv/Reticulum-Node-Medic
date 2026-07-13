@@ -106,12 +106,15 @@ def test_channel_not_congested_on_normal_percent_load():
     assert "channel_congestion" not in names(run(conn))
 
 
-def test_l1_interface_down_flagged():
-    # L1 is now a real signal: rnsd reports the RNode interface status=False when
-    # the radio won't come up (param mismatch, lost port, unsupported params).
+def test_network_mesh_defers_when_radio_down():
+    # radio down -> reticulum_software.radio_interface_up owns the report; this
+    # module must NOT report loopback_l1 nor cascade (peers/announces/path/pings).
     conn = ins(healthy_conn(),
                ("rnstatus --json", 0, rnstatus_json(status=False), ""))
-    assert "loopback_l1" in names(run(conn))
+    n = names(run(conn))
+    assert "loopback_l1" not in n
+    assert not (n & {"peers_heard", "announces_sending", "path_table_populated",
+                     "mesh_ping_l2", "announce_heard_l3"})
 
 
 def test_l2_mesh_ping_fails():
@@ -139,26 +142,13 @@ def test_identity_missing():
     )
 
 
-def test_three_level_checks_fire_on_their_real_conditions():
-    # each level is a real signal now, firing under its own condition
-    assert "loopback_l1" in names(run(               # L1: radio interface down
-        ins(healthy_conn(),
-            ("rnstatus --json", 0, rnstatus_json(status=False), ""))))
-    assert "mesh_ping_l2" in names(run(              # L2: known peer, no reply
+def test_l2_l3_checks_fire_on_their_real_conditions():
+    # radio-up mesh signals: L2 = known peer no reply; L3 = up but nothing heard.
+    # (Radio-up itself is owned by reticulum_software.radio_interface_up now.)
+    assert "mesh_ping_l2" in names(run(
         ins(healthy_conn(), ("rnping", 1, "No reply", ""))))
-    assert "announce_heard_l3" in names(run(         # L3: up but nothing heard
+    assert "announce_heard_l3" in names(run(
         ins(healthy_conn(), ("rnpath -t --json", 0, "[]", ""))))
-
-
-def test_interface_down_surfaces_journal_reason():
-    # a down interface pulls its cause from the rnsd journal (not a logfile)
-    conn = healthy_conn()
-    conn.rules.insert(0, ("journalctl -u rnsd", 0,
-                          "[Error] Radio state mismatch\n"
-                          "[Error] Aborting RNode startup", ""))
-    conn.rules.insert(0, ("rnstatus --json", 0, rnstatus_json(status=False), ""))
-    issue = next(i for i in run(conn) if i.check_name == "loopback_l1")
-    assert "Aborting RNode startup" in issue.description
 
 
 def test_announces_fallback_reads_journal_not_logfile():
@@ -177,14 +167,12 @@ def test_identity_accepted_at_transport_path():
     assert "reticulum_identity" not in names(run(conn))
 
 
-def test_l2_not_double_reported_when_radio_down():
-    # radio down -> L1 owns it; L2 must not also fire (can't ping without a radio)
+def test_l2_not_reported_when_radio_down():
+    # radio down -> L2 must not fire (can't ping without a radio; gated)
     conn = healthy_conn()
     conn.rules.insert(0, ("rnping", 1, "No reply", ""))
     conn.rules.insert(0, ("rnstatus --json", 0, rnstatus_json(status=False), ""))
-    n = names(run(conn))
-    assert "loopback_l1" in n
-    assert "mesh_ping_l2" not in n
+    assert "mesh_ping_l2" not in names(run(conn))
 
 
 def test_mesh_ping_uses_real_peer_hash_not_placeholder():

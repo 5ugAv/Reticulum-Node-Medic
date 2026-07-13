@@ -74,6 +74,18 @@ def names(issues):
     return {i.check_name for i in issues}
 
 
+def test_radio_interface_down_surfaces_journal_reason():
+    # reticulum_software.radio_interface_up now owns the radio-down report (L1
+    # de-dup) and includes the cause from the rnsd journal.
+    conn = broken(
+        ("rnstatus --json", 0,
+         '{"interfaces":[{"type":"RNodeInterface","name":"RNode","status":false}]}'),
+        ("journalctl -u rnsd", 0,
+         "[Error] Radio state mismatch\n[Error] Aborting RNode startup"))
+    issue = next(i for i in run(conn) if i.check_name == "radio_interface_up")
+    assert "Aborting RNode startup" in issue.description
+
+
 def test_transport_role_skips_lxmd_checks():
     # an RTNode is a transport node with no LXMF layer -> lxmd checks must not
     # fire even when lxmd is absent.

@@ -189,3 +189,15 @@ class DiagnosticCheck(ABC):
             if iface.get("type") == "RNodeInterface":
                 return iface
         return None
+
+    def _rnsd_down_reason(self) -> str:
+        """Why an RNode interface is down, read from the rnsd JOURNAL (systemd
+        rnsd logs there, not to a logfile). Verified live: a param mismatch reads
+        'Radio state mismatch ... Aborting RNode startup'."""
+        log = self._cmd_output("journalctl -u rnsd -n 200 --no-pager")
+        for marker in ("Aborting RNode startup", "Radio state mismatch",
+                       "hardware actually supports", "could not open port",
+                       "unrecoverable error"):
+            if marker in log:
+                return f'Cause (rnsd journal): "{marker}".'
+        return "Check 'journalctl -u rnsd' for the cause."
