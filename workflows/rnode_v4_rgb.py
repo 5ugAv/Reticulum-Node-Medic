@@ -66,6 +66,15 @@ LOCAL_PATCH = os.path.join(
     "apply_neopixel_patch.py")
 REMOTE_PATCH = "/tmp/apply_neopixel_patch.py"
 
+#: The boot-error LED patcher: recolour the stuck-white fault indicator to dim
+#: red so a boot-errored board draws little current and can still be reflashed.
+LOCAL_BOOT_ERR = os.path.join(
+    os.path.dirname(__file__), os.pardir, "assets", "scripts",
+    "apply_boot_error_color.py")
+REMOTE_BOOT_ERR = "/tmp/apply_boot_error_color.py"
+#: Red channel (pre-NP_M) for the boot-error LED — dim but visible, low current.
+BOOT_ERROR_RED = 0x40
+
 #: The Heltec V4 official autoinstall board (drives the EEPROM provisioning).
 V4_BOARD_KEY = "heltec32_v4"
 
@@ -117,6 +126,7 @@ class HeltecV4RGBWorkflow:
                  band_mhz: int = 915, version: str = FIRMWARE_VERSION,
                  firmware_dir: str = FIRMWARE_DIR,
                  neopixel_pin: int = NEOPIXEL_PIN, board_model: int = BOARD_MODEL,
+                 boot_error_red: int = BOOT_ERROR_RED,
                  build_timeout: int = 600, flash_timeout: int = 400):
         self.connection = connection
         self.port = port
@@ -125,6 +135,7 @@ class HeltecV4RGBWorkflow:
         self.firmware_dir = firmware_dir
         self.neopixel_pin = neopixel_pin
         self.board_model = board_model
+        self.boot_error_red = boot_error_red
         self.build_timeout = build_timeout
         self.flash_timeout = flash_timeout
         self.results: List[StepResult] = []
@@ -168,21 +179,32 @@ class HeltecV4RGBWorkflow:
             if code != 0:
                 return StepResult("ensure_source", False,
                                   f"Clone failed: {(err or out)[-200:]}")
-        if not self.connection.push_file(LOCAL_PATCH, REMOTE_PATCH):
-            return StepResult("ensure_source", False,
-                              "Could not carry the NeoPixel patcher to the node.")
-        # Reset Boards.h to pristine first so the block-scoped patch always
-        # applies against a known anchor (guards against a prior bad patch).
-        self.connection.run(
-            f"git -C {self.firmware_dir} checkout -- Boards.h")
-        code, out, err = self.connection.run(
-            f"python3 {REMOTE_PATCH} {self.firmware_dir}/Boards.h "
-            f"--pin {self.neopixel_pin}")
-        if code != 0:
-            return StepResult("ensure_source", False,
-                              f"Boards.h patch failed: {(err or out)[-200:]}")
-        return StepResult("ensure_source", True,
-                          f"Firmware cloned + NeoPixel patch applied ({out.strip()}).")
+        # Apply the two firmware patches. Each file is reset to pristine first so
+        # the scoped patch always applies against a known anchor (guards against
+        # a prior bad patch): Boards.h enables the NeoPixel on the V4 block, and
+        # Utilities.h recolours the boot-error LED from stuck-white to dim red.
+        patches = (
+            ("Boards.h", LOCAL_PATCH, REMOTE_PATCH,
+             f"--pin {self.neopixel_pin}"),
+            ("Utilities.h", LOCAL_BOOT_ERR, REMOTE_BOOT_ERR,
+             f"--red 0x{self.boot_error_red:02X}"),
+        )
+        for fname, local, remote, extra in patches:
+            if not self.connection.push_file(local, remote):
+                return StepResult(
+                    "ensure_source", False,
+                    f"Could not carry {os.path.basename(local)} to the node.")
+            self.connection.run(
+                f"git -C {self.firmware_dir} checkout -- {fname}")
+            code, out, err = self.connection.run(
+                f"python3 {remote} {self.firmware_dir}/{fname} {extra}")
+            if code != 0:
+                return StepResult("ensure_source", False,
+                                  f"{fname} patch failed: {(err or out)[-200:]}")
+        return StepResult(
+            "ensure_source", True,
+            "Firmware cloned + NeoPixel (GPIO47) + dim-red boot-error patches "
+            "applied.")
 
     def _build_firmware(self) -> StepResult:
         code, out, err = self.connection.run(
