@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import List
 
 from diagnostics.base import DiagnosticCheck, Fix, Issue
+from node_profile import NodeRole
 
 #: Default Reticulum TCP interface listen port.
 TCP_PORT = 4242
@@ -22,6 +23,9 @@ class ClientConnectivityCheck(DiagnosticCheck):
 
     def run(self) -> List[Issue]:
         p = self.profile
+        # LXMF checks only apply to a PROPAGATION node (Pi + RNode running lxmd);
+        # a TRANSPORT node (RTNode) has no LXMF layer — gate them on role.
+        is_prop = p.role == NodeRole.PROPAGATION
         issues = []
 
         # 44 TCP interface listening (always)
@@ -32,10 +36,10 @@ class ClientConnectivityCheck(DiagnosticCheck):
             "connections.",
             severity="warning"))
 
-        # 45 LXMF delivery running (always)
+        # 45 LXMF delivery running (propagation nodes only)
         issues.append(self._check(
             "lxmf_delivery_running",
-            self._run_cmd("pgrep -f lxmd")[0] == 0,
+            (not is_prop) or self._run_cmd("pgrep -f lxmd")[0] == 0,
             "LXMF message delivery is not running.",
             severity="warning"))
 
@@ -75,29 +79,30 @@ class ClientConnectivityCheck(DiagnosticCheck):
         # --- extended checks (54-56, 81) ---------------------------------
         journal = self._cmd_output("journalctl -u lxmd -n 200").lower()
 
-        # 54 lxmd message store full
+        # 54 lxmd message store full (propagation nodes only)
         issues.append(self._check(
-            "lxmd_store_full", "store full" not in journal,
+            "lxmd_store_full", (not is_prop) or "store full" not in journal,
             "The LXMF message store is full — new messages are being dropped.",
             severity="warning"))
 
-        # 55 lxmd statistics timeout
+        # 55 lxmd statistics timeout (propagation nodes only)
         issues.append(self._check(
-            "lxmd_statistics_timeout", "statistics timeout" not in journal,
+            "lxmd_statistics_timeout",
+            (not is_prop) or "statistics timeout" not in journal,
             "lxmd statistics requests are timing out — the propagation node "
             "may be overloaded.",
             severity="warning"))
 
-        # 56 lxmd peer limit
+        # 56 lxmd peer limit (propagation nodes only)
         issues.append(self._check(
-            "lxmd_peer_limit", "peer limit" not in journal,
+            "lxmd_peer_limit", (not is_prop) or "peer limit" not in journal,
             "lxmd has hit its peer limit — some peers are being refused.",
             severity="warning"))
 
-        # 81 lxmd unit missing After=/Wants=rnsd.service
+        # 81 lxmd unit missing After=/Wants=rnsd.service (propagation nodes only)
         unit = self._cmd_output("systemctl cat lxmd")
         issues.append(self._check(
-            "lxmd_after_rnsd", "rnsd.service" in unit,
+            "lxmd_after_rnsd", (not is_prop) or "rnsd.service" in unit,
             "The lxmd service does not depend on rnsd, so it can start before "
             "the mesh is up.",
             severity="warning", auto_fixable=True,
