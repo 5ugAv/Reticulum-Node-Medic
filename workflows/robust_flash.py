@@ -175,17 +175,19 @@ class RobustFlasher:
 
     # -- app strategies ----------------------------------------------------
 
-    def _flash_fixed(self, fixed: List[Region], baud: int) -> bool:
+    def _flash_fixed(self, fixed: List[Region], baud: int) -> Optional[int]:
         """Write the small fixed regions (bootloader/partitions/boot_app0), each
-        with a few power-cycle retries. These rarely drop (they're tiny)."""
+        with a few power-cycle retries. Returns the offset of the first region
+        that could NOT be written+verified (a board that can't even take these
+        tiny writes is strongly hardware-damaged), or None if all succeeded."""
         for r in fixed:
             for _ in range(3):
                 if self._write_verified(r.offset, r.path, baud):
                     break
                 self.power_cycle()
             else:
-                return False
-        return True
+                return r.offset
+        return None
 
     def _app_size(self, path: str) -> int:
         out = self.c.run(f"stat -c %s {path}")[1].strip()
@@ -228,13 +230,17 @@ class RobustFlasher:
         ladder = ladder or DEFAULT_LADDER
         self.power_cycle()                       # clean cold start
         last_offset = app.offset
+        reached_app = False
         for tier in ladder:
             emit(FlashProgress("tier_start", tier=tier.name))
-            if not self._flash_fixed(fixed, tier.baud):
+            failed_fixed = self._flash_fixed(fixed, tier.baud)
+            if failed_fixed is not None:
+                last_offset = failed_fixed
                 emit(FlashProgress("tier_fail", tier=tier.name,
-                                   detail="fixed regions"))
+                                   detail=f"fixed region @0x{failed_fixed:x}"))
                 self.power_cycle()
                 continue
+            reached_app = True
             if tier.chunk_bytes is None:
                 ok = self._flash_whole(app, tier.baud)
                 failed = None if ok else app.offset
@@ -249,23 +255,28 @@ class RobustFlasher:
             emit(FlashProgress("tier_fail", tier=tier.name,
                                detail=f"@0x{last_offset:x}"))
             self.power_cycle()
-        diagnosis = self._classify()
+        diagnosis = self._classify(reached_app)
         emit(FlashProgress("done", detail="all tiers failed"))
         return RobustFlashResult(False, None, last_offset, diagnosis)
 
     # -- failure classification -------------------------------------------
 
-    def _classify(self) -> str:
+    def _classify(self, reached_app: bool = True) -> str:
         """After the ladder is exhausted, explain the hardware limit from the
         kernel's own signal (over-current) so the operator gets one concrete
-        action instead of a guess."""
+        action instead of a guess. Failing on the tiny fixed regions — never even
+        reaching the app — is a far stronger damage signal than dropping deep in
+        the app write, so say so."""
         oc = self.c.run("dmesg 2>/dev/null | grep -c over-current")[1].strip()
+        severe = "" if reached_app else (
+            "The board browned out on even the tiny bootloader write — a strong "
+            "sign of hardware damage, not just a marginal link. ")
         if oc.isdigit() and int(oc) > 0:
-            return ("Repeated USB over-current during flash — the board browns "
-                    "out mid-write faster than the ladder can recover. If its "
-                    "status LED is stuck white, disconnect the LED's positive "
+            return (severe + "Repeated USB over-current during flash — the board "
+                    "browns out mid-write faster than the ladder can recover. If "
+                    "its status LED is stuck white, disconnect the LED's positive "
                     "wire; otherwise use a powered USB hub. The board may be "
                     "hardware-damaged.")
-        return ("Flash writes kept failing with no over-current — likely an "
-                "intermittent USB data link. Try a known-good short USB-C data "
+        return (severe + "Flash writes kept failing with no over-current — likely "
+                "an intermittent USB data link. Try a known-good short USB-C data "
                 "cable or a different port.")
