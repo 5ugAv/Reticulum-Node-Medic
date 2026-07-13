@@ -52,11 +52,27 @@ class RadioFirmwareCheck(DiagnosticCheck):
             "serial_responsive", has_info,
             "The RNode board is not responding over serial.",
             severity="critical"))
-        # 13 firmware present
+        # 13 firmware present. Case-insensitive: a board with a corrupt EEPROM
+        # still reports "Current firmware version: 1.86" (lowercase f) even though
+        # the "Firmware version : ..." device-info line is hidden. Keying off the
+        # capitalised line alone false-reported "no firmware" on a real board
+        # whose firmware WAS present (its EEPROM was the actual fault).
         issues.append(self._check(
-            "firmware_present", "Firmware version" in info,
+            "firmware_present", "firmware version" in info.lower(),
             "No RNode firmware was detected on the board.",
             severity="critical"))
+        # 13b EEPROM valid / provisioned. A flashed-but-unprovisioned board (or a
+        # corrupt EEPROM) reports "EEPROM is invalid": it has firmware but no
+        # identity/radio config and won't work as an RNode. Verified on a real
+        # faulty board — the specific, actionable diagnosis vs a param cascade.
+        issues.append(self._check(
+            "eeprom_valid", "EEPROM is invalid" not in info,
+            "The RNode's EEPROM is invalid or unprovisioned — it has firmware "
+            "but no identity or radio configuration, so it can't work as an "
+            "RNode. Re-provision it (rnodeconf --autoinstall, or -r to bootstrap "
+            "the EEPROM without reflashing).",
+            severity="critical", auto_fixable=True,
+            fix_description="Re-provision the RNode's EEPROM."))
         # 14 device signature verified. Real --info shows "Device signature :
         # Verified/Unverified" — there is NO "Firmware hash" line. When info is
         # present but the field is missing (format drift), we pass rather than
