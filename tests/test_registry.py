@@ -48,6 +48,26 @@ def test_http_node_goes_stale_to_alert():
     reg.record_http_status(HASH, http(), NOW)
     assert reg.get(HASH).status(NOW + (STALE_ALERT_HOURS + 1) * HOUR) == "alert"
 
+
+def test_to_dashboard_dict_shape_for_screen():
+    reg = NodeRegistry()
+    reg.register(HASH, name="MEDIC-TEST", location="Bench", node_type="rtnode2400")
+    reg.record_http_status(HASH, http(name="MEDIC-TEST"), NOW)
+    reg.get(HASH).latest_http.wifi_rssi_dbm = -64
+    d = reg.get(HASH).to_dashboard(NOW)
+    assert d["name"] == "MEDIC-TEST"
+    assert d["location"] == "Bench"
+    assert d["status"] == "ok"
+    assert d["type"] == "rtnode2400"
+    assert d["signal_dbm"] == -64
+    assert d["last_seen_hours"] == 0.0
+
+
+def test_to_dashboard_signal_falls_back_to_beacon():
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(wifi_rssi_dbm=-70), NOW)
+    assert reg.get(HASH).to_dashboard(NOW)["signal_dbm"] == -70
+
 HASH = "eabdd142596bcae888242ec1b172d566"
 HASH2 = "aa11bb22cc33dd44ee55ff6600778899"
 

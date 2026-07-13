@@ -90,6 +90,30 @@ class NodeRecord:
             return None
         return (now - self.last_seen) / 3600.0
 
+    def signal_dbm(self) -> Optional[int]:
+        """Best available WiFi signal — HTTP /status first, then the beacon."""
+        if self.latest_http is not None and self.latest_http.wifi_rssi_dbm is not None:
+            return self.latest_http.wifi_rssi_dbm
+        if self.latest_beacon is not None:
+            return self.latest_beacon.wifi_rssi_dbm
+        return None
+
+    def to_dashboard(self, now: float) -> dict:
+        """The node dict the Monitor screen (ui.screens.monitor_screen) renders.
+        Pure + testable; the Kivy view just reads these keys."""
+        lsh = self.last_seen_hours(now)
+        sig = self.signal_dbm()
+        return {
+            "name": self.name or "(unnamed)",
+            "location": self.location,
+            "status": self.status(now),
+            "type": self.node_type,
+            "signal_dbm": sig if sig is not None else -100,
+            "last_seen_hours": lsh if lsh is not None else 0.0,
+            "battery_pct": 100,          # RTNodes have no battery; screen hides it
+            "powered_by": "battery",
+        }
+
     def status(self, now: float) -> str:
         if self.last_seen is None:
             return "unknown"

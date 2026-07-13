@@ -110,6 +110,12 @@ class MonitorScreen(BoxLayout):
             result.append(node)
         return result
 
+    def set_nodes(self, nodes):
+        """Replace the node list (e.g. from a live MonitorService poll) and
+        re-render, preserving the active filter/search."""
+        self.nodes = nodes or []
+        self.refresh()
+
     def set_filter(self, name):
         self.active_filter = name
         self.refresh()
