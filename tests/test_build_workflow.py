@@ -214,7 +214,16 @@ def _install_conn(rns=False, lxmf=False, wheels=True, internet=True):
     return c
 
 
-def test_install_uses_remote_wheels_when_missing_and_carried():
+def test_install_uses_remote_wheels_when_missing_and_carried(monkeypatch, tmp_path):
+    # assets/packages/*.whl is gitignored, so it is ABSENT in a fresh CI checkout
+    # (present only on a dev machine that has seeded the cache). _push_dir globs
+    # the real filesystem, so relying on those files made this test pass locally
+    # yet fail in CI. Point PACKAGE_DIR at a temp dir holding a stand-in wheel so
+    # the carried-wheel push is asserted hermetically, independent of the host.
+    pkg = tmp_path / "packages"
+    pkg.mkdir()
+    (pkg / "rns-1.0.0-py3-none-any.whl").write_bytes(b"stand-in wheel")
+    monkeypatch.setattr("workflows.build.PACKAGE_DIR", str(pkg))
     conn = _install_conn(rns=False, lxmf=False, wheels=True)
     from workflows.build import install_software_stack
     install_software_stack(wf(conn))
