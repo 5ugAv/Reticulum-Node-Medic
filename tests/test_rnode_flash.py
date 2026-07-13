@@ -56,12 +56,19 @@ def flash_conn(ports="/dev/ttyACM0", online=False, flash_ok=True,
 
 
 def test_workflow_happy_path_offline_flash():
-    wf = RNodeFlashWorkflow(flash_conn(), V4, port="/dev/ttyACM0")
+    conn = flash_conn()
+    wf = RNodeFlashWorkflow(conn, V4, port="/dev/ttyACM0")
     results = wf.run_all()
     assert [r.name for r in results] == [
         "detect_port", "ensure_single_board", "ensure_firmware", "flash",
-        "verify"]
+        "set_params", "verify"]
     assert all(r.success for r in results)
+    # the canonical params are baked in at birth, then the board is left
+    # host-controlled so a Pi's rnsd never aborts on a stale 250/SF11 default
+    h = conn.history
+    assert any("--tnc" in c and "--freq 915125000" in c and "--sf 9" in c
+               for c in h)
+    assert any(c.rstrip().endswith("-N") for c in h)
 
 
 def test_workflow_refuses_multiple_boards():

@@ -136,11 +136,12 @@ def flash_conn(info=GOOD_INFO, provisioned=True, has_bin=True):
     return c
 
 
-def test_flash_runs_provision_then_esptool_then_hash_then_verify():
+def test_flash_runs_provision_then_esptool_then_hash_then_params_then_verify():
     conn = flash_conn()
     results = wf(conn).flash()
     assert [r.name for r in results] == [
-        "detect_port", "provision", "flash_custom", "set_hash", "verify"]
+        "detect_port", "provision", "flash_custom", "set_hash", "set_params",
+        "verify"]
     assert all(r.success for r in results)
     h = conn.history
     # provision uses the proven non-interactive autoinstall (V4 = index 9)
@@ -148,6 +149,23 @@ def test_flash_runs_provision_then_esptool_then_hash_then_verify():
     # then the custom firmware is overlaid and the hash restamped
     assert any("esptool" in c and "0x10000" in c for c in h)
     assert any("--firmware-hash" in c for c in h)
+
+
+def test_flash_bakes_canonical_params_at_birth_then_host_mode():
+    # The real fix for "Radio state mismatch": stale 250/SF11 default config is
+    # overwritten with the canonical params, then the board is returned to
+    # host-controlled mode so rnsd drives it. rnodeconf needs --tnc WITH the
+    # flags; the flags alone are a silent no-op.
+    conn = flash_conn()
+    wf(conn).flash()
+    h = conn.history
+    tnc = next(c for c in h if "--tnc" in c and "--freq" in c)
+    assert "--freq 915125000" in tnc
+    assert "--bw 125000" in tnc
+    assert "--sf 9" in tnc and "--cr 5" in tnc and "--txp 17" in tnc
+    # and afterwards it is left host-controlled (-N), issued after the params
+    assert any(c.rstrip().endswith("-N") for c in h)
+    assert h.index(tnc) < next(i for i, c in enumerate(h) if c.rstrip().endswith("-N"))
 
 
 def test_flash_refuses_when_firmware_not_built():

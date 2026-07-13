@@ -16,7 +16,12 @@ NON-interactively:
   an official RNode target, so autoinstall writes the correct identity + radio
   config), then esptool overwrites the app partition with the NeoPixel firmware,
   then rnodeconf --firmware-hash restamps the stored hash so the device
-  signature validates against the new firmware. Finally verify --info.
+  signature validates against the new firmware, then the canonical radio params
+  are baked in AT BIRTH (workflows.radio_params) so the board leaves provisioning
+  host-controlled and on the deployment config — without this it keeps
+  autoinstall's stale 250/SF11 default and rnsd aborts with "Radio state
+  mismatch" (a fault once mis-blamed on this firmware; the RGB build itself runs
+  clean under rnsd, verified on the medic's own RNode). Finally verify --info.
 
 The exact same ``flash`` sequence is the Repair action for a Heltec V4 whose
 EEPROM is invalid / stuck in the solid-white boot-error state: it reprovisions
@@ -34,6 +39,7 @@ from workflows.build import StepResult, detect_rnode_port
 from workflows.rnode_flash import (
     FIRMWARE_VERSION, SUCCESS_MARKER, ALREADY_PROVISIONED_MARKER, flash_command)
 from workflows.rnode_boards import get_board
+from workflows.radio_params import set_params_at_birth
 
 # -- build recipe (setup_rnode_tools.sh) -----------------------------------
 FIRMWARE_REPO = "https://github.com/markqvist/RNode_Firmware.git"
@@ -271,6 +277,15 @@ class HeltecV4RGBWorkflow:
             "Firmware hash stamped into the EEPROM." if ok
             else f"Could not set firmware hash (exit {code}): {(err or out)[-200:]}")
 
+    def _set_params(self) -> StepResult:
+        # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
+        # board host-controlled. Without this the board keeps autoinstall's stale
+        # default config (250 kHz / SF11) and rnsd aborts with "Radio state
+        # mismatch" — the real cause once mis-blamed on the RGB firmware.
+        ok, detail = set_params_at_birth(self.connection, self.port,
+                                         timeout=self.flash_timeout)
+        return StepResult("set_params", ok, detail)
+
     def _verify(self) -> StepResult:
         out = self.connection.run(f"rnodeconf {self.port} --info")[1]
         ok = ("EEPROM is invalid" not in out
@@ -284,7 +299,7 @@ class HeltecV4RGBWorkflow:
 
     _BUILD = ("_ensure_toolchain", "_ensure_source", "_build_firmware")
     _FLASH = ("_detect_port", "_provision", "_flash_custom", "_set_hash",
-              "_verify")
+              "_set_params", "_verify")
 
     def _run_steps(self, step_names, on_progress):
         emit = on_progress or (lambda r: None)

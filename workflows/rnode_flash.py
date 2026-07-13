@@ -18,6 +18,7 @@ from typing import Callable, List, Optional
 from transport.connection import Connection
 from workflows.build import StepResult, detect_rnode_port
 from workflows.rnode_boards import RNodeBoard
+from workflows.radio_params import set_params_at_birth
 from workflows.updater import (
     autoinstall_command, sync_firmware, has_connectivity, RNODE_UPDATE_DIR)
 
@@ -116,6 +117,14 @@ class RNodeFlashWorkflow:
             f"Flashed {self.board.display_name} from the offline cache." if ok
             else f"Flash failed (exit {code}): {(err or out)[-300:]}")
 
+    def _set_params(self) -> StepResult:
+        # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
+        # board host-controlled, so a Pi's rnsd never aborts on a stale
+        # 250/SF11 default ("Radio state mismatch").
+        ok, detail = set_params_at_birth(self.connection, self.port,
+                                         timeout=self.flash_timeout)
+        return StepResult("set_params", ok, detail)
+
     def _verify(self) -> StepResult:
         out = self.connection.run(f"rnodeconf {self.port} --info")[1]
         ok = "Device signature" in out and "Firmware version" in out
@@ -129,7 +138,8 @@ class RNodeFlashWorkflow:
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)
         for step in (self._detect_port, self._ensure_single_board,
-                     self._ensure_firmware, self._flash, self._verify):
+                     self._ensure_firmware, self._flash, self._set_params,
+                     self._verify):
             result = step()
             self.results.append(result)
             emit(result)
