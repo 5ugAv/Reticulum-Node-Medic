@@ -66,6 +66,17 @@ def test_firmware_not_present():
     assert "firmware_present" in names(run(conn_with(info=info)))
 
 
+def test_eeprom_invalid_flagged_firmware_still_present():
+    # a REAL faulty board (verified live): firmware 1.86 present but EEPROM
+    # invalid. The specific fault must be flagged; firmware_present must NOT
+    # false-fire (the "Current firmware version" line proves firmware is there).
+    info = ("Device connected\nCurrent firmware version: 1.86\n"
+            "Reading EEPROM...\nEEPROM is invalid, no further information available")
+    n = names(run(conn_with(info=info)))
+    assert "eeprom_valid" in n
+    assert "firmware_present" not in n
+
+
 def test_firmware_hash_not_set():
     # real signal is an unverified device signature, not a missing hash line
     info = GOOD_INFO.replace(
