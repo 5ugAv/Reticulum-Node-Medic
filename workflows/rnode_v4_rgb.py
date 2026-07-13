@@ -43,8 +43,18 @@ BUILD_BIN = f"{FIRMWARE_DIR}/{BUILD_SUBDIR}/RNode_Firmware.ino.bin"
 PARTITION_HASHES = f"{FIRMWARE_DIR}/partition_hashes"
 FQBN = "esp32:esp32:esp32s3:CDCOnBoot=cdc"
 ESP32_CORE = "esp32:esp32@2.0.17"
-NEOPIXEL_LIB = "Adafruit NeoPixel"
-OLED_LIB = "Adafruit SSD1306"
+#: Arduino libraries RNode_Firmware needs to compile for ESP32 — transcribed
+#: from the firmware's own Makefile `prep-esp32` target (Crypto provides the
+#: Ed25519/SHA headers; setup_rnode_tools.sh omitted these because the author's
+#: build box already had them from prior RNode work — a real hardware gap).
+ARDUINO_LIBS = [
+    "Adafruit SSD1306",
+    "Adafruit SH110X",
+    "Adafruit ST7735 and ST7789 Library",
+    "Adafruit NeoPixel",
+    "XPowersLib",
+    "Crypto",
+]
 #: Heltec32 V4 board id (matches the health-beacon board_id 0x3F "Heltec32 V4").
 BOARD_MODEL = 0x3F
 #: GPIO the NeoPixel data line sits on (V4 free J2 header pin).
@@ -138,11 +148,8 @@ class HeltecV4RGBWorkflow:
                 return StepResult("ensure_toolchain", False,
                                   f"arduino-cli install failed: {(err or out)[-200:]}")
         # arduino-cli core/lib installs are idempotent (no-op when present).
-        cmds = [
-            f"arduino-cli core install {ESP32_CORE}",
-            f'arduino-cli lib install "{NEOPIXEL_LIB}"',
-            f'arduino-cli lib install "{OLED_LIB}"',
-        ]
+        cmds = [f"arduino-cli core install {ESP32_CORE}"]
+        cmds += [f'arduino-cli lib install "{lib}"' for lib in ARDUINO_LIBS]
         for cmd in cmds:
             code, out, err = self.connection.run(cmd, timeout=self.build_timeout)
             if code != 0:
@@ -164,8 +171,13 @@ class HeltecV4RGBWorkflow:
         if not self.connection.push_file(LOCAL_PATCH, REMOTE_PATCH):
             return StepResult("ensure_source", False,
                               "Could not carry the NeoPixel patcher to the node.")
+        # Reset Boards.h to pristine first so the block-scoped patch always
+        # applies against a known anchor (guards against a prior bad patch).
+        self.connection.run(
+            f"git -C {self.firmware_dir} checkout -- Boards.h")
         code, out, err = self.connection.run(
-            f"python3 {REMOTE_PATCH} {self.firmware_dir}/Boards.h")
+            f"python3 {REMOTE_PATCH} {self.firmware_dir}/Boards.h "
+            f"--pin {self.neopixel_pin}")
         if code != 0:
             return StepResult("ensure_source", False,
                               f"Boards.h patch failed: {(err or out)[-200:]}")
