@@ -100,6 +100,18 @@ def full_healthy_conn():
     )
 
 
+def test_run_detects_and_sets_real_rnode_port():
+    # the profile default (ttyUSB0) is wrong; the workflow detects the real port
+    # (ttyACM0) once so every module checks the same actual device.
+    conn = full_healthy_conn()
+    conn.rules.insert(0, ("ls /dev/ttyACM*", 0, "/dev/ttyACM0", ""))
+    conn.rules.insert(0, ("ls /dev/serial/by-id", 0, "", ""))
+    p = NodeProfile()
+    assert p.radio.serial_port != "/dev/ttyACM0"
+    RepairWorkflow(conn, p).run()
+    assert p.radio.serial_port == "/dev/ttyACM0"
+
+
 def test_healthy_run_has_no_issues():
     wf = RepairWorkflow(full_healthy_conn(), NodeProfile())
     session = wf.run()
