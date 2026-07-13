@@ -2,7 +2,51 @@ import pytest
 
 from monitor.health_beacon import encode, decode
 from monitor.health_poll import PollResult
+from monitor.http_status import NodeStatus
 from monitor.registry import NodeRegistry, NodeRecord, STALE_ALERT_HOURS
+
+
+def http(status="ok", reachable=True, name="MEDIC-TEST", fw="0.6.2", faults=None):
+    return NodeStatus(reachable=reachable, status=status, node_name=name,
+                      firmware_version=fw, lora_online=True,
+                      local_tcp_server_up=True, faults=faults or [])
+
+
+def test_record_http_status_registers_and_adopts_name():
+    reg = NodeRegistry()
+    rec = reg.record_http_status(HASH, http(name="MEDIC-TEST"), NOW)
+    assert rec.name == "MEDIC-TEST"
+    assert rec.last_seen == NOW
+    assert rec.status(NOW) == "ok"
+    assert rec.firmware_version == "0.6.2"
+
+
+def test_http_status_drives_traffic_light():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(status="alert", faults=["undervoltage"]), NOW)
+    assert reg.get(HASH).status(NOW) == "alert"
+
+
+def test_http_preferred_over_beacon_when_reachable():
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(fault=True), NOW)          # beacon says alert
+    reg.record_http_status(HASH, http(status="ok"), NOW)   # but HTTP says ok
+    assert reg.get(HASH).status(NOW) == "ok"
+
+
+def test_unreachable_http_does_not_refresh_last_seen():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(), NOW)
+    reg.record_http_status(HASH, http(reachable=False, status="unreachable"),
+                           NOW + HOUR)
+    # last_seen stayed at NOW -> staleness governs, not the failed poll
+    assert reg.get(HASH).last_seen == NOW
+
+
+def test_http_node_goes_stale_to_alert():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(), NOW)
+    assert reg.get(HASH).status(NOW + (STALE_ALERT_HOURS + 1) * HOUR) == "alert"
 
 HASH = "eabdd142596bcae888242ec1b172d566"
 HASH2 = "aa11bb22cc33dd44ee55ff6600778899"

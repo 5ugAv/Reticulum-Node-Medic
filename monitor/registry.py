@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 from monitor.health_beacon import HealthBeacon, beacon_status, decode
 from monitor.health_poll import PollResult
+from monitor.http_status import NodeStatus
 from monitor.geo import navigation_links
 from ui import theme
 
@@ -55,6 +56,7 @@ class NodeRecord:
     location: str = ""
     node_type: str = "rtnode2400"          # "rtnode2400" | "pi"
     latest_beacon: Optional[HealthBeacon] = None
+    latest_http: Optional[NodeStatus] = None   # last HTTP /status poll (LAN)
     last_seen: Optional[float] = None       # epoch seconds
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
@@ -63,6 +65,8 @@ class NodeRecord:
 
     @property
     def firmware_version(self) -> Optional[str]:
+        if self.latest_http and self.latest_http.firmware_version:
+            return self.latest_http.firmware_version
         return self.latest_beacon.firmware_version if self.latest_beacon else None
 
     def has_location(self) -> bool:
@@ -91,6 +95,10 @@ class NodeRecord:
             return "unknown"
         if (now - self.last_seen) / 3600.0 > STALE_ALERT_HOURS:
             return "alert"                  # not heard -> red, regardless
+        # Prefer the richer HTTP /status (has an explicit faults array) when a
+        # node is LAN-reachable; fall back to the mesh beacon.
+        if self.latest_http is not None and self.latest_http.reachable:
+            return self.latest_http.status
         if self.latest_beacon is not None:
             return beacon_status(self.latest_beacon)
         return "unknown"
@@ -179,6 +187,21 @@ class NodeRegistry:
         except (ValueError, TypeError):
             return None
         return self.ingest(dst_hash.hex(), beacon, now)
+
+    def record_http_status(self, key: str, status: NodeStatus,
+                           now: float) -> NodeRecord:
+        """Fold in an HTTP ``/status`` poll for a LAN-reachable node, keyed by
+        *key* (the node's dst_hash for a known node, or a synthetic id for a
+        discovered one). A reachable poll refreshes last_seen + the health;
+        an unreachable one changes nothing (staleness takes it red on its own).
+        Auto-registers a never-seen node and adopts its node_name."""
+        rec = self.nodes.get(key) or self.register(key)
+        if status.reachable:
+            rec.latest_http = status
+            rec.last_seen = now
+            if status.node_name and not rec.name:
+                rec.name = status.node_name
+        return rec
 
     def record_poll(self, dst_hash: str, result: PollResult,
                     now: float) -> Optional[NodeRecord]:
