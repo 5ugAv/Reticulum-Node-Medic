@@ -23,3 +23,5 @@ assets/firmware/*
 !assets/firmware/.gitkeep
 assets/packages/*
 !assets/packages/.gitkeep
+assets/maps/*
+!assets/maps/.gitkeep
