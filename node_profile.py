@@ -17,6 +17,7 @@ class NodeHardware(Enum):
     PI_ZERO_2W = "Raspberry Pi Zero 2W"
     PI_5 = "Raspberry Pi 5"
     HELTEC_V4 = "Heltec LoRa32 V4"
+    TBEAM_SUPREME = "LilyGO T-Beam Supreme"
     UNKNOWN = "Unknown"
 
 

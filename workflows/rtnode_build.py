@@ -15,7 +15,9 @@ local shell plus the attached board.
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from node_profile import NodeHardware, NodeProfile
@@ -33,8 +35,62 @@ from workflows.rtnode_portal import build_form
 #: three in lockstep (see test_rtnode_build).
 RTNODE_REPO_URL = "https://github.com/5ugAv/RTNode-2400.git"
 RTNODE_BRANCH = "feature/neopixel-status-led"
-#: PlatformIO build environment for the Heltec V4 RTNode-2400 target.
+#: PlatformIO build environment for the Heltec V4 RTNode-2400 target. Kept as a
+#: module constant because the carried human flasher + provenance tests pin it.
 RTNODE_BUILD_ENV = "heltec_V4_boundary-local"
+
+
+@dataclass(frozen=True)
+class RTNodeTarget:
+    """A board the RTNode-2400 build path can flash. Both are ESP32-S3 native-USB
+    (indistinguishable by USB id), so the operator picks the target and it selects
+    the PlatformIO env + how the flash is verified."""
+    key: str
+    display: str
+    build_env: str
+    hardware: "NodeHardware"
+    verify: str = "beacon"      # "beacon" (health beacon) | "sd_status" (/status)
+
+
+#: Operator-selected RTNode-2400 targets. Verified against platformio.ini on
+#: branch feature/neopixel-status-led (commit 88d9aaf): both envs exist; the
+#: Supreme carries the SD-overflow transport tier (-DFILESYSTEM_SD_OVERFLOW=1),
+#: verified via its GET /status sd_overflow object rather than a health beacon.
+RTNODE_TARGETS = {
+    "heltec_v4": RTNodeTarget(
+        "heltec_v4", "Heltec V4", RTNODE_BUILD_ENV,
+        NodeHardware.HELTEC_V4, verify="beacon"),
+    "tbeam_supreme": RTNodeTarget(
+        "tbeam_supreme", "T-Beam Supreme (SD transport node)",
+        "tbeam_supreme_boundary-local", NodeHardware.TBEAM_SUPREME,
+        verify="sd_status"),
+}
+DEFAULT_TARGET = "heltec_v4"
+
+
+def check_sd_overflow(status_json: str) -> Tuple[bool, str]:
+    """Assert an SD-overflow node's card mounted, from its GET /status JSON
+    (``sd_overflow`` object). A fresh node's /destination_table is empty until it
+    learns paths, so `mounted` is the hard requirement; the path table is only a
+    note. Returns ``(ok, human_detail)``."""
+    try:
+        data = json.loads(status_json) if status_json.strip() else {}
+    except ValueError:
+        return False, "Node /status returned invalid JSON."
+    sd = data.get("sd_overflow")
+    if not isinstance(sd, dict):
+        return False, ("Node /status has no sd_overflow object — the SD tier "
+                       "isn't built into this firmware.")
+    if not sd.get("mounted"):
+        return False, ("SD card is not mounted (check the card seating / the "
+                       "AXP2101 BLDO1 rail that powers it).")
+    files = sd.get("files") or []
+    has_dt = any("destination_table" in str(f) for f in files)
+    return True, (
+        f"SD tier up: {sd.get('card_mb', '?')} MB card, "
+        f"{sd.get('used_kb', '?')} KB used"
+        + ("; path table present." if has_dt
+           else "; /destination_table not written yet (fills as paths are learned)."))
 #: Firmware project location on the tool (carried/cloned asset). The Pi medic is
 #: headless, so this is under the medic home, not ~/Desktop like the Mac flasher.
 RTNODE_PROJECT_DIR = "~/rnm-assets/RTNode2400"
@@ -59,35 +115,37 @@ def rtnode_build_step(func: Callable) -> Callable:
 
 
 @rtnode_build_step
-def detect_heltec_v4(wf: "RTNodeBuildWorkflow") -> StepResult:
+def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
     out = wf.connection.run(f"ls {' '.join(_PORT_GLOBS)} 2>/dev/null")[1]
     ports = out.split()
     if not ports:
-        return StepResult("detect_heltec_v4", False,
-                          "No board found — plug in the Heltec V4 (try another "
-                          "USB-C cable; some are charge-only).")
+        return StepResult("detect_board", False,
+                          f"No board found — plug in the {wf.target.display} "
+                          f"(try another USB-C cable; some are charge-only).")
     port = ports[0]
-    # More than one USB-serial device present: don't silently guess.
+    # More than one USB-serial device present: don't silently guess. (T-Beam
+    # Supreme and Heltec V4 are both ESP32-S3 native-USB, so the operator's
+    # chosen target — not USB id — decides which firmware gets flashed.)
     extra = ("" if len(ports) == 1 else
              f" WARNING: {len(ports)} USB-serial devices seen "
              f"({', '.join(ports)}); using {port}. Unplug the others to be sure "
              f"you flash the right board.")
-    wf.profile.hardware = NodeHardware.HELTEC_V4
+    wf.profile.hardware = wf.target.hardware
     wf.profile.connection_port = port
     wf.profile.radio.serial_port = port
-    return StepResult("detect_heltec_v4", True,
-                      f"Found Heltec V4 on {port}.{extra}")
+    return StepResult("detect_board", True,
+                      f"Found {wf.target.display} on {port}.{extra}")
 
 
 @rtnode_build_step
 def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     port = wf.profile.connection_port
     cmd = (f"cd {RTNODE_PROJECT_DIR} && "
-           f"pio run -e {RTNODE_BUILD_ENV} -t upload --upload-port {port}")
+           f"pio run -e {wf.target.build_env} -t upload --upload-port {port}")
     code, out, err = wf.connection.run(cmd, timeout=600)
     ok = code == 0
     return StepResult("flash_firmware", ok,
-                      "Flashed RTNode-2400 firmware." if ok
+                      f"Flashed RTNode-2400 firmware ({wf.target.display})." if ok
                       else f"Flash failed: {err or out}")
 
 
@@ -151,6 +209,27 @@ def verify_beacon(wf: "RTNodeBuildWorkflow") -> StepResult:
 
 
 @rtnode_build_step
+def verify_sd_overflow(wf: "RTNodeBuildWorkflow") -> StepResult:
+    """For SD-overflow targets (T-Beam Supreme), confirm the card mounted via the
+    node's GET /status ``sd_overflow`` object — USB-free, same idea as the beacon
+    check. Non-SD targets skip. The node is only reachable once onboarded onto
+    WiFi, so without an address this defers with guidance rather than failing."""
+    if wf.target.verify != "sd_status":
+        return StepResult("verify_sd_overflow", True,
+                          "Not an SD-overflow node — no SD tier to verify.",
+                          skipped=True)
+    if not wf.node_address:
+        return StepResult(
+            "verify_sd_overflow", True,
+            "SD tier verifies via GET /status once the node is onboarded onto "
+            "WiFi — set the node's address (mDNS name or IP) and re-check.",
+            skipped=True)
+    out = wf.connection.run(f"curl -s -m 5 http://{wf.node_address}/status")[1]
+    ok, detail = check_sd_overflow(out)
+    return StepResult("verify_sd_overflow", ok, detail)
+
+
+@rtnode_build_step
 def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
     r = wf.profile.radio
     # Exact, un-fuzzed coordinates — ground truth for a repair visit (the public
@@ -164,7 +243,7 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         "firmware": wf.beacon.firmware_version if wf.beacon else None,
         "identity_hash": wf.profile.reticulum_identity_hash,
         "serial_port": wf.profile.connection_port,
-        "build_env": RTNODE_BUILD_ENV,
+        "build_env": wf.target.build_env,
         "frequency_mhz": r.frequency_mhz,
         "bandwidth_khz": r.bandwidth_khz,
         "spreading_factor": r.spreading_factor,
@@ -177,12 +256,18 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
 
 class RTNodeBuildWorkflow:
     def __init__(self, connection: Connection, profile: NodeProfile,
-                 gps_reader=None):
+                 gps_reader=None, target: str = DEFAULT_TARGET):
         self.connection = connection
         self.profile = profile
         # gps_reader() -> (lat, lon) | None. Injected for tests; None uses the
         # default gpsd reader at run time.
         self.gps_reader = gps_reader
+        #: Which board to build (selects the PlatformIO env + verify strategy).
+        self.target: RTNodeTarget = (
+            RTNODE_TARGETS[target] if isinstance(target, str) else target)
+        #: SD-overflow nodes verify over HTTP once onboarded; set to the node's
+        #: mDNS name or IP when known.
+        self.node_address: Optional[str] = None
         self.steps: List[Tuple[str, Callable]] = list(_RTNODE_STEPS)
         self.current_index = 0
         self.results: List[StepResult] = []

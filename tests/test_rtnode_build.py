@@ -9,6 +9,7 @@ from workflows.rtnode_build import (
     RTNODE_BUILD_ENV,
     RTNODE_REPO_URL,
     RTNODE_BRANCH,
+    check_sd_overflow,
 )
 
 BEACON_LINE = (
@@ -16,10 +17,11 @@ BEACON_LINE = (
     "data=010000002400c7cc053b3f000602")
 
 EXPECTED_STEPS = [
-    "detect_heltec_v4",
+    "detect_board",
     "flash_firmware",
     "wifi_onboarding",   # must precede verify_beacon: a fresh board is silent
     "verify_beacon",     # until onboarded + rebooted
+    "verify_sd_overflow",  # SD-overflow targets only; others skip
     "birth_certificate",
 ]
 
@@ -228,6 +230,94 @@ def test_carried_flash_script_exists_and_is_fixed():
     assert "CLT_WAIT_MAX" in body             # bounded xcode-select wait
     assert "reset --hard" in body             # robust existing-clone refresh
     assert RTNODE_BUILD_ENV in body
+
+
+# ---- T-Beam Supreme target -----------------------------------------------
+
+
+def sup(c=None):
+    return RTNodeBuildWorkflow(c or conn(), NodeProfile(),
+                               gps_reader=lambda: None, target="tbeam_supreme")
+
+
+def test_supreme_target_selects_its_platformio_env():
+    c = conn()
+    w = sup(c)
+    w.steps[0][1](w)          # detect
+    w.steps[1][1](w)          # flash
+    flash_cmd = next(cmd for cmd in c.history if "pio run" in cmd)
+    assert "tbeam_supreme_boundary-local" in flash_cmd
+    assert RTNODE_BUILD_ENV not in flash_cmd     # not the V4 env
+
+
+def test_supreme_detect_sets_supreme_hardware():
+    w = sup()
+    w.steps[0][1](w)
+    assert w.profile.hardware is NodeHardware.TBEAM_SUPREME
+
+
+def test_default_target_is_still_heltec_v4():
+    w = wf()
+    assert w.profile.hardware is not NodeHardware.TBEAM_SUPREME
+    w.steps[0][1](w)
+    assert w.profile.hardware is NodeHardware.HELTEC_V4
+
+
+def test_v4_target_skips_sd_overflow_verify():
+    w = wf()
+    r = w.steps[4][1](w)      # verify_sd_overflow
+    assert r.name == "verify_sd_overflow"
+    assert r.skipped is True
+    assert r.success is True
+
+
+def test_supreme_sd_verify_defers_without_address():
+    w = sup()
+    r = w.steps[4][1](w)      # verify_sd_overflow, no node_address set
+    assert r.skipped is True and r.success is True
+    assert "onboarded" in r.message
+
+
+def test_supreme_sd_verify_checks_status_when_addressed():
+    c = conn()
+    c.rule("curl -s -m 5 http://rtnode.local/status", 0,
+           '{"sd_overflow":{"mounted":true,"card_mb":61048,"used_kb":12,'
+           '"files":["/destination_table","/cache"]}}')
+    w = sup(c)
+    w.node_address = "rtnode.local"
+    r = w.steps[4][1](w)
+    assert r.success is True
+    assert "SD tier up" in r.message and "path table present" in r.message
+
+
+def test_supreme_birth_cert_records_supreme_env():
+    c = conn()
+    w = sup(c)
+    w.run_all()
+    assert w.birth_certificate["build_env"] == "tbeam_supreme_boundary-local"
+
+
+def test_check_sd_overflow_mounted_with_path_table():
+    ok, detail = check_sd_overflow(
+        '{"sd_overflow":{"mounted":true,"card_mb":61048,"used_kb":40,'
+        '"files":["/destination_table"]}}')
+    assert ok is True and "path table present" in detail
+
+
+def test_check_sd_overflow_mounted_fresh_card():
+    ok, detail = check_sd_overflow(
+        '{"sd_overflow":{"mounted":true,"card_mb":61048,"used_kb":0,"files":[]}}')
+    assert ok is True and "not written yet" in detail
+
+
+def test_check_sd_overflow_not_mounted_fails():
+    ok, detail = check_sd_overflow('{"sd_overflow":{"mounted":false}}')
+    assert ok is False and "not mounted" in detail
+
+
+def test_check_sd_overflow_absent_object_fails():
+    ok, detail = check_sd_overflow('{"wifi_rssi":-61,"lora_online":true}')
+    assert ok is False and "sd_overflow" in detail
 
 
 def test_firmware_provenance_matches_carried_flasher():
