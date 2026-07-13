@@ -60,12 +60,15 @@ class NetworkMeshCheck(DiagnosticCheck):
             "The path table is empty — no destinations are known.",
             severity="warning"))
 
-        # 39 channel congestion — RNodeInterface channel_load_short is a 0.0-1.0
-        # fraction (verified: 0.07 == 7%), so the 70% threshold is 0.70.
+        # 39 channel congestion — RNodeInterface channel_load_short is a PERCENT
+        # (0-100), NOT a 0.0-1.0 fraction (verified on a live node: human rnstatus
+        # prints "Ch. Load : 0.14%" while the JSON value is 0.14; a busy node read
+        # 18.66). So the 70% line is 70.0 and the value is already the percentage
+        # (the old `load < 0.70` + `load*100` read a healthy node as "675%").
         load = float(iface.get("channel_load_short", 0.0)) if iface else 0.0
         issues.append(self._check(
-            "channel_congestion", load < 0.70,
-            f"The LoRa channel is congested ({load * 100:.0f}% airtime).",
+            "channel_congestion", load < 70.0,
+            f"The LoRa channel is congested ({load:.0f}% airtime).",
             severity="warning"))
 
         # 40 L1 serial loopback
