@@ -57,6 +57,8 @@ class NodeRecord:
     node_type: str = "rtnode2400"          # "rtnode2400" | "pi"
     latest_beacon: Optional[HealthBeacon] = None
     latest_http: Optional[NodeStatus] = None   # last HTTP /status poll (LAN)
+    mesh_hops: Optional[int] = None            # reachable via the LoRa mesh
+    mesh_interface: str = ""
     last_seen: Optional[float] = None       # epoch seconds
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
@@ -120,11 +122,14 @@ class NodeRecord:
         if (now - self.last_seen) / 3600.0 > STALE_ALERT_HOURS:
             return "alert"                  # not heard -> red, regardless
         # Prefer the richer HTTP /status (has an explicit faults array) when a
-        # node is LAN-reachable; fall back to the mesh beacon.
+        # node is LAN-reachable; then the mesh beacon; then bare mesh
+        # reachability (in the path table = reachable, health unknown -> ok).
         if self.latest_http is not None and self.latest_http.reachable:
             return self.latest_http.status
         if self.latest_beacon is not None:
             return beacon_status(self.latest_beacon)
+        if self.mesh_hops is not None:
+            return "ok"                     # reachable over the mesh
         return "unknown"
 
 
@@ -211,6 +216,18 @@ class NodeRegistry:
         except (ValueError, TypeError):
             return None
         return self.ingest(dst_hash.hex(), beacon, now)
+
+    def ingest_mesh(self, node, now: float) -> NodeRecord:
+        """Fold a mesh path (a monitor.mesh.MeshNode) into the registry, keyed by
+        its destination hash — the same key birthed/HTTP nodes use. Records
+        reachability (hops, interface) and refreshes last_seen; auto-registers an
+        unknown destination (its name stays the hash until a birth cert names it).
+        """
+        rec = self.nodes.get(node.dst_hash) or self.register(node.dst_hash)
+        rec.mesh_hops = node.hops
+        rec.mesh_interface = node.interface
+        rec.last_seen = now
+        return rec
 
     def record_http_status(self, key: str, status: NodeStatus,
                            now: float) -> NodeRecord:

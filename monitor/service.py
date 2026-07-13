@@ -19,6 +19,7 @@ from typing import Callable, Dict, List, Optional
 from monitor.registry import NodeRegistry, NodeRecord
 from monitor.http_status import poll_status, NodeStatus
 from monitor.discovery import discover_nodes, Runner
+from monitor.mesh import discover_mesh
 
 
 class MonitorService:
@@ -54,15 +55,28 @@ class MonitorService:
                 count += 1
         return count
 
+    def discover_mesh(self) -> int:
+        """Fold the medic's LoRa mesh path table (rnpath) into the registry, so
+        LoRa-only / non-HTTP nodes appear on the dashboard. Returns the count."""
+        if self._run is None:
+            return 0
+        count = 0
+        for node in discover_mesh(self._run):
+            self.registry.ingest_mesh(node, self._now())
+            count += 1
+        return count
+
     def poll_cycle(self) -> None:
         """Re-poll every known host and fold the result into the registry."""
         for key, host in list(self.hosts.items()):
             self.registry.record_http_status(key, self._poll(host), self._now())
 
     def cycle(self, rediscover: bool = False) -> None:
-        """One monitor tick: optionally rediscover, then poll known hosts."""
+        """One monitor tick: optionally rediscover (HTTP + mesh), then poll known
+        hosts."""
         if rediscover:
             self.discover()
+            self.discover_mesh()
         self.poll_cycle()
 
     def run(self, cycles: int, interval: float = 30.0,
