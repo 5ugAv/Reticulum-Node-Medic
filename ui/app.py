@@ -20,6 +20,7 @@ from kivy.uix.screenmanager import Screen, ScreenManager
 from ui import theme
 from ui.widgets.sidebar import Sidebar
 from ui.screens.monitor_screen import MonitorScreen
+from ui.screens.map_screen import MapScreen
 from ui.screens.repair_screen import RepairScreen
 from ui.screens.build_screen import BuildScreen
 from node_profile import NodeProfile
@@ -131,7 +132,12 @@ class ReticulumNodeMedicApp(App):
             rnode_flash_factory=_demo_rnode_flash))
         self.sm.add_widget(birth)
 
-        for name, title in (("map", "Map"), ("clone", "Clone Tool")):
+        map_scr = Screen(name="map")
+        self.map_screen = MapScreen(nodes=self.monitor_service.located_nodes())
+        map_scr.add_widget(self.map_screen)
+        self.sm.add_widget(map_scr)
+
+        for name, title in (("clone", "Clone Tool"),):
             scr = Screen(name=name)
             scr.add_widget(_placeholder(title))
             self.sm.add_widget(scr)
@@ -156,6 +162,9 @@ class ReticulumNodeMedicApp(App):
                     if dicts:
                         Clock.schedule_once(
                             lambda dt, d=dicts: self.monitor_screen.set_nodes(d), 0)
+                    located = self.monitor_service.located_nodes()
+                    Clock.schedule_once(
+                        lambda dt, n=located: self.map_screen.set_nodes(n), 0)
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1

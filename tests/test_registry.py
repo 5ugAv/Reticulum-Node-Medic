@@ -266,6 +266,24 @@ def test_ingest_announce_adapter_decodes_and_stores():
     assert r.get(HASH).latest_beacon.board_label == "Heltec32 V4"
 
 
+def test_located_nodes_only_returns_geotagged():
+    r = NodeRegistry()
+    r.register(HASH, name="FAITH")
+    rec = r.get(HASH); rec.lat = -37.814; rec.lon = 144.963
+    r.ingest(HASH, beacon(), NOW)                 # gives it an 'ok' status
+    r.register(HASH2, name="NOLOC")               # no coordinates -> omitted
+    pts = r.located_nodes(NOW)
+    assert [p["name"] for p in pts] == ["FAITH"]
+    assert pts[0]["lat"] == -37.814 and pts[0]["lon"] == 144.963
+    assert pts[0]["status"] == "ok"
+
+
+def test_located_nodes_empty_when_none_geotagged():
+    r = NodeRegistry()
+    r.register(HASH, name="NOLOC")
+    assert r.located_nodes(NOW) == []
+
+
 def test_ingest_announce_rejects_bad_payload():
     r = NodeRegistry()
     assert r.ingest_announce(bytes.fromhex(HASH), b"\x01\x02", NOW) is None

@@ -261,6 +261,18 @@ class NodeRegistry:
             self.nodes.values(),
             key=lambda r: (_STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
+    def located_nodes(self, now: float) -> List[dict]:
+        """Every node with a known location, for Map mode — each as
+        ``{lat, lon, name, status}``. Nodes without birth-cert coordinates are
+        omitted (nothing to plot). Sorted by name for stable rendering."""
+        out = []
+        for rec in sorted(self.nodes.values(), key=lambda r: r.name.lower()):
+            if rec.has_location():
+                out.append({"lat": rec.lat, "lon": rec.lon,
+                            "name": rec.name or "(unnamed)",
+                            "status": rec.status(now)})
+        return out
+
     def visible(self, now: float, status: Optional[str] = None,
                 search: str = "") -> List[NodeRecord]:
         result = []
