@@ -34,8 +34,9 @@ FIRMWARE_CACHE_REMOTE = "~/.config/rnodeconf/update"
 TOOL_EXCLUDES = (".git", "__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
 #: Where the clone keeps its copied monitoring DB.
 CLONE_DIR = "~/.reticulum-node-medic"
-#: Python packages a running medic needs (installed on the clone).
-TOOL_PACKAGES = ("rns", "lxmf", "kivy", "segno")
+#: The tool's Python stack is pinned in this manifest; wheels for it live in the
+#: wheelhouse (populated by workflows.wheelhouse) and travel with the tool tree.
+REMOTE_REQUIREMENTS = f"{REMOTE_TOOL_DIR}/assets/requirements.txt"
 REMOTE_WHEELS = f"{REMOTE_TOOL_DIR}/assets/packages"
 
 _CLONE_STEPS: List[Tuple[str, Callable]] = []
@@ -87,23 +88,32 @@ def transfer_firmware_cache(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def install_dependencies(wf: "CloneWorkflow") -> StepResult:
-    # Prefer carried wheels (offline field clone); fall back to online pip.
-    pkgs = " ".join(TOOL_PACKAGES)
+    # Install the pinned stack (assets/requirements.txt). Prefer the carried
+    # wheelhouse (offline field clone); fall back to online pip if it's absent.
     have_wheels = wf.connection.run(f"ls {REMOTE_WHEELS}/*.whl")[0] == 0
     if have_wheels:
         cmd = (f"pip3 install --no-index --find-links {REMOTE_WHEELS} "
-               f"--break-system-packages --user {pkgs}")
-        source = "carried wheels (offline)"
+               f"--break-system-packages --user -r {REMOTE_REQUIREMENTS}")
+        source = "carried wheelhouse (offline)"
     elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
-        cmd = f"pip3 install --break-system-packages --user {pkgs}"
+        cmd = (f"pip3 install --break-system-packages --user "
+               f"-r {REMOTE_REQUIREMENTS}")
         source = "online pip"
     else:
         return StepResult(
             "install_dependencies", False,
-            "No carried wheels and no internet — carry the medic's wheels in "
-            "assets/packages for a fully offline clone, or connect WiFi once.")
+            "No carried wheelhouse and no internet — run wheelhouse.cache_wheels "
+            "on the medic (online) so clones install offline, or connect WiFi.")
     code, out, err = wf.connection.run(cmd, timeout=1200)
     ok = code == 0
+    # Kivy's Python wheel is here, but its runtime needs SDL2 system libs (apt).
+    # On Raspberry Pi OS Desktop they're present; a fully offline Lite clone also
+    # needs those debs carried. Best-effort, non-fatal.
+    if ok:
+        wf.connection.run(
+            "command -v apt-get >/dev/null && sudo -n apt-get install -y "
+            "libsdl2-2.0-0 libsdl2-image-2.0-0 libsdl2-mixer-2.0-0 "
+            "libsdl2-ttf-2.0-0 libmtdev1 >/dev/null 2>&1 || true")
     return StepResult("install_dependencies", ok,
                       f"Installed the tool's Python stack from {source}." if ok
                       else f"Dependency install failed ({source}): {(err or out)[-200:]}")
