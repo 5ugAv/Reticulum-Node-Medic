@@ -42,6 +42,13 @@ class Connection(ABC):
         """Copy a local file to the node. Returns ``True`` on success."""
         raise NotImplementedError
 
+    def push_tree(self, local_dir: str, remote_dir: str,
+                  exclude: "tuple[str, ...]" = ()) -> bool:
+        """Copy a whole local directory tree to the node (contents of
+        *local_dir* into *remote_dir*). Returns ``True`` on success. Used by the
+        Clone Tool to move the tool + asset store onto a fresh Pi."""
+        raise NotImplementedError
+
     def is_connected(self) -> bool:
         return True
 
@@ -156,6 +163,20 @@ class SSHConnection(Connection):
         code, _, _ = self._runner(argv, 120)
         return code == 0
 
+    def push_tree(self, local_dir: str, remote_dir: str,
+                  exclude: "tuple[str, ...]" = ()) -> bool:
+        """rsync the tree over SSH (incremental, compressed). A trailing slash on
+        the source copies its CONTENTS into *remote_dir*."""
+        ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
+                 f"-o StrictHostKeyChecking=accept-new")
+        argv = ["rsync", "-az", "-e", ssh_e]
+        for pat in exclude:
+            argv += ["--exclude", pat]
+        argv += [local_dir.rstrip("/") + "/",
+                 f"{self.user}@{self.host}:{remote_dir}"]
+        code, _, _ = self._runner(argv, 900)
+        return code == 0
+
 
 # ---------------------------------------------------------------------------
 # Serial
@@ -253,6 +274,7 @@ class EmulatedConnection(Connection):
         self.default_stderr = default_stderr
         self.history: List[str] = []
         self.pushed: List[Tuple[str, str]] = []
+        self.pushed_trees: List[Tuple[str, str]] = []
 
     def rule(
         self,
@@ -278,6 +300,11 @@ class EmulatedConnection(Connection):
 
     def push_file(self, local_path: str, remote_path: str) -> bool:
         self.pushed.append((local_path, remote_path))
+        return True
+
+    def push_tree(self, local_dir: str, remote_dir: str,
+                  exclude: "tuple[str, ...]" = ()) -> bool:
+        self.pushed_trees.append((local_dir, remote_dir))
         return True
 
 

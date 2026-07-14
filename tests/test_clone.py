@@ -6,19 +6,26 @@ from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from monitor.health_beacon import encode, decode
 from monitor.registry import NodeRegistry
-from workflows.clone import CloneWorkflow, CLONE_DIR
+from workflows.clone import (
+    CloneWorkflow, CLONE_DIR, REMOTE_TOOL_DIR, TOOL_ROOT,
+    FIRMWARE_CACHE_LOCAL, REMOTE_WHEELS,
+)
 
 HASH = "eabdd142596bcae888242ec1b172d566"
 PI5_CPUINFO = "Model : Raspberry Pi 5 Model B Rev 1.0"
 
 EXPECTED_STEPS = [
     "verify_target_pi5",
-    "copy_os_config",
-    "copy_asset_store",
+    "transfer_tool",
+    "transfer_firmware_cache",
+    "install_dependencies",
     "copy_monitoring_db",
     "generate_fresh_identity",
+    "configure_autostart",
     "final_verification",
 ]
+
+IDENTITY_OUT = "New identity <45ada7a3c6c8809fa815e5790d2b3b62> written to ..."
 
 
 def registry_with_node():
@@ -35,6 +42,8 @@ def registry_with_node():
 def conn(cpuinfo=PI5_CPUINFO):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("/proc/cpuinfo", 0, cpuinfo, ""))
+    c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
+    c.rules.insert(0, ("rnid --generate", 0, IDENTITY_OUT, ""))
     return c
 
 
@@ -42,11 +51,19 @@ def wf(c=None, registry=None):
     return CloneWorkflow(c or conn(), registry or registry_with_node())
 
 
+def _run(w, name):
+    idx = next(i for i, (n, _) in enumerate(w.steps) if n == name)
+    return w.steps[idx][1](w)
+
+
+# ---- structure -----------------------------------------------------------
+
 def test_steps_registered_in_order():
     assert [n for n, _ in wf().steps] == EXPECTED_STEPS
 
 
-def test_full_run_completes():
+def test_full_run_completes(monkeypatch):
+    monkeypatch.setattr("os.path.isdir", lambda p: True)   # medic has a fw cache
     w = wf()
     w.run_all()
     assert w.current_index == len(EXPECTED_STEPS)
@@ -55,37 +72,7 @@ def test_full_run_completes():
 
 def test_verify_fails_on_non_pi5():
     w = wf(conn(cpuinfo="Model : Raspberry Pi 4 Model B"))
-    r = w.steps[0][1](w)
-    assert r.success is False
-
-
-def test_copy_monitoring_db_writes_registry_json():
-    c = conn()
-    w = wf(c)
-    for i in range(4):        # up to copy_monitoring_db
-        w.steps[i][1](w)
-    # the registry JSON was written to the clone dir on the target
-    write_cmd = next(cmd for cmd in c.history if CLONE_DIR in cmd and "TRUTH" in cmd)
-    payload = w.monitoring_db_json
-    assert "TRUTH" in payload
-    # it is valid JSON carrying our node
-    data = json.loads(payload)
-    assert data["nodes"][0]["name"] == "TRUTH"
-
-
-def test_generate_fresh_identity_does_not_copy_source():
-    c = conn()
-    w = wf(c)
-    w.steps[0][1](w)
-    r = w.steps[4][1](w)      # generate_fresh_identity
-    assert r.success
-    assert w.fresh_identity_generated is True
-    gen_cmd = next(cmd for cmd in c.history if "identity" in cmd.lower())
-    assert "generate" in gen_cmd.lower()
-    # never pushes/copies an existing identity file onto the target
-    assert not any("push" in cmd for cmd in c.history)
-    assert not any(("cp " in cmd or "scp" in cmd) and "identity" in cmd
-                   for cmd in c.history)
+    assert _run(w, "verify_target_pi5").success is False
 
 
 def test_run_all_stops_on_verify_failure():
@@ -94,3 +81,118 @@ def test_run_all_stops_on_verify_failure():
     assert w.current_index == 0
     assert w.results[-1].name == "verify_target_pi5"
     assert w.results[-1].success is False
+
+
+# ---- transfer ------------------------------------------------------------
+
+def test_transfer_tool_rsyncs_the_tree_and_checks_main():
+    c = conn()
+    w = wf(c)
+    r = _run(w, "transfer_tool")
+    assert r.success
+    assert (TOOL_ROOT, REMOTE_TOOL_DIR) in c.pushed_trees   # whole tree copied
+
+
+def test_transfer_tool_fails_when_main_missing():
+    c = conn()
+    c.rules.insert(0, (f"test -f {REMOTE_TOOL_DIR}/main.py", 1, "", ""))
+    w = wf(c)
+    assert _run(w, "transfer_tool").success is False
+
+
+def test_transfer_firmware_cache_copies_when_present(monkeypatch):
+    monkeypatch.setattr("os.path.isdir", lambda p: True)
+    c = conn()
+    w = wf(c)
+    r = _run(w, "transfer_firmware_cache")
+    assert r.success and r.skipped is False
+    assert any(local == FIRMWARE_CACHE_LOCAL for local, _ in c.pushed_trees)
+
+
+def test_transfer_firmware_cache_skips_when_medic_has_none(monkeypatch):
+    monkeypatch.setattr("os.path.isdir", lambda p: False)
+    r = _run(wf(), "transfer_firmware_cache")
+    assert r.success and r.skipped is True
+
+
+# ---- dependencies --------------------------------------------------------
+
+def test_install_deps_prefers_carried_wheels_offline():
+    c = conn()
+    w = wf(c)
+    _run(w, "install_dependencies")
+    assert any("--no-index" in cmd and REMOTE_WHEELS in cmd for cmd in c.history)
+
+
+def test_install_deps_falls_back_to_online_pip():
+    c = conn()
+    c.rules.insert(0, (f"ls {REMOTE_WHEELS}/*.whl", 2, "", ""))   # no wheels
+    c.rules.insert(0, ("curl -fsI", 0, "", ""))                   # but online
+    w = wf(c)
+    r = _run(w, "install_dependencies")
+    assert r.success
+    assert any(cmd.startswith("pip3 install --break-system-packages")
+               for cmd in c.history)
+
+
+def test_install_deps_fails_offline_without_wheels():
+    c = conn()
+    c.rules.insert(0, (f"ls {REMOTE_WHEELS}/*.whl", 2, "", ""))   # no wheels
+    c.rules.insert(0, ("curl -fsI", 7, "", ""))                  # and offline
+    r = _run(wf(c), "install_dependencies")
+    assert r.success is False
+    assert "offline" in r.message.lower()
+
+
+# ---- fresh identity (never the source's) ---------------------------------
+
+def test_generate_fresh_identity_captures_hash():
+    w = wf()
+    r = _run(w, "generate_fresh_identity")
+    assert r.success
+    assert w.fresh_identity_hash == "45ada7a3c6c8809fa815e5790d2b3b62"
+    assert w.fresh_identity_generated is True
+
+
+def test_clone_never_copies_the_source_identity():
+    c = conn()
+    w = wf(c)
+    w.run_all()
+    # no step should rsync the source medic's ~/.reticulum identity
+    assert not any(".reticulum" in local for local, _ in c.pushed_trees)
+    assert not any(("cp " in cmd or "scp" in cmd) and "identity" in cmd
+                   for cmd in c.history)
+
+
+# ---- autostart -----------------------------------------------------------
+
+def test_configure_autostart_writes_and_enables_service():
+    c = conn()
+    w = wf(c)
+    r = _run(w, "configure_autostart")
+    assert r.success
+    assert any("reticulum-node-medic.service" in cmd and "tee" in cmd
+               for cmd in c.history)
+    assert any("systemctl enable reticulum-node-medic.service" in cmd
+               for cmd in c.history)
+
+
+# ---- final verification + DB ---------------------------------------------
+
+def test_final_verification_fails_without_rns():
+    c = conn()
+    c.rules.insert(0, ("python3 -c 'import RNS'", 1, "", ""))
+    w = wf(c)
+    w.fresh_identity_generated = True
+    r = _run(w, "final_verification")
+    assert r.success is False
+    assert "RNS not importable" in r.message
+
+
+def test_monitoring_db_serialises_the_registry():
+    c = conn()
+    w = wf(c)
+    _run(w, "copy_monitoring_db")
+    data = json.loads(w.monitoring_db_json)
+    assert data["nodes"][0]["name"] == "TRUTH"
+    assert any("monitoring_db.json" in cmd for cmd in c.history)
