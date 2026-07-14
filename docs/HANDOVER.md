@@ -27,6 +27,11 @@ and locked in code, a real board flashed, and a bug-hunt pass done.
 - **UI** (`ui/`) is Kivy and cannot run in the dev sandbox (no display / PIL
   text provider) — screens are compile-verified; their logic lives in the
   tested core.
+- **UI deps (medic only):** `kivy`, plus `segno` for the birth-certificate QR
+  code (pure-Python, no transitive deps). Both are UI-layer only — the tested
+  core never imports them, so CI stays third-party-free. `ui/qr.py` imports
+  segno lazily and falls back to a hint if it's absent; install with
+  `pip3 install --user segno`.
 
 ## What's built (by area)
 - `node_profile.py` — dataclasses / enums (foundation).

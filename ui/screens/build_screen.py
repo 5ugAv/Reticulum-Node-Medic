@@ -15,14 +15,18 @@ from __future__ import annotations
 import threading
 
 from kivy.clock import Clock
+from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
+from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.widget import Widget
 
 from ui import theme
 from ui.birth import birth_node_types, rnode_board_choices
+from ui.qr import birth_cert_payload, qr_matrix
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
@@ -31,6 +35,40 @@ def _line(text, color="text_primary", bold=False, size="15sp"):
                 size_hint_y=None, height=dp(26))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
+
+
+class QRCodeWidget(Widget):
+    """Draws a QR module matrix (rows of booleans, True = dark) as black
+    squares on a white field, including the mandatory light quiet-zone border
+    so a phone camera can lock on. Fixed size = (modules + 2*quiet) * scale."""
+
+    def __init__(self, matrix, scale=dp(4), quiet=4, **kwargs):
+        super().__init__(**kwargs)
+        self._matrix = matrix
+        self._scale = scale
+        self._quiet = quiet
+        span = (len(matrix) + 2 * quiet) * scale
+        self.size_hint = (None, None)
+        self.size = (span, span)
+        self.bind(pos=lambda *a: self._draw(), size=lambda *a: self._draw())
+        self._draw()
+
+    def _draw(self):
+        self.canvas.clear()
+        n = len(self._matrix)
+        s, q = self._scale, self._quiet
+        span = (n + 2 * q) * s
+        x0, y0 = self.pos
+        with self.canvas:
+            Color(1, 1, 1, 1)                      # white field + quiet zone
+            Rectangle(pos=(x0, y0), size=(span, span))
+            Color(0, 0, 0, 1)                      # dark modules
+            for r, row in enumerate(self._matrix):
+                # matrix row 0 is the TOP; Kivy y grows upward, so flip rows
+                yy = y0 + (q + (n - 1 - r)) * s
+                for c, dark in enumerate(row):
+                    if dark:
+                        Rectangle(pos=(x0 + (q + c) * s, yy), size=(s, s))
 
 
 class BuildScreen(BoxLayout):
@@ -172,3 +210,23 @@ class BuildScreen(BoxLayout):
                                        size="16sp"))
             for k, v in cert.items():
                 self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
+            self._add_cert_qr(cert)
+
+    def _add_cert_qr(self, cert):
+        """Show the certificate as a scannable QR — the medic has no phone
+        tethered, so this is how the operator gets it off the device: scan with
+        any camera, no pairing or network. Falls back to a hint if segno is
+        absent (the text above is still the record)."""
+        matrix = qr_matrix(birth_cert_payload(cert))
+        if not matrix:
+            self.list.add_widget(_line(
+                "    (install 'segno' on the medic to show a scannable QR)",
+                color="text_secondary", size="12sp"))
+            return
+        self.list.add_widget(_line("Scan to save this certificate:", bold=True,
+                                   size="15sp"))
+        qr = QRCodeWidget(matrix)
+        holder = AnchorLayout(anchor_x="center", size_hint_y=None,
+                              height=qr.height + dp(12))
+        holder.add_widget(qr)
+        self.list.add_widget(holder)
