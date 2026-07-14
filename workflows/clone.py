@@ -1,25 +1,42 @@
-"""Clone Tool workflow — replicate the medic onto a fresh Pi 5.
+"""Clone Tool — replicate the medic onto a fresh Pi 5 (spec mode #5).
 
-Copies the OS config, the carried asset store, and the monitoring DB / node
-registry onto a new Pi 5, then generates a **fresh** Reticulum identity on the
-target — the source tool's identity is deliberately NOT copied, so the two
-tools are distinct nodes on the mesh.
+A working medic is the tool code + its carried asset store + the offline RNode
+firmware cache + its Python environment + a place on the mesh. Cloning images all
+of that onto a fresh Pi 5 over SSH, then gives the new unit a **fresh** Reticulum
+identity — the source identity is deliberately never copied, so the two medics
+are distinct nodes. Ends by installing an autostart service so the clone boots
+straight into the tool.
 
 Runs over a Connection to the target Pi and is testable against an
-EmulatedConnection, mirroring the build workflows.
+EmulatedConnection, mirroring the build workflows. Large payloads (tool tree,
+61 MB firmware cache) move by ``push_tree`` (rsync); everything else is a command.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import re
 from typing import Callable, List, Optional, Tuple
 
 from transport.connection import Connection
 from monitor.registry import NodeRegistry
 from workflows.build import StepResult
 
-#: Where the medic keeps its state on a Pi.
+#: The medic's own tool root, on the source medic (…/reticulum-tool).
+TOOL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+#: Where the tool lands on the clone.
+REMOTE_TOOL_DIR = "~/reticulum-tool"
+#: The offline RNode firmware cache (outside the repo) — needed to flash offline.
+FIRMWARE_CACHE_LOCAL = os.path.expanduser("~/.config/rnodeconf/update")
+FIRMWARE_CACHE_REMOTE = "~/.config/rnodeconf/update"
+#: Excluded from the tool-tree copy — history, caches, scratch.
+TOOL_EXCLUDES = (".git", "__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
+#: Where the clone keeps its copied monitoring DB.
 CLONE_DIR = "~/.reticulum-node-medic"
+#: Python packages a running medic needs (installed on the clone).
+TOOL_PACKAGES = ("rns", "lxmf", "kivy", "segno")
+REMOTE_WHEELS = f"{REMOTE_TOOL_DIR}/assets/packages"
 
 _CLONE_STEPS: List[Tuple[str, Callable]] = []
 
@@ -39,21 +56,57 @@ def verify_target_pi5(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
-def copy_os_config(wf: "CloneWorkflow") -> StepResult:
-    wf.connection.run(f"mkdir -p {CLONE_DIR}")
-    code, out, err = wf.connection.run(
-        "rsync -a /etc/reticulum-node-medic/ "
-        f"{CLONE_DIR}/os-config/ 2>/dev/null || true")
-    return StepResult("copy_os_config", True, "Copied OS configuration.")
+def transfer_tool(wf: "CloneWorkflow") -> StepResult:
+    # rsync the whole tool tree (code + carried assets: configs, scripts,
+    # sketches, packages, maps), minus history/caches.
+    wf.connection.run(f"mkdir -p {REMOTE_TOOL_DIR}")
+    ok = wf.connection.push_tree(TOOL_ROOT, REMOTE_TOOL_DIR, exclude=TOOL_EXCLUDES)
+    if not ok:
+        return StepResult("transfer_tool", False,
+                          "Could not copy the tool tree to the target (rsync).")
+    present = wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] == 0
+    return StepResult("transfer_tool", present,
+                      "Copied the tool code + asset store." if present
+                      else "Tool tree copied but main.py is missing.")
 
 
 @clone_step
-def copy_asset_store(wf: "CloneWorkflow") -> StepResult:
-    code, out, err = wf.connection.run(
-        f"mkdir -p {CLONE_DIR}/assets")
-    return StepResult("copy_asset_store", True,
-                      "Copied the carried asset store (firmware, configs, "
-                      "scripts, packages).")
+def transfer_firmware_cache(wf: "CloneWorkflow") -> StepResult:
+    # The offline RNode firmware cache lets the clone flash boards with no
+    # internet. It lives outside the repo; skip cleanly if this medic has none.
+    if not os.path.isdir(FIRMWARE_CACHE_LOCAL):
+        return StepResult("transfer_firmware_cache", True,
+                          "No local firmware cache to copy (clone can sync it "
+                          "online later).", skipped=True)
+    wf.connection.run(f"mkdir -p {FIRMWARE_CACHE_REMOTE}")
+    ok = wf.connection.push_tree(FIRMWARE_CACHE_LOCAL, FIRMWARE_CACHE_REMOTE)
+    return StepResult("transfer_firmware_cache", ok,
+                      "Copied the offline RNode firmware cache." if ok
+                      else "Could not copy the firmware cache.")
+
+
+@clone_step
+def install_dependencies(wf: "CloneWorkflow") -> StepResult:
+    # Prefer carried wheels (offline field clone); fall back to online pip.
+    pkgs = " ".join(TOOL_PACKAGES)
+    have_wheels = wf.connection.run(f"ls {REMOTE_WHEELS}/*.whl")[0] == 0
+    if have_wheels:
+        cmd = (f"pip3 install --no-index --find-links {REMOTE_WHEELS} "
+               f"--break-system-packages --user {pkgs}")
+        source = "carried wheels (offline)"
+    elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
+        cmd = f"pip3 install --break-system-packages --user {pkgs}"
+        source = "online pip"
+    else:
+        return StepResult(
+            "install_dependencies", False,
+            "No carried wheels and no internet — carry the medic's wheels in "
+            "assets/packages for a fully offline clone, or connect WiFi once.")
+    code, out, err = wf.connection.run(cmd, timeout=1200)
+    ok = code == 0
+    return StepResult("install_dependencies", ok,
+                      f"Installed the tool's Python stack from {source}." if ok
+                      else f"Dependency install failed ({source}): {(err or out)[-200:]}")
 
 
 @clone_step
@@ -71,30 +124,75 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def generate_fresh_identity(wf: "CloneWorkflow") -> StepResult:
-    # Generate a NEW identity on the target — never copy the source tool's, so
-    # the clone is a distinct node on the mesh.
+    # A NEW identity on the target — never the source's — so the clone is a
+    # distinct node on the mesh. rnid prints "New identity <hash> written to …".
     code, out, err = wf.connection.run(
         "mkdir -p ~/.reticulum/storage && "
         "rnid --generate ~/.reticulum/storage/identity")
-    ok = code == 0
-    if ok:
-        wf.fresh_identity_generated = True
-    return StepResult("generate_fresh_identity", ok,
-                      "Generated a fresh Reticulum identity (source identity "
-                      "NOT copied)." if ok
-                      else f"Could not generate identity: {err or out}")
+    if code != 0:
+        return StepResult("generate_fresh_identity", False,
+                          f"Could not generate identity: {(err or out)[-160:]}")
+    m = re.search(r"New identity <([0-9a-f]+)>", out)
+    wf.fresh_identity_hash = m.group(1) if m else None
+    wf.fresh_identity_generated = True
+    tail = f" ({wf.fresh_identity_hash})" if wf.fresh_identity_hash else ""
+    return StepResult("generate_fresh_identity", True,
+                      f"Generated a fresh Reticulum identity{tail} — source "
+                      f"identity NOT copied.")
+
+
+@clone_step
+def configure_autostart(wf: "CloneWorkflow") -> StepResult:
+    # A systemd service so the clone boots into the tool. Runs main.py as the
+    # login user with its ~/.local/bin on PATH (pip --user console scripts).
+    user = wf.connection.run("id -un")[1].strip() or "pi"
+    home = f"/home/{user}" if user != "root" else "/root"
+    priv = "" if user == "root" else "sudo -n "
+    unit = (
+        "[Unit]\n"
+        "Description=Reticulum Node Medic (tool)\n"
+        "After=graphical.target network-online.target\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        f"User={user}\n"
+        f"Environment=HOME={home}\n"
+        f"WorkingDirectory={home}/reticulum-tool\n"
+        f"ExecStart=/usr/bin/python3 {home}/reticulum-tool/main.py\n"
+        "Restart=on-failure\n"
+        "RestartSec=5\n\n"
+        "[Install]\n"
+        "WantedBy=graphical.target\n"
+    )
+    heredoc = (f"{priv}tee /etc/systemd/system/reticulum-node-medic.service "
+               f">/dev/null <<'RNMUNIT'\n{unit}\nRNMUNIT")
+    if wf.connection.run(heredoc)[0] != 0:
+        return StepResult("configure_autostart", False,
+                          "Could not write the autostart service unit.")
+    wf.connection.run(f"{priv}systemctl daemon-reload")
+    code = wf.connection.run(
+        f"{priv}systemctl enable reticulum-node-medic.service")[0]
+    return StepResult("configure_autostart", code == 0,
+                      "Autostart enabled — the clone boots into the tool." if code == 0
+                      else "Could not enable the autostart service.")
 
 
 @clone_step
 def final_verification(wf: "CloneWorkflow") -> StepResult:
     problems = []
+    if wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] != 0:
+        problems.append("tool code missing")
     if wf.connection.run(f"test -f {CLONE_DIR}/monitoring_db.json")[0] != 0:
         problems.append("monitoring DB missing")
     if not wf.fresh_identity_generated:
         problems.append("fresh identity not generated")
+    if wf.connection.run("python3 -c 'import RNS'")[0] != 0:
+        problems.append("RNS not importable")
+    if wf.connection.run(
+            "systemctl is-enabled reticulum-node-medic.service")[0] != 0:
+        problems.append("autostart not enabled")
     ok = not problems
     return StepResult("final_verification", ok,
-                      "Clone verified." if ok
+                      "Clone verified — a fresh medic is ready." if ok
                       else "Verification failed: " + "; ".join(problems))
 
 
@@ -107,6 +205,7 @@ class CloneWorkflow:
         self.results: List[StepResult] = []
         self.monitoring_db_json: str = ""
         self.fresh_identity_generated: bool = False
+        self.fresh_identity_hash: Optional[str] = None
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)
