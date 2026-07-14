@@ -1,0 +1,12 @@
+# Runtime Python dependencies for the Reticulum Node Medic.
+#
+# Wheels for these — and their transitive deps — are cached into
+# assets/packages/ by workflows.wheelhouse.cache_wheels (run on the medic, which
+# is the same Pi 5 / aarch64 / cpython platform as any clone target). A Clone Tool
+# run carries that wheelhouse to the fresh Pi, so it installs the whole stack with
+# --no-index — fully offline in the field. Versions are pinned to the set proven
+# to install offline on Python 3.13 / aarch64.
+rns==1.3.8
+lxmf==1.0.1
+segno==1.6.6
+kivy==2.3.1
