@@ -18,6 +18,7 @@ EXPECTED_STEPS = [
     "apply_system_hardening",
     "set_hostname",
     "final_verification",
+    "birth_certificate",
 ]
 
 PI5_CPUINFO = "processor : 0\nModel : Raspberry Pi 5 Model B Rev 1.0\n"
@@ -439,9 +440,46 @@ def test_root_session_omits_sudo():
 
 def test_final_verification_runs():
     w = wf(build_conn(rnode=True))
-    result = w.steps[-1][1](w)
+    result = _run_step(w, "final_verification")
     assert result.name == "final_verification"
     assert result.success is True
+
+
+def test_birth_certificate_records_reachability_and_build_details():
+    conn = build_conn(rnode=True)
+    conn.rules.insert(0, ("^hostname", 0, "rtt-prop-01", ""))
+    conn.rules.insert(0, ("^hostname -I", 0, "192.168.1.42 10.0.0.9", ""))  # first
+    conn.rules.insert(0, ("ip route get", 0, "wlan0", ""))
+    conn.rules.insert(0, ("class/net/wlan0/address", 0, "b8:27:eb:aa:bb:cc", ""))
+    conn.rules.insert(0, ("RNS.Identity.from_file", 0, "1be7e0923d8c0cc95af8ddb65aad804a", ""))
+    w = wf(conn)
+    w.steps[0][1](w)                             # detect (sets radio port etc.)
+    w.profile.rnode_rgb_pin = 47                 # RGB build was flashed
+    result = _run_step(w, "birth_certificate")
+    assert result.success is True
+    cert = w.birth_certificate
+    assert cert["hostname"] == "rtt-prop-01"
+    assert cert["ssh_address"] == "rtt-prop-01.local"
+    assert cert["ip_addresses"] == ["192.168.1.42", "10.0.0.9"]
+    assert cert["mac_address"] == "b8:27:eb:aa:bb:cc"
+    assert cert["reticulum_address"] == "1be7e0923d8c0cc95af8ddb65aad804a"
+    assert cert["rgb_led_pin"] == 47
+    assert cert["frequency_mhz"] == 915.125 and cert["spreading_factor"] == 9
+    # the resolved Reticulum address is also stored back on the profile
+    assert w.profile.reticulum_identity_hash == "1be7e0923d8c0cc95af8ddb65aad804a"
+
+
+def test_birth_certificate_handles_missing_reticulum_address():
+    conn = build_conn(rnode=False)
+    conn.rules.insert(0, ("^hostname", 0, "rtt-node", ""))
+    conn.rules.insert(0, ("^hostname -I", 0, "192.168.1.42", ""))  # first
+    conn.rules.insert(0, ("RNS.Identity.from_file", 0, "", ""))   # no identity yet
+    w = wf(conn)
+    w.steps[0][1](w)
+    result = _run_step(w, "birth_certificate")
+    assert result.success is True
+    assert w.birth_certificate["reticulum_address"] is None
+    assert w.birth_certificate["rgb_led_pin"] is None            # stock, no RGB
 
 
 def test_all_configs_enable_transport():

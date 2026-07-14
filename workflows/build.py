@@ -169,7 +169,7 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
     # from this module, so importing them at module scope would be a cycle.
     from workflows.rnode_flash import birth_flash, FIRMWARE_VERSION
     from workflows.rnode_v4_rgb import (
-        V4_BOARD_KEY, rgb_firmware_available, flash_rgb_carried)
+        V4_BOARD_KEY, NEOPIXEL_PIN, rgb_firmware_available, flash_rgb_carried)
 
     if not wf.profile.rnode_present:
         return StepResult("flash_rnode_firmware", True,
@@ -205,6 +205,7 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
                                        wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
         if ok:
             wf.profile.has_rnode = True
+            wf.profile.rnode_rgb_pin = NEOPIXEL_PIN   # RGB LED signal wire GPIO
         return StepResult("flash_rnode_firmware", ok,
                           f"Flashed {board.display_name}: {detail}" if ok
                           else f"RGB flash failed: {detail}")
@@ -391,6 +392,74 @@ def final_verification(wf: "BuildWorkflow") -> StepResult:
                       else "Verification failed: " + "; ".join(problems))
 
 
+#: RNS reads the node's own identity hash straight off disk (no networking, no
+#: clash with the running rnsd) — try the client identity, then the transport
+#: instance identity (a transport-only node has only the latter).
+_RETICULUM_ADDR_CMD = (
+    "python3 -c \"import RNS, os; "
+    "cands=['~/.reticulum/storage/identity', "
+    "'~/.reticulum/storage/transport_identity']; "
+    "p=next((os.path.expanduser(x) for x in cands "
+    "if os.path.exists(os.path.expanduser(x))), None); "
+    "i=RNS.Identity.from_file(p) if p else None; "
+    "print(RNS.hexrep(i.hash, delimit=False) if i else '')\" 2>/dev/null")
+
+
+@build_step
+def birth_certificate(wf: "BuildWorkflow") -> StepResult:
+    """Assemble a photographable birth certificate for the node.
+
+    The details an operator needs months later to find, reach and rebuild it:
+    SSH name/address, MAC, the node's Reticulum address, and how it was
+    built (board, firmware, radio params, RGB LED signal-wire GPIO). Read live
+    from the node after the services are up (so the identity exists); the RNode
+    is NOT queried over serial here — rnsd holds the port — so radio values come
+    from the profile we just provisioned.
+    """
+    from workflows.rnode_flash import FIRMWARE_VERSION
+
+    def out(cmd: str) -> str:
+        code, o, _ = wf.connection.run(cmd)
+        return o.strip() if code == 0 else ""
+
+    hostname = out("hostname") or (wf.profile.hostname or "")
+    ips = out("hostname -I").split()
+    iface = (out("ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}'")
+             or "eth0")
+    mac = out(f"cat /sys/class/net/{iface}/address 2>/dev/null")
+    ret_addr = out(_RETICULUM_ADDR_CMD).splitlines()
+    ret_addr = ret_addr[-1].strip() if ret_addr else ""
+    if ret_addr:
+        wf.profile.reticulum_identity_hash = ret_addr
+
+    board = get_board(wf.profile.rnode_board_key)
+    r = wf.profile.radio
+    wf.birth_certificate = {
+        "hostname": hostname,
+        "ssh_address": f"{hostname}.local" if hostname
+                       else (ips[0] if ips else ""),
+        "ip_addresses": ips,
+        "primary_interface": iface,
+        "mac_address": mac,
+        "reticulum_address": ret_addr or None,
+        "role": wf.profile.role.value,
+        "board": board.display_name if board else wf.profile.hardware.value,
+        "rnode_firmware": FIRMWARE_VERSION if wf.profile.has_rnode else None,
+        "rgb_led_pin": wf.profile.rnode_rgb_pin,
+        "frequency_mhz": r.frequency_mhz,
+        "bandwidth_khz": r.bandwidth_khz,
+        "spreading_factor": r.spreading_factor,
+        "coding_rate": r.coding_rate,
+        "tx_power_dbm": r.tx_power_dbm,
+        "serial_port": r.serial_port,
+        "session_id": wf.profile.session_id,
+    }
+    return StepResult(
+        "birth_certificate", True,
+        f"Birth certificate ready — {hostname or 'node'} @ "
+        f"{ret_addr or 'no Reticulum address'} (photograph / keep for records).")
+
+
 # ---------------------------------------------------------------------------
 # Workflow driver
 # ---------------------------------------------------------------------------
@@ -404,6 +473,7 @@ class BuildWorkflow:
         self.current_index = 0
         self.results: List[StepResult] = []
         self.rendered_config = ""
+        self.birth_certificate: Optional[dict] = None
         self._root: Optional[bool] = None
         self._user: Optional[str] = None
 
