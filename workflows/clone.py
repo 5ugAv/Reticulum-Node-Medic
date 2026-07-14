@@ -106,14 +106,11 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
             "on the medic (online) so clones install offline, or connect WiFi.")
     code, out, err = wf.connection.run(cmd, timeout=1200)
     ok = code == 0
-    # Kivy's Python wheel is here, but its runtime needs SDL2 system libs (apt).
-    # On Raspberry Pi OS Desktop they're present; a fully offline Lite clone also
-    # needs those debs carried. Best-effort, non-fatal.
-    if ok:
-        wf.connection.run(
-            "command -v apt-get >/dev/null && sudo -n apt-get install -y "
-            "libsdl2-2.0-0 libsdl2-image-2.0-0 libsdl2-mixer-2.0-0 "
-            "libsdl2-ttf-2.0-0 libmtdev1 >/dev/null 2>&1 || true")
+    # No apt step needed: the Kivy wheel vendors its own SDL2/SDL2_image/mixer/
+    # ttf + libpng (auditwheel Kivy.libs/), verified by ldd showing zero
+    # unresolved libs. The only OS requirement is EGL/GLES, which is part of base
+    # Raspberry Pi OS — so the carried wheelhouse alone gives a runnable GUI
+    # offline, with nothing extra to carry.
     return StepResult("install_dependencies", ok,
                       f"Installed the tool's Python stack from {source}." if ok
                       else f"Dependency install failed ({source}): {(err or out)[-200:]}")
