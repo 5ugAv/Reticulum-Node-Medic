@@ -167,9 +167,7 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
     """
     # Lazy import: rnode_flash / rnode_v4_rgb import StepResult/detect_rnode_port
     # from this module, so importing them at module scope would be a cycle.
-    from workflows.rnode_flash import (
-        flash_command, FIRMWARE_VERSION, SUCCESS_MARKER,
-        ALREADY_PROVISIONED_MARKER)
+    from workflows.rnode_flash import birth_flash, FIRMWARE_VERSION
     from workflows.rnode_v4_rgb import (
         V4_BOARD_KEY, rgb_firmware_available, flash_rgb_carried)
 
@@ -211,15 +209,9 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
                           f"Flashed {board.display_name}: {detail}" if ok
                           else f"RGB flash failed: {detail}")
 
-    try:
-        cmd = flash_command(board, port, wf.profile.rnode_band_mhz,
-                            FIRMWARE_VERSION)
-    except ValueError as exc:
-        return StepResult("flash_rnode_firmware", False, str(exc))
-    code, out, err = wf.connection.run(cmd, timeout=400)
-    out_l = out.lower()
-    ok = code == 0 and (SUCCESS_MARKER in out_l
-                        or ALREADY_PROVISIONED_MARKER in out_l)
+    # birth_flash makes the fresh-board second pass part of the process.
+    ok, msg, _already = birth_flash(wf.connection, board, port,
+                                    wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
     if ok:
         wf.profile.has_rnode = True
     note = (" (stock — RGB firmware not built on this medic; run the V4 RGB "
@@ -227,8 +219,8 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
             if wf.profile.rnode_board_key == V4_BOARD_KEY else "")
     return StepResult("flash_rnode_firmware", ok,
                       f"Flashed {board.display_name} as an RNode from the "
-                      f"firmware cache{note}." if ok
-                      else f"Flash failed (exit {code}): {(err or out)[-200:]}")
+                      f"firmware cache{note} — {msg}." if ok
+                      else f"Flash failed: {msg}")
 
 
 @build_step

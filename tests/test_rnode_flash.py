@@ -5,11 +5,49 @@ from workflows.rnode_boards import get_board
 from workflows.rnode_flash import (
     RNodeFlashWorkflow,
     flash_command,
+    birth_flash,
     SUCCESS_MARKER,
     FIRMWARE_VERSION,
 )
 
 V4 = get_board("heltec32_v4")
+
+
+# ---- birth_flash: the fresh-board two-pass ------------------------------
+
+
+def _autoinstall_count(history):
+    return sum(1 for c in history if "--autoinstall" in c)
+
+
+def test_birth_flash_runs_twice_for_a_brand_new_board():
+    # a blank board's first autoinstall flashes but re-enumerates before the
+    # EEPROM is written; nodemedic makes the second pass part of the birth
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rule("--autoinstall", 0, "RNode Firmware autoinstallation complete!")
+    ok, msg, already = birth_flash(c, V4, "/dev/ttyACM0")
+    assert ok is True and already is False
+    assert _autoinstall_count(c.history) == 2          # two passes
+    assert "two passes" in msg
+
+
+def test_birth_flash_single_pass_for_already_provisioned_board():
+    # an already-flashed board births in one pass — no needless reflash
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rule("--autoinstall", 0,
+           "This device is already installed and provisioned.")
+    ok, msg, already = birth_flash(c, V4, "/dev/ttyACM0")
+    assert ok is True and already is True
+    assert _autoinstall_count(c.history) == 1          # only one pass
+
+
+def test_birth_flash_reports_failure_from_the_second_pass():
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rule("--autoinstall", 97, "Flash error")         # never completes
+    ok, msg, already = birth_flash(c, V4, "/dev/ttyACM0")
+    assert ok is False and already is False
+    assert _autoinstall_count(c.history) == 2           # still tried twice
+    assert "flash failed" in msg
 
 
 # ---- flash_command (the hardware-verified sequence) ---------------------
@@ -63,9 +101,11 @@ def test_workflow_happy_path_offline_flash():
         "detect_port", "ensure_single_board", "ensure_firmware", "flash",
         "set_params", "verify"]
     assert all(r.success for r in results)
+    # a brand-new board is flashed in two passes (fresh-ESP32 re-enumeration)
+    h = conn.history
+    assert _autoinstall_count(h) == 2
     # the canonical params are baked in at birth, then the board is left
     # host-controlled so a Pi's rnsd never aborts on a stale 250/SF11 default
-    h = conn.history
     assert any("--tnc" in c and "--freq 915125000" in c and "--sf 9" in c
                for c in h)
     assert any(c.rstrip().endswith("-N") for c in h)

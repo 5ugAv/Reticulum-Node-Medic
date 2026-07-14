@@ -173,6 +173,8 @@ def test_flash_births_blank_attached_board_stock_when_no_rgb(monkeypatch):
     # it used the proven offline pre-fed autoinstall (V4 = index 9) from the cache
     assert any("--autoinstall" in c and "printf" in c and "--nocheck" in c
                for c in conn.history)
+    # a brand-new board is birthed in two autoinstall passes
+    assert sum(1 for c in conn.history if "--autoinstall" in c) == 2
     assert "stock" in result.message         # notes RGB was not applied
 
 

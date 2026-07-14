@@ -36,8 +36,7 @@ from typing import Callable, List, Optional
 
 from transport.connection import Connection
 from workflows.build import StepResult, detect_rnode_port
-from workflows.rnode_flash import (
-    FIRMWARE_VERSION, SUCCESS_MARKER, ALREADY_PROVISIONED_MARKER, flash_command)
+from workflows.rnode_flash import FIRMWARE_VERSION, birth_flash
 from workflows.rnode_boards import get_board
 from workflows.radio_params import set_params_at_birth
 
@@ -115,15 +114,10 @@ def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
     overlay the RGB firmware, then restamp the hash. Returns ``(ok, message)``.
     """
     board = get_board(V4_BOARD_KEY)
-    try:
-        prov = flash_command(board, port, band_mhz, version)
-    except ValueError as exc:
-        return False, str(exc)
-    code, out, err = connection.run(prov, timeout=400)
-    out_l = out.lower()
-    if not (code == 0 and (SUCCESS_MARKER in out_l
-                           or ALREADY_PROVISIONED_MARKER in out_l)):
-        return False, f"stock provision failed (exit {code}): {(err or out)[-160:]}"
+    prov_ok, prov_msg, _already = birth_flash(connection, board, port,
+                                              band_mhz, version)
+    if not prov_ok:
+        return False, f"stock provision failed: {prov_msg}"
     if not connection.push_file(bin_path, REMOTE_RGB_BIN):
         return False, "could not carry the RGB firmware to the node."
     if not connection.push_file(hasher_path, REMOTE_RGB_HASHER):
@@ -293,21 +287,17 @@ class HeltecV4RGBWorkflow:
 
     def _provision(self) -> StepResult:
         # rnodeconf --autoinstall writes the correct V4 identity + radio config
-        # (9 -> enter -> band -> y). We overwrite the firmware next, so an
-        # already-provisioned board is fine too.
+        # (9 -> enter -> band -> y). birth_flash makes the brand-new-board second
+        # pass part of the process; we overwrite the firmware next, so an
+        # already-provisioned board (single pass) is fine too.
         board = get_board(V4_BOARD_KEY)
-        try:
-            cmd = flash_command(board, self.port, self.band_mhz, self.version)
-        except ValueError as exc:
-            return StepResult("provision", False, str(exc))
-        code, out, err = self.connection.run(cmd, timeout=self.flash_timeout)
-        out_l = out.lower()
-        ok = code == 0 and (SUCCESS_MARKER in out_l
-                            or ALREADY_PROVISIONED_MARKER in out_l)
+        ok, msg, _already = birth_flash(self.connection, board, self.port,
+                                        self.band_mhz, self.version,
+                                        self.flash_timeout)
         return StepResult(
             "provision", ok,
-            "EEPROM provisioned via autoinstall." if ok
-            else f"Provision failed (exit {code}): {(err or out)[-200:]}")
+            f"EEPROM provisioned via autoinstall — {msg}." if ok
+            else f"Provision failed: {msg}")
 
     def _flash_custom(self) -> StepResult:
         if self.connection.run(f"test -f {self.bin_path}")[0] != 0:
