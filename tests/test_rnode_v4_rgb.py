@@ -11,6 +11,7 @@ from workflows.rnode_v4_rgb import (
     HeltecV4RGBWorkflow, compile_command, esptool_flash_command,
     firmware_hash_command, esptool_path, BUILD_BIN, FIRMWARE_DIR, REMOTE_PATCH,
     LOCAL_PATCH, REMOTE_BOOT_ERR, LOCAL_BOOT_ERR, BOARD_MODEL,
+    rgb_firmware_available, flash_rgb_carried, REMOTE_RGB_BIN, REMOTE_RGB_HASHER,
 )
 
 GOOD_INFO = ("Device connected\nCurrent firmware version: 1.86\n"
@@ -210,3 +211,55 @@ def test_run_all_stops_if_build_fails():
     # build_firmware fails -> never reaches the flash phase
     assert results[-1].name == "build_firmware"
     assert not any(r.name == "provision" for r in results)
+
+
+# ---- carried RGB flash (Pi+RNode target with the board on the remote Pi) ---
+
+def test_rgb_firmware_available_needs_both_bin_and_hasher(tmp_path):
+    b = tmp_path / "RNode_Firmware.ino.bin"
+    h = tmp_path / "partition_hashes"
+    assert rgb_firmware_available(str(b), str(h)) is False      # neither yet
+    b.write_bytes(b"BIN")
+    assert rgb_firmware_available(str(b), str(h)) is False      # hasher missing
+    h.write_text("#!/usr/bin/env python\n")
+    assert rgb_firmware_available(str(b), str(h)) is True       # both present
+
+
+def carried_conn():
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rule("--autoinstall", code=0, stdout="autoinstallation complete")
+    c.rule("esptool", code=0, stdout="Hash of data verified.")
+    c.rule("partition_hashes", code=0, stdout="deadbeef")
+    c.rule("--firmware-hash", code=0, stdout="ok")
+    return c
+
+
+def test_flash_rgb_carried_provisions_carries_overlays_stamps(tmp_path):
+    b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
+    h = tmp_path / "partition_hashes"; h.write_text("#!/usr/bin/env python\n")
+    conn = carried_conn()
+    ok, msg = flash_rgb_carried(conn, "/dev/ttyACM0", band_mhz=915,
+                                bin_path=str(b), hasher_path=str(h))
+    assert ok, msg
+    # 1) stock provision via the offline pre-fed autoinstall
+    assert any("--autoinstall" in c and "printf" in c for c in conn.history)
+    # 2) carried the compiled bin + hasher to their staging paths on the target
+    assert (str(b), REMOTE_RGB_BIN) in conn.pushed
+    assert (str(h), REMOTE_RGB_HASHER) in conn.pushed
+    # 3) overlaid from the CARRIED bin (not the local build path) + 4) restamped
+    assert any("esptool" in c and REMOTE_RGB_BIN in c and "0x10000" in c
+               for c in conn.history)
+    assert any("--firmware-hash" in c and REMOTE_RGB_HASHER in c
+               for c in conn.history)
+
+
+def test_flash_rgb_carried_fails_if_provision_fails(tmp_path):
+    b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
+    h = tmp_path / "partition_hashes"; h.write_text("x")
+    conn = carried_conn()
+    conn.rules.insert(0, ("--autoinstall", 1, "Flash error", ""))   # first wins
+    ok, msg = flash_rgb_carried(conn, "/dev/ttyACM0",
+                                bin_path=str(b), hasher_path=str(h))
+    assert ok is False and "provision" in msg
+    # never carried the firmware if the board wasn't provisioned
+    assert not conn.pushed
