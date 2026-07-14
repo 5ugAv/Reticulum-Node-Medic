@@ -42,6 +42,42 @@ def flash_command(board: RNodeBoard, port: str, band_mhz: int = 915,
             + autoinstall_command(port, version=version, offline=True))
 
 
+def birth_flash(connection: Connection, board: RNodeBoard, port: str,
+                band_mhz: int = 915, version: str = FIRMWARE_VERSION,
+                timeout: int = 400):
+    """Flash + provision a board as an RNode, with the fresh-board second pass.
+
+    A BRAND-NEW (never-flashed) ESP32 re-enumerates onto its RNode USB identity
+    after the first firmware write, so a single ``--autoinstall`` typically
+    flashes the firmware but cannot finish writing the EEPROM (identity, hash,
+    signature) before the port changes underneath it. nodemedic makes the second
+    pass part of the birth: run autoinstall once, and if the board was not
+    already an RNode, run it a second time — now that firmware is present, the
+    provisioning completes reliably. An already-provisioned board births in a
+    single pass (no needless reflash).
+
+    Returns ``(ok, message, already_provisioned)``.
+    """
+    try:
+        cmd = flash_command(board, port, band_mhz, version)
+    except ValueError as exc:
+        return False, str(exc), False
+    code, out, err = connection.run(cmd, timeout=timeout)
+    if ALREADY_PROVISIONED_MARKER in out.lower():
+        # Board already carried RNode firmware — birthing is already done.
+        return True, "already a provisioned RNode", True
+    # Brand-new board (or a first pass that only flashed): a confirming second
+    # pass finishes provisioning after the post-flash re-enumeration.
+    code, out, err = connection.run(cmd, timeout=timeout)
+    out_l = out.lower()
+    ok = code == 0 and (SUCCESS_MARKER in out_l
+                        or ALREADY_PROVISIONED_MARKER in out_l)
+    return (ok,
+            "flashed + provisioned over two passes (new board)" if ok
+            else f"flash failed (exit {code}): {(err or out)[-200:]}",
+            False)
+
+
 class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
@@ -98,24 +134,20 @@ class RNodeFlashWorkflow:
             return StepResult("flash", False,
                               f"{self.board.key} is a custom board — flash it "
                               f"with its arduino-cli flasher.")
-        try:
-            cmd = flash_command(self.board, self.port, self.band_mhz, self.version)
-        except ValueError as exc:
-            return StepResult("flash", False, str(exc))
-        code, out, err = self.connection.run(cmd, timeout=self.flash_timeout)
-        out_l = out.lower()
-        if ALREADY_PROVISIONED_MARKER in out_l:
+        ok, msg, already = birth_flash(self.connection, self.board, self.port,
+                                       self.band_mhz, self.version,
+                                       self.flash_timeout)
+        if already:
             # Re-inserted an already-flashed board — birthing is already done.
             return StepResult(
                 "flash", True,
                 f"{self.board.display_name} is already a provisioned RNode — "
                 f"no flash needed (wipe the EEPROM first to force a reflash).",
                 skipped=True)
-        ok = code == 0 and SUCCESS_MARKER in out_l
         return StepResult(
             "flash", ok,
-            f"Flashed {self.board.display_name} from the offline cache." if ok
-            else f"Flash failed (exit {code}): {(err or out)[-300:]}")
+            f"Flashed {self.board.display_name} from the offline cache — {msg}."
+            if ok else f"Flash failed: {msg}")
 
     def _set_params(self) -> StepResult:
         # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
