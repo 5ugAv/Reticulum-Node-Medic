@@ -74,6 +74,10 @@ class NodeProfile:
     rnode_board_key: str = "heltec32_v4"
     #: LoRa band (MHz) to provision a blank board in.
     rnode_band_mhz: int = 915
+    #: GPIO the NeoPixel status LED signal wire lands on, when the RGB build was
+    #: flashed (None = stock firmware, no RGB LED). Recorded on the birth cert so
+    #: the field wiring is documented.
+    rnode_rgb_pin: Optional[int] = None
     os_version: Optional[str] = None
     reticulum_version: Optional[str] = None
     lxmf_version: Optional[str] = None
