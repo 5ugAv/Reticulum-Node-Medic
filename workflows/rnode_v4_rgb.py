@@ -84,6 +84,61 @@ BOOT_ERROR_RED = 0x40
 #: The Heltec V4 official autoinstall board (drives the EEPROM provisioning).
 V4_BOARD_KEY = "heltec32_v4"
 
+# -- carried RGB flash (Pi+RNode nodes) ------------------------------------
+#: Tool-host paths to the compiled RGB artifacts that build() produces on the
+#: medic. A target Pi has no arduino toolchain, so instead of rebuilding there
+#: the medic CARRIES these to the target and overlays them.
+RGB_LOCAL_BIN = os.path.expanduser(BUILD_BIN)
+RGB_LOCAL_HASHER = os.path.expanduser(PARTITION_HASHES)
+#: Where the carried artifacts are staged on the target before the overlay.
+REMOTE_RGB_BIN = "/tmp/rnm_rgb_firmware.bin"
+REMOTE_RGB_HASHER = "/tmp/rnm_partition_hashes"
+
+
+def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
+                           hasher_path: str = RGB_LOCAL_HASHER) -> bool:
+    """True when the compiled RGB firmware + hasher exist on the TOOL HOST,
+    ready to carry to a target. Only the medic (which ran build()) has them, so
+    this is how the Pi build decides RGB-overlay vs. plain stock."""
+    return os.path.isfile(bin_path) and os.path.isfile(hasher_path)
+
+
+def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
+                      version: str = FIRMWARE_VERSION,
+                      bin_path: str = RGB_LOCAL_BIN,
+                      hasher_path: str = RGB_LOCAL_HASHER):
+    """Birth a blank V4 attached to a REMOTE target with the RGB firmware.
+
+    Same result as ``HeltecV4RGBWorkflow.flash()`` but for a board on another
+    machine: stock-provision the EEPROM (which also leaves esptool in the target
+    firmware cache), carry the medic's pre-built ``.bin`` + hasher to the target,
+    overlay the RGB firmware, then restamp the hash. Returns ``(ok, message)``.
+    """
+    board = get_board(V4_BOARD_KEY)
+    try:
+        prov = flash_command(board, port, band_mhz, version)
+    except ValueError as exc:
+        return False, str(exc)
+    code, out, err = connection.run(prov, timeout=400)
+    out_l = out.lower()
+    if not (code == 0 and (SUCCESS_MARKER in out_l
+                           or ALREADY_PROVISIONED_MARKER in out_l)):
+        return False, f"stock provision failed (exit {code}): {(err or out)[-160:]}"
+    if not connection.push_file(bin_path, REMOTE_RGB_BIN):
+        return False, "could not carry the RGB firmware to the node."
+    if not connection.push_file(hasher_path, REMOTE_RGB_HASHER):
+        return False, "could not carry the firmware hasher to the node."
+    code, out, err = connection.run(
+        esptool_flash_command(port, REMOTE_RGB_BIN, version), timeout=400)
+    if code != 0:
+        return False, f"RGB overlay failed (exit {code}): {(err or out)[-160:]}"
+    code, out, err = connection.run(
+        firmware_hash_command(port, REMOTE_RGB_BIN, REMOTE_RGB_HASHER),
+        timeout=400)
+    if code != 0:
+        return False, f"firmware-hash stamp failed (exit {code}): {(err or out)[-160:]}"
+    return True, "overlaid the carried RGB NeoPixel firmware."
+
 
 def esptool_path(version: str = FIRMWARE_VERSION) -> str:
     """rnodeconf caches esptool alongside the firmware it downloads; the

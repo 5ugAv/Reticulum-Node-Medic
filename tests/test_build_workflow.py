@@ -129,20 +129,81 @@ def test_confirm_radio_parameters_sets_australian_defaults():
     assert w.profile.radio.tx_power_dbm == 17
 
 
-def test_flash_skipped_without_rnode():
-    w = wf(build_conn(rnode=False))
-    # detect first so has_rnode is set
+def blank_board_conn():
+    """A board is physically attached (a ttyACM port exists) but BLANK — --info
+    fails — and the firmware cache is seeded so it can be flashed offline."""
+    c = build_conn(rnode=False)                       # pi5 cpuinfo, --info exit 1
+    c.rules.insert(0, ("ls /dev/ttyACM", 0, "/dev/ttyACM0", ""))
+    c.rules.insert(0, ("curl -fsI", 7, "", ""))       # offline
+    c.rules.insert(0, ("ls ~/.config/rnodeconf/update/1.86/*.zip",
+                       0, "rnode_firmware_heltec32v4pa.zip", ""))
+    c.rules.insert(0, ("--autoinstall", 0,
+                       "RNode Firmware autoinstallation complete!", ""))
+    return c
+
+
+def test_flash_skipped_when_no_board_attached():
+    w = wf(build_conn(rnode=False))          # no port, no firmware -> nothing there
     w.steps[0][1](w)
-    result = w.steps[2][1](w)  # flash_rnode_firmware
+    assert w.profile.rnode_present is False
+    result = w.steps[2][1](w)                # flash_rnode_firmware
     assert result.skipped is True
+    assert "No RNode attached" in result.message
 
 
-def test_flash_runs_with_rnode():
+def test_flash_skips_already_provisioned_board():
     w = wf(build_conn(rnode=True))
     w.steps[0][1](w)
+    assert w.profile.has_rnode is True and w.profile.rnode_present is True
     result = w.steps[2][1](w)
-    assert result.skipped is False
-    assert result.success is True
+    assert result.skipped is True
+    assert "already provisioned" in result.message
+
+
+def test_flash_births_blank_attached_board_stock_when_no_rgb(monkeypatch):
+    import workflows.rnode_v4_rgb as rgb
+    monkeypatch.setattr(rgb, "rgb_firmware_available", lambda *a, **k: False)
+    conn = blank_board_conn()
+    w = wf(conn)
+    w.steps[0][1](w)                         # detect: present but blank
+    assert w.profile.rnode_present is True and w.profile.has_rnode is False
+    result = w.steps[2][1](w)               # flash_rnode_firmware
+    assert result.success is True and result.skipped is False
+    assert w.profile.has_rnode is True       # now provisioned
+    # it used the proven offline pre-fed autoinstall (V4 = index 9) from the cache
+    assert any("--autoinstall" in c and "printf" in c and "--nocheck" in c
+               for c in conn.history)
+    assert "stock" in result.message         # notes RGB was not applied
+
+
+def test_flash_births_blank_v4_with_rgb_when_available(monkeypatch):
+    # the medic has the RGB firmware compiled -> carry it to the target Pi and
+    # overlay it so the Pi+RNode radio gets the status LED too
+    import workflows.rnode_v4_rgb as rgb
+    monkeypatch.setattr(rgb, "rgb_firmware_available", lambda *a, **k: True)
+    conn = blank_board_conn()
+    w = wf(conn)
+    w.steps[0][1](w)
+    result = w.steps[2][1](w)
+    assert result.success is True and w.profile.has_rnode is True
+    assert "RGB" in result.message
+    # stock-provisioned, then the compiled bin was carried + overlaid + restamped
+    assert any("--autoinstall" in c for c in conn.history)
+    assert any(local.endswith("RNode_Firmware.ino.bin")
+               for local, _ in conn.pushed)
+    assert any("esptool" in c and "0x10000" in c for c in conn.history)
+    assert any("--firmware-hash" in c for c in conn.history)
+
+
+def test_flash_blank_board_offline_without_cache_fails():
+    conn = blank_board_conn()
+    # remove the cached firmware -> offline blank board cannot be birthed
+    conn.rules.insert(0, ("ls ~/.config/rnodeconf/update/1.86/*.zip", 2, "", ""))
+    w = wf(conn)
+    w.steps[0][1](w)
+    result = w.steps[2][1](w)
+    assert result.success is False
+    assert "cached firmware" in result.message
 
 
 def test_write_config_substitutes_placeholders():
@@ -339,14 +400,28 @@ def test_set_hostname_uses_sudo():
                for c in conn.history)
 
 
-def test_set_firmware_params_has_no_invalid_flag():
+def test_set_firmware_params_bakes_canonical_params_at_birth():
     conn = nonroot_conn()
     w = wf(conn)
     w.profile.has_rnode = True
-    _run_step(w, "set_firmware_radio_parameters")
-    rnodeconf_cmd = next(c for c in conn.history
-                         if "rnodeconf" in c and "--freq" in c)
-    assert "--set-firmware-hash" not in rnodeconf_cmd   # flag does not exist
+    result = _run_step(w, "set_firmware_radio_parameters")
+    assert result.success
+    assert w.profile.radio.firmware_hash_set is True
+    # rnodeconf needs the mode flag WITH the params, or it silently ignores them
+    tnc = next(c for c in conn.history if "rnodeconf" in c and "--freq" in c)
+    assert "--tnc" in tnc
+    assert "--freq 915125000" in tnc and "--sf 9" in tnc and "--txp 17" in tnc
+    assert "--set-firmware-hash" not in tnc              # flag does not exist
+    # and the board is returned to host-controlled mode for rnsd
+    assert any(c.rstrip().endswith("-N") for c in conn.history)
+
+
+def test_set_firmware_params_skipped_without_rnode():
+    conn = nonroot_conn()
+    w = wf(conn)
+    w.profile.has_rnode = False
+    result = _run_step(w, "set_firmware_radio_parameters")
+    assert result.skipped is True
 
 
 def test_root_session_omits_sudo():

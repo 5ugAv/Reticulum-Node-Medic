@@ -63,7 +63,17 @@ class NodeProfile:
     connection_port: Optional[str] = None
     ssh_user: str = "pi"
     radio: RadioConfig = field(default_factory=RadioConfig)
+    #: A board is physically attached (a serial port exists), regardless of
+    #: whether it has been flashed yet — a BLANK board is present but not
+    #: provisioned. Distinct from ``has_rnode`` so the build can flash a blank
+    #: board instead of skipping it.
+    rnode_present: bool = False
+    #: The board carries valid RNode firmware (``--info`` reports it).
     has_rnode: bool = False
+    #: Which RNode board to flash a blank attached board as (rnode_boards key).
+    rnode_board_key: str = "heltec32_v4"
+    #: LoRa band (MHz) to provision a blank board in.
+    rnode_band_mhz: int = 915
     os_version: Optional[str] = None
     reticulum_version: Optional[str] = None
     lxmf_version: Optional[str] = None

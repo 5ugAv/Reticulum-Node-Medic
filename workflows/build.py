@@ -15,6 +15,10 @@ from typing import Callable, List, Optional, Tuple
 
 from node_profile import NodeHardware, NodeProfile
 from transport.connection import Connection
+from workflows.rnode_boards import get_board
+from workflows.radio_params import set_params_at_birth
+from workflows.updater import (
+    sync_firmware, has_connectivity, RNODE_UPDATE_DIR)
 
 CONFIG_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "configs")
 PACKAGE_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "packages")
@@ -122,10 +126,19 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     # — so `"RNode" in info` was inverted (blank->yes, real RNode->no, verified on
     # a flashed Heltec V3). Key off "Firmware version", as radio_firmware does.
     wf.profile.has_rnode = "Firmware version" in info
+    # A board can be attached but BLANK (present, not yet provisioned): a serial
+    # port exists, or --info responded. Keep this distinct from has_rnode so the
+    # flash step births a blank board instead of skipping it as "no RNode".
+    wf.profile.rnode_present = wf.profile.has_rnode or port is not None
+    if wf.profile.has_rnode:
+        rnode_state = "provisioned"
+    elif wf.profile.rnode_present:
+        rnode_state = "blank (will flash)"
+    else:
+        rnode_state = "none"
     return StepResult("detect_hardware", True,
                       f"Detected {wf.profile.hardware.value} on "
-                      f"{wf.profile.radio.serial_port}; "
-                      f"RNode={'yes' if wf.profile.has_rnode else 'no'}")
+                      f"{wf.profile.radio.serial_port}; RNode={rnode_state}")
 
 
 @build_step
@@ -143,43 +156,100 @@ def confirm_radio_parameters(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
-    if not wf.profile.has_rnode:
+    """Birth a BLANK attached board as an RNode.
+
+    A board can be physically attached but unflashed (``rnode_present`` and not
+    ``has_rnode``); the old code mistook that for "no RNode" and skipped it,
+    leaving a propagation node with a radio that never comes up. Reuse the
+    proven offline flash primitive (pre-fed ``--autoinstall`` from the firmware
+    cache) so a blank board is provisioned in place. An already-provisioned
+    board is left alone; params are (re)baked in the next step regardless.
+    """
+    # Lazy import: rnode_flash / rnode_v4_rgb import StepResult/detect_rnode_port
+    # from this module, so importing them at module scope would be a cycle.
+    from workflows.rnode_flash import (
+        flash_command, FIRMWARE_VERSION, SUCCESS_MARKER,
+        ALREADY_PROVISIONED_MARKER)
+    from workflows.rnode_v4_rgb import (
+        V4_BOARD_KEY, rgb_firmware_available, flash_rgb_carried)
+
+    if not wf.profile.rnode_present:
         return StepResult("flash_rnode_firmware", True,
-                          "No RNode present — nothing to flash.", skipped=True)
+                          "No RNode attached — nothing to flash.", skipped=True)
+    if wf.profile.has_rnode:
+        return StepResult("flash_rnode_firmware", True,
+                          "RNode already provisioned — no flash needed.",
+                          skipped=True)
+
+    # Blank board present: provision it. Ensure the firmware is available
+    # (sync online, else use the carried cache), then flash the selected board
+    # for the chosen band via the hardware-verified non-interactive sequence.
     port = wf.profile.radio.serial_port
-    wf.connection.push_file(
-        os.path.join(PACKAGE_DIR, "rnodeconf"), "/tmp/rnodeconf")
-    code, out, err = wf.connection.run(f"rnodeconf {port} --autoinstall")
-    ok = code == 0
+    board = get_board(wf.profile.rnode_board_key)
+    if board is None:
+        return StepResult("flash_rnode_firmware", False,
+                          f"Unknown RNode board '{wf.profile.rnode_board_key}'.")
+    if has_connectivity(wf.connection):
+        sync_firmware(wf.connection)
+    elif wf.connection.run(
+            f"ls {RNODE_UPDATE_DIR}/{FIRMWARE_VERSION}/*.zip")[0] != 0:
+        return StepResult(
+            "flash_rnode_firmware", False,
+            f"Blank board attached but offline with no cached firmware "
+            f"{FIRMWARE_VERSION}. Connect WiFi once to seed the cache.")
+
+    # Prefer the RGB NeoPixel build for a V4 whenever the medic has it compiled
+    # (build() run once): carry the .bin to the target and overlay it, so
+    # Pi+RNode radios get the status LED too. Fall back to stock when the RGB
+    # firmware isn't built here, so the build never blocks on it.
+    if wf.profile.rnode_board_key == V4_BOARD_KEY and rgb_firmware_available():
+        ok, detail = flash_rgb_carried(wf.connection, port,
+                                       wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
+        if ok:
+            wf.profile.has_rnode = True
+        return StepResult("flash_rnode_firmware", ok,
+                          f"Flashed {board.display_name}: {detail}" if ok
+                          else f"RGB flash failed: {detail}")
+
+    try:
+        cmd = flash_command(board, port, wf.profile.rnode_band_mhz,
+                            FIRMWARE_VERSION)
+    except ValueError as exc:
+        return StepResult("flash_rnode_firmware", False, str(exc))
+    code, out, err = wf.connection.run(cmd, timeout=400)
+    out_l = out.lower()
+    ok = code == 0 and (SUCCESS_MARKER in out_l
+                        or ALREADY_PROVISIONED_MARKER in out_l)
+    if ok:
+        wf.profile.has_rnode = True
+    note = (" (stock — RGB firmware not built on this medic; run the V4 RGB "
+            "build once to enable the status LED)"
+            if wf.profile.rnode_board_key == V4_BOARD_KEY else "")
     return StepResult("flash_rnode_firmware", ok,
-                      "Flashed RNode firmware." if ok
-                      else f"Flash failed: {err or out}")
+                      f"Flashed {board.display_name} as an RNode from the "
+                      f"firmware cache{note}." if ok
+                      else f"Flash failed (exit {code}): {(err or out)[-200:]}")
 
 
 @build_step
 def set_firmware_radio_parameters(wf: "BuildWorkflow") -> StepResult:
+    """Bake the canonical radio params into the board AT BIRTH.
+
+    rnodeconf only writes the radio flags when a mode flag (``--tnc``/``-N``)
+    rides along — the previous ``--freq/--bw/--sf`` line had none and was a
+    silent no-op, leaving the board on autoinstall's 250/SF11 default and
+    tripping rnsd's "Radio state mismatch". Delegate to the shared helper,
+    which writes the params in TNC mode then returns the board to
+    host-controlled so rnsd drives it.
+    """
     if not wf.profile.has_rnode:
         return StepResult("set_firmware_radio_parameters", True,
                           "No RNode present.", skipped=True)
-    r = wf.profile.radio
-    # Real rnodeconf 2.5.0 has no --set-firmware-hash flag (verified via --help
-    # on hardware; -H/--firmware-hash takes an explicit hash argument). TNC
-    # radio params are applied with --freq/--bw/--sf/--cr/--txp; the firmware
-    # hash is written during --autoinstall (the flash step).
-    cmd = (
-        f"rnodeconf {r.serial_port} "
-        f"--freq {int(r.frequency_mhz * 1_000_000)} "
-        f"--bw {int(r.bandwidth_khz * 1000)} "
-        f"--sf {r.spreading_factor} --cr {r.coding_rate} "
-        f"--txp {r.tx_power_dbm}"
-    )
-    code, out, err = wf.connection.run(cmd)
-    ok = code == 0
+    ok, detail = set_params_at_birth(wf.connection, wf.profile.radio.serial_port,
+                                     wf.profile.radio)
     if ok:
-        r.firmware_hash_set = True
-    return StepResult("set_firmware_radio_parameters", ok,
-                      "Applied radio parameters to the RNode." if ok
-                      else f"rnodeconf failed: {err or out}")
+        wf.profile.radio.firmware_hash_set = True
+    return StepResult("set_firmware_radio_parameters", ok, detail)
 
 
 @build_step
