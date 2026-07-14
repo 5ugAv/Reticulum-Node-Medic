@@ -377,6 +377,16 @@ def test_configure_services_uses_detected_binary_path_and_user():
     assert "/usr/local/bin/rnsd" not in unit_write   # not the old hardcode
 
 
+def test_configure_services_runs_lxmd_as_propagation_node_after_rnsd():
+    conn = nonroot_conn()
+    w = wf(conn)
+    _run_step(w, "configure_services")
+    lxmd_unit = next(c for c in conn.history
+                     if "tee /etc/systemd/system/lxmd.service" in c)
+    assert "-p --service" in lxmd_unit           # runs an LXMF propagation node
+    assert "After=rnsd.service" in lxmd_unit      # joins rnsd's shared instance
+
+
 def test_configure_services_skips_lxmd_when_absent():
     conn = nonroot_conn(rules=[("command -v lxmd", 1, "")])  # lxmd not installed
     w = wf(conn)

@@ -307,16 +307,21 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
     # be installed (RNS alone is enough for a transport node). ExecStart must be
     # the *resolved* absolute path (pip --user -> ~/.local/bin), and User=/HOME=
     # must point at the account whose ~/.reticulum holds the config we wrote.
+    # lxmd runs as an LXMF Propagation Node (-p) — the role a Pi + RNode fills —
+    # and starts After rnsd so it joins rnsd's shared Reticulum instance rather
+    # than trying to own the radio itself (which rnsd already holds). Monitoring
+    # attaches to the same shared instance, so both roles run side by side.
     services: List[str] = []
-    for svc, tool, args in (("rnsd", "rnsd", ""),
-                            ("lxmd", "lxmd", " --service")):
+    for svc, tool, args, after in (
+            ("rnsd", "rnsd", "", "network-online.target"),
+            ("lxmd", "lxmd", " -p --service", "rnsd.service network-online.target")):
         path = wf.tool_path(tool)
         if not path:
             continue
         unit = (
             "[Unit]\n"
             f"Description={svc} (Reticulum Node Medic)\n"
-            "After=network-online.target\n"
+            f"After={after}\n"
             "Wants=network-online.target\n\n"
             "[Service]\n"
             "Type=simple\n"
