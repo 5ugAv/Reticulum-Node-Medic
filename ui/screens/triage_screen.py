@@ -41,7 +41,8 @@ class TriageScreen(FloatLayout):
         self._rssi = self._readout({"x": 0.03, "top": 0.97})
         self._snr = self._readout({"right": 0.97, "top": 0.97})
         self._noise = self._readout({"x": 0.03, "y": 0.21})
-        self._peers = self._readout({"right": 0.97, "y": 0.21})
+        self._margin = self._readout({"right": 0.97, "y": 0.21})
+        self._peers = self._readout({"center_x": 0.5, "top": 0.97})
 
         # spoke labels — placed each relayout from the bullseye's geometry
         self._spoke_labels = {}
@@ -114,9 +115,12 @@ class TriageScreen(FloatLayout):
             return (f"[color={sec}]{title}[/color]\n"
                     f"[color={pri}][b]{value}[/b][/color]")
 
-        self._rssi.text = cell("RSSI", f"{sample['rssi']:.0f} dBm")
-        self._snr.text = cell("SNR", f"{sample['snr']:+.1f} dB")
-        self._noise.text = cell("Noise", f"{sample['noise']:.0f} dBm")
+        # Plain-English first, technical term in brackets (guided mode).
+        margin = sample["rssi"] - sample["noise"]
+        self._rssi.text = cell("Signal strength (RSSI)", f"{sample['rssi']:.0f} dBm")
+        self._snr.text = cell("Clarity (SNR)", f"{sample['snr']:+.1f} dB")
+        self._noise.text = cell("Background noise", f"{sample['noise']:.0f} dBm")
+        self._margin.text = cell("Headroom (margin)", f"{margin:.0f} dB spare")
         self._peers.text = cell("Peers", f"{sample.get('peers', 0)} heard")
 
         r, g, b = thermal_color(snap["score"])

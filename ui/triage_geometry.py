@@ -55,10 +55,11 @@ def ring_for_score(score: float) -> str:
 
 # Fixed spoke bearing per metric (degrees, Kivy y-up): SNR straight up, link
 # margin lower-left, noise floor lower-right. Same thirds every session, so the
-# operator learns "top corner = SNR" once.
+# operator learns "top corner = clarity" once. Labels are plain English (guided
+# mode) with the technical term kept so operators pick it up.
 SPOKES = [
-    ("snr", 90.0, "SNR"),
-    ("margin", 210.0, "MARGIN"),
+    ("snr", 90.0, "CLARITY (SNR)"),
+    ("margin", 210.0, "HEADROOM"),
     ("noise", 330.0, "NOISE"),
 ]
 
