@@ -71,7 +71,7 @@ class QRCodeWidget(Widget):
                         Rectangle(pos=(x0 + (q + c) * s, yy), size=(s, s))
 
 
-class BuildScreen(BoxLayout):
+class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"

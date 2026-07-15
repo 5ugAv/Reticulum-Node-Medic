@@ -1,4 +1,5 @@
-"""Map mode — offline geographic view of known nodes (spec mode #4).
+"""SCAN mode — offline geographic view of known nodes (will also host the
+topology graph). Formerly "Map".
 
 Status-coloured dots for every node with a birth-cert location. When an offline
 **MBTiles** basemap is carried (assets/maps/*.mbtiles), the dots sit on real map
@@ -120,7 +121,7 @@ class MapPlot(Widget):
         self._labels.append(lbl)
 
 
-class MapScreen(BoxLayout):
+class ScanScreen(BoxLayout):
     """Header + the offline plot (tiled when a basemap is carried) + a note, and
     a control to cache a basemap for offline use while the medic has WiFi."""
 

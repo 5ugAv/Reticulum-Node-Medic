@@ -1,4 +1,4 @@
-"""Clone Tool — replicate the medic onto a fresh Pi 5 (spec mode #5).
+"""MITOSIS — replicate the medic onto a fresh Pi 5 (mode 6, formerly Clone Tool).
 
 A working medic is the tool code + its carried asset store + the offline RNode
 firmware cache + its Python environment + a place on the mesh. Cloning images all

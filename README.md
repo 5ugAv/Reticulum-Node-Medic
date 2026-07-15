@@ -12,19 +12,22 @@ internet required in the field — all assets are carried locally.
 > This is the **tool**. It is kept entirely separate from the node firmware
 > (RNode / the RTNode-2400 5ugAv fork) that it inspects and repairs.
 
-## Five operating modes
+## Six operating modes
 
-1. **Build** — provisions a node from bare hardware. Hardware selected first,
-   pre-filled LoRa parameters (all overridable), ends with a photographable
-   "birth certificate".
-2. **Diagnose / Repair** — one button runs the full 93-point diagnostic across
-   six categories with live progress, then offers "Fix all" or individual
+1. **VITALS** 🫀 — 24/7 network monitor dashboard with hexagonal status
+   indicators, health beacons every 2 h (and immediately on breach), and
+   on-demand health polling.
+2. **SCAN** 🧫 — network topology and geographic map view, colour-coded status.
+3. **BIRTH** 🥚 — provisions a new node from bare hardware. Hardware selected
+   first, pre-filled LoRa parameters (all overridable), ends with a
+   photographable "birth certificate".
+4. **TRIAGE** 🩺 — site assessment and antenna optimisation: a live thermal
+   bullseye scores signal clarity / headroom / noise while placing a node.
+5. **PROBE** 🩻 — diagnoses and repairs a broken node: one button runs the full
+   93-point diagnostic with live progress, then offers "Fix all" or individual
    fixes. Three-level ping: L1 serial loopback → L2 mesh ping → L3 announce
    heard by the tool.
-3. **Monitor** — 24/7 dashboard with hexagonal status indicators, health
-   beacons every 2 h (and immediately on breach), and on-demand health polling.
-4. **Map** — geographic node view, colour-coded status.
-5. **Clone Tool** — replicates the tool onto a fresh Pi 5 (with a fresh
+6. **MITOSIS** 🧬 — replicates the tool onto a fresh Pi 5 (with a fresh
    Reticulum identity).
 
 ## Node types

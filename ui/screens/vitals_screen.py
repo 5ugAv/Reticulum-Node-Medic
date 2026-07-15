@@ -1,4 +1,4 @@
-"""Monitor mode — 24/7 dashboard of known nodes.
+"""VITALS screen — the network monitor dashboard (mode 1).
 
 Scrollable node list (two columns when wide enough), a filter bar
 (All / OK / Warn / Alert / Search), and one row per node: a hexagonal status
@@ -64,7 +64,7 @@ class NodeRow(BoxLayout):
             size_hint_x=None, width=dp(320)))
 
 
-class MonitorScreen(BoxLayout):
+class VitalsScreen(BoxLayout):
     def __init__(self, nodes=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"

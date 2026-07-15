@@ -1,4 +1,4 @@
-"""Offline map tiles for Map mode — Web Mercator math + an MBTiles reader.
+"""Offline map tiles for SCAN mode — Web Mercator math + an MBTiles reader.
 
 A real basemap under the node dots, fully offline: tiles come from an **MBTiles**
 file (one SQLite DB holding every z/x/y PNG) carried on the Pi, so there is no

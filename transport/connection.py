@@ -46,7 +46,7 @@ class Connection(ABC):
                   exclude: "tuple[str, ...]" = ()) -> bool:
         """Copy a whole local directory tree to the node (contents of
         *local_dir* into *remote_dir*). Returns ``True`` on success. Used by the
-        Clone Tool to move the tool + asset store onto a fresh Pi."""
+        MITOSIS (clone) to move the tool + asset store onto a fresh Pi."""
         raise NotImplementedError
 
     def is_connected(self) -> bool:

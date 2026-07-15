@@ -33,17 +33,22 @@ This project is the **tool**, kept entirely separate from the node firmware
 | TX power | 17 dBm |
 | Regulatory basis | Australian LIPD Class Licence — 915 MHz band |
 
-## Five operating modes
+## Six operating modes (sidebar order)
 
-1. **Build** — provisions a node. Hardware selected first; pre-filled LoRa
+1. **VITALS** 🫀 — 24/7 monitor dashboard; hexagonal status indicators;
+   battery/solar/signal/last-seen; beacons every 2 h and immediately on breach.
+2. **SCAN** 🧫 — network topology + geographic node view, colour-coded status.
+3. **BIRTH** 🥚 — provisions a node. Hardware selected first; pre-filled LoRa
    params (overridable); produces a photographable "birth certificate".
-2. **Repair** (entry says "Diagnose") — one "Run full diagnostic" button, live
-   progress, results with "Fix all" / individual fixes. Three-level ping:
-   L1 serial loopback, L2 mesh ping, L3 announce heard by the tool.
-3. **Monitor** — 24/7 dashboard; hexagonal status indicators; battery/solar/
-   signal/last-seen; beacons every 2 h and immediately on breach.
-4. **Map** — geographic node view, colour-coded status dots.
-5. **Clone Tool** — replicates the tool onto a fresh Pi 5 (fresh identity).
+4. **TRIAGE** 🩺 — site assessment and antenna optimisation (thermal bullseye:
+   clarity / headroom / noise, adaptively calibrated on site).
+5. **PROBE** 🩻 — one "Run full diagnostic" button, live progress, results with
+   "Fix all" / individual fixes. Three-level ping: L1 serial loopback, L2 mesh
+   ping, L3 announce heard by the tool.
+6. **MITOSIS** 🧬 — replicates the tool onto a fresh Pi 5 (fresh identity).
+
+(Former names: Monitor→VITALS, Map→SCAN, Build→BIRTH, Diagnose/Repair→PROBE,
+Clone Tool→MITOSIS.)
 
 ## Self-healing tiers (same diagnostic code in all three)
 

@@ -1,8 +1,10 @@
 """Application shell — sidebar navigation + screen manager.
 
-Wires the five operating modes to screens. Only Monitor is fully built here;
-the other modes are placeholders that later phases replace. Back/Home nav and
-the safety panel live at this level so every screen inherits them.
+Wires the six operating modes to screens, in sidebar order:
+1 VITALS (monitor dashboard) · 2 SCAN (topology + map) · 3 BIRTH (provision)
+· 4 TRIAGE (site assessment) · 5 PROBE (diagnose + repair) · 6 MITOSIS (clone).
+Back/Home nav and the safety panel live at this level so every screen inherits
+them.
 """
 
 from __future__ import annotations
@@ -20,12 +22,12 @@ from kivy.uix.screenmanager import Screen, ScreenManager
 
 from ui import theme
 from ui.widgets.sidebar import Sidebar
-from ui.screens.monitor_screen import MonitorScreen
-from ui.screens.map_screen import MapScreen
-from ui.screens.repair_screen import RepairScreen
-from ui.screens.build_screen import BuildScreen
+from ui.screens.vitals_screen import VitalsScreen
+from ui.screens.scan_screen import ScanScreen
+from ui.screens.probe_screen import ProbeScreen
+from ui.screens.birth_screen import BirthScreen
 from ui.screens.triage_screen import TriageScreen
-from ui.screens.clone_screen import CloneScreen
+from ui.screens.mitosis_screen import MitosisScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -167,41 +169,43 @@ class ReticulumNodeMedicApp(App):
         root = BoxLayout(orientation="horizontal")
         self.sm = ScreenManager()
 
-        monitor = Screen(name="monitor")
+        # Final confirmed modes, registered in sidebar order:
+        # 1 VITALS · 2 SCAN · 3 BIRTH · 4 TRIAGE · 5 PROBE · 6 MITOSIS
+        vitals = Screen(name="vitals")
         # DEMO_NODES render immediately; a background thread then discovers and
         # polls the real LAN and swaps in live nodes as they're found.
-        self.monitor_screen = MonitorScreen(nodes=DEMO_NODES)
-        monitor.add_widget(self.monitor_screen)
-        self.sm.add_widget(monitor)
+        self.vitals_screen = VitalsScreen(nodes=DEMO_NODES)
+        vitals.add_widget(self.vitals_screen)
+        self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)
         self._start_monitor_polling()
 
-        diagnose = Screen(name="diagnose")
-        diagnose.add_widget(RepairScreen(workflow_factory=_demo_repair_workflow))
-        self.sm.add_widget(diagnose)
+        scan = Screen(name="scan")
+        self.scan_screen = ScanScreen(nodes=self.monitor_service.located_nodes())
+        scan.add_widget(self.scan_screen)
+        self.sm.add_widget(scan)
 
         birth = Screen(name="birth")
-        birth.add_widget(BuildScreen(
+        birth.add_widget(BirthScreen(
             workflow_factories={"rtnode2400": _demo_rtnode_build,
                                 "pi_rnode": _demo_pi_build},
             rnode_flash_factory=_demo_rnode_flash))
         self.sm.add_widget(birth)
-
-        map_scr = Screen(name="map")
-        self.map_screen = MapScreen(nodes=self.monitor_service.located_nodes())
-        map_scr.add_widget(self.map_screen)
-        self.sm.add_widget(map_scr)
 
         triage = Screen(name="triage")
         self.triage_screen = TriageScreen(feed_factory=_demo_triage_feed)
         triage.add_widget(self.triage_screen)
         self.sm.add_widget(triage)
 
-        clone = Screen(name="clone")
-        clone.add_widget(CloneScreen(workflow_factory=_demo_clone_workflow))
-        self.sm.add_widget(clone)
+        probe = Screen(name="probe")
+        probe.add_widget(ProbeScreen(workflow_factory=_demo_repair_workflow))
+        self.sm.add_widget(probe)
 
-        self.sm.current = os.environ.get("RNM_START", "monitor")
+        mitosis = Screen(name="mitosis")
+        mitosis.add_widget(MitosisScreen(workflow_factory=_demo_clone_workflow))
+        self.sm.add_widget(mitosis)
+
+        self.sm.current = os.environ.get("RNM_START", "vitals")
         root.add_widget(Sidebar(on_select=self.switch_mode))
         root.add_widget(self.sm)
         return root
@@ -220,10 +224,10 @@ class ReticulumNodeMedicApp(App):
                     dicts = self.monitor_service.dashboard_dicts()
                     if dicts:
                         Clock.schedule_once(
-                            lambda dt, d=dicts: self.monitor_screen.set_nodes(d), 0)
+                            lambda dt, d=dicts: self.vitals_screen.set_nodes(d), 0)
                     located = self.monitor_service.located_nodes()
                     Clock.schedule_once(
-                        lambda dt, n=located: self.map_screen.set_nodes(n), 0)
+                        lambda dt, n=located: self.scan_screen.set_nodes(n), 0)
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
