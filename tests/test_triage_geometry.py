@@ -2,7 +2,10 @@
 
 import pytest
 
-from ui.triage_geometry import bullseye_geometry, dot_position, RING_STOPS
+from ui.triage_geometry import (
+    bullseye_geometry, dot_position, RING_STOPS,
+    SPOKES, spoke_end, triangle_points, triangle_centroid,
+)
 
 
 def test_centres_on_the_canvas():
@@ -50,3 +53,50 @@ def test_dot_moves_inward_as_score_improves():
     d_far = ((far[0] - g["cx"]) ** 2 + (far[1] - g["cy"]) ** 2) ** 0.5
     d_near = ((near[0] - g["cx"]) ** 2 + (near[1] - g["cy"]) ** 2) ** 0.5
     assert d_near < d_far
+
+
+# ---- triangle (three fixed spokes) -----------------------------------------
+
+def _dist(p, q):
+    return ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5
+
+
+def test_three_fixed_spokes_snr_up_margin_and_noise_below():
+    keys = [k for k, _a, _l in SPOKES]
+    assert keys == ["snr", "margin", "noise"]
+    angles = {k: a for k, a, _l in SPOKES}
+    assert angles["snr"] == 90.0                    # straight up (Kivy y-up)
+    assert angles["margin"] == 210.0 and angles["noise"] == 330.0
+
+
+def test_perfect_metrics_collapse_the_triangle_to_the_centre():
+    g = bullseye_geometry(500, 500)
+    pts = triangle_points({"snr": 1.0, "margin": 1.0, "noise": 1.0}, g)
+    c = (g["cx"], g["cy"])
+    assert all(_dist(p, c) < 1e-6 for p in pts)
+    assert triangle_centroid(pts) == pytest.approx(c, abs=1e-6)
+
+
+def test_worst_metrics_put_corners_on_the_outer_ring():
+    g = bullseye_geometry(500, 500)
+    pts = triangle_points({"snr": 0.0, "margin": 0.0, "noise": 0.0}, g)
+    c = (g["cx"], g["cy"])
+    assert all(_dist(p, c) == pytest.approx(g["max_r"], abs=1e-6) for p in pts)
+
+
+def test_one_bad_metric_flares_only_its_own_corner():
+    g = bullseye_geometry(500, 500)
+    pts = triangle_points({"snr": 0.9, "margin": 0.9, "noise": 0.1}, g)
+    c = (g["cx"], g["cy"])
+    d_snr, d_margin, d_noise = (_dist(p, c) for p in pts)
+    assert d_noise > d_snr * 3 and d_noise > d_margin * 3   # noise corner flared
+    # and the flared corner lies on the noise spoke bearing
+    expected = spoke_end(g, 330.0, 0.9)
+    assert pts[2] == pytest.approx(expected, abs=1e-6)
+
+
+def test_triangle_metric_values_clamp():
+    g = bullseye_geometry(400, 400)
+    a = triangle_points({"snr": -1.0, "margin": 2.0, "noise": 0.5}, g)
+    b = triangle_points({"snr": 0.0, "margin": 1.0, "noise": 0.5}, g)
+    assert a == pytest.approx(b, abs=1e-9)

@@ -151,3 +151,15 @@ def test_dot_radius_is_one_minus_score():
     s = TriageSession()
     r = _best(s, 0.0)
     assert r["dot_radius"] == pytest.approx(1.0 - r["score"], abs=1e-9)
+
+
+def test_snapshot_exposes_per_metric_normalised_values():
+    s = TriageSession()
+    r = s.feed(snr=12, rssi=-70, noise=-118, t=0.0)      # best-possible inputs
+    m = r["metrics"]
+    assert set(m) == {"snr", "margin", "noise"}
+    assert all(0.0 <= v <= 1.0 for v in m.values())
+    assert m["snr"] == pytest.approx(1.0, abs=1e-6)      # 12 dB = top of default range
+    bad = s.feed(snr=-12.5, rssi=-118, noise=-95, t=1.0)
+    assert bad["metrics"]["snr"] == pytest.approx(0.0, abs=1e-6)
+    assert bad["metrics"]["noise"] < 0.2                  # noisy floor scores low

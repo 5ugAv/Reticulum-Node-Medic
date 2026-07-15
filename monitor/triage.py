@@ -192,6 +192,12 @@ class TriageSession:
     def feed(self, snr: float, rssi: float, noise: float, t: float) -> Dict:
         self.calib.observe(snr, rssi, noise)
         raw, usable = composite_score(snr, rssi, noise, self.calib)
+        # per-metric normalised (0..1, 1 = best) — drives the triangle's corners
+        metrics = {
+            "snr": self.calib.snr.normalize(snr),
+            "margin": self.calib.margin.normalize(rssi - noise),
+            "noise": self.calib.noise.normalize(noise),
+        }
 
         self._window.append(_Stamped(t, raw))
         self._window = [s for s in self._window if t - s.t <= DEBOUNCE_S]
@@ -224,6 +230,7 @@ class TriageSession:
             "colder": colder,
             "locked": self.locked,
             "dot_radius": 1.0 - smoothed,      # 0.0 = centre (hot), 1.0 = outer edge
+            "metrics": metrics,                # per-metric 0..1 (triangle corners)
             "guidance": guidance_text(ring, colder, self.locked, usable),
         }
 
