@@ -76,6 +76,19 @@ def test_ignores_non_gps_kiss_frames():
     assert d.lat is None and d.lng is None and d.position is None
 
 
+def test_ignores_gps_state_heartbeat_frame():
+    """The ported firmware also emits a CMD_GPS STATE (0x02) heartbeat
+    [sats, fix_valid] whenever NMEA is parsing (verified on Jonesey 2026-07-16,
+    got frames with STATE=(0,0) indoors). The decoder must ignore it — it is 4
+    bytes, below the 6-byte lat/lng frame — and still resolve a real fix."""
+    d = RNodeGpsDecoder()
+    d.feed(bytes([FEND, CMD_GPS, 0x02, 7, 0x01, FEND]))   # 7 sats, fix valid
+    assert d.position is None                             # STATE alone -> no position
+    d.feed(gps_frame(GPS_CMD_LAT, -37.81))
+    d.feed(gps_frame(GPS_CMD_LNG, 144.96))
+    assert d.position == pytest.approx((-37.81, 144.96), abs=1e-6)
+
+
 # ---- read loop (injected serial) -----------------------------------------
 
 class _FakeSerial:
