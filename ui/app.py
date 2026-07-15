@@ -23,6 +23,7 @@ from ui.screens.monitor_screen import MonitorScreen
 from ui.screens.map_screen import MapScreen
 from ui.screens.repair_screen import RepairScreen
 from ui.screens.build_screen import BuildScreen
+from ui.screens.triage_screen import TriageScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -94,6 +95,25 @@ DEMO_NODES = [
 ]
 
 
+def _demo_triage_feed():
+    """A wandering signal (good -> bad -> good) so the Triage bullseye is
+    explorable without hardware. Replaced by the live splitter feed on the medic."""
+    import math
+    import random
+    state = {"t": 0.0}
+
+    def reader():
+        state["t"] += 1.0
+        phase = state["t"] * 0.12
+        return {
+            "snr": 3.0 + 6.0 * math.sin(phase) + random.uniform(-1.5, 1.5),
+            "rssi": -95.0 + 15.0 * math.sin(phase) + random.uniform(-5.0, 5.0),
+            "noise": -108.0 + random.uniform(-3.0, 3.0),
+            "peers": 2 + int(state["t"] // 20) % 3,
+        }
+    return reader
+
+
 def _placeholder(title):
     screen = BoxLayout()
     screen.add_widget(Label(
@@ -136,6 +156,11 @@ class ReticulumNodeMedicApp(App):
         self.map_screen = MapScreen(nodes=self.monitor_service.located_nodes())
         map_scr.add_widget(self.map_screen)
         self.sm.add_widget(map_scr)
+
+        triage = Screen(name="triage")
+        self.triage_screen = TriageScreen(feed_factory=_demo_triage_feed)
+        triage.add_widget(self.triage_screen)
+        self.sm.add_widget(triage)
 
         for name, title in (("clone", "Clone Tool"),):
             scr = Screen(name=name)
