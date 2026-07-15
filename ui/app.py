@@ -25,6 +25,7 @@ from ui.screens.map_screen import MapScreen
 from ui.screens.repair_screen import RepairScreen
 from ui.screens.build_screen import BuildScreen
 from ui.screens.triage_screen import TriageScreen
+from ui.screens.clone_screen import CloneScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -94,6 +95,34 @@ DEMO_NODES = [
     {"name": "CBD Rooftop RTNode", "location": "Melbourne CBD", "status": "alert",
      "signal_dbm": -121, "last_seen_hours": 7.0, "type": "rtnode2400"},
 ]
+
+
+def _demo_clone_workflow():
+    """A CloneWorkflow over an emulated target Pi 5 so the Clone screen is
+    explorable without a second Pi. On a real medic this factory would open an
+    SSH connection to the fresh Pi."""
+    import time
+    from workflows.clone import CloneWorkflow
+    from monitor.registry import NodeRegistry
+
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    conn.rules.insert(0, ("/proc/cpuinfo", 0, "Model : Raspberry Pi 5 Model B", ""))
+    conn.rules.insert(0, ("id -un", 0, "nodemedic", ""))
+    conn.rules.insert(0, ("rnid --generate", 0,
+                          "New identity <45ada7a3c6c8809fa815e5790d2b3b62> written", ""))
+    wf = CloneWorkflow(conn, NodeRegistry())
+    # pace the emulated steps so the streaming UI is visible in the demo
+    real_run_all = wf.run_all
+
+    def paced(on_progress=None):
+        emit = on_progress or (lambda r: None)
+
+        def spaced(r):
+            time.sleep(0.6)
+            emit(r)
+        return real_run_all(on_progress=spaced)
+    wf.run_all = paced
+    return wf
 
 
 def _demo_triage_feed():
@@ -168,10 +197,9 @@ class ReticulumNodeMedicApp(App):
         triage.add_widget(self.triage_screen)
         self.sm.add_widget(triage)
 
-        for name, title in (("clone", "Clone Tool"),):
-            scr = Screen(name=name)
-            scr.add_widget(_placeholder(title))
-            self.sm.add_widget(scr)
+        clone = Screen(name="clone")
+        clone.add_widget(CloneScreen(workflow_factory=_demo_clone_workflow))
+        self.sm.add_widget(clone)
 
         self.sm.current = os.environ.get("RNM_START", "monitor")
         root.add_widget(Sidebar(on_select=self.switch_mode))
