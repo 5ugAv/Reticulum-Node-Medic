@@ -7,6 +7,7 @@ the safety panel live at this level so every screen inherits them.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 
@@ -127,7 +128,12 @@ class ReticulumNodeMedicApp(App):
 
     def build(self):
         Window.clearcolor = theme.hex_to_rgba(theme.COLORS["background"])
-        Window.size = (1280, 720)
+        # On the medic's touchscreen, fill the native display (which may be
+        # portrait, e.g. 720x1280). RNM_WINDOWED=1 gives a 1280x720 dev window.
+        if os.environ.get("RNM_WINDOWED"):
+            Window.size = (1280, 720)
+        else:
+            Window.fullscreen = "auto"
 
         root = BoxLayout(orientation="horizontal")
         self.sm = ScreenManager()
@@ -167,7 +173,7 @@ class ReticulumNodeMedicApp(App):
             scr.add_widget(_placeholder(title))
             self.sm.add_widget(scr)
 
-        self.sm.current = "monitor"
+        self.sm.current = os.environ.get("RNM_START", "monitor")
         root.add_widget(Sidebar(on_select=self.switch_mode))
         root.add_widget(self.sm)
         return root
