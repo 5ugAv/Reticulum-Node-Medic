@@ -3,7 +3,7 @@
 import pytest
 
 from monitor.triage import (
-    composite_score, score_to_ring, guidance_text,
+    composite_score, score_to_ring, guidance_text, thermal_color,
     MetricRange, TriageCalibration, TriageSession,
     MIN_CAL_SAMPLES, SNR_DEFAULT,
 )
@@ -83,6 +83,26 @@ def test_guidance_prioritises_locked_then_colder_then_ring():
     assert "Colder" in guidance_text("warm", colder=True)
     assert "decode floor" in guidance_text("warm", usable=False)
     assert "Warm" in guidance_text("warm")
+
+
+def test_guidance_is_emoji_free_for_the_field_pi():
+    # the field Pi has no emoji font — every guidance string must be plain ASCII
+    for ring in ("freezing", "cold", "warming", "warm", "bullseye"):
+        assert guidance_text(ring).isascii()
+    assert guidance_text("warm", locked=True).isascii()
+    assert guidance_text("warm", colder=True).isascii()
+    assert guidance_text("warm", usable=False).isascii()
+
+
+def test_thermal_ramp_runs_cold_to_hot():
+    assert thermal_color(0.0) == thermal_color(-1.0)      # clamps low
+    assert thermal_color(1.0) == thermal_color(2.0)       # clamps high
+    # the ramp warms: the red channel rises from cold to hot
+    assert thermal_color(0.9)[0] > thermal_color(0.1)[0]
+    # every output is a valid 0..1 rgb triple
+    for t in (0.0, 0.3, 0.6, 1.0):
+        c = thermal_color(t)
+        assert len(c) == 3 and all(0.0 <= x <= 1.0 for x in c)
 
 
 # ---- session: debounce / best / lock / direction --------------------------

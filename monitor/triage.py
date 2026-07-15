@@ -124,24 +124,50 @@ def score_to_ring(score: float) -> str:
     return "freezing"
 
 
+# Plain ASCII text only — the field Pi carries no emoji font. The thermal COLOUR
+# of the bullseye (see thermal_color) carries the hot/cold metaphor, not glyphs.
 _GUIDANCE = {
-    "freezing": "❄️ Freezing — this spot won't work, try a different location",
-    "cold": "\U0001f976 Cold — poor signal here, consider repositioning the node",
-    "warming": "\U0001f321️ Getting warmer — keep adjusting the antenna slowly",
-    "warm": "\U0001f324️ Warm — good signal, fine-tune the antenna angle",
-    "bullseye": "\U0001f525 Hot — hold that position, locking in...",
+    "freezing": "Freezing - this spot won't work, try a different location",
+    "cold": "Cold - poor signal here, consider repositioning the node",
+    "warming": "Getting warmer - keep adjusting the antenna slowly",
+    "warm": "Warm - good signal, fine-tune the antenna angle",
+    "bullseye": "Hot - hold that position, locking in...",
 }
 
 
 def guidance_text(ring: str, colder: bool = False, locked: bool = False,
                   usable: bool = True) -> str:
     if locked:
-        return "\U0001f30b Locked! Secure the antenna now"
+        return "Locked! Secure the antenna now"
     if colder:
-        return "\U0001f9ca Colder — go back to where it was"
+        return "Colder - go back to where it was"
     if not usable:
-        return "⚠️ Below the decode floor here — packets won't get through"
+        return "Below the decode floor here - packets won't get through"
     return _GUIDANCE.get(ring, _GUIDANCE["freezing"])
+
+
+# Infrared-style thermal ramp (cold dark violet -> hot yellow-white) for the
+# bullseye rings and dot. Deliberately NOT the theme's traffic-light green/amber/
+# red, so the placement metaphor reads as temperature, not pass/fail.
+_THERMAL_STOPS = [
+    (0.00, (0.08, 0.02, 0.22)),     # freezing  — near-black violet
+    (0.25, (0.30, 0.05, 0.45)),     # cold      — purple
+    (0.50, (0.75, 0.18, 0.28)),     # warming   — deep red
+    (0.75, (0.96, 0.50, 0.10)),     # warm      — orange
+    (1.00, (1.00, 0.93, 0.60)),     # hot       — yellow-white
+]
+
+
+def thermal_color(t: float) -> tuple:
+    """Map 0..1 (cold..hot) to an (r, g, b) triple on the infrared ramp."""
+    t = max(0.0, min(1.0, t))
+    for i in range(len(_THERMAL_STOPS) - 1):
+        t0, c0 = _THERMAL_STOPS[i]
+        t1, c1 = _THERMAL_STOPS[i + 1]
+        if t <= t1:
+            f = 0.0 if t1 == t0 else (t - t0) / (t1 - t0)
+            return tuple(c0[k] + (c1[k] - c0[k]) * f for k in range(3))
+    return _THERMAL_STOPS[-1][1]
 
 
 @dataclass
