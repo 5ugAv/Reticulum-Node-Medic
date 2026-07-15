@@ -21,6 +21,7 @@ from diagnostics.radio_firmware import RadioFirmwareCheck
 from diagnostics.system_health import SystemHealthCheck
 from diagnostics.network_mesh import NetworkMeshCheck
 from diagnostics.client_connectivity import ClientConnectivityCheck
+from diagnostics.gnss import GnssCheck
 
 #: Diagnostic modules in the order the operator sees them.
 MODULE_ORDER = [
@@ -30,6 +31,7 @@ MODULE_ORDER = [
     SystemHealthCheck,
     NetworkMeshCheck,
     ClientConnectivityCheck,
+    GnssCheck,
 ]
 
 

@@ -4,8 +4,23 @@ from node_profile import NodeHardware
 from workflows.build_warnings import BUILD_WARNINGS, warnings_for, warning_ids
 
 
-def test_all_four_warnings_defined():
-    assert warning_ids() == {89, 90, 91, 93}
+def test_all_warnings_defined():
+    assert warning_ids() == {89, 90, 91, 93, 94, 95, 96}
+
+
+def test_tracker_gnss_warnings_only_for_the_tracker():
+    tracker = {w["key"] for w in warnings_for(NodeHardware.WIRELESS_TRACKER)}
+    pi = {w["key"] for w in warnings_for(NodeHardware.PI_5)}
+    heltec = {w["key"] for w in warnings_for(NodeHardware.HELTEC_V4)}
+    assert {"tracker_antenna_ports", "gnss_open_sky", "gnss_ufl_silicone"} <= tracker
+    assert "gnss_open_sky" not in pi and "gnss_open_sky" not in heltec
+
+
+def test_gnss_warnings_name_the_key_hazards():
+    texts = {w["key"]: w["text"].lower() for w in BUILD_WARNINGS}
+    assert "sky" in texts["gnss_open_sky"]
+    assert "silicone" in texts["gnss_ufl_silicone"]
+    assert "lora" in texts["tracker_antenna_ports"] and "gps" in texts["tracker_antenna_ports"]
 
 
 def test_universal_warnings_always_present():

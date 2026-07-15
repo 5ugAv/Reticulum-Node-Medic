@@ -35,6 +35,7 @@ EXPECTED_ORDER = [
     "System health",
     "Network & mesh",
     "Client connectivity",
+    "GPS (GNSS)",
 ]
 
 
@@ -136,8 +137,8 @@ def test_progress_events_fire():
     wf = RepairWorkflow(full_healthy_conn(), NodeProfile())
     wf.run(on_progress=events.append)
     types = [e.type for e in events]
-    assert types.count("category_start") == 6
-    assert types.count("category_done") == 6
+    assert types.count("category_start") == 7
+    assert types.count("category_done") == 7
     assert types.count("run_complete") == 1
     # per-check events fire for _check-based checks
     assert "check_start" in types

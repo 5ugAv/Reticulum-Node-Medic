@@ -87,3 +87,20 @@ def test_updated_timestamp_uses_injected_clock():
     s = KissGpsSplitter(now=lambda: 42.0)
     s.feed(_gps(GPS_CMD_LAT, 1.0))
     assert s.state()["updated"] == 42.0
+
+
+def test_melbourne_coordinate_survives_firmware_format_roundtrip():
+    """A known Melbourne fix, encoded exactly as the firmware sends it (int32
+    microdegrees, big-endian, KISS-escaped, negative latitude for the southern
+    hemisphere), must decode back to the same coordinate through the splitter.
+    This is the 'is the GPS maths right' guard the handover asked for — adapted
+    to our CMD_GPS path (the firmware's on-device TinyGPS++ does the NMEA
+    DDMM->decimal conversion, so it never reaches the Pi)."""
+    LAT, LNG = -37.813600, 144.963100          # Melbourne CBD
+    s = KissGpsSplitter()
+    s.feed(_gps(GPS_CMD_LAT, LAT))
+    s.feed(_gps(GPS_CMD_LNG, LNG))
+    st = s.state()
+    assert st["lat"] == pytest.approx(LAT, abs=1e-6)
+    assert st["lng"] == pytest.approx(LNG, abs=1e-6)
+    assert st["has_fix"] is True

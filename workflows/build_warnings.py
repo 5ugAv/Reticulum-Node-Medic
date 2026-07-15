@@ -42,6 +42,33 @@ BUILD_WARNINGS = [
         "text": "After entering the Wi-Fi credentials, dismiss the captive "
                 "portal so the board can finish joining the network.",
     },
+    {
+        "id": 94,
+        "key": "tracker_antenna_ports",
+        "applies": "tracker",
+        "text": "The Wireless Tracker has TWO tiny antenna sockets. Put the "
+                "915 MHz LoRa antenna on the LoRa socket and the GPS antenna on "
+                "the GNSS socket — mixing them up means no signal, and "
+                "transmitting without the LoRa antenna can damage the radio.",
+    },
+    {
+        "id": 95,
+        "key": "gnss_open_sky",
+        "applies": "tracker",
+        "text": "The GPS antenna needs a clear view of the sky. Indoors or right "
+                "up against a building, the Tracker may take a long time to find "
+                "its location, or never find it. The first fix outdoors can take "
+                "a few minutes.",
+    },
+    {
+        "id": 96,
+        "key": "gnss_ufl_silicone",
+        "applies": "tracker",
+        "text": "The GPS antenna's small U.FL socket on the board can work loose "
+                "and fall off in the field. After connecting the antenna, add a "
+                "small dab of neutral-cure silicone around the socket to hold it "
+                "in place.",
+    },
 ]
 
 
@@ -57,6 +84,8 @@ def warnings_for(hardware: NodeHardware, wifi: bool = False) -> List[dict]:
         if applies == "all":
             result.append(w)
         elif applies == "heltec" and hardware is NodeHardware.HELTEC_V4:
+            result.append(w)
+        elif applies == "tracker" and hardware is NodeHardware.WIRELESS_TRACKER:
             result.append(w)
         elif applies == "wifi" and wifi:
             result.append(w)
