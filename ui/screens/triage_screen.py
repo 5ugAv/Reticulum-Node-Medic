@@ -40,14 +40,23 @@ class TriageScreen(FloatLayout):
 
         self._rssi = self._readout({"x": 0.03, "top": 0.97})
         self._snr = self._readout({"right": 0.97, "top": 0.97})
-        self._noise = self._readout({"x": 0.03, "y": 0.15})
-        self._peers = self._readout({"right": 0.97, "y": 0.15})
+        self._noise = self._readout({"x": 0.03, "y": 0.21})
+        self._peers = self._readout({"right": 0.97, "y": 0.21})
+
+        # spoke labels — placed each relayout from the bullseye's geometry
+        self._spoke_labels = {}
+        for key in ("snr", "margin", "noise"):
+            lbl = Label(text="", font_size="12sp", bold=True,
+                        size_hint=(None, None), size=(dp(80), dp(20)),
+                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            self._spoke_labels[key] = lbl
+            self.add_widget(lbl)
 
         self._guidance = Label(
             text="Move the antenna slowly to begin", bold=True,
             halign="center", valign="middle",
             size_hint=(0.92, None), height=dp(40),
-            pos_hint={"center_x": 0.5, "center_y": 0.17},
+            pos_hint={"center_x": 0.5, "center_y": 0.145},
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self._guidance.bind(size=lambda *a: setattr(self._guidance, "text_size",
                                                     self._guidance.size))
@@ -75,11 +84,16 @@ class TriageScreen(FloatLayout):
 
     def _relayout(self, *a) -> None:
         # bullseye fills the band between the top readouts and the guidance/button
-        side = max(dp(120), min(self.width * 0.92, self.height * 0.60))
+        side = max(dp(120), min(self.width * 0.92, self.height * 0.58))
         self._bullseye.size = (side, side)
         self._bullseye.pos = (self.x + (self.width - side) / 2.0,
                               self.y + self.height * 0.30)
         self._bullseye._redraw()
+        for key, _label, x, y in self._bullseye.spoke_label_positions():
+            lbl = self._spoke_labels.get(key)
+            if lbl is not None:
+                lbl.text = _label
+                lbl.center = (x, y)
 
     def _tick(self, dt) -> None:
         try:

@@ -51,3 +51,37 @@ def ring_for_score(score: float) -> str:
     the geometry side, for labelling the dot's current band)."""
     from monitor.triage import score_to_ring
     return score_to_ring(score)
+
+
+# Fixed spoke bearing per metric (degrees, Kivy y-up): SNR straight up, link
+# margin lower-left, noise floor lower-right. Same thirds every session, so the
+# operator learns "top corner = SNR" once.
+SPOKES = [
+    ("snr", 90.0, "SNR"),
+    ("margin", 210.0, "MARGIN"),
+    ("noise", 330.0, "NOISE"),
+]
+
+
+def spoke_end(geometry: Dict, angle_deg: float, frac: float = 1.0) -> Tuple[float, float]:
+    """Point at *frac* of max radius along a spoke bearing."""
+    a = math.radians(angle_deg)
+    r = geometry["max_r"] * frac
+    return (geometry["cx"] + r * math.cos(a), geometry["cy"] + r * math.sin(a))
+
+
+def triangle_points(metrics: Dict[str, float], geometry: Dict) -> List[Tuple[float, float]]:
+    """Corner positions for the metric triangle. Each metric is 0..1 (1 = best);
+    a better metric pulls its corner toward the centre (radius = 1 - value on its
+    fixed spoke). Returns corners in SPOKES order."""
+    pts = []
+    for key, angle, _label in SPOKES:
+        v = max(0.0, min(1.0, metrics.get(key, 0.0)))
+        pts.append(spoke_end(geometry, angle, 1.0 - v))
+    return pts
+
+
+def triangle_centroid(points: List[Tuple[float, float]]) -> Tuple[float, float]:
+    xs = sum(p[0] for p in points) / len(points)
+    ys = sum(p[1] for p in points) / len(points)
+    return (xs, ys)
