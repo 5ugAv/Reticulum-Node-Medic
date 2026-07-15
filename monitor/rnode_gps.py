@@ -27,6 +27,7 @@ TFESC = 0xDD
 CMD_GPS = 0xA0
 GPS_CMD_LAT = 0x00
 GPS_CMD_LNG = 0x01
+GPS_CMD_STATE = 0x02   # [sats, fix_valid] heartbeat, emitted whenever NMEA is parsing
 #: RNode-CE only emits a CMD_GPS frame when it has a valid fix, so a plausible
 #: coordinate is a sanity floor, not a real constraint.
 _MICRODEG = 1_000_000.0

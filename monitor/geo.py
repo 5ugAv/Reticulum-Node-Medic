@@ -12,8 +12,11 @@ reader queries gpsd. The coordinate/URL helpers are pure.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
 
 
@@ -22,6 +25,10 @@ class GpsFix:
     lat: float
     lon: float
     source: str = "pi_gps"
+    sats: Optional[int] = None          # satellites used (from the Tracker STATE frame)
+    fix_quality: Optional[int] = None   # 0 = no fix, >=1 = fix
+    accuracy_m: Optional[float] = None  # None until the firmware reports HDOP (follow-up)
+    fix_time: Optional[str] = None      # ISO-8601 UTC of the observation
 
     @property
     def has_fix(self) -> bool:
@@ -57,6 +64,54 @@ def read_gps(reader: Callable[[], Optional[Tuple[float, float]]]
         return None
     lat, lon = coords
     return GpsFix(lat=lat, lon=lon, source="pi_gps")
+
+
+# --- Tracker GPS via the serial splitter -----------------------------------
+# Jonesey (the medic's RNode) skims its own GPS fix into a small JSON state file
+# (monitor.serial_splitter), so LoRa (rnsd) and GPS never fight over the one serial
+# port. We read that file here rather than owning a port ourselves.
+
+SPLITTER_STATE = os.path.expanduser("~/gps_state.json")
+
+
+def read_splitter_state(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
+                        now: Callable[[], float] = time.time) -> Optional[dict]:
+    """The splitter's latest GPS state, or ``None`` if the file is missing,
+    unreadable, or older than *max_age_s* (the GPS/splitter isn't feeding now)."""
+    try:
+        with open(path) as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        return None
+    upd = st.get("updated")
+    if not isinstance(upd, (int, float)) or (now() - upd) > max_age_s:
+        return None
+    return st
+
+
+def read_splitter_fix(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
+                      now: Callable[[], float] = time.time) -> Optional[GpsFix]:
+    """A full :class:`GpsFix` from the splitter state (position + sats + fix time),
+    or ``None`` if there's no current fix. Used for the birth cert / Triage."""
+    st = read_splitter_state(path, max_age_s, now)
+    if not st or not st.get("has_fix"):
+        return None
+    fix_time = datetime.fromtimestamp(st["updated"], timezone.utc).isoformat()
+    return GpsFix(lat=st["lat"], lon=st["lng"], source="tracker_gps",
+                  sats=st.get("sats"), fix_quality=st.get("fix"), fix_time=fix_time)
+
+
+def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
+                        ) -> Callable[[], Optional[Tuple[float, float]]]:
+    """A ``read_gps``-compatible reader (``() -> (lat, lon) | None``) sourced from
+    the Tracker's GPS via the splitter. Drop into ``read_gps``, map centring, or the
+    birth cert wherever a ``gps_reader`` is accepted."""
+    def reader() -> Optional[Tuple[float, float]]:
+        st = read_splitter_state(path, max_age_s)
+        if st and st.get("has_fix"):
+            return (st["lat"], st["lng"])
+        return None
+    return reader
 
 
 def format_coord(deg: float) -> str:
