@@ -1,4 +1,4 @@
-"""Node registry — the Monitor mode backend.
+"""Node registry — the VITALS mode backend.
 
 Holds known nodes keyed by their ``rtnode.health`` destination hash (the stable
 identity the firmware persists in LittleFS). Static metadata — name, location,
@@ -101,7 +101,7 @@ class NodeRecord:
         return None
 
     def to_dashboard(self, now: float) -> dict:
-        """The node dict the Monitor screen (ui.screens.monitor_screen) renders.
+        """The node dict the VITALS screen (ui.screens.vitals_screen) renders.
         Pure + testable; the Kivy view just reads these keys."""
         lsh = self.last_seen_hours(now)
         sig = self.signal_dbm()
@@ -262,7 +262,7 @@ class NodeRegistry:
             key=lambda r: (_STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
     def located_nodes(self, now: float) -> List[dict]:
-        """Every node with a known location, for Map mode — each as
+        """Every node with a known location, for SCAN mode — each as
         ``{lat, lon, name, status}``. Nodes without birth-cert coordinates are
         omitted (nothing to plot). Sorted by name for stable rendering."""
         out = []
@@ -309,7 +309,7 @@ class NodeRegistry:
         return [r for r in self.nodes.values()
                 if r.needs_firmware_update(latest)]
 
-    # -- persistence (the monitoring DB the Clone Tool copies) -------------
+    # -- persistence (the monitoring DB MITOSIS copies) -------------
 
     def to_dict(self) -> dict:
         return {"nodes": [

@@ -34,7 +34,7 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
     return lbl
 
 
-class RepairScreen(BoxLayout):
+class ProbeScreen(BoxLayout):
     def __init__(self, workflow_factory, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"

@@ -1,4 +1,4 @@
-"""Offline geo-projection for Map mode — pure math, no Kivy, no map tiles.
+"""Offline geo-projection for SCAN mode — pure math, no Kivy, no map tiles.
 
 Projects node (lat, lon) positions into screen coordinates for a dependency-free
 coverage/coord plot. A field tool has no internet, so there is no basemap: we

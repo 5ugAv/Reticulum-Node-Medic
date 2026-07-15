@@ -1,4 +1,4 @@
-"""Clone Tool screen (mode #5).
+"""MITOSIS screen (mode 6) — clone this medic onto a fresh Raspberry Pi 5.
 
 Replicates this medic onto a fresh Pi 5. One button; the eight clone steps
 stream in as live rows (pending -> running -> done/failed) with plain-English
@@ -43,7 +43,7 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
     return lbl
 
 
-class CloneScreen(BoxLayout):
+class MitosisScreen(BoxLayout):
     def __init__(self, workflow_factory, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"

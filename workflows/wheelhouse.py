@@ -1,6 +1,6 @@
 """Cache the medic's Python dependencies as wheels for offline cloning.
 
-A Clone Tool run has to install rns/lxmf/segno/kivy (+ their deps) on a fresh Pi
+A MITOSIS (clone) run has to install rns/lxmf/segno/kivy (+ their deps) on a fresh Pi
 that may have no internet. The medic is the same platform as any clone target
 (Pi 5, aarch64, the same CPython), so we populate the wheelhouse by running
 ``pip download`` ON the medic — the wheels land natively for the right platform.

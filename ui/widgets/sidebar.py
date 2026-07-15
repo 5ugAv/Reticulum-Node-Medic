@@ -8,15 +8,18 @@ from kivy.uix.button import Button
 
 from ui import theme
 
-# Short text labels rather than emoji glyphs (the field Pi's default font has
-# no emoji; no emoji font is carried offline).
+# Final confirmed modes, in order. Text labels rather than emoji glyphs (the
+# field Pi's default font has no emoji; no emoji font is carried offline) — the
+# intended icons, until designed PNGs land, are:
+#   VITALS 🫀 (monitor dashboard) · SCAN 🧫 (topology + map) · BIRTH 🥚 (provision)
+#   TRIAGE 🩺 (site assessment) · PROBE 🩻 (diagnose + repair) · MITOSIS 🧬 (clone)
 MODES = [
-    ("triage", "TRIAGE"),
+    ("vitals", "VITALS"),
+    ("scan", "SCAN"),
     ("birth", "BIRTH"),
-    ("diagnose", "DIAG"),
-    ("monitor", "MON"),
-    ("map", "MAP"),
-    ("clone", "CLONE"),
+    ("triage", "TRIAGE"),
+    ("probe", "PROBE"),
+    ("mitosis", "MITOSIS"),
 ]
 
 
