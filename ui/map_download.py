@@ -115,6 +115,12 @@ def estimate_download(lat: float, lon: float, radius_km: float = DEFAULT_RADIUS_
 #: Maps may use at most this fraction of the *currently free* disk — the medic
 #: must always keep room for its registry, logs and updates.
 MAPS_BUDGET_FRACTION = 0.5
+#: Street-level detail is cached only in a small circle around each PLACED node
+#: (a service visit needs the node's street, not the whole region's): ~30-40
+#: tiles per node — polite, tiny, and exactly where it's needed.
+DETAIL_RADIUS_KM = 2.0
+DETAIL_MIN_ZOOM = 13
+DETAIL_MAX_ZOOM = 15
 #: Selectable download radii (km) for the stepper control.
 RADIUS_STEPS = [25.0, 50.0, 100.0, 150.0, 200.0]
 
@@ -326,3 +332,29 @@ def download_region(lat: float, lon: float, dest_path: str,
     if on_progress:
         on_progress(summary)
     return summary
+
+
+def download_node_details(points: List[Tuple[float, float, str]], dest_path: str,
+                          fetch: Optional[Callable] = None,
+                          on_progress: Optional[Callable[[Dict], None]] = None,
+                          rate_limit_s: float = 0.1,
+                          stop: Optional[Callable[[], bool]] = None) -> Dict:
+    """Street-detail top-up: cache a small z13-15 circle around each placed node
+    (``points`` = [(lat, lon, label)]) into the SAME .mbtiles, so a service
+    visit can navigate to the node's street. Resumable like the regional pass;
+    stops early if the provider blocks. Returns {nodes, fetched, blocked}."""
+    fetched = 0
+    blocked = False
+    for lat, lon, label in points:
+        if stop and stop():
+            break
+        if on_progress:
+            on_progress({"detail_of": label})
+        s = download_region(lat, lon, dest_path, radius_km=DETAIL_RADIUS_KM,
+                            zmin=DETAIL_MIN_ZOOM, zmax=DETAIL_MAX_ZOOM,
+                            fetch=fetch, rate_limit_s=rate_limit_s, stop=stop)
+        fetched += s["fetched"]
+        if s.get("blocked"):
+            blocked = True
+            break
+    return {"nodes": len(points), "fetched": fetched, "blocked": blocked}

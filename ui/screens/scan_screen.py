@@ -31,7 +31,8 @@ from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
-    ATTRIBUTION, download_region, estimate_download, is_online,
+    DETAIL_MAX_ZOOM, ATTRIBUTION, download_region, download_node_details,
+    estimate_download, is_online,
     storage_summary, disk_free_mb, parse_latlon, ip_geolocate)
 
 
@@ -102,8 +103,10 @@ class MapPlot(Widget):
 
     def _step_zoom(self, direction, view):
         from ui.map_tiles import unproject_px
+        # pinch may go past the regional zoom into the street-detail levels
+        # (cached only around placed nodes — elsewhere those levels are blank)
         new_zoom = max(DEFAULT_MIN_ZOOM,
-                       min(DEFAULT_MAX_ZOOM, view.zoom + direction))
+                       min(DETAIL_MAX_ZOOM, view.zoom + direction))
         if new_zoom == view.zoom:
             return
         cx = view.off_x + view.width / 2.0
@@ -423,6 +426,22 @@ class ScanScreen(BoxLayout):
         summary = download_region(lat, lon, dest, radius_km=self._radius_km,
                                   zmin=DEFAULT_MIN_ZOOM, zmax=DEFAULT_MAX_ZOOM,
                                   on_progress=progress)
+        # Street-detail top-up: a small z13-15 circle around every PLACED node,
+        # so a service visit can navigate to the node's street. Tiny + polite.
+        if not summary.get("blocked") and not summary.get("cancelled"):
+            located = geo_points(self._nodes)
+            if located:
+                def dprog(s):
+                    if "detail_of" in s:
+                        Clock.schedule_once(
+                            lambda dt, n=s["detail_of"]: self._set_status(
+                                f"Caching street detail around {n}…"), 0)
+                detail = download_node_details(
+                    [(p.lat, p.lon, p.label or "a node") for p in located],
+                    dest, on_progress=dprog)
+                summary["fetched"] += detail["fetched"]
+                if detail.get("blocked"):
+                    summary["blocked"] = True
         Clock.schedule_once(lambda dt: self._download_done(summary), 0)
 
     def _download_done(self, summary):
