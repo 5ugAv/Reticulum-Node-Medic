@@ -1,0 +1,18 @@
+# Serial splitter — one RNode, two jobs. Owns the real Jonesey port, presents
+# a virtual port at /tmp/rnode-jonesey for rnsd (LoRa stays online 100%), and
+# skims GPS + signal stats to ~/gps_state.json for the tool.
+# Installed by scripts/setup_boot.sh; ordered before rnsd via its drop-in.
+[Unit]
+Description=RNode serial splitter (LoRa + GPS on one port)
+After=dev-ttyACM0.device
+
+[Service]
+Type=simple
+User=nodemedic
+WorkingDirectory=/home/nodemedic/reticulum-tool
+ExecStart=/usr/bin/python3 -c "from monitor.serial_splitter import run; run(real_port='/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_3C:0F:02:EB:2E:18-if00', symlink='/tmp/rnode-jonesey', state_file='/home/nodemedic/gps_state.json')"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

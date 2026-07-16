@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Reticulum Node Medic
+Comment=Boot straight into the Node Medic touchscreen UI
+Exec=/home/nodemedic/reticulum-tool/scripts/start_ui.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
