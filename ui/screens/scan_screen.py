@@ -31,7 +31,7 @@ from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
-    download_region, estimate_download, is_online,
+    ATTRIBUTION, download_region, estimate_download, is_online,
     storage_summary, disk_free_mb, parse_latlon, ip_geolocate)
 
 
@@ -225,8 +225,11 @@ class ScanScreen(BoxLayout):
         Clock.schedule_once(apply, 0)
 
     def _refresh_header(self):
-        basemap = " (offline basemap)" if self._tiles is not None else ""
-        self.header.text = f"Map — node coverage{basemap}"
+        if self._tiles is not None:
+            # basemap attribution is a licence condition, not decoration
+            self.header.text = f"Map — node coverage   [{ATTRIBUTION}]"
+        else:
+            self.header.text = "Map — node coverage"
 
     def set_nodes(self, nodes):
         nodes = list(nodes or [])
@@ -352,6 +355,11 @@ class ScanScreen(BoxLayout):
         self.plot.set_tiles(self._tiles)
         self._refresh_header()
         got, failed = summary["fetched"] + summary["skipped"], summary["failed"]
+        if summary.get("blocked"):
+            self._set_status("The tile server started refusing us (bulk "
+                             "protection). Stopped cleanly - try again later "
+                             "or with a smaller radius.", "alert")
+            return
         if got and self._tiles is not None:
             msg = f"Offline map ready — {got} tiles cached."
             if failed:

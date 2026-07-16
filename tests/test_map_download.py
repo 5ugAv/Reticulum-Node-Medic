@@ -227,3 +227,39 @@ def test_ip_geolocate_none_when_all_fail():
     def fetch(url):
         raise OSError("offline")
     assert ip_geolocate(fetch=fetch) is None
+
+
+def test_blocked_provider_trips_the_circuit_breaker(tmp_path):
+    """A provider refusing bulk serves the SAME notice image for every tile —
+    the download must stop and flag blocked=True rather than cache thousands
+    of 'Access blocked' tiles (which is exactly what OSM did to us live)."""
+    from ui.map_download import download_region
+    block_tile = b"identical-blocked-notice-png" * 256      # large, like a rendered notice
+    dest = str(tmp_path / "blocked.mbtiles")
+    summary = download_region(-37.79, 144.96, dest, radius_km=40,
+                              zmin=8, zmax=11,
+                              fetch=lambda z, x, y: block_tile,
+                              rate_limit_s=0)
+    assert summary["blocked"] is True
+    assert summary["fetched"] <= 30                # stopped early, not thousands
+
+
+def test_identical_but_tiny_sea_tiles_do_not_trip(tmp_path):
+    from ui.map_download import download_region
+    sea = b"solid-blue"                              # small, like an ocean tile
+    dest = str(tmp_path / "sea.mbtiles")
+    summary = download_region(-37.79, 144.96, dest, radius_km=40,
+                              zmin=8, zmax=11,
+                              fetch=lambda z, x, y: sea, rate_limit_s=0)
+    assert summary["blocked"] is False
+
+
+def test_normal_varied_tiles_do_not_trip_the_breaker(tmp_path):
+    from ui.map_download import download_region
+    dest = str(tmp_path / "ok.mbtiles")
+    summary = download_region(-37.79, 144.96, dest, radius_km=25,
+                              zmin=8, zmax=9,
+                              fetch=lambda z, x, y: f"tile-{z}-{x}-{y}".encode(),
+                              rate_limit_s=0)
+    assert summary["blocked"] is False
+    assert summary["fetched"] == summary["total"]
