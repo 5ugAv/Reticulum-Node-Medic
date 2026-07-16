@@ -200,3 +200,30 @@ def test_parse_latlon_accepts_melbourne_and_rejects_junk():
 def test_radius_steps_are_sane():
     assert RADIUS_STEPS == sorted(RADIUS_STEPS)
     assert 100.0 in RADIUS_STEPS and RADIUS_STEPS[0] >= 10
+
+
+def test_ip_geolocate_parses_ipinfo():
+    from ui.map_download import ip_geolocate
+    def fetch(url):
+        assert "ipinfo" in url
+        return '{"loc": "-37.79,144.96", "city": "Melbourne"}'
+    assert ip_geolocate(fetch=fetch) == (-37.79, 144.96, "Melbourne")
+
+
+def test_ip_geolocate_falls_back_to_ip_api():
+    from ui.map_download import ip_geolocate
+    calls = []
+    def fetch(url):
+        calls.append(url)
+        if "ipinfo" in url:
+            raise OSError("down")
+        return '{"lat": -37.8, "lon": 144.9, "city": "Northcote"}'
+    assert ip_geolocate(fetch=fetch) == (-37.8, 144.9, "Northcote")
+    assert len(calls) == 2
+
+
+def test_ip_geolocate_none_when_all_fail():
+    from ui.map_download import ip_geolocate
+    def fetch(url):
+        raise OSError("offline")
+    assert ip_geolocate(fetch=fetch) is None

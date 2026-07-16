@@ -100,19 +100,37 @@ class NodeRecord:
             return self.latest_beacon.wifi_rssi_dbm
         return None
 
+    @property
+    def provenance(self) -> str:
+        """Interim provenance (full tiers are #54): a record that has spoken our
+        protocols (beacon / HTTP status) or was named/located by an operator is
+        KIN; a bare mesh-heard destination hash is a NEIGHBOUR."""
+        ours = (self.latest_beacon is not None or self.latest_http is not None
+                or bool(self.name) or self.lat is not None)
+        return "kin" if ours else "neighbour"
+
     def to_dashboard(self, now: float) -> dict:
         """The node dict the VITALS screen (ui.screens.vitals_screen) renders.
-        Pure + testable; the Kivy view just reads these keys."""
+        Pure + testable; the Kivy view just reads these keys. Honest: no
+        invented numbers — unknown signal/battery stay None and the screen
+        hides them; a bare mesh destination renders as a grey Neighbour, not a
+        healthy green RTNode."""
         lsh = self.last_seen_hours(now)
         sig = self.signal_dbm()
+        neighbour = self.provenance == "neighbour"
+        status = self.status(now)
+        if neighbour and status == "ok":
+            status = "unknown"           # heard != healthy; we know nothing yet
         return {
-            "name": self.name or "(unnamed)",
-            "location": self.location,
-            "status": self.status(now),
+            "name": self.name or (f"Neighbour {self.dst_hash[:8]}" if neighbour
+                                  else "(unnamed)"),
+            "location": self.location or ("heard on the mesh" if neighbour else ""),
+            "status": status,
             "type": self.node_type,
-            "signal_dbm": sig if sig is not None else -100,
+            "provenance": self.provenance,
+            "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
-            "battery_pct": 100,          # RTNodes have no battery; screen hides it
+            "battery_pct": None,          # no node type reports battery yet
             "powered_by": "battery",
         }
 

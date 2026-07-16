@@ -30,6 +30,7 @@ class StatBar(BoxLayout):
     powered_by = StringProperty("battery")  # battery | solar | mains
     show_battery = BooleanProperty(True)
     show_solar = BooleanProperty(True)
+    show_signal = BooleanProperty(True)   # hidden when no signal was ever measured
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -52,9 +53,10 @@ class StatBar(BoxLayout):
             self.add_widget(_StatIcon("SOL", "ok"))
         if self.powered_by == "mains":
             self.add_widget(_StatIcon("AC", "ok"))
-        self.add_widget(_StatIcon(
-            f"SIG {int(self.signal_dbm)}dBm",
-            theme.signal_status(self.signal_dbm)))
+        if self.show_signal:
+            self.add_widget(_StatIcon(
+                f"SIG {int(self.signal_dbm)}dBm",
+                theme.signal_status(self.signal_dbm)))
         self.add_widget(_StatIcon(
             f"SEEN {self.last_seen_hours:.1f}h",
             theme.last_seen_status(self.last_seen_hours)))
