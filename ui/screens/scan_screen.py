@@ -30,8 +30,9 @@ from ui import theme
 from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
-    DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM,
-    download_region, estimate_download, is_online)
+    DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
+    download_region, estimate_download, is_online,
+    storage_summary, disk_free_mb, parse_latlon)
 
 
 class MapPlot(Widget):
@@ -148,22 +149,41 @@ class ScanScreen(BoxLayout):
                           halign="left", color=theme.status_rgba("warn", 0.9))
         self.add_widget(self.note)
 
-        # Offline-map control: fetch tiles around the medic while it has WiFi.
+        # Offline-map control: [-] radius stepper [+] around the download
+        # button, a live size-vs-storage line beneath, and a typed home-base
+        # coordinate as the fallback centre when there's no GPS fix or placed
+        # node yet.
         row = BoxLayout(orientation="horizontal", size_hint=(1, None),
-                        height=dp(40), spacing=dp(8))
-        self.dl_button = Button(
-            text=f"⬇  Download offline map ({radius_km:g} km)",
-            size_hint=(None, 1), width=dp(240))
+                        height=dp(44), spacing=dp(6))
+        self.minus_btn = Button(text="-", size_hint=(None, 1), width=dp(40))
+        self.minus_btn.bind(on_release=lambda *_: self._step_radius(-1))
+        self.plus_btn = Button(text="+", size_hint=(None, 1), width=dp(40))
+        self.plus_btn.bind(on_release=lambda *_: self._step_radius(+1))
+        self.dl_button = Button(text="", size_hint=(1, 1))
         self.dl_button.bind(on_release=lambda *_: self._on_download())
+        row.add_widget(self.minus_btn)
+        row.add_widget(self.dl_button)
+        row.add_widget(self.plus_btn)
+        self.add_widget(row)
+
         self.dl_status = Label(text="", halign="left", valign="middle",
+                               size_hint=(1, None), height=dp(26),
                                color=theme.status_rgba("unknown", 0.95))
         self.dl_status.bind(size=lambda i, v: setattr(i, "text_size", v))
-        row.add_widget(self.dl_button)
-        row.add_widget(self.dl_status)
-        self.add_widget(row)
+        self.add_widget(self.dl_status)
+
+        # Home-base entry — the centre of the map when nothing else provides one
+        from kivy.uix.textinput import TextInput
+        self.center_input = TextInput(
+            hint_text="No location yet? Type home base as: lat, lon  "
+                      "(e.g. -37.79, 144.96)",
+            multiline=False, size_hint=(1, None), height=dp(44))
+        self.center_input.bind(text=lambda *_: self._refresh_estimate())
+        self.add_widget(self.center_input)
 
         self._refresh_header()
         self.set_nodes(nodes or [])
+        self._refresh_estimate()
 
     def _refresh_header(self):
         basemap = " (offline basemap)" if self._tiles is not None else ""
@@ -190,8 +210,8 @@ class ScanScreen(BoxLayout):
 
     def _download_center(self):
         """Where to centre the download: the medic's GPS fix if it has one,
-        else the centroid of nodes already placed on the map. Returns
-        ((lat, lon), source_label) or (None, None)."""
+        else the centroid of placed nodes, else a typed home-base coordinate.
+        Returns ((lat, lon), source_label) or (None, None)."""
         fix = read_gps(self._gps_reader) if self._gps_reader else read_gps()
         if fix and fix.has_fix:
             return (fix.lat, fix.lon), "current GPS location"
@@ -200,11 +220,48 @@ class ScanScreen(BoxLayout):
             lat = sum(p.lat for p in pts) / len(pts)
             lon = sum(p.lon for p in pts) / len(pts)
             return (lat, lon), "placed nodes"
+        typed = parse_latlon(getattr(self, "center_input", None)
+                             and self.center_input.text or "")
+        if typed:
+            return typed, "entered home base"
         return None, None
 
     def _set_status(self, text, status="unknown"):
         self.dl_status.text = text
         self.dl_status.color = theme.status_rgba(status, 0.95)
+
+    def _step_radius(self, direction):
+        """[-]/[+]: move through the preset radii and re-estimate."""
+        if self._downloading:
+            return
+        steps = list(RADIUS_STEPS)
+        if self._radius_km not in steps:
+            steps.append(self._radius_km)
+            steps.sort()
+        i = steps.index(self._radius_km) + direction
+        self._radius_km = steps[max(0, min(len(steps) - 1, i))]
+        self._refresh_estimate()
+
+    def _refresh_estimate(self):
+        """Keep the button + status honest: current radius, size estimate, and
+        whether it fits the storage budget."""
+        if self._downloading:
+            return
+        self.dl_button.text = f"Download offline map ({self._radius_km:g} km)"
+        center, source = self._download_center()
+        if center is None:
+            self.dl_button.disabled = True
+            self._set_status("Needs a location to centre on - a GPS fix, a "
+                             "placed node, or type home base below.", "warn")
+            return
+        count, mb = estimate_download(center[0], center[1], self._radius_km,
+                                      DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM)
+        verdict = storage_summary(mb, disk_free_mb(MAPS_DIR
+                                                   if os.path.isdir(MAPS_DIR)
+                                                   else "."))
+        self.dl_button.disabled = not verdict["ok"]
+        self._set_status(f"Centred on {source}. {verdict['text']}",
+                         "ok" if verdict["ok"] else "alert")
 
     def _on_download(self):
         if self._downloading:
@@ -215,12 +272,14 @@ class ScanScreen(BoxLayout):
             return
         center, source = self._download_center()
         if center is None:
-            self._set_status("No location yet — need a GPS fix or a placed node "
-                             "to centre on.", "warn")
+            self._refresh_estimate()
             return
         lat, lon = center
         count, mb = estimate_download(lat, lon, self._radius_km,
                                       DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM)
+        if not storage_summary(mb, disk_free_mb("."))["ok"]:
+            self._refresh_estimate()
+            return
         self._downloading = True
         self.dl_button.disabled = True
         self._set_status(f"Downloading ~{count} tiles (~{mb:g} MB) around "
@@ -253,6 +312,8 @@ class ScanScreen(BoxLayout):
             if failed:
                 msg += f" ({failed} unavailable)"
             self._set_status(msg, "ok")
+            self.center_input.height = 0            # centre solved; tidy away
+            self.center_input.opacity = 0
         else:
             self._set_status("Download failed — no tiles cached. Check the "
                              "connection and try again.", "alert")
