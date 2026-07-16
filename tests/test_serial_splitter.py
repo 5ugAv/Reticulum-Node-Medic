@@ -3,7 +3,9 @@ everything else passes through to rnsd byte-for-byte. Pure — no hardware."""
 
 import pytest
 
-from monitor.serial_splitter import KissGpsSplitter
+from monitor.serial_splitter import (
+    KissGpsSplitter, CMD_STAT_RSSI, CMD_STAT_SNR, CMD_STAT_CHTM, RSSI_OFFSET,
+)
 from monitor.rnode_gps import (
     FEND, FESC, TFEND, TFESC,
     CMD_GPS, GPS_CMD_LAT, GPS_CMD_LNG, GPS_CMD_STATE,
@@ -87,6 +89,53 @@ def test_updated_timestamp_uses_injected_clock():
     s = KissGpsSplitter(now=lambda: 42.0)
     s.feed(_gps(GPS_CMD_LAT, 1.0))
     assert s.state()["updated"] == 42.0
+
+
+# ---- signal-stat recording (frames still forwarded to rnsd) ----------------
+
+def test_stat_rssi_and_snr_recorded_and_still_forwarded():
+    s = KissGpsSplitter(now=lambda: 7.0)
+    rssi_frame = _kiss(CMD_STAT_RSSI, bytes([-72 + RSSI_OFFSET]))
+    snr_frame = _kiss(CMD_STAT_SNR, bytes([int(10.5 * 4)]))
+    assert s.feed(rssi_frame) == rssi_frame        # forwarded byte-for-byte
+    assert s.feed(snr_frame) == snr_frame
+    st = s.state()
+    assert st["last_rssi"] == -72
+    assert st["last_snr"] == 10.5
+    assert st["packet_heard_at"] == 7.0
+
+
+def test_negative_snr_decodes_signed():
+    s = KissGpsSplitter()
+    s.feed(_kiss(CMD_STAT_SNR, (-9).to_bytes(1, "big", signed=True)))  # -2.25 dB
+    assert s.state()["last_snr"] == -2.25
+
+
+def test_channel_stats_frame_recorded_and_forwarded():
+    # ats atl cls cll (u16 each) + crs nfl ntf
+    payload = (int(0.253 * 10000)).to_bytes(2, "big")          # airtime 2.53%... (x100x100)
+    payload += (0).to_bytes(2, "big")                           # atl
+    payload += (int(0.31 * 10000)).to_bytes(2, "big")           # cls (channel load)
+    payload += (0).to_bytes(2, "big")                           # cll
+    payload += bytes([-96 + RSSI_OFFSET])                       # crs
+    payload += bytes([-107 + RSSI_OFFSET])                      # nfl (noise floor)
+    payload += bytes([0xFF])                                    # ntf: no interference
+    frame = _kiss(CMD_STAT_CHTM, payload)
+    s = KissGpsSplitter()
+    assert s.feed(frame) == frame                               # forwarded
+    st = s.state()
+    assert st["noise_floor"] == -107
+    assert st["airtime"] == pytest.approx(0.253, abs=1e-4)
+    assert st["channel_load"] == pytest.approx(0.31, abs=1e-4)
+    assert st["interference"] is None                           # 0xFF sentinel
+
+
+def test_interference_value_decodes_when_present():
+    payload = bytes(8) + bytes([-96 + RSSI_OFFSET, -107 + RSSI_OFFSET,
+                                -74 + RSSI_OFFSET])
+    s = KissGpsSplitter()
+    s.feed(_kiss(CMD_STAT_CHTM, payload))
+    assert s.state()["interference"] == -74
 
 
 def test_melbourne_coordinate_survives_firmware_format_roundtrip():
