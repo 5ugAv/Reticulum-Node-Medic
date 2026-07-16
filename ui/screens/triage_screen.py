@@ -77,8 +77,10 @@ class TriageScreen(FloatLayout):
         self._event = Clock.schedule_interval(self._tick, poll_interval)
 
     def _readout(self, pos_hint) -> Label:
+        # fraction-of-screen width (not fixed dp) so density scaling can't
+        # overlap the three top cells on the 720px panel
         lbl = Label(text="", markup=True, halign="left", valign="middle",
-                    size_hint=(None, None), size=(dp(200), dp(54)), pos_hint=pos_hint)
+                    size_hint=(0.30, None), height=dp(54), pos_hint=pos_hint)
         lbl.bind(size=lambda *a: setattr(lbl, "text_size", lbl.size))
         self.add_widget(lbl)
         return lbl
