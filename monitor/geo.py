@@ -114,6 +114,36 @@ def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
     return reader
 
 
+# --- location privacy --------------------------------------------------------
+# A node's EXACT coordinates belong to its builder only (birth cert, servicing,
+# street-detail maps). What's ever shared publicly is a FUZZED pin: enough for
+# "there's a working node in this area", useless for finding the hardware.
+
+FUZZ_RADIUS_M = 800.0
+
+
+def fuzz_location(lat: float, lon: float, node_key: str,
+                  radius_m: float = FUZZ_RADIUS_M) -> Tuple[float, float, float]:
+    """A privacy-fuzzed public position: (lat, lon, radius_m).
+
+    The offset is DETERMINISTIC per node (seeded by *node_key*, e.g. the
+    destination hash): the same fake position every time. This matters — a
+    random offset per announce could be averaged away by an observer to
+    recover the true location. It is also never centred on the real point
+    (30-100% of the radius out), so the true position isn't at the middle of
+    the advertised circle."""
+    import hashlib
+    import math
+    digest = hashlib.sha256(f"{node_key}:location-fuzz".encode()).digest()
+    angle = int.from_bytes(digest[0:4], "big") / 0xFFFFFFFF * 2 * math.pi
+    frac = 0.3 + int.from_bytes(digest[4:8], "big") / 0xFFFFFFFF * 0.7
+    dist = radius_m * frac
+    dlat = (dist * math.cos(angle)) / 111_320.0
+    dlon = (dist * math.sin(angle)) / (111_320.0 *
+                                       max(0.05, math.cos(math.radians(lat))))
+    return (lat + dlat, lon + dlon, radius_m)
+
+
 def format_coord(deg: float) -> str:
     """Signed decimal degrees, 6 dp (~0.1 m resolution)."""
     return f"{deg:.6f}"
