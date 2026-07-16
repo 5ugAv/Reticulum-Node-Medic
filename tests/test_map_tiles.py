@@ -125,3 +125,21 @@ def test_mbtiles_bounds_absent_is_none(tmp_path):
     con.execute("CREATE TABLE metadata (name TEXT, value TEXT)")
     con.commit(); con.close()
     assert MBTiles(str(p)).bounds() is None
+
+
+# ---- interactive view (pan/pinch support) -----------------------------------
+
+def test_unproject_inverts_project():
+    from ui.map_tiles import project_px, unproject_px
+    lat, lon = -37.79, 144.96
+    for z in (8, 10, 12):
+        x, y = project_px(lat, lon, z)
+        la, lo = unproject_px(x, y, z)
+        assert abs(la - lat) < 1e-6 and abs(lo - lon) < 1e-6
+
+
+def test_view_at_centres_the_point():
+    from ui.map_tiles import view_at
+    v = view_at(-37.79, 144.96, 11, 700, 500)
+    sx, sy = v.to_screen(-37.79, 144.96)
+    assert abs(sx - 350) < 1e-6 and abs(sy - 250) < 1e-6

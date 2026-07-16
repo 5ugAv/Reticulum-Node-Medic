@@ -37,14 +37,84 @@ from ui.map_download import (
 
 class MapPlot(Widget):
     """Draws located nodes as status-coloured dots, over an offline tile basemap
-    when one is available, redrawing on any resize."""
+    when one is available. Interactive: drag to pan, pinch to zoom (a level per
+    pinch, clamped to the cached zoom range); until first touched, it auto-fits
+    the nodes / cached area."""
 
     def __init__(self, nodes=None, tiles=None, **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._labels: List[Label] = []
+        # interactive view state (None until the user pans/zooms = auto-fit)
+        self._center = None                      # (lat, lon)
+        self._zoom = None
+        self._touches = {}                       # touch uid -> last (x, y)
+        self._pinch_base = None                  # two-finger start distance
+        self._trigger = Clock.create_trigger(self._redraw, 0.05)
         self.bind(size=self._redraw, pos=self._redraw)
+
+    # -- gestures -----------------------------------------------------------
+
+    def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos) or self._tiles is None:
+            return super().on_touch_down(touch)
+        touch.grab(self)
+        self._touches[touch.uid] = touch.pos
+        if len(self._touches) == 2:
+            pts = list(self._touches.values())
+            self._pinch_base = max(1.0, ((pts[0][0] - pts[1][0]) ** 2 +
+                                         (pts[0][1] - pts[1][1]) ** 2) ** 0.5)
+        return True
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is not self:
+            return super().on_touch_move(touch)
+        self._touches[touch.uid] = touch.pos
+        view = self._current_view()
+        if view is None:
+            return True
+        if len(self._touches) == 1:              # drag = pan
+            from ui.map_tiles import unproject_px
+            cx = view.off_x + view.width / 2.0 - touch.dx
+            cy = view.off_y + view.height / 2.0 + touch.dy   # kivy y-up vs world y-down
+            self._center = unproject_px(cx, cy, view.zoom)
+            self._zoom = view.zoom
+            self._trigger()
+        elif len(self._touches) == 2 and self._pinch_base:
+            pts = list(self._touches.values())
+            dist = max(1.0, ((pts[0][0] - pts[1][0]) ** 2 +
+                             (pts[0][1] - pts[1][1]) ** 2) ** 0.5)
+            ratio = dist / self._pinch_base
+            if ratio > 1.30 or ratio < 0.77:
+                self._step_zoom(+1 if ratio > 1.0 else -1, view)
+                self._pinch_base = dist          # re-arm for the next step
+        return True
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            self._touches.pop(touch.uid, None)
+            if len(self._touches) < 2:
+                self._pinch_base = None
+            return True
+        return super().on_touch_up(touch)
+
+    def _step_zoom(self, direction, view):
+        from ui.map_tiles import unproject_px
+        new_zoom = max(DEFAULT_MIN_ZOOM,
+                       min(DEFAULT_MAX_ZOOM, view.zoom + direction))
+        if new_zoom == view.zoom:
+            return
+        cx = view.off_x + view.width / 2.0
+        cy = view.off_y + view.height / 2.0
+        self._center = unproject_px(cx, cy, view.zoom)
+        self._zoom = new_zoom
+        self._trigger()
+
+    def _current_view(self):
+        """The view as displayed right now (manual if touched, else auto-fit)."""
+        return getattr(self, "_last_view", None)
 
     def set_nodes(self, nodes):
         self._nodes = list(nodes or [])
@@ -96,7 +166,14 @@ class MapPlot(Widget):
                 clon - (e - w) / 2 * f, clon + (e - w) / 2 * f)
 
     def _draw_tiled(self, pts, bbox):
-        view = build_view(*bbox, self.width, self.height, padding=dp(32))
+        from ui.map_tiles import view_at
+        if self._center is not None and self._zoom is not None:
+            view = view_at(self._center[0], self._center[1], self._zoom,
+                           self.width, self.height)      # user-driven pan/zoom
+        else:
+            view = build_view(*bbox, self.width, self.height, padding=dp(32),
+                              max_zoom=DEFAULT_MAX_ZOOM)  # auto-fit, cache-clamped
+        self._last_view = view
         r = dp(6)
         with self.canvas:
             for t in tiles_for_view(view):
