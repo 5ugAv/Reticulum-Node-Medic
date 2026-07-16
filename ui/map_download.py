@@ -136,6 +136,37 @@ def storage_summary(est_mb: float, free_mb: float,
             "reduce the radius."}
 
 
+def ip_geolocate(fetch: Optional[Callable[[str], str]] = None,
+                 timeout: float = 4.0) -> Optional[Tuple[float, float, str]]:
+    """The medic's approximate position from its internet connection —
+    city-level accuracy, which is plenty to centre a maps download (the only
+    time this is used, and the only time the medic is guaranteed online).
+    Returns (lat, lon, place) or None. ``fetch`` is injected for tests."""
+    if fetch is None:
+        def fetch(url: str) -> str:
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "ignore")
+    import json as _json
+    # two independent no-key services; first answer wins
+    try:
+        data = _json.loads(fetch("https://ipinfo.io/json"))
+        loc = parse_latlon(data.get("loc", ""))
+        if loc:
+            return (loc[0], loc[1], data.get("city") or "your internet location")
+    except Exception:
+        pass
+    try:
+        data = _json.loads(fetch("http://ip-api.com/json/"))
+        lat, lon = data.get("lat"), data.get("lon")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            return (float(lat), float(lon),
+                    data.get("city") or "your internet location")
+    except Exception:
+        pass
+    return None
+
+
 def parse_latlon(text: str) -> Optional[Tuple[float, float]]:
     """Parse a typed "lat, lon" pair (home-base entry when there's no GPS fix).
     Returns None unless it's a plausible coordinate."""

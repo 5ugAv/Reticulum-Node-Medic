@@ -188,9 +188,10 @@ class ReticulumNodeMedicApp(App):
         # Final confirmed modes, registered in sidebar order:
         # 1 VITALS · 2 SCAN · 3 BIRTH · 4 TRIAGE · 5 PROBE · 6 MITOSIS
         vitals = Screen(name="vitals")
-        # DEMO_NODES render immediately; a background thread then discovers and
-        # polls the real LAN and swaps in live nodes as they're found.
-        self.vitals_screen = VitalsScreen(nodes=DEMO_NODES)
+        # Live discovery fills the dashboard; RNM_DEMO=1 seeds the fake showcase
+        # nodes instead (they confused a real deployment, so default off).
+        seed = DEMO_NODES if os.environ.get("RNM_DEMO") else []
+        self.vitals_screen = VitalsScreen(nodes=seed)
         vitals.add_widget(self.vitals_screen)
         self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)

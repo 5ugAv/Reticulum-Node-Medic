@@ -54,13 +54,16 @@ class NodeRow(BoxLayout):
         self.add_widget(text)
 
         is_rtnode = node.get("type") == "rtnode2400"
+        batt = node.get("battery_pct")
+        sig = node.get("signal_dbm")
         self.add_widget(StatBar(
-            battery_pct=node.get("battery_pct", 100),
-            signal_dbm=node.get("signal_dbm", -80),
+            battery_pct=batt if batt is not None else 0,
+            signal_dbm=sig if sig is not None else 0,
             last_seen_hours=node.get("last_seen_hours", 0.0),
             powered_by=node.get("powered_by", "battery"),
-            show_battery=not is_rtnode,
-            show_solar=not is_rtnode,
+            show_battery=batt is not None and not is_rtnode,
+            show_solar=batt is not None and not is_rtnode,
+            show_signal=sig is not None,     # never invent a signal reading
             size_hint_x=None, width=dp(320)))
 
 

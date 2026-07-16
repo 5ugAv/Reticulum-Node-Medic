@@ -32,7 +32,7 @@ from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_fo
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
     download_region, estimate_download, is_online,
-    storage_summary, disk_free_mb, parse_latlon)
+    storage_summary, disk_free_mb, parse_latlon, ip_geolocate)
 
 
 class MapPlot(Widget):
@@ -172,18 +172,36 @@ class ScanScreen(BoxLayout):
         self.dl_status.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.dl_status)
 
-        # Home-base entry — the centre of the map when nothing else provides one
+        # Manual entry — LAST-resort centre, hidden unless self-location fails
         from kivy.uix.textinput import TextInput
         self.center_input = TextInput(
-            hint_text="No location yet? Type home base as: lat, lon  "
-                      "(e.g. -37.79, 144.96)",
-            multiline=False, size_hint=(1, None), height=dp(44))
+            hint_text="Couldn't find your location - type home base as: "
+                      "lat, lon  (e.g. -37.79, 144.96)",
+            multiline=False, size_hint=(1, None), height=0, opacity=0)
         self.center_input.bind(text=lambda *_: self._refresh_estimate())
         self.add_widget(self.center_input)
 
         self._refresh_header()
         self.set_nodes(nodes or [])
         self._refresh_estimate()
+
+        # Self-locate in the background (IP geolocation — city-level is plenty
+        # for a map radius, and downloads need internet anyway). The user just
+        # presses download; typing coordinates is the fallback of last resort.
+        self._ip_center = None            # (lat, lon, place) once found
+        self._ip_tried = False
+        threading.Thread(target=self._locate_self, daemon=True).start()
+
+    def _locate_self(self):
+        found = ip_geolocate() if is_online() else None
+        def apply(dt):
+            self._ip_tried = True
+            self._ip_center = found
+            if found is None and not geo_points(self._nodes):
+                self.center_input.height = dp(44)   # last resort: show the field
+                self.center_input.opacity = 1
+            self._refresh_estimate()
+        Clock.schedule_once(apply, 0)
 
     def _refresh_header(self):
         basemap = " (offline basemap)" if self._tiles is not None else ""
@@ -220,6 +238,9 @@ class ScanScreen(BoxLayout):
             lat = sum(p.lat for p in pts) / len(pts)
             lon = sum(p.lon for p in pts) / len(pts)
             return (lat, lon), "placed nodes"
+        ip = getattr(self, "_ip_center", None)
+        if ip:
+            return (ip[0], ip[1]), f"{ip[2]} (approximate, from your internet)"
         typed = parse_latlon(getattr(self, "center_input", None)
                              and self.center_input.text or "")
         if typed:
@@ -251,8 +272,11 @@ class ScanScreen(BoxLayout):
         center, source = self._download_center()
         if center is None:
             self.dl_button.disabled = True
-            self._set_status("Needs a location to centre on - a GPS fix, a "
-                             "placed node, or type home base below.", "warn")
+            if not getattr(self, "_ip_tried", False):
+                self._set_status("Finding your location…", "unknown")
+            else:
+                self._set_status("Couldn't find your location automatically - "
+                                 "type home base below.", "warn")
             return
         count, mb = estimate_download(center[0], center[1], self._radius_km,
                                       DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM)
