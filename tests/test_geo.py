@@ -50,3 +50,26 @@ def test_navigation_links_has_all_forms():
     assert "google.com" in links["google"]
     assert "apple.com" in links["apple"]
     assert links["raw"] == "-37.814000, 144.963000"
+
+
+# ---- location privacy (fuzzed public pin) ---------------------------------
+
+def test_fuzz_is_deterministic_per_node():
+    from monitor.geo import fuzz_location
+    a = fuzz_location(-37.79, 144.96, "ad272c6b")
+    b = fuzz_location(-37.79, 144.96, "ad272c6b")
+    assert a == b                       # same node -> same fake pin, forever
+    c = fuzz_location(-37.79, 144.96, "deadbeef")
+    assert (a[0], a[1]) != (c[0], c[1])  # different node -> different offset
+
+
+def test_fuzz_offsets_within_radius_but_never_at_centre():
+    import math
+    from monitor.geo import fuzz_location, FUZZ_RADIUS_M
+    for key in ("n1", "n2", "n3", "n4", "n5"):
+        flat, flon, r = fuzz_location(-37.79, 144.96, key)
+        assert r == FUZZ_RADIUS_M
+        dlat_m = (flat - -37.79) * 111_320.0
+        dlon_m = (flon - 144.96) * 111_320.0 * math.cos(math.radians(-37.79))
+        dist = math.hypot(dlat_m, dlon_m)
+        assert 0.25 * r <= dist <= r     # offset real, bounded, off-centre
