@@ -32,7 +32,11 @@ _PL_ANCHOR_DBM = -40.0
 _PL_ANCHOR_M = 10.0
 _PL_EXPONENT = 2.7
 MARGINAL_DBM = -110       # estimates at/below this get "marginal" wording
-EXTEND_STEP_KM = 1.2      # how far past the edge an extension suggestion sits
+#: Fallback extension distance for a brand-new mesh with no measured links yet.
+#: Once links exist, the OBSERVED reach (distances of actual working links)
+#: replaces this — the mesh calibrates its own expectations as it grows.
+EXTEND_STEP_KM = 1.2
+REACH_PERCENTILE = 90     # of observed link distances (shaves freak outliers)
 
 
 def estimate_rssi_dbm(distance_km: float) -> int:
@@ -40,6 +44,38 @@ def estimate_rssi_dbm(distance_km: float) -> int:
     d = max(distance_km * 1000.0, _PL_ANCHOR_M)
     return round(_PL_ANCHOR_DBM
                  - 10.0 * _PL_EXPONENT * math.log10(d / _PL_ANCHOR_M))
+
+
+def _km(lat1, lon1, lat2, lon2) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def observed_reach_km(topo: Topology) -> Optional[float]:
+    """What range does THIS mesh demonstrably achieve? The 90th-percentile
+    distance of working links between located nodes — real evidence, not a
+    guess. None until at least one located link exists (brand-new mesh)."""
+    by_id = {n.id: n for n in topo.nodes}
+    dists = []
+    for e in topo.edges:
+        a, b = by_id.get(e.a), by_id.get(e.b)
+        if not a or not b:
+            continue
+        if None in (a.lat, a.lon, b.lat, b.lon):
+            continue
+        d = _km(a.lat, a.lon, b.lat, b.lon)
+        if d > 0.01:                     # co-located pairs prove nothing
+            dists.append(d)
+    if not dists:
+        return None
+    dists.sort()
+    k = (len(dists) - 1) * (REACH_PERCENTILE / 100.0)
+    lo = int(k)
+    hi = min(lo + 1, len(dists) - 1)
+    return dists[lo] + (dists[hi] - dists[lo]) * (k - lo)
 
 
 @dataclass
@@ -58,8 +94,14 @@ def _est(node, km: float) -> dict:
 
 
 def suggest_fill_gaps(topo: Topology, interference_log=None,
-                      max_km: float = 3.0) -> List[Suggestion]:
-    """A relay at the midpoint of each close-but-unlinked located pair."""
+                      max_km: Optional[float] = None) -> List[Suggestion]:
+    """A relay at the midpoint of each close-but-unlinked located pair.
+    "Close enough" self-calibrates: a midpoint relay makes each hop half the
+    pair distance, so pairs within 2x the mesh's OBSERVED reach qualify.
+    Falls back to 3 km until the mesh has measured links."""
+    if max_km is None:
+        reach = observed_reach_km(topo)
+        max_km = 2.0 * reach if reach else 3.0
     by_id = {n.id: n for n in topo.nodes}
     out: List[Suggestion] = []
     for gap in gap_pairs(topo, max_km=max_km):
@@ -83,10 +125,13 @@ def suggest_fill_gaps(topo: Topology, interference_log=None,
 
 
 def suggest_extend_reach(topo: Topology, interference_log=None,
-                         step_km: float = EXTEND_STEP_KM) -> List[Suggestion]:
+                         step_km: Optional[float] = None) -> List[Suggestion]:
     """When the located mesh is fully connected, push the coverage boundary:
-    for each located edge node, a point *step_km* further out from the mesh's
-    centre of mass, estimated back to that node."""
+    for each located edge node, a point one OBSERVED-reach further out from the
+    mesh's centre of mass (what this mesh's links demonstrably span), estimated
+    back to that node. Falls back to 1.2 km for a brand-new mesh."""
+    if step_km is None:
+        step_km = observed_reach_km(topo) or EXTEND_STEP_KM
     located = [n for n in topo.nodes
                if n.lat is not None and n.lon is not None and not n.is_medic]
     if len(located) < 1:

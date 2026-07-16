@@ -101,6 +101,53 @@ def test_extend_reach_when_no_gaps():
     assert s.lat != -37.79 or s.lon != 144.96                 # actually moved
 
 
+def test_observed_reach_measured_from_working_located_links():
+    from monitor.placement import observed_reach_km
+    r = NodeRegistry()
+    r.register("aaaa", name="A", lat=-37.770, lon=145.000)
+    r.register("bbbb", name="B", lat=-37.752, lon=145.000)   # ~2 km north of A
+    # a path via A to B = a working A<->B link between two LOCATED nodes
+    topo = build_topology(r, paths=[{"hash": "bbbb", "via": "aaaa", "hops": 2}],
+                          now=NOW)
+    reach = observed_reach_km(topo)
+    assert reach == pytest.approx(2.0, abs=0.1)
+
+
+def test_no_located_links_means_no_observed_reach():
+    from monitor.placement import observed_reach_km
+    topo = build_topology(_registry_with_gap(), paths=[], now=NOW)  # no links between located pairs
+    assert observed_reach_km(topo) is None
+
+
+def test_extension_step_scales_with_the_mesh_not_a_constant():
+    r = NodeRegistry()
+    r.register("aaaa", name="A", lat=-37.770, lon=145.000)
+    r.register("bbbb", name="B", lat=-37.752, lon=145.000)   # ~2 km working link
+    r.ingest("aaaa", _beacon(), now=NOW)
+    r.ingest("bbbb", _beacon(), now=NOW)
+    topo = build_topology(r, paths=[{"hash": "bbbb", "via": "aaaa", "hops": 2}],
+                          now=NOW)
+    sugs = suggest_extend_reach(topo)
+    # steps a full observed reach (~2 km), not the 1.2 km newborn-mesh fallback
+    assert sugs and sugs[0].estimates[0]["km"] == pytest.approx(2.0, abs=0.1)
+
+
+def test_gap_qualification_widens_with_observed_reach():
+    r = NodeRegistry()
+    # a proven ~2 km link A-B...
+    r.register("aaaa", name="A", lat=-37.770, lon=145.000)
+    r.register("bbbb", name="B", lat=-37.752, lon=145.000)
+    # ...and C ~3.5 km from A with no link: beyond the old 3 km constant,
+    # inside the adaptive 2 x observed-reach (~4 km)
+    r.register("cccc", name="C", lat=-37.7385, lon=145.000)
+    r.ingest("aaaa", _beacon(), now=NOW)
+    topo = build_topology(r, paths=[{"hash": "bbbb", "via": "aaaa", "hops": 2}],
+                          now=NOW)
+    sugs = suggest_fill_gaps(topo)
+    bridged = {s.reason for s in sugs}
+    assert any("C" in reason for reason in bridged)
+
+
 def test_estimate_rssi_falls_with_distance_and_is_plausible():
     near, mid, far = (estimate_rssi_dbm(k) for k in (0.3, 1.2, 3.0))
     assert near > mid > far
