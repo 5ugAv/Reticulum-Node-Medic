@@ -127,6 +127,22 @@ def _demo_clone_workflow():
     return wf
 
 
+def _triage_feed():
+    """Live splitter feed when the medic's radio state file exists (real
+    RSSI/SNR/noise recorded by monitor.serial_splitter), else the demo feed.
+    RNM_TRIAGE=demo|live overrides the choice."""
+    from monitor.triage_feed import live_triage_feed
+    from monitor.geo import read_splitter_state
+    mode = os.environ.get("RNM_TRIAGE", "")
+    if mode == "demo":
+        return _demo_triage_feed()
+    # live only when the splitter is actually feeding NOW (a stale file left
+    # over from an old run must not select a frozen live feed)
+    if mode == "live" or read_splitter_state() is not None:
+        return live_triage_feed()
+    return _demo_triage_feed()
+
+
 def _demo_triage_feed():
     """A wandering signal (good -> bad -> good) so the Triage bullseye is
     explorable without hardware. Replaced by the live splitter feed on the medic."""
@@ -193,7 +209,7 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")
-        self.triage_screen = TriageScreen(feed_factory=_demo_triage_feed)
+        self.triage_screen = TriageScreen(feed_factory=_triage_feed)
         triage.add_widget(self.triage_screen)
         self.sm.add_widget(triage)
 

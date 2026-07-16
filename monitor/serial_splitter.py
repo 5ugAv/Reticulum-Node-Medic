@@ -26,6 +26,13 @@ from monitor.rnode_gps import (
 
 _MICRODEG = 1_000_000.0
 
+# RNode stat frames (Framing.h). These are RECORDED as they pass through — but
+# still forwarded byte-for-byte, because rnsd consumes them too.
+CMD_STAT_RSSI = 0x23   # [rssi + 157]                    — per received packet
+CMD_STAT_SNR = 0x24    # [snr * 4, signed]               — per received packet
+CMD_STAT_CHTM = 0x25   # [ats:2 atl:2 cls:2 cll:2 crs nfl ntf] — periodic channel stats
+RSSI_OFFSET = 157
+
 
 def _unescape(b: bytes) -> bytes:
     out = bytearray()
@@ -55,12 +62,21 @@ class KissGpsSplitter:
         self.sats: int = 0
         self.fix: int = 0
         self.updated: Optional[float] = None
+        # live signal state, recorded from stat frames passing through to rnsd
+        self.last_rssi: Optional[int] = None       # dBm, per received packet
+        self.last_snr: Optional[float] = None      # dB, per received packet
+        self.packet_heard_at: Optional[float] = None
+        self.noise_floor: Optional[int] = None     # dBm, periodic channel stats
+        self.airtime: Optional[float] = None       # 0..1 short-term
+        self.channel_load: Optional[float] = None  # 0..1 short-term
+        self.interference: Optional[int] = None    # dBm, or None when clean
 
     def feed(self, data: bytes) -> bytes:
         out = bytearray()
         for byte in data:
             if byte == FEND:
                 if self._in_frame and self._buf:
+                    self._record_stats(self._buf)          # observe, never consume
                     if not self._consume_gps(self._buf):
                         out += bytes([FEND]) + self._buf + bytes([FEND])
                 self._buf = bytearray()
@@ -70,6 +86,25 @@ class KissGpsSplitter:
             else:
                 out.append(byte)          # stray bytes before any frame — pass through
         return bytes(out)
+
+    def _record_stats(self, frame: bytearray) -> None:
+        """Record signal stats from frames that PASS THROUGH to rnsd."""
+        cmd = frame[0]
+        if cmd not in (CMD_STAT_RSSI, CMD_STAT_SNR, CMD_STAT_CHTM):
+            return
+        p = _unescape(bytes(frame[1:]))
+        if cmd == CMD_STAT_RSSI and len(p) >= 1:
+            self.last_rssi = p[0] - RSSI_OFFSET
+            self.packet_heard_at = self._now()
+        elif cmd == CMD_STAT_SNR and len(p) >= 1:
+            self.last_snr = int.from_bytes(p[:1], "big", signed=True) * 0.25
+            self.packet_heard_at = self._now()
+        elif cmd == CMD_STAT_CHTM and len(p) >= 11:
+            self.airtime = int.from_bytes(p[0:2], "big") / 10000.0
+            self.channel_load = int.from_bytes(p[4:6], "big") / 10000.0
+            self.noise_floor = p[9] - RSSI_OFFSET
+            self.interference = (p[10] - RSSI_OFFSET) if p[10] != 0xFF else None
+        self.updated = self._now()
 
     def _consume_gps(self, frame: bytearray) -> bool:
         """Return True if this frame is a CMD_GPS frame (consumed, not forwarded)."""
@@ -91,6 +126,11 @@ class KissGpsSplitter:
             "lat": self.lat, "lng": self.lng,
             "sats": self.sats, "fix": self.fix,
             "has_fix": self.lat is not None and self.lng is not None,
+            # live signal (for TRIAGE / VITALS): per-packet + periodic channel stats
+            "last_rssi": self.last_rssi, "last_snr": self.last_snr,
+            "packet_heard_at": self.packet_heard_at,
+            "noise_floor": self.noise_floor, "airtime": self.airtime,
+            "channel_load": self.channel_load, "interference": self.interference,
             "updated": self.updated,
         }
 

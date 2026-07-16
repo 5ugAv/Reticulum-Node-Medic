@@ -2,7 +2,7 @@
 
 One "Run full diagnostic" button runs the RepairWorkflow across all six Pi
 categories. Categories stream in as live rows (expanding to their individual
-checks, collapsing to a ✓/✗ summary); when the run completes, failed checks get
+checks, collapsing to an OK/X summary (ASCII — the field Pi has no glyph font)); when the run completes, failed checks get
 "Fix" buttons plus a "Fix all" for the auto-fixable ones.
 
 The workflow runs on a background thread; progress events are marshalled onto
@@ -106,7 +106,7 @@ class ProbeScreen(BoxLayout):
         if not box:
             return
         _, checks = box
-        mark = "✓" if issue is None else "✗"
+        mark = "OK" if issue is None else "X"
         color = "green" if issue is None else _SEV_COLOR.get(
             issue.severity, "amber")
         row = _label(f"  {mark} {check_name}", color=color, size="14sp")
@@ -119,7 +119,7 @@ class ProbeScreen(BoxLayout):
         if not box:
             return
         header, _ = box
-        mark = "✓" if result.passed else f"✗ {len(result.issues)}"
+        mark = "OK" if result.passed else f"X {len(result.issues)}"
         header.text = f"▾ {name}   {mark}"
         header.color = theme.hex_to_rgba(
             theme.COLORS["green" if result.passed else "amber"])
@@ -197,5 +197,5 @@ class ProbeScreen(BoxLayout):
 
     def _fix_one_done(self, button, fix):
         self._fixing = False
-        button.text = "✓" if fix.success else "✗"
+        button.text = "Fixed" if fix.success else "Failed"
         button.disabled = True
