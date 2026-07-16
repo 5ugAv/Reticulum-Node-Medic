@@ -62,17 +62,38 @@ class MapPlot(Widget):
     def _redraw(self, *_):
         self.canvas.clear()
         self._clear_labels()
-        pts = geo_points(self._nodes)
-        if not pts or self.width < 2 or self.height < 2:
+        if self.width < 2 or self.height < 2:
             return
-        lats = [p.lat for p in pts]
-        lons = [p.lon for p in pts]
-        bbox = (min(lats), max(lats), min(lons), max(lons))
-        has_extent = bbox[0] != bbox[1] or bbox[2] != bbox[3]
-        if self._tiles is not None and has_extent:
-            self._draw_tiled(pts, bbox)
-        else:
-            self._draw_coord_plot(pts)
+        pts = geo_points(self._nodes)
+        if pts:
+            lats = [p.lat for p in pts]
+            lons = [p.lon for p in pts]
+            bbox = (min(lats), max(lats), min(lons), max(lons))
+            has_extent = bbox[0] != bbox[1] or bbox[2] != bbox[3]
+            if self._tiles is not None and (has_extent or self._tile_bbox()):
+                self._draw_tiled(pts, bbox if has_extent else self._tile_bbox())
+            else:
+                self._draw_coord_plot(pts)
+            return
+        # No located nodes yet — still show the cached basemap of YOUR area
+        # (its bounds ride in the .mbtiles metadata), rather than a blank pane.
+        if self._tiles is not None:
+            bbox = self._tile_bbox()
+            if bbox:
+                self._draw_tiled([], bbox)
+
+    def _tile_bbox(self):
+        """(min_lat, max_lat, min_lon, max_lon) of the cached basemap, shrunk
+        toward its centre so the default view is a regional look, not the whole
+        200 km circle edge-to-edge."""
+        b = self._tiles.bounds() if self._tiles is not None else None
+        if not b:
+            return None
+        w, s, e, n = b                              # lon/lat order in metadata
+        clat, clon = (s + n) / 2, (w + e) / 2
+        f = 0.25                                    # show the central quarter
+        return (clat - (n - s) / 2 * f, clat + (n - s) / 2 * f,
+                clon - (e - w) / 2 * f, clon + (e - w) / 2 * f)
 
     def _draw_tiled(self, pts, bbox):
         view = build_view(*bbox, self.width, self.height, padding=dp(32))
