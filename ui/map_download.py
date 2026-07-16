@@ -8,9 +8,10 @@ range and writes them into an ``.mbtiles`` SQLite file in ``assets/maps/``, whic
 
 The network fetch is injected (``fetch``) so the tile maths, circle clipping and
 MBTiles writing are all unit-tested without touching the network. The default
-fetcher pulls from OpenStreetMap; that server's tile-usage policy discourages
-bulk downloads, so the URL template and User-Agent are overridable to point at a
-provider you're entitled to bulk-cache from, and the download is rate-limited.
+fetcher pulls from Carto's CDN (OSM-based, attribution required — shown on the
+SCAN screen). tile.openstreetmap.org must NOT be bulk-fetched: its policy
+forbids it and its servers answer with "Access blocked" notice tiles (we
+learned live). A same-bytes circuit breaker aborts rather than cache those.
 """
 
 from __future__ import annotations
@@ -26,15 +27,22 @@ from ui.map_tiles import tile_of
 #: 1 degree of latitude in km (mean); longitude scales by cos(latitude).
 _KM_PER_DEG = 111.32
 _EARTH_R_KM = 6371.0088
-#: A regional overview (z8) down to street level (z13) — a sensible default for a
-#: node-coverage map. Higher max zoom multiplies the tile count ~4x per level.
+#: A regional overview (z8) down to suburb level (z12) — a sensible default for
+#: a node-coverage map. Higher max zoom multiplies the tile count ~4x per level;
+#: bulk-caching street zooms is also what gets a client blocked by providers.
 DEFAULT_MIN_ZOOM = 8
-DEFAULT_MAX_ZOOM = 13
+DEFAULT_MAX_ZOOM = 12
 DEFAULT_RADIUS_KM = 100.0
 #: Rough average PNG tile size, for a pre-download size estimate.
 _AVG_TILE_KB = 15.0
 
-OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+#: Default basemap: Carto's CDN raster tiles (OSM data, no API key). We learned
+#: the hard way that bulk-fetching tile.openstreetmap.org violates its usage
+#: policy — the volunteer servers auto-block and serve "Access blocked" notice
+#: tiles, poisoning the cache. Carto's CDN is built for app traffic; both
+#: require the attribution shown on the SCAN screen.
+OSM_URL = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+ATTRIBUTION = "(c) OpenStreetMap contributors, (c) CARTO"
 USER_AGENT = "ReticulumNodeMedic/1.0 (+offline field node-coverage map)"
 
 
@@ -262,7 +270,7 @@ def download_region(lat: float, lon: float, dest_path: str,
 
     Resumable (skips tiles already stored), cancellable (``stop()`` -> True),
     and rate-limited between network fetches to stay a polite client. Returns a
-    summary ``{total, fetched, skipped, failed, done, cancelled}``.
+    summary ``{total, fetched, skipped, failed, done, cancelled, blocked}``.
     """
     fetch = fetch or osm_fetch
     tiles = tiles_in_radius(lat, lon, radius_km, zmin, zmax)
@@ -272,7 +280,13 @@ def download_region(lat: float, lon: float, dest_path: str,
         bounds, zmin, zmax, center=f"{lon},{lat},{zmin}")
     total = len(tiles)
     fetched = skipped = failed = done = 0
-    cancelled = False
+    cancelled = blocked = False
+    # Circuit breaker: providers that refuse a bulk client serve the SAME
+    # "access blocked" notice image for every tile (with HTTP 200, so a status
+    # check can't catch it). Distinct map tiles are never identical, so many
+    # consecutive byte-identical bodies = we're blocked. Stop, don't poison.
+    import hashlib
+    _same_hash, _same_run = None, 0
     try:
         for z, x, y in tiles:
             if stop and stop():
@@ -283,6 +297,17 @@ def download_region(lat: float, lon: float, dest_path: str,
             else:
                 data = fetch(z, x, y)
                 if data:
+                    h = hashlib.sha1(data).hexdigest()
+                    if h == _same_hash:
+                        _same_run += 1
+                        # ocean tiles are legitimately byte-identical but tiny
+                        # (solid-colour PNGs); a long run of LARGE identical
+                        # tiles is a rendered "access blocked" notice.
+                        if _same_run >= 24 and len(data) > 4096:
+                            blocked = True
+                            break
+                    else:
+                        _same_hash, _same_run = h, 1
                     writer.put(z, x, y, data)
                     fetched += 1
                     if rate_limit_s:
@@ -296,7 +321,7 @@ def download_region(lat: float, lon: float, dest_path: str,
                              "skipped": skipped, "failed": failed})
     finally:
         writer.close()
-    summary = {"total": total, "done": done, "fetched": fetched,
+    summary = {"total": total, "done": done, "fetched": fetched, "blocked": blocked,
                "skipped": skipped, "failed": failed, "cancelled": cancelled}
     if on_progress:
         on_progress(summary)
