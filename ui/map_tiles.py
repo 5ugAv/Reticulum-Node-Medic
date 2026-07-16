@@ -38,6 +38,23 @@ def project_px(lat: float, lon: float, zoom: int) -> Tuple[float, float]:
     return x, y
 
 
+def unproject_px(x: float, y: float, zoom: int) -> Tuple[float, float]:
+    """Inverse of project_px: world pixels (y down) -> (lat, lon)."""
+    n = (2 ** zoom) * TILE_SIZE
+    lon = x / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n))))
+    return lat, lon
+
+
+def view_at(lat: float, lon: float, zoom: int,
+            view_w: float, view_h: float) -> "MercatorView":
+    """A viewport centred on (lat, lon) at an explicit zoom — the interactive
+    (pan/pinch) counterpart of build_view's fit-a-bbox."""
+    cx, cy = project_px(lat, lon, zoom)
+    return MercatorView(zoom=zoom, off_x=cx - view_w / 2.0,
+                        off_y=cy - view_h / 2.0, width=view_w, height=view_h)
+
+
 def tile_of(lat: float, lon: float, zoom: int) -> Tuple[int, int]:
     """The (x, y) tile index containing (lat, lon) at *zoom*."""
     px, py = project_px(lat, lon, zoom)
