@@ -136,6 +136,8 @@ class NodeRecord:
 class NodeRegistry:
     def __init__(self):
         self.nodes: Dict[str, NodeRecord] = {}
+        from monitor.history import NodeHistory
+        self.history = NodeHistory()    # per-node time series (VITALS "History")
 
     def register(self, dst_hash: str, name: str = "", location: str = "",
                  node_type: str = "rtnode2400", lat: Optional[float] = None,
@@ -187,6 +189,9 @@ class NodeRegistry:
             rec = self.register(dst_hash)
         rec.latest_beacon = beacon
         rec.last_seen = now
+        from monitor.history import HistoryPoint
+        self.history.append(dst_hash, HistoryPoint(
+            t=now, rssi=beacon.wifi_rssi_dbm, uptime_s=beacon.uptime_s))
         return rec
 
     def ingest_line(self, text: str, now: float) -> Optional[NodeRecord]:
@@ -331,7 +336,7 @@ class NodeRegistry:
                                   if r.latest_beacon else None),
             }
             for r in self.nodes.values()
-        ]}
+        ], "history": self.history.to_dict()}
 
     @classmethod
     def from_dict(cls, data: dict) -> "NodeRegistry":
@@ -352,4 +357,6 @@ class NodeRegistry:
             if lb:
                 rec.latest_beacon = decode(bytes.fromhex(lb))
             reg.nodes[rec.dst_hash] = rec
+        from monitor.history import NodeHistory
+        reg.history = NodeHistory.from_dict(data.get("history", {}))
         return reg
