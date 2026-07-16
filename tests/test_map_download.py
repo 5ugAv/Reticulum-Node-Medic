@@ -163,3 +163,40 @@ def test_download_region_can_be_cancelled(tmp_path):
                               fetch=_fake_fetch, rate_limit_s=0, stop=stop)
     assert summary["cancelled"] is True
     assert summary["done"] < summary["total"]
+
+
+# ---- storage safety + centre entry (download control helpers) --------------
+
+from ui.map_download import storage_summary, parse_latlon, RADIUS_STEPS
+
+
+def test_storage_summary_ok_within_budget():
+    v = storage_summary(est_mb=200, free_mb=10240)          # 200MB vs 5GB budget
+    assert v["ok"] is True
+    assert "200 MB" in v["text"] and "10.0 GB" in v["text"]
+
+
+def test_storage_summary_refuses_over_budget():
+    v = storage_summary(est_mb=6000, free_mb=10240)         # 6GB vs 5GB budget
+    assert v["ok"] is False
+    assert "reduce the radius" in v["text"]
+
+
+def test_storage_summary_budget_fraction_respected():
+    assert storage_summary(490, 1000)["ok"] is True         # 49% of free
+    assert storage_summary(510, 1000)["ok"] is False        # 51% of free
+
+
+def test_parse_latlon_accepts_melbourne_and_rejects_junk():
+    assert parse_latlon("-37.79, 144.96") == (-37.79, 144.96)
+    assert parse_latlon(" -37.79 ; 144.96 ") == (-37.79, 144.96)
+    assert parse_latlon("") is None
+    assert parse_latlon("hello") is None
+    assert parse_latlon("-37.79") is None
+    assert parse_latlon("999, 144.9") is None
+    assert parse_latlon("0, 0") is None                     # null island = unset
+
+
+def test_radius_steps_are_sane():
+    assert RADIUS_STEPS == sorted(RADIUS_STEPS)
+    assert 100.0 in RADIUS_STEPS and RADIUS_STEPS[0] >= 10

@@ -102,6 +102,55 @@ def estimate_download(lat: float, lon: float, radius_km: float = DEFAULT_RADIUS_
     return n, round(n * _AVG_TILE_KB / 1024.0, 1)
 
 
+# ---- storage safety + download controls -------------------------------------
+
+#: Maps may use at most this fraction of the *currently free* disk — the medic
+#: must always keep room for its registry, logs and updates.
+MAPS_BUDGET_FRACTION = 0.5
+#: Selectable download radii (km) for the stepper control.
+RADIUS_STEPS = [25.0, 50.0, 100.0, 150.0, 200.0]
+
+
+def _fmt_size(mb: float) -> str:
+    return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb:.0f} MB"
+
+
+def disk_free_mb(path: str = ".") -> float:
+    import shutil
+    return shutil.disk_usage(path).free / (1024 * 1024)
+
+
+def storage_summary(est_mb: float, free_mb: float,
+                    budget_fraction: float = MAPS_BUDGET_FRACTION) -> Dict:
+    """Plain-English size-vs-space verdict for the download control:
+    ``{ok, text}``. The budget keeps maps from ever crowding the tool's own
+    storage."""
+    budget_mb = free_mb * budget_fraction
+    if est_mb <= budget_mb:
+        return {"ok": True, "text":
+                f"Uses about {_fmt_size(est_mb)} of your "
+                f"{_fmt_size(free_mb)} free space."}
+    return {"ok": False, "text":
+            f"Too big: about {_fmt_size(est_mb)}, but only "
+            f"{_fmt_size(budget_mb)} is safely available for maps - "
+            "reduce the radius."}
+
+
+def parse_latlon(text: str) -> Optional[Tuple[float, float]]:
+    """Parse a typed "lat, lon" pair (home-base entry when there's no GPS fix).
+    Returns None unless it's a plausible coordinate."""
+    try:
+        parts = text.replace(";", ",").split(",")
+        if len(parts) != 2:
+            return None
+        lat, lon = float(parts[0].strip()), float(parts[1].strip())
+    except (ValueError, AttributeError):
+        return None
+    if -90 <= lat <= 90 and -180 <= lon <= 180 and (lat, lon) != (0.0, 0.0):
+        return (lat, lon)
+    return None
+
+
 # ---- MBTiles writer ------------------------------------------------------
 
 class MBTilesWriter:
