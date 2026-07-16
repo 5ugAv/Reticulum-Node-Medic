@@ -263,3 +263,27 @@ def test_normal_varied_tiles_do_not_trip_the_breaker(tmp_path):
                               rate_limit_s=0)
     assert summary["blocked"] is False
     assert summary["fetched"] == summary["total"]
+
+
+def test_node_detail_topup_is_small_and_resumable(tmp_path):
+    """The per-node street-detail circle must stay tiny (fair-use) and land in
+    the same mbtiles so the map reader picks it up seamlessly."""
+    from ui.map_download import (download_node_details, estimate_download,
+                                 DETAIL_RADIUS_KM, DETAIL_MIN_ZOOM,
+                                 DETAIL_MAX_ZOOM)
+    n, _mb = estimate_download(-37.79, 144.96, DETAIL_RADIUS_KM,
+                               DETAIL_MIN_ZOOM, DETAIL_MAX_ZOOM)
+    assert n <= 80                                  # tiny per-node footprint
+    dest = str(tmp_path / "detail.mbtiles")
+    seen = []
+    summary = download_node_details(
+        [(-37.79, 144.96, "FAITH"), (-37.75, 144.99, "HOPE")], dest,
+        fetch=lambda z, x, y: f"t{z}{x}{y}".encode(),
+        on_progress=lambda s: seen.append(s.get("detail_of")),
+        rate_limit_s=0)
+    assert summary["nodes"] == 2 and summary["fetched"] > 0
+    assert "FAITH" in seen and "HOPE" in seen
+    # resumable: a second pass fetches nothing new
+    again = download_node_details([(-37.79, 144.96, "FAITH")], dest,
+                                  fetch=lambda z, x, y: b"x", rate_limit_s=0)
+    assert again["fetched"] == 0
