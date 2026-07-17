@@ -31,8 +31,8 @@ from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
-    DETAIL_MAX_ZOOM, ATTRIBUTION, download_region, download_node_details,
-    estimate_download, is_online,
+    DETAIL_MAX_ZOOM, ATTRIBUTION, WORLD, download_region, download_world,
+    download_node_details, estimate_download, estimate_world, is_online,
     storage_summary, disk_free_mb, parse_latlon, ip_geolocate)
 
 
@@ -103,10 +103,10 @@ class MapPlot(Widget):
 
     def _step_zoom(self, direction, view):
         from ui.map_tiles import unproject_px
-        # pinch may go past the regional zoom into the street-detail levels
-        # (cached only around placed nodes — elsewhere those levels are blank)
-        new_zoom = max(DEFAULT_MIN_ZOOM,
-                       min(DETAIL_MAX_ZOOM, view.zoom + direction))
+        # pinch spans the full cached range: out to the world-overview levels
+        # (z2+, blank until the World tier is downloaded) and in past the
+        # regional zoom to the per-node street-detail levels.
+        new_zoom = max(2, min(DETAIL_MAX_ZOOM, view.zoom + direction))
         if new_zoom == view.zoom:
             return
         cx = view.off_x + view.width / 2.0
@@ -356,13 +356,14 @@ class ScanScreen(BoxLayout):
         self.dl_status.color = theme.status_rgba(status, 0.95)
 
     def _step_radius(self, direction):
-        """[-]/[+]: move through the preset radii and re-estimate."""
+        """[-]/[+]: through the preset radii; one past the largest = World."""
         if self._downloading:
             return
         steps = list(RADIUS_STEPS)
-        if self._radius_km not in steps:
+        if self._radius_km not in steps and self._radius_km != WORLD:
             steps.append(self._radius_km)
             steps.sort()
+        steps.append(WORLD)                        # the tier past 200 km
         i = steps.index(self._radius_km) + direction
         self._radius_km = steps[max(0, min(len(steps) - 1, i))]
         self._refresh_estimate()
@@ -371,6 +372,18 @@ class ScanScreen(BoxLayout):
         """Keep the button + status honest: current radius, size estimate, and
         whether it fits the storage budget."""
         if self._downloading:
+            return
+        if self._radius_km == WORLD:
+            # world overview: no centre needed — the whole planet at z0-8
+            self.dl_button.text = "Download offline map (World overview)"
+            count, mb = estimate_world()
+            verdict = storage_summary(mb, disk_free_mb(
+                MAPS_DIR if os.path.isdir(MAPS_DIR) else "."))
+            self.dl_button.disabled = not verdict["ok"]
+            self._set_status(
+                f"The whole world at overview zoom (~{count} tiles - hours, "
+                f"resumable). {verdict['text']}",
+                "ok" if verdict["ok"] else "alert")
             return
         self.dl_button.text = f"Download offline map ({self._radius_km:g} km)"
         center, source = self._download_center()
@@ -398,6 +411,19 @@ class ScanScreen(BoxLayout):
             self._set_status("No internet — connect to WiFi to download maps.",
                              "warn")
             return
+        if self._radius_km == WORLD:
+            count, mb = estimate_world()
+            if not storage_summary(mb, disk_free_mb("."))["ok"]:
+                self._refresh_estimate()
+                return
+            self._downloading = True
+            self.dl_button.disabled = True
+            self._set_status(f"Downloading world overview (~{count} tiles)…")
+            dest = os.path.join(MAPS_DIR, "offline.mbtiles")
+            os.makedirs(MAPS_DIR, exist_ok=True)
+            threading.Thread(target=self._run_download,
+                             args=(None, None, dest), daemon=True).start()
+            return
         center, source = self._download_center()
         if center is None:
             self._refresh_estimate()
@@ -423,9 +449,13 @@ class ScanScreen(BoxLayout):
                 return
             Clock.schedule_once(lambda dt: self._set_status(
                 f"Downloading… {s['done']}/{s['total']} tiles"), 0)
-        summary = download_region(lat, lon, dest, radius_km=self._radius_km,
-                                  zmin=DEFAULT_MIN_ZOOM, zmax=DEFAULT_MAX_ZOOM,
-                                  on_progress=progress)
+        if self._radius_km == WORLD:
+            summary = download_world(dest, on_progress=progress)
+        else:
+            summary = download_region(lat, lon, dest, radius_km=self._radius_km,
+                                      zmin=DEFAULT_MIN_ZOOM,
+                                      zmax=DEFAULT_MAX_ZOOM,
+                                      on_progress=progress)
         # Street-detail top-up: a small z13-15 circle around every PLACED node,
         # so a service visit can navigate to the node's street. Tiny + polite.
         if not summary.get("blocked") and not summary.get("cancelled"):
