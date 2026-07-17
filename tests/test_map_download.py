@@ -287,3 +287,26 @@ def test_node_detail_topup_is_small_and_resumable(tmp_path):
     again = download_node_details([(-37.79, 144.96, "FAITH")], dest,
                                   fetch=lambda z, x, y: b"x", rate_limit_s=0)
     assert again["fetched"] == 0
+
+
+# ---- world overview tier ----------------------------------------------------
+
+def test_world_tile_count_and_estimate():
+    from ui.map_download import world_tiles, estimate_world
+    assert len(world_tiles(0, 2)) == 1 + 4 + 16          # 4^z per level
+    n, mb = estimate_world()                              # z0-8 default
+    assert n == sum(4 ** z for z in range(0, 9))          # 87,381
+    assert 1000 < mb < 2000                               # ~1.3 GB
+
+
+def test_download_world_writes_into_the_shared_mbtiles(tmp_path):
+    from ui.map_download import download_world
+    dest = str(tmp_path / "world.mbtiles")
+    summary = download_world(dest, zmin=0, zmax=2,
+                             fetch=lambda z, x, y: f"w{z}{x}{y}".encode(),
+                             rate_limit_s=0)
+    assert summary["fetched"] == 21 and summary["blocked"] is False
+    # resumable: nothing re-fetched on a second pass
+    again = download_world(dest, zmin=0, zmax=2,
+                           fetch=lambda z, x, y: b"x", rate_limit_s=0)
+    assert again["fetched"] == 0 and again["skipped"] == 21

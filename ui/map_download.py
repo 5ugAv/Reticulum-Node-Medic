@@ -121,8 +121,35 @@ MAPS_BUDGET_FRACTION = 0.5
 DETAIL_RADIUS_KM = 2.0
 DETAIL_MIN_ZOOM = 13
 DETAIL_MAX_ZOOM = 15
-#: Selectable download radii (km) for the stepper control.
+#: Selectable download radii (km) for the stepper control. The step past the
+#: largest radius is the WORLD overview tier.
 RADIUS_STEPS = [25.0, 50.0, 100.0, 150.0, 200.0]
+#: World overview: every tile z0-8 (~87k tiles, ~1.3 GB) — country/city-level
+#: context for the whole planet, so the map zooms from the globe down into the
+#: local mesh. Street detail stays regional/per-node (a raster world at street
+#: zoom would be terabytes — that's the vector-map long-view, TODO #57).
+WORLD = "world"
+WORLD_MIN_ZOOM = 0
+WORLD_MAX_ZOOM = 8
+
+
+def world_tiles(zmin: int = WORLD_MIN_ZOOM,
+                zmax: int = WORLD_MAX_ZOOM) -> List[Tuple[int, int, int]]:
+    """Every tile on the planet across the zoom range."""
+    out: List[Tuple[int, int, int]] = []
+    for z in range(zmin, zmax + 1):
+        n = 2 ** z
+        for x in range(n):
+            for y in range(n):
+                out.append((z, x, y))
+    return out
+
+
+def estimate_world(zmin: int = WORLD_MIN_ZOOM,
+                   zmax: int = WORLD_MAX_ZOOM) -> Tuple[int, float]:
+    """(tile count, approx MB) for the world overview tier."""
+    n = sum(4 ** z for z in range(zmin, zmax + 1))
+    return n, round(n * _AVG_TILE_KB / 1024.0, 1)
 
 
 def _fmt_size(mb: float) -> str:
@@ -284,6 +311,28 @@ def download_region(lat: float, lon: float, dest_path: str,
     writer = MBTilesWriter(
         dest_path, name or f"offline {radius_km:g}km @ {lat:.3f},{lon:.3f}",
         bounds, zmin, zmax, center=f"{lon},{lat},{zmin}")
+    return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
+
+
+def download_world(dest_path: str,
+                   zmin: int = WORLD_MIN_ZOOM, zmax: int = WORLD_MAX_ZOOM,
+                   fetch: Optional[Callable[[int, int, int], Optional[bytes]]] = None,
+                   on_progress: Optional[Callable[[Dict], None]] = None,
+                   rate_limit_s: float = 0.1,
+                   stop: Optional[Callable[[], bool]] = None) -> Dict:
+    """The world-overview tier: every z0-8 tile into the SAME .mbtiles as the
+    regional cache, so the map zooms from the globe into the local mesh. Long
+    (hours, politely rate-limited) but resumable and breaker-protected like
+    every other pass."""
+    fetch = fetch or osm_fetch
+    writer = MBTilesWriter(dest_path, f"world overview z{zmin}-{zmax}",
+                           (-180.0, -85.0, 180.0, 85.0), zmin, zmax,
+                           center=f"0,0,{zmin}")
+    return _fetch_tiles(world_tiles(zmin, zmax), writer, fetch, on_progress,
+                        rate_limit_s, stop)
+
+
+def _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop) -> Dict:
     total = len(tiles)
     fetched = skipped = failed = done = 0
     cancelled = blocked = False
