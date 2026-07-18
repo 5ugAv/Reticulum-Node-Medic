@@ -72,6 +72,10 @@ OVERRIDES: Dict[tuple, dict] = {
         "verdict": "blocked", "src": "verified",
         "why": "A Pi Zero cannot power the Heltec V4 - it browns out on "
                "transmit (confirmed on hardware)."},
+    ("pi_3a_plus", "heltec32_v4"): {
+        "verdict": "ok", "src": "verified",
+        "why": "Pi 3A+ powers the Heltec V4 cleanly (confirmed on hardware "
+               "2026-07-18)."},
     ("pi_zero_2w", "heltec32_v3"): {
         "verdict": "caution", "src": "untested",
         "why": "Pi Zero + Heltec V3 is close to the Zero's limit and has not "
