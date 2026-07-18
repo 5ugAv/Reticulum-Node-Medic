@@ -47,3 +47,10 @@ def test_remedies_suggest_lighter_boards_for_a_weak_pi():
     v = check("pi_zero_2w", "tbeam")
     assert v["verdict"] in ("caution", "blocked")
     assert any("lower-power board" in r for r in v["remedies"])
+
+
+def test_3a_plus_powers_the_v4_field_verified():
+    # arithmetic alone says "thin margin"; the bench says it runs cleanly —
+    # field-verified overrides beat estimates.
+    v = check("pi_3a_plus", "heltec32_v4")
+    assert v["verdict"] == "ok" and v["src"] == "verified"
