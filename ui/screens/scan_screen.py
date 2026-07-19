@@ -32,6 +32,12 @@ from ui import theme
 #: = subtler / needs more of a pinch, which also throttles tile loading. A step
 #: fires at PINCH_STEP-x apart and again each further PINCH_STEP-x.
 PINCH_STEP = 1.7
+
+#: Two touch points must be at least this far apart (window px) to count as a
+#: real two-finger pinch. Some panels report ONE finger as two contact points a
+#: few px apart — without this floor a single-finger drag reads as a pinch and
+#: the map zooms instead of scrolling (observed on the medic's 5" panel).
+PINCH_MIN_SEP = 120
 from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
@@ -62,6 +68,7 @@ class MapPlot(Widget):
         self._center = None                      # (lat, lon)
         self._zoom = None
         self._touches = {}                       # touch uid -> last (x, y)
+        self._primary = None                     # the finger that drives a pan
         self._pinch_base = None                  # two-finger start distance
         self._trigger = Clock.create_trigger(self._redraw, 0.05)
         self.bind(size=self._redraw, pos=self._redraw)
@@ -76,11 +83,22 @@ class MapPlot(Widget):
             return True
         touch.grab(self)
         self._touches[touch.uid] = touch.pos
-        if len(self._touches) == 2:
-            pts = list(self._touches.values())
-            self._pinch_base = max(1.0, ((pts[0][0] - pts[1][0]) ** 2 +
-                                         (pts[0][1] - pts[1][1]) ** 2) ** 0.5)
+        if self._primary is None:                # first finger drives the pan
+            self._primary = touch.uid
+        if self._is_pinch():
+            self._pinch_base = self._touch_sep()
         return True
+
+    def _touch_sep(self):
+        """Largest gap (window px) between any two active touches — 0 with < 2."""
+        from ui.map_tiles import touch_separation
+        return touch_separation(list(self._touches.values()))
+
+    def _is_pinch(self):
+        """A REAL two-finger pinch: two touches at least PINCH_MIN_SEP apart. A
+        panel that reports one finger as two nearby points does NOT qualify, so a
+        single-finger drag pans instead of zooming."""
+        return len(self._touches) >= 2 and self._touch_sep() >= PINCH_MIN_SEP
 
     def on_touch_move(self, touch):
         if touch.grab_current is not self:
@@ -89,12 +107,21 @@ class MapPlot(Widget):
         view = self._current_view()
         if view is None:
             return True
-        if len(self._touches) == 1:              # drag = pan
+        if self._is_pinch():                     # two fingers apart = zoom
+            if self._pinch_base is None:
+                self._pinch_base = self._touch_sep()
+            dist = max(1.0, self._touch_sep())
+            ratio = dist / self._pinch_base
+            if ratio > PINCH_STEP or ratio < 1.0 / PINCH_STEP:
+                self._step_zoom(+1 if ratio > 1.0 else -1, view)
+                self._pinch_base = dist          # re-arm for the next step
+        elif touch.uid == self._primary:         # one finger (its moves) = pan
+            # Ignore the panel's phantom second contact: only the primary finger
+            # drives the pan, so one physical drag = one pan (not doubled).
             from ui.map_tiles import project_px, unproject_px
-            # Accumulate the drag on the PERSISTENT centre, not the last drawn
-            # view: redraws are throttled, so several moves share one stale view
-            # — deriving each from it drops every delta but the last (the jumpy
-            # drag). Mutating the stored centre per move tracks the finger 1:1.
+            # Accumulate on the PERSISTENT centre (redraws are throttled, so
+            # several moves share one stale view — deriving each from it drops
+            # every delta but the last, the jumpy drag).
             z = self._zoom if self._zoom is not None else view.zoom
             clat, clon = self._center_latlon(view)
             cx, cy = project_px(clat, clon, z)
@@ -103,20 +130,14 @@ class MapPlot(Widget):
             self._center = self._clamp_center(*unproject_px(cx, cy, z))
             self._zoom = z
             self._trigger()
-        elif len(self._touches) == 2 and self._pinch_base:
-            pts = list(self._touches.values())
-            dist = max(1.0, ((pts[0][0] - pts[1][0]) ** 2 +
-                             (pts[0][1] - pts[1][1]) ** 2) ** 0.5)
-            ratio = dist / self._pinch_base
-            if ratio > PINCH_STEP or ratio < 1.0 / PINCH_STEP:
-                self._step_zoom(+1 if ratio > 1.0 else -1, view)
-                self._pinch_base = dist          # re-arm for the next step
         return True
 
     def on_touch_up(self, touch):
         if touch.grab_current is self:
             touch.ungrab(self)
             self._touches.pop(touch.uid, None)
+            if touch.uid == self._primary:       # promote a remaining finger
+                self._primary = next(iter(self._touches), None)
             if len(self._touches) < 2:
                 self._pinch_base = None
             return True
