@@ -38,8 +38,14 @@ def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
             return None                              # splitter not feeding
         rssi, snr = st.get("last_rssi"), st.get("last_snr")
         noise = st.get("noise_floor")
-        if rssi is None or snr is None or noise is None:
-            return None                              # no packet heard yet
+        if noise is None:
+            return None                              # radio not reporting at all
+        if rssi is None or snr is None:
+            # no packet heard yet: the noise floor is still LIVE (it moves as
+            # the antenna is handled) — a partial sample keeps the screen alive
+            # and honest while it waits to hear another node
+            return {"noise": noise, "rssi": None, "snr": None,
+                    "peers": 0, "partial": True}
         return {"snr": snr, "rssi": rssi, "noise": noise,
                 "peers": st.get("peers", 0)}
     return reader

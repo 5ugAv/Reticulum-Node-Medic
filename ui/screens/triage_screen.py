@@ -105,6 +105,15 @@ class TriageScreen(FloatLayout):
             sample = None
         if not sample:
             return
+        if sample.get("partial"):
+            # live noise, but nothing heard yet — scoring needs a transmission
+            self._noise.text = ("[color=9e9e9e]Background noise[/color]\n"
+                                f"[color=f0f0f0][b]{sample['noise']:.0f} dBm[/b][/color]")
+            self._guidance.markup = False
+            self._guidance.text = ("Listening... noise floor is live. To begin "
+                                   "scoring, another node must transmit - send "
+                                   "an announce from your phone or a node.")
+            return
         snap = self._session.feed(sample["snr"], sample["rssi"], sample["noise"],
                                   self._clock())
         self._bullseye.update(snap)
