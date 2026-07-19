@@ -5,16 +5,15 @@ from ui.home_zones import zone_at, CARD_ORDER, CARDS_TOP
 
 def test_five_cards_left_to_right():
     y = 0.9                                   # inside the card row
-    hits = [zone_at(0.04 + 0.92 * (i + 0.5) / 5, y) for i in range(5)]
+    hits = [zone_at((i + 0.5) / 5, y) for i in range(5)]
     assert hits == ["vitals", "scan", "birth", "triage", "probe"]
     assert hits == CARD_ORDER
 
 
-def test_card_row_edges_and_margins():
-    assert zone_at(0.05, CARDS_TOP + 0.01) == "vitals"
-    assert zone_at(0.95, 0.99) == "probe"
-    assert zone_at(0.01, 0.9) is None          # left margin
-    assert zone_at(0.99, 0.9) is None          # right margin
+def test_card_row_edges_full_bleed():
+    # the 720x1280 cut runs the cards to the screen edges
+    assert zone_at(0.02, CARDS_TOP + 0.01) == "vitals"
+    assert zone_at(0.98, 0.99) == "probe"
     assert zone_at(0.5, CARDS_TOP - 0.02) is None   # just above the cards
 
 

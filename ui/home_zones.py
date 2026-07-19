@@ -1,8 +1,8 @@
 """Tap zones for the front-page poster — pure geometry, no Kivy.
 
-The designed front page (assets/ui/front_page.png, 1024x1536) carries five mode
-cards along the bottom (VITALS / SCAN / BIRTH / TRIAGE / PROBE) and the red
-cross emblem at its heart. Zones are expressed in image-fraction coordinates
+The designed front page (assets/ui/front_page.png, 720x1280 — native panel
+size) carries five full-bleed mode cards along the bottom (VITALS / SCAN /
+BIRTH / TRIAGE / PROBE) and the red cross emblem at its heart. Zones are expressed in image-fraction coordinates
 (x rightward, y DOWNWARD from the top-left, 0..1) so they survive any scaling;
 the Kivy screen converts touches into this space and asks ``zone_at``.
 
@@ -17,15 +17,15 @@ from typing import Optional
 
 # Bottom card row: five equal columns between the side margins.
 CARDS_TOP = 0.79          # y-fraction where the card row begins
-CARDS_LEFT = 0.04
-CARDS_RIGHT = 0.96
+CARDS_LEFT = 0.0
+CARDS_RIGHT = 1.0   # the 720x1280 cut runs the cards full-bleed
 CARD_ORDER = ["vitals", "scan", "birth", "triage", "probe"]
 
 # The red-cross emblem — the Easter egg (credits).
 CROSS_CX = 0.50
 CROSS_CY = 0.46           # y-fraction, top-down
 CROSS_R = 0.13            # radius in x-fractions (aspect-corrected below)
-IMAGE_ASPECT = 1024 / 1536
+IMAGE_ASPECT = 720 / 1280
 
 
 def zone_at(fx: float, fy: float) -> Optional[str]:
