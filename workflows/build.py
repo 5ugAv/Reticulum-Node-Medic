@@ -98,12 +98,43 @@ def detect_rnode_port(connection) -> Optional[str]:
     return None
 
 
+def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
+    """``rnodeconf`` (from the ``rns`` package) must exist for detect + flash, but
+    on a stock Pi it isn't installed until install_software_stack (a later step).
+    So a truly fresh Pi couldn't detect/flash its radio. Install ``rns`` up front
+    (carried wheels offline, else online pip). No-op when it's already present
+    (the common case: an imaged node). Returns (ok, note)."""
+    if wf.connection.run("command -v rnodeconf")[0] == 0:
+        return True, ""
+    _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
+    if wf.connection.run(f"ls {REMOTE_PACKAGE_DIR}/*.whl")[0] == 0:
+        cmd = (f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
+               f"--break-system-packages --user rns")
+        source = "carried wheels"
+    elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
+        cmd = "pip3 install --break-system-packages --user rns"
+        source = "online pip"
+    else:
+        return False, ("rnodeconf missing and no carried wheels / no internet to "
+                       "install rns — carry the wheelhouse for a field flash.")
+    wf.connection.run(cmd)
+    if wf.connection.run("command -v rnodeconf")[0] == 0:
+        return True, f" (installed rns from {source})"
+    return False, "installed rns but rnodeconf still not found."
+
+
 @build_step
 def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     cpuinfo = wf.cmd_output("cat /proc/cpuinfo")
     if not cpuinfo:
         return StepResult("detect_hardware", False,
                           "Could not read /proc/cpuinfo — is the node reachable?")
+
+    # rnodeconf must be present before we probe/flash the radio (a fresh Pi has
+    # none until the later install step) — ensure it up front.
+    tooling_ok, tooling_note = _ensure_rnodeconf(wf)
+    if not tooling_ok:
+        return StepResult("detect_hardware", False, tooling_note)
 
     if "Raspberry Pi 5" in cpuinfo:
         wf.profile.hardware = NodeHardware.PI_5
@@ -138,7 +169,8 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
         rnode_state = "none"
     return StepResult("detect_hardware", True,
                       f"Detected {wf.profile.hardware.value} on "
-                      f"{wf.profile.radio.serial_port}; RNode={rnode_state}")
+                      f"{wf.profile.radio.serial_port}; RNode={rnode_state}"
+                      f"{tooling_note}")
 
 
 @build_step

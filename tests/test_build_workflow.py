@@ -500,3 +500,37 @@ def test_all_configs_enable_transport():
     assert len(files) == 4
     for f in files:
         assert "enable_transport = Yes" in open(f).read()
+
+
+def test_detect_installs_rns_when_rnodeconf_missing_on_fresh_pi():
+    # a stock Pi has no rnodeconf until rns is installed; detect_hardware must
+    # install it up front (carried wheels) so the flash path works, not fail.
+    conn = build_conn(rnode=True)
+    conn.rules.insert(0, (f"ls {REMOTE_PACKAGE_DIR}/*.whl", 0, "rns-1.0-py3.whl", ""))
+    state = {"installed": False}
+    _orig = conn.run
+
+    def run(cmd, timeout=30):
+        if "command -v rnodeconf" in cmd:
+            return (0, "", "") if state["installed"] else (1, "", "")
+        if "pip3 install" in cmd and "rns" in cmd:
+            state["installed"] = True
+            return (0, "installed rns", "")
+        return _orig(cmd, timeout)
+
+    conn.run = run
+    w = wf(conn)
+    result = w.steps[0][1](w)                     # detect_hardware
+    assert result.success and state["installed"]
+    assert "installed rns" in result.message
+    assert w.profile.has_rnode is True            # still detects the flashed board
+
+
+def test_detect_fails_cleanly_when_rnodeconf_missing_and_no_wheels_or_net():
+    conn = build_conn()
+    conn.rules.insert(0, ("command -v rnodeconf", 1, "", ""))       # absent
+    conn.rules.insert(0, (f"ls {REMOTE_PACKAGE_DIR}/*.whl", 2, "", ""))  # no wheels
+    conn.rules.insert(0, ("curl -fsI", 7, "", ""))                  # offline
+    w = wf(conn)
+    result = w.steps[0][1](w)
+    assert result.success is False and "wheelhouse" in result.message
