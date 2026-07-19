@@ -12,6 +12,7 @@ from workflows.rnode_v4_rgb import (
     firmware_hash_command, esptool_path, BUILD_BIN, FIRMWARE_DIR, REMOTE_PATCH,
     LOCAL_PATCH, REMOTE_BOOT_ERR, LOCAL_BOOT_ERR, BOARD_MODEL,
     rgb_firmware_available, flash_rgb_carried, REMOTE_RGB_BIN, REMOTE_RGB_HASHER,
+    DEFAULT_FLASH_BAUD,
 )
 
 GOOD_INFO = ("Device connected\nCurrent firmware version: 1.86\n"
@@ -39,8 +40,11 @@ def test_esptool_flash_command_overlays_app_partition():
     assert "--chip esp32s3" in cmd
     assert "0x10000" in cmd
     assert BUILD_BIN in cmd
-    assert "--baud 921600" in cmd
+    assert f"--baud {DEFAULT_FLASH_BAUD}" in cmd     # safer default, not 921600
+    assert "921600" not in cmd
     assert esptool_path() in cmd
+    # a caller can still ask for a specific baud
+    assert "--baud 115200" in esptool_flash_command("/dev/ttyACM1", baud=115200)
 
 
 def test_firmware_hash_command_computes_then_stamps():
@@ -238,9 +242,9 @@ def test_flash_rgb_carried_provisions_carries_overlays_stamps(tmp_path):
     b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
     h = tmp_path / "partition_hashes"; h.write_text("#!/usr/bin/env python\n")
     conn = carried_conn()
-    ok, msg = flash_rgb_carried(conn, "/dev/ttyACM0", band_mhz=915,
-                                bin_path=str(b), hasher_path=str(h))
-    assert ok, msg
+    ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0", band_mhz=915,
+                                     bin_path=str(b), hasher_path=str(h))
+    assert ok and rgb, msg           # LED applied on the happy path
     # 1) stock provision via the offline pre-fed autoinstall
     assert any("--autoinstall" in c and "printf" in c for c in conn.history)
     # 2) carried the compiled bin + hasher to their staging paths on the target
@@ -253,13 +257,31 @@ def test_flash_rgb_carried_provisions_carries_overlays_stamps(tmp_path):
                for c in conn.history)
 
 
+def test_flash_rgb_carried_falls_back_to_working_stock_when_overlay_fails(tmp_path):
+    """The status LED is an enhancement: a failed overlay must leave a WORKING
+    radio (re-flashed stock), reported as success, not a corrupt/bricked board."""
+    b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
+    h = tmp_path / "partition_hashes"; h.write_text("x")
+    conn = carried_conn()
+    conn.rules.insert(0, ("esptool", 1, "", "Serial data stream stopped"))  # first wins
+    ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0", overlay_retries=1,
+                                     bin_path=str(b), hasher_path=str(h))
+    assert ok is True and rgb is False           # working radio, no LED
+    assert "functional" in msg
+    # it retried the overlay, then re-flashed stock to restore a clean app
+    esptool_calls = [c for c in conn.history if "esptool" in c and "write_flash" in c]
+    assert len(esptool_calls) == 2               # initial + one retry
+    autoinstalls = [c for c in conn.history if "--autoinstall" in c and "printf" in c]
+    assert len(autoinstalls) >= 2                # initial provision + restore
+
+
 def test_flash_rgb_carried_fails_if_provision_fails(tmp_path):
     b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
     h = tmp_path / "partition_hashes"; h.write_text("x")
     conn = carried_conn()
     conn.rules.insert(0, ("--autoinstall", 1, "Flash error", ""))   # first wins
-    ok, msg = flash_rgb_carried(conn, "/dev/ttyACM0",
-                                bin_path=str(b), hasher_path=str(h))
-    assert ok is False and "provision" in msg
+    ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0",
+                                     bin_path=str(b), hasher_path=str(h))
+    assert ok is False and rgb is False and "provision" in msg
     # never carried the firmware if the board wasn't provisioned
     assert not conn.pushed

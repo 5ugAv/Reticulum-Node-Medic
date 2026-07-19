@@ -93,6 +93,11 @@ RGB_LOCAL_HASHER = os.path.expanduser(PARTITION_HASHES)
 REMOTE_RGB_BIN = "/tmp/rnm_rgb_firmware.bin"
 REMOTE_RGB_HASHER = "/tmp/rnm_partition_hashes"
 
+#: Flash baud for the esptool overlay. 921600 is fast but the more common cause
+#: of "serial noise / stream stopped" mid-write on marginal cables/hubs; 460800
+#: is a well-supported, markedly more reliable default. Overridable per call.
+DEFAULT_FLASH_BAUD = 460800
+
 
 def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
                            hasher_path: str = RGB_LOCAL_HASHER) -> bool:
@@ -105,33 +110,58 @@ def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
 def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
                       version: str = FIRMWARE_VERSION,
                       bin_path: str = RGB_LOCAL_BIN,
-                      hasher_path: str = RGB_LOCAL_HASHER):
-    """Birth a blank V4 attached to a REMOTE target with the RGB firmware.
+                      hasher_path: str = RGB_LOCAL_HASHER,
+                      flash_baud: int = DEFAULT_FLASH_BAUD, overlay_retries: int = 1):
+    """Birth a blank V4 on a REMOTE target, giving it the NeoPixel status LED —
+    but NEVER leaving it worse than a working radio.
 
-    Same result as ``HeltecV4RGBWorkflow.flash()`` but for a board on another
-    machine: stock-provision the EEPROM (which also leaves esptool in the target
-    firmware cache), carry the medic's pre-built ``.bin`` + hasher to the target,
-    overlay the RGB firmware, then restamp the hash. Returns ``(ok, message)``.
+    The status LED is an ENHANCEMENT, not a requirement, so a failed overlay must
+    not scare the operator with a bricked-looking board. Sequence:
+
+    1. stock-provision the EEPROM + firmware (rnodeconf autoinstall — robust);
+    2. try the NeoPixel overlay (retried at a safe baud);
+    3. if the overlay still fails, RE-FLASH stock so the board is a clean, fully
+       working RNode again — reported as success, just without the LED.
+
+    Returns ``(ok, message, rgb_applied)``. ``ok`` means "a working RNode is on
+    the board"; ``rgb_applied`` says whether the status LED made it on.
     """
     board = get_board(V4_BOARD_KEY)
     prov_ok, prov_msg, _already = birth_flash(connection, board, port,
                                               band_mhz, version)
     if not prov_ok:
-        return False, f"stock provision failed: {prov_msg}"
-    if not connection.push_file(bin_path, REMOTE_RGB_BIN):
-        return False, "could not carry the RGB firmware to the node."
-    if not connection.push_file(hasher_path, REMOTE_RGB_HASHER):
-        return False, "could not carry the firmware hasher to the node."
-    code, out, err = connection.run(
-        esptool_flash_command(port, REMOTE_RGB_BIN, version), timeout=400)
-    if code != 0:
-        return False, f"RGB overlay failed (exit {code}): {(err or out)[-160:]}"
-    code, out, err = connection.run(
-        firmware_hash_command(port, REMOTE_RGB_BIN, REMOTE_RGB_HASHER),
-        timeout=400)
-    if code != 0:
-        return False, f"firmware-hash stamp failed (exit {code}): {(err or out)[-160:]}"
-    return True, "overlaid the carried RGB NeoPixel firmware."
+        return False, f"stock provision failed: {prov_msg}", False
+
+    if not connection.push_file(bin_path, REMOTE_RGB_BIN) \
+            or not connection.push_file(hasher_path, REMOTE_RGB_HASHER):
+        # Couldn't even stage the LED firmware — the stock radio is fine, ship it.
+        return True, ("flashed as a working RNode (couldn't stage the status-LED "
+                      "firmware; radio is fully functional)."), False
+
+    last = ""
+    for attempt in range(overlay_retries + 1):
+        code, out, err = connection.run(
+            esptool_flash_command(port, REMOTE_RGB_BIN, version, baud=flash_baud),
+            timeout=400)
+        if code == 0:
+            code, out, err = connection.run(
+                firmware_hash_command(port, REMOTE_RGB_BIN, REMOTE_RGB_HASHER),
+                timeout=400)
+            if code == 0:
+                return True, "flashed with the NeoPixel status LED.", True
+        last = (err or out)[-160:]
+
+    # Overlay failed after retries — restore a clean working radio so the board
+    # is never left with a corrupt app. A working node without the LED is a WIN.
+    restore_ok, restore_msg, _ = birth_flash(connection, board, port,
+                                             band_mhz, version)
+    if restore_ok:
+        return True, ("flashed as a working RNode — the status-LED firmware "
+                      "couldn't be applied this time, but the radio is fully "
+                      "functional."), False
+    return False, ("status-LED overlay failed and stock restore also failed "
+                   f"({last}); the board needs a manual bootloader flash "
+                   "(hold BOOT, tap RST, release BOOT, then retry)."), False
 
 
 def esptool_path(version: str = FIRMWARE_VERSION) -> str:
@@ -154,12 +184,14 @@ def compile_command(firmware_dir: str = FIRMWARE_DIR,
 
 def esptool_flash_command(port: str, bin_path: str = BUILD_BIN,
                           version: str = FIRMWARE_VERSION,
-                          esptool: Optional[str] = None) -> str:
-    """esptool write_flash line (verbatim from flash_heltec_v4.sh) that overlays
-    the NeoPixel firmware onto the app partition at 0x10000."""
+                          esptool: Optional[str] = None,
+                          baud: int = DEFAULT_FLASH_BAUD) -> str:
+    """esptool write_flash line that overlays the NeoPixel firmware onto the app
+    partition at 0x10000. *baud* defaults to the safer DEFAULT_FLASH_BAUD (was a
+    hard-coded 921600, the usual culprit for mid-write serial corruption)."""
     tool = esptool or esptool_path(version)
     return (
-        f"python3 {tool} --port {port} --chip esp32s3 --baud 921600 "
+        f"python3 {tool} --port {port} --chip esp32s3 --baud {baud} "
         f"--before default_reset --after hard_reset write_flash "
         f"-z --flash_mode dio --flash_freq 80m --flash_size 16MB "
         f"0x10000 {bin_path}")

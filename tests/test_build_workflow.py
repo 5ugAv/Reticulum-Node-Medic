@@ -189,7 +189,7 @@ def test_flash_births_blank_v4_with_rgb_when_available(monkeypatch):
     w.steps[0][1](w)
     result = w.steps[2][1](w)
     assert result.success is True and w.profile.has_rnode is True
-    assert "RGB" in result.message
+    assert "NeoPixel" in result.message and w.profile.rnode_rgb_pin == rgb.NEOPIXEL_PIN
     # stock-provisioned, then the compiled bin was carried + overlaid + restamped
     assert any("--autoinstall" in c for c in conn.history)
     assert any(local.endswith("RNode_Firmware.ino.bin")
