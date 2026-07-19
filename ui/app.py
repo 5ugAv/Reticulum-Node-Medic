@@ -246,7 +246,8 @@ class ReticulumNodeMedicApp(App):
         triage = Screen(name="triage")
         self.triage_screen = TriageScreen(
             feed_factory=_triage_feed, lighthouse=self._lighthouse,
-            on_build=lambda: self.switch_mode("birth"))
+            on_build=lambda: self.switch_mode("birth"),
+            on_home=lambda: self.switch_mode("home"))
         triage.add_widget(self._with_back(self.triage_screen))
         # opening Triage auto-activates the beacon; leaving it stops it
         triage.bind(on_enter=lambda *a: self.triage_screen.enter_triage(),
@@ -329,8 +330,9 @@ class ReticulumNodeMedicApp(App):
                         # a kin RTNode we can COMMAND to beacon (verified live:
                         # a 0x01 packet to rtnode.health -> immediate reply)
                         try:
-                            app._beacon_targets[destination_hash.hex()] = \
-                                announced_identity
+                            h = destination_hash.hex()
+                            app._beacon_targets[h] = announced_identity
+                            app._save_beacon_hashes([h])   # remember across restarts
                         except Exception:
                             pass
 
@@ -342,15 +344,37 @@ class ReticulumNodeMedicApp(App):
 
         threading.Thread(target=listen, daemon=True).start()
 
+    _BEACON_FILE = os.path.expanduser("~/.reticulum-node-medic/beacon_targets.json")
+
+    def _load_beacon_hashes(self):
+        try:
+            import json
+            with open(self._BEACON_FILE) as f:
+                return set(json.load(f))
+        except Exception:
+            return set()
+
+    def _save_beacon_hashes(self, hashes):
+        try:
+            import json
+            os.makedirs(os.path.dirname(self._BEACON_FILE), exist_ok=True)
+            with open(self._BEACON_FILE, "w") as f:
+                json.dump(sorted(set(hashes) | self._load_beacon_hashes()), f)
+        except Exception:
+            pass
+
     def _gather_beacon_targets(self):
         """dst_hash -> identity for every kin RTNode we can command as a
-        lighthouse: live-captured announces PLUS any identity RNS has ever
-        recalled (so it works after a power-cycle and across app restarts, not
-        only right after a fresh announce)."""
+        lighthouse. Sources: live-captured announces, the registry, and a
+        persisted list of nodes heard in past sessions — each identity recalled
+        from RNS (works after a power-cycle and across restarts, not only right
+        after a fresh announce). Newly confirmed nodes are remembered."""
         targets = dict(getattr(self, "_beacon_targets", {}))
         try:
             import RNS
-            for h in list(self.monitor_service.registry.nodes):
+            candidates = (set(self.monitor_service.registry.nodes)
+                          | self._load_beacon_hashes())
+            for h in candidates:
                 if h in targets:
                     continue
                 try:
@@ -365,6 +389,8 @@ class ReticulumNodeMedicApp(App):
                     pass
         except Exception:
             pass
+        if targets:
+            self._save_beacon_hashes(targets.keys())
         return targets
 
     def _target_names(self, targets):
@@ -386,6 +412,14 @@ class ReticulumNodeMedicApp(App):
             self._lighthouse_on = False
             return {}
         targets = self._gather_beacon_targets()
+        if not targets:
+            # rnpath may already list a kin RTNode we haven't recalled — nudge
+            # a mesh discovery once, then look again before giving up
+            try:
+                self.monitor_service.discover_mesh()
+            except Exception:
+                pass
+            targets = self._gather_beacon_targets()
         if targets:
             self._lighthouse_on = True
             self._active_targets = targets
@@ -422,7 +456,7 @@ class ReticulumNodeMedicApp(App):
                     RNS.Packet(dest, bytes([0x01])).send()
                 except Exception:
                     pass
-            _t.sleep(9)
+            _t.sleep(3)          # fast cadence so the triangle updates smoothly
 
     def on_stop(self):
         self._lighthouse_on = False

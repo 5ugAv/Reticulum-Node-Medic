@@ -69,31 +69,74 @@ class TriageScreen(FloatLayout):
                                                     self._guidance.size))
         self.add_widget(self._guidance)
 
-        # Bottom row: a "Build lighthouse" prompt (hidden unless no beacon node
-        # exists) on the left, Save on the right.
-        self._build_button = Button(
-            text="Build lighthouse RTNode", font_size="15sp",
-            size_hint=(0.46, None), height=dp(56),
-            pos_hint={"x": 0.03, "y": 0.03}, opacity=0, disabled=True,
-            background_normal="", background_down="",
-            background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-            color=theme.hex_to_rgba(theme.COLORS["background"]))
-        self._build_button.bind(on_release=lambda *a:
-                                self._on_build and self._on_build())
-        self.add_widget(self._build_button)
-
+        # Save the best-scoring antenna position found this session (the reading
+        # you'd write down / attach to the node when you bolt it down).
         self._button = Button(
-            text="Save current reading", font_size="15sp",
-            size_hint=(0.46, None), height=dp(56),
-            pos_hint={"right": 0.97, "y": 0.03},
+            text="Save best spot", font_size="15sp",
+            size_hint=(0.6, None), height=dp(56),
+            pos_hint={"center_x": 0.5, "y": 0.03},
             background_normal="", background_down="",
             background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self._button.bind(on_release=self._save)
         self.add_widget(self._button)
 
+        self._modal = None       # "connect an RTNode" prompt, shown on demand
         self.bind(size=self._relayout, pos=self._relayout)
         self._event = Clock.schedule_interval(self._tick, poll_interval)
+
+    # -- "connect a lighthouse" modal (only when no beacon node exists) ------
+
+    def _show_connect_modal(self) -> None:
+        if self._modal is not None:
+            return
+        from kivy.uix.floatlayout import FloatLayout
+        from kivy.graphics import Color, Rectangle
+        overlay = FloatLayout(size_hint=(1, 1))
+        with overlay.canvas.before:
+            Color(0, 0, 0, 0.72)
+            self._modal_bg = Rectangle(pos=self.pos, size=self.size)
+        overlay.bind(size=lambda *a: setattr(self._modal_bg, "size", overlay.size),
+                     pos=lambda *a: setattr(self._modal_bg, "pos", overlay.pos))
+        from kivy.uix.boxlayout import BoxLayout
+        card = BoxLayout(orientation="vertical", spacing=dp(14), padding=dp(20),
+                         size_hint=(0.86, None), height=dp(280),
+                         pos_hint={"center_x": 0.5, "center_y": 0.5})
+        with card.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            self._card_bg = Rectangle(pos=card.pos, size=card.size)
+        card.bind(size=lambda *a: setattr(self._card_bg, "size", card.size),
+                  pos=lambda *a: setattr(self._card_bg, "pos", card.pos))
+        msg = Label(
+            text="To aim an antenna, Triage needs a distant beacon.\n\n"
+                 "Connect (or build) an RTNode-2400 and leave it powered on at "
+                 "a distance - it becomes the signal you tune against.",
+            halign="center", valign="middle", font_size="16sp",
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        card.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(52), spacing=dp(12))
+        cancel = Button(text="Cancel", font_size="15sp", background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["background"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel.bind(on_release=lambda *a: self._on_home and self._on_home())
+        cont = Button(text="Continue - build one", font_size="15sp",
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        cont.bind(on_release=lambda *a: self._on_build and self._on_build())
+        row.add_widget(cancel)
+        row.add_widget(cont)
+        card.add_widget(row)
+        overlay.add_widget(card)
+        self.add_widget(overlay)
+        self._modal = overlay
+
+    def _hide_connect_modal(self) -> None:
+        if self._modal is not None:
+            self.remove_widget(self._modal)
+            self._modal = None
 
     # -- beacon (Triage lighthouse — auto on enter, off on leave) -----------
 
@@ -101,8 +144,7 @@ class TriageScreen(FloatLayout):
         """Called when the Triage screen opens: auto-activate the beacon and
         show the right prompt (aim / power-on / build)."""
         self._beacon_answered = False
-        self._build_button.opacity = 0
-        self._build_button.disabled = True
+        self._hide_connect_modal()
         if self._watchdog is not None:
             self._watchdog.cancel()
             self._watchdog = None
@@ -118,8 +160,8 @@ class TriageScreen(FloatLayout):
             # if the commanded node stays silent, it's probably powered off
             self._watchdog = Clock.schedule_once(self._beacon_silent_check, 25)
         elif state == "need_build":
-            self._build_button.opacity = 1
-            self._build_button.disabled = False
+            # no beacon node at all — a centred prompt to connect/build one
+            self._show_connect_modal()
 
     def _beacon_silent_check(self, dt) -> None:
         if self._beacon_on and not self._beacon_answered:
@@ -208,21 +250,24 @@ class TriageScreen(FloatLayout):
         self._guidance.text = f"[color={col}]{snap['guidance']}[/color]"
         self._guidance.markup = True
 
-        if snap["locked"]:
-            self._button.text = "Locked - secure the antenna"
-        elif snap["ring"] == "bullseye":
-            self._button.text = "Hold steady..."
-        elif snap["score"] > 0.1:
-            self._button.text = "Save this position"
+        # The button always saves the BEST reading seen this session; its label
+        # nudges you to lock in once you're in the hot zone.
+        if snap["locked"] or snap["ring"] == "bullseye":
+            self._button.text = "Bolt it here - save best spot"
         else:
-            self._button.text = "Save current reading"
+            self._button.text = "Save best spot"
 
     def _save(self, *a) -> None:
         best = self._session.best_reading
         if best:
             self._guidance.markup = False
-            self._guidance.text = (f"Saved best spot - score {best['score']:.2f} "
-                                   f"(SNR {best['snr']:+.1f} dB)")
+            self._guidance.text = (
+                f"Best spot saved: clarity {best['snr']:+.1f} dB, "
+                f"score {best['score']:.2f}. Mount the node here.")
+        else:
+            self._guidance.markup = False
+            self._guidance.text = ("Nothing to save yet - wait for the beacon "
+                                   "so a reading can be scored.")
 
     def stop(self) -> None:
         event = getattr(self, "_event", None)
