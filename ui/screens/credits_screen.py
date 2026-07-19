@@ -38,7 +38,7 @@ SPIEL = (
     "someone adds makes it stronger for everyone else.\n\n"
     "This tool exists to make that easy: to help anyone birth a node, place "
     "it well, keep it healthy, and grow the mesh.\n\n"
-    "Think local. Act globally."
+    "Think Globally, act Locally."
 )
 
 
