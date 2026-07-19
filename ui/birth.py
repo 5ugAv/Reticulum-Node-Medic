@@ -17,6 +17,7 @@ BIRTH_NODE_TYPES: List[Tuple[str, str]] = [
     ("rtnode2400", "RTNode-2400"),
     ("rnode", "RNode"),
     ("pi_rnode", "Pi + RNode"),
+    ("mitosis", "Mitosis (clone tool) - requires a Raspberry Pi 5"),
 ]
 
 

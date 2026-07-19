@@ -1,15 +1,18 @@
 from ui.birth import birth_node_types, rnode_board_choices
 
 
-def test_birth_offers_three_node_types_in_order():
-    # required order: RTNode-2400, RNode, Pi + RNode
+def test_birth_offers_four_node_types_in_order():
+    # required order: RTNode-2400, RNode, Pi + RNode, then Mitosis (clone —
+    # moved under BIRTH 2026-07-19; only usable with a Pi 5 target, which its
+    # workflow verifies as step one)
     keys = [k for k, _ in birth_node_types()]
-    assert keys == ["rtnode2400", "rnode", "pi_rnode"]
+    assert keys == ["rtnode2400", "rnode", "pi_rnode", "mitosis"]
 
 
 def test_birth_labels_are_human():
     labels = [label for _, label in birth_node_types()]
-    assert labels == ["RTNode-2400", "RNode", "Pi + RNode"]
+    assert labels == ["RTNode-2400", "RNode", "Pi + RNode",
+                      "Mitosis (clone tool) - requires a Raspberry Pi 5"]
 
 
 def test_rnode_choices_official_first_custom_last():

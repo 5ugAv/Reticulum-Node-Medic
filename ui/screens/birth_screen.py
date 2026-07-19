@@ -72,7 +72,8 @@ class QRCodeWidget(Widget):
 
 
 class BirthScreen(BoxLayout):
-    def __init__(self, workflow_factories, rnode_flash_factory=None, **kwargs):
+    def __init__(self, workflow_factories, rnode_flash_factory=None,
+                 on_mitosis=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -82,6 +83,7 @@ class BirthScreen(BoxLayout):
         # .onboarding. The "rnode" type has no single workflow: it opens the
         # board picker first.
         self._factories = workflow_factories
+        self._on_mitosis = on_mitosis
         # rnode_flash_factory(board) -> an RNodeFlashWorkflow for that board.
         self._rnode_flash_factory = rnode_flash_factory
         self._workflow = None
@@ -107,10 +109,14 @@ class BirthScreen(BoxLayout):
         self.add_widget(self.scroll)
 
     def choose(self, node_type):
-        """Route a chosen Birth type: RNode opens the board picker; the other
-        two run their build workflow directly."""
+        """Route a chosen Birth type: RNode opens the board picker; Mitosis
+        hands off to the clone screen (its workflow verifies the target is a
+        Raspberry Pi 5 as step one); the others run their build directly."""
         if node_type == "rnode":
             self.show_boards()
+        elif node_type == "mitosis":
+            if self._on_mitosis:
+                self._on_mitosis()
         elif node_type in self._factories:
             self.start(node_type)
 
