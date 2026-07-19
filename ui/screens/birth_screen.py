@@ -22,8 +22,10 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
+from node_profile import RadioConfig
 from ui import theme
 from ui.birth import birth_node_types, rnode_board_choices
 from ui.qr import birth_cert_payload, qr_matrix
@@ -91,18 +93,16 @@ class BirthScreen(BoxLayout):
         self._rnode_flash_factory = rnode_flash_factory
         self._workflow = None
 
-        self.add_widget(_line("Birth a new node — choose a type:", bold=True,
-                              size="18sp"))
-        picker = BoxLayout(orientation="horizontal", size_hint_y=None,
-                           height=dp(56), spacing=dp(8))
-        for key, label in birth_node_types():        # RTNode-2400, RNode, Pi + RNode
-            btn = Button(
-                text=label, background_normal="",
-                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                color=theme.hex_to_rgba(theme.COLORS["background"]))
-            btn.bind(on_release=lambda *_a, k=key: self.choose(k))
-            picker.add_widget(btn)
-        self.add_widget(picker)
+        self._labels = dict(birth_node_types())      # key -> display label
+
+        # The header swaps between the type PICKER and a focused "Building X —
+        # Change" bar. Keeping one container we repopulate keeps the layout
+        # steady (no jumping) as we move between steps.
+        self.header = BoxLayout(orientation="vertical", size_hint_y=None,
+                                spacing=dp(6))
+        self.header.bind(minimum_height=self.header.setter("height"))
+        self.add_widget(self.header)
+        self._show_picker()
 
         self.scroll = ScrollView()
         self.list = BoxLayout(orientation="vertical", size_hint_y=None,
@@ -111,17 +111,139 @@ class BirthScreen(BoxLayout):
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
 
+    def _show_picker(self):
+        """The full type chooser — every option visible (the starting state)."""
+        self.header.clear_widgets()
+        self.header.add_widget(_line("Birth a new node — choose a type:",
+                                     bold=True, size="18sp"))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(56), spacing=dp(8))
+        for key, label in birth_node_types():
+            btn = Button(
+                text=label, background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            btn.bind(on_release=lambda *_a, k=key: self.choose(k))
+            row.add_widget(btn)
+        self.header.add_widget(row)
+        if hasattr(self, "list"):
+            self.list.clear_widgets()
+
+    def _focus(self, node_type):
+        """Collapse the chooser to a single bar — 'Building: X   [Change]' — so
+        the other options get out of the way. One task at a time."""
+        self.header.clear_widgets()
+        bar = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(46), spacing=dp(8))
+        bar.add_widget(_line(f"Building:  {self._labels.get(node_type, node_type)}",
+                             bold=True, size="18sp"))
+        change = Button(text="Change", size_hint_x=None, width=dp(110),
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        change.bind(on_release=lambda *_a: self._show_picker())
+        bar.add_widget(change)
+        self.header.add_widget(bar)
+
     def choose(self, node_type):
-        """Route a chosen Birth type: RNode opens the board picker; Mitosis
-        hands off to the clone screen (its workflow verifies the target is a
-        Raspberry Pi 5 as step one); the others run their build directly."""
-        if node_type == "rnode":
-            self.show_boards()
-        elif node_type == "mitosis":
+        """Route a chosen Birth type. The chooser collapses to a focused bar;
+        Mitosis hands straight off to the clone screen (its workflow verifies a
+        Pi 5 first); RNode opens the board picker; the rest go to the pre-filled
+        radio-params form and a big OK."""
+        if node_type == "mitosis":
             if self._on_mitosis:
                 self._on_mitosis()
+            return
+        self._focus(node_type)
+        if node_type == "rnode":
+            self.show_boards()
         elif node_type in self._factories:
-            self.start(node_type)
+            self.show_params(node_type)
+
+    # -- radio-params form (pre-filled with our canonical settings) ----------
+
+    def show_params(self, node_type, board=None):
+        """A short form pre-filled with the canonical radio config. The user just
+        taps OK — or edits a field first. One big OK confirms and starts."""
+        self.list.clear_widgets()
+        self._param_inputs = {}
+        d = RadioConfig()                                 # canonical defaults
+        if board is not None:
+            self.list.add_widget(_line(f"{board.display_name}", bold=True,
+                                       size="16sp"))
+        self.list.add_widget(_line(
+            "Radio settings — pre-filled with our standard config. Change only "
+            "if you know why, then press OK.", size="14sp"))
+        fields = [
+            ("freq", "Frequency (MHz)", f"{d.frequency_mhz:g}"),
+            ("bw", "Bandwidth (kHz)", f"{d.bandwidth_khz:g}"),
+            ("sf", "Spreading factor", str(d.spreading_factor)),
+            ("cr", "Coding rate", str(d.coding_rate)),
+            ("txp", "TX power (dBm)", str(d.tx_power_dbm)),
+        ]
+        for key, label, value in fields:
+            self.list.add_widget(self._param_row(key, label, value))
+        ok = Button(text="OK — start", size_hint_y=None, height=dp(60),
+                    font_size="20sp", bold=True, background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+        ok.bind(on_release=lambda *_a: self._confirm_params(node_type, board))
+        self.list.add_widget(ok)
+
+    def _param_row(self, key, label, value):
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50),
+                        spacing=dp(8))
+        row.add_widget(_line(label, size="15sp"))
+        ti = TextInput(text=value, multiline=False, size_hint=(None, None),
+                       width=dp(160), height=dp(44), font_size="18sp",
+                       input_filter="float" if key in ("freq", "bw") else "int")
+        self._param_inputs[key] = ti
+        row.add_widget(ti)
+        return row
+
+    def _read_params(self):
+        d = RadioConfig()
+
+        def num(key, cast, default):
+            try:
+                return cast(self._param_inputs[key].text.strip())
+            except (ValueError, KeyError):
+                return default            # blank/garbage falls back to canonical
+
+        return {
+            "freq": num("freq", float, d.frequency_mhz),
+            "bw": num("bw", float, d.bandwidth_khz),
+            "sf": num("sf", int, d.spreading_factor),
+            "cr": num("cr", int, d.coding_rate),
+            "txp": num("txp", int, d.tx_power_dbm),
+        }
+
+    def _apply_radio(self, workflow, radio):
+        r = getattr(getattr(workflow, "profile", None), "radio", None)
+        if r is None:
+            return
+        r.frequency_mhz = radio["freq"]
+        r.bandwidth_khz = radio["bw"]
+        r.spreading_factor = radio["sf"]
+        r.coding_rate = radio["cr"]
+        r.tx_power_dbm = radio["txp"]
+
+    def _confirm_params(self, node_type, board):
+        radio = self._read_params()
+        if board is not None:
+            workflow = self._rnode_flash_factory(board)
+            title = f"Flashing {board.display_name}..."
+        else:
+            workflow = self._factories[node_type]()
+            title = f"Building {self._labels.get(node_type, node_type)}..."
+        self._apply_radio(workflow, radio)
+        self._launch(workflow, title)
+
+    def _launch(self, workflow, title):
+        self.list.clear_widgets()
+        self.list.add_widget(_line(title, bold=True))
+        self._workflow = workflow
+        threading.Thread(target=self._run, daemon=True).start()
 
     def show_boards(self):
         """List every board the tool can flash as an RNode (official first,
@@ -182,21 +304,9 @@ class BirthScreen(BoxLayout):
                 height=dp(48), background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
-            flash_btn.bind(on_release=lambda *_a, b=board: self.start_flash(b))
+            flash_btn.bind(on_release=lambda *_a, b=board:
+                           self.show_params("rnode", board=b))
             self.list.add_widget(flash_btn)
-
-    def start_flash(self, board):
-        self.list.clear_widgets()
-        self.list.add_widget(_line(f"Flashing {board.display_name}...",
-                                   bold=True))
-        self._workflow = self._rnode_flash_factory(board)
-        threading.Thread(target=self._run, daemon=True).start()
-
-    def start(self, hardware_key):
-        self.list.clear_widgets()
-        self.list.add_widget(_line(f"Building {hardware_key}...", bold=True))
-        self._workflow = self._factories[hardware_key]()
-        threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):
         self._workflow.run_all(on_progress=lambda r:
