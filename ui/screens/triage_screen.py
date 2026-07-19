@@ -261,9 +261,11 @@ class TriageScreen(FloatLayout):
         best = self._session.best_reading
         if best:
             self._guidance.markup = False
+            # Saves the link-quality baseline; the GPS location bundles in once
+            # a fix is available, and both attach to the node's birth cert.
             self._guidance.text = (
-                f"Best spot saved: clarity {best['snr']:+.1f} dB, "
-                f"score {best['score']:.2f}. Mount the node here.")
+                f"Reading saved for this node: clarity {best['snr']:+.1f} dB, "
+                f"score {best['score']:.2f}. (Location added when GPS is ready.)")
         else:
             self._guidance.markup = False
             self._guidance.text = ("Nothing to save yet - wait for the beacon "
