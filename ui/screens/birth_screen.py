@@ -230,6 +230,8 @@ class BirthScreen(BoxLayout):
 
     def _confirm_params(self, node_type, board):
         radio = self._read_params()
+        self._last_board = board                 # remembered for the outcome panel
+        self._last_type = node_type
         if board is not None:
             workflow = self._rnode_flash_factory(board)
             title = f"Flashing {board.display_name}..."
@@ -243,6 +245,7 @@ class BirthScreen(BoxLayout):
         self.list.clear_widgets()
         self.list.add_widget(_line(title, bold=True))
         self._workflow = workflow
+        self._had_failure = False                # reset for this run's outcome
         threading.Thread(target=self._run, daemon=True).start()
 
     def show_boards(self):
@@ -317,10 +320,38 @@ class BirthScreen(BoxLayout):
         mark = "skip" if result.skipped else ("ok" if result.success else "FAIL")
         color = ("text_secondary" if result.skipped
                  else "green" if result.success else "red")
+        if not result.success and not result.skipped:
+            self._had_failure = True
         self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
                                    size="14sp"))
 
+    def _outcome_panel(self):
+        """A clear '✓ Done — next steps' (or failure) banner so the operator is
+        never left staring at a finished log wondering what to do."""
+        board = getattr(self, "_last_board", None)
+        if getattr(self, "_had_failure", False):
+            self.list.add_widget(_line("X  Something didn't finish", bold=True,
+                                       size="18sp", color="red"))
+            self.list.add_widget(_line(
+                "Fix the failed step above and run it again. If a board won't "
+                "flash: hold BOOT, tap RST, release BOOT, then retry - or use a "
+                "short, known-good USB data cable.", size="14sp", color="amber"))
+            return
+        self.list.add_widget(_line("OK  Done!", bold=True, size="20sp",
+                                   color="green"))
+        if board is not None:
+            nxt = (f"{board.display_name} is flashed & verified as an RNode on the "
+                   "standard channel (915.125 / 125 / SF9 / CR5 / 17 dBm). "
+                   "Unplug it and fit it to its node/Pi - it's ready to run.")
+        else:
+            nxt = ("Node provisioned on the standard channel. Give it power and "
+                   "its antenna; it will announce and appear in VITALS as kin.")
+        self.list.add_widget(_line(nxt, size="15sp"))
+        self.list.add_widget(_line("Birth another with Change at the top, or hit "
+                                   "BACK.", size="13sp", color="text_secondary"))
+
     def _finish(self):
+        self._outcome_panel()
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
             self.list.add_widget(_line("Onboarding (enter at RTNode-Setup / "
