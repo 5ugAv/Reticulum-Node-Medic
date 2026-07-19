@@ -149,6 +149,22 @@ class RepairWorkflow:
             self.profile.fixes_applied.append(issue.check_name)
         return fix
 
+    def verify_fixed(self, issue: Issue) -> bool:
+        """Re-run the check that owned *issue* and report whether it now PASSES.
+        A fix command exiting 0 doesn't prove the fault is gone — this does."""
+        module = self._module_for(issue)
+        if module is None:
+            return False
+        try:
+            still_failing = {i.check_name for i in module.run()}
+        except Exception:
+            return False
+        return issue.check_name not in still_failing
+
+    def rescan(self, on_progress: Optional[ProgressCallback] = None):
+        """Re-run the full diagnostic and refresh the session (after fixes)."""
+        return self.run(on_progress=on_progress)
+
     def fix_all(self, on_progress: Optional[ProgressCallback] = None) -> List[Fix]:
         emit = on_progress or (lambda e: None)
         fixes: List[Fix] = []

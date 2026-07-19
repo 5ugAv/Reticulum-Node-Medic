@@ -218,3 +218,28 @@ def test_fix_all_fires_progress():
     events = []
     wf.fix_all(on_progress=events.append)
     assert len(events) >= 1
+
+
+def test_verify_fixed_reruns_the_check_not_just_the_fix():
+    # a fix that "succeeds" but leaves the check failing must NOT verify true
+    conn = broken_conn()
+    conn.rule("^systemctl start rnsd", 0, "")     # fix command succeeds...
+    wf = RepairWorkflow(conn, NodeProfile())
+    session = wf.run()
+    rnsd = next(i for i in session.all_issues if i.check_name == "rnsd_running")
+    # rnsd is still 'inactive' in broken_conn, so re-running the check still fails
+    assert wf.verify_fixed(rnsd) is False
+    # once the node actually reports active, the same check verifies true
+    conn.rules.insert(0, ("^systemctl is-active rnsd", 0, "active", ""))
+    assert wf.verify_fixed(rnsd) is True
+
+
+def test_rescan_refreshes_the_session():
+    conn = broken_conn()
+    wf = RepairWorkflow(conn, NodeProfile())
+    wf.run()
+    before = len(wf.session.all_issues)
+    conn.rules.insert(0, ("^systemctl is-active rnsd", 0, "active", ""))
+    conn.rules.insert(0, ("^systemctl is-enabled rnsd", 0, "enabled", ""))
+    wf.rescan()
+    assert len(wf.session.all_issues) < before
