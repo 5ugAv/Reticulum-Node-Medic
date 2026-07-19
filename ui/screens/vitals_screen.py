@@ -77,6 +77,7 @@ class VitalsScreen(BoxLayout):
 
         self.filter_bar = BoxLayout(size_hint_y=None, height=dp(48),
                                     spacing=dp(6), padding=dp(6))
+        self._filter_buttons = []
         for name in FILTERS:
             btn = Button(text=name, background_normal="",
                          background_color=theme.hex_to_rgba(
@@ -85,6 +86,8 @@ class VitalsScreen(BoxLayout):
             btn.filter_name = name
             btn.bind(on_release=lambda b: self.set_filter(b.filter_name))
             self.filter_bar.add_widget(btn)
+            self._filter_buttons.append(btn)
+        self._highlight_filter()
         search = TextInput(hint_text="Search", multiline=False,
                            size_hint_x=None, width=dp(220))
         search.bind(text=lambda i, v: self.set_search(v))
@@ -119,8 +122,19 @@ class VitalsScreen(BoxLayout):
         self.nodes = nodes or []
         self.refresh()
 
+    def _highlight_filter(self):
+        """The selected tab reads as selected even when its list is empty."""
+        for btn in getattr(self, "_filter_buttons", []):
+            active = btn.filter_name == self.active_filter
+            btn.background_color = theme.hex_to_rgba(
+                theme.COLORS["accent"] if active else theme.COLORS["surface"])
+            btn.color = theme.hex_to_rgba(
+                theme.COLORS["background"] if active
+                else theme.COLORS["text_primary"])
+
     def set_filter(self, name):
         self.active_filter = name
+        self._highlight_filter()
         self.refresh()
 
     def set_search(self, text):
