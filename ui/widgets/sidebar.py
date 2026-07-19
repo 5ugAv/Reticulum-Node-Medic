@@ -20,7 +20,6 @@ MODES = [
     ("birth", "BIRTH"),
     ("triage", "TRIAGE"),
     ("probe", "PROBE"),
-    ("mitosis", "MITOSIS"),
 ]
 
 

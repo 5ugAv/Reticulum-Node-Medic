@@ -29,6 +29,7 @@ from ui.screens.birth_screen import BirthScreen
 from ui.screens.triage_screen import TriageScreen
 from ui.screens.mitosis_screen import MitosisScreen
 from ui.screens.home_screen import HomeScreen
+from ui.screens.credits_screen import CreditsScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -191,6 +192,12 @@ class ReticulumNodeMedicApp(App):
         home.add_widget(HomeScreen(on_select=self.switch_mode))
         self.sm.add_widget(home)
 
+        credits = Screen(name="credits")
+        credits.add_widget(CreditsScreen(
+            on_select=self.switch_mode,
+            on_back=lambda: self.switch_mode("home")))
+        self.sm.add_widget(credits)
+
         # Final confirmed modes, registered in sidebar order:
         # 1 VITALS · 2 SCAN · 3 BIRTH · 4 TRIAGE · 5 PROBE · 6 MITOSIS
         vitals = Screen(name="vitals")
@@ -212,7 +219,8 @@ class ReticulumNodeMedicApp(App):
         birth.add_widget(BirthScreen(
             workflow_factories={"rtnode2400": _demo_rtnode_build,
                                 "pi_rnode": _demo_pi_build},
-            rnode_flash_factory=_demo_rnode_flash))
+            rnode_flash_factory=_demo_rnode_flash,
+            on_mitosis=lambda: self.switch_mode("mitosis")))
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")

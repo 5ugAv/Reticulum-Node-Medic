@@ -18,9 +18,9 @@ def test_card_row_edges_and_margins():
     assert zone_at(0.5, CARDS_TOP - 0.02) is None   # just above the cards
 
 
-def test_red_cross_opens_mitosis():
-    assert zone_at(0.50, 0.46) == "mitosis"    # dead centre of the emblem
-    assert zone_at(0.44, 0.42) == "mitosis"    # inside the circle
+def test_red_cross_opens_the_credits_easter_egg():
+    assert zone_at(0.50, 0.46) == "credits"    # dead centre of the emblem
+    assert zone_at(0.44, 0.42) == "credits"    # inside the circle
     assert zone_at(0.50, 0.10) is None         # up in the mesh art
     assert zone_at(0.15, 0.46) is None         # off to the side
 
