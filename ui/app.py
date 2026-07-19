@@ -255,7 +255,9 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(triage)
 
         probe = Screen(name="probe")
-        probe.add_widget(self._with_back(ProbeScreen(workflow_factory=_demo_repair_workflow)))
+        probe.add_widget(self._with_back(ProbeScreen(
+            workflow_factory=_demo_repair_workflow,
+            target_name="Demo node - emulated")))
         self.sm.add_widget(probe)
 
         mitosis = Screen(name="mitosis")
