@@ -279,10 +279,12 @@ class NodeRegistry:
     # -- dashboard views ---------------------------------------------------
 
     def all(self, now: float) -> List[NodeRecord]:
-        """Every node, sorted alert-first then by name."""
+        """Every node: the operator's OWN nodes first (kin above neighbours),
+        alert-first within each group, then by name."""
         return sorted(
             self.nodes.values(),
-            key=lambda r: (_STATUS_RANK.get(r.status(now), 3), r.name.lower()))
+            key=lambda r: (r.provenance != "kin",
+                           _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
     def located_nodes(self, now: float) -> List[dict]:
         """Every node with a known location, for SCAN mode — each as

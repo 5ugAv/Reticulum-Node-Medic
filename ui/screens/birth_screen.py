@@ -30,10 +30,13 @@ from ui.qr import birth_cert_payload, qr_matrix
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
+    # height follows the wrapped text — fixed heights made long lines overlap
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
                 font_size=size, color=theme.hex_to_rgba(theme.COLORS[color]),
-                size_hint_y=None, height=dp(26))
-    lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+                size_hint_y=None)
+    lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+    lbl.bind(texture_size=lambda i, ts: setattr(i, "height",
+                                                max(dp(26), ts[1] + dp(6))))
     return lbl
 
 
@@ -126,10 +129,22 @@ class BirthScreen(BoxLayout):
         self.list.clear_widgets()
         self.list.add_widget(_line("Select the board to flash as an RNode:",
                                    bold=True, size="16sp"))
+        official = [b for b in rnode_board_choices()
+                    if b.flash_method == "autoinstall"]
+        next_custom = max(b.autoinstall_index for b in official) + 1
         for board in rnode_board_choices():
-            tag = "" if board.flash_method == "autoinstall" else "  (custom)"
+            # numbers match rnodeconf's own autoinstall menu, so the screen
+            # and Mark Qvist's terminal flow never disagree; custom boards
+            # continue the numbering after the official list
+            if board.flash_method == "autoinstall":
+                num = board.autoinstall_index
+                tag = ""
+            else:
+                num = next_custom
+                next_custom += 1
+                tag = "  (custom)"
             btn = Button(
-                text=f"{board.display_name}  [{board.platform}]{tag}",
+                text=f"{num:>2}.  {board.display_name}  [{board.platform}]{tag}",
                 size_hint_y=None, height=dp(40), halign="left",
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
