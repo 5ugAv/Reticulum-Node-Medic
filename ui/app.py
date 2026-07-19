@@ -28,6 +28,7 @@ from ui.screens.probe_screen import ProbeScreen
 from ui.screens.birth_screen import BirthScreen
 from ui.screens.triage_screen import TriageScreen
 from ui.screens.mitosis_screen import MitosisScreen
+from ui.screens.home_screen import HomeScreen
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -185,6 +186,11 @@ class ReticulumNodeMedicApp(App):
         root = BoxLayout(orientation="horizontal")
         self.sm = ScreenManager()
 
+        # HOME: the designed front page — the poster's cards open the modes.
+        home = Screen(name="home")
+        home.add_widget(HomeScreen(on_select=self.switch_mode))
+        self.sm.add_widget(home)
+
         # Final confirmed modes, registered in sidebar order:
         # 1 VITALS · 2 SCAN · 3 BIRTH · 4 TRIAGE · 5 PROBE · 6 MITOSIS
         vitals = Screen(name="vitals")
@@ -222,7 +228,7 @@ class ReticulumNodeMedicApp(App):
         mitosis.add_widget(MitosisScreen(workflow_factory=_demo_clone_workflow))
         self.sm.add_widget(mitosis)
 
-        self.sm.current = os.environ.get("RNM_START", "vitals")
+        self.sm.current = os.environ.get("RNM_START", "home")
         root.add_widget(Sidebar(on_select=self.switch_mode))
         root.add_widget(self.sm)
         return root
