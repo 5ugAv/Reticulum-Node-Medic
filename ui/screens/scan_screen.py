@@ -60,6 +60,9 @@ class MapPlot(Widget):
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos) or self._tiles is None:
             return super().on_touch_down(touch)
+        if touch.is_double_tap:                   # double-tap = snap back to fit
+            self.reset_view()
+            return True
         touch.grab(self)
         self._touches[touch.uid] = touch.pos
         if len(self._touches) == 2:
@@ -76,11 +79,18 @@ class MapPlot(Widget):
         if view is None:
             return True
         if len(self._touches) == 1:              # drag = pan
-            from ui.map_tiles import unproject_px
-            cx = view.off_x + view.width / 2.0 - touch.dx
-            cy = view.off_y + view.height / 2.0 + touch.dy   # kivy y-up vs world y-down
-            self._center = unproject_px(cx, cy, view.zoom)
-            self._zoom = view.zoom
+            from ui.map_tiles import project_px, unproject_px
+            # Accumulate the drag on the PERSISTENT centre, not the last drawn
+            # view: redraws are throttled, so several moves share one stale view
+            # — deriving each from it drops every delta but the last (the jumpy
+            # drag). Mutating the stored centre per move tracks the finger 1:1.
+            z = self._zoom if self._zoom is not None else view.zoom
+            clat, clon = self._center_latlon(view)
+            cx, cy = project_px(clat, clon, z)
+            cx -= touch.dx
+            cy += touch.dy                       # kivy y-up vs world y-down
+            self._center = self._clamp_center(*unproject_px(cx, cy, z))
+            self._zoom = z
             self._trigger()
         elif len(self._touches) == 2 and self._pinch_base:
             pts = list(self._touches.values())
@@ -111,13 +121,39 @@ class MapPlot(Widget):
             return
         cx = view.off_x + view.width / 2.0
         cy = view.off_y + view.height / 2.0
-        self._center = unproject_px(cx, cy, view.zoom)
+        self._center = self._clamp_center(*unproject_px(cx, cy, view.zoom))
         self._zoom = new_zoom
         self._trigger()
 
     def _current_view(self):
         """The view as displayed right now (manual if touched, else auto-fit)."""
         return getattr(self, "_last_view", None)
+
+    def _center_latlon(self, view):
+        """Current view centre as (lat, lon): the stored pan centre, or the
+        centre of the last auto-fit view when the user hasn't panned yet — so
+        the first drag continues smoothly from wherever the map is sitting."""
+        if self._center is not None:
+            return self._center
+        from ui.map_tiles import unproject_px
+        cx = view.off_x + view.width / 2.0
+        cy = view.off_y + view.height / 2.0
+        return unproject_px(cx, cy, view.zoom)
+
+    def _clamp_center(self, lat, lon):
+        """Keep the centre over the cached basemap so a drag can never strand
+        the view in an all-black void it can't pan back from."""
+        from ui.map_tiles import clamp_latlon
+        b = self._tiles.bounds() if self._tiles is not None else None
+        return clamp_latlon(b, lat, lon)
+
+    def reset_view(self, *_):
+        """Snap back to the auto-fit of the cached area / located nodes. The
+        escape hatch from a bad pan — wired to a Recenter button and double-tap."""
+        self._center = None
+        self._zoom = None
+        self._pinch_base = None
+        self._redraw()
 
     def set_nodes(self, nodes):
         self._nodes = list(nodes or [])
@@ -133,6 +169,14 @@ class MapPlot(Widget):
         self._labels = []
 
     def _redraw(self, *_):
+        try:
+            self._redraw_inner()
+        except Exception:
+            # A bad view must never wedge the canvas black forever; the next
+            # good redraw (pan, resize, Recenter) repaints it.
+            pass
+
+    def _redraw_inner(self):
         self.canvas.clear()
         self._clear_labels()
         if self.width < 2 or self.height < 2:
@@ -239,9 +283,16 @@ class ScanScreen(BoxLayout):
         self._downloading = False
 
         self._tiles = tiles if tiles is not None else find_mbtiles()
-        self.header = Label(size_hint=(1, None), height=dp(28), halign="left",
-                            bold=True)
-        self.add_widget(self.header)
+        header_row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                               height=dp(30), spacing=dp(6))
+        self.header = Label(halign="left", valign="middle", bold=True)
+        self.header.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.recenter_btn = Button(text="Recenter", size_hint=(None, 1),
+                                   width=dp(100))
+        self.recenter_btn.bind(on_release=lambda *_: self.plot.reset_view())
+        header_row.add_widget(self.header)
+        header_row.add_widget(self.recenter_btn)
+        self.add_widget(header_row)
 
         self.plot = MapPlot(tiles=self._tiles)
         self.add_widget(self.plot)

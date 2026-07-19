@@ -46,6 +46,16 @@ def unproject_px(x: float, y: float, zoom: int) -> Tuple[float, float]:
     return lat, lon
 
 
+def clamp_latlon(bounds, lat: float, lon: float) -> Tuple[float, float]:
+    """Clamp (lat, lon) into a basemap *bounds* tuple (min_lon, min_lat, max_lon,
+    max_lat), so a pan can't leave the cached area and strand the view in an
+    all-black void. Returns the point unchanged when *bounds* is falsy."""
+    if not bounds:
+        return (lat, lon)
+    w, s, e, n = bounds
+    return (max(s, min(n, lat)), max(w, min(e, lon)))
+
+
 def view_at(lat: float, lon: float, zoom: int,
             view_w: float, view_h: float) -> "MercatorView":
     """A viewport centred on (lat, lon) at an explicit zoom — the interactive
