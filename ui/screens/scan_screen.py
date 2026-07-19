@@ -51,6 +51,7 @@ class MapPlot(Widget):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
+        self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
         self._me = None                          # medic's own GPS fix (lat, lon)
         self._labels: List[Label] = []
         # interactive view state (None until the user pans/zooms = auto-fit)
@@ -122,7 +123,7 @@ class MapPlot(Widget):
         # pinch spans the full cached range: out to the world-overview levels
         # (z2+, blank until the World tier is downloaded) and in past the
         # regional zoom to the per-node street-detail levels.
-        new_zoom = max(2, min(DETAIL_MAX_ZOOM, view.zoom + direction))
+        new_zoom = self._step_to_next_zoom(view.zoom, direction)
         if new_zoom == view.zoom:
             return
         cx = view.off_x + view.width / 2.0
@@ -135,6 +136,26 @@ class MapPlot(Widget):
         """The view as displayed right now (manual if touched, else auto-fit)."""
         return getattr(self, "_last_view", None)
 
+    @staticmethod
+    def _cache_zooms(tiles):
+        try:
+            return sorted(tiles.zoom_levels()) if tiles is not None else []
+        except Exception:
+            return []
+
+    def _max_cached_zoom(self):
+        return self._zooms[-1] if self._zooms else DETAIL_MAX_ZOOM
+
+    def _snap_zoom(self, z):
+        from ui.map_tiles import snap_zoom
+        return snap_zoom(self._zooms, z)
+
+    def _step_to_next_zoom(self, current, direction):
+        from ui.map_tiles import step_zoom
+        # with no cache, fall back to the full interactive range
+        zs = self._zooms or list(range(2, DETAIL_MAX_ZOOM + 1))
+        return step_zoom(zs, current, direction)
+
     def _zoom_at(self, pos, direction):
         """Zoom one level toward the tapped screen point, recentring on the geo
         location under the finger — double-tap to dive into a spot."""
@@ -143,7 +164,7 @@ class MapPlot(Widget):
             return
         from ui.map_tiles import unproject_px
         cur_zoom = self._zoom if self._zoom is not None else view.zoom
-        new_zoom = max(2, min(DETAIL_MAX_ZOOM, cur_zoom + direction))
+        new_zoom = self._step_to_next_zoom(cur_zoom, direction)
         sx = pos[0] - self.x
         sy = pos[1] - self.y
         wx = view.off_x + sx
@@ -185,6 +206,7 @@ class MapPlot(Widget):
 
     def set_tiles(self, tiles):
         self._tiles = tiles
+        self._zooms = self._cache_zooms(tiles)
         self._redraw()
 
     def set_me(self, latlon):
@@ -257,11 +279,19 @@ class MapPlot(Widget):
     def _draw_tiled(self, pts, bbox):
         from ui.map_tiles import view_at
         if self._center is not None and self._zoom is not None:
-            view = view_at(self._center[0], self._center[1], self._zoom,
+            # snap the manual zoom to a level the cache actually has (no blank)
+            z = self._snap_zoom(self._zoom)
+            view = view_at(self._center[0], self._center[1], z,
                            self.width, self.height)      # user-driven pan/zoom
         else:
             view = build_view(*bbox, self.width, self.height, padding=dp(32),
-                              max_zoom=DEFAULT_MAX_ZOOM)  # auto-fit, cache-clamped
+                              max_zoom=self._max_cached_zoom())  # auto-fit
+            if self._zooms and view.zoom not in self._zooms:
+                # fit_zoom landed on a level with no tiles (a cache gap) — rebuild
+                # the auto-fit view at the nearest cached zoom on the bbox centre.
+                z = self._snap_zoom(view.zoom)
+                clat, clon = (bbox[0] + bbox[1]) / 2.0, (bbox[2] + bbox[3]) / 2.0
+                view = view_at(clat, clon, z, self.width, self.height)
         self._last_view = view
         r = dp(6)
         with self.canvas:

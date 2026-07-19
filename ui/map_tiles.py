@@ -56,6 +56,28 @@ def clamp_latlon(bounds, lat: float, lon: float) -> Tuple[float, float]:
     return (max(s, min(n, lat)), max(w, min(e, lon)))
 
 
+def snap_zoom(zooms, z: int) -> int:
+    """Snap *z* to the largest cached zoom <= z (or the smallest cached level),
+    so the map only ever renders a zoom that actually has tiles — never a blank
+    pane. Returns *z* unchanged when *zooms* is empty."""
+    if not zooms:
+        return z
+    below = [c for c in zooms if c <= z]
+    return below[-1] if below else zooms[0]
+
+
+def step_zoom(zooms, current: int, direction: int) -> int:
+    """The next cached zoom from *current* in *direction* (+1 zoom in / -1 out),
+    skipping gaps (a missing mid-range level). Stays put at the cached edge."""
+    if not zooms:
+        return current + (1 if direction > 0 else -1)
+    if direction > 0:
+        higher = [c for c in zooms if c > current]
+        return higher[0] if higher else current
+    lower = [c for c in zooms if c < current]
+    return lower[-1] if lower else current
+
+
 def view_at(lat: float, lon: float, zoom: int,
             view_w: float, view_h: float) -> "MercatorView":
     """A viewport centred on (lat, lon) at an explicit zoom — the interactive
@@ -161,6 +183,15 @@ class MBTiles:
             "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
             (z, x, tms_y)).fetchone()
         return row[0] if row else None
+
+    def zoom_levels(self) -> list:
+        """Sorted list of zoom levels that actually have tiles. The cache is
+        often sparse (e.g. street zooms not downloaded, or a gap mid-range), so
+        the map must only ever request a zoom that EXISTS here — otherwise
+        get_tile returns None and the pane goes blank."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT zoom_level FROM tiles ORDER BY zoom_level").fetchall()
+        return [r[0] for r in rows]
 
     def bounds(self) -> Optional[Tuple[float, float, float, float]]:
         """(min_lon, min_lat, max_lon, max_lat) from metadata, or None."""
