@@ -456,7 +456,7 @@ class ReticulumNodeMedicApp(App):
                     RNS.Packet(dest, bytes([0x01])).send()
                 except Exception:
                     pass
-            _t.sleep(3)          # fast cadence so the triangle updates smoothly
+            _t.sleep(2)          # fast cadence so the glow tracks antenna movement
 
     def on_stop(self):
         self._lighthouse_on = False

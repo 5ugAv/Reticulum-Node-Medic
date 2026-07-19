@@ -69,18 +69,23 @@ class TriageScreen(FloatLayout):
                                                     self._guidance.size))
         self.add_widget(self._guidance)
 
-        # Green "GOOD, mount here" flash — a full-bleed tint that pulses when the
-        # antenna returns to the best spot found (the auto-goal). Behind the
-        # readouts, tinting nothing until fired.
+        # Goal glow: a green frame around the screen that BRIGHTENS as the
+        # antenna nears the best spot found and DIMS as it drifts off — so the
+        # final aiming is a brightness hill to climb. Plus a "MOUNT HERE" label
+        # that fades in on the sweet spot.
+        from kivy.graphics import Color, Line
+        with self.canvas.after:
+            self._glow_color = Color(*theme.hex_to_rgba(theme.COLORS["green"], 0))
+            self._glow_line = Line(rectangle=(0, 0, 10, 10), width=dp(9))
+        self.bind(pos=self._sync_glow, size=self._sync_glow)
         from kivy.uix.label import Label as _L
         self._goal_flash = _L(
-            text="", bold=True, font_size="34sp", opacity=0,
+            text="", bold=True, font_size="30sp", opacity=0,
             halign="center", valign="middle",
             pos_hint={"center_x": 0.5, "center_y": 0.75},
             color=theme.hex_to_rgba(theme.COLORS["green"]))
         self._goal_flash.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self._goal_flash)
-        self._was_at_goal = False
 
         # The location button saves the node's GPS COORDINATES for this mount
         # point (map pin + navigation). The signal baseline is captured
@@ -236,23 +241,17 @@ class TriageScreen(FloatLayout):
                                   self._clock())
         self._bullseye.update(snap)
         self._refresh(sample, snap)
-        self._update_goal_flash(snap.get("at_goal", False))
+        self._update_goal_glow(snap.get("goal_proximity", 0.0))
 
-    def _update_goal_flash(self, at_goal: bool) -> None:
-        if at_goal and not self._was_at_goal:
-            from kivy.animation import Animation
-            self._goal_flash.text = "GOOD - mount here!"
-            self._goal_flash.opacity = 1
-            Animation.cancel_all(self._goal_flash)
-            pulse = (Animation(opacity=0.4, duration=0.5)
-                     + Animation(opacity=1.0, duration=0.5))
-            pulse.repeat = True
-            pulse.start(self._goal_flash)
-        elif not at_goal and self._was_at_goal:
-            from kivy.animation import Animation
-            Animation.cancel_all(self._goal_flash)
-            self._goal_flash.opacity = 0
-        self._was_at_goal = at_goal
+    def _sync_glow(self, *a) -> None:
+        self._glow_line.rectangle = (self.x + dp(3), self.y + dp(3),
+                                     self.width - dp(6), self.height - dp(6))
+
+    def _update_goal_glow(self, proximity: float) -> None:
+        # brighter as you approach the goal; the label appears near the top
+        self._glow_color.a = proximity          # 0 (off) .. 1 (right on it)
+        self._goal_flash.opacity = max(0.0, (proximity - 0.5) * 2.0)
+        self._goal_flash.text = "MOUNT HERE" if proximity > 0.85 else "getting hot..."
 
     def _refresh(self, sample: dict, snap: dict) -> None:
         sec, pri = _hex("text_secondary"), _hex("text_primary")
