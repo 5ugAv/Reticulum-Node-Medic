@@ -153,12 +153,18 @@ class BirthScreen(BoxLayout):
             self._sel_board.display_name if self._sel_board
             else "Tap to choose a board", self._choose_board))
 
+        # small breather between the board and the (separate) Pi choice
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(16)))
+
         self.header.add_widget(_line("Host Pi  (optional)", bold=True, size="15sp",
                                      color="accent"))
         self.header.add_widget(self._sel_button(
             self._sel_pi[1] if self._sel_pi
             else "Tap to choose a Pi  (or leave for a standalone radio)",
             self._choose_pi))
+
+        # big gap so Continue reads as a separate, deliberate action
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(48)))
 
         cont = Button(text="Continue", size_hint_y=None, height=dp(56),
                       font_size="20sp", bold=True, background_normal="",
@@ -177,12 +183,21 @@ class BirthScreen(BoxLayout):
         return btn
 
     def _choose_board(self):
-        """Numbered, scrollable list of every flashable board."""
+        """Numbered, scrollable list of every flashable board. Numbers match
+        rnodeconf's own autoinstall menu (Heltec V4 = 9, …) so the screen and Mark
+        Qvist's terminal flow never disagree; custom boards continue after."""
         self.list.clear_widgets()
         self.list.add_widget(_line("Select the board:", bold=True, size="16sp"))
-        for i, board in enumerate(self._boards, 1):
+        official = [b for b in self._boards if b.flash_method == "autoinstall"]
+        next_custom = max((b.autoinstall_index for b in official), default=0) + 1
+        for board in self._boards:
+            if board.flash_method == "autoinstall":
+                num, tag = board.autoinstall_index, ""
+            else:
+                num, tag = next_custom, "  (custom)"
+                next_custom += 1
             self.list.add_widget(self._option_button(
-                i, f"{board.display_name}  [{board.platform}]",
+                num, f"{board.display_name}  [{board.platform}]{tag}",
                 lambda b=board: self._pick_board(b)))
 
     def _pick_board(self, board):
