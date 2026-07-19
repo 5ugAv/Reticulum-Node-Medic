@@ -144,11 +144,19 @@ class VitalsScreen(BoxLayout):
         """Replace the node list (e.g. from a live MonitorService poll) and
         re-render, preserving the active filter/search."""
         self.nodes = nodes or []
+        self._highlight_filter()          # tab counts follow the data
         self.refresh()
 
     def _highlight_filter(self):
-        """The selected tab reads as selected even when its list is empty."""
+        """The selected tab reads as selected even when its list is empty, and
+        every tab carries its count — an empty tab says 0 instead of nothing.
+        Neighbours (status unknown: heard, health unknowable) count under All
+        only."""
+        counts = {"All": len(self.nodes)}
+        for f, st in _FILTER_TO_STATUS.items():
+            counts[f] = sum(1 for n in self.nodes if n.get("status") == st)
         for btn in getattr(self, "_filter_buttons", []):
+            btn.text = f"{btn.filter_name} {counts.get(btn.filter_name, 0)}"
             active = btn.filter_name == self.active_filter
             btn.background_color = theme.hex_to_rgba(
                 theme.COLORS["accent"] if active else theme.COLORS["surface"])
