@@ -56,6 +56,14 @@ def clamp_latlon(bounds, lat: float, lon: float) -> Tuple[float, float]:
     return (max(s, min(n, lat)), max(w, min(e, lon)))
 
 
+def subtile_cell(x: int, y: int, k: int):
+    """For tile (x,y), its ancestor *k* zoom levels up is (x>>k, y>>k); this tile
+    is cell (col, row) in that ancestor's 2^k x 2^k grid (row 0 = top). Returns
+    (col, row, cells) — used to overzoom a low-zoom tile into a missing high one."""
+    cells = 1 << k
+    return (x - ((x >> k) << k), y - ((y >> k) << k), cells)
+
+
 def touch_separation(points) -> float:
     """Largest gap between any two touch points; 0.0 with fewer than two. Used to
     tell a real two-finger pinch (points far apart) from a panel reporting ONE

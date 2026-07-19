@@ -264,6 +264,34 @@ class MapPlot(Widget):
             self._tex_cache.pop(next(iter(self._tex_cache)))
         return tex
 
+    def _draw_tile(self, t):
+        """Draw one tile at its screen position. If the exact (z,x,y) tile isn't
+        cached — the cache is sparse at high zoom / per-area — OVERZOOM from the
+        nearest cached ancestor (a lower-zoom tile, its matching quadrant scaled
+        up). Blurry beats black: the pane never goes blank when you zoom in."""
+        from ui.map_tiles import subtile_cell
+        pos = (self.x + t.screen_x, self.y + t.screen_y)
+        tex = self._tile_texture(t.z, t.x, t.y)
+        if tex is not None:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=tex, pos=pos, size=(TILE_SIZE, TILE_SIZE))
+            return
+        for k in range(1, t.z + 1):               # walk up the zoom pyramid
+            atex = self._tile_texture(t.z - k, t.x >> k, t.y >> k)
+            if atex is None:
+                continue
+            col, row, cells = subtile_cell(t.x, t.y, k)
+            sub = max(1, TILE_SIZE // cells)      # region size in the 256px tile
+            rx = col * sub
+            ry = TILE_SIZE - (row + 1) * sub      # texture origin is bottom-left
+            try:
+                region = atex.get_region(rx, ry, sub, sub)
+            except Exception:
+                return
+            Color(1, 1, 1, 1)
+            Rectangle(texture=region, pos=pos, size=(TILE_SIZE, TILE_SIZE))
+            return
+
     def set_me(self, latlon):
         """Update the medic's own live GPS position (lat, lon) — the "you are
         here" marker. None clears it. Cheap no-op when unchanged."""
@@ -351,13 +379,7 @@ class MapPlot(Widget):
         r = dp(6)
         with self.canvas:
             for t in tiles_for_view(view):
-                tex = self._tile_texture(t.z, t.x, t.y)   # cached decode
-                if tex is None:
-                    continue          # missing/unreadable tile — keep the map
-                Color(1, 1, 1, 1)
-                Rectangle(texture=tex,
-                          pos=(self.x + t.screen_x, self.y + t.screen_y),
-                          size=(TILE_SIZE, TILE_SIZE))
+                self._draw_tile(t)
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
                 Color(*theme.status_rgba(p.status))

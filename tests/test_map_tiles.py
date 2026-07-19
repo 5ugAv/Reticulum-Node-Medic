@@ -202,3 +202,12 @@ def test_touch_separation_distinguishes_pinch_from_phantom_double():
     assert touch_separation([(100, 100), (108, 104)]) < 20  # below PINCH_MIN_SEP
     # two real fingers, far apart -> large
     assert touch_separation([(100, 200), (400, 240)]) > 250
+
+
+def test_subtile_cell_locates_the_quadrant_for_overzoom():
+    from ui.map_tiles import subtile_cell
+    # one level up: tile (5,3) sits in ancestor (2,1); it's the odd/odd cell (1,1)
+    assert subtile_cell(5, 3, 1) == (1, 1, 2)
+    assert subtile_cell(4, 2, 1) == (0, 0, 2)     # even/even -> top-left
+    # two levels up: 4x4 grid; tile (5,3) -> ancestor (1,0), cell (1,3)
+    assert subtile_cell(5, 3, 2) == (1, 3, 4)
