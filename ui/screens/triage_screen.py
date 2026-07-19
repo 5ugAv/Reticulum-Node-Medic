@@ -220,6 +220,23 @@ class TriageScreen(FloatLayout):
                 lbl.text = _label
                 lbl.center = (x, y)
 
+    def _write_guidance(self, text, markup=False) -> None:
+        """Set the guidance line UNLESS a message is pinned (e.g. the just-saved
+        GPS location, held ~10s so the operator can actually read it before the
+        live per-packet guidance overwrites it)."""
+        if getattr(self, "_guidance_pinned", False):
+            return
+        self._guidance.markup = markup
+        self._guidance.text = text
+
+    def _pin_guidance(self, seconds: float = 10.0) -> None:
+        self._guidance_pinned = True
+        ev = getattr(self, "_guidance_pin_event", None)
+        if ev is not None:
+            ev.cancel()
+        self._guidance_pin_event = Clock.schedule_once(
+            lambda dt: setattr(self, "_guidance_pinned", False), seconds)
+
     def _tick(self, dt) -> None:
         try:
             sample = self._reader()
@@ -231,10 +248,9 @@ class TriageScreen(FloatLayout):
             # live noise, but nothing heard yet — scoring needs a transmission
             self._noise.text = ("[color=9e9e9e]Background noise[/color]\n"
                                 f"[color=f0f0f0][b]{sample['noise']:.0f} dBm[/b][/color]")
-            self._guidance.markup = False
-            self._guidance.text = ("Listening... noise floor is live. To begin "
-                                   "scoring, another node must transmit - send "
-                                   "an announce from your phone or a node.")
+            self._write_guidance(
+                "Listening... noise floor is live. To begin scoring, another "
+                "node must transmit - send an announce from your phone or a node.")
             return
         self._beacon_answered = True      # a real packet arrived (beacon works)
         snap = self._session.feed(sample["snr"], sample["rssi"], sample["noise"],
@@ -269,21 +285,19 @@ class TriageScreen(FloatLayout):
         self._peers.text = cell("Peers", f"{sample.get('peers', 0)} heard")
 
         if sample["rssi"] >= -35:
-            self._guidance.markup = False
-            self._guidance.text = ("Signal is TOO CLOSE to aim against "
-                                   f"({sample['rssi']:.0f} dBm). Move the "
-                                   "beacon/lighthouse further away - readings "
-                                   "this hot look perfect in every direction.")
+            self._write_guidance(
+                "Signal is TOO CLOSE to aim against "
+                f"({sample['rssi']:.0f} dBm). Move the beacon/lighthouse further "
+                "away - readings this hot look perfect in every direction.")
             return
         r, g, b = thermal_color(snap["score"])
         col = "%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-        self._guidance.text = f"[color={col}]{snap['guidance']}[/color]"
-        self._guidance.markup = True
+        self._write_guidance(f"[color={col}]{snap['guidance']}[/color]", markup=True)
 
     def _save(self, *a) -> None:
         """Save this mount point's GPS coordinates (the signal baseline is
-        captured automatically as the goal)."""
-        self._guidance.markup = False
+        captured automatically as the goal). Pin the confirmation ~10s so the
+        live guidance loop doesn't wipe it before it can be read."""
         try:
             from monitor.geo import read_splitter_fix
             fix = read_splitter_fix()
@@ -293,12 +307,14 @@ class TriageScreen(FloatLayout):
             best = self._session.best_reading
             extra = (f", best clarity {best['snr']:+.1f} dB"
                      if best else "")
-            self._guidance.text = (f"Location saved: {fix.lat:.5f}, {fix.lon:.5f}"
-                                   f"{extra}. This node is now on the map.")
+            msg = (f"Location saved: {fix.lat:.5f}, {fix.lon:.5f}"
+                   f"{extra}. This node is now on the map.")
         else:
-            self._guidance.text = ("No GPS fix yet - connect the GPS antenna and "
-                                   "give it a clear view of the sky to save this "
-                                   "node's location.")
+            msg = ("No GPS fix yet - connect the GPS antenna and give it a clear "
+                   "view of the sky to save this node's location.")
+        self._guidance.markup = False
+        self._guidance.text = msg
+        self._pin_guidance(10.0)
 
     def stop(self) -> None:
         event = getattr(self, "_event", None)
