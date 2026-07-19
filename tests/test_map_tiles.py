@@ -143,3 +143,21 @@ def test_view_at_centres_the_point():
     v = view_at(-37.79, 144.96, 11, 700, 500)
     sx, sy = v.to_screen(-37.79, 144.96)
     assert abs(sx - 350) < 1e-6 and abs(sy - 250) < 1e-6
+
+
+def test_clamp_latlon_keeps_pan_inside_cached_bounds():
+    from ui.map_tiles import clamp_latlon
+    # bounds = (min_lon, min_lat, max_lon, max_lat) — a small cached area
+    bounds = (144.5, -38.0, 145.5, -37.0)
+    # inside stays put
+    assert clamp_latlon(bounds, -37.5, 145.0) == (-37.5, 145.0)
+    # panned far south-west of the cache -> pinned to the SW corner (never black)
+    assert clamp_latlon(bounds, -60.0, 100.0) == (-38.0, 144.5)
+    # panned far north-east -> pinned to the NE corner
+    assert clamp_latlon(bounds, 10.0, 179.0) == (-37.0, 145.5)
+
+
+def test_clamp_latlon_is_identity_without_bounds():
+    from ui.map_tiles import clamp_latlon
+    assert clamp_latlon(None, -37.5, 145.0) == (-37.5, 145.0)
+    assert clamp_latlon((), 12.3, -8.1) == (12.3, -8.1)
