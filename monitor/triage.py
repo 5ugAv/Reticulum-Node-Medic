@@ -48,6 +48,7 @@ LOCK_HOLD_S = 3.0                 # stable in the bullseye this long -> locked
 GOAL_MARGIN = 0.04                # within this of the best found = "at the goal"
 GOAL_MIN = 0.45                   # the goal must be at least this good to celebrate
 GOAL_DIP = 0.08                   # must fall this far below best first (a real peak)
+GOAL_GLOW_BAND = 0.20             # proximity glow fades to 0 this far below the goal
 
 
 def _percentile(sorted_vals: List[float], pct: float) -> float:
@@ -238,6 +239,15 @@ class TriageSession:
                 self._dipped = True
             at_goal = (self._dipped and self.best_score >= GOAL_MIN
                        and smoothed >= self.best_score - GOAL_MARGIN)
+
+        # Continuous proximity-to-goal (0..1): 1 = right on the best spot, fading
+        # to 0 as you move off it. Drives the screen's green glow (bright on the
+        # sweet spot, dimming as you drift) so the last bit of aiming is a
+        # brightness hill to climb, not an on/off flash.
+        goal_proximity = 0.0
+        if self._dipped and self.best_score >= GOAL_MIN and t >= self._goal_after:
+            goal_proximity = max(0.0, min(1.0,
+                (smoothed - (self.best_score - GOAL_GLOW_BAND)) / GOAL_GLOW_BAND))
         elif smoothed > self.best_score:
             # still track a best for the Save button during the grace window
             self.best_score = smoothed
@@ -265,7 +275,8 @@ class TriageSession:
             "dot_radius": 1.0 - smoothed,      # 0.0 = centre (hot), 1.0 = outer edge
             "metrics": metrics,                # per-metric 0..1 (triangle corners)
             "goal": self.best_score,           # auto-baseline for this area
-            "at_goal": at_goal,                # -> green "GOOD, mount here" flash
+            "at_goal": at_goal,                # right on the goal (near proximity 1)
+            "goal_proximity": goal_proximity,  # 0..1 -> green glow brightness
             "guidance": guidance_text(ring, colder, self.locked, usable),
         }
 
