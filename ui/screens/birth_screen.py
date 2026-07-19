@@ -21,7 +21,9 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
@@ -29,6 +31,19 @@ from node_profile import RadioConfig
 from ui import theme
 from ui.birth import birth_node_types, rnode_board_choices
 from ui.qr import birth_cert_payload, qr_matrix
+from workflows.power_compat import check as power_check
+
+#: Host Pi options for the right-hand dropdown: (power_compat key, display). The
+#: last entry is "no Pi" — flash a standalone radio with no host to power it.
+PI_HOSTS = [
+    ("pi_5_full", "Raspberry Pi 5  (5 A / full USB)"),
+    ("pi_5", "Raspberry Pi 5  (3 A supply)"),
+    ("pi_4b", "Raspberry Pi 4 B"),
+    ("pi_3b_plus", "Raspberry Pi 3 B+"),
+    ("pi_3a_plus", "Raspberry Pi 3 A+"),
+    ("pi_zero_2w", "Raspberry Pi Zero 2 W"),
+    ("none", "None — standalone radio (flash only)"),
+]
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
@@ -94,15 +109,15 @@ class BirthScreen(BoxLayout):
         self._workflow = None
 
         self._labels = dict(birth_node_types())      # key -> display label
+        self._boards = list(rnode_board_choices())
+        self._board_by_name = {b.display_name: b for b in self._boards}
+        self._pi_by_name = {name: key for key, name in PI_HOSTS}
 
-        # The header swaps between the type PICKER and a focused "Building X —
-        # Change" bar. Keeping one container we repopulate keeps the layout
-        # steady (no jumping) as we move between steps.
         self.header = BoxLayout(orientation="vertical", size_hint_y=None,
                                 spacing=dp(6))
         self.header.bind(minimum_height=self.header.setter("height"))
         self.add_widget(self.header)
-        self._show_picker()
+        self._build_chooser()
 
         self.scroll = ScrollView()
         self.list = BoxLayout(orientation="vertical", size_hint_y=None,
@@ -111,54 +126,119 @@ class BirthScreen(BoxLayout):
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
 
-    def _show_picker(self):
-        """The full type chooser — every option visible (the starting state)."""
+    def _build_chooser(self):
+        """Two dropdowns — flashable RNode board (left) + host Pi (right) — then
+        Continue. RTNode-2400 and Mitosis stay as secondary entry points."""
         self.header.clear_widgets()
-        self.header.add_widget(_line("Birth a new node — choose a type:",
-                                     bold=True, size="18sp"))
-        row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                        height=dp(56), spacing=dp(8))
-        for key, label in birth_node_types():
-            btn = Button(
-                text=label, background_normal="",
-                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                color=theme.hex_to_rgba(theme.COLORS["background"]))
-            btn.bind(on_release=lambda *_a, k=key: self.choose(k))
-            row.add_widget(btn)
+        self.list.clear_widgets() if hasattr(self, "list") else None
+        self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
+        self.header.add_widget(_line("Choose the radio board and the host Pi:",
+                                     size="13sp", color="text_secondary"))
+
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(82),
+                        spacing=dp(10))
+        left = BoxLayout(orientation="vertical", spacing=dp(4))
+        left.add_widget(_line("Radio board (RNode)", size="13sp", color="accent"))
+        self._board_spinner = Spinner(
+            text="Select a board", values=[b.display_name for b in self._boards],
+            size_hint_y=None, height=dp(52), font_size="15sp",
+            background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        left.add_widget(self._board_spinner)
+        right = BoxLayout(orientation="vertical", spacing=dp(4))
+        right.add_widget(_line("Host Pi", size="13sp", color="accent"))
+        self._pi_spinner = Spinner(
+            text="Select a Pi", values=[name for _, name in PI_HOSTS],
+            size_hint_y=None, height=dp(52), font_size="15sp",
+            background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        right.add_widget(self._pi_spinner)
+        row.add_widget(left)
+        row.add_widget(right)
         self.header.add_widget(row)
-        if hasattr(self, "list"):
+
+        cont = Button(text="Continue", size_hint_y=None, height=dp(56),
+                      font_size="20sp", bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        cont.bind(on_release=lambda *_: self._on_continue())
+        self.header.add_widget(cont)
+
+        extra = BoxLayout(orientation="horizontal", size_hint_y=None,
+                          height=dp(40), spacing=dp(8))
+        rt = Button(text="RTNode-2400 (ESP32, no Pi)", font_size="12sp",
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                    color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        rt.bind(on_release=lambda *_: self.show_params("rtnode2400"))
+        mit = Button(text="Mitosis (clone tool)", font_size="12sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                     color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        mit.bind(on_release=lambda *_: self._on_mitosis and self._on_mitosis())
+        extra.add_widget(rt)
+        extra.add_widget(mit)
+        self.header.add_widget(extra)
+
+    def _on_continue(self):
+        """Validate the board+Pi selection, warn on a power-incompatible combo,
+        else go to the pre-filled params form."""
+        board = self._board_by_name.get(self._board_spinner.text)
+        if board is None:
             self.list.clear_widgets()
-
-    def _focus(self, node_type):
-        """Collapse the chooser to a single bar — 'Building: X   [Change]' — so
-        the other options get out of the way. One task at a time."""
-        self.header.clear_widgets()
-        bar = BoxLayout(orientation="horizontal", size_hint_y=None,
-                        height=dp(46), spacing=dp(8))
-        bar.add_widget(_line(f"Building:  {self._labels.get(node_type, node_type)}",
-                             bold=True, size="18sp"))
-        change = Button(text="Change", size_hint_x=None, width=dp(110),
-                        background_normal="",
-                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        change.bind(on_release=lambda *_a: self._show_picker())
-        bar.add_widget(change)
-        self.header.add_widget(bar)
-
-    def choose(self, node_type):
-        """Route a chosen Birth type. The chooser collapses to a focused bar;
-        Mitosis hands straight off to the clone screen (its workflow verifies a
-        Pi 5 first); RNode opens the board picker; the rest go to the pre-filled
-        radio-params form and a big OK."""
-        if node_type == "mitosis":
-            if self._on_mitosis:
-                self._on_mitosis()
+            self.list.add_widget(_line("Pick a radio board first.", color="amber"))
             return
-        self._focus(node_type)
-        if node_type == "rnode":
-            self.show_boards()
-        elif node_type in self._factories:
-            self.show_params(node_type)
+        pi_key = self._pi_by_name.get(self._pi_spinner.text, "none")
+        if pi_key != "none":
+            verdict = power_check(pi_key, board.key)
+            if verdict and verdict.get("verdict") in ("blocked", "caution"):
+                self._show_power_popup(verdict, board.display_name, pi_key,
+                                       lambda: self._proceed(board, pi_key))
+                return
+        self._proceed(board, pi_key)
+
+    def _proceed(self, board, pi_key):
+        node_type = "rnode" if pi_key == "none" else "pi_rnode"
+        self.show_params(node_type, board=board)
+
+    def _show_power_popup(self, verdict, board_name, pi_key, on_proceed):
+        """Warn that this Pi can't power this board over USB — Proceed (⚠ red,
+        bottom-left) / Cancel (green, bottom-right)."""
+        pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
+        body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(6))
+        headline = ("blocked" if verdict["verdict"] == "blocked"
+                    else "may brown out")
+        body.add_widget(_line(
+            f"The {pi_name} may not power the {board_name} over USB — {headline}.",
+            bold=True, size="16sp", color="amber"))
+        body.add_widget(_line(verdict.get("why", ""), size="14sp"))
+        body.add_widget(_line(
+            f"Use a POWERED USB HUB between the Pi and the {board_name}, or it "
+            "can fail mid-flash / mid-transmit.", size="14sp", color="amber"))
+        for rem in verdict.get("remedies", [])[:3]:
+            body.add_widget(_line("  • " + rem, size="12sp",
+                                  color="text_secondary"))
+        btns = BoxLayout(orientation="horizontal", size_hint_y=None,
+                         height=dp(56), spacing=dp(10))
+        proceed = Button(text="⚠  Proceed anyway", font_size="16sp",
+                         bold=True, background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel = Button(text="Cancel", font_size="16sp", bold=True,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+        btns.add_widget(proceed)       # bottom-left
+        btns.add_widget(cancel)        # bottom-right
+        body.add_widget(btns)
+        popup = Popup(title="Power warning", content=body, size_hint=(0.92, 0.72),
+                      title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
+        proceed.bind(on_release=lambda *_: (popup.dismiss(), on_proceed()))
+        cancel.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
 
     # -- radio-params form (pre-filled with our canonical settings) ----------
 
@@ -232,10 +312,18 @@ class BirthScreen(BoxLayout):
         radio = self._read_params()
         self._last_board = board                 # remembered for the outcome panel
         self._last_type = node_type
-        if board is not None:
+        if node_type == "pi_rnode":
+            # Pi + RNode: provision the Pi AND flash the chosen board it hosts.
+            workflow = self._factories["pi_rnode"]()
+            prof = getattr(workflow, "profile", None)
+            if prof is not None and board is not None:
+                prof.rnode_board_key = board.key
+            title = (f"Building Pi + {board.display_name}..." if board
+                     else "Building Pi + RNode...")
+        elif board is not None:                  # standalone RNode flash (no Pi)
             workflow = self._rnode_flash_factory(board)
             title = f"Flashing {board.display_name}..."
-        else:
+        else:                                    # RTNode-2400
             workflow = self._factories[node_type]()
             title = f"Building {self._labels.get(node_type, node_type)}..."
         self._apply_radio(workflow, radio)
