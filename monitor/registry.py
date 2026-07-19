@@ -31,6 +31,40 @@ _BEACON_RE = re.compile(
 _STATUS_RANK = {"alert": 0, "warn": 1, "ok": 2, "unknown": 3}
 
 
+def _capabilities(members) -> dict:
+    """{lora, wifi, bluetooth, internet}: True = seen working, False = the
+    node itself reports it down, None = unknowable from here (renders grey)."""
+    lora = wifi = internet = None
+    for r in members:
+        iface = r.mesh_interface or ""
+        if "RNode" in iface:
+            lora = True                       # heard over the radio: proof
+        if "TCPInterface" in iface and internet is None:
+            internet = True                   # reached via an internet link
+        http, beacon = r.latest_http, r.latest_beacon
+        if http is not None and http.reachable:
+            wifi = bool(http.wifi_connected)
+            internet = bool(http.tcp_backbone_connected) or (internet is True)
+        elif beacon is not None and wifi is None:
+            wifi = bool(beacon.wifi_up)
+            if internet is None:
+                internet = bool(beacon.tcp_backbone_up)
+    return {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
+
+
+def _printable_name(app_data) -> str:
+    """A human display name from announce app_data, if one is legible (LXMF
+    prefixes a length byte before a UTF-8 name). Empty string otherwise."""
+    if not app_data:
+        return ""
+    try:
+        text = bytes(app_data).decode("utf-8", "ignore")
+    except Exception:
+        return ""
+    clean = "".join(c for c in text if c.isprintable()).strip()
+    return clean if 2 <= len(clean) <= 32 else ""
+
+
 def version_tuple(v: str):
     """Parse a dotted version ("0.6.2") into a comparable int tuple."""
     out = []
@@ -62,6 +96,8 @@ class NodeRecord:
     last_seen: Optional[float] = None       # epoch seconds
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
+    identity_hash: Optional[str] = None     # groups aspect-destinations per DEVICE
+    announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
     notes: List[str] = field(default_factory=list)
     events: List[CommissionEvent] = field(default_factory=list)
 
@@ -122,8 +158,9 @@ class NodeRecord:
         if neighbour and status == "ok":
             status = "unknown"           # heard != healthy; we know nothing yet
         return {
-            "name": self.name or (f"Neighbour {self.dst_hash[:8]}" if neighbour
-                                  else "(unnamed)"),
+            "name": self.name or (
+                (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
+                if neighbour else "(unnamed)"),
             "location": self.location or ("heard on the mesh" if neighbour else ""),
             "status": status,
             "type": self.node_type,
@@ -225,20 +262,35 @@ class NodeRegistry:
         return self.ingest(m.group(1), beacon, now)
 
     def ingest_announce(self, dst_hash: bytes, app_data: bytes,
-                        now: float) -> Optional[NodeRecord]:
+                        now: float,
+                        identity_hash: Optional[str] = None) -> Optional[NodeRecord]:
         """Adapter for an RNS announce handler. A live handler does:
 
             def received_announce(self, destination_hash, identity, app_data):
                 registry.ingest_announce(destination_hash, app_data, time.time())
 
-        *dst_hash* is the raw destination-hash bytes RNS provides. Returns
-        ``None`` if the payload isn't a decodable beacon.
+        *dst_hash* is the raw destination-hash bytes RNS provides. Every
+        announce marks the node HEARD (honest last-seen for neighbours) and
+        records the announced identity (groups a device's aspect-destinations)
+        and any announced display name. Beacon payloads additionally ingest
+        as health data.
         """
+        h = dst_hash.hex() if isinstance(dst_hash, (bytes, bytearray)) else str(dst_hash)
         try:
             beacon = decode(app_data)
         except (ValueError, TypeError):
-            return None
-        return self.ingest(dst_hash.hex(), beacon, now)
+            beacon = None
+        if beacon is not None:
+            rec = self.ingest(h, beacon, now)
+        else:
+            rec = self.nodes.get(h) or self.register(h)
+            rec.last_seen = now
+        if identity_hash:
+            rec.identity_hash = identity_hash
+        name = _printable_name(app_data)
+        if name and not rec.announced_name:
+            rec.announced_name = name
+        return rec
 
     def ingest_mesh(self, node, now: float) -> NodeRecord:
         """Fold a mesh path (a monitor.mesh.MeshNode) into the registry, keyed by
@@ -285,6 +337,33 @@ class NodeRegistry:
             self.nodes.values(),
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
+
+    def devices(self, now: float) -> List[dict]:
+        """The CONSOLIDATED dashboard: one row per physical device. Destinations
+        that announced the same identity collapse into one entry (a phone's
+        chat + files aspects are one phone), led by its best-known record.
+        Each row adds ``aspects`` (how many destinations merged) and
+        ``capabilities``: {lora, wifi, bluetooth, internet} — True (seen
+        working), False (reported down), None (no way to know yet)."""
+        groups: Dict[str, List[NodeRecord]] = {}
+        for rec in self.nodes.values():
+            groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
+        out = []
+        for members in groups.values():
+            primary = sorted(
+                members,
+                key=lambda r: (r.provenance != "kin", not r.name,
+                               _STATUS_RANK.get(r.status(now), 3)))[0]
+            d = primary.to_dashboard(now)
+            seen = [r.last_seen for r in members if r.last_seen is not None]
+            if seen:
+                d["last_seen_hours"] = max(0.0, (now - max(seen)) / 3600.0)
+            d["aspects"] = len(members)
+            d["capabilities"] = _capabilities(members)
+            out.append(d)
+        return sorted(out, key=lambda d: (d["provenance"] != "kin",
+                                          _STATUS_RANK.get(d["status"], 3),
+                                          d["name"].lower()))
 
     def located_nodes(self, now: float) -> List[dict]:
         """Every node with a known location, for SCAN mode — each as
@@ -346,6 +425,8 @@ class NodeRegistry:
                 "last_seen": r.last_seen,
                 "lat": r.lat,
                 "lon": r.lon,
+                "identity_hash": r.identity_hash,
+                "announced_name": r.announced_name,
                 "notes": list(r.notes),
                 "events": [
                     {"at": e.at, "kind": e.kind, "summary": e.summary,
@@ -370,6 +451,8 @@ class NodeRegistry:
                 last_seen=n.get("last_seen"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
+                identity_hash=n.get("identity_hash"),
+                announced_name=n.get("announced_name", ""),
             )
             rec.notes = list(n.get("notes", []))
             rec.events = [CommissionEvent(**e) for e in n.get("events", [])]

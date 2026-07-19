@@ -32,7 +32,7 @@ class NodeRow(BoxLayout):
         self.node = node
         self.orientation = "horizontal"
         self.size_hint_y = None
-        self.height = dp(64)
+        self.height = dp(80)
         self.spacing = dp(10)
         self.padding = dp(8)
 
@@ -51,6 +51,30 @@ class NodeRow(BoxLayout):
         loc.bind(size=lambda i, v: setattr(i, "text_size", v))
         text.add_widget(name)
         text.add_widget(loc)
+        caps = node.get("capabilities")
+        if caps:
+            chips = BoxLayout(orientation="horizontal", size_hint_y=None,
+                              height=dp(18), spacing=dp(10))
+            for key, label in (("lora", "LORA"), ("wifi", "WIFI"),
+                               ("bluetooth", "BT"), ("internet", "NET")):
+                active = caps.get(key) is True
+                chip = Label(text=label, font_size="11sp", bold=active,
+                             halign="left", valign="middle",
+                             size_hint_x=None, width=dp(44),
+                             color=theme.hex_to_rgba(
+                                 theme.COLORS["green"] if active
+                                 else theme.COLORS["text_secondary"],
+                                 1.0 if active else 0.45))
+                chip.bind(size=lambda i, v: setattr(i, "text_size", v))
+                chips.add_widget(chip)
+            if node.get("aspects", 1) > 1:
+                more = Label(text=f"x{node['aspects']} services",
+                             font_size="11sp", halign="left", valign="middle",
+                             color=theme.hex_to_rgba(
+                                 theme.COLORS["text_secondary"], 0.6))
+                more.bind(size=lambda i, v: setattr(i, "text_size", v))
+                chips.add_widget(more)
+            text.add_widget(chips)
         self.add_widget(text)
 
         is_rtnode = node.get("type") == "rtnode2400"
