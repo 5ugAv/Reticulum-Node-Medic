@@ -29,9 +29,10 @@ def _hex(name: str) -> str:
 class TriageScreen(FloatLayout):
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
-                 **kwargs):
+                 beacon_toggle=None, **kwargs):
         super().__init__(**kwargs)
         self._reader = feed_factory()
+        self._beacon_toggle = beacon_toggle
         self._session = TriageSession()
         self._clock = clock
 
@@ -134,6 +135,13 @@ class TriageScreen(FloatLayout):
         self._margin.text = cell("Headroom (margin)", f"{margin:.0f} dB spare")
         self._peers.text = cell("Peers", f"{sample.get('peers', 0)} heard")
 
+        if sample["rssi"] >= -35:
+            self._guidance.markup = False
+            self._guidance.text = ("Signal is TOO CLOSE to aim against "
+                                   f"({sample['rssi']:.0f} dBm). Move the "
+                                   "beacon/lighthouse further away - readings "
+                                   "this hot look perfect in every direction.")
+            return
         r, g, b = thermal_color(snap["score"])
         col = "%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
         self._guidance.text = f"[color={col}]{snap['guidance']}[/color]"

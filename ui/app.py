@@ -244,7 +244,11 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")
-        self.triage_screen = TriageScreen(feed_factory=_triage_feed)
+        def _toggle_beacon():
+            self.triage_beacon = not getattr(self, "triage_beacon", True)
+            return self.triage_beacon
+        self.triage_screen = TriageScreen(feed_factory=_triage_feed,
+                                          beacon_toggle=_toggle_beacon)
         triage.add_widget(self._with_back(self.triage_screen))
         self.sm.add_widget(triage)
 
@@ -289,6 +293,7 @@ class ReticulumNodeMedicApp(App):
         IDENTITY (collapses its aspect-destinations into one VITALS row) and
         often a display name — neighbours get real names, honest last-heard."""
         registry = self.monitor_service.registry
+        self.triage_beacon = True     # medic transmits while TRIAGE is open
 
         def listen():
             try:
@@ -314,6 +319,22 @@ class ReticulumNodeMedicApp(App):
 
                 RNS.Reticulum()          # attach to the shared instance
                 RNS.Transport.register_announce_handler(_Handler())
+                # TRIAGE lighthouse: while the Triage screen is open (and the
+                # toggle is on), announce every 12 s so the node being mounted
+                # has a steady signal to aim its antenna against. ~0.5 s of
+                # airtime per chirp at SF9 = well inside polite duty cycle.
+                ident = RNS.Identity()
+                chirp = RNS.Destination(ident, RNS.Destination.IN,
+                                        RNS.Destination.SINGLE,
+                                        "nodemedic", "triage")
+                while True:
+                    _t.sleep(12)
+                    try:
+                        if (self.sm.current == "triage"
+                                and getattr(self, "triage_beacon", False)):
+                            chirp.announce(app_data=b"\x0aNode Medic")
+                    except Exception:
+                        pass
             except Exception:
                 pass                     # no rnsd (dev box): silently offline
 
