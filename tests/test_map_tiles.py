@@ -161,3 +161,34 @@ def test_clamp_latlon_is_identity_without_bounds():
     from ui.map_tiles import clamp_latlon
     assert clamp_latlon(None, -37.5, 145.0) == (-37.5, 145.0)
     assert clamp_latlon((), 12.3, -8.1) == (12.3, -8.1)
+
+
+def test_snap_zoom_never_requests_a_missing_level():
+    from ui.map_tiles import snap_zoom
+    zooms = [0, 1, 2, 8, 9, 10, 11, 12]      # sparse cache (no 3-7, max 12)
+    assert snap_zoom(zooms, 15) == 12        # zoom-in past cache -> cache max
+    assert snap_zoom(zooms, 7) == 2          # gap -> largest cached below
+    assert snap_zoom(zooms, 9) == 9          # exact hit
+    assert snap_zoom(zooms, -1) == 0         # below all -> smallest cached
+    assert snap_zoom([], 15) == 15           # no cache -> unchanged
+
+
+def test_step_zoom_skips_gaps_and_stops_at_edges():
+    from ui.map_tiles import step_zoom
+    zooms = [8, 9, 10, 11, 12]
+    assert step_zoom(zooms, 12, +1) == 12    # already at max -> stay (no blank)
+    assert step_zoom(zooms, 9, +1) == 10
+    assert step_zoom(zooms, 9, -1) == 8
+    assert step_zoom(zooms, 8, -1) == 8      # at min -> stay
+    # skips a missing mid-range level
+    assert step_zoom([6, 8, 9], 6, +1) == 8
+
+
+def test_mbtiles_zoom_levels_lists_cached_zooms(tmp_path):
+    from ui.map_download import MBTilesWriter
+    from ui.map_tiles import MBTiles
+    p = tmp_path / "z.mbtiles"
+    w = MBTilesWriter(str(p), "test", (144.5, -38.0, 145.5, -37.0), 8, 10)
+    w.put(8, 0, 0, b"t8"); w.put(10, 1, 1, b"t10")
+    w.close()
+    assert MBTiles(str(p)).zoom_levels() == [8, 10]
