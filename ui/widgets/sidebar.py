@@ -14,6 +14,7 @@ from ui import theme
 #   VITALS 🫀 (monitor dashboard) · SCAN 🧫 (topology + map) · BIRTH 🥚 (provision)
 #   TRIAGE 🩺 (site assessment) · PROBE 🩻 (diagnose + repair) · MITOSIS 🧬 (clone)
 MODES = [
+    ("home", "HOME"),
     ("vitals", "VITALS"),
     ("scan", "SCAN"),
     ("birth", "BIRTH"),
