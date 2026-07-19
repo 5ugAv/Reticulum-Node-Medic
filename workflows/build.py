@@ -201,14 +201,18 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
     # Pi+RNode radios get the status LED too. Fall back to stock when the RGB
     # firmware isn't built here, so the build never blocks on it.
     if wf.profile.rnode_board_key == V4_BOARD_KEY and rgb_firmware_available():
-        ok, detail = flash_rgb_carried(wf.connection, port,
-                                       wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
+        ok, detail, rgb_applied = flash_rgb_carried(
+            wf.connection, port, wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
         if ok:
             wf.profile.has_rnode = True
-            wf.profile.rnode_rgb_pin = NEOPIXEL_PIN   # RGB LED signal wire GPIO
+            if rgb_applied:
+                wf.profile.rnode_rgb_pin = NEOPIXEL_PIN   # RGB LED signal wire GPIO
+        # A working radio without the LED is still a SUCCESS — the status LED is
+        # an enhancement, not a requirement, so it never shows the operator a
+        # scary red failure on an otherwise-provisioned node.
         return StepResult("flash_rnode_firmware", ok,
                           f"Flashed {board.display_name}: {detail}" if ok
-                          else f"RGB flash failed: {detail}")
+                          else f"Flash failed: {detail}")
 
     # birth_flash makes the fresh-board second pass part of the process.
     ok, msg, _already = birth_flash(wf.connection, board, port,
