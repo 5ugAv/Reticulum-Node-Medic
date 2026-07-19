@@ -244,12 +244,13 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")
-        def _toggle_beacon():
-            self.triage_beacon = not getattr(self, "triage_beacon", True)
-            return self.triage_beacon
-        self.triage_screen = TriageScreen(feed_factory=_triage_feed,
-                                          beacon_toggle=_toggle_beacon)
+        self.triage_screen = TriageScreen(
+            feed_factory=_triage_feed, lighthouse=self._lighthouse,
+            on_build=lambda: self.switch_mode("birth"))
         triage.add_widget(self._with_back(self.triage_screen))
+        # opening Triage auto-activates the beacon; leaving it stops it
+        triage.bind(on_enter=lambda *a: self.triage_screen.enter_triage(),
+                    on_leave=lambda *a: self.triage_screen.stop_lighthouse())
         self.sm.add_widget(triage)
 
         probe = Screen(name="probe")
@@ -291,14 +292,17 @@ class ReticulumNodeMedicApp(App):
     def _start_announce_listener(self):
         """Hear announces live (via the shared rnsd): each carries the device
         IDENTITY (collapses its aspect-destinations into one VITALS row) and
-        often a display name — neighbours get real names, honest last-heard."""
+        often a display name. A second handler collects rtnode.health nodes as
+        beacon targets for the Triage lighthouse."""
         registry = self.monitor_service.registry
-        self.triage_beacon = True     # medic transmits while TRIAGE is open
+        self._beacon_targets = {}          # dst_hash -> RNS identity (rtnode.health)
 
         def listen():
             try:
                 import time as _t
                 import RNS
+
+                app = self
 
                 class _Handler:
                     aspect_filter = None
@@ -317,30 +321,111 @@ class ReticulumNodeMedicApp(App):
                         except Exception:
                             pass
 
+                class _HealthHandler:
+                    aspect_filter = "rtnode.health"
+
+                    def received_announce(_h, destination_hash,
+                                          announced_identity, app_data):
+                        # a kin RTNode we can COMMAND to beacon (verified live:
+                        # a 0x01 packet to rtnode.health -> immediate reply)
+                        try:
+                            app._beacon_targets[destination_hash.hex()] = \
+                                announced_identity
+                        except Exception:
+                            pass
+
                 RNS.Reticulum()          # attach to the shared instance
                 RNS.Transport.register_announce_handler(_Handler())
-                # TRIAGE lighthouse: while the Triage screen is open (and the
-                # toggle is on), announce every 12 s so the node being mounted
-                # has a steady signal to aim its antenna against. ~0.5 s of
-                # airtime per chirp at SF9 = well inside polite duty cycle.
-                ident = RNS.Identity()
-                chirp = RNS.Destination(ident, RNS.Destination.IN,
-                                        RNS.Destination.SINGLE,
-                                        "nodemedic", "triage")
-                while True:
-                    _t.sleep(12)
-                    try:
-                        if (self.sm.current == "triage"
-                                and getattr(self, "triage_beacon", False)):
-                            chirp.announce(app_data=b"\x0aNode Medic")
-                    except Exception:
-                        pass
+                RNS.Transport.register_announce_handler(_HealthHandler())
             except Exception:
                 pass                     # no rnsd (dev box): silently offline
 
         threading.Thread(target=listen, daemon=True).start()
 
+    def _gather_beacon_targets(self):
+        """dst_hash -> identity for every kin RTNode we can command as a
+        lighthouse: live-captured announces PLUS any identity RNS has ever
+        recalled (so it works after a power-cycle and across app restarts, not
+        only right after a fresh announce)."""
+        targets = dict(getattr(self, "_beacon_targets", {}))
+        try:
+            import RNS
+            for h in list(self.monitor_service.registry.nodes):
+                if h in targets:
+                    continue
+                try:
+                    ident = RNS.Identity.recall(bytes.fromhex(h))
+                    if ident is None:
+                        continue
+                    d = RNS.Destination(ident, RNS.Destination.OUT,
+                                        RNS.Destination.SINGLE, "rtnode", "health")
+                    if d.hash.hex() == h:
+                        targets[h] = ident
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return targets
+
+    def _target_names(self, targets):
+        reg = self.monitor_service.registry
+        names = [(reg.nodes.get(h).name if (reg.nodes.get(h)
+                  and reg.nodes.get(h).name) else f"node {h[:8]}")
+                 for h in targets]
+        return ", ".join(names) if names else "a node"
+
+    def _lighthouse(self, active):
+        """TRIAGE beacon control, auto-called when the screen opens. active=True
+        commands every known kin RTNode to transmit (~every 9 s) so a node's
+        antenna can be aimed against a real distant signal, and returns a status
+        dict {state, text, names}: 'active' (a beacon is known/commanded),
+        'need_power' (a kin RTNode is registered but not known to RNS), or
+        'need_build' (no lighthouse RTNode exists yet). active=False stops.
+        RNS-guarded, so it's a harmless no-op on a dev box."""
+        if not active:
+            self._lighthouse_on = False
+            return {}
+        targets = self._gather_beacon_targets()
+        if targets:
+            self._lighthouse_on = True
+            self._active_targets = targets
+            threading.Thread(target=self._beacon_loop, daemon=True).start()
+            names = self._target_names(targets)
+            return {"state": "active", "names": names,
+                    "text": f"Beacon on - commanding {names} to transmit. Aim "
+                            "the antenna and watch the triangle."}
+        reg = self.monitor_service.registry
+        rtnodes = [r.name for r in reg.nodes.values()
+                   if r.node_type == "rtnode2400" and r.provenance == "kin"
+                   and r.name]
+        if rtnodes:
+            nm = ", ".join(rtnodes)
+            return {"state": "need_power", "names": nm,
+                    "text": f"Power on your beacon node ({nm}) so Triage can "
+                            "command it to transmit for aiming."}
+        return {"state": "need_build",
+                "text": "Triage needs a distant RTNode to aim against. Build one "
+                        "to pair as your lighthouse beacon."}
+
+    def _beacon_loop(self):
+        import time as _t
+        try:
+            import RNS
+        except Exception:
+            return
+        while getattr(self, "_lighthouse_on", False):
+            for _dh, ident in list(getattr(self, "_active_targets", {}).items()):
+                try:
+                    dest = RNS.Destination(ident, RNS.Destination.OUT,
+                                           RNS.Destination.SINGLE,
+                                           "rtnode", "health")
+                    RNS.Packet(dest, bytes([0x01])).send()
+                except Exception:
+                    pass
+            _t.sleep(9)
+
     def on_stop(self):
+        self._lighthouse_on = False
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
             stop.set()
