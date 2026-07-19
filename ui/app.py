@@ -21,7 +21,6 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen, ScreenManager
 
 from ui import theme
-from ui.widgets.sidebar import Sidebar
 from ui.screens.vitals_screen import VitalsScreen
 from ui.screens.scan_screen import ScanScreen
 from ui.screens.probe_screen import ProbeScreen
@@ -175,6 +174,25 @@ def _placeholder(title):
 class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
+    def _with_back(self, widget):
+        """A mode screen plus the BACK button (bottom-right, thumb-sized) that
+        returns to the front page."""
+        from kivy.uix.floatlayout import FloatLayout
+        from kivy.uix.button import Button
+        from kivy.metrics import dp
+        wrap = FloatLayout()
+        widget.size_hint = (1, 1)
+        wrap.add_widget(widget)
+        back = Button(text="BACK", bold=True, font_size="14sp",
+                      size_hint=(None, None), size=(dp(84), dp(48)),
+                      pos_hint={"right": 0.985, "y": 0.012},
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"], 0.92),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        back.bind(on_release=lambda *_: self.switch_mode("home"))
+        wrap.add_widget(back)
+        return wrap
+
     def build(self):
         Window.clearcolor = theme.hex_to_rgba(theme.COLORS["background"])
         # On the medic's touchscreen, fill the native display (which may be
@@ -184,7 +202,8 @@ class ReticulumNodeMedicApp(App):
         else:
             Window.fullscreen = "auto"
 
-        root = BoxLayout(orientation="horizontal")
+        # No sidebar: the front page IS the navigation (its cards open the
+        # modes); every mode screen carries a BACK button bottom-right.
         self.sm = ScreenManager()
 
         # HOME: the designed front page — the poster's cards open the modes.
@@ -205,41 +224,39 @@ class ReticulumNodeMedicApp(App):
         # nodes instead (they confused a real deployment, so default off).
         seed = DEMO_NODES if os.environ.get("RNM_DEMO") else []
         self.vitals_screen = VitalsScreen(nodes=seed)
-        vitals.add_widget(self.vitals_screen)
+        vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)
         self._start_monitor_polling()
 
         scan = Screen(name="scan")
         self.scan_screen = ScanScreen(nodes=self.monitor_service.located_nodes())
-        scan.add_widget(self.scan_screen)
+        scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
 
         birth = Screen(name="birth")
-        birth.add_widget(BirthScreen(
+        birth.add_widget(self._with_back(BirthScreen(
             workflow_factories={"rtnode2400": _demo_rtnode_build,
                                 "pi_rnode": _demo_pi_build},
             rnode_flash_factory=_demo_rnode_flash,
-            on_mitosis=lambda: self.switch_mode("mitosis")))
+            on_mitosis=lambda: self.switch_mode("mitosis"))))
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")
         self.triage_screen = TriageScreen(feed_factory=_triage_feed)
-        triage.add_widget(self.triage_screen)
+        triage.add_widget(self._with_back(self.triage_screen))
         self.sm.add_widget(triage)
 
         probe = Screen(name="probe")
-        probe.add_widget(ProbeScreen(workflow_factory=_demo_repair_workflow))
+        probe.add_widget(self._with_back(ProbeScreen(workflow_factory=_demo_repair_workflow)))
         self.sm.add_widget(probe)
 
         mitosis = Screen(name="mitosis")
-        mitosis.add_widget(MitosisScreen(workflow_factory=_demo_clone_workflow))
+        mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_demo_clone_workflow)))
         self.sm.add_widget(mitosis)
 
         self.sm.current = os.environ.get("RNM_START", "home")
-        root.add_widget(Sidebar(on_select=self.switch_mode))
-        root.add_widget(self.sm)
-        return root
+        return self.sm
 
     def _start_monitor_polling(self, interval: float = 30.0):
         """Poll the LAN on a background thread; push live nodes to the screen
