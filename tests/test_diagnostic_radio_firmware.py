@@ -279,6 +279,20 @@ def test_fix_eeprom_non_v4_uses_autoinstall_only():
     assert not any("esptool" in c for c in conn.history)
 
 
+def test_fix_eeprom_failure_surfaces_recovery_ladder():
+    # When autoinstall can't reflash, PROBE must hand the operator the recovery
+    # steps (BOOT+RST, good cable, flash-on-medic), not a dead-end error.
+    from diagnostics.radio_firmware import FLASH_RECOVERY
+    conn = conn_with()
+    conn.rules.insert(0, ("--autoinstall", 1,
+                          "", "Serial data stream stopped: Possible serial noise"))
+    fix = RadioFirmwareCheck(conn, NodeProfile()).fix(_eeprom_issue())
+    assert fix.success is False
+    assert FLASH_RECOVERY in fix.message
+    for cue in ("BOOT", "cable", "Node Medic"):
+        assert cue in fix.message
+
+
 def test_fix_frequency_runs_rnodeconf():
     info = GOOD_INFO.replace("915.125 MHz", "868.0 MHz")
     conn = conn_with(info=info)

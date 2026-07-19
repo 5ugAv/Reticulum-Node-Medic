@@ -17,6 +17,22 @@ from diagnostics.base import DiagnosticCheck, Fix, Issue
 #: hardware — rnodeconf --info reports e.g. "Firmware version   : 1.86").
 LATEST_FIRMWARE = "1.86"
 
+#: When a reflash won't take (esptool "serial data stream stopped" / can't sync),
+#: this is the field-tested recovery ladder — surfaced verbatim in the repair
+#: result so the operator gets the next move instead of a dead-end error. Order
+#: matters: cheapest/most-likely first. (See memory: node-flash-recovery.)
+FLASH_RECOVERY = (
+    "Flash didn't take. Try, in order:\n"
+    "  1. Manual bootloader: on the board hold BOOT/PRG, tap RST, release BOOT, "
+    "then run the fix again.\n"
+    "  2. Swap to a SHORT, known-good USB DATA cable — charge-only or long/thin "
+    "cables cause exactly this 'serial noise/corruption'.\n"
+    "  3. Flash the board on Node Medic's OWN USB port instead — the medic can "
+    "power-cycle the port for a clean reset, the most reliable recovery.\n"
+    "  4. Check power: a board that browns out mid-write corrupts the flash — "
+    "give it its own supply."
+)
+
 
 def _ver_tuple(v: str):
     return tuple(int(x) for x in re.findall(r"\d+", v or ""))
@@ -294,14 +310,16 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 message=("Reprovisioned the EEPROM and restored the Heltec V4 "
                          "NeoPixel firmware." if ok
                          else f"V4 RGB reflash failed at "
-                              f"{results[-1].name}: {results[-1].message}"),
+                              f"{results[-1].name}: {results[-1].message}\n\n"
+                              f"{FLASH_RECOVERY}"),
                 raw_output=detail)
         code, out, err = self._run_cmd(
             f"rnodeconf {port} --autoinstall", timeout=400)
         ok = code == 0
         return Fix(issue=issue, success=ok,
                    message=("Reprovisioned the EEPROM via autoinstall." if ok
-                            else f"autoinstall failed: {(err or out)[-200:]}"),
+                            else f"autoinstall failed: {(err or out)[-200:]}\n\n"
+                                 f"{FLASH_RECOVERY}"),
                    raw_output=out)
 
     def _fix_flow_control(self, issue: Issue) -> Fix:
