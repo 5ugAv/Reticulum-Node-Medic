@@ -284,6 +284,75 @@ def test_located_nodes_empty_when_none_geotagged():
     assert r.located_nodes(NOW) == []
 
 
-def test_ingest_announce_rejects_bad_payload():
+def test_ingest_announce_without_beacon_still_marks_heard():
+    # changed 2026-07-19: a non-beacon announce no longer vanishes — the node
+    # is registered as a heard neighbour (honest last-seen), just without
+    # health data.
     r = NodeRegistry()
-    assert r.ingest_announce(bytes.fromhex(HASH), b"\x01\x02", NOW) is None
+    rec = r.ingest_announce(bytes.fromhex(HASH), b"\x01\x02", NOW)
+    assert rec is not None and rec.last_seen == NOW
+    assert rec.latest_beacon is None
+
+
+# ---- device consolidation + capabilities (#54) -----------------------------
+
+def test_same_identity_destinations_collapse_to_one_device():
+    reg = NodeRegistry()
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"\x06Solids", 1000.0,
+                        identity_hash="ident1")
+    reg.ingest_announce(bytes.fromhex("bb" * 16), b"", 2000.0,
+                        identity_hash="ident1")
+    rows = reg.devices(now=2000.0)
+    assert len(rows) == 1                          # one phone, not two rows
+    assert rows[0]["aspects"] == 2
+    assert rows[0]["name"] == "Solids"             # announced name surfaces
+    assert rows[0]["last_seen_hours"] == 0.0       # freshest member wins
+
+
+def test_different_identities_stay_separate():
+    reg = NodeRegistry()
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"", 1000.0, identity_hash="i1")
+    reg.ingest_announce(bytes.fromhex("bb" * 16), b"", 1000.0, identity_hash="i2")
+    assert len(reg.devices(now=1000.0)) == 2
+
+
+def test_capabilities_lora_true_when_heard_on_the_radio():
+    reg = NodeRegistry()
+    class _Mesh:
+        dst_hash = "cc" * 16
+        hops = 1
+        interface = "RNodeInterface[RNode LoRa Interface]"
+    reg.ingest_mesh(_Mesh(), now=1000.0)
+    caps = reg.devices(now=1000.0)[0]["capabilities"]
+    assert caps["lora"] is True
+    assert caps["bluetooth"] is None               # unknowable -> grey
+    assert caps["wifi"] is None
+
+
+def test_capabilities_from_a_health_beacon():
+    reg = NodeRegistry()
+    reg.ingest(HASH, decode(encode(uptime_s=5, heap_kb=100, wifi_rssi_dbm=-60,
+                                   reset_reason=0, wifi_up=True, lora_up=True,
+                                   tcp_backbone_up=False,
+                                   local_tcp_server_up=True, wdt_armed=True,
+                                   psram=True, fault=False, board_id=0x3F,
+                                   fw=(0, 6, 2))), now=1000.0)
+    caps = reg.devices(now=1000.0)[0]["capabilities"]
+    assert caps["wifi"] is True
+    assert caps["internet"] is False               # node says backbone down
+
+
+def test_kin_devices_sort_above_neighbours():
+    reg = NodeRegistry()
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"", 1000.0, identity_hash="n1")
+    reg.register("dd" * 16, name="MyNode")         # named = kin
+    rows = reg.devices(now=1000.0)
+    assert rows[0]["name"] == "MyNode"
+    assert rows[1]["provenance"] == "neighbour"
+
+
+def test_announce_marks_neighbour_heard_now_not_path_table_stale():
+    reg = NodeRegistry()
+    rec = reg.ingest_announce(bytes.fromhex("ee" * 16), b"", 5000.0)
+    assert rec.last_seen == 5000.0                 # honest last-heard
+    assert rec.provenance == "neighbour"           # announced name != kin

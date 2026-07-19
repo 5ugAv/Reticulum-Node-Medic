@@ -228,6 +228,7 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)
         self._start_monitor_polling()
+        self._start_announce_listener()
 
         scan = Screen(name="scan")
         self.scan_screen = ScanScreen(nodes=self.monitor_service.located_nodes())
@@ -282,6 +283,41 @@ class ReticulumNodeMedicApp(App):
                 stop.wait(interval)
 
         threading.Thread(target=loop, daemon=True).start()
+
+    def _start_announce_listener(self):
+        """Hear announces live (via the shared rnsd): each carries the device
+        IDENTITY (collapses its aspect-destinations into one VITALS row) and
+        often a display name — neighbours get real names, honest last-heard."""
+        registry = self.monitor_service.registry
+
+        def listen():
+            try:
+                import time as _t
+                import RNS
+
+                class _Handler:
+                    aspect_filter = None
+
+                    def received_announce(_h, destination_hash,
+                                          announced_identity, app_data):
+                        ih = None
+                        try:
+                            ih = announced_identity.hash.hex()
+                        except Exception:
+                            pass
+                        try:
+                            registry.ingest_announce(
+                                destination_hash, app_data or b"",
+                                _t.time(), identity_hash=ih)
+                        except Exception:
+                            pass
+
+                RNS.Reticulum()          # attach to the shared instance
+                RNS.Transport.register_announce_handler(_Handler())
+            except Exception:
+                pass                     # no rnsd (dev box): silently offline
+
+        threading.Thread(target=listen, daemon=True).start()
 
     def on_stop(self):
         stop = getattr(self, "_monitor_stop", None)
