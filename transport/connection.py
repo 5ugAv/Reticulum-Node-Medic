@@ -179,6 +179,75 @@ class SSHConnection(Connection):
 
 
 # ---------------------------------------------------------------------------
+# Local (the medic itself)
+# ---------------------------------------------------------------------------
+
+
+def _default_local_runner(argv: List[str], timeout: int,
+                          stdin: Optional[str] = None) -> Result:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout, input=stdin)
+        return (proc.returncode, proc.stdout, proc.stderr)
+    except subprocess.TimeoutExpired:
+        return (255, "", "command timed out")
+    except FileNotFoundError:
+        return (255, "", f"{argv[0]}: command not found")
+
+
+class LocalConnection(Connection):
+    """Run commands on THIS machine — the medic flashing / diagnosing a board on
+    its OWN USB (no SSH, no emulator). Same ``(code, stdout, stderr)`` contract as
+    every other Connection, and the same ``~/.local/bin`` PATH prepend as
+    SSHConnection so bare RNS console scripts (``rnodeconf``, ``rnsd``,
+    ``rnstatus``) resolve in a non-login shell. ``push_file`` / ``push_tree`` are
+    plain local copies, so workflows that "carry" a firmware .bin to a target work
+    unchanged when the target IS the medic.
+    """
+
+    #: identical to SSHConnection.REMOTE_PATH — pip --user console scripts live in
+    #: ~/.local/bin, absent from a non-login shell's PATH.
+    LOCAL_PATH = "$HOME/.local/bin:/usr/local/bin:$PATH"
+
+    def __init__(self, runner: Optional[Callable] = None, login_env: bool = True):
+        self._runner = runner or _default_local_runner
+        self.login_env = login_env
+
+    def _wrap(self, command: str) -> str:
+        if not self.login_env:
+            return command
+        return f'export PATH="{self.LOCAL_PATH}"; {command}'
+
+    def run(self, command: str, timeout: int = 30) -> Result:
+        return self._runner(["bash", "-c", self._wrap(command)], timeout)
+
+    def push_file(self, local_path: str, remote_path: str) -> bool:
+        import os
+        import shutil
+        try:
+            dst = os.path.expanduser(remote_path)
+            os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+            shutil.copy(os.path.expanduser(local_path), dst)
+            return True
+        except (OSError, shutil.Error):
+            return False
+
+    def push_tree(self, local_dir: str, remote_dir: str,
+                  exclude: "tuple[str, ...]" = ()) -> bool:
+        import os
+        import shutil
+        try:
+            src = os.path.expanduser(local_dir)
+            dst = os.path.expanduser(remote_dir)
+            shutil.copytree(
+                src, dst, dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(*exclude) if exclude else None)
+            return True
+        except (OSError, shutil.Error):
+            return False
+
+
+# ---------------------------------------------------------------------------
 # Serial
 # ---------------------------------------------------------------------------
 

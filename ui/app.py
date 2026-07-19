@@ -239,10 +239,15 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(scan)
 
         birth = Screen(name="birth")
+        # Real hardware when a board is attached to the medic's USB; the emulated
+        # demos only when nothing is (dev box / no board) — see ui.hw_factories.
+        from ui import hw_factories as hw
         birth.add_widget(self._with_back(BirthScreen(
-            workflow_factories={"rtnode2400": _demo_rtnode_build,
-                                "pi_rnode": _demo_pi_build},
-            rnode_flash_factory=_demo_rnode_flash,
+            workflow_factories={
+                "rtnode2400": lambda: hw.make_rtnode_build(_demo_rtnode_build),
+                "pi_rnode": _demo_pi_build},   # remote target — needs host-select flow
+            rnode_flash_factory=lambda board:
+                hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"))))
         self.sm.add_widget(birth)
 
@@ -258,9 +263,11 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(triage)
 
         probe = Screen(name="probe")
+        _probe_real = hw.hardware_present()
         probe.add_widget(self._with_back(ProbeScreen(
-            workflow_factory=_demo_repair_workflow,
-            target_name="Demo node - emulated")))
+            workflow_factory=lambda: hw.make_repair_workflow(_demo_repair_workflow),
+            target_name="This node + attached board" if _probe_real
+                        else "Demo node - emulated")))
         self.sm.add_widget(probe)
 
         mitosis = Screen(name="mitosis")
