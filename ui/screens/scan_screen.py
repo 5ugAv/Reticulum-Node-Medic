@@ -27,6 +27,11 @@ from kivy.uix.widget import Widget
 
 from monitor.geo import read_gps
 from ui import theme
+
+#: How far a pinch must spread (or close) before it steps one zoom level. Higher
+#: = subtler / needs more of a pinch, which also throttles tile loading. A step
+#: fires at PINCH_STEP-x apart and again each further PINCH_STEP-x.
+PINCH_STEP = 1.7
 from ui.map_projection import geo_points, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
@@ -60,8 +65,8 @@ class MapPlot(Widget):
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos) or self._tiles is None:
             return super().on_touch_down(touch)
-        if touch.is_double_tap:                   # double-tap = snap back to fit
-            self.reset_view()
+        if touch.is_double_tap:                   # double-tap = zoom in on the spot
+            self._zoom_at(touch.pos, +1)
             return True
         touch.grab(self)
         self._touches[touch.uid] = touch.pos
@@ -97,7 +102,7 @@ class MapPlot(Widget):
             dist = max(1.0, ((pts[0][0] - pts[1][0]) ** 2 +
                              (pts[0][1] - pts[1][1]) ** 2) ** 0.5)
             ratio = dist / self._pinch_base
-            if ratio > 1.30 or ratio < 0.77:
+            if ratio > PINCH_STEP or ratio < 1.0 / PINCH_STEP:
                 self._step_zoom(+1 if ratio > 1.0 else -1, view)
                 self._pinch_base = dist          # re-arm for the next step
         return True
@@ -128,6 +133,24 @@ class MapPlot(Widget):
     def _current_view(self):
         """The view as displayed right now (manual if touched, else auto-fit)."""
         return getattr(self, "_last_view", None)
+
+    def _zoom_at(self, pos, direction):
+        """Zoom one level toward the tapped screen point, recentring on the geo
+        location under the finger — double-tap to dive into a spot."""
+        view = self._current_view()
+        if view is None:
+            return
+        from ui.map_tiles import unproject_px
+        cur_zoom = self._zoom if self._zoom is not None else view.zoom
+        new_zoom = max(2, min(DETAIL_MAX_ZOOM, cur_zoom + direction))
+        sx = pos[0] - self.x
+        sy = pos[1] - self.y
+        wx = view.off_x + sx
+        wy = view.off_y + (view.height - sy)     # kivy y-up -> world y-down
+        lat, lon = unproject_px(wx, wy, view.zoom)
+        self._center = self._clamp_center(lat, lon)
+        self._zoom = new_zoom
+        self._trigger()
 
     def _center_latlon(self, view):
         """Current view centre as (lat, lon): the stored pan centre, or the
