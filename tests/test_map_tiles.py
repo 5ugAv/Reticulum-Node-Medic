@@ -192,3 +192,13 @@ def test_mbtiles_zoom_levels_lists_cached_zooms(tmp_path):
     w.put(8, 0, 0, b"t8"); w.put(10, 1, 1, b"t10")
     w.close()
     assert MBTiles(str(p)).zoom_levels() == [8, 10]
+
+
+def test_touch_separation_distinguishes_pinch_from_phantom_double():
+    from ui.map_tiles import touch_separation
+    assert touch_separation([(100, 100)]) == 0.0            # one finger
+    assert touch_separation([]) == 0.0
+    # a panel's phantom double for ONE finger: two points a few px apart -> small
+    assert touch_separation([(100, 100), (108, 104)]) < 20  # below PINCH_MIN_SEP
+    # two real fingers, far apart -> large
+    assert touch_separation([(100, 200), (400, 240)]) > 250

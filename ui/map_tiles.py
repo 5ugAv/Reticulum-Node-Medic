@@ -56,6 +56,16 @@ def clamp_latlon(bounds, lat: float, lon: float) -> Tuple[float, float]:
     return (max(s, min(n, lat)), max(w, min(e, lon)))
 
 
+def touch_separation(points) -> float:
+    """Largest gap between any two touch points; 0.0 with fewer than two. Used to
+    tell a real two-finger pinch (points far apart) from a panel reporting ONE
+    finger as two nearby contact points (which must scroll, not zoom)."""
+    if len(points) < 2:
+        return 0.0
+    return max(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+               for i, a in enumerate(points) for b in points[i + 1:])
+
+
 def snap_zoom(zooms, z: int) -> int:
     """Snap *z* to the largest cached zoom <= z (or the smallest cached level),
     so the map only ever renders a zoom that actually has tiles — never a blank
