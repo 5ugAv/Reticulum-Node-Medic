@@ -198,14 +198,34 @@ def test_flash_verify_accepts_valid_post_flash_info():
     assert results[-1].success is True
 
 
-def test_run_all_does_build_then_flash():
-    conn = flash_conn()
-    conn.rule(f"test -d {FIRMWARE_DIR}", code=0)  # already cloned
+def test_run_all_skips_build_when_firmware_already_built():
+    # a medic that compiled the RGB firmware once just FLASHES — no slow recompile
+    conn = flash_conn(has_bin=True)
     results = wf(conn).run_all()
     names = [r.name for r in results]
-    assert names[0] == "ensure_toolchain"
-    assert "build_firmware" in names
-    assert names[-1] == "verify"
+    assert "ensure_toolchain" not in names and "build_firmware" not in names
+    assert names[0] == "detect_port" and names[-1] == "verify"
+
+
+def test_run_all_builds_then_flashes_when_firmware_missing():
+    # firmware absent at the pre-flash check, present after the compile: the
+    # emulator flips `test -f BIN` from missing -> built across calls.
+    conn = flash_conn(has_bin=True)          # flash-phase rules (autoinstall, etc.)
+    checks = {"n": 0}
+    _orig = conn.run
+
+    def run(command, timeout=30):
+        if f"test -f {BUILD_BIN}" in command:
+            checks["n"] += 1
+            return (1, "", "") if checks["n"] == 1 else (0, "", "")
+        return _orig(command, timeout)
+
+    conn.run = run
+    conn.rule(f"test -d {FIRMWARE_DIR}", code=0)   # already cloned
+    results = wf(conn).run_all()
+    names = [r.name for r in results]
+    assert names[0] == "ensure_toolchain"          # built first
+    assert "build_firmware" in names and names[-1] == "verify"
 
 
 def test_run_all_stops_if_build_fails():

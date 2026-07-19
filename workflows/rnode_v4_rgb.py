@@ -398,6 +398,10 @@ class HeltecV4RGBWorkflow:
         return self._run_steps(self._FLASH, on_progress)
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
+        # Skip the (multi-minute) compile when the NeoPixel firmware is already
+        # built on this host — a medic that has run build() once just flashes.
+        if self.connection.run(f"test -f {self.bin_path}")[0] == 0:
+            return self.flash(on_progress)
         self.build(on_progress)
         if self.results and not self.results[-1].success:
             return self.results
