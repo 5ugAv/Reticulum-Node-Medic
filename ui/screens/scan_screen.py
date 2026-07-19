@@ -52,6 +52,10 @@ class MapPlot(Widget):
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
+        # Decoded-texture cache keyed by (z,x,y). Decoding a PNG->texture is the
+        # expensive part; without this the Pi re-decoded every visible tile on
+        # EVERY redraw (~20/s while panning) and the UI froze. Decode once, reuse.
+        self._tex_cache = {}
         self._me = None                          # medic's own GPS fix (lat, lon)
         self._labels: List[Label] = []
         # interactive view state (None until the user pans/zooms = auto-fit)
@@ -185,12 +189,20 @@ class MapPlot(Widget):
         cy = view.off_y + view.height / 2.0
         return unproject_px(cx, cy, view.zoom)
 
+    def _bounds(self):
+        """Cached basemap bounds — bounds() is a SQLite lookup and this is hit on
+        every pan move + redraw, so memoise it (cleared in set_tiles)."""
+        b = getattr(self, "_bounds_cache", "unset")
+        if b == "unset":
+            b = self._bounds_cache = (
+                self._tiles.bounds() if self._tiles is not None else None)
+        return b
+
     def _clamp_center(self, lat, lon):
         """Keep the centre over the cached basemap so a drag can never strand
         the view in an all-black void it can't pan back from."""
         from ui.map_tiles import clamp_latlon
-        b = self._tiles.bounds() if self._tiles is not None else None
-        return clamp_latlon(b, lat, lon)
+        return clamp_latlon(self._bounds(), lat, lon)
 
     def reset_view(self, *_):
         """Snap back to the auto-fit of the cached area / located nodes. The
@@ -207,7 +219,29 @@ class MapPlot(Widget):
     def set_tiles(self, tiles):
         self._tiles = tiles
         self._zooms = self._cache_zooms(tiles)
+        self._tex_cache = {}                      # different source -> drop textures
+        self._bounds_cache = "unset"             # recompute bounds for the new source
         self._redraw()
+
+    def _tile_texture(self, z, x, y):
+        """A decoded GL texture for tile (z,x,y), cached. Decoding the PNG is the
+        costly step — caching it turns a redraw from 'decode 20 PNGs' into
+        'reposition 20 textures', which is what makes pan/zoom smooth."""
+        key = (z, x, y)
+        tex = self._tex_cache.get(key)
+        if tex is not None:
+            return tex
+        data = self._tiles.get_tile(z, x, y)
+        if not data:
+            return None
+        try:
+            tex = CoreImage(io.BytesIO(data), ext="png").texture
+        except Exception:
+            return None
+        self._tex_cache[key] = tex
+        if len(self._tex_cache) > 300:            # bound memory; drop oldest
+            self._tex_cache.pop(next(iter(self._tex_cache)))
+        return tex
 
     def set_me(self, latlon):
         """Update the medic's own live GPS position (lat, lon) — the "you are
@@ -267,7 +301,7 @@ class MapPlot(Widget):
         """(min_lat, max_lat, min_lon, max_lon) of the cached basemap, shrunk
         toward its centre so the default view is a regional look, not the whole
         200 km circle edge-to-edge."""
-        b = self._tiles.bounds() if self._tiles is not None else None
+        b = self._bounds()
         if not b:
             return None
         w, s, e, n = b                              # lon/lat order in metadata
@@ -296,13 +330,9 @@ class MapPlot(Widget):
         r = dp(6)
         with self.canvas:
             for t in tiles_for_view(view):
-                data = self._tiles.get_tile(t.z, t.x, t.y)
-                if not data:
-                    continue
-                try:
-                    tex = CoreImage(io.BytesIO(data), ext="png").texture
-                except Exception:
-                    continue          # skip an unreadable tile, keep the map
+                tex = self._tile_texture(t.z, t.x, t.y)   # cached decode
+                if tex is None:
+                    continue          # missing/unreadable tile — keep the map
                 Color(1, 1, 1, 1)
                 Rectangle(texture=tex,
                           pos=(self.x + t.screen_x, self.y + t.screen_y),
