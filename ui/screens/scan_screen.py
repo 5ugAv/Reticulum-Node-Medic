@@ -18,7 +18,7 @@ from typing import List
 
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
-from kivy.graphics import Color, Ellipse, Rectangle
+from kivy.graphics import Color, Ellipse, Line, Rectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -51,6 +51,7 @@ class MapPlot(Widget):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
+        self._me = None                          # medic's own GPS fix (lat, lon)
         self._labels: List[Label] = []
         # interactive view state (None until the user pans/zooms = auto-fit)
         self._center = None                      # (lat, lon)
@@ -186,6 +187,14 @@ class MapPlot(Widget):
         self._tiles = tiles
         self._redraw()
 
+    def set_me(self, latlon):
+        """Update the medic's own live GPS position (lat, lon) — the "you are
+        here" marker. None clears it. Cheap no-op when unchanged."""
+        if latlon == self._me:
+            return
+        self._me = latlon
+        self._redraw()
+
     def _clear_labels(self):
         for lbl in self._labels:
             self.remove_widget(lbl)
@@ -215,12 +224,22 @@ class MapPlot(Widget):
             else:
                 self._draw_coord_plot(pts)
             return
-        # No located nodes yet — still show the cached basemap of YOUR area
-        # (its bounds ride in the .mbtiles metadata), rather than a blank pane.
+        # No located nodes yet — centre on the medic's own GPS fix if we have
+        # one ("you are here"), else the cached basemap of YOUR area (bounds ride
+        # in the .mbtiles metadata), rather than a blank pane.
         if self._tiles is not None:
-            bbox = self._tile_bbox()
+            bbox = self._me_bbox() or self._tile_bbox()
             if bbox:
                 self._draw_tiled([], bbox)
+
+    def _me_bbox(self):
+        """A tight (~1 km) bbox around the medic's live fix, so the default view
+        opens zoomed in on where you're standing. None when there's no fix."""
+        if self._me is None:
+            return None
+        lat, lon = self._me
+        d = 0.006                                   # ~600-700 m each way
+        return (lat - d, lat + d, lon - d, lon + d)
 
     def _tile_bbox(self):
         """(min_lat, max_lat, min_lon, max_lon) of the cached basemap, shrunk
@@ -263,9 +282,35 @@ class MapPlot(Widget):
                 Color(*theme.status_rgba(p.status))
                 Ellipse(pos=(self.x + sx - r, self.y + sy - r),
                         size=(2 * r, 2 * r))
+            self._draw_me_marker(view)
         for p in pts:
             sx, sy = view.to_screen(p.lat, p.lon)
             self._add_label(p, sx, sy, r)
+        self._add_me_label(view)
+
+    def _draw_me_marker(self, view):
+        """A steel-blue dot in a white halo = the medic ("you are here"). Drawn
+        inside an open canvas context by _draw_tiled."""
+        if self._me is None:
+            return
+        sx, sy = view.to_screen(self._me[0], self._me[1])
+        x, y = self.x + sx, self.y + sy
+        Color(1, 1, 1, 0.95)
+        Line(circle=(x, y, dp(11)), width=1.4)
+        Color(0.30, 0.62, 0.97, 1)               # steel blue, matches the accent
+        Ellipse(pos=(x - dp(7), y - dp(7)), size=(dp(14), dp(14)))
+
+    def _add_me_label(self, view):
+        if self._me is None:
+            return
+        sx, sy = view.to_screen(self._me[0], self._me[1])
+        lbl = Label(text="you are here", font_size=dp(11), bold=True,
+                    color=(0.30, 0.62, 0.97, 1), size_hint=(None, None))
+        lbl.texture_update()
+        lbl.size = lbl.texture_size
+        lbl.pos = (self.x + sx + dp(12), self.y + sy - lbl.height / 2)
+        self.add_widget(lbl)
+        self._labels.append(lbl)
 
     def _draw_coord_plot(self, pts):
         placed = project(pts, self.width, self.height, padding=dp(32))
@@ -366,6 +411,18 @@ class ScanScreen(BoxLayout):
         self._ip_center = None            # (lat, lon, place) once found
         self._ip_tried = False
         threading.Thread(target=self._locate_self, daemon=True).start()
+
+        # Live "you are here": poll the Tracker's GPS fix and mark it on the map.
+        if self._gps_reader is not None:
+            self._poll_gps(0)
+            Clock.schedule_interval(self._poll_gps, 3)
+
+    def _poll_gps(self, _dt):
+        try:
+            coords = self._gps_reader() if self._gps_reader else None
+        except Exception:
+            coords = None
+        self.plot.set_me(coords)
 
     def _locate_self(self):
         found = ip_geolocate() if is_online() else None
