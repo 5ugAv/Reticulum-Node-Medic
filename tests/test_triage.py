@@ -163,3 +163,45 @@ def test_snapshot_exposes_per_metric_normalised_values():
     bad = s.feed(snr=-12.5, rssi=-118, noise=-95, t=1.0)
     assert bad["metrics"]["snr"] == pytest.approx(0.0, abs=1e-6)
     assert bad["metrics"]["noise"] < 0.2                  # noisy floor scores low
+
+
+# ---- auto-goal ("GOOD, mount here" after finding + returning to a peak) -----
+
+def _drive(s, q, t):
+    # q in 0..1 = spot quality; vary all three metrics together (as real
+    # antenna movement does) so the adaptive calibration stays healthy
+    return s.feed(snr=-10 + 22 * q, rssi=-110 + 40 * q, noise=-112 - 6 * q,
+                  t=float(t))
+
+
+def test_at_goal_does_not_fire_on_the_initial_climb():
+    s = TriageSession()
+    r = None
+    for t in range(6):
+        r = _drive(s, 1.0, t)          # excellent from the very start, no dip
+    assert r["at_goal"] is False
+
+
+def test_at_goal_fires_after_dip_then_return_to_the_best():
+    s = TriageSession()
+    for t, q in enumerate([0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0]):
+        _drive(s, q, t)                # sweep up to the peak
+    dip = None
+    for t, q in enumerate([0.4, 0.3, 0.2, 0.3], start=8):
+        dip = _drive(s, q, t)          # move OFF the peak
+    assert dip["at_goal"] is False
+    back = None
+    for t, q in enumerate([0.7, 0.9, 1.0, 1.0, 1.0], start=12):
+        back = _drive(s, q, t)         # return to the peak and hold
+    assert back["at_goal"] is True     # GOOD - mount here
+    assert back["goal"] >= 0.45
+
+
+def test_no_goal_celebration_for_a_poor_area():
+    s = TriageSession()
+    for t, q in enumerate([0.2, 0.25, 0.3, 0.2, 0.25, 0.3, 0.2, 0.25]):
+        _drive(s, q, t)                # mediocre best (< GOAL_MIN)
+    r = None
+    for t, q in enumerate([0.1, 0.1, 0.25, 0.3], start=8):
+        r = _drive(s, q, t)
+    assert r["at_goal"] is False

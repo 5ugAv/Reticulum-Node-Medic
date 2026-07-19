@@ -45,6 +45,9 @@ RING_THRESHOLDS = [                # (min composite score, ring name)
 DEBOUNCE_S = 3.0                   # rolling window for the dot/guidance (pole readings are noisy)
 LOCK_STABILITY = 0.05             # score must stay within +-this to be "stable"
 LOCK_HOLD_S = 3.0                 # stable in the bullseye this long -> locked
+GOAL_MARGIN = 0.04                # within this of the best found = "at the goal"
+GOAL_MIN = 0.45                   # the goal must be at least this good to celebrate
+GOAL_DIP = 0.08                   # must fall this far below best first (a real peak)
 
 
 def _percentile(sorted_vals: List[float], pct: float) -> float:
@@ -188,10 +191,24 @@ class TriageSession:
         self.best_reading: Optional[Dict] = None
         self.locked: bool = False
         self._lock_since: Optional[float] = None
+        self._dipped = False              # have we moved OFF the peak yet?
+        self._calibrated_seen = False     # goal tracking starts once calibrated
+        self._goal_after = 0.0            # don't track the goal before this t
 
     def feed(self, snr: float, rssi: float, noise: float, t: float) -> Dict:
         self.calib.observe(snr, rssi, noise)
         raw, usable = composite_score(snr, rssi, noise, self.calib)
+        # The initial antenna sweep IS the calibration phase; its default-scale
+        # scores aren't comparable to the adaptive scale. When calibration
+        # settles, reset the goal and hold off tracking it for one debounce
+        # window, so the goal is built purely from post-calibration, fully
+        # smoothed readings.
+        if self.calib.calibrated and not self._calibrated_seen:
+            self._calibrated_seen = True
+            self.best_score = 0.0
+            self.best_reading = None
+            self._dipped = False
+            self._goal_after = t + DEBOUNCE_S
         # per-metric normalised (0..1, 1 = best) — drives the triangle's corners
         metrics = {
             "snr": self.calib.snr.normalize(snr),
@@ -206,7 +223,23 @@ class TriageSession:
         self._history.append(_Stamped(t, smoothed))
         self._history = [s for s in self._history if t - s.t <= 30.0]
 
-        if smoothed > self.best_score:
+        # Auto-goal: past the calibration grace window, the best spot found
+        # becomes the goal for this area. Once you move OFF the peak (dip) and
+        # later return to within GOAL_MARGIN of it, `at_goal` fires — the
+        # screen's green "GOOD, mount here" flash. The dip requirement stops it
+        # firing during the initial climb (when every new sample is the best).
+        at_goal = False
+        if t >= self._goal_after:
+            if smoothed > self.best_score:
+                self.best_score = smoothed
+                self.best_reading = {"snr": snr, "rssi": rssi, "noise": noise,
+                                     "score": round(smoothed, 3), "t": t}
+            if smoothed < self.best_score - GOAL_DIP:
+                self._dipped = True
+            at_goal = (self._dipped and self.best_score >= GOAL_MIN
+                       and smoothed >= self.best_score - GOAL_MARGIN)
+        elif smoothed > self.best_score:
+            # still track a best for the Save button during the grace window
             self.best_score = smoothed
             self.best_reading = {"snr": snr, "rssi": rssi, "noise": noise,
                                  "score": round(smoothed, 3), "t": t}
@@ -231,6 +264,8 @@ class TriageSession:
             "locked": self.locked,
             "dot_radius": 1.0 - smoothed,      # 0.0 = centre (hot), 1.0 = outer edge
             "metrics": metrics,                # per-metric 0..1 (triangle corners)
+            "goal": self.best_score,           # auto-baseline for this area
+            "at_goal": at_goal,                # -> green "GOOD, mount here" flash
             "guidance": guidance_text(ring, colder, self.locked, usable),
         }
 

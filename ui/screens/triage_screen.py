@@ -69,10 +69,24 @@ class TriageScreen(FloatLayout):
                                                     self._guidance.size))
         self.add_widget(self._guidance)
 
-        # Save the best-scoring antenna position found this session (the reading
-        # you'd write down / attach to the node when you bolt it down).
+        # Green "GOOD, mount here" flash — a full-bleed tint that pulses when the
+        # antenna returns to the best spot found (the auto-goal). Behind the
+        # readouts, tinting nothing until fired.
+        from kivy.uix.label import Label as _L
+        self._goal_flash = _L(
+            text="", bold=True, font_size="34sp", opacity=0,
+            halign="center", valign="middle",
+            pos_hint={"center_x": 0.5, "center_y": 0.75},
+            color=theme.hex_to_rgba(theme.COLORS["green"]))
+        self._goal_flash.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.add_widget(self._goal_flash)
+        self._was_at_goal = False
+
+        # The location button saves the node's GPS COORDINATES for this mount
+        # point (map pin + navigation). The signal baseline is captured
+        # automatically as the goal above — no manual save needed.
         self._button = Button(
-            text="Save best spot", font_size="15sp",
+            text="Save GPS coordinates", font_size="15sp",
             size_hint=(0.6, None), height=dp(56),
             pos_hint={"center_x": 0.5, "y": 0.03},
             background_normal="", background_down="",
@@ -222,6 +236,23 @@ class TriageScreen(FloatLayout):
                                   self._clock())
         self._bullseye.update(snap)
         self._refresh(sample, snap)
+        self._update_goal_flash(snap.get("at_goal", False))
+
+    def _update_goal_flash(self, at_goal: bool) -> None:
+        if at_goal and not self._was_at_goal:
+            from kivy.animation import Animation
+            self._goal_flash.text = "GOOD - mount here!"
+            self._goal_flash.opacity = 1
+            Animation.cancel_all(self._goal_flash)
+            pulse = (Animation(opacity=0.4, duration=0.5)
+                     + Animation(opacity=1.0, duration=0.5))
+            pulse.repeat = True
+            pulse.start(self._goal_flash)
+        elif not at_goal and self._was_at_goal:
+            from kivy.animation import Animation
+            Animation.cancel_all(self._goal_flash)
+            self._goal_flash.opacity = 0
+        self._was_at_goal = at_goal
 
     def _refresh(self, sample: dict, snap: dict) -> None:
         sec, pri = _hex("text_secondary"), _hex("text_primary")
@@ -250,26 +281,25 @@ class TriageScreen(FloatLayout):
         self._guidance.text = f"[color={col}]{snap['guidance']}[/color]"
         self._guidance.markup = True
 
-        # The button always saves the BEST reading seen this session; its label
-        # nudges you to lock in once you're in the hot zone.
-        if snap["locked"] or snap["ring"] == "bullseye":
-            self._button.text = "Bolt it here - save best spot"
-        else:
-            self._button.text = "Save best spot"
-
     def _save(self, *a) -> None:
-        best = self._session.best_reading
-        if best:
-            self._guidance.markup = False
-            # Saves the link-quality baseline; the GPS location bundles in once
-            # a fix is available, and both attach to the node's birth cert.
-            self._guidance.text = (
-                f"Reading saved for this node: clarity {best['snr']:+.1f} dB, "
-                f"score {best['score']:.2f}. (Location added when GPS is ready.)")
+        """Save this mount point's GPS coordinates (the signal baseline is
+        captured automatically as the goal)."""
+        self._guidance.markup = False
+        try:
+            from monitor.geo import read_splitter_fix
+            fix = read_splitter_fix()
+        except Exception:
+            fix = None
+        if fix is not None:
+            best = self._session.best_reading
+            extra = (f", best clarity {best['snr']:+.1f} dB"
+                     if best else "")
+            self._guidance.text = (f"Location saved: {fix.lat:.5f}, {fix.lon:.5f}"
+                                   f"{extra}. This node is now on the map.")
         else:
-            self._guidance.markup = False
-            self._guidance.text = ("Nothing to save yet - wait for the beacon "
-                                   "so a reading can be scored.")
+            self._guidance.text = ("No GPS fix yet - connect the GPS antenna and "
+                                   "give it a clear view of the sky to save this "
+                                   "node's location.")
 
     def stop(self) -> None:
         event = getattr(self, "_event", None)
