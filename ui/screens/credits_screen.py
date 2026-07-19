@@ -19,11 +19,11 @@ from kivy.uix.scrollview import ScrollView
 from ui import theme
 
 #: (role, name) — shown in order. Edit to taste.
+#: (Add Sophie White's design credit when her pages land.)
 CREDITS = [
     ("Reticulum & RNode", "Mark Qvist"),
     ("RNode Firmware CE", "Liberated Systems & contributors"),
-    ("Concept, build & field testing", "5ugAv"),
-    ("Design", "Sophie"),
+    ("Concept, build, field testing & front page", "5ugAv"),
     ("Engineering companion", "Claude (Anthropic)"),
     ("Maps", "OpenStreetMap contributors & CARTO"),
     ("And", "every neighbour who puts a node on a roof"),
