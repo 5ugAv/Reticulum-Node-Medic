@@ -29,10 +29,15 @@ def _hex(name: str) -> str:
 class TriageScreen(FloatLayout):
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
-                 beacon_toggle=None, **kwargs):
+                 lighthouse=None, on_build=None, **kwargs):
         super().__init__(**kwargs)
         self._reader = feed_factory()
-        self._beacon_toggle = beacon_toggle
+        self._lighthouse = lighthouse     # (active: bool) -> status dict
+        self._on_build = on_build
+        self._beacon_on = False
+        self._beacon_answered = False
+        self._beacon_names = ""
+        self._watchdog = None
         self._session = TriageSession()
         self._clock = clock
 
@@ -64,10 +69,23 @@ class TriageScreen(FloatLayout):
                                                     self._guidance.size))
         self.add_widget(self._guidance)
 
+        # Bottom row: a "Build lighthouse" prompt (hidden unless no beacon node
+        # exists) on the left, Save on the right.
+        self._build_button = Button(
+            text="Build lighthouse RTNode", font_size="15sp",
+            size_hint=(0.46, None), height=dp(56),
+            pos_hint={"x": 0.03, "y": 0.03}, opacity=0, disabled=True,
+            background_normal="", background_down="",
+            background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self._build_button.bind(on_release=lambda *a:
+                                self._on_build and self._on_build())
+        self.add_widget(self._build_button)
+
         self._button = Button(
-            text="Save current reading",
-            size_hint=(None, None), size=(dp(280), dp(56)),
-            pos_hint={"center_x": 0.5, "y": 0.03},
+            text="Save current reading", font_size="15sp",
+            size_hint=(0.46, None), height=dp(56),
+            pos_hint={"right": 0.97, "y": 0.03},
             background_normal="", background_down="",
             background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -76,6 +94,48 @@ class TriageScreen(FloatLayout):
 
         self.bind(size=self._relayout, pos=self._relayout)
         self._event = Clock.schedule_interval(self._tick, poll_interval)
+
+    # -- beacon (Triage lighthouse — auto on enter, off on leave) -----------
+
+    def enter_triage(self, *a) -> None:
+        """Called when the Triage screen opens: auto-activate the beacon and
+        show the right prompt (aim / power-on / build)."""
+        self._beacon_answered = False
+        self._build_button.opacity = 0
+        self._build_button.disabled = True
+        if self._watchdog is not None:
+            self._watchdog.cancel()
+            self._watchdog = None
+        if self._lighthouse is None:
+            return
+        result = self._lighthouse(True) or {}
+        state = result.get("state")
+        self._beacon_names = result.get("names", "")
+        self._guidance.markup = False
+        self._guidance.text = result.get("text", "")
+        if state == "active":
+            self._beacon_on = True
+            # if the commanded node stays silent, it's probably powered off
+            self._watchdog = Clock.schedule_once(self._beacon_silent_check, 25)
+        elif state == "need_build":
+            self._build_button.opacity = 1
+            self._build_button.disabled = False
+
+    def _beacon_silent_check(self, dt) -> None:
+        if self._beacon_on and not self._beacon_answered:
+            who = self._beacon_names or "your beacon node"
+            self._guidance.markup = False
+            self._guidance.text = (f"{who} isn't answering - is it powered on "
+                                   "and within range?")
+
+    def stop_lighthouse(self, *a) -> None:
+        """Stop the beacon — called automatically whenever Triage is left."""
+        self._beacon_on = False
+        if self._watchdog is not None:
+            self._watchdog.cancel()
+            self._watchdog = None
+        if self._lighthouse:
+            self._lighthouse(False)
 
     def _readout(self, pos_hint) -> Label:
         # fraction-of-screen width (not fixed dp) so density scaling can't
@@ -115,6 +175,7 @@ class TriageScreen(FloatLayout):
                                    "scoring, another node must transmit - send "
                                    "an announce from your phone or a node.")
             return
+        self._beacon_answered = True      # a real packet arrived (beacon works)
         snap = self._session.feed(sample["snr"], sample["rssi"], sample["noise"],
                                   self._clock())
         self._bullseye.update(snap)
