@@ -231,7 +231,10 @@ class ReticulumNodeMedicApp(App):
         self._start_announce_listener()
 
         scan = Screen(name="scan")
-        self.scan_screen = ScanScreen(nodes=self.monitor_service.located_nodes())
+        from monitor.geo import splitter_gps_reader
+        self.scan_screen = ScanScreen(
+            nodes=self.monitor_service.located_nodes(),
+            gps_reader=splitter_gps_reader())     # the Tracker's live "you are here"
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
 
