@@ -68,3 +68,23 @@ def test_push_file_reports_failure_for_missing_source(tmp_path):
     ok = LocalConnection().push_file(str(tmp_path / "nope.bin"),
                                      str(tmp_path / "out.bin"))
     assert ok is False
+
+
+def test_run_interactive_uses_injected_runner():
+    # run_interactive is injectable so the birth flow's PTY driving is testable
+    # without a real terminal / hardware. It must pass the command + interactions
+    # straight through and return the runner's (code, out, err).
+    seen = {}
+
+    def fake(cmd, interactions, timeout):
+        seen["cmd"] = cmd
+        seen["interactions"] = interactions
+        return (0, "RNode Firmware autoinstallation complete!", "")
+
+    c = LocalConnection(interactive_runner=fake)
+    code, out, err = c.run_interactive(
+        "rnodeconf /dev/ttyACM1 --autoinstall",
+        [("device type", "9"), ("correct", "y")])
+    assert code == 0 and "autoinstallation complete" in out
+    assert seen["cmd"].startswith("rnodeconf")
+    assert seen["interactions"][0] == ("device type", "9")

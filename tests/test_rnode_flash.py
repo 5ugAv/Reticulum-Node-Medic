@@ -6,11 +6,28 @@ from workflows.rnode_flash import (
     RNodeFlashWorkflow,
     flash_command,
     birth_flash,
+    autoinstall_interactions,
     SUCCESS_MARKER,
     FIRMWARE_VERSION,
 )
 
 V4 = get_board("heltec32_v4")
+
+
+class _PtyConn(EmulatedConnection):
+    """An emulated connection that ALSO exposes run_interactive (like the real
+    LocalConnection), so birth_flash drives it through the PTY path. Each call
+    returns the next queued (code, out) and records the (cmd, interactions)."""
+
+    def __init__(self, replies):
+        super().__init__(default_code=0, default_stdout="ok")
+        self._replies = list(replies)
+        self.interactive_calls = []
+
+    def run_interactive(self, command, interactions, timeout=400):
+        self.interactive_calls.append((command, interactions))
+        code, out = self._replies.pop(0)
+        return (code, out, "")
 
 
 # ---- birth_flash: the fresh-board two-pass ------------------------------
@@ -48,6 +65,40 @@ def test_birth_flash_reports_failure_from_the_second_pass():
     assert ok is False and already is False
     assert _autoinstall_count(c.history) == 2           # still tried twice
     assert "flash failed" in msg
+
+
+# ---- birth_flash: PTY path for a real local board -----------------------
+
+
+def test_autoinstall_interactions_maps_prompts_to_answers():
+    # device menu -> 9, blurb -> enter, band -> 915 index, confirm -> y
+    ix = autoinstall_interactions(V4, 915)
+    assert [resp for _pat, resp in ix] == V4.autoinstall_answers(915)
+    assert ix[0][0] == "matches your device type"      # first prompt pattern
+    assert ix[-1][1] == "y"                             # final confirm answer
+
+
+def test_birth_flash_uses_pty_when_connection_supports_it():
+    # a real local board (run_interactive present) is driven through the PTY,
+    # NOT a printf|rnodeconf pipe (which hangs on the terminal-read confirm).
+    conn = _PtyConn([(0, "RNode Firmware autoinstallation complete!")])
+    ok, msg, already = birth_flash(conn, V4, "/dev/ttyACM1")
+    assert ok is True and already is False
+    assert len(conn.interactive_calls) == 1            # one pass sufficed
+    cmd, interactions = conn.interactive_calls[0]
+    assert "--autoinstall" in cmd
+    assert [r for _p, r in interactions] == V4.autoinstall_answers(915)
+    assert "printf" not in cmd                          # never the stdin pipe
+    assert not any("--autoinstall" in h for h in conn.history)  # no piped run
+
+
+def test_birth_flash_pty_second_pass_for_fresh_board():
+    # first PTY pass only flashes; the confirming second pass finishes the EEPROM
+    conn = _PtyConn([(0, "flashing..."),
+                     (0, "RNode Firmware autoinstallation complete!")])
+    ok, msg, already = birth_flash(conn, V4, "/dev/ttyACM1")
+    assert ok is True
+    assert len(conn.interactive_calls) == 2
 
 
 # ---- flash_command (the hardware-verified sequence) ---------------------

@@ -195,6 +195,52 @@ def _default_local_runner(argv: List[str], timeout: int,
         return (255, "", f"{argv[0]}: command not found")
 
 
+def _pexpect_interactive(command: str, interactions, timeout: int) -> Result:
+    """Drive an interactive shell *command* through a PTY, answering prompts.
+
+    *interactions* is a list of ``(regex, response)``; when a prompt matching a
+    regex appears, its response is sent (with a newline). Returns ``(code, out,
+    err)`` where out is the full transcript. Used for ``rnodeconf --autoinstall``,
+    which reads confirm/continue prompts from the terminal (a piped run hangs)."""
+    try:
+        import pexpect
+    except Exception as exc:                       # pragma: no cover
+        return (255, "", f"pexpect unavailable: {exc}")
+    patterns = [p for p, _ in interactions]
+    child = pexpect.spawn("/bin/bash", ["-lc", command], encoding="utf-8",
+                          timeout=timeout, dimensions=(40, 120))
+    pats = patterns + [pexpect.EOF, pexpect.TIMEOUT]
+    transcript: List[str] = []
+    # A prompt appears at most a handful of times; cap iterations so a genuinely
+    # stuck prompt ends in TIMEOUT rather than an unbounded loop.
+    for _ in range(len(interactions) + 40):
+        try:
+            i = child.expect(pats)
+        except Exception as exc:                   # pragma: no cover
+            transcript.append(f"\n[expect error: {exc}]")
+            break
+        transcript.append(child.before or "")
+        if i < len(interactions):
+            transcript.append(child.after or "")
+            child.sendline(interactions[i][1])
+        elif pats[i] is pexpect.EOF:
+            break
+        else:                                      # TIMEOUT
+            transcript.append("\n[timeout waiting for next prompt]")
+            break
+    try:
+        child.expect(pexpect.EOF, timeout=30)
+        transcript.append(child.before or "")
+    except Exception:
+        pass
+    try:
+        child.close()
+    except Exception:
+        pass
+    code = child.exitstatus if child.exitstatus is not None else 255
+    return (code, "".join(transcript), "")
+
+
 class LocalConnection(Connection):
     """Run commands on THIS machine — the medic flashing / diagnosing a board on
     its OWN USB (no SSH, no emulator). Same ``(code, stdout, stderr)`` contract as
@@ -209,17 +255,34 @@ class LocalConnection(Connection):
     #: ~/.local/bin, absent from a non-login shell's PATH.
     LOCAL_PATH = "$HOME/.local/bin:/usr/local/bin:$PATH"
 
-    def __init__(self, runner: Optional[Callable] = None, login_env: bool = True):
-        self._runner = runner or _default_local_runner
-        self.login_env = login_env
-
     def _wrap(self, command: str) -> str:
         if not self.login_env:
             return command
         return f'export PATH="{self.LOCAL_PATH}"; {command}'
 
+    def __init__(self, runner: Optional[Callable] = None, login_env: bool = True,
+                 interactive_runner: Optional[Callable] = None):
+        self._runner = runner or _default_local_runner
+        self.login_env = login_env
+        # Injectable so tests can drive run_interactive without a PTY / hardware.
+        self._interactive_runner = interactive_runner
+
     def run(self, command: str, timeout: int = 30) -> Result:
         return self._runner(["bash", "-c", self._wrap(command)], timeout)
+
+    def run_interactive(self, command: str, interactions, timeout: int = 400) -> Result:
+        """Run *command* in a real PTY, answering prompts as they appear.
+
+        Needed for ``rnodeconf --autoinstall``: its "Hit enter to continue" and
+        "Is the above correct? [y/N]" prompts read a keypress from the TERMINAL,
+        not stdin, so the old ``printf answers | rnodeconf`` pipe hangs forever
+        (and wedges the USB port). Driving it through a PTY lets those prompts be
+        answered. *interactions* is a list of ``(regex, response)`` pairs applied
+        as each prompt's text appears. Returns the usual ``(code, out, err)`` with
+        the full transcript as stdout."""
+        if self._interactive_runner is not None:
+            return self._interactive_runner(command, interactions, timeout)
+        return _pexpect_interactive(self._wrap(command), interactions, timeout)
 
     def push_file(self, local_path: str, remote_path: str) -> bool:
         import os

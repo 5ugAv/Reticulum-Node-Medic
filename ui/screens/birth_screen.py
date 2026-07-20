@@ -360,14 +360,21 @@ class BirthScreen(BoxLayout):
         }
 
     def _apply_radio(self, workflow, radio):
+        cfg = RadioConfig(frequency_mhz=radio["freq"], bandwidth_khz=radio["bw"],
+                          spreading_factor=radio["sf"], coding_rate=radio["cr"],
+                          tx_power_dbm=radio["txp"])
+        # Pi builds carry a profile.radio; standalone RNode flashes (incl. the V4
+        # RGB workflow) carry a plain .radio. Set whichever the workflow exposes
+        # so the form values are actually baked at birth (not silently dropped).
         r = getattr(getattr(workflow, "profile", None), "radio", None)
-        if r is None:
-            return
-        r.frequency_mhz = radio["freq"]
-        r.bandwidth_khz = radio["bw"]
-        r.spreading_factor = radio["sf"]
-        r.coding_rate = radio["cr"]
-        r.tx_power_dbm = radio["txp"]
+        if r is not None:
+            r.frequency_mhz = cfg.frequency_mhz
+            r.bandwidth_khz = cfg.bandwidth_khz
+            r.spreading_factor = cfg.spreading_factor
+            r.coding_rate = cfg.coding_rate
+            r.tx_power_dbm = cfg.tx_power_dbm
+        if hasattr(workflow, "radio"):
+            workflow.radio = cfg
 
     def _confirm_params(self, node_type, board):
         radio = self._read_params()

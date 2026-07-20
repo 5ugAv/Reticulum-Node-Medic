@@ -176,6 +176,19 @@ def test_flash_bakes_canonical_params_at_birth_then_host_mode():
     assert h.index(tnc) < next(i for i, c in enumerate(h) if c.rstrip().endswith("-N"))
 
 
+def test_flash_bakes_CUSTOM_radio_params_when_provided():
+    # The BIRTH form's params must actually be baked — not silently dropped for
+    # the V4 (the old bug: _set_params ignored cfg, always writing canonical).
+    from node_profile import RadioConfig
+    conn = flash_conn()
+    custom = RadioConfig(frequency_mhz=868.5, bandwidth_khz=250,
+                         spreading_factor=7, coding_rate=6, tx_power_dbm=14)
+    wf(conn, radio=custom).flash()
+    tnc = next(c for c in conn.history if "--tnc" in c and "--freq" in c)
+    assert "--freq 868500000" in tnc and "--bw 250000" in tnc
+    assert "--sf 7" in tnc and "--cr 6" in tnc and "--txp 14" in tnc
+
+
 def test_flash_refuses_when_firmware_not_built():
     conn = flash_conn(has_bin=False)
     results = wf(conn).flash()
