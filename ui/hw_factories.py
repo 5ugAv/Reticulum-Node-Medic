@@ -20,18 +20,47 @@ target-selection flow is separate; those stay on the demo until it's wired.
 from __future__ import annotations
 
 import glob
+import os
 import platform
 import subprocess
 from typing import Callable
 
 from node_profile import NodeProfile
 from transport.connection import LocalConnection
+from workflows.build import StepResult
 from workflows.repair import RepairWorkflow
 from workflows.rnode_boards import RNodeBoard
 from workflows.rnode_flash import RNodeFlashWorkflow
 from workflows.rnode_v4_rgb import (
     V4_BOARD_KEY, HeltecV4RGBWorkflow, rgb_firmware_available)
 from workflows.rtnode_build import RTNodeBuildWorkflow
+
+
+class _HonestFailWorkflow:
+    """A stand-in workflow that reports a real problem instead of faking a
+    flash. On the medic, a fake 'Done!' (the old EmulatedConnection demo) is
+    dangerous — the operator ships a board that was never touched. When no
+    flashable board is free, BIRTH must say so plainly; the birth screen turns
+    a failed step into its red 'Something didn't finish' banner + retry hint."""
+
+    def __init__(self, step_name: str, message: str):
+        self._step = step_name
+        self._message = message
+        self.results = []
+
+    def run_all(self, on_progress=None):
+        r = StepResult(self._step, False, self._message)
+        self.results = [r]
+        if on_progress:
+            on_progress(r)
+        return self.results
+
+
+def all_serial_ports() -> list:
+    """Every ttyACM/ttyUSB present, free or busy — used to tell 'no board
+    plugged' (only the medic's own radio, or nothing) from 'a board is here but
+    its port is held' (a wedged previous flash)."""
+    return sorted(glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"))
 
 
 def _port_busy(port: str, runner: Callable = None) -> bool:
@@ -71,7 +100,21 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
     no free board is attached."""
     free = ports_fn()
     if not free:
-        return demo_factory(board)        # no free board -> explorable demo
+        # No FREE port. On a dev box (or when RNM_DEMO is set) the explorable
+        # demo is the point. On the real medic, NEVER fake a flash — say why.
+        if platform.system() != "Linux" or os.environ.get("RNM_DEMO"):
+            return demo_factory(board)
+        attached = all_serial_ports()
+        if len(attached) > 1:              # Jonesey + a plugged board that's busy
+            msg = ("A board is connected but its port is busy — a previous "
+                   "flash may still be holding it. Unplug and replug the board "
+                   "(or power-cycle it), wait a few seconds, then retry.")
+        else:                              # only the medic's own radio, or nothing
+            msg = ("No board detected on USB. Plug the RNode in with a short, "
+                   "known-good USB DATA cable (many USB-C cables are charge-only), "
+                   "then retry. If it's plugged and dead, hold BOOT, tap RST, "
+                   "release BOOT to force download mode.")
+        return _HonestFailWorkflow("detect_port", msg)
     if connection is None:
         if platform.system() != "Linux":
             return demo_factory(board)

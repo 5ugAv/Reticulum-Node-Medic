@@ -45,8 +45,30 @@ def test_port_busy_fails_closed_on_uncertainty():
     assert hw._port_busy("/dev/ttyACM0", runner=boom) is True
 
 
-def test_flash_refuses_when_only_the_busy_radio_is_present():
-    # no FREE board (only the medic's busy radio) -> demo, never a real flash
+def test_flash_is_honest_not_fake_when_no_free_port_on_the_medic():
+    # On the real medic a fake 'Done!' is dangerous (ships an un-touched board).
+    # With a board plugged but its port BUSY (Jonesey + a wedged flash), BIRTH
+    # must return a FAILED step explaining the busy port, never the demo.
+    with patch("platform.system", return_value="Linux"), \
+         patch("glob.glob", side_effect=lambda p: ["/dev/ttyACM0", "/dev/ttyACM1"]
+               if "ttyACM" in p else []):
+        got = hw.make_rnode_flash(V4, _demo_flash, ports_fn=lambda: [])
+    assert isinstance(got, hw._HonestFailWorkflow)
+    res = got.run_all()
+    assert res[0].success is False and "busy" in res[0].message.lower()
+
+    # Nothing (or only the medic's radio) present -> honest 'no board' message.
+    with patch("platform.system", return_value="Linux"), \
+         patch("glob.glob", side_effect=lambda p: ["/dev/ttyACM0"]
+               if "ttyACM" in p else []):
+        got = hw.make_rnode_flash(V4, _demo_flash, ports_fn=lambda: [])
+    assert isinstance(got, hw._HonestFailWorkflow)
+    assert "no board detected" in got.run_all()[0].message.lower()
+
+
+def test_flash_still_demos_when_rnm_demo_is_set(monkeypatch):
+    # RNM_DEMO explicitly opts into the explorable demo even on the medic.
+    monkeypatch.setenv("RNM_DEMO", "1")
     with patch("platform.system", return_value="Linux"):
         got = hw.make_rnode_flash(V4, _demo_flash, ports_fn=lambda: [])
     assert got == ("DEMO_FLASH", V4)
