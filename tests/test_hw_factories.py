@@ -63,7 +63,8 @@ def test_flash_is_honest_not_fake_when_no_free_port_on_the_medic():
                if "ttyACM" in p else []):
         got = hw.make_rnode_flash(V4, _demo_flash, ports_fn=lambda: [])
     assert isinstance(got, hw._HonestFailWorkflow)
-    assert "no board detected" in got.run_all()[0].message.lower()
+    assert "no rnode to flash" in got.run_all()[0].message.lower()
+    assert got.title == "No board attached"
 
 
 def test_flash_still_demos_when_rnm_demo_is_set(monkeypatch):
@@ -131,3 +132,29 @@ def test_real_workflows_use_a_local_connection():
         wf = hw.make_repair_workflow(lambda: None,
                                      ports_fn=lambda: ["/dev/ttyACM0"])
     assert isinstance(wf.connection, LocalConnection)
+
+
+def test_no_fake_demo_on_the_medic_without_opt_in():
+    """The anti-fooling guarantee: on the medic (Linux) with no free board and no
+    RNM_DEMO, every build/probe path HONEST-FAILS — never an emulated 'Done!'."""
+    import os
+    with patch("platform.system", return_value="Linux"), \
+         patch.dict(os.environ, {}, clear=True):
+        assert hw.demo_allowed() is False
+        demo = lambda *a, **k: pytest.fail("demo factory must NOT run on the medic")
+        rt = hw.make_rtnode_build(demo, ports_fn=lambda: [])
+        rp = hw.make_repair_workflow(demo, ports_fn=lambda: [])
+        fl = hw.make_rnode_flash(V4, demo, ports_fn=lambda: [])
+    assert type(rt).__name__ == "_HonestFailWorkflow"
+    assert type(rp).__name__ == "_HonestFailWorkflow"
+    assert type(fl).__name__ == "_HonestFailWorkflow"
+
+
+def test_demo_allowed_opt_in_and_dev_box():
+    import os
+    with patch("platform.system", return_value="Linux"), \
+         patch.dict(os.environ, {"RNM_DEMO": "1"}, clear=True):
+        assert hw.demo_allowed() is True             # explicit opt-in on the medic
+    with patch("platform.system", return_value="Darwin"), \
+         patch.dict(os.environ, {}, clear=True):
+        assert hw.demo_allowed() is True             # dev box: nothing real to fool

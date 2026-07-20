@@ -75,6 +75,39 @@ def _demo_pi_build():
     return BuildWorkflow(conn, NodeProfile())
 
 
+def _pi_rnode_factory():
+    """Pi propagation birth. The real remote-provision path isn't wired yet, so
+    outside opt-in demo mode this HONESTLY fails instead of faking an ok/ok/ok
+    birth certificate (the trap that shipped 'built' nodes that were never
+    touched)."""
+    from ui.hw_factories import demo_allowed, _HonestFailWorkflow
+    if demo_allowed():
+        return _demo_pi_build()
+    return _HonestFailWorkflow(
+        "provision_pi",
+        "This process is still under construction. Your Pi is detected fine — the "
+        "medic just can't auto-provision a Pi propagation node through this button "
+        "yet (and it won't fake it). For now: flash the RNode on its own (pick the "
+        "board, leave Host Pi empty), then set the Pi up over the wire by hand.\n\n"
+        "Noted for the developers to build.",
+        "Pi birth — under construction", under_construction=True)
+
+
+def _mitosis_factory():
+    """Clone THIS medic onto a fresh Pi. The real target-Pi SSH flow isn't wired
+    yet, so outside opt-in demo mode this honestly fails rather than faking it."""
+    from ui.hw_factories import demo_allowed, _HonestFailWorkflow
+    if demo_allowed():
+        return _demo_clone_workflow()
+    return _HonestFailWorkflow(
+        "select_target",
+        "This process is still under construction. Cloning the medic onto a fresh "
+        "Pi through this button isn't built yet (and it won't fake a clone). Coming "
+        "soon: pick the new Pi, then clone over the wire.\n\n"
+        "Noted for the developers to build.",
+        "Mitosis — under construction", under_construction=True)
+
+
 def _demo_rnode_flash(board):
     """Explorable RNode flash over an emulated board (no hardware needed).
     On a real medic this factory would target the locally attached board."""
@@ -245,7 +278,7 @@ class ReticulumNodeMedicApp(App):
         birth.add_widget(self._with_back(BirthScreen(
             workflow_factories={
                 "rtnode2400": lambda: hw.make_rtnode_build(_demo_rtnode_build),
-                "pi_rnode": _demo_pi_build},   # remote target — needs host-select flow
+                "pi_rnode": _pi_rnode_factory},   # honest-fail until the real flow lands
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"))))
@@ -267,11 +300,12 @@ class ReticulumNodeMedicApp(App):
         probe.add_widget(self._with_back(ProbeScreen(
             workflow_factory=lambda: hw.make_repair_workflow(_demo_repair_workflow),
             target_name="This node + attached board" if _probe_real
-                        else "Demo node - emulated")))
+                        else ("Demo node - emulated" if hw.demo_allowed()
+                              else "No board — plug one in to PROBE"))))
         self.sm.add_widget(probe)
 
         mitosis = Screen(name="mitosis")
-        mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_demo_clone_workflow)))
+        mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_mitosis_factory)))
         self.sm.add_widget(mitosis)
 
         self.sm.current = os.environ.get("RNM_START", "home")

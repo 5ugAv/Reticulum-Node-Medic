@@ -169,20 +169,15 @@ class BirthScreen(BoxLayout):
             else "Tap to choose a Pi  (or leave for a standalone radio)",
             self._choose_pi))
 
-        # big gap so Continue reads as a separate, deliberate action
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(48)))
-
-        cont = Button(text="Continue", size_hint_y=None, height=dp(56),
-                      font_size="20sp", bold=True, background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                      color=theme.hex_to_rgba(theme.COLORS["background"]))
-        cont.bind(on_release=lambda *_: self._on_continue())
-        self.header.add_widget(cont)
+        # The old cyan "Continue" button lived here. It was removed: it looped the
+        # user back to this same panel and pushed the green "OK — start" below the
+        # fold. Choosing a board now reveals the radio-params form + OK directly
+        # (see the tail of this method), freeing that vertical space.
 
         # Mitosis (clone THIS Node Medic) — restricted to the Heltec Wireless
         # Tracker at this stage, so the clone's GPS/location is a proven path.
         mit_ok = self._sel_board is not None and self._sel_board.key in MITOSIS_BOARDS
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(22)))
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(16)))
         mit = Button(text="Mitosis — clone this Node Medic",
                      size_hint_y=None, height=dp(50), font_size="15sp",
                      disabled=not mit_ok, background_normal="",
@@ -197,6 +192,20 @@ class BirthScreen(BoxLayout):
                 "Mitosis requires the Heltec Wireless Tracker at this stage "
                 "(its GPS/location is verified).", size="12sp",
                 color="text_secondary"))
+
+        # Board chosen → reveal the radio-params form (+ green OK — start) right
+        # away, in the scroll below. This replaces the old Continue step. Guarded
+        # because _build_chooser runs once in __init__ before self.list exists.
+        if hasattr(self, "list"):
+            if self._sel_board is not None:
+                pi_key = self._sel_pi[0] if self._sel_pi else "none"
+                node_type = "rnode" if pi_key == "none" else "pi_rnode"
+                self.show_params(node_type, board=self._sel_board)
+            else:
+                self.list.clear_widgets()
+                self.list.add_widget(_line(
+                    "Pick a board above to set radio params and start.",
+                    size="13sp", color="text_secondary"))
 
     def _option_button(self, num, text, on_tap):
         btn = Button(text=f"{num:>2}.  {text}", size_hint_y=None, height=dp(46),
@@ -241,28 +250,6 @@ class BirthScreen(BoxLayout):
     def _pick_pi(self, key, name):
         self._sel_pi = (key, name)
         self._build_chooser()
-
-    def _on_continue(self):
-        """Warn on a power-incompatible board+Pi combo, else go to the params
-        form. A board is required; a Pi is optional (standalone radio)."""
-        if self._sel_board is None:
-            self.list.clear_widgets()
-            self.list.add_widget(_line("Pick a board first — tap 'Board (radio)'.",
-                                       color="amber"))
-            return
-        pi_key = self._sel_pi[0] if self._sel_pi else "none"
-        if pi_key != "none":
-            verdict = power_check(pi_key, self._sel_board.key)
-            if verdict and verdict.get("verdict") in ("blocked", "caution"):
-                self._show_power_popup(verdict, self._sel_board.display_name,
-                                       pi_key,
-                                       lambda: self._proceed(self._sel_board, pi_key))
-                return
-        self._proceed(self._sel_board, pi_key)
-
-    def _proceed(self, board, pi_key):
-        node_type = "rnode" if pi_key == "none" else "pi_rnode"
-        self.show_params(node_type, board=board)
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed):
         """Warn that this Pi can't power this board over USB — Proceed (⚠ red,
@@ -377,6 +364,28 @@ class BirthScreen(BoxLayout):
             workflow.radio = cfg
 
     def _confirm_params(self, node_type, board):
+        """OK — start. If the path can't run (not built yet / no board), say so up
+        front — a single popup, no pointless power warning for something that
+        won't run. Otherwise warn on a brownout-prone Pi+board combo, then build."""
+        workflow, title = self._make_workflow(node_type, board)
+        if getattr(workflow, "is_blocked", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(workflow.message, getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "under_construction", False))
+            return
+        pi_key = self._sel_pi[0] if self._sel_pi else "none"
+        if pi_key != "none" and board is not None:
+            verdict = power_check(pi_key, board.key)
+            if verdict and verdict.get("verdict") in ("blocked", "caution"):
+                self._show_power_popup(
+                    verdict, board.display_name, pi_key,
+                    lambda: self._launch(workflow, title))
+                return
+        self._launch(workflow, title)
+
+    def _make_workflow(self, node_type, board):
+        """Create the workflow (+ progress title) for this selection and bake the
+        radio params in. Returns ``(workflow, title)``."""
         radio = self._read_params()
         self._last_board = board                 # remembered for the outcome panel
         self._last_type = node_type
@@ -395,9 +404,17 @@ class BirthScreen(BoxLayout):
             workflow = self._factories[node_type]()
             title = f"Building {self._labels.get(node_type, node_type)}..."
         self._apply_radio(workflow, radio)
-        self._launch(workflow, title)
+        return workflow, title
 
     def _launch(self, workflow, title):
+        # Blocked path (no board attached / not wired to real hardware yet): say so
+        # in a plain popup instead of faking a run or dumping a failed-step log.
+        if getattr(workflow, "is_blocked", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(workflow.message,
+                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "under_construction", False))
+            return
         self.list.clear_widgets()
         self.list.add_widget(_line(title, bold=True))
         self._workflow = workflow
@@ -480,6 +497,11 @@ class BirthScreen(BoxLayout):
             self._had_failure = True
         self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
                                    size="14sp"))
+        # Surface the reason on failure — otherwise an honest "not wired yet /
+        # plug the board in" message is swallowed and only the step name shows.
+        if not result.success and not result.skipped and getattr(result, "message", ""):
+            self.list.add_widget(_line(f"      {result.message}", color="amber",
+                                       size="12sp"))
 
     def _outcome_panel(self):
         """A clear '✓ Done — next steps' (or failure) banner so the operator is

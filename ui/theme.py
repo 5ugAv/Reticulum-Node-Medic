@@ -20,6 +20,7 @@ COLORS = {
     "accent": "#4fc3f7",   # steel blue
     "text_primary": "#f0f0f0",
     "text_secondary": "#9e9e9e",
+    "warning_yellow": "#ffd21e",   # requirement/hazard popups (dark text on this)
 }
 
 # Status thresholds (LiFePO4 deployment).

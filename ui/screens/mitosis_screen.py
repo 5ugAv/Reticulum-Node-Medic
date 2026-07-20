@@ -112,10 +112,20 @@ class MitosisScreen(BoxLayout):
     def start(self):
         if self.run_btn.disabled:
             return
+        orig_label = self.run_btn.text
         self.run_btn.disabled = True
         self.run_btn.text = "Cloning..."
-        self._build_rows()
         workflow = self._workflow_factory()
+        # Not wired to a real target Pi yet: plain popup, don't fake a clone.
+        if getattr(workflow, "is_blocked", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(workflow.message,
+                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "under_construction", False))
+            self.run_btn.disabled = False
+            self.run_btn.text = orig_label
+            return
+        self._build_rows()
         if workflow.steps:
             self._set_row(workflow.steps[0][0], ">", "accent")
         threading.Thread(target=self._run, args=(workflow,), daemon=True).start()
