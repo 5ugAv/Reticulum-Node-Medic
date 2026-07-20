@@ -117,11 +117,13 @@ def test_bake_via_sd_uses_existing_desktop_automount():
     # The desktop auto-mounts the card at /media/nodemedic/bootfs — use that mount
     # (don't try to mount again), and DON'T unmount it (we didn't mount it).
     def run(cmd):
-        if "findmnt" in cmd:
-            return "/media/nodemedic/bootfs\n"
+        if "findmnt" in cmd and "SOURCE" in cmd:
+            return "/dev/mmcblk0p2\n"                 # medic_root_disk -> mmcblk0
+        if "findmnt" in cmd and "TARGET" in cmd:
+            return "/media/nodemedic/bootfs\n"        # sda1 already auto-mounted
         if "lsblk" in cmd:
             return _lsblk_json([MEDIC, SD_CARD])
-        if "findmnt" not in cmd and "cat" in cmd and "config.txt" in cmd:
+        if "cat" in cmd and "config.txt" in cmd:
             return "dtparam=audio=on\n"
         if "cat" in cmd and "cmdline.txt" in cmd:
             return "console=tty1 rootwait\n"
