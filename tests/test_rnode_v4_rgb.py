@@ -66,6 +66,9 @@ def build_conn(cloned=False, has_bin_after_compile=True):
 
 
 def wf(conn, **kw):
+    # No-op the RobustFlasher settle/power-cycle sleeps by default so the
+    # .flash()/run_all() tests don't spend real wall-clock in time.sleep.
+    kw.setdefault("flash_sleep", lambda *_a: None)
     return HeltecV4RGBWorkflow(conn, port="/dev/ttyACM1", **kw)
 
 
@@ -263,16 +266,18 @@ def test_flash_rgb_carried_provisions_carries_overlays_stamps(tmp_path):
     h = tmp_path / "partition_hashes"; h.write_text("#!/usr/bin/env python\n")
     conn = carried_conn()
     ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0", band_mhz=915,
-                                     bin_path=str(b), hasher_path=str(h))
+                                     bin_path=str(b), hasher_path=str(h),
+                                     robust_sleep=lambda *_a: None)
     assert ok and rgb, msg           # LED applied on the happy path
     # 1) stock provision via the offline pre-fed autoinstall
     assert any("--autoinstall" in c and "printf" in c for c in conn.history)
     # 2) carried the compiled bin + hasher to their staging paths on the target
     assert (str(b), REMOTE_RGB_BIN) in conn.pushed
     assert (str(h), REMOTE_RGB_HASHER) in conn.pushed
-    # 3) overlaid from the CARRIED bin (not the local build path) + 4) restamped
-    assert any("esptool" in c and REMOTE_RGB_BIN in c and "0x10000" in c
+    # 3) overlaid the CARRIED bin at 0x10000 via RobustFlasher (verify_flash) + restamp
+    assert any("write_flash" in c and REMOTE_RGB_BIN in c and "0x10000" in c
                for c in conn.history)
+    assert any("verify_flash" in c and REMOTE_RGB_BIN in c for c in conn.history)
     assert any("--firmware-hash" in c and REMOTE_RGB_HASHER in c
                for c in conn.history)
 
@@ -283,14 +288,16 @@ def test_flash_rgb_carried_falls_back_to_working_stock_when_overlay_fails(tmp_pa
     b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"BIN")
     h = tmp_path / "partition_hashes"; h.write_text("x")
     conn = carried_conn()
-    conn.rules.insert(0, ("esptool", 1, "", "Serial data stream stopped"))  # first wins
-    ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0", overlay_retries=1,
-                                     bin_path=str(b), hasher_path=str(h))
+    conn.rules.insert(0, ("write_flash", 1, "", "Serial data stream stopped"))  # overlay fails
+    ok, msg, rgb = flash_rgb_carried(conn, "/dev/ttyACM0", bin_path=str(b),
+                                     hasher_path=str(h),
+                                     robust_sleep=lambda *_a: None)
     assert ok is True and rgb is False           # working radio, no LED
     assert "functional" in msg
-    # it retried the overlay, then re-flashed stock to restore a clean app
-    esptool_calls = [c for c in conn.history if "esptool" in c and "write_flash" in c]
-    assert len(esptool_calls) == 2               # initial + one retry
+    # RobustFlasher exhausted its ladder (many write attempts), then re-flashed
+    # stock to restore a clean app so the board is never left corrupt.
+    esptool_writes = [c for c in conn.history if "write_flash" in c]
+    assert len(esptool_writes) >= 2              # the ladder tried more than once
     autoinstalls = [c for c in conn.history if "--autoinstall" in c and "printf" in c]
     assert len(autoinstalls) >= 2                # initial provision + restore
 

@@ -31,6 +31,7 @@ the EEPROM and restores the known-good RGB firmware in one pass.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 from typing import Callable, List, Optional
 
@@ -107,11 +108,38 @@ def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
     return os.path.isfile(bin_path) and os.path.isfile(hasher_path)
 
 
+def _board_usb_serial(connection: Connection, port: str):
+    """The ESP32 USB serial (a MAC, e.g. 3C:0F:02:EB:2E:18) for the board on
+    *port*, so RobustFlasher can target its USB hub port for a uhubctl power-
+    cycle. None if it can't be resolved (RobustFlasher then uses a soft reset)."""
+    out = connection.run(
+        f'for l in /dev/serial/by-id/*; do t=$(readlink -f "$l" 2>/dev/null); '
+        f'[ "$t" = "{port}" ] && basename "$l"; done 2>/dev/null')[1]
+    m = re.search(r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})", out or "")
+    return m.group(1) if m else None
+
+
+def _robust_rgb_overlay(connection: Connection, port: str, remote_bin: str,
+                        sleep=None) -> "tuple[bool, str]":
+    """Write the RGB app at 0x10000 through RobustFlasher — per-chunk
+    verify_flash + a baud-dropping ladder + (when uhubctl is available) a USB
+    power-cycle to recover a WEDGED board autonomously. This replaces the single
+    raw esptool write that was the fragile step. Returns (ok, tier_or_reason)."""
+    from workflows.robust_flash import RobustFlasher, Region, find_hub_port
+    serial = _board_usb_serial(connection, port)
+    hub, hub_port = find_hub_port(connection, serial) if serial else (None, None)
+    kw = {"sleep": sleep} if sleep is not None else {}
+    flasher = RobustFlasher(connection, port, hub=hub, hub_port=hub_port,
+                            chip="esp32s3", **kw)
+    result = flasher.flash(fixed=[], app=Region(0x10000, remote_bin))
+    return result.success, (result.tier or result.diagnosis or "")
+
+
 def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
                       version: str = FIRMWARE_VERSION,
                       bin_path: str = RGB_LOCAL_BIN,
                       hasher_path: str = RGB_LOCAL_HASHER,
-                      flash_baud: int = DEFAULT_FLASH_BAUD, overlay_retries: int = 1):
+                      robust_sleep=None):
     """Birth a blank V4 on a REMOTE target, giving it the NeoPixel status LED —
     but NEVER leaving it worse than a working radio.
 
@@ -138,20 +166,20 @@ def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
         return True, ("flashed as a working RNode (couldn't stage the status-LED "
                       "firmware; radio is fully functional)."), False
 
-    last = ""
-    for attempt in range(overlay_retries + 1):
+    # Robust overlay: verify_flash per chunk + a baud-dropping / power-cycle
+    # ladder, instead of a single raw esptool write (the old fragile step).
+    ok, tier = _robust_rgb_overlay(connection, port, REMOTE_RGB_BIN,
+                                   sleep=robust_sleep)
+    last = tier
+    if ok:
         code, out, err = connection.run(
-            esptool_flash_command(port, REMOTE_RGB_BIN, version, baud=flash_baud),
+            firmware_hash_command(port, REMOTE_RGB_BIN, REMOTE_RGB_HASHER),
             timeout=400)
         if code == 0:
-            code, out, err = connection.run(
-                firmware_hash_command(port, REMOTE_RGB_BIN, REMOTE_RGB_HASHER),
-                timeout=400)
-            if code == 0:
-                return True, "flashed with the NeoPixel status LED.", True
+            return True, f"flashed with the NeoPixel status LED ({tier}).", True
         last = (err or out)[-160:]
 
-    # Overlay failed after retries — restore a clean working radio so the board
+    # Overlay failed — restore a clean working radio so the board
     # is never left with a corrupt app. A working node without the LED is a WIN.
     restore_ok, restore_msg, _ = birth_flash(connection, board, port,
                                              band_mhz, version)
@@ -214,7 +242,8 @@ class HeltecV4RGBWorkflow:
                  firmware_dir: str = FIRMWARE_DIR,
                  neopixel_pin: int = NEOPIXEL_PIN, board_model: int = BOARD_MODEL,
                  boot_error_red: int = BOOT_ERROR_RED,
-                 build_timeout: int = 600, flash_timeout: int = 400):
+                 build_timeout: int = 600, flash_timeout: int = 400,
+                 flash_sleep=None):
         self.connection = connection
         self.port = port
         self.band_mhz = band_mhz
@@ -225,6 +254,7 @@ class HeltecV4RGBWorkflow:
         self.boot_error_red = boot_error_red
         self.build_timeout = build_timeout
         self.flash_timeout = flash_timeout
+        self.flash_sleep = flash_sleep          # injected into RobustFlasher (tests)
         self.results: List[StepResult] = []
 
     @property
@@ -335,14 +365,16 @@ class HeltecV4RGBWorkflow:
         if self.connection.run(f"test -f {self.bin_path}")[0] != 0:
             return StepResult("flash_custom", False,
                               "NeoPixel firmware not built yet — run build() first.")
-        code, out, err = self.connection.run(
-            esptool_flash_command(self.port, self.bin_path, self.version),
-            timeout=self.flash_timeout)
-        ok = code == 0
+        # RobustFlasher: verify_flash per chunk + a baud-dropping / uhubctl
+        # power-cycle ladder (the medic can power-cycle its own USB port), so a
+        # board that wedges mid-write is recovered autonomously instead of the
+        # old single raw esptool write.
+        ok, tier = _robust_rgb_overlay(self.connection, self.port, self.bin_path,
+                                       sleep=self.flash_sleep)
         return StepResult(
             "flash_custom", ok,
-            "Flashed the NeoPixel firmware over the app partition." if ok
-            else f"esptool flash failed (exit {code}): {(err or out)[-200:]}")
+            f"Flashed the NeoPixel firmware over the app partition ({tier})." if ok
+            else f"NeoPixel flash failed after the robust ladder ({tier}).")
 
     def _set_hash(self) -> StepResult:
         code, out, err = self.connection.run(
