@@ -44,10 +44,11 @@ PI_HOSTS = [
     ("none", "None — standalone radio (flash only)"),
 ]
 
-#: Boards that ship with GNSS. Mitosis (cloning this Node Medic) is only offered
-#: for these, because the medic relies on GPS — a clone needs a GPS-capable radio
-#: too. (Kept here for now; could migrate to a has_gps field on RNodeBoard.)
-GPS_BOARDS = {"heltec_wireless_tracker", "tbeam", "tbeam_supreme", "techo"}
+#: Mitosis (cloning this Node Medic) is restricted to the Heltec Wireless Tracker
+#: ONLY at this stage — it's the board whose GPS/location path we've proven on
+#: hardware (Jonesey), so a clone's location function is guaranteed correct.
+#: Other GPS-capable boards can be added once their GPS is verified end-to-end.
+MITOSIS_BOARDS = {"heltec_wireless_tracker"}
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
@@ -178,23 +179,23 @@ class BirthScreen(BoxLayout):
         cont.bind(on_release=lambda *_: self._on_continue())
         self.header.add_widget(cont)
 
-        # Mitosis (clone THIS Node Medic) — only for a GPS-capable board, since
-        # the medic uses GPS and a clone needs its own GPS radio.
-        gps_ok = self._sel_board is not None and self._sel_board.key in GPS_BOARDS
+        # Mitosis (clone THIS Node Medic) — restricted to the Heltec Wireless
+        # Tracker at this stage, so the clone's GPS/location is a proven path.
+        mit_ok = self._sel_board is not None and self._sel_board.key in MITOSIS_BOARDS
         self.header.add_widget(Widget(size_hint_y=None, height=dp(22)))
         mit = Button(text="Mitosis — clone this Node Medic",
                      size_hint_y=None, height=dp(50), font_size="15sp",
-                     disabled=not gps_ok, background_normal="",
+                     disabled=not mit_ok, background_normal="",
                      background_color=theme.hex_to_rgba(
-                         theme.COLORS["green" if gps_ok else "surface"]),
+                         theme.COLORS["green" if mit_ok else "surface"]),
                      color=theme.hex_to_rgba(
-                         theme.COLORS["background" if gps_ok else "text_secondary"]))
+                         theme.COLORS["background" if mit_ok else "text_secondary"]))
         mit.bind(on_release=lambda *_: self._on_mitosis and self._on_mitosis())
         self.header.add_widget(mit)
-        if not gps_ok:
+        if not mit_ok:
             self.header.add_widget(_line(
-                "Mitosis needs a GPS-capable board (Heltec Tracker, T-Beam, "
-                "T-Echo…) — the clone needs GPS too.", size="12sp",
+                "Mitosis requires the Heltec Wireless Tracker at this stage "
+                "(its GPS/location is verified).", size="12sp",
                 color="text_secondary"))
 
     def _option_button(self, num, text, on_tap):
