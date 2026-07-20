@@ -63,9 +63,14 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # rnsd is holding the port, none respond — the caller's live-mode gate
         # handles that.)
         port = self.profile.radio.serial_port
-        info = self._cmd_output(f"rnodeconf {port} --info")
-        if self._device_read(info):
-            return info
+        # Retry the target port: a board that was just accessed (flashed, TX'd,
+        # hash-probed) can miss the first --info while it settles/re-enumerates,
+        # which would otherwise false-trip the live-mode gate below.
+        info = ""
+        for _ in range(3):
+            info = self._cmd_output(f"rnodeconf {port} --info")
+            if self._device_read(info):
+                return info
         listing = self._cmd_output("ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null")
         for p in listing.split():
             if p == port:
@@ -75,6 +80,15 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 self.profile.radio.serial_port = p     # remember the real port
                 return alt
         return info
+
+    def _port_held(self, port: str) -> bool:
+        """True if *port* is held open by another process (rnsd/the splitter) —
+        i.e. the medic's OWN radio in live service, not a free work board. Used to
+        scope the live-mode gate to the in-service radio only."""
+        try:
+            return self._run_cmd(f"fuser {port} 2>/dev/null")[0] == 0
+        except Exception:
+            return False
 
     @staticmethod
     def _info_str(info: str, pattern: str):
@@ -98,7 +112,12 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # one info instead; live radio health is covered by the Network & mesh
         # checks. A genuinely dead board in MAINTENANCE mode (rnsd stopped) still
         # surfaces normally below.
-        if (not has_info and self._service_is_active("rnsd")
+        # CRUCIAL: only gate when the TARGET port is actually the in-service radio
+        # (held open). A free WORK board that didn't read is a real fault to
+        # report, not "the medic's radio is busy" — otherwise PROBE of an attached
+        # board falsely says radio_in_service just because the medic's own rnsd runs.
+        if (not has_info and self._port_held(port)
+                and self._service_is_active("rnsd")
                 and self._rnode_interface() is not None):
             return [self._check(
                 "radio_in_service", False,
