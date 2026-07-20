@@ -70,10 +70,26 @@ def test_live_mode_defers_instead_of_false_criticals():
     conn.rules.insert(0, ("rnstatus --json", 0,
         '{"interfaces":[{"type":"RNodeInterface","name":"RNode","status":false}]}',
         ""))
+    conn.rules.insert(0, ("^fuser ", 0, "", ""))    # the TARGET port is held by rnsd
     n = names(run(conn))
     assert n == {"radio_in_service"}
     assert "firmware_present" not in n
     assert "serial_responsive" not in n
+
+
+def test_live_mode_but_free_work_board_is_diagnosed_not_deferred():
+    # rnsd runs (holds Jonesey) but PROBE targets a FREE work board that didn't
+    # read: this is a real fault to report, NOT "radio in service". The gate must
+    # be scoped to the held port, not just "rnsd is running".
+    conn = conn_with(info_code=1, info="")
+    conn.rules.insert(0, ("^systemctl is-active rnsd", 0, "active", ""))
+    conn.rules.insert(0, ("rnstatus --json", 0,
+        '{"interfaces":[{"type":"RNodeInterface","name":"RNode","status":false}]}',
+        ""))
+    conn.rules.insert(0, ("^fuser ", 1, "", ""))    # target work board is FREE
+    n = names(run(conn))
+    assert "radio_in_service" not in n
+    assert "serial_responsive" in n                 # real fault surfaced
 
 
 def test_maintenance_mode_dead_board_still_flags():
