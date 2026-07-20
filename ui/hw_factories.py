@@ -77,12 +77,18 @@ def _port_busy(port: str, runner: Callable = None) -> bool:
         return True                       # uncertain -> exclude (safe)
 
 
-def local_board_ports(busy_fn: Callable[[str], bool] = _port_busy) -> list:
-    """FREE USB serial devices that are safe to flash — every ttyACM/ttyUSB that
-    is NOT currently held by another process (so the medic's own radio, held by
-    the splitter, is excluded). A freshly-plugged board is free, hence flashable."""
+def local_board_ports(busy_fn: Callable[[str], bool] = _port_busy,
+                      onboard_fn: Callable[[str], bool] = None) -> list:
+    """FREE USB serial devices that are safe to flash/PROBE — WORK boards, not the
+    medic's own infrastructure. A port is excluded if it is (a) held by another
+    process (busy) OR (b) one of the medic's OWN permanent boards by USB serial
+    identity (Jonesey's LoRa radio, the GPS Tracker — see ui.onboard_roster). The
+    identity check is the robust one: busy alone fails dangerously if rnsd is
+    stopped for maintenance (the medic's radio would look free/flashable)."""
+    from ui.onboard_roster import is_onboard
+    onboard_fn = onboard_fn or is_onboard
     candidates = sorted(glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"))
-    return [p for p in candidates if not busy_fn(p)]
+    return [p for p in candidates if not busy_fn(p) and not onboard_fn(p)]
 
 
 def hardware_present(ports_fn: Callable[[], list] = local_board_ports) -> bool:
@@ -139,9 +145,16 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
 
 def make_repair_workflow(demo_factory: Callable, connection=None,
                          ports_fn: Callable[[], list] = local_board_ports):
-    """PROBE the medic itself + its attached board over a real LocalConnection."""
+    """PROBE the attached WORK board over a real LocalConnection. The profile's
+    serial port is pinned to the free work board (never the medic's own radio),
+    so PROBE diagnoses the plugged-in board directly instead of auto-detecting
+    onto — and gating on — the medic's own live rnsd radio (Jonesey)."""
+    free = ports_fn()
     if connection is None:
-        if not hardware_present(ports_fn):
+        if not free or platform.system() != "Linux":
             return demo_factory()
         connection = LocalConnection()
-    return RepairWorkflow(connection, NodeProfile())
+    profile = NodeProfile()
+    if free:
+        profile.radio.serial_port = free[0]      # the attached work board
+    return RepairWorkflow(connection, profile)
