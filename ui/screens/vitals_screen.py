@@ -88,7 +88,7 @@ class NodeRow(BoxLayout):
             show_battery=batt is not None and not is_rtnode,
             show_solar=batt is not None and not is_rtnode,
             show_signal=sig is not None,     # never invent a signal reading
-            size_hint_x=None, width=dp(320)))
+            size_hint_x=None, width=dp(210)))   # was 320 — starved the name column
 
 
 class VitalsScreen(BoxLayout):

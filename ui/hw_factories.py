@@ -37,19 +37,30 @@ from workflows.rtnode_build import RTNodeBuildWorkflow
 
 
 class _HonestFailWorkflow:
-    """A stand-in workflow that reports a real problem instead of faking a
-    flash. On the medic, a fake 'Done!' (the old EmulatedConnection demo) is
-    dangerous — the operator ships a board that was never touched. When no
-    flashable board is free, BIRTH must say so plainly; the birth screen turns
-    a failed step into its red 'Something didn't finish' banner + retry hint."""
+    """A stand-in for a workflow that CAN'T run — because the required hardware
+    isn't attached, or that path isn't wired to real hardware yet. On the medic a
+    fake 'Done!' (the old EmulatedConnection demo) is dangerous: the operator
+    trusts a board/node that was never touched. Screens detect ``is_blocked`` and
+    show a plain requirement popup ('No board attached — plug one in') instead of
+    running anything or faking success."""
 
-    def __init__(self, step_name: str, message: str):
+    #: Screens check this to pop a requirement dialog rather than run the workflow.
+    is_blocked = True
+    #: Some screens read ``.steps`` before running; keep it safe (empty).
+    steps: list = []
+
+    def __init__(self, step_name: str, message: str, title: str = "Heads up",
+                 under_construction: bool = False):
         self._step = step_name
-        self._message = message
+        self.message = message
+        self.title = title            # popup heading, tailored to the process
+        # True = a feature that's simply not built yet (vs a hardware requirement).
+        # Hitting one is logged for the developer (ui.construction_log).
+        self.under_construction = under_construction
         self.results = []
 
     def run_all(self, on_progress=None):
-        r = StepResult(self._step, False, self._message)
+        r = StepResult(self._step, False, self.message)
         self.results = [r]
         if on_progress:
             on_progress(r)
@@ -98,6 +109,17 @@ def hardware_present(ports_fn: Callable[[], list] = local_board_ports) -> bool:
     return platform.system() == "Linux" and bool(ports_fn())
 
 
+def demo_allowed() -> bool:
+    """Whether an EMULATED demo may stand in for real hardware. The rule: NEVER on
+    the deployed medic (Linux) unless explicitly opted in. A fake 'Done!' there is
+    dangerous — the operator trusts a board/node that was never touched (the
+    ok/ok/ok birth-certificate trap). A non-Linux dev box has no real hardware to
+    fool anyone with, so demos keep the UI explorable there; ``RNM_DEMO=1`` forces
+    them on anywhere. On the medic without the flag, every screen does the real
+    thing or honestly says it can't — see _HonestFailWorkflow."""
+    return platform.system() != "Linux" or bool(os.environ.get("RNM_DEMO"))
+
+
 def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
                      connection=None, ports_fn: Callable[[], list] = local_board_ports):
     """Flash a board attached to the medic. Targets a FREE port only (never the
@@ -106,23 +128,25 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
     no free board is attached."""
     free = ports_fn()
     if not free:
-        # No FREE port. On a dev box (or when RNM_DEMO is set) the explorable
-        # demo is the point. On the real medic, NEVER fake a flash — say why.
-        if platform.system() != "Linux" or os.environ.get("RNM_DEMO"):
+        # No FREE port. Only an explicit opt-in (RNM_DEMO on a dev box) may show
+        # the explorable demo. On the real medic, NEVER fake a flash — say why.
+        if demo_allowed():
             return demo_factory(board)
         attached = all_serial_ports()
         if len(attached) > 1:              # Jonesey + a plugged board that's busy
-            msg = ("A board is connected but its port is busy — a previous "
+            msg = ("A board is connected, but its USB port is busy — a previous "
                    "flash may still be holding it. Unplug and replug the board "
-                   "(or power-cycle it), wait a few seconds, then retry.")
+                   "(or power-cycle it), wait a few seconds, then try again.")
+            title = "Board port is busy"
         else:                              # only the medic's own radio, or nothing
-            msg = ("No board detected on USB. Plug the RNode in with a short, "
-                   "known-good USB DATA cable (many USB-C cables are charge-only), "
-                   "then retry. If it's plugged and dead, hold BOOT, tap RST, "
-                   "release BOOT to force download mode.")
-        return _HonestFailWorkflow("detect_port", msg)
+            msg = ("There's no RNode to flash. Plug it into the medic with a "
+                   "short, known-good USB DATA cable (many USB-C cables are "
+                   "charge-only). If it's plugged in but dead: hold BOOT, tap "
+                   "RST, release BOOT to force download mode, then try again.")
+            title = "No board attached"
+        return _HonestFailWorkflow("detect_port", msg, title)
     if connection is None:
-        if platform.system() != "Linux":
+        if demo_allowed():
             return demo_factory(board)
         connection = LocalConnection()
     port = free[0]                         # the freshly-plugged board, not Jonesey
@@ -138,7 +162,12 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
     """Build an RTNode-2400 on an ESP32 board attached to the medic."""
     if connection is None:
         if not hardware_present(ports_fn):
-            return demo_factory()
+            if demo_allowed():
+                return demo_factory()
+            return _HonestFailWorkflow("detect_board",
+                "Building an RTNode-2400 needs its ESP32 board plugged into the "
+                "medic. Connect it with a known-good USB DATA cable, then start "
+                "the build again.", "No board attached")
         connection = LocalConnection()
     return RTNodeBuildWorkflow(connection, NodeProfile())
 
@@ -152,7 +181,13 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
     free = ports_fn()
     if connection is None:
         if not free or platform.system() != "Linux":
-            return demo_factory()
+            if demo_allowed():
+                return demo_factory()
+            return _HonestFailWorkflow("detect_board",
+                "PROBE checks a real board's firmware and radio, so it needs one "
+                "attached. Plug the RNode/node board into the medic with a "
+                "known-good USB DATA cable, then run PROBE again.",
+                "No board to PROBE")
         connection = LocalConnection()
     profile = NodeProfile()
     if free:

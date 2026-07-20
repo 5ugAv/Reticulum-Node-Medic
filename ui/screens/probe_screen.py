@@ -90,14 +90,24 @@ class ProbeScreen(BoxLayout):
     def start(self):
         if self.run_btn.disabled or self._busy:
             return
+        orig_label = self.run_btn.text
         self.run_btn.disabled = True
         self.run_btn.text = f"Checking {self._target}..."
+        self._workflow = self._workflow_factory()
+        # No board attached (or path not wired): plain popup, don't run/fake it.
+        if getattr(self._workflow, "is_blocked", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(self._workflow.message,
+                              getattr(self._workflow, "title", "Heads up"),
+                              getattr(self._workflow, "under_construction", False))
+            self.run_btn.disabled = False
+            self.run_btn.text = orig_label
+            return
         self.list.clear_widgets()
         self._category_boxes = {}
         self._issue_rows = {}
         self._set_summary(hidden=True)
         self._set_progress(hidden=True)
-        self._workflow = self._workflow_factory()
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):

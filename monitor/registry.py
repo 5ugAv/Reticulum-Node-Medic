@@ -43,13 +43,31 @@ def _capabilities(members) -> dict:
             internet = True                   # reached via an internet link
         http, beacon = r.latest_http, r.latest_beacon
         if http is not None and http.reachable:
+            if http.lora_online:               # the node self-reports its LoRa —
+                lora = True                     # honest LIVE detection, not a guess
             wifi = bool(http.wifi_connected)
             internet = bool(http.tcp_backbone_connected) or (internet is True)
         elif beacon is not None and wifi is None:
             wifi = bool(beacon.wifi_up)
             if internet is None:
                 internet = bool(beacon.tcp_backbone_up)
-    return {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
+    from monitor.kin_roster import DEFAULT_LINKS
+    caps = {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
+    # KIN nodes declare the interfaces they physically have — a Pi 3A+ propagation
+    # node has wifi + bluetooth (internet rides that wifi); an RTNode-2400 is always
+    # a LoRa node. The medic only HEARS one interface, so without this they'd read
+    # single-transport. Sources: an explicit roster ``links`` entry, then the
+    # node-type default (kin only — never guess for an anonymous neighbour). A live
+    # reading (True/False above) always wins over a declared capability.
+    for r in members:
+        declared = dict(getattr(r, "links", None) or {})
+        if r.provenance == "kin":
+            for k, v in DEFAULT_LINKS.get(r.node_type, {}).items():
+                declared.setdefault(k, v)
+        for k, v in declared.items():
+            if v and caps.get(k) is None:
+                caps[k] = True
+    return caps
 
 
 def _printable_name(app_data) -> str:
@@ -98,6 +116,8 @@ class NodeRecord:
     lon: Optional[float] = None
     identity_hash: Optional[str] = None     # groups aspect-destinations per DEVICE
     announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
+    links: Optional[dict] = None            # KIN-declared interfaces the node HAS
+                                            # ({lora,wifi,bluetooth,internet}: True)
     notes: List[str] = field(default_factory=list)
     events: List[CommissionEvent] = field(default_factory=list)
 
@@ -193,6 +213,51 @@ class NodeRegistry:
         self.nodes: Dict[str, NodeRecord] = {}
         from monitor.history import NodeHistory
         self.history = NodeHistory()    # per-node time series (VITALS "History")
+        #: The medic's own fleet, keyed by RNS hash (monitor.kin_roster). Any
+        #: record whose hash is in here is authoritatively named/typed/located as
+        #: KIN — even a plain propagation Pi the medic can't hear directly.
+        self.kin_roster: Dict[str, dict] = {}
+
+    def set_kin_roster(self, roster: dict) -> None:
+        """Load the medic's fleet roster. Seeds a NAMED, LOCATED record for every
+        entry (so each fleet node shows in VITALS as kin and on the map at its
+        deployed spot, even before it's heard) and re-applies it to any record
+        already present."""
+        self.kin_roster = dict(roster or {})
+        for h in self.kin_roster:
+            rec = self.nodes.get(h) or self.register(h)
+            self._apply_kin(rec)
+
+    def _apply_kin(self, rec: NodeRecord) -> None:
+        """If this record is one of the medic's own nodes, stamp its roster name,
+        type, and deployed location — making it kin (named) and map-visible."""
+        entry = self.kin_roster.get(rec.dst_hash)
+        if not entry:
+            return
+        if entry.get("name"):
+            rec.name = entry["name"]
+        if entry.get("type"):
+            rec.node_type = entry["type"]
+        if entry.get("lat") is not None:
+            rec.lat = entry["lat"]
+        if entry.get("lon") is not None:
+            rec.lon = entry["lon"]
+        if entry.get("links"):
+            rec.links = entry["links"]
+
+    def ingest_relay(self, via_hash: str, interface: str, now: float) -> NodeRecord:
+        """Surface the medic's DIRECT next-hop relay (a ``via`` in the path table)
+        as a node. A via is the medic's 1-hop LoRa neighbour that the whole mesh
+        routes through — e.g. EVERYWHERE — yet it's never a destination in rnpath,
+        so without this it stays invisible. Marks it reachable (1 hop) and applies
+        the kin roster (names it if it's ours)."""
+        rec = self.nodes.get(via_hash) or self.register(via_hash)
+        rec.mesh_hops = 1
+        if interface:
+            rec.mesh_interface = interface
+        rec.last_seen = now
+        self._apply_kin(rec)
+        return rec
 
     def register(self, dst_hash: str, name: str = "", location: str = "",
                  node_type: str = "rtnode2400", lat: Optional[float] = None,
@@ -213,6 +278,7 @@ class NodeRegistry:
                 rec.lat = lat
             if lon is not None:
                 rec.lon = lon
+        self._apply_kin(rec)
         return rec
 
     def register_from_birth_certificate(self, cert: dict, name: str = "",
