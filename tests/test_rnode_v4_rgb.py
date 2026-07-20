@@ -133,52 +133,65 @@ def test_build_fails_when_compile_produces_no_binary():
 def flash_conn(info=GOOD_INFO, provisioned=True, has_bin=True):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rule(f"test -f {BUILD_BIN}", code=0 if has_bin else 1)
-    # autoinstall provisioning (pre-fed 9/enter/2/y): report completion
-    c.rule("--autoinstall", code=0,
-           stdout=("[complete] autoinstallation complete" if provisioned
-                   else "error"))
-    c.rule("esptool", code=0, stdout="Hash of data verified.")
-    c.rule("partition_hashes", code=0, stdout="deadbeef")
-    c.rule("--firmware-hash", code=0, stdout="ok")
+    c.rule("erase_flash", code=0, stdout="Chip erase completed successfully")
+    # full-image write (bootloader+partitions+boot_app0+app) verifies
+    c.rule("write_flash", code=0, stdout="Hash of data verified.")
+    # vendor ROM bootstrap (rnodeconf -r --product c3 --model c8)
+    c.rule("-r --product", code=0,
+           stdout=("Device signature validated\nEEPROM Bootstrapping successful!"
+                   if provisioned else "error"))
+    # firmware hash set (rnodeconf -H "$HASH")
+    c.rule('-H "$HASH"', code=0, stdout="Firmware hash set")
     c.rule("--info", code=0, stdout=info)
     return c
 
 
-def test_flash_runs_provision_then_esptool_then_hash_then_params_then_verify():
+FLASH_STEPS = ["detect_port", "erase", "flash_firmware", "provision",
+               "set_hash", "set_params", "verify"]
+
+
+def test_flash_runs_erase_flash_provision_hash_params_verify():
     conn = flash_conn()
     results = wf(conn).flash()
-    assert [r.name for r in results] == [
-        "detect_port", "provision", "flash_custom", "set_hash", "set_params",
-        "verify"]
-    assert all(r.success for r in results)
+    assert [r.name for r in results] == FLASH_STEPS
+    assert all(r.success for r in results), [r for r in results if not r.success]
     h = conn.history
-    # provision uses the proven non-interactive autoinstall (V4 = index 9)
-    assert any("--autoinstall" in c and "printf" in c for c in h)
-    # then the custom firmware is overlaid and the hash restamped
-    assert any("esptool" in c and "0x10000" in c for c in h)
-    assert any("--firmware-hash" in c for c in h)
+    assert any("erase_flash" in c for c in h)
+    # complete image written at all four offsets with --flash_size detect
+    fl = next(c for c in h if "write_flash" in c)
+    assert "--flash_size detect" in fl
+    assert "0x0 " in fl and "0x8000 " in fl and "0xe000 " in fl and "0x10000 " in fl
+    # provisioned as the VENDOR V4 model (c3/c8) — NOT homebrew f0/ff
+    prov = next(c for c in h if "-r --product" in c)
+    assert "--product c3" in prov and "--model c8" in prov and "--hwrev 1" in prov
+    assert "--product f0" not in prov
+    # firmware hash from the image's embedded trailing 32 bytes
+    assert any("-32:" in c and "-H" in c for c in h)
 
 
-def test_flash_bakes_canonical_params_at_birth_then_host_mode():
-    # The real fix for "Radio state mismatch": stale 250/SF11 default config is
-    # overwritten with the canonical params, then the board is returned to
-    # host-controlled mode so rnsd drives it. rnodeconf needs --tnc WITH the
-    # flags; the flags alone are a silent no-op.
+def test_flash_bakes_canonical_params_then_host_mode():
     conn = flash_conn()
-    wf(conn).flash()
+    wf(conn).flash()                                 # default radio_mode="host"
     h = conn.history
     tnc = next(c for c in h if "--tnc" in c and "--freq" in c)
     assert "--freq 915125000" in tnc
     assert "--bw 125000" in tnc
     assert "--sf 9" in tnc and "--cr 5" in tnc and "--txp 17" in tnc
-    # and afterwards it is left host-controlled (-N), issued after the params
+    # host mode: returned to host-controlled (-N) after the params
     assert any(c.rstrip().endswith("-N") for c in h)
     assert h.index(tnc) < next(i for i, c in enumerate(h) if c.rstrip().endswith("-N"))
 
 
+def test_flash_tnc_mode_saves_config_without_host_delete():
+    # a standalone/pocket RNode: params saved, radio live on boot, NO -N delete
+    conn = flash_conn()
+    wf(conn, radio_mode="tnc").flash()
+    h = conn.history
+    assert any("--tnc" in c and "--freq" in c for c in h)
+    assert not any(c.rstrip().endswith("-N") for c in h)
+
+
 def test_flash_bakes_CUSTOM_radio_params_when_provided():
-    # The BIRTH form's params must actually be baked — not silently dropped for
-    # the V4 (the old bug: _set_params ignored cfg, always writing canonical).
     from node_profile import RadioConfig
     conn = flash_conn()
     custom = RadioConfig(frequency_mhz=868.5, bandwidth_khz=250,
@@ -193,18 +206,21 @@ def test_flash_refuses_when_firmware_not_built():
     conn = flash_conn(has_bin=False)
     results = wf(conn).flash()
     fail = next(r for r in results if not r.success)
-    assert fail.name == "flash_custom"
+    assert fail.name == "erase"
     assert "build()" in fail.message
 
 
 def test_flash_repairs_invalid_eeprom_board_verify_passes():
-    # the fault: --info says EEPROM invalid BEFORE; after the flash the same
-    # verify command should see a valid board. Emulate by flipping the info rule.
     conn = flash_conn(info=BAD_INFO)
     results = wf(conn).flash()
-    # verify keys off the POST-flash --info; with BAD_INFO it must fail loudly
     assert results[-1].name == "verify"
     assert results[-1].success is False
+
+
+def test_flash_verify_rejects_corrupt_firmware():
+    conn = flash_conn(info="Device connected\nFirmware version 1.86\nfirmware corrupt")
+    results = wf(conn).flash()
+    assert results[-1].name == "verify" and results[-1].success is False
 
 
 def test_flash_verify_accepts_valid_post_flash_info():
@@ -215,7 +231,6 @@ def test_flash_verify_accepts_valid_post_flash_info():
 
 
 def test_run_all_skips_build_when_firmware_already_built():
-    # a medic that compiled the RGB firmware once just FLASHES — no slow recompile
     conn = flash_conn(has_bin=True)
     results = wf(conn).run_all()
     names = [r.name for r in results]

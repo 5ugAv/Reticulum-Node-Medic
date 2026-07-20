@@ -45,21 +45,33 @@ def normal_mode_command(port: str) -> str:
 
 def set_params_at_birth(connection: Connection, port: str,
                         cfg: Optional[RadioConfig] = None,
-                        timeout: int = 120) -> Tuple[bool, str]:
-    """Write the canonical params, then leave the board host-controlled.
+                        timeout: int = 120,
+                        mode: str = "host") -> Tuple[bool, str]:
+    """Write the radio params and set the board's operating mode.
 
-    Returns ``(ok, human_message)``. This is the exact sequence proven on
-    hardware to clear rnsd's "Radio state mismatch"."""
+    ``--tnc <params>`` sends CMD_CONF_SAVE (radio boots ACTIVE standalone with
+    these params — a pocket RNode whose LED signals immediately). ``mode``:
+
+    * ``"host"`` (default): follow the save with ``-N`` (CMD_CONF_DELETE) so the
+      board is host-controlled — a Pi running rnsd drives the radio. The board
+      shows "Missing Config" until its host connects; that is normal.
+    * ``"tnc"``: leave the saved config in place — the radio is live on boot.
+
+    Returns ``(ok, human_message)``. (Params must be valid for the provisioned
+    model, e.g. TX power within the model's cap, or the radio stays offline.)"""
     cfg = cfg or RadioConfig()
     code, out, err = connection.run(set_params_command(port, cfg), timeout=timeout)
     if code != 0:
         return False, (f"Could not write radio params (exit {code}): "
                        f"{(err or out)[-160:]}")
+    summary = (f"{cfg.frequency_mhz:g} MHz / BW{cfg.bandwidth_khz:g} / "
+               f"SF{cfg.spreading_factor} / CR{cfg.coding_rate} / "
+               f"{cfg.tx_power_dbm} dBm")
+    if mode == "tnc":
+        return True, (f"Baked radio params at birth: {summary}; radio live "
+                      f"(standalone TNC mode).")
     code, out, err = connection.run(normal_mode_command(port), timeout=timeout)
     if code != 0:
         return False, (f"Params written but could not return the board to "
                        f"host-controlled mode (exit {code}): {(err or out)[-160:]}")
-    return True, (
-        f"Baked radio params at birth: {cfg.frequency_mhz:g} MHz / "
-        f"BW{cfg.bandwidth_khz:g} / SF{cfg.spreading_factor} / "
-        f"CR{cfg.coding_rate} / {cfg.tx_power_dbm} dBm, left host-controlled.")
+    return True, (f"Baked radio params at birth: {summary}, left host-controlled.")
