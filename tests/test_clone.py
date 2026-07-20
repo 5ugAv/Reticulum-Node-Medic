@@ -20,6 +20,7 @@ EXPECTED_STEPS = [
     "transfer_firmware_cache",
     "install_dependencies",
     "copy_monitoring_db",
+    "copy_kin_roster",
     "generate_fresh_identity",
     "configure_autostart",
     "final_verification",
@@ -196,3 +197,26 @@ def test_monitoring_db_serialises_the_registry():
     data = json.loads(w.monitoring_db_json)
     assert data["nodes"][0]["name"] == "TRUTH"
     assert any("monitoring_db.json" in cmd for cmd in c.history)
+
+
+def test_copy_kin_roster_carries_locations(monkeypatch):
+    """The fleet roster (names + DEPLOYED LOCATIONS + links) is written to the
+    clone's kin.json, so a mitosis clone shows the same kin on its map."""
+    import monitor.kin_roster as kr
+    monkeypatch.setattr(kr, "load_roster", lambda *a, **k: {
+        "5463bddf": {"name": "EVERYWHERE", "type": "pi_propagation",
+                     "lat": -37.7006, "lon": 145.007,
+                     "links": {"lora": True, "wifi": True,
+                               "bluetooth": True, "internet": True}}})
+    c = conn()
+    res = _run(wf(c), "copy_kin_roster")
+    assert res.success and "location" in res.message
+    assert any("kin.json" in cmd and "EVERYWHERE" in cmd and "-37.7006" in cmd
+               for cmd in c.history)
+
+
+def test_maps_are_not_excluded_from_the_clone_tree():
+    """The offline map tiles (assets/maps/*.mbtiles) must travel with the tool
+    tree to a clone — never in the exclude list."""
+    from workflows.clone import TOOL_EXCLUDES
+    assert not any("map" in e for e in TOOL_EXCLUDES)
