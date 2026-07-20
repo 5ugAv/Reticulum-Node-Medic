@@ -142,27 +142,35 @@ def bake_reachability_via_sd(hardware: NodeHardware,
     if disk == medic_root_disk(run):
         return SdEditResult(False, "Refusing to edit the medic's own disk.")
 
-    code, out = run_code(run, f"mkdir -p {mount} && sudo -n mount {part} {mount}")
-    if code != 0:
-        return SdEditResult(False, f"Could not mount {part}: {out[-160:]}",
-                            device=disk)
+    # The desktop auto-mounts a removable card (e.g. /media/<user>/bootfs), so use
+    # its existing mount if there is one; otherwise mount it ourselves.
+    existing = (run(f"findmnt -n -o TARGET {part}") or "").strip().splitlines()
+    if existing and existing[0]:
+        mount_dir, ours = existing[0], False
+    else:
+        code, out = run_code(run, f"mkdir -p {mount} && sudo -n mount {part} {mount}")
+        if code != 0:
+            return SdEditResult(False, f"Could not mount {part}: {out[-160:]}",
+                                device=disk)
+        mount_dir, ours = mount, True
     try:
         # Confirm it's really a Pi boot partition BEFORE writing anything.
-        code, _ = run_code(run, f"test -f {mount}/config.txt && test -f {mount}/cmdline.txt")
+        code, _ = run_code(run, f"test -f {mount_dir}/config.txt && "
+                                f"test -f {mount_dir}/cmdline.txt")
         if code != 0:
             return SdEditResult(
                 False, f"{part} mounted but has no config.txt/cmdline.txt — not a "
                        "Pi boot partition; refusing to edit.", device=disk)
 
-        cfg = run(f"cat {mount}/config.txt")
-        cmd = run(f"cat {mount}/cmdline.txt")
+        cfg = run(f"cat {mount_dir}/config.txt")
+        cmd = run(f"cat {mount_dir}/cmdline.txt")
         new_cfg, new_cmd, changed = apply_reachability_text(cfg, cmd, hardware)
         if not changed:
             return SdEditResult(True, f"{kind} link already baked into the SD card.",
                                 False, disk)
 
-        for path, content in ((f"{mount}/config.txt", new_cfg),
-                              (f"{mount}/cmdline.txt", new_cmd)):
+        for path, content in ((f"{mount_dir}/config.txt", new_cfg),
+                              (f"{mount_dir}/cmdline.txt", new_cmd)):
             code, out = run_code(run, _tee(path, content))
             if code != 0:
                 return SdEditResult(False, f"Write failed on {path}: {out[-160:]}",
@@ -172,7 +180,8 @@ def bake_reachability_via_sd(hardware: NodeHardware,
             True, f"Baked the {kind} wired link into the node's SD card ({disk}). "
                   "It will be medic-reachable on first boot.", True, disk)
     finally:
-        run_code(run, f"sudo -n umount {mount}")
+        if ours:
+            run_code(run, f"sudo -n umount {mount}")
 
 
 def _tee(path: str, content: str) -> str:

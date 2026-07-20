@@ -113,6 +113,32 @@ def test_bake_via_sd_writes_uart_to_the_card():
     assert any("cmdline.txt" in w and "console=serial0" in w for w in writes)
 
 
+def test_bake_via_sd_uses_existing_desktop_automount():
+    # The desktop auto-mounts the card at /media/nodemedic/bootfs — use that mount
+    # (don't try to mount again), and DON'T unmount it (we didn't mount it).
+    def run(cmd):
+        if "findmnt" in cmd:
+            return "/media/nodemedic/bootfs\n"
+        if "lsblk" in cmd:
+            return _lsblk_json([MEDIC, SD_CARD])
+        if "findmnt" not in cmd and "cat" in cmd and "config.txt" in cmd:
+            return "dtparam=audio=on\n"
+        if "cat" in cmd and "cmdline.txt" in cmd:
+            return "console=tty1 rootwait\n"
+        return ""
+    calls = []
+    def run_code(_r, cmd):
+        calls.append(cmd)
+        return (0, "")
+    res = sd_edit.bake_reachability_via_sd(
+        NodeHardware.PI_3A_PLUS, run=run, run_code=run_code)
+    assert res.ok and res.changed
+    assert not any("mount /dev/sda1" in c for c in calls)     # reused existing mount
+    assert not any("umount" in c for c in calls)              # didn't unmount desktop's
+    assert any("/media/nodemedic/bootfs/config.txt" in c and "enable_uart=1" in c
+               for c in calls)
+
+
 def test_bake_via_sd_refuses_non_pi_boot_partition():
     run = _run(lsblk_disks=[MEDIC, SD_CARD])
     # mount ok, but the config.txt/cmdline.txt existence check fails -> refuse
