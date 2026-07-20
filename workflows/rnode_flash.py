@@ -42,6 +42,27 @@ def flash_command(board: RNodeBoard, port: str, band_mhz: int = 915,
             + autoinstall_command(port, version=version, offline=True))
 
 
+#: Prompt patterns rnodeconf --autoinstall shows, paired with the answer index
+#: in board.autoinstall_answers() ([device_index, '', band, 'y']). The confirm
+#: and "hit enter" prompts read a keypress from the TERMINAL (not stdin), so they
+#: are driven through a PTY (connection.run_interactive), never a stdin pipe.
+_AUTOINSTALL_PROMPTS = ("matches your device type", "Hit enter to continue",
+                        "What band", "Is the above correct")
+
+
+def autoinstall_interactions(board: RNodeBoard, band_mhz: int = 915):
+    """``(regex, response)`` pairs that drive rnodeconf --autoinstall through its
+    terminal prompts for *board*. Raises ValueError (via autoinstall_answers) if
+    the board's flash sequence isn't verified for *band_mhz*."""
+    answers = board.autoinstall_answers(band_mhz)
+    return list(zip(_AUTOINSTALL_PROMPTS, answers))
+
+
+def _autoinstall_ok(code: int, out: str) -> bool:
+    low = out.lower()
+    return (ALREADY_PROVISIONED_MARKER in low) or (SUCCESS_MARKER in low)
+
+
 def birth_flash(connection: Connection, board: RNodeBoard, port: str,
                 band_mhz: int = 915, version: str = FIRMWARE_VERSION,
                 timeout: int = 400):
@@ -56,18 +77,38 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
     provisioning completes reliably. An already-provisioned board births in a
     single pass (no needless reflash).
 
+    On a real local board (a connection exposing ``run_interactive``) the
+    autoinstall is driven through a PTY, because rnodeconf's confirm/continue
+    prompts read a keypress from the terminal — a plain ``printf | rnodeconf``
+    pipe hangs there forever and wedges the USB port. The emulated/remote path
+    keeps the pre-fed-stdin command.
+
     Returns ``(ok, message, already_provisioned)``.
     """
     try:
-        cmd = flash_command(board, port, band_mhz, version)
+        interactions = autoinstall_interactions(board, band_mhz)   # validates band
     except ValueError as exc:
         return False, str(exc), False
+
+    if hasattr(connection, "run_interactive"):
+        cmd = board.autoinstall_command(port, version=version, offline=True)
+        code, out, _ = connection.run_interactive(cmd, interactions, timeout)
+        if ALREADY_PROVISIONED_MARKER in out.lower():
+            return True, "already a provisioned RNode", True
+        if not _autoinstall_ok(code, out):
+            # Second pass after the fresh-board re-enumeration finishes the EEPROM.
+            code, out, _ = connection.run_interactive(cmd, interactions, timeout)
+        ok = _autoinstall_ok(code, out)
+        return (ok,
+                "flashed + provisioned via autoinstall (PTY-driven)" if ok
+                else f"autoinstall did not complete: {out[-200:]}",
+                False)
+
+    # Emulated / remote fallback: pre-feed the answers via stdin.
+    cmd = flash_command(board, port, band_mhz, version)
     code, out, err = connection.run(cmd, timeout=timeout)
     if ALREADY_PROVISIONED_MARKER in out.lower():
-        # Board already carried RNode firmware — birthing is already done.
         return True, "already a provisioned RNode", True
-    # Brand-new board (or a first pass that only flashed): a confirming second
-    # pass finishes provisioning after the post-flash re-enumeration.
     code, out, err = connection.run(cmd, timeout=timeout)
     out_l = out.lower()
     ok = code == 0 and (SUCCESS_MARKER in out_l

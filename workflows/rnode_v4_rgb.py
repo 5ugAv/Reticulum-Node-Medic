@@ -40,6 +40,7 @@ from workflows.build import StepResult, detect_rnode_port
 from workflows.rnode_flash import FIRMWARE_VERSION, birth_flash
 from workflows.rnode_boards import get_board
 from workflows.radio_params import set_params_at_birth
+from node_profile import RadioConfig
 
 # -- build recipe (setup_rnode_tools.sh) -----------------------------------
 FIRMWARE_REPO = "https://github.com/markqvist/RNode_Firmware.git"
@@ -243,10 +244,13 @@ class HeltecV4RGBWorkflow:
                  neopixel_pin: int = NEOPIXEL_PIN, board_model: int = BOARD_MODEL,
                  boot_error_red: int = BOOT_ERROR_RED,
                  build_timeout: int = 600, flash_timeout: int = 400,
-                 flash_sleep=None):
+                 flash_sleep=None, radio: Optional[RadioConfig] = None):
         self.connection = connection
         self.port = port
         self.band_mhz = band_mhz
+        # Radio params baked into the EEPROM at birth. Defaults to canonical
+        # (915.125/125/SF9/CR5/17); the BIRTH screen overrides it from the form.
+        self.radio = radio or RadioConfig()
         self.version = version
         self.firmware_dir = firmware_dir
         self.neopixel_pin = neopixel_pin
@@ -392,6 +396,7 @@ class HeltecV4RGBWorkflow:
         # default config (250 kHz / SF11) and rnsd aborts with "Radio state
         # mismatch" — the real cause once mis-blamed on the RGB firmware.
         ok, detail = set_params_at_birth(self.connection, self.port,
+                                         cfg=self.radio,
                                          timeout=self.flash_timeout)
         return StepResult("set_params", ok, detail)
 
