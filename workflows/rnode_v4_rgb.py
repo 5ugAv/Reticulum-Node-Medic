@@ -154,8 +154,9 @@ def vendor_provision_command(port: str) -> str:
 def embedded_hash_command(port: str, bin_path: str = BUILD_BIN) -> str:
     """Set the firmware hash to the app image's embedded trailing 32 bytes (the
     ESP32 image's own SHA256, == sha256(data[:-32])) so it validates, not 'corrupt'."""
-    return (f"HASH=$(python3 -c \"import sys;"
-            f"d=open('{bin_path}','rb').read();sys.stdout.write(d[-32:].hex())\") "
+    return (f"HASH=$(python3 -c \"import sys,os;"
+            f"d=open(os.path.expanduser('{bin_path}'),'rb').read();"
+            f"sys.stdout.write(d[-32:].hex())\") "
             f"&& test -n \"$HASH\" && rnodeconf {port} -H \"$HASH\"")
 
 
