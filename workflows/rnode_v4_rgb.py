@@ -100,6 +100,64 @@ REMOTE_RGB_HASHER = "/tmp/rnm_partition_hashes"
 #: is a well-supported, markedly more reliable default. Overridable per call.
 DEFAULT_FLASH_BAUD = 460800
 
+# -- PROVEN full-image birth recipe (radio comes ONLINE) -------------------
+# Validated end-to-end on a clean V4 2026-07-20: erase -> flash the COMPLETE RGB
+# image (--flash_size detect) -> provision as the VENDOR Heltec V4 model (c3/c8)
+# -> set the firmware hash from the image's embedded trailing 32 bytes -> params.
+# See memory rgb-custom-firmware-needs-homebrew-provision for the full root cause.
+BUILD_DIR = f"{FIRMWARE_DIR}/{BUILD_SUBDIR}"
+BUILD_BOOTLOADER = f"{BUILD_DIR}/RNode_Firmware.ino.bootloader.bin"
+BUILD_PARTITIONS = f"{BUILD_DIR}/RNode_Firmware.ino.partitions.bin"
+#: boot_app0 (OTA-data init) — the arduino-esp32 core ships it; identical for all
+#: ESP32 Arduino builds. Same version pin as ESP32_CORE.
+BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
+             "tools/partitions/boot_app0.bin")
+ESPTOOL = "python3 ~/.config/rnodeconf/update/1.86/esptool.py"
+ESP_CHIP = "esp32s3"
+#: Standard ESP32-S3 Arduino flash offsets.
+OFF_BOOTLOADER, OFF_PARTITIONS, OFF_BOOT_APP0, OFF_APP = 0x0, 0x8000, 0xe000, 0x10000
+#: Vendor Heltec V4 provisioning codes. CRITICAL: model C8 declares Max TX 28 dBm,
+#: so the canonical 17 dBm is valid and the radio comes ONLINE. Provisioning as
+#: generic homebrew (f0/ff, Max TX 14 dBm) kept the radio OFFLINE ("Radio state
+#: mismatch") because 17 dBm exceeded the model cap. Signed with the LOCAL
+#: signing.key -> "Validated - Local signature" (honest: it IS a V4).
+VENDOR_PRODUCT = "c3"   # ROM.PRODUCT_H32_V4
+VENDOR_MODEL = "c8"     # ROM.MODEL_C8 (868/915/923 MHz with PA)
+VENDOR_HWREV = 1
+
+
+def erase_command(port: str) -> str:
+    """esptool full chip erase (clean slate; unbrickable — ROM bootloader)."""
+    return f"{ESPTOOL} --chip {ESP_CHIP} --port {port} --before default_reset erase_flash"
+
+
+def full_flash_command(port: str, build_dir: str = BUILD_DIR,
+                       boot_app0: str = BOOT_APP0) -> str:
+    """Flash the COMPLETE RGB image with --flash_size detect (patches the
+    bootloader header to the board's real flash size — `keep` boot-loops the V4)."""
+    return (f"{ESPTOOL} --chip {ESP_CHIP} --port {port} "
+            f"--before default_reset --after hard_reset write_flash -z "
+            f"--flash_size detect "
+            f"0x{OFF_BOOTLOADER:x} {build_dir}/RNode_Firmware.ino.bootloader.bin "
+            f"0x{OFF_PARTITIONS:x} {build_dir}/RNode_Firmware.ino.partitions.bin "
+            f"0x{OFF_BOOT_APP0:x} {boot_app0} "
+            f"0x{OFF_APP:x} {build_dir}/RNode_Firmware.ino.bin")
+
+
+def vendor_provision_command(port: str) -> str:
+    """rnodeconf ROM bootstrap as the vendor Heltec V4 (c3/c8) — non-interactive,
+    no reflash, signs hardware-info with the local key."""
+    return (f"rnodeconf {port} -r --product {VENDOR_PRODUCT} "
+            f"--model {VENDOR_MODEL} --hwrev {VENDOR_HWREV}")
+
+
+def embedded_hash_command(port: str, bin_path: str = BUILD_BIN) -> str:
+    """Set the firmware hash to the app image's embedded trailing 32 bytes (the
+    ESP32 image's own SHA256, == sha256(data[:-32])) so it validates, not 'corrupt'."""
+    return (f"HASH=$(python3 -c \"import sys;"
+            f"d=open('{bin_path}','rb').read();sys.stdout.write(d[-32:].hex())\") "
+            f"&& test -n \"$HASH\" && rnodeconf {port} -H \"$HASH\"")
+
 
 def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
                            hasher_path: str = RGB_LOCAL_HASHER) -> bool:
@@ -244,15 +302,20 @@ class HeltecV4RGBWorkflow:
                  neopixel_pin: int = NEOPIXEL_PIN, board_model: int = BOARD_MODEL,
                  boot_error_red: int = BOOT_ERROR_RED,
                  build_timeout: int = 600, flash_timeout: int = 400,
-                 flash_sleep=None, radio: Optional[RadioConfig] = None):
+                 flash_sleep=None, radio: Optional[RadioConfig] = None,
+                 radio_mode: str = "host"):
         self.connection = connection
         self.port = port
         self.band_mhz = band_mhz
         # Radio params baked into the EEPROM at birth. Defaults to canonical
         # (915.125/125/SF9/CR5/17); the BIRTH screen overrides it from the form.
         self.radio = radio or RadioConfig()
+        # 'tnc' = standalone active radio (pocket RNode / LED signals on boot);
+        # 'host' = host-controlled, a Pi running rnsd drives the radio.
+        self.radio_mode = radio_mode
         self.version = version
         self.firmware_dir = firmware_dir
+        self.build_dir = f"{firmware_dir}/{BUILD_SUBDIR}"
         self.neopixel_pin = neopixel_pin
         self.board_model = board_model
         self.boot_error_red = boot_error_red
@@ -351,69 +414,81 @@ class HeltecV4RGBWorkflow:
         self.port = port
         return StepResult("detect_port", True, f"Board on {port}.")
 
+    def _erase(self) -> StepResult:
+        # Clean slate before the full-image write (clears any partial/boot-looping
+        # firmware + stale EEPROM). Unbrickable — esptool always reconnects.
+        if self.connection.run(f"test -f {self.bin_path}")[0] != 0:
+            return StepResult("erase", False,
+                              "NeoPixel firmware not built yet — run build() first.")
+        code, out, err = self.connection.run(erase_command(self.port),
+                                             timeout=self.flash_timeout)
+        ok = code == 0 or "erase completed" in (out or "").lower()
+        return StepResult("erase", ok,
+                          "Flash erased — clean slate." if ok
+                          else f"Erase failed: {(err or out)[-160:]}")
+
+    def _flash_firmware(self) -> StepResult:
+        # Flash the COMPLETE RGB image (bootloader+partitions+boot_app0+app) with
+        # --flash_size detect. `detect` patches the bootloader header to the real
+        # flash size; `keep` boot-loops the V4 (~2.5s USB re-enum). This is a
+        # single write, NOT an overlay onto vendor firmware (the old broken path).
+        code, out, err = self.connection.run(
+            full_flash_command(self.port, self.build_dir), timeout=self.flash_timeout)
+        ok = code == 0 or "hash of data verified" in (out or "").lower()
+        return StepResult("flash_firmware", ok,
+                          "Flashed the complete NeoPixel firmware image." if ok
+                          else f"Flash failed: {(err or out)[-200:]}")
+
     def _provision(self) -> StepResult:
-        # rnodeconf --autoinstall writes the correct V4 identity + radio config
-        # (9 -> enter -> band -> y). birth_flash makes the brand-new-board second
-        # pass part of the process; we overwrite the firmware next, so an
-        # already-provisioned board (single pass) is fine too.
-        board = get_board(V4_BOARD_KEY)
-        ok, msg, _already = birth_flash(self.connection, board, self.port,
-                                        self.band_mhz, self.version,
-                                        self.flash_timeout)
+        # ROM-bootstrap the EEPROM as the VENDOR Heltec V4 (c3/c8). Model C8
+        # declares Max TX 28 dBm, so the canonical 17 dBm is valid and the radio
+        # comes ONLINE — generic homebrew (f0/ff, 14 dBm cap) kept it OFFLINE
+        # ("Radio state mismatch"). Non-interactive; signed with the local key.
+        code, out, err = self.connection.run(vendor_provision_command(self.port),
+                                             timeout=self.flash_timeout)
+        low = (out or "").lower()
+        ok = "bootstrapping successful" in low or "signature validated" in low
         return StepResult(
             "provision", ok,
-            f"EEPROM provisioned via autoinstall — {msg}." if ok
-            else f"Provision failed: {msg}")
-
-    def _flash_custom(self) -> StepResult:
-        if self.connection.run(f"test -f {self.bin_path}")[0] != 0:
-            return StepResult("flash_custom", False,
-                              "NeoPixel firmware not built yet — run build() first.")
-        # RobustFlasher: verify_flash per chunk + a baud-dropping / uhubctl
-        # power-cycle ladder (the medic can power-cycle its own USB port), so a
-        # board that wedges mid-write is recovered autonomously instead of the
-        # old single raw esptool write.
-        ok, tier = _robust_rgb_overlay(self.connection, self.port, self.bin_path,
-                                       sleep=self.flash_sleep)
-        return StepResult(
-            "flash_custom", ok,
-            f"Flashed the NeoPixel firmware over the app partition ({tier})." if ok
-            else f"NeoPixel flash failed after the robust ladder ({tier}).")
+            "Provisioned as Heltec V4 (vendor model, local signature)." if ok
+            else f"Provision failed: {(err or out)[-200:]}")
 
     def _set_hash(self) -> StepResult:
+        # Firmware hash = the app image's embedded trailing 32 bytes, so the
+        # firmware's own integrity check passes (not "firmware corrupt").
         code, out, err = self.connection.run(
-            firmware_hash_command(self.port, self.bin_path),
+            embedded_hash_command(self.port, self.bin_path),
             timeout=self.flash_timeout)
-        ok = code == 0
+        ok = code == 0 and "firmware hash set" in (out or "").lower()
         return StepResult(
             "set_hash", ok,
-            "Firmware hash stamped into the EEPROM." if ok
-            else f"Could not set firmware hash (exit {code}): {(err or out)[-200:]}")
+            "Firmware hash set — validates, not corrupt." if ok
+            else f"Could not set firmware hash: {(err or out)[-200:]}")
 
     def _set_params(self) -> StepResult:
-        # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
-        # board host-controlled. Without this the board keeps autoinstall's stale
-        # default config (250 kHz / SF11) and rnsd aborts with "Radio state
-        # mismatch" — the real cause once mis-blamed on the RGB firmware.
+        # Bake the radio params. mode='tnc' saves them so the radio boots active
+        # standalone (pocket RNode / LED signals); mode='host' leaves it
+        # host-controlled for a Pi running rnsd to drive.
         ok, detail = set_params_at_birth(self.connection, self.port,
-                                         cfg=self.radio,
+                                         cfg=self.radio, mode=self.radio_mode,
                                          timeout=self.flash_timeout)
         return StepResult("set_params", ok, detail)
 
     def _verify(self) -> StepResult:
-        out = self.connection.run(f"rnodeconf {self.port} --info")[1]
-        ok = ("EEPROM is invalid" not in out
-              and "firmware version" in out.lower())
+        out = self.connection.run(f"rnodeconf {self.port} --info")[1] or ""
+        low = out.lower()
+        ok = ("eeprom is invalid" not in low and "corrupt" not in low
+              and "firmware version" in low)
         return StepResult(
             "verify", ok,
-            "Board verified: valid EEPROM + NeoPixel firmware present." if ok
+            "Board verified: valid RNode + NeoPixel firmware." if ok
             else "Board did not report a valid RNode after flashing.")
 
     # -- drivers -----------------------------------------------------------
 
     _BUILD = ("_ensure_toolchain", "_ensure_source", "_build_firmware")
-    _FLASH = ("_detect_port", "_provision", "_flash_custom", "_set_hash",
-              "_set_params", "_verify")
+    _FLASH = ("_detect_port", "_erase", "_flash_firmware", "_provision",
+              "_set_hash", "_set_params", "_verify")
 
     def _run_steps(self, step_names, on_progress):
         emit = on_progress or (lambda r: None)

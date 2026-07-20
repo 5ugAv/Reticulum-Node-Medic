@@ -257,15 +257,17 @@ def test_fix_eeprom_v4_reflashes_neopixel_firmware():
     conn = EmulatedConnection(default_code=0, default_stdout="ok")
     conn.rule(f"test -d {FIRMWARE_DIR}", code=0)          # already cloned
     conn.rule(f"test -f {BUILD_BIN}", code=0)             # firmware built
-    conn.rule("--autoinstall", code=0, stdout="autoinstallation complete")
-    conn.rule("esptool", code=0, stdout="Hash of data verified.")
-    conn.rule("partition_hashes", code=0, stdout="deadbeef")
-    conn.rule("--firmware-hash", code=0, stdout="ok")
+    conn.rule("erase_flash", code=0, stdout="Chip erase completed successfully")
+    conn.rule("write_flash", code=0, stdout="Hash of data verified.")
+    conn.rule("-r --product", code=0,
+              stdout="Device signature validated\nEEPROM Bootstrapping successful!")
+    conn.rule('-H "$HASH"', code=0, stdout="Firmware hash set")
     conn.rule("--info", code=0, stdout=GOOD_INFO)
     fix = RadioFirmwareCheck(conn, p).fix(_eeprom_issue())
     assert fix.success is True
-    assert any("esptool" in c and "0x10000" in c for c in conn.history)
-    assert any("--firmware-hash" in c for c in conn.history)
+    # full RGB image written (incl the app at 0x10000) + vendor V4 provision
+    assert any("write_flash" in c and "0x10000" in c for c in conn.history)
+    assert any("-r --product c3" in c and "--model c8" in c for c in conn.history)
 
 
 def test_fix_eeprom_non_v4_uses_autoinstall_only():
