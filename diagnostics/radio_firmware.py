@@ -7,11 +7,18 @@ the intended LoRa parameters.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import List
 
 from node_profile import NodeHardware
 from diagnostics.base import DiagnosticCheck, Fix, Issue
+
+#: Carried probe that reads the board's stored firmware hash vs its computed
+#: target to detect the "firmware corrupt" state (--info doesn't surface it).
+FW_HASH_PROBE_LOCAL = os.path.join(
+    os.path.dirname(__file__), os.pardir, "assets", "scripts", "fw_hash_probe.py")
+FW_HASH_PROBE_REMOTE = "/tmp/rnm_fw_hash_probe.py"
 
 #: Latest RNode firmware version this tool ships / expects (verified on real
 #: hardware — rnodeconf --info reports e.g. "Firmware version   : 1.86").
@@ -127,18 +134,25 @@ class RadioFirmwareCheck(DiagnosticCheck):
             "the EEPROM without reflashing).",
             severity="critical", auto_fixable=True,
             fix_description="Re-provision the RNode's EEPROM."))
-        # 14 device signature verified. Real --info shows "Device signature :
-        # Verified/Unverified" — there is NO "Firmware hash" line. When info is
-        # present but the field is missing (format drift), we pass rather than
-        # false-positive; a silent/absent board fails via has_info.
-        sig = self._info_str(info, r"Device signature\s*:\s*(\w+)")
-        issues.append(self._check(
-            "firmware_hash_set", has_info and (sig is None or sig == "Verified"),
-            "The RNode's firmware signature is unverified — reflash from a "
-            "trusted binary to make it verifiable.",
-            severity="warning", auto_fixable=True,
-            fix_description="Re-flash to a verifiable state "
-                            "(rnodeconf <port> --autoinstall)."))
+        # 14 firmware hash matches the running firmware. A board can have a VALID
+        # EEPROM + a validated device signature yet display "firmware corrupt":
+        # that happens when the firmware hash stamped in the EEPROM differs from
+        # the hash the firmware computes for itself at boot (e.g. an app flashed
+        # without restamping the hash, or a firmware/hash mismatch after a mixed
+        # flash). rnodeconf --info does NOT reveal this, so we read the device's
+        # stored hash vs its computed target directly (fw_hash_probe). Only
+        # meaningful once the board has firmware + a valid EEPROM — otherwise the
+        # serial/firmware/eeprom checks above already own the diagnosis.
+        if has_info and "EEPROM is invalid" not in info:
+            hash_status = self._firmware_hash_status(port)
+            issues.append(self._check(
+                "firmware_hash_valid", hash_status != "mismatch",
+                "The RNode reports 'firmware corrupt': the firmware hash stored "
+                "in its EEPROM doesn't match the firmware actually running on it, "
+                "so it won't operate as an RNode. Re-flash to restore a matching, "
+                "verifiable firmware (a Heltec V4 gets the full NeoPixel reflash).",
+                severity="critical", auto_fixable=True,
+                fix_description="Re-flash the firmware and restamp its hash."))
         # 15 firmware version current (real: "Firmware version   : 1.86")
         fw = self._info_str(info, r"Firmware version\s*:\s*([\d.]+)")
         cur_ok = has_info and (fw is None
@@ -279,11 +293,33 @@ class RadioFirmwareCheck(DiagnosticCheck):
 
     # -- fixes -------------------------------------------------------------
 
+    def _firmware_hash_status(self, port: str) -> str:
+        """``'match'`` / ``'mismatch'`` / ``'unknown'`` — whether the board's
+        stored firmware hash matches the firmware actually running (the "firmware
+        corrupt" state). Reads both hashes via the carried fw_hash_probe, since
+        rnodeconf --info doesn't surface them. Fails safe to ``'unknown'`` (never
+        flags a fault we couldn't actually confirm)."""
+        try:
+            if not self.connection.push_file(FW_HASH_PROBE_LOCAL,
+                                             FW_HASH_PROBE_REMOTE):
+                return "unknown"
+        except Exception:
+            return "unknown"
+        out = self._cmd_output(f"python3 {FW_HASH_PROBE_REMOTE} {port}")
+        if "FWHASH:MISMATCH" in out:
+            return "mismatch"
+        if "FWHASH:MATCH" in out:
+            return "match"
+        return "unknown"
+
     def _fix_handlers(self):
         param_fix = self._apply_radio_params
         return {
             "eeprom_valid": self._fix_eeprom,
-            "firmware_hash_set": self._set_firmware_hash,
+            # "firmware corrupt" (stored hash != running firmware) is fixed by the
+            # same full reflash: a V4 gets the NeoPixel rebirth (which restamps
+            # the correct hash), any other board is reflashed via autoinstall.
+            "firmware_hash_valid": self._fix_eeprom,
             "frequency": param_fix,
             "bandwidth": param_fix,
             "spreading_factor": param_fix,
@@ -358,12 +394,3 @@ class RadioFirmwareCheck(DiagnosticCheck):
                             else f"rnodeconf failed: {err or out}"),
                    raw_output=out)
 
-    def _set_firmware_hash(self, issue: Issue) -> Fix:
-        r = self.profile.radio
-        code, out, err = self._run_cmd(
-            f"rnodeconf {r.serial_port} --set-firmware-hash")
-        ok = code == 0
-        return Fix(issue=issue, success=ok,
-                   message=("Firmware hash set" if ok
-                            else f"Could not set hash: {err or out}"),
-                   raw_output=out)

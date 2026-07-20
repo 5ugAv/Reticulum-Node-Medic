@@ -101,11 +101,28 @@ def test_eeprom_invalid_flagged_firmware_still_present():
     assert "firmware_present" not in n
 
 
-def test_firmware_hash_not_set():
-    # real signal is an unverified device signature, not a missing hash line
-    info = GOOD_INFO.replace(
-        "Device signature   : Verified", "Device signature   : Unverified")
-    assert "firmware_hash_set" in names(run(conn_with(info=info)))
+def test_firmware_hash_mismatch_flagged_corrupt():
+    # A board can have a valid EEPROM + validated signature yet show "firmware
+    # corrupt": the stored firmware hash != the running firmware. --info hides it;
+    # PROBE reads both hashes via fw_hash_probe and flags it CRITICAL + auto-fix.
+    conn = conn_with()
+    conn.rule("fw_hash_probe", code=0, stdout="FWHASH:MISMATCH aaaa bbbb")
+    issues = run(conn)
+    hv = next(i for i in issues if i.check_name == "firmware_hash_valid")
+    assert hv.severity == "critical" and hv.auto_fixable
+    assert "corrupt" in hv.description.lower()
+
+
+def test_firmware_hash_match_not_flagged():
+    conn = conn_with()
+    conn.rule("fw_hash_probe", code=0, stdout="FWHASH:MATCH")
+    assert "firmware_hash_valid" not in names(run(conn))
+
+
+def test_firmware_hash_unknown_fails_safe():
+    # Can't read the hashes (e.g. probe error) -> never flag a fault we can't
+    # confirm. Default conn returns no FWHASH line -> "unknown" -> no issue.
+    assert "firmware_hash_valid" not in names(run(conn_with()))
 
 
 def test_firmware_version_outdated():
@@ -162,15 +179,18 @@ def test_frequency_ignores_range_header():
     assert "frequency" not in names(run(conn_with(info=info)))
 
 
-def test_all_broken_reports_original_ten():
+def test_all_broken_reports_core_faults():
+    # A fully unresponsive board: the firmware-hash-mismatch check is correctly
+    # SKIPPED (it needs a responsive, provisioned board), so it isn't listed here.
     conn = EmulatedConnection(default_code=1, default_stdout="")
     issues = run(conn)
-    original = {
-        "serial_responsive", "firmware_present", "firmware_hash_set",
+    core = {
+        "serial_responsive", "firmware_present",
         "firmware_version_current", "frequency", "bandwidth",
         "spreading_factor", "coding_rate", "tx_power", "radio_loopback",
     }
-    assert original <= names(issues)
+    assert core <= names(issues)
+    assert "firmware_hash_valid" not in names(issues)   # guarded off when no info
 
 
 # ---- extended checks 57-60, 86-88 ----------------------------------------
