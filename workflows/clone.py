@@ -130,6 +130,25 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def copy_kin_roster(wf: "CloneWorkflow") -> StepResult:
+    """Carry the medic's fleet roster (monitor.kin_roster: each node's name, type,
+    DEPLOYED LOCATION and interface links) to the clone, so the clone's VITALS +
+    SCAN map show the same kin from first boot. The map TILES themselves ride the
+    tool tree (assets/maps); this is the who-and-where that populates them."""
+    from monitor.kin_roster import load_roster
+    roster = load_roster()
+    payload = json.dumps(roster, indent=2, sort_keys=True)
+    code, out, err = wf.connection.run(
+        f"mkdir -p {CLONE_DIR} && cat > {CLONE_DIR}/kin.json "
+        f"<<'RNMEOF'\n{payload}\nRNMEOF")
+    ok = code == 0
+    return StepResult("copy_kin_roster", ok,
+                      f"Carried the fleet roster ({len(roster)} node(s) with their "
+                      f"locations) to the clone." if ok
+                      else f"Could not write kin roster: {err or out}")
+
+
+@clone_step
 def generate_fresh_identity(wf: "CloneWorkflow") -> StepResult:
     # A NEW identity on the target — never the source's — so the clone is a
     # distinct node on the mesh. rnid prints "New identity <hash> written to …".
