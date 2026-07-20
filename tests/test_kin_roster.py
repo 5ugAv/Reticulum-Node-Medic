@@ -184,3 +184,25 @@ def test_capabilities_reads_lora_online_from_http_status():
     assert dev["capabilities"]["lora"] is True
     assert dev["capabilities"]["wifi"] is True
     assert dev["capabilities"]["bluetooth"] is None   # not reported => honest grey
+
+
+def _beacon(**over):
+    from monitor.health_beacon import HealthBeacon
+    d = dict(format_version=1, uptime_s=100, free_heap_kb=50, wifi_rssi_dbm=-60,
+             reset_reason=0, wifi_up=False, lora_up=False, tcp_backbone_up=False,
+             local_tcp_server_up=False, wdt_armed=True, psram=True, fault=False,
+             airtime_lock=False, board_id=0, firmware_version=0)
+    d.update(over)
+    return HealthBeacon(**d)
+
+
+def test_capabilities_reads_lora_up_from_beacon():
+    """A node the medic only hears via its LoRa health beacon still shows LoRa when
+    the beacon's flags say lora_up — the node reports its own active links."""
+    reg = NodeRegistry()
+    rec = reg.register("beacononly", name="", node_type="rtnode2400")
+    rec.latest_beacon = _beacon(lora_up=True, wifi_up=True)
+    rec.mesh_interface = ""                       # not learned from the path table
+    dev = reg.devices(0.0)[0]
+    assert dev["capabilities"]["lora"] is True    # was ignored before this fix
+    assert dev["capabilities"]["wifi"] is True

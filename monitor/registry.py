@@ -47,8 +47,11 @@ def _capabilities(members) -> dict:
                 lora = True                     # honest LIVE detection, not a guess
             wifi = bool(http.wifi_connected)
             internet = bool(http.tcp_backbone_connected) or (internet is True)
-        elif beacon is not None and wifi is None:
-            wifi = bool(beacon.wifi_up)
+        elif beacon is not None:
+            if beacon.lora_up:                 # the node self-reports LoRa is up
+                lora = True                     # (beacon flags byte, bit1) — honest live
+            if wifi is None:
+                wifi = bool(beacon.wifi_up)
             if internet is None:
                 internet = bool(beacon.tcp_backbone_up)
     from monitor.kin_roster import DEFAULT_LINKS
