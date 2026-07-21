@@ -123,11 +123,12 @@ DETAIL_MIN_ZOOM = 13
 DETAIL_MAX_ZOOM = 15
 #: On-demand "load street names for THIS spot" (the operator actively placing a
 #: node and wanting to zoom right in): deeper than the auto per-node top-up — down
-#: to building level (z17) — over a tighter radius so the tile count stays modest
-#: (~70-100 tiles). The user explicitly asks for it, so a ~10 s fetch is fine.
-SPOT_RADIUS_KM = 1.0
-SPOT_MIN_ZOOM = 14
-SPOT_MAX_ZOOM = 17
+#: to building level (z18) — over a tight radius so the tile count stays modest
+#: (~130 tiles, higher zooms dominate). The user explicitly asks for it, so a
+#: ~15 s fetch is fine.
+SPOT_RADIUS_KM = 0.7
+SPOT_MIN_ZOOM = 15
+SPOT_MAX_ZOOM = 18
 #: Selectable download radii (km) for the stepper control. The step past the
 #: largest radius is the WORLD overview tier.
 RADIUS_STEPS = [25.0, 50.0, 100.0, 150.0, 200.0]
