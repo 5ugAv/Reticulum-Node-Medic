@@ -21,6 +21,9 @@ from ui.home_zones import zone_at
 
 POSTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       os.pardir, "assets", "ui", "front_page.png")
+GEAR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.pardir, "assets", "ui", "gear.png"))
 
 
 class HomeScreen(FloatLayout):
@@ -33,32 +36,14 @@ class HomeScreen(FloatLayout):
         self.add_widget(self.poster)
 
         # Gear / Settings button (top-right, off the poster's card zones) — the
-        # medic's config hub (WiFi to start; more to come). Drawn, not an emoji.
-        self.settings_btn = Button(size_hint=(None, None), size=(dp(54), dp(54)),
-                                   pos_hint={"right": 0.985, "top": 0.985},
-                                   background_normal="", background_down="",
-                                   background_color=theme.hex_to_rgba(
-                                       theme.COLORS["surface"], 0.85))
+        # medic's config hub (WiFi to start; more to come). Uses the supplied gear
+        # PNG (transparent background, so no grey box).
+        self.settings_btn = Button(size_hint=(None, None), size=(dp(58), dp(58)),
+                                   pos_hint={"right": 0.98, "top": 0.98},
+                                   background_normal=GEAR, background_down=GEAR,
+                                   border=(0, 0, 0, 0), background_color=(1, 1, 1, 1))
         self.settings_btn.bind(on_release=lambda *_: self._on_select and self._on_select("settings"))
-        self.settings_btn.bind(pos=self._draw_gear, size=self._draw_gear)
         self.add_widget(self.settings_btn)
-
-    def _draw_gear(self, *_):
-        import math
-        from kivy.graphics import Color, Line
-        w = self.settings_btn
-        w.canvas.after.clear()
-        cx, cy = w.center_x, w.center_y
-        r = min(w.width, w.height) * 0.26
-        with w.canvas.after:
-            Color(*theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            for i in range(8):                       # eight teeth
-                a = i * math.pi / 4.0
-                Line(points=[cx + math.cos(a) * r, cy + math.sin(a) * r,
-                             cx + math.cos(a) * r * 1.5, cy + math.sin(a) * r * 1.5],
-                     width=dp(2.2), cap="round")
-            Line(circle=(cx, cy, r), width=dp(2.2))  # body ring
-            Line(circle=(cx, cy, r * 0.42), width=dp(1.8))   # centre hole
 
     def _image_fraction(self, tx: float, ty: float):
         """Touch (window coords) -> image-fraction (x right, y DOWN), or None
