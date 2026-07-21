@@ -54,11 +54,14 @@ class MapPlot(Widget):
     pinch, clamped to the cached zoom range); until first touched, it auto-fits
     the nodes / cached area."""
 
-    def __init__(self, nodes=None, tiles=None, interactive=True, **kwargs):
+    def __init__(self, nodes=None, tiles=None, interactive=True, on_pick=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._interactive = interactive          # False = a fixed verify view
+        self._on_pick = on_pick                  # tap-to-place callback (lat, lon)
+        self._last_view = None                   # current MercatorView (for taps)
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
         # Decoded-texture cache keyed by (z,x,y). Decoding a PNG->texture is the
         # expensive part; without this the Pi re-decoded every visible tile on
@@ -153,6 +156,15 @@ class MapPlot(Widget):
                 self._primary = next(iter(self._touches), None)
             if len(self._touches) < 2:
                 self._pinch_base = None
+            return True
+        # Tap-to-place: on a non-interactive map with a pick handler (the GPS-
+        # confirm screen), a tap drops the pin at that spot — offline location entry.
+        if (self._on_pick and self._last_view is not None
+                and not self._touches and self.collide_point(*touch.pos)):
+            latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
+            self._me = latlon
+            self._trigger()                      # move the pin to the tapped point
+            self._on_pick(latlon)
             return True
         return super().on_touch_up(touch)
 
