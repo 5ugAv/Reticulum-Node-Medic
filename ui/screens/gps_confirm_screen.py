@@ -26,6 +26,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.onscreen_keyboard import bind_field
 from ui.map_tiles import find_mbtiles
 from ui.screens.scan_screen import MapPlot
 from monitor.geo import read_splitter_fix, fix_trust
@@ -150,6 +151,7 @@ class GpsConfirmScreen(BoxLayout):
                              height=dp(46), spacing=dp(6))
         self.addr_in = TextInput(hint_text="street address  (needs internet)",
                                  multiline=False, font_size="15sp")
+        bind_field(self.addr_in)                     # text keyboard
         find_btn = Button(text="Find", size_hint_x=None, width=dp(84), bold=True,
                           background_normal="",
                           background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -163,6 +165,8 @@ class GpsConfirmScreen(BoxLayout):
                                 input_filter="float", font_size="16sp")
         self.lon_in = TextInput(hint_text="longitude", multiline=False,
                                 input_filter="float", font_size="16sp")
+        bind_field(self.lat_in, numeric=True)        # number pad
+        bind_field(self.lon_in, numeric=True)
         coord_row.add_widget(self.lat_in)
         coord_row.add_widget(self.lon_in)
         self.manual_row.add_widget(addr_row)

@@ -28,6 +28,7 @@ from kivy.uix.widget import Widget
 
 from node_profile import RadioConfig
 from ui import theme
+from ui.onscreen_keyboard import bind_field
 from ui.birth import birth_node_types, rnode_board_choices
 from ui.qr import birth_cert_payload, qr_matrix
 from workflows.power_compat import check as power_check
@@ -325,6 +326,7 @@ class BirthScreen(BoxLayout):
         ti = TextInput(text=value, multiline=False, size_hint=(None, None),
                        width=dp(160), height=dp(44), font_size="18sp",
                        input_filter="float" if key in ("freq", "bw") else "int")
+        bind_field(ti, numeric=True)                 # number pad for radio params
         self._param_inputs[key] = ti
         row.add_widget(ti)
         return row
