@@ -34,8 +34,10 @@ _SPEC = (0.66, 0.71, 0.87, 1)     # periwinkle blue   — shift/backspace/enter/
 _GROUND = (0.08, 0.07, 0.06, 1)   # near-black tray
 _KEYTEXT = (0.13, 0.11, 0.08, 1)  # dark glyphs on the light keys
 
-# special key glyphs
+# special key sentinels (identity only — never shown raw; the glyphs render as
+# tofu in the default font, so _DISPLAY maps each to an ASCII word instead)
 _BKSP, _SHIFT, _ENTER, _SYM, _ABC, _SPACE = "⌫", "⇧", "↵", "?#", "ABC", "␣"
+_DISPLAY = {_BKSP: "DEL", _ENTER: "ENTER", _SYM: "?#", _ABC: "ABC", _SPACE: "space"}
 
 # label -> weight (relative width in its row); default 1.0
 _WIDE = {_SHIFT: 1.5, _BKSP: 1.5, _SYM: 1.6, _ABC: 1.6, _ENTER: 1.6, _SPACE: 5.0}
@@ -81,6 +83,8 @@ class OnScreenKeyboard(BoxLayout):
         self._shift = False
         self._hidden = True
         self._applied_shift = 0        # current pan applied to the ScreenManager
+        self._last_key_t = 0.0         # debounce the panel's phantom double-tap
+        self._last_key_label = None
         with self.canvas.before:
             self._bg = Color(*_GROUND)
             self._rect = Rectangle(pos=self.pos, size=self.size)
@@ -139,14 +143,18 @@ class OnScreenKeyboard(BoxLayout):
             fill = _LET
         else:                                   # symbols / punctuation
             fill = _LET
-        shown = label
-        if _is_letter(label) and self._shift:
-            shown = label.upper()
-        if label == _SHIFT:
-            shown = _SHIFT + ("●" if self._shift else "")
-        if label == _SPACE:
-            shown = ""                          # a plain wide bar reads as space
-        b = Button(text=shown, font_size="19sp", bold=True,
+        # The glyph sentinels (⇧ ⌫ ↵ …) render as tofu boxes in the default font,
+        # so display ASCII words instead. Shift shows its state by case.
+        if _is_letter(label):
+            shown = label.upper() if self._shift else label
+        elif label == _SHIFT:
+            shown = "SHIFT" if self._shift else "shift"
+        elif label in _DISPLAY:
+            shown = _DISPLAY[label]
+        else:
+            shown = label
+        fs = "19sp" if len(shown) <= 1 else "13sp"     # words need a smaller size
+        b = Button(text=shown, font_size=fs, bold=True,
                    background_normal="", background_down="",
                    background_color=fill, color=_KEYTEXT,
                    size_hint_x=_WIDE.get(label, 1.0))
@@ -156,6 +164,16 @@ class OnScreenKeyboard(BoxLayout):
     # -- key handling -------------------------------------------------------
 
     def _on_key(self, label):
+        # This touch panel reports a single tap as two near-simultaneous contacts
+        # (the map code fights the same phantom), so one press inserts two chars.
+        # Swallow a repeat of the SAME key within a hair of the first — a phantom
+        # is <60 ms away, while a deliberate double-letter is a lift-and-retap
+        # (~250 ms), and different keys are never affected.
+        import time
+        now = time.monotonic()
+        if label == self._last_key_label and now - self._last_key_t < 0.13:
+            return
+        self._last_key_t, self._last_key_label = now, label
         t = self.target
         if label == _BKSP:
             if t:
