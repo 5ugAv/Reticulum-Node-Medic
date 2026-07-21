@@ -80,6 +80,7 @@ class OnScreenKeyboard(BoxLayout):
         self._layer = "text"          # 'text' | 'symbols' | 'numeric'
         self._shift = False
         self._hidden = True
+        self._applied_shift = 0        # current pan applied to the ScreenManager
         with self.canvas.before:
             self._bg = Color(*_GROUND)
             self._rect = Rectangle(pos=self.pos, size=self.size)
@@ -207,7 +208,12 @@ class OnScreenKeyboard(BoxLayout):
             _, wy = target.to_window(target.x, target.y)
         except Exception:
             return
-        overlap = (self.y + self.height + dp(14)) - wy
+        # wy already includes any pan we've applied — subtract it to get the
+        # field's UNPANNED position, so recomputing on each keystroke is stable
+        # (else the second read cancels the first and the field drops behind the
+        # keys). The keyboard is docked at the bottom, so its top is at self.height.
+        natural_wy = wy - self._applied_shift
+        overlap = (self.height + dp(14)) - natural_wy
         self._set_pan(max(0, overlap))
 
     def _set_pan(self, shift):
@@ -220,8 +226,10 @@ class OnScreenKeyboard(BoxLayout):
         sm.size_hint_y = None
         sm.height = sm.parent.height if sm.parent else Window.height
         sm.y = shift
+        self._applied_shift = shift
 
     def _restore_pan(self):
+        self._applied_shift = 0
         sm = self._pan_target
         if sm is None:
             return
