@@ -289,6 +289,37 @@ def test_node_detail_topup_is_small_and_resumable(tmp_path):
     assert again["fetched"] == 0
 
 
+def test_add_point_detail_merges_bounds_not_shrinks(tmp_path):
+    """A spot-detail top-up must never SHRINK the map's known extent — bounds are
+    unioned with what's already stored, and zoom range widened, not replaced."""
+    from ui.map_download import (add_point_detail, download_region,
+                                 DETAIL_MIN_ZOOM, DETAIL_MAX_ZOOM)
+    import sqlite3
+    dest = str(tmp_path / "offline.mbtiles")
+    # seed a wide, low-zoom region
+    download_region(-37.70, 145.00, dest, radius_km=100.0, zmin=8, zmax=10,
+                    fetch=lambda z, x, y: f"r{z}{x}{y}".encode(), rate_limit_s=0)
+    before = dict(sqlite3.connect(dest).execute(
+        "SELECT name, value FROM metadata").fetchall())
+    w0, s0, e0, n0 = (float(v) for v in before["bounds"].split(","))
+    # top up street detail at a point INSIDE the region
+    summary = add_point_detail(-37.72, 145.05, dest,
+                               fetch=lambda z, x, y: f"d{z}{x}{y}".encode(),
+                               rate_limit_s=0)
+    after = dict(sqlite3.connect(dest).execute(
+        "SELECT name, value FROM metadata").fetchall())
+    w1, s1, e1, n1 = (float(v) for v in after["bounds"].split(","))
+    assert summary["fetched"] > 0
+    # unioned: never tighter than before, zoom range widened to include detail
+    assert w1 <= w0 and s1 <= s0 and e1 >= e0 and n1 >= n0
+    assert int(after["minzoom"]) == 8
+    assert int(after["maxzoom"]) == DETAIL_MAX_ZOOM
+    # both the region AND the detail zooms are present in the tiles table
+    zooms = [z for (z,) in sqlite3.connect(dest).execute(
+        "SELECT DISTINCT zoom_level FROM tiles ORDER BY zoom_level")]
+    assert 8 in zooms and DETAIL_MAX_ZOOM in zooms
+
+
 # ---- world overview tier ----------------------------------------------------
 
 def test_world_tile_count_and_estimate():

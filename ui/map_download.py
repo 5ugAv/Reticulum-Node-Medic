@@ -383,6 +383,64 @@ def _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop) -> Dict:
     return summary
 
 
+def _read_metadata(path: str) -> Dict[str, str]:
+    """Existing MBTiles metadata as a dict, or {} if the file is absent/unreadable."""
+    import os as _os
+    if not _os.path.exists(path):
+        return {}
+    try:
+        c = sqlite3.connect(path)
+        rows = c.execute("SELECT name, value FROM metadata").fetchall()
+        c.close()
+        return {n: v for n, v in rows}
+    except sqlite3.Error:
+        return {}
+
+
+def _union_bounds(prev, new: Tuple[float, float, float, float]):
+    """Union a stored ``'w,s,e,n'`` string (or tuple, or None) with a new bbox, so
+    adding a detail circle never SHRINKS the map's known extent."""
+    nw, ns, ne, nn = new
+    if not prev:
+        return new
+    if isinstance(prev, str):
+        try:
+            pw, ps, pe, pn = (float(v) for v in prev.split(","))
+        except (ValueError, TypeError):
+            return new
+    else:
+        pw, ps, pe, pn = prev
+    return (min(pw, nw), min(ps, ns), max(pe, ne), max(pn, nn))
+
+
+def add_point_detail(lat: float, lon: float, dest_path: str,
+                     radius_km: float = DETAIL_RADIUS_KM,
+                     zmin: int = DETAIL_MIN_ZOOM, zmax: int = DETAIL_MAX_ZOOM,
+                     fetch: Optional[Callable[[int, int, int], Optional[bytes]]] = None,
+                     on_progress: Optional[Callable[[Dict], None]] = None,
+                     rate_limit_s: float = 0.1,
+                     stop: Optional[Callable[[], bool]] = None) -> Dict:
+    """Cache a street-detail circle (z13-15 by default) around an ARBITRARY point —
+    where the operator is placing or identifying a node — into the existing (or a
+    new) offline.mbtiles. Unlike :func:`download_region`, the metadata bounds/zoom
+    are MERGED (unioned) with what's already stored, so a spot-detail top-up never
+    shrinks the map's known coverage. Same resumable, breaker-protected fetch."""
+    fetch = fetch or osm_fetch
+    tiles = tiles_in_radius(lat, lon, radius_km, zmin, zmax)
+    prev = _read_metadata(dest_path)
+    bounds = _union_bounds(prev.get("bounds"), radius_bounds(lat, lon, radius_km))
+    try:
+        minz = min(int(prev.get("minzoom", zmin)), zmin)
+        maxz = max(int(prev.get("maxzoom", zmax)), zmax)
+    except (TypeError, ValueError):
+        minz, maxz = zmin, zmax
+    writer = MBTilesWriter(
+        dest_path, prev.get("name") or f"offline detail @ {lat:.3f},{lon:.3f}",
+        bounds, minz, maxz,
+        center=prev.get("center") or f"{lon},{lat},{zmax}")
+    return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
+
+
 def download_node_details(points: List[Tuple[float, float, str]], dest_path: str,
                           fetch: Optional[Callable] = None,
                           on_progress: Optional[Callable[[Dict], None]] = None,

@@ -27,6 +27,14 @@ CROSS_CY = 0.46           # y-fraction, top-down
 CROSS_R = 0.13            # radius in x-fractions (aspect-corrected below)
 IMAGE_ASPECT = 720 / 1280
 
+# The WI-FI emblem (the red fan icon + label in the connectivity stack) is a
+# second Easter egg: a shortcut into WiFi settings, mirroring the gear icon.
+# Its box sits between the LORA and BLUETOOTH labels, clear of the cross circle.
+WIFI_LEFT = 0.42
+WIFI_RIGHT = 0.58
+WIFI_TOP = 0.25           # y-fraction, top-down
+WIFI_BOTTOM = 0.335
+
 
 def zone_at(fx: float, fy: float) -> Optional[str]:
     """Mode name for a tap at image-fraction (fx, fy), or None.
@@ -37,6 +45,9 @@ def zone_at(fx: float, fy: float) -> Optional[str]:
         span = (CARDS_RIGHT - CARDS_LEFT) / len(CARD_ORDER)
         idx = int((fx - CARDS_LEFT) / span)
         return CARD_ORDER[min(idx, len(CARD_ORDER) - 1)]
+    # the WI-FI emblem shortcuts into WiFi settings (like the gear icon)
+    if WIFI_LEFT <= fx <= WIFI_RIGHT and WIFI_TOP <= fy <= WIFI_BOTTOM:
+        return "wifi"
     # circle test: convert the y-offset into x-fraction units (the image is
     # 1.5x taller than wide) so the tap radius is circular on screen
     dx = fx - CROSS_CX
