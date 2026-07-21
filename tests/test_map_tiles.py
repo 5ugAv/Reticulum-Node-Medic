@@ -211,3 +211,13 @@ def test_subtile_cell_locates_the_quadrant_for_overzoom():
     assert subtile_cell(4, 2, 1) == (0, 0, 2)     # even/even -> top-left
     # two levels up: 4x4 grid; tile (5,3) -> ancestor (1,0), cell (1,3)
     assert subtile_cell(5, 3, 2) == (1, 3, 4)
+
+
+def test_to_latlon_round_trips_to_screen():
+    """tap-to-place: screen->geo must invert geo->screen."""
+    from ui.map_tiles import build_view
+    v = build_view(-37.75, -37.73, 145.00, 145.02, view_w=480.0, view_h=800.0)
+    for lat, lon in [(-37.74, 145.01), (-37.735, 145.005), (-37.748, 145.018)]:
+        sx, sy = v.to_screen(lat, lon)
+        rlat, rlon = v.to_latlon(sx, sy)
+        assert abs(rlat - lat) < 1e-6 and abs(rlon - lon) < 1e-6

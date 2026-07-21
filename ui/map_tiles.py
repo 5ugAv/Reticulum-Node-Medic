@@ -139,6 +139,13 @@ class MercatorView:
         x, y = project_px(lat, lon, self.zoom)
         return x - self.off_x, self.height - (y - self.off_y)
 
+    def to_latlon(self, sx: float, sy: float) -> Tuple[float, float]:
+        """Kivy screen coords (origin bottom-left, y up) -> geo. Inverse of
+        to_screen — used for tap-to-place a pin on the offline map."""
+        wx = sx + self.off_x
+        wy = self.off_y + (self.height - sy)
+        return unproject_px(wx, wy, self.zoom)
+
 
 def build_view(min_lat: float, max_lat: float, min_lon: float, max_lon: float,
                view_w: float, view_h: float, padding: float = 0.0,

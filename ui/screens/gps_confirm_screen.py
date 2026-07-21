@@ -124,6 +124,7 @@ class GpsConfirmScreen(BoxLayout):
         self._tiles = tiles if tiles is not None else find_mbtiles()
         self._fix = None
         self._manual = False
+        self._picked = None                       # (lat, lon) set by tapping the map
 
         self.add_widget(_line("Confirm this node's location", bold=True, size="20sp"))
         self.badge = _Badge()
@@ -136,7 +137,8 @@ class GpsConfirmScreen(BoxLayout):
         self.coords = _line("", size="16sp")
         self.add_widget(self.coords)
 
-        self.map = MapPlot(tiles=self._tiles, interactive=False, size_hint_y=1)
+        self.map = MapPlot(tiles=self._tiles, interactive=False,
+                           on_pick=self._on_map_pick, size_hint_y=1)
         self.add_widget(self.map)
 
         # Manual entry offers BOTH: an address (geocoded, for populated areas) and
@@ -181,13 +183,25 @@ class GpsConfirmScreen(BoxLayout):
     def _set_badge(self, text, level):
         self.badge.set(text, level)
 
+    def _on_map_pick(self, latlon):
+        """The operator tapped the offline map to set the location (no GPS/internet
+        needed). Adopt it; the pin already moved."""
+        self._picked = latlon
+        self.coords.text = f"{latlon[0]:.6f},  {latlon[1]:.6f}"
+        self._set_badge("Picked from map", "info")
+        self.detail.text = ("Set by tapping the map. Use this position, or tap again "
+                            "to move it / Recalibrate to go back to GPS.")
+        self.confirm_btn.disabled = False
+
     def _refresh(self):
-        if self._manual:
+        if self._manual or self._picked is not None:
             return
         self._fix = self._fix_reader()
         t = fix_trust(self._fix)
         self._set_badge(t["title"], t["level"])
         self.detail.text = t["detail"]
+        if t["level"] != "live":
+            self.detail.text += "  Or tap the map to drop the pin."
         if self._fix and self._fix.has_fix:
             self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}"
             self.map.focus((self._fix.lat, self._fix.lon))   # street-level, pin centred
@@ -203,6 +217,8 @@ class GpsConfirmScreen(BoxLayout):
             except ValueError:
                 self._set_badge("Enter valid numbers for latitude and longitude", "none")
                 return
+        elif self._picked is not None:
+            lat, lon, src = self._picked[0], self._picked[1], "map"
         elif self._fix and self._fix.has_fix:
             lat, lon, src = self._fix.lat, self._fix.lon, self._fix.source
         else:
@@ -212,6 +228,7 @@ class GpsConfirmScreen(BoxLayout):
 
     def _recalibrate(self, *_):
         self._manual = False
+        self._picked = None
         self.manual_row.height, self.manual_row.opacity = dp(0), 0
         self._set_badge("Recalibrating — take the medic outside for clear sky…", "info")
         self.detail.text = ("Waiting for a live fix (satellites tracking). The badge "
@@ -221,6 +238,7 @@ class GpsConfirmScreen(BoxLayout):
     def _toggle_manual(self, *_):
         self._manual = not self._manual
         if self._manual:
+            self._picked = None
             self.manual_row.height, self.manual_row.opacity = dp(100), 1
             self._set_badge("Enter a location", "info")
             self.detail.text = ("Type an address and Find (needs internet), OR enter "
