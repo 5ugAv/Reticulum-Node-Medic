@@ -31,6 +31,7 @@ from ui.screens.triage_screen import TriageScreen
 from ui.screens.mitosis_screen import MitosisScreen
 from ui.screens.home_screen import HomeScreen
 from ui.screens.credits_screen import CreditsScreen
+from ui.onscreen_keyboard import OnScreenKeyboard
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from workflows.repair import RepairWorkflow
@@ -392,7 +393,16 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(mitosis)
 
         self.sm.current = os.environ.get("RNM_START", "home")
-        return self.sm
+
+        # The on-screen keyboard floats above every screen (the touchscreen has
+        # no physical keys). Fields call ui.onscreen_keyboard.bind_field(...) and
+        # it reveals itself, panning the ScreenManager up so the field stays clear.
+        root = FloatLayout()
+        root.add_widget(self.sm)
+        self.keyboard = OnScreenKeyboard(pan_target=self.sm,
+                                         pos_hint={"x": 0, "y": 0})
+        root.add_widget(self.keyboard)
+        return root
 
     def _start_monitor_polling(self, interval: float = 30.0):
         """Poll the LAN on a background thread; push live nodes to the screen
@@ -602,6 +612,9 @@ class ReticulumNodeMedicApp(App):
         self.switch_mode("scan")
 
     def switch_mode(self, mode_name):
+        kb = getattr(self, "keyboard", None)
+        if kb is not None:
+            kb.hide()                     # dismiss the keyboard when leaving a screen
         if mode_name in [s.name for s in self.sm.screens]:
             # Forward (home -> a mode): the new screen enters from the RIGHT
             # (Kivy direction="left"). Back (-> home): home slides in from the LEFT

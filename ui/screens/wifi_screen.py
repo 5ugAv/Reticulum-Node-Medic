@@ -19,6 +19,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.onscreen_keyboard import bind_field
 from provisioning import wifi
 
 
@@ -64,6 +65,7 @@ class WifiScreen(BoxLayout):
                                 height=dp(0), spacing=dp(6), opacity=0)
         self.pw_in = TextInput(hint_text="password", multiline=False, password=True,
                                font_size="16sp")
+        bind_field(self.pw_in)                       # pop the on-screen keyboard
         self.connect_btn = Button(text="Connect", size_hint_x=None, width=dp(120),
                                   bold=True, background_normal="",
                                   background_color=theme.hex_to_rgba(theme.COLORS["green"]),

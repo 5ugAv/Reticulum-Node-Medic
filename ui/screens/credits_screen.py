@@ -34,7 +34,7 @@ DONATE_QR = os.path.normpath(os.path.join(
 CREDITS = [
     ("Reticulum & RNode", "Mark Qvist"),
     ("RNode Firmware CE", "Liberated Systems & contributors"),
-    ("RTNode-2400 firmware", "Grey Hat"),
+    ("RTNode-2400 firmware — github.com/GrayHatGuy", "GrayHatGuy"),
     ("Concept, build, field testing & front page", "5ugAv"),
     ("Engineering companion", "Claude (Anthropic)"),
     ("Maps", "OpenStreetMap contributors & CARTO"),
