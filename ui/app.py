@@ -359,13 +359,15 @@ class ReticulumNodeMedicApp(App):
         # Real hardware when a board is attached to the medic's USB; the emulated
         # demos only when nothing is (dev box / no board) — see ui.hw_factories.
         from ui import hw_factories as hw
-        birth.add_widget(self._with_back(BirthScreen(
+        self.birth_screen = BirthScreen(
             workflow_factories={
                 "rtnode2400": lambda: hw.make_rtnode_build(_demo_rtnode_build),
                 "pi_rnode": _pi_rnode_factory},   # honest-fail until the real flow lands
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),
-            on_mitosis=lambda: self.switch_mode("mitosis"))))
+            on_mitosis=lambda: self.switch_mode("mitosis"),
+            on_use_existing=self._use_existing_node)
+        birth.add_widget(self._with_back(self.birth_screen))
         self.sm.add_widget(birth)
 
         triage = Screen(name="triage")
@@ -602,6 +604,14 @@ class ReticulumNodeMedicApp(App):
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
             stop.set()
+
+    def _use_existing_node(self, cert):
+        """An already-birthed node was picked in BIRTH's search — it's provisioned,
+        so go to Triage to adjust its antenna where it's being mounted."""
+        self._mounting_node = cert
+        name = cert.get("node_name") or cert.get("hostname") or "node"
+        print(f"[birth] mounting existing node: {name} -> Triage")
+        self.switch_mode("triage")
 
     def _on_gps_confirmed(self, lat, lon, source):
         """A GPS position was confirmed (or manually entered) for a node install.

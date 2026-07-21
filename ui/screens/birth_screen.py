@@ -99,23 +99,33 @@ class QRCodeWidget(Widget):
 
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
-                 on_mitosis=None, prefill_location=None, **kwargs):
+                 on_mitosis=None, prefill_location=None, on_use_existing=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
         self.spacing = dp(8)
         # (lat, lon, source) stamped from the map's "Use this position", or None.
         self._prefill_location = prefill_location
-        # Node identity — the FIRST thing birth asks. Created once and re-parented
-        # on each header rebuild so the typed name/notes survive board changes.
+        # on_use_existing(cert) — search-existing picked a birthed node (-> Triage).
+        self._on_use_existing = on_use_existing
+        self._saved_cert_id = None
+        # Step one is naming the node (build a NEW one) OR searching for one already
+        # birthed. Created once and re-parented on each header rebuild so a typed
+        # name survives board changes. Notes are asked at the END (after the cert).
         self._name_in = TextInput(hint_text="Name this node  (e.g. Rooftop-East)",
                                   multiline=False, size_hint_y=None, height=dp(46),
                                   font_size="16sp")
-        self._notes_in = TextInput(hint_text="Notes  (optional — goes on the certificate)",
-                                   multiline=False, size_hint_y=None, height=dp(46),
-                                   font_size="15sp")
+        self._search_in = TextInput(hint_text="Search a node you already birthed…",
+                                    multiline=False, size_hint_y=None, height=dp(46),
+                                    font_size="15sp")
+        self._search_in.bind(text=lambda i, v: self._run_search(v))
+        self._end_notes_in = TextInput(
+            hint_text="Notes  (optional — mast height, landmarks…)",
+            multiline=True, size_hint_y=None, height=dp(70), font_size="15sp")
         bind_field(self._name_in)
-        bind_field(self._notes_in)
+        bind_field(self._search_in)
+        bind_field(self._end_notes_in)
         # {"rtnode2400": factory, "pi_rnode": factory} — each returns a workflow
         # with .run_all(on_progress), .birth_certificate, and (optionally)
         # .onboarding. The "rnode" type has no single workflow: it opens the
@@ -164,18 +174,26 @@ class BirthScreen(BoxLayout):
             self.list.clear_widgets()
         self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
 
-        # Step one: name it (and stamp the location, if we arrived from the map).
+        # Step one: name a NEW node (build it), or search one already birthed.
         self.header.add_widget(_line("Name this node", bold=True, size="15sp",
                                      color="accent"))
         self.header.add_widget(self._name_in)
-        self.header.add_widget(self._notes_in)
         if self._prefill_location:
             lat, lon, src = self._prefill_location
             self.header.add_widget(_line(
                 f"Location stamped: {lat:.5f}, {lon:.5f}  (from {src})",
                 size="12.5sp", color="green"))
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
 
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        self.header.add_widget(_line("— or — use existing node", bold=True,
+                                     size="15sp", color="accent"))
+        self.header.add_widget(self._search_in)
+        self._search_results = BoxLayout(orientation="vertical", size_hint_y=None,
+                                         height=dp(0), spacing=dp(2))
+        self._search_results.bind(minimum_height=self._search_results.setter("height"))
+        self.header.add_widget(self._search_results)
+
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
         self.header.add_widget(_line("Choose your hardware:", size="13sp",
                                      color="text_secondary"))
 
@@ -573,22 +591,99 @@ class BirthScreen(BoxLayout):
 
         cert = getattr(self._workflow, "birth_certificate", None)
         if cert:
-            cert = self._stamp_identity(dict(cert))   # name/notes/location
+            cert = self._stamp_identity(dict(cert))   # name + location
+            from ui.cert_store import save_cert
+            try:
+                self._saved_cert_id = save_cert(cert)     # keep it on the medic
+                cert["_id"] = self._saved_cert_id
+            except OSError:
+                self._saved_cert_id = None
+            self._cert = cert
             self.list.add_widget(_line("Birth certificate:", bold=True,
                                        size="16sp"))
+            self.list.add_widget(_line("    (saved on this Node Medic)",
+                                       size="12sp", color="text_secondary"))
             for k, v in cert.items():
+                if k.startswith("_"):
+                    continue
                 self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
             self._add_cert_qr(cert)
+            self._add_notes_panel()
+
+    def _add_notes_panel(self):
+        """Notes are asked HERE — after the certificate is out — then saved onto
+        the stored cert (and regenerate the QR so a scan carries them too)."""
+        self.list.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        self.list.add_widget(_line("Add notes", bold=True, size="16sp",
+                                   color="accent"))
+        self._end_notes_in.text = getattr(self, "_cert", {}).get("notes", "")
+        self.list.add_widget(self._end_notes_in)
+        save = Button(text="Save notes to certificate", size_hint_y=None,
+                      height=dp(48), bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        save.bind(on_release=lambda *_: self._save_notes())
+        self.list.add_widget(save)
+        self._notes_status = _line("", size="12.5sp", color="green")
+        self.list.add_widget(self._notes_status)
+
+    def _save_notes(self):
+        notes = self._end_notes_in.text.strip()
+        cert = getattr(self, "_cert", None)
+        if cert is None:
+            return
+        cert["notes"] = notes
+        if self._saved_cert_id:
+            from ui.cert_store import update_notes
+            update_notes(self._saved_cert_id, notes)
+        self._notes_status.text = "Saved. (The QR above now includes the notes.)"
+        # refresh the QR so a fresh scan carries the notes
+        self._add_cert_qr(cert)
+
+    def _run_search(self, query):
+        """Filter the on-medic certificate store by the typed name and list hits;
+        picking one hands it off (-> Triage) as an already-provisioned node."""
+        from ui.cert_store import search_certs
+        self._search_results.clear_widgets()
+        query = (query or "").strip()
+        if not query:
+            self._search_results.height = dp(0)
+            return
+        hits = search_certs(query)[:6]
+        if not hits:
+            self._search_results.add_widget(_line("No birthed node matches that name.",
+                                                   size="12.5sp", color="text_secondary"))
+            return
+        for cert in hits:
+            name = cert.get("node_name") or cert.get("hostname") or "(unnamed node)"
+            loc = cert.get("location")
+            label = f"{name}" + (f"   · {loc}" if loc else "")
+            btn = Button(text=label, size_hint_y=None, height=dp(44), halign="left",
+                         font_size="14sp", background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
+            btn.bind(on_release=lambda _b, c=cert: self._pick_existing(c))
+            self._search_results.add_widget(btn)
+
+    def _pick_existing(self, cert):
+        """An already-birthed node was chosen — it's provisioned, so hand it to
+        Triage (adjust the antenna where it's being mounted)."""
+        if self._prefill_location and "location" not in cert:
+            lat, lon, src = self._prefill_location
+            cert["location"] = f"{lat:.6f}, {lon:.6f} ({src})"  # new mount spot
+            if cert.get("_id"):
+                from ui.cert_store import save_cert
+                save_cert(cert)
+        if self._on_use_existing:
+            self._on_use_existing(cert)
 
     def _stamp_identity(self, cert):
-        """Fold the operator's node name, notes and the map-stamped location into
-        the certificate dict, so they appear on the card and in the scannable QR."""
+        """Fold the operator's node name and the map-stamped location into the
+        certificate dict (notes are added at the END, after the cert is shown)."""
         name = self._name_in.text.strip()
-        notes = self._notes_in.text.strip()
         if name:
             cert["node_name"] = name
-        if notes:
-            cert["notes"] = notes
         if self._prefill_location and "location" not in cert:
             lat, lon, src = self._prefill_location
             cert["location"] = f"{lat:.6f}, {lon:.6f} ({src})"
@@ -599,16 +694,24 @@ class BirthScreen(BoxLayout):
         tethered, so this is how the operator gets it off the device: scan with
         any camera, no pairing or network. Falls back to a hint if segno is
         absent (the text above is still the record)."""
+        # Drop any QR drawn earlier (e.g. before notes were added) so a refresh
+        # replaces it rather than stacking a second code.
+        for w in getattr(self, "_qr_widgets", []):
+            if w.parent:
+                self.list.remove_widget(w)
+        self._qr_widgets = []
         matrix = qr_matrix(birth_cert_payload(cert))
         if not matrix:
-            self.list.add_widget(_line(
-                "    (install 'segno' on the medic to show a scannable QR)",
-                color="text_secondary", size="12sp"))
+            w = _line("    (install 'segno' on the medic to show a scannable QR)",
+                      color="text_secondary", size="12sp")
+            self.list.add_widget(w)
+            self._qr_widgets = [w]
             return
-        self.list.add_widget(_line("Scan to save this certificate:", bold=True,
-                                   size="15sp"))
+        lbl = _line("Scan to save this certificate:", bold=True, size="15sp")
+        self.list.add_widget(lbl)
         qr = QRCodeWidget(matrix)
         holder = AnchorLayout(anchor_x="center", size_hint_y=None,
                               height=qr.height + dp(12))
         holder.add_widget(qr)
         self.list.add_widget(holder)
+        self._qr_widgets = [lbl, holder]
