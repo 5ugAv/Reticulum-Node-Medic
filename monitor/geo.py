@@ -15,9 +15,14 @@ import json
 import os
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional, Tuple
+
+#: Nominatim requires a descriptive User-Agent (generic ones are blocked).
+GEOCODE_USER_AGENT = "ReticulumNodeMedic/1.0 (offline mesh node placement)"
 
 
 @dataclass
@@ -134,6 +139,35 @@ def fix_trust(fix: Optional[GpsFix]) -> dict:
             "title": "No GPS fix",
             "detail": "No satellite position. Recalibrate outside (needs sky view) "
                       "or enter the coordinates manually."}
+
+
+def geocode_address(address: str,
+                    fetch: Optional[Callable[[str], str]] = None,
+                    timeout: float = 8.0) -> Optional[dict]:
+    """Forward-geocode a free-text address to ``{lat, lon, name}`` via OSM
+    Nominatim — for the field operator who knows an ADDRESS, not coordinates
+    (populated areas). NEEDS INTERNET; returns None when offline, on a bad
+    response, or no match (the operator then falls back to entering lat/lon, which
+    is what regional/unpopulated sites need anyway). *fetch* is injected for tests.
+    Nominatim's fair-use is fine for occasional one-off placement lookups."""
+    address = (address or "").strip()
+    if not address:
+        return None
+    if fetch is None:
+        def fetch(url: str) -> str:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": GEOCODE_USER_AGENT})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "ignore")
+    url = ("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
+           + urllib.parse.quote(address))
+    try:
+        data = json.loads(fetch(url))
+        top = data[0]
+        return {"lat": float(top["lat"]), "lon": float(top["lon"]),
+                "name": top.get("display_name", address)}
+    except Exception:
+        return None
 
 
 def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
