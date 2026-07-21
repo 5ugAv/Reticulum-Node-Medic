@@ -17,6 +17,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.onscreen_keyboard import bind_field
 from ui.widgets.hex_status import HexStatus
 from ui.widgets.stat_bar import StatBar
 
@@ -114,6 +115,7 @@ class VitalsScreen(BoxLayout):
         self._highlight_filter()
         search = TextInput(hint_text="Search", multiline=False,
                            size_hint_x=None, width=dp(220))
+        bind_field(search)                           # pop the on-screen keyboard
         search.bind(text=lambda i, v: self.set_search(v))
         self.filter_bar.add_widget(search)
         self.add_widget(self.filter_bar)
