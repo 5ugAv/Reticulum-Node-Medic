@@ -24,6 +24,13 @@ def test_red_cross_opens_the_credits_easter_egg():
     assert zone_at(0.15, 0.46) is None         # off to the side
 
 
+def test_wifi_emblem_opens_wifi_settings():
+    assert zone_at(0.50, 0.29) == "wifi"       # on the WI-FI fan icon + label
+    assert zone_at(0.50, 0.46) == "credits"    # still lands on the cross below it
+    assert zone_at(0.50, 0.20) is None         # up on the LORA icon — not WiFi
+    assert zone_at(0.50, 0.36) is None         # BLUETOOTH gap, above the cross
+
+
 def test_out_of_image_taps_are_none():
     assert zone_at(-0.1, 0.5) is None
     assert zone_at(0.5, 1.2) is None

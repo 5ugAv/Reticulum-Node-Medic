@@ -16,6 +16,9 @@ the Kivy presentation over it.
 
 from __future__ import annotations
 
+import os
+import threading
+
 from kivy.clock import Clock
 from kivy.graphics import Color, Line, RoundedRectangle
 from kivy.metrics import dp
@@ -27,7 +30,9 @@ from kivy.uix.widget import Widget
 
 from ui import theme
 from ui.onscreen_keyboard import bind_field
-from ui.map_tiles import find_mbtiles
+from ui.map_tiles import find_mbtiles, MAPS_DIR
+from ui.map_download import (add_point_detail, is_online, DETAIL_MIN_ZOOM,
+                             DETAIL_MAX_ZOOM, DETAIL_RADIUS_KM)
 from ui.screens.scan_screen import MapPlot
 from monitor.geo import read_splitter_fix, fix_trust
 
@@ -126,6 +131,7 @@ class GpsConfirmScreen(BoxLayout):
         self._fix = None
         self._manual = False
         self._picked = None                       # (lat, lon) set by tapping the map
+        self._dl_busy = False                     # street-detail download in flight
 
         self.add_widget(_line("Confirm this node's location", bold=True, size="20sp"))
         self.badge = _Badge()
@@ -137,6 +143,17 @@ class GpsConfirmScreen(BoxLayout):
         self.add_widget(self.detail)
         self.coords = _line("", size="16sp")
         self.add_widget(self.coords)
+
+        # Street names only exist at close zoom, cached over WiFi. If the operator
+        # is placing a node somewhere the map has no detail (blurry, unlabelled),
+        # this pulls the street-level tiles for THIS spot so they can navigate.
+        self.detail_btn = Button(text="Load street names for this spot  (needs WiFi)",
+                                 size_hint_y=None, height=dp(42), font_size="14sp",
+                                 bold=True, background_normal="",
+                                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                                 color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self.detail_btn.bind(on_release=lambda *_: self._load_detail())
+        self.add_widget(self.detail_btn)
 
         self.map = MapPlot(tiles=self._tiles, interactive=False,
                            on_pick=self._on_map_pick, size_hint_y=1)
@@ -213,6 +230,67 @@ class GpsConfirmScreen(BoxLayout):
         else:
             self.coords.text = "—"
             self.confirm_btn.disabled = True
+
+    def _current_point(self):
+        """The (lat, lon) the operator is looking at — manual entry, a map pick,
+        or the GPS fix, in that priority. None if nothing is set yet."""
+        if self._manual:
+            try:
+                return (float(self.lat_in.text), float(self.lon_in.text))
+            except ValueError:
+                return None
+        if self._picked is not None:
+            return self._picked
+        if self._fix and self._fix.has_fix:
+            return (self._fix.lat, self._fix.lon)
+        return None
+
+    def _load_detail(self):
+        """Cache street-level tiles (with names) for the current spot, over WiFi."""
+        if self._dl_busy:
+            return
+        pt = self._current_point()
+        if pt is None:
+            self._set_badge("Pick or find a location first, then load its streets", "info")
+            return
+        if not is_online():
+            self._set_badge("No internet — join WiFi to load street names", "none")
+            self.detail.text = ("Street names are cached over WiFi. Connect in "
+                                "Settings ▸ WiFi (or a phone hotspot), then tap this again.")
+            return
+        self._dl_busy = True
+        self.detail_btn.disabled = True
+        self.detail_btn.text = "Downloading street detail…"
+        lat, lon = pt
+        dest = os.path.join(MAPS_DIR, "offline.mbtiles")
+        os.makedirs(MAPS_DIR, exist_ok=True)
+
+        def prog(s):
+            if "done" in s and "total" in s:
+                Clock.schedule_once(lambda dt: setattr(
+                    self.detail_btn, "text",
+                    f"Street detail… {s['done']}/{s['total']} tiles"), 0)
+
+        def work():
+            summary = add_point_detail(lat, lon, dest, radius_km=DETAIL_RADIUS_KM,
+                                       zmin=DETAIL_MIN_ZOOM, zmax=DETAIL_MAX_ZOOM,
+                                       on_progress=prog)
+            Clock.schedule_once(lambda dt: self._detail_done(summary, (lat, lon)), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _detail_done(self, summary, pt):
+        self._dl_busy = False
+        self.detail_btn.disabled = False
+        self.detail_btn.text = "Load street names for this spot  (needs WiFi)"
+        self._tiles = find_mbtiles()
+        self.map.set_tiles(self._tiles)
+        self.map.focus(pt)
+        if summary.get("blocked"):
+            self._set_badge("Map server is rate-limiting — try again shortly", "none")
+        elif summary.get("fetched") or summary.get("skipped"):
+            self._set_badge("Street detail loaded — zoom in to read the names", "info")
+        else:
+            self._set_badge("Couldn't fetch detail (check the connection)", "none")
 
     def _confirm(self, *_):
         if self._manual:
