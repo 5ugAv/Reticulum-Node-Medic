@@ -231,12 +231,27 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
                                          color="green" if found else "amber"))
 
-        # Firmware — auto-detect suggests one; the operator can override here.
+        # Firmware — auto-detect suggests one, but ALL options are shown as buttons
+        # so the operator can pick RNode / Pi+RNode directly (the selected one is
+        # highlighted).
         self.header.add_widget(_line("Firmware", bold=True, size="15sp",
                                      color="accent"))
-        self.header.add_widget(self._sel_button(
-            FIRMWARE_LABEL.get(self._firmware, "Tap to choose firmware"),
-            self._choose_firmware))
+        fw_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50),
+                           spacing=dp(6))
+        for key, short in (("rtnode2400", "RTNode-2400"), ("rnode", "RNode"),
+                           ("pi_rnode", "Pi + RNode")):
+            sel = self._firmware == key
+            b = Button(text=short, font_size="14sp", bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(
+                           theme.COLORS["accent" if sel else "surface"]),
+                       color=theme.hex_to_rgba(
+                           theme.COLORS["background" if sel else "text_primary"]))
+            b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
+            fw_row.add_widget(b)
+        self.header.add_widget(fw_row)
+        if self._firmware:
+            self.header.add_widget(_line(FIRMWARE_LABEL[self._firmware], size="12sp",
+                                         color="text_secondary"))
 
         if self._firmware == "rtnode2400":
             self.header.add_widget(_line("Target board", bold=True, size="15sp",
@@ -412,7 +427,7 @@ class BirthScreen(BoxLayout):
         fw = (d.get("firmware") or ["rnode"])[0]
         fw_short = FIRMWARE_LABEL.get(fw, fw).split("  ")[0]
         return (f"Detected {d.get('platform', d.get('chip'))} on {d.get('port')}"
-                f"  →  suggests {fw_short}")
+                f"  -  suggests {fw_short}")
 
     def _choose_firmware(self):
         entries = [(i, label, lambda k=key: self._pick_firmware(k))
