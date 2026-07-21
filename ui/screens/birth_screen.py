@@ -100,7 +100,7 @@ class QRCodeWidget(Widget):
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
                  on_mitosis=None, prefill_location=None, on_use_existing=None,
-                 **kwargs):
+                 node_source=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -109,6 +109,10 @@ class BirthScreen(BoxLayout):
         self._prefill_location = prefill_location
         # on_use_existing(cert) — search-existing picked a birthed node (-> Triage).
         self._on_use_existing = on_use_existing
+        # node_source(query) -> [node dicts] for nodes the medic KNOWS on the mesh
+        # (kin roster + discovered), so search finds e.g. FAITH even if it wasn't
+        # birthed through this medic's cert store. Injected; None in tests.
+        self._node_source = node_source
         self._saved_cert_id = None
         # Step one is naming the node (build a NEW one) OR searching for one already
         # birthed. Created once and re-parented on each header rebuild so a typed
@@ -641,23 +645,37 @@ class BirthScreen(BoxLayout):
         self._add_cert_qr(cert)
 
     def _run_search(self, query):
-        """Filter the on-medic certificate store by the typed name and list hits;
-        picking one hands it off (-> Triage) as an already-provisioned node."""
+        """Find an already-provisioned node by name — from the on-medic certificate
+        store AND from the nodes the medic knows on the mesh (kin roster +
+        discovered, via node_source). Picking one hands it to Triage."""
         from ui.cert_store import search_certs
         self._search_results.clear_widgets()
         query = (query or "").strip()
         if not query:
             self._search_results.height = dp(0)
             return
-        hits = search_certs(query)[:6]
+        hits = list(search_certs(query))
+        seen = {(c.get("node_name") or "").lower() for c in hits}
+        if self._node_source:                     # merge in known mesh nodes
+            try:
+                for node in self._node_source(query):
+                    nm = (node.get("node_name") or "").lower()
+                    if nm and nm not in seen:
+                        seen.add(nm)
+                        hits.append(node)
+            except Exception:
+                pass
+        hits = hits[:6]
         if not hits:
-            self._search_results.add_widget(_line("No birthed node matches that name.",
-                                                   size="12.5sp", color="text_secondary"))
+            self._search_results.add_widget(_line(
+                "No birthed or known node matches that name.",
+                size="12.5sp", color="text_secondary"))
             return
         for cert in hits:
             name = cert.get("node_name") or cert.get("hostname") or "(unnamed node)"
             loc = cert.get("location")
-            label = f"{name}" + (f"   · {loc}" if loc else "")
+            tag = "  · on mesh" if cert.get("_source") == "mesh" and not loc else ""
+            label = f"{name}" + (f"   · {loc}" if loc else tag)
             btn = Button(text=label, size_hint_y=None, height=dp(44), halign="left",
                          font_size="14sp", background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["surface"]),

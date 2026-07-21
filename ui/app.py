@@ -366,7 +366,8 @@ class ReticulumNodeMedicApp(App):
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"),
-            on_use_existing=self._use_existing_node)
+            on_use_existing=self._use_existing_node,
+            node_source=self._search_known_nodes)
         birth.add_widget(self._with_back(self.birth_screen))
         self.sm.add_widget(birth)
 
@@ -604,6 +605,30 @@ class ReticulumNodeMedicApp(App):
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
             stop.set()
+
+    def _search_known_nodes(self, query):
+        """Nodes the medic already knows on the mesh (kin roster + discovered),
+        matching *query* by name — so 'use existing node' finds e.g. FAITH even
+        though it wasn't birthed through this medic. Shaped like a certificate so
+        the picker can hand it to Triage."""
+        q = (query or "").strip().lower()
+        if not q:
+            return []
+        out = []
+        try:
+            for rec in self.monitor_service.dashboard():
+                name = getattr(rec, "name", "") or ""
+                if not name or q not in name.lower():
+                    continue
+                cert = {"node_name": name, "_source": "mesh"}
+                if getattr(rec, "dst_hash", None):
+                    cert["reticulum_address"] = rec.dst_hash
+                if getattr(rec, "has_location", lambda: False)():
+                    cert["location"] = f"{rec.lat:.6f}, {rec.lon:.6f} (known)"
+                out.append(cert)
+        except Exception as e:
+            print(f"[birth] known-node search failed: {e}")
+        return out
 
     def _use_existing_node(self, cert):
         """An already-birthed node was picked in BIRTH's search — it's provisioned,
