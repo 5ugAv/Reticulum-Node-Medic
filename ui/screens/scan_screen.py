@@ -496,6 +496,14 @@ class ScanScreen(BoxLayout):
                           halign="left", color=theme.status_rgba("warn", 0.9))
         self.add_widget(self.note)
 
+        # Basemap attribution (a licence condition) — a single small dim line, so
+        # it's legible and never crammed into the header.
+        self.attribution = Label(text="", size_hint=(1, None), height=dp(15),
+                                 halign="right", valign="middle", font_size="10sp",
+                                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.6))
+        self.attribution.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.add_widget(self.attribution)
+
         # Offline-map control: [-] radius stepper [+] around the download
         # button, a live size-vs-storage line beneath, and a typed home-base
         # coordinate as the fallback centre when there's no GPS fix or placed
@@ -563,11 +571,11 @@ class ScanScreen(BoxLayout):
         Clock.schedule_once(apply, 0)
 
     def _refresh_header(self):
-        if self._tiles is not None:
-            # basemap attribution is a licence condition, not decoration
-            self.header.text = f"Map — node coverage   [{ATTRIBUTION}]"
-        else:
-            self.header.text = "Map — node coverage"
+        # Keep the header a clean one-liner. Basemap attribution is a licence
+        # condition, so it lives in its own small footer (self.attribution) where
+        # it's readable, rather than crammed into the header where it wrapped/cut.
+        self.header.text = "Map — node coverage"
+        self.attribution.text = ATTRIBUTION if self._tiles is not None else ""
 
     def set_nodes(self, nodes):
         nodes = list(nodes or [])
