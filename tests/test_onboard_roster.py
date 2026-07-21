@@ -62,3 +62,66 @@ def test_repair_workflow_targets_the_work_board():
     assert isinstance(wf, RepairWorkflow)
     # PROBE is pinned to the attached work board, NOT auto-detecting onto Jonesey
     assert wf.profile.radio.serial_port == "/dev/ttyACM1"
+
+
+# ---- self-enrollment: a clone learns its OWN boards (#82) --------------------
+
+def test_commission_attached_adopts_boards_by_serial(tmp_path):
+    p = str(tmp_path / "onboard.json")
+    serials = {"/dev/ttyACM0": "3C:0F:02:EB:2E:18", "/dev/ttyUSB0": "AA:BB:CC:DD:EE:01"}
+    adopted = roster.commission_attached(
+        ports=["/dev/ttyACM0", "/dev/ttyUSB0"],
+        probe=lambda port: "rnode" if "ACM" in port else "gps",
+        serial_fn=lambda port: serials.get(port), path=p)
+    assert adopted == {"3C:0F:02:EB:2E:18": "rnode", "AA:BB:CC:DD:EE:01": "gps"}
+    assert roster.onboard_serials(p) == {"3C:0F:02:EB:2E:18", "AA:BB:CC:DD:EE:01"}
+
+
+def test_clone_starts_empty_then_self_commissions_its_own_serial(tmp_path):
+    # A clone begins with NO onboard roster (parent serials are never copied) and
+    # adopts its OWN board — a DIFFERENT serial from the parent's Jonesey.
+    p = str(tmp_path / "onboard.json")
+    assert roster.load_roster(p) == {}
+    roster.commission_attached(ports=["/dev/ttyACM0"], probe=lambda _p: "rnode",
+                               serial_fn=lambda _p: "99:88:77:66:55:44", path=p)
+    assert roster.onboard_serials(p) == {"99:88:77:66:55:44"}
+
+
+def test_commission_skips_ports_without_a_serial(tmp_path):
+    p = str(tmp_path / "onboard.json")
+    roster.commission_attached(ports=["/dev/ttyACM0"], probe=lambda _p: "rnode",
+                               serial_fn=lambda _p: None, path=p)
+    assert roster.load_roster(p) == {}                 # nothing adopted
+
+
+# ---- two-layer is_onboard + fail-closed -------------------------------------
+
+def test_is_onboard_second_layer_is_service_bound(tmp_path):
+    p = str(tmp_path / "onboard.json")                 # empty roster
+    with patch.object(roster, "serial_for_port", side_effect=lambda _port: "SVC:1"):
+        assert roster.is_onboard("/dev/ttyACM0", path=p) is False
+        assert roster.is_onboard("/dev/ttyACM0", path=p,
+                                 service_serials={"SVC:1"}) is True   # operates like Jonesey
+
+
+def test_is_flashable_work_board_fails_closed_on_unknown_serial(tmp_path):
+    p = str(tmp_path / "onboard.json")
+    with patch.object(roster, "serial_for_port", side_effect=lambda _port: None):
+        assert roster.is_flashable_work_board("/dev/ttyACM9", path=p) is False   # refuse unknown
+    with patch.object(roster, "serial_for_port", side_effect=lambda _port: "WORK:1"):
+        assert roster.is_flashable_work_board("/dev/ttyACM9", path=p) is True    # known, not onboard
+
+
+# ---- functional "operating like Jonesey" detection --------------------------
+
+def test_service_device_paths_and_serials_from_unit_config():
+    unit = ("ExecStart=/usr/bin/socat "
+            "/dev/serial/by-id/usb-Espressif_x_3C:0F:02:EB:2E:18-if00 "
+            "PTY,link=/tmp/rnode-jonesey\n")
+    paths = roster.service_device_paths(
+        read_unit=lambda u: unit if u == "serial-splitter" else "",
+        units=("serial-splitter", "rnsd", "gpsd"))
+    assert any("by-id" in p for p in paths)
+    ser = roster.service_bound_serials(device_paths=paths,
+                                       serial_fn=lambda _p: "3C:0F:02:EB:2E:18")
+    assert ser == {"3C:0F:02:EB:2E:18"}

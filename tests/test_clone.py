@@ -220,3 +220,14 @@ def test_maps_are_not_excluded_from_the_clone_tree():
     tree to a clone — never in the exclude list."""
     from workflows.clone import TOOL_EXCLUDES
     assert not any("map" in e for e in TOOL_EXCLUDES)
+
+
+def test_clone_does_not_carry_the_parents_onboard_roster():
+    # Onboard serials are per-medic (each has unique physical boards). A clone must
+    # NEVER inherit the parent's onboard.json, or it would mis-protect the wrong
+    # serials and leave its own radio flashable — it self-commissions instead (#82).
+    c = conn()
+    w = wf(c)
+    w.run_all()
+    assert not any("onboard.json" in cmd for cmd in c.history)
+    assert not any("onboard" in (local or "") for local, _ in c.pushed_trees)

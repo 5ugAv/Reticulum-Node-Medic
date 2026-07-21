@@ -58,12 +58,34 @@ def onboard_serials(path: str = ROSTER_PATH) -> set:
     return {v for v in load_roster(path).values() if v}
 
 
-def is_onboard(port: str, path: str = ROSTER_PATH) -> bool:
-    """True when *port* is one of the medic's own permanent boards (by identity),
-    so flash / PROBE / birth must never target it — even if rnsd is stopped and
-    the port looks free."""
+def is_onboard(port: str, path: str = ROSTER_PATH, service_serials=None) -> bool:
+    """True when *port* is one of the medic's own permanent boards, so flash /
+    PROBE / birth must never target it. Onboard if EITHER:
+      * its USB serial is in the roster (persistent self-knowledge — survives rnsd
+        being stopped for maintenance, when the port would otherwise look free), OR
+      * it's a board the medic's own services are bound to (*service_serials* — the
+        live "it's operating like Jonesey, so it's mine" signal; see
+        service_bound_serials).
+    """
     serial = serial_for_port(port)
-    return bool(serial and serial in onboard_serials(path))
+    if not serial:
+        return False               # can't identify here; callers fail closed
+    if serial in onboard_serials(path):
+        return True
+    return bool(service_serials and serial in set(service_serials))
+
+
+def is_flashable_work_board(port: str, path: str = ROSTER_PATH,
+                            service_serials=None) -> bool:
+    """FAIL-CLOSED work-board test. A port is a flashable work board ONLY if we can
+    positively resolve its USB serial AND it is not onboard. If the serial can't be
+    resolved we do NOT know the board is safe to erase, so we refuse it. Rationale:
+    flashing the medic's OWN radio is catastrophic; refusing to flash a genuine
+    work board is a mild, recoverable annoyance. Use this (not a bare ``not
+    is_onboard``) to pick flash/PROBE targets."""
+    if not serial_for_port(port):
+        return False
+    return not is_onboard(port, path, service_serials)
 
 
 def register(role: str, serial: str, path: str = ROSTER_PATH) -> dict:
@@ -84,3 +106,113 @@ def register_port(role: str, port: str, path: str = ROSTER_PATH) -> dict | None:
     if not serial:
         return None
     return register(role, serial, path)
+
+
+# ---- self-enrollment: a clone learns its OWN boards by identity --------------
+
+def attached_serial_ports(glob_fn=glob.glob) -> list:
+    """Every serial device on USB right now (free or busy)."""
+    return sorted(glob_fn("/dev/ttyACM*") + glob_fn("/dev/ttyUSB*"))
+
+
+def _probe_role(port: str) -> "str | None":
+    """Real best-effort role probe: an RNode answers ``rnodeconf -i``; a GPS emits
+    NMEA ``$G..`` sentences. None if neither is clear (still adopted, just labelled
+    generically)."""
+    import subprocess
+    try:
+        out = subprocess.run(["rnodeconf", port, "-i"], capture_output=True,
+                             text=True, timeout=12).stdout or ""
+        if "RNode" in out or "Device signature" in out:
+            return "rnode"
+    except Exception:
+        pass
+    try:
+        import serial as _pyserial
+        with _pyserial.Serial(port, 9600, timeout=2) as s:
+            for _ in range(25):
+                line = s.readline().decode("ascii", "ignore")
+                if line.startswith("$G") and "," in line:
+                    return "gps"
+    except Exception:
+        pass
+    return None
+
+
+def identify_role(port: str, probe=None) -> str:
+    """Best-effort role LABEL for an onboard board: ``rnode`` | ``gps`` | ``board``.
+    The label is cosmetic — a board is protected once its serial is in the roster,
+    whatever its role. *probe* is injected in tests."""
+    try:
+        return (probe or _probe_role)(port) or "board"
+    except Exception:
+        return "board"
+
+
+def _label_for(role: str, serial: str) -> str:
+    """Stable, unique roster key for an adopted board: role + last 4 serial chars."""
+    tail = "".join(c for c in serial if c.isalnum())[-4:].lower() or "xxxx"
+    return f"{role}_{tail}"
+
+
+def commission_attached(ports=None, probe=None, path: str = ROSTER_PATH,
+                        serial_fn=None) -> dict:
+    """ADOPT every currently-attached serial board as the medic's OWN onboard
+    hardware, by USB serial. THE COMMISSIONING CONTRACT: run this only when the
+    medic's permanent boards are attached and no work board is (a fresh clone's
+    first boot; an operator "adopt my hardware" action). This is how a clone gains
+    self-knowledge of ITS OWN radio/GPS — whose serials differ from the parent's —
+    so it never flashes them, even when rnsd is stopped and the port looks free.
+    Idempotent. Returns ``{serial: role}`` adopted."""
+    ports = attached_serial_ports() if ports is None else ports
+    resolve = serial_fn or serial_for_port
+    adopted = {}
+    for p in ports:
+        serial = resolve(p)
+        if not serial:
+            continue
+        role = identify_role(p, probe)
+        register(_label_for(role, serial), serial, path)
+        adopted[serial] = role
+    return adopted
+
+
+# ---- functional "operating like Jonesey => it's mine" signal ----------------
+
+_DEV_RE = re.compile(r"(/dev/serial/by-id/\S+|/dev/tty(?:ACM|USB)\d+)")
+
+
+def service_device_paths(read_unit=None,
+                         units=("serial-splitter", "rnsd", "gpsd"),
+                         config_texts=None) -> set:
+    """Physical serial device paths the medic's OWN services are configured to use
+    — the serial splitter that feeds rnsd its RNode, gpsd, and the like. A board on
+    one of these paths is functioning as the medic's infrastructure, so it's the
+    medic's even if the service is momentarily stopped (the CONFIG still claims it).
+    Best-effort + injectable (``read_unit`` reads a systemd unit; ``config_texts``
+    supplies extra config blobs). Returns the referenced device paths."""
+    texts = list(config_texts or [])
+    if read_unit is None:
+        import subprocess
+        def read_unit(u):
+            try:
+                return subprocess.run(["systemctl", "cat", u], capture_output=True,
+                                     text=True, timeout=6).stdout or ""
+            except Exception:
+                return ""
+    for u in units:
+        texts.append(read_unit(u))
+    paths = set()
+    for t in texts:
+        for m in _DEV_RE.findall(t or ""):
+            paths.add(m)
+    return paths
+
+
+def service_bound_serials(device_paths=None, serial_fn=None, **kw) -> set:
+    """USB serials of the boards the medic's own services are bound to (resolved
+    from service_device_paths). The functional half of the two-layer onboard check
+    in is_onboard: a board 'operating like Jonesey' is the medic's."""
+    paths = service_device_paths(**kw) if device_paths is None else device_paths
+    resolve = serial_fn or serial_for_port
+    return {s for s in (resolve(p) for p in paths) if s}
