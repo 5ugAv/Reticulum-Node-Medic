@@ -163,8 +163,12 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
 
 
 def make_rtnode_build(demo_factory: Callable, connection=None,
-                      ports_fn: Callable[[], list] = local_board_ports):
-    """Build an RTNode-2400 on an ESP32 board attached to the medic."""
+                      ports_fn: Callable[[], list] = local_board_ports,
+                      target=None):
+    """Build an RTNode-2400 on an ESP32-S3 board attached to the medic. *target*
+    selects the RTNode-2400 variant (Heltec V4 / T-Beam Supreme); None uses the
+    default (Heltec V4)."""
+    from workflows.rtnode_build import DEFAULT_TARGET
     if connection is None:
         if not hardware_present(ports_fn):
             if demo_allowed():
@@ -174,7 +178,8 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
                 "medic. Connect it with a known-good USB DATA cable, then start "
                 "the build again.", "No board attached")
         connection = LocalConnection()
-    return RTNodeBuildWorkflow(connection, NodeProfile())
+    return RTNodeBuildWorkflow(connection, NodeProfile(),
+                               target=target or DEFAULT_TARGET)
 
 
 def make_repair_workflow(demo_factory: Callable, connection=None,
