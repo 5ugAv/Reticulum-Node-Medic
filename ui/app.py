@@ -17,8 +17,10 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.metrics import dp
 
 from ui import theme
 from ui.screens.vitals_screen import VitalsScreen
@@ -204,26 +206,62 @@ def _placeholder(title):
     return screen
 
 
+class _BackSwipeWrap(FloatLayout):
+    """Wraps a mode screen. A swipe IN from the LEFT EDGE goes back — replacing a
+    corner BACK button that overlapped screen controls (and never having to
+    choreograph controls around it again). A thin translucent chevron marks the
+    zone. Only touches that START within the narrow edge strip are claimed for the
+    back gesture; everything else passes straight through, so map panning, buttons
+    and text fields all still work (a pan starts mid-screen, not at the border)."""
+
+    EDGE_DP = 26           # width of the left-edge back zone
+    TRIGGER_DP = 55        # rightward travel that fires 'back'
+
+    def __init__(self, on_back, **kwargs):
+        super().__init__(**kwargs)
+        self._on_back = on_back
+        self._edge = None                       # (touch, start_x) mid back-swipe
+        # '‹' (U+2039) renders in the default font (unlike the ⚠ emoji); a faint
+        # handle telling the operator where the back gesture lives.
+        self._chevron = Label(text="‹", font_size="40sp", bold=True,
+                              size_hint=(None, None), size=(dp(22), dp(64)),
+                              pos_hint={"x": 0.0, "center_y": 0.5},
+                              color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.55))
+
+    def add_content(self, widget):
+        widget.size_hint = (1, 1)
+        self.add_widget(widget)
+        self.add_widget(self._chevron)          # keep the handle on top
+
+    def on_touch_down(self, touch):
+        if touch.x - self.x <= dp(self.EDGE_DP):
+            self._edge = (touch, touch.x)
+            return True                         # claim the edge strip
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._edge and touch is self._edge[0]:
+            if touch.x - self._edge[1] >= dp(self.TRIGGER_DP):
+                self._edge = None
+                self._on_back()
+            return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self._edge and touch is self._edge[0]:
+            self._edge = None
+            return True
+        return super().on_touch_up(touch)
+
+
 class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
     def _with_back(self, widget):
-        """A mode screen plus the BACK button (bottom-right, thumb-sized) that
-        returns to the front page."""
-        from kivy.uix.floatlayout import FloatLayout
-        from kivy.uix.button import Button
-        from kivy.metrics import dp
-        wrap = FloatLayout()
-        widget.size_hint = (1, 1)
-        wrap.add_widget(widget)
-        back = Button(text="BACK", bold=True, font_size="14sp",
-                      size_hint=(None, None), size=(dp(84), dp(48)),
-                      pos_hint={"right": 0.985, "y": 0.012},
-                      background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["surface"], 0.92),
-                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        back.bind(on_release=lambda *_: self.switch_mode("home"))
-        wrap.add_widget(back)
+        """A mode screen that goes back to the front page on a LEFT-EDGE SWIPE
+        (with a faint chevron handle) — no corner BACK button to overlap controls."""
+        wrap = _BackSwipeWrap(on_back=lambda: self.switch_mode("home"))
+        wrap.add_content(widget)
         return wrap
 
     def _self_commission_onboard(self):
