@@ -22,6 +22,9 @@ def birth_cert_payload(cert: dict) -> str:
     was built."""
     lines: List[str] = ["RETICULUM NODE — BIRTH CERTIFICATE"]
 
+    if cert.get("node_name"):
+        lines.append(f"Name: {cert['node_name']}")
+
     host = cert.get("hostname") or ""
     ssh = cert.get("ssh_address") or ""
     if host or ssh:
@@ -52,8 +55,12 @@ def birth_cert_payload(cert: dict) -> str:
             f"Radio: {freq:g} MHz BW{cert.get('bandwidth_khz'):g} "
             f"SF{cert.get('spreading_factor')} CR{cert.get('coding_rate')} "
             f"{cert.get('tx_power_dbm')}dBm")
+    if cert.get("location"):
+        lines.append(f"Location: {cert['location']}")
     if cert.get("session_id"):
         lines.append(f"Built: {cert['session_id']}")
+    if cert.get("notes"):
+        lines.append(f"Notes: {cert['notes']}")
     return "\n".join(lines)
 
 
