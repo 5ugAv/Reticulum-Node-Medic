@@ -226,6 +226,27 @@ class ReticulumNodeMedicApp(App):
         wrap.add_widget(back)
         return wrap
 
+    def _self_commission_onboard(self):
+        """A freshly-cloned medic boots with an EMPTY onboard roster and its OWN
+        boards attached (different serials from the parent). Adopt whatever's
+        attached NOW as the medic's own hardware, by USB serial, so it never
+        flashes its own radio/GPS — even when rnsd is stopped and the port looks
+        free. No-op once commissioned (roster non-empty). Fast: labels boards
+        generically (protection is by serial, not role); services refine roles when
+        they bind a board. See #82 / [[medic-standard-onboard-config]]."""
+        import platform
+        if platform.system() != "Linux":
+            return
+        try:
+            from ui.onboard_roster import (load_roster, attached_serial_ports,
+                                           commission_attached)
+            if load_roster() or not attached_serial_ports():
+                return                                 # already done, or nothing to adopt
+            adopted = commission_attached(probe=lambda _p: None)   # fast, no rnodeconf
+            print(f"[onboard] self-commissioned own hardware: {adopted}")
+        except Exception as e:
+            print(f"[onboard] self-commission skipped: {e}")
+
     def build(self):
         Window.clearcolor = theme.hex_to_rgba(theme.COLORS["background"])
         # On the medic's touchscreen, fill the native display (which may be
@@ -234,6 +255,8 @@ class ReticulumNodeMedicApp(App):
             Window.size = (1280, 720)
         else:
             Window.fullscreen = "auto"
+
+        self._self_commission_onboard()
 
         # No sidebar: the front page IS the navigation (its cards open the
         # modes); every mode screen carries a BACK button bottom-right.

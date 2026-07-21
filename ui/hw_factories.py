@@ -96,8 +96,13 @@ def local_board_ports(busy_fn: Callable[[str], bool] = _port_busy,
     identity (Jonesey's LoRa radio, the GPS Tracker — see ui.onboard_roster). The
     identity check is the robust one: busy alone fails dangerously if rnsd is
     stopped for maintenance (the medic's radio would look free/flashable)."""
-    from ui.onboard_roster import is_onboard
-    onboard_fn = onboard_fn or is_onboard
+    from ui.onboard_roster import is_onboard, service_bound_serials
+    if onboard_fn is None:
+        # Two-layer onboard exclusion: the identity roster (persistent — survives
+        # rnsd being stopped) OR the boards the medic's own services are bound to
+        # (the live "operating like Jonesey => it's mine" signal).
+        svc = service_bound_serials()
+        onboard_fn = lambda p: is_onboard(p, service_serials=svc)
     candidates = sorted(glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"))
     return [p for p in candidates if not busy_fn(p) and not onboard_fn(p)]
 
