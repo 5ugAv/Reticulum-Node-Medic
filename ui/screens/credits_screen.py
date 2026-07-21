@@ -10,13 +10,24 @@ Edit CREDITS and SPIEL freely — they're plain data.
 
 from __future__ import annotations
 
+import os
+
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+
+#: Support the developer — a scannable QR of the ETH address (generated offline
+#: from ETH_ADDR into assets/ui/donate_eth_qr.png) plus the address in text so it
+#: can be read/verified by hand. The QR keeps its white quiet-zone (needed to scan).
+ETH_ADDR = "0x93D7c938A85B1AB74950CC9eA0030DfB52bFC42E"
+DONATE_QR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.pardir, "assets", "ui", "donate_eth_qr.png"))
 
 #: (role, name) — shown in order. Edit to taste.
 #: (Add Sophie White's design credit when her pages land.)
@@ -74,6 +85,34 @@ class CreditsScreen(BoxLayout):
         spiel.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
         spiel.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(16)))
         body.add_widget(spiel)
+
+        # --- Support this work: ETH address + scannable QR ---
+        sup_title = Label(text="Support this work", bold=True, font_size="18sp",
+                          size_hint_y=None, height=dp(40),
+                          color=theme.hex_to_rgba(theme.COLORS["red"]))
+        body.add_widget(sup_title)
+        sup_line = Label(
+            text=("Node Medic is built and field-tested by one person. If it helps "
+                  "you build the mesh, you can chip in with Ethereum — scan the code "
+                  "with a phone wallet, or send to the address below."),
+            halign="center", valign="top", font_size="14sp", size_hint_y=None,
+            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        sup_line.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        sup_line.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(10)))
+        body.add_widget(sup_line)
+        qr = Image(source=DONATE_QR, size_hint_y=None, height=dp(190),
+                   allow_stretch=True, keep_ratio=True)
+        body.add_widget(qr)
+        addr = Label(text=ETH_ADDR, halign="center", valign="middle",
+                     font_size="13sp", size_hint_y=None, height=dp(30),
+                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        addr.bind(size=lambda i, v: setattr(i, "text_size", v))
+        body.add_widget(addr)
+        addr_note = Label(text="ETH / EVM address", font_size="11sp",
+                          size_hint_y=None, height=dp(22),
+                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
+        body.add_widget(addr_note)
+
         hint = Label(text="tap anywhere to go back",
                      font_size="12sp", size_hint_y=None, height=dp(24),
                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
@@ -100,10 +139,14 @@ class CreditsScreen(BoxLayout):
             self._on_select(key)
 
     def on_touch_up(self, touch):
-        # the bottom mode row handles its own taps; anywhere else = back
+        # the bottom mode row handles its own taps; a genuine tap anywhere else =
+        # back. A drag (scrolling the support/QR section) must NOT go back, so we
+        # only treat near-stationary touches as taps and let drags reach the
+        # ScrollView to finish their gesture.
         if self._mode_row.collide_point(*touch.pos):
             return super().on_touch_up(touch)
-        if self.collide_point(*touch.pos) and self._on_back:
+        moved = (abs(touch.x - touch.ox) + abs(touch.y - touch.oy)) > dp(12)
+        if not moved and self.collide_point(*touch.pos) and self._on_back:
             self._on_back()
             return True
         return super().on_touch_up(touch)
