@@ -264,36 +264,57 @@ class BirthScreen(BoxLayout):
         btn.bind(on_release=lambda *_: on_tap())
         return btn
 
+    def _picker_popup(self, title, entries):
+        """A full-screen scrollable picker. The board/Pi lists are long (15 boards),
+        so a modal gives them the whole screen instead of a cramped strip crushed
+        under the header (where only 3-4 showed and couldn't be scrolled to)."""
+        from kivy.uix.popup import Popup
+        root = BoxLayout(orientation="vertical", spacing=dp(6), padding=dp(6))
+        scroll = ScrollView()
+        lst = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        lst.bind(minimum_height=lst.setter("height"))
+        popup = Popup(title=title, size_hint=(0.96, 0.94), title_size="17sp",
+                      separator_color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        for num, text, cb in entries:
+            lst.add_widget(self._option_button(
+                num, text, lambda cb=cb: (popup.dismiss(), cb())))
+        scroll.add_widget(lst)
+        root.add_widget(scroll)
+        cancel = Button(text="Cancel", size_hint_y=None, height=dp(48), bold=True,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        cancel.bind(on_release=lambda *_: popup.dismiss())
+        root.add_widget(cancel)
+        popup.content = root
+        popup.open()
+
     def _choose_board(self):
-        """Numbered, scrollable list of every flashable board. Numbers match
-        rnodeconf's own autoinstall menu (Heltec V4 = 9, …) so the screen and Mark
-        Qvist's terminal flow never disagree; custom boards continue after."""
-        self.list.clear_widgets()
-        self.list.add_widget(_line("Select the board:", bold=True, size="16sp"))
+        """Full-screen picker of every flashable board. Numbers match rnodeconf's
+        own autoinstall menu (Heltec V4 = 9, …) so the screen and Mark Qvist's
+        terminal flow never disagree; custom boards continue after."""
         official = [b for b in self._boards if b.flash_method == "autoinstall"]
         next_custom = max((b.autoinstall_index for b in official), default=0) + 1
+        entries = []
         for board in self._boards:
             if board.flash_method == "autoinstall":
                 num, tag = board.autoinstall_index, ""
             else:
                 num, tag = next_custom, "  (custom)"
                 next_custom += 1
-            self.list.add_widget(self._option_button(
-                num, f"{board.display_name}  [{board.platform}]{tag}",
-                lambda b=board: self._pick_board(b)))
+            entries.append((num, f"{board.display_name}  [{board.platform}]{tag}",
+                            lambda b=board: self._pick_board(b)))
+        self._picker_popup("Select the board", entries)
 
     def _pick_board(self, board):
         self._sel_board = board
         self._build_chooser()
 
     def _choose_pi(self):
-        """Numbered, scrollable list of host Pis — plus 'None' for a standalone
-        radio (no Pi to power it)."""
-        self.list.clear_widgets()
-        self.list.add_widget(_line("Select the host Pi:", bold=True, size="16sp"))
-        for i, (key, name) in enumerate(PI_HOSTS, 1):
-            self.list.add_widget(self._option_button(
-                i, name, lambda k=key, n=name: self._pick_pi(k, n)))
+        """Full-screen picker of host Pis — plus 'None' for a standalone radio."""
+        entries = [(i, name, lambda k=key, n=name: self._pick_pi(k, n))
+                   for i, (key, name) in enumerate(PI_HOSTS, 1)]
+        self._picker_popup("Select the host Pi", entries)
 
     def _pick_pi(self, key, name):
         self._sel_pi = (key, name)
