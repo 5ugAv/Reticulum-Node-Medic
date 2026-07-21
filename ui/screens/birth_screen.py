@@ -667,9 +667,7 @@ class BirthScreen(BoxLayout):
                 pass
         hits = hits[:6]
         if not hits:
-            self._search_results.add_widget(_line(
-                "No birthed or known node matches that name.",
-                size="12.5sp", color="text_secondary"))
+            self._show_rebirth_nudge(query)
             return
         for cert in hits:
             name = cert.get("node_name") or cert.get("hostname") or "(unnamed node)"
@@ -683,6 +681,32 @@ class BirthScreen(BoxLayout):
             btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
             btn.bind(on_release=lambda _b, c=cert: self._pick_existing(c))
             self._search_results.add_widget(btn)
+
+    def _show_rebirth_nudge(self, query):
+        """No node by that name is known — encourage birthing it THROUGH the medic,
+        because that's what makes it report health back here and be repairable
+        remotely. Tapping the button carries the name into the birth flow."""
+        self._search_results.add_widget(_line(
+            f"'{query}' isn't set up with Node Medic yet.", bold=True, size="13.5sp"))
+        self._search_results.add_widget(_line(
+            "Birth it through Node Medic so it reports its health back here and can "
+            "be repaired remotely — then it'll show up here for good.",
+            size="12.5sp", color="text_secondary"))
+        btn = Button(text=f"Birth '{query}' through Node Medic", size_hint_y=None,
+                     height=dp(50), bold=True, font_size="14.5sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
+        btn.bind(on_release=lambda *_: self._start_birth_named(query))
+        self._search_results.add_widget(btn)
+
+    def _start_birth_named(self, query):
+        """Carry the searched name into the 'Name this node' field and clear the
+        search, so the operator drops straight into building it (pick RTNode-2400,
+        etc.) — the node is (re)born through the medic and becomes manageable."""
+        self._name_in.text = query
+        self._search_in.text = ""          # clears the search + its results
 
     def _pick_existing(self, cert):
         """An already-birthed node was chosen — it's provisioned, so hand it to
