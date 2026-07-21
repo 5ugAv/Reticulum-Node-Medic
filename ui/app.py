@@ -342,6 +342,12 @@ class ReticulumNodeMedicApp(App):
         gps_confirm.add_widget(self._with_back(self.gps_confirm_screen))
         self.sm.add_widget(gps_confirm)
 
+        # Settings hub (the home gear) — WiFi to start, more to come.
+        settings_scr = Screen(name="settings")
+        from ui.screens.settings_screen import SettingsScreen
+        settings_scr.add_widget(self._with_back(SettingsScreen(on_open=self.switch_mode)))
+        self.sm.add_widget(settings_scr)
+
         # WiFi connect — join a hotspot / venue AP so online features work afield.
         wifi_scr = Screen(name="wifi")
         from ui.screens.wifi_screen import WifiScreen
