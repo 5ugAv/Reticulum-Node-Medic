@@ -126,7 +126,7 @@ def fix_trust(fix: Optional[GpsFix]) -> dict:
                 "detail": "Actively tracking. This is where the medic is right now."}
     if level == "held":
         return {"level": level, "ok": False,
-                "title": "Held fix — not tracking now",
+                "title": "Last location — not currently tracking",
                 "detail": "The receiver is coasting on its last lock. This may be "
                           "where you WERE, not where you are. Check the map: if "
                           "you've moved, Recalibrate outside or enter coordinates."}
