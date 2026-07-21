@@ -92,6 +92,15 @@ class MapPlot(Widget):
             16, self._zooms[-1] if self._zooms else 15)
         self._trigger()
 
+    def zoom_by(self, direction):
+        """Step the zoom in (+1) or out (-1) around the current view centre — for
+        explicit +/- buttons, so zooming never depends on pinch reliability (cheap
+        touch panels don't multi-touch well). Caps at the deepest cached level."""
+        view = self._last_view or self._current_view()
+        if view is None:
+            return
+        self._step_zoom(direction, view)
+
     def on_touch_down(self, touch):
         if (not self._interactive or not self.collide_point(*touch.pos)
                 or self._tiles is None):

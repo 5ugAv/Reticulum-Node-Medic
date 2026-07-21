@@ -24,6 +24,7 @@ from kivy.graphics import Color, Line, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
@@ -158,9 +159,23 @@ class GpsConfirmScreen(BoxLayout):
 
         # Interactive: the operator can pinch / double-tap to zoom right in and
         # pan around to check the placement; a stationary tap still drops the pin.
+        # Explicit +/- buttons overlay the map so zooming never depends on the
+        # touch panel's (unreliable) pinch — tap to step to building level.
+        map_wrap = FloatLayout(size_hint_y=1)
         self.map = MapPlot(tiles=self._tiles, interactive=True,
-                           on_pick=self._on_map_pick, size_hint_y=1)
-        self.add_widget(self.map)
+                           on_pick=self._on_map_pick, size_hint=(1, 1))
+        map_wrap.add_widget(self.map)
+        zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
+                         size=(dp(50), dp(104)), spacing=dp(6),
+                         pos_hint={"right": 0.98, "top": 0.98})
+        for sym, d in (("+", +1), ("−", -1)):
+            zb = Button(text=sym, font_size="26sp", bold=True, background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"], 0.92),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            zb.bind(on_release=lambda _b, dd=d: self.map.zoom_by(dd))
+            zbox.add_widget(zb)
+        map_wrap.add_widget(zbox)
+        self.add_widget(map_wrap)
 
         # Manual entry offers BOTH: an address (geocoded, for populated areas) and
         # raw lat/lon (always works — for regional/unpopulated sites, often offline
@@ -293,12 +308,12 @@ class GpsConfirmScreen(BoxLayout):
         self.detail_btn.text = "Load street names for this spot  (needs WiFi)"
         self._tiles = find_mbtiles()
         self.map.set_tiles(self._tiles)
-        self.map.focus(pt)
+        self.map.focus(pt, zoom=17)                # land close; +/- to fine-tune
         self._last_focus_key = (round(pt[0], 4), round(pt[1], 4))
         if summary.get("blocked"):
             self._set_badge("Map server is rate-limiting — try again shortly", "none")
         elif summary.get("fetched") or summary.get("skipped"):
-            self._set_badge("Street detail loaded — pinch or double-tap to zoom in", "info")
+            self._set_badge("Street detail loaded — use +/− (or pinch) to zoom in", "info")
         else:
             self._set_badge("Couldn't fetch detail (check the connection)", "none")
 
