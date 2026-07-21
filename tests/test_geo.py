@@ -73,3 +73,27 @@ def test_fuzz_offsets_within_radius_but_never_at_centre():
         dlon_m = (flon - 144.96) * 111_320.0 * math.cos(math.radians(-37.79))
         dist = math.hypot(dlat_m, dlon_m)
         assert 0.25 * r <= dist <= r     # offset real, bounded, off-centre
+
+
+# ---- GPS fix freshness (confirm-before-commit safety) -----------------------
+
+def test_classify_fix_live_held_none():
+    from monitor.geo import GpsFix, classify_fix
+    assert classify_fix(GpsFix(lat=-37.7, lon=145.0, sats=8, fix_quality=1)) == "live"
+    assert classify_fix(GpsFix(lat=-37.7, lon=145.0, sats=0, fix_quality=1)) == "held"
+    assert classify_fix(GpsFix(lat=-37.7, lon=145.0, sats=0, fix_quality=0)) == "none"
+    assert classify_fix(GpsFix(lat=-37.7, lon=145.0, sats=5, fix_quality=0)) == "none"
+    assert classify_fix(None) == "none"
+
+
+def test_fix_trust_verdicts_guard_stale_positions():
+    from monitor.geo import GpsFix, fix_trust
+    live = fix_trust(GpsFix(lat=-37.7, lon=145.0, sats=8, fix_quality=1))
+    assert live["level"] == "live" and live["ok"] is True
+
+    held = fix_trust(GpsFix(lat=-37.7, lon=145.0, sats=0, fix_quality=1))
+    assert held["level"] == "held" and held["ok"] is False
+    assert "where you were" in held["detail"].lower()   # warns it may be stale
+
+    none = fix_trust(None)
+    assert none["level"] == "none" and none["ok"] is False
