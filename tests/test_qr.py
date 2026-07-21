@@ -62,6 +62,26 @@ def test_payload_omits_missing_fields_without_crashing():
     assert "MAC:" not in text and "Reticulum:" not in text and "Radio:" not in text
 
 
+def test_payload_carries_name_notes_and_location():
+    cert = dict(SAMPLE, node_name="Rooftop-East",
+                location="-37.680702, 144.986444 (map)",
+                notes="Mounted on the water tank, 4m mast")
+    text = birth_cert_payload(cert)
+    lines = text.splitlines()
+    # name is the operator's first field — right under the title
+    assert lines[1] == "Name: Rooftop-East"
+    assert "Location: -37.680702, 144.986444 (map)" in text
+    assert "Notes: Mounted on the water tank, 4m mast" in text
+    # name before reachability, notes last
+    assert text.index("Name:") < text.index("Host:")
+    assert text.rstrip().endswith("Notes: Mounted on the water tank, 4m mast")
+
+
+def test_payload_omits_name_notes_location_when_absent():
+    text = birth_cert_payload(SAMPLE)
+    assert "Name:" not in text and "Notes:" not in text and "Location:" not in text
+
+
 def test_payload_no_rgb_pin_when_stock():
     stock = dict(SAMPLE, rgb_led_pin=None)
     text = birth_cert_payload(stock)

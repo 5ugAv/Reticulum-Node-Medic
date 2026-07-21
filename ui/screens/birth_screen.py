@@ -99,11 +99,23 @@ class QRCodeWidget(Widget):
 
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
-                 on_mitosis=None, **kwargs):
+                 on_mitosis=None, prefill_location=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
         self.spacing = dp(8)
+        # (lat, lon, source) stamped from the map's "Use this position", or None.
+        self._prefill_location = prefill_location
+        # Node identity — the FIRST thing birth asks. Created once and re-parented
+        # on each header rebuild so the typed name/notes survive board changes.
+        self._name_in = TextInput(hint_text="Name this node  (e.g. Rooftop-East)",
+                                  multiline=False, size_hint_y=None, height=dp(46),
+                                  font_size="16sp")
+        self._notes_in = TextInput(hint_text="Notes  (optional — goes on the certificate)",
+                                   multiline=False, size_hint_y=None, height=dp(46),
+                                   font_size="15sp")
+        bind_field(self._name_in)
+        bind_field(self._notes_in)
         # {"rtnode2400": factory, "pi_rnode": factory} — each returns a workflow
         # with .run_all(on_progress), .birth_certificate, and (optionally)
         # .onboarding. The "rnode" type has no single workflow: it opens the
@@ -151,6 +163,19 @@ class BirthScreen(BoxLayout):
         if hasattr(self, "list"):
             self.list.clear_widgets()
         self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
+
+        # Step one: name it (and stamp the location, if we arrived from the map).
+        self.header.add_widget(_line("Name this node", bold=True, size="15sp",
+                                     color="accent"))
+        self.header.add_widget(self._name_in)
+        self.header.add_widget(self._notes_in)
+        if self._prefill_location:
+            lat, lon, src = self._prefill_location
+            self.header.add_widget(_line(
+                f"Location stamped: {lat:.5f}, {lon:.5f}  (from {src})",
+                size="12.5sp", color="green"))
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
+
         self.header.add_widget(_line("Choose your hardware:", size="13sp",
                                      color="text_secondary"))
 
@@ -548,11 +573,26 @@ class BirthScreen(BoxLayout):
 
         cert = getattr(self._workflow, "birth_certificate", None)
         if cert:
+            cert = self._stamp_identity(dict(cert))   # name/notes/location
             self.list.add_widget(_line("Birth certificate:", bold=True,
                                        size="16sp"))
             for k, v in cert.items():
                 self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
             self._add_cert_qr(cert)
+
+    def _stamp_identity(self, cert):
+        """Fold the operator's node name, notes and the map-stamped location into
+        the certificate dict, so they appear on the card and in the scannable QR."""
+        name = self._name_in.text.strip()
+        notes = self._notes_in.text.strip()
+        if name:
+            cert["node_name"] = name
+        if notes:
+            cert["notes"] = notes
+        if self._prefill_location and "location" not in cert:
+            lat, lon, src = self._prefill_location
+            cert["location"] = f"{lat:.6f}, {lon:.6f} ({src})"
+        return cert
 
     def _add_cert_qr(self, cert):
         """Show the certificate as a scannable QR — the medic has no phone
