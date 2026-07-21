@@ -139,14 +139,32 @@ class GpsConfirmScreen(BoxLayout):
         self.map = MapPlot(tiles=self._tiles, interactive=False, size_hint_y=1)
         self.add_widget(self.map)
 
-        self.manual_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                    height=dp(0), spacing=dp(8), opacity=0)
+        # Manual entry offers BOTH: an address (geocoded, for populated areas) and
+        # raw lat/lon (always works — for regional/unpopulated sites, often offline
+        # with no street address anyway).
+        self.manual_row = BoxLayout(orientation="vertical", size_hint_y=None,
+                                    height=dp(0), spacing=dp(6), opacity=0)
+        addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                             height=dp(46), spacing=dp(6))
+        self.addr_in = TextInput(hint_text="street address  (needs internet)",
+                                 multiline=False, font_size="15sp")
+        find_btn = Button(text="Find", size_hint_x=None, width=dp(84), bold=True,
+                          background_normal="",
+                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+        find_btn.bind(on_release=lambda *_: self._find_address())
+        addr_row.add_widget(self.addr_in)
+        addr_row.add_widget(find_btn)
+        coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                              height=dp(46), spacing=dp(6))
         self.lat_in = TextInput(hint_text="latitude", multiline=False,
                                 input_filter="float", font_size="16sp")
         self.lon_in = TextInput(hint_text="longitude", multiline=False,
                                 input_filter="float", font_size="16sp")
-        self.manual_row.add_widget(self.lat_in)
-        self.manual_row.add_widget(self.lon_in)
+        coord_row.add_widget(self.lat_in)
+        coord_row.add_widget(self.lon_in)
+        self.manual_row.add_widget(addr_row)
+        self.manual_row.add_widget(coord_row)
         self.add_widget(self.manual_row)
 
         btns = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
@@ -203,9 +221,10 @@ class GpsConfirmScreen(BoxLayout):
     def _toggle_manual(self, *_):
         self._manual = not self._manual
         if self._manual:
-            self.manual_row.height, self.manual_row.opacity = dp(48), 1
-            self._set_badge("Enter coordinates manually", "info")
-            self.detail.text = "Type the install location's lat/lon, then Use this position."
+            self.manual_row.height, self.manual_row.opacity = dp(100), 1
+            self._set_badge("Enter a location", "info")
+            self.detail.text = ("Type an address and Find (needs internet), OR enter "
+                                "lat/lon directly (regional sites). Then Use this position.")
             self.confirm_btn.disabled = False
             if self._fix and self._fix.has_fix:
                 self.lat_in.text = f"{self._fix.lat:.6f}"
@@ -213,3 +232,31 @@ class GpsConfirmScreen(BoxLayout):
         else:
             self.manual_row.height, self.manual_row.opacity = dp(0), 0
             self._refresh()
+
+    def _find_address(self):
+        """Geocode the typed address (off-thread — the HTTP call blocks) and drop
+        the pin so the operator can verify it on the map."""
+        addr = self.addr_in.text.strip()
+        if not addr:
+            self._set_badge("Type an address first, then Find", "info")
+            return
+        self._set_badge("Looking up address…", "info")
+        import threading
+        from monitor.geo import geocode_address
+
+        def work():
+            res = geocode_address(addr)
+            Clock.schedule_once(lambda dt: self._apply_geocode(res), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_geocode(self, res):
+        if not res:
+            self._set_badge("Address not found (no internet?) — enter lat/lon", "none")
+            self.detail.text = ("No match or no connection. For a regional site with "
+                                "no address, type the coordinates directly below.")
+            return
+        self.lat_in.text = f"{res['lat']:.6f}"
+        self.lon_in.text = f"{res['lon']:.6f}"
+        self._set_badge("Found — check the pin sits right", "info")
+        self.detail.text = res["name"][:120]
+        self.map.focus((res["lat"], res["lon"]))     # show it so the operator verifies

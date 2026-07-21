@@ -97,3 +97,28 @@ def test_fix_trust_verdicts_guard_stale_positions():
 
     none = fix_trust(None)
     assert none["level"] == "none" and none["ok"] is False
+
+
+# ---- address geocoding (field operator knows an address, not coords) ---------
+
+def test_geocode_address_parses_nominatim():
+    from monitor.geo import geocode_address
+    fake = ('[{"lat": "-37.744", "lon": "145.001", '
+            '"display_name": "366 High St, Preston VIC, Australia"}]')
+    r = geocode_address("366 High St Preston", fetch=lambda url: fake)
+    assert r["lat"] == -37.744 and r["lon"] == 145.001
+    assert "Preston" in r["name"]
+    # the query is URL-encoded into the request
+    seen = {}
+    geocode_address("366 High St, Preston", fetch=lambda url: seen.setdefault("u", url) or fake)
+    assert "366" in seen["u"] and "High" in seen["u"]
+
+
+def test_geocode_address_none_on_no_match_offline_or_empty():
+    from monitor.geo import geocode_address
+    assert geocode_address("nowhere at all", fetch=lambda url: "[]") is None   # no match
+    def boom(url):
+        raise OSError("offline")
+    assert geocode_address("anywhere", fetch=boom) is None                     # offline
+    assert geocode_address("", fetch=lambda url: "[]") is None                 # empty
+    assert geocode_address("x", fetch=lambda url: "not json") is None          # bad body
