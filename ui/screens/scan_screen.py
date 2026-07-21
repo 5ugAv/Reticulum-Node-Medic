@@ -18,7 +18,8 @@ from typing import List
 
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
-from kivy.graphics import Color, Ellipse, Line, Rectangle
+from kivy.graphics import (Color, Ellipse, Line, Rectangle,
+                           StencilPush, StencilUse, StencilUnUse, StencilPop)
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -318,6 +319,21 @@ class MapPlot(Widget):
         self._clear_labels()
         if self.width < 2 or self.height < 2:
             return
+        # Clip ALL map drawing to our own rectangle — otherwise zoomed-in tiles
+        # spill up over the header row and cover its buttons (Location/Recenter).
+        with self.canvas:
+            StencilPush()
+            Rectangle(pos=self.pos, size=self.size)
+            StencilUse()
+        try:
+            self._draw_content()
+        finally:
+            with self.canvas:
+                StencilUnUse()
+                Rectangle(pos=self.pos, size=self.size)
+                StencilPop()
+
+    def _draw_content(self):
         pts = geo_points(self._nodes)
         if pts:
             lats = [p.lat for p in pts]
