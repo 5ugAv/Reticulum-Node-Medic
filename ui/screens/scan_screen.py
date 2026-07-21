@@ -18,7 +18,7 @@ from typing import List
 
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
-from kivy.graphics import (Color, Ellipse, Line, Rectangle,
+from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle,
                            StencilPush, StencilUse, StencilUnUse, StencilPop)
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -54,10 +54,11 @@ class MapPlot(Widget):
     pinch, clamped to the cached zoom range); until first touched, it auto-fits
     the nodes / cached area."""
 
-    def __init__(self, nodes=None, tiles=None, **kwargs):
+    def __init__(self, nodes=None, tiles=None, interactive=True, **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
+        self._interactive = interactive          # False = a fixed verify view
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
         # Decoded-texture cache keyed by (z,x,y). Decoding a PNG->texture is the
         # expensive part; without this the Pi re-decoded every visible tile on
@@ -76,8 +77,19 @@ class MapPlot(Widget):
 
     # -- gestures -----------------------------------------------------------
 
+    def focus(self, latlon, zoom=None):
+        """Pin the view: centre on *latlon* at a street-level zoom (the highest
+        cached level by default) — for the GPS-confirm screen, where the operator
+        checks the pin against streets. Non-interactive maps use this."""
+        self._me = latlon
+        self._center = latlon
+        self._zoom = zoom if zoom is not None else (
+            self._zooms[-1] if self._zooms else 15)
+        self._trigger()
+
     def on_touch_down(self, touch):
-        if not self.collide_point(*touch.pos) or self._tiles is None:
+        if (not self._interactive or not self.collide_point(*touch.pos)
+                or self._tiles is None):
             return super().on_touch_down(touch)
         if touch.is_double_tap:                   # double-tap = zoom in on the spot
             self._zoom_at(touch.pos, +1)
@@ -408,28 +420,28 @@ class MapPlot(Widget):
         self._add_me_label(view)
 
     def _draw_me_marker(self, view):
-        """A steel-blue dot in a white halo = the medic ("you are here"). Drawn
-        inside an open canvas context by _draw_tiled."""
+        """A red MAP PIN whose point sits on the exact spot (the medic's GPS fix /
+        the position being confirmed). Drawn inside an open canvas context by
+        _draw_tiled — a teardrop head + point + white centre, like a classic pin."""
         if self._me is None:
             return
         sx, sy = view.to_screen(self._me[0], self._me[1])
-        x, y = self.x + sx, self.y + sy
-        Color(1, 1, 1, 0.95)
-        Line(circle=(x, y, dp(11)), width=1.4)
-        Color(0.30, 0.62, 0.97, 1)               # steel blue, matches the accent
-        Ellipse(pos=(x - dp(7), y - dp(7)), size=(dp(14), dp(14)))
+        x, y = self.x + sx, self.y + sy          # the exact point = the pin's tip
+        r = dp(11)
+        cy = y + dp(20)                          # head centre, above the tip
+        Color(0.86, 0.05, 0.05, 1)               # red
+        # the point: a triangle from the head's lower sides down to the tip
+        Quad(points=[x - r * 0.72, cy - r * 0.4, x + r * 0.72, cy - r * 0.4,
+                     x, y, x, y])
+        Ellipse(pos=(x - r, cy - r), size=(2 * r, 2 * r))    # round head
+        Color(0.35, 0, 0, 0.55)                  # thin dark rim for definition
+        Line(circle=(x, cy, r), width=1.2)
+        Color(1, 1, 1, 1)                        # white centre
+        Ellipse(pos=(x - dp(4.6), cy - dp(4.6)), size=(dp(9.2), dp(9.2)))
 
     def _add_me_label(self, view):
-        if self._me is None:
-            return
-        sx, sy = view.to_screen(self._me[0], self._me[1])
-        lbl = Label(text="you are here", font_size=dp(11), bold=True,
-                    color=(0.30, 0.62, 0.97, 1), size_hint=(None, None))
-        lbl.texture_update()
-        lbl.size = lbl.texture_size
-        lbl.pos = (self.x + sx + dp(12), self.y + sy - lbl.height / 2)
-        self.add_widget(lbl)
-        self._labels.append(lbl)
+        # The red map pin marks the spot on its own — no "you are here" text.
+        return
 
     def _draw_coord_plot(self, pts):
         placed = project(pts, self.width, self.height, padding=dp(32))
