@@ -136,7 +136,7 @@ class GpsConfirmScreen(BoxLayout):
         self.coords = _line("", size="16sp")
         self.add_widget(self.coords)
 
-        self.map = MapPlot(tiles=self._tiles, size_hint_y=1)
+        self.map = MapPlot(tiles=self._tiles, interactive=False, size_hint_y=1)
         self.add_widget(self.map)
 
         self.manual_row = BoxLayout(orientation="horizontal", size_hint_y=None,
@@ -172,7 +172,7 @@ class GpsConfirmScreen(BoxLayout):
         self.detail.text = t["detail"]
         if self._fix and self._fix.has_fix:
             self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}"
-            self.map.set_me((self._fix.lat, self._fix.lon))
+            self.map.focus((self._fix.lat, self._fix.lon))   # street-level, pin centred
             self.confirm_btn.disabled = False
         else:
             self.coords.text = "—"
