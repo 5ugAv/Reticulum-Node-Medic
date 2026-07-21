@@ -115,13 +115,15 @@ def test_is_flashable_work_board_fails_closed_on_unknown_serial(tmp_path):
 # ---- functional "operating like Jonesey" detection --------------------------
 
 def test_service_device_paths_and_serials_from_unit_config():
-    unit = ("ExecStart=/usr/bin/socat "
-            "/dev/serial/by-id/usb-Espressif_x_3C:0F:02:EB:2E:18-if00 "
-            "PTY,link=/tmp/rnode-jonesey\n")
+    # The REAL rnode-splitter unit quotes the path: real_port='.../if00' — the
+    # regex must stop at the closing quote/comma, not swallow it (greedy \S+ bug).
+    unit = ("ExecStart=/usr/bin/python3 -c \"from monitor.serial_splitter import "
+            "run; run(real_port='/dev/serial/by-id/usb-Espressif_x_3C:0F:02:EB:2E:18"
+            "-if00', symlink='/tmp/rnode-jonesey')\"\n")
     paths = roster.service_device_paths(
-        read_unit=lambda u: unit if u == "serial-splitter" else "",
-        units=("serial-splitter", "rnsd", "gpsd"))
-    assert any("by-id" in p for p in paths)
+        read_unit=lambda u: unit if u == "rnode-splitter" else "",
+        units=("rnode-splitter", "rnsd", "gpsd"))
+    assert paths == {"/dev/serial/by-id/usb-Espressif_x_3C:0F:02:EB:2E:18-if00"}
     ser = roster.service_bound_serials(device_paths=paths,
                                        serial_fn=lambda _p: "3C:0F:02:EB:2E:18")
     assert ser == {"3C:0F:02:EB:2E:18"}

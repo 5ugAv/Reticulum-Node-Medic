@@ -179,11 +179,11 @@ def commission_attached(ports=None, probe=None, path: str = ROSTER_PATH,
 
 # ---- functional "operating like Jonesey => it's mine" signal ----------------
 
-_DEV_RE = re.compile(r"(/dev/serial/by-id/\S+|/dev/tty(?:ACM|USB)\d+)")
+_DEV_RE = re.compile(r"(/dev/serial/by-id/[^\s'\";,]+|/dev/tty(?:ACM|USB)\d+)")
 
 
 def service_device_paths(read_unit=None,
-                         units=("serial-splitter", "rnsd", "gpsd"),
+                         units=("rnode-splitter", "rnsd", "gpsd", "gps-splitter"),
                          config_texts=None) -> set:
     """Physical serial device paths the medic's OWN services are configured to use
     — the serial splitter that feeds rnsd its RNode, gpsd, and the like. A board on
