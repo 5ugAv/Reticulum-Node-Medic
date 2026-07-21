@@ -30,6 +30,18 @@ from node_profile import RadioConfig
 from ui import theme
 from ui.onscreen_keyboard import bind_field
 from ui.birth import birth_node_types, rnode_board_choices
+from ui.board_detect import detect_board
+from workflows.rtnode_build import RTNODE_TARGETS, DEFAULT_TARGET
+
+#: Firmware the operator can birth. RTNode-2400 = Grey Hat's standalone transport
+#: node (health beacon + remote repair); RNode = a radio for a host; Pi + RNode =
+#: both. Auto-detect suggests one; the operator can override.
+FIRMWARE_CHOICES = [
+    ("rtnode2400", "RTNode-2400  (standalone — reports health, remote-repairable)"),
+    ("rnode", "RNode  (radio for a host)"),
+    ("pi_rnode", "Pi + RNode  (provision a Pi and its radio)"),
+]
+FIRMWARE_LABEL = dict(FIRMWARE_CHOICES)
 from ui.qr import birth_cert_payload, qr_matrix
 from workflows.power_compat import check as power_check
 
@@ -144,6 +156,10 @@ class BirthScreen(BoxLayout):
         self._boards = list(rnode_board_choices())
         self._sel_board = None                       # chosen RNodeBoard | None
         self._sel_pi = None                          # chosen (key, name) | None
+        self._firmware = None                        # rtnode2400 | rnode | pi_rnode
+        self._rtnode_target = None                   # RTNODE_TARGETS key (RTNode-2400)
+        self._detected = None                        # last board_detect result
+        self._detecting = False
 
         self.header = BoxLayout(orientation="vertical", size_hint_y=None,
                                 spacing=dp(6))
@@ -201,31 +217,52 @@ class BirthScreen(BoxLayout):
         self.header.add_widget(_line("Choose your hardware:", size="13sp",
                                      color="text_secondary"))
 
-        self.header.add_widget(_line("Board (radio)", bold=True, size="15sp",
+        # Auto-detect: read the plugged-in board's chip and pre-select firmware.
+        detect = Button(
+            text="Detecting board…" if self._detecting else "Detect connected board",
+            size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
+            background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        detect.bind(on_release=lambda *_: self._detect_board())
+        self.header.add_widget(detect)
+        if self._detected is not None:
+            found = self._detected.get("found")
+            self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
+                                         color="green" if found else "amber"))
+
+        # Firmware — auto-detect suggests one; the operator can override here.
+        self.header.add_widget(_line("Firmware", bold=True, size="15sp",
                                      color="accent"))
         self.header.add_widget(self._sel_button(
-            self._sel_board.display_name if self._sel_board
-            else "Tap to choose a board", self._choose_board))
+            FIRMWARE_LABEL.get(self._firmware, "Tap to choose firmware"),
+            self._choose_firmware))
 
-        # small breather between the board and the (separate) Pi choice
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(16)))
+        if self._firmware == "rtnode2400":
+            self.header.add_widget(_line("Target board", bold=True, size="15sp",
+                                         color="accent"))
+            tgt = RTNODE_TARGETS.get(self._rtnode_target)
+            self.header.add_widget(self._sel_button(
+                tgt.display if tgt else "Tap to choose the RTNode-2400 target",
+                self._choose_rtnode_target))
+        elif self._firmware in ("rnode", "pi_rnode"):
+            self.header.add_widget(_line("Board (radio)", bold=True, size="15sp",
+                                         color="accent"))
+            self.header.add_widget(self._sel_button(
+                self._sel_board.display_name if self._sel_board
+                else "Tap to choose a board", self._choose_board))
+            if self._firmware == "pi_rnode":
+                self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
+                self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
+                                             color="accent"))
+                self.header.add_widget(self._sel_button(
+                    self._sel_pi[1] if self._sel_pi else "Tap to choose a Pi",
+                    self._choose_pi))
 
-        self.header.add_widget(_line("Host Pi  (optional)", bold=True, size="15sp",
-                                     color="accent"))
-        self.header.add_widget(self._sel_button(
-            self._sel_pi[1] if self._sel_pi
-            else "Tap to choose a Pi  (or leave for a standalone radio)",
-            self._choose_pi))
-
-        # The old cyan "Continue" button lived here. It was removed: it looped the
-        # user back to this same panel and pushed the green "OK — start" below the
-        # fold. Choosing a board now reveals the radio-params form + OK directly
-        # (see the tail of this method), freeing that vertical space.
-
-        # Mitosis (clone THIS Node Medic) — restricted to the Heltec Wireless
-        # Tracker at this stage, so the clone's GPS/location is a proven path.
+        # Mitosis (clone THIS Node Medic) — Heltec Wireless Tracker only (proven
+        # GPS path); available from the RNode board path.
         mit_ok = self._sel_board is not None and self._sel_board.key in MITOSIS_BOARDS
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(16)))
+        self.header.add_widget(Widget(size_hint_y=None, height=dp(14)))
         mit = Button(text="Mitosis — clone this Node Medic",
                      size_hint_y=None, height=dp(50), font_size="15sp",
                      disabled=not mit_ok, background_normal="",
@@ -235,25 +272,44 @@ class BirthScreen(BoxLayout):
                          theme.COLORS["background" if mit_ok else "text_secondary"]))
         mit.bind(on_release=lambda *_: self._on_mitosis and self._on_mitosis())
         self.header.add_widget(mit)
-        if not mit_ok:
-            self.header.add_widget(_line(
-                "Mitosis requires the Heltec Wireless Tracker at this stage "
-                "(its GPS/location is verified).", size="12sp",
-                color="text_secondary"))
 
-        # Board chosen → reveal the radio-params form (+ green OK — start) right
-        # away, in the scroll below. This replaces the old Continue step. Guarded
-        # because _build_chooser runs once in __init__ before self.list exists.
+        # The scroll below shows the next action for the chosen firmware.
         if hasattr(self, "list"):
-            if self._sel_board is not None:
-                pi_key = self._sel_pi[0] if self._sel_pi else "none"
-                node_type = "rnode" if pi_key == "none" else "pi_rnode"
-                self.show_params(node_type, board=self._sel_board)
-            else:
-                self.list.clear_widgets()
+            self._build_action()
+
+    def _build_action(self):
+        """Populate the scroll with the next step for the chosen firmware: the
+        RTNode-2400 build button, the RNode radio-params form, or a prompt."""
+        self.list.clear_widgets()
+        if self._firmware == "rtnode2400":
+            if self._rtnode_target:
+                tgt = RTNODE_TARGETS[self._rtnode_target]
+                b = Button(text=f"Build RTNode-2400 ({tgt.display})",
+                           size_hint_y=None, height=dp(56), bold=True, font_size="17sp",
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+                b.bind(on_release=lambda *_: self._run_rtnode())
+                self.list.add_widget(b)
                 self.list.add_widget(_line(
-                    "Pick a board above to set radio params and start.",
-                    size="13sp", color="text_secondary"))
+                    "Flashes the attached board with RTNode-2400 and provisions it "
+                    "on the standard channel. WiFi/LoRa details are entered on the "
+                    "node's setup portal after flashing.", size="12.5sp",
+                    color="text_secondary"))
+            else:
+                self.list.add_widget(_line("Choose the RTNode-2400 target above.",
+                                           size="13sp", color="text_secondary"))
+        elif self._firmware in ("rnode", "pi_rnode"):
+            if self._sel_board is not None:
+                self.show_params(self._firmware, board=self._sel_board)
+            else:
+                self.list.add_widget(_line("Pick a board above to set radio params "
+                                           "and start.", size="13sp",
+                                           color="text_secondary"))
+        else:
+            self.list.add_widget(_line(
+                "Detect the connected board, or choose firmware, to begin.",
+                size="13sp", color="text_secondary"))
 
     def _option_button(self, num, text, on_tap):
         btn = Button(text=f"{num:>2}.  {text}", size_hint_y=None, height=dp(46),
@@ -319,6 +375,77 @@ class BirthScreen(BoxLayout):
     def _pick_pi(self, key, name):
         self._sel_pi = (key, name)
         self._build_chooser()
+
+    # -- auto-detect + firmware ---------------------------------------------
+
+    def _detect_board(self):
+        """Read the plugged-in board's chip (off-thread) and pre-select firmware
+        (and board/target when unambiguous)."""
+        if self._detecting:
+            return
+        self._detecting = True
+        self._build_chooser()                         # show "Detecting board…"
+        import threading
+
+        def work():
+            res = detect_board(self._boards)
+            Clock.schedule_once(lambda dt: self._detected_done(res), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _detected_done(self, res):
+        self._detecting = False
+        self._detected = res
+        if res.get("found"):
+            self._firmware = (res.get("firmware") or ["rnode"])[0]
+            if self._firmware == "rtnode2400":
+                # a chip read can't tell the S3 boards apart — default the target
+                self._rtnode_target = self._rtnode_target or DEFAULT_TARGET
+            elif res.get("board_key"):
+                self._sel_board = next(
+                    (b for b in self._boards if b.key == res["board_key"]), None)
+        self._build_chooser()
+
+    def _detect_summary(self):
+        d = self._detected or {}
+        if not d.get("found"):
+            return d.get("reason", "No board detected.")
+        fw = (d.get("firmware") or ["rnode"])[0]
+        fw_short = FIRMWARE_LABEL.get(fw, fw).split("  ")[0]
+        return (f"Detected {d.get('platform', d.get('chip'))} on {d.get('port')}"
+                f"  →  suggests {fw_short}")
+
+    def _choose_firmware(self):
+        entries = [(i, label, lambda k=key: self._pick_firmware(k))
+                   for i, (key, label) in enumerate(FIRMWARE_CHOICES, 1)]
+        self._picker_popup("Choose firmware", entries)
+
+    def _pick_firmware(self, key):
+        self._firmware = key
+        if key == "rtnode2400" and not self._rtnode_target:
+            self._rtnode_target = DEFAULT_TARGET
+        self._build_chooser()
+
+    def _choose_rtnode_target(self):
+        entries = [(i, t.display, lambda k=key: self._pick_rtnode_target(k))
+                   for i, (key, t) in enumerate(RTNODE_TARGETS.items(), 1)]
+        self._picker_popup("RTNode-2400 target", entries)
+
+    def _pick_rtnode_target(self, key):
+        self._rtnode_target = key
+        self._build_chooser()
+
+    def _run_rtnode(self):
+        """Kick off the real RTNode-2400 build on the attached board (or honest-fail
+        with why, if it can't run)."""
+        workflow = self._factories["rtnode2400"](self._rtnode_target)
+        tgt = RTNODE_TARGETS[self._rtnode_target]
+        if getattr(workflow, "is_blocked", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(workflow.message,
+                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "under_construction", False))
+            return
+        self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed):
         """Warn that this Pi can't power this board over USB — Proceed (⚠ red,
