@@ -443,13 +443,14 @@ class ScanScreen(BoxLayout):
     a control to cache a basemap for offline use while the medic has WiFi."""
 
     def __init__(self, nodes=None, tiles=None, gps_reader=None,
-                 radius_km=DEFAULT_RADIUS_KM, **kwargs):
+                 radius_km=DEFAULT_RADIUS_KM, on_set_location=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(12)
         self.spacing = dp(8)
         self._gps_reader = gps_reader
         self._radius_km = radius_km
+        self._on_set_location = on_set_location
         self._nodes: List[dict] = []
         self._downloading = False
 
@@ -462,6 +463,13 @@ class ScanScreen(BoxLayout):
                                    width=dp(100))
         self.recenter_btn.bind(on_release=lambda *_: self.plot.reset_view())
         header_row.add_widget(self.header)
+        if on_set_location is not None:
+            loc_btn = Button(text="Location", size_hint=(None, 1), width=dp(100),
+                             background_normal="",
+                             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                             color=theme.hex_to_rgba(theme.COLORS["background"]))
+            loc_btn.bind(on_release=lambda *_: self._on_set_location())
+            header_row.add_widget(loc_btn)
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 

@@ -101,6 +101,41 @@ def read_splitter_fix(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
                   sats=st.get("sats"), fix_quality=st.get("fix"), fix_time=fix_time)
 
 
+def classify_fix(fix: Optional[GpsFix]) -> str:
+    """How much to TRUST a fix before stamping a node's location:
+      ``live`` — actively tracking satellites; this is where the medic is NOW.
+      ``held`` — a fix is flagged but 0 satellites are tracked: the receiver is
+                 COASTING on its last lock. The position may be where you WERE,
+                 not where you are — confirm on the map or recalibrate first.
+      ``none`` — no usable position.
+    (The Tracker reports satellites-USED-in-fix, so 0 sats + a fix flag = coasting;
+    ``fix_time`` can't distinguish this because the splitter rewrites it every cycle.)"""
+    if fix is None or not fix.has_fix or (fix.fix_quality or 0) < 1:
+        return "none"
+    return "live" if (fix.sats or 0) > 0 else "held"
+
+
+def fix_trust(fix: Optional[GpsFix]) -> dict:
+    """A plain-language verdict for the GPS-confirm screen:
+    ``{level, ok, title, detail}`` — ``ok`` True only for a live fix."""
+    level = classify_fix(fix)
+    if level == "live":
+        n = fix.sats or 0
+        return {"level": level, "ok": True,
+                "title": f"Live GPS — {n} satellite{'' if n == 1 else 's'}",
+                "detail": "Actively tracking. This is where the medic is right now."}
+    if level == "held":
+        return {"level": level, "ok": False,
+                "title": "Held fix — not tracking now",
+                "detail": "The receiver is coasting on its last lock. This may be "
+                          "where you WERE, not where you are. Check the map: if "
+                          "you've moved, Recalibrate outside or enter coordinates."}
+    return {"level": level, "ok": False,
+            "title": "No GPS fix",
+            "detail": "No satellite position. Recalibrate outside (needs sky view) "
+                      "or enter the coordinates manually."}
+
+
 def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
                         ) -> Callable[[], Optional[Tuple[float, float]]]:
     """A ``read_gps``-compatible reader (``() -> (lat, lon) | None``) sourced from

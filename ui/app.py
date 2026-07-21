@@ -287,12 +287,22 @@ class ReticulumNodeMedicApp(App):
         self._start_announce_listener()
 
         scan = Screen(name="scan")
-        from monitor.geo import splitter_gps_reader
+        from monitor.geo import splitter_gps_reader, read_splitter_fix
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),
-            gps_reader=splitter_gps_reader())     # the Tracker's live "you are here"
+            gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
+            on_set_location=lambda: self.switch_mode("gps_confirm"))
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
+
+        # Confirm a GPS position before it's stamped onto a node (guards against a
+        # HELD/stale fix pinning a node far from where it actually is).
+        gps_confirm = Screen(name="gps_confirm")
+        from ui.screens.gps_confirm_screen import GpsConfirmScreen
+        self.gps_confirm_screen = GpsConfirmScreen(
+            on_confirm=self._on_gps_confirmed, fix_reader=read_splitter_fix)
+        gps_confirm.add_widget(self._with_back(self.gps_confirm_screen))
+        self.sm.add_widget(gps_confirm)
 
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
@@ -532,6 +542,14 @@ class ReticulumNodeMedicApp(App):
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
             stop.set()
+
+    def _on_gps_confirmed(self, lat, lon, source):
+        """A GPS position was confirmed (or manually entered) for a node install.
+        Remember it and return to the map. (Future: hand this to the BIRTH location
+        step / kin roster so the node is stamped with the confirmed coordinates.)"""
+        self._confirmed_location = (lat, lon, source)
+        print(f"[gps] confirmed node location: {lat:.6f}, {lon:.6f} ({source})")
+        self.switch_mode("scan")
 
     def switch_mode(self, mode_name):
         if mode_name in [s.name for s in self.sm.screens]:
