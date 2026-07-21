@@ -81,13 +81,15 @@ class MapPlot(Widget):
     # -- gestures -----------------------------------------------------------
 
     def focus(self, latlon, zoom=None):
-        """Pin the view: centre on *latlon* at a street-level zoom (the highest
-        cached level by default) — for the GPS-confirm screen, where the operator
-        checks the pin against streets. Non-interactive maps use this."""
+        """Pin the view: centre on *latlon* at a street-level zoom — for the GPS-
+        confirm screen, where the operator checks the pin against streets. Defaults
+        to a neighbourhood zoom (capped at 16) so a deep per-spot cache doesn't slam
+        the opening view right down to building level; the operator pinches in from
+        there."""
         self._me = latlon
         self._center = latlon
-        self._zoom = zoom if zoom is not None else (
-            self._zooms[-1] if self._zooms else 15)
+        self._zoom = zoom if zoom is not None else min(
+            16, self._zooms[-1] if self._zooms else 15)
         self._trigger()
 
     def on_touch_down(self, touch):
@@ -156,6 +158,16 @@ class MapPlot(Widget):
                 self._primary = next(iter(self._touches), None)
             if len(self._touches) < 2:
                 self._pinch_base = None
+            # A stationary tap (not a drag or pinch) on an INTERACTIVE pick-enabled
+            # map drops the pin — so tap-to-place coexists with pan/pinch/zoom.
+            moved = abs(touch.x - touch.ox) + abs(touch.y - touch.oy) > dp(10)
+            if (self._on_pick and not moved and not self._touches
+                    and not touch.is_double_tap and self._last_view is not None
+                    and self.collide_point(*touch.pos)):
+                latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
+                self._me = latlon
+                self._trigger()
+                self._on_pick(latlon)
             return True
         # Tap-to-place: on a non-interactive map with a pick handler (the GPS-
         # confirm screen), a tap drops the pin at that spot — offline location entry.

@@ -31,8 +31,8 @@ from kivy.uix.widget import Widget
 from ui import theme
 from ui.onscreen_keyboard import bind_field
 from ui.map_tiles import find_mbtiles, MAPS_DIR
-from ui.map_download import (add_point_detail, is_online, DETAIL_MIN_ZOOM,
-                             DETAIL_MAX_ZOOM, DETAIL_RADIUS_KM)
+from ui.map_download import (add_point_detail, is_online, SPOT_MIN_ZOOM,
+                             SPOT_MAX_ZOOM, SPOT_RADIUS_KM)
 from ui.screens.scan_screen import MapPlot
 from monitor.geo import read_splitter_fix, fix_trust
 
@@ -132,6 +132,7 @@ class GpsConfirmScreen(BoxLayout):
         self._manual = False
         self._picked = None                       # (lat, lon) set by tapping the map
         self._dl_busy = False                     # street-detail download in flight
+        self._last_focus_key = None               # so live re-poll doesn't fight zoom
 
         self.add_widget(_line("Confirm this node's location", bold=True, size="20sp"))
         self.badge = _Badge()
@@ -155,7 +156,9 @@ class GpsConfirmScreen(BoxLayout):
         self.detail_btn.bind(on_release=lambda *_: self._load_detail())
         self.add_widget(self.detail_btn)
 
-        self.map = MapPlot(tiles=self._tiles, interactive=False,
+        # Interactive: the operator can pinch / double-tap to zoom right in and
+        # pan around to check the placement; a stationary tap still drops the pin.
+        self.map = MapPlot(tiles=self._tiles, interactive=True,
                            on_pick=self._on_map_pick, size_hint_y=1)
         self.add_widget(self.map)
 
@@ -224,8 +227,14 @@ class GpsConfirmScreen(BoxLayout):
         if t["level"] != "live":
             self.detail.text += "  Or tap the map to drop the pin."
         if self._fix and self._fix.has_fix:
-            self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}"
-            self.map.focus((self._fix.lat, self._fix.lon))   # street-level, pin centred
+            pt = (self._fix.lat, self._fix.lon)
+            self.coords.text = f"{pt[0]:.6f},  {pt[1]:.6f}"
+            # Only re-centre when the fix actually moves (~11 m) so a live re-poll
+            # every 3 s doesn't undo the operator's pinch-zoom.
+            key = (round(pt[0], 4), round(pt[1], 4))
+            if key != self._last_focus_key:
+                self.map.focus(pt)                # street-level, pin centred
+                self._last_focus_key = key
             self.confirm_btn.disabled = False
         else:
             self.coords.text = "—"
@@ -272,8 +281,8 @@ class GpsConfirmScreen(BoxLayout):
                     f"Street detail… {s['done']}/{s['total']} tiles"), 0)
 
         def work():
-            summary = add_point_detail(lat, lon, dest, radius_km=DETAIL_RADIUS_KM,
-                                       zmin=DETAIL_MIN_ZOOM, zmax=DETAIL_MAX_ZOOM,
+            summary = add_point_detail(lat, lon, dest, radius_km=SPOT_RADIUS_KM,
+                                       zmin=SPOT_MIN_ZOOM, zmax=SPOT_MAX_ZOOM,
                                        on_progress=prog)
             Clock.schedule_once(lambda dt: self._detail_done(summary, (lat, lon)), 0)
         threading.Thread(target=work, daemon=True).start()
@@ -285,10 +294,11 @@ class GpsConfirmScreen(BoxLayout):
         self._tiles = find_mbtiles()
         self.map.set_tiles(self._tiles)
         self.map.focus(pt)
+        self._last_focus_key = (round(pt[0], 4), round(pt[1], 4))
         if summary.get("blocked"):
             self._set_badge("Map server is rate-limiting — try again shortly", "none")
         elif summary.get("fetched") or summary.get("skipped"):
-            self._set_badge("Street detail loaded — zoom in to read the names", "info")
+            self._set_badge("Street detail loaded — pinch or double-tap to zoom in", "info")
         else:
             self._set_badge("Couldn't fetch detail (check the connection)", "none")
 
@@ -311,6 +321,7 @@ class GpsConfirmScreen(BoxLayout):
     def _recalibrate(self, *_):
         self._manual = False
         self._picked = None
+        self._last_focus_key = None                # force a re-centre on the fix
         self.manual_row.height, self.manual_row.opacity = dp(0), 0
         self._set_badge("Recalibrating — take the medic outside for clear sky…", "info")
         self.detail.text = ("Waiting for a live fix (satellites tracking). The badge "
