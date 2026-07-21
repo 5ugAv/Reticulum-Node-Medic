@@ -591,4 +591,9 @@ class ReticulumNodeMedicApp(App):
 
     def switch_mode(self, mode_name):
         if mode_name in [s.name for s in self.sm.screens]:
+            # Forward (home -> a mode): the new screen enters from the RIGHT
+            # (Kivy direction="left"). Back (-> home): home slides in from the LEFT
+            # (direction="right") — the REVERSE, so back reads as back, not another
+            # forward push. Matches the left-edge back swipe.
+            self.sm.transition.direction = "right" if mode_name == "home" else "left"
             self.sm.current = mode_name
