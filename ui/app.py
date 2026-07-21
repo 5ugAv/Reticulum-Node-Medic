@@ -342,6 +342,12 @@ class ReticulumNodeMedicApp(App):
         gps_confirm.add_widget(self._with_back(self.gps_confirm_screen))
         self.sm.add_widget(gps_confirm)
 
+        # WiFi connect — join a hotspot / venue AP so online features work afield.
+        wifi_scr = Screen(name="wifi")
+        from ui.screens.wifi_screen import WifiScreen
+        wifi_scr.add_widget(self._with_back(WifiScreen()))
+        self.sm.add_widget(wifi_scr)
+
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
         # demos only when nothing is (dev box / no board) — see ui.hw_factories.
