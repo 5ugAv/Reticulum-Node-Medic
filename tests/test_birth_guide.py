@@ -4,7 +4,8 @@ from ui.birth_guide_flow import guide_steps, BIRTH_PATHS, _STEPS
 
 
 def test_three_intro_paths_in_order():
-    assert [p[0] for p in BIRTH_PATHS] == ["radio", "pi", "host"]
+    # ordered by rising complexity: RNode -> RTNode-2400 -> Pi + radio
+    assert [p[0] for p in BIRTH_PATHS] == ["host", "radio", "pi"]
     for _key, title, subtitle in BIRTH_PATHS:
         assert title and subtitle
 
