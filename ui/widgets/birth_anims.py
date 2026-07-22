@@ -28,9 +28,16 @@ from ui import theme
 _ANIM_DIR = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     os.pardir, "assets", "ui", "anim"))
-MEDIC_PNG = os.path.join(_ANIM_DIR, "node_medic.png")
+MEDIC_PNG = os.path.join(_ANIM_DIR, "node_medic.png")             # angled medic (SD step)
+MEDIC_CABLE_PNG = os.path.join(_ANIM_DIR, "node_medic_cable.png")  # medic w/ USB cable
+LORA_PNG = os.path.join(_ANIM_DIR, "lora32.png")                   # the radio board
+SD_READER_PNG = os.path.join(_ANIM_DIR, "sd_reader.png")           # microSD + card reader
 SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")
 BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
+
+#: The medic's USB plug tip within node_medic_cable.png (normalised, from top-left).
+#: The board's bottom USB port descends onto this point.
+_PLUG_TIP = (0.041, 0.583)
 
 _TEX_CACHE: dict = {}
 
@@ -115,9 +122,45 @@ def _draw_medic_vector(x, y, w, h):
 
 
 class ConnectBoardAnim(_LoopAnim):
-    """A small radio board slides right and plugs into the Node Medic's USB port."""
+    """The LoRa32 radio board descends from above onto the Node Medic's USB plug.
+    Uses the illustrated sprites (medic-with-cable on the right, board small on the
+    left, docking on the plug tip); falls back to a schematic if the art is absent."""
 
     def _draw(self):
+        medic_tex, board_tex = _texture(MEDIC_CABLE_PNG), _texture(LORA_PNG)
+        if medic_tex is None or board_tex is None:
+            return self._draw_fallback()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        # medic: anchored right, scaled to fill the height (capped so it never
+        # eats more than 60% of the width), aspect preserved.
+        ma = medic_tex.width / float(medic_tex.height)
+        mh = h * 0.96
+        mw = mh * ma
+        if mw > w * 0.60:
+            mw = w * 0.60
+            mh = mw / ma
+        mx = x + w - mw - dp(4)
+        my = y + (h - mh) / 2.0
+        tipx = mx + _PLUG_TIP[0] * mw
+        tipy = my + (1.0 - _PLUG_TIP[1]) * mh        # norm-from-top -> kivy y-up
+        # board: small (¼ the medic height), bottom USB port descends onto the tip
+        ba = board_tex.width / float(board_tex.height)
+        bh = mh * 0.25
+        bw = bh * ba
+        p = min(1.0, self.phase / 0.9)
+        start_y = tipy + h * 0.42                     # begins above, moves down
+        by = start_y - (start_y - tipy) * p
+        bx = tipx - bw / 2.0
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
+            Color(1, 1, 1, 1)
+            Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
+        self._hide_label("medic")
+        self._hide_label("board")
+
+    def _draw_fallback(self):
+        """Schematic (no art): a board slides in from the left into the medic."""
         x, y, w, h = self.x, self.y, self.width, self.height
         cy = y + h / 2
         mw, mh = w * 0.40, h * 0.62
@@ -125,47 +168,18 @@ class ConnectBoardAnim(_LoopAnim):
         bw, bh = w * 0.24, h * 0.30
         start_x = x + w * 0.04
         dock_x = mx - dp(16) - bw
-        p = min(1.0, self.phase / 0.85)
-        bx = start_x + (dock_x - start_x) * p
-        medic_tex, board_tex = _texture(MEDIC_PNG), _texture(BOARD_PNG)
+        bx = start_x + (dock_x - start_x) * min(1.0, self.phase / 0.85)
         with self.canvas:
-            if medic_tex:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
-            else:
-                _draw_medic_vector(mx, my, mw, mh)
-                port_w, port_h = dp(10), dp(20)     # USB port notch (fallback only)
-                Color(*theme.hex_to_rgba(theme.COLORS["background"]))
-                RoundedRectangle(pos=(mx - port_w, cy - port_h / 2),
-                                 size=(port_w, port_h), radius=[dp(2)] * 4)
-            if board_tex:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=board_tex, pos=(bx, cy - bh / 2), size=(bw, bh))
-            else:
-                Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
-                RoundedRectangle(pos=(bx, cy - bh / 2), size=(bw, bh), radius=[dp(6)] * 4)
-            # connecting cable + plug (both looks)
+            _draw_medic_vector(mx, my, mw, mh)
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            RoundedRectangle(pos=(bx, cy - bh / 2), size=(bw, bh), radius=[dp(6)] * 4)
             Color(*theme.hex_to_rgba(theme.COLORS["text_secondary"]))
             Line(points=[bx + bw, cy, mx, cy], width=dp(2))
-            if self.phase > 0.85:                    # docked glow
-                Color(*theme.hex_to_rgba(theme.COLORS["green"], 0.9))
-                Line(circle=(mx, cy, dp(12)), width=dp(2))
-        if medic_tex:
-            self._hide_label("medic")
-        else:
-            medic = self._label("medic", text="NODE\nMEDIC", font_size="15sp",
-                                bold=True, halign="center", valign="middle",
-                                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            medic.size = (mw, dp(40))
-            medic.pos = (mx, my - dp(44))
-        if board_tex:
-            self._hide_label("board")
-        else:
-            board = self._label("board", text="radio\nboard", font_size="13sp",
-                                bold=True, halign="center", valign="middle",
-                                color=theme.hex_to_rgba(theme.COLORS["background"]))
-            board.size = (bw, bh)
-            board.pos = (bx, cy - bh / 2)
+        board = self._label("board", text="radio\nboard", font_size="13sp",
+                            bold=True, halign="center", valign="middle",
+                            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        board.size = (bw, bh)
+        board.pos = (bx, cy - bh / 2)
 
 
 class InsertSdAnim(_LoopAnim):
