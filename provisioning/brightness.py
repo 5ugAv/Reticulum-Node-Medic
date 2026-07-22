@@ -19,7 +19,7 @@ from typing import Callable, Optional, Tuple
 Runner = Callable[[list], Tuple[int, str]]
 
 BACKLIGHT_GLOB = "/sys/class/backlight/*"
-MIN_PCT = 8                                    # never let it go fully dark
+MIN_PCT = 6                                    # never let it go fully dark
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/brightness")
 
 
