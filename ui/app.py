@@ -381,7 +381,7 @@ class ReticulumNodeMedicApp(App):
         birth_guide = Screen(name="birth_guide")
         from ui.screens.birth_guide_screen import BirthGuideScreen
         self.birth_guide_screen = BirthGuideScreen(
-            on_complete=lambda path: self.switch_mode("birth"))
+            on_complete=self._guided_birth_complete)
         birth_guide.add_widget(self._with_back(self.birth_guide_screen))
         self.sm.add_widget(birth_guide)
 
@@ -762,6 +762,14 @@ class ReticulumNodeMedicApp(App):
         if g is not None:
             g.reset()
         self.switch_mode("birth_guide")
+
+    def _guided_birth_complete(self, path):
+        """The guide's physical-prep steps are done — hand off to the real BIRTH
+        screen, pre-scoped to the chosen kind with detection already running."""
+        bs = getattr(self, "birth_screen", None)
+        if bs is not None and hasattr(bs, "begin_guided"):
+            bs.begin_guided(path)
+        self.switch_mode("birth")
 
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)
