@@ -464,9 +464,12 @@ class BirthScreen(BoxLayout):
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
         the operator lands on naming + a suggested setup, not a cold form."""
-        self._forced_firmware = {"host": "rnode", "pi": "pi_rnode"}.get(path)
+        self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
+                                 "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
             self._firmware = self._forced_firmware
+            if self._forced_firmware == "rtnode2400" and not self._rtnode_target:
+                self._rtnode_target = DEFAULT_TARGET
         self._build_chooser()
         self._detect_board()
 
