@@ -47,35 +47,47 @@ class SlideToPowerOff(FloatLayout):
         self.bind(pos=self._layout, size=self._layout)
 
     # -- geometry -----------------------------------------------------------
+    # The track is a THIN bar (TRACK_FRAC of the widget height), vertically
+    # centred, so the full-height round knob sits slightly PROUD of it.
+    TRACK_FRAC = 0.64
+
     def _ks(self):
-        return self.height - 2 * self._pad
+        return self.height                     # knob = full height -> proud of the track
+
+    def _th(self):
+        return self.height * self.TRACK_FRAC   # track height (thinner than the knob)
+
+    def _ty(self):
+        return self.y + (self.height - self._th()) / 2.0
 
     def _left(self):
-        return self.x + self._pad
+        return self.x
 
     def _right(self):
-        return self.right - self._ks() - self._pad
+        return self.right - self._ks()
 
     def _progress(self):
         span = self._right() - self._left()
         return 0.0 if span <= 0 else max(0.0, min(1.0, (self.knob.x - self._left()) / span))
 
     def _layout(self, *_):
-        r = self.height / 2.0
-        self._track.pos, self._track.size, self._track.radius = self.pos, self.size, [r] * 4
+        th, ty = self._th(), self._ty()
+        r = th / 2.0
+        self._track.pos, self._track.size, self._track.radius = (self.x, ty), (self.width, th), [r] * 4
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
-            self.knob.pos = (self._left(), self.y + self._pad)
-        self.hint.pos, self.hint.size = self.pos, self.size
-        self.hint.text_size = self.size
+            self.knob.pos = (self._left(), self.y)
+        self.hint.pos, self.hint.size = (self.x, ty), (self.width, th)
+        self.hint.text_size = (self.width, th)
         self.hint.halign, self.hint.valign = "center", "middle"
-        self.hint.font_size = max(dp(9.5), self.height * 0.2)   # scales when small
+        self.hint.font_size = max(dp(9.5), th * 0.5)   # scales with the thin track
         self._refresh()
 
     def _refresh(self, *_):
-        r = self.height / 2.0
-        w = max(self.height, self.knob.center_x - self.x)
-        self._fill.pos, self._fill.size, self._fill.radius = self.pos, (w, self.height), [r] * 4
+        th, ty = self._th(), self._ty()
+        r = th / 2.0
+        w = max(th, self.knob.center_x - self.x)
+        self._fill.pos, self._fill.size, self._fill.radius = (self.x, ty), (w, th), [r] * 4
         p = self._progress()
         self._fill_c.rgba = theme.hex_to_rgba(theme.COLORS["red"], min(1.0, p * 1.1))
         self.hint.opacity = max(0.0, 1.0 - p * 1.4)
@@ -91,7 +103,7 @@ class SlideToPowerOff(FloatLayout):
     def on_touch_move(self, touch):
         if touch.grab_current is self:
             x = max(self._left(), min(self._right(), touch.x - self._ks() / 2.0))
-            self.knob.pos = (x, self.y + self._pad)
+            self.knob.pos = (x, self.y)
             return True
         return super().on_touch_move(touch)
 
@@ -107,7 +119,7 @@ class SlideToPowerOff(FloatLayout):
                 if self._cb:
                     self._cb()
             else:
-                Animation(x=self._left(), y=self.y + self._pad, d=0.22,
+                Animation(x=self._left(), y=self.y, d=0.22,
                           t="out_quad").start(self.knob)
             return True
         return super().on_touch_up(touch)
