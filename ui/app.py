@@ -682,8 +682,18 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.cert_view_screen import CertViewScreen
         scr = self.sm.get_screen("cert_view")
         scr.clear_widgets()
-        scr.add_widget(self._with_back(CertViewScreen(cert)))
+        scr.add_widget(self._with_back(
+            CertViewScreen(cert, on_show_location=self._show_node_on_map)))
         self.switch_mode("cert_view")
+
+    def _show_node_on_map(self, lat, lon, name=""):
+        """"See on map" from a certificate — open SCAN centred on the node so the
+        operator sees it in context (its own status dot is already drawn there),
+        with the medic's live position for navigation reference."""
+        sc = getattr(self, "scan_screen", None)
+        if sc is not None:
+            sc.show_location(lat, lon)
+        self.switch_mode("scan")
 
     def _no_cert_popup(self, name):
         """No stored certificate — it wasn't birthed by this medic. Offer to birth
