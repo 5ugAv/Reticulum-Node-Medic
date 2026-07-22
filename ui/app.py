@@ -702,6 +702,8 @@ class ReticulumNodeMedicApp(App):
         from kivy.uix.button import Button
         from kivy.uix.label import Label
         from kivy.uix.popup import Popup
+        if getattr(self, "_active_popup", None) is not None:
+            return                              # never stack a second prompt
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         msg = Label(text=(f"No certificate stored for \"{name}\".\n\nThis node wasn't "
                           "birthed by this Node Medic, so there's nothing saved to "
@@ -714,24 +716,33 @@ class ReticulumNodeMedicApp(App):
                         spacing=dp(8))
         popup = Popup(title="Not birthed here", content=box,
                       size_hint=(0.86, 0.5))
+        self._active_popup = popup
+        popup.bind(on_dismiss=lambda *_: setattr(self, "_active_popup", None))
         close = Button(text="Close", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
-        close.bind(on_release=popup.dismiss)
+        close.bind(on_release=lambda *_: popup.dismiss())
         birth = Button(text="Birth it here", background_normal="", bold=True,
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
 
         def _go_birth(*_):
+            # Dismiss NOW, then switch a frame later. Doing the heavy screen switch
+            # synchronously in the same touch left the popup lingering until a second
+            # tap — deferring lets the modal fully tear down first.
             popup.dismiss()
-            bs = getattr(self, "birth_screen", None)
-            if bs is not None and hasattr(bs, "prefill_name"):
-                bs.prefill_name(name)
-            self.switch_mode("birth")
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self._enter_birth_named(name), 0)
         birth.bind(on_release=_go_birth)
         row.add_widget(close)
         row.add_widget(birth)
         box.add_widget(row)
         popup.open()
+
+    def _enter_birth_named(self, name):
+        bs = getattr(self, "birth_screen", None)
+        if bs is not None and hasattr(bs, "prefill_name"):
+            bs.prefill_name(name)
+        self.switch_mode("birth")
 
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)
