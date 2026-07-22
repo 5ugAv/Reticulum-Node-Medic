@@ -36,13 +36,15 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
 
 
 class ProbeScreen(BoxLayout):
-    def __init__(self, workflow_factory, target_name="this node", **kwargs):
+    def __init__(self, workflow_factory, target_name="this node",
+                 on_self_diagnose=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(10)
         self.spacing = dp(6)
         self._workflow_factory = workflow_factory
         self._target = target_name
+        self._on_self_diagnose = on_self_diagnose
         self._workflow = None
         self._category_boxes = {}
         self._issue_rows = {}
@@ -60,6 +62,16 @@ class ProbeScreen(BoxLayout):
             color=theme.hex_to_rgba(theme.COLORS["background"]))
         self.run_btn.bind(on_release=lambda *_: self.start())
         self.add_widget(self.run_btn)
+
+        # Separate section: diagnose the medic's OWN onboard radio/GPS board.
+        if on_self_diagnose is not None:
+            self.self_dx_btn = Button(
+                text="Self Diagnose  —  this medic's radio & GPS", size_hint_y=None,
+                height=dp(46), font_size="15sp", bold=True, background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["accent"]))
+            self.self_dx_btn.bind(on_release=lambda *_: self._on_self_diagnose())
+            self.add_widget(self.self_dx_btn)
 
         self.summary_bar = BoxLayout(size_hint_y=None, height=dp(0),
                                      spacing=dp(8), opacity=0)
