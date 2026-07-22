@@ -116,6 +116,23 @@ def rtnode_build_step(func: Callable) -> Callable:
 
 @rtnode_build_step
 def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
+    # CRITICAL: prefer the work-board port pinned by the caller. On the medic
+    # ttyACM0 is Jonesey (its OWN radio) and ttyACM1 is the work board, so a naive
+    # "first /dev/ttyACM*" would flash the medic's own radio. board_port comes from
+    # local_board_ports(), which excludes onboard boards.
+    if wf.board_port:
+        present = wf.connection.run(f"ls {wf.board_port} 2>/dev/null")[1].split()
+        if not present:
+            return StepResult("detect_board", False,
+                              f"The board's port {wf.board_port} disappeared — "
+                              f"replug the {wf.target.display} with a known-good "
+                              "USB data cable, then build again.")
+        wf.profile.hardware = wf.target.hardware
+        wf.profile.connection_port = wf.board_port
+        wf.profile.radio.serial_port = wf.board_port
+        return StepResult("detect_board", True,
+                          f"Using {wf.target.display} on {wf.board_port} "
+                          "(the medic's own radio is excluded).")
     out = wf.connection.run(f"ls {' '.join(_PORT_GLOBS)} 2>/dev/null")[1]
     ports = out.split()
     if not ports:
@@ -256,9 +273,15 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
 
 class RTNodeBuildWorkflow:
     def __init__(self, connection: Connection, profile: NodeProfile,
-                 gps_reader=None, target: str = DEFAULT_TARGET):
+                 gps_reader=None, target: str = DEFAULT_TARGET,
+                 board_port: Optional[str] = None):
         self.connection = connection
         self.profile = profile
+        #: The WORK board's serial port, pinned by the caller (via
+        #: local_board_ports, which EXCLUDES the medic's own onboard radio). When
+        #: set, detect_board uses it instead of naively taking the first
+        #: /dev/ttyACM* — which on the medic is ttyACM0 = Jonesey, its own radio.
+        self.board_port = board_port
         # gps_reader() -> (lat, lon) | None. Injected for tests; None uses the
         # default gpsd reader at run time.
         self.gps_reader = gps_reader
