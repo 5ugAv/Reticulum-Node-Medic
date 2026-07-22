@@ -6,6 +6,9 @@ For now it holds one entry (WiFi & Network); it's built as a menu so more settin
 
 from __future__ import annotations
 
+import threading
+
+from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -13,6 +16,8 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.widgets.slide_to_power import SlideToPowerOff
+from provisioning.power import power_off
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=30):
@@ -39,6 +44,19 @@ class SettingsScreen(BoxLayout):
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         # future rows (radio defaults, display, about…) slot in here.
         self.add_widget(Widget())          # push rows to the top
+
+        # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
+        # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
+        self.add_widget(_line("Power", bold=True, size="15sp", color="accent", h=28))
+        self.add_widget(SlideToPowerOff(on_power_off=self._power_off))
+        self._power_note = _line("", size="12.5sp", color="text_secondary", h=24)
+        self.add_widget(self._power_note)
+
+    def _power_off(self):
+        def work():
+            ok, msg = power_off()
+            Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
