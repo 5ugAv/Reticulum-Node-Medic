@@ -18,72 +18,12 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from ui import theme
+from ui.birth_guide_flow import BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import ConnectBoardAnim, InsertSdAnim
 
-#: What the operator can build — the intro chooser. key -> (title, subtitle).
-BIRTH_PATHS = [
-    ("radio", "A standalone radio (RTNode-2400)",
-     "A transport node on its own — reports its health back and is remotely repairable."),
-    ("pi", "A Raspberry Pi + radio",
-     "A Pi running Reticulum with an attached radio (a propagation / host node)."),
-    ("host", "A radio for phone or computer (RNode)",
-     "Just flash a radio (RNode) to plug into a phone or computer you've already set up."),
-]
-
-#: Ordered guided steps per path. Each step: title, body, optional anim factory,
-#: optional hint. ``anim`` is a zero-arg callable so a fresh widget is built per
-#: visit. The last step's Next hands off to the real BIRTH flow.
-_STEPS = {
-    "radio": [
-        {"title": "Connect your radio board",
-         "body": "Plug the radio board into Node Medic with a USB cable. Node Medic "
-                 "powers it and will detect it automatically.",
-         "hint": "Use a DATA USB cable — a charge-only cable won't be seen.",
-         "anim": ConnectBoardAnim},
-        {"title": "Let's set it up",
-         "body": "Node Medic will now detect the board, then walk you through naming "
-                 "it and flashing the firmware.",
-         "anim": None, "next": "Start setup  →"},
-    ],
-    "pi": [
-        {"title": "Insert the Pi's SD card",
-         "body": "Put the Raspberry Pi's SD card into Node Medic's card reader so we "
-                 "can write its operating system.",
-         "anim": InsertSdAnim},
-        {"title": "Image the Pi",
-         "body": "Next we'll write Raspberry Pi OS to the card and set its name, "
-                 "Wi-Fi and password — a few details at a time.",
-         "hint": "SD imaging on the medic is coming — for now, image the card with "
-                 "Raspberry Pi Imager, then continue.",
-         "anim": None},
-        {"title": "Connect the radio board",
-         "body": "Put the SD card into the Pi and power it on, then plug the radio "
-                 "board into Node Medic with a USB cable.",
-         "anim": ConnectBoardAnim},
-        {"title": "Let's set it up",
-         "body": "Node Medic will now provision the Pi and its radio, then walk you "
-                 "through naming it.",
-         "anim": None, "next": "Start setup  →"},
-    ],
-    "host": [
-        {"title": "Connect the radio board",
-         "body": "Plug the radio board into Node Medic with a USB cable so it can be "
-                 "flashed as an RNode.",
-         "hint": "Use a DATA USB cable — a charge-only cable won't be seen.",
-         "anim": ConnectBoardAnim},
-        {"title": "Let's flash it",
-         "body": "Node Medic will detect the board and flash it as an RNode. Then "
-                 "plug it into your computer.",
-         "anim": None, "next": "Start setup  →"},
-    ],
-}
-
-
-def guide_steps(path):
-    """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
-    paths return an empty list."""
-    return list(_STEPS.get(path, []))
+#: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
+_ANIMS = {"connect_board": ConnectBoardAnim, "insert_sd": InsertSdAnim}
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):
@@ -157,7 +97,8 @@ class BirthGuideScreen(BoxLayout):
             return
         self._stop_current()
         s = steps[self._i]
-        anim = s["anim"]() if s.get("anim") else None
+        anim_cls = _ANIMS.get(s.get("anim"))
+        anim = anim_cls() if anim_cls else None
         step = WizardStep(index=self._i, total=len(steps), title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
                           next_text=s.get("next", "Next  →"),
