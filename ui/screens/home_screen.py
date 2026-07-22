@@ -53,8 +53,8 @@ class HomeScreen(FloatLayout):
         from ui.widgets.slide_to_power import SlideToPowerOff
         knob = dp(52)
         self.power_slider = SlideToPowerOff(
-            on_power_off=self._power_off, hint_text="slide to power off",
-            size_hint=(None, None), size=(knob * 3, knob + dp(10)),
+            on_power_off=self._power_off, hint_text="OFF",
+            size_hint=(None, None), size=(knob * 3, knob),
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
 
