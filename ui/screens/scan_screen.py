@@ -97,6 +97,15 @@ class MapPlot(Widget):
             16, self._zooms[-1] if self._zooms else 15)
         self._trigger()
 
+    def center_on(self, latlon, zoom=None):
+        """Centre the view on *latlon* at a street-level zoom WITHOUT moving the
+        'you are here' pin (unlike focus) — for 'See on map' from a certificate,
+        where the node's own status dot is already drawn at that spot."""
+        self._center = latlon
+        self._zoom = zoom if zoom is not None else min(
+            17, self._zooms[-1] if self._zooms else 16)
+        self._trigger()
+
     def zoom_by(self, direction):
         """Step the zoom in (+1) or out (-1) around the current view centre — for
         explicit +/- buttons, so zooming never depends on pinch reliability (cheap
@@ -789,6 +798,12 @@ class ScanScreen(BoxLayout):
         if getattr(self, "_on_place", None) is not None and not self._picked and not self._manual:
             self._fix = fix
             self._show_live_badge()
+
+    def show_location(self, lat, lon):
+        """Centre the map on a node's coordinates — used by 'See on map' from a
+        certificate. The node's own dot is already drawn there; the live GPS pin
+        stays put so the operator sees where they are relative to it."""
+        self.plot.center_on((lat, lon))
 
     # -- placement ----------------------------------------------------------
     def _recenter(self):
