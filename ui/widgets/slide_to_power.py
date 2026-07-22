@@ -77,8 +77,11 @@ class SlideToPowerOff(FloatLayout):
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
             self.knob.pos = (self._left(), self.y)
-        self.hint.pos, self.hint.size = (self.x, ty), (self.width, th)
-        self.hint.text_size = (self.width, th)
+        # Anchor the label to the open track to the RIGHT of the resting knob (so
+        # the knob doesn't crowd it) and nudge it down a touch to sit on the centre.
+        hx, hw = self.x + self._ks(), self.width - self._ks()
+        self.hint.pos, self.hint.size = (hx, ty - dp(3)), (hw, th)
+        self.hint.text_size = (hw, th)
         self.hint.halign, self.hint.valign = "center", "middle"
         self.hint.font_size = max(dp(9.5), th * 0.5)   # scales with the thin track
         self._refresh()
