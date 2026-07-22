@@ -77,9 +77,10 @@ class SlideToPowerOff(FloatLayout):
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
             self.knob.pos = (self._left(), self.y)
-        # Anchor the label to the open track to the RIGHT of the resting knob (so
-        # the knob doesn't crowd it) and nudge it down a touch to sit on the centre.
-        hx, hw = self.x + self._ks(), self.width - self._ks()
+        # Keep the label roughly centred in the pill, but pad the left by a fraction
+        # of the knob so the resting knob never hides it.
+        off = self._ks() * 0.35
+        hx, hw = self.x + off, self.width - off
         self.hint.pos, self.hint.size = (hx, ty - dp(3)), (hw, th)
         self.hint.text_size = (hw, th)
         self.hint.halign, self.hint.valign = "center", "middle"
