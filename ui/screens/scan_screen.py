@@ -717,8 +717,8 @@ class ScanScreen(BoxLayout):
         self.dl_status.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.dl_status)
 
-        # Manual entry — LAST-resort centre, hidden unless self-location fails
-        from kivy.uix.textinput import TextInput
+        # Home-base coordinate — LAST-resort download centre, hidden unless
+        # self-location fails (distinct from the placement manual-entry row above).
         self.center_input = TextInput(
             hint_text="Couldn't find your location - type home base as: "
                       "lat, lon  (e.g. -37.79, 144.96)",
