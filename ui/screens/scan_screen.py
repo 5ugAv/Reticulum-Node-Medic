@@ -717,22 +717,28 @@ class ScanScreen(BoxLayout):
             self.manual_row.add_widget(coord_row)
             self.add_widget(self.manual_row)
 
-        self.note = Label(text="", size_hint=(1, None), height=dp(24),
-                          halign="left", color=theme.status_rgba("warn", 0.9))
+        # Coverage note — collapses to nothing when empty so it never leaves a gap.
+        self.note = Label(text="", size_hint=(1, None), height=dp(0),
+                          halign="left", valign="middle",
+                          color=theme.status_rgba("warn", 0.9))
+        self.note.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.note)
 
-        # Basemap attribution (a licence condition) — a single small dim line, so
-        # it's legible and never crammed into the header.
-        self.attribution = Label(text="", size_hint=(1, None), height=dp(15),
-                                 halign="right", valign="middle", font_size="10sp",
-                                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.6))
-        self.attribution.bind(size=lambda i, v: setattr(i, "text_size", v))
-        self.add_widget(self.attribution)
+        # Offline-map caching is MAINTENANCE, not the primary flow — tuck it behind
+        # a toggle so the map + placement own the screen (was crowding both out).
+        self._offline_open = False
+        self.offline_toggle = Button(text="Offline maps  ▾", size_hint=(1, None),
+                                     height=dp(34), font_size="13sp", bold=True,
+                                     background_normal="",
+                                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                                     color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        self.offline_toggle.bind(on_release=lambda *_: self._toggle_offline())
+        self.add_widget(self.offline_toggle)
 
-        # Offline-map control: [-] radius stepper [+] around the download
-        # button, a live size-vs-storage line beneath, and a typed home-base
-        # coordinate as the fallback centre when there's no GPS fix or placed
-        # node yet.
+        self._offline_panel = BoxLayout(orientation="vertical", size_hint=(1, None),
+                                        height=0, opacity=0, spacing=dp(6))
+        self._offline_panel.bind(minimum_height=lambda *_: self._sync_offline_height())
+        # [-] radius stepper [+] around the download button
         row = BoxLayout(orientation="horizontal", size_hint=(1, None),
                         height=dp(44), spacing=dp(6))
         self.minus_btn = Button(text="-", size_hint=(None, 1), width=dp(40))
@@ -744,13 +750,20 @@ class ScanScreen(BoxLayout):
         row.add_widget(self.minus_btn)
         row.add_widget(self.dl_button)
         row.add_widget(self.plus_btn)
-        self.add_widget(row)
+        self._offline_panel.add_widget(row)
 
         self.dl_status = Label(text="", halign="left", valign="middle",
                                size_hint=(1, None), height=dp(26),
                                color=theme.status_rgba("unknown", 0.95))
         self.dl_status.bind(size=lambda i, v: setattr(i, "text_size", v))
-        self.add_widget(self.dl_status)
+        self._offline_panel.add_widget(self.dl_status)
+
+        # Basemap attribution (a licence condition) — small dim line inside the panel.
+        self.attribution = Label(text="", size_hint=(1, None), height=dp(15),
+                                 halign="right", valign="middle", font_size="10sp",
+                                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.6))
+        self.attribution.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self._offline_panel.add_widget(self.attribution)
 
         # Home-base coordinate — LAST-resort download centre, hidden unless
         # self-location fails (distinct from the placement manual-entry row above).
@@ -759,7 +772,8 @@ class ScanScreen(BoxLayout):
                       "lat, lon  (e.g. -37.79, 144.96)",
             multiline=False, size_hint=(1, None), height=0, opacity=0)
         self.center_input.bind(text=lambda *_: self._refresh_estimate())
-        self.add_widget(self.center_input)
+        self._offline_panel.add_widget(self.center_input)
+        self.add_widget(self._offline_panel)
 
         self._refresh_header()
         self.set_nodes(nodes or [])
@@ -804,6 +818,18 @@ class ScanScreen(BoxLayout):
         certificate. The node's own dot is already drawn there; the live GPS pin
         stays put so the operator sees where they are relative to it."""
         self.plot.center_on((lat, lon))
+
+    # -- offline-map panel (collapsible) -----------------------------------
+    def _toggle_offline(self):
+        self._offline_open = not self._offline_open
+        self._offline_panel.opacity = 1 if self._offline_open else 0
+        self.offline_toggle.text = ("Offline maps  ▲" if self._offline_open
+                                    else "Offline maps  ▾")
+        self._sync_offline_height()
+
+    def _sync_offline_height(self):
+        self._offline_panel.height = (self._offline_panel.minimum_height
+                                      if self._offline_open else 0)
 
     # -- placement ----------------------------------------------------------
     def _recenter(self):
@@ -983,6 +1009,7 @@ class ScanScreen(BoxLayout):
             self.note.text = f"No location for: {', '.join(unlocated)}"
         else:
             self.note.text = ""
+        self.note.height = dp(24) if self.note.text else dp(0)   # no empty gap
 
     # -- offline map download ---------------------------------------------
 
