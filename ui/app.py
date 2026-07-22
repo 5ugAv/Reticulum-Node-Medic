@@ -647,12 +647,15 @@ class ReticulumNodeMedicApp(App):
         self.switch_mode("triage")
 
     def _on_gps_confirmed(self, lat, lon, source):
-        """A GPS position was confirmed (or manually entered) for a node install.
-        Remember it and return to the map. (Future: hand this to the BIRTH location
-        step / kin roster so the node is stamped with the confirmed coordinates.)"""
+        """"Use this position" — a location was confirmed on the map. Stamp it onto
+        BIRTH and drop the operator into the build flow (Name the node, or search an
+        existing one), where it rides onto the birth certificate."""
         self._confirmed_location = (lat, lon, source)
-        print(f"[gps] confirmed node location: {lat:.6f}, {lon:.6f} ({source})")
-        self.switch_mode("scan")
+        print(f"[gps] location for node: {lat:.6f}, {lon:.6f} ({source}) -> BIRTH")
+        bs = getattr(self, "birth_screen", None)
+        if bs is not None:
+            bs.set_prefill_location(lat, lon, source)
+        self.switch_mode("birth")
 
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)
