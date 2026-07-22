@@ -370,9 +370,20 @@ class ReticulumNodeMedicApp(App):
                 hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"),
             on_use_existing=self._use_existing_node,
+            on_guide=self._open_birth_guide,
             node_source=self._search_known_nodes)
         birth.add_widget(self._with_back(self.birth_screen))
         self.sm.add_widget(birth)
+
+        # Guided birth — one instruction per screen with animations, for a
+        # first-time operator. Its physical-prep steps hand off to the BIRTH
+        # screen above (detect / name / flash).
+        birth_guide = Screen(name="birth_guide")
+        from ui.screens.birth_guide_screen import BirthGuideScreen
+        self.birth_guide_screen = BirthGuideScreen(
+            on_complete=lambda path: self.switch_mode("birth"))
+        birth_guide.add_widget(self._with_back(self.birth_guide_screen))
+        self.sm.add_widget(birth_guide)
 
         triage = Screen(name="triage")
         self.triage_screen = TriageScreen(
@@ -743,6 +754,14 @@ class ReticulumNodeMedicApp(App):
         if bs is not None and hasattr(bs, "prefill_name"):
             bs.prefill_name(name)
         self.switch_mode("birth")
+
+    def _open_birth_guide(self):
+        """Enter the step-by-step guide at its start (the 'what are you building?'
+        chooser), not wherever it was left last time."""
+        g = getattr(self, "birth_guide_screen", None)
+        if g is not None:
+            g.reset()
+        self.switch_mode("birth_guide")
 
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)

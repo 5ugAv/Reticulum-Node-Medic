@@ -112,7 +112,7 @@ class QRCodeWidget(Widget):
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
                  on_mitosis=None, prefill_location=None, on_use_existing=None,
-                 node_source=None, **kwargs):
+                 node_source=None, on_guide=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -121,6 +121,8 @@ class BirthScreen(BoxLayout):
         self._prefill_location = prefill_location
         # on_use_existing(cert) — search-existing picked a birthed node (-> Triage).
         self._on_use_existing = on_use_existing
+        # on_guide() — open the step-by-step guided birth (for a new operator).
+        self._on_guide = on_guide
         # node_source(query) -> [node dicts] for nodes the medic KNOWS on the mesh
         # (kin roster + discovered), so search finds e.g. FAITH even if it wasn't
         # birthed through this medic's cert store. Injected; None in tests.
@@ -193,6 +195,17 @@ class BirthScreen(BoxLayout):
         if hasattr(self, "list"):
             self.list.clear_widgets()
         self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
+
+        # New here? A step-by-step guide with animations walks the whole thing.
+        if self._on_guide is not None:
+            guide = Button(text="New here?  Guide me step by step  →",
+                           size_hint_y=None, height=dp(52), bold=True, font_size="16sp",
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+            guide.bind(on_release=lambda *_: self._on_guide())
+            self.header.add_widget(guide)
+            self.header.add_widget(Widget(size_hint_y=None, height=dp(8)))
 
         # Step one: name a NEW node (build it), or search one already birthed.
         self.header.add_widget(_line("Name this node", bold=True, size="15sp",
