@@ -89,6 +89,33 @@ def test_detect_warns_on_multiple_boards():
     assert "WARNING" in r.message and "2 USB-serial devices" in r.message
 
 
+def test_detect_uses_pinned_work_board_port_not_first_tty():
+    # On the medic ttyACM0 is Jonesey (its OWN radio); the work board is ttyACM1.
+    # A pinned board_port MUST be used verbatim so the build never flashes the
+    # medic's radio — even though a naive `ls` would list ttyACM0 first.
+    c = conn(port="/dev/ttyACM1")            # ls of the pinned port confirms present
+    w = RTNodeBuildWorkflow(c, NodeProfile(), gps_reader=lambda: None,
+                            board_port="/dev/ttyACM1")
+    r = w.steps[0][1](w)
+    assert r.success
+    assert w.profile.connection_port == "/dev/ttyACM1"
+    assert "excluded" in r.message.lower()
+
+
+def test_detect_pinned_port_gone_fails_cleanly():
+    c = EmulatedConnection(default_code=0, default_stdout="")   # ls finds nothing
+    w = RTNodeBuildWorkflow(c, NodeProfile(), gps_reader=lambda: None,
+                            board_port="/dev/ttyACM1")
+    r = w.steps[0][1](w)
+    assert r.success is False and "disappear" in r.message.lower()
+
+
+def test_make_rtnode_build_pins_to_work_board_port():
+    from ui.hw_factories import make_rtnode_build
+    wf_ = make_rtnode_build(lambda: None, ports_fn=lambda: ["/dev/ttyACM1"])
+    assert getattr(wf_, "board_port", None) == "/dev/ttyACM1"
+
+
 def test_flash_uses_platformio_env_and_port():
     c = conn()
     w = wf(c)

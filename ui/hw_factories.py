@@ -169,17 +169,21 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
     selects the RTNode-2400 variant (Heltec V4 / T-Beam Supreme); None uses the
     default (Heltec V4)."""
     from workflows.rtnode_build import DEFAULT_TARGET
+    board_port = None
     if connection is None:
-        if not hardware_present(ports_fn):
+        ports = list(ports_fn())          # WORK boards only (excludes Jonesey)
+        if not ports:
             if demo_allowed():
                 return demo_factory()
             return _HonestFailWorkflow("detect_board",
                 "Building an RTNode-2400 needs its ESP32 board plugged into the "
                 "medic. Connect it with a known-good USB DATA cable, then start "
                 "the build again.", "No board attached")
+        board_port = ports[0]             # pin to the work board, never the radio
         connection = LocalConnection()
     return RTNodeBuildWorkflow(connection, NodeProfile(),
-                               target=target or DEFAULT_TARGET)
+                               target=target or DEFAULT_TARGET,
+                               board_port=board_port)
 
 
 def make_repair_workflow(demo_factory: Callable, connection=None,
