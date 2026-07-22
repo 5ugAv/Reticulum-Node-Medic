@@ -23,8 +23,8 @@ from ui.widgets.birth_anims import ConnectBoardAnim, InsertSdAnim
 
 #: What the operator can build — the intro chooser. key -> (title, subtitle).
 BIRTH_PATHS = [
-    ("radio", "A standalone radio node",
-     "An RTNode-2400 or RNode board on its own — reports health, remotely repairable."),
+    ("radio", "A standalone radio (RTNode-2400)",
+     "A transport node on its own — reports its health back and is remotely repairable."),
     ("pi", "A Raspberry Pi + radio",
      "A Pi running Reticulum with an attached radio (a propagation / host node)."),
     ("host", "A radio for phone or computer (RNode)",
