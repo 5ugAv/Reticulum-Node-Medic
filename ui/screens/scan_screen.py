@@ -18,16 +18,19 @@ from typing import List
 
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
-from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle,
+from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle, RoundedRectangle,
                            StencilPush, StencilUse, StencilUnUse, StencilPop)
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
-from monitor.geo import read_gps
+from monitor.geo import read_gps, read_splitter_fix, fix_trust, geocode_address
 from ui import theme
+from ui.onscreen_keyboard import bind_field
 
 #: How far a pinch must spread (or close) before it steps one zoom level. Higher
 #: = subtler / needs more of a pinch, which also throttles tile loading. A step
@@ -45,7 +48,8 @@ from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
     DETAIL_MAX_ZOOM, ATTRIBUTION, WORLD, download_region, download_world,
     download_node_details, estimate_download, estimate_world, is_online,
-    storage_summary, disk_free_mb, parse_latlon, ip_geolocate)
+    storage_summary, disk_free_mb, parse_latlon, ip_geolocate,
+    add_point_detail, SPOT_MIN_ZOOM, SPOT_MAX_ZOOM, SPOT_RADIUS_KM)
 
 
 class MapPlot(Widget):
@@ -499,21 +503,97 @@ class MapPlot(Widget):
         self._labels.append(lbl)
 
 
-class ScanScreen(BoxLayout):
-    """Header + the offline plot (tiled when a basemap is carried) + a note, and
-    a control to cache a basemap for offline use while the medic has WiFi."""
+#: Bubble fill per GPS fix level; a warning triangle is drawn for held/none.
+_LEVEL_FILL = {"live": "green", "held": "warning_yellow", "none": "red",
+               "info": "accent"}
 
-    def __init__(self, nodes=None, tiles=None, gps_reader=None,
-                 radius_km=DEFAULT_RADIUS_KM, on_set_location=None, **kwargs):
+
+class _FixBadge(BoxLayout):
+    """A rounded, FILLED status bubble: green (live) / yellow (held) / red (none) /
+    accent (info). Draws a warning triangle for held/none — the ⚠ glyph renders as
+    tofu in the default font, so we draw it. Ported from the old GPS-confirm page
+    when the two map screens merged into one."""
+
+    def __init__(self, **kwargs):
+        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(44),
+                         padding=[dp(14), dp(4)], spacing=dp(6), **kwargs)
+        with self.canvas.before:
+            self._fill = Color(0, 0, 0, 0)
+            self._rect = RoundedRectangle(radius=[dp(16)] * 4)
+        self.bind(pos=self._sync, size=self._sync)
+        self._tri = Widget(size_hint=(None, 1), width=dp(0))
+        self._tri.bind(pos=self._draw_tri, size=self._draw_tri)
+        self.add_widget(self._tri)
+        self.label = Label(font_size="15sp", bold=True, halign="left", valign="middle")
+        self.label.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.add_widget(self.label)
+        self._tri_color = None
+
+    def _sync(self, *_):
+        self._rect.pos, self._rect.size = self.pos, self.size
+
+    def _draw_tri(self, *_):
+        self._tri.canvas.after.clear()
+        if self._tri_color is None or self._tri.width < dp(6):
+            return
+        w = self._tri
+        cx, cy, half, h = w.center_x, w.center_y, dp(10), dp(9)
+        with w.canvas.after:
+            Color(*self._tri_color)
+            Line(points=[cx - half, cy - h, cx + half, cy - h, cx, cy + h],
+                 width=dp(1.8), close=True, joint="round", cap="round")
+            Line(points=[cx, cy - h + dp(4), cx, cy + dp(1)], width=dp(1.6), cap="round")
+            Line(points=[cx, cy + dp(3), cx, cy + dp(4)], width=dp(1.8), cap="round")
+
+    def set(self, text, level):
+        self._fill.rgba = theme.hex_to_rgba(theme.COLORS[_LEVEL_FILL.get(level, "surface")])
+        dark = level in ("live", "held", "info")           # dark text on light fills
+        self.label.color = theme.hex_to_rgba(
+            theme.COLORS["background" if dark else "text_primary"])
+        self.label.text = text
+        if level in ("held", "none"):
+            self._tri.width = dp(26)
+            self._tri_color = theme.hex_to_rgba(theme.COLORS[
+                "background" if level == "held" else "text_primary"])
+        else:
+            self._tri.width, self._tri_color = dp(0), None
+        self._draw_tri()
+
+
+def _btn(text, color, on_tap):
+    b = Button(text=text, bold=True, font_size="15sp", background_normal="",
+               background_color=theme.hex_to_rgba(theme.COLORS[color]),
+               color=theme.hex_to_rgba(theme.COLORS[
+                   "background" if color != "surface" else "text_primary"]))
+    b.bind(on_release=lambda *_: on_tap())
+    return b
+
+
+class ScanScreen(BoxLayout):
+    """The single map page: node coverage + offline basemap caching + node
+    PLACEMENT. Formerly two screens (SCAN + a near-identical GPS-confirm map);
+    merged so there's one map that shows the mesh and starts a birth from a spot.
+
+    ``on_place(lat, lon, source)`` fires when the operator commits a location with
+    "Use this position" — the app stamps it and jumps into BIRTH."""
+
+    def __init__(self, nodes=None, tiles=None, gps_reader=None, fix_reader=None,
+                 radius_km=DEFAULT_RADIUS_KM, on_place=None, poll=True, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(12)
         self.spacing = dp(8)
         self._gps_reader = gps_reader
+        self._fix_reader = fix_reader or read_splitter_fix
         self._radius_km = radius_km
-        self._on_set_location = on_set_location
+        self._on_place = on_place
         self._nodes: List[dict] = []
         self._downloading = False
+        # placement state — mirrors the old GPS-confirm page, now inline
+        self._fix = None
+        self._picked = None                       # (lat, lon) from tapping the map
+        self._manual = False
+        self._dl_busy = False                     # street-detail download in flight
 
         self._tiles = tiles if tiles is not None else find_mbtiles()
         header_row = BoxLayout(orientation="horizontal", size_hint=(1, None),
@@ -522,20 +602,85 @@ class ScanScreen(BoxLayout):
         self.header.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.recenter_btn = Button(text="Recenter", size_hint=(None, 1),
                                    width=dp(100))
-        self.recenter_btn.bind(on_release=lambda *_: self.plot.reset_view())
+        self.recenter_btn.bind(on_release=lambda *_: self._recenter())
         header_row.add_widget(self.header)
-        if on_set_location is not None:
-            loc_btn = Button(text="Location", size_hint=(None, 1), width=dp(100),
-                             background_normal="",
-                             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                             color=theme.hex_to_rgba(theme.COLORS["background"]))
-            loc_btn.bind(on_release=lambda *_: self._on_set_location())
-            header_row.add_widget(loc_btn)
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
-        self.plot = MapPlot(tiles=self._tiles)
-        self.add_widget(self.plot)
+        # Interactive map: pan/pinch/double-tap to zoom, and a stationary TAP drops
+        # the placement pin. Explicit +/- overlay so zoom never depends on the
+        # panel's (unreliable) pinch.
+        map_wrap = FloatLayout(size_hint_y=1)
+        self.plot = MapPlot(tiles=self._tiles, interactive=True,
+                            on_pick=self._on_map_pick, size_hint=(1, 1))
+        map_wrap.add_widget(self.plot)
+        zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
+                         size=(dp(50), dp(104)), spacing=dp(6),
+                         pos_hint={"right": 0.98, "top": 0.98})
+        for sym, d in (("+", +1), ("−", -1)):
+            zb = Button(text=sym, font_size="26sp", bold=True, background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"], 0.92),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            zb.bind(on_release=lambda _b, dd=d: self.plot.zoom_by(dd))
+            zbox.add_widget(zb)
+        map_wrap.add_widget(zbox)
+        self.add_widget(map_wrap)
+
+        # --- placement bar (only when this screen can start a birth) ----------
+        if on_place is not None:
+            self.badge = _FixBadge()
+            self.add_widget(self.badge)
+            self.coords = Label(text="", font_size="14sp", halign="left",
+                                valign="middle", size_hint=(1, None), height=dp(22),
+                                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            self.coords.bind(size=lambda i, v: setattr(i, "text_size", v))
+            self.add_widget(self.coords)
+
+            act = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                            height=dp(50), spacing=dp(8))
+            self.confirm_btn = _btn("Use this position  →", "green", self._use_position)
+            self.confirm_btn.disabled = True
+            act.add_widget(self.confirm_btn)
+            act.add_widget(_btn("Enter manually", "surface", self._toggle_manual))
+            self.add_widget(act)
+
+            self.detail_btn = Button(
+                text="Load street names for this spot  (needs WiFi)",
+                size_hint=(1, None), height=dp(38), font_size="13.5sp", bold=True,
+                background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            self.detail_btn.bind(on_release=lambda *_: self._load_detail())
+            self.add_widget(self.detail_btn)
+
+            # Manual entry: an address (geocoded) OR raw lat/lon — collapsed until asked.
+            self.manual_row = BoxLayout(orientation="vertical", size_hint=(1, None),
+                                        height=dp(0), spacing=dp(6), opacity=0)
+            addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                 height=dp(44), spacing=dp(6))
+            self.addr_in = TextInput(hint_text="street address  (needs internet)",
+                                     multiline=False, font_size="15sp")
+            bind_field(self.addr_in)
+            find_btn = Button(text="Find", size_hint_x=None, width=dp(84), bold=True,
+                              background_normal="",
+                              background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                              color=theme.hex_to_rgba(theme.COLORS["background"]))
+            find_btn.bind(on_release=lambda *_: self._find_address())
+            addr_row.add_widget(self.addr_in)
+            addr_row.add_widget(find_btn)
+            coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                  height=dp(44), spacing=dp(6))
+            self.lat_in = TextInput(hint_text="latitude", multiline=False,
+                                    input_filter="float", font_size="16sp")
+            self.lon_in = TextInput(hint_text="longitude", multiline=False,
+                                    input_filter="float", font_size="16sp")
+            bind_field(self.lat_in, numeric=True)
+            bind_field(self.lon_in, numeric=True)
+            coord_row.add_widget(self.lat_in)
+            coord_row.add_widget(self.lon_in)
+            self.manual_row.add_widget(addr_row)
+            self.manual_row.add_widget(coord_row)
+            self.add_widget(self.manual_row)
 
         self.note = Label(text="", size_hint=(1, None), height=dp(24),
                           halign="left", color=theme.status_rgba("warn", 0.9))
@@ -592,17 +737,176 @@ class ScanScreen(BoxLayout):
         self._ip_tried = False
         threading.Thread(target=self._locate_self, daemon=True).start()
 
-        # Live "you are here": poll the Tracker's GPS fix and mark it on the map.
-        if self._gps_reader is not None:
+        # Live "you are here" + placement badge: poll the Tracker's fix, mark it on
+        # the map, and (in placement mode) keep the fix-trust badge current.
+        if poll:
             self._poll_gps(0)
             Clock.schedule_interval(self._poll_gps, 3)
 
     def _poll_gps(self, _dt):
+        # Prefer the full fix (has trust/source) so the badge and marker agree; fall
+        # back to the coords-only reader for the marker if that's all we were given.
+        fix = None
         try:
-            coords = self._gps_reader() if self._gps_reader else None
+            fix = self._fix_reader() if self._fix_reader else None
         except Exception:
-            coords = None
-        self.plot.set_me(coords)
+            fix = None
+        if fix is not None and getattr(fix, "has_fix", False):
+            self.plot.set_me((fix.lat, fix.lon))
+        else:
+            try:
+                self.plot.set_me(self._gps_reader() if self._gps_reader else None)
+            except Exception:
+                self.plot.set_me(None)
+        # Badge only exists in placement mode, and only while the operator hasn't
+        # overridden the live fix with a map tap / manual entry.
+        if getattr(self, "_on_place", None) is not None and not self._picked and not self._manual:
+            self._fix = fix
+            self._show_live_badge()
+
+    # -- placement ----------------------------------------------------------
+    def _recenter(self):
+        """Snap the view back to the auto-fit AND drop any map-tap/manual override,
+        so the placement badge returns to tracking the live GPS fix."""
+        self.plot.reset_view()
+        if getattr(self, "_on_place", None) is not None:
+            self._picked = None
+            if self._manual:
+                self._manual = False
+                self.manual_row.height, self.manual_row.opacity = dp(0), 0
+            self._show_live_badge()
+
+    def _show_live_badge(self):
+        """Reflect the live/held/none GPS fix in the badge + coords, without ever
+        hijacking the operator's pan/zoom (unlike the old confirm page, which
+        re-centred on every poll)."""
+        t = fix_trust(self._fix)
+        self.badge.set(t["title"], t["level"])
+        hint = t["detail"]
+        if t["level"] != "live":
+            hint = "Tap the map to drop the pin, or " + hint[0].lower() + hint[1:]
+        if self._fix is not None and getattr(self._fix, "has_fix", False):
+            self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}   ·   {hint}"
+            self.confirm_btn.disabled = False
+        else:
+            self.coords.text = hint
+            self.confirm_btn.disabled = True
+
+    def _on_map_pick(self, latlon):
+        """Operator tapped the map to set the location (no GPS/internet needed).
+        The pin already moved; adopt the point."""
+        self._manual = False
+        self._picked = latlon
+        self.badge.set("Picked from map", "info")
+        self.coords.text = (f"{latlon[0]:.6f},  {latlon[1]:.6f}   ·   tap again to move, "
+                            "or Recenter to go back to GPS")
+        self.confirm_btn.disabled = False
+
+    def _current_point(self):
+        """The (lat, lon, source) the operator is committing — manual > map tap >
+        GPS fix, in that priority. None if nothing is set."""
+        if self._manual:
+            try:
+                return (float(self.lat_in.text), float(self.lon_in.text), "manual")
+            except ValueError:
+                return None
+        if self._picked is not None:
+            return (self._picked[0], self._picked[1], "map")
+        if self._fix is not None and getattr(self._fix, "has_fix", False):
+            return (self._fix.lat, self._fix.lon, self._fix.source)
+        return None
+
+    def _use_position(self):
+        pt = self._current_point()
+        if pt is None:
+            self.badge.set("Set a location first — tap the map or enter it", "none")
+            return
+        if self._on_place:
+            self._on_place(pt[0], pt[1], pt[2])
+
+    def _toggle_manual(self):
+        self._manual = not self._manual
+        if self._manual:
+            self._picked = None
+            self.manual_row.height, self.manual_row.opacity = dp(96), 1
+            self.badge.set("Enter a location", "info")
+            self.coords.text = ("Type an address and Find (needs internet), or enter "
+                                "lat/lon directly, then Use this position.")
+            self.confirm_btn.disabled = False
+            if self._fix is not None and getattr(self._fix, "has_fix", False):
+                self.lat_in.text = f"{self._fix.lat:.6f}"
+                self.lon_in.text = f"{self._fix.lon:.6f}"
+        else:
+            self.manual_row.height, self.manual_row.opacity = dp(0), 0
+            self._show_live_badge()
+
+    def _find_address(self):
+        """Geocode the typed address (off-thread) and drop the pin to verify it."""
+        addr = self.addr_in.text.strip()
+        if not addr:
+            self.badge.set("Type an address first, then Find", "info")
+            return
+        self.badge.set("Looking up address…", "info")
+
+        def work():
+            res = geocode_address(addr)
+            Clock.schedule_once(lambda dt: self._apply_geocode(res), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_geocode(self, res):
+        if not res:
+            self.badge.set("Address not found (no internet?) — enter lat/lon", "none")
+            return
+        self.lat_in.text = f"{res['lat']:.6f}"
+        self.lon_in.text = f"{res['lon']:.6f}"
+        self.badge.set("Found — check the pin sits right", "info")
+        self.coords.text = res["name"][:120]
+        self.plot.focus((res["lat"], res["lon"]))
+
+    def _load_detail(self):
+        """Cache street-level tiles (with names) for the current spot, over WiFi."""
+        if self._dl_busy:
+            return
+        pt = self._current_point()
+        if pt is None:
+            self.badge.set("Pick or find a location first, then load its streets", "info")
+            return
+        if not is_online():
+            self.badge.set("No internet — join WiFi to load street names", "none")
+            return
+        self._dl_busy = True
+        self.detail_btn.disabled = True
+        self.detail_btn.text = "Downloading street detail…"
+        lat, lon = pt[0], pt[1]
+        dest = os.path.join(MAPS_DIR, "offline.mbtiles")
+        os.makedirs(MAPS_DIR, exist_ok=True)
+
+        def prog(s):
+            if "done" in s and "total" in s:
+                Clock.schedule_once(lambda dt: setattr(
+                    self.detail_btn, "text",
+                    f"Street detail… {s['done']}/{s['total']} tiles"), 0)
+
+        def work():
+            summary = add_point_detail(lat, lon, dest, radius_km=SPOT_RADIUS_KM,
+                                       zmin=SPOT_MIN_ZOOM, zmax=SPOT_MAX_ZOOM,
+                                       on_progress=prog)
+            Clock.schedule_once(lambda dt: self._detail_done(summary, (lat, lon)), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _detail_done(self, summary, pt):
+        self._dl_busy = False
+        self.detail_btn.disabled = False
+        self.detail_btn.text = "Load street names for this spot  (needs WiFi)"
+        self._tiles = find_mbtiles()
+        self.plot.set_tiles(self._tiles)
+        self.plot.focus(pt, zoom=17)                # land close; +/- to fine-tune
+        if summary.get("blocked"):
+            self.badge.set("Map server is rate-limiting — try again shortly", "none")
+        elif summary.get("fetched") or summary.get("skipped"):
+            self.badge.set("Street detail loaded — use +/− to zoom in", "info")
+        else:
+            self.badge.set("Couldn't fetch detail (check the connection)", "none")
 
     def _locate_self(self):
         found = ip_geolocate() if is_online() else None
@@ -619,7 +923,7 @@ class ScanScreen(BoxLayout):
         # Keep the header a clean one-liner. Basemap attribution is a licence
         # condition, so it lives in its own small footer (self.attribution) where
         # it's readable, rather than crammed into the header where it wrapped/cut.
-        self.header.text = "Map — node coverage"
+        self.header.text = "Map — coverage & placement"
         self.attribution.text = ATTRIBUTION if self._tiles is not None else ""
 
     def set_nodes(self, nodes):

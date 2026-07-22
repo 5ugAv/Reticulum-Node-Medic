@@ -325,23 +325,20 @@ class ReticulumNodeMedicApp(App):
         self._start_monitor_polling()
         self._start_announce_listener()
 
+        # SCAN is now the SINGLE map: coverage + offline caching + node placement.
+        # A stationary tap (or the live GPS fix) sets a spot; "Use this position"
+        # stamps it and jumps into BIRTH. The fix-trust badge guards against a
+        # HELD/stale fix pinning a node far from where it actually is — the job the
+        # old separate gps_confirm page used to do.
         scan = Screen(name="scan")
         from monitor.geo import splitter_gps_reader, read_splitter_fix
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),
             gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
-            on_set_location=lambda: self.switch_mode("gps_confirm"))
+            fix_reader=read_splitter_fix,         # full fix -> live/held/none badge
+            on_place=self._on_gps_confirmed)      # "Use this position" -> BIRTH
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
-
-        # Confirm a GPS position before it's stamped onto a node (guards against a
-        # HELD/stale fix pinning a node far from where it actually is).
-        gps_confirm = Screen(name="gps_confirm")
-        from ui.screens.gps_confirm_screen import GpsConfirmScreen
-        self.gps_confirm_screen = GpsConfirmScreen(
-            on_confirm=self._on_gps_confirmed, fix_reader=read_splitter_fix)
-        gps_confirm.add_widget(self._with_back(self.gps_confirm_screen))
-        self.sm.add_widget(gps_confirm)
 
         # Settings hub (the home gear) — WiFi to start, more to come.
         settings_scr = Screen(name="settings")
