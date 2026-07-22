@@ -807,6 +807,12 @@ class BirthScreen(BoxLayout):
         # refresh the QR so a fresh scan carries the notes
         self._add_cert_qr(cert)
 
+    def set_prefill_location(self, lat, lon, source):
+        """Stamp a location onto this birth (from the map's 'Use this position').
+        Shown as 'Location stamped …' and folded into the certificate at the end."""
+        self._prefill_location = (lat, lon, source)
+        self._build_chooser()
+
     def _run_search(self, query):
         """Find an already-provisioned node by name — from the on-medic certificate
         store AND from the nodes the medic knows on the mesh (kin roster +
