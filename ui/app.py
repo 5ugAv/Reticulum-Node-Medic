@@ -389,8 +389,15 @@ class ReticulumNodeMedicApp(App):
             workflow_factory=lambda: hw.make_repair_workflow(_demo_repair_workflow),
             target_name="This node + attached board" if _probe_real
                         else ("Demo node - emulated" if hw.demo_allowed()
-                              else "No board — plug one in to PROBE"))))
+                              else "No board — plug one in to PROBE"),
+            on_self_diagnose=lambda: self.switch_mode("self_diagnose"))))
         self.sm.add_widget(probe)
+
+        # Self Diagnose — the medic checks & heals its OWN onboard radio/GPS board.
+        from ui.screens.self_diagnose_screen import SelfDiagnoseScreen
+        self_dx = Screen(name="self_diagnose")
+        self_dx.add_widget(self._with_back(SelfDiagnoseScreen()))
+        self.sm.add_widget(self_dx)
 
         mitosis = Screen(name="mitosis")
         mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_mitosis_factory)))
