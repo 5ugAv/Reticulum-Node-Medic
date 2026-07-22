@@ -25,17 +25,19 @@ _TRIGGER = 0.92          # fraction of the track that counts as "powered off"
 
 
 class SlideToPowerOff(FloatLayout):
-    def __init__(self, on_power_off=None, **kwargs):
-        super().__init__(size_hint_y=None, height=dp(84), **kwargs)
+    def __init__(self, on_power_off=None, hint_text="slide to power off  →", **kwargs):
+        kwargs.setdefault("size_hint_y", None)
+        kwargs.setdefault("height", dp(84))
+        super().__init__(**kwargs)
         self._cb = on_power_off
-        self._pad = dp(7)
+        self._pad = dp(6)
         self._grab = False
         with self.canvas.before:
             self._track_c = Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
             self._track = RoundedRectangle()
             self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS["red"], 0))
             self._fill = RoundedRectangle()
-        self.hint = Label(text="slide to power off  →", bold=True, font_size="16sp",
+        self.hint = Label(text=hint_text, bold=True,
                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         self.add_widget(self.hint)
         self.knob = Image(source=POWER, size_hint=(None, None), allow_stretch=True,
@@ -65,6 +67,9 @@ class SlideToPowerOff(FloatLayout):
         if not self._grab:
             self.knob.pos = (self._left(), self.y + self._pad)
         self.hint.pos, self.hint.size = self.pos, self.size
+        self.hint.text_size = self.size
+        self.hint.halign, self.hint.valign = "center", "middle"
+        self.hint.font_size = max(dp(9.5), self.height * 0.2)   # scales when small
         self._refresh()
 
     def _refresh(self, *_):
