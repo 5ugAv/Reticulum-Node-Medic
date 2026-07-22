@@ -123,6 +123,10 @@ class BirthScreen(BoxLayout):
         self._on_use_existing = on_use_existing
         # on_guide() — open the step-by-step guided birth (for a new operator).
         self._on_guide = on_guide
+        # When arriving from the guide with a chosen kind, don't let auto-detect
+        # flip the firmware family out from under the operator (cleared on a manual
+        # firmware tap). None = detection decides (the 'radio' path).
+        self._forced_firmware = None
         # node_source(query) -> [node dicts] for nodes the medic KNOWS on the mesh
         # (kin roster + discovered), so search finds e.g. FAITH even if it wasn't
         # birthed through this medic's cert store. Injected; None in tests.
@@ -424,7 +428,8 @@ class BirthScreen(BoxLayout):
         self._detecting = False
         self._detected = res
         if res.get("found"):
-            self._firmware = (res.get("firmware") or ["rnode"])[0]
+            if not self._forced_firmware:                 # guide-chosen kind wins
+                self._firmware = (res.get("firmware") or ["rnode"])[0]
             if self._firmware == "rtnode2400":
                 # a chip read can't tell the S3 boards apart — default the target
                 self._rtnode_target = self._rtnode_target or DEFAULT_TARGET
@@ -449,9 +454,21 @@ class BirthScreen(BoxLayout):
 
     def _pick_firmware(self, key):
         self._firmware = key
+        self._forced_firmware = None            # a manual tap is an explicit override
         if key == "rtnode2400" and not self._rtnode_target:
             self._rtnode_target = DEFAULT_TARGET
         self._build_chooser()
+
+    def begin_guided(self, path):
+        """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
+        kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
+        auto-run detection, since the board is already plugged in per the guide — so
+        the operator lands on naming + a suggested setup, not a cold form."""
+        self._forced_firmware = {"host": "rnode", "pi": "pi_rnode"}.get(path)
+        if self._forced_firmware:
+            self._firmware = self._forced_firmware
+        self._build_chooser()
+        self._detect_board()
 
     def _choose_rtnode_target(self):
         entries = [(i, t.display, lambda k=key: self._pick_rtnode_target(k))
