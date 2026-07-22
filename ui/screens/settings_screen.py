@@ -13,11 +13,13 @@ from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.slider import Slider
 from kivy.uix.widget import Widget
 
 from ui import theme
 from ui.widgets.slide_to_power import SlideToPowerOff
 from provisioning.power import power_off
+from provisioning import brightness as bright
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=30):
@@ -42,7 +44,8 @@ class SettingsScreen(BoxLayout):
         self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
-        # future rows (radio defaults, display, about…) slot in here.
+        self.add_widget(self._brightness_section())
+        # future rows (radio defaults, about…) slot in here.
         self.add_widget(Widget())          # push rows to the top
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
@@ -57,6 +60,45 @@ class SettingsScreen(BoxLayout):
             ok, msg = power_off()
             Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
         threading.Thread(target=work, daemon=True).start()
+
+    # -- display brightness -------------------------------------------------
+    def _brightness_section(self):
+        """A Display ▸ Brightness slider driving the touchscreen backlight. Shows a
+        graceful note instead of a dead slider when the panel exposes no control."""
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line("Display", bold=True, size="15sp", color="accent", h=26))
+        if not bright.has_control():
+            box.add_widget(_line("Brightness control isn't available on this display.",
+                                 size="12.5sp", color="text_secondary", h=24))
+            return box
+        cur = bright.get_brightness()
+        if cur is None:
+            cur = bright.load_pct() or 80
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48),
+                        spacing=dp(10))
+        lbl = _line("Brightness", size="15sp", h=48)
+        lbl.size_hint_x, lbl.width = None, dp(104)
+        row.add_widget(lbl)
+        self._bright_slider = Slider(min=bright.MIN_PCT, max=100, value=cur, step=1)
+        self._bright_slider.bind(value=lambda _i, v: self._on_brightness(v))
+        row.add_widget(self._bright_slider)
+        self._bright_val = _line(f"{int(cur)}%", size="14sp", h=48)
+        self._bright_val.size_hint_x, self._bright_val.width = None, dp(52)
+        row.add_widget(self._bright_val)
+        box.add_widget(row)
+        return box
+
+    def _on_brightness(self, value):
+        pct = int(value)
+        self._bright_val.text = f"{pct}%"
+        ev = getattr(self, "_bright_ev", None)
+        if ev is not None:
+            ev.cancel()                       # debounce: don't spam sudo while dragging
+        self._bright_ev = Clock.schedule_once(lambda dt: self._apply_brightness(pct), 0.15)
+
+    def _apply_brightness(self, pct):
+        threading.Thread(target=lambda: bright.set_brightness(pct), daemon=True).start()
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",

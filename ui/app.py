@@ -265,6 +265,19 @@ class ReticulumNodeMedicApp(App):
         wrap.add_content(widget)
         return wrap
 
+    def _restore_brightness(self):
+        """Re-apply the saved screen brightness at boot (the backlight resets to
+        default on reboot). Linux-only, off-thread, best-effort."""
+        import platform
+        if platform.system() != "Linux":
+            return
+        try:
+            import threading
+            from provisioning import brightness
+            threading.Thread(target=brightness.restore, daemon=True).start()
+        except Exception as e:
+            print(f"[brightness] restore skipped: {e}")
+
     def _self_commission_onboard(self):
         """A freshly-cloned medic boots with an EMPTY onboard roster and its OWN
         boards attached (different serials from the parent). Adopt whatever's
@@ -296,6 +309,7 @@ class ReticulumNodeMedicApp(App):
             Window.fullscreen = "auto"
 
         self._self_commission_onboard()
+        self._restore_brightness()
 
         # No sidebar: the front page IS the navigation (its cards open the
         # modes); every mode screen carries a BACK button bottom-right.
