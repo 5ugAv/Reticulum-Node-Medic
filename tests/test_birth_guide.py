@@ -1,6 +1,6 @@
-"""Guided-birth step ordering — pure data, no Kivy window."""
+"""Guided-birth step ordering — pure data, no Kivy (CI has no Kivy installed)."""
 
-from ui.screens.birth_guide_screen import guide_steps, BIRTH_PATHS, _STEPS
+from ui.birth_guide_flow import guide_steps, BIRTH_PATHS, _STEPS
 
 
 def test_three_intro_paths_in_order():
