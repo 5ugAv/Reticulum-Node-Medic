@@ -813,6 +813,14 @@ class BirthScreen(BoxLayout):
         self._prefill_location = (lat, lon, source)
         self._build_chooser()
 
+    def prefill_name(self, name):
+        """Seed the 'Name this node' field — used when the operator taps a node the
+        medic never birthed and chooses to birth it here (from the cert viewer's
+        'not birthed here' nudge)."""
+        self._build_chooser()               # ensure the name field exists
+        if getattr(self, "_name_in", None) is not None:
+            self._name_in.text = str(name or "")
+
     def _run_search(self, query):
         """Find an already-provisioned node by name — from the on-medic certificate
         store AND from the nodes the medic knows on the mesh (kin roster +

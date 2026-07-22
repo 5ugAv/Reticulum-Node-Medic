@@ -26,11 +26,13 @@ _FILTER_TO_STATUS = {"OK": "ok", "Warn": "warn", "Alert": "alert"}
 
 
 class NodeRow(BoxLayout):
-    """One node in the list."""
+    """One node in the list. Tapping it opens the node's stored certificate
+    (``on_open(node)``); a scroll drag is ignored via a movement threshold."""
 
-    def __init__(self, node, **kwargs):
+    def __init__(self, node, on_open=None, **kwargs):
         super().__init__(**kwargs)
         self.node = node
+        self._on_open = on_open
         self.orientation = "horizontal"
         self.size_hint_y = None
         self.height = dp(80)
@@ -91,11 +93,22 @@ class NodeRow(BoxLayout):
             show_signal=sig is not None,     # never invent a signal reading
             size_hint_x=None, width=dp(210)))   # was 320 — starved the name column
 
+    def on_touch_up(self, touch):
+        # A stationary tap (not a scroll) opens the node's certificate. The
+        # movement threshold lets a drag scroll the list without triggering.
+        if (self._on_open is not None and touch.grab_current is None
+                and self.collide_point(*touch.pos)
+                and abs(touch.x - touch.ox) + abs(touch.y - touch.oy) < dp(12)):
+            self._on_open(self.node)
+            return True
+        return super().on_touch_up(touch)
+
 
 class VitalsScreen(BoxLayout):
-    def __init__(self, nodes=None, **kwargs):
+    def __init__(self, nodes=None, on_open=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
+        self._on_open = on_open
         self.nodes = nodes or []
         self.active_filter = "All"
         self.search_text = ""
@@ -178,4 +191,4 @@ class VitalsScreen(BoxLayout):
     def refresh(self):
         self.grid.clear_widgets()
         for node in self.visible_nodes():
-            self.grid.add_widget(NodeRow(node))
+            self.grid.add_widget(NodeRow(node, on_open=self._on_open))

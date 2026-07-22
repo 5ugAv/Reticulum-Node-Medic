@@ -318,7 +318,7 @@ class ReticulumNodeMedicApp(App):
         # Live discovery fills the dashboard; RNM_DEMO=1 seeds the fake showcase
         # nodes instead (they confused a real deployment, so default off).
         seed = DEMO_NODES if os.environ.get("RNM_DEMO") else []
-        self.vitals_screen = VitalsScreen(nodes=seed)
+        self.vitals_screen = VitalsScreen(nodes=seed, on_open=self._open_node_cert)
         vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)
@@ -336,9 +336,14 @@ class ReticulumNodeMedicApp(App):
             nodes=self.monitor_service.located_nodes(),
             gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
             fix_reader=read_splitter_fix,         # full fix -> live/held/none badge
-            on_place=self._on_gps_confirmed)      # "Use this position" -> BIRTH
+            on_place=self._on_gps_confirmed,      # "Use this position" -> BIRTH
+            on_node_pick=self._open_node_cert)    # tap a node dot -> its certificate
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
+
+        # Certificate viewer — a persistent host screen whose content is rebuilt for
+        # whichever node the operator taps (VITALS row or SCAN map dot).
+        self.sm.add_widget(Screen(name="cert_view"))
 
         # Settings hub (the home gear) — WiFi to start, more to come.
         settings_scr = Screen(name="settings")
@@ -653,6 +658,70 @@ class ReticulumNodeMedicApp(App):
         if bs is not None:
             bs.set_prefill_location(lat, lon, source)
         self.switch_mode("birth")
+
+    def _open_node_cert(self, node):
+        """Tapping a node (a VITALS row dict, or a SCAN map dot passed as its name)
+        opens its STORED birth certificate. If the medic never birthed it, say so
+        and offer to birth it here (the health-reporting / remote-repair nudge)."""
+        from ui.cert_store import search_certs
+        name = node.get("name") if isinstance(node, dict) else str(node or "")
+        name = (name or "").strip()
+        if not name:
+            return
+        hits = search_certs(name)
+        exact = [c for c in hits
+                 if (c.get("node_name") or c.get("hostname") or "").strip().lower()
+                 == name.lower()]
+        cert = (exact or hits or [None])[0]
+        if cert is not None:
+            self._open_cert(cert)
+        else:
+            self._no_cert_popup(name)
+
+    def _open_cert(self, cert):
+        from ui.screens.cert_view_screen import CertViewScreen
+        scr = self.sm.get_screen("cert_view")
+        scr.clear_widgets()
+        scr.add_widget(self._with_back(CertViewScreen(cert)))
+        self.switch_mode("cert_view")
+
+    def _no_cert_popup(self, name):
+        """No stored certificate — it wasn't birthed by this medic. Offer to birth
+        it here so it reports health back and can be repaired remotely."""
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = Label(text=(f"No certificate stored for \"{name}\".\n\nThis node wasn't "
+                          "birthed by this Node Medic, so there's nothing saved to "
+                          "open. Birth it here and it will report health back and "
+                          "become remotely repairable."),
+                    halign="center", valign="middle")
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
+                        spacing=dp(8))
+        popup = Popup(title="Not birthed here", content=box,
+                      size_hint=(0.86, 0.5))
+        close = Button(text="Close", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
+        close.bind(on_release=popup.dismiss)
+        birth = Button(text="Birth it here", background_normal="", bold=True,
+                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _go_birth(*_):
+            popup.dismiss()
+            bs = getattr(self, "birth_screen", None)
+            if bs is not None and hasattr(bs, "prefill_name"):
+                bs.prefill_name(name)
+            self.switch_mode("birth")
+        birth.bind(on_release=_go_birth)
+        row.add_widget(close)
+        row.add_widget(birth)
+        box.add_widget(row)
+        popup.open()
 
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)

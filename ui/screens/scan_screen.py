@@ -59,12 +59,13 @@ class MapPlot(Widget):
     the nodes / cached area."""
 
     def __init__(self, nodes=None, tiles=None, interactive=True, on_pick=None,
-                 **kwargs):
+                 on_node_pick=None, **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._interactive = interactive          # False = a fixed verify view
         self._on_pick = on_pick                  # tap-to-place callback (lat, lon)
+        self._on_node_pick = on_node_pick        # tap-a-node-dot callback (name)
         self._last_view = None                   # current MercatorView (for taps)
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
         # Decoded-texture cache keyed by (z,x,y). Decoding a PNG->texture is the
@@ -171,16 +172,20 @@ class MapPlot(Widget):
                 self._primary = next(iter(self._touches), None)
             if len(self._touches) < 2:
                 self._pinch_base = None
-            # A stationary tap (not a drag or pinch) on an INTERACTIVE pick-enabled
-            # map drops the pin — so tap-to-place coexists with pan/pinch/zoom.
+            # A stationary tap (not a drag or pinch) on an INTERACTIVE map: if it
+            # landed ON a node dot, open that node; otherwise drop the placement
+            # pin. So tap-a-node and tap-to-place coexist with pan/pinch/zoom.
             moved = abs(touch.x - touch.ox) + abs(touch.y - touch.oy) > dp(10)
-            if (self._on_pick and not moved and not self._touches
-                    and not touch.is_double_tap and self._last_view is not None
-                    and self.collide_point(*touch.pos)):
-                latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
-                self._me = latlon
-                self._trigger()
-                self._on_pick(latlon)
+            if (not moved and not self._touches and not touch.is_double_tap
+                    and self._last_view is not None and self.collide_point(*touch.pos)):
+                node = self._node_at(touch.x, touch.y)
+                if node is not None and self._on_node_pick:
+                    self._on_node_pick(node)
+                elif self._on_pick:
+                    latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
+                    self._me = latlon
+                    self._trigger()
+                    self._on_pick(latlon)
             return True
         # Tap-to-place: on a non-interactive map with a pick handler (the GPS-
         # confirm screen), a tap drops the pin at that spot — offline location entry.
@@ -192,6 +197,24 @@ class MapPlot(Widget):
             self._on_pick(latlon)
             return True
         return super().on_touch_up(touch)
+
+    def _node_at(self, tx, ty):
+        """The label of the located node whose dot is under the tap (window coords
+        tx,ty), within a finger-sized radius — or None. Used to tell 'tap a node'
+        apart from 'tap empty map to place a pin'."""
+        view = self._last_view
+        if view is None:
+            return None
+        best, best_d = None, None
+        hit = dp(18)
+        for p in geo_points(self._nodes):
+            if not p.label:
+                continue
+            sx, sy = view.to_screen(p.lat, p.lon)
+            d = ((self.x + sx - tx) ** 2 + (self.y + sy - ty) ** 2) ** 0.5
+            if d <= hit and (best_d is None or d < best_d):
+                best, best_d = p.label, d
+        return best
 
     def _step_zoom(self, direction, view):
         from ui.map_tiles import unproject_px
@@ -578,7 +601,8 @@ class ScanScreen(BoxLayout):
     "Use this position" — the app stamps it and jumps into BIRTH."""
 
     def __init__(self, nodes=None, tiles=None, gps_reader=None, fix_reader=None,
-                 radius_km=DEFAULT_RADIUS_KM, on_place=None, poll=True, **kwargs):
+                 radius_km=DEFAULT_RADIUS_KM, on_place=None, on_node_pick=None,
+                 poll=True, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(12)
@@ -587,6 +611,7 @@ class ScanScreen(BoxLayout):
         self._fix_reader = fix_reader or read_splitter_fix
         self._radius_km = radius_km
         self._on_place = on_place
+        self._on_node_pick = on_node_pick
         self._nodes: List[dict] = []
         self._downloading = False
         # placement state — mirrors the old GPS-confirm page, now inline
@@ -612,7 +637,8 @@ class ScanScreen(BoxLayout):
         # panel's (unreliable) pinch.
         map_wrap = FloatLayout(size_hint_y=1)
         self.plot = MapPlot(tiles=self._tiles, interactive=True,
-                            on_pick=self._on_map_pick, size_hint=(1, 1))
+                            on_pick=self._on_map_pick if on_place is not None else None,
+                            on_node_pick=self._on_node_pick, size_hint=(1, 1))
         map_wrap.add_widget(self.plot)
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
                          size=(dp(50), dp(104)), spacing=dp(6),
