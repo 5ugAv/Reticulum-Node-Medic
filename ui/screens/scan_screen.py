@@ -426,13 +426,20 @@ class MapPlot(Widget):
             else:
                 self._draw_coord_plot(pts)
             return
-        # No located nodes yet — centre on the medic's own GPS fix if we have
-        # one ("you are here"), else the cached basemap of YOUR area (bounds ride
-        # in the .mbtiles metadata), rather than a blank pane.
+        # No located nodes yet — FILL the pane (centred view, no letterbox) on the
+        # medic's own GPS fix if we have one ("you are here"), else on the cached
+        # basemap's centre. Fitting the whole region here left tall black bars.
         if self._tiles is not None:
-            bbox = self._me_bbox() or self._tile_bbox()
-            if bbox:
-                self._draw_tiled([], bbox)
+            if self._me is not None:
+                self._draw_tiled([], None,
+                                 fill=(self._me, min(16, self._max_cached_zoom())))
+            else:
+                b = self._bounds()
+                if b:
+                    w, s, e, n = b                       # lon/lat order in metadata
+                    centre = ((s + n) / 2.0, (w + e) / 2.0)
+                    self._draw_tiled([], None,
+                                     fill=(centre, min(13, self._max_cached_zoom())))
 
     def _me_bbox(self):
         """A tight (~1 km) bbox around the medic's live fix, so the default view
@@ -456,13 +463,17 @@ class MapPlot(Widget):
         return (clat - (n - s) / 2 * f, clat + (n - s) / 2 * f,
                 clon - (e - w) / 2 * f, clon + (e - w) / 2 * f)
 
-    def _draw_tiled(self, pts, bbox):
+    def _draw_tiled(self, pts, bbox, fill=None):
         from ui.map_tiles import view_at
         if self._center is not None and self._zoom is not None:
             # snap the manual zoom to a level the cache actually has (no blank)
             z = self._snap_zoom(self._zoom)
             view = view_at(self._center[0], self._center[1], z,
                            self.width, self.height)      # user-driven pan/zoom
+        elif fill is not None:
+            # empty state: a CENTRED view that fills the pane (no letterbox)
+            (flat, flon), fz = fill
+            view = view_at(flat, flon, self._snap_zoom(fz), self.width, self.height)
         else:
             view = build_view(*bbox, self.width, self.height, padding=dp(32),
                               max_zoom=self._max_cached_zoom())  # auto-fit
