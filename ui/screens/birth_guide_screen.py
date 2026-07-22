@@ -27,8 +27,8 @@ BIRTH_PATHS = [
      "An RTNode-2400 or RNode board on its own — reports health, remotely repairable."),
     ("pi", "A Raspberry Pi + radio",
      "A Pi running Reticulum with an attached radio (a propagation / host node)."),
-    ("host", "A radio for a computer",
-     "Just flash a radio (RNode) to plug into a computer you've already set up."),
+    ("host", "A radio for phone or computer (RNode)",
+     "Just flash a radio (RNode) to plug into a phone or computer you've already set up."),
 ]
 
 #: Ordered guided steps per path. Each step: title, body, optional anim factory,
