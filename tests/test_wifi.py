@@ -32,16 +32,42 @@ def test_connect_success_failure_and_empty():
 
 
 def test_connect_passes_password_only_when_given():
-    seen = {}
+    calls = {}
     def rec(key):
         def run(a):
-            seen[key] = a
+            calls.setdefault(key, []).append(a)
             return (0, "successfully activated")
         return run
     wifi.connect("Open", run=rec("a"))
-    assert "password" not in seen["a"]
+    assert "password" not in calls["a"][0]           # first call = the connect
     wifi.connect("Sec", "pw", run=rec("b"))
-    assert "password" in seen["b"] and "pw" in seen["b"]
+    assert "password" in calls["b"][0] and "pw" in calls["b"][0]
+
+
+def test_connect_sets_autoconnect_via_sudo():
+    calls = []
+    def run(a):
+        calls.append(a)
+        return (0, "successfully activated")
+    wifi.connect("Home", "pw", autoconnect=True, run=run)
+    modify = next(a for a in calls if "modify" in a)
+    assert a_has(modify, "connection.autoconnect", "yes") and modify[:2] == ["sudo", "-n"]
+    calls.clear()
+    ok, msg = wifi.connect("OneOff", "pw", autoconnect=False, run=run)
+    modify = next(a for a in calls if "modify" in a)
+    assert "no" in modify and "won't auto-reconnect" in msg
+
+
+def test_set_autoconnect_sets_priority():
+    seen = {}
+    wifi.set_autoconnect("Home", True, priority=10,
+                         run=lambda a: (seen.update(argv=a) or (0, "")))
+    assert a_has(seen["argv"], "connection.autoconnect-priority", "10")
+    assert "yes" in seen["argv"]
+
+
+def a_has(argv, *needles):
+    return all(n in argv for n in needles)
 
 
 def test_current_connection():
