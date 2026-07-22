@@ -24,6 +24,9 @@ POSTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 GEAR = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     os.pardir, "assets", "ui", "gear.png"))
+POWER = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.pardir, "assets", "ui", "power.png"))
 
 
 class HomeScreen(FloatLayout):
@@ -45,6 +48,54 @@ class HomeScreen(FloatLayout):
         self.settings_btn.bind(on_release=lambda *_: self._on_select and self._on_select("settings"))
         self.add_widget(self.settings_btn)
 
+        # Power button (top-left, mirroring the gear) — safe shutdown from the front
+        # page. Tapping it opens a slide-to-confirm so it can't fire by accident.
+        self.power_btn = Button(size_hint=(None, None), size=(dp(58), dp(58)),
+                                pos_hint={"x": 0.02, "top": 0.98},
+                                background_normal=POWER, background_down=POWER,
+                                border=(0, 0, 0, 0), background_color=(1, 1, 1, 1))
+        self.power_btn.bind(on_release=lambda *_: self._open_power_popup())
+        self.add_widget(self.power_btn)
+
+    def _open_power_popup(self):
+        """A front-page shutdown that still needs a deliberate slide to confirm."""
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from ui.widgets.slide_to_power import SlideToPowerOff
+
+        box = BoxLayout(orientation="vertical", spacing=dp(14), padding=dp(16))
+        box.add_widget(Label(
+            text="Shut the Node Medic down safely.\nWhen the screen goes dark, it's OK "
+                 "to unplug.", halign="center", valign="middle",
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"])))
+        status = Label(text="", size_hint_y=None, height=dp(26),
+                       color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        popup = Popup(title="Power off", size_hint=(0.92, 0.55),
+                      title_size="18sp",
+                      separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
+
+        def do_power():
+            import threading
+            from kivy.clock import Clock
+            from provisioning.power import power_off
+
+            def work():
+                _ok, msg = power_off()
+                Clock.schedule_once(lambda dt: setattr(status, "text", msg), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        box.add_widget(SlideToPowerOff(on_power_off=do_power))
+        box.add_widget(status)
+        cancel = Button(text="Cancel", size_hint_y=None, height=dp(48), bold=True,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        cancel.bind(on_release=lambda *_: popup.dismiss())
+        box.add_widget(cancel)
+        popup.content = box
+        popup.open()
+
     def _image_fraction(self, tx: float, ty: float):
         """Touch (window coords) -> image-fraction (x right, y DOWN), or None
         when the touch lands in the letterbox."""
@@ -60,8 +111,9 @@ class HomeScreen(FloatLayout):
         return fx, 1.0 - fy_up            # zones use top-down y
 
     def on_touch_up(self, touch):
-        if self.settings_btn.collide_point(*touch.pos):
-            return super().on_touch_up(touch)      # let the gear button handle it
+        if (self.settings_btn.collide_point(*touch.pos)
+                or self.power_btn.collide_point(*touch.pos)):
+            return super().on_touch_up(touch)      # let the corner buttons handle it
         frac = self._image_fraction(*touch.pos)
         if frac:
             mode = zone_at(*frac)
