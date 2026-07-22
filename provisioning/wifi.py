@@ -75,8 +75,12 @@ def scan_networks(run: Runner = _default_run) -> List[dict]:
     return sorted(nets.values(), key=lambda n: (not n["active"], -n["signal"]))
 
 
-def connect(ssid: str, password: str = "", run: Runner = _default_run) -> Tuple[bool, str]:
-    """Join *ssid* (with *password* if secured). Returns ``(ok, message)``."""
+def connect(ssid: str, password: str = "", autoconnect: bool = True,
+            run: Runner = _default_run) -> Tuple[bool, str]:
+    """Join *ssid* (with *password* if secured). ``autoconnect`` controls whether
+    the medic rejoins this network automatically after a reboot/power loss — on for
+    home + field hotspots you want it to come back to, off for one-off networks.
+    Returns ``(ok, message)``."""
     if not ssid:
         return False, "No network selected."
     argv = ["nmcli", "device", "wifi", "connect", ssid]
@@ -84,9 +88,24 @@ def connect(ssid: str, password: str = "", run: Runner = _default_run) -> Tuple[
         argv += ["password", password]
     code, out = run(argv)
     if code == 0 and "successfully" in out.lower():
-        return True, f"Connected to {ssid}."
+        set_autoconnect(ssid, autoconnect, run=run)      # honour the toggle
+        note = "" if autoconnect else "  (won't auto-reconnect)"
+        return True, f"Connected to {ssid}.{note}"
     tail = (out.strip().splitlines() or ["connection failed"])[-1]
     return False, tail.strip()
+
+
+def set_autoconnect(ssid: str, enabled: bool = True, priority: Optional[int] = None,
+                    run: Runner = _default_run) -> Tuple[bool, str]:
+    """Turn NetworkManager auto-reconnect on/off for *ssid* (and optionally set its
+    priority, higher = preferred 'home'). Privileged, so it goes through ``sudo -n``
+    (the medic is configured for passwordless sudo). Best-effort: returns (ok, out)."""
+    argv = ["sudo", "-n", "nmcli", "connection", "modify", ssid,
+            "connection.autoconnect", "yes" if enabled else "no"]
+    if priority is not None:
+        argv += ["connection.autoconnect-priority", str(priority)]
+    code, out = run(argv)
+    return code == 0, out
 
 
 def current_connection(run: Runner = _default_run) -> Optional[dict]:

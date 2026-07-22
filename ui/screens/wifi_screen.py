@@ -16,6 +16,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 
 from ui import theme
@@ -75,6 +76,16 @@ class WifiScreen(BoxLayout):
         self.pw_row.add_widget(self.connect_btn)
         self.add_widget(self.pw_row)
 
+        # Auto-reconnect toggle (revealed with the password row) — on = the medic
+        # rejoins this network by itself after a reboot/power loss (home + field
+        # hotspots); off = a one-off network it shouldn't cling to.
+        self.autoconn_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                      height=dp(0), spacing=dp(6), opacity=0)
+        self.autoconn_row.add_widget(_line("Reconnect automatically", size="14sp"))
+        self.autoconnect = Switch(active=True, size_hint_x=None, width=dp(90))
+        self.autoconn_row.add_widget(self.autoconnect)
+        self.add_widget(self.autoconn_row)
+
         self._refresh_status()
 
     # -- status -------------------------------------------------------------
@@ -133,6 +144,8 @@ class WifiScreen(BoxLayout):
 
     def _select(self, net):
         self._selected = net
+        self.autoconnect.active = True                # default: rejoin automatically
+        self.autoconn_row.height, self.autoconn_row.opacity = dp(40), 1
         if net["secure"]:
             self.pw_row.height, self.pw_row.opacity = dp(48), 1
             self.pw_in.text = ""
@@ -148,11 +161,12 @@ class WifiScreen(BoxLayout):
         self._busy = True
         ssid = self._selected["ssid"]
         pw = self.pw_in.text if self._selected["secure"] else ""
+        auto = self.autoconnect.active
         self.status.text = f"Connecting to {ssid}…"
         self.status.color = theme.hex_to_rgba(theme.COLORS["accent"])
 
         def work():
-            ok, msg = wifi.connect(ssid, pw, **self._kw())
+            ok, msg = wifi.connect(ssid, pw, autoconnect=auto, **self._kw())
             Clock.schedule_once(lambda dt: self._show_result(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -162,4 +176,5 @@ class WifiScreen(BoxLayout):
         self.status.color = theme.hex_to_rgba(theme.COLORS["green" if ok else "red"])
         if ok:
             self.pw_row.height, self.pw_row.opacity = dp(0), 0
+            self.autoconn_row.height, self.autoconn_row.opacity = dp(0), 0
             self._refresh_status()
