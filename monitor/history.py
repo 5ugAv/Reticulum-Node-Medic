@@ -45,17 +45,26 @@ class HistoryPoint:
 
 
 class NodeHistory:
-    """Per-node time series, pruned to RETENTION_S."""
+    """Per-node time series, pruned to ``retention_s`` (default 90 days; the
+    runtime overrides it from the Settings ▸ Beacon history retention value)."""
 
-    def __init__(self):
+    def __init__(self, retention_s: int = RETENTION_S):
         self._series: Dict[str, List[HistoryPoint]] = {}
+        self.retention_s = retention_s
 
     def append(self, dst_hash: str, point: HistoryPoint) -> None:
         pts = self._series.setdefault(dst_hash, [])
         pts.append(point)
-        cutoff = point.t - RETENTION_S
+        cutoff = point.t - self.retention_s
         if pts and pts[0].t < cutoff:
             self._series[dst_hash] = [p for p in pts if p.t >= cutoff]
+
+    def set_retention(self, retention_s: int, now: float) -> None:
+        """Change the retention window and re-prune every series to it now."""
+        self.retention_s = retention_s
+        cutoff = now - retention_s
+        for h in list(self._series):
+            self._series[h] = [p for p in self._series[h] if p.t >= cutoff]
 
     def series(self, dst_hash: str, since: Optional[float] = None
                ) -> List[HistoryPoint]:
@@ -73,8 +82,8 @@ class NodeHistory:
         return {h: [p.to_dict() for p in pts] for h, pts in self._series.items()}
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NodeHistory":
-        h = cls()
+    def from_dict(cls, data: dict, retention_s: int = RETENTION_S) -> "NodeHistory":
+        h = cls(retention_s=retention_s)
         for dst, pts in (data or {}).items():
             h._series[dst] = [HistoryPoint(**p) for p in pts]
         return h

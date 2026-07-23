@@ -265,6 +265,23 @@ class ReticulumNodeMedicApp(App):
         wrap.add_content(widget)
         return wrap
 
+    def _apply_retention(self, days):
+        """Prune the running beacon history to the retention window. days=None uses
+        the saved setting (startup); a number applies a live change from Settings."""
+        try:
+            import time
+            from monitor import retention
+            secs = (days * retention.DAY_S) if days else retention.retention_seconds()
+            self.monitor_service.registry.history.set_retention(secs, time.time())
+        except Exception as e:
+            print(f"[retention] apply skipped: {e}")
+
+    def _monitor_node_count(self):
+        try:
+            return len(self.monitor_service.dashboard_dicts())
+        except Exception:
+            return 0
+
     def _stamp_born(self):
         """Stamp this unit's born date once (from its RNS identity's mtime), so
         Settings ▸ Tool identity can show it. Best-effort."""
@@ -347,6 +364,7 @@ class ReticulumNodeMedicApp(App):
         vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
         self.monitor_service = MonitorService(run=_local_run)
+        self._apply_retention(None)                  # honour the saved retention window
         self._start_monitor_polling()
         self._start_announce_listener()
 
@@ -373,7 +391,10 @@ class ReticulumNodeMedicApp(App):
         # Settings hub (the home gear) — WiFi to start, more to come.
         settings_scr = Screen(name="settings")
         from ui.screens.settings_screen import SettingsScreen
-        settings_scr.add_widget(self._with_back(SettingsScreen(on_open=self.switch_mode)))
+        settings_scr.add_widget(self._with_back(SettingsScreen(
+            on_open=self.switch_mode,
+            on_retention_change=self._apply_retention,
+            node_count_provider=self._monitor_node_count)))
         self.sm.add_widget(settings_scr)
 
         # WiFi connect — join a hotspot / venue AP so online features work afield.
