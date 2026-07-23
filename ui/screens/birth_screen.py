@@ -891,6 +891,7 @@ class BirthScreen(BoxLayout):
             except OSError:
                 self._saved_cert_id = None
             self._cert = cert
+            self._register_kin(cert)                  # stamp builder=this medic's unit
             self.list.add_widget(_line("Birth certificate:", bold=True,
                                        size="16sp"))
             self.list.add_widget(_line("    (saved on this Node Medic)",
@@ -901,6 +902,26 @@ class BirthScreen(BoxLayout):
                 self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
             self._add_cert_qr(cert)
             self._add_notes_panel()
+
+    def _register_kin(self, cert):
+        """Record the birthed node in the medic's kin roster, stamped with
+        builder = THIS medic's own unit hash — so it shows as kin, and drops to
+        neighbour on VITALS/SCAN if this unit's trust is ever revoked. Best-effort."""
+        try:
+            from monitor import kin_roster
+            from provisioning import tool_identity
+            h = cert.get("reticulum_address") or cert.get("identity_hash")
+            if not h:
+                return
+            lat = lon = None
+            if self._prefill_location:
+                lat, lon = self._prefill_location[0], self._prefill_location[1]
+            kin_roster.register(
+                h, cert.get("node_name") or cert.get("hostname") or "node",
+                node_type=cert.get("type", "rtnode2400"), lat=lat, lon=lon,
+                builder=tool_identity.identity_hash())
+        except Exception as e:
+            print(f"[kin] register skipped: {e}")
 
     def _add_notes_panel(self):
         """Notes are asked HERE — after the certificate is out — then saved onto

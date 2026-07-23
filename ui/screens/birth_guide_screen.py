@@ -41,10 +41,11 @@ class BirthGuideScreen(BoxLayout):
     """The step-by-step birth walkthrough. ``on_complete(path)`` fires when the
     physical-prep steps are done, to hand off to the real BIRTH flow."""
 
-    def __init__(self, on_complete=None, **kwargs):
+    def __init__(self, on_complete=None, on_navigate=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self._on_complete = on_complete
+        self._on_navigate = on_navigate       # (screen_name) -> switch to a screen
         self._path = None
         self._i = 0
         self._current = None
@@ -115,8 +116,14 @@ class BirthGuideScreen(BoxLayout):
 
     # -- navigation --------------------------------------------------------
     def _next(self):
+        steps = guide_steps(self._path)
+        cur = steps[self._i] if self._i < len(steps) else {}
+        if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
+            self._stop_board_poll()
+            self._on_navigate(cur["screen"])
+            return
         self._i += 1
-        if self._i >= len(guide_steps(self._path)):
+        if self._i >= len(steps):
             self._finish()
         else:
             self._render_step()

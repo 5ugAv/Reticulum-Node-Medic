@@ -189,8 +189,19 @@ def test_weak_wifi_is_warn():
     assert beacon_status(decode(sample_bytes(wifi_rssi_dbm=-80))) == "warn"
 
 
-def test_very_weak_wifi_is_alert():
-    assert beacon_status(decode(sample_bytes(wifi_rssi_dbm=-90))) == "alert"
+def test_very_weak_wifi_is_warn_not_alert():
+    # New intent: weak WiFi alone can only WARN, never alert. RED is reserved
+    # for real faults / LoRa down (previously -90 dBm escalated to "alert").
+    assert beacon_status(decode(sample_bytes(wifi_rssi_dbm=-90))) == "warn"
+
+
+def test_faith_regression_weak_wifi_healthy_node_is_warn():
+    # FAITH regression: faults empty, LoRa up, WiFi up but -87 dBm while
+    # associating. Must be WARN (orange), NOT alert — a healthy node stays out
+    # of the red/alert banner just because its WiFi is weak.
+    b = decode(sample_bytes(
+        fault=False, lora_up=True, wifi_up=True, wifi_rssi_dbm=-87))
+    assert beacon_status(b) == "warn"
 
 
 def test_watchdog_not_armed_is_warn():

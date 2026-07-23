@@ -70,8 +70,17 @@ def test_weak_wifi_is_warn():
     assert status_colour({**HEALTHY, "wifi_rssi": -78}) == "warn"     # <= -75
 
 
-def test_very_weak_wifi_is_alert():
-    assert status_colour({**HEALTHY, "wifi_rssi": -88}) == "alert"    # <= -85
+def test_very_weak_wifi_is_warn_not_alert():
+    # New intent: weak WiFi alone can only WARN, never alert (was -85 -> alert).
+    assert status_colour({**HEALTHY, "wifi_rssi": -88}) == "warn"
+
+
+def test_faith_regression_weak_wifi_healthy_node_is_warn():
+    # FAITH regression: faults=[], lora_online=True, wifi_connected, -87 dBm.
+    # Must be WARN, never alert.
+    d = {**HEALTHY, "faults": [], "lora_online": True,
+         "wifi_connected": True, "wifi_rssi": -87}
+    assert status_colour(d) == "warn"
 
 
 def test_watchdog_disarmed_is_warn():

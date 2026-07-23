@@ -52,6 +52,57 @@ from ui.map_download import (
     add_point_detail, SPOT_MIN_ZOOM, SPOT_MAX_ZOOM, SPOT_RADIUS_KM)
 
 
+# ---- pure helpers (unit-tested; no Kivy) -------------------------------------
+
+def link_segments(topo):
+    """Flatten a ``monitor.topology.Topology`` into who-hears-whom LINE SEGMENTS
+    between LOCATED nodes: ``[(lat1, lon1, lat2, lon2), ...]``. Only edges whose
+    BOTH endpoints have coordinates draw a line (a link to an unplaced node has
+    nowhere to go); endpoint order is normalised so an A-B / B-A pair collapses to
+    one segment. Pure — the app wraps this in a ``links_provider`` and MapPlot just
+    strokes what it returns, so the topology stays untouched by the widget."""
+    by_id = {n.id: n for n in getattr(topo, "nodes", [])}
+    seen = set()
+    out = []
+    for e in getattr(topo, "edges", []):
+        a, b = by_id.get(e.a), by_id.get(e.b)
+        if a is None or b is None:
+            continue
+        if None in (a.lat, a.lon, b.lat, b.lon):
+            continue
+        key = tuple(sorted(((a.lat, a.lon), (b.lat, b.lon))))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((a.lat, a.lon, b.lat, b.lon))
+    return out
+
+
+def suggestion_markers(suggestions):
+    """Normalise placement suggestions — ``monitor.placement.Suggestion`` objects
+    (``.lat/.lon/.reason/.kind``) OR plain dicts — into
+    ``[{lat, lon, reason, kind}]``, dropping any without coordinates and deduping
+    by rounded (lat, lon, kind). Pure; feeds MapPlot's 'add a node here' rings."""
+    out = []
+    seen = set()
+    for s in suggestions or []:
+        if isinstance(s, dict):
+            lat, lon = s.get("lat"), s.get("lon")
+            reason, kind = s.get("reason", ""), s.get("kind", "")
+        else:
+            lat, lon = getattr(s, "lat", None), getattr(s, "lon", None)
+            reason = getattr(s, "reason", "") or ""
+            kind = getattr(s, "kind", "") or ""
+        if lat is None or lon is None:
+            continue
+        key = (round(float(lat), 6), round(float(lon), 6), kind)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"lat": lat, "lon": lon, "reason": reason, "kind": kind})
+    return out
+
+
 class MapPlot(Widget):
     """Draws located nodes as status-coloured dots, over an offline tile basemap
     when one is available. Interactive: drag to pan, pinch to zoom (a level per
@@ -59,13 +110,21 @@ class MapPlot(Widget):
     the nodes / cached area."""
 
     def __init__(self, nodes=None, tiles=None, interactive=True, on_pick=None,
-                 on_node_pick=None, **kwargs):
+                 on_node_pick=None, links_provider=None, suggestions_provider=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._interactive = interactive          # False = a fixed verify view
         self._on_pick = on_pick                  # tap-to-place callback (lat, lon)
         self._on_node_pick = on_node_pick        # tap-a-node-dot callback (name)
+        # Optional data feeds (default None -> nothing extra drawn, map unchanged):
+        #   links_provider()      -> [(lat1,lon1,lat2,lon2), ...] mesh connections
+        #   suggestions_provider()-> [obj/dict with lat/lon/reason/kind] placements
+        self._links_provider = links_provider
+        self._suggestions_provider = suggestions_provider
+        self._show_links = False                 # mesh-lines toggle (default OFF)
+        self._suggestions = []                   # last-drawn markers (for hit-test)
         self._last_view = None                   # current MercatorView (for taps)
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
         # Decoded-texture cache keyed by (z,x,y). Decoding a PNG->texture is the
@@ -188,8 +247,11 @@ class MapPlot(Widget):
             if (not moved and not self._touches and not touch.is_double_tap
                     and self._last_view is not None and self.collide_point(*touch.pos)):
                 node = self._node_at(touch.x, touch.y)
+                sugg = None if node is not None else self._suggestion_at(touch.x, touch.y)
                 if node is not None and self._on_node_pick:
                     self._on_node_pick(node)
+                elif sugg is not None:            # tapped an 'add a node here' ring
+                    self._show_suggestion(sugg)
                 elif self._on_pick:
                     latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
                     self._me = latlon
@@ -206,6 +268,92 @@ class MapPlot(Widget):
             self._on_pick(latlon)
             return True
         return super().on_touch_up(touch)
+
+    # -- optional overlays: mesh lines + placement suggestions --------------
+
+    def set_show_links(self, on):
+        """Toggle the who-hears-whom connection lines between located nodes.
+        No-op visual change unless a ``links_provider`` was supplied."""
+        on = bool(on)
+        if on == self._show_links:
+            return
+        self._show_links = on
+        self._redraw()
+
+    def _fetch_links(self):
+        """Current link segments to draw, or [] (toggle off / no provider / it
+        raised). Providers pull live topology, so lines refresh on each redraw."""
+        if not self._show_links or self._links_provider is None:
+            return []
+        try:
+            return list(self._links_provider() or [])
+        except Exception:
+            return []
+
+    def _fetch_suggestions(self):
+        if self._suggestions_provider is None:
+            return []
+        try:
+            return suggestion_markers(self._suggestions_provider())
+        except Exception:
+            return []
+
+    def _draw_links(self, view):
+        """Faint accent connection lines UNDER the node dots — drawn inside an
+        open canvas context by _draw_tiled."""
+        segs = self._fetch_links()
+        if not segs:
+            return
+        Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.35))
+        for seg in segs:
+            try:
+                lat1, lon1, lat2, lon2 = seg
+            except (TypeError, ValueError):
+                continue
+            x1, y1 = view.to_screen(lat1, lon1)
+            x2, y2 = view.to_screen(lat2, lon2)
+            Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],
+                 width=1.2)
+
+    def _draw_suggestions(self, view):
+        """A hollow accent ring + small '+' at each placement suggestion —
+        'add a node here'. Cached in self._suggestions for tap hit-testing."""
+        self._suggestions = self._fetch_suggestions()
+        r = dp(9)
+        for s in self._suggestions:
+            sx, sy = view.to_screen(s["lat"], s["lon"])
+            cx, cy = self.x + sx, self.y + sy
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.95))
+            Line(circle=(cx, cy, r), width=1.6)
+            Line(points=[cx - r * 0.5, cy, cx + r * 0.5, cy], width=1.6)
+            Line(points=[cx, cy - r * 0.5, cx, cy + r * 0.5], width=1.6)
+
+    def _suggestion_at(self, tx, ty):
+        """The suggestion marker under the tap (window coords), within a finger
+        radius — or None."""
+        view = self._last_view
+        if view is None:
+            return None
+        best, best_d = None, None
+        hit = dp(18)
+        for s in getattr(self, "_suggestions", []):
+            sx, sy = view.to_screen(s["lat"], s["lon"])
+            d = ((self.x + sx - tx) ** 2 + (self.y + sy - ty) ** 2) ** 0.5
+            if d <= hit and (best_d is None or d < best_d):
+                best, best_d = s, d
+        return best
+
+    def _show_suggestion(self, sugg):
+        """Pop a small label with the suggestion's reason when its marker is
+        tapped — why the engine thinks a node belongs here."""
+        from kivy.uix.popup import Popup
+        reason = sugg.get("reason") or "Suggested node location"
+        kind = (sugg.get("kind") or "").replace("_", " ")
+        title = "Add a node here" + (f"  ·  {kind}" if kind else "")
+        body = Label(text=reason, halign="center", valign="middle",
+                     padding=(dp(12), dp(12)))
+        body.bind(size=lambda i, v: setattr(i, "text_size", v))
+        Popup(title=title, content=body, size_hint=(0.8, 0.4)).open()
 
     def _node_at(self, tx, ty):
         """The label of the located node whose dot is under the tap (window coords
@@ -488,11 +636,13 @@ class MapPlot(Widget):
         with self.canvas:
             for t in tiles_for_view(view):
                 self._draw_tile(t)
+            self._draw_links(view)                # faint connection lines UNDER dots
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
                 Color(*theme.status_rgba(p.status))
                 Ellipse(pos=(self.x + sx - r, self.y + sy - r),
                         size=(2 * r, 2 * r))
+            self._draw_suggestions(view)          # 'add a node here' rings over dots
             self._draw_me_marker(view)
         for p in pts:
             sx, sy = view.to_screen(p.lat, p.lon)
@@ -622,6 +772,7 @@ class ScanScreen(BoxLayout):
 
     def __init__(self, nodes=None, tiles=None, gps_reader=None, fix_reader=None,
                  radius_km=DEFAULT_RADIUS_KM, on_place=None, on_node_pick=None,
+                 links_provider=None, suggestions_provider=None,
                  poll=True, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
@@ -632,6 +783,7 @@ class ScanScreen(BoxLayout):
         self._radius_km = radius_km
         self._on_place = on_place
         self._on_node_pick = on_node_pick
+        self._links_on = False                    # mesh-lines toggle state
         self._nodes: List[dict] = []
         self._downloading = False
         # placement state — mirrors the old GPS-confirm page, now inline
@@ -648,7 +800,12 @@ class ScanScreen(BoxLayout):
         self.recenter_btn = Button(text="Recenter", size_hint=(None, 1),
                                    width=dp(100))
         self.recenter_btn.bind(on_release=lambda *_: self._recenter())
+        # Mesh-lines toggle: draw the who-hears-whom connection lines. Default OFF;
+        # does nothing visible unless a links_provider was wired.
+        self.links_btn = Button(text="Links  off", size_hint=(None, 1), width=dp(92))
+        self.links_btn.bind(on_release=lambda *_: self._toggle_links())
         header_row.add_widget(self.header)
+        header_row.add_widget(self.links_btn)
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
@@ -658,7 +815,10 @@ class ScanScreen(BoxLayout):
         map_wrap = FloatLayout(size_hint_y=1)
         self.plot = MapPlot(tiles=self._tiles, interactive=True,
                             on_pick=self._on_map_pick if on_place is not None else None,
-                            on_node_pick=self._on_node_pick, size_hint=(1, 1))
+                            on_node_pick=self._on_node_pick,
+                            links_provider=links_provider,
+                            suggestions_provider=suggestions_provider,
+                            size_hint=(1, 1))
         map_wrap.add_widget(self.plot)
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
                          size=(dp(50), dp(104)), spacing=dp(6),
@@ -841,6 +1001,12 @@ class ScanScreen(BoxLayout):
     def _sync_offline_height(self):
         self._offline_panel.height = (self._offline_panel.minimum_height
                                       if self._offline_open else 0)
+
+    def _toggle_links(self):
+        """Flip the mesh connection lines on/off (header button)."""
+        self._links_on = not self._links_on
+        self.plot.set_show_links(self._links_on)
+        self.links_btn.text = "Links  on" if self._links_on else "Links  off"
 
     # -- placement ----------------------------------------------------------
     def _recenter(self):

@@ -58,16 +58,21 @@ DEFAULT_LINKS = {
 
 def register(rns_hash: str, name: str, node_type: str = "pi",
              lat: Optional[float] = None, lon: Optional[float] = None,
-             links: Optional[dict] = None,
+             links: Optional[dict] = None, builder: Optional[str] = None,
              path: str = KIN_ROSTER_PATH) -> dict:
     """Record one of the medic's own nodes (idempotent — updates in place).
     Returns the updated roster. Called at BIRTH with the node's identity + name +
     where it's being deployed. *links* declares the interfaces it physically has
-    (defaults by node type); the medic can't infer these over the mesh."""
+    (defaults by node type); the medic can't infer these over the mesh. *builder*
+    is the identity hash of the medic UNIT that birthed this node — its trust
+    (monitor.trust) decides kin vs neighbour, so revoking that unit demotes the
+    node. Stamp it with this medic's own unit hash at BIRTH."""
     roster = load_roster(path)
     entry = roster.get(rns_hash, {})
     entry["name"] = name
     entry["type"] = node_type
+    if builder is not None:
+        entry["builder"] = builder
     if lat is not None:
         entry["lat"] = lat
     if lon is not None:

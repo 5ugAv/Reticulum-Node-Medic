@@ -492,9 +492,17 @@ class ReticulumNodeMedicApp(App):
         birth_guide = Screen(name="birth_guide")
         from ui.screens.birth_guide_screen import BirthGuideScreen
         self.birth_guide_screen = BirthGuideScreen(
-            on_complete=self._guided_birth_complete)
+            on_complete=self._guided_birth_complete,
+            on_navigate=self.switch_mode)
         birth_guide.add_widget(self._with_back(self.birth_guide_screen))
         self.sm.add_widget(birth_guide)
+
+        pi_imager_scr = Screen(name="pi_imager")
+        from ui.screens.pi_imager_screen import PiImagerScreen
+        from workflows.rtnode_portal import medic_wifi_credentials
+        pi_imager_scr.add_widget(self._with_back(
+            PiImagerScreen(wifi_credentials=medic_wifi_credentials)))
+        self.sm.add_widget(pi_imager_scr)
 
         triage = Screen(name="triage")
         self.triage_screen = TriageScreen(
