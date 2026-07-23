@@ -539,19 +539,20 @@ class BirthScreen(BoxLayout):
         taps OK — or edits a field first. One big OK confirms and starts."""
         self.list.clear_widgets()
         self._param_inputs = {}
-        d = RadioConfig()                                 # canonical defaults
+        from provisioning.radio_defaults import load_defaults
+        dd = load_defaults()                              # tool-wide defaults (Settings)
         if board is not None:
             self.list.add_widget(_line(f"{board.display_name}", bold=True,
                                        size="16sp"))
         self.list.add_widget(_line(
-            "Radio settings — pre-filled with our standard config. Change only "
+            "Radio settings — pre-filled with your tool defaults. Change only "
             "if you know why, then press OK.", size="14sp"))
         fields = [
-            ("freq", "Frequency (MHz)", f"{d.frequency_mhz:g}"),
-            ("bw", "Bandwidth (kHz)", f"{d.bandwidth_khz:g}"),
-            ("sf", "Spreading factor", str(d.spreading_factor)),
-            ("cr", "Coding rate", str(d.coding_rate)),
-            ("txp", "TX power (dBm)", str(d.tx_power_dbm)),
+            ("freq", "Frequency (MHz)", f"{dd['freq']:g}"),
+            ("bw", "Bandwidth (kHz)", f"{dd['bw']:g}"),
+            ("sf", "Spreading factor", str(dd['sf'])),
+            ("cr", "Coding rate", str(dd['cr'])),
+            ("txp", "TX power (dBm)", str(dd['txp'])),
         ]
         for key, label, value in fields:
             self.list.add_widget(self._param_row(key, label, value))
@@ -575,20 +576,21 @@ class BirthScreen(BoxLayout):
         return row
 
     def _read_params(self):
-        d = RadioConfig()
+        from provisioning.radio_defaults import load_defaults
+        dd = load_defaults()
 
         def num(key, cast, default):
             try:
                 return cast(self._param_inputs[key].text.strip())
             except (ValueError, KeyError):
-                return default            # blank/garbage falls back to canonical
+                return default            # blank/garbage falls back to the default
 
         return {
-            "freq": num("freq", float, d.frequency_mhz),
-            "bw": num("bw", float, d.bandwidth_khz),
-            "sf": num("sf", int, d.spreading_factor),
-            "cr": num("cr", int, d.coding_rate),
-            "txp": num("txp", int, d.tx_power_dbm),
+            "freq": num("freq", float, dd["freq"]),
+            "bw": num("bw", float, dd["bw"]),
+            "sf": num("sf", int, dd["sf"]),
+            "cr": num("cr", int, dd["cr"]),
+            "txp": num("txp", int, dd["txp"]),
         }
 
     def _apply_radio(self, workflow, radio):

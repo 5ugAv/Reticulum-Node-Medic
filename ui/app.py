@@ -371,6 +371,11 @@ class ReticulumNodeMedicApp(App):
         wifi_scr.add_widget(self._with_back(WifiScreen()))
         self.sm.add_widget(wifi_scr)
 
+        radio_scr = Screen(name="radio_defaults")
+        from ui.screens.radio_defaults_screen import RadioDefaultsScreen
+        radio_scr.add_widget(self._with_back(RadioDefaultsScreen()))
+        self.sm.add_widget(radio_scr)
+
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
         # demos only when nothing is (dev box / no board) — see ui.hw_factories.
