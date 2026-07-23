@@ -121,6 +121,8 @@ class NodeRecord:
     announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
     links: Optional[dict] = None            # KIN-declared interfaces the node HAS
                                             # ({lora,wifi,bluetooth,internet}: True)
+    builder_hash: Optional[str] = None      # identity of the medic UNIT that
+                                            # birthed it; its trust => kin/neighbour
     notes: List[str] = field(default_factory=list)
     events: List[CommissionEvent] = field(default_factory=list)
 
@@ -161,9 +163,20 @@ class NodeRecord:
 
     @property
     def provenance(self) -> str:
-        """Interim provenance (full tiers are #54): a record that has spoken our
-        protocols (beacon / HTTP status) or was named/located by an operator is
-        KIN; a bare mesh-heard destination hash is a NEIGHBOUR."""
+        """Kin/neighbour classification.
+
+        When the birthing UNIT is KNOWN (``builder_hash`` set from this node's kin
+        roster entry), trust decides: a trusted builder (incl. this medic's own
+        unit = self) -> kin; a REVOKED builder -> neighbour. This is what makes
+        Settings' revoke actually demote a unit's birthed nodes.
+
+        When the builder is UNKNOWN (a heard mesh node, no roster), fall back to
+        the interim heuristic (#54): a record that has spoken our protocols
+        (beacon / HTTP status) or was named/located by an operator is KIN; a bare
+        mesh-heard destination hash is a NEIGHBOUR."""
+        if self.builder_hash is not None:
+            from monitor import trust           # lazy: avoid an import cycle
+            return trust.node_provenance(self.builder_hash, path=trust.CONFIG)
         ours = (self.latest_beacon is not None or self.latest_http is not None
                 or bool(self.name) or self.lat is not None)
         return "kin" if ours else "neighbour"
@@ -247,6 +260,8 @@ class NodeRegistry:
             rec.lon = entry["lon"]
         if entry.get("links"):
             rec.links = entry["links"]
+        if entry.get("builder"):
+            rec.builder_hash = entry["builder"]
 
     def ingest_relay(self, via_hash: str, interface: str, now: float) -> NodeRecord:
         """Surface the medic's DIRECT next-hop relay (a ``via`` in the path table)

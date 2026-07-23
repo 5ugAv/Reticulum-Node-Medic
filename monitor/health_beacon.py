@@ -76,7 +76,10 @@ BOARD_IDS = {
     0x52: "XIAO nRF",
 }
 
-# WiFi RSSI thresholds (dBm) for RTNode-2400 nodes.
+# WiFi RSSI thresholds (dBm) for RTNode-2400 nodes. Weak WiFi is only ever a
+# WARN, never an ALERT: a healthy node (no faults, LoRa up) that merely
+# associates at a weak RSSI must not go red. WIFI_ALERT_DBM is retained as the
+# "very weak" boundary but no longer escalates to alert on its own.
 WIFI_WARN_DBM = -75
 WIFI_ALERT_DBM = -85
 
@@ -192,15 +195,17 @@ def decode(app_data: bytes) -> HealthBeacon:
 
 
 def beacon_status(b: HealthBeacon) -> str:
-    """Map a beacon to a Monitor status colour: ok / warn / alert."""
+    """Map a beacon to a Monitor status colour: ok / warn / alert.
+
+    RED (alert) is reserved for real problems: a fault flag or LoRa down. Weak
+    WiFi RSSI only ever escalates to WARN (orange) — never alert — so a healthy
+    node associating on a weak link does not false-alarm.
+    """
     if b.fault or not b.lora_up:
         return "alert"
     status = "ok"
-    if b.wifi_up:
-        if b.wifi_rssi_dbm <= WIFI_ALERT_DBM:
-            return "alert"
-        if b.wifi_rssi_dbm <= WIFI_WARN_DBM:
-            status = "warn"
+    if b.wifi_up and b.wifi_rssi_dbm <= WIFI_WARN_DBM:
+        status = "warn"
     if not b.wdt_armed and status == "ok":
         status = "warn"
     return status

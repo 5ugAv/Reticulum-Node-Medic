@@ -46,11 +46,9 @@ _STEPS = {
                  "can write its operating system.",
          "anim": "insert_sd"},
         {"title": "Image the Pi",
-         "body": "Next we'll write Raspberry Pi OS to the card and set its name, "
-                 "Wi-Fi and password — a few details at a time.",
-         "hint": "SD imaging on the medic is coming — for now, image the card with "
-                 "Raspberry Pi Imager, then continue.",
-         "anim": None},
+         "body": "Now Node Medic writes Raspberry Pi OS to the card and sets its "
+                 "name, Wi-Fi and login — a few details, no computer needed.",
+         "anim": "insert_sd", "next": "Image the card  →", "screen": "pi_imager"},
         {"title": "Connect the radio board",
          "body": "Put the SD card into the Pi and power it on, then plug the radio "
                  "board into Node Medic with a USB cable.",

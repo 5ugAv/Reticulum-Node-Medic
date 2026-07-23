@@ -26,7 +26,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
-from monitor.health_beacon import WIFI_WARN_DBM, WIFI_ALERT_DBM
+from monitor.health_beacon import WIFI_WARN_DBM
 
 STATUS_PATH = "/status"
 STATUS_PORT = 80
@@ -60,7 +60,8 @@ def status_colour(d: dict) -> str:
 
     Mirrors ``health_beacon.beacon_status`` but uses the endpoint's explicit
     ``faults`` array. Missing fields default to the healthy interpretation so a
-    firmware that omits a key isn't falsely alarmed.
+    firmware that omits a key isn't falsely alarmed. Weak WiFi RSSI only ever
+    escalates to WARN — never alert; RED is reserved for faults / LoRa down.
     """
     if d.get("faults"):
         return "alert"
@@ -69,11 +70,8 @@ def status_colour(d: dict) -> str:
     status = "ok"
     if d.get("wifi_connected"):
         rssi = d.get("wifi_rssi")
-        if isinstance(rssi, (int, float)):
-            if rssi <= WIFI_ALERT_DBM:
-                return "alert"
-            if rssi <= WIFI_WARN_DBM:
-                status = "warn"
+        if isinstance(rssi, (int, float)) and rssi <= WIFI_WARN_DBM:
+            status = "warn"
     if not d.get("wdt_armed", True) and status == "ok":
         status = "warn"
     return status
