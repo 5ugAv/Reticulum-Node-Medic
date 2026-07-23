@@ -256,7 +256,7 @@ class InsertSdAnim(_LoopAnim):
                 pts = []
                 for i in range(k + 1):
                     pts += list(self._kv(*bez(i / n)))
-                Color(0.35, 0.59, 1, 1)               # bright blue guide arrow
+                Color(*theme.hex_to_rgba(theme.COLORS["red"]))   # red — Node Medic scheme
                 Line(points=pts, width=dp(3.4), joint="round", cap="round")
                 ex, ey = bez(k / n)                   # arrowhead along the tangent
                 px, py = bez((k - 1) / n)
@@ -269,7 +269,7 @@ class InsertSdAnim(_LoopAnim):
                 # phase 3 (>0.85): flash a ring at the target
                 if self.phase > 0.85 and int((self.phase - 0.85) / 0.04) % 2 == 0:
                     ecx, ecy = self._kv(*E)
-                    Color(0.47, 1.0, 0.55, 1)
+                    Color(1.0, 0.4, 0.4, 1)           # bright red flash ring
                     Line(circle=(ecx, ecy, dp(11)), width=dp(3))
         self._hide_label("medic")
         self._hide_label("card")
