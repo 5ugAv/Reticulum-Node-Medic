@@ -265,6 +265,16 @@ class ReticulumNodeMedicApp(App):
         wrap.add_content(widget)
         return wrap
 
+    def _stamp_born(self):
+        """Stamp this unit's born date once (from its RNS identity's mtime), so
+        Settings ▸ Tool identity can show it. Best-effort."""
+        try:
+            import time
+            from provisioning import tool_identity
+            tool_identity.ensure_born(time.time())
+        except Exception as e:
+            print(f"[identity] born-stamp skipped: {e}")
+
     def _restore_brightness(self):
         """Re-apply the saved screen brightness at boot (the backlight resets to
         default on reboot). Linux-only, off-thread, best-effort."""
@@ -310,6 +320,7 @@ class ReticulumNodeMedicApp(App):
 
         self._self_commission_onboard()
         self._restore_brightness()
+        self._stamp_born()
 
         # No sidebar: the front page IS the navigation (its cards open the
         # modes); every mode screen carries a BACK button bottom-right.
@@ -377,6 +388,11 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.radio_defaults_screen import RadioDefaultsScreen
         radio_scr.add_widget(self._with_back(RadioDefaultsScreen()))
         self.sm.add_widget(radio_scr)
+
+        identity_scr = Screen(name="tool_identity")
+        from ui.screens.tool_identity_screen import ToolIdentityScreen
+        identity_scr.add_widget(self._with_back(ToolIdentityScreen()))
+        self.sm.add_widget(identity_scr)
 
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
