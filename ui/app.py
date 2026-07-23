@@ -406,12 +406,19 @@ class ReticulumNodeMedicApp(App):
         # old separate gps_confirm page used to do.
         scan = Screen(name="scan")
         from monitor.geo import splitter_gps_reader, read_splitter_fix
+        from ui.screens.scan_screen import link_segments, suggestion_markers
+        from monitor.placement import suggest
+        self._scan_topo = None                    # rebuilt each poll cycle (rnpath)
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),
             gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
             fix_reader=read_splitter_fix,         # full fix -> live/held/none badge
             on_place=self._on_gps_confirmed,      # "Use this position" -> BIRTH
-            on_node_pick=self._open_node_cert)    # tap a node dot -> its certificate
+            on_node_pick=self._open_node_cert,    # tap a node dot -> its certificate
+            # mesh-lines toggle + "add a node here" gap markers (empty until topology)
+            links_provider=lambda: link_segments(self._scan_topo) if self._scan_topo else [],
+            suggestions_provider=lambda: (suggestion_markers(suggest(self._scan_topo))
+                                          if self._scan_topo else []))
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
 
@@ -565,12 +572,30 @@ class ReticulumNodeMedicApp(App):
                     located = self.monitor_service.located_nodes()
                     Clock.schedule_once(
                         lambda dt, n=located: self.scan_screen.set_nodes(n), 0)
+                    # topology for the SCAN mesh-lines + gap markers (rnpath is the
+                    # only source of located<->located edges; cheap, once per cycle)
+                    self._scan_topo = self._build_scan_topology()
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
                 stop.wait(interval)
 
         threading.Thread(target=loop, daemon=True).start()
+
+    def _build_scan_topology(self):
+        """The mesh topology (registry + rnpath path table) that drives SCAN's
+        mesh-lines + gap markers. Best-effort; None on any failure."""
+        try:
+            import json
+            import time
+            from monitor.topology import build_topology
+            raw = _local_run("rnpath -t --json 2>/dev/null") or "[]"
+            paths = json.loads(raw)
+            if not isinstance(paths, list):
+                paths = []
+            return build_topology(self.monitor_service.registry, paths, time.time())
+        except Exception:
+            return None
 
     def _start_announce_listener(self):
         """Hear announces live (via the shared rnsd): each carries the device
