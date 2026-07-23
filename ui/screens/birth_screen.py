@@ -63,6 +63,33 @@ PI_HOSTS = [
 #: Other GPS-capable boards can be added once their GPS is verified end-to-end.
 MITOSIS_BOARDS = {"heltec_wireless_tracker"}
 
+#: Rough seconds per build step, so the progress ring fills by ESTIMATED TIME (the
+#: firmware compile dominates) rather than jumping one flat notch per step. Under-
+#: estimates just snap forward when a step completes early (a cached rebuild is fast).
+_STEP_SECONDS = {
+    "detect_board": 8, "detect_port": 5, "detect_hardware": 20, "ensure_single_board": 3,
+    "ensure_firmware": 25, "confirm_radio_parameters": 2,
+    "flash_firmware": 300, "flash": 120, "flash_rnode_firmware": 150,
+    "set_params": 15, "set_firmware_radio_parameters": 15, "set_params_at_birth": 15,
+    "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
+    "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
+    "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
+    "birth_certificate": 3,
+}
+_DEFAULT_STEP_SECONDS = 12
+
+
+def _workflow_step_names(wf):
+    """Ordered step names of a build workflow (for progress weighting). Falls back
+    to the RNode-flash order when a workflow doesn't expose ``.steps``."""
+    steps = getattr(wf, "steps", None)
+    if steps:
+        try:
+            return [n for n, _ in steps]
+        except Exception:
+            pass
+    return ["detect_port", "ensure_single_board", "ensure_firmware", "flash", "set_params"]
+
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
     # height follows the wrapped text — fixed heights made long lines overlap
@@ -664,30 +691,55 @@ class BirthScreen(BoxLayout):
             return
         self.list.clear_widgets()
         self.list.add_widget(_line(title, bold=True))
-        # A live spinner so the operator KNOWS it's working — a firmware flash
-        # compiles for minutes between step lines and used to look frozen.
-        from ui.widgets.spinner import SpinnerWheel
+        # A progress RING that FILLS with a % as the build advances — determinate,
+        # not a scary indeterminate spinner. Weighted by estimated time per step
+        # (the flash dominates), and ticked so it climbs during the long compile.
+        import time
+        from ui.widgets.progress_ring import ProgressRing
+        self._build_ring = ProgressRing()
         self._build_busy = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                     height=dp(40), spacing=dp(10))
-        self._build_spinner = SpinnerWheel()
-        self._build_busy.add_widget(self._build_spinner)
+                                     height=dp(74), spacing=dp(12), padding=[0, dp(4)])
+        self._build_busy.add_widget(self._build_ring)
         self._build_busy.add_widget(_line(
-            "Working… flashing can take a few minutes. Keep the board plugged in.",
-            size="13.5sp", color="accent"))
+            "Working… the firmware compile is the slow part (a first build also "
+            "downloads the toolchain). Keep the board plugged in.",
+            size="13sp", color="accent"))
         self.list.add_widget(self._build_busy)
-        self._build_spinner.start()
+        self._pg_names = _workflow_step_names(workflow)
+        self._pg_secs = [_STEP_SECONDS.get(n, _DEFAULT_STEP_SECONDS) for n in self._pg_names]
+        self._pg_total = max(1.0, float(sum(self._pg_secs)))
+        self._pg_done = 0                        # completed step count
+        self._pg_step_start = time.monotonic()
+        self._build_ring.set_fraction(0.0)
+        self._pg_ev = Clock.schedule_interval(self._tick_progress, 0.2)
         self._workflow = workflow
         self._had_failure = False                # reset for this run's outcome
         threading.Thread(target=self._run, daemon=True).start()
 
-    def _stop_build_spinner(self):
-        sp = getattr(self, "_build_spinner", None)
-        if sp is not None:
-            sp.stop()
+    def _tick_progress(self, _dt):
+        ring = getattr(self, "_build_ring", None)
+        if ring is None:
+            return False                         # unschedule
+        import time
+        done = sum(self._pg_secs[:self._pg_done])
+        if self._pg_done < len(self._pg_secs):   # creep across the running step
+            cur = self._pg_secs[self._pg_done]
+            elapsed = time.monotonic() - self._pg_step_start
+            done += cur * min(0.97, elapsed / max(1.0, cur))
+        ring.set_fraction(done / self._pg_total)
+
+    def _stop_build_progress(self):
+        ev = getattr(self, "_pg_ev", None)
+        if ev is not None:
+            ev.cancel()
+            self._pg_ev = None
+        ring = getattr(self, "_build_ring", None)
+        if ring is not None:
+            ring.set_fraction(1.0)               # snap to 100%
         row = getattr(self, "_build_busy", None)
         if row is not None and row.parent:
             self.list.remove_widget(row)
-        self._build_busy = self._build_spinner = None
+        self._build_busy = self._build_ring = None
 
     def show_boards(self):
         """List every board the tool can flash as an RNode (official first,
@@ -765,6 +817,14 @@ class BirthScreen(BoxLayout):
             self._had_failure = True
         self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
                                    size="14sp"))
+        # advance the progress ring past the step that just finished
+        if getattr(self, "_pg_secs", None) and self._pg_done < len(self._pg_secs):
+            import time
+            self._pg_done += 1
+            self._pg_step_start = time.monotonic()
+            if getattr(self, "_build_ring", None) is not None:
+                self._build_ring.set_fraction(
+                    sum(self._pg_secs[:self._pg_done]) / self._pg_total)
         # Surface the reason on failure — otherwise an honest "not wired yet /
         # plug the board in" message is swallowed and only the step name shows.
         if not result.success and not result.skipped and getattr(result, "message", ""):
@@ -797,7 +857,7 @@ class BirthScreen(BoxLayout):
                                    "BACK.", size="13sp", color="text_secondary"))
 
     def _finish(self):
-        self._stop_build_spinner()               # build done -> stop the spinner
+        self._stop_build_progress()              # build done -> ring to 100%, remove
         self._outcome_panel()
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
