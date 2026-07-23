@@ -157,13 +157,15 @@ def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     port = wf.profile.connection_port
-    # nice + capped jobs so a first-build compile (which pins every core) still
-    # leaves the medic's touchscreen CPU to keep the progress ring animating —
-    # otherwise the UI freezes mid-flash and looks hung.
+    # THROTTLE the compile: only 2 of the Pi's 4 cores, at low priority (nice 15),
+    # so it can never overload the medic — the touchscreen stays smooth AND the live
+    # radio (rnsd), GPS splitter and mesh keep running during a flash. A bit slower
+    # than racing all cores, but the system stays responsive (progress ring fills
+    # smoothly instead of freezing). Timeout raised to 900s to allow the gentler pace.
     cmd = (f"cd {RTNODE_PROJECT_DIR} && "
-           f"nice -n 10 pio run -j 3 -e {wf.target.build_env} "
+           f"nice -n 15 pio run -j 2 -e {wf.target.build_env} "
            f"-t upload --upload-port {port}")
-    code, out, err = wf.connection.run(cmd, timeout=600)
+    code, out, err = wf.connection.run(cmd, timeout=900)
     ok = code == 0
     return StepResult("flash_firmware", ok,
                       f"Flashed RTNode-2400 firmware ({wf.target.display})." if ok
