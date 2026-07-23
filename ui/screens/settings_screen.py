@@ -54,12 +54,20 @@ class SettingsScreen(BoxLayout):
                                     "and lineage", "tool_identity"))
         self.add_widget(self._entry("Storage usage",
                                     "SD card space and what's using it", "storage"))
+        self.add_widget(self._entry("Trusted operators",
+                                    "Trust between cloned Node Medic units — the "
+                                    "family tree", "trusted_operators"))
+        self.add_widget(self._entry("Date & time",
+                                    "System clock and timezone — set manually or keep "
+                                    "it synced from GPS", "datetime"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
         self.add_widget(self._alerts_section())
         self.add_widget(self._retention_section())
-        # future rows (about…) slot in here.
+        self.add_widget(self._entry("About",
+                                    "Software version, test-suite status, uptime, "
+                                    "and licence", "about"))
         self.add_widget(Widget())          # push rows to the top
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects

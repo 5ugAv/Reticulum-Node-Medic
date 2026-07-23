@@ -301,6 +301,27 @@ class ReticulumNodeMedicApp(App):
         except Exception as e:
             print(f"[identity] born-stamp skipped: {e}")
 
+    def _register_self_unit(self):
+        """Record this medic's own unit in the trust store (always trusted) so
+        Settings ▸ Trusted operators shows the family tree. Off-thread — the RNS
+        identity read is a subprocess. Best-effort."""
+        import platform
+        if platform.system() != "Linux":
+            return
+
+        def work():
+            try:
+                from provisioning import tool_identity as ti
+                from monitor import trust
+                h = ti.identity_hash()
+                if h:
+                    par = ti.parent() or {}
+                    trust.set_self(h, ti.tool_name(), parent=par.get("hash"))
+            except Exception as e:
+                print(f"[trust] self-unit register skipped: {e}")
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+
     def _restore_brightness(self):
         """Re-apply the saved screen brightness at boot (the backlight resets to
         default on reboot). Linux-only, off-thread, best-effort."""
@@ -347,6 +368,7 @@ class ReticulumNodeMedicApp(App):
         self._self_commission_onboard()
         self._restore_brightness()
         self._stamp_born()
+        self._register_self_unit()
 
         # No sidebar: the front page IS the navigation (its cards open the
         # modes); every mode screen carries a BACK button bottom-right.
@@ -429,6 +451,21 @@ class ReticulumNodeMedicApp(App):
         storage_scr.add_widget(self._with_back(
             StorageScreen(history_bytes=self._history_bytes)))
         self.sm.add_widget(storage_scr)
+
+        trust_scr = Screen(name="trusted_operators")
+        from ui.screens.trusted_operators_screen import TrustedOperatorsScreen
+        trust_scr.add_widget(self._with_back(TrustedOperatorsScreen()))
+        self.sm.add_widget(trust_scr)
+
+        datetime_scr = Screen(name="datetime")
+        from ui.screens.datetime_screen import DateTimeScreen
+        datetime_scr.add_widget(self._with_back(DateTimeScreen()))
+        self.sm.add_widget(datetime_scr)
+
+        about_scr = Screen(name="about")
+        from ui.screens.about_screen import AboutScreen
+        about_scr.add_widget(self._with_back(AboutScreen()))
+        self.sm.add_widget(about_scr)
 
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated

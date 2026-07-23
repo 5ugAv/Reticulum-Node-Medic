@@ -23,6 +23,7 @@ EXPECTED_STEPS = [
     "copy_kin_roster",
     "generate_fresh_identity",
     "stamp_lineage",
+    "record_child_trust",
     "configure_autostart",
     "final_verification",
 ]

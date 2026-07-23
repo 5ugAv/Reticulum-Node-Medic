@@ -794,6 +794,13 @@ class BirthScreen(BoxLayout):
         cert = getattr(self._workflow, "birth_certificate", None)
         if cert:
             cert = self._stamp_identity(dict(cert))   # name + location
+            # A completed BIRTH consumes any active triage survey, which auto-clears
+            # it so it can't carry over to the next build.
+            try:
+                from monitor import triage
+                triage.consume_active_session()
+            except Exception:
+                pass
             from ui.cert_store import save_cert
             try:
                 self._saved_cert_id = save_cert(cert)     # keep it on the medic
