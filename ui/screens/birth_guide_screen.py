@@ -107,6 +107,10 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(step)
         self._current = step
         step.start()
+        # A "connect your board" step loops until the medic SENSES a board on USB,
+        # then the animation fires its green "Connected!" burst.
+        if isinstance(anim, ConnectBoardAnim):
+            self._start_board_poll(anim)
 
     # -- navigation --------------------------------------------------------
     def _next(self):
@@ -130,6 +134,42 @@ class BirthGuideScreen(BoxLayout):
             self._on_complete(path)
 
     def _stop_current(self):
+        self._stop_board_poll()
         if self._current is not None and hasattr(self._current, "stop"):
             self._current.stop()
         self._current = None
+
+    # -- board-presence gate ------------------------------------------------
+    def _start_board_poll(self, anim):
+        """Poll for a work board on the medic's USB; fire the anim's Connected!
+        burst the moment one appears. Checks off-thread (serial enumeration)."""
+        from kivy.clock import Clock
+        self._stop_board_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                present = False
+                try:
+                    from ui.hw_factories import hardware_present
+                    present = hardware_present()
+                except Exception:
+                    present = False
+                if present:
+                    Clock.schedule_once(lambda _d: self._on_board_present(anim), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._board_poll = Clock.schedule_interval(tick, 1.2)
+        tick(0)                                       # check immediately too
+
+    def _on_board_present(self, anim):
+        self._stop_board_poll()
+        if hasattr(anim, "mark_connected"):
+            anim.mark_connected()
+
+    def _stop_board_poll(self):
+        ev = getattr(self, "_board_poll", None)
+        if ev is not None:
+            ev.cancel()
+            self._board_poll = None
