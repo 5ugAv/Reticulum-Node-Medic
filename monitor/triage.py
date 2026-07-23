@@ -195,6 +195,12 @@ class TriageSession:
         self._dipped = False              # have we moved OFF the peak yet?
         self._calibrated_seen = False     # goal tracking starts once calibrated
         self._goal_after = 0.0            # don't track the goal before this t
+        self.consumed = False             # set once a BIRTH has consumed this survey
+
+    def mark_consumed(self) -> None:
+        """A BIRTH has taken this survey's result (its signal baseline / mount
+        spot) onto a certificate — flag it so it can't be reused."""
+        self.consumed = True
 
     def feed(self, snr: float, rssi: float, noise: float, t: float) -> Dict:
         self.calib.observe(snr, rssi, noise)
@@ -285,3 +291,48 @@ class TriageSession:
         if not past:
             return False
         return smoothed < past[-1].score - LOCK_STABILITY
+
+
+# --- Active-survey registry: the ONE triage session BIRTH may consume --------
+#
+# Triage surveys a mount point; the operator then BIRTHs the node there, and the
+# survey's result (its signal baseline / located spot) rides onto the birth
+# certificate. The Settings spec requires that a triage session AUTO-CLEARS once
+# a BIRTH consumes it — otherwise the next, unrelated birth would silently
+# inherit a stale mount survey. This tiny registry is the shared handoff point:
+# Triage registers the live session, BIRTH consumes it, and consumption clears
+# it in the same step (there is no "consume but leave it lying around" path).
+
+_active_session: Optional["TriageSession"] = None
+
+
+def set_active_session(session: Optional["TriageSession"]) -> None:
+    """Register (or, with None, clear) the current mount-survey session. Triage
+    calls this when it starts surveying a spot."""
+    global _active_session
+    _active_session = session
+
+
+def active_session() -> Optional["TriageSession"]:
+    """The mount-survey session awaiting a BIRTH, or None once none is pending."""
+    return _active_session
+
+
+def clear_active_session() -> None:
+    """Drop the pending survey without consuming it (e.g. the operator left
+    Triage without birthing)."""
+    global _active_session
+    _active_session = None
+
+
+def consume_active_session() -> Optional["TriageSession"]:
+    """BIRTH takes the pending survey: mark it consumed, AUTO-CLEAR the registry
+    so it can't be reused, and hand the session back so the caller can stamp its
+    ``best_reading`` onto the certificate. Returns None when nothing was pending
+    (a birth with no prior triage)."""
+    global _active_session
+    session = _active_session
+    _active_session = None                 # auto-clear — the whole point
+    if session is not None:
+        session.mark_consumed()
+    return session

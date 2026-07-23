@@ -191,6 +191,28 @@ def stamp_lineage(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def record_child_trust(wf: "CloneWorkflow") -> StepResult:
+    """Record the new clone in THIS (source) medic's trust store as a trusted
+    DIRECT child unit — you made it, so you trust it. Its own future clones are
+    NOT covered (trust is non-transitive; grandchildren need manual approval)."""
+    child = getattr(wf, "fresh_identity_hash", None)
+    if not child:
+        return StepResult("record_child_trust", True,
+                          "No child identity hash captured — skipped.")
+    try:
+        from monitor import trust
+        from provisioning import tool_identity as ti
+        self_hash = ti.identity_hash()
+        if self_hash:
+            trust.set_self(self_hash, ti.tool_name())
+        trust.record_child_clone(child, f"Clone {child[:8]}", parent_hash=self_hash or "")
+    except Exception as e:
+        return StepResult("record_child_trust", False, f"Could not record trust: {e}")
+    return StepResult("record_child_trust", True,
+                      f"Recorded clone {child[:8]} as a trusted child unit.")
+
+
+@clone_step
 def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     # A systemd service so the clone boots into the tool. Runs main.py as the
     # login user with its ~/.local/bin on PATH (pip --user console scripts).

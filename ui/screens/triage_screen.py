@@ -163,6 +163,13 @@ class TriageScreen(FloatLayout):
         """Called when the Triage screen opens: auto-activate the beacon and
         show the right prompt (aim / power-on / build)."""
         self._beacon_answered = False
+        # Publish this survey as the active triage session so a subsequent BIRTH
+        # consumes + auto-clears it (no stale session pins the next build).
+        try:
+            from monitor import triage
+            triage.set_active_session(self._session)
+        except Exception:
+            pass
         self._hide_connect_modal()
         if self._watchdog is not None:
             self._watchdog.cancel()
