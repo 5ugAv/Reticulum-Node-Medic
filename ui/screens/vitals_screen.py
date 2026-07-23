@@ -133,6 +133,22 @@ class VitalsScreen(BoxLayout):
         self.filter_bar.add_widget(search)
         self.add_widget(self.filter_bar)
 
+        # Alert banner (Settings ▸ Alerts) — shows when a node is orange/red; the
+        # alerting nodes are also pushed to the top of the list.
+        from kivy.graphics import Color, Rectangle
+        self.alert_banner = Label(text="", size_hint_y=None, height=dp(0),
+                                  halign="left", valign="middle", bold=True,
+                                  font_size="14sp", padding=(dp(10), 0),
+                                  color=theme.hex_to_rgba(theme.COLORS["background"]))
+        with self.alert_banner.canvas.before:
+            self._ab_color = Color(*theme.status_rgba("alert", 0))
+            self._ab_rect = Rectangle()
+        self.alert_banner.bind(
+            pos=lambda *_: setattr(self._ab_rect, "pos", self.alert_banner.pos),
+            size=lambda i, v: (setattr(self._ab_rect, "size", v),
+                               setattr(i, "text_size", (v[0] - dp(20), v[1]))))
+        self.add_widget(self.alert_banner)
+
         self.scroll = ScrollView()
         self.grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(4))
         self.grid.bind(minimum_height=self.grid.setter("height"))
@@ -189,6 +205,18 @@ class VitalsScreen(BoxLayout):
         self.refresh()
 
     def refresh(self):
+        from monitor import alerts
+        enabled = alerts.is_enabled()
+        # banner reflects the CURRENT alerting set (whole fleet, not the filtered view)
+        text = alerts.banner_text(self.nodes) if enabled else ""
+        self.alert_banner.text = text
+        self.alert_banner.height = dp(34) if text else dp(0)
+        self._ab_color.a = 0.92 if text else 0.0
+
+        rows = self.visible_nodes()
+        if enabled:
+            worst = {"alert": 0, "warn": 1}         # push orange/red to the top
+            rows = sorted(rows, key=lambda n: worst.get(n.get("status"), 2))
         self.grid.clear_widgets()
-        for node in self.visible_nodes():
+        for node in rows:
             self.grid.add_widget(NodeRow(node, on_open=self._on_open))
