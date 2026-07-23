@@ -664,9 +664,30 @@ class BirthScreen(BoxLayout):
             return
         self.list.clear_widgets()
         self.list.add_widget(_line(title, bold=True))
+        # A live spinner so the operator KNOWS it's working — a firmware flash
+        # compiles for minutes between step lines and used to look frozen.
+        from ui.widgets.spinner import SpinnerWheel
+        self._build_busy = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                     height=dp(40), spacing=dp(10))
+        self._build_spinner = SpinnerWheel()
+        self._build_busy.add_widget(self._build_spinner)
+        self._build_busy.add_widget(_line(
+            "Working… flashing can take a few minutes. Keep the board plugged in.",
+            size="13.5sp", color="accent"))
+        self.list.add_widget(self._build_busy)
+        self._build_spinner.start()
         self._workflow = workflow
         self._had_failure = False                # reset for this run's outcome
         threading.Thread(target=self._run, daemon=True).start()
+
+    def _stop_build_spinner(self):
+        sp = getattr(self, "_build_spinner", None)
+        if sp is not None:
+            sp.stop()
+        row = getattr(self, "_build_busy", None)
+        if row is not None and row.parent:
+            self.list.remove_widget(row)
+        self._build_busy = self._build_spinner = None
 
     def show_boards(self):
         """List every board the tool can flash as an RNode (official first,
@@ -776,6 +797,7 @@ class BirthScreen(BoxLayout):
                                    "BACK.", size="13sp", color="text_secondary"))
 
     def _finish(self):
+        self._stop_build_spinner()               # build done -> stop the spinner
         self._outcome_panel()
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
