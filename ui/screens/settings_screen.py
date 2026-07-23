@@ -42,6 +42,9 @@ class SettingsScreen(BoxLayout):
         self._on_open = on_open
 
         self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
+        self.add_widget(self._entry("Default radio parameters",
+                                    "Frequency, bandwidth, SF, CR, TX power that BIRTH "
+                                    "pre-fills — includes regional presets", "radio_defaults"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
