@@ -52,6 +52,8 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._entry("Tool identity",
                                     "This medic's Reticulum identity, name, born date "
                                     "and lineage", "tool_identity"))
+        self.add_widget(self._entry("Storage usage",
+                                    "SD card space and what's using it", "storage"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())

@@ -282,6 +282,15 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             return 0
 
+    def _history_bytes(self):
+        """Live in-memory beacon-history size (it isn't persisted to disk yet), for
+        the Storage-usage breakdown."""
+        try:
+            import json
+            return len(json.dumps(self.monitor_service.registry.history.to_dict()))
+        except Exception:
+            return 0
+
     def _stamp_born(self):
         """Stamp this unit's born date once (from its RNS identity's mtime), so
         Settings ▸ Tool identity can show it. Best-effort."""
@@ -414,6 +423,12 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.tool_identity_screen import ToolIdentityScreen
         identity_scr.add_widget(self._with_back(ToolIdentityScreen()))
         self.sm.add_widget(identity_scr)
+
+        storage_scr = Screen(name="storage")
+        from ui.screens.storage_screen import StorageScreen
+        storage_scr.add_widget(self._with_back(
+            StorageScreen(history_bytes=self._history_bytes)))
+        self.sm.add_widget(storage_scr)
 
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
