@@ -14,6 +14,7 @@ Sophie's artwork replaces the placeholders by filename.
 
 from __future__ import annotations
 
+import math
 import os
 
 from kivy.animation import Animation
@@ -194,11 +195,19 @@ class InsertSdAnim(_LoopAnim):
     _CARD_START = (-235.0, 618.0)
     _CARD_IN = (-30.0, 250.0)
 
+    def __init__(self, **kwargs):
+        kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
+        super().__init__(**kwargs)
+
     def _blit(self, tex, tlx, tly, w, h):
         """Draw *tex* given its TOP-LEFT in a y-DOWN widget frame (0,0 = top-left)."""
         Color(1, 1, 1, 1)
         Rectangle(texture=tex, pos=(self.x + tlx, self.y + self.height - tly - h),
                   size=(w, h))
+
+    def _kv(self, x, y_down):
+        """y-DOWN widget point -> Kivy (y-up) window point."""
+        return (self.x + x, self.y + self.height - y_down)
 
     def _draw(self):
         medic = _texture(MEDIC_PNG)
@@ -207,39 +216,61 @@ class InsertSdAnim(_LoopAnim):
         if medic is None or reader is None or card is None:
             return self._draw_fallback()
         w, h = self.width, self.height
-        # medic anchored right, aspect preserved
+        # medic anchored upper-right (smaller, so the arrow has room to U-turn below)
         ma = medic.width / float(medic.height)
-        mh = h * 0.92
+        mh = h * 0.64
         mw = mh * ma
-        if mw > w * 0.58:
-            mw = w * 0.58
+        if mw > w * 0.42:
+            mw = w * 0.42
             mh = mw / ma
-        m_tlx, m_tly = w - mw - dp(4), (h - mh) / 2.0
-        # reader + card scaled together (same source scale)
-        rh = mh * 0.46
-        s = rh / reader.height
-        rw = reader.width * s
+        m_tlx, m_tly = w - mw - dp(6), 0.03 * h
+        # reader + card, left / upper-middle; card scaled by the same source scale
+        s = (0.34 * h) / reader.height
+        rw, rh = reader.width * s, reader.height * s
         cw, ch = card.width * s, card.height * s
+        rtx, rty = 0.05 * w, 0.20 * h
         start_rel = (self._CARD_START[0] * s, self._CARD_START[1] * s)
         in_rel = (self._CARD_IN[0] * s, self._CARD_IN[1] * s)
-        # unit (reader top-left) path: lower-left -> docked at the medic
-        u_start = (0.06 * w, h - rh - 0.12 * h)
-        u_end = (m_tlx - rw + 0.10 * rw, m_tly + 0.30 * mh)
-        p = self.phase
-        if p <= 0.5:                                  # phase 1: card slides into reader
-            t = p / 0.5
-            ux, uy = u_start
-            crel = (start_rel[0] + (in_rel[0] - start_rel[0]) * t,
-                    start_rel[1] + (in_rel[1] - start_rel[1]) * t)
-        else:                                         # phase 2: unit moves to the medic
-            t = (p - 0.5) / 0.5
-            ux = u_start[0] + (u_end[0] - u_start[0]) * t
-            uy = u_start[1] + (u_end[1] - u_start[1]) * t
-            crel = in_rel
+        # phase 1 (0-0.35): card slides into the reader
+        t1 = min(1.0, self.phase / 0.35)
+        crel = (start_rel[0] + (in_rel[0] - start_rel[0]) * t1,
+                start_rel[1] + (in_rel[1] - start_rel[1]) * t1)
+        # arrow: reader-bottom -> DOWN -> U-turn -> UP to the medic's bottom-centre
+        S = (rtx + rw * 0.5, rty + rh)
+        E = (m_tlx + mw * 0.5, m_tly + mh)
+        C1, C2 = (S[0], 0.93 * h), (E[0], 0.93 * h)
+
+        def bez(t):
+            u = 1 - t
+            return (u ** 3 * S[0] + 3 * u * u * t * C1[0] + 3 * u * t * t * C2[0] + t ** 3 * E[0],
+                    u ** 3 * S[1] + 3 * u * u * t * C1[1] + 3 * u * t * t * C2[1] + t ** 3 * E[1])
+
         with self.canvas:
             self._blit(medic, m_tlx, m_tly, mw, mh)
-            self._blit(reader, ux, uy, rw, rh)
-            self._blit(card, ux + crel[0], uy + crel[1], cw, ch)
+            self._blit(reader, rtx, rty, rw, rh)
+            self._blit(card, rtx + crel[0], rty + crel[1], cw, ch)
+            if self.phase > 0.4:                      # phase 2 (0.4-0.85): arrow travels
+                q = min(1.0, (self.phase - 0.4) / 0.45)
+                n = 48
+                k = max(2, int(n * q))
+                pts = []
+                for i in range(k + 1):
+                    pts += list(self._kv(*bez(i / n)))
+                Color(0.35, 0.59, 1, 1)               # bright blue guide arrow
+                Line(points=pts, width=dp(3.4), joint="round", cap="round")
+                ex, ey = bez(k / n)                   # arrowhead along the tangent
+                px, py = bez((k - 1) / n)
+                ang = math.atan2(ey - py, ex - px)
+                tip = self._kv(ex, ey)
+                for a in (ang + 2.5, ang - 2.5):
+                    barb = self._kv(ex - dp(13) * math.cos(a), ey - dp(13) * math.sin(a))
+                    Line(points=[tip[0], tip[1], barb[0], barb[1]],
+                         width=dp(3.4), cap="round")
+                # phase 3 (>0.85): flash a ring at the target
+                if self.phase > 0.85 and int((self.phase - 0.85) / 0.04) % 2 == 0:
+                    ecx, ecy = self._kv(*E)
+                    Color(0.47, 1.0, 0.55, 1)
+                    Line(circle=(ecx, ecy, dp(11)), width=dp(3))
         self._hide_label("medic")
         self._hide_label("card")
 
