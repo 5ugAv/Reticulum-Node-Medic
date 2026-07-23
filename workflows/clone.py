@@ -168,6 +168,29 @@ def generate_fresh_identity(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def stamp_lineage(wf: "CloneWorkflow") -> StepResult:
+    """Record on the CLONE which parent unit it descended from — its own
+    tool-identity store gets a ``parent`` = THIS (source) medic's identity + name.
+    Trust is per-unit and never transitive (Settings ▸ Trusted operators), so a
+    clone knows its parent but inherits no trust automatically. The clone stamps
+    its OWN born date on first boot (from its fresh identity)."""
+    from provisioning import tool_identity as ti
+    src_hash = ti.identity_hash()                    # this source medic (local)
+    src_name = ti.tool_name()
+    payload = json.dumps(
+        {"parent": {"hash": src_hash, "name": src_name,
+                    "via": "cloned from this unit"}}, indent=2, sort_keys=True)
+    code, out, err = wf.connection.run(
+        "mkdir -p ~/.reticulum-node-medic && "
+        f"cat > ~/.reticulum-node-medic/tool_identity.json <<'RNMEOF'\n{payload}\nRNMEOF")
+    ok = code == 0
+    return StepResult("stamp_lineage", ok,
+                      f"Stamped lineage on the clone: parent {src_name}"
+                      f"{' (' + src_hash + ')' if src_hash else ''}." if ok
+                      else f"Could not stamp lineage: {(err or out)[-160:]}")
+
+
+@clone_step
 def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     # A systemd service so the clone boots into the tool. Runs main.py as the
     # login user with its ~/.local/bin on PATH (pip --user console scripts).

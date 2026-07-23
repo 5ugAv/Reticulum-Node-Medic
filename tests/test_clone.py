@@ -22,6 +22,7 @@ EXPECTED_STEPS = [
     "copy_monitoring_db",
     "copy_kin_roster",
     "generate_fresh_identity",
+    "stamp_lineage",
     "configure_autostart",
     "final_verification",
 ]
@@ -166,6 +167,22 @@ def test_clone_never_copies_the_source_identity():
 
 
 # ---- autostart -----------------------------------------------------------
+
+def test_stamp_lineage_records_parent_on_clone(monkeypatch):
+    # source medic's own identity/name are read locally; clone gets them as parent
+    monkeypatch.setattr("provisioning.tool_identity.identity_hash",
+                        lambda run=None: "abc123")
+    monkeypatch.setattr("provisioning.tool_identity.tool_name",
+                        lambda path=None: "Origin Medic")
+    c = conn()
+    w = wf(c)
+    r = _run(w, "stamp_lineage")
+    assert r.success
+    wrote = [cmd for cmd in c.history if "tool_identity.json" in cmd]
+    assert wrote and '"parent"' in wrote[0]
+    assert "abc123" in wrote[0] and "Origin Medic" in wrote[0]
+    assert "cloned from this unit" in wrote[0]
+
 
 def test_configure_autostart_writes_and_enables_service():
     c = conn()

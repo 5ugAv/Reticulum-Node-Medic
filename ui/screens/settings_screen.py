@@ -45,6 +45,9 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._entry("Default radio parameters",
                                     "Frequency, bandwidth, SF, CR, TX power that BIRTH "
                                     "pre-fills — includes regional presets", "radio_defaults"))
+        self.add_widget(self._entry("Tool identity",
+                                    "This medic's Reticulum identity, name, born date "
+                                    "and lineage", "tool_identity"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
