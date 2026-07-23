@@ -31,8 +31,9 @@ _ANIM_DIR = os.path.normpath(os.path.join(
 MEDIC_PNG = os.path.join(_ANIM_DIR, "node_medic.png")             # angled medic (SD step)
 MEDIC_CABLE_PNG = os.path.join(_ANIM_DIR, "node_medic_cable.png")  # medic w/ USB cable
 LORA_PNG = os.path.join(_ANIM_DIR, "lora32.png")                   # the radio board
-SD_READER_PNG = os.path.join(_ANIM_DIR, "sd_reader.png")           # microSD + card reader
-SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")
+SD_READER_PNG = os.path.join(_ANIM_DIR, "sd_reader.png")           # microSD + card reader (combined)
+SD_READER_BODY_PNG = os.path.join(_ANIM_DIR, "sd_reader_body.png")  # card reader alone
+SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")                    # the microSD card alone
 BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
 
 #: The medic's USB plug tip within node_medic_cable.png (normalised, from top-left).
@@ -183,54 +184,80 @@ class ConnectBoardAnim(_LoopAnim):
 
 
 class InsertSdAnim(_LoopAnim):
-    """An SD card slides into the Node Medic's card reader slot."""
+    """Two-phase: the microSD card slides into the card reader, then the reader +
+    card move together toward the Node Medic (it has no native card slot). Uses the
+    illustrated sprites; falls back to a schematic if the art is absent."""
+
+    # card position RELATIVE to the reader top-left, in the SOURCE image px the
+    # sprites were cut from (y DOWN): start = card sitting below-left of the reader;
+    # inserted = slid up into the slot. Scaled by the reader's screen scale.
+    _CARD_START = (-235.0, 618.0)
+    _CARD_IN = (-30.0, 250.0)
+
+    def _blit(self, tex, tlx, tly, w, h):
+        """Draw *tex* given its TOP-LEFT in a y-DOWN widget frame (0,0 = top-left)."""
+        Color(1, 1, 1, 1)
+        Rectangle(texture=tex, pos=(self.x + tlx, self.y + self.height - tly - h),
+                  size=(w, h))
 
     def _draw(self):
+        medic = _texture(MEDIC_PNG)
+        reader = _texture(SD_READER_BODY_PNG)
+        card = _texture(SD_PNG)
+        if medic is None or reader is None or card is None:
+            return self._draw_fallback()
+        w, h = self.width, self.height
+        # medic anchored right, aspect preserved
+        ma = medic.width / float(medic.height)
+        mh = h * 0.92
+        mw = mh * ma
+        if mw > w * 0.58:
+            mw = w * 0.58
+            mh = mw / ma
+        m_tlx, m_tly = w - mw - dp(4), (h - mh) / 2.0
+        # reader + card scaled together (same source scale)
+        rh = mh * 0.46
+        s = rh / reader.height
+        rw = reader.width * s
+        cw, ch = card.width * s, card.height * s
+        start_rel = (self._CARD_START[0] * s, self._CARD_START[1] * s)
+        in_rel = (self._CARD_IN[0] * s, self._CARD_IN[1] * s)
+        # unit (reader top-left) path: lower-left -> docked at the medic
+        u_start = (0.06 * w, h - rh - 0.12 * h)
+        u_end = (m_tlx - rw + 0.10 * rw, m_tly + 0.30 * mh)
+        p = self.phase
+        if p <= 0.5:                                  # phase 1: card slides into reader
+            t = p / 0.5
+            ux, uy = u_start
+            crel = (start_rel[0] + (in_rel[0] - start_rel[0]) * t,
+                    start_rel[1] + (in_rel[1] - start_rel[1]) * t)
+        else:                                         # phase 2: unit moves to the medic
+            t = (p - 0.5) / 0.5
+            ux = u_start[0] + (u_end[0] - u_start[0]) * t
+            uy = u_start[1] + (u_end[1] - u_start[1]) * t
+            crel = in_rel
+        with self.canvas:
+            self._blit(medic, m_tlx, m_tly, mw, mh)
+            self._blit(reader, ux, uy, rw, rh)
+            self._blit(card, ux + crel[0], uy + crel[1], cw, ch)
+        self._hide_label("medic")
+        self._hide_label("card")
+
+    def _draw_fallback(self):
+        """Schematic (no art): an SD card slides into the medic."""
         x, y, w, h = self.x, self.y, self.width, self.height
         cy = y + h / 2
         mw, mh = w * 0.44, h * 0.62
         mx, my = x + w - mw, cy - mh / 2
         cw, ch = w * 0.20, h * 0.34
         start_x = x + w * 0.05
-        dock_x = mx - cw + dp(12)                    # ends slightly inside the medic
-        p = min(1.0, self.phase / 0.85)
-        cx = start_x + (dock_x - start_x) * p
-        medic_tex, sd_tex = _texture(MEDIC_PNG), _texture(SD_PNG)
+        cx = start_x + (mx - cw + dp(12) - start_x) * min(1.0, self.phase / 0.85)
         with self.canvas:
-            if medic_tex:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
-            else:
-                _draw_medic_vector(mx, my, mw, mh)
-                slot_w, slot_h = dp(14), dp(46)      # reader slot (fallback only)
-                Color(*theme.hex_to_rgba(theme.COLORS["background"]))
-                RoundedRectangle(pos=(mx - slot_w, cy - slot_h / 2),
-                                 size=(slot_w, slot_h), radius=[dp(2)] * 4)
-            if sd_tex:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=sd_tex, pos=(cx, cy - ch / 2), size=(cw, ch))
-            else:
-                Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
-                RoundedRectangle(pos=(cx, cy - ch / 2), size=(cw, ch), radius=[dp(4)] * 4)
-                Color(*theme.hex_to_rgba(theme.COLORS["background"]))
-                notch = dp(10)                       # SD's cut corner
-                RoundedRectangle(pos=(cx, cy + ch / 2 - notch), size=(notch, notch))
-            if self.phase > 0.85:                    # docked glow
-                Color(*theme.hex_to_rgba(theme.COLORS["green"], 0.9))
-                Line(circle=(mx, cy, dp(12)), width=dp(2))
-        if medic_tex:
-            self._hide_label("medic")
-        else:
-            medic = self._label("medic", text="NODE\nMEDIC", font_size="15sp",
-                                bold=True, halign="center", valign="middle",
-                                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            medic.size = (mw, dp(40))
-            medic.pos = (mx, my - dp(44))
-        if sd_tex:
-            self._hide_label("card")
-        else:
-            card = self._label("card", text="SD", font_size="14sp", bold=True,
-                              halign="center", valign="middle",
-                              color=theme.hex_to_rgba(theme.COLORS["background"]))
-            card.size = (cw, ch)
-            card.pos = (cx, cy - ch / 2)
+            _draw_medic_vector(mx, my, mw, mh)
+            Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+            RoundedRectangle(pos=(cx, cy - ch / 2), size=(cw, ch), radius=[dp(4)] * 4)
+        card = self._label("card", text="SD", font_size="14sp", bold=True,
+                          halign="center", valign="middle",
+                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+        card.size = (cw, ch)
+        card.pos = (cx, cy - ch / 2)
