@@ -368,7 +368,9 @@ class ReticulumNodeMedicApp(App):
         # WiFi connect — join a hotspot / venue AP so online features work afield.
         wifi_scr = Screen(name="wifi")
         from ui.screens.wifi_screen import WifiScreen
-        wifi_scr.add_widget(self._with_back(WifiScreen()))
+        self.wifi_screen = WifiScreen()
+        wifi_scr.add_widget(self._with_back(self.wifi_screen))
+        wifi_scr.bind(on_enter=lambda *_: self.wifi_screen.enter())   # auto-search
         self.sm.add_widget(wifi_scr)
 
         radio_scr = Screen(name="radio_defaults")
