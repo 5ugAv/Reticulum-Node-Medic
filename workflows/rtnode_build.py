@@ -157,8 +157,12 @@ def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     port = wf.profile.connection_port
+    # nice + capped jobs so a first-build compile (which pins every core) still
+    # leaves the medic's touchscreen CPU to keep the progress ring animating —
+    # otherwise the UI freezes mid-flash and looks hung.
     cmd = (f"cd {RTNODE_PROJECT_DIR} && "
-           f"pio run -e {wf.target.build_env} -t upload --upload-port {port}")
+           f"nice -n 10 pio run -j 3 -e {wf.target.build_env} "
+           f"-t upload --upload-port {port}")
     code, out, err = wf.connection.run(cmd, timeout=600)
     ok = code == 0
     return StepResult("flash_firmware", ok,
