@@ -128,6 +128,23 @@ class ConnectBoardAnim(_LoopAnim):
     Uses the illustrated sprites (medic-with-cable on the right, board small on the
     left, docking on the plug tip); falls back to a schematic if the art is absent."""
 
+    burst = NumericProperty(0.0)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._connected = False
+        self.bind(burst=self._redraw)
+
+    def mark_connected(self):
+        """The medic sensed a board on USB — stop looping, dock the board, and fire
+        a one-shot green 'Connected!' burst from the plug/board junction."""
+        if self._connected:
+            return
+        self._connected = True
+        self.stop()                                   # halt the descend loop
+        self.phase = 1.0                              # freeze the board docked
+        Animation(burst=1.0, duration=0.8, t="out_quad").start(self)
+
     def _draw(self):
         medic_tex, board_tex = _texture(MEDIC_CABLE_PNG), _texture(LORA_PNG)
         if medic_tex is None or board_tex is None:
@@ -158,6 +175,20 @@ class ConnectBoardAnim(_LoopAnim):
             Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
             Color(1, 1, 1, 1)
             Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
+            if self._connected:                      # green burst from the junction
+                fade = max(0.0, 1.0 - self.burst)
+                Color(0.2, 0.9, 0.4, fade)
+                Line(circle=(tipx, tipy, dp(8) + self.burst * dp(54)), width=dp(3.5))
+                Color(0.2, 0.9, 0.4, fade * 0.55)
+                Line(circle=(tipx, tipy, dp(8) + self.burst * dp(32)), width=dp(2.5))
+        if self._connected:
+            lbl = self._label("connected", text="Connected!", font_size="21sp",
+                              bold=True, halign="center", valign="middle",
+                              color=theme.hex_to_rgba(theme.COLORS["green"]))
+            lbl.size = (dp(180), dp(30))
+            lbl.pos = (tipx - dp(90), tipy - dp(50))
+        else:
+            self._hide_label("connected")
         self._hide_label("medic")
         self._hide_label("board")
 
