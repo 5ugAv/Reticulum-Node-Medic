@@ -215,6 +215,44 @@ class ConnectBoardAnim(_LoopAnim):
         board.pos = (bx, cy - bh / 2)
 
 
+class ProvisionAnim(_LoopAnim):
+    """PLACEHOLDER: Node Medic configuring the node over its setup WiFi — the medic
+    (right) and the small node (left) with pulsing WiFi arcs between them. Rough
+    stand-in for Sophie's artwork; the geometry + intent are what's set."""
+
+    def _draw(self):
+        medic = _texture(MEDIC_PNG)
+        node = _texture(LORA_PNG)
+        x, y, w, h = self.x, self.y, self.width, self.height
+        cy = y + h / 2
+        with self.canvas:
+            if medic is not None:
+                ma = medic.width / float(medic.height)
+                mh = h * 0.72
+                mw = mh * ma
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(x + w - mw - dp(6), cy - mh / 2),
+                          size=(mw, mh))
+            if node is not None:
+                na = node.width / float(node.height)
+                nh = h * 0.34
+                nw = nh * na
+                Color(1, 1, 1, 1)
+                Rectangle(texture=node, pos=(x + w * 0.06, cy - nh / 2), size=(nw, nh))
+            # pulsing WiFi arcs from the node toward the medic (3 staggered rings)
+            ax = x + w * 0.30
+            for i in range(3):
+                p = (self.phase + i / 3.0) % 1.0
+                Color(*theme.hex_to_rgba(theme.COLORS["accent"], max(0.0, 1.0 - p)))
+                r = dp(8) + p * dp(60)
+                Line(circle=(ax, cy, r, -35, 35), width=dp(3))
+        lbl = self._label("prov", text="Node Medic is setting up your node…",
+                         font_size="13sp", bold=True, halign="center", valign="middle",
+                         color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        lbl.size = (w, dp(24))
+        lbl.pos = (x, y + dp(4))
+
+
 class InsertSdAnim(_LoopAnim):
     """Two-phase: the microSD card slides into the card reader, then the reader +
     card move together toward the Node Medic (it has no native card slot). Uses the

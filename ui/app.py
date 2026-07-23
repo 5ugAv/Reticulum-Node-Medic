@@ -473,8 +473,9 @@ class ReticulumNodeMedicApp(App):
         from ui import hw_factories as hw
         self.birth_screen = BirthScreen(
             workflow_factories={
-                "rtnode2400": lambda target=None:
-                    hw.make_rtnode_build(_demo_rtnode_build, target=target),
+                "rtnode2400": lambda target=None, node_name="":
+                    hw.make_rtnode_build(_demo_rtnode_build, target=target,
+                                         node_name=node_name),
                 "pi_rnode": _pi_rnode_factory},   # honest-fail until the real flow lands
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),

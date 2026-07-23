@@ -306,3 +306,67 @@ def test_onboard_no_gps_fix_leaves_advert_off():
             gps_reader=lambda: None,             # no fix
             do_join=False, post=cap_post)
     assert "advert_en=0" in body["b"]
+
+
+# ---- auto-provisioning (join AP -> POST /save -> rejoin medic wifi) ----------
+
+from workflows import rtnode_portal as rp
+
+
+def _ok_post(url, body, headers):
+    return (200, "Device will reboot in 3 seconds and connect to your WiFi network.")
+
+
+def test_provision_node_success_sends_name_and_medic_wifi():
+    seen = {}
+    def post(url, body, headers):
+        seen["url"], seen["body"] = url, body
+        return _ok_post(url, body, headers)
+    rejoined = []
+    ok, msg = rp.provision_node(
+        NodeProfile(), "FAITH B", "Laspalmas_5g", "hunter2",
+        join_ap=lambda ssid: (True, "joined"),
+        post=post, rejoin=lambda ssid: rejoined.append(ssid) or True)
+    assert ok
+    assert "node_name=FAITH+B" in seen["body"]           # name reaches the board
+    assert "ssid=Laspalmas_5g" in seen["body"] and "psk=hunter2" in seen["body"]
+    assert seen["url"].endswith("/save")
+    assert rejoined == ["Laspalmas_5g"]                   # medic wifi restored
+
+
+def test_provision_node_always_rejoins_even_when_post_fails():
+    rejoined = []
+    ok, msg = rp.provision_node(
+        NodeProfile(), "N", "MyWifi", "pw",
+        join_ap=lambda ssid: (True, "joined"),
+        post=lambda u, b, h: (500, "error"),
+        rejoin=lambda ssid: rejoined.append(ssid) or True)
+    assert not ok
+    assert rejoined == ["MyWifi"]                         # finally: restored anyway
+
+
+def test_provision_node_rejoins_when_ap_join_fails():
+    rejoined = []
+    ok, msg = rp.provision_node(
+        NodeProfile(), "N", "MyWifi", "pw",
+        join_ap=lambda ssid: (False, "no AP"),
+        post=_ok_post, rejoin=lambda ssid: rejoined.append(ssid) or True)
+    assert not ok and "Could not join" in msg
+    assert rejoined == ["MyWifi"]                         # never stranded offline
+
+
+def test_medic_wifi_credentials_parses_nmcli():
+    def fake_nmcli(argv):
+        if "--active" in argv:
+            return "Wired connection 1:ethernet\nLaspalmas_nomap_5g:802-11-wireless\n"
+        if "802-11-wireless.ssid" in argv:
+            return "Laspalmas_nomap_5g\n"
+        if "psk" in " ".join(argv):
+            return "s3cr3t\n"
+        return ""
+    ssid, psk = rp.medic_wifi_credentials(run=fake_nmcli)
+    assert ssid == "Laspalmas_nomap_5g" and psk == "s3cr3t"
+
+
+def test_medic_wifi_credentials_empty_when_no_wifi():
+    assert rp.medic_wifi_credentials(run=lambda a: "") == ("", "")

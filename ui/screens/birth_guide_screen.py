@@ -20,10 +20,11 @@ from kivy.uix.label import Label
 from ui import theme
 from ui.birth_guide_flow import BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
-from ui.widgets.birth_anims import ConnectBoardAnim, InsertSdAnim
+from ui.widgets.birth_anims import ConnectBoardAnim, InsertSdAnim, ProvisionAnim
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
-_ANIMS = {"connect_board": ConnectBoardAnim, "insert_sd": InsertSdAnim}
+_ANIMS = {"connect_board": ConnectBoardAnim, "insert_sd": InsertSdAnim,
+          "provision": ProvisionAnim}
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):

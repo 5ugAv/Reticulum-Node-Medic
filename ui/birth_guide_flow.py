@@ -29,9 +29,15 @@ _STEPS = {
                  "powers it and will detect it automatically.",
          "hint": "Use a DATA USB cable — a charge-only cable won't be seen.",
          "anim": "connect_board"},
+        {"title": "Node Medic configures it for you",
+         "body": "After flashing, Node Medic joins your node's own setup Wi-Fi, sets "
+                 "its name and radio settings, and puts it on your network — no manual "
+                 "web portal needed.",
+         "hint": "The medic briefly leaves your Wi-Fi to talk to the node, then rejoins.",
+         "anim": "provision"},            # ANIMATION PLACEHOLDER — refine with Sophie
         {"title": "Let's set it up",
-         "body": "Node Medic will now detect the board, then walk you through naming "
-                 "it and flashing the firmware.",
+         "body": "Node Medic will now detect the board, flash the firmware, then name "
+                 "and configure the node automatically.",
          "anim": None, "next": "Start setup  →"},
     ],
     "pi": [

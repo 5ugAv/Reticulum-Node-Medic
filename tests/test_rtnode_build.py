@@ -357,3 +357,26 @@ def test_firmware_provenance_matches_carried_flasher():
     assert RTNODE_REPO_URL in body
     assert RTNODE_BRANCH in body
     assert RTNODE_BUILD_ENV in body
+
+
+def test_wifi_onboarding_auto_provisions_with_name_and_medic_wifi():
+    from workflows.rtnode_build import RTNodeBuildWorkflow, wifi_onboarding
+    from node_profile import NodeProfile
+    calls = {}
+    def provision(profile, name, ssid, psk, **kw):
+        calls["args"] = (name, ssid, psk)
+        return (True, "configured")
+    w = RTNodeBuildWorkflow(conn(), NodeProfile(), node_name="FAITH B",
+                            auto_provision=True, provision=provision,
+                            wifi_credentials=lambda: ("Home", "pw"))
+    r = wifi_onboarding(w)
+    assert r.success
+    assert calls["args"] == ("FAITH B", "Home", "pw")
+
+
+def test_wifi_onboarding_manual_fallback_when_not_auto():
+    from workflows.rtnode_build import RTNodeBuildWorkflow, wifi_onboarding
+    from node_profile import NodeProfile
+    w = RTNodeBuildWorkflow(conn(), NodeProfile(), node_name="N")  # auto_provision off
+    r = wifi_onboarding(w)
+    assert r.skipped and "RTNode-Setup" in r.message
