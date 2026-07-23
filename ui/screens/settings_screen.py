@@ -14,6 +14,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.slider import Slider
+from kivy.uix.switch import Switch
 from kivy.uix.widget import Widget
 
 from ui import theme
@@ -51,7 +52,8 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
-        # future rows (radio defaults, about…) slot in here.
+        self.add_widget(self._alerts_section())
+        # future rows (about…) slot in here.
         self.add_widget(Widget())          # push rows to the top
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
@@ -105,6 +107,25 @@ class SettingsScreen(BoxLayout):
 
     def _apply_brightness(self, pct):
         threading.Thread(target=lambda: bright.set_brightness(pct), daemon=True).start()
+
+    # -- alerts -------------------------------------------------------------
+    def _alerts_section(self):
+        from monitor import alerts
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line("Alerts", bold=True, size="15sp", color="accent", h=26))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
+                        spacing=dp(10))
+        row.add_widget(_line("Alert me when a node goes orange or red", size="14sp"))
+        sw = Switch(active=alerts.is_enabled(), size_hint_x=None, width=dp(90))
+        sw.bind(active=lambda _i, v: alerts.set_enabled(bool(v)))
+        row.add_widget(sw)
+        box.add_widget(row)
+        box.add_widget(_line(
+            "Visual for now — a banner on VITALS and the affected nodes pushed to "
+            "the top. (An audible option can be added later.)",
+            size="12sp", color="text_secondary", h=34))
+        return box
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
