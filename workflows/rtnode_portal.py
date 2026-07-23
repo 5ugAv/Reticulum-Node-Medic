@@ -171,6 +171,77 @@ def _default_join_ap(ssid: str, attempts: int = 3,
     return (False, last)
 
 
+def _nmcli(argv) -> str:
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=20).stdout
+    except Exception:
+        return ""
+
+
+def medic_wifi_credentials(run: Callable[[list], str] = _nmcli) -> Tuple[str, str]:
+    """The medic's OWN active WiFi (ssid, psk) — the network a built node should
+    join (so the medic can reach it over the LAN) and the one to rejoin after the
+    AP hop. Reads nmcli (psk needs sudo). Returns ("", "") if unavailable."""
+    name = ""
+    for line in (run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show",
+                      "--active"]) or "").splitlines():
+        if "wireless" in line:
+            name = line.split(":")[0]
+            break
+    if not name:
+        return ("", "")
+    ssid = (run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show",
+                 name]) or "").strip()
+    psk = (run(["sudo", "-n", "nmcli", "-s", "-g", "802-11-wireless-security.psk",
+                "connection", "show", name]) or "").strip()
+    return (ssid, psk)
+
+
+def rejoin_medic_wifi(ssid: str, run: Callable[[list], str] = _nmcli) -> bool:
+    """Rejoin the medic's own WiFi after the AP hop. NM usually auto-reconnects a
+    saved network, but we ask explicitly to be sure the medic comes back online."""
+    if not ssid:
+        return False
+    run(["sudo", "-n", "nmcli", "device", "wifi", "rescan", "ssid", ssid])
+    out = run(["sudo", "-n", "nmcli", "device", "wifi", "connect", ssid])
+    return "successfully" in (out or "").lower() or "activated" in (out or "").lower()
+
+
+def provision_node(
+    profile: NodeProfile,
+    node_name: str,
+    medic_ssid: str,
+    medic_psk: str,
+    *,
+    lat: float = None,
+    lon: float = None,
+    join_ap: Callable[[str], Tuple[bool, str]] = _default_join_ap,
+    post: Callable[[str, str, Dict[str, str]], Tuple[int, str]] = _default_post,
+    rejoin: Callable[[str], bool] = None,
+    ap_ssid: str = PORTAL_SSID,
+) -> Tuple[bool, str]:
+    """Auto-provision a freshly-flashed RTNode over its ``RTNode-Setup`` AP: build
+    the ``/save`` form (node name + the MEDIC's own WiFi so the node joins the same
+    LAN + our LoRa params + fuzzed location), join the AP, POST, then ALWAYS rejoin
+    the medic's WiFi (even on failure) so the medic never strands itself offline.
+    Returns ``(ok, human_message)``. All I/O injected for tests."""
+    rejoin = rejoin or rejoin_medic_wifi
+    form = build_form(profile, node_name=node_name, wifi_ssid=medic_ssid,
+                      wifi_password=medic_psk, lat=lat, lon=lon)
+    joined, jmsg = join_ap(ap_ssid)
+    if not joined:
+        rejoin(medic_ssid)                         # make sure we're still online
+        return (False, f"Could not join {ap_ssid} to configure the node: {jmsg}")
+    try:
+        ok, msg = submit_form(form, post=post)
+    finally:
+        rejoin(medic_ssid)                         # ALWAYS restore the medic's WiFi
+    if ok:
+        return (True, f"Node configured as '{node_name or 'RTNode'}' and joined "
+                      f"{medic_ssid}; it reboots and beacons in ~30 s.")
+    return (False, msg)
+
+
 def onboard(
     profile: NodeProfile,
     node_name: str,

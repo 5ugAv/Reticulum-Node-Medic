@@ -11,7 +11,7 @@ def test_three_intro_paths_in_order():
 
 
 def test_step_counts_per_path():
-    assert len(guide_steps("radio")) == 2
+    assert len(guide_steps("radio")) == 3      # connect -> auto-provision -> setup
     assert len(guide_steps("pi")) == 4
     assert len(guide_steps("host")) == 2
 
@@ -42,4 +42,4 @@ def test_last_step_hands_off_to_setup():
 def test_guide_steps_returns_a_copy():
     a = guide_steps("radio")
     a.append({"title": "x", "body": "y"})
-    assert len(guide_steps("radio")) == 2          # internal list untouched
+    assert len(guide_steps("radio")) == 3          # internal list untouched

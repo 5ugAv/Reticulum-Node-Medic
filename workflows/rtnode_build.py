@@ -190,7 +190,25 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
     wf.gps_fix = fix
     lat = fix.lat if fix else None
     lon = fix.lon if fix else None
-    wf.onboarding = build_form(wf.profile, lat=lat, lon=lon)
+
+    # AUTO-provision: the medic joins the board's RTNode-Setup AP and POSTs /save
+    # (node name + the medic's OWN WiFi so the node joins the same LAN + our LoRa
+    # params + fuzzed location), then rejoins its own WiFi. Falls back to printing
+    # manual portal instructions when auto-provision is off / creds unavailable.
+    if wf.auto_provision and wf._provision and wf._wifi_credentials:
+        ssid, psk = wf._wifi_credentials()
+        wf.onboarding = build_form(wf.profile, node_name=wf.node_name,
+                                   wifi_ssid=ssid, wifi_password=psk, lat=lat, lon=lon)
+        if not ssid:
+            return StepResult("wifi_onboarding", False,
+                              "Can't auto-provision: the medic isn't on WiFi to share "
+                              "with the node. Join WiFi, or configure the node manually "
+                              f"at {ONBOARDING_URL}.")
+        ok, msg = wf._provision(wf.profile, wf.node_name, ssid, psk, lat=lat, lon=lon,
+                                join_ap=wf._join_ap, post=wf._post, rejoin=wf._rejoin)
+        return StepResult("wifi_onboarding", ok, msg)
+
+    wf.onboarding = build_form(wf.profile, node_name=wf.node_name, lat=lat, lon=lon)
     f = wf.onboarding
     loc_note = (f"GPS captured ({f['advert_lat']}, {f['advert_lon']}) — "
                 f"advertised fuzzed on the public map."
@@ -280,9 +298,24 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
 class RTNodeBuildWorkflow:
     def __init__(self, connection: Connection, profile: NodeProfile,
                  gps_reader=None, target: str = DEFAULT_TARGET,
-                 board_port: Optional[str] = None):
+                 board_port: Optional[str] = None, node_name: str = "",
+                 auto_provision: bool = False, provision=None,
+                 wifi_credentials=None, join_ap=None, post=None, rejoin=None):
         self.connection = connection
         self.profile = profile
+        #: The operator's chosen node name — flows into the portal /save form so the
+        #: board itself takes the name (not just the medic's records).
+        self.node_name = node_name
+        #: When True, wifi_onboarding AUTO-provisions over the RTNode-Setup AP
+        #: (join -> POST /save -> rejoin the medic's WiFi) instead of just printing
+        #: instructions. Off by default (tests + a bare workflow don't hop WiFi);
+        #: the real factory turns it on with live nmcli/HTTP functions.
+        self.auto_provision = auto_provision
+        self._provision = provision            # injected: rtnode_portal.provision_node
+        self._wifi_credentials = wifi_credentials  # () -> (ssid, psk)
+        self._join_ap = join_ap
+        self._post = post
+        self._rejoin = rejoin
         #: The WORK board's serial port, pinned by the caller (via
         #: local_board_ports, which EXCLUDES the medic's own onboard radio). When
         #: set, detect_board uses it instead of naively taking the first

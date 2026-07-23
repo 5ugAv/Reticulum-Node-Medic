@@ -164,12 +164,14 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
 
 def make_rtnode_build(demo_factory: Callable, connection=None,
                       ports_fn: Callable[[], list] = local_board_ports,
-                      target=None):
+                      target=None, node_name: str = ""):
     """Build an RTNode-2400 on an ESP32-S3 board attached to the medic. *target*
     selects the RTNode-2400 variant (Heltec V4 / T-Beam Supreme); None uses the
-    default (Heltec V4)."""
+    default. *node_name* names the node — it flows into the portal /save form so
+    the board takes the name and joins the medic's WiFi automatically."""
     from workflows.rtnode_build import DEFAULT_TARGET
     board_port = None
+    real = connection is None
     if connection is None:
         ports = list(ports_fn())          # WORK boards only (excludes Jonesey)
         if not ports:
@@ -181,9 +183,19 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
                 "the build again.", "No board attached")
         board_port = ports[0]             # pin to the work board, never the radio
         connection = LocalConnection()
+    # On a REAL medic build, auto-provision over the RTNode-Setup AP with live
+    # nmcli/HTTP functions; a bare/emulated workflow leaves it off (no WiFi hop).
+    kw = {}
+    if real:
+        from workflows import rtnode_portal as rp
+        kw = dict(auto_provision=True, node_name=node_name,
+                  provision=rp.provision_node,
+                  wifi_credentials=rp.medic_wifi_credentials,
+                  join_ap=rp._default_join_ap, post=rp._default_post,
+                  rejoin=rp.rejoin_medic_wifi)
     return RTNodeBuildWorkflow(connection, NodeProfile(),
                                target=target or DEFAULT_TARGET,
-                               board_port=board_port)
+                               board_port=board_port, **kw)
 
 
 def make_repair_workflow(demo_factory: Callable, connection=None,

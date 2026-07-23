@@ -512,7 +512,8 @@ class BirthScreen(BoxLayout):
     def _run_rtnode(self):
         """Kick off the real RTNode-2400 build on the attached board (or honest-fail
         with why, if it can't run)."""
-        workflow = self._factories["rtnode2400"](self._rtnode_target)
+        workflow = self._factories["rtnode2400"](self._rtnode_target,
+                                                 self._name_in.text.strip())
         tgt = RTNODE_TARGETS[self._rtnode_target]
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
