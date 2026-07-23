@@ -35,12 +35,15 @@ class SettingsScreen(BoxLayout):
     """A menu of settings. ``on_open(target)`` navigates to a setting's screen
     (e.g. ``"wifi"``)."""
 
-    def __init__(self, on_open=None, **kwargs):
+    def __init__(self, on_open=None, on_retention_change=None,
+                 node_count_provider=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.spacing = dp(10)
         self.padding = dp(16)
         self._on_open = on_open
+        self._on_retention_change = on_retention_change
+        self._node_count_provider = node_count_provider
 
         self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
         self.add_widget(self._entry("Default radio parameters",
@@ -53,6 +56,7 @@ class SettingsScreen(BoxLayout):
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
         self.add_widget(self._alerts_section())
+        self.add_widget(self._retention_section())
         # future rows (about…) slot in here.
         self.add_widget(Widget())          # push rows to the top
 
@@ -126,6 +130,53 @@ class SettingsScreen(BoxLayout):
             "the top. (An audible option can be added later.)",
             size="12sp", color="text_secondary", h=34))
         return box
+
+    # -- beacon history retention -------------------------------------------
+    def _retention_section(self):
+        from monitor import retention
+        self._ret_days = retention.load_days()
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line("Beacon history retention", bold=True, size="15sp",
+                             color="accent", h=26))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
+                        spacing=dp(8))
+        minus = Button(text="–", size_hint_x=None, width=dp(52), bold=True,
+                       font_size="22sp", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        minus.bind(on_release=lambda *_: self._step_retention(-1))
+        self._ret_lbl = _line("", size="17sp", h=46)
+        self._ret_lbl.halign = "center"
+        plus = Button(text="+", size_hint_x=None, width=dp(52), bold=True,
+                      font_size="22sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        plus.bind(on_release=lambda *_: self._step_retention(+1))
+        row.add_widget(minus)
+        row.add_widget(self._ret_lbl)
+        row.add_widget(plus)
+        box.add_widget(row)
+        self._ret_impact = _line("", size="12.5sp", color="text_secondary", h=22)
+        box.add_widget(self._ret_impact)
+        self._refresh_retention()
+        return box
+
+    def _step_retention(self, direction):
+        from monitor import retention
+        self._ret_days = retention.set_days(
+            retention.step(self._ret_days, direction))
+        if self._on_retention_change:
+            self._on_retention_change(self._ret_days)
+        self._refresh_retention()
+
+    def _refresh_retention(self):
+        from monitor import retention
+        self._ret_lbl.text = f"{self._ret_days} days"
+        n = self._node_count_provider() if self._node_count_provider else 0
+        est = retention.estimate_bytes(self._ret_days, max(n, 1))
+        self._ret_impact.text = (f"Storage impact: ≈ {retention.format_size(est)} "
+                                 f"for {n} node{'s' if n != 1 else ''} (estimate)")
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
