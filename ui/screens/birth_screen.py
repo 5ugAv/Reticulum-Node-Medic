@@ -995,24 +995,57 @@ class BirthScreen(BoxLayout):
                 triage.consume_active_session()
             except Exception:
                 pass
-            from ui.cert_store import save_cert
-            try:
-                self._saved_cert_id = save_cert(cert)     # keep it on the medic
-                cert["_id"] = self._saved_cert_id
-            except OSError:
-                self._saved_cert_id = None
-            self._cert = cert
-            self._register_kin(cert)                  # stamp builder=this medic's unit
-            self.list.add_widget(_line("Birth certificate:", bold=True,
-                                       size="16sp"))
-            self.list.add_widget(_line("    (saved on this Node Medic)",
-                                       size="12sp", color="text_secondary"))
-            for k, v in cert.items():
-                if k.startswith("_"):
-                    continue
-                self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
-            self._add_cert_qr(cert)
-            self._add_notes_panel()
+            # GATE: never bake a location into the cert unseen. If this node has
+            # a location, confirm it on a map first (catches a wrong/stale GPS fix
+            # or a mistyped address before a repair crew drives to the wrong spot).
+            self._confirm_location_then_commit(cert)
+
+    def _confirm_location_then_commit(self, cert):
+        """Show the map confirm popup for this cert's location, then commit. No
+        location -> commit straight away; popup unavailable -> commit as-is."""
+        from ui.screens.cert_view_screen import cert_latlon
+        ll = cert_latlon(cert)
+        if ll is None:
+            self._commit_cert(cert)
+            return
+        try:
+            from ui.widgets.confirm_location import ConfirmLocationPopup
+            from monitor.geo import splitter_gps_reader
+
+            def _ok(lat, lon):
+                cert["location"] = f"{lat:.6f}, {lon:.6f} (confirmed)"
+                self._commit_cert(cert)
+
+            def _cancel():
+                cert.pop("location", None)    # don't bake an unconfirmed pin
+                self._commit_cert(cert)
+
+            ConfirmLocationPopup(
+                ll[0], ll[1], node_name=cert.get("node_name", ""),
+                on_confirm=_ok, on_cancel=_cancel,
+                gps_reader=splitter_gps_reader()).open()
+        except Exception:
+            self._commit_cert(cert)
+
+    def _commit_cert(self, cert):
+        """Persist the (location-confirmed) cert, enrol kin, and render it."""
+        from ui.cert_store import save_cert
+        try:
+            self._saved_cert_id = save_cert(cert)     # keep it on the medic
+            cert["_id"] = self._saved_cert_id
+        except OSError:
+            self._saved_cert_id = None
+        self._cert = cert
+        self._register_kin(cert)                  # stamp builder=this medic's unit
+        self.list.add_widget(_line("Birth certificate:", bold=True, size="16sp"))
+        self.list.add_widget(_line("    (saved on this Node Medic)",
+                                   size="12sp", color="text_secondary"))
+        for k, v in cert.items():
+            if k.startswith("_"):
+                continue
+            self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
+        self._add_cert_qr(cert)
+        self._add_notes_panel()
 
     def _register_kin(self, cert):
         """Record the birthed node in the medic's kin roster, stamped with

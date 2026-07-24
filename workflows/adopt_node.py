@@ -51,6 +51,9 @@ class AdoptWorkflow:
     gps_reader: Optional[Callable[[], Optional[Tuple[float, float]]]] = None
     #: operator-confirmed name (overrides the detected one); blank keeps detected.
     node_name_override: str = ""
+    #: operator-CONFIRMED (lat, lon); when set it overrides gps_reader (the map
+    #: confirm popup already vetted it), so an unseen fix can't be baked in.
+    location: Optional[Tuple[float, float]] = None
     save_cert: Optional[Callable[[dict], str]] = None
     register_kin: Optional[Callable[..., object]] = None
     builder_hash: Optional[str] = None
@@ -90,7 +93,10 @@ class AdoptWorkflow:
         c = self.classification or {}
         params = c.get("params") or {}
         location = None
-        if self.gps_reader is not None:
+        if self.location is not None:                # operator-confirmed on the map
+            location = {"lat": self.location[0], "lon": self.location[1],
+                        "source": "confirmed"}
+        elif self.gps_reader is not None:
             try:
                 fix = self.gps_reader()
             except Exception:

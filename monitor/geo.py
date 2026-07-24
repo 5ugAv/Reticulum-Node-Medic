@@ -194,6 +194,34 @@ def geocode_address(address: str,
         return None
 
 
+def reverse_geocode(lat: float, lon: float,
+                    fetch: Optional[Callable[[str], str]] = None,
+                    timeout: float = 8.0) -> Optional[str]:
+    """Reverse-geocode coordinates to a human ADDRESS string via OSM Nominatim —
+    the sanity check on a node's location ("is this the right street?") before it's
+    written to the birth certificate. NEEDS INTERNET; returns None offline / on a
+    bad response (the operator then judges by the map pin + coordinates alone).
+    *fetch* is injected for tests."""
+    try:
+        lat = float(lat); lon = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if fetch is None:
+        def fetch(url: str) -> str:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": GEOCODE_USER_AGENT})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "ignore")
+    url = ("https://nominatim.openstreetmap.org/reverse?format=json&zoom=18"
+           f"&lat={lat:.6f}&lon={lon:.6f}")
+    try:
+        data = json.loads(fetch(url))
+        name = data.get("display_name")
+        return name or None
+    except Exception:
+        return None
+
+
 def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
                         ) -> Callable[[], Optional[Tuple[float, float]]]:
     """A ``read_gps``-compatible reader (``() -> (lat, lon) | None``) sourced from

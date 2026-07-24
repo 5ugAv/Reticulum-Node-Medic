@@ -175,6 +175,31 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(wrap)
 
     def _do_adopt(self, c):
+        # GATE: the medic is AT the node for a USB adopt, so confirm its GPS on a
+        # map before it's baked into the cert (catches a wrong/stale fix).
+        name = (self._adopt_name.text or "").strip()
+        fix = None
+        try:
+            from monitor.geo import read_gps
+            f = read_gps()
+            fix = (f.lat, f.lon) if f else None
+        except Exception:
+            fix = None
+        if fix is None:
+            self._run_adopt(c, name, None)
+            return
+        try:
+            from ui.widgets.confirm_location import ConfirmLocationPopup
+            from monitor.geo import splitter_gps_reader
+            ConfirmLocationPopup(
+                fix[0], fix[1], node_name=name or c.get("name", ""),
+                on_confirm=lambda lat, lon: self._run_adopt(c, name, (lat, lon)),
+                on_cancel=lambda: self._run_adopt(c, name, None),
+                gps_reader=splitter_gps_reader()).open()
+        except Exception:
+            self._run_adopt(c, name, fix)
+
+    def _run_adopt(self, c, name, location):
         self._stop_current()
         self.clear_widgets()
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
@@ -187,7 +212,6 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(self._adopt_status)
         wrap.add_widget(Widget())
         self.add_widget(wrap)
-        name = (self._adopt_name.text or "").strip()
         import threading
 
         def work():
@@ -195,7 +219,7 @@ class BirthGuideScreen(BoxLayout):
             try:
                 from ui.adopt_live import make_adopt_workflow
                 wf = make_adopt_workflow(board_port=c.get("_port"),
-                                         name_override=name)
+                                         name_override=name, location=location)
                 wf.run_all()
                 ok = wf.succeeded
                 msg = wf.results[-1].message if wf.results else msg

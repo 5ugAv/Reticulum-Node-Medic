@@ -114,3 +114,18 @@ def test_heard_candidates_lists_devices_neighbours_first():
     assert provs.index("neighbour") < provs.index("kin")
     # every candidate carries a kin key for enrolment
     assert all(c["key"] for c in cands)
+
+
+def test_confirmed_location_overrides_gps():
+    """An operator-confirmed location wins over the raw GPS reader (the map gate
+    already vetted it)."""
+    saved, kin, save_cert, register_kin = _capture_writers()
+    wf = AdoptWorkflow(board_port="/dev/ttyACM0",
+                       banner_reader=lambda p: FAITH_BANNER,
+                       status_reader=lambda: FAITH_STATUS,
+                       gps_reader=lambda: (1.0, 2.0),          # raw GPS
+                       location=(-37.70, 145.00),             # confirmed on map
+                       save_cert=save_cert, register_kin=register_kin)
+    wf.run_all()
+    assert saved["cert"]["location"] == {"lat": -37.70, "lon": 145.00,
+                                         "source": "confirmed"}

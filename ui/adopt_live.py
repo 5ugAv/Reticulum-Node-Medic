@@ -145,7 +145,8 @@ def over_air_adopt(key: str, name: str, node_type: str = "rtnode2400",
 
 
 def make_adopt_workflow(board_port: Optional[str] = None,
-                        name_override: str = "") -> AdoptWorkflow:
+                        name_override: str = "",
+                        location: Optional[tuple] = None) -> AdoptWorkflow:
     """An AdoptWorkflow bound to the medic's real serial/HTTP readers and the real
     cert store + kin roster, stamped with this medic's builder identity."""
     if board_port is None:
@@ -194,5 +195,5 @@ def make_adopt_workflow(board_port: Optional[str] = None,
     return AdoptWorkflow(
         board_port=board_port, banner_reader=banner_reader,
         status_reader=status_reader, gps_reader=gps_reader,
-        node_name_override=name_override, save_cert=save_cert,
-        register_kin=register_kin, builder_hash=builder)
+        node_name_override=name_override, location=location,
+        save_cert=save_cert, register_kin=register_kin, builder_hash=builder)
