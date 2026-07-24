@@ -791,7 +791,18 @@ class BirthScreen(BoxLayout):
         self._pg_ev = Clock.schedule_interval(self._tick_progress, 0.2)
         self._workflow = workflow
         self._had_failure = False                # reset for this run's outcome
+        self._mark_activity(True)                # keep the screensaver off the flash
         threading.Thread(target=self._run, daemon=True).start()
+
+    def _mark_activity(self, on):
+        """Tell the app a flash/build is (not) running so the screensaver can't
+        cover it. Best-effort — never let it break a build."""
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            (app.begin_activity if on else app.end_activity)()
+        except Exception:
+            pass
 
     def _tick_progress(self, _dt):
         ring = getattr(self, "_build_ring", None)
@@ -934,6 +945,7 @@ class BirthScreen(BoxLayout):
                                    "BACK.", size="13sp", color="text_secondary"))
 
     def _finish(self):
+        self._mark_activity(False)               # build done -> screensaver allowed again
         self._stop_build_progress()              # build done -> ring to 100%, remove
         self._outcome_panel()
         onboarding = getattr(self._workflow, "onboarding", None)

@@ -319,13 +319,34 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             pass
 
+    #: Screens where the operator is mid-task (flashing, imaging, aiming an
+    #: antenna) — the screensaver must NOT cover the action / progress. On these it
+    #: re-arms the idle timer instead of showing, so it never hides a live process.
+    _NO_SAVER_SCREENS = {"birth", "birth_guide", "pi_imager", "triage", "probe",
+                         "mitosis", "self_diagnose"}
+
     def _show_screensaver(self):
         try:
             from provisioning import screensaver as ss
+            sm = getattr(self, "sm", None)
+            busy = ((sm is not None and sm.current in self._NO_SAVER_SCREENS)
+                    or getattr(self, "_activity", 0) > 0)
+            if busy:
+                self._reset_idle()            # defer — don't cover an active process
+                return
             if not self._screensaver.active:
                 self._screensaver.show(ss.style())
         except Exception:
             pass
+
+    def begin_activity(self):
+        """Mark a long, touch-free process running (a flash/build) so the
+        screensaver can't cover it even from a passive screen. Balanced by
+        end_activity()."""
+        self._activity = getattr(self, "_activity", 0) + 1
+
+    def end_activity(self):
+        self._activity = max(0, getattr(self, "_activity", 0) - 1)
 
     def _dismiss_screensaver(self):
         self._screensaver.hide()
