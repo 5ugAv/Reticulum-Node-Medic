@@ -46,8 +46,15 @@ class BoardCard(FloatLayout):
         self._img.bind(pos=self._reposition, size=self._reposition,
                        norm_image_size=self._reposition)
         self.bind(size=self._reposition, pos=self._reposition)
+        # Nested BoxLayouts settle over several frames and the image texture loads
+        # async, so a single deferred pass can run against a mid-layout position and
+        # never re-fire. Re-place a few times as things settle (cheap — just moves a
+        # label), then stop; also re-place on any later window resize.
         from kivy.clock import Clock
-        Clock.schedule_once(self._reposition, 0)
+        from kivy.core.window import Window
+        self._settle = Clock.schedule_interval(self._reposition, 1 / 15.0)
+        Clock.schedule_once(lambda dt: self._settle and self._settle.cancel(), 1.2)
+        Window.bind(size=self._reposition)
 
     # -- public -------------------------------------------------------------
     def set_name(self, text):
