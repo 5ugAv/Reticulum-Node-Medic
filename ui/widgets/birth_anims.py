@@ -71,6 +71,7 @@ class _LoopAnim(Widget):
         super().__init__(**kwargs)
         self._duration = duration
         self._anim = None
+        self._ev = None
         self._labels = {}
         self.bind(phase=self._redraw, pos=self._redraw, size=self._redraw)
 
@@ -90,16 +91,21 @@ class _LoopAnim(Widget):
             lbl.opacity = 0
 
     def start(self):
+        # Clock-driven so it ACTUALLY loops: Kivy's Animation(repeat=True) reaches
+        # phase 1.0 and freezes (the board just stuck docked). A ticked phase that
+        # wraps 0->1->0 loops the descend/pulse until the step ends or is stopped.
+        from kivy.clock import Clock
         self.stop()
         self.phase = 0.0
-        self._anim = Animation(phase=1.0, duration=self._duration, t="in_out_sine")
-        self._anim.repeat = True
-        self._anim.start(self)
+        self._ev = Clock.schedule_interval(self._tick, 1 / 60.0)
+
+    def _tick(self, dt):
+        self.phase = (self.phase + dt / max(0.1, self._duration)) % 1.0
 
     def stop(self):
-        if self._anim is not None:
-            self._anim.cancel(self)
-            self._anim = None
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
 
     def _redraw(self, *_):
         self.canvas.clear()
