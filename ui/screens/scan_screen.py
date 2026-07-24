@@ -865,8 +865,12 @@ class ScanScreen(BoxLayout):
             self.add_widget(self.detail_btn)
 
             # Manual entry: an address (geocoded) OR raw lat/lon — collapsed until asked.
+            # Starts DISABLED (as well as height 0 / opacity 0): a collapsed row's
+            # invisible TextInputs would otherwise still swallow a touch and pop the
+            # keyboard when the operator is tapping "Use this position" nearby.
             self.manual_row = BoxLayout(orientation="vertical", size_hint=(1, None),
-                                        height=dp(0), spacing=dp(6), opacity=0)
+                                        height=dp(0), spacing=dp(6), opacity=0,
+                                        disabled=True)
             addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                  height=dp(44), spacing=dp(6))
             self.addr_in = TextInput(hint_text="street address  (needs internet)",
@@ -1022,8 +1026,7 @@ class ScanScreen(BoxLayout):
         if getattr(self, "_on_place", None) is not None:
             self._picked = None
             if self._manual:
-                self._manual = False
-                self.manual_row.height, self.manual_row.opacity = dp(0), 0
+                self._set_manual_shown(False)
             self._show_live_badge()
 
     def _show_live_badge(self):
@@ -1045,7 +1048,8 @@ class ScanScreen(BoxLayout):
     def _on_map_pick(self, latlon):
         """Operator tapped the map to set the location (no GPS/internet needed).
         The pin already moved; adopt the point."""
-        self._manual = False
+        if self._manual:                       # a map tap supersedes manual entry
+            self._set_manual_shown(False)
         self._picked = latlon
         self.badge.set("Picked from map", "info")
         self.coords.text = (f"{latlon[0]:.6f},  {latlon[1]:.6f}   ·   tap again to move, "
@@ -1074,21 +1078,35 @@ class ScanScreen(BoxLayout):
         if self._on_place:
             self._on_place(pt[0], pt[1], pt[2])
 
+    def _set_manual_shown(self, show):
+        """Reveal or collapse the manual-entry row. Collapsed, the row is also
+        DISABLED (not just height 0 / opacity 0): a Kivy widget with opacity 0 still
+        receives touches, so its invisible address/lat/lon inputs would otherwise
+        grab a tap meant for the buttons around them and pop the on-screen keyboard —
+        the stray-keyboard bug on 'Use this position'. Disabling gates that off."""
+        self._manual = show
+        self.manual_row.height = dp(96) if show else dp(0)
+        self.manual_row.opacity = 1 if show else 0
+        self.manual_row.disabled = not show
+
     def _toggle_manual(self):
-        self._manual = not self._manual
         if self._manual:
-            self._picked = None
-            self.manual_row.height, self.manual_row.opacity = dp(96), 1
-            self.badge.set("Enter a location", "info")
-            self.coords.text = ("Type an address and Find (needs internet), or enter "
-                                "lat/lon directly, then Use this position.")
-            self.confirm_btn.disabled = False
-            if self._fix is not None and getattr(self._fix, "has_fix", False):
-                self.lat_in.text = f"{self._fix.lat:.6f}"
-                self.lon_in.text = f"{self._fix.lon:.6f}"
-        else:
-            self.manual_row.height, self.manual_row.opacity = dp(0), 0
+            self._set_manual_shown(False)
             self._show_live_badge()
+            return
+        self._set_manual_shown(True)
+        self._picked = None
+        self.badge.set("Enter a location", "info")
+        self.coords.text = ("Type an address and Find (needs internet), or enter "
+                            "lat/lon directly, then Use this position.")
+        self.confirm_btn.disabled = False
+        if self._fix is not None and getattr(self._fix, "has_fix", False):
+            self.lat_in.text = f"{self._fix.lat:.6f}"
+            self.lon_in.text = f"{self._fix.lon:.6f}"
+        # Focus the address field so the keyboard opens right on it — manual entry
+        # exists to type an address here. Deferred a frame so the row has finished
+        # un-collapsing (and re-enabling) before the field takes focus.
+        Clock.schedule_once(lambda *_: setattr(self.addr_in, "focus", True), 0.1)
 
     def _find_address(self):
         """Geocode the typed address (off-thread) and drop the pin to verify it."""
