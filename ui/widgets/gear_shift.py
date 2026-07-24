@@ -10,11 +10,31 @@ an accidental trigger could brick a board.
 
 from __future__ import annotations
 
+import os
+
+from kivy.core.image import Image as CoreImage
 from kivy.metrics import dp
-from kivy.graphics import Color, Ellipse, Line
+from kivy.graphics import Color, Ellipse, Line, Rectangle
 from kivy.uix.widget import Widget
 
 from ui import theme
+
+_KNOB_PNG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "assets", "ui", "power_knob.png")
+_knob_tex = None
+
+
+def _knob_texture():
+    """The red power-button knob image, decoded once. None if the asset is absent
+    (then a plain red disc is drawn)."""
+    global _knob_tex
+    if _knob_tex is None and os.path.exists(_KNOB_PNG):
+        try:
+            _knob_tex = CoreImage(_KNOB_PNG).texture
+        except Exception:
+            _knob_tex = None
+    return _knob_tex
 
 
 class GearShiftOverride(Widget):
@@ -93,12 +113,18 @@ class GearShiftOverride(Widget):
                 Color(*theme.hex_to_rgba(theme.COLORS["red"], 0.85))
                 Line(points=self._path_to(self._progress),
                      width=self.knob_r * 0.7, joint="round", cap="round")
-            # knob
-            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
-            Ellipse(pos=(kx - self.knob_r, ky - self.knob_r),
-                    size=(self.knob_r * 2, self.knob_r * 2))
-            Color(1, 1, 1, 0.9)
-            Ellipse(pos=(kx - dp(4), ky - dp(4)), size=(dp(8), dp(8)))
+            # knob = the red power-button icon (falls back to a plain red disc)
+            ktex = _knob_texture()
+            if ktex is not None:
+                kd = self.knob_r * 2.6
+                Color(1, 1, 1, 1)
+                Rectangle(texture=ktex, pos=(kx - kd / 2, ky - kd / 2), size=(kd, kd))
+            else:
+                Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+                Ellipse(pos=(kx - self.knob_r, ky - self.knob_r),
+                        size=(self.knob_r * 2, self.knob_r * 2))
+                Color(1, 1, 1, 0.9)
+                Ellipse(pos=(kx - dp(4), ky - dp(4)), size=(dp(8), dp(8)))
 
     # -- gesture ------------------------------------------------------------
     def on_touch_down(self, touch):
