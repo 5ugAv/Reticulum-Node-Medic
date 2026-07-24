@@ -72,7 +72,7 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(head)
         wrap.add_widget(_line("Not sure which is which? Tap the  ?  above. Node Medic "
                               "will guide you the rest of the way.",
-                              "16sp", color="text_secondary", h=30))
+                              "16sp", color="text_secondary", h=56))
         for key, title, subtitle in BIRTH_PATHS:
             wrap.add_widget(self._path_button(key, title, subtitle))
         from kivy.uix.widget import Widget
