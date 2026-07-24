@@ -73,6 +73,24 @@ def read_status_from_banner(banner: str, timeout: float = 4.0) -> Optional[str]:
         return None
 
 
+def read_status_via_mdns(port: Optional[str], timeout: float = 4.0) -> Optional[str]:
+    """GET /status via the node's mDNS name derived from its USB serial
+    (``rtnode<last-4-hex>.local``) — done BEFORE we reset the board, while it's
+    still up on WiFi, so we can read the node's own name. Best-effort."""
+    if not port:
+        return None
+    try:
+        from ui.onboard_roster import serial_for_port
+        hexid = (serial_for_port(port) or "").replace(":", "")
+        if len(hexid) < 4:
+            return None
+        host = "rtnode" + hexid[-4:].lower() + ".local"
+        with urllib.request.urlopen(f"http://{host}/status", timeout=timeout) as r:
+            return r.read().decode(errors="replace")
+    except Exception:
+        return None
+
+
 def make_adopt_workflow(board_port: Optional[str] = None,
                         name_override: str = "") -> AdoptWorkflow:
     """An AdoptWorkflow bound to the medic's real serial/HTTP readers and the real
@@ -85,13 +103,17 @@ def make_adopt_workflow(board_port: Optional[str] = None,
         except Exception:
             board_port = None
 
+    # Pre-fetch the node's /status NOW (over mDNS), while it's still up on WiFi —
+    # reading the banner below resets it and briefly drops WiFi, so grabbing the
+    # node's own name first is the reliable path.
+    cached_status = read_status_via_mdns(board_port)
+
     def banner_reader(port):
         return read_board_banner(port)
 
     def status_reader():
-        # reuse the banner captured during identify by re-reading briefly; the
-        # workflow calls banner_reader first, so re-derive the URL from a short read
-        return read_status_from_banner(read_board_banner(board_port, seconds=6.0))
+        # the pre-reset mDNS fetch; fall back to a URL parsed from the banner
+        return cached_status
 
     def save_cert(cert):
         from ui.cert_store import save_cert as _save
