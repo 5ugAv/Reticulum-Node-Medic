@@ -53,13 +53,174 @@ class BirthGuideScreen(BoxLayout):
         self.reset()
 
     def reset(self):
-        """Back to the 'what are you building?' chooser (call when the guide is
-        (re)entered)."""
+        """Re-entered: back to the detect-first landing (plug a node in and the
+        medic decides BIRTH vs ADOPT)."""
         self._stop_current()
         self._path = None
         self._i = 0
         self._node_name = ""
-        self._render_intro()
+        self._render_detect()
+
+    # -- detect-first landing ---------------------------------------------
+    def _render_detect(self):
+        """Plug a node in; the medic reads it and routes to ADOPT (already ours)
+        or BIRTH (fresh/foreign). 'Choose manually' opens the full chooser (also
+        the home for Pi + Mitosis, which aren't plug-in-a-radio-board cases)."""
+        self._stop_current()
+        self.clear_widgets()
+        anim = ConnectBoardAnim()
+        step = WizardStep(
+            index=0, total=1, title="Connect your node",
+            body="Plug the node into Node Medic with a USB data cable. I'll detect "
+                 "it and decide whether to build it or adopt it as kin.",
+            anim=anim,
+            hint="Use a DATA USB cable — a charge-only cable won't be seen.",
+            next_text="Choose manually  →", on_next=self._render_intro,
+            on_back=lambda: self._on_navigate and self._on_navigate("home"))
+        self.add_widget(step)
+        self._current = step
+        step.start()
+        self._start_board_poll(anim, on_present=self._on_detect)
+
+    def _on_detect(self, anim):
+        """A board appeared — celebrate, then read + classify it off-thread."""
+        self._stop_board_poll()
+        if hasattr(anim, "mark_connected"):
+            anim.mark_connected()
+        from kivy.clock import Clock
+        Clock.schedule_once(lambda _d: self._render_reading(), 1.6)
+
+    def _render_reading(self):
+        self._stop_current()
+        self.clear_widgets()
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(18))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line("Reading the board…", "24sp", bold=True, h=40))
+        wrap.add_widget(_line("Checking whether it's already one of ours "
+                              "(this resets the board briefly).",
+                              "16sp", color="text_secondary", h=60))
+        wrap.add_widget(Widget())
+        self.add_widget(wrap)
+        import threading
+
+        def work():
+            c = {"kind": "birth", "reason": "Couldn't read the board."}
+            try:
+                from ui.hw_factories import local_board_ports
+                from ui.adopt_live import read_board_banner, read_status_via_mdns
+                from monitor.node_classifier import classify
+                ports = local_board_ports()
+                port = ports[0] if ports else None
+                status = read_status_via_mdns(port)      # name, pre-reset
+                banner = read_board_banner(port)         # identity + params
+                c = classify(banner, status)
+                c["_port"] = port
+            except Exception as e:      # noqa: BLE001
+                c = {"kind": "birth", "reason": f"Couldn't read the board: {e}"}
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _d: self._route(c), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _route(self, c):
+        if c.get("kind") == "adopt":
+            self._render_adopt(c)
+        else:
+            self._render_intro()          # birth -> the build chooser
+
+    # -- adopt confirm / run ----------------------------------------------
+    def _render_adopt(self, c):
+        self._stop_current()
+        self.clear_widgets()
+        from kivy.uix.textinput import TextInput
+        from ui.onscreen_keyboard import bind_field
+        wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
+        wrap.add_widget(_line("Existing node found", "24sp", bold=True, h=36))
+        wrap.add_widget(_line("This node is already running our config — adopt it "
+                              "as kin (no flashing, keeps its settings).",
+                              "15sp", color="text_secondary", h=48))
+        ti = TextInput(text=c.get("node_name") or "", multiline=False,
+                       hint_text="Node name", size_hint_y=None, height=dp(56),
+                       font_size="19sp")
+        bind_field(ti)
+        self._adopt_name = ti
+        wrap.add_widget(_line("Name", "13sp", color="accent", h=20))
+        wrap.add_widget(ti)
+        p = c.get("params") or {}
+        det = (f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
+               f"Radio:  {(p.get('freq', 0) / 1e6):.3f} MHz   SF{p.get('sf')}   "
+               f"{int(p.get('bw', 0) / 1000)}k   CR{p.get('cr')}   {p.get('txp')} dBm   [OK]\n"
+               f"Identity:  {(c.get('identity_hash') or '')[:16]}…   Beaconing [OK]")
+        wrap.add_widget(_line(det, "13.5sp", color="text_secondary", h=78))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
+                        spacing=dp(12))
+        reb = Button(text="Re-birth instead", font_size="16sp", bold=True,
+                     background_normal="", size_hint_x=0.42,
+                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        reb.bind(on_release=lambda *_: self._render_intro())
+        adopt = Button(text="Adopt as kin", font_size="19sp", bold=True,
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        adopt.bind(on_release=lambda *_: self._do_adopt(c))
+        row.add_widget(reb)
+        row.add_widget(adopt)
+        wrap.add_widget(row)
+        self.add_widget(wrap)
+
+    def _do_adopt(self, c):
+        self._stop_current()
+        self.clear_widgets()
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line("Adopting…", "24sp", bold=True, h=40))
+        self._adopt_status = _line("Reading identity, writing certificate, "
+                                   "enrolling as kin…", "15sp",
+                                   color="text_secondary", h=60)
+        wrap.add_widget(self._adopt_status)
+        wrap.add_widget(Widget())
+        self.add_widget(wrap)
+        name = (self._adopt_name.text or "").strip()
+        import threading
+
+        def work():
+            ok, msg = False, "Adoption failed."
+            try:
+                from ui.adopt_live import make_adopt_workflow
+                wf = make_adopt_workflow(board_port=c.get("_port"),
+                                         name_override=name)
+                wf.run_all()
+                ok = wf.succeeded
+                msg = wf.results[-1].message if wf.results else msg
+            except Exception as e:      # noqa: BLE001
+                ok, msg = False, f"Adoption failed: {e}"
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _d: self._render_adopt_done(ok, msg), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _render_adopt_done(self, ok, msg):
+        self._stop_current()
+        self.clear_widgets()
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line("Adopted [OK]" if ok else "Couldn't adopt",
+                              "26sp", bold=True, h=42,
+                              color="green" if ok else "warning_yellow"))
+        wrap.add_widget(_line(msg, "16sp", color="text_secondary", h=80))
+        done = Button(text="Done", size_hint_y=None, height=dp(58), bold=True,
+                      font_size="18sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        done.bind(on_release=lambda *_: (self._on_navigate and
+                                         self._on_navigate("vitals" if ok else "home")))
+        wrap.add_widget(done)
+        wrap.add_widget(Widget())
+        self.add_widget(wrap)
 
     # -- rendering ---------------------------------------------------------
     def _render_intro(self):
@@ -216,11 +377,13 @@ class BirthGuideScreen(BoxLayout):
         self._current = None
 
     # -- board-presence gate ------------------------------------------------
-    def _start_board_poll(self, anim):
-        """Poll for a work board on the medic's USB; fire the anim's Connected!
-        burst the moment one appears. Checks off-thread (serial enumeration)."""
+    def _start_board_poll(self, anim, on_present=None):
+        """Poll for a work board on the medic's USB; fire *on_present(anim)* the
+        moment one appears (default = the guided-flow handler). Checks off-thread
+        (serial enumeration)."""
         from kivy.clock import Clock
         self._stop_board_poll()
+        handler = on_present or self._on_board_present
 
         def tick(_dt):
             import threading
@@ -233,7 +396,7 @@ class BirthGuideScreen(BoxLayout):
                 except Exception:
                     present = False
                 if present:
-                    Clock.schedule_once(lambda _d: self._on_board_present(anim), 0)
+                    Clock.schedule_once(lambda _d: handler(anim), 0)
             threading.Thread(target=work, daemon=True).start()
 
         self._board_poll = Clock.schedule_interval(tick, 1.2)
