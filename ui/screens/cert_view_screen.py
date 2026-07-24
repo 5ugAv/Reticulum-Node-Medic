@@ -77,7 +77,8 @@ class CertViewScreen(BoxLayout):
     """Shows one stored certificate. ``on_saved`` (optional) is called after the
     operator edits+saves notes, so a caller can refresh any list it holds."""
 
-    def __init__(self, cert, on_saved=None, on_show_location=None, **kwargs):
+    def __init__(self, cert, on_saved=None, on_show_location=None, on_triage=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -85,6 +86,7 @@ class CertViewScreen(BoxLayout):
         self._cert = dict(cert or {})
         self._on_saved = on_saved
         self._on_show_location = on_show_location
+        self._on_triage = on_triage
         self._latlon = cert_latlon(self._cert)
 
         name = self._cert.get("node_name") or self._cert.get("hostname") or "(unnamed node)"
@@ -101,6 +103,18 @@ class CertViewScreen(BoxLayout):
         body = ScrollView()
         self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         self.list.bind(minimum_height=self.list.setter("height"))
+
+        # Triage — aim THIS node's antenna where it's being mounted. Lives here (on
+        # the node's own card, reached from VITALS/SCAN) rather than on the BIRTH
+        # screen, since it's an action on an existing node, not a new one.
+        if self._on_triage is not None:
+            tri = Button(text="Triage — aim this node's antenna", size_hint_y=None,
+                         height=dp(50), bold=True, font_size="16sp",
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["amber"]),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]))
+            tri.bind(on_release=lambda *_: self._on_triage(self._cert))
+            self.list.add_widget(tri)
 
         # Location actions — See on map (opens SCAN centred on this node) and
         # Navigate (a scannable directions QR, since the medic has no phone tethered).

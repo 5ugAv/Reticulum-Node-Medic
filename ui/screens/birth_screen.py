@@ -138,42 +138,31 @@ class QRCodeWidget(Widget):
 
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
-                 on_mitosis=None, prefill_location=None, on_use_existing=None,
-                 node_source=None, on_guide=None, **kwargs):
+                 on_mitosis=None, prefill_location=None, on_guide=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
         self.spacing = dp(8)
         # (lat, lon, source) stamped from the map's "Use this position", or None.
         self._prefill_location = prefill_location
-        # on_use_existing(cert) — search-existing picked a birthed node (-> Triage).
-        self._on_use_existing = on_use_existing
         # on_guide() — open the step-by-step guided birth (for a new operator).
         self._on_guide = on_guide
         # When arriving from the guide with a chosen kind, don't let auto-detect
         # flip the firmware family out from under the operator (cleared on a manual
         # firmware tap). None = detection decides (the 'radio' path).
         self._forced_firmware = None
-        # node_source(query) -> [node dicts] for nodes the medic KNOWS on the mesh
-        # (kin roster + discovered), so search finds e.g. FAITH even if it wasn't
-        # birthed through this medic's cert store. Injected; None in tests.
-        self._node_source = node_source
         self._saved_cert_id = None
-        # Step one is naming the node (build a NEW one) OR searching for one already
-        # birthed. Created once and re-parented on each header rebuild so a typed
-        # name survives board changes. Notes are asked at the END (after the cert).
+        # Step one is naming the NEW node. Created once and re-parented on each header
+        # rebuild so a typed name survives board changes. (Existing nodes are reached
+        # from VITALS/SCAN -> their certificate card, which offers Triage.) Notes are
+        # asked at the END (after the cert).
         self._name_in = TextInput(hint_text="Name this node  (e.g. Rooftop-East)",
                                   multiline=False, size_hint_y=None, height=dp(46),
                                   font_size="16sp")
-        self._search_in = TextInput(hint_text="Search a node you already birthed…",
-                                    multiline=False, size_hint_y=None, height=dp(46),
-                                    font_size="15sp")
-        self._search_in.bind(text=lambda i, v: self._run_search(v))
         self._end_notes_in = TextInput(
             hint_text="Notes  (optional — mast height, landmarks…)",
             multiline=True, size_hint_y=None, height=dp(70), font_size="15sp")
         bind_field(self._name_in)
-        bind_field(self._search_in)
         bind_field(self._end_notes_in)
         # Live-render the typed name onto the board photo's on-screen display.
         self._name_in.bind(text=lambda *_: self._update_board_cards())
@@ -241,7 +230,8 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(guide)
             self.header.add_widget(Widget(size_hint_y=None, height=dp(8)))
 
-        # Step one: name a NEW node (build it), or search one already birthed.
+        # Step one: name the NEW node being built. (Existing nodes live in VITALS /
+        # SCAN — tap one to open its certificate, which offers Triage.)
         self.header.add_widget(_line("Name this node", bold=True, size="15sp",
                                      color="accent"))
         self.header.add_widget(self._name_in)
@@ -250,15 +240,6 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(_line(
                 f"Location stamped: {lat:.5f}, {lon:.5f}  (from {src})",
                 size="12.5sp", color="green"))
-
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(8)))
-        self.header.add_widget(_line("— or — use existing node", bold=True,
-                                     size="15sp", color="accent"))
-        self.header.add_widget(self._search_in)
-        self._search_results = BoxLayout(orientation="vertical", size_hint_y=None,
-                                         height=dp(0), spacing=dp(2))
-        self._search_results.bind(minimum_height=self._search_results.setter("height"))
-        self.header.add_widget(self._search_results)
 
         self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
 
@@ -1096,82 +1077,6 @@ class BirthScreen(BoxLayout):
         self._build_chooser()               # ensure the name field exists
         if getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name or "")
-
-    def _run_search(self, query):
-        """Find an already-provisioned node by name — from the on-medic certificate
-        store AND from the nodes the medic knows on the mesh (kin roster +
-        discovered, via node_source). Picking one hands it to Triage."""
-        from ui.cert_store import search_certs
-        self._search_results.clear_widgets()
-        query = (query or "").strip()
-        if not query:
-            self._search_results.height = dp(0)
-            return
-        hits = list(search_certs(query))
-        seen = {(c.get("node_name") or "").lower() for c in hits}
-        if self._node_source:                     # merge in known mesh nodes
-            try:
-                for node in self._node_source(query):
-                    nm = (node.get("node_name") or "").lower()
-                    if nm and nm not in seen:
-                        seen.add(nm)
-                        hits.append(node)
-            except Exception:
-                pass
-        hits = hits[:6]
-        if not hits:
-            self._show_rebirth_nudge(query)
-            return
-        for cert in hits:
-            name = cert.get("node_name") or cert.get("hostname") or "(unnamed node)"
-            loc = cert.get("location")
-            tag = "  · on mesh" if cert.get("_source") == "mesh" and not loc else ""
-            label = f"{name}" + (f"   · {loc}" if loc else tag)
-            btn = Button(text=label, size_hint_y=None, height=dp(44), halign="left",
-                         font_size="14sp", background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
-            btn.bind(on_release=lambda _b, c=cert: self._pick_existing(c))
-            self._search_results.add_widget(btn)
-
-    def _show_rebirth_nudge(self, query):
-        """No node by that name is known — encourage birthing it THROUGH the medic,
-        because that's what makes it report health back here and be repairable
-        remotely. Tapping the button carries the name into the birth flow."""
-        self._search_results.add_widget(_line(
-            f"'{query}' isn't set up with Node Medic yet.", bold=True, size="13.5sp"))
-        self._search_results.add_widget(_line(
-            "Birth it through Node Medic so it reports its health back here and can "
-            "be repaired remotely — then it'll show up here for good.",
-            size="12.5sp", color="text_secondary"))
-        btn = Button(text=f"Birth '{query}' through Node Medic", size_hint_y=None,
-                     height=dp(50), bold=True, font_size="14.5sp",
-                     background_normal="",
-                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                     color=theme.hex_to_rgba(theme.COLORS["background"]))
-        btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
-        btn.bind(on_release=lambda *_: self._start_birth_named(query))
-        self._search_results.add_widget(btn)
-
-    def _start_birth_named(self, query):
-        """Carry the searched name into the 'Name this node' field and clear the
-        search, so the operator drops straight into building it (pick RTNode-2400,
-        etc.) — the node is (re)born through the medic and becomes manageable."""
-        self._name_in.text = query
-        self._search_in.text = ""          # clears the search + its results
-
-    def _pick_existing(self, cert):
-        """An already-birthed node was chosen — it's provisioned, so hand it to
-        Triage (adjust the antenna where it's being mounted)."""
-        if self._prefill_location and "location" not in cert:
-            lat, lon, src = self._prefill_location
-            cert["location"] = f"{lat:.6f}, {lon:.6f} ({src})"  # new mount spot
-            if cert.get("_id"):
-                from ui.cert_store import save_cert
-                save_cert(cert)
-        if self._on_use_existing:
-            self._on_use_existing(cert)
 
     def _stamp_identity(self, cert):
         """Fold the operator's node name and the map-stamped location into the

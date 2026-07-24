@@ -607,9 +607,7 @@ class ReticulumNodeMedicApp(App):
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"),
-            on_use_existing=self._use_existing_node,
-            on_guide=self._open_birth_guide,
-            node_source=self._search_known_nodes)
+            on_guide=self._open_birth_guide)
         birth.add_widget(self._with_back(self.birth_screen))
         self.sm.add_widget(birth)
 
@@ -959,7 +957,8 @@ class ReticulumNodeMedicApp(App):
         scr = self.sm.get_screen("cert_view")
         scr.clear_widgets()
         scr.add_widget(self._with_back(
-            CertViewScreen(cert, on_show_location=self._show_node_on_map)))
+            CertViewScreen(cert, on_show_location=self._show_node_on_map,
+                           on_triage=self._use_existing_node)))
         self.switch_mode("cert_view")
 
     def _show_node_on_map(self, lat, lon, name=""):
