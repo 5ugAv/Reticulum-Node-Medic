@@ -432,6 +432,26 @@ class NodeRegistry:
         groups: Dict[str, List[NodeRecord]] = {}
         for rec in self.nodes.values():
             groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
+
+        # A single device can reach the medic three ways the registry CAN'T link
+        # by identity: its health-beacon dest, an HTTP /status keyed by node_name,
+        # and an rnpath path with no announce. Collapse groups that resolve to the
+        # same non-empty NAME into one row (kin names are the operator's unique,
+        # authoritative labels). Unnamed neighbours stay separate until an announce
+        # links them by identity.
+        def _grp_name(members) -> str:
+            p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
+            return (p.name or p.announced_name or "").strip()
+
+        by_name: Dict[str, str] = {}
+        for key in list(groups.keys()):
+            name = _grp_name(groups[key]).lower()
+            if not name:
+                continue
+            if name in by_name:
+                groups[by_name[name]].extend(groups.pop(key))
+            else:
+                by_name[name] = key
         out = []
         for members in groups.values():
             primary = sorted(

@@ -356,3 +356,28 @@ def test_announce_marks_neighbour_heard_now_not_path_table_stale():
     rec = reg.ingest_announce(bytes.fromhex("ee" * 16), b"", 5000.0)
     assert rec.last_seen == 5000.0                 # honest last-heard
     assert rec.provenance == "neighbour"           # announced name != kin
+
+
+def test_devices_collapses_same_name_across_destinations():
+    """FAITH reached 3 ways (health-beacon dst, HTTP /status keyed by name, an
+    rnpath path) must render as ONE device row, not three."""
+    from monitor.registry import NodeRegistry
+    reg = NodeRegistry()
+    # kin/health record under the beacon dest, named via the kin roster
+    reg.set_kin_roster({"5a0b000b": {"name": "FAITH RTnode", "type": "rtnode2400",
+                                     "builder": "medic-unit"}})
+    reg.ingest("5a0b000b", beacon(), NOW)
+    # HTTP /status record keyed by name (no shared identity_hash)
+    reg.record_http_status("rtnode:FAITH RTnode", http(name="FAITH RTnode"), NOW)
+    # a bare rnpath neighbour with a DIFFERENT device, unnamed -> stays separate
+    from monitor.mesh import MeshNode
+    reg.ingest_mesh(MeshNode(dst_hash="deadbeef", hops=2, interface="LoRa"), NOW)
+
+    rows = reg.devices(NOW)
+    faith = [d for d in rows if d["name"] == "FAITH RTnode"]
+    assert len(faith) == 1, f"FAITH should collapse to one row, got {len(faith)}"
+    # the merged row keeps kin provenance and unions capabilities
+    assert faith[0]["provenance"] == "kin"
+    assert faith[0]["aspects"] >= 2
+    # the unrelated unnamed neighbour is still its own row
+    assert any(d["provenance"] == "neighbour" for d in rows)
