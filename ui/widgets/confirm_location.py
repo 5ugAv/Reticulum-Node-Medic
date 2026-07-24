@@ -3,9 +3,11 @@ to a birth/adopt certificate, so a wrong or stale GPS fix (or a mistyped address
 can't silently pin a node in the wrong place (a repair crew's wasted drive).
 
 Shows the proposed pin on a street-level map; the operator TAPS the map to move
-the pin, or pulls the medic's current GPS, checks the coordinates + reverse-
-geocoded address, then Confirms. Reuses the SCAN map widget (ui.screens.scan_screen
-.MapPlot) and the carried MBTiles basemap so it works offline (address needs net).
+the pin, TYPES an address to jump to it, or pulls the medic's current GPS, checks
+the coordinates + reverse-geocoded address, then commits with a small, deliberate
+CIRCULAR confirm button (deliberately not an inviting full-width bar — committing
+a node's location should feel definitive). Reuses the SCAN map widget + the carried
+MBTiles basemap so it works offline (address lookup needs net).
 """
 
 from __future__ import annotations
@@ -14,10 +16,13 @@ from typing import Callable, Optional
 
 from kivy.clock import Clock
 from kivy.metrics import dp
+from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 
 from ui import theme
 
@@ -30,6 +35,43 @@ def _lbl(text, size="14sp", color="text_primary", bold=False, h=None):
         l.height = dp(h)
     l.bind(size=lambda i, v: setattr(i, "text_size", v))
     return l
+
+
+class _CircleConfirm(Widget):
+    """A small round commit button — a drawn circle + checkmark. Small on purpose:
+    a definitive, deliberate 'yes', not a full-width bar you press by reflex."""
+
+    def __init__(self, on_press=None, diameter=76, **kwargs):
+        super().__init__(size_hint=(None, None),
+                         size=(dp(diameter), dp(diameter)), **kwargs)
+        self._on_press = on_press
+        from kivy.graphics import Color, Ellipse, Line
+        with self.canvas:
+            self._ring_c = Color(*theme.hex_to_rgba(theme.COLORS["green"]))
+            self._circle = Ellipse(pos=self.pos, size=self.size)
+            self._tick_c = Color(1, 1, 1, 1)
+            self._tick = Line(points=[], width=dp(3.2), cap="round", joint="round")
+        self.bind(pos=self._redraw, size=self._redraw)
+
+    def _redraw(self, *a):
+        self._circle.pos = self.pos
+        self._circle.size = self.size
+        x, y = self.pos
+        w, h = self.size
+        # a checkmark (y-up): down-left -> low point -> up-right
+        self._tick.points = [x + w * 0.28, y + h * 0.52,
+                             x + w * 0.44, y + h * 0.36,
+                             x + w * 0.72, y + h * 0.66]
+
+    def on_touch_down(self, touch):
+        # circular hit-test so only a real tap on the disc commits
+        cx, cy = self.center
+        if ((touch.x - cx) ** 2 + (touch.y - cy) ** 2) <= (self.width / 2) ** 2:
+            self._ring_c.rgba = theme.hex_to_rgba(theme.COLORS["green"], 0.6)
+            if self._on_press:
+                self._on_press()
+            return True
+        return super().on_touch_down(touch)
 
 
 class ConfirmLocationPopup(Popup):
@@ -48,7 +90,7 @@ class ConfirmLocationPopup(Popup):
         self._decided = False
 
         who = f" — {node_name}" if node_name else ""
-        body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        body = BoxLayout(orientation="vertical", spacing=dp(6), padding=dp(10))
 
         # the map (reused SCAN widget) with a draggable-by-tap pin
         if tiles is None:
@@ -62,17 +104,35 @@ class ConfirmLocationPopup(Popup):
                             on_pick=self._move_pin)
         body.add_widget(self.plot)
 
-        body.add_widget(_lbl("Tap the map to move the pin", "13sp",
-                             color="accent", h=20))
+        # type-an-address search: jump the pin to a looked-up address
+        from ui.onscreen_keyboard import bind_field
+        addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                             height=dp(50), spacing=dp(6))
+        self._addr_in = TextInput(hint_text="Type an address to place the pin…",
+                                  multiline=False, font_size="15sp")
+        bind_field(self._addr_in)
+        self._addr_in.bind(on_text_validate=self._find_address)
+        find = Button(text="Find", size_hint_x=None, width=dp(78), bold=True,
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        find.bind(on_release=self._find_address)
+        addr_row.add_widget(self._addr_in)
+        addr_row.add_widget(find)
+        body.add_widget(addr_row)
+
+        body.add_widget(_lbl("or tap the map to move the pin", "12.5sp",
+                             color="accent", h=18))
         self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=22)
         body.add_widget(self._coords)
         self._addr = _lbl("Looking up address…", "12.5sp",
-                          color="text_secondary", h=34)
+                          color="text_secondary", h=30)
         body.add_widget(self._addr)
 
-        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
+        # controls: Cancel + Use GPS on the left; a small round commit on the right
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(84),
                         spacing=dp(8))
-        cancel = Button(text="Cancel", bold=True, font_size="15sp", size_hint_x=0.28,
+        cancel = Button(text="Cancel", bold=True, font_size="15sp", size_hint_x=0.3,
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -85,16 +145,18 @@ class ConfirmLocationPopup(Popup):
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
             usegps.bind(on_release=lambda *_: self._use_gps())
             row.add_widget(usegps)
-        confirm = Button(text="Confirm location", bold=True, font_size="16sp",
-                         background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                         color=theme.hex_to_rgba(theme.COLORS["background"]))
-        confirm.bind(on_release=lambda *_: self._confirm())
-        row.add_widget(confirm)
+        row.add_widget(Widget())                       # push the commit to the right
+        commit = BoxLayout(orientation="vertical", size_hint_x=None, width=dp(96),
+                           spacing=dp(2))
+        holder = AnchorLayout(anchor_x="center", anchor_y="center")
+        holder.add_widget(_CircleConfirm(on_press=self._confirm))
+        commit.add_widget(holder)
+        commit.add_widget(_lbl("Confirm", "11.5sp", color="text_secondary", h=16))
+        row.add_widget(commit)
         body.add_widget(row)
 
         super().__init__(title=f"Confirm this node's location{who}",
-                         content=body, size_hint=(0.96, 0.92),
+                         content=body, size_hint=(0.96, 0.94),
                          auto_dismiss=False, **kwargs)
         Clock.schedule_once(lambda *_: self.plot.focus((self._lat, self._lon)), 0)
         self._refresh_address()
@@ -109,6 +171,30 @@ class ConfirmLocationPopup(Popup):
         self.plot._me = (self._lat, self._lon)     # move the pin, keep the view
         self.plot._trigger()
         self._refresh_address()
+
+    def _find_address(self, *a):
+        q = (self._addr_in.text or "").strip()
+        if not q:
+            return
+        self._addr.text = "Searching…"
+        import threading
+
+        def work():
+            res = None
+            try:
+                from monitor.geo import geocode_address
+                res = geocode_address(q)
+            except Exception:
+                res = None
+            if res:
+                Clock.schedule_once(lambda *_: (
+                    self.plot.focus((res["lat"], res["lon"])),
+                    self._move_pin(res["lat"], res["lon"])), 0)
+            else:
+                Clock.schedule_once(lambda *_: setattr(
+                    self._addr, "text",
+                    "Address not found — tap the map instead."), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _use_gps(self):
         if self._gps_reader is None:
