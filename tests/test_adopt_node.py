@@ -87,3 +87,30 @@ def test_banner_read_error_is_reported_not_raised():
     results = wf.run_all()
     assert not wf.succeeded and not results[0].success
     assert "couldn't read" in results[0].message.lower()
+
+
+def test_heard_candidates_lists_devices_neighbours_first():
+    """Over-the-air adopt sources candidates from the live registry, one per
+    device, neighbours (adopt targets) before already-kin."""
+    import time
+    from monitor.registry import NodeRegistry
+    from monitor.http_status import NodeStatus
+    from ui.adopt_live import heard_candidates
+    now = time.time()
+    reg = NodeRegistry()
+    reg.set_kin_roster({"aa11": {"name": "EVERYWHERE", "type": "pi"}})
+    reg.record_http_status("aa11", NodeStatus(reachable=True, status="ok",
+        node_name="EVERYWHERE", firmware_version="x", lora_online=True,
+        local_tcp_server_up=True, faults=[]), now)
+    # a bare heard neighbour (not kin)
+    from monitor.mesh import MeshNode
+    reg.ingest_mesh(MeshNode(dst_hash="bb22", hops=1, interface="LoRa"), now)
+    cands = heard_candidates(reg, now)
+    names = [c["name"] for c in cands]
+    assert any("EVERYWHERE" == c["name"] and c["provenance"] == "kin" for c in cands)
+    assert any(c["provenance"] == "neighbour" for c in cands)
+    # neighbour (adopt target) sorts before the already-kin node
+    provs = [c["provenance"] for c in cands]
+    assert provs.index("neighbour") < provs.index("kin")
+    # every candidate carries a kin key for enrolment
+    assert all(c["key"] for c in cands)

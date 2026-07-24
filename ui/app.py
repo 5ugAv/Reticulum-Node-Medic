@@ -618,7 +618,9 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.birth_guide_screen import BirthGuideScreen
         self.birth_guide_screen = BirthGuideScreen(
             on_complete=self._guided_birth_complete,
-            on_navigate=self.switch_mode)
+            on_navigate=self.switch_mode,
+            heard_fn=self._heard_mesh_candidates,
+            adopt_air_fn=self._adopt_over_air)
         birth_guide.add_widget(self._with_back(self.birth_guide_screen))
         self.sm.add_widget(birth_guide)
 
@@ -684,6 +686,7 @@ class ReticulumNodeMedicApp(App):
             while not stop.is_set():
                 try:
                     self.monitor_service.cycle(rediscover=(i % 10 == 0))
+                    self._resolve_identities()   # collapse a device's dests to 1 row
                     dicts = self.monitor_service.dashboard_dicts()
                     if dicts:
                         Clock.schedule_once(
@@ -1036,6 +1039,46 @@ class ReticulumNodeMedicApp(App):
         if g is not None:
             g.reset()
         self.switch_mode("birth_guide")
+
+    def _resolve_identities(self):
+        """Link a device's multiple mesh destinations by their shared RNS identity,
+        so a neighbour heard on several destinations collapses to ONE VITALS row
+        (never inflating the apparent mesh size). Best-effort — needs RNS attached
+        (the announce listener does that); a dest RNS has no announce for stays
+        unlinked, since we genuinely can't prove it's the same device."""
+        try:
+            import RNS
+        except Exception:
+            return
+        for rec in list(self.monitor_service.registry.nodes.values()):
+            if rec.identity_hash:
+                continue
+            try:
+                ident = RNS.Identity.recall(bytes.fromhex(rec.dst_hash))
+            except Exception:
+                ident = None
+            if ident is not None:
+                try:
+                    rec.identity_hash = ident.hash.hex()
+                except Exception:
+                    pass
+
+    def _heard_mesh_candidates(self):
+        """Nodes the medic hears over the mesh, for over-the-air adoption."""
+        import time as _t
+        from ui.adopt_live import heard_candidates
+        return heard_candidates(self.monitor_service.registry, _t.time())
+
+    def _adopt_over_air(self, key, name, node_type, board=None, firmware=None):
+        """Enrol a heard node as kin (no USB); refresh VITALS + the SCAN map."""
+        from ui.adopt_live import over_air_adopt
+        cert = over_air_adopt(key, name, node_type, board=board, firmware=firmware)
+        try:
+            from monitor.kin_roster import load_roster
+            self.monitor_service.registry.set_kin_roster(load_roster())
+        except Exception:
+            pass
+        return cert
 
     def _guided_birth_complete(self, path, name=""):
         """The guide's steps are done — hand off to the real BIRTH screen,

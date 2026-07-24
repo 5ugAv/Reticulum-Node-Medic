@@ -91,6 +91,59 @@ def read_status_via_mdns(port: Optional[str], timeout: float = 4.0) -> Optional[
         return None
 
 
+def heard_candidates(registry, now: float):
+    """Nodes the medic can HEAR over the mesh, one per physical device — the
+    candidates for over-the-air adoption. Neighbours (not yet kin) sort first;
+    already-kin nodes are included (re-adopt just refreshes + writes a cert)."""
+    best = {}
+    for rec in registry.all(now):
+        gid = rec.identity_hash or rec.dst_hash
+        cur = best.get(gid)
+        if cur is None or (not cur.name and rec.name):
+            best[gid] = rec
+    out = []
+    for rec in best.values():
+        d = rec.to_dashboard(now)
+        out.append({
+            "name": d["name"],
+            "key": rec.dst_hash,                 # the kin key
+            "identity": rec.identity_hash,
+            "node_type": rec.node_type,
+            "provenance": d["provenance"],
+            "last_seen_hours": d.get("last_seen_hours"),
+            "signal_dbm": d.get("signal_dbm"),
+            "board": (rec.latest_beacon.board_label if rec.latest_beacon else None),
+            "firmware": rec.firmware_version,
+        })
+    return sorted(out, key=lambda c: (c["provenance"] == "kin", c["name"].lower()))
+
+
+def over_air_adopt(key: str, name: str, node_type: str = "rtnode2400",
+                   board: Optional[str] = None, firmware: Optional[str] = None):
+    """Enrol a node the medic HEARS over LoRa as kin — no USB, no reflash. The
+    identity is the destination hash we hear it on; name/type are operator-set.
+    Writes a certificate (flagged over-the-air) and registers it in the roster."""
+    cert = {
+        "node_name": name, "type": node_type, "adopted": True,
+        "over_the_air": True, "board": board, "firmware": firmware,
+        "identity_hash": key, "location": None,
+    }
+    builder = None
+    try:
+        from provisioning import tool_identity
+        builder = tool_identity.identity_hash()
+    except Exception:
+        builder = None
+    try:
+        from ui.cert_store import save_cert
+        cert["_id"] = save_cert(cert)
+    except Exception:
+        pass
+    from monitor import kin_roster
+    kin_roster.register(key, name, node_type=node_type, builder=builder)
+    return cert
+
+
 def make_adopt_workflow(board_port: Optional[str] = None,
                         name_override: str = "") -> AdoptWorkflow:
     """An AdoptWorkflow bound to the medic's real serial/HTTP readers and the real

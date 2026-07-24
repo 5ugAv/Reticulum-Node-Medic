@@ -41,11 +41,14 @@ class BirthGuideScreen(BoxLayout):
     """The step-by-step birth walkthrough. ``on_complete(path)`` fires when the
     physical-prep steps are done, to hand off to the real BIRTH flow."""
 
-    def __init__(self, on_complete=None, on_navigate=None, **kwargs):
+    def __init__(self, on_complete=None, on_navigate=None, heard_fn=None,
+                 adopt_air_fn=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self._on_complete = on_complete
         self._on_navigate = on_navigate       # (screen_name) -> switch to a screen
+        self._heard_fn = heard_fn             # () -> [candidate dicts heard over mesh]
+        self._adopt_air_fn = adopt_air_fn     # (key,name,type,board,fw) -> enroll kin
         self._path = None
         self._i = 0
         self._current = None
@@ -245,9 +248,139 @@ class BirthGuideScreen(BoxLayout):
         # the Node Medic itself — so it sits at the end, styled apart, and routes
         # straight to the MITOSIS screen (no guided build steps).
         wrap.add_widget(self._mitosis_button())
+        # Adopt a node the medic HEARS over LoRa (no USB) — field fleet enrolment.
+        if self._heard_fn is not None:
+            wrap.add_widget(self._over_air_button())
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+
+    def _over_air_button(self):
+        btn = Button(size_hint_y=None, height=dp(104), background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["green"]))
+        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
+        inner.add_widget(_line("Adopt over the air (LoRa)", "21sp", bold=True,
+                               color="background", h=30))
+        inner.add_widget(_line("Enrol a node you can hear on the mesh as kin - no "
+                               "cable needed. For nodes already in the field.",
+                               "14sp", color="background"))
+        inner.size = btn.size
+        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
+                 pos=lambda _b, v: setattr(inner, "pos", v))
+        btn.add_widget(inner)
+        btn.bind(on_release=lambda *_: self._render_over_air_list())
+        return btn
+
+    # -- over-the-air adoption --------------------------------------------
+    def _render_over_air_list(self):
+        self._stop_current()
+        self.clear_widgets()
+        from kivy.uix.scrollview import ScrollView
+        from kivy.uix.widget import Widget
+        root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
+        head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
+                         spacing=dp(8))
+        head.add_widget(_line("Nodes heard on the mesh", "22sp", bold=True))
+        back = Button(text="←  Back", size_hint_x=None, width=dp(96),
+                      font_size="14sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        back.bind(on_release=lambda *_: self._render_intro())
+        head.add_widget(back)
+        root.add_widget(head)
+        root.add_widget(_line("Pick one to adopt as kin over LoRa (no cable).",
+                              "14sp", color="text_secondary", h=26))
+        cands = []
+        try:
+            cands = self._heard_fn() or []
+        except Exception:
+            cands = []
+        sv = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
+        col.bind(minimum_height=col.setter("height"))
+        if not cands:
+            col.add_widget(_line("Nothing heard yet — the medic hasn't received a "
+                                 "beacon/announce. Give it a moment on the mesh.",
+                                 "14sp", color="text_secondary", h=60))
+        for c in cands:
+            col.add_widget(self._heard_row(c))
+        sv.add_widget(col)
+        root.add_widget(sv)
+        self.add_widget(root)
+
+    def _heard_row(self, c):
+        is_kin = c.get("provenance") == "kin"
+        btn = Button(size_hint_y=None, height=dp(84), background_normal="",
+                     background_color=theme.hex_to_rgba(
+                         theme.COLORS["surface" if not is_kin else "background"]))
+        inner = BoxLayout(orientation="vertical", padding=[dp(14), dp(8)], spacing=dp(2))
+        tag = "  (already kin)" if is_kin else ""
+        inner.add_widget(_line(f"{c.get('name', '(unnamed)')}{tag}", "18sp",
+                               bold=True, h=26))
+        lsh = c.get("last_seen_hours")
+        seen = f"heard {lsh:.1f}h ago" if isinstance(lsh, (int, float)) else "heard"
+        sig = c.get("signal_dbm")
+        sigs = f" · {sig} dBm" if sig is not None else ""
+        inner.add_widget(_line(f"{c.get('node_type', 'node')} · {seen}{sigs}",
+                               "13sp", color="text_secondary"))
+        inner.size = btn.size
+        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
+                 pos=lambda _b, v: setattr(inner, "pos", v))
+        btn.add_widget(inner)
+        btn.bind(on_release=lambda *_: self._render_over_air_confirm(c))
+        return btn
+
+    def _render_over_air_confirm(self, c):
+        self._stop_current()
+        self.clear_widgets()
+        from kivy.uix.textinput import TextInput
+        from ui.onscreen_keyboard import bind_field
+        wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
+        wrap.add_widget(_line("Adopt over LoRa", "24sp", bold=True, h=36))
+        wrap.add_widget(_line("Enrol this node as kin from its mesh beacon — no "
+                              "cable, keeps its settings.", "15sp",
+                              color="text_secondary", h=44))
+        ti = TextInput(text=c.get("name") or "", multiline=False,
+                       hint_text="Node name", size_hint_y=None, height=dp(56),
+                       font_size="19sp")
+        bind_field(ti)
+        self._air_name = ti
+        wrap.add_widget(_line("Name", "13sp", color="accent", h=20))
+        wrap.add_widget(ti)
+        det = (f"Type:  {c.get('node_type', 'node')}      "
+               f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
+               f"Identity:  {(c.get('key') or '')[:16]}…   Heard on the mesh [OK]")
+        wrap.add_widget(_line(det, "13.5sp", color="text_secondary", h=56))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
+                        spacing=dp(12))
+        cancel = Button(text="Back", font_size="16sp", bold=True, size_hint_x=0.4,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel.bind(on_release=lambda *_: self._render_over_air_list())
+        adopt = Button(text="Adopt as kin", font_size="19sp", bold=True,
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        adopt.bind(on_release=lambda *_: self._do_over_air(c))
+        row.add_widget(cancel)
+        row.add_widget(adopt)
+        wrap.add_widget(row)
+        self.add_widget(wrap)
+
+    def _do_over_air(self, c):
+        name = (self._air_name.text or "").strip() or c.get("name") or "node"
+        ok, msg = False, "Adoption failed."
+        try:
+            if self._adopt_air_fn is not None:
+                self._adopt_air_fn(c.get("key"), name, c.get("node_type", "rtnode2400"),
+                                   c.get("board"), c.get("firmware"))
+                ok, msg = True, f"{name} adopted as kin over LoRa — now in VITALS."
+        except Exception as e:      # noqa: BLE001
+            ok, msg = False, f"Adoption failed: {e}"
+        self._render_adopt_done(ok, msg)
 
     def _mitosis_button(self):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
