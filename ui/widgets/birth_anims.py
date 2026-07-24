@@ -18,7 +18,8 @@ import math
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
+from kivy.graphics import (Color, Line, Rectangle, RoundedRectangle,
+                           StencilPop, StencilPush, StencilUnUse, StencilUse)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.label import Label
@@ -286,6 +287,9 @@ class InsertSdAnim(_LoopAnim):
     # inserted = slid up into the slot. Scaled by the reader's screen scale.
     _CARD_START = (-235.0, 618.0)
     _CARD_IN = (-30.0, 250.0)
+    #: Slot mouth as a fraction down the reader sprite — the card is clipped here
+    #: so its inserted portion vanishes into the reader (tuned to sd_reader_body.png).
+    _SLOT_FRAC = 0.50
 
     def __init__(self, **kwargs):
         kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
@@ -337,10 +341,23 @@ class InsertSdAnim(_LoopAnim):
             return (u ** 3 * S[0] + 3 * u * u * t * C1[0] + 3 * u * t * t * C2[0] + t ** 3 * E[0],
                     u ** 3 * S[1] + 3 * u * u * t * C1[1] + 3 * u * t * t * C2[1] + t ** 3 * E[1])
 
+        # The slot MOUTH as a fraction down the reader sprite (just above the
+        # "microSD" label). The card is clipped to below this line so the part that
+        # has slid into the reader disappears — it reads as inserting, not just
+        # overlapping on top.
+        slot_kivy = self.y + self.height - (rty + self._SLOT_FRAC * rh)
         with self.canvas:
             self._blit(medic, m_tlx, m_tly, mw, mh)
             self._blit(reader, rtx, rty, rw, rh)
+            StencilPush()
+            Rectangle(pos=(self.x, self.y),
+                      size=(self.width, max(0.0, slot_kivy - self.y)))
+            StencilUse()
             self._blit(card, rtx + crel[0], rty + crel[1], cw, ch)
+            StencilUnUse()
+            Rectangle(pos=(self.x, self.y),
+                      size=(self.width, max(0.0, slot_kivy - self.y)))
+            StencilPop()
             if self.phase > 0.4:                      # phase 2 (0.4-0.85): arrow travels
                 q = min(1.0, (self.phase - 0.4) / 0.45)
                 n = 48
