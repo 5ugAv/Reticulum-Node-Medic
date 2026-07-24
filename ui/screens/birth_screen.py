@@ -521,6 +521,9 @@ class BirthScreen(BoxLayout):
         self.header.add_widget(_line(
             "Which board is it?  V3 and V4 look identical to Node Medic — tap the "
             "one in front of you.", size="13.5sp", color="accent"))
+        self.header.add_widget(_line(
+            "Selecting the WRONG board can brick the hardware — check the silkscreen "
+            "(it says V3 or V4).", size="12.5sp", color="amber", bold=True))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(178),
                         spacing=dp(10))
         self._rtnode_cards = {}
