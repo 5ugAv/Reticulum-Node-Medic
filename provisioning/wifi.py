@@ -43,11 +43,106 @@ def _split_escaped(line: str) -> List[str]:
     return out
 
 
+def _dbm_to_pct(dbm: float) -> int:
+    """RSSI (dBm) → a 0–100 bar. -100 dBm ≈ 0%, -50 dBm ≈ 100% (2·(dbm+100))."""
+    return max(0, min(100, int(round(2 * (dbm + 100)))))
+
+
+def wifi_iface(run: Runner = _default_run) -> str:
+    """The wifi device name (``wlan0`` on the Pi), resolved from nmcli when possible
+    so we don't hard-code it on other hosts. Falls back to ``wlan0``."""
+    code, out = run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"])
+    if code == 0:
+        for line in out.splitlines():
+            parts = _split_escaped(line)
+            if len(parts) >= 2 and parts[1].strip() == "wifi":
+                return parts[0].strip()
+    return "wlan0"
+
+
+def connected_ssid(run: Runner = _default_run, iface: Optional[str] = None) -> str:
+    """SSID of the associated network, or "" if not connected. Asks the driver
+    (``iw dev <if> link``) first, then falls back to nmcli's ACTIVE flag."""
+    iface = iface or wifi_iface(run)
+    code, out = run(["iw", "dev", iface, "link"])
+    if code == 0:
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("SSID:"):
+                return s[len("SSID:"):].strip()
+    code, out = run(["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi", "list"])
+    for line in out.splitlines():
+        parts = _split_escaped(line)
+        if len(parts) >= 2 and parts[0].strip() in ("yes", "*"):
+            return ":".join(parts[1:]).strip()
+    return ""
+
+
+def _parse_iw_scan(out: str) -> List[dict]:
+    """Parse ``iw dev <if> scan`` into ``[{ssid, signal, secure}]`` (one per BSS).
+    ``signal`` is a 0–100%; ``secure`` is set when the BSS advertises an RSN/WPA IE.
+    Hidden APs come through with an empty ssid and are dropped by the caller."""
+    blocks: List[dict] = []
+    cur: Optional[dict] = None
+    for raw in out.splitlines():
+        if raw.startswith("BSS "):                    # new access point block
+            if cur is not None:
+                blocks.append(cur)
+            cur = {"ssid": "", "signal": 0, "secure": False}
+            continue
+        if cur is None:
+            continue
+        line = raw.strip()
+        if line.startswith("signal:"):
+            try:
+                cur["signal"] = _dbm_to_pct(float(line.split()[1]))
+            except (IndexError, ValueError):
+                pass
+        elif line.startswith("SSID:") and not line.startswith("SSID List"):
+            cur["ssid"] = line[len("SSID:"):].strip()
+        elif line.startswith("RSN:") or line.startswith("WPA:"):
+            cur["secure"] = True
+    if cur is not None:
+        blocks.append(cur)
+    return blocks
+
+
 def scan_networks(run: Runner = _default_run) -> List[dict]:
     """Visible WiFi networks as ``{ssid, signal, secure, active}``, strongest first
-    (the currently-connected one pinned to the top), de-duplicated by SSID."""
+    (the currently-connected one pinned to the top), de-duplicated by SSID.
+
+    Source is the *driver* via ``sudo iw dev <if> scan``: on the Pi's adapter,
+    NetworkManager's scan list wedges to only the connected AP while associated,
+    but ``iw`` still reports every nearby BSS. If the ``iw`` scan is unavailable
+    (no sudo / not a Pi / empty), we fall back to nmcli so dev hosts still work."""
+    iface = wifi_iface(run)
+    code, out = run(["sudo", "-n", "iw", "dev", iface, "scan"])
+    parsed = _parse_iw_scan(out) if code == 0 else []
+    if not any((b["ssid"] or "").strip() for b in parsed):
+        return _scan_networks_nmcli(run)              # iw unusable — fall back
+    connected = connected_ssid(run, iface)
+    nets: dict = {}
+    for b in parsed:
+        ssid = (b["ssid"] or "").strip()
+        if not ssid:
+            continue                                  # hidden network — skip
+        active = ssid == connected
+        entry = nets.get(ssid)
+        if entry is None:
+            nets[ssid] = {"ssid": ssid, "signal": b["signal"],
+                          "secure": b["secure"], "active": active}
+        else:                                         # merge duplicate BSSIDs
+            entry["signal"] = max(entry["signal"], b["signal"])
+            entry["active"] = entry["active"] or active
+            entry["secure"] = entry["secure"] or b["secure"]
+    return sorted(nets.values(), key=lambda n: (not n["active"], -n["signal"]))
+
+
+def _scan_networks_nmcli(run: Runner = _default_run) -> List[dict]:
+    """Fallback scan via nmcli (used when ``iw`` is unavailable). ``--rescan auto``
+    reads NetworkManager's cache, refreshing only when stale."""
     code, out = run(["nmcli", "-t", "-f", "IN-USE,SIGNAL,SECURITY,SSID",
-                     "device", "wifi", "list", "--rescan", "yes"])
+                     "device", "wifi", "list", "--rescan", "auto"])
     nets: dict = {}
     for line in out.splitlines():
         parts = _split_escaped(line)
