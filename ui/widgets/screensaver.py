@@ -29,7 +29,7 @@ class SwirlSaver(Widget):
     centre. The spiral geometry is drawn ONCE; only a GPU Rotate is animated each
     frame (cheap on the Pi), so it turns continuously without recomputing points."""
 
-    def __init__(self, turns: int = 9, period: float = 14.0, **kwargs):
+    def __init__(self, turns: int = 9, period: float = 9.0, **kwargs):
         super().__init__(**kwargs)
         self._turns = turns
         self._period = period                             # seconds per full turn
