@@ -64,8 +64,14 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         self._current = None
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
-        wrap.add_widget(_line("What are you building?", "26sp", bold=True, h=44))
-        wrap.add_widget(_line("Pick one — Node Medic will guide you the rest of the way.",
+        from ui.widgets.help_button import HelpButton
+        head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
+                         spacing=dp(8))
+        head.add_widget(_line("What are you building?", "26sp", bold=True))
+        head.add_widget(HelpButton())
+        wrap.add_widget(head)
+        wrap.add_widget(_line("Not sure which is which? Tap the  ?  above. Node Medic "
+                              "will guide you the rest of the way.",
                               "16sp", color="text_secondary", h=30))
         for key, title, subtitle in BIRTH_PATHS:
             wrap.add_widget(self._path_button(key, title, subtitle))
