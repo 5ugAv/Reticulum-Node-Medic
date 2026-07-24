@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import math
 
-from kivy.animation import Animation
+from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.graphics import Color, Line, Rectangle
+from kivy.graphics import (Color, Line, PopMatrix, PushMatrix, Rectangle, Rotate)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.floatlayout import FloatLayout
@@ -25,30 +25,37 @@ _INK = (0.09, 0.09, 0.08, 1)
 
 
 class SwirlSaver(Widget):
-    """A rotating hypnotic spiral (black on off-white)."""
+    """A hypnotic spiral (black on off-white) SPINNING slowly + smoothly about the
+    centre. The spiral geometry is drawn ONCE; only a GPU Rotate is animated each
+    frame (cheap on the Pi), so it turns continuously without recomputing points."""
 
-    phase = NumericProperty(0.0)
-
-    def __init__(self, turns: int = 9, period: float = 11.0, **kwargs):
+    def __init__(self, turns: int = 9, period: float = 14.0, **kwargs):
         super().__init__(**kwargs)
         self._turns = turns
-        self._period = period
-        self._anim = None
-        self.bind(phase=self._draw, size=self._draw, pos=self._draw)
+        self._period = period                             # seconds per full turn
+        self._angle = 0.0
+        self._rot = None
+        self._ev = None
+        self.bind(size=self._rebuild, pos=self._rebuild)
 
     def start(self):
         self.stop()
-        self.phase = 0.0
-        self._anim = Animation(phase=2 * math.pi, duration=self._period)
-        self._anim.repeat = True
-        self._anim.start(self)
+        self._rebuild()
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.0)
 
     def stop(self):
-        if self._anim is not None:
-            self._anim.cancel(self)
-            self._anim = None
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
 
-    def _draw(self, *_):
+    def _tick(self, dt):
+        # advance the rotation continuously (deg/sec = 360 / period); wrap at 360
+        self._angle = (self._angle + (360.0 / self._period) * dt) % 360.0
+        if self._rot is not None:
+            self._rot.angle = self._angle
+            self._rot.origin = self.center
+
+    def _rebuild(self, *_):
         self.canvas.clear()
         w, h = self.size
         if w < 2 or h < 2:
@@ -64,13 +71,15 @@ class SwirlSaver(Widget):
             f = i / steps
             t = f * turns * 2 * math.pi
             r = radius * f
-            a = t + self.phase
-            pts += [cx + r * math.cos(a), cy + r * math.sin(a)]
+            pts += [cx + r * math.cos(t), cy + r * math.sin(t)]
         with self.canvas:
             Color(*_OFF_WHITE)
             Rectangle(pos=self.pos, size=self.size)
+            PushMatrix()
+            self._rot = Rotate(angle=self._angle, origin=(cx, cy))
             Color(*_INK)
             Line(points=pts, width=max(dp(4), width), joint="round", cap="round")
+            PopMatrix()
 
 
 #: style key -> widget class (mirror provisioning.screensaver.STYLES).
