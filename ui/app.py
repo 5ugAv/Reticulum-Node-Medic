@@ -1106,10 +1106,12 @@ class ReticulumNodeMedicApp(App):
         from ui.adopt_live import heard_candidates
         return heard_candidates(self.monitor_service.registry, _t.time())
 
-    def _adopt_over_air(self, key, name, node_type, board=None, firmware=None):
+    def _adopt_over_air(self, key, name, node_type, board=None, firmware=None,
+                        location=None):
         """Enrol a heard node as kin (no USB); refresh VITALS + the SCAN map."""
         from ui.adopt_live import over_air_adopt
-        cert = over_air_adopt(key, name, node_type, board=board, firmware=firmware)
+        cert = over_air_adopt(key, name, node_type, board=board, firmware=firmware,
+                              location=location)
         try:
             from monitor.kin_roster import load_roster
             self.monitor_service.registry.set_kin_roster(load_roster())

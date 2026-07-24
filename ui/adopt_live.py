@@ -153,14 +153,22 @@ def heard_candidates(registry, now: float):
 
 
 def over_air_adopt(key: str, name: str, node_type: str = "rtnode2400",
-                   board: Optional[str] = None, firmware: Optional[str] = None):
+                   board: Optional[str] = None, firmware: Optional[str] = None,
+                   location: Optional[tuple] = None):
     """Enrol a node the medic HEARS over LoRa as kin — no USB, no reflash. The
     identity is the destination hash we hear it on; name/type are operator-set.
-    Writes a certificate (flagged over-the-air) and registers it in the roster."""
+    *location* (lat, lon) is where the OPERATOR placed the remote node on the map
+    (the medic can't sense it). Writes a certificate (flagged over-the-air) and
+    registers it in the roster."""
+    loc = None
+    lat = lon = None
+    if location is not None:
+        lat, lon = location[0], location[1]
+        loc = {"lat": lat, "lon": lon, "source": "placed"}
     cert = {
         "node_name": name, "type": node_type, "adopted": True,
         "over_the_air": True, "board": board, "firmware": firmware,
-        "identity_hash": key, "location": None,
+        "identity_hash": key, "location": loc,
     }
     builder = None
     try:
@@ -174,7 +182,8 @@ def over_air_adopt(key: str, name: str, node_type: str = "rtnode2400",
     except Exception:
         pass
     from monitor import kin_roster
-    kin_roster.register(key, name, node_type=node_type, builder=builder)
+    kin_roster.register(key, name, node_type=node_type, lat=lat, lon=lon,
+                        builder=builder)
     return cert
 
 

@@ -466,11 +466,43 @@ class BirthGuideScreen(BoxLayout):
 
     def _do_over_air(self, c):
         name = (self._air_name.text or "").strip() or c.get("name") or "node"
+        # PLACEMENT: the medic can't sense a remote node, so the operator drops it
+        # on the map. Start on its known location (if kin) or the medic's position.
+        start = None
+        try:
+            from monitor.kin_roster import load_roster
+            e = load_roster().get(c.get("key")) or {}
+            if e.get("lat") is not None:
+                start = (e["lat"], e["lon"])
+        except Exception:
+            start = None
+        if start is None:
+            try:
+                from monitor.geo import read_gps
+                f = read_gps()
+                start = (f.lat, f.lon) if f else None
+            except Exception:
+                start = None
+        if start is None:
+            self._run_over_air(c, name, None)     # nowhere to centre a map
+            return
+        try:
+            from ui.widgets.confirm_location import ConfirmLocationPopup
+            from monitor.geo import splitter_gps_reader
+            ConfirmLocationPopup(
+                start[0], start[1], node_name=name,
+                on_confirm=lambda lat, lon: self._run_over_air(c, name, (lat, lon)),
+                on_cancel=lambda: self._run_over_air(c, name, None),
+                gps_reader=splitter_gps_reader()).open()
+        except Exception:
+            self._run_over_air(c, name, start)
+
+    def _run_over_air(self, c, name, location):
         ok, msg = False, "Adoption failed."
         try:
             if self._adopt_air_fn is not None:
                 self._adopt_air_fn(c.get("key"), name, c.get("node_type", "rtnode2400"),
-                                   c.get("board"), c.get("firmware"))
+                                   c.get("board"), c.get("firmware"), location)
                 ok, msg = True, f"{name} adopted as kin over LoRa — now in VITALS."
         except Exception as e:      # noqa: BLE001
             ok, msg = False, f"Adoption failed: {e}"
