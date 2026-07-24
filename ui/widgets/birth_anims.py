@@ -292,7 +292,7 @@ class InsertSdAnim(_LoopAnim):
     #: clipped to below this line so its inserted portion vanishes into the angled
     #: slot (measured from sd_reader_body.png — the slot descends left→right).
     _SLOT_L = (0.10, 0.505)
-    _SLOT_R = (0.50, 0.695)
+    _SLOT_R = (0.50, 0.705)
 
     def __init__(self, **kwargs):
         kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
