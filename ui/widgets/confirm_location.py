@@ -88,6 +88,7 @@ class ConfirmLocationPopup(Popup):
         self._on_cancel = on_cancel
         self._gps_reader = gps_reader
         self._decided = False
+        self._edge = None                 # (touch, start_x) mid back-swipe-to-cancel
 
         who = f" — {node_name}" if node_name else ""
         body = BoxLayout(orientation="vertical", spacing=dp(6), padding=dp(10))
@@ -100,8 +101,10 @@ class ConfirmLocationPopup(Popup):
             except Exception:
                 tiles = None
         from ui.screens.scan_screen import MapPlot
+        # MapPlot's on_pick fires with a SINGLE (lat, lon) TUPLE — unpack it (and
+        # never let a touch-callback error crash the app).
         self.plot = MapPlot(nodes=[], tiles=tiles, interactive=True,
-                            on_pick=self._move_pin)
+                            on_pick=self._on_map_pick)
         body.add_widget(self.plot)
 
         # type-an-address search: jump the pin to a looked-up address
@@ -165,6 +168,14 @@ class ConfirmLocationPopup(Popup):
     def _coord_text(self):
         return f"{self._lat:.6f}, {self._lon:.6f}"
 
+    def _on_map_pick(self, latlon):
+        """MapPlot tap-to-place: it passes a (lat, lon) tuple. Guarded so a bad
+        touch can never propagate up and kill the app."""
+        try:
+            self._move_pin(latlon[0], latlon[1])
+        except Exception:
+            pass
+
     def _move_pin(self, lat, lon):
         self._lat, self._lon = float(lat), float(lon)
         self._coords.text = self._coord_text()
@@ -226,6 +237,30 @@ class ConfirmLocationPopup(Popup):
             Clock.schedule_once(lambda *_: setattr(
                 self._addr, "text", addr or "(no address — offline; judge by the map)"), 0)
         threading.Thread(target=work, daemon=True).start()
+
+    # -- back-swipe-to-cancel (a modal captures the screen's edge gesture) --
+    _EDGE_DP = 26
+    _TRIGGER_DP = 55
+
+    def on_touch_down(self, touch):
+        if touch.x - self.x <= dp(self._EDGE_DP):
+            self._edge = (touch, touch.x)     # claim the left edge for 'back'
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._edge and touch is self._edge[0]:
+            if touch.x - self._edge[1] >= dp(self._TRIGGER_DP):
+                self._edge = None
+                self._cancel()                # swipe right from the edge = cancel
+            return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self._edge and touch is self._edge[0]:
+            self._edge = None
+            return True
+        return super().on_touch_up(touch)
 
     # -- decision ----------------------------------------------------------
     def _confirm(self):
