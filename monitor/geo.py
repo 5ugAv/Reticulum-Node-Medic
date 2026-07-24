@@ -141,6 +141,11 @@ def fix_trust(fix: Optional[GpsFix]) -> dict:
                       "or enter the coordinates manually."}
 
 
+#: Delay (seconds) before the single retry after a transient fetch failure.
+#: Long enough to ride out a network blip / not trip Nominatim rate-limiting.
+GEOCODE_RETRY_DELAY_S = 1.2
+
+
 def geocode_address(address: str,
                     fetch: Optional[Callable[[str], str]] = None,
                     timeout: float = 8.0) -> Optional[dict]:
@@ -149,7 +154,12 @@ def geocode_address(address: str,
     (populated areas). NEEDS INTERNET; returns None when offline, on a bad
     response, or no match (the operator then falls back to entering lat/lon, which
     is what regional/unpopulated sites need anyway). *fetch* is injected for tests.
-    Nominatim's fair-use is fine for occasional one-off placement lookups."""
+    Nominatim's fair-use is fine for occasional one-off placement lookups.
+
+    A single *transient* fetch failure (network blip, timeout, HTTP error) is
+    retried ONCE after a short delay so a valid address isn't falsely reported as
+    "not found". A successful-but-empty response is a genuine miss and returns
+    None immediately (no retry — don't hammer Nominatim for a real no-match)."""
     address = (address or "").strip()
     if not address:
         return None
@@ -161,9 +171,23 @@ def geocode_address(address: str,
                 return r.read().decode("utf-8", "ignore")
     url = ("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
            + urllib.parse.quote(address))
+
+    # The fetch (network/HTTP) is the only step we retry: a transient exception
+    # here is a blip, not a verdict. Parsing an empty/garbage body is separate —
+    # that's a real answer from Nominatim, so we don't retry it.
+    body = None
+    for attempt in range(2):
+        try:
+            body = fetch(url)
+            break
+        except Exception:
+            if attempt == 0:
+                time.sleep(GEOCODE_RETRY_DELAY_S)   # ride out the blip, retry once
+                continue
+            return None   # second failure: give up, report not found
     try:
-        data = json.loads(fetch(url))
-        top = data[0]
+        data = json.loads(body)
+        top = data[0]        # empty list -> IndexError -> genuine no-match (no retry)
         return {"lat": float(top["lat"]), "lon": float(top["lon"]),
                 "name": top.get("display_name", address)}
     except Exception:

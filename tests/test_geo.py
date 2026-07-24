@@ -122,3 +122,57 @@ def test_geocode_address_none_on_no_match_offline_or_empty():
     assert geocode_address("anywhere", fetch=boom) is None                     # offline
     assert geocode_address("", fetch=lambda url: "[]") is None                 # empty
     assert geocode_address("x", fetch=lambda url: "not json") is None          # bad body
+
+
+def test_geocode_address_retries_once_on_transient_failure(monkeypatch):
+    """A transient fetch exception (network blip / timeout) must retry ONCE and
+    succeed on the second attempt — a valid address shouldn't falsely fail."""
+    import monitor.geo as geo
+    slept = []
+    monkeypatch.setattr(geo.time, "sleep", lambda s: slept.append(s))
+
+    fake = ('[{"lat": "-37.5106", "lon": "145.5107", '
+            '"display_name": "12 Wattle St, Sampleton VIC, Australia"}]')
+    calls = {"n": 0}
+
+    def flaky(url):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("slow response")
+        return fake
+
+    r = geo.geocode_address("12 Wattle St Sampleton", fetch=flaky)
+    assert r is not None and r["lat"] == -37.5106 and r["lon"] == 145.5107
+    assert calls["n"] == 2          # retried exactly once
+    assert slept == [geo.GEOCODE_RETRY_DELAY_S]   # short delay before the retry
+
+
+def test_geocode_address_gives_up_after_second_failure(monkeypatch):
+    """Two consecutive fetch exceptions -> None, and only ONE retry (2 calls)."""
+    import monitor.geo as geo
+    monkeypatch.setattr(geo.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def always_boom(url):
+        calls["n"] += 1
+        raise OSError("offline")
+
+    assert geo.geocode_address("anywhere", fetch=always_boom) is None
+    assert calls["n"] == 2          # initial + one retry, no more
+
+
+def test_geocode_address_no_retry_on_empty_result(monkeypatch):
+    """A successful-but-empty response is a genuine miss: return None with only
+    ONE fetch call — don't hammer Nominatim for a real no-match."""
+    import monitor.geo as geo
+    slept = []
+    monkeypatch.setattr(geo.time, "sleep", lambda s: slept.append(s))
+    calls = {"n": 0}
+
+    def empty(url):
+        calls["n"] += 1
+        return "[]"
+
+    assert geo.geocode_address("nowhere at all", fetch=empty) is None
+    assert calls["n"] == 1          # no retry on a legitimate empty result
+    assert slept == []              # and no delay was taken
