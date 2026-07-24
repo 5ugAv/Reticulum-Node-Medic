@@ -31,6 +31,7 @@ from kivy.uix.button import Button
 _NUM = (0.77, 0.42, 0.23, 1)      # rust / terracotta — number keys
 _LET = (0.79, 0.75, 0.56, 1)      # khaki / tan       — letter & space keys
 _SPEC = (0.66, 0.71, 0.87, 1)     # periwinkle blue   — shift/backspace/enter/layer
+_CAPS = (0.98, 0.82, 0.35, 1)     # amber             — Shift key while Caps Lock is on
 _GROUND = (0.08, 0.07, 0.06, 1)   # near-black tray
 _KEYTEXT = (0.13, 0.11, 0.08, 1)  # dark glyphs on the light keys
 
@@ -80,7 +81,8 @@ class OnScreenKeyboard(BoxLayout):
         self._pan_target = pan_target
         self.target = None            # the TextInput being edited
         self._layer = "text"          # 'text' | 'symbols' | 'numeric'
-        self._shift = False
+        self._shift = False           # one-shot upper (reverts after one letter)
+        self._caps_lock = False       # sticky upper (double-tap Shift; tap again off)
         self._hidden = True
         self._applied_shift = 0        # current pan applied to the ScreenManager
         self._last_key_t = 0.0         # debounce the panel's phantom double-tap
@@ -102,6 +104,7 @@ class OnScreenKeyboard(BoxLayout):
         self.target = target
         if self._hidden or new_target:
             self._shift = False
+            self._caps_lock = False
             self._layer = "numeric" if numeric else "text"
             self._numeric = numeric
             self._build()
@@ -132,8 +135,15 @@ class OnScreenKeyboard(BoxLayout):
                 rb.add_widget(self._key(label))
             self.add_widget(rb)
 
+    def _upper(self):
+        """Whether letters type uppercase right now — one-shot Shift OR sticky
+        Caps Lock."""
+        return self._shift or self._caps_lock
+
     def _key(self, label):
-        if label in (_SHIFT, _BKSP, _ENTER, _SYM, _ABC):
+        if label == _SHIFT and self._caps_lock:
+            fill = _CAPS                        # highlight so 'locked' is obvious
+        elif label in (_SHIFT, _BKSP, _ENTER, _SYM, _ABC):
             fill = _SPEC
         elif label == _SPACE:
             fill = _LET
@@ -146,9 +156,9 @@ class OnScreenKeyboard(BoxLayout):
         # The glyph sentinels (⇧ ⌫ ↵ …) render as tofu boxes in the default font,
         # so display ASCII words instead. Shift shows its state by case.
         if _is_letter(label):
-            shown = label.upper() if self._shift else label
+            shown = label.upper() if self._upper() else label
         elif label == _SHIFT:
-            shown = "SHIFT" if self._shift else "shift"
+            shown = "CAPS" if self._caps_lock else ("SHIFT" if self._shift else "shift")
         elif label in _DISPLAY:
             shown = _DISPLAY[label]
         else:
@@ -185,7 +195,15 @@ class OnScreenKeyboard(BoxLayout):
                 self.hide()
                 return
         elif label == _SHIFT:
-            self._shift = not self._shift
+            # Cycle: off -> one-shot Shift -> CAPS LOCK -> off. So a double-tap
+            # (two quick taps, no letter between) lands on Caps Lock, and one more
+            # tap returns to normal — exactly the phone-style behaviour.
+            if self._caps_lock:
+                self._caps_lock = self._shift = False
+            elif self._shift:
+                self._caps_lock, self._shift = True, False
+            else:
+                self._shift = True
             self._build()
         elif label == _SYM:
             self._layer, self._shift = "symbols", False
@@ -197,10 +215,11 @@ class OnScreenKeyboard(BoxLayout):
             if t:
                 t.insert_text(" ")
         else:
-            ch = label.upper() if (_is_letter(label) and self._shift) else label
+            ch = label.upper() if (_is_letter(label) and self._upper()) else label
             if t:
                 t.insert_text(ch)
-            if self._shift and _is_letter(label):   # one-shot shift, like a phone
+            # one-shot Shift reverts after a letter; Caps Lock stays on
+            if self._shift and not self._caps_lock and _is_letter(label):
                 self._shift = False
                 self._build()
         self._refocus()
