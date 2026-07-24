@@ -380,12 +380,14 @@ class InsertSdAnim(_LoopAnim):
                     pts += list(self._kv(*bez(i / n)))
                 Color(*theme.hex_to_rgba(theme.COLORS["red"]))   # red — Node Medic scheme
                 Line(points=pts, width=dp(3.4), joint="round", cap="round")
-                ex, ey = bez(k / n)                   # arrowhead along the tangent
-                px, py = bez((k - 1) / n)
-                ang = math.atan2(ey - py, ex - px)
-                tip = self._kv(ex, ey)
-                for a in (ang + 2.5, ang - 2.5):
-                    barb = self._kv(ex - dp(13) * math.cos(a), ey - dp(13) * math.sin(a))
+                # arrowhead — computed in KIVY (y-up) space so the head points the
+                # way the line is travelling (mixing y-down angle with the y-flip
+                # used to make it face backwards)
+                tip = self._kv(*bez(k / n))
+                prev = self._kv(*bez((k - 1) / n))
+                ang = math.atan2(tip[1] - prev[1], tip[0] - prev[0])
+                for a in (ang + 2.6, ang - 2.6):      # barbs trail behind the tip
+                    barb = (tip[0] + dp(13) * math.cos(a), tip[1] + dp(13) * math.sin(a))
                     Line(points=[tip[0], tip[1], barb[0], barb[1]],
                          width=dp(3.4), cap="round")
                 # phase 3 (>0.85): flash a ring at the target
