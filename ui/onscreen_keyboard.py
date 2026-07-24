@@ -110,12 +110,39 @@ class OnScreenKeyboard(BoxLayout):
             self._build()
             self._reveal()
         self._pan_for(target)
+        self._raise_above_modal(target)
 
     def hide(self, *_):
         self._hidden = True
         self.height, self.opacity, self.disabled = 0, 0, True
         self._restore_pan()
+        self._lower_from_modal()
         self.target = None
+
+    def _raise_above_modal(self, target):
+        """If the focused field lives in a modal Popup, the keyboard (a root child)
+        is hidden BEHIND the modal — lift it onto the Window, above the modal, so
+        its keys are tappable. Restored to its home parent on hide."""
+        from kivy.uix.modalview import ModalView
+        w, modal = target, None
+        while w is not None:
+            if isinstance(w, ModalView):
+                modal = w
+                break
+            w = w.parent
+        if modal is None or self.parent is Window:
+            return
+        self._home_parent = self.parent
+        if self.parent is not None:
+            self.parent.remove_widget(self)
+        Window.add_widget(self)          # inserts at index 0 -> above the modal
+
+    def _lower_from_modal(self):
+        home = getattr(self, "_home_parent", None)
+        if home is not None and self.parent is Window:
+            Window.remove_widget(self)
+            home.add_widget(self)
+            self._home_parent = None
 
     # -- build --------------------------------------------------------------
 
