@@ -122,6 +122,7 @@ class BirthGuideScreen(BoxLayout):
 
     # -- navigation --------------------------------------------------------
     def _next(self):
+        self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
         steps = guide_steps(self._path)
         cur = steps[self._i] if self._i < len(steps) else {}
         if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
@@ -135,6 +136,7 @@ class BirthGuideScreen(BoxLayout):
             self._render_step()
 
     def _back(self):
+        self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
         if self._i == 0:
             self.reset()                    # off the first step -> intro chooser
         else:
@@ -181,6 +183,15 @@ class BirthGuideScreen(BoxLayout):
         self._stop_board_poll()
         if hasattr(anim, "mark_connected"):
             anim.mark_connected()
+        # Let the "Connected!" celebration play, then carry the flow forward on its
+        # own — detection drives the wizard, no tap needed. A manual Next/Back
+        # bumps the token and cancels this pending auto-advance.
+        from kivy.clock import Clock
+        self._advance_token = getattr(self, "_advance_token", 0) + 1
+        tok = self._advance_token
+        Clock.schedule_once(
+            lambda _d: (getattr(self, "_advance_token", None) == tok
+                        and self._current is not None and self._next()), 2.0)
 
     def _stop_board_poll(self):
         ev = getattr(self, "_board_poll", None)

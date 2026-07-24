@@ -129,21 +129,24 @@ class ConnectBoardAnim(_LoopAnim):
     left, docking on the plug tip); falls back to a schematic if the art is absent."""
 
     burst = NumericProperty(0.0)
+    rise = NumericProperty(0.0)                       # "Connected!" banner slide-up
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._connected = False
-        self.bind(burst=self._redraw)
+        self.bind(burst=self._redraw, rise=self._redraw)
 
     def mark_connected(self):
         """The medic sensed a board on USB — stop looping, dock the board, and fire
-        a one-shot green 'Connected!' burst from the plug/board junction."""
+        a celebratory burst: four green ripples radiating from the plug/board
+        junction while a big 'Connected!' banner pops up from the bottom."""
         if self._connected:
             return
         self._connected = True
         self.stop()                                   # halt the descend loop
         self.phase = 1.0                              # freeze the board docked
-        Animation(burst=1.0, duration=0.8, t="out_quad").start(self)
+        Animation(burst=1.0, duration=1.1, t="out_quad").start(self)
+        Animation(rise=1.0, duration=0.55, t="out_back").start(self)
 
     def _draw(self):
         medic_tex, board_tex = _texture(MEDIC_CABLE_PNG), _texture(LORA_PNG)
@@ -175,18 +178,24 @@ class ConnectBoardAnim(_LoopAnim):
             Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
             Color(1, 1, 1, 1)
             Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
-            if self._connected:                      # green burst from the junction
-                fade = max(0.0, 1.0 - self.burst)
-                Color(0.2, 0.9, 0.4, fade)
-                Line(circle=(tipx, tipy, dp(8) + self.burst * dp(54)), width=dp(3.5))
-                Color(0.2, 0.9, 0.4, fade * 0.55)
-                Line(circle=(tipx, tipy, dp(8) + self.burst * dp(32)), width=dp(2.5))
+            if self._connected:                      # 4 green ripples from the junction
+                maxr = min(w, h) * 0.52
+                for i in range(4):
+                    f = self.burst - i * 0.16         # stagger so they radiate outward
+                    if f <= 0.0:
+                        continue
+                    f = min(1.0, f)
+                    Color(0.2, 0.9, 0.4, (1.0 - f) * 0.9)   # fade as each ring grows
+                    Line(circle=(tipx, tipy, dp(10) + f * maxr), width=dp(3.0))
         if self._connected:
-            lbl = self._label("connected", text="Connected!", font_size="21sp",
+            # big "Connected!" banner rising up from the bottom of the panel
+            lbl = self._label("connected", text="Connected!", font_size="30sp",
                               bold=True, halign="center", valign="middle",
                               color=theme.hex_to_rgba(theme.COLORS["green"]))
-            lbl.size = (dp(180), dp(30))
-            lbl.pos = (tipx - dp(90), tipy - dp(50))
+            lbl.size = (w, dp(46))
+            start_y, target_y = y - dp(50), y + h * 0.13
+            lbl.pos = (x, start_y + (target_y - start_y) * self.rise)
+            lbl.opacity = self.rise
         else:
             self._hide_label("connected")
         self._hide_label("medic")
