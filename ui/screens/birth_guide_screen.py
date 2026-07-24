@@ -74,7 +74,10 @@ class BirthGuideScreen(BoxLayout):
                               "will guide you the rest of the way.",
                               "16sp", color="text_secondary", h=56))
         for key, title, subtitle in BIRTH_PATHS:
-            wrap.add_widget(self._path_button(key, title, subtitle))
+            # the Pi card carries a longer description — give it room so it doesn't
+            # clip; the shorter cards stay compact.
+            h = 170 if key == "pi" else 104
+            wrap.add_widget(self._path_button(key, title, subtitle, height=h))
         # Mitosis is a different KIND of action — not building a node but cloning
         # the Node Medic itself — so it sits at the end, styled apart, and routes
         # straight to the MITOSIS screen (no guided build steps).
@@ -98,8 +101,8 @@ class BirthGuideScreen(BoxLayout):
         btn.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("mitosis"))
         return btn
 
-    def _path_button(self, key, title, subtitle):
-        btn = Button(size_hint_y=None, height=dp(104), background_normal="",
+    def _path_button(self, key, title, subtitle, height=104):
+        btn = Button(size_hint_y=None, height=dp(height), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
         inner.add_widget(_line(title, "21sp", bold=True, h=30))

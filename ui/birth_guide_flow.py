@@ -16,7 +16,9 @@ BIRTH_PATHS = [
     ("radio", "A standalone radio (RTNode-2400)",
      "A transport node on its own — reports its health back and is remotely repairable."),
     ("pi", "A Raspberry Pi + radio",
-     "A Pi running Reticulum with an attached radio (a propagation / host node)."),
+     "A propagation node - reports its health back and is remotely repairable, and "
+     "can hold messages for users who aren't online. It can also mesh LoRa radio to "
+     "Wi-Fi, Bluetooth and the internet. The best node to future-proof the network."),
 ]
 
 #: Ordered guided steps per path. Each step: title, body, optional ``anim`` key
