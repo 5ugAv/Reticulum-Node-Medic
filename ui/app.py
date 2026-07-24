@@ -490,7 +490,7 @@ class ReticulumNodeMedicApp(App):
 
         # HOME: the designed front page — the poster's cards open the modes.
         home = Screen(name="home")
-        home.add_widget(HomeScreen(on_select=self.switch_mode))
+        home.add_widget(HomeScreen(on_select=self._home_select))
         self.sm.add_widget(home)
 
         credits = Screen(name="credits")
@@ -1018,6 +1018,16 @@ class ReticulumNodeMedicApp(App):
         if bs is not None and hasattr(bs, "prefill_name"):
             bs.prefill_name(name)
         self.switch_mode("birth")
+
+    def _home_select(self, mode):
+        """Front-page card dispatch. BIRTH lands straight on the 'what are you
+        building?' chooser (the old name/detect intro screen is skipped — that
+        work still happens after a build kind is chosen). Everything else opens
+        its mode directly."""
+        if mode == "birth":
+            self._open_birth_guide()
+        else:
+            self.switch_mode(mode)
 
     def _open_birth_guide(self):
         """Enter the step-by-step guide at its start (the 'what are you building?'

@@ -75,9 +75,28 @@ class BirthGuideScreen(BoxLayout):
                               "16sp", color="text_secondary", h=56))
         for key, title, subtitle in BIRTH_PATHS:
             wrap.add_widget(self._path_button(key, title, subtitle))
+        # Mitosis is a different KIND of action — not building a node but cloning
+        # the Node Medic itself — so it sits at the end, styled apart, and routes
+        # straight to the MITOSIS screen (no guided build steps).
+        wrap.add_widget(self._mitosis_button())
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+
+    def _mitosis_button(self):
+        btn = Button(size_hint_y=None, height=dp(104), background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
+        inner.add_widget(_line("Mitosis - clone this Node Medic", "21sp",
+                               bold=True, color="background", h=30))
+        inner.add_widget(_line("Copy this Node Medic onto a fresh Raspberry Pi 5 - "
+                               "a second building tool.", "14sp", color="background"))
+        inner.size = btn.size
+        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
+                 pos=lambda _b, v: setattr(inner, "pos", v))
+        btn.add_widget(inner)
+        btn.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("mitosis"))
+        return btn
 
     def _path_button(self, key, title, subtitle):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
