@@ -110,7 +110,12 @@ class ConfirmLocationPopup(Popup):
         addr_row.add_widget(self._addr_in)
         addr_row.add_widget(find)
         body.add_widget(addr_row)
-        body.add_widget(_lbl("or tap the map to move the pin", "12.5sp",
+        # search status / address feedback lives HERE (top) so it's visible above
+        # the on-screen keyboard — a failed lookup must never look like nothing.
+        self._addr = _lbl("Looking up address…", "13sp",
+                          color="text_secondary", h=30)
+        body.add_widget(self._addr)
+        body.add_widget(_lbl("or tap the map / Use GPS to place the pin", "12.5sp",
                              color="accent", h=18))
 
         # the map (reused SCAN widget) with a draggable-by-tap pin
@@ -129,9 +134,6 @@ class ConfirmLocationPopup(Popup):
 
         self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=22)
         body.add_widget(self._coords)
-        self._addr = _lbl("Looking up address…", "12.5sp",
-                          color="text_secondary", h=30)
-        body.add_widget(self._addr)
 
         # controls: Cancel + Use GPS on the left; a small round commit on the right
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(84),
@@ -205,7 +207,8 @@ class ConfirmLocationPopup(Popup):
             else:
                 Clock.schedule_once(lambda *_: setattr(
                     self._addr, "text",
-                    "Address not found — tap the map instead."), 0)
+                    "Couldn't look up that address (lookup busy or no match) — "
+                    "tap the map or use GPS instead."), 0)
         threading.Thread(target=work, daemon=True).start()
 
     def _use_gps(self):
