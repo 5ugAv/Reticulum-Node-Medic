@@ -998,8 +998,49 @@ class ReticulumNodeMedicApp(App):
         scr.clear_widgets()
         scr.add_widget(self._with_back(
             CertViewScreen(cert, on_show_location=self._show_node_on_map,
-                           on_triage=self._use_existing_node)))
+                           on_triage=self._use_existing_node,
+                           on_edit_location=self._edit_cert_location)))
         self.switch_mode("cert_view")
+
+    def _edit_cert_location(self, cert):
+        """Fix / set a node's location from its cert — opens the map placement popup
+        and writes the confirmed spot back to the cert AND the kin roster (so a
+        wrong pin, e.g. from a failed address lookup during adoption, is fixable)."""
+        from ui.screens.cert_view_screen import cert_latlon
+        from ui.widgets.confirm_location import ConfirmLocationPopup
+        from monitor.geo import splitter_gps_reader
+        ll = cert_latlon(cert)
+        if ll is None:
+            try:
+                from monitor.geo import read_gps
+                f = read_gps()
+                ll = (f.lat, f.lon) if f else None
+            except Exception:
+                ll = None
+        if ll is None:
+            ll = (-37.8136, 144.9631)          # Sampleton fallback centre
+
+        def _ok(lat, lon):
+            cert["location"] = f"{lat:.6f}, {lon:.6f} (confirmed)"
+            try:
+                from ui.cert_store import save_cert
+                cert["_id"] = save_cert(cert)
+            except Exception:
+                pass
+            try:
+                from monitor import kin_roster
+                h = cert.get("identity_hash") or cert.get("reticulum_address")
+                if h:
+                    kin_roster.set_location(h, lat, lon)
+                    self.monitor_service.registry.set_kin_roster(
+                        kin_roster.load_roster())
+            except Exception:
+                pass
+            self._open_cert(cert)              # reopen so the new location shows
+
+        ConfirmLocationPopup(ll[0], ll[1], node_name=cert.get("node_name", ""),
+                             on_confirm=_ok, on_cancel=lambda: None,
+                             gps_reader=splitter_gps_reader()).open()
 
     def _show_node_on_map(self, lat, lon, name=""):
         """"See on map" from a certificate — open SCAN centred on the node so the

@@ -78,7 +78,7 @@ class CertViewScreen(BoxLayout):
     operator edits+saves notes, so a caller can refresh any list it holds."""
 
     def __init__(self, cert, on_saved=None, on_show_location=None, on_triage=None,
-                 **kwargs):
+                 on_edit_location=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -87,6 +87,7 @@ class CertViewScreen(BoxLayout):
         self._on_saved = on_saved
         self._on_show_location = on_show_location
         self._on_triage = on_triage
+        self._on_edit_location = on_edit_location
         self._latlon = cert_latlon(self._cert)
 
         name = self._cert.get("node_name") or self._cert.get("hostname") or "(unnamed node)"
@@ -138,6 +139,18 @@ class CertViewScreen(BoxLayout):
                                        height=0, spacing=dp(2))
             self.list.add_widget(self.nav_panel)
             self._nav_open = False
+
+        # Edit / set the node's location on a map (fix a wrong pin, or add one to a
+        # node that has none — e.g. a node adopted over the air).
+        if self._on_edit_location is not None:
+            edit = Button(text=("Edit location on map" if self._latlon is not None
+                                else "Set location on map"),
+                          size_hint_y=None, height=dp(48), bold=True,
+                          background_normal="",
+                          background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            edit.bind(on_release=lambda *_: self._on_edit_location(self._cert))
+            self.list.add_widget(edit)
 
         self.list.add_widget(_line("Birth certificate", bold=True, size="17sp"))
         shown = set()
