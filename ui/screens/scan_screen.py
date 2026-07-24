@@ -1137,9 +1137,14 @@ class ScanScreen(BoxLayout):
                     f"Street detail… {s['done']}/{s['total']} tiles"), 0)
 
         def work():
-            summary = add_point_detail(lat, lon, dest, radius_km=SPOT_RADIUS_KM,
-                                       zmin=SPOT_MIN_ZOOM, zmax=SPOT_MAX_ZOOM,
-                                       on_progress=prog)
+            # ALWAYS post back, even on error — else _dl_busy sticks True and the
+            # button silently does nothing on every later press (the bug this fixes).
+            try:
+                summary = add_point_detail(lat, lon, dest, radius_km=SPOT_RADIUS_KM,
+                                           zmin=SPOT_MIN_ZOOM, zmax=SPOT_MAX_ZOOM,
+                                           on_progress=prog)
+            except Exception as e:
+                summary = {"error": str(e), "fetched": 0, "skipped": 0}
             Clock.schedule_once(lambda dt: self._detail_done(summary, (lat, lon)), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -1147,6 +1152,10 @@ class ScanScreen(BoxLayout):
         self._dl_busy = False
         self.detail_btn.disabled = False
         self.detail_btn.text = "Load street names for this spot  (needs WiFi)"
+        if summary.get("error"):
+            self.badge.set("Couldn't load street names — check WiFi and try again",
+                           "none")
+            return
         self._tiles = find_mbtiles()
         self.plot.set_tiles(self._tiles)
         self.plot.focus(pt, zoom=17)                # land close; +/- to fine-tune
