@@ -83,6 +83,11 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(step)
         self._current = step
         step.start()
+        # 'Choose manually' is an ADVANCED escape, not the primary action (the
+        # primary path is just plugging a node in) — muted khaki-green so it doesn't
+        # invite like the usual green Next.
+        step.next_btn.background_color = theme.hex_to_rgba("#78866b")
+        step.next_btn.color = theme.hex_to_rgba("#f0f0f0")
         self._start_board_poll(anim, on_present=self._on_detect)
 
     def _on_detect(self, anim):
