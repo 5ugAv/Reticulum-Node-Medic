@@ -687,7 +687,7 @@ class MapPlot(Widget):
     def _add_label(self, point, sx, sy, r):
         if not point.label:
             return
-        lbl = Label(text=point.label, font_size=dp(11),
+        lbl = Label(text=point.label, font_size=dp(15),
                     color=theme.status_rgba(point.status), size_hint=(None, None))
         lbl.texture_update()
         lbl.size = lbl.texture_size
@@ -708,7 +708,7 @@ class _FixBadge(BoxLayout):
     when the two map screens merged into one."""
 
     def __init__(self, **kwargs):
-        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(44),
+        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(48),
                          padding=[dp(14), dp(4)], spacing=dp(6), **kwargs)
         with self.canvas.before:
             self._fill = Color(0, 0, 0, 0)
@@ -717,7 +717,7 @@ class _FixBadge(BoxLayout):
         self._tri = Widget(size_hint=(None, 1), width=dp(0))
         self._tri.bind(pos=self._draw_tri, size=self._draw_tri)
         self.add_widget(self._tri)
-        self.label = Label(font_size="15sp", bold=True, halign="left", valign="middle")
+        self.label = Label(font_size="17sp", bold=True, halign="left", valign="middle")
         self.label.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.label)
         self._tri_color = None
@@ -754,7 +754,7 @@ class _FixBadge(BoxLayout):
 
 
 def _btn(text, color, on_tap):
-    b = Button(text=text, bold=True, font_size="15sp", background_normal="",
+    b = Button(text=text, bold=True, font_size="18sp", background_normal="",
                background_color=theme.hex_to_rgba(theme.COLORS[color]),
                color=theme.hex_to_rgba(theme.COLORS[
                    "background" if color != "surface" else "text_primary"]))
@@ -841,8 +841,8 @@ class ScanScreen(BoxLayout):
         if on_place is not None:
             self.badge = _FixBadge()
             self.add_widget(self.badge)
-            self.coords = Label(text="", font_size="14sp", halign="left",
-                                valign="middle", size_hint=(1, None), height=dp(22),
+            self.coords = Label(text="", font_size="16sp", halign="left",
+                                valign="middle", size_hint=(1, None), height=dp(26),
                                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             self.coords.bind(size=lambda i, v: setattr(i, "text_size", v))
             self.add_widget(self.coords)
@@ -857,7 +857,7 @@ class ScanScreen(BoxLayout):
 
             self.detail_btn = Button(
                 text="Load street names for this spot  (needs WiFi)",
-                size_hint=(1, None), height=dp(38), font_size="13.5sp", bold=True,
+                size_hint=(1, None), height=dp(46), font_size="15.5sp", bold=True,
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -870,9 +870,10 @@ class ScanScreen(BoxLayout):
             addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                  height=dp(44), spacing=dp(6))
             self.addr_in = TextInput(hint_text="street address  (needs internet)",
-                                     multiline=False, font_size="15sp")
+                                     multiline=False, font_size="17sp")
             bind_field(self.addr_in)
             find_btn = Button(text="Find", size_hint_x=None, width=dp(84), bold=True,
+                              font_size="17sp",
                               background_normal="",
                               background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                               color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -882,9 +883,9 @@ class ScanScreen(BoxLayout):
             coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                   height=dp(44), spacing=dp(6))
             self.lat_in = TextInput(hint_text="latitude", multiline=False,
-                                    input_filter="float", font_size="16sp")
+                                    input_filter="float", font_size="18sp")
             self.lon_in = TextInput(hint_text="longitude", multiline=False,
-                                    input_filter="float", font_size="16sp")
+                                    input_filter="float", font_size="18sp")
             bind_field(self.lat_in, numeric=True)
             bind_field(self.lon_in, numeric=True)
             coord_row.add_widget(self.lat_in)
@@ -904,7 +905,7 @@ class ScanScreen(BoxLayout):
         # a toggle so the map + placement own the screen (was crowding both out).
         self._offline_open = False
         self.offline_toggle = Button(text="Offline maps  ▾", size_hint=(1, None),
-                                     height=dp(34), font_size="13sp", bold=True,
+                                     height=dp(34), font_size="15sp", bold=True,
                                      background_normal="",
                                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
