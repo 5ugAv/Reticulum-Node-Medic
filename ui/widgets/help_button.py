@@ -29,21 +29,24 @@ class HelpButton(Button):
         kwargs.setdefault("size", (dp(40), dp(40)))
         kwargs.setdefault("background_normal", "")
         kwargs.setdefault("background_down", "")
-        kwargs.setdefault("background_color",
-                          theme.hex_to_rgba(theme.COLORS["accent"]))
-        kwargs.setdefault("color", theme.hex_to_rgba(theme.COLORS["background"]))
+        # Yellow "?" on a red circle — the Node Medic hazard/attention look.
+        kwargs.setdefault("color", theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
         super().__init__(**kwargs)
-        from kivy.graphics import Color, Ellipse
+        from kivy.graphics import Color, Ellipse, Line
         with self.canvas.before:
-            self._c = Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
             self._circle = Ellipse(pos=self.pos, size=self.size)
-        # draw the accent as a circle over the (transparent) button rectangle
-        self.background_color = (0, 0, 0, 0)
+            # a brighter red rim so the "circle around it" reads clearly on dark UI
+            Color(*theme.hex_to_rgba("#ff1744"))
+            self._rim = Line(width=dp(1.6))
+        self.background_color = (0, 0, 0, 0)          # button rect stays invisible
         self.bind(pos=self._sync, size=self._sync)
         self.bind(on_release=lambda *_: open_guide_popup())
 
     def _sync(self, *_):
         self._circle.pos, self._circle.size = self.pos, self.size
+        self._rim.circle = (self.center_x, self.center_y,
+                            min(self.width, self.height) / 2 - dp(1))
 
 
 def open_guide_popup():
