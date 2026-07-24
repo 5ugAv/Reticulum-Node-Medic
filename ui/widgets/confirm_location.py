@@ -79,8 +79,8 @@ class ConfirmLocationPopup(Popup):
         cancel.bind(on_release=lambda *_: self._cancel())
         row.add_widget(cancel)
         if gps_reader is not None:
-            usegps = Button(text="Use current GPS", bold=True, font_size="14sp",
-                            size_hint_x=0.36, background_normal="",
+            usegps = Button(text="Use GPS", bold=True, font_size="14sp",
+                            size_hint_x=0.3, background_normal="",
                             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
             usegps.bind(on_release=lambda *_: self._use_gps())
