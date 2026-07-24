@@ -291,8 +291,8 @@ class InsertSdAnim(_LoopAnim):
     #: two points on the thin light edge just above the "microSD" label. The card is
     #: clipped to below this line so its inserted portion vanishes into the angled
     #: slot (measured from sd_reader_body.png — the slot descends left→right).
-    _SLOT_L = (0.10, 0.51)
-    _SLOT_R = (0.52, 0.693)
+    _SLOT_L = (0.10, 0.505)
+    _SLOT_R = (0.50, 0.579)
 
     def __init__(self, **kwargs):
         kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
