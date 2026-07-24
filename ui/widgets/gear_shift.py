@@ -19,9 +19,11 @@ from kivy.uix.widget import Widget
 
 from ui import theme
 
+#: Reuse the front-page power-off button (already round-masked, transparent
+#: corners) so the shutdown knob is consistent everywhere.
 _KNOB_PNG = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "assets", "ui", "power_knob.png")
+    "assets", "ui", "power.png")
 _knob_tex = None
 
 
