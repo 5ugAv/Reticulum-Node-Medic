@@ -59,22 +59,26 @@ class HomeScreen(FloatLayout):
         self.add_widget(self.power_slider)
 
     def _power_off(self):
-        # Refuse while a flash is running — cutting power mid-write bricks the board.
+        import threading
+        from provisioning.power import power_off
+
+        def do_off():
+            threading.Thread(target=lambda: power_off(), daemon=True).start()
+
+        # During a flash, WARN but let the operator override — a stuck flash must not
+        # trap them into being unable to shut the medic down safely.
         try:
             from kivy.app import App
             app = App.get_running_app()
             if app is not None and app.flash_in_progress():
-                from ui.requirement_popup import requirement_popup
-                requirement_popup(
-                    "A flash is running — powering off now can brick the board. "
-                    "Wait for the red banner to clear, then power off.",
-                    "Flash in progress", False)
+                from ui.confirm import confirm_danger, FLASH_POWEROFF_WARNING
+                confirm_danger(FLASH_POWEROFF_WARNING, "Flashing in progress",
+                               do_off, proceed_text="Power off anyway",
+                               cancel_text="Keep flashing")
                 return
         except Exception:
             pass
-        import threading
-        from provisioning.power import power_off
-        threading.Thread(target=lambda: power_off(), daemon=True).start()
+        do_off()
 
     def _image_fraction(self, tx: float, ty: float):
         """Touch (window coords) -> image-fraction (x right, y DOWN), or None

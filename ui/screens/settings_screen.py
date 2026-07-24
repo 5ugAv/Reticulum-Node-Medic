@@ -84,21 +84,26 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._power_note)
 
     def _power_off(self):
-        # Refuse while a flash is running — cutting power mid-write bricks the board.
+        def do_off():
+            def work():
+                ok, msg = power_off()
+                Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        # During a flash, WARN but let the operator override — a stuck flash must not
+        # trap them into being unable to shut the medic down safely.
         try:
             from kivy.app import App
             app = App.get_running_app()
             if app is not None and app.flash_in_progress():
-                self._power_note.text = ("A flash is running — powering off now can "
-                                         "brick the board. Wait for it to finish.")
+                from ui.confirm import confirm_danger, FLASH_POWEROFF_WARNING
+                confirm_danger(FLASH_POWEROFF_WARNING, "Flashing in progress",
+                               do_off, proceed_text="Power off anyway",
+                               cancel_text="Keep flashing")
                 return
         except Exception:
             pass
-
-        def work():
-            ok, msg = power_off()
-            Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
-        threading.Thread(target=work, daemon=True).start()
+        do_off()
 
     # -- display brightness -------------------------------------------------
     def _brightness_section(self):
