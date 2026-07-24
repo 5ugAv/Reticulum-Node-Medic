@@ -64,6 +64,16 @@ class BirthGuideScreen(BoxLayout):
         self._node_name = ""
         self._render_detect()
 
+    def handle_back(self):
+        """Left-edge swipe: step back ONE page within the flow. Returns True if it
+        stepped back; False at the root (the detect landing) so the app goes home.
+        Each _render_* sets ``self._back_action`` to its previous page (or None)."""
+        action = getattr(self, "_back_action", None)
+        if callable(action):
+            action()
+            return True
+        return False
+
     # -- detect-first landing ---------------------------------------------
     def _render_detect(self):
         """Plug a node in; the medic reads it and routes to ADOPT (already ours)
@@ -71,6 +81,7 @@ class BirthGuideScreen(BoxLayout):
         the home for Pi + Mitosis, which aren't plug-in-a-radio-board cases)."""
         self._stop_current()
         self.clear_widgets()
+        self._back_action = None          # detect landing is the root -> home
         anim = ConnectBoardAnim()
         step = WizardStep(
             index=0, total=1, title="Connect your node",
@@ -101,6 +112,7 @@ class BirthGuideScreen(BoxLayout):
     def _render_reading(self):
         self._stop_current()
         self.clear_widgets()
+        self._back_action = self._render_detect   # reading -> re-detect
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(18))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
@@ -144,6 +156,7 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         from ui.adopt_live import known_name
         name = c.get("node_name") or known_name(c.get("identity_hash")) or "This node"
+        self._back_action = self._render_detect   # already-kin info -> re-detect
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
@@ -176,6 +189,7 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
+        self._back_action = self._render_detect   # adopt confirm -> re-detect
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
         wrap.add_widget(_line("Existing node found", "24sp", bold=True, h=36))
         wrap.add_widget(_line("This node is already running our config — adopt it "
@@ -284,6 +298,7 @@ class BirthGuideScreen(BoxLayout):
     def _render_adopt_done(self, ok, msg):
         self._stop_current()
         self.clear_widgets()
+        self._back_action = None          # terminal outcome -> home
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
@@ -305,6 +320,7 @@ class BirthGuideScreen(BoxLayout):
     def _render_intro(self):
         self.clear_widgets()
         self._current = None
+        self._back_action = self._render_detect   # chooser -> detect landing
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
         from ui.widgets.help_button import HelpButton
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
@@ -351,6 +367,7 @@ class BirthGuideScreen(BoxLayout):
     def _render_over_air_list(self):
         self._stop_current()
         self.clear_widgets()
+        self._back_action = self._render_intro    # heard list -> chooser
         from kivy.uix.scrollview import ScrollView
         from kivy.uix.widget import Widget
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
@@ -411,6 +428,7 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
+        self._back_action = self._render_over_air_list
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
         wrap.add_widget(_line("Adopt over LoRa", "24sp", bold=True, h=36))
         wrap.add_widget(_line("Enrol this node as kin from its mesh beacon — no "
@@ -500,6 +518,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.textinput import TextInput
         from kivy.clock import Clock
         from ui.onscreen_keyboard import bind_field
+        self._back_action = self._render_intro    # name step -> the chooser
         total = len(guide_steps(self._path)) + 1
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text="Name this node  (e.g. Rooftop-East)",
@@ -531,6 +550,7 @@ class BirthGuideScreen(BoxLayout):
             self._finish()
             return
         self._stop_current()
+        self._back_action = self._back        # guided step -> previous step / name
         s = steps[self._i]
         anim_cls = _ANIMS.get(s.get("anim"))
         anim = anim_cls() if anim_cls else None

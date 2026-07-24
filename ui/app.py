@@ -259,9 +259,21 @@ class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
     def _with_back(self, widget):
-        """A mode screen that goes back to the front page on a LEFT-EDGE SWIPE
-        (with a faint chevron handle) — no corner BACK button to overlap controls."""
-        wrap = _BackSwipeWrap(on_back=lambda: self.switch_mode("home"))
+        """A mode screen that goes back on a LEFT-EDGE SWIPE (faint chevron handle,
+        no corner BACK button to overlap controls). For a MULTI-PAGE flow the swipe
+        steps back ONE page first: if the wrapped screen has ``handle_back()`` and
+        it returns True (it stepped back internally), we stop there; only at the
+        flow's root (or a plain single-page screen) does it fall through to home."""
+        def on_back():
+            h = getattr(widget, "handle_back", None)
+            if callable(h):
+                try:
+                    if h():
+                        return              # the screen stepped back a page
+                except Exception:
+                    pass
+            self.switch_mode("home")
+        wrap = _BackSwipeWrap(on_back=on_back)
         wrap.add_content(widget)
         return wrap
 
