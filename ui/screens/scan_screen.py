@@ -813,12 +813,17 @@ class ScanScreen(BoxLayout):
         # the placement pin. Explicit +/- overlay so zoom never depends on the
         # panel's (unreliable) pinch.
         map_wrap = FloatLayout(size_hint_y=1)
+        # pos_hint is REQUIRED: a FloatLayout only repositions children that carry a
+        # pos_hint — a size_hint alone stretches the plot to fill the container but
+        # leaves its pos stuck at (0,0) = the screen's bottom-left, so it drew
+        # anchored to the screen bottom (behind the badge) and left the top of the
+        # pane black. Pinning {x:0, y:0} makes it fill the container properly.
         self.plot = MapPlot(tiles=self._tiles, interactive=True,
                             on_pick=self._on_map_pick if on_place is not None else None,
                             on_node_pick=self._on_node_pick,
                             links_provider=links_provider,
                             suggestions_provider=suggestions_provider,
-                            size_hint=(1, 1))
+                            size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
         map_wrap.add_widget(self.plot)
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
                          size=(dp(50), dp(104)), spacing=dp(6),
