@@ -175,6 +175,9 @@ class BirthScreen(BoxLayout):
         bind_field(self._name_in)
         bind_field(self._search_in)
         bind_field(self._end_notes_in)
+        # Live-render the typed name onto the board photo's on-screen display.
+        self._name_in.bind(text=lambda *_: self._update_board_cards())
+        self._rtnode_cards = {}                        # target key -> BoardCard
         # {"rtnode2400": factory, "pi_rnode": factory} — each returns a workflow
         # with .run_all(on_progress), .birth_certificate, and (optionally)
         # .onboarding. The "rnode" type has no single workflow: it opens the
@@ -258,52 +261,45 @@ class BirthScreen(BoxLayout):
         self.header.add_widget(self._search_results)
 
         self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
-        self.header.add_widget(_line("Choose your hardware:", size="13sp",
-                                     color="text_secondary"))
 
-        # Auto-detect: read the plugged-in board's chip and pre-select firmware.
-        detect = Button(
-            text="Detecting board…" if self._detecting else "Detect connected board",
-            size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
-            background_normal="",
-            background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-            color=theme.hex_to_rgba(theme.COLORS["background"]))
-        detect.bind(on_release=lambda *_: self._detect_board())
-        self.header.add_widget(detect)
-        if self._detected is not None:
-            found = self._detected.get("found")
-            self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
-                                         color="green" if found else "amber"))
-
-        # Firmware — auto-detect suggests one, but ALL options are shown as buttons
-        # so the operator can pick RNode / Pi+RNode directly (the selected one is
-        # highlighted).
-        self.header.add_widget(_line("Firmware", bold=True, size="15sp",
-                                     color="accent"))
-        fw_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50),
-                           spacing=dp(6))
-        for key, short in (("rtnode2400", "RTNode-2400"), ("rnode", "RNode"),
-                           ("pi_rnode", "Pi + RNode")):
-            sel = self._firmware == key
-            b = Button(text=short, font_size="14sp", bold=True, background_normal="",
-                       background_color=theme.hex_to_rgba(
-                           theme.COLORS["accent" if sel else "surface"]),
-                       color=theme.hex_to_rgba(
-                           theme.COLORS["background" if sel else "text_primary"]))
-            b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
-            fw_row.add_widget(b)
-        self.header.add_widget(fw_row)
-        if self._firmware:
-            self.header.add_widget(_line(FIRMWARE_LABEL[self._firmware], size="12sp",
+        if not self._firmware:
+            # ENTRY POINT — nothing chosen yet: detect the board and/or pick a
+            # firmware family. Once chosen, these collapse (see the else branch).
+            self.header.add_widget(_line("Choose your hardware:", size="13sp",
                                          color="text_secondary"))
+            detect = Button(
+                text="Detecting board…" if self._detecting else "Detect connected board",
+                size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
+                background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            detect.bind(on_release=lambda *_: self._detect_board())
+            self.header.add_widget(detect)
+            if self._detected is not None:
+                found = self._detected.get("found")
+                self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
+                                             color="green" if found else "amber"))
+            self.header.add_widget(_line("Firmware", bold=True, size="15sp",
+                                         color="accent"))
+            fw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                               height=dp(50), spacing=dp(6))
+            for key, short in (("rtnode2400", "RTNode-2400"), ("rnode", "RNode"),
+                               ("pi_rnode", "Pi + RNode")):
+                b = Button(text=short, font_size="14sp", bold=True,
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+                b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
+                fw_row.add_widget(b)
+            self.header.add_widget(fw_row)
+        else:
+            # CHOSEN (via detect or the guided flow): detection + firmware are DONE,
+            # so collapse them to one line with a 'change' escape and go straight to
+            # confirming the board.
+            self.header.add_widget(self._firmware_summary_row())
 
         if self._firmware == "rtnode2400":
-            self.header.add_widget(_line("Target board", bold=True, size="15sp",
-                                         color="accent"))
-            tgt = RTNODE_TARGETS.get(self._rtnode_target)
-            self.header.add_widget(self._sel_button(
-                tgt.display if tgt else "Tap to choose the RTNode-2400 target",
-                self._choose_rtnode_target))
+            self._add_rtnode_confirm()
         elif self._firmware in ("rnode", "pi_rnode"):
             self.header.add_widget(_line("Board (radio)", bold=True, size="15sp",
                                          color="accent"))
@@ -458,8 +454,9 @@ class BirthScreen(BoxLayout):
             if not self._forced_firmware:                 # guide-chosen kind wins
                 self._firmware = (res.get("firmware") or ["rnode"])[0]
             if self._firmware == "rtnode2400":
-                # a chip read can't tell the S3 boards apart — default the target
-                self._rtnode_target = self._rtnode_target or DEFAULT_TARGET
+                # a chip read can't tell V3 from V4 — the operator CONFIRMS via the
+                # board photos, so don't pre-pick a target here.
+                pass
             elif res.get("board_key"):
                 self._sel_board = next(
                     (b for b in self._boards if b.key == res["board_key"]), None)
@@ -482,9 +479,85 @@ class BirthScreen(BoxLayout):
     def _pick_firmware(self, key):
         self._firmware = key
         self._forced_firmware = None            # a manual tap is an explicit override
-        if key == "rtnode2400" and not self._rtnode_target:
-            self._rtnode_target = DEFAULT_TARGET
         self._build_chooser()
+
+    def _reset_firmware(self):
+        """'change' — back out of the chosen firmware so the operator can re-detect
+        or pick a different family (the escape hatch from the collapsed summary)."""
+        self._firmware = None
+        self._forced_firmware = None
+        self._rtnode_target = None
+        self._rtnode_cards = {}
+        self._build_chooser()
+
+    def _firmware_summary_row(self):
+        """A one-line 'detected X · <firmware>  [change]' summary, shown once the
+        firmware is chosen so the detect button + firmware picker don't clutter the
+        confirm step (they were the PREVIOUS step)."""
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(34),
+                        spacing=dp(8))
+        d = self._detected or {}
+        fam = FIRMWARE_LABEL.get(self._firmware, self._firmware).split("  ")[0]
+        if d.get("found"):
+            txt = (f"Detected {d.get('platform', d.get('chip', 'board'))} on "
+                   f"{d.get('port', 'USB')}  ·  {fam}")
+        else:
+            txt = fam
+        row.add_widget(_line(txt, size="12.5sp", color="green"))
+        change = Button(text="change", size_hint=(None, 1), width=dp(84),
+                        font_size="13sp", bold=True, background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        change.bind(on_release=lambda *_: self._reset_firmware())
+        row.add_widget(change)
+        return row
+
+    def _add_rtnode_confirm(self):
+        """V3/V4 board-photo chooser: the two Heltec boards look identical to Node
+        Medic over USB, so the operator taps the one in front of them. The typed
+        node name renders live on each board's little screen."""
+        from ui.widgets.board_card import BoardCard
+        from ui import board_images
+        self.header.add_widget(_line(
+            "Which board is it?  V3 and V4 look identical to Node Medic — tap the "
+            "one in front of you.", size="13.5sp", color="accent"))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(178),
+                        spacing=dp(10))
+        self._rtnode_cards = {}
+        nm = self._name_in.text.strip()
+        for key in ("heltec_v3", "heltec_v4"):
+            col = BoxLayout(orientation="vertical", spacing=dp(4))
+            card = BoardCard(key, name=nm, selected=(self._rtnode_target == key),
+                             on_select=lambda k=key: self._pick_rtnode_target(k),
+                             size_hint_y=1)
+            self._rtnode_cards[key] = card
+            col.add_widget(card)
+            lbl = _line(board_images.label(key), bold=True, size="16sp",
+                        color="accent" if self._rtnode_target == key else "text_primary")
+            lbl.halign = "center"
+            lbl.size_hint_y = None
+            lbl.height = dp(26)
+            col.add_widget(lbl)
+            row.add_widget(col)
+        self.header.add_widget(row)
+        # T-Beam Supreme (SD transport) is a rarer RTNode target — keep it reachable
+        # without cluttering the common V3/V4 choice.
+        other = Button(text="Other RTNode board (T-Beam Supreme)…", size_hint_y=None,
+                       height=dp(38), font_size="12.5sp", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        other.bind(on_release=lambda *_: self._choose_rtnode_target())
+        self.header.add_widget(other)
+
+    def _update_board_cards(self):
+        """Push the current name onto any live board cards (called as the operator
+        types), so it appears on the board's screen in real time."""
+        nm = self._name_in.text.strip()
+        for card in getattr(self, "_rtnode_cards", {}).values():
+            try:
+                card.set_name(nm)
+            except Exception:
+                pass
 
     def begin_guided(self, path):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
@@ -495,8 +568,6 @@ class BirthScreen(BoxLayout):
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
             self._firmware = self._forced_firmware
-            if self._forced_firmware == "rtnode2400" and not self._rtnode_target:
-                self._rtnode_target = DEFAULT_TARGET
         self._build_chooser()
         self._detect_board()
 

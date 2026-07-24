@@ -60,6 +60,12 @@ RTNODE_TARGETS = {
     "heltec_v4": RTNodeTarget(
         "heltec_v4", "Heltec V4", RTNODE_BUILD_ENV,
         NodeHardware.HELTEC_V4, verify="beacon"),
+    # V3 and V4 are BOTH ESP32-S3 native-USB — the medic can't tell them apart, so
+    # the operator confirms. V3 has its own PlatformIO env (heltec_V3_boundary:
+    # heltec_wifi_lora_32_V3 board, 8MB, no NeoPixel — V3 has no onboard RGB).
+    "heltec_v3": RTNodeTarget(
+        "heltec_v3", "Heltec V3", "heltec_V3_boundary",
+        NodeHardware.HELTEC_V3, verify="beacon"),
     "tbeam_supreme": RTNodeTarget(
         "tbeam_supreme", "T-Beam Supreme (SD transport node)",
         "tbeam_supreme_boundary-local", NodeHardware.TBEAM_SUPREME,

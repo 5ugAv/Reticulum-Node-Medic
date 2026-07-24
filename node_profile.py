@@ -16,6 +16,7 @@ class NodeHardware(Enum):
     PI_3A_PLUS = "Raspberry Pi 3A+"
     PI_ZERO_2W = "Raspberry Pi Zero 2W"
     PI_5 = "Raspberry Pi 5"
+    HELTEC_V3 = "Heltec LoRa32 V3"
     HELTEC_V4 = "Heltec LoRa32 V4"
     TBEAM_SUPREME = "LilyGO T-Beam Supreme"
     WIRELESS_TRACKER = "Heltec Wireless Tracker"
