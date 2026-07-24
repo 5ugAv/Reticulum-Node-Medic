@@ -527,7 +527,9 @@ class BirthScreen(BoxLayout):
         nm = self._name_in.text.strip()
         for key in ("heltec_v3", "heltec_v4"):
             col = BoxLayout(orientation="vertical", spacing=dp(4))
-            card = BoardCard(key, name=nm, selected=(self._rtnode_target == key),
+            sel = (self._rtnode_target == key)
+            # the name only shows on the board you've PICKED — not both.
+            card = BoardCard(key, name=(nm if sel else ""), selected=sel,
                              on_select=lambda k=key: self._pick_rtnode_target(k),
                              size_hint_y=1)
             self._rtnode_cards[key] = card
@@ -553,9 +555,9 @@ class BirthScreen(BoxLayout):
         """Push the current name onto any live board cards (called as the operator
         types), so it appears on the board's screen in real time."""
         nm = self._name_in.text.strip()
-        for card in getattr(self, "_rtnode_cards", {}).values():
+        for key, card in getattr(self, "_rtnode_cards", {}).items():
             try:
-                card.set_name(nm)
+                card.set_name(nm if self._rtnode_target == key else "")
             except Exception:
                 pass
 
