@@ -91,6 +91,40 @@ def read_status_via_mdns(port: Optional[str], timeout: float = 4.0) -> Optional[
         return None
 
 
+def is_kin(identity_hash) -> bool:
+    """True if this identity is already enrolled in the medic's kin roster."""
+    if not identity_hash:
+        return False
+    try:
+        from monitor.kin_roster import load_roster
+        return identity_hash in load_roster()
+    except Exception:
+        return False
+
+
+def known_name(identity_hash) -> str:
+    """The node's name from the medic's OWN records (kin roster, then a stored
+    cert), keyed by identity — so adoption can inherit the name even when the
+    node's /status is unreachable. Empty string if we've no record of it."""
+    if not identity_hash:
+        return ""
+    try:
+        from monitor.kin_roster import load_roster
+        e = load_roster().get(identity_hash)
+        if e and e.get("name"):
+            return e["name"]
+    except Exception:
+        pass
+    try:
+        from ui.cert_store import load_certs
+        for c in load_certs():
+            if c.get("identity_hash") == identity_hash and c.get("node_name"):
+                return c["node_name"]
+    except Exception:
+        pass
+    return ""
+
+
 def heard_candidates(registry, now: float):
     """Nodes the medic can HEAR over the mesh, one per physical device — the
     candidates for over-the-air adoption. Neighbours (not yet kin) sort first;

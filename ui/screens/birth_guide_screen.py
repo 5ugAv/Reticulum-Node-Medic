@@ -126,10 +126,44 @@ class BirthGuideScreen(BoxLayout):
         threading.Thread(target=work, daemon=True).start()
 
     def _route(self, c):
-        if c.get("kind") == "adopt":
+        from ui.adopt_live import is_kin
+        if is_kin(c.get("identity_hash")):
+            self._render_already_kin(c)   # already one of ours -> nothing to do
+        elif c.get("kind") == "adopt":
             self._render_adopt(c)
         else:
             self._render_intro()          # birth -> the build chooser
+
+    def _render_already_kin(self, c):
+        self._stop_current()
+        self.clear_widgets()
+        from ui.adopt_live import known_name
+        name = c.get("node_name") or known_name(c.get("identity_hash")) or "This node"
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line("Already kin", "28sp", bold=True, h=44, color="green"))
+        wrap.add_widget(_line(f"{name} is already one of your kin — it's enrolled "
+                              "and reporting to VITALS. Nothing to do.", "16sp",
+                              color="text_secondary", h=80))
+        wrap.add_widget(_line(f"Identity  {(c.get('identity_hash') or '')[:16]}…",
+                              "12.5sp", color="text_secondary", h=22))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
+                        spacing=dp(12))
+        vit = Button(text="See in VITALS", bold=True, font_size="16sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        vit.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("vitals"))
+        done = Button(text="Done", bold=True, font_size="16sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        done.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("home"))
+        row.add_widget(vit)
+        row.add_widget(done)
+        wrap.add_widget(row)
+        wrap.add_widget(Widget())
+        self.add_widget(wrap)
 
     # -- adopt confirm / run ----------------------------------------------
     def _render_adopt(self, c):
@@ -142,13 +176,25 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line("This node is already running our config — adopt it "
                               "as kin (no flashing, keeps its settings).",
                               "15sp", color="text_secondary", h=48))
-        ti = TextInput(text=c.get("node_name") or "", multiline=False,
-                       hint_text="Node name", size_hint_y=None, height=dp(56),
-                       font_size="19sp")
-        bind_field(ti)
-        self._adopt_name = ti
-        wrap.add_widget(_line("Name", "13sp", color="accent", h=20))
-        wrap.add_widget(ti)
+        # Adoption INHERITS the node's own name (it doesn't reflash, so it can't
+        # rename the node — 'Re-birth instead' is the deliberate rename path). Show
+        # it read-only when we can read it (from /status or the medic's records);
+        # only offer a field as a fallback when the name is genuinely unknown.
+        from ui.adopt_live import known_name
+        name0 = c.get("node_name") or known_name(c.get("identity_hash")) or ""
+        wrap.add_widget(_line("Name (kept from the node)", "13sp",
+                              color="accent", h=20))
+        if name0:
+            wrap.add_widget(_line(name0, "20sp", bold=True, h=32))
+            self._adopt_name = None
+            self._adopt_name_value = name0
+        else:
+            ti = TextInput(hint_text="Couldn't read the node's name — enter one",
+                           multiline=False, size_hint_y=None, height=dp(56),
+                           font_size="19sp")
+            bind_field(ti)
+            self._adopt_name = ti
+            self._adopt_name_value = ""
         p = c.get("params") or {}
         det = (f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
                f"Radio:  {(p.get('freq', 0) / 1e6):.3f} MHz   SF{p.get('sf')}   "
@@ -177,7 +223,8 @@ class BirthGuideScreen(BoxLayout):
     def _do_adopt(self, c):
         # GATE: the medic is AT the node for a USB adopt, so confirm its GPS on a
         # map before it's baked into the cert (catches a wrong/stale fix).
-        name = (self._adopt_name.text or "").strip()
+        name = ((self._adopt_name.text or "").strip() if self._adopt_name
+                else self._adopt_name_value)
         fix = None
         try:
             from monitor.geo import read_gps
