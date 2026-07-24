@@ -36,7 +36,7 @@ class SettingsScreen(BoxLayout):
     (e.g. ``"wifi"``)."""
 
     def __init__(self, on_open=None, on_retention_change=None,
-                 node_count_provider=None, **kwargs):
+                 node_count_provider=None, on_preview_screensaver=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.spacing = dp(10)
@@ -44,6 +44,7 @@ class SettingsScreen(BoxLayout):
         self._on_open = on_open
         self._on_retention_change = on_retention_change
         self._node_count_provider = node_count_provider
+        self._on_preview_screensaver = on_preview_screensaver
 
         self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
         self.add_widget(self._entry("Default radio parameters",
@@ -63,6 +64,7 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
         self.add_widget(self._brightness_section())
+        self.add_widget(self._screensaver_section())
         self.add_widget(self._alerts_section())
         self.add_widget(self._retention_section())
         self.add_widget(self._entry("About",
@@ -121,6 +123,59 @@ class SettingsScreen(BoxLayout):
 
     def _apply_brightness(self, pct):
         threading.Thread(target=lambda: bright.set_brightness(pct), daemon=True).start()
+
+    # -- screen saver -------------------------------------------------------
+    def _screensaver_section(self):
+        from provisioning import screensaver as ss
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line("Screen saver", bold=True, size="15sp",
+                             color="accent", h=26))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
+                        spacing=dp(10))
+        row.add_widget(_line("Play when idle (protects the panel from burn-in)",
+                             size="14sp"))
+        sw = Switch(active=ss.is_enabled(), size_hint_x=None, width=dp(90))
+        sw.bind(active=lambda _i, v: ss.set_enabled(bool(v)))
+        row.add_widget(sw)
+        box.add_widget(row)
+        box.add_widget(_line(f"Style: {ss.STYLE_LABELS.get(ss.style(), ss.style())}",
+                             size="12.5sp", color="text_secondary", h=20))
+        self._ssv_delay = ss.idle_delay_s()
+        drow = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
+                         spacing=dp(8))
+        drow.add_widget(_line("Start after", size="14sp"))
+        minus = Button(text="–", size_hint_x=None, width=dp(46), bold=True,
+                       font_size="22sp", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        minus.bind(on_release=lambda *_: self._step_ssv(-1))
+        self._ssv_lbl = _line(ss.format_delay(self._ssv_delay), size="16sp", h=46)
+        self._ssv_lbl.halign = "center"
+        self._ssv_lbl.size_hint_x, self._ssv_lbl.width = None, dp(90)
+        plus = Button(text="+", size_hint_x=None, width=dp(46), bold=True,
+                      font_size="22sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        plus.bind(on_release=lambda *_: self._step_ssv(+1))
+        preview = Button(text="See it now", size_hint_x=None, width=dp(110), bold=True,
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]))
+        preview.bind(on_release=lambda *_: (self._on_preview_screensaver
+                                            and self._on_preview_screensaver()))
+        drow.add_widget(minus)
+        drow.add_widget(self._ssv_lbl)
+        drow.add_widget(plus)
+        drow.add_widget(preview)
+        box.add_widget(drow)
+        return box
+
+    def _step_ssv(self, direction):
+        from provisioning import screensaver as ss
+        self._ssv_delay = ss.set_idle_delay_s(
+            ss.step_idle(self._ssv_delay, direction))["idle_delay_s"]
+        self._ssv_lbl.text = ss.format_delay(self._ssv_delay)
 
     # -- alerts -------------------------------------------------------------
     def _alerts_section(self):

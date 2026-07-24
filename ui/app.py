@@ -291,6 +291,46 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             return 0
 
+    def _install_screensaver(self):
+        """Show a moving screensaver after a spell of no touches (burn-in guard on
+        the always-on panel); any touch dismisses it and resets the idle timer."""
+        try:
+            from kivy.core.window import Window
+            from ui.widgets.screensaver import Screensaver
+            self._screensaver = Screensaver(on_dismiss=self._dismiss_screensaver)
+            self._idle_ev = None
+            Window.bind(on_touch_down=lambda *_a: self._reset_idle())
+            self._reset_idle()
+        except Exception as e:
+            print(f"[screensaver] install skipped: {e}")
+
+    def _reset_idle(self):
+        saver = getattr(self, "_screensaver", None)
+        if saver is None:
+            return
+        if getattr(self, "_idle_ev", None) is not None:
+            self._idle_ev.cancel()
+            self._idle_ev = None
+        try:
+            from provisioning import screensaver as ss
+            if ss.is_enabled():
+                self._idle_ev = Clock.schedule_once(
+                    lambda dt: self._show_screensaver(), ss.idle_delay_s())
+        except Exception:
+            pass
+
+    def _show_screensaver(self):
+        try:
+            from provisioning import screensaver as ss
+            if not self._screensaver.active:
+                self._screensaver.show(ss.style())
+        except Exception:
+            pass
+
+    def _dismiss_screensaver(self):
+        self._screensaver.hide()
+        self._reset_idle()
+
     def _stamp_born(self):
         """Stamp this unit's born date once (from its RNS identity's mtime), so
         Settings ▸ Tool identity can show it. Best-effort."""
@@ -432,7 +472,8 @@ class ReticulumNodeMedicApp(App):
         settings_scr.add_widget(self._with_back(SettingsScreen(
             on_open=self.switch_mode,
             on_retention_change=self._apply_retention,
-            node_count_provider=self._monitor_node_count)))
+            node_count_provider=self._monitor_node_count,
+            on_preview_screensaver=self._show_screensaver)))
         self.sm.add_widget(settings_scr)
 
         # WiFi connect — join a hotspot / venue AP so online features work afield.
@@ -543,6 +584,7 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(mitosis)
 
         self.sm.current = os.environ.get("RNM_START", "home")
+        self._install_screensaver()
 
         # The on-screen keyboard floats above every screen (the touchscreen has
         # no physical keys). Fields call ui.onscreen_keyboard.bind_field(...) and
