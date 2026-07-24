@@ -93,21 +93,8 @@ class ConfirmLocationPopup(Popup):
         who = f" — {node_name}" if node_name else ""
         body = BoxLayout(orientation="vertical", spacing=dp(6), padding=dp(10))
 
-        # the map (reused SCAN widget) with a draggable-by-tap pin
-        if tiles is None:
-            try:
-                from ui.map_tiles import MAPS_DIR, find_mbtiles
-                tiles = find_mbtiles(MAPS_DIR)
-            except Exception:
-                tiles = None
-        from ui.screens.scan_screen import MapPlot
-        # MapPlot's on_pick fires with a SINGLE (lat, lon) TUPLE — unpack it (and
-        # never let a touch-callback error crash the app).
-        self.plot = MapPlot(nodes=[], tiles=tiles, interactive=True,
-                            on_pick=self._on_map_pick)
-        body.add_widget(self.plot)
-
-        # type-an-address search: jump the pin to a looked-up address
+        # type-an-address search FIRST — at the top so it stays visible ABOVE the
+        # on-screen keyboard (a modal can't pan its content up like a screen does).
         from ui.onscreen_keyboard import bind_field
         addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                              height=dp(50), spacing=dp(6))
@@ -123,9 +110,23 @@ class ConfirmLocationPopup(Popup):
         addr_row.add_widget(self._addr_in)
         addr_row.add_widget(find)
         body.add_widget(addr_row)
-
         body.add_widget(_lbl("or tap the map to move the pin", "12.5sp",
                              color="accent", h=18))
+
+        # the map (reused SCAN widget) with a draggable-by-tap pin
+        if tiles is None:
+            try:
+                from ui.map_tiles import MAPS_DIR, find_mbtiles
+                tiles = find_mbtiles(MAPS_DIR)
+            except Exception:
+                tiles = None
+        from ui.screens.scan_screen import MapPlot
+        # MapPlot's on_pick fires with a SINGLE (lat, lon) TUPLE — unpack it (and
+        # never let a touch-callback error crash the app).
+        self.plot = MapPlot(nodes=[], tiles=tiles, interactive=True,
+                            on_pick=self._on_map_pick)
+        body.add_widget(self.plot)
+
         self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=22)
         body.add_widget(self._coords)
         self._addr = _lbl("Looking up address…", "12.5sp",
