@@ -67,6 +67,10 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._screensaver_section())
         self.add_widget(self._alerts_section())
         self.add_widget(self._retention_section())
+        self.add_widget(self._entry("Reticulum & radio guide",
+                                    "What RNode / transport / propagation nodes are, "
+                                    "where to place them, and the radio settings",
+                                    "guide"))
         self.add_widget(self._entry("About",
                                     "Software version, test-suite status, uptime, "
                                     "and licence", "about"))

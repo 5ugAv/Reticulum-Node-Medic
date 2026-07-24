@@ -43,7 +43,12 @@ class RadioDefaultsScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(14)
         self.spacing = dp(8)
-        self.add_widget(_line("Default radio parameters", bold=True, size="22sp", h=40))
+        from ui.widgets.help_button import HelpButton
+        head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
+                         spacing=dp(8))
+        head.add_widget(_line("Default radio parameters", bold=True, size="22sp"))
+        head.add_widget(HelpButton())
+        self.add_widget(head)
 
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))

@@ -515,6 +515,11 @@ class ReticulumNodeMedicApp(App):
         about_scr.add_widget(self._with_back(AboutScreen()))
         self.sm.add_widget(about_scr)
 
+        guide_scr = Screen(name="guide")
+        from ui.screens.guide_screen import GuideScreen
+        guide_scr.add_widget(self._with_back(GuideScreen()))
+        self.sm.add_widget(guide_scr)
+
         birth = Screen(name="birth")
         # Real hardware when a board is attached to the medic's USB; the emulated
         # demos only when nothing is (dev box / no board) — see ui.hw_factories.
