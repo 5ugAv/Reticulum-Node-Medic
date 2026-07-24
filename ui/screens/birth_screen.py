@@ -512,6 +512,27 @@ class BirthScreen(BoxLayout):
         row.add_widget(change)
         return row
 
+    def _warning_box(self, text):
+        """A hazard box — yellow-tinted fill + red outline + bold text — for the
+        can-brick warning, so it reads as a warning box, not just coloured text."""
+        from kivy.graphics import Color, RoundedRectangle, Line
+        box = BoxLayout(orientation="vertical", size_hint_y=None,
+                        padding=[dp(12), dp(10)])
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line(text, size="13.5sp", color="warning_yellow", bold=True))
+        with box.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"], 0.18))
+            rect = RoundedRectangle(radius=[dp(8)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+            outline = Line(width=dp(2.2))
+
+        def _sync(*_):
+            rect.pos, rect.size = box.pos, box.size
+            outline.rounded_rectangle = (box.x, box.y, box.width, box.height, dp(8))
+        box.bind(pos=_sync, size=_sync)
+        _sync()
+        return box
+
     def _add_rtnode_confirm(self):
         """V3/V4 board-photo chooser: the two Heltec boards look identical to Node
         Medic over USB, so the operator taps the one in front of them. The typed
@@ -519,11 +540,12 @@ class BirthScreen(BoxLayout):
         from ui.widgets.board_card import BoardCard
         from ui import board_images
         self.header.add_widget(_line(
-            "Which board is it?  V3 and V4 look identical to Node Medic — tap the "
-            "one in front of you.", size="13.5sp", color="accent"))
-        self.header.add_widget(_line(
-            "Selecting the WRONG board can brick the hardware — check the silkscreen "
-            "(it says V3 or V4).", size="12.5sp", color="amber", bold=True))
+            "Which board is it?  V3 and V4 look identical to Node Medic — tap the one "
+            "in front of you (the silkscreen says V3 or V4).", size="13.5sp",
+            color="accent"))
+        self.header.add_widget(self._warning_box(
+            "WARNING:  Selecting the wrong board can brick the hardware. Check your "
+            "selection before you build."))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(178),
                         spacing=dp(10))
         self._rtnode_cards = {}
