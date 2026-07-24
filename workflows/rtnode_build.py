@@ -163,6 +163,20 @@ def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     port = wf.profile.connection_port
+    # HARD GATE (belt-and-suspenders behind local_board_ports): never upload to
+    # the medic's OWN radio, whatever selected this port. Runs on the medic; a
+    # non-medic host (no roster, plain serial) has no onboard board to protect.
+    try:
+        from ui.onboard_roster import (assert_flashable, guard_is_active,
+                                        ProtectedBoardError)
+        if guard_is_active():             # enforce on the medic; skip on dev/CI
+            try:
+                assert_flashable(port)
+            except ProtectedBoardError as e:
+                return StepResult("flash_firmware", False, str(e))
+    except ImportError:
+        pass                              # roster module unavailable off-medic
+
     # THROTTLE the compile: only 2 of the Pi's 4 cores, at low priority (nice 15),
     # so it can never overload the medic — the touchscreen stays smooth AND the live
     # radio (rnsd), GPS splitter and mesh keep running during a flash. A bit slower

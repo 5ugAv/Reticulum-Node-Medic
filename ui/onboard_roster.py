@@ -88,6 +88,45 @@ def is_flashable_work_board(port: str, path: str = ROSTER_PATH,
     return not is_onboard(port, path, service_serials)
 
 
+class ProtectedBoardError(RuntimeError):
+    """Raised when an operation would write / erase / reset the medic's OWN board
+    (Jonesey, the GPS Tracker, or a clone's equivalent)."""
+
+
+def guard_is_active(path: str = ROSTER_PATH) -> bool:
+    """True when onboard-board protection is MEANINGFUL for this host — i.e. we
+    have a roster to consult OR udev serial symlinks to resolve identities by
+    (the medic/Linux). A bare dev host / CI (no ``/dev/serial/by-id``, no roster)
+    has no onboard radio to protect, so callers skip the gate there rather than
+    fail-closed on every fake port. ``assert_flashable`` itself stays strict."""
+    return os.path.exists(path) or os.path.isdir("/dev/serial/by-id")
+
+
+def assert_flashable(port: str, path: str = ROSTER_PATH, service_serials=None):
+    """THE hard gate — call it immediately before ANY write, erase, upload or
+    reset of a serial port (flash, adopt, PROBE, erase_flash). Raises
+    ``ProtectedBoardError`` unless *port* is a positively-identified WORK board
+    (resolvable serial, not in the onboard roster, not bound to a medic service).
+    Fails CLOSED. Routing every hardware-write through this means even a caller
+    that picked the port naively can never touch the medic's own radio — the last
+    line of defence behind ``local_board_ports``."""
+    if service_serials is None:
+        try:
+            service_serials = service_bound_serials()
+        except Exception:
+            service_serials = None
+    serial = serial_for_port(port)
+    if not serial:
+        raise ProtectedBoardError(
+            f"{port}: can't resolve a USB serial — refusing to write it "
+            "(fail-closed; the medic's own radio must never be a target).")
+    if is_onboard(port, path, service_serials):
+        raise ProtectedBoardError(
+            f"{port} (serial {serial}) is one of the medic's OWN onboard boards "
+            "(Jonesey / GPS) — never a flash, adopt or PROBE target.")
+    return True
+
+
 def register(role: str, serial: str, path: str = ROSTER_PATH) -> dict:
     """Record one of the medic's own permanent boards. Idempotent; returns the
     updated roster. (A cloned medic calls this for each of its boards at setup.)"""
