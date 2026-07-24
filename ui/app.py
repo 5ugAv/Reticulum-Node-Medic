@@ -964,8 +964,33 @@ class ReticulumNodeMedicApp(App):
         cert = (exact or hits or [None])[0]
         if cert is not None:
             self._open_cert(cert)
+            return
+        # No stored certificate. A node tapped in VITALS/SCAN is one we HEAR on the
+        # mesh — you can't plug it in, so route to OVER-THE-AIR adopt (write a cert
+        # + enrol it as kin) rather than the USB birth form. Falls back to the old
+        # prompt only if we can't identify it.
+        ident = node.get("identity") if isinstance(node, dict) else None
+        if ident:
+            self._adopt_over_air_node(node, ident)
         else:
             self._no_cert_popup(name)
+
+    def _adopt_over_air_node(self, node, ident):
+        """Adopt a heard node (from a VITALS/SCAN tap) over the air — jump to the
+        over-the-air confirm pre-filled with its identity + name."""
+        cand = {"name": node.get("name", "") if isinstance(node, dict) else "",
+                "key": ident, "identity": ident,
+                "node_type": node.get("type", "rtnode2400") if isinstance(node, dict)
+                else "rtnode2400",
+                "provenance": node.get("provenance", "") if isinstance(node, dict) else "",
+                "board": None, "firmware": None}
+        g = getattr(self, "birth_guide_screen", None)
+        if g is None:
+            self._no_cert_popup(cand["name"])
+            return
+        self.switch_mode("birth_guide")
+        from kivy.clock import Clock
+        Clock.schedule_once(lambda *_: g._render_over_air_confirm(cand), 0)
 
     def _open_cert(self, cert):
         from ui.screens.cert_view_screen import CertViewScreen

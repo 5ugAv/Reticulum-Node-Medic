@@ -201,6 +201,8 @@ class NodeRecord:
             "status": status,
             "type": self.node_type,
             "provenance": self.provenance,
+            "identity": self.dst_hash,    # kin key — lets a VITALS tap adopt it
+
             "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
             "battery_pct": None,          # no node type reports battery yet
