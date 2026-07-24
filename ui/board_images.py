@@ -25,15 +25,15 @@ _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 BOARDS: Dict[str, dict] = {
     "heltec_v4": {
         "label": "Heltec V4",
-        "image": os.path.join(_DIR, "heltec_v4.jpg"),
+        "image": os.path.join(_DIR, "heltec_v4.png"),
         "has_screen": True,
-        "oled": (0.40, 0.24, 0.68, 0.85),
+        "oled": (0.413, 0.278, 0.793, 0.699),
     },
     "heltec_v3": {
         "label": "Heltec V3",
-        "image": os.path.join(_DIR, "heltec_v3.jpg"),
+        "image": os.path.join(_DIR, "heltec_v3.png"),
         "has_screen": True,
-        "oled": (0.38, 0.15, 0.64, 0.82),
+        "oled": (0.378, 0.239, 0.835, 0.658),
     },
 }
 

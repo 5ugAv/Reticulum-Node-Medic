@@ -39,9 +39,15 @@ class BoardCard(FloatLayout):
         with self.canvas.after:
             self._frame_col = Color(0, 0, 0, 0)
             self._frame = Line(width=dp(2))
-        self._img.bind(norm_image_size=self._reposition)
+        # Re-place the name whenever the photo's drawn rect can change: its own
+        # pos/size (set by the layout) AND norm_image_size (set when the texture
+        # loads / the letterbox recomputes). Defer the first pass to next frame so
+        # the layout has actually run.
+        self._img.bind(pos=self._reposition, size=self._reposition,
+                       norm_image_size=self._reposition)
         self.bind(size=self._reposition, pos=self._reposition)
-        self._reposition()
+        from kivy.clock import Clock
+        Clock.schedule_once(self._reposition, 0)
 
     # -- public -------------------------------------------------------------
     def set_name(self, text):
