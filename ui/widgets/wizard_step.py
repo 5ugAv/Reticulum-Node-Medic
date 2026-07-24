@@ -45,7 +45,7 @@ class WizardStep(BoxLayout):
 
     def __init__(self, index, total, title, body, anim=None, on_next=None,
                  on_back=None, next_text="Next  →", back_text="←  Back",
-                 hint="", **kwargs):
+                 hint="", input_widget=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(20)
@@ -70,6 +70,10 @@ class WizardStep(BoxLayout):
         title_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
                        texture_size=lambda i, ts: setattr(i, "height", ts[1]))
         self.add_widget(title_lbl)
+
+        # optional input (e.g. the node-name field) sits right under the title
+        if input_widget is not None:
+            self.add_widget(input_widget)
 
         # central animation stage (flexes to fill the middle of the screen)
         self.stage = anim if anim is not None else Widget()
@@ -104,6 +108,15 @@ class WizardStep(BoxLayout):
         nav.add_widget(self.back_btn)
         nav.add_widget(self.next_btn)
         self.add_widget(nav)
+
+    def set_next_enabled(self, on: bool):
+        """Gray out / re-enable the Next button — used to gate a step until its
+        precondition is met (e.g. a board has been detected on USB)."""
+        self.next_btn.disabled = not on
+        self.next_btn.background_color = theme.hex_to_rgba(
+            theme.COLORS["green" if on else "surface"])
+        self.next_btn.color = theme.hex_to_rgba(
+            theme.COLORS["background" if on else "text_secondary"])
 
     def start(self):
         """Start the stage animation, if it has one."""

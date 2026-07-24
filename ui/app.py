@@ -1037,12 +1037,16 @@ class ReticulumNodeMedicApp(App):
             g.reset()
         self.switch_mode("birth_guide")
 
-    def _guided_birth_complete(self, path):
-        """The guide's physical-prep steps are done — hand off to the real BIRTH
-        screen, pre-scoped to the chosen kind with detection already running."""
+    def _guided_birth_complete(self, path, name=""):
+        """The guide's steps are done — hand off to the real BIRTH screen,
+        pre-scoped to the chosen kind with the node name (collected in the guide)
+        prefilled and detection already running."""
         bs = getattr(self, "birth_screen", None)
-        if bs is not None and hasattr(bs, "begin_guided"):
-            bs.begin_guided(path)
+        if bs is not None:
+            if name and hasattr(bs, "prefill_name"):
+                bs.prefill_name(name)
+            if hasattr(bs, "begin_guided"):
+                bs.begin_guided(path)
         self.switch_mode("birth")
 
     def switch_mode(self, mode_name):

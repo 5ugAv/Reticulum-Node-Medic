@@ -49,6 +49,7 @@ class BirthGuideScreen(BoxLayout):
         self._path = None
         self._i = 0
         self._current = None
+        self._node_name = ""
         self.reset()
 
     def reset(self):
@@ -57,6 +58,7 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self._path = None
         self._i = 0
+        self._node_name = ""
         self._render_intro()
 
     # -- rendering ---------------------------------------------------------
@@ -118,6 +120,39 @@ class BirthGuideScreen(BoxLayout):
     def _choose(self, path):
         self._path = path
         self._i = 0
+        self._render_name()
+
+    def _render_name(self):
+        """First guided step: name the node. Folded into the flow here (instead of
+        on the BIRTH screen) so the whole birth is one continuous walkthrough; the
+        name is carried to the BIRTH hand-off prefilled."""
+        self._stop_current()
+        from kivy.uix.textinput import TextInput
+        from kivy.clock import Clock
+        from ui.onscreen_keyboard import bind_field
+        total = len(guide_steps(self._path)) + 1
+        ti = TextInput(text=self._node_name, multiline=False,
+                       hint_text="Name this node  (e.g. Rooftop-East)",
+                       size_hint_y=None, height=dp(58), font_size="20sp")
+        bind_field(ti)
+        self._name_input = ti
+        step = WizardStep(index=0, total=total, title="Name this node",
+                          body="Give this node a short, memorable name — you'll see it "
+                               "on the map and on its birth certificate.",
+                          input_widget=ti, next_text="Next  →",
+                          on_next=self._name_next, on_back=self.reset)
+        self.clear_widgets()
+        self.add_widget(step)
+        self._current = step
+        Clock.schedule_once(lambda *_: setattr(ti, "focus", True), 0.3)
+
+    def _name_next(self):
+        name = (self._name_input.text or "").strip()
+        if not name:                         # a name is required to continue
+            self._name_input.focus = True
+            return
+        self._node_name = name
+        self._i = 0
         self._render_step()
 
     def _render_step(self):
@@ -129,7 +164,8 @@ class BirthGuideScreen(BoxLayout):
         s = steps[self._i]
         anim_cls = _ANIMS.get(s.get("anim"))
         anim = anim_cls() if anim_cls else None
-        step = WizardStep(index=self._i, total=len(steps), title=s["title"],
+        # +1 on index/total for the name step folded in ahead of these
+        step = WizardStep(index=self._i + 1, total=len(steps) + 1, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
                           next_text=s.get("next", "Next  →"),
                           on_next=self._next, on_back=self._back)
@@ -138,8 +174,10 @@ class BirthGuideScreen(BoxLayout):
         self._current = step
         step.start()
         # A "connect your board" step loops until the medic SENSES a board on USB,
-        # then the animation fires its green "Connected!" burst.
+        # then the animation fires its green "Connected!" burst. Until then Next is
+        # grayed out — you can't move on without a board actually plugged in.
         if isinstance(anim, ConnectBoardAnim):
+            step.set_next_enabled(False)
             self._start_board_poll(anim)
 
     # -- navigation --------------------------------------------------------
@@ -160,7 +198,7 @@ class BirthGuideScreen(BoxLayout):
     def _back(self):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
         if self._i == 0:
-            self.reset()                    # off the first step -> intro chooser
+            self._render_name()             # off the first step -> the name step
         else:
             self._i -= 1
             self._render_step()
@@ -169,7 +207,7 @@ class BirthGuideScreen(BoxLayout):
         path = self._path
         self._stop_current()
         if self._on_complete:
-            self._on_complete(path)
+            self._on_complete(path, self._node_name)
 
     def _stop_current(self):
         self._stop_board_poll()
@@ -205,6 +243,10 @@ class BirthGuideScreen(BoxLayout):
         self._stop_board_poll()
         if hasattr(anim, "mark_connected"):
             anim.mark_connected()
+        # A board is here — the green burst fires and Next un-grays (so the operator
+        # can go on, and the flow also auto-advances after the celebration below).
+        if self._current is not None and hasattr(self._current, "set_next_enabled"):
+            self._current.set_next_enabled(True)
         # Let the "Connected!" celebration play, then carry the flow forward on its
         # own — detection drives the wizard, no tap needed. A manual Next/Back
         # bumps the token and cancels this pending auto-advance.
