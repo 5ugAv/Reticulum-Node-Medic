@@ -134,6 +134,7 @@ class ConnectBoardAnim(_LoopAnim):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._connected = False
+        self._conn_tex = None                         # cached "Connected!" glyph texture
         self.bind(burst=self._redraw, rise=self._redraw)
 
     def mark_connected(self):
@@ -145,6 +146,15 @@ class ConnectBoardAnim(_LoopAnim):
         self._connected = True
         self.stop()                                   # halt the descend loop
         self.phase = 1.0                              # freeze the board docked
+        # pre-render the banner glyphs to a texture so it draws in-canvas (child
+        # Labels don't reliably render inside this canvas-drawing widget).
+        try:
+            from kivy.core.text import Label as CoreLabel
+            cl = CoreLabel(text="Connected!", font_size=dp(34), bold=True)
+            cl.refresh()
+            self._conn_tex = cl.texture
+        except Exception:
+            self._conn_tex = None
         Animation(burst=1.0, duration=1.1, t="out_quad").start(self)
         Animation(rise=1.0, duration=0.55, t="out_back").start(self)
 
@@ -187,17 +197,15 @@ class ConnectBoardAnim(_LoopAnim):
                     f = min(1.0, f)
                     Color(0.2, 0.9, 0.4, (1.0 - f) * 0.9)   # fade as each ring grows
                     Line(circle=(tipx, tipy, dp(10) + f * maxr), width=dp(3.0))
-        if self._connected:
-            # big "Connected!" banner rising up from the bottom of the panel
-            lbl = self._label("connected", text="Connected!", font_size="30sp",
-                              bold=True, halign="center", valign="middle",
-                              color=theme.hex_to_rgba(theme.COLORS["green"]))
-            lbl.size = (w, dp(46))
-            start_y, target_y = y - dp(50), y + h * 0.13
-            lbl.pos = (x, start_y + (target_y - start_y) * self.rise)
-            lbl.opacity = self.rise
-        else:
-            self._hide_label("connected")
+                # big "Connected!" banner rising from the bottom of the panel
+                if self._conn_tex is not None:
+                    tw, th = self._conn_tex.size
+                    start_y, target_y = y - dp(56), y + h * 0.24
+                    by = start_y + (target_y - start_y) * self.rise
+                    g = theme.hex_to_rgba(theme.COLORS["green"])
+                    Color(g[0], g[1], g[2], self.rise)
+                    Rectangle(texture=self._conn_tex,
+                              pos=(x + (w - tw) / 2.0, by), size=(tw, th))
         self._hide_label("medic")
         self._hide_label("board")
 
