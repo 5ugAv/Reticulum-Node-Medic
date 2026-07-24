@@ -27,6 +27,9 @@ def _hex(name: str) -> str:
 
 
 class TriageScreen(FloatLayout):
+    #: seconds of radio silence before the bullseye is covered with "Not Reading"
+    _NOT_READING_AFTER = 2.0
+
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
                  lighthouse=None, on_build=None, **kwargs):
@@ -40,6 +43,8 @@ class TriageScreen(FloatLayout):
         self._watchdog = None
         self._session = TriageSession()
         self._clock = clock
+        self._not_reading = False
+        self._last_read = clock()
 
         self._bullseye = BullseyeWidget(size_hint=(None, None))
         self.add_widget(self._bullseye)
@@ -99,6 +104,26 @@ class TriageScreen(FloatLayout):
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self._button.bind(on_release=self._save)
         self.add_widget(self._button)
+
+        # "Not Reading" cover — dropped over the bullseye when the radio reports
+        # nothing for a spell, so the HELD last score can't be mistaken for a live
+        # (static) reading. Cleared the instant any real sample resumes.
+        from kivy.graphics import Color as _C, Line as _Ln, RoundedRectangle as _RR
+        self._nr_overlay = Label(
+            text="NOT READING\n"
+                 "[size=13sp][color=e8c9c9]No signal from the antenna[/color][/size]",
+            markup=True, halign="center", valign="middle", bold=True,
+            font_size="27sp", size_hint=(None, None), opacity=0,
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        with self._nr_overlay.canvas.before:
+            self._nr_bg = _C(0, 0, 0, 0.82)
+            self._nr_rect = _RR(pos=(0, 0), size=(10, 10), radius=[dp(16)] * 4)
+            self._nr_bd = _C(*theme.hex_to_rgba(theme.COLORS["red"]))
+            self._nr_line = _Ln(width=dp(2.5),
+                                rounded_rectangle=(0, 0, 10, 10, dp(16)))
+        self._nr_overlay.bind(size=self._sync_not_reading,
+                              pos=self._sync_not_reading)
+        self.add_widget(self._nr_overlay)
 
         self._modal = None       # "connect an RTNode" prompt, shown on demand
         self.bind(size=self._relayout, pos=self._relayout)
@@ -226,6 +251,27 @@ class TriageScreen(FloatLayout):
             if lbl is not None:
                 lbl.text = _label
                 lbl.center = (x, y)
+        # the "Not Reading" cover tracks the bullseye's central reading area
+        self._nr_overlay.size = (side * 0.86, side * 0.44)
+        self._nr_overlay.center = self._bullseye.center
+
+    def _sync_not_reading(self, *a) -> None:
+        o = self._nr_overlay
+        o.text_size = o.size
+        self._nr_rect.pos = o.pos
+        self._nr_rect.size = o.size
+        self._nr_line.rounded_rectangle = (o.x, o.y, o.width, o.height, dp(16))
+
+    def _set_not_reading(self, on: bool) -> None:
+        if on == self._not_reading:
+            return
+        self._not_reading = on
+        self._nr_overlay.opacity = 1.0 if on else 0.0
+        if on:
+            self._sync_not_reading()
+            self._write_guidance(
+                "Not reading any signal - check the antenna and cable, and that a "
+                "beacon node is powered on and transmitting.")
 
     def _write_guidance(self, text, markup=False) -> None:
         """Set the guidance line UNLESS a message is pinned (e.g. the just-saved
@@ -250,7 +296,13 @@ class TriageScreen(FloatLayout):
         except Exception:
             sample = None
         if not sample:
+            # Nothing from the radio. After a short grace, cover the bullseye so
+            # the held last score isn't read as a live (static) measurement.
+            if self._clock() - self._last_read > self._NOT_READING_AFTER:
+                self._set_not_reading(True)
             return
+        self._last_read = self._clock()
+        self._set_not_reading(False)      # a real sample (full or partial) resumed
         if sample.get("partial"):
             # live noise, but nothing heard yet — scoring needs a transmission
             self._noise.text = ("[color=9e9e9e]Background noise[/color]\n"
