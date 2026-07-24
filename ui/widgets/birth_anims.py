@@ -18,7 +18,7 @@ import math
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import (Color, Line, Rectangle, RoundedRectangle,
+from kivy.graphics import (Color, Line, Quad, Rectangle, RoundedRectangle,
                            StencilPop, StencilPush, StencilUnUse, StencilUse)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
@@ -287,9 +287,12 @@ class InsertSdAnim(_LoopAnim):
     # inserted = slid up into the slot. Scaled by the reader's screen scale.
     _CARD_START = (-235.0, 618.0)
     _CARD_IN = (-30.0, 250.0)
-    #: Slot mouth as a fraction down the reader sprite — the card is clipped here
-    #: so its inserted portion vanishes into the reader (tuned to sd_reader_body.png).
-    _SLOT_FRAC = 0.50
+    #: Slot mouth as an ANGLED line across the reader sprite (fractions, y-DOWN):
+    #: two points on the thin light edge just above the "microSD" label. The card is
+    #: clipped to below this line so its inserted portion vanishes into the angled
+    #: slot (measured from sd_reader_body.png — the slot descends left→right).
+    _SLOT_L = (0.10, 0.51)
+    _SLOT_R = (0.52, 0.693)
 
     def __init__(self, **kwargs):
         kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
@@ -341,22 +344,32 @@ class InsertSdAnim(_LoopAnim):
             return (u ** 3 * S[0] + 3 * u * u * t * C1[0] + 3 * u * t * t * C2[0] + t ** 3 * E[0],
                     u ** 3 * S[1] + 3 * u * u * t * C1[1] + 3 * u * t * t * C2[1] + t ** 3 * E[1])
 
-        # The slot MOUTH as a fraction down the reader sprite (just above the
-        # "microSD" label). The card is clipped to below this line so the part that
-        # has slid into the reader disappears — it reads as inserting, not just
-        # overlapping on top.
-        slot_kivy = self.y + self.height - (rty + self._SLOT_FRAC * rh)
+        # The slot MOUTH is an ANGLED line (it descends left→right, following the
+        # reader's perspective). Clip the card to BELOW that line so the part that
+        # has slid into the reader disappears along the real slot edge — it reads as
+        # inserting into the angled slot, not overlapping flat on top.
+        def slot_kivy_at(X):
+            """Kivy y of the slot line at widget-absolute x=X (extends the two
+            measured slot points across the whole widget)."""
+            f = (X - self.x - rtx) / rw
+            L, R = self._SLOT_L, self._SLOT_R
+            fy = L[1] + (R[1] - L[1]) / (R[0] - L[0]) * (f - L[0])
+            return self.y + self.height - (rty + fy * rh)
+
+        kL = slot_kivy_at(self.x)
+        kR = slot_kivy_at(self.x + self.width)
+        # quad covering everything BELOW the angled line (the card's visible side)
+        slot_mask = [self.x, self.y, self.x + self.width, self.y,
+                     self.x + self.width, kR, self.x, kL]
         with self.canvas:
             self._blit(medic, m_tlx, m_tly, mw, mh)
             self._blit(reader, rtx, rty, rw, rh)
             StencilPush()
-            Rectangle(pos=(self.x, self.y),
-                      size=(self.width, max(0.0, slot_kivy - self.y)))
+            Quad(points=slot_mask)
             StencilUse()
             self._blit(card, rtx + crel[0], rty + crel[1], cw, ch)
             StencilUnUse()
-            Rectangle(pos=(self.x, self.y),
-                      size=(self.width, max(0.0, slot_kivy - self.y)))
+            Quad(points=slot_mask)
             StencilPop()
             if self.phase > 0.4:                      # phase 2 (0.4-0.85): arrow travels
                 q = min(1.0, (self.phase - 0.4) / 0.45)
