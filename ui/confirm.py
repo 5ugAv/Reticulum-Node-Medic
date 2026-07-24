@@ -53,3 +53,38 @@ def confirm_danger(message, title, on_proceed, proceed_text="Proceed anyway",
     cancel.bind(on_release=lambda *_: popup.dismiss())
     popup.open()
     return popup
+
+
+def confirm_power_override(message, title, on_proceed):
+    """Like confirm_danger, but the override is a GEAR-SHIFT gesture (right, down,
+    right) instead of a tappable button — so a mid-flash power-off can never be a
+    fat-finger; it takes a deliberate dog-leg drag. 'Keep flashing' stays an easy
+    tap to back out."""
+    from kivy.uix.anchorlayout import AnchorLayout
+    from ui.widgets.gear_shift import GearShiftOverride
+    body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+    lbl = Label(text=message, halign="center", valign="middle", font_size="15sp",
+                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+    lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+    body.add_widget(lbl)
+    body.add_widget(Label(
+        text="To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT",
+        size_hint_y=None, height=dp(24), bold=True, font_size="12.5sp",
+        color=theme.hex_to_rgba(theme.COLORS["red"])))
+    holder = AnchorLayout(size_hint_y=None, height=dp(120))
+    body.add_widget(holder)
+    cancel = Button(text="Keep flashing", bold=True, font_size="16sp",
+                    size_hint_y=None, height=dp(52), background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+    body.add_widget(cancel)
+    popup = Popup(title=title, content=body, size_hint=(0.94, 0.62),
+                  title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                  separator_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                  auto_dismiss=False)
+    gear = GearShiftOverride(
+        on_complete=lambda: (popup.dismiss(), on_proceed()))
+    holder.add_widget(gear)
+    cancel.bind(on_release=lambda *_: popup.dismiss())
+    popup.open()
+    return popup

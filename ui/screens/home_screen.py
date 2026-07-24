@@ -71,10 +71,9 @@ class HomeScreen(FloatLayout):
             from kivy.app import App
             app = App.get_running_app()
             if app is not None and app.flash_in_progress():
-                from ui.confirm import confirm_danger, FLASH_POWEROFF_WARNING
-                confirm_danger(FLASH_POWEROFF_WARNING, "Flashing in progress",
-                               do_off, proceed_text="Power off anyway",
-                               cancel_text="Keep flashing")
+                from ui.confirm import confirm_power_override, FLASH_POWEROFF_WARNING
+                confirm_power_override(FLASH_POWEROFF_WARNING,
+                                       "Flashing in progress", do_off)
                 return
         except Exception:
             pass
