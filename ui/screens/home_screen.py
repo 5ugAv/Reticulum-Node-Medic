@@ -59,6 +59,19 @@ class HomeScreen(FloatLayout):
         self.add_widget(self.power_slider)
 
     def _power_off(self):
+        # Refuse while a flash is running — cutting power mid-write bricks the board.
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is not None and app.flash_in_progress():
+                from ui.requirement_popup import requirement_popup
+                requirement_popup(
+                    "A flash is running — powering off now can brick the board. "
+                    "Wait for the red banner to clear, then power off.",
+                    "Flash in progress", False)
+                return
+        except Exception:
+            pass
         import threading
         from provisioning.power import power_off
         threading.Thread(target=lambda: power_off(), daemon=True).start()

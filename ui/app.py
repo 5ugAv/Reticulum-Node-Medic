@@ -339,14 +339,67 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             pass
 
-    def begin_activity(self):
+    def begin_activity(self, label="Working — please wait"):
         """Mark a long, touch-free process running (a flash/build) so the
-        screensaver can't cover it even from a passive screen. Balanced by
-        end_activity()."""
+        screensaver can't cover it AND a persistent banner warns the operator not
+        to power off / unplug. Balanced by end_activity(). The flash itself runs on
+        a daemon thread + child process, so navigating away never interrupts it —
+        this just keeps the operator from making it unsafe."""
         self._activity = getattr(self, "_activity", 0) + 1
+        if self._activity == 1:
+            self._show_activity_banner(label)
 
     def end_activity(self):
         self._activity = max(0, getattr(self, "_activity", 0) - 1)
+        if self._activity == 0:
+            self._hide_activity_banner()
+
+    def flash_in_progress(self):
+        """True while a flash/build is running — power-off and a second build are
+        blocked while this holds."""
+        return getattr(self, "_activity", 0) > 0
+
+    def _show_activity_banner(self, label):
+        """A persistent red top strip, shown over every screen while a flash runs,
+        so a background flash is never invisible (and never accidentally cut)."""
+        try:
+            from kivy.core.window import Window
+            from kivy.metrics import dp
+            from kivy.uix.label import Label
+            from kivy.graphics import Color, Rectangle
+            bar = getattr(self, "_activity_banner", None)
+            if bar is not None:
+                bar.text = label
+                return
+            bar = Label(text=label, bold=True, font_size="13sp", color=(1, 1, 1, 1),
+                        halign="center", valign="middle", size_hint=(None, None),
+                        height=dp(34))
+            with bar.canvas.before:
+                Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+                rect = Rectangle()
+
+            def _sync(*_):
+                bar.width = Window.width
+                bar.pos = (0, Window.height - bar.height)
+                bar.text_size = bar.size
+                rect.pos, rect.size = bar.pos, bar.size
+            bar.bind(pos=_sync, size=_sync)
+            Window.bind(size=lambda *_a: _sync())
+            Window.add_widget(bar)
+            _sync()
+            self._activity_banner = bar
+        except Exception as e:
+            print(f"[activity] banner skipped: {e}")
+
+    def _hide_activity_banner(self):
+        try:
+            from kivy.core.window import Window
+            bar = getattr(self, "_activity_banner", None)
+            if bar is not None:
+                Window.remove_widget(bar)
+                self._activity_banner = None
+        except Exception:
+            pass
 
     def _dismiss_screensaver(self):
         self._screensaver.hide()

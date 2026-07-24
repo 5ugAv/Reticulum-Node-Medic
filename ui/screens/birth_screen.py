@@ -766,6 +766,20 @@ class BirthScreen(BoxLayout):
                               getattr(workflow, "title", "Heads up"),
                               getattr(workflow, "under_construction", False))
             return
+        # Never run two flashes at once — a second pio/esptool on the same board
+        # (or the wrong port) corrupts the write. Refuse if one is already running.
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is not None and app.flash_in_progress():
+                from ui.requirement_popup import requirement_popup
+                requirement_popup(
+                    "A flash is already running in the background — let it finish "
+                    "before starting another. Watch the red banner at the top.",
+                    "Please wait", False)
+                return
+        except Exception:
+            pass
         self.list.clear_widgets()
         self.list.add_widget(_line(title, bold=True))
         # A progress RING that FILLS with a % as the build advances — determinate,
@@ -796,11 +810,17 @@ class BirthScreen(BoxLayout):
 
     def _mark_activity(self, on):
         """Tell the app a flash/build is (not) running so the screensaver can't
-        cover it. Best-effort — never let it break a build."""
+        cover it and a persistent 'don't power off' banner shows. Best-effort —
+        never let it break a build."""
         try:
             from kivy.app import App
             app = App.get_running_app()
-            (app.begin_activity if on else app.end_activity)()
+            if on:
+                nm = self._name_in.text.strip() or "the board"
+                app.begin_activity(
+                    f"Flashing {nm} — keep it plugged in, don't power off")
+            else:
+                app.end_activity()
         except Exception:
             pass
 

@@ -84,6 +84,17 @@ class SettingsScreen(BoxLayout):
         self.add_widget(self._power_note)
 
     def _power_off(self):
+        # Refuse while a flash is running — cutting power mid-write bricks the board.
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is not None and app.flash_in_progress():
+                self._power_note.text = ("A flash is running — powering off now can "
+                                         "brick the board. Wait for it to finish.")
+                return
+        except Exception:
+            pass
+
         def work():
             ok, msg = power_off()
             Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
