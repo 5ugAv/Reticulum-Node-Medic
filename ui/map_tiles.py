@@ -21,7 +21,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-TILE_SIZE = 256
+TILE_SIZE = 512   # 2x display: labels legible on the HiDPI 5" panel (was 256)
 
 #: Where carried offline basemaps live (gitignored, like firmware/packages).
 MAPS_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "maps")
