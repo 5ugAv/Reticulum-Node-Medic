@@ -41,7 +41,7 @@ _STEPS = {
          "anim": None, "next": "Start setup  →"},
     ],
     "pi": [
-        {"title": "Insert the Pi's SD card",
+        {"title": "Insert the Pi's SD card into Node Medic",
          "body": "Put the Raspberry Pi's SD card into Node Medic's card reader so we "
                  "can write its operating system.",
          "anim": "insert_sd"},
