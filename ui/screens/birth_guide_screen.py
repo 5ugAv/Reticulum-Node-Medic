@@ -18,7 +18,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from ui import theme
-from ui.birth_guide_flow import BIRTH_PATHS, guide_steps
+from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, ProvisionAnim)
@@ -57,13 +57,33 @@ class BirthGuideScreen(BoxLayout):
         self.reset()
 
     def reset(self):
-        """Re-entered: back to the detect-first landing (plug a node in and the
-        medic decides BIRTH vs ADOPT)."""
+        """Re-entered: back to the antenna-first landing (attach the antenna BEFORE
+        the next screen powers the board over USB), which leads to the detect-first
+        landing (plug a node in; the medic decides BIRTH vs ADOPT)."""
         self._stop_current()
         self._path = None
         self._i = 0
         self._node_name = ""
-        self._render_detect()
+        self._render_antenna()
+
+    # -- antenna-first landing (before any board is powered) ---------------
+    def _render_antenna(self):
+        """The very first BIRTH screen: attach an antenna to the radio board, with
+        the no-antenna damage warning — shown BEFORE detect, since plugging the
+        board into USB there powers it, and powering a radio with no antenna can
+        fry it. One landing covers every path (all reach detect)."""
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = None          # antenna landing is the root -> home
+        anim = ConnectAntennaAnim()
+        step = WizardStep(
+            index=0, total=1, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
+            anim=anim, warning=ANTENNA_STEP["warning"], next_text="Antenna on  →",
+            on_next=self._render_detect,
+            on_back=lambda: self._on_navigate and self._on_navigate("home"))
+        self.add_widget(step)
+        self._current = step
+        step.start()
 
     def handle_back(self):
         """Left-edge swipe: step back ONE page within the flow. Returns True if it
@@ -82,7 +102,7 @@ class BirthGuideScreen(BoxLayout):
         the home for Pi + Mitosis, which aren't plug-in-a-radio-board cases)."""
         self._stop_current()
         self.clear_widgets()
-        self._back_action = None          # detect landing is the root -> home
+        self._back_action = self._render_antenna   # back -> the antenna landing
         anim = ConnectBoardAnim()
         step = WizardStep(
             index=0, total=1, title="Connect your node",
@@ -91,7 +111,7 @@ class BirthGuideScreen(BoxLayout):
             anim=anim,
             hint="Use a DATA USB cable — a charge-only cable won't be seen.",
             next_text="Choose manually  →", on_next=self._render_intro,
-            on_back=lambda: self._on_navigate and self._on_navigate("home"))
+            on_back=self._render_antenna)
         self.add_widget(step)
         self._current = step
         step.start()

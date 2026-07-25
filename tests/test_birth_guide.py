@@ -1,6 +1,6 @@
 """Guided-birth step ordering — pure data, no Kivy (CI has no Kivy installed)."""
 
-from ui.birth_guide_flow import guide_steps, BIRTH_PATHS, _STEPS
+from ui.birth_guide_flow import guide_steps, BIRTH_PATHS, _STEPS, ANTENNA_STEP
 
 
 def test_three_intro_paths_in_order():
@@ -11,21 +11,19 @@ def test_three_intro_paths_in_order():
 
 
 def test_step_counts_per_path():
-    # each gains an antenna-first step ahead of "connect the board"
-    assert len(guide_steps("radio")) == 4      # antenna -> connect -> provision -> setup
-    assert len(guide_steps("pi")) == 5
-    assert len(guide_steps("host")) == 3
+    assert len(guide_steps("radio")) == 3      # connect -> auto-provision -> setup
+    assert len(guide_steps("pi")) == 4
+    assert len(guide_steps("host")) == 2
 
 
-def test_antenna_step_precedes_every_connect_board():
+def test_antenna_is_the_landing_not_a_guided_step():
+    # the antenna step is the first BIRTH screen (a landing), NOT inside guide_steps
     for path in ("radio", "pi", "host"):
-        steps = guide_steps(path)
-        board_i = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_board")
-        ant_i = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_antenna")
-        assert ant_i < board_i                 # antenna is connected first
-        ant = steps[ant_i]
-        assert ant.get("warning")              # carries the no-antenna damage warning
-        assert "U.FL" in ant["body"] and "SMA" in ant["body"]
+        assert all(s.get("anim") != "connect_antenna" for s in guide_steps(path))
+    # and it carries the damage warning + both connector types
+    assert ANTENNA_STEP.get("warning")
+    assert ANTENNA_STEP["anim"] == "connect_antenna"
+    assert "U.FL" in ANTENNA_STEP["body"] and "SMA" in ANTENNA_STEP["body"]
 
 
 def test_unknown_path_is_empty():
@@ -54,4 +52,4 @@ def test_last_step_hands_off_to_setup():
 def test_guide_steps_returns_a_copy():
     a = guide_steps("radio")
     a.append({"title": "x", "body": "y"})
-    assert len(guide_steps("radio")) == 4          # internal list untouched
+    assert len(guide_steps("radio")) == 3          # internal list untouched
