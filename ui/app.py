@@ -502,8 +502,11 @@ class ReticulumNodeMedicApp(App):
 
         # HOME: the designed front page — the poster's cards open the modes.
         home = Screen(name="home")
-        home.add_widget(HomeScreen(on_select=self._home_select))
+        self.home_screen = HomeScreen(on_select=self._home_select,
+                                      on_mode=self._set_node_mode)
+        home.add_widget(self.home_screen)
         self.sm.add_widget(home)
+        self._refresh_node_mode()          # read the real mode + update the toggle
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -1130,6 +1133,54 @@ class ReticulumNodeMedicApp(App):
             self._open_birth_guide()
         else:
             self.switch_mode(mode)
+
+    # -- home / backpack network-role toggle --------------------------------
+    def _refresh_node_mode(self):
+        """Read the medic's actual mode (home/backpack) off-thread and set the
+        front-page toggle to match — so it's right after a restart."""
+        import threading
+        from transport.connection import LocalConnection
+        from workflows.node_mode import current_mode
+
+        def work():
+            try:
+                m = current_mode(LocalConnection())
+            except Exception:
+                return
+            Clock.schedule_once(
+                lambda dt: self.home_screen.mode_toggle.set_state(m), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _set_node_mode(self, new_mode):
+        """Flip the medic between HOME (propagation node) and BACKPACK (mobile
+        leaf). Restarts rnsd/lxmd, so it runs off the UI thread; the toggle shows
+        '…' while it works, then settles to the new state with a brief toast."""
+        tog = self.home_screen.mode_toggle
+        tog.set_busy(True)
+        import threading
+        from transport.connection import LocalConnection
+        from workflows.node_mode import set_mode
+
+        def work():
+            res = set_mode(new_mode, LocalConnection())
+
+            def done(dt):
+                tog.set_state(res.mode)
+                self._mode_toast(res.message, ok=res.ok)
+            Clock.schedule_once(done, 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _mode_toast(self, message, ok=True):
+        """A brief, auto-dismissing message after a mode switch."""
+        from kivy.uix.popup import Popup
+        from kivy.uix.label import Label
+        lbl = Label(text=message, halign="center", valign="middle",
+                    padding=(dp(16), dp(16)))
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        p = Popup(title=("Home mode" if ok else "Mode change"), content=lbl,
+                  size_hint=(0.82, 0.32), auto_dismiss=True)
+        p.open()
+        Clock.schedule_once(lambda dt: p.dismiss(), 4.0)
 
     def _open_birth_guide(self):
         """Enter the step-by-step guide at its start (the 'what are you building?'

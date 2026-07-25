@@ -30,7 +30,8 @@ POWER = os.path.normpath(os.path.join(
 
 
 class HomeScreen(FloatLayout):
-    def __init__(self, on_select=None, poster: str = None, **kwargs):
+    def __init__(self, on_select=None, on_mode=None, initial_mode="home",
+                 poster: str = None, **kwargs):
         super().__init__(**kwargs)
         self._on_select = on_select
         self.poster = Image(source=poster or os.path.normpath(POSTER),
@@ -57,6 +58,16 @@ class HomeScreen(FloatLayout):
             size_hint=(None, None), size=(knob * 3, knob),
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
+
+        # Home / Backpack mode toggle (top-centre, between the power slide and the
+        # gear) — flips the medic's network role: HOME = propagation node (routing +
+        # store-and-forward), BACKPACK = mobile leaf (transport off, won't disturb
+        # the mesh while it moves).
+        from ui.widgets.mode_toggle import ModeToggle
+        self.mode_toggle = ModeToggle(
+            mode=initial_mode, on_toggle=(on_mode or (lambda m: None)),
+            pos_hint={"center_x": 0.5, "top": 0.99})
+        self.add_widget(self.mode_toggle)
 
     def _power_off(self):
         import threading
@@ -95,7 +106,8 @@ class HomeScreen(FloatLayout):
 
     def on_touch_up(self, touch):
         if (self.settings_btn.collide_point(*touch.pos)
-                or self.power_slider.collide_point(*touch.pos)):
+                or self.power_slider.collide_point(*touch.pos)
+                or self.mode_toggle.collide_point(*touch.pos)):
             return super().on_touch_up(touch)      # let the corner controls handle it
         frac = self._image_fraction(*touch.pos)
         if frac:
