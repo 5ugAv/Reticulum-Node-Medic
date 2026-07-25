@@ -321,6 +321,26 @@ def test_devices_marks_quiet_after_threshold_and_a_ping_lifts_it():
     assert reg.devices(now=later)[0]["quiet"] is False         # a ping lifts it back
 
 
+def test_save_load_round_trip_preserves_history(tmp_path):
+    reg = NodeRegistry()
+    key = "cd" * 16
+    reg.register(key, name="Rooftop", lat=-37.8, lon=145.0)
+    reg.ingest_announce(bytes.fromhex(key), b"", 1000.0, identity_hash="i9")
+    reg.ingest_announce(bytes.fromhex(key), b"", 8200.0, identity_hash="i9")
+    path = str(tmp_path / "sub" / "registry.json")     # nested dir auto-created
+    assert reg.save(path) is True
+    back = NodeRegistry.load(path)
+    assert back.get(key).name == "Rooftop"
+    assert [p.t for p in back.history.series(key)] == [1000.0, 8200.0]
+
+
+def test_load_missing_or_corrupt_starts_clean(tmp_path):
+    assert NodeRegistry.load(str(tmp_path / "nope.json")).nodes == {}
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert NodeRegistry.load(str(bad)).nodes == {}
+
+
 def test_plain_announce_accumulates_activity_history():
     # a bare (non-beacon) announce should still leave a heard-event point, so
     # intermittent / neighbour nodes build a "when are they up?" series.

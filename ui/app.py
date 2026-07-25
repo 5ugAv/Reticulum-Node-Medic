@@ -520,7 +520,11 @@ class ReticulumNodeMedicApp(App):
         self.vitals_screen = VitalsScreen(nodes=seed, on_open=self._open_node_cert)
         vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
-        self.monitor_service = MonitorService(run=_local_run)
+        # Load the persisted registry so the node history / activity series carries
+        # over from past sessions (it's saved periodically + on stop below).
+        from monitor.registry import NodeRegistry
+        self.monitor_service = MonitorService(
+            run=_local_run, registry=NodeRegistry.load(self._REGISTRY_FILE))
         self._apply_retention(None)                  # honour the saved retention window
         self._start_monitor_polling()
         self._start_announce_listener()
@@ -709,6 +713,10 @@ class ReticulumNodeMedicApp(App):
                     # topology for the SCAN mesh-lines + gap markers (rnpath is the
                     # only source of located<->located edges; cheap, once per cycle)
                     self._scan_topo = self._build_scan_topology()
+                    # persist every ~10 cycles (≈5 min) so history/activity survive
+                    # a restart without hammering the SD card each 30 s tick
+                    if i % 10 == 0:
+                        self.monitor_service.registry.save(self._REGISTRY_FILE)
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
@@ -786,6 +794,9 @@ class ReticulumNodeMedicApp(App):
         threading.Thread(target=listen, daemon=True).start()
 
     _BEACON_FILE = os.path.expanduser("~/.reticulum-node-medic/beacon_targets.json")
+    #: Persisted registry (nodes + heard-event history) — so activity accumulates
+    #: across restarts. Saved every ~5 min by the monitor loop + on stop.
+    _REGISTRY_FILE = os.path.expanduser("~/.reticulum-node-medic/registry.json")
 
     def _load_beacon_hashes(self):
         try:
@@ -909,6 +920,11 @@ class ReticulumNodeMedicApp(App):
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
             stop.set()
+        # final save so the last few minutes of history aren't lost on a clean exit
+        try:
+            self.monitor_service.registry.save(self._REGISTRY_FILE)
+        except Exception:
+            pass
 
     def _search_known_nodes(self, query):
         """Nodes the medic already knows on the mesh (kin roster + discovered),

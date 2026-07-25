@@ -589,3 +589,42 @@ class NodeRegistry:
         from monitor.history import NodeHistory
         reg.history = NodeHistory.from_dict(data.get("history", {}))
         return reg
+
+    # -- disk persistence (so history/activity survives an app restart) --------
+
+    def save(self, path: str) -> bool:
+        """Atomically persist the registry (nodes + history) to *path* as JSON, so
+        the heard-event / activity series accumulates ACROSS sessions instead of
+        resetting on every restart. Best-effort — returns False on any error and
+        never raises; the temp-file + rename keeps a crash from leaving a half file."""
+        import json
+        import os
+        import tempfile
+        tmp = None
+        try:
+            path = os.path.expanduser(path)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+            with os.fdopen(fd, "w") as f:
+                json.dump(self.to_dict(), f)
+            os.replace(tmp, path)                     # atomic swap into place
+            return True
+        except Exception:
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            return False
+
+    @classmethod
+    def load(cls, path: str) -> "NodeRegistry":
+        """Load a saved registry, or a fresh empty one if the file is missing or
+        unreadable (never raises — a corrupt file just starts clean)."""
+        import json
+        import os
+        try:
+            with open(os.path.expanduser(path)) as f:
+                return cls.from_dict(json.load(f))
+        except Exception:
+            return cls()
