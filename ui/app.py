@@ -843,8 +843,9 @@ class ReticulumNodeMedicApp(App):
 
     def _lighthouse(self, active):
         """TRIAGE beacon control, auto-called when the screen opens. active=True
-        commands every known kin RTNode to transmit (~every 9 s) so a node's
-        antenna can be aimed against a real distant signal, and returns a status
+        commands every known kin RTNode to transmit (a FAST ~2 s cadence — see
+        _beacon_loop) so a node's antenna can be aimed against a real distant
+        signal, and returns a status
         dict {state, text, names}: 'active' (a beacon is known/commanded),
         'need_power' (a kin RTNode is registered but not known to RNS), or
         'need_build' (no lighthouse RTNode exists yet). active=False stops.
@@ -897,7 +898,11 @@ class ReticulumNodeMedicApp(App):
                     RNS.Packet(dest, bytes([0x01])).send()
                 except Exception:
                     pass
-            _t.sleep(2)          # fast cadence so the glow tracks antenna movement
+            # DELIBERATE fast 2 s cadence: antenna aiming needs responsive
+            # feedback, and Triage is only open in short bursts, so the airtime is
+            # bounded and worth it. Do NOT slow this for "economy" (operator call,
+            # 2026-07-25). The bandwidth-economy ethos is honoured elsewhere.
+            _t.sleep(2)
 
     def on_stop(self):
         self._lighthouse_on = False
