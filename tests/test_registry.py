@@ -321,6 +321,17 @@ def test_devices_marks_quiet_after_threshold_and_a_ping_lifts_it():
     assert reg.devices(now=later)[0]["quiet"] is False         # a ping lifts it back
 
 
+def test_plain_announce_accumulates_activity_history():
+    # a bare (non-beacon) announce should still leave a heard-event point, so
+    # intermittent / neighbour nodes build a "when are they up?" series.
+    reg = NodeRegistry()
+    key = "aa" * 16
+    reg.ingest_announce(bytes.fromhex(key), b"", 1000.0, identity_hash="i1")
+    reg.ingest_announce(bytes.fromhex(key), b"", 8200.0, identity_hash="i1")
+    pts = reg.history.series(key)
+    assert [p.t for p in pts] == [1000.0, 8200.0]
+
+
 def test_different_identities_stay_separate():
     reg = NodeRegistry()
     reg.ingest_announce(bytes.fromhex("aa" * 16), b"", 1000.0, identity_hash="i1")

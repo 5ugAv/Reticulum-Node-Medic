@@ -374,6 +374,11 @@ class NodeRegistry:
         else:
             rec = self.nodes.get(h) or self.register(h)
             rec.last_seen = now
+            # Record a bare heard-event point so intermittent / neighbour nodes
+            # (which never send a beacon) still accumulate an activity time-series
+            # — the raw material for the "when is this node usually up?" profile.
+            from monitor.history import HistoryPoint
+            self.history.append(h, HistoryPoint(t=now))
         if identity_hash:
             rec.identity_hash = identity_hash
         name = _printable_name(app_data)
@@ -477,6 +482,14 @@ class NodeRegistry:
         return sorted(out, key=lambda d: (d["provenance"] != "kin",
                                           _STATUS_RANK.get(d["status"], 3),
                                           d["name"].lower()))
+
+    def activity(self, dst_hash: str, now: float,
+                 tz_offset_hours: float = 0.0) -> dict:
+        """A node's when-is-it-up profile (monitor.history.activity_profile over its
+        heard-event series). The UI draws hour bars from ``by_hour`` and shows
+        ``describe_activity`` beneath — most useful for intermittent nodes."""
+        from monitor.history import activity_profile
+        return activity_profile(self.history.series(dst_hash), now, tz_offset_hours)
 
     def located_nodes(self, now: float) -> List[dict]:
         """Every node with a known location, for SCAN mode — each as

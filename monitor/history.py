@@ -157,3 +157,79 @@ def analyse(points: List[HistoryPoint], now: float) -> List[dict]:
                     "power supply and connections."})
 
     return flags
+
+
+# ---- activity profile ("when is this node usually up?") ---------------------
+# Every hearing (beacon OR bare announce) leaves a timestamped point, so the
+# distribution of those timestamps across the hours of the day IS the node's
+# activity rhythm — the raw material for spotting intermittent nodes' patterns.
+
+def _coverage_window(by_hour: List[int], total: int, coverage: float = 0.8):
+    """Smallest CIRCULAR hour window [start..end] (inclusive, wraps midnight)
+    whose buckets cover >= *coverage* of all events. None if no events."""
+    if total <= 0:
+        return None
+    best = None
+    for start in range(24):
+        acc = 0
+        for length in range(1, 25):
+            acc += by_hour[(start + length - 1) % 24]
+            if acc >= coverage * total:
+                if best is None or length < best[0]:
+                    best = (length, start, (start + length - 1) % 24)
+                break
+    return (best[1], best[2]) if best else (0, 23)
+
+
+def activity_profile(points: List[HistoryPoint], now: float,
+                     tz_offset_hours: float = 0.0,
+                     window_s: int = GRAPH_WINDOW_S) -> dict:
+    """When a node is heard, bucketed into its LOCAL hour of day (0-23, shifted by
+    *tz_offset_hours* so the caller can render local time deterministically).
+    Returns ``{total, days, by_hour[24], busiest_hour, active_window(start,end),
+    span_days}``; an empty history yields zeros so the UI can show 'no data yet'."""
+    events = [p.t for p in points if p.t >= now - window_s]
+    by_hour = [0] * 24
+    days = set()
+    for t in events:
+        local = t + tz_offset_hours * 3600.0
+        by_hour[int(local // 3600) % 24] += 1
+        days.add(int(local // 86400))
+    total = len(events)
+    return {
+        "total": total,
+        "days": len(days),
+        "by_hour": by_hour,
+        "busiest_hour": max(range(24), key=lambda h: by_hour[h]) if total else None,
+        "active_window": _coverage_window(by_hour, total),
+        "span_days": (max(events) - min(events)) / 86400.0 if events else 0.0,
+    }
+
+
+def _fmt_hour(h: int) -> str:
+    h %= 24
+    if h == 0:
+        return "midnight"
+    if h == 12:
+        return "noon"
+    return f"{h if h <= 12 else h - 12}{'am' if h < 12 else 'pm'}"
+
+
+def describe_activity(profile: dict) -> str:
+    """One plain-English line from :func:`activity_profile` — e.g. 'Heard 42 times
+    over 9 days. Usually active 6pm-11pm.' Needs >= 2 days before it claims a
+    time-of-day pattern (one day isn't a rhythm)."""
+    if not profile or not profile.get("total"):
+        return "Not enough data yet to spot a pattern."
+    total, days = profile["total"], profile["days"]
+    line = (f"Heard {total} time{'s' if total != 1 else ''} over "
+            f"{days} day{'s' if days != 1 else ''}.")
+    win = profile.get("active_window")
+    if win and days >= 2:
+        s, e = win
+        span = (e - s) % 24 + 1                     # inclusive window length, hours
+        if span >= 20:                             # covers ~all hours -> no pattern
+            line += " Active around the clock."
+        else:
+            line += f" Usually active {_fmt_hour(s)}-{_fmt_hour((e + 1) % 24)}."
+    return line
