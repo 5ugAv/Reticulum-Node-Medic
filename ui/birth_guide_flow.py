@@ -21,11 +21,27 @@ BIRTH_PATHS = [
      "Wi-Fi, Bluetooth and the internet. The best node to future-proof the network."),
 ]
 
+#: The antenna-first step — inserted BEFORE every "connect the radio board" step.
+#: Shared source dict; ``guide_steps`` returns copies so callers can't mutate it.
+_ANTENNA_STEP = {
+    "title": "Attach the antenna to the radio board",
+    "body": "First, put an antenna on the radio board. Either push its tiny gold "
+            "U.FL / IPEX plug straight down onto the matching socket until it clicks, "
+            "or screw an SMA antenna on — often the antenna screws onto a short "
+            "pigtail that itself clicks into the U.FL socket. Use a 915 MHz antenna "
+            "(or one rated for your band).",
+    "warning": "Never power a radio board with no antenna attached — transmitting "
+               "without one can permanently damage its radio (the power amplifier).",
+    "anim": "connect_antenna",
+}
+
 #: Ordered guided steps per path. Each step: title, body, optional ``anim`` key
-#: ("connect_board" | "insert_sd" | None) and optional ``hint`` / ``next`` label.
-#: The last step's Next hands off to the real BIRTH flow.
+#: ("connect_antenna" | "connect_board" | "insert_sd" | None) and optional
+#: ``hint`` / ``warning`` / ``next`` label. The last step's Next hands off to the
+#: real BIRTH flow. Every radio board is antenna-first (see ``_ANTENNA_STEP``).
 _STEPS = {
     "radio": [
+        _ANTENNA_STEP,
         {"title": "Connect your radio board",
          "body": "Plug the radio board into Node Medic with a USB cable. Node Medic "
                  "powers it and will detect it automatically.",
@@ -51,6 +67,7 @@ _STEPS = {
          "body": "Now Node Medic writes Raspberry Pi OS to the card and sets its "
                  "name, Wi-Fi and login — a few details, no computer needed.",
          "anim": "insert_sd", "next": "Image the card  →", "screen": "pi_imager"},
+        _ANTENNA_STEP,
         {"title": "Connect the radio board",
          "body": "Put the SD card into the Pi and power it on, then plug the radio "
                  "board into Node Medic with a USB cable.",
@@ -61,6 +78,7 @@ _STEPS = {
          "anim": None, "next": "Start setup  →"},
     ],
     "host": [
+        _ANTENNA_STEP,
         {"title": "Connect the radio board",
          "body": "Plug the radio board into Node Medic with a USB cable so it can be "
                  "flashed as an RNode.",

@@ -239,6 +239,87 @@ class ConnectBoardAnim(_LoopAnim):
         board.pos = (bx, cy - bh / 2)
 
 
+class ConnectAntennaAnim(_LoopAnim):
+    """Antenna-first, showing BOTH connector types in one looped story: a tiny
+    U.FL / IPEX plug clicks DOWN onto the board's socket (phase 1), then an SMA
+    antenna SCREWS onto the pigtail's threaded jack (phase 2, with a rotating hex
+    nut + a curved screw arrow). Pure vector — no art asset needed. Labelled so a
+    first-timer can tell which connector their board/antenna has."""
+
+    def __init__(self, **kwargs):
+        super().__init__(duration=3.4, **kwargs)
+
+    def _draw(self):
+        x, y, w, h = self.x, self.y, self.width, self.height
+        ph1 = min(1.0, self.phase / 0.5)                 # U.FL push-to-click
+        ph2 = max(0.0, min(1.0, (self.phase - 0.5) / 0.45))   # SMA screw-on
+        # board (lower-left) with a U.FL socket on its top edge
+        bw, bh = w * 0.34, h * 0.16
+        bx, by = x + w * 0.05, y + h * 0.24
+        sock_x, sock_y = bx + bw * 0.62, by + bh
+        # SMA jack (threaded post), mid-right
+        jack_x, jack_y = x + w * 0.72, y + h * 0.46
+        jw, jh = dp(15), dp(22)
+        with self.canvas:
+            # --- board + U.FL socket
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(6)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["background"]))
+            RoundedRectangle(pos=(bx + bw * 0.10, by + bh * 0.28),
+                             size=(bw * 0.24, bh * 0.44), radius=[dp(2)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            Line(circle=(sock_x, sock_y, dp(7)), width=dp(2))
+            # --- U.FL plug descends onto the socket (phase 1)
+            plug_y = sock_y + h * 0.24 * (1.0 - ph1)
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            RoundedRectangle(pos=(sock_x - dp(8), plug_y - dp(2)),
+                             size=(dp(16), dp(11)), radius=[dp(3)] * 4)
+            if ph1 < 1.0:                                # short whip above the plug
+                Color(*theme.hex_to_rgba(theme.COLORS["text_primary"]))
+                Line(points=[sock_x, plug_y + dp(9), sock_x, plug_y + dp(9) + h * 0.16],
+                     width=dp(3))
+            else:                                        # seated: pigtail runs to the SMA jack
+                Color(*theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+                Line(points=[sock_x, sock_y + dp(6),
+                             (sock_x + jack_x) / 2.0, sock_y + h * 0.20,
+                             jack_x, jack_y - jh / 2], width=dp(2.5))
+            # --- SMA jack (threaded post) at the pigtail end
+            Color(*theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            RoundedRectangle(pos=(jack_x - jw / 2, jack_y - jh / 2), size=(jw, jh),
+                             radius=[dp(2)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["background"]))
+            for i in range(3):
+                yy = jack_y - jh / 2 + jh * (0.30 + 0.20 * i)
+                Line(points=[jack_x - jw / 2, yy, jack_x + jw / 2, yy], width=dp(1))
+            # --- SMA antenna: hex nut screws down onto the jack (phase 2)
+            if ph1 >= 1.0:
+                ant_y = jack_y + jh / 2 + h * 0.22 * (1.0 - ph2)
+                rot = ph2 * math.pi / 2                   # rotate as it threads on
+                Color(*theme.hex_to_rgba(theme.COLORS["green"]))
+                pts = []
+                for i in range(7):
+                    a = math.pi / 6 + i * math.pi / 3 + rot
+                    pts += [jack_x + dp(9) * math.cos(a), ant_y + dp(9) * math.sin(a)]
+                Line(points=pts, width=dp(2.2))
+                Color(*theme.hex_to_rgba(theme.COLORS["text_primary"]))
+                Line(points=[jack_x, ant_y + dp(9), jack_x, ant_y + dp(9) + h * 0.20],
+                     width=dp(3))
+                Color(*theme.hex_to_rgba(theme.COLORS["green"]))
+                Line(circle=(jack_x, ant_y + dp(9) + h * 0.20, dp(4)), width=dp(2))
+                if 0.1 < ph2 < 1.0:                       # curved "screw" arrow
+                    Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.9))
+                    Line(circle=(jack_x, ant_y, dp(15), 20, 210), width=dp(2))
+        # connector labels (persistent so both types are always identifiable)
+        l1 = self._label("ufl", text="U.FL / IPEX\npush to click", font_size="11.5sp",
+                         bold=True, halign="center", valign="middle",
+                         color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        l1.size = (w * 0.42, dp(30)); l1.pos = (sock_x - w * 0.21, by - dp(34))
+        l2 = self._label("sma", text="SMA\nscrew on", font_size="11.5sp", bold=True,
+                         halign="center", valign="middle",
+                         color=theme.hex_to_rgba(theme.COLORS["green"]))
+        l2.size = (w * 0.30, dp(30)); l2.pos = (jack_x - w * 0.15, jack_y - jh / 2 - dp(34))
+
+
 class ProvisionAnim(_LoopAnim):
     """PLACEHOLDER: Node Medic configuring the node over its setup WiFi — the medic
     (right) and the small node (left) with pulsing WiFi arcs between them. Rough

@@ -20,11 +20,12 @@ from kivy.uix.label import Label
 from ui import theme
 from ui.birth_guide_flow import BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
-from ui.widgets.birth_anims import ConnectBoardAnim, InsertSdAnim, ProvisionAnim
+from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
+                                    InsertSdAnim, ProvisionAnim)
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
-_ANIMS = {"connect_board": ConnectBoardAnim, "insert_sd": InsertSdAnim,
-          "provision": ProvisionAnim}
+_ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAnim,
+          "insert_sd": InsertSdAnim, "provision": ProvisionAnim}
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):
@@ -589,6 +590,7 @@ class BirthGuideScreen(BoxLayout):
         # +1 on index/total for the name step folded in ahead of these
         step = WizardStep(index=self._i + 1, total=len(steps) + 1, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
+                          warning=s.get("warning", ""),
                           next_text=s.get("next", "Next  →"),
                           on_next=self._next, on_back=self._back)
         self.clear_widgets()

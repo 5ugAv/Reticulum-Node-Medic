@@ -11,9 +11,21 @@ def test_three_intro_paths_in_order():
 
 
 def test_step_counts_per_path():
-    assert len(guide_steps("radio")) == 3      # connect -> auto-provision -> setup
-    assert len(guide_steps("pi")) == 4
-    assert len(guide_steps("host")) == 2
+    # each gains an antenna-first step ahead of "connect the board"
+    assert len(guide_steps("radio")) == 4      # antenna -> connect -> provision -> setup
+    assert len(guide_steps("pi")) == 5
+    assert len(guide_steps("host")) == 3
+
+
+def test_antenna_step_precedes_every_connect_board():
+    for path in ("radio", "pi", "host"):
+        steps = guide_steps(path)
+        board_i = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_board")
+        ant_i = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_antenna")
+        assert ant_i < board_i                 # antenna is connected first
+        ant = steps[ant_i]
+        assert ant.get("warning")              # carries the no-antenna damage warning
+        assert "U.FL" in ant["body"] and "SMA" in ant["body"]
 
 
 def test_unknown_path_is_empty():
@@ -42,4 +54,4 @@ def test_last_step_hands_off_to_setup():
 def test_guide_steps_returns_a_copy():
     a = guide_steps("radio")
     a.append({"title": "x", "body": "y"})
-    assert len(guide_steps("radio")) == 3          # internal list untouched
+    assert len(guide_steps("radio")) == 4          # internal list untouched

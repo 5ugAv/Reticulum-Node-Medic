@@ -46,10 +46,11 @@ def test_signal_status_thresholds():
     assert theme.signal_status(-130) == "alert"
 
 
-def test_last_seen_status_six_hour_rule():
+def test_last_seen_status_alert_threshold():
+    # threshold widened to 18 h (3x the planned 6 h beacon cadence)
     assert theme.last_seen_status(0.5) == "ok"
-    assert theme.last_seen_status(5.9) == "ok"
-    assert theme.last_seen_status(6.1) == "alert"
+    assert theme.last_seen_status(theme.NOT_HEARD_ALERT_HOURS - 0.1) == "ok"
+    assert theme.last_seen_status(theme.NOT_HEARD_ALERT_HOURS + 0.1) == "alert"
 
 
 def test_status_color_maps_to_palette():

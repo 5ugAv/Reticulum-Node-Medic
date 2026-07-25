@@ -28,7 +28,11 @@ BATTERY_WARN_PCT = 20      # orange at or below
 BATTERY_ALERT_PCT = 10     # red at or below
 SIGNAL_WARN_DBM = -110     # orange at or below
 SIGNAL_ALERT_DBM = -120    # red at or below
-NOT_HEARD_ALERT_HOURS = 6  # red once not heard for this long
+NOT_HEARD_ALERT_HOURS = 18  # red once not heard for this long (3x the 6 h beacon
+                            # cadence — tolerate 2 missed announces before alerting)
+QUIET_AFTER_HOURS = 12      # softer than the alert threshold: a node unheard this
+                            # long sinks below the "quiet" divider in VITALS; any
+                            # ping lifts it straight back up into the active list
 
 
 def hex_to_rgba(value: str, alpha: float = 1.0) -> Tuple[float, float, float, float]:

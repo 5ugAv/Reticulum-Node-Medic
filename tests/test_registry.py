@@ -309,6 +309,18 @@ def test_same_identity_destinations_collapse_to_one_device():
     assert rows[0]["last_seen_hours"] == 0.0       # freshest member wins
 
 
+def test_devices_marks_quiet_after_threshold_and_a_ping_lifts_it():
+    from monitor.registry import QUIET_AFTER_HOURS
+    reg = NodeRegistry()
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"\x06Pebble", 1000.0,
+                        identity_hash="i1")
+    assert reg.devices(now=1000.0)[0]["quiet"] is False        # just heard
+    later = 1000.0 + (QUIET_AFTER_HOURS + 1) * 3600
+    assert reg.devices(now=later)[0]["quiet"] is True          # gone quiet
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"", later, identity_hash="i1")
+    assert reg.devices(now=later)[0]["quiet"] is False         # a ping lifts it back
+
+
 def test_different_identities_stay_separate():
     reg = NodeRegistry()
     reg.ingest_announce(bytes.fromhex("aa" * 16), b"", 1000.0, identity_hash="i1")

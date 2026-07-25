@@ -25,6 +25,42 @@ FILTERS = ["All", "OK", "Warn", "Alert"]
 _FILTER_TO_STATUS = {"OK": "ok", "Warn": "warn", "Alert": "alert"}
 
 
+def partition_quiet(rows):
+    """Split rows into (active, quiet) preserving each side's order. A row is
+    quiet when the registry flagged it (unheard past theme.QUIET_AFTER_HOURS).
+    Pure — unit-testable without building widgets."""
+    active = [n for n in rows if not n.get("quiet")]
+    quiet = [n for n in rows if n.get("quiet")]
+    return active, quiet
+
+
+class QuietDivider(BoxLayout):
+    """The separator between active nodes and the ones that have gone quiet —
+    a hairline with a small caption. Nodes below it are just not-recently-heard;
+    a fresh ping moves them back above on the next refresh."""
+
+    def __init__(self, count, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "horizontal"
+        self.size_hint_y = None
+        self.height = dp(30)
+        self.padding = (dp(12), dp(6))
+        lbl = Label(text=f"Quiet · not heard in {theme.QUIET_AFTER_HOURS}h+   ({count})",
+                    halign="center", valign="middle", font_size="12sp", bold=True,
+                    color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        from kivy.graphics import Color, Line
+        with self.canvas.before:
+            self._ln_c = Color(*theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.35))
+            self._ln = Line(points=[], width=1)
+        self.bind(pos=self._draw_line, size=self._draw_line)
+        self.add_widget(lbl)
+
+    def _draw_line(self, *_):
+        y = self.y + self.height / 2
+        self._ln.points = [self.x + dp(8), y, self.right - dp(8), y]
+
+
 class NodeRow(BoxLayout):
     """One node in the list. Tapping it opens the node's stored certificate
     (``on_open(node)``); a scroll drag is ignored via a movement threshold."""
@@ -217,6 +253,14 @@ class VitalsScreen(BoxLayout):
         if enabled:
             worst = {"alert": 0, "warn": 1}         # push orange/red to the top
             rows = sorted(rows, key=lambda n: worst.get(n.get("status"), 2))
+        # Nodes not heard in a while sink below a divider (recency, not health) —
+        # the alert sort above still orders each side, so an ACTIVE fault rises to
+        # the top while a merely-dormant node settles quietly underneath.
+        active, quiet = partition_quiet(rows)
         self.grid.clear_widgets()
-        for node in rows:
+        for node in active:
             self.grid.add_widget(NodeRow(node, on_open=self._on_open))
+        if quiet:
+            self.grid.add_widget(QuietDivider(len(quiet)))
+            for node in quiet:
+                self.grid.add_widget(NodeRow(node, on_open=self._on_open))

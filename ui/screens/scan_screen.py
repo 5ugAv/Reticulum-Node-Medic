@@ -140,7 +140,12 @@ class MapPlot(Widget):
         self._primary = None                     # the finger that drives a pan
         self._pinch_base = None                  # two-finger start distance
         self._trigger = Clock.create_trigger(self._redraw, 0.05)
-        self.bind(size=self._redraw, pos=self._redraw)
+        # Route size/pos through the DEBOUNCED trigger, not a synchronous _redraw:
+        # the on-screen keyboard pans/resizes the ScreenManager, and a direct
+        # size->_redraw that itself nudges layout can re-fire without end (a 100%
+        # CPU redraw storm — the map-placement freeze). The trigger coalesces a
+        # burst of changes into ONE redraw next frame, so it can't spin.
+        self.bind(size=self._trigger, pos=self._trigger)
 
     # -- gestures -----------------------------------------------------------
 
@@ -1105,7 +1110,11 @@ class ScanScreen(BoxLayout):
             self.lon_in.text = f"{self._fix.lon:.6f}"
         # Focus the address field so the keyboard opens right on it — manual entry
         # exists to type an address here. Deferred a frame so the row has finished
-        # un-collapsing (and re-enabling) before the field takes focus.
+        # un-collapsing (and re-enabling) before the field takes focus. Blur first:
+        # if the field was left focused from a previous open, setting focus=True is a
+        # no-op and the keyboard never fires — the "tap Enter a location, nothing
+        # happens" bug. Forcing False->True guarantees the focus event (and keyboard).
+        self.addr_in.focus = False
         Clock.schedule_once(lambda *_: setattr(self.addr_in, "focus", True), 0.1)
 
     def _find_address(self):

@@ -23,7 +23,10 @@ from monitor.geo import navigation_links
 from ui import theme
 
 #: Not heard for longer than this -> red (matches the Monitor spec).
-STALE_ALERT_HOURS = theme.NOT_HEARD_ALERT_HOURS  # 6
+STALE_ALERT_HOURS = theme.NOT_HEARD_ALERT_HOURS  # 18
+#: Not heard for longer than this -> "quiet": drops below the VITALS divider but
+#: is NOT necessarily red yet. A softer, recency-only signal (a ping lifts it back).
+QUIET_AFTER_HOURS = theme.QUIET_AFTER_HOURS  # 12
 
 _BEACON_RE = re.compile(
     r"\[HealthBeacon\][^\n]*dst=([0-9a-fA-F]+)[^\n]*data=([0-9a-fA-F]+)")
@@ -466,6 +469,10 @@ class NodeRegistry:
                 d["last_seen_hours"] = max(0.0, (now - max(seen)) / 3600.0)
             d["aspects"] = len(members)
             d["capabilities"] = _capabilities(members)
+            # "quiet" is recency-only (not the same as red): a device unheard past
+            # QUIET_AFTER_HOURS sinks below the VITALS divider. A device never heard
+            # at all (last_seen_hours 0.0) is not quiet — it just has nothing yet.
+            d["quiet"] = bool(seen) and d["last_seen_hours"] > QUIET_AFTER_HOURS
             out.append(d)
         return sorted(out, key=lambda d: (d["provenance"] != "kin",
                                           _STATUS_RANK.get(d["status"], 3),

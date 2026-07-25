@@ -45,7 +45,7 @@ class WizardStep(BoxLayout):
 
     def __init__(self, index, total, title, body, anim=None, on_next=None,
                  on_back=None, next_text="Next  →", back_text="←  Back",
-                 hint="", input_widget=None, **kwargs):
+                 hint="", warning="", input_widget=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(20)
@@ -92,6 +92,23 @@ class WizardStep(BoxLayout):
                              color=theme.hex_to_rgba(theme.COLORS["warning_yellow"], 0.95))
             hint_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
             self.add_widget(hint_lbl)
+
+        # A warning is weightier than a hint (e.g. "no antenna can damage the board"):
+        # bold dark text on a solid amber caution strip so it can't be skimmed past.
+        if warning:
+            from kivy.graphics import Color, RoundedRectangle
+            warn_lbl = Label(text=warning, font_size="15sp", bold=True, halign="left",
+                             valign="middle", size_hint_y=None, padding=(dp(12), dp(10)),
+                             color=theme.hex_to_rgba(theme.COLORS["background"]))
+            with warn_lbl.canvas.before:
+                Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+                warn_lbl._bg = RoundedRectangle(radius=[dp(8)] * 4)
+            warn_lbl.bind(
+                width=lambda i, w: setattr(i, "text_size", (w - dp(24), None)),
+                texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(20)),
+                pos=lambda i, v: setattr(i._bg, "pos", i.pos),
+                size=lambda i, v: setattr(i._bg, "size", i.size))
+            self.add_widget(warn_lbl)
 
         nav = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
                         spacing=dp(12))
