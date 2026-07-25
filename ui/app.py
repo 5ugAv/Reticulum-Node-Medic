@@ -566,7 +566,8 @@ class ReticulumNodeMedicApp(App):
             on_open=self.switch_mode,
             on_retention_change=self._apply_retention,
             node_count_provider=self._monitor_node_count,
-            on_preview_screensaver=self._show_screensaver)))
+            on_preview_screensaver=self._show_screensaver,
+            on_home_profile_change=self._on_home_profile_change)))
         self.sm.add_widget(settings_scr)
 
         # WiFi connect — join a hotspot / venue AP so online features work afield.
@@ -1169,6 +1170,14 @@ class ReticulumNodeMedicApp(App):
                 self._mode_toast(res.message, ok=res.ok)
             Clock.schedule_once(done, 0)
         threading.Thread(target=work, daemon=True).start()
+
+    def _on_home_profile_change(self, profile):
+        """The Home-mode profile (propagation vs transport) changed in Settings. If
+        the medic is currently in HOME, re-apply so it takes effect now; otherwise
+        it applies next time the front-page toggle is set to Home."""
+        tog = getattr(self.home_screen, "mode_toggle", None)
+        if tog is not None and tog.mode == "home":
+            self._set_node_mode("home")            # re-applies with the new profile
 
     def _mode_toast(self, message, ok=True):
         """A brief, auto-dismissing message after a mode switch."""

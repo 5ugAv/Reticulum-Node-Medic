@@ -20,8 +20,9 @@ a real config or a live daemon.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from transport.connection import Connection
 
@@ -29,13 +30,33 @@ RNS_CONFIG = "~/.reticulum/config"
 LXMD_CONFIG = "~/.lxmd/config"
 #: Persisted preference so the UI shows the mode + it survives an app restart.
 MODE_FILE = "~/.reticulum-node-medic/node_mode"
+#: What HOME mode means — set in Settings ▸ Home mode. A local UI pref (direct
+#: file IO, like alerts/retention), separate from the mode marker above.
+HOME_PROFILE_FILE = os.path.expanduser("~/.reticulum-node-medic/home_profile")
 
 HOME, BACKPACK = "home", "backpack"
-#: (transport value, propagation value) per mode — RNS wants Yes/No, lxmd yes/no.
-_SETTINGS = {
-    HOME:     {"enable_transport": ("Yes", RNS_CONFIG), "enable_node": ("yes", LXMD_CONFIG)},
-    BACKPACK: {"enable_transport": ("No", RNS_CONFIG),  "enable_node": ("no", LXMD_CONFIG)},
-}
+PROPAGATION, TRANSPORT = "propagation", "transport"
+
+
+def load_home_profile() -> str:
+    """The chosen HOME role: 'propagation' (routing + store-and-forward, default)
+    or 'transport' (routing only)."""
+    try:
+        with open(HOME_PROFILE_FILE) as f:
+            return TRANSPORT if f.read().strip().lower() == TRANSPORT else PROPAGATION
+    except OSError:
+        return PROPAGATION
+
+
+def save_home_profile(profile: str) -> str:
+    profile = TRANSPORT if str(profile).strip().lower() == TRANSPORT else PROPAGATION
+    try:
+        os.makedirs(os.path.dirname(HOME_PROFILE_FILE), exist_ok=True)
+        with open(HOME_PROFILE_FILE, "w") as f:
+            f.write(profile)
+    except OSError:
+        pass
+    return profile
 
 
 @dataclass
@@ -67,24 +88,31 @@ def current_mode(connection: Connection) -> str:
     return HOME if "yes" in out.lower() else BACKPACK
 
 
-def set_mode(mode: str, connection: Connection, restart: bool = True) -> ModeResult:
+def set_mode(mode: str, connection: Connection, restart: bool = True,
+             home_profile: Optional[str] = None) -> ModeResult:
     """Switch the medic between home and backpack: rewrite the config lines,
-    persist the choice, and restart rnsd (+ lxmd). The transport edit is the
-    critical one; the lxmd/propagation edit + restart are best-effort (lxmd may be
-    absent on a given build). Returns a ``ModeResult`` describing what happened."""
+    persist the choice, and restart rnsd (+ lxmd).
+
+    HOME turns transport ON; whether it *also* runs the LXMF propagation node
+    depends on ``home_profile`` ('propagation' -> yes, 'transport' -> routing only),
+    read from Settings when not given. BACKPACK turns both OFF. The transport edit
+    is the critical one; the lxmd edit + restart are best-effort (lxmd may be
+    absent). Returns a ``ModeResult`` describing what happened."""
     mode = normalise(mode)
+    if home_profile is None:
+        home_profile = load_home_profile()
+    transport = "Yes" if mode == HOME else "No"
+    propagation = "yes" if (mode == HOME and home_profile == PROPAGATION) else "no"
     res = ModeResult(mode=mode, ok=True)
 
-    tv, tpath = _SETTINGS[mode]["enable_transport"]
-    if connection.run(_set_kv_cmd(tpath, "enable_transport", tv))[0] == 0:
-        res.steps.append(f"transport -> {tv}")
+    if connection.run(_set_kv_cmd(RNS_CONFIG, "enable_transport", transport))[0] == 0:
+        res.steps.append(f"transport -> {transport}")
     else:
         res.ok = False
         res.steps.append("transport edit FAILED")
 
-    nv, npath = _SETTINGS[mode]["enable_node"]
-    if connection.run(_set_kv_cmd(npath, "enable_node", nv))[0] == 0:
-        res.steps.append(f"propagation -> {nv}")
+    if connection.run(_set_kv_cmd(LXMD_CONFIG, "enable_node", propagation))[0] == 0:
+        res.steps.append(f"propagation -> {propagation}")
     else:
         res.steps.append("propagation edit skipped (no lxmd config)")
 
@@ -103,11 +131,14 @@ def set_mode(mode: str, connection: Connection, restart: bool = True) -> ModeRes
             res.steps.append("lxmd restart skipped")
 
     if res.ok:
-        res.message = ("Home mode — routing + message store-and-forward ON. "
-                       "The medic is stable infrastructure now."
-                       if mode == HOME else
-                       "Backpack mode — transport OFF. Safe to move without "
-                       "disturbing the network.")
+        if mode == HOME and home_profile == PROPAGATION:
+            res.message = ("Home mode — full propagation node (routing + message "
+                           "store-and-forward). Stable infrastructure.")
+        elif mode == HOME:
+            res.message = "Home mode — transport node (routing only)."
+        else:
+            res.message = ("Backpack mode — transport OFF. Safe to move without "
+                           "disturbing the network.")
     else:
         res.message = "Mode change hit a problem: " + "; ".join(res.steps)
     return res

@@ -36,7 +36,8 @@ class SettingsScreen(BoxLayout):
     (e.g. ``"wifi"``)."""
 
     def __init__(self, on_open=None, on_retention_change=None,
-                 node_count_provider=None, on_preview_screensaver=None, **kwargs):
+                 node_count_provider=None, on_preview_screensaver=None,
+                 on_home_profile_change=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.spacing = dp(10)
@@ -45,6 +46,7 @@ class SettingsScreen(BoxLayout):
         self._on_retention_change = on_retention_change
         self._node_count_provider = node_count_provider
         self._on_preview_screensaver = on_preview_screensaver
+        self._on_home_profile_change = on_home_profile_change
 
         self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
         self.add_widget(self._entry("Default radio parameters",
@@ -63,6 +65,7 @@ class SettingsScreen(BoxLayout):
                                     "it synced from GPS", "datetime"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
+        self.add_widget(self._home_mode_section())
         self.add_widget(self._brightness_section())
         self.add_widget(self._screensaver_section())
         self.add_widget(self._alerts_section())
@@ -103,6 +106,57 @@ class SettingsScreen(BoxLayout):
         except Exception:
             pass
         do_off()
+
+    # -- home mode (network role) -------------------------------------------
+    def _home_mode_section(self):
+        """Choose what HOME means (the front-page home/backpack toggle applies it):
+        a full propagation node, or a plain transport node. Backpack always turns
+        everything off, so this only affects the HOME state."""
+        from workflows.node_mode import load_home_profile, PROPAGATION, TRANSPORT
+        self._HP = (PROPAGATION, TRANSPORT)
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_line("Home mode", bold=True, size="15sp", color="accent", h=26))
+        box.add_widget(_line(
+            "What the medic does at HOME (the front-page toggle). Backpack always "
+            "turns transport OFF so moving it can't disturb the mesh.",
+            size="12.5sp", color="text_secondary", h=34))
+        current = load_home_profile()
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
+                        spacing=dp(8))
+        self._hp_buttons = {}
+        for val, label in ((PROPAGATION, "Full propagation node"),
+                           (TRANSPORT, "Transport only")):
+            b = Button(text=label, bold=True, font_size="14.5sp",
+                       background_normal="", background_down="")
+            b.bind(on_release=lambda _b, v=val: self._set_home_profile(v))
+            self._hp_buttons[val] = b
+            row.add_widget(b)
+        box.add_widget(row)
+        self._hp_note = _line("", size="12sp", color="text_secondary", h=32)
+        box.add_widget(self._hp_note)
+        self._paint_home_profile(current)
+        return box
+
+    def _paint_home_profile(self, current):
+        for val, b in self._hp_buttons.items():
+            on = val == current
+            b.background_color = theme.hex_to_rgba(
+                theme.COLORS["green" if on else "surface"])
+            b.color = theme.hex_to_rgba(
+                theme.COLORS["background" if on else "text_primary"])
+        self._hp_note.text = (
+            "Propagation node: routes for the mesh AND stores messages for offline "
+            "users (Columba/Sideband phones sync through it)."
+            if current == self._HP[0] else
+            "Transport node: routes for the mesh only — no message store-and-forward.")
+
+    def _set_home_profile(self, value):
+        from workflows.node_mode import save_home_profile
+        saved = save_home_profile(value)
+        self._paint_home_profile(saved)
+        if self._on_home_profile_change:
+            self._on_home_profile_change(saved)
 
     # -- display brightness -------------------------------------------------
     def _brightness_section(self):

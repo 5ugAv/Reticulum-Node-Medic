@@ -2,8 +2,9 @@
 
 from transport.connection import EmulatedConnection
 from workflows.node_mode import (
-    set_mode, current_mode, normalise, HOME, BACKPACK,
-    RNS_CONFIG, LXMD_CONFIG, MODE_FILE,
+    set_mode, current_mode, normalise, save_home_profile, load_home_profile,
+    HOME, BACKPACK, PROPAGATION, TRANSPORT,
+    RNS_CONFIG, LXMD_CONFIG, MODE_FILE, HOME_PROFILE_FILE,
 )
 
 
@@ -13,25 +14,44 @@ def _conn():
     return c
 
 
-def test_home_enables_transport_and_propagation():
+def test_home_propagation_profile_enables_both():
     c = _conn()
-    res = set_mode("home", c)
+    res = set_mode("home", c, home_profile=PROPAGATION)
     assert res.ok and res.mode == HOME
     joined = " ".join(c.history)
-    assert f"enable_transport = Yes" in joined and RNS_CONFIG in joined
-    assert f"enable_node = yes" in joined and LXMD_CONFIG in joined
+    assert "enable_transport = Yes" in joined and RNS_CONFIG in joined
+    assert "enable_node = yes" in joined and LXMD_CONFIG in joined
     assert "systemctl restart rnsd" in joined
-    assert "routing" in res.message.lower()
+    assert "propagation node" in res.message.lower()
 
 
-def test_backpack_disables_both():
+def test_home_transport_profile_is_routing_only():
     c = _conn()
-    res = set_mode("backpack", c)
+    res = set_mode("home", c, home_profile=TRANSPORT)
+    assert res.ok and res.mode == HOME
+    joined = " ".join(c.history)
+    assert "enable_transport = Yes" in joined       # still routes
+    assert "enable_node = no" in joined             # but no store-and-forward
+    assert "routing only" in res.message.lower()
+
+
+def test_backpack_disables_both_regardless_of_profile():
+    c = _conn()
+    res = set_mode("backpack", c, home_profile=PROPAGATION)
     assert res.ok and res.mode == BACKPACK
     joined = " ".join(c.history)
     assert "enable_transport = No" in joined
     assert "enable_node = no" in joined
     assert "safe to move" in res.message.lower()
+
+
+def test_home_profile_persists(tmp_path, monkeypatch):
+    import workflows.node_mode as nm
+    monkeypatch.setattr(nm, "HOME_PROFILE_FILE", str(tmp_path / "home_profile"))
+    assert nm.load_home_profile() == PROPAGATION        # default
+    assert nm.save_home_profile("transport") == TRANSPORT
+    assert nm.load_home_profile() == TRANSPORT
+    assert nm.save_home_profile("nonsense") == PROPAGATION  # unknown -> default
 
 
 def test_mode_marker_is_persisted():
