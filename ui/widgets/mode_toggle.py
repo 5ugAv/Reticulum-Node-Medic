@@ -96,13 +96,21 @@ class ModeToggle(Widget):
             Color(*theme.hex_to_rgba(theme.COLORS["background"], 0.55))
             RoundedRectangle(pos=(x, y), size=(w, h), radius=[dp(12)] * 4)
             if tex is not None:
-                # Blit the illustration, aspect-preserved + centred in the icon box.
                 tw, th = tex.size
-                scale = min(s / tw, s / th) if tw and th else 1.0
-                dw, dh = tw * scale, th * scale
                 Color(1, 1, 1, 1)                     # no tint — true poster colours
-                Rectangle(texture=tex, pos=(ox + (s - dw) / 2.0,
-                                            oy + (s - dh) / 2.0), size=(dw, dh))
+                if self.mode == BACKPACK:
+                    # Fill the whole button top-to-bottom so the hiker reads at a
+                    # glance; the (black) label sits over his legs at the bottom.
+                    dh = h
+                    dw = tw * (h / th) if th else w
+                    Rectangle(texture=tex, pos=(x + (w - dw) / 2.0, y),
+                              size=(dw, dh))
+                else:
+                    # HOME: illustration up top in the icon box, label strip below.
+                    scale = min(s / tw, s / th) if tw and th else 1.0
+                    dw, dh = tw * scale, th * scale
+                    Rectangle(texture=tex, pos=(ox + (s - dw) / 2.0,
+                                                oy + (s - dh) / 2.0), size=(dw, dh))
             else:
                 Color(*col)                           # line-art fallback (no asset)
                 if self.mode == HOME:
@@ -114,7 +122,9 @@ class ModeToggle(Widget):
             Line(rounded_rectangle=(x, y, w, h, dp(12)), width=dp(1.2))
         self.label.pos = (x, y + dp(2))
         self.label.size = (w, dp(20))
-        self.label.color = col
+        # BACKPACK fills the button, so its label is black and reads over the legs;
+        # HOME keeps its green label in the strip below the cottage.
+        self.label.color = (0, 0, 0, 1) if self.mode == BACKPACK else col
         self.label.text = "…" if self._busy else ("HOME" if self.mode == HOME
                                                    else "BACKPACK")
 
