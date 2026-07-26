@@ -59,6 +59,32 @@ def save_home_profile(profile: str) -> str:
     return profile
 
 
+#: Whether the medic drops itself to BACKPACK on its own when it senses it's
+#: moving (GPS). A local UI pref, like the home profile above.
+AUTO_BACKPACK_FILE = os.path.expanduser("~/.reticulum-node-medic/auto_backpack")
+
+
+def load_auto_backpack() -> bool:
+    """Whether the medic auto-switches to backpack when it senses movement. Default
+    ON — a roving unit shouldn't route/relay. Settings ▸ Home mode toggles it."""
+    try:
+        with open(AUTO_BACKPACK_FILE) as f:
+            return f.read().strip().lower() not in ("0", "off", "no", "false")
+    except OSError:
+        return True
+
+
+def save_auto_backpack(enabled: bool) -> bool:
+    enabled = bool(enabled)
+    try:
+        os.makedirs(os.path.dirname(AUTO_BACKPACK_FILE), exist_ok=True)
+        with open(AUTO_BACKPACK_FILE, "w") as f:
+            f.write("on" if enabled else "off")
+    except OSError:
+        pass
+    return enabled
+
+
 @dataclass
 class ModeResult:
     mode: str

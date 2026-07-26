@@ -514,6 +514,8 @@ class ReticulumNodeMedicApp(App):
         home.add_widget(self.home_screen)
         self.sm.add_widget(home)
         self._refresh_node_mode()          # read the real mode + update the toggle
+        from monitor.movement import MovementDetector
+        self._movement = MovementDetector()   # auto-backpack when the medic moves
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -736,6 +738,7 @@ class ReticulumNodeMedicApp(App):
                     # a restart without hammering the SD card each 30 s tick
                     if i % 10 == 0:
                         self.monitor_service.registry.save(self._REGISTRY_FILE)
+                    self._check_movement()       # auto-backpack if we're on the move
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
@@ -1167,12 +1170,19 @@ class ReticulumNodeMedicApp(App):
                 lambda dt: self.home_screen.mode_toggle.set_state(m), 0)
         threading.Thread(target=work, daemon=True).start()
 
-    def _set_node_mode(self, new_mode):
+    def _set_node_mode(self, new_mode, auto=False):
         """Flip the medic between HOME (propagation node) and BACKPACK (mobile
         leaf). Restarts rnsd/lxmd, so it runs off the UI thread; the toggle shows
-        '…' while it works, then settles to the new state with a brief toast."""
+        '…' while it works, then settles to the new state with a brief toast.
+
+        ``auto`` marks a switch the medic made itself (movement detected) — it gets
+        a movement-specific toast. A MANUAL switch re-settles the movement anchor at
+        the current spot, so auto-detect measures the next trip from here and won't
+        immediately fight a deliberate choice."""
         tog = self.home_screen.mode_toggle
         tog.set_busy(True)
+        if not auto:
+            self._reanchor_movement()
         import threading
         from transport.connection import LocalConnection
         from workflows.node_mode import set_mode
@@ -1182,9 +1192,59 @@ class ReticulumNodeMedicApp(App):
 
             def done(dt):
                 tog.set_state(res.mode)
-                self._mode_toast(res.message, ok=res.ok)
+                msg = res.message
+                if auto and res.ok and res.mode == "backpack":
+                    msg = ("On the move — switched to Backpack automatically so this "
+                           "node won't disturb the mesh while it travels. Tap the "
+                           "home icon to resume Home mode once you've settled.")
+                self._mode_toast(msg, ok=res.ok)
             Clock.schedule_once(done, 0)
         threading.Thread(target=work, daemon=True).start()
+
+    def _check_movement(self):
+        """Runs on the monitor thread each cycle: if auto-backpack is on and the
+        medic's GPS shows it has moved off its settled spot, drop it to backpack.
+        One-way — it never auto-returns to Home (that stays a deliberate choice).
+        No-ops silently with no GPS fix (can't sense movement without one)."""
+        det = getattr(self, "_movement", None)
+        if det is None:
+            return
+        try:
+            from workflows.node_mode import load_auto_backpack
+            if not load_auto_backpack():
+                return
+            from monitor.geo import read_splitter_fix
+            fix = read_splitter_fix()
+            if fix is None or fix.lat is None or fix.lon is None:
+                return
+            if det.update(fix.lat, fix.lon):
+                Clock.schedule_once(lambda dt: self._auto_backpack(), 0)
+        except Exception:
+            pass
+
+    def _auto_backpack(self):
+        """Movement confirmed → switch to Backpack (UI thread), unless already there.
+        Only ever home→backpack, so a unit that's already a mobile leaf is untouched."""
+        tog = getattr(self.home_screen, "mode_toggle", None)
+        if tog is None or tog.mode == "backpack":
+            return
+        self._set_node_mode("backpack", auto=True)
+
+    def _reanchor_movement(self):
+        """Re-settle the movement anchor at the current fix (on a manual mode
+        change), so auto-detect measures the next trip from here."""
+        det = getattr(self, "_movement", None)
+        if det is None:
+            return
+        try:
+            from monitor.geo import read_splitter_fix
+            fix = read_splitter_fix()
+            if fix is not None and fix.lat is not None and fix.lon is not None:
+                det.reset(fix.lat, fix.lon)
+            else:
+                det.reset()
+        except Exception:
+            pass
 
     def _on_home_profile_change(self, profile):
         """The Home-mode profile (propagation vs transport) changed in Settings. If

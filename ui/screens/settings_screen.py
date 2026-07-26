@@ -139,6 +139,22 @@ class SettingsScreen(BoxLayout):
         self._hp_note = _line("", size="12sp", color="text_secondary", h=32)
         box.add_widget(self._hp_note)
         self._paint_home_profile(current)
+
+        # Auto-backpack: if the medic's GPS shows it's moving, drop it out of
+        # transport/propagation on its own so a roving unit can't disturb the mesh.
+        from workflows.node_mode import load_auto_backpack, save_auto_backpack
+        ab_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
+                           spacing=dp(8))
+        ab_row.add_widget(_line("Auto-backpack when moving", size="14sp", h=40))
+        ab_sw = Switch(active=load_auto_backpack(), size_hint_x=None, width=dp(90))
+        ab_sw.bind(active=lambda _s, v: save_auto_backpack(v))
+        ab_row.add_widget(ab_sw)
+        box.add_widget(ab_row)
+        box.add_widget(_line(
+            "Uses the medic's GPS: when it senses it's on the move it switches to "
+            "Backpack automatically. It never switches back on its own — tap the "
+            "home icon to resume Home mode once you've settled.",
+            size="12sp", color="text_secondary", h=46))
         return box
 
     def _paint_home_profile(self, current):
