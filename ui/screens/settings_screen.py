@@ -2,6 +2,10 @@
 
 For now it holds one entry (WiFi & Network); it's built as a menu so more settings
 (radio defaults, display, about, …) drop in as rows without touching navigation.
+
+# i18n: wrapped — the screen title, entry titles and section headers are wrapped
+# in tr(...). The longer descriptive subtitles are NOT yet wrapped (future work);
+# they fall back to English gracefully. See ui/i18n.py for how to wrap more.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from kivy.uix.switch import Switch
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr
 from ui.widgets.slide_to_power import SlideToPowerOff
 from provisioning.power import power_off
 from provisioning import brightness as bright
@@ -55,24 +60,26 @@ class SettingsScreen(BoxLayout):
         body = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         body.bind(minimum_height=body.setter("height"))
 
-        body.add_widget(_line("Settings", bold=True, size="24sp", h=44))
-        body.add_widget(self._entry("Default radio parameters",
+        body.add_widget(_line(tr("Settings"), bold=True, size="24sp", h=44))
+        body.add_widget(self._entry(tr("Language"),
+                                    "Run Node Medic in your own language", "language"))
+        body.add_widget(self._entry(tr("Default radio parameters"),
                                     "Frequency, bandwidth, SF, CR, TX power that BIRTH "
                                     "pre-fills — includes regional presets", "radio_defaults"))
-        body.add_widget(self._entry("Tool identity",
+        body.add_widget(self._entry(tr("Tool identity"),
                                     "This medic's Reticulum identity, name, born date "
                                     "and lineage", "tool_identity"))
-        body.add_widget(self._entry("Storage usage",
+        body.add_widget(self._entry(tr("Storage usage"),
                                     "SD card space and what's using it", "storage"))
-        body.add_widget(self._entry("Trusted operators",
+        body.add_widget(self._entry(tr("Trusted operators"),
                                     "Trust between cloned Node Medic units — the "
                                     "family tree", "trusted_operators"))
-        body.add_widget(self._entry("Date & time",
+        body.add_widget(self._entry(tr("Date & time"),
                                     "System clock and timezone — set manually or keep "
                                     "it synced from GPS", "datetime"))
-        body.add_widget(self._entry("WiFi & Network",
+        body.add_widget(self._entry(tr("WiFi & Network"),
                                     "Connect to a hotspot or venue WiFi", "wifi"))
-        body.add_widget(self._entry("Communication apps",
+        body.add_widget(self._entry(tr("Communication apps"),
                                     "Hand Columba or Sideband to a phone over WiFi — "
                                     "the mesh messenger for your pocket", "comms"))
         body.add_widget(self._home_mode_section())
@@ -80,17 +87,17 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._screensaver_section())
         body.add_widget(self._alerts_section())
         body.add_widget(self._retention_section())
-        body.add_widget(self._entry("Reticulum & radio guide",
+        body.add_widget(self._entry(tr("Reticulum & radio guide"),
                                     "What RNode / transport / propagation nodes are, "
                                     "where to place them, and the radio settings",
                                     "guide"))
-        body.add_widget(self._entry("About",
+        body.add_widget(self._entry(tr("About"),
                                     "Software version, test-suite status, uptime, "
                                     "and licence", "about"))
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
         # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
-        body.add_widget(_line("Power", bold=True, size="15sp", color="accent", h=28))
+        body.add_widget(_line(tr("Power"), bold=True, size="15sp", color="accent", h=28))
         body.add_widget(SlideToPowerOff(on_power_off=self._power_off))
         self._power_note = _line("", size="12.5sp", color="text_secondary", h=24)
         body.add_widget(self._power_note)
@@ -129,7 +136,7 @@ class SettingsScreen(BoxLayout):
         self._HP = (PROPAGATION, TRANSPORT)
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_line("Home mode", bold=True, size="15sp", color="accent", h=26))
+        box.add_widget(_line(tr("Home mode"), bold=True, size="15sp", color="accent", h=26))
         box.add_widget(_line(
             "What the medic does at HOME (the front-page toggle). Backpack always "
             "turns transport OFF so moving it can't disturb the mesh.",
@@ -193,7 +200,7 @@ class SettingsScreen(BoxLayout):
         graceful note instead of a dead slider when the panel exposes no control."""
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_line("Display", bold=True, size="15sp", color="accent", h=26))
+        box.add_widget(_line(tr("Display"), bold=True, size="15sp", color="accent", h=26))
         if not bright.has_control():
             box.add_widget(_line("Brightness control isn't available on this display.",
                                  size="12.5sp", color="text_secondary", h=24))
@@ -231,7 +238,7 @@ class SettingsScreen(BoxLayout):
         from provisioning import screensaver as ss
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_line("Screen saver", bold=True, size="15sp",
+        box.add_widget(_line(tr("Screen saver"), bold=True, size="15sp",
                              color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                         spacing=dp(10))
@@ -284,7 +291,7 @@ class SettingsScreen(BoxLayout):
         from monitor import alerts
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_line("Alerts", bold=True, size="15sp", color="accent", h=26))
+        box.add_widget(_line(tr("Alerts"), bold=True, size="15sp", color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                         spacing=dp(10))
         row.add_widget(_line("Alert me when a node goes orange or red", size="14sp"))
@@ -304,7 +311,7 @@ class SettingsScreen(BoxLayout):
         self._ret_days = retention.load_days()
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_line("Beacon history retention", bold=True, size="15sp",
+        box.add_widget(_line(tr("Beacon history retention"), bold=True, size="15sp",
                              color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
                         spacing=dp(8))

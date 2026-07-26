@@ -516,6 +516,9 @@ class ReticulumNodeMedicApp(App):
         self._refresh_node_mode()          # read the real mode + update the toggle
         from monitor.movement import MovementDetector
         self._movement = MovementDetector()   # auto-backpack when the medic moves
+        from monitor.ups import BatteryGuard
+        self._battery_guard = BatteryGuard()  # low-battery safe-shutdown (UPS HAT)
+        self._battery_shutting_down = False
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -578,6 +581,12 @@ class ReticulumNodeMedicApp(App):
             on_preview_screensaver=self._show_screensaver,
             on_home_profile_change=self._on_home_profile_change)))
         self.sm.add_widget(settings_scr)
+
+        # Language — pick the UI language (applies on next app start).
+        language_scr = Screen(name="language")
+        from ui.screens.language_screen import LanguageScreen
+        language_scr.add_widget(self._with_back(LanguageScreen()))
+        self.sm.add_widget(language_scr)
 
         # Communication apps — hand Columba/Sideband to a phone over Wi-Fi + QR.
         comms_scr = Screen(name="comms")
@@ -739,6 +748,7 @@ class ReticulumNodeMedicApp(App):
                     if i % 10 == 0:
                         self.monitor_service.registry.save(self._REGISTRY_FILE)
                     self._check_movement()       # auto-backpack if we're on the move
+                    self._check_battery()        # UPS gauge + low-battery shutdown
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
@@ -1245,6 +1255,42 @@ class ReticulumNodeMedicApp(App):
                 det.reset()
         except Exception:
             pass
+
+    def _check_battery(self):
+        """Runs on the monitor thread: read the UPS (if a HAT is present), update
+        the home-page gauge, and act on the safe-shutdown guard. No-op when there's
+        no UPS (read_ups -> present=False). Voltage-gated, so it can't fire while
+        plugged in (see monitor.ups)."""
+        guard = getattr(self, "_battery_guard", None)
+        if guard is None or self._battery_shutting_down:
+            return
+        try:
+            from monitor.ups import read_ups
+            st = read_ups()
+            Clock.schedule_once(lambda dt: self._update_battery_ui(st), 0)
+            action = guard.evaluate(st)
+            if action == "warn":
+                Clock.schedule_once(lambda dt: self._mode_toast(
+                    "Battery low — plug Node Medic in soon, or it will shut down "
+                    "safely to protect the SD card.", ok=False), 0)
+            elif action == "shutdown":
+                self._battery_shutting_down = True
+                Clock.schedule_once(lambda dt: self._battery_shutdown(), 0)
+        except Exception:
+            pass
+
+    def _update_battery_ui(self, st):
+        gauge = getattr(getattr(self, "home_screen", None), "battery_gauge", None)
+        if gauge is not None:
+            gauge.update(st)
+
+    def _battery_shutdown(self):
+        """Critically-low battery: warn, then clean-power-off to save the SD card."""
+        self._mode_toast("Battery critically low — shutting down now to protect "
+                          "the SD card.", ok=False)
+        import threading
+        from provisioning.power import power_off
+        threading.Thread(target=lambda: power_off(), daemon=True).start()
 
     def _on_home_profile_change(self, profile):
         """The Home-mode profile (propagation vs transport) changed in Settings. If

@@ -17,10 +17,13 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — filter labels + Search hint
 from ui.onscreen_keyboard import bind_field
 from ui.widgets.hex_status import HexStatus
 from ui.widgets.stat_bar import StatBar
 
+# NB: FILTERS values double as logic keys (_FILTER_TO_STATUS, active_filter). Keep
+# them ENGLISH — only the DISPLAYED label is passed through tr() at render time.
 FILTERS = ["All", "OK", "Warn", "Alert"]
 _FILTER_TO_STATUS = {"OK": "ok", "Warn": "warn", "Alert": "alert"}
 
@@ -162,7 +165,7 @@ class VitalsScreen(BoxLayout):
             self.filter_bar.add_widget(btn)
             self._filter_buttons.append(btn)
         self._highlight_filter()
-        search = TextInput(hint_text="Search", multiline=False,
+        search = TextInput(hint_text=tr("Search"), multiline=False,
                            size_hint_x=None, width=dp(220))
         bind_field(search)                           # pop the on-screen keyboard
         search.bind(text=lambda i, v: self.set_search(v))
@@ -223,7 +226,7 @@ class VitalsScreen(BoxLayout):
         for f, st in _FILTER_TO_STATUS.items():
             counts[f] = sum(1 for n in self.nodes if n.get("status") == st)
         for btn in getattr(self, "_filter_buttons", []):
-            btn.text = f"{btn.filter_name} {counts.get(btn.filter_name, 0)}"
+            btn.text = f"{tr(btn.filter_name)} {counts.get(btn.filter_name, 0)}"
             active = btn.filter_name == self.active_filter
             btn.background_color = theme.hex_to_rgba(
                 theme.COLORS["accent"] if active else theme.COLORS["surface"])

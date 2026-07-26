@@ -69,6 +69,12 @@ class HomeScreen(FloatLayout):
             pos_hint={"right": 0.85, "top": 0.99})   # top-right, just left of the gear
         self.add_widget(self.mode_toggle)
 
+        # Battery gauge — hidden until a UPS HAT is present (opacity 0). Sits under
+        # the power slide on the left. Tune pos_hint on-device once the HAT is on.
+        from ui.widgets.battery_gauge import BatteryGauge
+        self.battery_gauge = BatteryGauge(pos_hint={"x": 0.02, "top": 0.90})
+        self.add_widget(self.battery_gauge)
+
     def _power_off(self):
         import threading
         from provisioning.power import power_off

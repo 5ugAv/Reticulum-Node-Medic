@@ -20,6 +20,7 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — the "HOME" caption
 
 HOME, BACKPACK = "home", "backpack"
 
@@ -129,7 +130,7 @@ class ModeToggle(Widget):
         if self._busy:
             self.label.text = "…"
         else:
-            self.label.text = "HOME" if self.mode == HOME else ""
+            self.label.text = tr("HOME") if self.mode == HOME else ""
 
     @staticmethod
     def _draw_house(Line, ox, oy, s):
