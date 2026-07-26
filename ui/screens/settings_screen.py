@@ -48,46 +48,56 @@ class SettingsScreen(BoxLayout):
         self._on_preview_screensaver = on_preview_screensaver
         self._on_home_profile_change = on_home_profile_change
 
-        self.add_widget(_line("Settings", bold=True, size="24sp", h=44))
-        self.add_widget(self._entry("Default radio parameters",
+        # The menu outgrew one screen (Home mode, Communication apps, the display
+        # sections…), so it SCROLLS. Without this the top rows — including
+        # Communication apps — clip off the top edge with no way to reach them.
+        from kivy.uix.scrollview import ScrollView
+        body = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
+        body.bind(minimum_height=body.setter("height"))
+
+        body.add_widget(_line("Settings", bold=True, size="24sp", h=44))
+        body.add_widget(self._entry("Default radio parameters",
                                     "Frequency, bandwidth, SF, CR, TX power that BIRTH "
                                     "pre-fills — includes regional presets", "radio_defaults"))
-        self.add_widget(self._entry("Tool identity",
+        body.add_widget(self._entry("Tool identity",
                                     "This medic's Reticulum identity, name, born date "
                                     "and lineage", "tool_identity"))
-        self.add_widget(self._entry("Storage usage",
+        body.add_widget(self._entry("Storage usage",
                                     "SD card space and what's using it", "storage"))
-        self.add_widget(self._entry("Trusted operators",
+        body.add_widget(self._entry("Trusted operators",
                                     "Trust between cloned Node Medic units — the "
                                     "family tree", "trusted_operators"))
-        self.add_widget(self._entry("Date & time",
+        body.add_widget(self._entry("Date & time",
                                     "System clock and timezone — set manually or keep "
                                     "it synced from GPS", "datetime"))
-        self.add_widget(self._entry("WiFi & Network",
+        body.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
-        self.add_widget(self._entry("Communication apps",
+        body.add_widget(self._entry("Communication apps",
                                     "Hand Columba or Sideband to a phone over WiFi — "
                                     "the mesh messenger for your pocket", "comms"))
-        self.add_widget(self._home_mode_section())
-        self.add_widget(self._brightness_section())
-        self.add_widget(self._screensaver_section())
-        self.add_widget(self._alerts_section())
-        self.add_widget(self._retention_section())
-        self.add_widget(self._entry("Reticulum & radio guide",
+        body.add_widget(self._home_mode_section())
+        body.add_widget(self._brightness_section())
+        body.add_widget(self._screensaver_section())
+        body.add_widget(self._alerts_section())
+        body.add_widget(self._retention_section())
+        body.add_widget(self._entry("Reticulum & radio guide",
                                     "What RNode / transport / propagation nodes are, "
                                     "where to place them, and the radio settings",
                                     "guide"))
-        self.add_widget(self._entry("About",
+        body.add_widget(self._entry("About",
                                     "Software version, test-suite status, uptime, "
                                     "and licence", "about"))
-        self.add_widget(Widget())          # push rows to the top
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
         # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
-        self.add_widget(_line("Power", bold=True, size="15sp", color="accent", h=28))
-        self.add_widget(SlideToPowerOff(on_power_off=self._power_off))
+        body.add_widget(_line("Power", bold=True, size="15sp", color="accent", h=28))
+        body.add_widget(SlideToPowerOff(on_power_off=self._power_off))
         self._power_note = _line("", size="12.5sp", color="text_secondary", h=24)
-        self.add_widget(self._power_note)
+        body.add_widget(self._power_note)
+
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, bar_width=dp(4))
+        scroll.add_widget(body)
+        self.add_widget(scroll)
 
     def _power_off(self):
         def do_off():
