@@ -570,6 +570,14 @@ class ReticulumNodeMedicApp(App):
             on_home_profile_change=self._on_home_profile_change)))
         self.sm.add_widget(settings_scr)
 
+        # Communication apps — hand Columba/Sideband to a phone over Wi-Fi + QR.
+        comms_scr = Screen(name="comms")
+        from ui.screens.comms_screen import CommsScreen
+        self.comms_screen = CommsScreen()
+        comms_scr.add_widget(self._with_back(self.comms_screen))
+        comms_scr.bind(on_enter=lambda *_: self.comms_screen.enter())
+        self.sm.add_widget(comms_scr)
+
         # WiFi connect — join a hotspot / venue AP so online features work afield.
         wifi_scr = Screen(name="wifi")
         from ui.screens.wifi_screen import WifiScreen

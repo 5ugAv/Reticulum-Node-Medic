@@ -65,6 +65,9 @@ class SettingsScreen(BoxLayout):
                                     "it synced from GPS", "datetime"))
         self.add_widget(self._entry("WiFi & Network",
                                     "Connect to a hotspot or venue WiFi", "wifi"))
+        self.add_widget(self._entry("Communication apps",
+                                    "Hand Columba or Sideband to a phone over WiFi — "
+                                    "the mesh messenger for your pocket", "comms"))
         self.add_widget(self._home_mode_section())
         self.add_widget(self._brightness_section())
         self.add_widget(self._screensaver_section())
