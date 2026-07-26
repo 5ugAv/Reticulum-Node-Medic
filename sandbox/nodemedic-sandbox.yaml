@@ -46,10 +46,13 @@ provision:
       set -eux
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
+      # Core packages that MUST be present (fail loudly if any is missing).
       apt-get install -y --no-install-recommends \
-        python3 python3-venv git openssh-server nftables cloud-init sudo \
-        network-manager iw acl cryptsetup rsync ca-certificates procps \
-        util-linux coreutils uhubctl || true
+        python3 python3-venv python3-pytest git openssh-server nftables cloud-init \
+        sudo network-manager iw acl cryptsetup rsync ca-certificates procps \
+        util-linux coreutils
+      # Optional (may be absent on trixie) — must not abort the core install above.
+      apt-get install -y uhubctl 2>/dev/null || true
       systemctl enable ssh
 
   # --- 2. the `nodemedic` app user + the cloud-init BLANKET sudo (to scope) ---
@@ -57,12 +60,26 @@ provision:
     script: |
       #!/bin/bash
       set -eux
-      id nodemedic >/dev/null 2>&1 || useradd -m -s /bin/bash -u 1000 nodemedic
-      # Reproduce EXACTLY how the real medic ships it: cloud-init writes the
-      # blanket grant to /etc/sudoers.d/90-cloud-init-users. Testing the scoping
-      # here catches the "cloud-init regenerates it on reboot" gotcha too.
       install -d -m 0750 /etc/sudoers.d
-      printf '%s\n' 'nodemedic ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-cloud-init-users
+      # Keep the VM's OWN admin (the limactl-shell user, e.g. uid-501 'operator')
+      # passwordless in a file the hardening apply NEVER touches (it only removes
+      # files granting *nodemedic* the blanket) — so we can keep driving the sandbox
+      # AFTER nodemedic is scoped. Copy cloud-init's real grant aside (uid/name
+      # agnostic); if cloud-init hasn't written it yet, synthesise one for the login
+      # user. Done BEFORE nodemedic exists, so the copy can't contain nodemedic.
+      if [ -f /etc/sudoers.d/90-cloud-init-users ]; then
+        cp -a /etc/sudoers.d/90-cloud-init-users /etc/sudoers.d/00-sandbox-admin
+      else
+        ADMIN="$(awk -F: '$7 ~ /sh$/ && $1!="root" && $1!="nodemedic"{print $1; exit}' /etc/passwd)"
+        [ -n "$ADMIN" ] && printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$ADMIN" > /etc/sudoers.d/00-sandbox-admin
+      fi
+      chmod 0440 /etc/sudoers.d/00-sandbox-admin 2>/dev/null || true
+      # The app user (auto uid).
+      id nodemedic >/dev/null 2>&1 || useradd -m -s /bin/bash nodemedic
+      # Reproduce EXACTLY how the real medic ships it: the blanket grant lives in
+      # cloud-init's /etc/sudoers.d/90-cloud-init-users. Testing the scoping here
+      # also exercises the "cloud-init regenerates it on reboot" gotcha.
+      printf 'nodemedic ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/90-cloud-init-users
       chmod 0440 /etc/sudoers.d/90-cloud-init-users
       visudo -c
 
