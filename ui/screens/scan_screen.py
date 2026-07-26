@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import os
 import threading
+import traceback
 from typing import List
 
 from kivy.clock import Clock
@@ -50,6 +51,29 @@ from ui.map_download import (
     download_node_details, estimate_download, estimate_world, is_online,
     storage_summary, disk_free_mb, parse_latlon, ip_geolocate,
     add_point_detail, SPOT_MIN_ZOOM, SPOT_MAX_ZOOM, SPOT_RADIUS_KM)
+
+
+#: A pan / pinch / tap must NEVER crash the whole app — Kivy re-raises exceptions
+#: from touch handlers by default, so one bad delta while sliding the map takes
+#: the UI down (and the auto-restart truncates ui.log, losing the trace). We wrap
+#: the interactive handlers and route any error here: append the traceback to a
+#: PERSISTENT file (survives restarts, so the elusive map crash finally leaves
+#: evidence) and carry on — Recenter recovers the view.
+_MAP_ERR_LOG = os.path.join(os.path.expanduser("~"), ".nodemedic-map-errors.log")
+
+
+def _record_map_error(where):
+    try:
+        with open(_MAP_ERR_LOG, "a") as f:
+            f.write("--- map touch error in %s ---\n" % where)
+            traceback.print_exc(file=f)
+            f.write("\n")
+    except Exception:
+        pass
+    try:
+        traceback.print_exc()          # also to stderr / ui.log for a live tail
+    except Exception:
+        pass
 
 
 # ---- pure helpers (unit-tested; no Kivy) -------------------------------------
@@ -183,15 +207,18 @@ class MapPlot(Widget):
         if (not self._interactive or not self.collide_point(*touch.pos)
                 or self._tiles is None):
             return super().on_touch_down(touch)
-        if touch.is_double_tap:                   # double-tap = zoom in on the spot
-            self._zoom_at(touch.pos, +1)
-            return True
-        touch.grab(self)
-        self._touches[touch.uid] = touch.pos
-        if self._primary is None:                # first finger drives the pan
-            self._primary = touch.uid
-        if self._is_pinch():
-            self._pinch_base = self._touch_sep()
+        try:
+            if touch.is_double_tap:               # double-tap = zoom in on the spot
+                self._zoom_at(touch.pos, +1)
+                return True
+            touch.grab(self)
+            self._touches[touch.uid] = touch.pos
+            if self._primary is None:             # first finger drives the pan
+                self._primary = touch.uid
+            if self._is_pinch():
+                self._pinch_base = self._touch_sep()
+        except Exception:
+            _record_map_error("on_touch_down")
         return True
 
     def _touch_sep(self):
@@ -208,70 +235,80 @@ class MapPlot(Widget):
     def on_touch_move(self, touch):
         if touch.grab_current is not self:
             return super().on_touch_move(touch)
-        self._touches[touch.uid] = touch.pos
-        view = self._current_view()
-        if view is None:
-            return True
-        if self._is_pinch():                     # two fingers apart = zoom
-            if self._pinch_base is None:
-                self._pinch_base = self._touch_sep()
-            dist = max(1.0, self._touch_sep())
-            ratio = dist / self._pinch_base
-            if ratio > PINCH_STEP or ratio < 1.0 / PINCH_STEP:
-                self._step_zoom(+1 if ratio > 1.0 else -1, view)
-                self._pinch_base = dist          # re-arm for the next step
-        elif touch.uid == self._primary:         # one finger (its moves) = pan
-            # Ignore the panel's phantom second contact: only the primary finger
-            # drives the pan, so one physical drag = one pan (not doubled).
-            from ui.map_tiles import project_px, unproject_px
-            # Accumulate on the PERSISTENT centre (redraws are throttled, so
-            # several moves share one stale view — deriving each from it drops
-            # every delta but the last, the jumpy drag).
-            z = self._zoom if self._zoom is not None else view.zoom
-            clat, clon = self._center_latlon(view)
-            cx, cy = project_px(clat, clon, z)
-            cx -= touch.dx
-            cy += touch.dy                       # kivy y-up vs world y-down
-            self._center = self._clamp_center(*unproject_px(cx, cy, z))
-            self._zoom = z
-            self._trigger()
+        try:
+            self._touches[touch.uid] = touch.pos
+            view = self._current_view()
+            if view is None:
+                return True
+            if self._is_pinch():                 # two fingers apart = zoom
+                if self._pinch_base is None:
+                    self._pinch_base = self._touch_sep()
+                dist = max(1.0, self._touch_sep())
+                ratio = dist / self._pinch_base
+                if ratio > PINCH_STEP or ratio < 1.0 / PINCH_STEP:
+                    self._step_zoom(+1 if ratio > 1.0 else -1, view)
+                    self._pinch_base = dist      # re-arm for the next step
+            elif touch.uid == self._primary:     # one finger (its moves) = pan
+                # Ignore the panel's phantom second contact: only the primary
+                # finger drives the pan, so one physical drag = one pan (not
+                # doubled).
+                from ui.map_tiles import project_px, unproject_px
+                # Accumulate on the PERSISTENT centre (redraws are throttled, so
+                # several moves share one stale view — deriving each from it drops
+                # every delta but the last, the jumpy drag).
+                z = self._zoom if self._zoom is not None else view.zoom
+                clat, clon = self._center_latlon(view)
+                cx, cy = project_px(clat, clon, z)
+                cx -= touch.dx
+                cy += touch.dy                   # kivy y-up vs world y-down
+                self._center = self._clamp_center(*unproject_px(cx, cy, z))
+                self._zoom = z
+                self._trigger()
+        except Exception:
+            _record_map_error("on_touch_move")
         return True
 
     def on_touch_up(self, touch):
         if touch.grab_current is self:
-            touch.ungrab(self)
-            self._touches.pop(touch.uid, None)
-            if touch.uid == self._primary:       # promote a remaining finger
-                self._primary = next(iter(self._touches), None)
-            if len(self._touches) < 2:
-                self._pinch_base = None
-            # A stationary tap (not a drag or pinch) on an INTERACTIVE map: if it
-            # landed ON a node dot, open that node; otherwise drop the placement
-            # pin. So tap-a-node and tap-to-place coexist with pan/pinch/zoom.
-            moved = abs(touch.x - touch.ox) + abs(touch.y - touch.oy) > dp(10)
-            if (not moved and not self._touches and not touch.is_double_tap
-                    and self._last_view is not None and self.collide_point(*touch.pos)):
-                node = self._node_at(touch.x, touch.y)
-                sugg = None if node is not None else self._suggestion_at(touch.x, touch.y)
-                if node is not None and self._on_node_pick:
-                    self._on_node_pick(node)
-                elif sugg is not None:            # tapped an 'add a node here' ring
-                    self._show_suggestion(sugg)
-                elif self._on_pick:
-                    latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
-                    self._me = latlon
-                    self._trigger()
-                    self._on_pick(latlon)
+            try:
+                touch.ungrab(self)
+                self._touches.pop(touch.uid, None)
+                if touch.uid == self._primary:   # promote a remaining finger
+                    self._primary = next(iter(self._touches), None)
+                if len(self._touches) < 2:
+                    self._pinch_base = None
+                # A stationary tap (not a drag/pinch) on an INTERACTIVE map: if it
+                # landed ON a node dot, open that node; otherwise drop the
+                # placement pin. Tap-a-node and tap-to-place coexist with pan/zoom.
+                moved = abs(touch.x - touch.ox) + abs(touch.y - touch.oy) > dp(10)
+                if (not moved and not self._touches and not touch.is_double_tap
+                        and self._last_view is not None and self.collide_point(*touch.pos)):
+                    node = self._node_at(touch.x, touch.y)
+                    sugg = None if node is not None else self._suggestion_at(touch.x, touch.y)
+                    if node is not None and self._on_node_pick:
+                        self._on_node_pick(node)
+                    elif sugg is not None:        # tapped an 'add a node here' ring
+                        self._show_suggestion(sugg)
+                    elif self._on_pick:
+                        latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
+                        self._me = latlon
+                        self._trigger()
+                        self._on_pick(latlon)
+            except Exception:
+                _record_map_error("on_touch_up")
             return True
         # Tap-to-place: on a non-interactive map with a pick handler (the GPS-
         # confirm screen), a tap drops the pin at that spot — offline location entry.
-        if (self._on_pick and self._last_view is not None
-                and not self._touches and self.collide_point(*touch.pos)):
-            latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
-            self._me = latlon
-            self._trigger()                      # move the pin to the tapped point
-            self._on_pick(latlon)
-            return True
+        try:
+            if (self._on_pick and self._last_view is not None
+                    and not self._touches and self.collide_point(*touch.pos)):
+                latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
+                self._me = latlon
+                self._trigger()                  # move the pin to the tapped point
+                self._on_pick(latlon)
+                return True
+        except Exception:
+            _record_map_error("on_touch_up")
         return super().on_touch_up(touch)
 
     # -- optional overlays: mesh lines + placement suggestions --------------
