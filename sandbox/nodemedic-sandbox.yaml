@@ -1,0 +1,130 @@
+# nodemedic-sandbox — a SOFTWARE mirror of the Node Medic for safe testing.
+#
+# A Debian 13 (trixie) aarch64 VM (matching the Pi 5) that reproduces the medic's
+# software surface: the `nodemedic` user, the cloud-init blanket sudo, stub
+# rnsd/lxmd/rnode-splitter systemd services, sshd, nftables, and dummy identity +
+# location data at the real paths/perms. Lets us test the risky config changes —
+# the sudo-scoping, SSH hardening, firewall, and the encrypt-at-rest vault — WITHOUT
+# ever touching the real medic. It does NOT emulate the LoRa radio, touchscreen,
+# GPS, or USB flashing (those need real hardware).
+#
+# Usage:
+#   limactl start  sandbox/nodemedic-sandbox.yaml
+#   limactl shell  nodemedic-sandbox            # a shell in the VM
+#   limactl shell  nodemedic-sandbox sudo -iu nodemedic   # as the app user
+#   limactl stop   nodemedic-sandbox
+#   limactl delete nodemedic-sandbox            # throw it away, rebuild clean
+#
+# The repo is mounted read-only at /opt/reticulum-tool-src and copied to
+# ~nodemedic/reticulum-tool so tests run against the CURRENT working tree.
+
+vmType: "vz"                 # Apple Virtualization.framework — fast on Apple Silicon
+os: "Linux"
+arch: "aarch64"              # same architecture as the Raspberry Pi 5
+
+images:
+  - location: "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-arm64.qcow2"
+    arch: "aarch64"
+
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+
+mounts:
+  - location: "~/reticulum-tool"
+    mountPoint: "/opt/reticulum-tool-src"
+    writable: false
+
+ssh:
+  loadDotSSHPubKeys: true
+
+provision:
+  # --- 1. packages that mirror the medic's relevant software surface ---------
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        python3 python3-venv git openssh-server nftables cloud-init sudo \
+        network-manager iw acl cryptsetup rsync ca-certificates procps \
+        util-linux coreutils uhubctl || true
+      systemctl enable ssh
+
+  # --- 2. the `nodemedic` app user + the cloud-init BLANKET sudo (to scope) ---
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      id nodemedic >/dev/null 2>&1 || useradd -m -s /bin/bash -u 1000 nodemedic
+      # Reproduce EXACTLY how the real medic ships it: cloud-init writes the
+      # blanket grant to /etc/sudoers.d/90-cloud-init-users. Testing the scoping
+      # here catches the "cloud-init regenerates it on reboot" gotcha too.
+      install -d -m 0750 /etc/sudoers.d
+      printf '%s\n' 'nodemedic ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-cloud-init-users
+      chmod 0440 /etc/sudoers.d/90-cloud-init-users
+      visudo -c
+
+  # --- 3. stub rnsd / lxmd / rnode-splitter services (so systemctl works) -----
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      for unit in rnsd lxmd rnode-splitter; do
+        cat > /etc/systemd/system/$unit.service <<EOF
+      [Unit]
+      Description=Node Medic sandbox stub: $unit
+      [Service]
+      ExecStart=/usr/bin/sleep infinity
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+      done
+      systemctl daemon-reload
+      systemctl enable rnsd lxmd rnode-splitter
+      systemctl start rnsd lxmd rnode-splitter
+
+  # --- 4. dummy identity + location data at the REAL paths/perms --------------
+  #     (world-readable keys + a location trail — so harden.py / the vault / the
+  #      sudoers-portal path have realistic targets to act on)
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      H=/home/nodemedic
+      install -d -m 0755 "$H/.lxmd" "$H/.reticulum/storage" "$H/.reticulum-node-medic/certificates"
+      head -c 64 /dev/urandom > "$H/.lxmd/identity";                 chmod 0644 "$H/.lxmd/identity"
+      head -c 64 /dev/urandom > "$H/.reticulum/storage/transport_identity"; chmod 0644 "$H/.reticulum/storage/transport_identity"
+      echo '{}'                    > "$H/.reticulum/storage/known_destinations"
+      printf '[reticulum]\nenable_transport = Yes\n' > "$H/.reticulum/config"
+      cat > "$H/.reticulum-node-medic/kin.json" <<'EOF'
+      {"EVERYWHERE": {"node_name": "EVERYWHERE", "lat": -37.5106, "lon": 145.5107, "builder": "self"}}
+      EOF
+      chmod 0664 "$H/.reticulum-node-medic/kin.json"
+      echo '{"nodes": [], "history": {}}' > "$H/.reticulum-node-medic/registry.json"
+      chmod 0600 "$H/.reticulum-node-medic/registry.json"
+      printf '[propagation]\nenable_node = no\n' > "$H/.lxmd/config"
+      chown -R nodemedic:nodemedic "$H"
+
+  # --- 5. copy the repo in as the app user (tests run vs the current tree) -----
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      H=/home/nodemedic
+      rsync -a --delete --exclude '.git' --exclude 'assets/apps' --exclude 'assets/firmware' \
+        /opt/reticulum-tool-src/ "$H/reticulum-tool/"
+      chown -R nodemedic:nodemedic "$H/reticulum-tool"
+
+message: |
+  Node Medic SANDBOX is up. It mirrors the medic's software (not its hardware).
+    limactl shell nodemedic-sandbox sudo -iu nodemedic     # become the app user
+  Then, inside, safely test the risky config changes, e.g.:
+    cd ~/reticulum-tool
+    python3 -m pytest tests/ -q
+    sudo bash provisioning/security/apply_sudoers.sh        # scope the sudo
+    sudo -l -U nodemedic                                    # verify the policy
+    sudo bash scripts/vault_create.sh                       # encrypt-at-rest vault
+  Break it freely — `limactl delete nodemedic-sandbox` rebuilds clean.
