@@ -1,0 +1,26 @@
+# Encrypt-at-rest boot gate. rnsd + lxmd Require + are ordered After this unit,
+# so they cannot start (and cannot read absent identity keys) until the vault is
+# unlocked and mounted. Installed by scripts/vault_enable_boot.sh.
+#
+# ExecStart blocks until a passphrase is supplied: systemd-ask-password raises a
+# request that the touchscreen unlock screen (ui/vault_unlock.py, a systemd
+# password agent) answers with what the operator types. --timeout=0 => wait
+# forever: no unlock, no plaintext keys, no mesh — the intended field behaviour.
+[Unit]
+Description=Node Medic encrypt-at-rest vault (unlock + mount)
+DefaultDependencies=no
+After=local-fs.target
+Before=rnsd.service lxmd.service
+ConditionPathExists=/home/nodemedic/.nodemedic-vault.img
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Ask on the touchscreen (via the password agent), pipe the answer to the mount.
+ExecStart=/bin/bash -c '/usr/bin/systemd-ask-password --timeout=0 "Node Medic vault passphrase:" | /home/nodemedic/reticulum-tool/scripts/vault_mount.sh --stdin'
+# Lock the vault again on shutdown/stop (best-effort).
+ExecStop=/home/nodemedic/reticulum-tool/scripts/vault_unmount.sh
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
