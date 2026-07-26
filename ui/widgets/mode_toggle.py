@@ -122,11 +122,14 @@ class ModeToggle(Widget):
             Line(rounded_rectangle=(x, y, w, h, dp(12)), width=dp(1.2))
         self.label.pos = (x, y + dp(2))
         self.label.size = (w, dp(20))
-        # BACKPACK fills the button, so its label is black and reads over the legs;
-        # HOME keeps its green label in the strip below the cottage.
+        # The hiker illustration is self-explanatory, so BACKPACK carries no caption;
+        # HOME keeps its green label in the strip below the cottage. Either mode
+        # still shows "…" mid-switch so the tap has feedback.
         self.label.color = (0, 0, 0, 1) if self.mode == BACKPACK else col
-        self.label.text = "…" if self._busy else ("HOME" if self.mode == HOME
-                                                   else "BACKPACK")
+        if self._busy:
+            self.label.text = "…"
+        else:
+            self.label.text = "HOME" if self.mode == HOME else ""
 
     @staticmethod
     def _draw_house(Line, ox, oy, s):
