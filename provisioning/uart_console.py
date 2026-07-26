@@ -104,11 +104,14 @@ def enable_uart_console(conn: Connection,
     if new_cmd != cmd:
         steps.append(_tee(f"{boot_dir}/cmdline.txt", new_cmd))
     # Belt-and-braces: explicitly enable the serial getty (the console= param
-    # usually spawns it, but enabling the unit makes it deterministic).
-    steps.append(f"systemctl enable serial-getty@ttyS0.service")
+    # usually spawns it, but enabling the unit makes it deterministic). Each step
+    # is a single argument-pinned privileged command (`sudo -n tee <path>` /
+    # `sudo -n systemctl enable <unit>`), NOT a `sudo bash -c "..."`, so a scoped
+    # sudoers can whitelist each exact command with no arbitrary shell surface.
+    steps.append("sudo -n systemctl enable serial-getty@ttyS0.service")
 
     for step in steps:
-        res = conn.run(_priv(step))
+        res = conn.run(step)
         if res[0] != 0:
             return UartResult(False,
                               f"Failed applying UART console config: {res[2] or res[1]}",
@@ -122,13 +125,8 @@ def enable_uart_console(conn: Connection,
 
 
 def _tee(path: str, content: str) -> str:
+    """A privileged heredoc `tee`. The heredoc + ``>/dev/null`` are the caller's
+    shell redirection; the privileged token is exactly ``sudo -n tee <path>``
+    (whitelistable, no ``bash -c``)."""
     marker = "NM_UART_EOF"
-    return f"tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"
-
-
-def _priv(command: str) -> str:
-    return f"sudo -n bash -c {_shq(command)}"
-
-
-def _shq(s: str) -> str:
-    return "'" + s.replace("'", "'\\''") + "'"
+    return f"sudo -n tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"

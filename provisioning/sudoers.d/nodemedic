@@ -1,0 +1,136 @@
+# ---------------------------------------------------------------------------
+# Node Medic — SCOPED passwordless sudo for the `nodemedic` app user.
+#
+# Installs to:  /etc/sudoers.d/010-nodemedic   (mode 0440, root:root)
+# REPLACES the blanket:  nodemedic ALL=(ALL) NOPASSWD:ALL
+#
+# Every alias below maps to a specific privileged call the Kivy app makes on the
+# medic ITSELF (grep-verified against the repo, 2026-07). Commands are pinned to
+# absolute paths (merged-usr canonical) and, where safe, to fixed arguments so
+# `nodemedic` can run ONLY these exact operations without a password.
+#
+# VALIDATE before installing:   visudo -cf provisioning/sudoers.d/nodemedic
+# NEVER hand-edit /etc/sudoers.d on the live medic — use the apply script, which
+# validates a temp copy with `visudo -c` first (a malformed file locks out sudo).
+#
+# NOT granted here (deliberately): `bash`, `sh`, `su`, `tee` to arbitrary paths,
+# `systemctl` of arbitrary units, editors, package installs beyond gpsd. If the
+# app needs a new privileged action, add a NARROW alias — never widen an old one.
+# ---------------------------------------------------------------------------
+
+# --- Screen backlight -------------------------------------------------------
+# provisioning/brightness.py  set_brightness() ->
+#   sudo -n tee /sys/class/backlight/panel_backlight@1/brightness   (value on stdin)
+# tee reads stdin only; the path is fixed, so this can write nothing else.
+Cmnd_Alias NM_BACKLIGHT = \
+    /usr/bin/tee /sys/class/backlight/panel_backlight@1/brightness
+
+# --- WiFi (offline-first field networking) ----------------------------------
+# provisioning/wifi.py  scan_networks() -> sudo -n iw dev <iface> scan
+#                       set_autoconnect() -> sudo -n nmcli connection modify <ssid>
+#                         connection.autoconnect <yes|no> [connection.autoconnect-priority <n>]
+# sudo matches arguments positionally (a trailing `*` is ONE arg, not "the rest"),
+# so both emitted shapes are listed explicitly and pinned to `connection modify`.
+Cmnd_Alias NM_WIFI = \
+    /usr/sbin/iw dev * scan, \
+    /usr/bin/nmcli connection modify * connection.autoconnect *, \
+    /usr/bin/nmcli connection modify * connection.autoconnect * connection.autoconnect-priority *
+
+# --- RTNode-2400 birth: hop to the node's setup AP + back (MEDIC-LOCAL) ------
+# workflows/rtnode_portal.py (wired in ui/app.py) — NetworkManager blocks wifi
+# activation via polkit for the login user, so these need sudo:
+#   join/rejoin an AP:  nmcli device wifi rescan ssid <s> ; nmcli device wifi connect <s>
+#   read the medic's OWN psk to hand to the built node:
+#     nmcli -s -g 802-11-wireless-security.psk connection show <name>
+# (Found in review: the original inventory missed this medic-local surface, which
+# would have broken RTNode birth under the scoped sudoers.)
+Cmnd_Alias NM_PORTAL = \
+    /usr/bin/nmcli device wifi rescan ssid *, \
+    /usr/bin/nmcli device wifi connect *, \
+    /usr/bin/nmcli -s -g 802-11-wireless-security.psk connection show *
+
+# --- System clock / timezone ------------------------------------------------
+# provisioning/tool_datetime.py  set_datetime()/set_timezone()/sync_from_gps()
+Cmnd_Alias NM_CLOCK = \
+    /usr/bin/timedatectl set-ntp false, \
+    /usr/bin/timedatectl set-time *, \
+    /usr/bin/timedatectl set-timezone *
+
+# --- Service control (only the medic's OWN daemons, restart/stop/poweroff) ---
+# provisioning/power.py           power_off()          -> systemctl poweroff
+# workflows/node_mode.py          set_mode()           -> systemctl restart rnsd|lxmd
+# monitor/self_diagnose_runtime.py restart_splitter    -> systemctl restart rnode-splitter
+# workflows/gps_setup.py          _configure_gpsd()    -> systemctl enable|restart gpsd*
+Cmnd_Alias NM_SERVICES = \
+    /usr/bin/systemctl poweroff, \
+    /usr/bin/systemctl restart rnsd, \
+    /usr/bin/systemctl restart lxmd, \
+    /usr/bin/systemctl restart rnode-splitter, \
+    /usr/bin/systemctl enable gpsd.socket gpsd, \
+    /usr/bin/systemctl restart gpsd.socket gpsd
+
+# --- USB hub power-cycle (autonomous board recovery during flashing) --------
+# workflows/robust_flash.py  find_hub_port() -> sudo -n uhubctl (list)
+#                            power_cycle()   -> sudo -n uhubctl -l <hub> -p <port> -a off|on
+Cmnd_Alias NM_UHUBCTL = \
+    /usr/sbin/uhubctl, \
+    /usr/sbin/uhubctl -l * -p * -a *
+
+# --- Inserted-SD boot editing (bake wired-link reachability) -----------------
+# provisioning/sd_edit.py  bake_reachability_via_sd() mounts a USB SD reader's
+# boot partition at /tmp/nm_sd_boot and edits config.txt / cmdline.txt.
+# The Python guard (medic_root_disk) refuses the medic's own disk; the mount
+# TARGET here is pinned so a rogue call can only touch the scratch mountpoint.
+Cmnd_Alias NM_SD_EDIT = \
+    /usr/bin/mount * /tmp/nm_sd_boot, \
+    /usr/bin/umount /tmp/nm_sd_boot, \
+    /usr/bin/tee /tmp/nm_sd_boot/config.txt, \
+    /usr/bin/tee /tmp/nm_sd_boot/cmdline.txt
+
+# --- On-medic Pi SD imaging (BIRTH of a fresh node's card) ------------------
+# provisioning/pi_imager.py  flash() writes Pi OS to a USB card reader.
+# is_safe_target() (Python) refuses anything but a present REMOVABLE USB disk;
+# it can never be the medic's system disk. `dd`/`partprobe` are pinned to
+# of=/dev/* but remain inherently powerful — see README "Residual risks".
+Cmnd_Alias NM_IMAGING = \
+    /usr/bin/dd of=/dev/* bs=4M conv=fsync status=progress, \
+    /usr/sbin/partprobe /dev/*, \
+    /usr/bin/mkdir -p /tmp/rnm-piboot, \
+    /usr/bin/mount * /tmp/rnm-piboot, \
+    /usr/bin/umount /tmp/rnm-piboot, \
+    /usr/bin/tee /tmp/rnm-piboot/custom.toml, \
+    /usr/bin/touch /tmp/rnm-piboot/ssh, \
+    /usr/bin/sync
+
+# --- USB-gadget link bring-up (claim host end of the /29 to a plugged node) --
+# provisioning/link.py  discover_peer() -> sudo -n ip addr add 10.55.0.2/29 dev <if>
+#                                          sudo -n ip link set <if> up
+Cmnd_Alias NM_USBLINK = \
+    /usr/bin/ip addr add 10.55.0.2/29 dev *, \
+    /usr/bin/ip link set * up
+
+# --- GPS (gpsd wiring for the Tracker feeding the medic's clock/position) ----
+# workflows/gps_setup.py  _configure_gpsd() writes /etc/default/gpsd + installs gpsd.
+# (systemctl enable/restart gpsd* are in NM_SERVICES above.)
+Cmnd_Alias NM_GPS = \
+    /usr/bin/tee /etc/default/gpsd, \
+    /usr/bin/apt-get install -y gpsd gpsd-clients
+
+# --- Diagnostics + auto-fixes on the medic's OWN onboard radio ---------------
+# diagnostics/base.py _priv() + system_health.py/power_hardware.py -> sudo -n dmesg
+# diagnostics/reticulum_software.py -> sudo -n ss -tlnp  (read-only port check)
+#                                      sudo setfacl -m u:<user>:rw <serial port>
+#                                      sudo usermod -aG dialout <user>
+Cmnd_Alias NM_DIAG = \
+    /usr/bin/dmesg --level=*, \
+    /usr/bin/ss -tlnp, \
+    /usr/bin/setfacl -m u\:*\:rw /dev/*, \
+    /usr/sbin/usermod -aG dialout *
+
+# ---------------------------------------------------------------------------
+# The single grant. `nodemedic` may run ONLY the above, only as root, no TTY,
+# no password. Anything else falls through to the default (denied / requires a
+# password that this login has no way to supply).
+# ---------------------------------------------------------------------------
+nodemedic ALL=(root) NOPASSWD: NM_BACKLIGHT, NM_WIFI, NM_PORTAL, NM_CLOCK, \
+    NM_SERVICES, NM_UHUBCTL, NM_SD_EDIT, NM_IMAGING, NM_USBLINK, NM_GPS, NM_DIAG

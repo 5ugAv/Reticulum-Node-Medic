@@ -2,8 +2,10 @@
 
 Reads/writes the Linux backlight sysfs (``/sys/class/backlight/<dev>/``). The
 device name varies by panel, so we glob for it rather than hard-code it. The
-brightness file is root-owned, so writes go through ``sudo -n`` (the medic has
-passwordless sudo). A floor keeps the operator from blacking the screen out
+brightness file is root-owned, so writes go through ``sudo -n tee <path>`` (a
+single, argument-pinned command the scoped sudoers whitelists — no shell, no
+``sh -c``, so nothing arbitrary can ride along). A floor keeps the operator from
+blacking the screen out
 entirely. Injectable ``run`` + paths make it unit-testable off-hardware; on a
 box with no backlight (a dev Mac, an HDMI panel with no sysfs) every call fails
 gracefully so the setting just shows as unavailable.
@@ -16,16 +18,18 @@ import os
 import subprocess
 from typing import Callable, Optional, Tuple
 
-Runner = Callable[[list], Tuple[int, str]]
+#: A runner takes an argv and an optional stdin string, returning (code, output).
+Runner = Callable[..., Tuple[int, str]]
 
 BACKLIGHT_GLOB = "/sys/class/backlight/*"
 MIN_PCT = 6                                    # never let it go fully dark
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/brightness")
 
 
-def _default_run(argv: list) -> Tuple[int, str]:
+def _default_run(argv: list, stdin: Optional[str] = None) -> Tuple[int, str]:
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+        p = subprocess.run(argv, input=stdin, capture_output=True, text=True,
+                           timeout=10)
         return p.returncode, (p.stdout + p.stderr)
     except Exception as e:
         return 1, str(e)
@@ -82,7 +86,11 @@ def set_brightness(pct: int, device: Optional[str] = None,
     raw = pct_to_raw(pct, mx)
     run = run or _default_run
     target = os.path.join(dev, "brightness")
-    code, out = run(["sudo", "-n", "sh", "-c", f"echo {raw} > {target}"])
+    # `tee <path>` (value on stdin) is a single, argument-pinned command the
+    # scoped sudoers can whitelist to EXACTLY this backlight path. No shell is
+    # spawned, so — unlike the old `sudo sh -c "echo .. > .."` — there is no
+    # arbitrary-command surface even if `run` were ever fed hostile input.
+    code, out = run(["sudo", "-n", "tee", target], f"{raw}\n")
     if code == 0:
         save_pct(pct)
         return True, f"Brightness {pct}%"

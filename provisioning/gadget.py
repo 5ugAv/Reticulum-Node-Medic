@@ -124,17 +124,21 @@ def enable_gadget(conn: Connection, boot_dir: str = "/boot/firmware") -> GadgetR
     new_cmd = cmdline_with_gadget(cmd)
     changed = new_cfg != cfg or new_cmd != cmd
 
-    # Write both boot files (via the priv wrapper) and the static-IP service.
+    # Write both boot files and the static-IP service, then enable it. Each step
+    # is a single argument-pinned privileged command (`sudo -n tee <path>` /
+    # `sudo -n systemctl enable <unit>`) — NOT a `sudo bash -c "..."`, so the
+    # node's scoped sudoers can whitelist each exact command with no arbitrary
+    # shell surface.
     steps = []
     if new_cfg != cfg:
         steps.append(_tee(f"{boot_dir}/config.txt", new_cfg))
     if new_cmd != cmd:
         steps.append(_tee(f"{boot_dir}/cmdline.txt", new_cmd))
     steps.append(_tee(GADGET_SERVICE_PATH, GADGET_USB0_SERVICE))
-    steps.append("systemctl enable nodemedic-gadget-ip.service")
+    steps.append("sudo -n systemctl enable nodemedic-gadget-ip.service")
 
     for step in steps:
-        res = conn.run(_priv(step))
+        res = conn.run(step)
         if res[0] != 0:
             return GadgetResult(False, f"Failed applying gadget config: {res[2] or res[1]}",
                                 changed)
@@ -147,16 +151,8 @@ def enable_gadget(conn: Connection, boot_dir: str = "/boot/firmware") -> GadgetR
 
 
 def _tee(path: str, content: str) -> str:
-    """A heredoc `tee` that writes *content* to *path* without quoting hell."""
+    """A privileged heredoc `tee` that writes *content* to *path* without quoting
+    hell. The heredoc + ``>/dev/null`` are the CALLER's shell redirection; the
+    privileged token is exactly ``sudo -n tee <path>`` (whitelistable, no shell)."""
     marker = "NM_GADGET_EOF"
-    return f"tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"
-
-
-def _priv(command: str) -> str:
-    """Run *command* as root via passwordless sudo (matches the build workflow's
-    priv wrapper). The provisioning bootstrap must have set NOPASSWD first."""
-    return f"sudo -n bash -c {_shq(command)}"
-
-
-def _shq(s: str) -> str:
-    return "'" + s.replace("'", "'\\''") + "'"
+    return f"sudo -n tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"

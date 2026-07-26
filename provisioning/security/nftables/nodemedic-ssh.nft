@@ -1,0 +1,45 @@
+#!/usr/sbin/nft -f
+# Node Medic — restrict SSH (tcp/22) exposure with nftables.
+#
+# Installs to:  /etc/nftables.d/nodemedic-ssh.nft  (or load via nftables.service)
+# Loaded by the systemd `nftables.service` (apply_firewall.sh enables it).
+#
+# The medic ROAMS between networks, so we do NOT pin one subnet. Instead we allow
+# SSH only from:
+#   * loopback,
+#   * RFC1918 private ranges (any home / venue / hotspot LAN the medic joins),
+#   * the USB-gadget provisioning /29 (10.55.0.0/29),
+# and DROP tcp/22 from everything else (i.e. any public/WAN source). This keeps
+# SSH reachable on whatever local network the medic is on, while refusing it from
+# the open internet if the medic is ever directly exposed.
+#
+# To tighten to a SINGLE subnet (fixed deployment), replace the three RFC1918
+# lines with e.g.:  ip saddr 192.168.1.0/24 accept
+#
+# SAFETY: apply_firewall.sh loads this into a NEW table only, keeps your current
+# SSH session open, and arms a self-revert timer so a mistake can't lock you out.
+
+table inet nodemedic_ssh {
+    chain input {
+        type filter hook input priority filter; policy accept;
+
+        # Only police NEW inbound SSH connections; established/related and all
+        # non-SSH traffic pass untouched (policy accept keeps the box's other
+        # services — rnsd, the UI, mesh — completely unaffected).
+        tcp dport 22 ct state established,related accept
+
+        # Allowed SSH sources.
+        iif "lo" tcp dport 22 accept
+        ip  saddr 127.0.0.0/8      tcp dport 22 accept
+        ip6 saddr ::1              tcp dport 22 accept
+        ip  saddr 10.55.0.0/29     tcp dport 22 accept   # USB-gadget link
+        ip  saddr 10.0.0.0/8       tcp dport 22 accept   # RFC1918
+        ip  saddr 172.16.0.0/12    tcp dport 22 accept   # RFC1918
+        ip  saddr 192.168.0.0/16   tcp dport 22 accept   # RFC1918
+        ip6 saddr fe80::/10        tcp dport 22 accept   # link-local
+        ip6 saddr fc00::/7         tcp dport 22 accept   # unique-local
+
+        # Everything else hitting tcp/22 (i.e. public sources): drop.
+        tcp dport 22 drop
+    }
+}
