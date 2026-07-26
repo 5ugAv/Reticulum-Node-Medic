@@ -18,8 +18,9 @@ import math
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import (Color, Line, Quad, Rectangle, RoundedRectangle,
-                           StencilPop, StencilPush, StencilUnUse, StencilUse)
+from kivy.graphics import (Color, Line, PopMatrix, PushMatrix, Quad, Rectangle,
+                           Rotate, RoundedRectangle, StencilPop, StencilPush,
+                           StencilUnUse, StencilUse)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.label import Label
@@ -37,6 +38,8 @@ SD_READER_PNG = os.path.join(_ANIM_DIR, "sd_reader.png")           # microSD + c
 SD_READER_BODY_PNG = os.path.join(_ANIM_DIR, "sd_reader_body.png")  # card reader alone
 SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")                    # the microSD card alone
 BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
+ANTENNA_PNG = os.path.join(_ANIM_DIR, "antenna_sma.png")           # whip antenna w/ SMA female base
+PIGTAIL_PNG = os.path.join(_ANIM_DIR, "pigtail_ipex.png")          # SMA-male <-> U.FL/IPEX pigtail
 
 #: The medic's USB plug tip within node_medic_cable.png (normalised, from top-left).
 #: The board's bottom USB port descends onto this point.
@@ -242,16 +245,127 @@ class ConnectBoardAnim(_LoopAnim):
 
 
 class ConnectAntennaAnim(_LoopAnim):
-    """Antenna-first, showing BOTH connector types in one looped story: a tiny
-    U.FL / IPEX plug clicks DOWN onto the board's socket (phase 1), then an SMA
-    antenna SCREWS onto the pigtail's threaded jack (phase 2, with a rotating hex
-    nut + a curved screw arrow). Pure vector — no art asset needed. Labelled so a
-    first-timer can tell which connector their board/antenna has."""
+    """Antenna-first: three illustrated sprites — the LoRa32 board, the SMA<->U.FL
+    pigtail, and the whip antenna — loop COMING TOGETHER. The pigtail's U.FL/IPEX
+    end clicks onto the board's antenna socket while the antenna's SMA base screws
+    onto the pigtail's SMA-male end (a small twist that damps out as it seats), then
+    both junctions pulse green to say 'connected'. Falls back to the schematic
+    vector below when the PNG art is absent, so the step always works.
+
+    All connector anchor points are fractions of their sprite (measured from the
+    art, y-DOWN from each sprite's TOP-LEFT). They're APPROXIMATE — expose them
+    here so a human can nudge them on-device without touching the motion code.
+    """
+
+    #: Antenna SMA female mating face — bottom-centre of antenna_sma.png (the gold hex).
+    _ANT_SMA = (0.48, 0.97)
+    #: Pigtail SMA-male connector — bottom-LEFT of pigtail_ipex.png (the gold hex nut).
+    _PIG_SMA = (0.11, 0.76)
+    #: Pigtail U.FL/IPEX plug — top-RIGHT of pigtail_ipex.png (the tiny gold connector).
+    _PIG_IPEX = (0.88, 0.12)
+    #: Board U.FL antenna socket — the gold ring near the TOP of lora32.png.
+    _BOARD_UFL = (0.47, 0.05)
+
+    #: Sprite heights as a fraction of the stage height (aspect kept from the PNG).
+    _BOARD_H = 0.72
+    _PIG_H = 0.34
+    _ANT_H = 0.48
+    #: Where the board's U.FL socket sits in the stage (fractions of w, h; y-DOWN).
+    #: Everything else is chained off this: pigtail seats its IPEX here, the antenna
+    #: seats its SMA onto the pigtail's other end.
+    _SOCKET_AT = (0.62, 0.30)
+    #: Off-screen entry offsets (fractions of w, h) the parts slide IN from.
+    _PIG_ENTER = (-0.30, 0.12)      # pigtail arrives from the left, slightly low
+    _ANT_ENTER = (-0.10, -0.34)     # antenna descends from the upper-left
+    _ANT_TWIST_DEG = 11.0           # antenna's screw-on rotation, damps to 0 as it seats
 
     def __init__(self, **kwargs):
-        super().__init__(duration=3.4, **kwargs)
+        super().__init__(duration=3.6, **kwargs)
+
+    @staticmethod
+    def _ease(v):
+        v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+        return v * v * (3.0 - 2.0 * v)                    # smoothstep
+
+    def _blit_anchor(self, tex, anchor, target_down, sprite_h, rot_deg=0.0):
+        """Draw *tex* scaled to *sprite_h* px tall so its *anchor* (fraction, y-DOWN
+        from the sprite's top-left) lands on *target_down* (a widget point, y-DOWN
+        from the stage's top-left). Optionally rotate by *rot_deg* about the anchor
+        (used for the antenna's screw-on twist)."""
+        W = sprite_h * (tex.width / float(tex.height))
+        H = sprite_h
+        tlx = target_down[0] - anchor[0] * W
+        tly = target_down[1] - anchor[1] * H
+        kx = self.x + tlx
+        ky = self.y + self.height - (tly + H)             # y-DOWN top-left -> kivy bottom-left
+        if rot_deg:
+            piv = (self.x + target_down[0], self.y + self.height - target_down[1])
+            PushMatrix()
+            Rotate(angle=rot_deg, origin=piv, axis=(0, 0, 1))
+        Color(1, 1, 1, 1)
+        Rectangle(texture=tex, pos=(kx, ky), size=(W, H))
+        if rot_deg:
+            PopMatrix()
 
     def _draw(self):
+        board = _texture(LORA_PNG)
+        pig = _texture(PIGTAIL_PNG)
+        ant = _texture(ANTENNA_PNG)
+        if board is None or pig is None or ant is None:
+            return self._draw_fallback()
+        w, h = self.width, self.height
+        p = self.phase
+        pig_t = self._ease(p / 0.55)                       # pigtail seats first
+        ant_t = self._ease((p - 0.35) / 0.50)              # antenna follows, overlapping
+        seat = self._ease((p - 0.82) / 0.18)               # 0->1 near the end
+        pulse = math.sin(math.pi * seat)                   # 0..1..0 settle glow
+
+        # seated (final) anchor points in y-DOWN widget px
+        socket = (self._SOCKET_AT[0] * w, self._SOCKET_AT[1] * h)
+        board_h = self._BOARD_H * h
+        pig_h = self._PIG_H * h
+        ant_h = self._ANT_H * h
+        pig_w = pig_h * (pig.width / float(pig.height))
+        # pigtail's SMA end relative to its IPEX end (in seated px)
+        sma_dx = (self._PIG_SMA[0] - self._PIG_IPEX[0]) * pig_w
+        sma_dy = (self._PIG_SMA[1] - self._PIG_IPEX[1]) * pig_h
+        pig_sma_seated = (socket[0] + sma_dx, socket[1] + sma_dy)
+
+        # live entry offsets (parts slide from off-stage toward seated)
+        pig_off = ((1.0 - pig_t) * self._PIG_ENTER[0] * w,
+                   (1.0 - pig_t) * self._PIG_ENTER[1] * h)
+        ant_off = ((1.0 - ant_t) * self._ANT_ENTER[0] * w,
+                   (1.0 - ant_t) * self._ANT_ENTER[1] * h)
+        pig_ipex_now = (socket[0] + pig_off[0], socket[1] + pig_off[1])
+        # antenna chases the pigtail's CURRENT SMA end so they stay mated as it seats
+        pig_sma_now = (pig_sma_seated[0] + pig_off[0], pig_sma_seated[1] + pig_off[1])
+        ant_target = (pig_sma_now[0] + ant_off[0], pig_sma_now[1] + ant_off[1])
+        ant_rot = (1.0 - ant_t) * self._ANT_TWIST_DEG
+
+        with self.canvas:
+            # board (back) — static, socket pinned at _SOCKET_AT
+            self._blit_anchor(board, self._BOARD_UFL, socket, board_h)
+            # pigtail — IPEX slides onto the board socket
+            self._blit_anchor(pig, self._PIG_IPEX, pig_ipex_now, pig_h)
+            # antenna (front) — SMA base screws onto the pigtail's SMA end
+            self._blit_anchor(ant, self._ANT_SMA, ant_target, ant_h, rot_deg=ant_rot)
+            # settle glow: green rings pulse at BOTH junctions once seated
+            if pulse > 0.01:
+                g = theme.hex_to_rgba(theme.COLORS["green"])
+                for jx_down, jy_down in (socket, pig_sma_seated):
+                    kx = self.x + jx_down
+                    ky = self.y + self.height - jy_down
+                    Color(g[0], g[1], g[2], 0.85 * pulse)
+                    Line(circle=(kx, ky, dp(6) + pulse * dp(16)), width=dp(2.4))
+        # art is self-explanatory — hide the fallback labels
+        self._hide_label("ufl")
+        self._hide_label("sma")
+
+    def _draw_fallback(self):
+        """Schematic (no art): a U.FL plug clicks onto the board socket (phase 1),
+        then an SMA hex nut screws onto the pigtail's threaded jack (phase 2, with a
+        rotating nut + curved screw arrow). Labelled so a first-timer can tell which
+        connector their board/antenna has."""
         x, y, w, h = self.x, self.y, self.width, self.height
         ph1 = min(1.0, self.phase / 0.5)                 # U.FL push-to-click
         ph2 = max(0.0, min(1.0, (self.phase - 0.5) / 0.45))   # SMA screw-on
