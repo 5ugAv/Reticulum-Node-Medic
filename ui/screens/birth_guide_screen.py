@@ -78,7 +78,8 @@ class BirthGuideScreen(BoxLayout):
         anim = ConnectAntennaAnim()
         step = WizardStep(
             index=0, total=1, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
-            anim=anim, warning=ANTENNA_STEP["warning"], next_text="Antenna on  →",
+            anim=anim, hint=ANTENNA_STEP.get("hint", ""),
+            warning=ANTENNA_STEP["warning"], next_text="Antenna on  →",
             on_next=self._render_detect,
             on_back=lambda: self._on_navigate and self._on_navigate("home"))
         self.add_widget(step)

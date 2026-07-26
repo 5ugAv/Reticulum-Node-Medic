@@ -32,6 +32,8 @@ ANTENNA_STEP = {
             "or screw an SMA antenna on — often the antenna screws onto a short "
             "pigtail that itself clicks into the U.FL socket. Use a 915 MHz antenna "
             "(or one rated for your band).",
+    "hint": "The tiny U.FL / IPEX plug is fragile — connect it once and leave it. "
+            "Repeated unplugging weakens the connector and it can snap off.",
     "warning": "Never power a radio board with no antenna attached — transmitting "
                "without one can permanently damage its radio (the power amplifier).",
     "anim": "connect_antenna",
