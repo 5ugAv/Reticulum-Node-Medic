@@ -483,6 +483,13 @@ class ReticulumNodeMedicApp(App):
             print(f"[onboard] self-commission skipped: {e}")
 
     def build(self):
+        # At-rest hardening: the SD card holds private mesh keys + a location trail,
+        # and RNS/LXMF write some world-readable. Clamp them to owner-only on start.
+        try:
+            from provisioning.harden import harden_permissions
+            harden_permissions()
+        except Exception:
+            pass
         Window.clearcolor = theme.hex_to_rgba(theme.COLORS["background"])
         # On the medic's touchscreen, fill the native display (which may be
         # portrait, e.g. 720x1280). RNM_WINDOWED=1 gives a 1280x720 dev window.

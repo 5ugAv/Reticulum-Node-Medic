@@ -55,6 +55,14 @@ class BoardCard(FloatLayout):
         self._settle = Clock.schedule_interval(self._reposition, 1 / 15.0)
         Clock.schedule_once(lambda dt: self._settle and self._settle.cancel(), 1.2)
         Window.bind(size=self._reposition)
+        # ...and drop that Window handler when this card leaves the tree, so
+        # rebuilding the board picker doesn't leak a resize handler per card.
+        self.bind(parent=self._on_parent)
+
+    def _on_parent(self, _widget, parent):
+        if parent is None:
+            from kivy.core.window import Window
+            Window.unbind(size=self._reposition)
 
     # -- public -------------------------------------------------------------
     def set_name(self, text):

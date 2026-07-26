@@ -98,7 +98,9 @@ class _LoopAnim(Widget):
         from kivy.clock import Clock
         self.stop()
         self.phase = 0.0
-        self._ev = Clock.schedule_interval(self._tick, 1 / 60.0)
+        # 30 fps, not 60: each tick does a full canvas clear+rebuild, and these
+        # descend/pulse loops look identical at 30 while halving the redraw cost.
+        self._ev = Clock.schedule_interval(self._tick, 1 / 30.0)
 
     def _tick(self, dt):
         self.phase = (self.phase + dt / max(0.1, self._duration)) % 1.0

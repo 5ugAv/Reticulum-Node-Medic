@@ -112,8 +112,8 @@ class ConfirmLocationPopup(Popup):
         body.add_widget(addr_row)
         # search status / address feedback lives HERE (top) so it's visible above
         # the on-screen keyboard — a failed lookup must never look like nothing.
-        self._addr = _lbl("Looking up address…", "13sp",
-                          color="text_secondary", h=30)
+        self._addr = _lbl("Tap 'Show address' to look it up online (optional).",
+                          "12.5sp", color="text_secondary", h=30)
         body.add_widget(self._addr)
         body.add_widget(_lbl("or tap the map / Use GPS to place the pin", "12.5sp",
                              color="accent", h=18))
@@ -132,8 +132,22 @@ class ConfirmLocationPopup(Popup):
                             on_pick=self._on_map_pick)
         body.add_widget(self.plot)
 
-        self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=22)
-        body.add_widget(self._coords)
+        # coords (always shown, offline) + an OPT-IN "Show address" button. Address
+        # lookup is NOT automatic: reverse-geocoding sends the exact pin to a third
+        # party (OpenStreetMap), so it only happens when the operator asks. The map +
+        # coordinates are fully offline and enough to confirm placement.
+        coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                              height=dp(34), spacing=dp(8))
+        self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=34)
+        show_addr = Button(text="Show address (online)", size_hint_x=None,
+                           width=dp(168), font_size="12.5sp", bold=True,
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        show_addr.bind(on_release=lambda *_: self._refresh_address())
+        coord_row.add_widget(self._coords)
+        coord_row.add_widget(show_addr)
+        body.add_widget(coord_row)
 
         # controls: Cancel + Use GPS on the left; a small round commit on the right
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(84),
@@ -165,7 +179,8 @@ class ConfirmLocationPopup(Popup):
                          content=body, size_hint=(0.96, 0.94),
                          auto_dismiss=False, **kwargs)
         Clock.schedule_once(lambda *_: self.plot.focus((self._lat, self._lon)), 0)
-        self._refresh_address()
+        # No automatic reverse-geocode — the operator taps "Show address" if they
+        # want it (that sends the pin to OpenStreetMap). Confirm offline by default.
 
     # -- pin movement ------------------------------------------------------
     def _coord_text(self):
@@ -184,7 +199,7 @@ class ConfirmLocationPopup(Popup):
         self._coords.text = self._coord_text()
         self.plot._me = (self._lat, self._lon)     # move the pin, keep the view
         self.plot._trigger()
-        self._refresh_address()
+        self._addr.text = "Tap 'Show address' to look up this spot online."
 
     def _find_address(self, *a):
         q = (self._addr_in.text or "").strip()
