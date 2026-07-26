@@ -66,7 +66,7 @@ class HomeScreen(FloatLayout):
         from ui.widgets.mode_toggle import ModeToggle
         self.mode_toggle = ModeToggle(
             mode=initial_mode, on_toggle=(on_mode or (lambda m: None)),
-            pos_hint={"center_x": 0.5, "top": 0.99})
+            pos_hint={"right": 0.85, "top": 0.99})   # top-right, just left of the gear
         self.add_widget(self.mode_toggle)
 
     def _power_off(self):
