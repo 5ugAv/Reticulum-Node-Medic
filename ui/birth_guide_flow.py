@@ -27,11 +27,11 @@ BIRTH_PATHS = [
 #: the radio. Every birth path reaches detect, so one landing covers them all.
 ANTENNA_STEP = {
     "title": "Attach the antenna to the radio board",
-    "body": "First, put an antenna on the radio board. Either push its tiny gold "
-            "U.FL / IPEX plug straight down onto the matching socket until it clicks, "
-            "or screw an SMA antenna on — often the antenna screws onto a short "
-            "pigtail that itself clicks into the U.FL socket. Use a 915 MHz antenna "
-            "(or one rated for your band).",
+    "body": "Connect the antenna to the radio board through its pigtail cable — you "
+            "need BOTH ends attached. Push the tiny gold U.FL / IPEX plug straight "
+            "down onto the matching socket on the radio board until it clicks, AND "
+            "make sure a 915 MHz antenna (or one rated for your band) is screwed onto "
+            "the SMA connector at the other end of the cable.",
     "hint": "The tiny U.FL / IPEX plug is fragile — connect it once and leave it. "
             "Repeated unplugging weakens the connector and it can snap off.",
     "warning": "Never power a radio board with no antenna attached — transmitting "
