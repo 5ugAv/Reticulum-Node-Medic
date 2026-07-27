@@ -1073,6 +1073,7 @@ class ReticulumNodeMedicApp(App):
         if rec is None:
             self._open_node_cert(node)
             return
+        now = time.time()
         watch_line = None
         w = getattr(self, "_node_watcher", None)
         if w is not None and w.is_watching(node):
@@ -1081,13 +1082,36 @@ class ReticulumNodeMedicApp(App):
             watch_line = ("Unreachable — the medic is watching it. If it's still down "
                           f"in about {days} day{'s' if days != 1 else ''}, you'll be "
                           "told to go and check it.")
+        # activity rhythm + history insights from the persisted per-node time series
+        activity_text, by_hour, insights = None, None, None
+        try:
+            from monitor.history import activity_profile, describe_activity, analyse
+            pts = self.monitor_service.registry.history.series(rec.dst_hash)
+            profile = activity_profile(pts, now, self._local_tz_offset_hours())
+            activity_text = describe_activity(profile)
+            by_hour = profile.get("by_hour")
+            insights = analyse(pts, now)
+        except Exception:
+            pass
         from ui.screens.node_detail_screen import NodeDetailScreen
         scr = self.sm.get_screen("node_detail")
         scr.clear_widgets()
         scr.add_widget(self._with_back(NodeDetailScreen(
-            rec, time.time(), on_poll=self._ping_node,
-            on_navigate=self._navigate_to_node, watch_line=watch_line)))
+            rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
+            watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
+            insights=insights)))
         self.switch_mode("node_detail")
+
+    def _local_tz_offset_hours(self):
+        """The medic's UTC offset in hours, so 'usually active 6pm-11pm' reads in
+        local time. 0.0 if it can't be determined."""
+        import time as _t
+        try:
+            if _t.daylight and _t.localtime().tm_isdst:
+                return -_t.altzone / 3600.0
+            return -_t.timezone / 3600.0
+        except Exception:
+            return 0.0
 
     def _ping_node(self, dst_hash, report):
         """Live mesh reachability check: drop the cached path (cached paths lie),

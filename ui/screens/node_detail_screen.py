@@ -28,9 +28,20 @@ def _line(text, color="text_primary", size="15sp", bold=False):
     return lbl
 
 
+def _wrap(text, color="text_primary", size="14sp"):
+    """A left-aligned label that wraps and grows to fit — for the longer activity /
+    insight sentences inside the scrolling detail column."""
+    lbl = Label(text=text, halign="left", valign="top", font_size=size,
+                color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
+    lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+    lbl.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+    return lbl
+
+
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
-                 watch_line=None, **kwargs):
+                 watch_line=None, activity_text=None, by_hour=None,
+                 insights=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -79,6 +90,23 @@ class NodeDetailScreen(BoxLayout):
         col.add_widget(_line("Health", bold=True, size="17sp"))
         for ln in beacon_lines(record):
             col.add_widget(_line("  " + ln, size="14sp"))
+
+        if activity_text:
+            col.add_widget(_line("Activity", bold=True, size="17sp"))
+            col.add_widget(_wrap("  " + activity_text, color="text_secondary"))
+        if by_hour and any(by_hour):
+            from ui.widgets.activity_chart import ActivityChart
+            col.add_widget(ActivityChart(by_hour=by_hour))
+            col.add_widget(_line("  midnight · 6am · noon · 6pm   (times heard, local)",
+                                 size="11sp", color="text_secondary"))
+        if insights:
+            col.add_widget(_line("Noticed", bold=True, size="17sp"))
+            for fl in insights:
+                sev = fl.get("severity")
+                col.add_widget(_wrap(
+                    "  ! " + fl.get("text", ""), size="13.5sp",
+                    color="red" if sev == "alert" else
+                    "amber" if sev == "warn" else "text_primary"))
 
         nav = record.navigation()
         if nav:
