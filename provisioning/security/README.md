@@ -3,7 +3,20 @@
 Human-run runbook. **Nothing here is applied automatically.** Review the files,
 then run the apply scripts **on the medic** over your existing SSH session.
 
-Live-device state this addresses (confirmed 2026-07):
+**STATUS (re-verified live on the medic 2026-07-27): steps 1 and 2 are ALREADY
+APPLIED.** Probed read-only from the LAN:
+- sudo is **scoped** — a whitelisted read-only command (`sudo -n /usr/bin/ss
+  -tlnp`, `dmesg --level=err`) runs passwordless, while a non-whitelisted one
+  (`/bin/true`) is refused. So `010-nodemedic` is installed and in force.
+- sshd offers **`publickey` only** (`Permission denied (publickey)` when asked
+  for no/other auth) — password auth is already off.
+- Durability: `/var/lib/cloud/instances/` holds exactly ONE instance-id
+  (`rpi-imager-…`, unchanged since imaging), so cloud-init's once-per-instance
+  `users-groups` will not re-run and cannot regenerate the blanket grant.
+Do NOT assume the "before" state below still exists — re-probe before acting.
+
+Original live-device state this addressed (as first confirmed 2026-07, now
+SUPERSEDED by the above):
 - `nodemedic ALL=(ALL) NOPASSWD:ALL` — any shell = instant full root.
 - `PasswordAuthentication yes`, `PermitRootLogin without-password`, sshd on
   `0.0.0.0:22` + `[::]:22` — password-guessable, exposed on every interface.

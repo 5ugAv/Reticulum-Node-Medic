@@ -20,7 +20,12 @@ DST="/etc/ssh/sshd_config.d/01-nodemedic-hardening.conf"
 USER_NAME="${SUDO_USER:-nodemedic}"
 USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 AK="$USER_HOME/.ssh/authorized_keys"
-CONFIRM_SENTINEL="/run/nodemedic-ssh-confirmed"
+# The sentinel MUST survive a reboot and MUST be writable by the (possibly
+# sudo-scoped) operator — /run is tmpfs AND root-only, so a reboot inside the
+# window used to strand the hardening permanently with no revert armed. Same
+# lesson as the sudo self-revert (~/.sudo-scope-confirmed).
+CONFIRM_SENTINEL="$USER_HOME/.nodemedic-ssh-confirmed"
+REVERT_HELPER="/usr/local/sbin/nodemedic-ssh-revert"
 REVERT_MIN="${REVERT_MIN:-10}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="/root/nodemedic-sshd-backup-$STAMP"
@@ -29,9 +34,14 @@ BACKUP="/root/nodemedic-sshd-backup-$STAMP"
 
 # ---- confirm subcommand: cancel the pending self-revert --------------------
 if [ "${1:-}" = "confirm" ]; then
-    touch "$CONFIRM_SENTINEL"
-    systemctl stop nodemedic-ssh-revert.timer 2>/dev/null || true
-    systemctl reset-failed nodemedic-ssh-revert.timer 2>/dev/null || true
+    install -o "$USER_NAME" -g "$USER_NAME" -m 0644 /dev/null "$CONFIRM_SENTINEL"
+    # Disable BOTH the deadline timer and the boot-time check, then clean up.
+    systemctl disable --now nodemedic-ssh-revert.timer 2>/dev/null || true
+    systemctl disable --now nodemedic-ssh-revert.service 2>/dev/null || true
+    systemctl reset-failed nodemedic-ssh-revert.timer nodemedic-ssh-revert.service 2>/dev/null || true
+    rm -f /etc/systemd/system/nodemedic-ssh-revert.timer \
+          /etc/systemd/system/nodemedic-ssh-revert.service "$REVERT_HELPER"
+    systemctl daemon-reload 2>/dev/null || true
     echo "Confirmed. Self-revert cancelled — key-only SSH is now permanent."
     echo "(Optional) make the firewall persistent too: apply_firewall.sh confirm"
     exit 0
@@ -44,7 +54,10 @@ echo "   authorized_keys present ($(wc -l <"$AK") key line(s))"
 
 # Prove key-only auth succeeds RIGHT NOW (BatchMode disables any password prompt,
 # so success means a key was accepted). Loopback keeps it local + fast.
-if sudo -u "$USER_NAME" ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+# -n is REQUIRED: without it ssh inherits and consumes this script's stdin, so
+# driving apply_sshd.sh from a heredoc/pipe (e.g. a scripted clone bring-up)
+# silently eats every remaining command.
+if sudo -u "$USER_NAME" ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         -o ConnectTimeout=8 "$USER_NAME@localhost" true 2>/dev/null; then
     echo "   key-only login to localhost SUCCEEDED"
 else
@@ -76,14 +89,56 @@ if ! echo "$EFF" | grep -qi '^passwordauthentication no'; then
 fi
 echo "   effective: $(echo "$EFF" | grep -iE 'passwordauth|permitroot|kbdinteractive' | tr '\n' ' ')"
 
-echo "== arm self-revert (T-$REVERT_MIN min) then reload sshd =="
+echo "== arm self-revert (T-$REVERT_MIN min, and again at every boot) =="
 rm -f "$CONFIRM_SENTINEL"
-# Transient timer: unless you run `... confirm` (which drops the sentinel), the
-# rollback runs and re-enables password auth so you can never be permanently out.
-systemd-run --unit=nodemedic-ssh-revert --on-active="${REVERT_MIN}min" \
-    /usr/bin/env bash -c \
-    "[ -e '$CONFIRM_SENTINEL' ] || { rm -f '$DST'; sshd -t && systemctl reload ssh; logger -t nodemedic 'ssh hardening self-reverted (never confirmed)'; }" \
-    >/dev/null
+# REBOOT-DURABLE self-revert. A transient `systemd-run` unit dies with the
+# reboot while the drop-in in /etc survives — so an unconfirmed apply plus a
+# power cut (routine on a no-RTC solar node) used to leave key-only SSH
+# permanently in force with NO safety net. Instead: a real enabled service that
+# runs BOTH on a deadline timer and at every boot, until you confirm.
+cat > "$REVERT_HELPER" <<EOF
+#!/bin/bash
+# Installed by apply_sshd.sh. Reverts the SSH hardening unless confirmed.
+if [ -e "$CONFIRM_SENTINEL" ]; then
+    logger -t nodemedic 'ssh hardening confirmed — self-revert standing down'
+else
+    rm -f "$DST"
+    if sshd -t; then systemctl reload ssh; fi
+    logger -t nodemedic 'ssh hardening self-reverted (never confirmed)'
+fi
+# Either way this check is done: disarm so it cannot fire again.
+systemctl disable --now nodemedic-ssh-revert.timer 2>/dev/null || true
+systemctl disable nodemedic-ssh-revert.service 2>/dev/null || true
+EOF
+chmod 0755 "$REVERT_HELPER"
+
+cat > /etc/systemd/system/nodemedic-ssh-revert.service <<EOF
+[Unit]
+Description=Node Medic: revert SSH hardening unless the operator confirmed
+After=ssh.service network.target
+[Service]
+Type=oneshot
+ExecStart=$REVERT_HELPER
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/nodemedic-ssh-revert.timer <<EOF
+[Unit]
+Description=Node Medic: SSH hardening self-revert deadline (T-${REVERT_MIN}min)
+[Timer]
+OnActiveSec=${REVERT_MIN}min
+AccuracySec=5s
+Unit=nodemedic-ssh-revert.service
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+# The SERVICE is enabled (runs at every boot until confirmed) and the TIMER is
+# started (the in-session deadline). Either path reverts if unconfirmed.
+systemctl enable nodemedic-ssh-revert.service >/dev/null 2>&1
+systemctl enable --now nodemedic-ssh-revert.timer >/dev/null 2>&1
 systemctl reload ssh
 
 cat <<EOF
@@ -94,6 +149,7 @@ Key-only SSH is LIVE but NOT YET permanent.
         ssh $USER_NAME@$(hostname).local
     It must succeed with your key (no password prompt).
   * If it works:   sudo bash provisioning/security/apply_sshd.sh confirm
-  * If it FAILS / you do nothing: password auth auto-restores in $REVERT_MIN min.
+  * If it FAILS / you do nothing: password auth auto-restores in $REVERT_MIN min
+    — AND on every reboot until you confirm, so a power cut can't strand you.
 Manual rollback anytime:  sudo bash provisioning/security/rollback_sshd.sh
 EOF
