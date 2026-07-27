@@ -83,6 +83,8 @@ _LANGUAGES: List[Tuple[str, str, str]] = [
     ("id", "Bahasa Indonesia", "Indonesian"),
     ("sv", "Svenska", "Swedish"),
     ("pl", "Polski", "Polish"),
+    ("ru", "Русский", "Russian"),
+    ("ja", "日本語", "Japanese"),
 ]
 
 #: Codes the bundled (Latin-only) font can actually render. Anything NOT in here

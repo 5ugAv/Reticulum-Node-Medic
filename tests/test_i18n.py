@@ -206,7 +206,7 @@ def test_every_wrapped_string_in_ui_has_es_translation():
 
 #: All non-English catalogs bundled under assets/i18n. Add a code here when you
 #: add a language so parity + placeholder integrity are guarded for it too.
-_SHIPPED_CATALOGS = ("es", "fr", "de", "sv", "pl", "id")
+_SHIPPED_CATALOGS = ("es", "fr", "de", "sv", "pl", "id", "ru", "ja")
 
 
 def test_all_catalogs_are_valid_json_string_maps():
