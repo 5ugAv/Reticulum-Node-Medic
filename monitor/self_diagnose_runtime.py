@@ -59,6 +59,13 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_wifi(
         run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
     findings.append(sd.check_clock_sync(run("timedatectl show 2>/dev/null"), now_fn()))
+    findings.append(sd.check_rns_responding(run("rnstatus 2>/dev/null")))
+    # lxmd is mode-aware: only expected when this medic is a HOME propagation node
+    mode = run("cat ~/.reticulum-node-medic/node_mode 2>/dev/null").strip().lower()
+    profile = run("cat ~/.reticulum-node-medic/home_profile 2>/dev/null").strip().lower()
+    wants_prop = mode == "home" and profile != "transport"     # default = propagation
+    lxmd_active = run("systemctl is-active lxmd 2>/dev/null").strip() == "active"
+    findings.append(sd.check_lxmd(lxmd_active, wants_prop))
     return findings
 
 
@@ -74,6 +81,12 @@ _AUTO_REPAIRS = {
     "restart_rnsd": {
         "label": "Restart the Reticulum service (rnsd)",
         "cmd": "sudo -n systemctl restart rnsd 2>&1",
+        "ok": lambda out: not any(w in out.lower()
+                                  for w in ("fail", "error", "not loaded", "authentication")),
+    },
+    "restart_lxmd": {
+        "label": "Restart the message store-and-forward (lxmd)",
+        "cmd": "sudo -n systemctl restart lxmd 2>&1",
         "ok": lambda out: not any(w in out.lower()
                                   for w in ("fail", "error", "not loaded", "authentication")),
     },

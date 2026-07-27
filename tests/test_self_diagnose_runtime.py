@@ -29,10 +29,13 @@ def test_gather_all_healthy():
         "get_throttled": "throttled=0x0",
         "dev wifi": "*:70:TestNet",
         "timedatectl": "NTPSynchronized=yes",
+        "rnstatus": "Shared Instance[37428]\n  Status  : Up",
+        "node_mode": "home",
+        "is-active lxmd": "active",
     })
     findings = rt.gather(run=run, now_fn=lambda: now)
     assert all(f.severity == SEV_OK for f in findings)
-    assert len(findings) == 9                        # 3 radio/gps + 6 system health
+    assert len(findings) == 11                       # 3 radio/gps + 8 system health
 
 
 def test_gather_catches_the_jonesey_incident():

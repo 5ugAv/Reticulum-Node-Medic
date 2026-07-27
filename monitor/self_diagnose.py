@@ -243,6 +243,40 @@ def check_clock_sync(timedatectl_output: str, now: float,
     return Finding("clock", SEV_OK, "System clock synced.")
 
 
+def check_rns_responding(rnstatus_output: str) -> Finding:
+    """``rnstatus`` talks to the running rnsd shared instance and lists interfaces.
+    'service active' (systemd) doesn't prove rnsd actually WORKS — this does: if
+    rnstatus can't reach it the mesh stack is effectively down; if it answers but no
+    interface is Up, the radio/network links are the problem."""
+    low = (rnstatus_output or "").lower()
+    if not low.strip() or "could not connect" in low or "connection refused" in low \
+            or "no such" in low:
+        return Finding("rns", SEV_CRIT,
+                       "rnsd isn't responding (rnstatus can't reach it) — the mesh "
+                       "stack is down. Restart it.", fix="restart_rnsd")
+    up = len(re.findall(r"status\s*:?\s*up", low))
+    if up == 0:
+        return Finding("rns", SEV_WARN,
+                       "rnsd is up but no interfaces are Up — check the radio / network "
+                       "interfaces.", data={"interfaces_up": 0})
+    return Finding("rns", SEV_OK, f"rnsd responding, {up} interface(s) up.",
+                   data={"interfaces_up": up})
+
+
+def check_lxmd(is_active: bool, wants_propagation: bool) -> Finding:
+    """lxmd (the LXMF propagation node — stores messages for offline users) is only
+    expected when the medic is a HOME propagation node. In backpack / transport-only
+    it's legitimately off, so this only warns when propagation is wanted but lxmd
+    isn't running (never a false alarm in backpack)."""
+    if is_active:
+        return Finding("lxmd", SEV_OK, "lxmd (message store-and-forward) running.")
+    if wants_propagation:
+        return Finding("lxmd", SEV_WARN,
+                       "Propagation is on but lxmd isn't running — messages aren't "
+                       "being stored for offline users. Restart it.", fix="restart_lxmd")
+    return Finding("lxmd", SEV_OK, "lxmd off (not a propagation node — fine).")
+
+
 def summarize(findings: List[Finding]) -> dict:
     """Roll up findings for the screen: worst severity + the ordered fix list."""
     crit = [f for f in findings if f.severity == SEV_CRIT]
