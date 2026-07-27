@@ -156,6 +156,12 @@ class MapPlot(Widget):
         # expensive part; without this the Pi re-decoded every visible tile on
         # EVERY redraw (~20/s while panning) and the UI froze. Decode once, reuse.
         self._tex_cache = {}
+        # Tiles KNOWN to be absent (z,x,y). The cache above only remembers HITS;
+        # without this, every missing tile re-ran a SQLite query on EVERY redraw,
+        # and _draw_tile's overzoom walk multiplies that by the zoom depth — a pan
+        # over sparse high-zoom area became thousands of queries/sec (100% CPU
+        # freeze). Cleared by set_tiles() when new tiles are downloaded.
+        self._tile_misses = set()
         self._me = None                          # medic's own GPS fix (lat, lon)
         self._labels: List[Label] = []
         # interactive view state (None until the user pans/zooms = auto-fit)
@@ -514,6 +520,7 @@ class MapPlot(Widget):
         self._tiles = tiles
         self._zooms = self._cache_zooms(tiles)
         self._tex_cache = {}                      # different source -> drop textures
+        self._tile_misses = set()                 # and any remembered absences
         self._bounds_cache = "unset"             # recompute bounds for the new source
         self._redraw()
 
@@ -525,12 +532,16 @@ class MapPlot(Widget):
         tex = self._tex_cache.get(key)
         if tex is not None:
             return tex
-        data = self._tiles.get_tile(z, x, y)
+        if key in self._tile_misses:              # known-absent: skip the SQLite hit
+            return None
+        data = self._tiles.get_tile(z, x, y) if self._tiles is not None else None
         if not data:
+            self._tile_misses.add(key)            # remember the miss (see __init__)
             return None
         try:
             tex = CoreImage(io.BytesIO(data), ext="png").texture
         except Exception:
+            self._tile_misses.add(key)            # undecodable -> treat as absent
             return None
         self._tex_cache[key] = tex
         if len(self._tex_cache) > 300:            # bound memory; drop oldest
