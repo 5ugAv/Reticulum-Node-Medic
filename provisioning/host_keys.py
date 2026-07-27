@@ -29,6 +29,32 @@ PINNED_KNOWN_HOSTS = os.path.expanduser("~/.reticulum-node-medic/known_hosts")
 _KEY_PREFIXES = ("ssh-ed25519", "sk-ssh-ed25519", "ecdsa-", "sk-ecdsa-", "ssh-rsa")
 
 
+#: OpenSSH's stderr when a pinned host presents a DIFFERENT key than known_hosts —
+#: i.e. the key CHANGED since we pinned it. That's the signal C1 exists to catch.
+_CHANGED_MARKERS = (
+    "REMOTE HOST IDENTIFICATION HAS CHANGED",
+    "Host key verification failed",
+    "POSSIBLE DNS SPOOFING",
+    "WARNING: POSSIBLE DNS SPOOFING",
+)
+
+#: Operator-facing message when a pinned key mismatches (no emoji — the Pi font
+#: renders those as tofu).
+TAMPER_HINT = ("SECURITY WARNING: this node's SSH host key has CHANGED since it was "
+               "pinned. That can mean the node was tampered with or something is "
+               "impersonating it. Do NOT trust it until you've checked the node in "
+               "person; only then re-pin it.")
+
+
+def host_key_changed(text: str) -> bool:
+    """True if SSH output/stderr indicates a pinned host key MISMATCH (possible
+    tamper / MITM) — as opposed to a plain unreachable/auth failure."""
+    if not text:
+        return False
+    up = text.upper()
+    return any(m.upper() in up for m in _CHANGED_MARKERS)
+
+
 def _hostpart(host: str, port: int = 22) -> str:
     """known_hosts host field — bare host on port 22, else the ``[host]:port`` form."""
     return host if port == 22 else f"[{host}]:{port}"

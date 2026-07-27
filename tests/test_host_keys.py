@@ -78,3 +78,33 @@ def test_connection_accept_new_when_unpinned():
     argv = c._argv("echo hi")
     assert "StrictHostKeyChecking=accept-new" in argv
     assert not any("UserKnownHostsFile" in a for a in argv)
+
+
+# -- tamper detection (a CHANGED pinned key) --------------------------------
+
+def test_host_key_changed_recognises_mismatch():
+    assert host_keys.host_key_changed(
+        "@@@@@@\nWARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!\n")
+    assert host_keys.host_key_changed("Host key verification failed.")
+    assert not host_keys.host_key_changed("ssh: connect to host ... Connection refused")
+    assert not host_keys.host_key_changed("")
+
+
+def _conn(code, err):
+    return SSHConnection(host="10.55.0.1", user="pi", retry_count=1,
+                         sleep=lambda _s: None,
+                         runner=lambda argv, timeout: (code, "", err))
+
+
+def test_check_reachable_ok():
+    assert _conn(0, "").check_reachable() == (True, "ok")
+
+
+def test_check_reachable_flags_changed_key_as_tamper():
+    c = _conn(255, "REMOTE HOST IDENTIFICATION HAS CHANGED!")
+    assert c.check_reachable() == (False, "host_key_changed")
+
+
+def test_check_reachable_plain_failure_is_unreachable():
+    c = _conn(255, "ssh: connect to host 10.55.0.1 port 22: Connection timed out")
+    assert c.check_reachable() == (False, "unreachable")

@@ -163,6 +163,18 @@ class SSHConnection(Connection):
                 self._sleep(self.retry_delay)
         return last
 
+    def check_reachable(self, timeout: int = 10):
+        """Quick trust/connectivity probe (runs ``true``). Returns ``(ok, reason)``:
+        reason is ``'ok'``, ``'host_key_changed'`` (a PINNED key MISMATCH — possible
+        tamper; surface ``host_keys.TAMPER_HINT``), or ``'unreachable'``."""
+        from provisioning import host_keys
+        code, out, err = self.run("true", timeout=timeout)
+        if code == 0:
+            return True, "ok"
+        if host_keys.host_key_changed((out or "") + (err or "")):
+            return False, "host_key_changed"
+        return False, "unreachable"
+
     def push_file(self, local_path: str, remote_path: str) -> bool:
         argv = [
             "scp",
