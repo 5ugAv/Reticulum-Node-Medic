@@ -43,8 +43,10 @@ def test_throttled_bits():
 
 
 def test_wifi_never_critical():
-    assert check_wifi("\tsignal: -55 dBm").severity == SEV_OK
-    weak = check_wifi("\tsignal: -85 dBm")
-    assert weak.severity == SEV_WARN and weak.data["rssi_dbm"] == -85
-    assert check_wifi("Not connected.").severity == SEV_OK
-    assert check_wifi("").severity == SEV_OK
+    assert check_wifi("*:78:HomeNet").severity == SEV_OK
+    weak = check_wifi("*:25:HomeNet")
+    assert weak.severity == SEV_WARN and weak.data["signal_pct"] == 25
+    # picks the in-use AP (starts with *), ignores other scanned networks
+    assert check_wifi(":90:OtherNet\n*:80:HomeNet").severity == SEV_OK
+    assert check_wifi("").severity == SEV_OK                 # not connected -> no alarm
+    assert "HomeNet" in check_wifi("*:80:HomeNet").detail    # names the AP

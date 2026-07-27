@@ -56,7 +56,8 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
         "rnsd", run("systemctl is-active rnsd 2>/dev/null").strip() == "active"))
     findings.append(sd.check_cpu_temp(run("vcgencmd measure_temp 2>/dev/null")))
     findings.append(sd.check_throttled(run("vcgencmd get_throttled 2>/dev/null")))
-    findings.append(sd.check_wifi(run("iw dev wlan0 link 2>/dev/null")))
+    findings.append(sd.check_wifi(
+        run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
     return findings
 
 

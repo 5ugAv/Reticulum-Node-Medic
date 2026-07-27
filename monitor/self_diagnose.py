@@ -201,20 +201,26 @@ def check_throttled(throttled_output: str) -> Finding:
                    data={"throttled": hex(bits)})
 
 
-def check_wifi(link_output: str, warn_dbm: int = -80) -> Finding:
-    """The medic's own WiFi signal from ``iw dev wlan0 link`` ('signal: -55 dBm').
-    Weak WiFi slows updates + serving apps; NEVER critical (the medic works offline)."""
-    m = re.search(r"signal:\s*(-?\d+)", link_output or "")
-    if not m:
-        if "not connected" in (link_output or "").lower():
-            return Finding("wifi", SEV_OK, "WiFi not connected (offline is fine).")
+def check_wifi(nmcli_output: str, warn_pct: int = 40) -> Finding:
+    """The medic's own WiFi from ``nmcli -t -f IN-USE,SIGNAL,SSID dev wifi`` — the
+    active AP (line starting ``*``) carries a 0-100 SIGNAL percentage. Weak WiFi
+    slows updates + serving apps; NEVER critical (the medic works offline)."""
+    active = next((ln for ln in (nmcli_output or "").splitlines()
+                   if ln.startswith("*")), None)
+    if not active:
+        return Finding("wifi", SEV_OK, "WiFi not connected (offline is fine).")
+    parts = active.split(":", 2)
+    try:
+        pct = int(parts[1])
+    except (IndexError, ValueError):
         return Finding("wifi", SEV_OK, "WiFi signal unavailable.")
-    dbm = int(m.group(1))
-    if dbm <= warn_dbm:
+    ssid = parts[2] if len(parts) > 2 else ""
+    label = f" to {ssid}" if ssid else ""
+    if pct <= warn_pct:
         return Finding("wifi", SEV_WARN,
-                       f"WiFi is weak ({dbm} dBm) — updates and serving apps may be slow.",
-                       data={"rssi_dbm": dbm})
-    return Finding("wifi", SEV_OK, f"WiFi OK ({dbm} dBm).", data={"rssi_dbm": dbm})
+                       f"WiFi is weak ({pct}%{label}) — updates and serving apps may "
+                       "be slow.", data={"signal_pct": pct})
+    return Finding("wifi", SEV_OK, f"WiFi OK ({pct}%{label}).", data={"signal_pct": pct})
 
 
 def summarize(findings: List[Finding]) -> dict:
