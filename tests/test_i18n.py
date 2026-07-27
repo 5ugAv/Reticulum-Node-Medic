@@ -204,22 +204,37 @@ def test_every_wrapped_string_in_ui_has_es_translation():
 
 # -- parity: es / fr / de must ship the SAME key set -------------------------
 
+#: All non-English catalogs bundled under assets/i18n. Add a code here when you
+#: add a language so parity + placeholder integrity are guarded for it too.
+_SHIPPED_CATALOGS = ("es", "fr", "de", "sv", "pl")
+
+
 def test_all_catalogs_are_valid_json_string_maps():
-    for code in ("es", "fr", "de"):
+    for code in _SHIPPED_CATALOGS:
         catalog = _load_shipped_catalog(code)
         assert catalog, f"{code}.json is empty"
         assert all(isinstance(k, str) and isinstance(v, str)
                    for k, v in catalog.items()), f"{code}.json has non-string entries"
 
 
-def test_es_fr_de_have_identical_key_sets():
+def test_all_catalogs_have_identical_key_sets():
     es = set(_load_shipped_catalog("es"))
-    fr = set(_load_shipped_catalog("fr"))
-    de = set(_load_shipped_catalog("de"))
-    assert es == fr, (f"fr.json out of parity: missing {sorted(es - fr)[:8]}, "
-                      f"extra {sorted(fr - es)[:8]}")
-    assert es == de, (f"de.json out of parity: missing {sorted(es - de)[:8]}, "
-                      f"extra {sorted(de - es)[:8]}")
+    for code in _SHIPPED_CATALOGS:
+        other = set(_load_shipped_catalog(code))
+        assert es == other, (f"{code}.json out of parity: missing "
+                             f"{sorted(es - other)[:8]}, extra {sorted(other - es)[:8]}")
+
+
+def test_all_catalogs_preserve_format_placeholders():
+    import re
+    def ph(s):
+        return sorted(re.findall(r"\{[^}]*\}", s))
+    for code in _SHIPPED_CATALOGS:
+        catalog = _load_shipped_catalog(code)
+        for src, tr in catalog.items():
+            assert ph(src) == ph(tr), (
+                f"{code}.json[{src!r}] placeholder mismatch: "
+                f"source {ph(src)} vs translation {ph(tr)}")
 
 
 def test_proper_nouns_are_not_translated_away():

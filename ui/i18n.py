@@ -81,12 +81,14 @@ _LANGUAGES: List[Tuple[str, str, str]] = [
     ("pt", "Português", "Portuguese"),
     ("it", "Italiano", "Italian"),
     ("id", "Bahasa Indonesia", "Indonesian"),
+    ("sv", "Svenska", "Swedish"),
+    ("pl", "Polski", "Polish"),
 ]
 
 #: Codes the bundled (Latin-only) font can actually render. Anything NOT in here
 #: is hidden from the picker even if a catalog exists — better no option than a
 #: screen full of tofu boxes. Grow this (with a new font) for CJK/RTL later.
-_LATIN_SCRIPT = {"en", "es", "fr", "de", "pt", "it", "id", "nl", "ca", "gl"}
+_LATIN_SCRIPT = {"en", "es", "fr", "de", "pt", "it", "id", "sv", "pl", "nl", "ca", "gl"}
 
 #: Proper nouns that must NEVER be translated (guidance for translators + devs).
 DO_NOT_TRANSLATE = (
