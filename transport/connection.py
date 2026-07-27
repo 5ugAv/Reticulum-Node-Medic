@@ -104,6 +104,7 @@ class SSHConnection(Connection):
         runner: Optional[Callable[[List[str], int], Result]] = None,
         sleep: Callable[[float], None] = time.sleep,
         login_env: bool = True,
+        known_hosts: Optional[str] = None,
     ):
         self.host = host
         self.user = user
@@ -113,6 +114,7 @@ class SSHConnection(Connection):
         self._runner = runner or _default_ssh_runner
         self._sleep = sleep
         self.login_env = login_env
+        self.known_hosts = known_hosts
 
     def _wrap(self, command: str) -> str:
         """Run *command* under a shell that has ~/.local/bin on PATH.
@@ -128,12 +130,22 @@ class SSHConnection(Connection):
         payload = f'export PATH="{self.REMOTE_PATH}"; {command}'
         return f"bash -c {shlex.quote(payload)}"
 
+    def _hostkey_opts(self) -> List[str]:
+        """ssh -o options for host-key checking. With a pinned known_hosts we
+        VERIFY (``StrictHostKeyChecking=yes``) so a swapped key is refused (audit
+        C1); without one we keep ``accept-new`` so existing / not-yet-pinned nodes
+        still connect."""
+        if self.known_hosts:
+            return ["-o", f"UserKnownHostsFile={self.known_hosts}",
+                    "-o", "StrictHostKeyChecking=yes"]
+        return ["-o", "StrictHostKeyChecking=accept-new"]
+
     def _argv(self, command: str) -> List[str]:
         return [
             "ssh",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=10",
-            "-o", "StrictHostKeyChecking=accept-new",
+            *self._hostkey_opts(),
             "-p", str(self.port),
             f"{self.user}@{self.host}",
             self._wrap(command),
@@ -156,7 +168,7 @@ class SSHConnection(Connection):
             "scp",
             "-P", str(self.port),
             "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=accept-new",
+            *self._hostkey_opts(),
             local_path,
             f"{self.user}@{self.host}:{remote_path}",
         ]
@@ -167,8 +179,13 @@ class SSHConnection(Connection):
                   exclude: "tuple[str, ...]" = ()) -> bool:
         """rsync the tree over SSH (incremental, compressed). A trailing slash on
         the source copies its CONTENTS into *remote_dir*."""
-        ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
-                 f"-o StrictHostKeyChecking=accept-new")
+        if self.known_hosts:
+            ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
+                     f"-o UserKnownHostsFile={self.known_hosts} "
+                     f"-o StrictHostKeyChecking=yes")
+        else:
+            ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
+                     f"-o StrictHostKeyChecking=accept-new")
         argv = ["rsync", "-az", "-e", ssh_e]
         for pat in exclude:
             argv += ["--exclude", pat]

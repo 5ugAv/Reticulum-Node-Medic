@@ -94,6 +94,7 @@ class BootstrapResult:
     key_installed: bool
     sudo_ok: bool
     message: str
+    host_key_fingerprint: Optional[str] = None
 
     @property
     def ok(self) -> bool:
@@ -132,18 +133,37 @@ def bootstrap_access(host: str, user: str, password: str,
                             "sudo -n true"], timeout=timeout)
     sudo_ok = rc_sudo == 0
 
+    # PIN the node's SSH host key so future connects VERIFY it instead of blindly
+    # re-accepting a changed key (audit C1). Best-effort: a capture failure doesn't
+    # fail the bootstrap — the host just stays accept-new until it's pinned.
+    fingerprint = None
+    try:
+        from provisioning import host_keys
+        rc_scan, scan_out, _ = runner(host_keys.scan_argv(host), timeout=timeout)
+        key_line = host_keys.pick_key(scan_out) if rc_scan == 0 else None
+        if key_line and host_keys.write_known_hosts(host, key_line):
+            fingerprint = host_keys.fingerprint(key_line)
+    except Exception:
+        fingerprint = None
+
     if key_ok and sudo_ok:
         msg = f"Access bootstrapped — {user}@{host} now uses key auth + passwordless sudo."
+        if fingerprint:
+            msg += f" Host key pinned ({fingerprint})."
     elif not key_ok:
         msg = "Could not install the SSH key (wrong password, or SSH refused)."
     else:
         msg = "Key installed, but passwordless sudo did not take (check the password / sudoers)."
-    return BootstrapResult(key_ok, sudo_ok, msg)
+    return BootstrapResult(key_ok, sudo_ok, msg, host_key_fingerprint=fingerprint)
 
 
 def connect(host: str, user: str) -> SSHConnection:
-    """A key-auth SSHConnection to a bootstrapped node, ready for BuildWorkflow."""
-    return SSHConnection(host=host, user=user)
+    """A key-auth SSHConnection to a bootstrapped node, ready for BuildWorkflow. If
+    the node's host key has been pinned (audit C1) the connection VERIFIES it; an
+    un-pinned host stays accept-new so existing nodes aren't stranded."""
+    from provisioning import host_keys
+    kh = host_keys.PINNED_KNOWN_HOSTS if host_keys.is_pinned(host) else None
+    return SSHConnection(host=host, user=user, known_hosts=kh)
 
 
 def _shq(s: str) -> str:
