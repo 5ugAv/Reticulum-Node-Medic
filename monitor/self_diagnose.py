@@ -223,6 +223,26 @@ def check_wifi(nmcli_output: str, warn_pct: int = 40) -> Finding:
     return Finding("wifi", SEV_OK, f"WiFi OK ({pct}%{label}).", data={"signal_pct": pct})
 
 
+def check_clock_sync(timedatectl_output: str, now: float,
+                     min_epoch: float = 1704067200.0) -> Finding:
+    """System-clock health. A field medic with no RTC battery boots to a bogus time
+    after a power loss — which breaks certificate dates, LXMF timestamps, TLS, and
+    the outage-watch/beacon timing. Critical if the clock reads before 2024 (never
+    synced); a warning if it just isn't auto-syncing (NTP off). ``timedatectl show``
+    provides ``NTPSynchronized=yes|no``."""
+    if now < min_epoch:
+        return Finding("clock", SEV_CRIT,
+                       "System clock is WRONG (reads before 2024) — it didn't sync "
+                       "after boot. Set it in Settings > Date & time (GPS or NTP). "
+                       "A wrong clock breaks certs, messaging and mesh timing.",
+                       fix="sync_clock", data={"epoch": now})
+    if not re.search(r"NTPSynchronized=yes", timedatectl_output or ""):
+        return Finding("clock", SEV_WARN,
+                       "Clock isn't auto-syncing (NTP off). If it drifts, timestamps "
+                       "and certs can break — sync via NTP (online) or GPS.")
+    return Finding("clock", SEV_OK, "System clock synced.")
+
+
 def summarize(findings: List[Finding]) -> dict:
     """Roll up findings for the screen: worst severity + the ordered fix list."""
     crit = [f for f in findings if f.severity == SEV_CRIT]

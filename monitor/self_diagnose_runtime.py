@@ -58,6 +58,7 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_throttled(run("vcgencmd get_throttled 2>/dev/null")))
     findings.append(sd.check_wifi(
         run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
+    findings.append(sd.check_clock_sync(run("timedatectl show 2>/dev/null"), now_fn()))
     return findings
 
 
@@ -89,6 +90,9 @@ _GUIDANCE = {
     "free_space": ("Storage is filling up. Safe things to clear: old journal logs "
                    "(journalctl --vacuum-size=50M), cached firmware/images you've "
                    "already flashed, and birth certificates you've exported."),
+    "sync_clock": ("The clock is wrong (likely no RTC battery + a power loss). Set it "
+                   "in Settings > Date & time — sync from GPS (needs a fix) or from "
+                   "NTP when the medic is online."),
 }
 
 

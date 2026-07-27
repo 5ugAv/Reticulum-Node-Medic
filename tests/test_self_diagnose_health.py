@@ -2,7 +2,7 @@
 
 from monitor.self_diagnose import (
     check_disk_space, check_service, check_cpu_temp, check_throttled, check_wifi,
-    SEV_OK, SEV_WARN, SEV_CRIT)
+    check_clock_sync, SEV_OK, SEV_WARN, SEV_CRIT)
 
 _DF = ("Filesystem     1024-blocks    Used Available Capacity Mounted on\n"
        "/dev/root         30218100 {used}  {avail}      {pct}% /")
@@ -50,3 +50,12 @@ def test_wifi_never_critical():
     assert check_wifi(":90:OtherNet\n*:80:HomeNet").severity == SEV_OK
     assert check_wifi("").severity == SEV_OK                 # not connected -> no alarm
     assert "HomeNet" in check_wifi("*:80:HomeNet").detail    # names the AP
+
+
+def test_clock_sync():
+    good = 1_704_070_000.0                                   # a real 2024+ time
+    assert check_clock_sync("NTPSynchronized=yes", good).severity == SEV_OK
+    assert check_clock_sync("NTPSynchronized=no", good).severity == SEV_WARN
+    # a bogus pre-2024 clock (no RTC + power loss) is critical, offers a fix
+    bad = check_clock_sync("NTPSynchronized=yes", 50000.0)
+    assert bad.severity == SEV_CRIT and bad.fix == "sync_clock"

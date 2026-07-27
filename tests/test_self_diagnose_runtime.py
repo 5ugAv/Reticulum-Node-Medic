@@ -15,22 +15,24 @@ def fake_run(responses):
 
 
 def test_gather_all_healthy():
+    now = 1_704_070_000.0                            # a real 2024+ time (clock check)
     run = fake_run({
         "serial/by-id": f"usb-Espressif_..._{ONBOARD_SERIAL}-if00",
         "is-active rnode-splitter": "active",
         "MainPID": "1676",
         "cputimes": "5 1560",                       # 5s CPU in 1560s = healthy
         "journalctl": "Started rnode-splitter",
-        "gps_state.json": '{"updated": 1000}',
+        "gps_state.json": f'{{"updated": {now - 5}}}',
         "df -P": "Cap\n/dev/root 100 40 50 40% /",  # 40% used
         "is-active rnsd": "active",
         "measure_temp": "temp=48.3'C",
         "get_throttled": "throttled=0x0",
-        "wlan0 link": "\tsignal: -55 dBm",
+        "dev wifi": "*:70:TestNet",
+        "timedatectl": "NTPSynchronized=yes",
     })
-    findings = rt.gather(run=run, now_fn=lambda: 1030)
+    findings = rt.gather(run=run, now_fn=lambda: now)
     assert all(f.severity == SEV_OK for f in findings)
-    assert len(findings) == 8                        # 3 radio/gps + 5 system health
+    assert len(findings) == 9                        # 3 radio/gps + 6 system health
 
 
 def test_gather_catches_the_jonesey_incident():
