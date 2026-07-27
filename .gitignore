@@ -28,3 +28,8 @@ assets/maps/*
 assets/apps/*
 !assets/apps/.gitkeep
 typescript
+
+# Carried display fonts (e.g. Noto Sans JP for Japanese) — placed/fetched on the
+# device, kept out of git like the other carried binaries.
+assets/fonts/*
+!assets/fonts/.gitkeep

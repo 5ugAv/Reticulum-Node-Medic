@@ -44,6 +44,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         faulthandler.enable()        # fall back to stderr
 
     # Import the UI lazily so headless environments never require Kivy.
+    # Pick the global display font from the saved language BEFORE any screen is
+    # built (DejaVu for Latin/Cyrillic, Noto Sans JP for Japanese).
+    from ui.fonts import configure_fonts
+    configure_fonts()
     from ui.app import ReticulumNodeMedicApp
 
     ReticulumNodeMedicApp().run()

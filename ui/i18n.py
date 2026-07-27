@@ -39,14 +39,17 @@ How to add a LANGUAGE
 
 FONT / SCRIPT CAVEAT (be honest)
 --------------------------------
-The Pi bundles Kivy's default Roboto font, which covers the Latin script only
-(emoji already render as tofu boxes on the device). So ``available_languages()``
-deliberately lists ONLY Latin-script languages — Spanish, French, German,
-Portuguese, Italian, Indonesian. Offering Chinese / Arabic / Cyrillic / etc.
-today would paint blank boxes. CJK and right-to-left (RTL) support is FUTURE
-SCOPE: it needs a bundled Unicode font with those glyphs plus RTL layout work,
-and only then should those languages be added to ``_LANGUAGES`` /
-``_LATIN_SCRIPT``.
+Kivy's default Roboto font covers Latin only. At startup ``ui.fonts`` switches
+the app's global font to **DejaVuSans** (bundled with Kivy), which covers Latin
++ Cyrillic — so Spanish/French/German/Portuguese/Italian/Indonesian/Swedish/
+Polish AND Russian all render. ``available_languages()`` gates on
+``_is_renderable``: those are always offered.
+
+**Japanese** (CJK) needs its own font — DejaVu has no CJK, and a CJK-only
+fallback can't draw the Latin proper nouns Japanese strings keep. So Japanese is
+offered ONLY when a Latin+CJK font (Noto Sans JP) is present (``japanese_font_
+path``); ``ui.fonts`` loads that font when Japanese is the active language.
+Right-to-left (Arabic/Hebrew) remains FUTURE SCOPE (needs RTL layout work).
 
 Persistence follows the project's plain-file pref pattern (see
 ``workflows.node_mode.load_home_profile``): a single file under
@@ -87,10 +90,46 @@ _LANGUAGES: List[Tuple[str, str, str]] = [
     ("ja", "日本語", "Japanese"),
 ]
 
-#: Codes the bundled (Latin-only) font can actually render. Anything NOT in here
-#: is hidden from the picker even if a catalog exists — better no option than a
-#: screen full of tofu boxes. Grow this (with a new font) for CJK/RTL later.
-_LATIN_SCRIPT = {"en", "es", "fr", "de", "pt", "it", "id", "sv", "pl", "nl", "ca", "gl"}
+#: Codes the DEFAULT display font (DejaVuSans — see ui.fonts) can render: the
+#: Latin scripts plus Cyrillic. The app switches its global font to DejaVuSans at
+#: startup, so all of these are safe to offer. Japanese is NOT here — CJK needs
+#: its own font and is gated separately on that font actually being present.
+_RENDERABLE = {"en", "es", "fr", "de", "pt", "it", "id", "sv", "pl", "ru",
+               "nl", "ca", "gl"}
+
+#: Where a carried Japanese font would live (mirrors the other carried assets).
+_ASSETS_FONTS = os.path.join(os.path.dirname(_I18N_DIR), "fonts")
+
+#: Fonts that render Japanese *and* the Latin proper nouns that Japanese UI
+#: strings keep (Node Medic, RNode…). A pure CJK-only fallback (e.g. Droid Sans
+#: Fallback) is deliberately NOT listed — it can't draw the Latin parts. Japanese
+#: only appears in the picker when one of these exists, else it would paint tofu.
+_JA_FONT_CANDIDATES = (
+    os.path.join(_ASSETS_FONTS, "NotoSansJP-Regular.ttf"),
+    os.path.join(_ASSETS_FONTS, "NotoSansJP-Regular.otf"),
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
+)
+
+
+def japanese_font_path() -> Optional[str]:
+    """Absolute path to a bundled/installed font that can render Japanese + Latin,
+    or None. Used both to gate Japanese in the picker and (by ui.fonts) to load
+    it. Pure ``os.path`` — no Kivy — so it stays unit-testable."""
+    for path in _JA_FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _is_renderable(code: str) -> bool:
+    """Whether the app can actually display *code* without tofu boxes: the
+    DejaVu-covered scripts always, Japanese only when a CJK+Latin font is present."""
+    if code in _RENDERABLE:
+        return True
+    if code == "ja":
+        return japanese_font_path() is not None
+    return False
 
 #: Proper nouns that must NEVER be translated (guidance for translators + devs).
 DO_NOT_TRANSLATE = (
@@ -144,7 +183,7 @@ def current_language() -> str:
     try:
         with open(LANGUAGE_FILE, encoding="utf-8") as f:
             saved = f.read().strip().lower()
-        if saved in {c for c, _, _ in _LANGUAGES} and saved in _LATIN_SCRIPT:
+        if saved in {c for c, _, _ in _LANGUAGES} and _is_renderable(saved):
             code = saved
     except OSError:
         code = DEFAULT_LANGUAGE
@@ -157,7 +196,7 @@ def set_language(code: str) -> str:
     once). Unknown/unsupported codes are ignored and English is kept. Returns the
     code that ended up active."""
     code = str(code).strip().lower()
-    if code not in {c for c, _, _ in _LANGUAGES} or code not in _LATIN_SCRIPT:
+    if code not in {c for c, _, _ in _LANGUAGES} or not _is_renderable(code):
         code = DEFAULT_LANGUAGE
     try:
         os.makedirs(os.path.dirname(LANGUAGE_FILE), exist_ok=True)
@@ -195,7 +234,7 @@ def available_languages() -> List[Tuple[str, str, str]]:
     languages, no catalog-less entries."""
     out: List[Tuple[str, str, str]] = []
     for code, native, english in _LANGUAGES:
-        if code not in _LATIN_SCRIPT:
+        if not _is_renderable(code):
             continue
         if code == DEFAULT_LANGUAGE or _has_catalog(code):
             out.append((code, native, english))

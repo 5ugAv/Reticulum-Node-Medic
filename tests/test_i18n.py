@@ -104,11 +104,33 @@ def test_available_languages_includes_es_and_english():
     assert "en" in codes
 
 
-def test_available_languages_excludes_unsupported_script():
+def test_available_languages_includes_russian_via_dejavu():
+    # Cyrillic renders under the DejaVu default font, so Russian is offered.
     codes = [c for c, _n, _e in i18n.available_languages()]
-    # No CJK / RTL / Cyrillic codes may appear while the font is Latin-only.
-    for bad in ("zh", "ar", "ja", "ru", "ko", "he"):
+    assert "ru" in codes
+
+
+def test_available_languages_excludes_scripts_without_a_font():
+    codes = [c for c, _n, _e in i18n.available_languages()]
+    # No font for these scripts -> must not appear (would paint tofu boxes).
+    for bad in ("zh", "ar", "ko", "he"):
         assert bad not in codes
+
+
+def test_japanese_gated_on_cjk_font_presence(tmp_path, monkeypatch):
+    monkeypatch.setattr(i18n, "LANGUAGE_FILE", str(tmp_path / "language"))
+    i18n._reset_cache()
+    # Without a CJK font, Japanese is hidden and cannot be activated,
+    # even though it ships a full catalog.
+    monkeypatch.setattr(i18n, "japanese_font_path", lambda: None)
+    assert "ja" not in [c for c, _n, _e in i18n.available_languages()]
+    assert i18n.set_language("ja") == "en"
+    # With a Latin+CJK font present, it becomes available and selectable.
+    monkeypatch.setattr(i18n, "japanese_font_path",
+                        lambda: str(tmp_path / "NotoSansJP-Regular.ttf"))
+    assert "ja" in [c for c, _n, _e in i18n.available_languages()]
+    assert i18n.set_language("ja") == "ja"
+    i18n._reset_cache()
 
 
 def test_available_languages_rows_are_triples_with_names():
