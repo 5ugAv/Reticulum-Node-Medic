@@ -96,7 +96,13 @@ def _default_ports() -> List[str]:
 
 
 def _default_reader(port: str, esptool: str = DEFAULT_ESPTOOL) -> str:
+    import os
+    import shlex
     import subprocess
-    cmd = f"{esptool} --chip auto --port {port} --before default_reset chip_id"
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=40)
+    # Build an argv list so the port (and any future interpolated value) is a
+    # distinct argument that can never be shell-parsed. ``esptool`` is a static
+    # literal, safe to tokenise; ``~`` is expanded here (no shell to do it).
+    argv = [os.path.expanduser(tok) for tok in shlex.split(esptool)]
+    argv += ["--chip", "auto", "--port", port, "--before", "default_reset", "chip_id"]
+    r = subprocess.run(argv, capture_output=True, text=True, timeout=40)
     return (r.stdout or "") + (r.stderr or "")

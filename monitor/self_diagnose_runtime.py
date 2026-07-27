@@ -10,19 +10,21 @@ deeper firmware probe (which does reset the board) is a separate, explicit actio
 
 from __future__ import annotations
 
-import subprocess
 import time
 from typing import Callable, List, Tuple
 
+import safe_shell
 from monitor import self_diagnose as sd
 
 Runner = Callable[[str], str]
 
 
 def _default_run(cmd: str) -> str:
+    # Execute the fixed medic-local command without a shell (audit C5); returns
+    # combined stdout+stderr, exactly as the previous capture did.
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
-        return (r.stdout or "") + (r.stderr or "")
+        _code, out = safe_shell.run(cmd, timeout=15)
+        return out
     except Exception as e:
         return str(e)
 

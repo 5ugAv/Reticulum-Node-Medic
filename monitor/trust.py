@@ -18,27 +18,83 @@ keeps trust non-transitive.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from typing import Dict, List, Optional
 
+from monitor import trust_integrity
+
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/trust.json")
+
+log = logging.getLogger(__name__)
+
+
+def _key_path(path: str) -> str:
+    """The per-medic HMAC key, kept beside the trust store (so the default store
+    lands the key at ``~/.reticulum-node-medic/trust_hmac_key`` and tests using a
+    tmp store keep their key in the same tmp dir — never the real home)."""
+    return os.path.join(os.path.dirname(path) or ".", "trust_hmac_key")
+
+
+def _sig_path(path: str) -> str:
+    return path + ".sig"
+
+
+def _write_sig(store: Dict, path: str, key: bytes) -> None:
+    signature = trust_integrity.sign(key, trust_integrity.canonical_bytes(store))
+    with open(_sig_path(path), "w") as f:
+        f.write(signature)
 
 
 def load(path: str = CONFIG) -> Dict:
+    """Load the trust store, verifying its HMAC integrity sidecar (audit C8).
+
+    On a TAMPERED or unverifiable store, log a warning and return an EMPTY,
+    all-untrusted store rather than honouring possibly-forged records. A legacy
+    store with no sidecar (first run after this change) is accepted ONCE and
+    immediately re-signed (migration). Never raises."""
     try:
-        with open(path) as f:
-            d = json.load(f)
-        units = d.get("units") if isinstance(d, dict) else None
-        return {"units": units if isinstance(units, dict) else {}}
+        with open(path, "rb") as f:
+            raw = f.read()
+        d = json.loads(raw)
     except (OSError, ValueError):
         return {"units": {}}
 
+    key = trust_integrity.load_or_create_key(_key_path(path))
+    canonical = trust_integrity.canonical_bytes(d)
+    try:
+        with open(_sig_path(path)) as f:
+            signature = f.read().strip()
+    except OSError:
+        signature = None
+
+    if signature is None:
+        # MIGRATION: pre-integrity store — accept once, then stamp a fresh sig.
+        try:
+            _write_sig(d, path, key)
+            log.warning("trust store %s had no integrity signature; migrated "
+                        "(signed in place).", path)
+        except OSError:
+            log.warning("trust store %s had no integrity signature and could not "
+                        "be migrated.", path)
+    elif not trust_integrity.verify(key, canonical, signature):
+        log.warning("trust store %s failed integrity verification (tampered?); "
+                    "ignoring stored trust and treating all units as untrusted.",
+                    path)
+        return {"units": {}}
+
+    units = d.get("units") if isinstance(d, dict) else None
+    return {"units": units if isinstance(units, dict) else {}}
+
 
 def save(store: Dict, path: str = CONFIG) -> Dict:
+    """Persist the trust store and its HMAC integrity sidecar (audit C8)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(store, f, indent=2, sort_keys=True)
+    key = trust_integrity.load_or_create_key(_key_path(path))
+    _write_sig(store, path, key)
     return store
 
 

@@ -18,8 +18,9 @@ Runner + paths are injectable so it's unit-testable off-hardware (macOS has no
 from __future__ import annotations
 
 import re
-import subprocess
 from typing import Callable, Dict, Optional, Tuple
+
+import safe_shell
 
 LICENSE = "MIT"
 UPTIME_PATH = "/proc/uptime"
@@ -29,14 +30,16 @@ ShellRunner = Callable[[str], Tuple[int, str]]
 _HASH_CMD = "git rev-parse --short HEAD"
 _BRANCH_CMD = "git rev-parse --abbrev-ref HEAD"
 _REMOTE_CMD = "git remote get-url origin"
-#: Collect (not run) the suite; the last line carries the "N tests collected" tally.
-_COLLECT_CMD = "python3 -m pytest --collect-only -q 2>/dev/null | tail -1"
+#: Collect (not run) the suite; ``parse_test_count`` reads the "N tests
+#: collected" tally off the last non-empty line, so no shell ``| tail -1`` is
+#: needed — we filter in Python (audit C5). ``2>/dev/null`` keeps collection
+#: warnings out of the parsed output.
+_COLLECT_CMD = "python3 -m pytest --collect-only -q 2>/dev/null"
 
 
 def _default_run(cmd: str) -> Tuple[int, str]:
     try:
-        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-        return p.returncode, (p.stdout + p.stderr)
+        return safe_shell.run(cmd, timeout=30)      # no shell (audit C5)
     except Exception as e:
         return 1, str(e)
 

@@ -17,8 +17,9 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 from typing import Callable, Dict, Optional, Tuple
+
+import safe_shell
 
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/tool_identity.json")
 
@@ -43,8 +44,7 @@ ShellRunner = Callable[[str], Tuple[int, str]]
 
 def _default_run(cmd: str) -> Tuple[int, str]:
     try:
-        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
-        return p.returncode, (p.stdout + p.stderr)
+        return safe_shell.run(cmd, timeout=15)      # no shell (audit C5)
     except Exception as e:
         return 1, str(e)
 
