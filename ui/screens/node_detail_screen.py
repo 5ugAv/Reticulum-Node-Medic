@@ -16,6 +16,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — node detail section headers/labels/buttons
 from ui.widgets.hex_status import HexStatus
 from monitor.formatting import beacon_lines
 
@@ -65,13 +66,15 @@ class NodeDetailScreen(BoxLayout):
 
         seen = record.last_seen_hours(now)
         self.add_widget(_line(
-            "Last heard: "
-            + ("never" if seen is None else f"{seen:.1f} h ago"),
+            tr("Last heard: {when}").format(
+                when=tr("never") if seen is None
+                else tr("{h} h ago").format(h=f"{seen:.1f}")),
             color="text_secondary"))
 
         batt = getattr(record, "battery_pct", None)
         self.add_widget(_line(
-            "Battery: " + (f"{batt}%" if batt is not None else "not reported"),
+            tr("Battery: {status}").format(
+                status=f"{batt}%" if batt is not None else tr("not reported")),
             color=("text_secondary" if batt is None else
                    "green" if batt > 50 else "amber" if batt > 20 else "red")))
 
@@ -87,20 +90,20 @@ class NodeDetailScreen(BoxLayout):
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         col.bind(minimum_height=col.setter("height"))
 
-        col.add_widget(_line("Health", bold=True, size="17sp"))
+        col.add_widget(_line(tr("Health"), bold=True, size="17sp"))
         for ln in beacon_lines(record):
             col.add_widget(_line("  " + ln, size="14sp"))
 
         if activity_text:
-            col.add_widget(_line("Activity", bold=True, size="17sp"))
+            col.add_widget(_line(tr("Activity"), bold=True, size="17sp"))
             col.add_widget(_wrap("  " + activity_text, color="text_secondary"))
         if by_hour and any(by_hour):
             from ui.widgets.activity_chart import ActivityChart
             col.add_widget(ActivityChart(by_hour=by_hour))
-            col.add_widget(_line("  midnight · 6am · noon · 6pm   (times heard, local)",
+            col.add_widget(_line("  " + tr("midnight · 6am · noon · 6pm   (times heard, local)"),
                                  size="11sp", color="text_secondary"))
         if insights:
-            col.add_widget(_line("Noticed", bold=True, size="17sp"))
+            col.add_widget(_line(tr("Noticed"), bold=True, size="17sp"))
             for fl in insights:
                 sev = fl.get("severity")
                 col.add_widget(_wrap(
@@ -110,7 +113,7 @@ class NodeDetailScreen(BoxLayout):
 
         nav = record.navigation()
         if nav:
-            col.add_widget(_line("Location (exact — repair visit)", bold=True,
+            col.add_widget(_line(tr("Location (exact — repair visit)"), bold=True,
                                  size="17sp"))
             col.add_widget(_line("  " + nav["raw"], size="14sp"))
             col.add_widget(_line("  " + nav["google"], color="accent",
@@ -118,13 +121,13 @@ class NodeDetailScreen(BoxLayout):
 
         notes = getattr(record, "notes", None)
         if notes:
-            col.add_widget(_line("Field notes", bold=True, size="17sp"))
+            col.add_widget(_line(tr("Field notes"), bold=True, size="17sp"))
             for note in notes:
                 col.add_widget(_line("  • " + note, size="14sp"))
 
         events = getattr(record, "events", None)
         if events:
-            col.add_widget(_line("Commissioning log", bold=True, size="17sp"))
+            col.add_widget(_line(tr("Commissioning log"), bold=True, size="17sp"))
             for ev in events:
                 stamp = datetime.fromtimestamp(ev.at).strftime("%Y-%m-%d %H:%M")
                 col.add_widget(_line(
@@ -142,14 +145,14 @@ class NodeDetailScreen(BoxLayout):
 
         actions = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(52), spacing=dp(8))
-        ping = Button(text="Ping node now", font_size="18sp",
+        ping = Button(text=tr("Ping node now"), font_size="18sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         ping.bind(on_release=lambda *_: self._ping())
         actions.add_widget(ping)
         if record.has_location():
-            nav_btn = Button(text="Navigate", font_size="18sp",
+            nav_btn = Button(text=tr("Navigate"), font_size="18sp",
                              background_normal="",
                              background_color=theme.hex_to_rgba(
                                  theme.COLORS["green"]),
@@ -160,7 +163,7 @@ class NodeDetailScreen(BoxLayout):
 
     def _ping(self):
         if self._on_poll:
-            self.ping_status.text = "Probing over the mesh…"
+            self.ping_status.text = tr("Probing over the mesh…")
             self.ping_status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
             self._on_poll(self.record.dst_hash, self._set_ping_status)
 

@@ -14,19 +14,24 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — danger/power-off confirm dialog copy
 
 #: Shared wording for the power-off-during-flash override (home + settings).
-FLASH_POWEROFF_WARNING = (
+FLASH_POWEROFF_WARNING = tr(
     "WARNING - Node Medic is flashing a board.  Do NOT power off.\n\n"
     "Continuing to power off may brick the connected radio board. Only override "
     "if the flash is genuinely stuck and you have no other choice.")
 
 
-def confirm_danger(message, title, on_proceed, proceed_text="Proceed anyway",
-                   cancel_text="Cancel"):
+def confirm_danger(message, title, on_proceed, proceed_text=None,
+                   cancel_text=None):
     """Show a modal warning. ``on_proceed`` runs only if the operator taps the red
     override. Tapping outside does nothing (auto_dismiss off) so it can't be
     dismissed by accident. Returns the Popup."""
+    if proceed_text is None:
+        proceed_text = tr("Proceed anyway")
+    if cancel_text is None:
+        cancel_text = tr("Cancel")
     body = BoxLayout(orientation="vertical", spacing=dp(12), padding=dp(10))
     lbl = Label(text=message, halign="center", valign="middle", font_size="15sp",
                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -68,12 +73,12 @@ def confirm_power_override(message, title, on_proceed):
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     body.add_widget(lbl)
     body.add_widget(Label(
-        text="To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT",
+        text=tr("To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT"),
         size_hint_y=None, height=dp(24), bold=True, font_size="12.5sp",
         color=theme.hex_to_rgba(theme.COLORS["red"])))
     holder = AnchorLayout(size_hint_y=None, height=dp(120))
     body.add_widget(holder)
-    cancel = Button(text="Keep flashing", bold=True, font_size="16sp",
+    cancel = Button(text=tr("Keep flashing"), bold=True, font_size="16sp",
                     size_hint_y=None, height=dp(52), background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                     color=theme.hex_to_rgba(theme.COLORS["background"]))

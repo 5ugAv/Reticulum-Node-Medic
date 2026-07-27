@@ -31,6 +31,7 @@ from kivy.uix.widget import Widget
 
 from monitor.geo import read_gps, read_splitter_fix, fix_trust, geocode_address
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — SCAN controls/labels/status messages
 from ui.onscreen_keyboard import bind_field
 
 #: How far a pinch must spread (or close) before it steps one zoom level. Higher
@@ -839,12 +840,12 @@ class ScanScreen(BoxLayout):
                                height=dp(30), spacing=dp(6))
         self.header = Label(halign="left", valign="middle", bold=True)
         self.header.bind(size=lambda i, v: setattr(i, "text_size", v))
-        self.recenter_btn = Button(text="Recenter", size_hint=(None, 1),
+        self.recenter_btn = Button(text=tr("Recenter"), size_hint=(None, 1),
                                    width=dp(100))
         self.recenter_btn.bind(on_release=lambda *_: self._recenter())
         # Mesh-lines toggle: draw the who-hears-whom connection lines. Default OFF;
         # does nothing visible unless a links_provider was wired.
-        self.links_btn = Button(text="Links  off", size_hint=(None, 1), width=dp(92))
+        self.links_btn = Button(text=tr("Links  off"), size_hint=(None, 1), width=dp(92))
         self.links_btn.bind(on_release=lambda *_: self._toggle_links())
         header_row.add_widget(self.header)
         header_row.add_widget(self.links_btn)
@@ -891,14 +892,14 @@ class ScanScreen(BoxLayout):
 
             act = BoxLayout(orientation="horizontal", size_hint=(1, None),
                             height=dp(50), spacing=dp(8))
-            self.confirm_btn = _btn("Use this position  →", "green", self._use_position)
+            self.confirm_btn = _btn(tr("Use this position  →"), "green", self._use_position)
             self.confirm_btn.disabled = True
             act.add_widget(self.confirm_btn)
-            act.add_widget(_btn("Enter manually", "surface", self._toggle_manual))
+            act.add_widget(_btn(tr("Enter manually"), "surface", self._toggle_manual))
             self.add_widget(act)
 
             self.detail_btn = Button(
-                text="Load street names for this spot  (needs WiFi)",
+                text=tr("Load street names for this spot  (needs WiFi)"),
                 size_hint=(1, None), height=dp(46), font_size="15.5sp", bold=True,
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -915,10 +916,10 @@ class ScanScreen(BoxLayout):
                                         disabled=True)
             addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                  height=dp(44), spacing=dp(6))
-            self.addr_in = TextInput(hint_text="street address  (needs internet)",
+            self.addr_in = TextInput(hint_text=tr("street address  (needs internet)"),
                                      multiline=False, font_size="17sp")
             bind_field(self.addr_in)
-            find_btn = Button(text="Find", size_hint_x=None, width=dp(84), bold=True,
+            find_btn = Button(text=tr("Find"), size_hint_x=None, width=dp(84), bold=True,
                               font_size="17sp",
                               background_normal="",
                               background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -928,9 +929,9 @@ class ScanScreen(BoxLayout):
             addr_row.add_widget(find_btn)
             coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                   height=dp(44), spacing=dp(6))
-            self.lat_in = TextInput(hint_text="latitude", multiline=False,
+            self.lat_in = TextInput(hint_text=tr("latitude"), multiline=False,
                                     input_filter="float", font_size="18sp")
-            self.lon_in = TextInput(hint_text="longitude", multiline=False,
+            self.lon_in = TextInput(hint_text=tr("longitude"), multiline=False,
                                     input_filter="float", font_size="18sp")
             bind_field(self.lat_in, numeric=True)
             bind_field(self.lon_in, numeric=True)
@@ -950,7 +951,7 @@ class ScanScreen(BoxLayout):
         # Offline-map caching is MAINTENANCE, not the primary flow — tuck it behind
         # a toggle so the map + placement own the screen (was crowding both out).
         self._offline_open = False
-        self.offline_toggle = Button(text="Offline maps  ▾", size_hint=(1, None),
+        self.offline_toggle = Button(text=tr("Offline maps  ▾"), size_hint=(1, None),
                                      height=dp(34), font_size="15sp", bold=True,
                                      background_normal="",
                                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -991,8 +992,8 @@ class ScanScreen(BoxLayout):
         # Home-base coordinate — LAST-resort download centre, hidden unless
         # self-location fails (distinct from the placement manual-entry row above).
         self.center_input = TextInput(
-            hint_text="Couldn't find your location - type home base as: "
-                      "lat, lon  (e.g. -37.79, 144.96)",
+            hint_text=tr("Couldn't find your location - type home base as: "
+                         "lat, lon  (e.g. -37.79, 144.96)"),
             multiline=False, size_hint=(1, None), height=0, opacity=0)
         self.center_input.bind(text=lambda *_: self._refresh_estimate())
         self._offline_panel.add_widget(self.center_input)
@@ -1046,8 +1047,8 @@ class ScanScreen(BoxLayout):
     def _toggle_offline(self):
         self._offline_open = not self._offline_open
         self._offline_panel.opacity = 1 if self._offline_open else 0
-        self.offline_toggle.text = ("Offline maps  ▲" if self._offline_open
-                                    else "Offline maps  ▾")
+        self.offline_toggle.text = (tr("Offline maps  ▲") if self._offline_open
+                                    else tr("Offline maps  ▾"))
         self._sync_offline_height()
 
     def _sync_offline_height(self):
@@ -1058,7 +1059,7 @@ class ScanScreen(BoxLayout):
         """Flip the mesh connection lines on/off (header button)."""
         self._links_on = not self._links_on
         self.plot.set_show_links(self._links_on)
-        self.links_btn.text = "Links  on" if self._links_on else "Links  off"
+        self.links_btn.text = tr("Links  on") if self._links_on else tr("Links  off")
 
     # -- placement ----------------------------------------------------------
     def _recenter(self):
@@ -1079,7 +1080,7 @@ class ScanScreen(BoxLayout):
         self.badge.set(t["title"], t["level"])
         hint = t["detail"]
         if t["level"] != "live":
-            hint = "Tap the map to drop the pin, or " + hint[0].lower() + hint[1:]
+            hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]
         if self._fix is not None and getattr(self._fix, "has_fix", False):
             self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}   ·   {hint}"
             self.confirm_btn.disabled = False
@@ -1093,9 +1094,9 @@ class ScanScreen(BoxLayout):
         if self._manual:                       # a map tap supersedes manual entry
             self._set_manual_shown(False)
         self._picked = latlon
-        self.badge.set("Picked from map", "info")
-        self.coords.text = (f"{latlon[0]:.6f},  {latlon[1]:.6f}   ·   tap again to move, "
-                            "or Recenter to go back to GPS")
+        self.badge.set(tr("Picked from map"), "info")
+        self.coords.text = (f"{latlon[0]:.6f},  {latlon[1]:.6f}   ·   "
+                            + tr("tap again to move, or Recenter to go back to GPS"))
         self.confirm_btn.disabled = False
 
     def _current_point(self):
@@ -1115,7 +1116,7 @@ class ScanScreen(BoxLayout):
     def _use_position(self):
         pt = self._current_point()
         if pt is None:
-            self.badge.set("Set a location first — tap the map or enter it", "none")
+            self.badge.set(tr("Set a location first — tap the map or enter it"), "none")
             return
         if self._on_place:
             self._on_place(pt[0], pt[1], pt[2])
@@ -1138,9 +1139,9 @@ class ScanScreen(BoxLayout):
             return
         self._set_manual_shown(True)
         self._picked = None
-        self.badge.set("Enter a location", "info")
-        self.coords.text = ("Type an address and Find (needs internet), or enter "
-                            "lat/lon directly, then Use this position.")
+        self.badge.set(tr("Enter a location"), "info")
+        self.coords.text = tr("Type an address and Find (needs internet), or enter "
+                              "lat/lon directly, then Use this position.")
         self.confirm_btn.disabled = False
         if self._fix is not None and getattr(self._fix, "has_fix", False):
             self.lat_in.text = f"{self._fix.lat:.6f}"
@@ -1158,9 +1159,9 @@ class ScanScreen(BoxLayout):
         """Geocode the typed address (off-thread) and drop the pin to verify it."""
         addr = self.addr_in.text.strip()
         if not addr:
-            self.badge.set("Type an address first, then Find", "info")
+            self.badge.set(tr("Type an address first, then Find"), "info")
             return
-        self.badge.set("Looking up address…", "info")
+        self.badge.set(tr("Looking up address…"), "info")
 
         def work():
             res = geocode_address(addr)
@@ -1169,11 +1170,11 @@ class ScanScreen(BoxLayout):
 
     def _apply_geocode(self, res):
         if not res:
-            self.badge.set("Address not found (no internet?) — enter lat/lon", "none")
+            self.badge.set(tr("Address not found (no internet?) — enter lat/lon"), "none")
             return
         self.lat_in.text = f"{res['lat']:.6f}"
         self.lon_in.text = f"{res['lon']:.6f}"
-        self.badge.set("Found — check the pin sits right", "info")
+        self.badge.set(tr("Found — check the pin sits right"), "info")
         self.coords.text = res["name"][:120]
         self.plot.focus((res["lat"], res["lon"]))
 
@@ -1183,14 +1184,14 @@ class ScanScreen(BoxLayout):
             return
         pt = self._current_point()
         if pt is None:
-            self.badge.set("Pick or find a location first, then load its streets", "info")
+            self.badge.set(tr("Pick or find a location first, then load its streets"), "info")
             return
         if not is_online():
-            self.badge.set("No internet — join WiFi to load street names", "none")
+            self.badge.set(tr("No internet — join WiFi to load street names"), "none")
             return
         self._dl_busy = True
         self.detail_btn.disabled = True
-        self.detail_btn.text = "Downloading street detail…"
+        self.detail_btn.text = tr("Downloading street detail…")
         lat, lon = pt[0], pt[1]
         dest = os.path.join(MAPS_DIR, "offline.mbtiles")
         os.makedirs(MAPS_DIR, exist_ok=True)
@@ -1199,7 +1200,8 @@ class ScanScreen(BoxLayout):
             if "done" in s and "total" in s:
                 Clock.schedule_once(lambda dt: setattr(
                     self.detail_btn, "text",
-                    f"Street detail… {s['done']}/{s['total']} tiles"), 0)
+                    tr("Street detail… {done}/{total} tiles").format(
+                        done=s['done'], total=s['total'])), 0)
 
         def work():
             # ALWAYS post back, even on error — else _dl_busy sticks True and the
@@ -1216,20 +1218,20 @@ class ScanScreen(BoxLayout):
     def _detail_done(self, summary, pt):
         self._dl_busy = False
         self.detail_btn.disabled = False
-        self.detail_btn.text = "Load street names for this spot  (needs WiFi)"
+        self.detail_btn.text = tr("Load street names for this spot  (needs WiFi)")
         if summary.get("error"):
-            self.badge.set("Couldn't load street names — check WiFi and try again",
+            self.badge.set(tr("Couldn't load street names — check WiFi and try again"),
                            "none")
             return
         self._tiles = find_mbtiles()
         self.plot.set_tiles(self._tiles)
         self.plot.focus(pt, zoom=17)                # land close; +/- to fine-tune
         if summary.get("blocked"):
-            self.badge.set("Map server is rate-limiting — try again shortly", "none")
+            self.badge.set(tr("Map server is rate-limiting — try again shortly"), "none")
         elif summary.get("fetched") or summary.get("skipped"):
-            self.badge.set("Street detail loaded — use +/− to zoom in", "info")
+            self.badge.set(tr("Street detail loaded — use +/− to zoom in"), "info")
         else:
-            self.badge.set("Couldn't fetch detail (check the connection)", "none")
+            self.badge.set(tr("Couldn't fetch detail (check the connection)"), "none")
 
     def _locate_self(self):
         found = ip_geolocate() if is_online() else None
@@ -1246,7 +1248,7 @@ class ScanScreen(BoxLayout):
         # Keep the header a clean one-liner. Basemap attribution is a licence
         # condition, so it lives in its own small footer (self.attribution) where
         # it's readable, rather than crammed into the header where it wrapped/cut.
-        self.header.text = "Map — coverage & placement"
+        self.header.text = tr("Map — coverage & placement")
         self.attribution.text = ATTRIBUTION if self._tiles is not None else ""
 
     def set_nodes(self, nodes):
@@ -1257,12 +1259,13 @@ class ScanScreen(BoxLayout):
         unlocated = [n.get("name", "(unnamed)") for n in nodes
                      if n.get("lat") is None or n.get("lon") is None]
         if not located and not unlocated:
-            self.note.text = "No nodes yet — they appear here once built."
+            self.note.text = tr("No nodes yet — they appear here once built.")
         elif not located:
-            self.note.text = ("No node has a location yet. Build nodes with a GPS "
-                              "fix to place them on the map.")
+            self.note.text = tr("No node has a location yet. Build nodes with a GPS "
+                                "fix to place them on the map.")
         elif unlocated:
-            self.note.text = f"No location for: {', '.join(unlocated)}"
+            self.note.text = tr("No location for: {names}").format(
+                names=", ".join(unlocated))
         else:
             self.note.text = ""
         self.note.height = dp(24) if self.note.text else dp(0)   # no empty gap
@@ -1275,19 +1278,20 @@ class ScanScreen(BoxLayout):
         Returns ((lat, lon), source_label) or (None, None)."""
         fix = read_gps(self._gps_reader) if self._gps_reader else read_gps()
         if fix and fix.has_fix:
-            return (fix.lat, fix.lon), "current GPS location"
+            return (fix.lat, fix.lon), tr("current GPS location")
         pts = geo_points(self._nodes)
         if pts:
             lat = sum(p.lat for p in pts) / len(pts)
             lon = sum(p.lon for p in pts) / len(pts)
-            return (lat, lon), "placed nodes"
+            return (lat, lon), tr("placed nodes")
         ip = getattr(self, "_ip_center", None)
         if ip:
-            return (ip[0], ip[1]), f"{ip[2]} (approximate, from your internet)"
+            return (ip[0], ip[1]), tr("{place} (approximate, from your internet)").format(
+                place=ip[2])
         typed = parse_latlon(getattr(self, "center_input", None)
                              and self.center_input.text or "")
         if typed:
-            return typed, "entered home base"
+            return typed, tr("entered home base")
         return None, None
 
     def _set_status(self, text, status="unknown"):
@@ -1314,25 +1318,26 @@ class ScanScreen(BoxLayout):
             return
         if self._radius_km == WORLD:
             # world overview: no centre needed — the whole planet at z0-8
-            self.dl_button.text = "Download offline map (World overview)"
+            self.dl_button.text = tr("Download offline map (World overview)")
             count, mb = estimate_world()
             verdict = storage_summary(mb, disk_free_mb(
                 MAPS_DIR if os.path.isdir(MAPS_DIR) else "."))
             self.dl_button.disabled = not verdict["ok"]
             self._set_status(
-                f"The whole world at overview zoom (~{count} tiles - hours, "
-                f"resumable). {verdict['text']}",
+                tr("The whole world at overview zoom (~{count} tiles - hours, "
+                   "resumable).").format(count=count) + " " + verdict['text'],
                 "ok" if verdict["ok"] else "alert")
             return
-        self.dl_button.text = f"Download offline map ({self._radius_km:g} km)"
+        self.dl_button.text = tr("Download offline map ({km} km)").format(
+            km=f"{self._radius_km:g}")
         center, source = self._download_center()
         if center is None:
             self.dl_button.disabled = True
             if not getattr(self, "_ip_tried", False):
-                self._set_status("Finding your location…", "unknown")
+                self._set_status(tr("Finding your location…"), "unknown")
             else:
-                self._set_status("Couldn't find your location automatically - "
-                                 "type home base below.", "warn")
+                self._set_status(tr("Couldn't find your location automatically - "
+                                    "type home base below."), "warn")
             return
         count, mb = estimate_download(center[0], center[1], self._radius_km,
                                       DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM)
@@ -1340,14 +1345,15 @@ class ScanScreen(BoxLayout):
                                                    if os.path.isdir(MAPS_DIR)
                                                    else "."))
         self.dl_button.disabled = not verdict["ok"]
-        self._set_status(f"Centred on {source}. {verdict['text']}",
+        self._set_status(tr("Centred on {source}.").format(source=source)
+                         + " " + verdict['text'],
                          "ok" if verdict["ok"] else "alert")
 
     def _on_download(self):
         if self._downloading:
             return
         if not is_online():
-            self._set_status("No internet — connect to WiFi to download maps.",
+            self._set_status(tr("No internet — connect to WiFi to download maps."),
                              "warn")
             return
         if self._radius_km == WORLD:
@@ -1357,7 +1363,8 @@ class ScanScreen(BoxLayout):
                 return
             self._downloading = True
             self.dl_button.disabled = True
-            self._set_status(f"Downloading world overview (~{count} tiles)…")
+            self._set_status(tr("Downloading world overview (~{count} tiles)…").format(
+                count=count))
             dest = os.path.join(MAPS_DIR, "offline.mbtiles")
             os.makedirs(MAPS_DIR, exist_ok=True)
             threading.Thread(target=self._run_download,
@@ -1375,8 +1382,8 @@ class ScanScreen(BoxLayout):
             return
         self._downloading = True
         self.dl_button.disabled = True
-        self._set_status(f"Downloading ~{count} tiles (~{mb:g} MB) around "
-                         f"{source}…")
+        self._set_status(tr("Downloading ~{count} tiles (~{mb} MB) around {source}…").format(
+            count=count, mb=f"{mb:g}", source=source))
         dest = os.path.join(MAPS_DIR, "offline.mbtiles")
         os.makedirs(MAPS_DIR, exist_ok=True)
         threading.Thread(target=self._run_download, args=(lat, lon, dest),
@@ -1387,7 +1394,8 @@ class ScanScreen(BoxLayout):
             if "cancelled" in s:
                 return
             Clock.schedule_once(lambda dt: self._set_status(
-                f"Downloading… {s['done']}/{s['total']} tiles"), 0)
+                tr("Downloading… {done}/{total} tiles").format(
+                    done=s['done'], total=s['total'])), 0)
         if self._radius_km == WORLD:
             summary = download_world(dest, on_progress=progress)
         else:
@@ -1404,7 +1412,7 @@ class ScanScreen(BoxLayout):
                     if "detail_of" in s:
                         Clock.schedule_once(
                             lambda dt, n=s["detail_of"]: self._set_status(
-                                f"Caching street detail around {n}…"), 0)
+                                tr("Caching street detail around {name}…").format(name=n)), 0)
                 detail = download_node_details(
                     [(p.lat, p.lon, p.label or "a node") for p in located],
                     dest, on_progress=dprog)
@@ -1421,17 +1429,17 @@ class ScanScreen(BoxLayout):
         self._refresh_header()
         got, failed = summary["fetched"] + summary["skipped"], summary["failed"]
         if summary.get("blocked"):
-            self._set_status("The tile server started refusing us (bulk "
-                             "protection). Stopped cleanly - try again later "
-                             "or with a smaller radius.", "alert")
+            self._set_status(tr("The tile server started refusing us (bulk "
+                                "protection). Stopped cleanly - try again later "
+                                "or with a smaller radius."), "alert")
             return
         if got and self._tiles is not None:
-            msg = f"Offline map ready — {got} tiles cached."
+            msg = tr("Offline map ready — {got} tiles cached.").format(got=got)
             if failed:
-                msg += f" ({failed} unavailable)"
+                msg += " " + tr("({failed} unavailable)").format(failed=failed)
             self._set_status(msg, "ok")
             self.center_input.height = 0            # centre solved; tidy away
             self.center_input.opacity = 0
         else:
-            self._set_status("Download failed — no tiles cached. Check the "
-                             "connection and try again.", "alert")
+            self._set_status(tr("Download failed — no tiles cached. Check the "
+                                "connection and try again."), "alert")

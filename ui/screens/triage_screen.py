@@ -19,6 +19,7 @@ from kivy.metrics import dp
 
 from ui.widgets.bullseye import BullseyeWidget
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — Triage guidance/readout labels/buttons
 from monitor.triage import TriageSession, thermal_color
 
 
@@ -65,7 +66,7 @@ class TriageScreen(FloatLayout):
             self.add_widget(lbl)
 
         self._guidance = Label(
-            text="Move the antenna slowly to begin", bold=True,
+            text=tr("Move the antenna slowly to begin"), bold=True,
             halign="center", valign="middle",
             size_hint=(0.92, None), height=dp(40),
             pos_hint={"center_x": 0.5, "center_y": 0.145},
@@ -96,7 +97,7 @@ class TriageScreen(FloatLayout):
         # point (map pin + navigation). The signal baseline is captured
         # automatically as the goal above — no manual save needed.
         self._button = Button(
-            text="Save GPS coordinates", font_size="15sp",
+            text=tr("Save GPS coordinates"), font_size="15sp",
             size_hint=(0.6, None), height=dp(56),
             pos_hint={"center_x": 0.5, "y": 0.03},
             background_normal="", background_down="",
@@ -110,8 +111,9 @@ class TriageScreen(FloatLayout):
         # (static) reading. Cleared the instant any real sample resumes.
         from kivy.graphics import Color as _C, Line as _Ln, RoundedRectangle as _RR
         self._nr_overlay = Label(
-            text="NOT READING\n"
-                 "[size=13sp][color=e8c9c9]No signal from the antenna[/color][/size]",
+            text=tr("NOT READING") + "\n"
+                 "[size=13sp][color=e8c9c9]"
+                 + tr("No signal from the antenna") + "[/color][/size]",
             markup=True, halign="center", valign="middle", bold=True,
             font_size="27sp", size_hint=(None, None), opacity=0,
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -152,20 +154,20 @@ class TriageScreen(FloatLayout):
         card.bind(size=lambda *a: setattr(self._card_bg, "size", card.size),
                   pos=lambda *a: setattr(self._card_bg, "pos", card.pos))
         msg = Label(
-            text="To aim an antenna, Triage needs a distant beacon.\n\n"
-                 "Connect (or build) an RTNode-2400 and leave it powered on at "
-                 "a distance - it becomes the signal you tune against.",
+            text=tr("To aim an antenna, Triage needs a distant beacon.\n\n"
+                    "Connect (or build) an RTNode-2400 and leave it powered on at "
+                    "a distance - it becomes the signal you tune against."),
             halign="center", valign="middle", font_size="16sp",
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         card.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(52), spacing=dp(12))
-        cancel = Button(text="Cancel", font_size="15sp", background_normal="",
+        cancel = Button(text=tr("Cancel"), font_size="15sp", background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["background"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         cancel.bind(on_release=lambda *a: self._on_home and self._on_home())
-        cont = Button(text="Continue - build one", font_size="15sp",
+        cont = Button(text=tr("Continue - build one"), font_size="15sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -216,10 +218,10 @@ class TriageScreen(FloatLayout):
 
     def _beacon_silent_check(self, dt) -> None:
         if self._beacon_on and not self._beacon_answered:
-            who = self._beacon_names or "your beacon node"
+            who = self._beacon_names or tr("your beacon node")
             self._guidance.markup = False
-            self._guidance.text = (f"{who} isn't answering - is it powered on "
-                                   "and within range?")
+            self._guidance.text = tr("{who} isn't answering - is it powered on "
+                                     "and within range?").format(who=who)
 
     def stop_lighthouse(self, *a) -> None:
         """Stop the beacon — called automatically whenever Triage is left."""
@@ -269,9 +271,9 @@ class TriageScreen(FloatLayout):
         self._nr_overlay.opacity = 1.0 if on else 0.0
         if on:
             self._sync_not_reading()
-            self._write_guidance(
+            self._write_guidance(tr(
                 "Not reading any signal - check the antenna and cable, and that a "
-                "beacon node is powered on and transmitting.")
+                "beacon node is powered on and transmitting."))
 
     def _write_guidance(self, text, markup=False) -> None:
         """Set the guidance line UNLESS a message is pinned (e.g. the just-saved
@@ -305,11 +307,11 @@ class TriageScreen(FloatLayout):
         self._set_not_reading(False)      # a real sample (full or partial) resumed
         if sample.get("partial"):
             # live noise, but nothing heard yet — scoring needs a transmission
-            self._noise.text = ("[color=9e9e9e]Background noise[/color]\n"
+            self._noise.text = ("[color=9e9e9e]" + tr("Background noise") + "[/color]\n"
                                 f"[color=f0f0f0][b]{sample['noise']:.0f} dBm[/b][/color]")
-            self._write_guidance(
+            self._write_guidance(tr(
                 "Listening... noise floor is live. To begin scoring, another "
-                "node must transmit - send an announce from your phone or a node.")
+                "node must transmit - send an announce from your phone or a node."))
             return
         self._beacon_answered = True      # a real packet arrived (beacon works)
         snap = self._session.feed(sample["snr"], sample["rssi"], sample["noise"],
@@ -326,7 +328,7 @@ class TriageScreen(FloatLayout):
         # brighter as you approach the goal; the label appears near the top
         self._glow_color.a = proximity          # 0 (off) .. 1 (right on it)
         self._goal_flash.opacity = max(0.0, (proximity - 0.5) * 2.0)
-        self._goal_flash.text = "MOUNT HERE" if proximity > 0.85 else "getting hot..."
+        self._goal_flash.text = tr("MOUNT HERE") if proximity > 0.85 else tr("getting hot...")
 
     def _refresh(self, sample: dict, snap: dict) -> None:
         sec, pri = _hex("text_secondary"), _hex("text_primary")
@@ -337,17 +339,20 @@ class TriageScreen(FloatLayout):
 
         # Plain-English first, technical term in brackets (guided mode).
         margin = sample["rssi"] - sample["noise"]
-        self._rssi.text = cell("Signal strength (RSSI)", f"{sample['rssi']:.0f} dBm")
-        self._snr.text = cell("Clarity (SNR)", f"{sample['snr']:+.1f} dB")
-        self._noise.text = cell("Background noise", f"{sample['noise']:.0f} dBm")
-        self._margin.text = cell("Headroom (margin)", f"{margin:.0f} dB spare")
-        self._peers.text = cell("Peers", f"{sample.get('peers', 0)} heard")
+        self._rssi.text = cell(tr("Signal strength (RSSI)"), f"{sample['rssi']:.0f} dBm")
+        self._snr.text = cell(tr("Clarity (SNR)"), f"{sample['snr']:+.1f} dB")
+        self._noise.text = cell(tr("Background noise"), f"{sample['noise']:.0f} dBm")
+        self._margin.text = cell(tr("Headroom (margin)"),
+                                 tr("{margin} dB spare").format(margin=f"{margin:.0f}"))
+        self._peers.text = cell(tr("Peers"),
+                                tr("{n} heard").format(n=sample.get('peers', 0)))
 
         if sample["rssi"] >= -35:
             self._write_guidance(
-                "Signal is TOO CLOSE to aim against "
-                f"({sample['rssi']:.0f} dBm). Move the beacon/lighthouse further "
-                "away - readings this hot look perfect in every direction.")
+                tr("Signal is TOO CLOSE to aim against "
+                   "({rssi} dBm). Move the beacon/lighthouse further "
+                   "away - readings this hot look perfect in every direction.").format(
+                       rssi=f"{sample['rssi']:.0f}"))
             return
         r, g, b = thermal_color(snap["score"])
         col = "%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
@@ -364,13 +369,13 @@ class TriageScreen(FloatLayout):
             fix = None
         if fix is not None:
             best = self._session.best_reading
-            extra = (f", best clarity {best['snr']:+.1f} dB"
+            extra = (tr(", best clarity {snr} dB").format(snr=f"{best['snr']:+.1f}")
                      if best else "")
-            msg = (f"Location saved: {fix.lat:.5f}, {fix.lon:.5f}"
-                   f"{extra}. This node is now on the map.")
+            msg = tr("Location saved: {lat}, {lon}{extra}. This node is now on the map."
+                     ).format(lat=f"{fix.lat:.5f}", lon=f"{fix.lon:.5f}", extra=extra)
         else:
-            msg = ("No GPS fix yet - connect the GPS antenna and give it a clear "
-                   "view of the sky to save this node's location.")
+            msg = tr("No GPS fix yet - connect the GPS antenna and give it a clear "
+                     "view of the sky to save this node's location.")
         self._guidance.markup = False
         self._guidance.text = msg
         self._pin_guidance(10.0)

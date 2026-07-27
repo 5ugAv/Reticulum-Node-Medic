@@ -17,6 +17,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — power slider hint + flash-warning title
 from ui.home_zones import zone_at
 
 POSTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -54,7 +55,7 @@ class HomeScreen(FloatLayout):
         from ui.widgets.slide_to_power import SlideToPowerOff
         knob = dp(52)
         self.power_slider = SlideToPowerOff(
-            on_power_off=self._power_off, hint_text="OFF",
+            on_power_off=self._power_off, hint_text=tr("OFF"),
             size_hint=(None, None), size=(knob * 3, knob),
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
@@ -90,7 +91,7 @@ class HomeScreen(FloatLayout):
             if app is not None and app.flash_in_progress():
                 from ui.confirm import confirm_power_override, FLASH_POWEROFF_WARNING
                 confirm_power_override(FLASH_POWEROFF_WARNING,
-                                       "Flashing in progress", do_off)
+                                       tr("Flashing in progress"), do_off)
                 return
         except Exception:
             pass

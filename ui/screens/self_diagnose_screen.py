@@ -20,6 +20,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — Self Diagnose labels/buttons
 from monitor import self_diagnose_runtime as rt
 from monitor.self_diagnose import summarize, SEV_OK, SEV_WARN, SEV_CRIT
 
@@ -48,13 +49,13 @@ class SelfDiagnoseScreen(BoxLayout):
         self._repair = repair or rt.run_repair
         self._busy = False
 
-        self.add_widget(_line("Self Diagnose — this medic's radio & GPS", bold=True,
+        self.add_widget(_line(tr("Self Diagnose — this medic's radio & GPS"), bold=True,
                               size="19sp", h=32))
-        self.add_widget(_line("Checks the medic's own onboard board (Jonesey) and "
-                              "fixes what it safely can.", color="text_secondary",
+        self.add_widget(_line(tr("Checks the medic's own onboard board (Jonesey) and "
+                                 "fixes what it safely can."), color="text_secondary",
                               size="12.5sp", h=36))
 
-        self.run_btn = Button(text="Run self-diagnose", size_hint_y=None, height=dp(52),
+        self.run_btn = Button(text=tr("Run self-diagnose"), size_hint_y=None, height=dp(52),
                               bold=True, font_size="18sp", background_normal="",
                               background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                               color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -77,7 +78,7 @@ class SelfDiagnoseScreen(BoxLayout):
             return
         self._busy = True
         self.run_btn.disabled = True
-        self.run_btn.text = "Checking…"
+        self.run_btn.text = tr("Checking…")
         self.list.clear_widgets()
         self.summary.text = ""
 
@@ -94,18 +95,20 @@ class SelfDiagnoseScreen(BoxLayout):
     def _show(self, findings, err):
         self._busy = False
         self.run_btn.disabled = False
-        self.run_btn.text = "Run again"
+        self.run_btn.text = tr("Run again")
         if findings is None:
-            self.summary.text = f"Couldn't run the checks: {err}"
+            self.summary.text = tr("Couldn't run the checks: {err}").format(err=err)
             self.summary.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         s = summarize(findings)
         if s["healthy"]:
-            self.summary.text = ":)  Radio & GPS healthy"
+            self.summary.text = tr(":)  Radio & GPS healthy")
             self.summary.color = theme.hex_to_rgba(theme.COLORS["green"])
         else:
-            self.summary.text = (f"{s['critical']} critical, {s['warning']} warning"
-                                 + ("  ·  tap Fix below" if s["fixes"] else ""))
+            self.summary.text = (
+                tr("{crit} critical, {warn} warning").format(
+                    crit=s["critical"], warn=s["warning"])
+                + (tr("  ·  tap Fix below") if s["fixes"] else ""))
             self.summary.color = theme.hex_to_rgba(
                 theme.COLORS["red" if s["critical"] else "amber"])
         for f in findings:
@@ -121,7 +124,7 @@ class SelfDiagnoseScreen(BoxLayout):
         if f.fix and not f.ok:
             kind = rt.repair_kind(f.fix)
             if kind == "auto":
-                btn = Button(text="Fix it", size_hint=(None, None), size=(dp(110), dp(40)),
+                btn = Button(text=tr("Fix it"), size_hint=(None, None), size=(dp(110), dp(40)),
                              bold=True, background_normal="",
                              background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -137,7 +140,7 @@ class SelfDiagnoseScreen(BoxLayout):
             return
         self._busy = True
         button.disabled = True
-        button.text = "Fixing…"
+        button.text = tr("Fixing…")
 
         def work():
             ok, msg = self._repair(key)
@@ -146,7 +149,7 @@ class SelfDiagnoseScreen(BoxLayout):
 
     def _fix_done(self, button, ok, msg):
         self._busy = False
-        button.text = "Fixed — re-checking" if ok else "Failed"
+        button.text = tr("Fixed — re-checking") if ok else tr("Failed")
         button.background_color = theme.hex_to_rgba(
             theme.COLORS["green" if ok else "red"])
         if ok:

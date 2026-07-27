@@ -24,6 +24,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — Comms labels/buttons
 from ui.qr import qr_matrix
 from ui.screens.birth_screen import QRCodeWidget
 
@@ -46,10 +47,10 @@ class CommsScreen(BoxLayout):
         self._cache_dir = cache_dir or APPS_CACHE_DIR
         self._server = None
 
-        self.add_widget(_line("Communication apps", bold=True, size="24sp", h=42))
-        self.add_widget(_line(
+        self.add_widget(_line(tr("Communication apps"), bold=True, size="24sp", h=42))
+        self.add_widget(_line(tr(
             "Node Medic hands a Reticulum messaging app to your phone — the medic is "
-            "the mesh's post office, your phone is the messenger.",
+            "the mesh's post office, your phone is the messenger."),
             size="13.5sp", color="text_secondary", h=44))
         self.status = _line("", size="13sp", color="accent", h=40)
         self.add_widget(self.status)
@@ -63,7 +64,7 @@ class CommsScreen(BoxLayout):
     def enter(self):
         """Called when the screen is shown — fetch carried apps + propagation state
         off-thread, then render."""
-        self.status.text = "Checking what's carried…"
+        self.status.text = tr("Checking what's carried…")
         self.list.clear_widgets()
 
         def work():
@@ -82,10 +83,10 @@ class CommsScreen(BoxLayout):
 
     def _render(self, apps, store_on):
         self.status.text = (
-            "Store-and-forward is ON — the medic holds messages for phones that are "
-            "offline." if store_on else
-            "Note: message store-and-forward is OFF. Switch to Home ▸ full "
-            "propagation node so the medic can hold messages for offline phones.")
+            tr("Store-and-forward is ON — the medic holds messages for phones that are "
+               "offline.") if store_on else
+            tr("Note: message store-and-forward is OFF. Switch to Home ▸ full "
+               "propagation node so the medic can hold messages for offline phones."))
         self.status.color = theme.hex_to_rgba(
             theme.COLORS["green" if store_on else "warning_yellow"])
         self.list.clear_widgets()
@@ -108,19 +109,19 @@ class CommsScreen(BoxLayout):
             head += f"   {app['version']}"
         card.add_widget(_line(head, bold=True, size="19sp", h=28))
         card.add_widget(_line(app["blurb"], size="13.5sp", color="text_secondary", h=44))
-        card.add_widget(_line(f"Licence: {app['license']}", size="11.5sp",
-                              color="text_secondary", h=20))
+        card.add_widget(_line(tr("Licence: {lic}").format(lic=app['license']),
+                              size="11.5sp", color="text_secondary", h=20))
 
         if app.get("carried"):
-            btn = Button(text="Send to my phone", size_hint_y=None, height=dp(50),
+            btn = Button(text=tr("Send to my phone"), size_hint_y=None, height=dp(50),
                          bold=True, font_size="16sp", background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
             btn.bind(on_release=lambda *_: self._send(app, card))
             card.add_widget(btn)
         else:
-            card.add_widget(_line("Not carried yet — refresh it while the medic is "
-                                  "online (Settings ▸ Storage).", size="12.5sp",
+            card.add_widget(_line(tr("Not carried yet — refresh it while the medic is "
+                                     "online (Settings ▸ Storage)."), size="12.5sp",
                                   color="warning_yellow", h=34))
         return card
 
@@ -141,12 +142,12 @@ class CommsScreen(BoxLayout):
         panel = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         panel.bind(minimum_height=panel.setter("height"))
         if not url:
-            panel.add_widget(_line(
+            panel.add_widget(_line(tr(
                 "Get the medic and the phone on the SAME Wi-Fi first (or the medic's "
-                "hotspot), then try again.", size="13sp", color="warning_yellow", h=44))
+                "hotspot), then try again."), size="13sp", color="warning_yellow", h=44))
         else:
-            panel.add_widget(_line("On your phone: join the medic's Wi-Fi, scan this, "
-                                   "then allow install from unknown sources.",
+            panel.add_widget(_line(tr("On your phone: join the medic's Wi-Fi, scan this, "
+                                      "then allow install from unknown sources."),
                                    size="12.5sp", color="text_secondary", h=40))
             matrix = qr_matrix(url)
             if matrix:

@@ -159,3 +159,74 @@ def test_es_catalog_is_valid_and_all_string_values():
     assert catalog                                   # non-empty
     assert all(isinstance(k, str) and isinstance(v, str)
                for k, v in catalog.items())
+
+
+# -- broad coverage: EVERY tr(...) literal across ui/ is in es.json ----------
+# AST-based so it needs no Kivy and auto-covers new wraps as they land: it walks
+# the whole ui/ tree, collects every tr("literal")/_("literal") call, and asserts
+# the Spanish catalog has a key for each. This is the guard that keeps coverage
+# honest as more strings are wrapped (superseding the hand-listed slice above).
+
+import ast
+
+
+def _repo_root():
+    return os.path.dirname(os.path.dirname(i18n._I18N_DIR))
+
+
+def _wrapped_literals_in_tree(subdir):
+    """Every constant string passed to tr()/_() anywhere under repo/<subdir>."""
+    root = os.path.join(_repo_root(), subdir)
+    found = set()
+    for base, _dirs, files in os.walk(root):
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            path = os.path.join(base, fn)
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), path)
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in ("tr", "_") and node.args
+                        and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)
+                        and node.args[0].value):
+                    found.add(node.args[0].value)
+    return found
+
+
+def test_every_wrapped_string_in_ui_has_es_translation():
+    catalog = _load_shipped_catalog("es")
+    wrapped = _wrapped_literals_in_tree("ui")
+    missing = sorted(s for s in wrapped if s not in catalog)
+    assert not missing, f"es.json missing {len(missing)} wrapped strings: {missing[:8]}"
+
+
+# -- parity: es / fr / de must ship the SAME key set -------------------------
+
+def test_all_catalogs_are_valid_json_string_maps():
+    for code in ("es", "fr", "de"):
+        catalog = _load_shipped_catalog(code)
+        assert catalog, f"{code}.json is empty"
+        assert all(isinstance(k, str) and isinstance(v, str)
+                   for k, v in catalog.items()), f"{code}.json has non-string entries"
+
+
+def test_es_fr_de_have_identical_key_sets():
+    es = set(_load_shipped_catalog("es"))
+    fr = set(_load_shipped_catalog("fr"))
+    de = set(_load_shipped_catalog("de"))
+    assert es == fr, (f"fr.json out of parity: missing {sorted(es - fr)[:8]}, "
+                      f"extra {sorted(fr - es)[:8]}")
+    assert es == de, (f"de.json out of parity: missing {sorted(es - de)[:8]}, "
+                      f"extra {sorted(de - es)[:8]}")
+
+
+def test_proper_nouns_are_not_translated_away():
+    # Spot-check: a few DO_NOT_TRANSLATE proper nouns must survive verbatim in the
+    # Spanish values where they appear in the key.
+    catalog = _load_shipped_catalog("es")
+    for key, value in catalog.items():
+        for noun in ("Node Medic", "Reticulum", "RNode", "LoRa"):
+            if noun in key:
+                assert noun in value, f"{noun!r} translated away in es.json[{key!r}]"

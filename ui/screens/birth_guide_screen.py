@@ -18,6 +18,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — guided-birth screen labels/buttons
 from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
@@ -79,7 +80,7 @@ class BirthGuideScreen(BoxLayout):
         step = WizardStep(
             index=0, total=1, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
             anim=anim, hint=ANTENNA_STEP.get("hint", ""),
-            warning=ANTENNA_STEP["warning"], next_text="Antenna on  →",
+            warning=ANTENNA_STEP["warning"], next_text=tr("Antenna on  →"),
             on_next=self._render_detect,
             on_back=lambda: self._on_navigate and self._on_navigate("home"))
         self.add_widget(step)
@@ -106,12 +107,12 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._render_antenna   # back -> the antenna landing
         anim = ConnectBoardAnim()
         step = WizardStep(
-            index=0, total=1, title="Connect your node",
-            body="Plug the node into Node Medic with a USB data cable. I'll detect "
-                 "it and decide whether to build it or adopt it as kin.",
+            index=0, total=1, title=tr("Connect your node"),
+            body=tr("Plug the node into Node Medic with a USB data cable. I'll detect "
+                    "it and decide whether to build it or adopt it as kin."),
             anim=anim,
-            hint="Use a DATA USB cable — a charge-only cable won't be seen.",
-            next_text="Choose manually  →", on_next=self._render_intro,
+            hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
+            next_text=tr("Choose manually  →"), on_next=self._render_intro,
             on_back=self._render_antenna)
         self.add_widget(step)
         self._current = step
@@ -138,9 +139,9 @@ class BirthGuideScreen(BoxLayout):
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(18))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        wrap.add_widget(_line("Reading the board…", "24sp", bold=True, h=40))
-        wrap.add_widget(_line("Checking whether it's already one of ours "
-                              "(this resets the board briefly).",
+        wrap.add_widget(_line(tr("Reading the board…"), "24sp", bold=True, h=40))
+        wrap.add_widget(_line(tr("Checking whether it's already one of ours "
+                                 "(this resets the board briefly)."),
                               "16sp", color="text_secondary", h=60))
         wrap.add_widget(Widget())
         self.add_widget(wrap)
@@ -177,25 +178,26 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         from ui.adopt_live import known_name
-        name = c.get("node_name") or known_name(c.get("identity_hash")) or "This node"
+        name = c.get("node_name") or known_name(c.get("identity_hash")) or tr("This node")
         self._back_action = self._render_detect   # already-kin info -> re-detect
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        wrap.add_widget(_line("Already kin", "28sp", bold=True, h=44, color="green"))
-        wrap.add_widget(_line(f"{name} is already one of your kin — it's enrolled "
-                              "and reporting to VITALS. Nothing to do.", "16sp",
-                              color="text_secondary", h=80))
-        wrap.add_widget(_line(f"Identity  {(c.get('identity_hash') or '')[:16]}…",
+        wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True, h=44, color="green"))
+        wrap.add_widget(_line(tr("{name} is already one of your kin — it's enrolled "
+                                 "and reporting to VITALS. Nothing to do.").format(name=name),
+                              "16sp", color="text_secondary", h=80))
+        wrap.add_widget(_line(tr("Identity")
+                              + f"  {(c.get('identity_hash') or '')[:16]}…",
                               "12.5sp", color="text_secondary", h=22))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
                         spacing=dp(12))
-        vit = Button(text="See in VITALS", bold=True, font_size="16sp",
+        vit = Button(text=tr("See in VITALS"), bold=True, font_size="16sp",
                      background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                      color=theme.hex_to_rgba(theme.COLORS["background"]))
         vit.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("vitals"))
-        done = Button(text="Done", bold=True, font_size="16sp", background_normal="",
+        done = Button(text=tr("Done"), bold=True, font_size="16sp", background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         done.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("home"))
@@ -213,9 +215,9 @@ class BirthGuideScreen(BoxLayout):
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_detect   # adopt confirm -> re-detect
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
-        wrap.add_widget(_line("Existing node found", "24sp", bold=True, h=36))
-        wrap.add_widget(_line("This node is already running our config — adopt it "
-                              "as kin (no flashing, keeps its settings).",
+        wrap.add_widget(_line(tr("Existing node found"), "24sp", bold=True, h=36))
+        wrap.add_widget(_line(tr("This node is already running our config — adopt it "
+                                 "as kin (no flashing, keeps its settings)."),
                               "15sp", color="text_secondary", h=48))
         # Adoption INHERITS the node's own name (it doesn't reflash, so it can't
         # rename the node — 'Re-birth instead' is the deliberate rename path). Show
@@ -223,14 +225,14 @@ class BirthGuideScreen(BoxLayout):
         # only offer a field as a fallback when the name is genuinely unknown.
         from ui.adopt_live import known_name
         name0 = c.get("node_name") or known_name(c.get("identity_hash")) or ""
-        wrap.add_widget(_line("Name (kept from the node)", "13sp",
+        wrap.add_widget(_line(tr("Name (kept from the node)"), "13sp",
                               color="accent", h=20))
         if name0:
             wrap.add_widget(_line(name0, "20sp", bold=True, h=32))
             self._adopt_name = None
             self._adopt_name_value = name0
         else:
-            ti = TextInput(hint_text="Couldn't read the node's name — enter one",
+            ti = TextInput(hint_text=tr("Couldn't read the node's name — enter one"),
                            multiline=False, size_hint_y=None, height=dp(56),
                            font_size="19sp")
             bind_field(ti)
@@ -246,12 +248,12 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(Widget())
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
                         spacing=dp(12))
-        reb = Button(text="Re-birth instead", font_size="16sp", bold=True,
+        reb = Button(text=tr("Re-birth instead"), font_size="16sp", bold=True,
                      background_normal="", size_hint_x=0.42,
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         reb.bind(on_release=lambda *_: self._render_intro())
-        adopt = Button(text="Adopt as kin", font_size="19sp", bold=True,
+        adopt = Button(text=tr("Adopt as kin"), font_size="19sp", bold=True,
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -293,9 +295,9 @@ class BirthGuideScreen(BoxLayout):
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        wrap.add_widget(_line("Adopting…", "24sp", bold=True, h=40))
-        self._adopt_status = _line("Reading identity, writing certificate, "
-                                   "enrolling as kin…", "15sp",
+        wrap.add_widget(_line(tr("Adopting…"), "24sp", bold=True, h=40))
+        self._adopt_status = _line(tr("Reading identity, writing certificate, "
+                                      "enrolling as kin…"), "15sp",
                                    color="text_secondary", h=60)
         wrap.add_widget(self._adopt_status)
         wrap.add_widget(Widget())
@@ -324,11 +326,11 @@ class BirthGuideScreen(BoxLayout):
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(16))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        wrap.add_widget(_line("Adopted [OK]" if ok else "Couldn't adopt",
+        wrap.add_widget(_line(tr("Adopted [OK]") if ok else tr("Couldn't adopt"),
                               "26sp", bold=True, h=42,
                               color="green" if ok else "warning_yellow"))
         wrap.add_widget(_line(msg, "16sp", color="text_secondary", h=80))
-        done = Button(text="Done", size_hint_y=None, height=dp(58), bold=True,
+        done = Button(text=tr("Done"), size_hint_y=None, height=dp(58), bold=True,
                       font_size="18sp", background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -347,11 +349,11 @@ class BirthGuideScreen(BoxLayout):
         from ui.widgets.help_button import HelpButton
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                          spacing=dp(8))
-        head.add_widget(_line("What are you building?", "26sp", bold=True))
+        head.add_widget(_line(tr("What are you building?"), "26sp", bold=True))
         head.add_widget(HelpButton())
         wrap.add_widget(head)
-        wrap.add_widget(_line("Not sure which is which? Tap the  ?  above. Node Medic "
-                              "will guide you the rest of the way.",
+        wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above. Node Medic "
+                                 "will guide you the rest of the way."),
                               "16sp", color="text_secondary", h=56))
         for key, title, subtitle in BIRTH_PATHS:
             # the Pi card carries a longer description — give it room so it doesn't
@@ -373,10 +375,10 @@ class BirthGuideScreen(BoxLayout):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["green"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line("Adopt over the air (LoRa)", "21sp", bold=True,
+        inner.add_widget(_line(tr("Adopt over the air (LoRa)"), "21sp", bold=True,
                                color="background", h=30))
-        inner.add_widget(_line("Enrol a node you can hear on the mesh as kin - no "
-                               "cable needed. For nodes already in the field.",
+        inner.add_widget(_line(tr("Enrol a node you can hear on the mesh as kin - no "
+                                  "cable needed. For nodes already in the field."),
                                "14sp", color="background"))
         inner.size = btn.size
         btn.bind(size=lambda _b, v: setattr(inner, "size", v),
@@ -395,15 +397,15 @@ class BirthGuideScreen(BoxLayout):
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
                          spacing=dp(8))
-        head.add_widget(_line("Nodes heard on the mesh", "22sp", bold=True))
-        back = Button(text="←  Back", size_hint_x=None, width=dp(96),
+        head.add_widget(_line(tr("Nodes heard on the mesh"), "22sp", bold=True))
+        back = Button(text=tr("←  Back"), size_hint_x=None, width=dp(96),
                       font_size="14sp", background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         back.bind(on_release=lambda *_: self._render_intro())
         head.add_widget(back)
         root.add_widget(head)
-        root.add_widget(_line("Pick one to adopt as kin over LoRa (no cable).",
+        root.add_widget(_line(tr("Pick one to adopt as kin over LoRa (no cable)."),
                               "14sp", color="text_secondary", h=26))
         cands = []
         try:
@@ -414,8 +416,8 @@ class BirthGuideScreen(BoxLayout):
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
         col.bind(minimum_height=col.setter("height"))
         if not cands:
-            col.add_widget(_line("Nothing heard yet — the medic hasn't received a "
-                                 "beacon/announce. Give it a moment on the mesh.",
+            col.add_widget(_line(tr("Nothing heard yet — the medic hasn't received a "
+                                    "beacon/announce. Give it a moment on the mesh."),
                                  "14sp", color="text_secondary", h=60))
         for c in cands:
             col.add_widget(self._heard_row(c))
@@ -429,11 +431,12 @@ class BirthGuideScreen(BoxLayout):
                      background_color=theme.hex_to_rgba(
                          theme.COLORS["surface" if not is_kin else "background"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(14), dp(8)], spacing=dp(2))
-        tag = "  (already kin)" if is_kin else ""
-        inner.add_widget(_line(f"{c.get('name', '(unnamed)')}{tag}", "18sp",
+        tag = ("  " + tr("(already kin)")) if is_kin else ""
+        inner.add_widget(_line(f"{c.get('name', tr('(unnamed)'))}{tag}", "18sp",
                                bold=True, h=26))
         lsh = c.get("last_seen_hours")
-        seen = f"heard {lsh:.1f}h ago" if isinstance(lsh, (int, float)) else "heard"
+        seen = (tr("heard {h}h ago").format(h=f"{lsh:.1f}")
+                if isinstance(lsh, (int, float)) else tr("heard"))
         sig = c.get("signal_dbm")
         sigs = f" · {sig} dBm" if sig is not None else ""
         inner.add_widget(_line(f"{c.get('node_type', 'node')} · {seen}{sigs}",
@@ -452,16 +455,16 @@ class BirthGuideScreen(BoxLayout):
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_over_air_list
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
-        wrap.add_widget(_line("Adopt over LoRa", "24sp", bold=True, h=36))
-        wrap.add_widget(_line("Enrol this node as kin from its mesh beacon — no "
-                              "cable, keeps its settings.", "15sp",
+        wrap.add_widget(_line(tr("Adopt over LoRa"), "24sp", bold=True, h=36))
+        wrap.add_widget(_line(tr("Enrol this node as kin from its mesh beacon — no "
+                                 "cable, keeps its settings."), "15sp",
                               color="text_secondary", h=44))
         ti = TextInput(text=c.get("name") or "", multiline=False,
-                       hint_text="Node name", size_hint_y=None, height=dp(56),
+                       hint_text=tr("Node name"), size_hint_y=None, height=dp(56),
                        font_size="19sp")
         bind_field(ti)
         self._air_name = ti
-        wrap.add_widget(_line("Name", "13sp", color="accent", h=20))
+        wrap.add_widget(_line(tr("Name"), "13sp", color="accent", h=20))
         wrap.add_widget(ti)
         det = (f"Type:  {c.get('node_type', 'node')}      "
                f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
@@ -471,12 +474,12 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(Widget())
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
                         spacing=dp(12))
-        cancel = Button(text="Back", font_size="16sp", bold=True, size_hint_x=0.4,
+        cancel = Button(text=tr("Back"), font_size="16sp", bold=True, size_hint_x=0.4,
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         cancel.bind(on_release=lambda *_: self._render_over_air_list())
-        adopt = Button(text="Adopt as kin", font_size="19sp", bold=True,
+        adopt = Button(text=tr("Adopt as kin"), font_size="19sp", bold=True,
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -534,10 +537,10 @@ class BirthGuideScreen(BoxLayout):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line("Mitosis - clone this Node Medic", "21sp",
+        inner.add_widget(_line(tr("Mitosis - clone this Node Medic"), "21sp",
                                bold=True, color="background", h=30))
-        inner.add_widget(_line("Copy this Node Medic onto a fresh Raspberry Pi 5 - "
-                               "a second building tool.", "14sp", color="background"))
+        inner.add_widget(_line(tr("Copy this Node Medic onto a fresh Raspberry Pi 5 - "
+                                  "a second building tool."), "14sp", color="background"))
         inner.size = btn.size
         btn.bind(size=lambda _b, v: setattr(inner, "size", v),
                  pos=lambda _b, v: setattr(inner, "pos", v))
@@ -575,14 +578,14 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._render_intro    # name step -> the chooser
         total = len(guide_steps(self._path)) + 1
         ti = TextInput(text=self._node_name, multiline=False,
-                       hint_text="Name this node  (e.g. Rooftop-East)",
+                       hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                        size_hint_y=None, height=dp(58), font_size="20sp")
         bind_field(ti)
         self._name_input = ti
-        step = WizardStep(index=0, total=total, title="Name this node",
-                          body="Give this node a short, memorable name — you'll see it "
-                               "on the map and on its birth certificate.",
-                          input_widget=ti, next_text="Next  →",
+        step = WizardStep(index=0, total=total, title=tr("Name this node"),
+                          body=tr("Give this node a short, memorable name — you'll see it "
+                                  "on the map and on its birth certificate."),
+                          input_widget=ti, next_text=tr("Next  →"),
                           on_next=self._name_next, on_back=self.reset)
         self.clear_widgets()
         self.add_widget(step)

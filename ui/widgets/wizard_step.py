@@ -16,6 +16,7 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr
 
 
 class _Dots(BoxLayout):
@@ -44,7 +45,7 @@ class WizardStep(BoxLayout):
     optional widget shown in the central stage."""
 
     def __init__(self, index, total, title, body, anim=None, on_next=None,
-                 on_back=None, next_text="Next  →", back_text="←  Back",
+                 on_back=None, next_text=None, back_text=None,
                  hint="", warning="", input_widget=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
@@ -52,10 +53,16 @@ class WizardStep(BoxLayout):
         self.spacing = dp(14)
         self._on_next = on_next
         self._on_back = on_back
+        # i18n: wrapped — default nav labels + "Step X of Y" counter
+        if next_text is None:
+            next_text = tr("Next  →")
+        if back_text is None:
+            back_text = tr("←  Back")
 
         top = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(46),
                         spacing=dp(8))
-        counter = Label(text=f"Step {index + 1} of {total}", bold=True,
+        counter = Label(text=tr("Step {n} of {total}").format(n=index + 1, total=total),
+                        bold=True,
                         font_size="15sp", halign="left", valign="middle",
                         color=theme.hex_to_rgba(theme.COLORS["accent"]),
                         size_hint_y=None, height=dp(20))
