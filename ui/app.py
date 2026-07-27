@@ -541,7 +541,7 @@ class ReticulumNodeMedicApp(App):
         # Live discovery fills the dashboard; RNM_DEMO=1 seeds the fake showcase
         # nodes instead (they confused a real deployment, so default off).
         seed = DEMO_NODES if os.environ.get("RNM_DEMO") else []
-        self.vitals_screen = VitalsScreen(nodes=seed, on_open=self._open_node_cert)
+        self.vitals_screen = VitalsScreen(nodes=seed, on_open=self._open_node_detail)
         vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
         # Load the persisted registry so the node history / activity series carries
@@ -595,6 +595,8 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.notifications_screen import NotificationsScreen
         notif_scr.add_widget(self._with_back(NotificationsScreen()))
         self.sm.add_widget(notif_scr)
+
+        self.sm.add_widget(Screen(name="node_detail"))   # filled on a VITALS tap
 
         # Language — pick the UI language (applies on next app start).
         language_scr = Screen(name="language")
@@ -1060,6 +1062,75 @@ class ReticulumNodeMedicApp(App):
         self.switch_mode("birth_guide")
         from kivy.clock import Clock
         Clock.schedule_once(lambda *_: g._render_over_air_confirm(cand), 0)
+
+    def _open_node_detail(self, node):
+        """Tap a VITALS node -> its live detail (health, battery, outage-watch)
+        with Probe + Certificate. Falls back to the cert/adopt flow when we have no
+        live record for it."""
+        import time
+        ident = node.get("identity") if isinstance(node, dict) else None
+        rec = self.monitor_service.registry.nodes.get(ident) if ident else None
+        if rec is None:
+            self._open_node_cert(node)
+            return
+        watch_line = None
+        w = getattr(self, "_node_watcher", None)
+        if w is not None and w.is_watching(node):
+            rem = w.watch_remaining_hours(node) or 0.0
+            days = max(1, round(rem / 24.0))
+            watch_line = ("Unreachable — the medic is watching it. If it's still down "
+                          f"in about {days} day{'s' if days != 1 else ''}, you'll be "
+                          "told to go and check it.")
+        from ui.screens.node_detail_screen import NodeDetailScreen
+        scr = self.sm.get_screen("node_detail")
+        scr.clear_widgets()
+        scr.add_widget(self._with_back(NodeDetailScreen(
+            rec, time.time(), on_poll=self._ping_node,
+            on_navigate=self._navigate_to_node, watch_line=watch_line)))
+        self.switch_mode("node_detail")
+
+    def _ping_node(self, dst_hash, report):
+        """Live mesh reachability check: drop the cached path (cached paths lie),
+        then see if the node is currently in the path table. Off-thread; reports back
+        to the detail screen. Best-effort — verify the exact wording on the medic."""
+        import threading
+        import json
+
+        def work():
+            if not dst_hash:
+                Clock.schedule_once(lambda dt: report(
+                    "No mesh identity on record — can't probe this one.", False), 0)
+                return
+            _local_run(f"rnpath --drop {dst_hash} 2>/dev/null")
+            raw = _local_run("rnpath -t --json 2>/dev/null") or "[]"
+            reachable, hops = False, None
+            try:
+                for p in json.loads(raw):
+                    if not isinstance(p, dict):
+                        continue
+                    h = str(p.get("hash") or p.get("destination") or "")
+                    if h and (dst_hash[:16] in h or h in dst_hash):
+                        reachable, hops = True, p.get("hops")
+                        break
+            except Exception:
+                pass
+            if reachable:
+                msg = "Reachable now" + (f" — {hops} hop(s) away." if hops else ".")
+                Clock.schedule_once(lambda dt: report(msg, True), 0)
+            else:
+                Clock.schedule_once(lambda dt: report(
+                    "Not answering right now — it may be down or out of range. "
+                    "The medic keeps watching it.", False), 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _navigate_to_node(self, record):
+        """Show a node on the SCAN map at its recorded location."""
+        lat = getattr(record, "lat", None)
+        lon = getattr(record, "lon", None)
+        if lat is not None and lon is not None:
+            self.switch_mode("scan")
+            Clock.schedule_once(lambda dt: self.scan_screen.show_location(lat, lon), 0)
 
     def _open_cert(self, cert):
         from ui.screens.cert_view_screen import CertViewScreen

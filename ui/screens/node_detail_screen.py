@@ -29,7 +29,8 @@ def _line(text, color="text_primary", size="15sp", bold=False):
 
 
 class NodeDetailScreen(BoxLayout):
-    def __init__(self, record, now, on_poll=None, on_navigate=None, **kwargs):
+    def __init__(self, record, now, on_poll=None, on_navigate=None,
+                 watch_line=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -57,6 +58,20 @@ class NodeDetailScreen(BoxLayout):
             + ("never" if seen is None else f"{seen:.1f} h ago"),
             color="text_secondary"))
 
+        batt = getattr(record, "battery_pct", None)
+        self.add_widget(_line(
+            "Battery: " + (f"{batt}%" if batt is not None else "not reported"),
+            color=("text_secondary" if batt is None else
+                   "green" if batt > 50 else "amber" if batt > 20 else "red")))
+
+        if watch_line:
+            wl = Label(text=watch_line, halign="left", valign="top", font_size="13sp",
+                       size_hint_y=None,
+                       color=theme.hex_to_rgba(theme.COLORS["amber"]))
+            wl.bind(size=lambda i, v: setattr(i, "text_size", v))
+            wl.bind(texture_size=lambda i, v: setattr(i, "height", v[1]))
+            self.add_widget(wl)
+
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         col.bind(minimum_height=col.setter("height"))
@@ -73,14 +88,16 @@ class NodeDetailScreen(BoxLayout):
             col.add_widget(_line("  " + nav["google"], color="accent",
                                  size="12sp"))
 
-        if record.notes:
+        notes = getattr(record, "notes", None)
+        if notes:
             col.add_widget(_line("Field notes", bold=True, size="17sp"))
-            for note in record.notes:
+            for note in notes:
                 col.add_widget(_line("  • " + note, size="14sp"))
 
-        if record.events:
+        events = getattr(record, "events", None)
+        if events:
             col.add_widget(_line("Commissioning log", bold=True, size="17sp"))
-            for ev in record.events:
+            for ev in events:
                 stamp = datetime.fromtimestamp(ev.at).strftime("%Y-%m-%d %H:%M")
                 col.add_widget(_line(
                     f"  {stamp}  [{ev.kind}] {ev.summary} — {ev.operator}",
@@ -88,6 +105,12 @@ class NodeDetailScreen(BoxLayout):
 
         body.add_widget(col)
         self.add_widget(body)
+
+        self.ping_status = Label(text="", halign="left", valign="middle",
+                                 font_size="13sp", size_hint_y=None, height=dp(26),
+                                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        self.ping_status.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.add_widget(self.ping_status)
 
         actions = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(52), spacing=dp(8))
@@ -109,7 +132,14 @@ class NodeDetailScreen(BoxLayout):
 
     def _ping(self):
         if self._on_poll:
-            self._on_poll(self.record.dst_hash)
+            self.ping_status.text = "Probing over the mesh…"
+            self.ping_status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
+            self._on_poll(self.record.dst_hash, self._set_ping_status)
+
+    def _set_ping_status(self, text, ok=None):
+        self.ping_status.text = text
+        color = "green" if ok is True else "amber" if ok is False else "text_secondary"
+        self.ping_status.color = theme.hex_to_rgba(theme.COLORS[color])
 
     def _navigate(self):
         if self._on_navigate:
