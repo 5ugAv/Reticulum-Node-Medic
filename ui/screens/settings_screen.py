@@ -86,6 +86,10 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._brightness_section())
         body.add_widget(self._screensaver_section())
         body.add_widget(self._alerts_section())
+        body.add_widget(self._entry(tr("Notifications"),
+                                    "Get a message on your phone (Sideband/Columba) "
+                                    "when a node needs checking — add your Reticulum "
+                                    "address", "notifications"))
         body.add_widget(self._retention_section())
         body.add_widget(self._entry(tr("Reticulum & radio guide"),
                                     "What RNode / transport / propagation nodes are, "

@@ -519,6 +519,15 @@ class ReticulumNodeMedicApp(App):
         from monitor.ups import BatteryGuard
         self._battery_guard = BatteryGuard()  # low-battery safe-shutdown (UPS HAT)
         self._battery_shutting_down = False
+        from monitor.node_watch import NodeWatcher
+        self._node_watcher = NodeWatcher()    # escalate nodes down past the grace window
+        self._WATCH_FILE = os.path.expanduser("~/.reticulum-node-medic/node_watch.json")
+        try:
+            import json
+            with open(self._WATCH_FILE) as _f:
+                self._node_watcher.load_state(json.load(_f))
+        except Exception:
+            pass
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -581,6 +590,11 @@ class ReticulumNodeMedicApp(App):
             on_preview_screensaver=self._show_screensaver,
             on_home_profile_change=self._on_home_profile_change)))
         self.sm.add_widget(settings_scr)
+
+        notif_scr = Screen(name="notifications")
+        from ui.screens.notifications_screen import NotificationsScreen
+        notif_scr.add_widget(self._with_back(NotificationsScreen()))
+        self.sm.add_widget(notif_scr)
 
         # Language — pick the UI language (applies on next app start).
         language_scr = Screen(name="language")
@@ -747,8 +761,10 @@ class ReticulumNodeMedicApp(App):
                     # a restart without hammering the SD card each 30 s tick
                     if i % 10 == 0:
                         self.monitor_service.registry.save(self._REGISTRY_FILE)
+                        self._save_node_watch()
                     self._check_movement()       # auto-backpack if we're on the move
                     self._check_battery()        # UPS gauge + low-battery shutdown
+                    self._check_node_watch(dicts)  # escalate long-unreachable nodes
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
@@ -1291,6 +1307,52 @@ class ReticulumNodeMedicApp(App):
         import threading
         from provisioning.power import power_off
         threading.Thread(target=lambda: power_off(), daemon=True).start()
+
+    def _check_node_watch(self, devices):
+        """Runs on the monitor thread each cycle: escalate any node that has stayed
+        continuously unreachable past its grace window (solar recharge grace).
+        Autonomous — no user action; state persists across restarts."""
+        w = getattr(self, "_node_watcher", None)
+        if w is None or not devices:
+            return
+        try:
+            for d in w.tick(devices):
+                Clock.schedule_once(lambda dt, dv=d: self._escalate_node(dv), 0)
+        except Exception:
+            pass
+
+    def _escalate_node(self, device):
+        """A node has been down long enough to warrant a physical visit: alert on
+        the medic, and — if the operator saved a Reticulum address in Settings —
+        push it to their Sideband/Columba too (best-effort, off-thread)."""
+        from monitor.node_watch import grace_hours
+        w = getattr(self, "_node_watcher", None)
+        gh = grace_hours(device.get("powered_by"), getattr(w, "grace_override_h", None))
+        days = max(1, round(gh / 24.0))
+        name = device.get("name") or "A node"
+        loc = device.get("location") or ""
+        where = f" at {loc}" if loc and loc != "heard on the mesh" else ""
+        msg = (f"{name}{where} has been unreachable for {days} "
+               f"day{'s' if days != 1 else ''} — it likely needs a physical check.")
+        self._mode_toast(msg, ok=False)
+        import threading
+        from monitor.operator_alert import send_operator_alert
+        threading.Thread(target=lambda: send_operator_alert("Node Medic — " + msg),
+                         daemon=True).start()
+
+    def _save_node_watch(self):
+        w = getattr(self, "_node_watcher", None)
+        if w is None:
+            return
+        try:
+            import json
+            os.makedirs(os.path.dirname(self._WATCH_FILE), exist_ok=True)
+            tmp = self._WATCH_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(w.to_state(), f)
+            os.replace(tmp, self._WATCH_FILE)
+        except Exception:
+            pass
 
     def _on_home_profile_change(self, profile):
         """The Home-mode profile (propagation vs transport) changed in Settings. If
