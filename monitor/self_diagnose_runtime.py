@@ -50,6 +50,13 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_splitter(active, cpu, up, log))
     findings.append(sd.check_gps_fresh(run("cat $HOME/gps_state.json 2>/dev/null"),
                                        now_fn()))
+    # medic system health (safe reads — no board reset, no port steal)
+    findings.append(sd.check_disk_space(run("df -P / 2>/dev/null")))
+    findings.append(sd.check_service(
+        "rnsd", run("systemctl is-active rnsd 2>/dev/null").strip() == "active"))
+    findings.append(sd.check_cpu_temp(run("vcgencmd measure_temp 2>/dev/null")))
+    findings.append(sd.check_throttled(run("vcgencmd get_throttled 2>/dev/null")))
+    findings.append(sd.check_wifi(run("iw dev wlan0 link 2>/dev/null")))
     return findings
 
 
@@ -59,6 +66,12 @@ _AUTO_REPAIRS = {
     "restart_splitter": {
         "label": "Restart the radio splitter",
         "cmd": "sudo -n systemctl restart rnode-splitter 2>&1",
+        "ok": lambda out: not any(w in out.lower()
+                                  for w in ("fail", "error", "not loaded", "authentication")),
+    },
+    "restart_rnsd": {
+        "label": "Restart the Reticulum service (rnsd)",
+        "cmd": "sudo -n systemctl restart rnsd 2>&1",
         "ok": lambda out: not any(w in out.lower()
                                   for w in ("fail", "error", "not loaded", "authentication")),
     },
@@ -72,6 +85,9 @@ _GUIDANCE = {
                           "reflash the Tracker firmware then provision it "
                           "(autoinstall → homebrew → --firmware-hash). This runs at the "
                           "bench — auto-recovery is coming."),
+    "free_space": ("Storage is filling up. Safe things to clear: old journal logs "
+                   "(journalctl --vacuum-size=50M), cached firmware/images you've "
+                   "already flashed, and birth certificates you've exported."),
 }
 
 

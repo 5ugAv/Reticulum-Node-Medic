@@ -132,6 +132,91 @@ def check_gps_fresh(gps_state_text: str, now: float, max_age_s: float = 600.0) -
     return Finding("gps", SEV_OK, f"Telemetry fresh ({age:.0f}s).", data={"age_s": age})
 
 
+def check_disk_space(df_output: str, warn_pct: int = 85, crit_pct: int = 95) -> Finding:
+    """SD/root filesystem fullness from ``df -P /``. A full card fails writes and can
+    corrupt the SD; parses the Use% column of the last data line."""
+    pct = None
+    for line in (df_output or "").splitlines():
+        m = re.search(r"(\d+)%", line)
+        if m:
+            pct = int(m.group(1))
+    if pct is None:
+        return Finding("disk", SEV_OK, "Disk usage unavailable.")
+    if pct >= crit_pct:
+        return Finding("disk", SEV_CRIT,
+                       f"Storage almost full ({pct}%) — writes may fail or corrupt the "
+                       "SD card. Free space now.", fix="free_space", data={"pct": pct})
+    if pct >= warn_pct:
+        return Finding("disk", SEV_WARN,
+                       f"Storage getting full ({pct}%). Clear some space soon.",
+                       fix="free_space", data={"pct": pct})
+    return Finding("disk", SEV_OK, f"Storage OK ({pct}% used).", data={"pct": pct})
+
+
+def check_service(name: str, is_active: bool, critical: bool = True) -> Finding:
+    """A core systemd service on the medic. rnsd down = the whole mesh stack is down."""
+    if is_active:
+        return Finding(f"service_{name}", SEV_OK, f"{name} is running.")
+    sev = SEV_CRIT if critical else SEV_WARN
+    return Finding(f"service_{name}", sev, f"{name} is NOT running — restart it.",
+                   fix=f"restart_{name}")
+
+
+def check_cpu_temp(temp_output: str, warn_c: float = 75.0, crit_c: float = 82.0) -> Finding:
+    """Pi SoC temperature from ``vcgencmd measure_temp`` ('temp=48.3''C'). The Pi
+    throttles around 80-85C; sustained heat drops performance and ages the board."""
+    m = re.search(r"temp=([\d.]+)", temp_output or "")
+    if not m:
+        return Finding("cpu_temp", SEV_OK, "CPU temperature unavailable.")
+    t = float(m.group(1))
+    if t >= crit_c:
+        return Finding("cpu_temp", SEV_CRIT,
+                       f"CPU running hot ({t:.0f}C) — it will throttle. Improve airflow "
+                       "/ cooling.", data={"temp_c": t})
+    if t >= warn_c:
+        return Finding("cpu_temp", SEV_WARN, f"CPU warm ({t:.0f}C) — watch cooling.",
+                       data={"temp_c": t})
+    return Finding("cpu_temp", SEV_OK, f"CPU temperature fine ({t:.0f}C).",
+                   data={"temp_c": t})
+
+
+def check_throttled(throttled_output: str) -> Finding:
+    """``vcgencmd get_throttled`` bits. Active (now) under-voltage/throttle is a power
+    or heat problem happening NOW; the 'occurred' bits mean it happened since boot —
+    important for a battery/UPS-powered medic."""
+    m = re.search(r"0x([0-9a-fA-F]+)", throttled_output or "")
+    if not m:
+        return Finding("power", SEV_OK, "Power/throttle status unavailable.")
+    bits = int(m.group(1), 16)
+    if bits & 0x1 or bits & 0x4:                 # under-voltage now / throttled now
+        why = "under-voltage" if bits & 0x1 else "throttling"
+        return Finding("power", SEV_CRIT,
+                       f"Active {why} — the 5V supply can't keep up. Use a stronger "
+                       "supply / better cable.", data={"throttled": hex(bits)})
+    if bits & 0x10000 or bits & 0x40000:         # occurred since boot
+        return Finding("power", SEV_WARN,
+                       "Under-voltage/throttling happened earlier — keep an eye on the "
+                       "power supply.", data={"throttled": hex(bits)})
+    return Finding("power", SEV_OK, "Power stable (no under-voltage/throttle).",
+                   data={"throttled": hex(bits)})
+
+
+def check_wifi(link_output: str, warn_dbm: int = -80) -> Finding:
+    """The medic's own WiFi signal from ``iw dev wlan0 link`` ('signal: -55 dBm').
+    Weak WiFi slows updates + serving apps; NEVER critical (the medic works offline)."""
+    m = re.search(r"signal:\s*(-?\d+)", link_output or "")
+    if not m:
+        if "not connected" in (link_output or "").lower():
+            return Finding("wifi", SEV_OK, "WiFi not connected (offline is fine).")
+        return Finding("wifi", SEV_OK, "WiFi signal unavailable.")
+    dbm = int(m.group(1))
+    if dbm <= warn_dbm:
+        return Finding("wifi", SEV_WARN,
+                       f"WiFi is weak ({dbm} dBm) — updates and serving apps may be slow.",
+                       data={"rssi_dbm": dbm})
+    return Finding("wifi", SEV_OK, f"WiFi OK ({dbm} dBm).", data={"rssi_dbm": dbm})
+
+
 def summarize(findings: List[Finding]) -> dict:
     """Roll up findings for the screen: worst severity + the ordered fix list."""
     crit = [f for f in findings if f.severity == SEV_CRIT]

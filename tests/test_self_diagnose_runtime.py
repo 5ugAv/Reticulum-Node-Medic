@@ -22,9 +22,15 @@ def test_gather_all_healthy():
         "cputimes": "5 1560",                       # 5s CPU in 1560s = healthy
         "journalctl": "Started rnode-splitter",
         "gps_state.json": '{"updated": 1000}',
+        "df -P": "Cap\n/dev/root 100 40 50 40% /",  # 40% used
+        "is-active rnsd": "active",
+        "measure_temp": "temp=48.3'C",
+        "get_throttled": "throttled=0x0",
+        "wlan0 link": "\tsignal: -55 dBm",
     })
     findings = rt.gather(run=run, now_fn=lambda: 1030)
-    assert [f.severity for f in findings] == [SEV_OK, SEV_OK, SEV_OK]
+    assert all(f.severity == SEV_OK for f in findings)
+    assert len(findings) == 8                        # 3 radio/gps + 5 system health
 
 
 def test_gather_catches_the_jonesey_incident():
