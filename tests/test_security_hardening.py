@@ -178,9 +178,22 @@ def test_sudoers_does_not_grant_blanket_all():
     assert "ALL=(root)" in text
 
 
-def test_setfacl_pattern_does_not_match_arbitrary_paths():
-    """The setfacl alias must be pinned to /dev/* — not any path (that would let
-    the app grant ACLs on, say, /etc)."""
+def test_setfacl_is_pinned_to_serial_ports_not_block_devices():
+    """setfacl must reach SERIAL ports only. A wildcard like /dev/* also matches
+    block devices and /dev/mem, letting the app grant itself rw on the medic's own
+    root disk — a full-root escalation. It must be denied for those, allowed for
+    the serial forms the code actually uses (ttyACM/USB and /dev/serial by-id)."""
     cmnds = _parse_sudoers_cmnds(SUDOERS)
-    assert not _covered(
-        ["/usr/bin/setfacl", "-m", "u:nodemedic:rw", "/etc/shadow"], cmnds)
+
+    def setfacl(path):
+        return ["/usr/bin/setfacl", "-m", "u:nodemedic:rw", path]
+
+    # MUST be allowed — the legitimate serial-port targets.
+    for ok in ("/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyAMA10",
+               "/dev/serial/by-id/usb-Espressif_USB_JTAG-if00"):
+        assert _covered(setfacl(ok), cmnds), f"serial port wrongly denied: {ok}"
+
+    # MUST be denied — block devices, memory, and arbitrary paths (escalation).
+    for bad in ("/dev/mmcblk0", "/dev/sda", "/dev/vda", "/dev/nvme0n1",
+                "/dev/mem", "/dev/kmem", "/etc/shadow", "/dev/loop0"):
+        assert not _covered(setfacl(bad), cmnds), f"escalation path allowed: {bad}"

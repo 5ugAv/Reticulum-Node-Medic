@@ -137,10 +137,17 @@ Cmnd_Alias NM_GPS = \
 # diagnostics/reticulum_software.py -> sudo -n ss -tlnp  (read-only port check)
 #                                      sudo setfacl -m u:<user>:rw <serial port>
 #                                      sudo usermod -aG dialout <user>
+# setfacl is pinned to SERIAL ports only. The old `/dev/*` also matched block
+# devices and /dev/mem — letting a compromised app grant itself rw on the medic's
+# own root disk (a full-root escalation, verified in the sandbox). Serial ports
+# take two forms the code uses: /dev/tty{ACM,USB,AMA,S}* and the stable
+# /dev/serial/by-id|by-path symlinks (which setfacl follows to their tty target,
+# and that dir is udev/root-owned so it can't be pointed at a block device).
 Cmnd_Alias NM_DIAG = \
     /usr/bin/dmesg --level=*, \
     /usr/bin/ss -tlnp, \
-    /usr/bin/setfacl -m u\:*\:rw /dev/*, \
+    /usr/bin/setfacl -m u\:*\:rw /dev/tty*, \
+    /usr/bin/setfacl -m u\:*\:rw /dev/serial/*, \
     /usr/sbin/usermod -aG dialout *
 
 # ---------------------------------------------------------------------------
