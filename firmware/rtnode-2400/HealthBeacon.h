@@ -134,6 +134,13 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
         // is already on the air; ~0.5 s of LED time after it is harmless.
         health_ack_blink();
     }
+    else if (data.size() >= 1 && data[0] == HB_OPCODE_IDENTIFY) {
+        // Identify: replay the birth cry so the operator can spot this exact
+        // board on the bench / in the field. Blocking ~4 s — acceptable, it is
+        // an operator-invoked rarity.
+        Serial.println("[HealthBeacon] identify request (0x02) -> birth cry");
+        birth_cry();
+    }
     // Unknown/empty opcode: no-op (deliberately not a fault).
 }
 

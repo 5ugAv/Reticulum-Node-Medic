@@ -36,6 +36,9 @@
 // Matches reticulum-tool monitor/health_poll.OPCODE_FULL_HEALTH. Unknown
 // opcodes are ignored by the firmware so the registry can grow independently.
 #define HB_OPCODE_FULL_HEALTH        0x01
+// Identify: replay the birth-cry LED choreography so an operator can pick this
+// physical node out of a pile ("which board is Rooftop-East?"). No reply.
+#define HB_OPCODE_IDENTIFY           0x02
 
 // Flag bit positions — MUST match reticulum-tool monitor/health_beacon.py.
 enum {
