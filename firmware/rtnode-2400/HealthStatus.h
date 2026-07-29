@@ -48,6 +48,15 @@
 // not depend on include ordering.
 extern bool radio_online;
 
+// Battery globals maintained by the firmware's PMU path (Config.h declares,
+// Power.h's measure_battery() updates them from loop()); extern-declared for
+// the same include-ordering reason. battery_state: 0x00 unknown,
+// 0x01 discharging, 0x02 charging, 0x03 charged (Config.h BATTERY_STATE_*).
+extern bool    battery_installed;
+extern float   battery_voltage;
+extern float   battery_percent;
+extern uint8_t battery_state;
+
 // Runtime status of the local (LAN) TCP server. Defined in the main sketch,
 // where local_tcp_interface_ptr and the TcpInterface type are in scope.
 extern bool health_local_server_up();
@@ -225,12 +234,32 @@ inline void collect_health(HealthSnapshot& h) {
 
     h.node_name = firewall_state.node_name;
 
-    // Power (v2 beacon). Battery is board-gated: reports "not reported" until a
-    // verified VBAT pin is enabled (see health_read_battery_mv()).
-    h.battery_mv  = health_read_battery_mv();
-    h.battery_pct = health_battery_percent(h.battery_mv);
-    h.on_battery  = (h.battery_mv != HB_BATTERY_MV_UNKNOWN);
-    h.charging    = false;   // no charge-status pin wired yet (bench follow-up)
+    // Power (v2 beacon). PRIMARY source: the firmware's own PMU path (Power.h)
+    // — loop() -> update_pmu() -> measure_battery() maintains these globals
+    // with the vendor-verified per-board pins (Heltec V4: pin_vbat=1,
+    // pin_ctrl=37) and charge-state detection. No guessed pins, no second ADC
+    // path. battery_installed goes true on the first valid sample, so a board
+    // with no battery honestly reports "not reported".
+    if (battery_installed && battery_voltage > 0.1f) {
+        float mv = battery_voltage * 1000.0f;
+        h.battery_mv  = (mv > 65535.0f) ? 65535 : (uint16_t)mv;
+        float pct = battery_percent;
+        if (pct < 0.0f) pct = 0.0f;
+        if (pct > 100.0f) pct = 100.0f;
+        h.battery_pct = (uint8_t)(pct + 0.5f);
+        h.on_battery  = true;
+        // CHARGING and CHARGED both mean "on external power, not running
+        // down" — either way a low battery must not raise a battery alert.
+        h.charging    = (battery_state == 0x02 /*CHARGING*/
+                         || battery_state == 0x03 /*CHARGED*/);
+    } else {
+        // FALLBACK for boards without a PMU path: the explicit board-gated
+        // ADC read (inert until RTNODE_VBAT_ADC_PIN is bench-verified).
+        h.battery_mv  = health_read_battery_mv();
+        h.battery_pct = health_battery_percent(h.battery_mv);
+        h.on_battery  = (h.battery_mv != HB_BATTERY_MV_UNKNOWN);
+        h.charging    = false;
+    }
 #ifdef RTNODE_POWER_SOLAR
     h.on_solar = true;  h.on_mains = false;   // build flag: solar-powered node
 #else

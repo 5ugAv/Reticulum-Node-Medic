@@ -43,18 +43,30 @@ lockstep release. Golden vectors are asserted byte-for-byte on both sides:
 `tests/test_firmware_beacon_contract.py` compiles `HealthBeaconPack.h` with g++
 and checks its output equals `monitor/health_beacon.encode(...)`.
 
-## VBAT is board-gated — never guessed
+## Battery: the firmware's own PMU path — never a guessed pin
 
-Battery sensing is OFF until `RTNODE_VBAT_ADC_PIN` (and divider) are **defined
-per board after bench verification**. Until then the beacon packs the
-"not reported" sentinels — honest, never a guessed pin. See the header comment in
-`HealthStatus.h` for the Heltec reference pins to confirm before enabling.
+`collect_health` reads the **firmware's existing battery globals**
+(`battery_installed` / `battery_voltage` / `battery_percent` /
+`battery_state`), which `Power.h`'s `measure_battery()` maintains from `loop()`
+with vendor-verified per-board pins (Heltec V4 & V3: `pin_vbat=1`,
+`pin_ctrl=37`) and charge-state detection. A board with no battery attached
+honestly packs the "not reported" sentinels. `battery_state`
+CHARGING/CHARGED both map to the beacon's `charging` flag (on external power —
+a low battery then never raises a battery alert).
 
-## Bench checklist to activate battery on an RTNode-2400
+Fallback only: boards whose `Power.h` has no PMU section can use the explicit
+board-gated ADC read — inert until `RTNODE_VBAT_ADC_PIN` /
+`RTNODE_VBAT_CTRL_PIN` / `RTNODE_VBAT_DIVIDER` are **defined after bench
+verification**. Never guess the pin.
 
-1. Confirm the board's VBAT ADC pin + divider ratio (do **not** assume V4 == V3).
-2. Define `RTNODE_VBAT_ADC_PIN` / `RTNODE_VBAT_CTRL_PIN` / `RTNODE_VBAT_DIVIDER`
-   (and `RTNODE_POWER_SOLAR` for a solar node) in the build config.
-3. Build + flash (e.g. FAITH), watch the `[HealthBeacon] announce … data=02…`
-   line — the payload should now be 20 bytes and carry a real voltage.
-4. Verify on the medic: VITALS ▸ tap node shows the battery reading.
+## Bench checklist to verify battery on an RTNode-2400
+
+1. Wire the battery to the board's **Bat JST** (the managed input) — that's the
+   input `measure_battery()` senses.
+2. Build + flash, watch the `[HealthBeacon] announce … data=02…` line — the
+   payload should carry a real voltage (bytes [14..15] non-zero).
+3. Verify on the medic: VITALS ▸ tap node shows e.g. "Battery: 84%  3.97 V
+   Power: battery (charging)" — and cross-check the voltage with a multimeter
+   if it looks off.
+4. For a solar node add `RTNODE_POWER_SOLAR` to the build flags (stamps the
+   power-flags bit so the medic knows the recharge model).

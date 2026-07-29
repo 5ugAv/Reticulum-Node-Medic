@@ -29,6 +29,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Reticulum Node Medic 0.1.0")
         return 0
 
+    # Native crashes (segfaults in Kivy/SDL/GL/serial C code) kill the app with
+    # NO Python traceback — the 2026-07-30 silent BIRTH-screen death. Dump every
+    # thread's Python stack to a crash file on any fatal signal so the next one
+    # is diagnosable from the field.
+    import faulthandler
+    import os
+    try:
+        crash_log = open(os.path.expanduser("~/ui_crash.log"), "a")
+        crash_log.write("\n--- session start pid %d ---\n" % os.getpid())
+        crash_log.flush()
+        faulthandler.enable(file=crash_log, all_threads=True)
+    except OSError:
+        faulthandler.enable()        # fall back to stderr
+
     # Import the UI lazily so headless environments never require Kivy.
     from ui.app import ReticulumNodeMedicApp
 
