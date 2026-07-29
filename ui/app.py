@@ -541,7 +541,9 @@ class ReticulumNodeMedicApp(App):
         # Live discovery fills the dashboard; RNM_DEMO=1 seeds the fake showcase
         # nodes instead (they confused a real deployment, so default off).
         seed = DEMO_NODES if os.environ.get("RNM_DEMO") else []
-        self.vitals_screen = VitalsScreen(nodes=seed, on_open=self._open_node_detail)
+        self.vitals_screen = VitalsScreen(
+            nodes=seed, on_open=self._open_node_detail,
+            on_self_diagnose=lambda: self.switch_mode("self_diagnose"))
         vitals.add_widget(self._with_back(self.vitals_screen))
         self.sm.add_widget(vitals)
         # Load the persisted registry so the node history / activity series carries

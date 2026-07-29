@@ -250,5 +250,6 @@
   "{n} heard": "{n} entendus",
   "{place} (approximate, from your internet)": "{place} (approximatif, d'après votre internet)",
   "{who} isn't answering - is it powered on and within range?": "{who} ne répond pas : est-il allumé et à portée ?",
-  "←  Back": "←  Retour"
+  "←  Back": "←  Retour",
+  "Self-check": "Autotest"
 }

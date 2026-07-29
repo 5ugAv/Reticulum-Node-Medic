@@ -95,6 +95,10 @@ class SettingsScreen(BoxLayout):
                                     "What RNode / transport / propagation nodes are, "
                                     "where to place them, and the radio settings",
                                     "guide"))
+        body.add_widget(self._entry(tr("Self Diagnose — this medic's radio & GPS"),
+                                    "Check & heal this medic's OWN onboard radio + GPS "
+                                    "board (11 live checks + auto-repairs)",
+                                    "self_diagnose"))
         body.add_widget(self._entry(tr("About"),
                                     "Software version, test-suite status, uptime, "
                                     "and licence", "about"))

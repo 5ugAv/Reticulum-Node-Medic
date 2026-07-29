@@ -144,10 +144,11 @@ class NodeRow(BoxLayout):
 
 
 class VitalsScreen(BoxLayout):
-    def __init__(self, nodes=None, on_open=None, **kwargs):
+    def __init__(self, nodes=None, on_open=None, on_self_diagnose=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self._on_open = on_open
+        self._on_self_diagnose = on_self_diagnose
         self.nodes = nodes or []
         self.active_filter = "All"
         self.search_text = ""
@@ -170,6 +171,16 @@ class VitalsScreen(BoxLayout):
         bind_field(search)                           # pop the on-screen keyboard
         search.bind(text=lambda i, v: self.set_search(v))
         self.filter_bar.add_widget(search)
+        # Small self-check button: the medic diagnosing its OWN radio/GPS. VITALS is
+        # mesh health, and the medic is the vantage point — a quick self-test lives
+        # here as well as in Settings. Opens the same self_diagnose screen.
+        if on_self_diagnose is not None:
+            self_btn = Button(text=tr("Self-check"), size_hint_x=None, width=dp(96),
+                              bold=True, background_normal="",
+                              background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                              color=theme.hex_to_rgba(theme.COLORS["background"]))
+            self_btn.bind(on_release=lambda *_: self._on_self_diagnose())
+            self.filter_bar.add_widget(self_btn)
         self.add_widget(self.filter_bar)
 
         # Alert banner (Settings ▸ Alerts) — shows when a node is orange/red; the
