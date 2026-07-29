@@ -659,6 +659,18 @@ class BirthGuideScreen(BoxLayout):
 
     def _stop_current(self):
         self._stop_board_poll()
+        # Dismiss the on-screen keyboard on EVERY step change. It only auto-hides
+        # on the ENTER key, so advancing with the Next button carried it into the
+        # next step — where it sat covering that step's nav buttons (the
+        # "step 3 of 4 looks stalled" report, 2026-07-30: Next was simply hidden
+        # behind the lingering keyboard).
+        try:
+            from kivy.app import App
+            kb = getattr(App.get_running_app(), "keyboard", None)
+            if kb is not None:
+                kb.hide()
+        except Exception:
+            pass
         if self._current is not None and hasattr(self._current, "stop"):
             self._current.stop()
         self._current = None
