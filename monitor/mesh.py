@@ -54,6 +54,18 @@ def parse_path_probe(output: str) -> Tuple[bool, Optional[int]]:
     return False, None
 
 
+def rns_already_initialised(exc: BaseException) -> bool:
+    """True if *exc* is RNS's "Attempt to reinitialise Reticulum, when it was
+    already running" OSError — i.e. Reticulum is ALREADY up in this process.
+
+    For an attach step that means SUCCESS, not failure: the instance exists, so
+    the caller should proceed to register its handlers. Treating it as a failure
+    is the 2026-07-30 deaf-app bug: another component won the in-process init
+    race, every retry re-raised this, and the listener never attached — for the
+    whole session — while everything subprocess-based looked healthy."""
+    return isinstance(exc, OSError) and "reinitialise" in str(exc).lower()
+
+
 def attach_with_retry(attach: Callable[[], None],
                       sleep: Callable[[float], None] = _time.sleep,
                       log: Optional[Callable[[str], None]] = None,

@@ -111,6 +111,45 @@ def test_attach_succeeds_first_try_no_sleep():
     assert slept == []              # no backoff when it works immediately
 
 
+def test_rns_already_initialised_detects_the_real_error():
+    from monitor.mesh import rns_already_initialised
+    # the exact error RNS raises (RNS/Reticulum.py) when Reticulum() is called
+    # twice in one process — for an attach step this means ALREADY ATTACHED
+    e = OSError("Attempt to reinitialise Reticulum, when it was already running")
+    assert rns_already_initialised(e) is True
+
+
+def test_rns_already_initialised_rejects_other_errors():
+    from monitor.mesh import rns_already_initialised
+    assert rns_already_initialised(OSError("connection refused")) is False
+    assert rns_already_initialised(RuntimeError(
+        "Attempt to reinitialise Reticulum, when it was already running")) is False
+    assert rns_already_initialised(ValueError("boom")) is False
+
+
+def test_attach_pattern_proceeds_when_rns_already_running():
+    # The app's _attach pattern: an "already running" init must NOT abort the
+    # handler registration — the 2026-07-30 deaf-app bug. Simulate it: init
+    # raises already-running, registration still happens, attach succeeds.
+    from monitor.mesh import rns_already_initialised
+    registered = []
+
+    def fake_init():
+        raise OSError("Attempt to reinitialise Reticulum, when it was already running")
+
+    def attach():
+        try:
+            fake_init()
+        except Exception as e:
+            if not rns_already_initialised(e):
+                raise
+        registered.append("handlers")
+
+    ok = attach_with_retry(attach, sleep=lambda s: None)
+    assert ok is True
+    assert registered == ["handlers"]   # handlers registered despite the raise
+
+
 def test_is_hex_hash():
     assert is_hex_hash("5a0b000b000000000000000000000006") is True
     assert is_hex_hash("rtnode:FAITH RTnode") is False   # non-hex display key

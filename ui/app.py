@@ -840,7 +840,17 @@ class ReticulumNodeMedicApp(App):
                         pass
 
             def _attach():
-                RNS.Reticulum()          # attach to the shared instance
+                from monitor.mesh import rns_already_initialised
+                try:
+                    RNS.Reticulum()      # attach to the shared instance
+                except Exception as e:
+                    # "Already running" in THIS process = another component won
+                    # the in-process init race — that IS attached; register the
+                    # handlers on the existing instance instead of failing (the
+                    # 2026-07-30 deaf-app bug). Anything else (rnsd not up yet)
+                    # re-raises so the retry loop rides out the boot race.
+                    if not rns_already_initialised(e):
+                        raise
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
 
