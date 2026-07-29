@@ -819,11 +819,19 @@ class ReticulumNodeMedicApp(App):
                     except Exception:
                         pass
                     try:
-                        registry.ingest_announce(
+                        rec = registry.ingest_announce(
                             destination_hash, app_data or b"",
                             _t.time(), identity_hash=ih)
-                    except Exception:
-                        pass
+                        # One line per announce heard (LoRa is quiet, a few/hr).
+                        # THE ground truth for "is the app deaf?" — the exact
+                        # question the 2026-07-30 incident took hours to answer.
+                        _log("announce %s len=%d beacon=%s" % (
+                            destination_hash.hex()[:8],
+                            len(app_data or b""),
+                            "yes" if (rec is not None and rec.latest_beacon)
+                            else "no"))
+                    except Exception as e:
+                        _log("announce ingest FAILED: %r" % (e,))
 
             class _HealthHandler:
                 aspect_filter = "rtnode.health"
@@ -853,6 +861,9 @@ class ReticulumNodeMedicApp(App):
                         raise
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
+                # Positive proof of registration (first-try attach was silent
+                # before, making "attached" and "thread died" indistinguishable).
+                _log("mesh listener attached — announce handlers registered")
 
             def _log(msg):
                 try:
