@@ -39,33 +39,46 @@ inline void np_hsv(float h, float s, float v) {
 }
 
 // The birth cry itself (~4 s, blocking — runs at the end of setup(), before
-// normal operation, so nothing else needs the CPU yet).
+// normal operation, so nothing else needs the CPU yet). Operator-tuned
+// choreography (2026-07-30 v2): the rainbow starts bubbling DIMLY with a lazy
+// hue drift, then brightness AND colour-change speed ramp up together —
+// accelerating to a fast vivid spin — peaking into bright white, then two
+// deliberate blinks at the pace of a human working a hole punch.
 inline void birth_cry() {
-    // 1+2: faint bubbling rainbow, brightness rising smoothly (quadratic ease).
+    // 1: bubbling rainbow — brightness and hue-spin accelerate in step.
+    //    Hue is INTEGRATED (rate ramps 40°/s -> ~590°/s) so the acceleration
+    //    is smooth, not a jump.
     uint32_t t0 = millis();
-    const uint32_t RAINBOW_MS = 2600;
+    uint32_t last = t0;
+    const uint32_t RAINBOW_MS = 2400;
+    float hue = 0.0f;
     while (millis() - t0 < RAINBOW_MS) {
-        float p = (millis() - t0) / (float)RAINBOW_MS;      // 0..1 ramp
-        float hue = fmodf(millis() * 0.10f, 360.0f);        // slow hue spin
+        uint32_t now = millis();
+        float dt = (float)(now - last); last = now;
+        float p  = (now - t0) / (float)RAINBOW_MS;          // 0..1 ramp
+        hue = fmodf(hue + dt * (0.04f + 0.55f * p * p), 360.0f);
         // two beat-frequency sines = organic "bubbling" shimmer
-        float bubble = 0.72f + 0.28f * sinf(millis() * 0.021f)
-                                     * sinf(millis() * 0.0073f);
-        np_hsv(hue, 1.0f, (0.06f + 0.74f * p * p) * bubble);
+        float bubble = 0.72f + 0.28f * sinf(now * 0.021f)
+                                     * sinf(now * 0.0073f);
+        np_hsv(hue, 1.0f, (0.05f + 0.80f * p * p) * bubble);
         delay(12);
     }
-    // 3: smooth swell into bright white (desaturate while brightness tops out).
-    t0 = millis();
-    const uint32_t SWELL_MS = 700;
+    // 2: spin is at full speed — desaturate into bright white at the peak.
+    t0 = millis(); last = t0;
+    const uint32_t SWELL_MS = 500;
     while (millis() - t0 < SWELL_MS) {
-        float p = (millis() - t0) / (float)SWELL_MS;
-        float hue = fmodf(millis() * 0.10f, 360.0f);
-        np_hsv(hue, 1.0f - p, 0.8f + 0.2f * p);
+        uint32_t now = millis();
+        float dt = (float)(now - last); last = now;
+        float p = (now - t0) / (float)SWELL_MS;
+        hue = fmodf(hue + dt * 0.59f, 360.0f);              // keep max spin
+        np_hsv(hue, 1.0f - p, 0.85f + 0.15f * p);
         delay(12);
     }
-    // 4: blink white twice, then hand the pixel back dark.
+    // 3: two blinks, hole-punch cadence — a beat of dark, a solid punch of
+    //    white, again — deliberate and mechanical, not a flicker.
     for (int i = 0; i < 2; i++) {
-        npset(0, 0, 0);          delay(170);
-        npset(255, 255, 255);    delay(190);
+        npset(0, 0, 0);          delay(330);
+        npset(255, 255, 255);    delay(340);
     }
     npset(0, 0, 0);
 }
