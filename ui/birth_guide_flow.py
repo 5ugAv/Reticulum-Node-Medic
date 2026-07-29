@@ -53,8 +53,9 @@ _STEPS = {
                     "powers it and will detect it automatically."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
          "anim": "connect_board"},
-        {"title": tr("Node Medic configures it for you"),
-         "body": tr("After flashing, Node Medic joins your node's own setup Wi-Fi, sets "
+        {"title": tr("What happens next"),
+         "body": tr("Nothing is running yet — this page just explains what's coming. "
+                    "After flashing, Node Medic joins your node's own setup Wi-Fi, sets "
                     "its name and radio settings, and puts it on your network — no manual "
                     "web portal needed."),
          "hint": tr("The medic briefly leaves your Wi-Fi to talk to the node, then rejoins."),

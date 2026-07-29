@@ -318,15 +318,11 @@ class BirthScreen(BoxLayout):
         RTNode-2400 build button, the RNode radio-params form, or a prompt."""
         self.list.clear_widgets()
         if self._firmware == "rtnode2400":
+            # The Build button itself lives in the HEADER right under the board
+            # cards (always visible on the 5" screen — the scroll area below can
+            # be starved to zero height by the tall header). Only the extra
+            # explainer goes here.
             if self._rtnode_target:
-                tgt = RTNODE_TARGETS[self._rtnode_target]
-                b = Button(text=f"Build RTNode-2400 ({tgt.display})",
-                           size_hint_y=None, height=dp(56), bold=True, font_size="17sp",
-                           background_normal="",
-                           background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                           color=theme.hex_to_rgba(theme.COLORS["background"]))
-                b.bind(on_release=lambda *_: self._run_rtnode())
-                self.list.add_widget(b)
                 self.list.add_widget(_line(
                     "Flashes the attached board with RTNode-2400 and provisions it "
                     "on the standard channel. WiFi/LoRa details are entered on the "
@@ -548,6 +544,23 @@ class BirthScreen(BoxLayout):
             col.add_widget(lbl)
             row.add_widget(col)
         self.header.add_widget(row)
+        # THE action button lives HERE, right under the board choice — always
+        # visible. It used to live in the scroll area below, but the header now
+        # fills the 5" screen and starved that area to zero height, leaving the
+        # flow with no way forward (the 2026-07-30 04:14 dead-end loop).
+        if self._rtnode_target:
+            tgt = RTNODE_TARGETS[self._rtnode_target]
+            go = Button(text=f"Build RTNode-2400 ({tgt.display})",
+                        size_hint_y=None, height=dp(56), bold=True, font_size="17sp",
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+            go.bind(on_release=lambda *_: self._run_rtnode())
+            self.header.add_widget(go)
+        else:
+            self.header.add_widget(_line(
+                "Tap the board in front of you — the Build button appears here.",
+                size="12.5sp", color="text_secondary"))
         # T-Beam Supreme (SD transport) is a rarer RTNode target — keep it reachable
         # without cluttering the common V3/V4 choice.
         other = Button(text="Other RTNode board (T-Beam Supreme)…", size_hint_y=None,
