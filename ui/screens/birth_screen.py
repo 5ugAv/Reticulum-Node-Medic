@@ -929,9 +929,20 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(flash_btn)
 
     def _run(self):
-        self._workflow.run_all(on_progress=lambda r:
-                              Clock.schedule_once(lambda dt: self._step(r), 0))
-        Clock.schedule_once(lambda dt: self._finish(), 0)
+        # try/finally: a workflow step that RAISES (instead of returning a
+        # failed StepResult) must never strand the flash lock — that freezes
+        # every future build behind the 'flash already running' popup with no
+        # red banner and no outcome (2026-07-30 04:45 incident).
+        try:
+            self._workflow.run_all(on_progress=lambda r:
+                                  Clock.schedule_once(lambda dt: self._step(r), 0))
+        except Exception as e:
+            self._had_failure = True
+            msg = f"{type(e).__name__}: {e}"
+            Clock.schedule_once(lambda dt, m=msg: self.list.add_widget(
+                _line(f"  [CRASH] {m}", color="red", size="13sp")), 0)
+        finally:
+            Clock.schedule_once(lambda dt: self._finish(), 0)
 
     def _step(self, result):
         mark = "skip" if result.skipped else ("ok" if result.success else "FAIL")
