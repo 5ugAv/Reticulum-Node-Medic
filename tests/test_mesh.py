@@ -3,7 +3,7 @@ import json
 import pytest
 
 from monitor.mesh import (parse_rnpath, discover_mesh, MeshNode,
-                          parse_path_probe, attach_with_retry)
+                          parse_path_probe, attach_with_retry, is_hex_hash)
 
 # Real `rnpath -t --json` shape (captured from a live mesh node).
 RNPATH = json.dumps([
@@ -109,3 +109,11 @@ def test_attach_succeeds_first_try_no_sleep():
     slept = []
     assert attach_with_retry(lambda: None, sleep=slept.append) is True
     assert slept == []              # no backoff when it works immediately
+
+
+def test_is_hex_hash():
+    assert is_hex_hash("5a0b000b000000000000000000000006") is True
+    assert is_hex_hash("rtnode:FAITH RTnode") is False   # non-hex display key
+    assert is_hex_hash("5a0b000b") is False              # too short
+    assert is_hex_hash("g" * 32) is False                # not hex
+    assert is_hex_hash("") is False and is_hex_hash(None) is False

@@ -432,6 +432,35 @@ class NodeRegistry:
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
+    def probe_hash_for(self, key: str) -> Optional[str]:
+        """A probeable 32-hex mesh destination for the DEVICE that record *key*
+        belongs to, or None. A consolidated VITALS row can be LED by a non-hex
+        key — e.g. an HTTP-discovery record keyed ``rtnode:<name>`` — while the
+        same device also has a real hex mesh dest (its health-beacon aspect).
+        'Ping node now' must probe the hex dest, not the unprobeable HTTP key, or
+        rnpath errors and the node looks unreachable when it isn't. Groups the
+        same way ``devices()`` does: by identity, else by (case-folded) name."""
+        from monitor.mesh import is_hex_hash
+        if is_hex_hash(key):
+            return key                      # already a real dest — probe it directly
+        rec = self.nodes.get(key)
+        if rec is None:
+            return None
+
+        def _name(r) -> str:
+            return (getattr(r, "name", "") or
+                    getattr(r, "announced_name", "") or "").strip().lower()
+
+        ident = getattr(rec, "identity_hash", None)
+        name = _name(rec)
+        for h, r in self.nodes.items():
+            if not is_hex_hash(h):
+                continue
+            if (ident and getattr(r, "identity_hash", None) == ident) or \
+               (name and _name(r) == name):
+                return h                    # a real hex dest for the same device
+        return None
+
     def devices(self, now: float) -> List[dict]:
         """The CONSOLIDATED dashboard: one row per physical device. Destinations
         that announced the same identity collapse into one entry (a phone's

@@ -424,3 +424,39 @@ def test_devices_collapses_same_name_across_destinations():
     assert faith[0]["aspects"] >= 2
     # the unrelated unnamed neighbour is still its own row
     assert any(d["provenance"] == "neighbour" for d in rows)
+
+
+# -- probe_hash_for: resolve a probeable mesh dest for a device --------------
+
+def test_probe_hash_for_returns_hex_key_directly():
+    reg = NodeRegistry()
+    h = "5a0b000b000000000000000000000006"
+    reg.register(h, name="FAITH RTnode")
+    assert reg.probe_hash_for(h) == h
+
+
+def test_probe_hash_for_resolves_non_hex_key_by_name():
+    # The FAITH case: a non-hex HTTP-discovery row 'rtnode:FAITH RTnode' shares a
+    # NAME with the real hex mesh dest — probe must resolve to the hex one.
+    reg = NodeRegistry()
+    hexh = "5a0b000b000000000000000000000006"
+    reg.register(hexh, name="FAITH RTnode")
+    reg.register("rtnode:FAITH RTnode", name="FAITH RTnode")   # HTTP key, non-hex
+    assert reg.probe_hash_for("rtnode:FAITH RTnode") == hexh
+
+
+def test_probe_hash_for_resolves_by_identity():
+    reg = NodeRegistry()
+    hexh = "aabbccddeeff00112233445566778899"
+    reg.register(hexh)
+    reg.nodes[hexh].identity_hash = "778899aabbccddeeff0011223344556f"
+    reg.register("rtnode:FAITH RTnode", name="FAITH RTnode")
+    reg.nodes["rtnode:FAITH RTnode"].identity_hash = "778899aabbccddeeff0011223344556f"
+    assert reg.probe_hash_for("rtnode:FAITH RTnode") == hexh
+
+
+def test_probe_hash_for_none_when_no_hex_dest():
+    reg = NodeRegistry()
+    reg.register("rtnode:Lonely", name="Lonely")   # only a non-hex key, no siblings
+    assert reg.probe_hash_for("rtnode:Lonely") is None
+    assert reg.probe_hash_for("no-such-key") is None

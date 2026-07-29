@@ -1138,12 +1138,17 @@ class ReticulumNodeMedicApp(App):
         from monitor.mesh import parse_path_probe
 
         def work():
-            if not dst_hash:
+            # The row's dst_hash can be a non-hex display key (an HTTP-discovery
+            # 'rtnode:<name>' record leading a merged device). rnpath errors on
+            # that -> looks unreachable. Resolve a real hex mesh dest for the same
+            # device first (its health/mesh aspect).
+            probe = self.monitor_service.registry.probe_hash_for(dst_hash or "")
+            if not probe:
                 Clock.schedule_once(lambda dt: report(
-                    "No mesh identity on record — can't probe this one.", False), 0)
+                    "No mesh address on record — can't probe this one.", False), 0)
                 return
-            _local_run(f"rnpath --drop {dst_hash} 2>/dev/null")
-            out = _local_run(f"rnpath -w 20 {dst_hash} 2>/dev/null")
+            _local_run(f"rnpath --drop {probe} 2>/dev/null")
+            out = _local_run(f"rnpath -w 20 {probe} 2>/dev/null")
             reachable, hops = parse_path_probe(out)
             if reachable:
                 msg = "Reachable now" + (f" — {hops} hop(s) away." if hops else ".")

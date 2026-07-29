@@ -22,6 +22,21 @@ from typing import Callable, List, Optional, Tuple
 Runner = Callable[[str], str]   # run(command) -> stdout
 
 
+def is_hex_hash(value: str, length: int = 32) -> bool:
+    """True if *value* is a Reticulum destination hash: exactly *length* hex
+    characters. Guards rnpath (which errors on non-hex, e.g. an HTTP-discovery
+    key like ``rtnode:FAITH RTnode``) and any other place that must not feed a
+    display key to a path request."""
+    s = (value or "").strip()
+    if len(s) != length:
+        return False
+    try:
+        int(s, 16)
+        return True
+    except ValueError:
+        return False
+
+
 def parse_path_probe(output: str) -> Tuple[bool, Optional[int]]:
     """Parse the text of an on-demand ``rnpath -w <sec> <hash>`` path REQUEST
     (not the ``-t`` table): returns (reachable, hops).
