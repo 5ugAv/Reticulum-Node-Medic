@@ -801,45 +801,59 @@ class ReticulumNodeMedicApp(App):
             try:
                 import time as _t
                 import RNS
+            except Exception:
+                return                   # no RNS lib at all (dev box) -> nothing to do
 
-                app = self
+            app = self
 
-                class _Handler:
-                    aspect_filter = None
+            class _Handler:
+                aspect_filter = None
 
-                    def received_announce(_h, destination_hash,
-                                          announced_identity, app_data):
-                        ih = None
-                        try:
-                            ih = announced_identity.hash.hex()
-                        except Exception:
-                            pass
-                        try:
-                            registry.ingest_announce(
-                                destination_hash, app_data or b"",
-                                _t.time(), identity_hash=ih)
-                        except Exception:
-                            pass
+                def received_announce(_h, destination_hash,
+                                      announced_identity, app_data):
+                    ih = None
+                    try:
+                        ih = announced_identity.hash.hex()
+                    except Exception:
+                        pass
+                    try:
+                        registry.ingest_announce(
+                            destination_hash, app_data or b"",
+                            _t.time(), identity_hash=ih)
+                    except Exception:
+                        pass
 
-                class _HealthHandler:
-                    aspect_filter = "rtnode.health"
+            class _HealthHandler:
+                aspect_filter = "rtnode.health"
 
-                    def received_announce(_h, destination_hash,
-                                          announced_identity, app_data):
-                        # a kin RTNode we can COMMAND to beacon (verified live:
-                        # a 0x01 packet to rtnode.health -> immediate reply)
-                        try:
-                            h = destination_hash.hex()
-                            app._beacon_targets[h] = announced_identity
-                            app._save_beacon_hashes([h])   # remember across restarts
-                        except Exception:
-                            pass
+                def received_announce(_h, destination_hash,
+                                      announced_identity, app_data):
+                    # a kin RTNode we can COMMAND to beacon (verified live:
+                    # a 0x01 packet to rtnode.health -> immediate reply)
+                    try:
+                        h = destination_hash.hex()
+                        app._beacon_targets[h] = announced_identity
+                        app._save_beacon_hashes([h])   # remember across restarts
+                    except Exception:
+                        pass
 
+            def _attach():
                 RNS.Reticulum()          # attach to the shared instance
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
-            except Exception:
-                pass                     # no rnsd (dev box): silently offline
+
+            def _log(msg):
+                try:
+                    RNS.log("Node Medic: " + msg)   # visible in the rnsd log
+                except Exception:
+                    pass
+
+            # RETRY, don't give up on the first failure: on a power-cycle the app
+            # can start before rnsd is up, and a one-shot attach would leave us
+            # silently deaf to every health beacon for the whole session (the
+            # 'gray after power-cycle' bug). See monitor.mesh.attach_with_retry.
+            from monitor.mesh import attach_with_retry
+            attach_with_retry(_attach, log=_log)
 
         threading.Thread(target=listen, daemon=True).start()
 
@@ -1114,11 +1128,14 @@ class ReticulumNodeMedicApp(App):
             return 0.0
 
     def _ping_node(self, dst_hash, report):
-        """Live mesh reachability check: drop the cached path (cached paths lie),
-        then see if the node is currently in the path table. Off-thread; reports back
-        to the detail screen. Best-effort — verify the exact wording on the medic."""
+        """Live mesh reachability check. Drop the (possibly stale) cached path —
+        cached paths lie — then REQUEST a fresh one and WAIT for it. The old code
+        read the path table immediately after dropping, before any fresh path
+        could resolve, so it reported 'not answering' for every node, healthy or
+        not. rnpath -w does the request+wait; monitor.mesh.parse_path_probe reads
+        the result. Off-thread; reports back to the detail screen."""
         import threading
-        import json
+        from monitor.mesh import parse_path_probe
 
         def work():
             if not dst_hash:
@@ -1126,18 +1143,8 @@ class ReticulumNodeMedicApp(App):
                     "No mesh identity on record — can't probe this one.", False), 0)
                 return
             _local_run(f"rnpath --drop {dst_hash} 2>/dev/null")
-            raw = _local_run("rnpath -t --json 2>/dev/null") or "[]"
-            reachable, hops = False, None
-            try:
-                for p in json.loads(raw):
-                    if not isinstance(p, dict):
-                        continue
-                    h = str(p.get("hash") or p.get("destination") or "")
-                    if h and (dst_hash[:16] in h or h in dst_hash):
-                        reachable, hops = True, p.get("hops")
-                        break
-            except Exception:
-                pass
+            out = _local_run(f"rnpath -w 20 {dst_hash} 2>/dev/null")
+            reachable, hops = parse_path_probe(out)
             if reachable:
                 msg = "Reachable now" + (f" — {hops} hop(s) away." if hops else ".")
                 Clock.schedule_once(lambda dt: report(msg, True), 0)

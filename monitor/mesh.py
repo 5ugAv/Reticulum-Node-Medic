@@ -14,10 +14,61 @@ unit-testable without a radio.
 from __future__ import annotations
 
 import json
+import re
+import time as _time
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import Callable, List, Optional, Tuple
 
 Runner = Callable[[str], str]   # run(command) -> stdout
+
+
+def parse_path_probe(output: str) -> Tuple[bool, Optional[int]]:
+    """Parse the text of an on-demand ``rnpath -w <sec> <hash>`` path REQUEST
+    (not the ``-t`` table): returns (reachable, hops).
+
+    This is the correct 'is it answering right now' check — after dropping a
+    (possibly stale) cached path, you must REQUEST a fresh one and WAIT; reading
+    the table immediately always misses it. rnpath prints, on success,
+    ``Path found, destination <hash> is N hop(s) away ...`` and, on failure,
+    ``Path not found``.
+    """
+    text = output or ""
+    if "Path found" in text:
+        m = re.search(r"is\s+(\d+)\s+hop", text)
+        return True, (int(m.group(1)) if m else None)
+    return False, None
+
+
+def attach_with_retry(attach: Callable[[], None],
+                      sleep: Callable[[float], None] = _time.sleep,
+                      log: Optional[Callable[[str], None]] = None,
+                      max_attempts: int = 30,
+                      base_delay: float = 2.0,
+                      max_delay: float = 20.0) -> bool:
+    """Call *attach* (which raises on failure) with exponential backoff until it
+    succeeds; return True on success, False once the attempt budget is spent.
+
+    The medic's touchscreen app autostarts on boot and can win the race against
+    ``rnsd`` — a one-shot ``RNS.Reticulum()`` then throws and, if swallowed,
+    leaves the app permanently DEAF to mesh/health announces for the whole
+    session (the 2026-07-29 'gray after power-cycle' incident). Retrying rides
+    out the boot race; a true dev box with no rnsd simply exhausts the budget
+    and returns False (caller stays offline, as before)."""
+    delay = base_delay
+    for attempt in range(1, max_attempts + 1):
+        try:
+            attach()
+            if log and attempt > 1:
+                log("mesh listener attached on attempt %d" % attempt)
+            return True
+        except Exception as e:                      # rnsd not ready yet (or ever)
+            if log:
+                log("mesh listener attach failed (attempt %d/%d): %s"
+                    % (attempt, max_attempts, e))
+            if attempt < max_attempts:
+                sleep(delay)
+                delay = min(delay * 1.5, max_delay)
+    return False
 
 
 @dataclass
