@@ -129,6 +129,10 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
     if (data.size() >= 1 && data[0] == HB_OPCODE_FULL_HEALTH) {
         Serial.println("[HealthBeacon] on-demand poll request (0x01) -> announcing now");
         health_beacon_send();
+        // Visible acknowledgement at the node: two green pulses (operator
+        // request — "pulse the green sequence twice on health check"). Reply
+        // is already on the air; ~0.5 s of LED time after it is harmless.
+        health_ack_blink();
     }
     // Unknown/empty opcode: no-op (deliberately not a fault).
 }

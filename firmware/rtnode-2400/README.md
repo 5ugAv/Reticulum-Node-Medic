@@ -11,10 +11,18 @@ version-controlled here so the wire format lives beside its Python counterpart
 | `HealthStatus.h` | `collect_health()` — reads live board state (uptime, heap, WiFi, LoRa, and the v2 battery/power fields). Also serves `GET /status`. |
 | `HealthBeacon.h` | The RNS announcer: builds the payload, announces on `rtnode.health`, and answers the medic's on-demand `0x01` poll (the "commandable lighthouse"). |
 
+| `BirthCry.h` | LED choreography: the first-boot-after-flash **birth cry** (faint bubbling rainbow → smooth swell → bright white pulse → two white blinks; NVS-gated to the build stamp so it plays once per new flash) + the green double-pulse health-check acknowledgement. No-ops on boards without a NeoPixel. |
+
 The **full** RTNode-2400 firmware fork (the buildable PlatformIO/arduino-cli
 tree) is large and upstream-derived; it lives on the medic at `~/RTNode-2400/`.
-Only the health-beacon source is vendored here. To flash a node, these files are
-copied into that tree and built there.
+Only these sources are vendored here. To flash a node, these files are copied
+into that tree and built there, **plus two one-line hooks in
+`RNode_Firmware.ino`** (kept in the medic's tree, re-apply if rebuilding from a
+pristine fork):
+
+1. `#include "BirthCry.h"` immediately after `#include "Utilities.h"` (needs
+   `npset`; must precede `HealthBeacon.h`, which calls `health_ack_blink`).
+2. `birth_cry_maybe();` as the last line of `setup()`.
 
 ## Wire contract (shared, version-pinned)
 
