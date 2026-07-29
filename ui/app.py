@@ -848,16 +848,23 @@ class ReticulumNodeMedicApp(App):
                         pass
 
             def _attach():
-                from monitor.mesh import rns_already_initialised
+                from monitor.mesh import (rns_already_initialised,
+                                          rns_thread_signal_error)
                 try:
                     RNS.Reticulum()      # attach to the shared instance
                 except Exception as e:
-                    # "Already running" in THIS process = another component won
-                    # the in-process init race — that IS attached; register the
-                    # handlers on the existing instance instead of failing (the
-                    # 2026-07-30 deaf-app bug). Anything else (rnsd not up yet)
-                    # re-raises so the retry loop rides out the boot race.
-                    if not rns_already_initialised(e):
+                    # Two errors here mean ATTACHED, not failed (both from the
+                    # 2026-07-30 deaf-app incident):
+                    #  * "already running"  — another component won the
+                    #    in-process init race; the instance exists.
+                    #  * "signal only works in main thread" — we're on a
+                    #    thread, so RNS couldn't install its SIGINT/SIGTERM
+                    #    hooks; that's the LAST step of init, everything
+                    #    functional is already up (and Kivy owns our signals).
+                    # Anything else (rnsd not up yet) re-raises so the retry
+                    # loop rides out the boot race.
+                    if not (rns_already_initialised(e)
+                            or rns_thread_signal_error(e)):
                         raise
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
@@ -869,7 +876,14 @@ class ReticulumNodeMedicApp(App):
                 try:
                     RNS.log("Node Medic: " + msg)   # visible in the rnsd log
                 except Exception:
-                    pass
+                    # RNS.log can itself fail (partially-inited RNS) — fall
+                    # back to a flushed print so diagnosis lines NEVER vanish
+                    # (unflushed stdout hid an entire night of evidence,
+                    # 2026-07-30).
+                    try:
+                        print("Node Medic: " + msg, flush=True)
+                    except Exception:
+                        pass
 
             # RETRY, don't give up on the first failure: on a power-cycle the app
             # can start before rnsd is up, and a one-shot attach would leave us

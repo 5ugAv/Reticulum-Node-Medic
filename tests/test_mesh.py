@@ -150,6 +150,45 @@ def test_attach_pattern_proceeds_when_rns_already_running():
     assert registered == ["handlers"]   # handlers registered despite the raise
 
 
+def test_rns_thread_signal_error_detects_the_real_error():
+    from monitor.mesh import rns_thread_signal_error
+    # the exact CPython error when RNS.Reticulum() runs on a non-main thread
+    # (reproduced live on the medic 2026-07-30) — init is COMPLETE bar the
+    # signal hooks, so an attach step must treat it as attached
+    e = ValueError("signal only works in main thread of the main interpreter")
+    assert rns_thread_signal_error(e) is True
+
+
+def test_rns_thread_signal_error_rejects_other_errors():
+    from monitor.mesh import rns_thread_signal_error
+    assert rns_thread_signal_error(ValueError("bad value")) is False
+    assert rns_thread_signal_error(OSError(
+        "signal only works in main thread of the main interpreter")) is False
+
+
+def test_attach_pattern_proceeds_on_thread_signal_error():
+    # The app's _attach on a clean-client boot from a thread: init raises the
+    # signal ValueError with everything functional already up — handlers must
+    # still be registered and attach must succeed on attempt 1.
+    from monitor.mesh import rns_already_initialised, rns_thread_signal_error
+    registered = []
+
+    def fake_init():
+        raise ValueError("signal only works in main thread of the main interpreter")
+
+    def attach():
+        try:
+            fake_init()
+        except Exception as e:
+            if not (rns_already_initialised(e) or rns_thread_signal_error(e)):
+                raise
+        registered.append("handlers")
+
+    ok = attach_with_retry(attach, sleep=lambda s: None)
+    assert ok is True
+    assert registered == ["handlers"]
+
+
 def test_is_hex_hash():
     assert is_hex_hash("5a0b000b000000000000000000000006") is True
     assert is_hex_hash("rtnode:FAITH RTnode") is False   # non-hex display key

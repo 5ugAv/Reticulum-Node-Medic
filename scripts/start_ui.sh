@@ -20,4 +20,7 @@ for _i in $(seq 1 60); do
     ss -xl 2>/dev/null | grep -q "@rns/default" && break
     sleep 2
 done
-exec /usr/bin/python3 main.py
+# -u: unbuffered stdout/stderr. ui.log is a pipe/file, so buffered prints (RNS
+# log lines included) can sit invisible in an 8 KB buffer for hours — which hid
+# the 2026-07-30 deaf-listener evidence. Live logs are worth the tiny cost.
+exec /usr/bin/python3 -u main.py

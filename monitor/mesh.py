@@ -66,6 +66,20 @@ def rns_already_initialised(exc: BaseException) -> bool:
     return isinstance(exc, OSError) and "reinitialise" in str(exc).lower()
 
 
+def rns_thread_signal_error(exc: BaseException) -> bool:
+    """True if *exc* is the ValueError CPython raises when ``RNS.Reticulum()``
+    runs on a NON-MAIN thread: "signal only works in main thread ...".
+
+    RNS installs its SIGINT/SIGTERM handlers as the LAST two lines of
+    ``Reticulum.__init__`` (verified against RNS 1.x source) — so by the time
+    this raises, the instance is FULLY functional (transport up, jobs running,
+    instance registered); only the OS signal hooks are missing, which a Kivy app
+    manages itself anyway. For an attach step this also means SUCCESS: proceed
+    to register handlers. Verified live on the medic 2026-07-30 — this exact
+    error left the listener deaf every clean-client boot."""
+    return isinstance(exc, ValueError) and "signal only works" in str(exc).lower()
+
+
 def attach_with_retry(attach: Callable[[], None],
                       sleep: Callable[[float], None] = _time.sleep,
                       log: Optional[Callable[[str], None]] = None,
