@@ -50,7 +50,7 @@ inline void birth_cry() {
     //    is smooth, not a jump.
     uint32_t t0 = millis();
     uint32_t last = t0;
-    const uint32_t RAINBOW_MS = 2400;
+    const uint32_t RAINBOW_MS = 4800;   // long smoulder — the bloom earns itself
     float hue = 0.0f;
     while (millis() - t0 < RAINBOW_MS) {
         uint32_t now = millis();
@@ -60,7 +60,11 @@ inline void birth_cry() {
         // two beat-frequency sines = organic "bubbling" shimmer
         float bubble = 0.72f + 0.28f * sinf(now * 0.021f)
                                      * sinf(now * 0.0073f);
-        np_hsv(hue, 1.0f, (0.05f + 0.80f * p * p) * bubble);
+        // Exponential rise from near-darkness, TIME-WARPED (p^2.2 inside the
+        // exponent): most of the run smoulders dim, and the bright bloom is
+        // squashed into the final ~15% — a late, earned burst.
+        float b = 0.012f * expf(4.26f * powf(p, 2.2f));
+        np_hsv(hue, 1.0f, b * bubble);
         delay(12);
     }
     // 2: spin is at full speed — desaturate into bright white at the peak.
@@ -75,10 +79,16 @@ inline void birth_cry() {
         delay(12);
     }
     // 3: two blinks, hole-punch cadence — a beat of dark, a solid punch of
-    //    white, again — deliberate and mechanical, not a flicker.
+    //    white with a SHORT SMOOTH FADE on the release (a stamp that lifts),
+    //    so the second punch melts to black instead of cutting.
     for (int i = 0; i < 2; i++) {
         npset(0, 0, 0);          delay(330);
-        npset(255, 255, 255);    delay(340);
+        npset(255, 255, 255);    delay(240);       // solid punch
+        for (int f = 100; f >= 0; f -= 5) {        // ~190 ms smooth release
+            uint8_t v = (uint8_t)((255 * f) / 100);
+            npset(v, v, v);
+            delay(9);
+        }
     }
     npset(0, 0, 0);
 }
