@@ -166,22 +166,26 @@ class VitalsScreen(BoxLayout):
             self.filter_bar.add_widget(btn)
             self._filter_buttons.append(btn)
         self._highlight_filter()
-        search = TextInput(hint_text=tr("Search"), multiline=False,
-                           size_hint_x=None, width=dp(220))
-        bind_field(search)                           # pop the on-screen keyboard
-        search.bind(text=lambda i, v: self.set_search(v))
-        self.filter_bar.add_widget(search)
-        # Small self-check button: the medic diagnosing its OWN radio/GPS. VITALS is
-        # mesh health, and the medic is the vantage point — a quick self-test lives
-        # here as well as in Settings. Opens the same self_diagnose screen.
+        # Self-check on the FILTER row (the medic diagnosing its OWN radio/GPS —
+        # VITALS is mesh health and the medic is the vantage point, so a quick
+        # self-test lives here as well as in Settings). Opens self_diagnose.
         if on_self_diagnose is not None:
-            self_btn = Button(text=tr("Self-check"), size_hint_x=None, width=dp(96),
+            self_btn = Button(text=tr("Self-check"), size_hint_x=None, width=dp(110),
                               bold=True, background_normal="",
                               background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                               color=theme.hex_to_rgba(theme.COLORS["background"]))
             self_btn.bind(on_release=lambda *_: self._on_self_diagnose())
             self.filter_bar.add_widget(self_btn)
         self.add_widget(self.filter_bar)
+
+        # Search on its OWN row BELOW the filters — the single top row (filters +
+        # search + self-check) was too cramped on the 5in panel.
+        search_row = BoxLayout(size_hint_y=None, height=dp(46), padding=(dp(6), 0))
+        search = TextInput(hint_text=tr("Search"), multiline=False)
+        bind_field(search)                           # pop the on-screen keyboard
+        search.bind(text=lambda i, v: self.set_search(v))
+        search_row.add_widget(search)
+        self.add_widget(search_row)
 
         # Alert banner (Settings ▸ Alerts) — shows when a node is orange/red; the
         # alerting nodes are also pushed to the top of the list.
