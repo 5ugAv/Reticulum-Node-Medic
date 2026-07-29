@@ -66,3 +66,23 @@ def test_banner_text():
     t = alerts.banner_text([_n("Rooftop", "alert"), _n("Hill", "warn")])
     assert "2 nodes need attention" in t and "Rooftop" in t and "Hill" in t
     assert "1 node needs attention" in alerts.banner_text([_n("Solo", "alert")])
+
+
+def test_neighbour_nodes_never_alert():
+    # A neighbour is someone else's node — the operator can't repair it, so it must
+    # NOT raise an alert (2026-07-29). Kin at the same status still alerts.
+    nodes = [
+        {"name": "MyNode", "status": "alert", "provenance": "kin"},
+        {"name": "SomeoneElse", "status": "alert", "provenance": "neighbour"},
+        {"name": "Warned", "status": "warn", "provenance": "neighbour"},
+    ]
+    assert [n["name"] for n in alerts.alerting_nodes(nodes)] == ["MyNode"]
+    banner = alerts.banner_text(nodes)
+    assert "1 node needs attention" in banner and "SomeoneElse" not in banner
+
+
+def test_non_neighbour_tiers_still_alert():
+    # Forward-compat: kin now, kindred later — any non-neighbour tier alerts.
+    nodes = [{"name": "K", "status": "warn", "provenance": "kindred"},
+             {"name": "N", "status": "alert"}]   # no provenance -> still alerts
+    assert {n["name"] for n in alerts.alerting_nodes(nodes)} == {"K", "N"}

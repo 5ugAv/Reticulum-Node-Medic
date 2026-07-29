@@ -67,7 +67,12 @@ def _name(node: Dict) -> str:
 def alerting_nodes(nodes: List[Dict]) -> List[Dict]:
     """Nodes currently at warn/alert, worst first (alert before warn), then by name.
     The persistent visual-alert set VITALS shows while a node needs attention."""
-    hits = [n for n in (nodes or []) if n.get("status") in ALERT_STATUSES]
+    # Only nodes the operator can actually act on raise an alert: KIN (and, when
+    # that tier lands, KINDRED). A NEIGHBOUR is someone else's node — you can't
+    # repair it, so alerting on it is pure noise (operator request 2026-07-29).
+    hits = [n for n in (nodes or [])
+            if n.get("status") in ALERT_STATUSES
+            and n.get("provenance") != "neighbour"]
     return sorted(hits, key=lambda n: (-_rank(n.get("status")), _name(n).lower()))
 
 

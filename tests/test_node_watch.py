@@ -80,3 +80,17 @@ def test_state_roundtrip_persists_notified():
     w2 = NodeWatcher()
     w2.load_state(w.to_state())
     assert w2.tick([dev("a", lsh=90.0)]) == []                # restart doesn't re-warn
+
+
+def test_neighbour_never_escalates_or_is_watched():
+    w = NodeWatcher()
+    d = dev("nb", lsh=200.0)                      # far past any grace window
+    d["provenance"] = "neighbour"
+    assert w.tick([d]) == []                      # can't repair -> never escalate
+    assert w.is_watching(d) is False              # and no 'will warn' message
+
+
+def test_kin_still_escalates_past_grace():
+    w = NodeWatcher()
+    d = dev("kn", lsh=200.0); d["provenance"] = "kin"
+    assert [x["identity"] for x in w.tick([d])] == ["kn"]

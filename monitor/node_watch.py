@@ -61,6 +61,9 @@ class NodeWatcher:
             nid = d.get("identity") or d.get("id")
             if not nid:
                 continue
+            if d.get("provenance") == "neighbour":
+                self._notified.discard(nid)      # can't repair a neighbour -> never escalate
+                continue
             if d.get("status") != "alert":
                 self._notified.discard(nid)      # healthy/known/recovered -> re-arm
                 continue
@@ -77,6 +80,8 @@ class NodeWatcher:
         """True if this node is red but still inside its grace window — i.e. the
         medic is watching it and hasn't escalated yet. Drives the 'unreachable —
         waiting, will warn in N days' message when the operator taps a red node."""
+        if device.get("provenance") == "neighbour":
+            return False                          # not watched — not ours to repair
         if device.get("status") != "alert":
             return False
         lsh = device.get("last_seen_hours")
