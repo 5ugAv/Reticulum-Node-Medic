@@ -39,6 +39,9 @@
 // Identify: replay the birth-cry LED choreography so an operator can pick this
 // physical node out of a pile ("which board is Rooftop-East?"). No reply.
 #define HB_OPCODE_IDENTIFY           0x02
+// LED test: hold SOLID GREEN for ~15 s — verify the pixel is wired/alive and
+// give the operator a photo/probe window. No reply.
+#define HB_OPCODE_LED_TEST           0x03
 
 // Flag bit positions — MUST match reticulum-tool monitor/health_beacon.py.
 enum {

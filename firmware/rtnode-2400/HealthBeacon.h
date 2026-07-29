@@ -141,6 +141,16 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
         Serial.println("[HealthBeacon] identify request (0x02) -> birth cry");
         birth_cry();
     }
+    else if (data.size() >= 1 && data[0] == HB_OPCODE_LED_TEST) {
+        // LED test: solid green long enough to photograph / probe the pixel
+        // wiring. Blocking 15 s — operator-invoked bench tool only.
+        Serial.println("[HealthBeacon] LED test (0x03) -> solid green 15s");
+        #if defined(HAS_NP) && HAS_NP == true
+        npset(0, 0xFF, 0);
+        delay(15000);
+        npset(0, 0, 0);
+        #endif
+    }
     // Unknown/empty opcode: no-op (deliberately not a fault).
 }
 
