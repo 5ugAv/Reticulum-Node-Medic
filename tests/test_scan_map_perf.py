@@ -28,12 +28,18 @@ def _install_kivy_stubs():
         m.__getattr__ = lambda attr: _Dummy
         return m
 
+    # NOTE: these stubs are process-global (sys.modules) and leak into sibling
+    # test modules. A stubbed PARENT (kivy.uix) with an un-stubbed child makes the
+    # import machinery try to iterate the stub's __path__ and blow up, so the list
+    # must cover every kivy submodule any imported screen pulls in — including
+    # scrollview/switch/modalview reached via ui/screens/wifi_screen.py.
     for name in (
         "kivy", "kivy.clock", "kivy.core", "kivy.core.image", "kivy.core.window",
         "kivy.graphics", "kivy.metrics", "kivy.app", "kivy.uix",
         "kivy.uix.boxlayout", "kivy.uix.button", "kivy.uix.floatlayout",
         "kivy.uix.label", "kivy.uix.textinput", "kivy.uix.widget",
-        "kivy.uix.popup",
+        "kivy.uix.popup", "kivy.uix.scrollview", "kivy.uix.switch",
+        "kivy.uix.modalview",
     ):
         sys.modules.setdefault(name, _module(name))
 

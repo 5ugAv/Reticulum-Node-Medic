@@ -32,6 +32,16 @@ def _line(text, bold=False, size="15sp", color="text_primary", h=26):
     return lbl
 
 
+def _row_label(n):
+    """The tappable text for one scanned network row (pure — unit-tested).
+
+    Kept out of the widget code so the string the operator taps is testable
+    without a Kivy Window (Widget.__init__ needs one)."""
+    tag = ("   • connected" if n["active"]
+           else ("" if n["secure"] else "   (open)"))
+    return f"{n['ssid']}    {n['signal']}%{tag}"
+
+
 class WifiScreen(BoxLayout):
     """Scan + connect to WiFi. *run* is injectable for tests."""
 
@@ -55,8 +65,13 @@ class WifiScreen(BoxLayout):
         self.scan_btn.bind(on_release=lambda *_: self._scan())
         self.add_widget(self.scan_btn)
 
-        scroll = ScrollView()
-        self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
+        # do_scroll_x=False: a vertical network list must never scroll sideways.
+        # Leaving it on lets the ScrollView measure horizontal content extent,
+        # which (with a text_size that didn't match the row width) gave the layout
+        # a width to oscillate on — a redraw storm. The list fills the width
+        # (size_hint_x=1) and only its height tracks its contents.
+        scroll = ScrollView(do_scroll_x=False)
+        self.list = BoxLayout(orientation="vertical", size_hint=(1, None), spacing=dp(4))
         self.list.bind(minimum_height=self.list.setter("height"))
         scroll.add_widget(self.list)
         self.add_widget(scroll)
@@ -147,14 +162,17 @@ class WifiScreen(BoxLayout):
             self.list.add_widget(_line("No networks found.", color="amber"))
             return
         for n in nets:
-            tag = ("   • connected" if n["active"]
-                   else ("" if n["secure"] else "   (open)"))
-            btn = Button(text=f"{n['ssid']}    {n['signal']}%{tag}",
+            btn = Button(text=_row_label(n),
                          size_hint_y=None, height=dp(46), halign="left",
+                         padding=(dp(8), 0),          # inset text via padding…
                          background_normal="", background_color=theme.hex_to_rgba(
                              theme.COLORS["surface"]),
                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(16), v[1])))
+            # …NOT by subtracting from text_size. text_size must equal the row
+            # size (the safe idiom, same as _line): a fixed point the layout
+            # settles on. The old ``(v[0] - dp(16), v[1])`` never matched the
+            # row width, so size→text_size→size could never converge → storm.
+            btn.bind(size=lambda i, v: setattr(i, "text_size", v))
             btn.bind(on_release=lambda *_a, net=n: self._select(net))
             self.list.add_widget(btn)
 

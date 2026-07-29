@@ -1,6 +1,9 @@
 """Field WiFi via nmcli — connect the medic to a hotspot / venue AP. Parsing is
 tested against captured nmcli output; no hardware."""
 
+import os
+import re
+
 from provisioning import wifi
 
 
@@ -150,3 +153,44 @@ def test_current_connection():
     assert wifi.current_connection(run=lambda a: (0, out)) == {
         "ssid": "HomeWiFi", "ip": "192.168.1.119"}
     assert wifi.current_connection(run=lambda a: (0, "GENERAL.CONNECTION:--\n")) is None
+
+
+# -- WiFi screen row rendering + the scan-freeze regression guard -------------
+# The screen widgets can't be built here (Kivy's Widget.__init__ needs a Window),
+# so we test the pure row text and guard the storm pattern at the source.
+
+def test_row_label_shows_signal_secure_open_and_connected():
+    from ui.screens.wifi_screen import _row_label
+    active = _row_label({"ssid": "HomeWiFi", "signal": 90, "secure": True, "active": True})
+    assert active.startswith("HomeWiFi") and "90%" in active and "connected" in active
+    secured = _row_label({"ssid": "Neighbour", "signal": 72, "secure": True, "active": False})
+    assert "72%" in secured and "open" not in secured and "connected" not in secured
+    openap = _row_label({"ssid": "Cafe", "signal": 45, "secure": False, "active": False})
+    assert "(open)" in openap and "connected" not in openap
+
+
+def _wifi_src():
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(os.path.dirname(here), "ui", "screens", "wifi_screen.py")
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_network_rows_bind_text_size_to_a_fixed_point_not_a_drifting_width():
+    """The scan-freeze: a row's ``size`` was bound to a synchronous write of
+    ``text_size = (width - dp(16), height)``. text_size never equalled the row
+    width, so size→text_size→size could not converge — a 100% CPU redraw storm.
+    Guard that no size-bound text_size subtraction comes back."""
+    src = _wifi_src()
+    # No ``text_size`` set to a subtracted width (the drift that never settles).
+    assert not re.search(r"text_size.*v\[0\]\s*-", src), \
+        "row text_size must equal the row size (a fixed point), not a subtracted width"
+    # The list must not scroll horizontally (removes the width-measurement path).
+    assert "do_scroll_x=False" in src
+
+
+def test_wifi_screen_is_importable_without_a_window():
+    # Importing the module (not building widgets) must stay Window-free, so the
+    # pure helpers and the source guard above can run in CI without a display.
+    import ui.screens.wifi_screen as w
+    assert hasattr(w, "_row_label")
