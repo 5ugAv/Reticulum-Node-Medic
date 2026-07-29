@@ -28,7 +28,7 @@ def clock(t=[1000.0]):
 
 
 def test_discover_registers_and_remembers_hosts():
-    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock)
+    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock, kin_roster={})
     n = svc.discover()
     assert n == 2
     assert set(svc.hosts.values()) == {"192.168.1.180", "192.168.1.51"}
@@ -37,7 +37,7 @@ def test_discover_registers_and_remembers_hosts():
 
 
 def test_dashboard_alert_first_and_status_from_http():
-    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock)
+    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock, kin_roster={})
     svc.cycle(rediscover=True)
     dash = svc.dashboard()
     # FAITH is warn (rssi -76), MEDIC-TEST ok -> warn sorts before ok
@@ -46,7 +46,7 @@ def test_dashboard_alert_first_and_status_from_http():
 
 
 def test_key_is_stable_across_ip_change():
-    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock)
+    svc = MonitorService(run=fake_run, poll=fake_poll, now=clock, kin_roster={})
     assert svc.node_key(ns("MEDIC-TEST"), "192.168.1.180") == "rtnode:MEDIC-TEST"
     # same node at a new DHCP address maps to the same key
     assert svc.node_key(ns("MEDIC-TEST"), "192.168.1.99") == "rtnode:MEDIC-TEST"
@@ -57,7 +57,7 @@ def test_poll_cycle_updates_known_hosts_only():
     def counting_poll(host):
         calls.append(host)
         return STATUSES.get(host, NodeStatus(reachable=False, status="unreachable"))
-    svc = MonitorService(run=fake_run, poll=counting_poll, now=clock)
+    svc = MonitorService(run=fake_run, poll=counting_poll, now=clock, kin_roster={})
     svc.discover()
     calls.clear()
     svc.poll_cycle()
@@ -66,7 +66,7 @@ def test_poll_cycle_updates_known_hosts_only():
 
 def test_unreachable_node_stops_refreshing_last_seen():
     times = [1000.0]
-    svc = MonitorService(run=fake_run, poll=fake_poll, now=lambda: times[0])
+    svc = MonitorService(run=fake_run, poll=fake_poll, now=lambda: times[0], kin_roster={})
     svc.discover()
     rec = svc.registry.get("rtnode:MEDIC-TEST")
     assert rec.last_seen == 1000.0
@@ -84,7 +84,7 @@ def test_run_rediscovers_on_schedule():
         if "xargs" in cmd:
             sweeps[0] += 1
         return fake_run(cmd)
-    svc = MonitorService(run=counting_run, poll=fake_poll, now=clock)
+    svc = MonitorService(run=counting_run, poll=fake_poll, now=clock, kin_roster={})
     svc.run(cycles=5, discover_every=2, sleep=lambda s: None)
     # cycles 0,2,4 rediscover -> 3 sweeps
     assert sweeps[0] == 3
