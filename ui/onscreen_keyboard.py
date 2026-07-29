@@ -129,7 +129,14 @@ class OnScreenKeyboard(BoxLayout):
             if isinstance(w, ModalView):
                 modal = w
                 break
-            w = w.parent
+            parent = getattr(w, "parent", None)
+            if parent is w:
+                # Kivy quirk: the Window's .parent is the Window ITSELF. For a
+                # field NOT inside a modal the walk reaches the Window and,
+                # without this guard, self-loops forever — the 2026-07-30
+                # BIRTH "Name this node" freeze (main thread pegged, UI dead).
+                break
+            w = parent
         if modal is None or self.parent is Window:
             return
         self._home_parent = self.parent
