@@ -15,6 +15,7 @@ EXPECTED_STEPS = [
     "write_reticulum_config",
     "install_software_stack",
     "configure_services",
+    "install_health_reporter",
     "apply_system_hardening",
     "set_hostname",
     "final_verification",
@@ -327,7 +328,7 @@ def test_install_fails_without_wheels_or_internet():
 def test_hardening_stages_deb_on_node_and_uses_remote_path():
     conn = build_conn(rnode=True)
     w = wf(conn)
-    w.steps[7][1](w)            # apply_system_hardening
+    w.steps[8][1](w)            # apply_system_hardening (index shifts if steps change)
     assert any(dst == f"{REMOTE_ASSET_DIR}/log2ram.deb" for _, dst in conn.pushed)
     dpkg_cmd = next(c for c in conn.history if "dpkg -i" in c)
     assert REMOTE_ASSET_DIR in dpkg_cmd
@@ -490,6 +491,63 @@ def test_birth_certificate_handles_missing_reticulum_address():
     assert result.success is True
     assert w.birth_certificate["reticulum_address"] is None
     assert w.birth_certificate["rgb_led_pin"] is None            # stock, no RGB
+
+
+def test_health_reporter_skipped_for_non_propagation_node():
+    # a default (UNKNOWN role) or transport node needs no Python reporter
+    w = wf(build_conn(rnode=True))
+    result = _run_step(w, "install_health_reporter")
+    assert result.success is True
+    assert result.skipped is True
+    assert w.profile.health_dst_hash is None
+
+
+def test_health_reporter_installed_for_propagation_node():
+    from node_profile import NodeRole
+    HEALTH_DST = "11223344556677889900aabbccddeeff"
+    conn = build_conn(rnode=True)
+    # the on-node dst read (after the service creates its identity)
+    conn.rules.insert(0, ("RNS.Destination.IN", 0, HEALTH_DST, ""))
+    profile = NodeProfile(role=NodeRole.PROPAGATION, has_solar_controller=True)
+
+    seen = []
+    _orig = conn.run
+
+    def run(cmd, timeout=30):
+        seen.append(cmd)
+        return _orig(cmd, timeout)
+
+    conn.run = run
+    w = wf(conn, profile)
+    result = _run_step(w, "install_health_reporter")
+
+    assert result.success is True and result.skipped is False
+    # rostered under the health destination the beacon announces from
+    assert w.profile.health_dst_hash == HEALTH_DST
+    # a real systemd unit was written + started, stamped with the power source
+    unit_writes = [c for c in seen if "rnm-health.service" in c]
+    assert unit_writes and "--power-source solar" in unit_writes[0]
+    assert any("systemctl enable rnm-health" in c for c in seen)
+    assert any("systemctl start rnm-health" in c for c in seen)
+
+
+def test_health_reporter_power_source_from_profile():
+    from node_profile import NodeRole
+    from workflows.build import _power_source
+    assert _power_source(NodeProfile(has_solar_controller=True)) == "solar"
+    assert _power_source(NodeProfile(has_battery_bank=True)) == "battery"
+    assert _power_source(NodeProfile()) == "mains"
+
+
+def test_health_dst_flows_onto_birth_certificate():
+    from node_profile import NodeRole
+    conn = build_conn(rnode=True)
+    w = wf(conn, NodeProfile(role=NodeRole.PROPAGATION))
+    w.profile.health_dst_hash = "11223344556677889900aabbccddeeff"
+    w.steps[0][1](w)                       # detect_hardware (sets up profile)
+    result = _run_step(w, "birth_certificate")
+    assert result.success is True
+    assert w.birth_certificate["health_dst"] == "11223344556677889900aabbccddeeff"
 
 
 def test_all_configs_enable_transport():

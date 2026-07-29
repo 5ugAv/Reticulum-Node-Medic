@@ -1054,7 +1054,12 @@ class BirthScreen(BoxLayout):
         try:
             from monitor import kin_roster
             from provisioning import tool_identity
-            h = cert.get("reticulum_address") or cert.get("identity_hash")
+            # Prefer the rtnode.health destination (the registry key its beacon
+            # announces from) so a propagation node shows up NAMED, not as an
+            # anonymous neighbour; fall back to the main identity for node types
+            # that key on it.
+            h = (cert.get("health_dst") or cert.get("reticulum_address")
+                 or cert.get("identity_hash"))
             if not h:
                 return
             lat = lon = None

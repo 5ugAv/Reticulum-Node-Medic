@@ -5,9 +5,13 @@ from monitor.health_beacon import (
     decode,
     encode,
     beacon_status,
+    battery_reason,
+    link_reason,
     RESET_REASONS,
     BOARD_IDS,
     PAYLOAD_LEN,
+    PAYLOAD_LEN_V2,
+    FORMAT_VERSION_V2,
 )
 
 
@@ -212,3 +216,162 @@ def test_wifi_down_ignores_rssi():
     # wifi down (rssi sentinel 0) must not read as a signal alert
     b = decode(sample_bytes(wifi_up=False, wifi_rssi_dbm=0))
     assert beacon_status(b) in ("ok", "warn")
+
+
+# ---- v2: power + link tail -----------------------------------------------
+# Every birthed node (RTNode-2400 VBAT, Pi+RNode UPS) can now report battery +
+# its own LoRa link. The tail is append-only: v1 tools read the shared prefix,
+# v2 tools read the tail when the payload is long enough.
+
+
+def sample_v2(**over):
+    kw = dict(
+        uptime_s=7200, heap_kb=140, wifi_rssi_dbm=-62, reset_reason=0,
+        wifi_up=True, lora_up=True, tcp_backbone_up=True,
+        local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+        board_id=0x3F, fw=(0, 7, 0),
+        battery_mv=3940, battery_pct=78, on_battery=True, on_solar=True,
+        charging=True, lora_snr_db=6, lora_rssi_dbm=-92,
+    )
+    kw.update(over)
+    return encode(**kw)
+
+
+# Cross-project v2 golden vector — locked byte-for-byte with the RTNode-2400
+# firmware packer (firmware/rtnode-2400/HealthBeaconPack.h; see
+# tests/test_firmware_beacon_contract.py). Same base as GOLDEN + the v2 tail:
+# battery 3940 mV / 78% / on-battery+charging+solar (0x07), SNR 6, RSSI -92.
+GOLDEN_V2 = bytes.fromhex("0200001c20008cc2003f3f0006020f644e0706a4")
+
+
+def test_v2_golden_vector_encode_is_byte_exact():
+    raw = encode(
+        7200, 140, -62, 0, wifi_up=True, lora_up=True, tcp_backbone_up=True,
+        local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+        board_id=0x3F, fw=(0, 6, 2), battery_mv=3940, battery_pct=78,
+        on_battery=True, charging=True, on_solar=True, lora_snr_db=6,
+        lora_rssi_dbm=-92)
+    assert raw == GOLDEN_V2
+
+
+def test_v2_golden_vector_decodes():
+    b = decode(GOLDEN_V2)
+    assert b.format_version == 2
+    assert b.battery_mv == 3940 and b.battery_pct == 78
+    assert (b.on_battery, b.charging, b.on_solar, b.on_mains) == (True, True, True, False)
+    assert b.lora_snr_db == 6 and b.lora_rssi_dbm == -92
+
+
+def test_v2_payload_is_20_bytes_and_versioned():
+    raw = sample_v2()
+    assert len(raw) == PAYLOAD_LEN_V2 == 20
+    assert raw[0] == FORMAT_VERSION_V2
+
+
+def test_v2_round_trips_all_fields():
+    b = decode(sample_v2())
+    assert b.battery_mv == 3940
+    assert b.battery_pct == 78
+    assert (b.on_battery, b.charging, b.on_solar, b.on_mains) == (
+        True, True, True, False)
+    assert b.lora_snr_db == 6
+    assert b.lora_rssi_dbm == -92
+    assert b.to_bytes() == sample_v2()
+
+
+def test_v2_helpers_and_labels():
+    b = decode(sample_v2())
+    assert b.has_power_telemetry is True
+    assert b.has_link_telemetry is True
+    assert "78%" in b.battery_label and "3.94 V" in b.battery_label
+    assert "solar" in b.power_source_label and "charging" in b.power_source_label
+
+
+def test_v1_beacon_has_no_power_or_link_telemetry():
+    b = decode(sample_bytes())
+    assert b.has_power_telemetry is False
+    assert b.has_link_telemetry is False
+    assert b.battery_pct is None and b.lora_snr_db is None
+    assert b.battery_label == "not reported"
+
+
+def test_v1_tool_reads_v2_shared_prefix():
+    # A v2 payload must still yield correct v1 fields (interop with old tools).
+    b = decode(sample_v2(uptime_s=12345, board_id=0x3F))
+    assert b.uptime_s == 12345
+    assert b.board_label == "Heltec32 V4"
+    assert b.lora_up is True
+
+
+def test_encode_promotes_to_v2_when_battery_given():
+    # supplying any power/link field auto-selects the v2 wire format
+    raw = encode(
+        uptime_s=1, heap_kb=100, wifi_rssi_dbm=-50, reset_reason=0,
+        wifi_up=True, lora_up=True, tcp_backbone_up=True,
+        local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+        board_id=0x3F, fw=(0, 7, 0), battery_pct=55)
+    assert len(raw) == 20 and raw[0] == FORMAT_VERSION_V2
+    assert decode(raw).battery_pct == 55
+
+
+def test_unknown_battery_and_link_sentinels_decode_to_none():
+    # a v2 node that can't read battery/link emits sentinels -> None on decode
+    raw = encode(
+        uptime_s=1, heap_kb=100, wifi_rssi_dbm=-50, reset_reason=0,
+        wifi_up=True, lora_up=True, tcp_backbone_up=True,
+        local_tcp_server_up=True, wdt_armed=True, psram=True, fault=False,
+        board_id=0x3F, fw=(0, 7, 0), format_version=FORMAT_VERSION_V2)
+    b = decode(raw)
+    assert len(raw) == 20  # tail present...
+    assert b.battery_mv is None and b.battery_pct is None  # ...but unknown
+    assert b.lora_snr_db is None and b.lora_rssi_dbm is None
+
+
+# battery status contribution
+
+
+def test_critical_discharging_battery_is_alert():
+    b = decode(sample_v2(battery_pct=8, charging=False, on_mains=False,
+                         on_battery=True, on_solar=False))
+    assert battery_reason(b) == "alert"
+    assert beacon_status(b) == "alert"
+
+
+def test_low_discharging_battery_is_warn():
+    b = decode(sample_v2(battery_pct=22, charging=False, on_mains=False,
+                         on_battery=True, on_solar=False))
+    assert battery_reason(b) == "warn"
+    assert beacon_status(b) == "warn"
+
+
+def test_low_but_charging_battery_does_not_flag():
+    # a solar node dipping while it charges is recovering, not in trouble
+    b = decode(sample_v2(battery_pct=8, charging=True, on_solar=True,
+                         on_battery=True))
+    assert battery_reason(b) is None
+    assert beacon_status(b) == "ok"
+
+
+def test_low_on_mains_battery_does_not_flag():
+    b = decode(sample_v2(battery_pct=5, charging=False, on_mains=True,
+                         on_battery=False, on_solar=False))
+    assert battery_reason(b) is None
+
+
+def test_healthy_battery_is_ok():
+    b = decode(sample_v2(battery_pct=88))
+    assert battery_reason(b) is None
+
+
+# link status contribution
+
+
+def test_marginal_lora_link_is_warn():
+    b = decode(sample_v2(lora_snr_db=-11))
+    assert link_reason(b) == "warn"
+    assert beacon_status(b) == "warn"
+
+
+def test_good_lora_link_does_not_flag():
+    b = decode(sample_v2(lora_snr_db=7))
+    assert link_reason(b) is None

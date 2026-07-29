@@ -83,6 +83,12 @@ class NodeProfile:
     os_version: Optional[str] = None
     reticulum_version: Optional[str] = None
     lxmf_version: Optional[str] = None
+    #: A Pi+RNode propagation node beacons its health from a dedicated
+    #: ``rtnode.health`` destination (its own identity, not the main rnsd one).
+    #: The medic's registry keys nodes by that destination hash, so BIRTH
+    #: captures it here to roster the node under it — matching how an RTNode-2400
+    #: is keyed by its firmware health dst — so the beacon shows up NAMED.
+    health_dst_hash: Optional[str] = None
     has_solar_controller: bool = False
     has_battery_bank: bool = False
     has_cooling_fan: bool = False

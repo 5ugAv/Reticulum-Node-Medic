@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from node_profile import NodeHardware, NodeProfile
+from node_profile import NodeHardware, NodeProfile, NodeRole
 from transport.connection import Connection
 from workflows.rnode_boards import get_board
 from workflows.radio_params import set_params_at_birth
@@ -392,6 +392,112 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
                       f"Installed and started: {', '.join(services)}.")
 
 
+#: The node's own health identity — a stable file the reporter reuses across
+#: restarts (the medic maps its rtnode.health destination to the node profile).
+_HEALTH_IDENTITY_PATH = "~/.reticulum-node-medic/pi_health_identity"
+
+#: Reporter modules pushed onto a propagation node (self-contained package, run
+#: with PYTHONPATH so ``python3 -m monitor.pi_health_reporter`` resolves).
+_HEALTH_MODULES = ("health_beacon.py", "ups.py", "pi_health_reporter.py")
+
+
+def _power_source(profile: NodeProfile) -> str:
+    """What BIRTH stamps as the node's power source, from the profile hardware."""
+    if profile.has_solar_controller:
+        return "solar"
+    if profile.has_battery_bank:
+        return "battery"
+    return "mains"
+
+
+#: Read the health reporter's rtnode.health destination hash off the node (after
+#: the service has created its identity file). Mirrors _RETICULUM_ADDR_CMD.
+_HEALTH_DST_CMD = (
+    "python3 -c \"import RNS, os; "
+    f"p=os.path.expanduser('{_HEALTH_IDENTITY_PATH}'); "
+    "i=RNS.Identity.from_file(p) if os.path.exists(p) else None; "
+    "RNS.Reticulum() if i else None; "
+    "d=RNS.Destination(i, RNS.Destination.IN, RNS.Destination.SINGLE, "
+    "'rtnode', 'health') if i else None; "
+    "print(RNS.hexrep(d.hash, delimit=False) if d else '')\" 2>/dev/null")
+
+
+@build_step
+def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
+    """Install the propagation-node health reporter so a Pi + RNode node beacons
+    its health — battery + transmission — on ``rtnode.health``, the same beacon
+    the medic already decodes from RTNode-2400s.
+
+    Only a PROPAGATION node needs this: an RTNode-2400 reports from its own C++
+    firmware, and a pure transport node runs only rnsd. Other roles skip. The
+    reporter attaches to rnsd's shared Reticulum instance (it does not own the
+    radio), so it runs beside rnsd/lxmd, and starts after them.
+    """
+    if wf.profile.role != NodeRole.PROPAGATION:
+        return StepResult("install_health_reporter", True,
+                          "Not a propagation node — health reporter not needed.",
+                          skipped=True)
+
+    user = wf.run_user()
+    home = "/root" if user == "root" else f"/home/{user}"
+    pkg_dir = f"{home}/.rnm-health/monitor"
+    mon_dir = os.path.join(os.path.dirname(__file__), os.pardir, "monitor")
+
+    wf.connection.run(f"mkdir -p {pkg_dir}")
+    wf.connection.run(f"touch {pkg_dir}/__init__.py")
+    for name in _HEALTH_MODULES:
+        local = os.path.join(mon_dir, name)
+        if os.path.isfile(local):
+            wf.connection.push_file(local, f"{pkg_dir}/{name}")
+
+    src = _power_source(wf.profile)
+    code, py, _ = wf.connection.run("command -v python3")
+    py = py.strip() or "/usr/bin/python3"
+    unit = (
+        "[Unit]\n"
+        "Description=rnm-health (propagation-node health beacon)\n"
+        "After=rnsd.service network-online.target\n"
+        "Wants=rnsd.service\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        f"User={user}\n"
+        f"Environment=HOME={home}\n"
+        f"Environment=PYTHONPATH={home}/.rnm-health\n"
+        f"WorkingDirectory={home}/.rnm-health\n"
+        f"ExecStart={py} -m monitor.pi_health_reporter --power-source {src}\n"
+        "Restart=always\n"
+        "RestartSec=15\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+    heredoc = (
+        f"{wf.priv('tee /etc/systemd/system/rnm-health.service')} "
+        f">/dev/null <<'RTTEOF'\n{unit}\nRTTEOF"
+    )
+    code, out, err = wf.connection.run(heredoc)
+    if code != 0:
+        return StepResult("install_health_reporter", False,
+                          f"Could not write rnm-health.service: {err or out}")
+    wf.connection.run(wf.priv("systemctl daemon-reload"))
+    wf.connection.run(wf.priv("systemctl enable rnm-health"))
+    wf.connection.run(wf.priv("systemctl start rnm-health"))
+
+    # Give the service a moment to create its identity + first announce, then
+    # capture the health destination hash so BIRTH can roster the node under it
+    # (that hash is the registry key — without it the beacon shows as anonymous).
+    wf.connection.run("sleep 3")
+    dst = wf.connection.run(_HEALTH_DST_CMD)[1].strip().splitlines()
+    dst = dst[-1].strip() if dst else ""
+    if len(dst) == 32 and all(c in "0123456789abcdef" for c in dst.lower()):
+        wf.profile.health_dst_hash = dst.lower()
+        where = f" health dst {dst.lower()[:8]}…"
+    else:
+        where = " (health dst not captured yet — first beacon will register it)"
+
+    return StepResult("install_health_reporter", True,
+                      f"Health reporter installed and started ({src} power);{where}")
+
+
 @build_step
 def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
     # Log2Ram installed from a local .deb (no internet in the field). Stage the
@@ -495,6 +601,11 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         "serial_port": r.serial_port,
         "session_id": wf.profile.session_id,
     }
+    # A propagation node beacons from its own rtnode.health destination; carry it
+    # so the node is rostered under the hash its health beacon actually announces
+    # (the registry key), not just its main rnsd identity.
+    if wf.profile.health_dst_hash:
+        wf.birth_certificate["health_dst"] = wf.profile.health_dst_hash
     return StepResult(
         "birth_certificate", True,
         f"Birth certificate ready — {hostname or 'node'} @ "
