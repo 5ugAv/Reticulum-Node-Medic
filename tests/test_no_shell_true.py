@@ -24,7 +24,10 @@ ROOT = os.path.dirname(HERE)
 ALLOWLIST: set = set()
 
 _SHELL_TRUE = re.compile(r"shell\s*=\s*True")
-_SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "assets", ".venv"}
+_SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "assets",
+              ".venv", ".claude"}   # .claude holds git worktrees / agent checkouts
+                                    # (full repo copies) — scanning them double-counts
+                                    # this very test file as an "offender"
 
 
 def _python_sources():

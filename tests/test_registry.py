@@ -460,3 +460,66 @@ def test_probe_hash_for_none_when_no_hex_dest():
     reg.register("rtnode:Lonely", name="Lonely")   # only a non-hex key, no siblings
     assert reg.probe_hash_for("rtnode:Lonely") is None
     assert reg.probe_hash_for("no-such-key") is None
+
+
+# -- consolidated_record: device-level health for the node-detail screen ------
+
+def _faith_registry():
+    """The FAITH case: a hex health-beacon dest carrying the decoded beacon, plus
+    a non-hex HTTP `rtnode:<name>` aspect sharing the name but with NO beacon."""
+    hexh = "5a0b000b000000000000000000000006"
+    reg = NodeRegistry()
+    reg.set_kin_roster({hexh: {"name": "FAITH RTnode", "type": "rtnode2400",
+                               "builder": "medic-unit"}})
+    reg.ingest(hexh, beacon(uptime_s=999), NOW)                 # beacon lives here
+    reg.record_http_status("rtnode:FAITH RTnode", http(name="FAITH RTnode"), NOW)
+    return reg, hexh
+
+
+def test_consolidated_record_carries_beacon_from_health_bearing_member():
+    """Tapping the row via its beacon-less HTTP aspect must still surface the
+    device's decoded beacon (the node-detail Health text), not 'none yet'."""
+    from monitor.formatting import beacon_lines
+    reg, hexh = _faith_registry()
+    # the beacon-less HTTP record on its own reads empty
+    assert beacon_lines(reg.get("rtnode:FAITH RTnode")) == \
+        ["No health beacon received yet."]
+    # consolidating from EITHER key yields the device's real beacon
+    for key in ("rtnode:FAITH RTnode", hexh):
+        view = reg.consolidated_record(key, NOW)
+        assert view is not None
+        assert view.latest_beacon is not None
+        assert view.latest_beacon.uptime_s == 999
+        assert any("Uptime: 999s" in ln for ln in beacon_lines(view))
+
+
+def test_consolidated_record_status_matches_dashboard_dot():
+    """The node-detail hexagon (view.status) must equal the VITALS dot (the
+    dashboard row status) for the same device."""
+    reg, hexh = _faith_registry()
+    row = [d for d in reg.devices(NOW) if d["name"] == "FAITH RTnode"][0]
+    for key in ("rtnode:FAITH RTnode", hexh):
+        view = reg.consolidated_record(key, NOW)
+        assert view.status(NOW) == row["status"]
+
+
+def test_consolidated_record_keeps_name_and_kin_provenance():
+    """Health is pooled, but the merged record keeps its authoritative kin
+    identity — the detail header stays 'FAITH RTnode', not a bare hash."""
+    reg, hexh = _faith_registry()
+    view = reg.consolidated_record("rtnode:FAITH RTnode", NOW)
+    assert view.name == "FAITH RTnode"
+    assert view.provenance == "kin"
+
+
+def test_consolidated_record_does_not_mutate_stored_records():
+    """The consolidated view is a copy: pooling health onto it must not leak the
+    beacon onto the stored beacon-less HTTP record."""
+    reg, hexh = _faith_registry()
+    reg.consolidated_record("rtnode:FAITH RTnode", NOW)
+    assert reg.get("rtnode:FAITH RTnode").latest_beacon is None
+
+
+def test_consolidated_record_none_for_unknown_key():
+    reg, _ = _faith_registry()
+    assert reg.consolidated_record("no-such-key", NOW) is None

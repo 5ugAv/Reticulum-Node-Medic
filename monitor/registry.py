@@ -461,23 +461,22 @@ class NodeRegistry:
                 return h                    # a real hex dest for the same device
         return None
 
-    def devices(self, now: float) -> List[dict]:
-        """The CONSOLIDATED dashboard: one row per physical device. Destinations
-        that announced the same identity collapse into one entry (a phone's
-        chat + files aspects are one phone), led by its best-known record.
-        Each row adds ``aspects`` (how many destinations merged) and
-        ``capabilities``: {lora, wifi, bluetooth, internet} — True (seen
-        working), False (reported down), None (no way to know yet)."""
+    def _device_groups(self) -> List[List[NodeRecord]]:
+        """Group every record into physical DEVICES: first by announced identity,
+        then collapsing identity-groups that resolve to the same non-empty NAME.
+
+        A single device can reach the medic three ways the registry CAN'T link by
+        identity: its health-beacon dest, an HTTP /status keyed by node_name, and
+        an rnpath path with no announce. Kin names are the operator's unique,
+        authoritative labels, so a shared name is a safe merge; unnamed neighbours
+        stay separate until an announce links them by identity. This is the single
+        grouping both ``devices()`` (the dashboard) and ``consolidated_record()``
+        (a tapped row's detail) share, so the merge and the display never diverge.
+        """
         groups: Dict[str, List[NodeRecord]] = {}
         for rec in self.nodes.values():
             groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
 
-        # A single device can reach the medic three ways the registry CAN'T link
-        # by identity: its health-beacon dest, an HTTP /status keyed by node_name,
-        # and an rnpath path with no announce. Collapse groups that resolve to the
-        # same non-empty NAME into one row (kin names are the operator's unique,
-        # authoritative labels). Unnamed neighbours stay separate until an announce
-        # links them by identity.
         def _grp_name(members) -> str:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
             return (p.name or p.announced_name or "").strip()
@@ -491,13 +490,77 @@ class NodeRegistry:
                 groups[by_name[name]].extend(groups.pop(key))
             else:
                 by_name[name] = key
+        return list(groups.values())
+
+    @staticmethod
+    def _consolidate(members: List[NodeRecord], now: float) -> NodeRecord:
+        """Fold a device's merged aspect-records into ONE record for display: its
+        static identity (name/location/notes/log) from the best-known member, but
+        its HEALTH (latest beacon, HTTP /status, mesh reachability, last-seen)
+        POOLED from whichever members actually carry it — most recently heard wins.
+
+        This is the health-side twin of ``probe_hash_for``: where that resolves a
+        probeable mesh dest for a device led by a beacon-less record, this resolves
+        the device's real decoded health. Without it, a row led by an HTTP
+        ``rtnode:<name>`` record (no beacon) shows a green merged dot but a detail
+        that reads 'No health beacon received yet' — the two disagree. Returns a
+        shallow copy, so the stored records are never mutated."""
+        import copy
+
+        base = sorted(
+            members,
+            key=lambda r: (r.provenance != "kin", not r.name,
+                           _STATUS_RANK.get(r.status(now), 3)))[0]
+        merged = copy.copy(base)
+
+        def _recency(r: NodeRecord) -> float:
+            return r.last_seen if r.last_seen is not None else float("-inf")
+
+        beacons = [r for r in members if r.latest_beacon is not None]
+        if beacons:
+            merged.latest_beacon = max(beacons, key=_recency).latest_beacon
+        https = [r for r in members
+                 if r.latest_http is not None and r.latest_http.reachable]
+        if https:
+            merged.latest_http = max(https, key=_recency).latest_http
+        meshed = [r for r in members if r.mesh_hops is not None]
+        if meshed:
+            m = min(meshed, key=lambda r: r.mesh_hops)
+            merged.mesh_hops = m.mesh_hops
+            if not merged.mesh_interface:
+                merged.mesh_interface = m.mesh_interface
+        seen = [r.last_seen for r in members if r.last_seen is not None]
+        if seen:
+            merged.last_seen = max(seen)
+        return merged
+
+    def consolidated_record(self, key: str, now: float) -> Optional[NodeRecord]:
+        """The device-level health record for the row/record identified by *key*
+        (any merged member's dst_hash). Returns a consolidated NodeRecord whose
+        ``status(now)`` and ``latest_beacon`` reflect the WHOLE device — the same
+        health the dashboard dot shows — so the node-detail hexagon and Health text
+        agree with it. ``None`` if *key* is unknown."""
+        if key not in self.nodes:
+            return None
+        for members in self._device_groups():
+            if any(m.dst_hash == key for m in members):
+                return self._consolidate(members, now)
+        return None
+
+    def devices(self, now: float) -> List[dict]:
+        """The CONSOLIDATED dashboard: one row per physical device. Destinations
+        that announced the same identity collapse into one entry (a phone's
+        chat + files aspects are one phone), led by its best-known record.
+        Each row adds ``aspects`` (how many destinations merged) and
+        ``capabilities``: {lora, wifi, bluetooth, internet} — True (seen
+        working), False (reported down), None (no way to know yet)."""
         out = []
-        for members in groups.values():
-            primary = sorted(
-                members,
-                key=lambda r: (r.provenance != "kin", not r.name,
-                               _STATUS_RANK.get(r.status(now), 3)))[0]
-            d = primary.to_dashboard(now)
+        for members in self._device_groups():
+            # Dot status/health come from the CONSOLIDATED record (health pooled
+            # across members), not an arbitrary primary that may lack a beacon —
+            # so the row and its tapped detail read the same device health.
+            consolidated = self._consolidate(members, now)
+            d = consolidated.to_dashboard(now)
             seen = [r.last_seen for r in members if r.last_seen is not None]
             if seen:
                 d["last_seen_hours"] = max(0.0, (now - max(seen)) / 3600.0)

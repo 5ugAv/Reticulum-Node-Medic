@@ -1088,6 +1088,11 @@ class ReticulumNodeMedicApp(App):
             self._open_node_cert(node)
             return
         now = time.time()
+        # The tapped row is one physical DEVICE reached via several destinations;
+        # the record keyed by `ident` (the row's primary) may be the beacon-less
+        # HTTP `rtnode:<name>` aspect. Consolidate so the detail's hexagon + Health
+        # text read the device's ACTUAL latest health, matching the VITALS dot.
+        rec = self.monitor_service.registry.consolidated_record(ident, now) or rec
         watch_line = None
         w = getattr(self, "_node_watcher", None)
         if w is not None and w.is_watching(node):
@@ -1100,7 +1105,11 @@ class ReticulumNodeMedicApp(App):
         activity_text, by_hour, insights = None, None, None
         try:
             from monitor.history import activity_profile, describe_activity, analyse
-            pts = self.monitor_service.registry.history.series(rec.dst_hash)
+            # History accrues under the DEVICE's real mesh/beacon dest, which may
+            # differ from the consolidated record's display key — resolve it.
+            hist_key = (self.monitor_service.registry.probe_hash_for(ident)
+                        or rec.dst_hash)
+            pts = self.monitor_service.registry.history.series(hist_key)
             profile = activity_profile(pts, now, self._local_tz_offset_hours())
             activity_text = describe_activity(profile)
             by_hour = profile.get("by_hour")
