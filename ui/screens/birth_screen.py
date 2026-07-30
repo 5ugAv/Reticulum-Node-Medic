@@ -981,6 +981,42 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(_line(f"      {result.message}", color="amber",
                                        size="12sp"))
 
+    def _popup_outcome(self):
+        """Surface the build's outcome as a POPUP the moment it ends. The ring
+        vanishing + the result/onboarding info rendering below the fold left the
+        operator scrolling to learn whether their build lived or died
+        (2026-07-30 report: 'this info should pop up instead')."""
+        try:
+            from ui.requirement_popup import requirement_popup
+            if getattr(self, "_had_failure", False):
+                requirement_popup(
+                    "A build step failed — the [FAIL] line in the build log "
+                    "names it, with the reason under it. Fix that and run the "
+                    "build again.\n\nBoard won't flash?  Hold BOOT, tap RST, "
+                    "release BOOT, retry — or use a short, known-good USB data "
+                    "cable.",
+                    "Build didn't finish", False)
+                return
+            onboarding = getattr(self._workflow, "onboarding", None)
+            nm = (onboarding or {}).get("node_name", "") or "the node"
+            if onboarding:
+                requirement_popup(
+                    f"Build finished for {nm}.\n\nIf its screen still says "
+                    "CONFIG MODE, the setup details are printed in the build "
+                    "log — join the 'RTNode-Setup' WiFi and enter them at "
+                    "http://10.0.0.1. If it shows its status screen, it's "
+                    "already configured — watch VITALS for its first health "
+                    "beacon.",
+                    "Build finished", False)
+            else:
+                requirement_popup(
+                    "Build finished — details and the birth certificate are in "
+                    "the build log below. Watch VITALS for the node's first "
+                    "health beacon.",
+                    "Build finished", False)
+        except Exception:
+            pass
+
     def _outcome_panel(self):
         """A clear '✓ Done — next steps' (or failure) banner so the operator is
         never left staring at a finished log wondering what to do."""
@@ -1010,6 +1046,7 @@ class BirthScreen(BoxLayout):
         self._mark_activity(False)               # build done -> screensaver allowed again
         self._stop_build_progress()              # build done -> ring to 100%, remove
         self._outcome_panel()
+        self._popup_outcome()                    # the outcome comes TO the operator
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
             self.list.add_widget(_line("Onboarding (enter at RTNode-Setup / "
