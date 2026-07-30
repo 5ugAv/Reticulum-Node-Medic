@@ -357,9 +357,20 @@ class ReticulumNodeMedicApp(App):
         to power off / unplug. Balanced by end_activity(). The flash itself runs on
         a daemon thread + child process, so navigating away never interrupts it —
         this just keeps the operator from making it unsafe."""
+        import time as _t
         self._activity = getattr(self, "_activity", 0) + 1
+        self._activity_label = label
+        self._activity_started = _t.time()
         if self._activity == 1:
             self._show_activity_banner(label)
+
+    def activity_info(self):
+        """(label, seconds_running) of the current activity — for telling the
+        operator WHICH build is running when they tap Build again (a doubled
+        touch produced 'phantom flash' warnings all night 2026-07-30)."""
+        import time as _t
+        return (getattr(self, "_activity_label", "a build"),
+                _t.time() - getattr(self, "_activity_started", _t.time()))
 
     def end_activity(self):
         self._activity = max(0, getattr(self, "_activity", 0) - 1)

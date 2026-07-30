@@ -555,7 +555,14 @@ class BirthScreen(BoxLayout):
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                         color=theme.hex_to_rgba(theme.COLORS["background"]))
-            go.bind(on_release=lambda *_: self._run_rtnode())
+
+            def _go(btn, *_a):
+                # INSTANT feedback under the finger — the invisible first
+                # seconds of a build made operators tap again all night.
+                btn.disabled = True
+                btn.text = "Starting build…"
+                self._run_rtnode()
+            go.bind(on_release=_go)
             self.header.add_widget(go)
         else:
             self.header.add_widget(_line(
@@ -788,11 +795,19 @@ class BirthScreen(BoxLayout):
             from kivy.app import App
             app = App.get_running_app()
             if app is not None and app.flash_in_progress():
+                label, elapsed = app.activity_info()
+                # The touchscreen can deliver a tap TWICE (double input
+                # providers) — the duplicate arrives within moments and used to
+                # raise a scary 'phantom flash' warning for the build the SAME
+                # tap just started (the 2026-07-30 saga). Absorb it silently.
+                if elapsed < 10:
+                    return
                 from ui.requirement_popup import requirement_popup
                 requirement_popup(
-                    "A flash is already running in the background — let it finish "
-                    "before starting another. Watch the red banner at the top.",
-                    "Please wait", False)
+                    f"{label}\n\nIt has been running {int(elapsed)}s — this is "
+                    "the build YOU started (the red banner at the top). Let it "
+                    "finish before starting another.",
+                    "Your build is running", False)
                 return
         except Exception:
             pass
