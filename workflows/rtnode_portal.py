@@ -151,10 +151,17 @@ def join_ap_commands(ssid: str):
     ]
 
 
-def _default_join_ap(ssid: str, attempts: int = 3,
+def _default_join_ap(ssid: str, attempts: int = 10,
                      sleep: Callable[[float], None] = time.sleep) -> Tuple[bool, str]:
     """Join an open AP with nmcli (the tool runs on a Pi 5). Rescans for the SSID
-    then connects, retrying so a first throttled scan doesn't lose the AP."""
+    then connects, retrying so a first throttled scan doesn't lose the AP.
+
+    PATIENCE MATTERS: onboarding runs right after the flash, and the freshly
+    rebooted board needs ~15-30 s to raise its setup AP. The old 3 quick
+    attempts exhausted BEFORE the AP existed ("No network with SSID ... found"
+    — the 2026-07-30 [FAIL] wifi_onboarding on every fresh birth); minutes
+    later a manual join worked instantly. ~10 attempts x ~7 s rides out the
+    boot."""
     rescan, connect = join_ap_commands(ssid)
     last = "not attempted"
     for _ in range(max(1, attempts)):
@@ -168,6 +175,7 @@ def _default_join_ap(ssid: str, attempts: int = 3,
             last = (proc.stderr or proc.stdout).strip()
         except Exception as exc:  # nmcli missing / no wifi / timeout
             last = str(exc)
+        sleep(4)  # the AP may still be rising — give the board time to boot
     return (False, last)
 
 
