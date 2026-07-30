@@ -394,18 +394,26 @@ class ReticulumNodeMedicApp(App):
             if bar is not None:
                 bar.text = label
                 return
-            bar = Label(text=label, bold=True, font_size="13sp", color=(1, 1, 1, 1),
+            # Operator-spec (2026-07-30): LARGER, YELLOW with a RED outline —
+            # the thin red strip was too easy to miss while a flash ran.
+            from kivy.graphics import Line
+            bar = Label(text=label, bold=True, font_size="16sp",
+                        color=theme.hex_to_rgba(theme.COLORS["red"]),
                         halign="center", valign="middle", size_hint=(None, None),
-                        height=dp(34))
+                        height=dp(52))
             with bar.canvas.before:
-                Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+                Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
                 rect = Rectangle()
+                Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+                border = Line(width=dp(2))
 
             def _sync(*_):
                 bar.width = Window.width
                 bar.pos = (0, Window.height - bar.height)
                 bar.text_size = bar.size
                 rect.pos, rect.size = bar.pos, bar.size
+                border.rectangle = (bar.x + dp(2), bar.y + dp(2),
+                                    bar.width - dp(4), bar.height - dp(4))
             bar.bind(pos=_sync, size=_sync)
             Window.bind(size=lambda *_a: _sync())
             Window.add_widget(bar)

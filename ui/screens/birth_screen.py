@@ -219,16 +219,9 @@ class BirthScreen(BoxLayout):
             self.list.clear_widgets()
         self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
 
-        # New here? A step-by-step guide with animations walks the whole thing.
-        if self._on_guide is not None:
-            guide = Button(text="New here?  Guide me step by step  →",
-                           size_hint_y=None, height=dp(52), bold=True, font_size="16sp",
-                           background_normal="",
-                           background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                           color=theme.hex_to_rgba(theme.COLORS["background"]))
-            guide.bind(on_release=lambda *_: self._on_guide())
-            self.header.add_widget(guide)
-            self.header.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        # The step-by-step guide entry lives at the BOTTOM as a modest link —
+        # a big green button at the top read as 'continue' and yanked operators
+        # back to the guide's start mid-birth (2026-07-30 report).
 
         # Step one: name the NEW node being built. (Existing nodes live in VITALS /
         # SCAN — tap one to open its certificate, which offers Triage.)
@@ -308,6 +301,16 @@ class BirthScreen(BoxLayout):
                          theme.COLORS["background" if mit_ok else "text_secondary"]))
         mit.bind(on_release=lambda *_: self._on_mitosis and self._on_mitosis())
         self.header.add_widget(mit)
+
+        # Guide entry, demoted to a quiet link below everything (see note above).
+        if self._on_guide is not None:
+            guide = Button(text="New here?  Open the step-by-step guide",
+                           size_hint_y=None, height=dp(36), font_size="12.5sp",
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            guide.bind(on_release=lambda *_: self._on_guide())
+            self.header.add_widget(guide)
 
         # The scroll below shows the next action for the chosen firmware.
         if hasattr(self, "list"):
