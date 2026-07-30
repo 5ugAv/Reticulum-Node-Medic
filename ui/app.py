@@ -78,22 +78,41 @@ def _demo_pi_build():
     return BuildWorkflow(conn, NodeProfile())
 
 
-def _pi_rnode_factory():
-    """Pi propagation birth. The real remote-provision path isn't wired yet, so
-    outside opt-in demo mode this HONESTLY fails instead of faking an ok/ok/ok
-    birth certificate (the trap that shipped 'built' nodes that were never
-    touched)."""
+def _hostnameify(name: str) -> str:
+    """A node name -> a valid hostname (lowercase, dashes, trimmed)."""
+    import re as _re
+    h = _re.sub(r"[^a-z0-9-]+", "-", (name or "").lower()).strip("-")
+    return h[:32] or ""
+
+
+def _pi_rnode_factory(address: str = "", user: str = "pi", node_name: str = ""):
+    """Pi propagation birth — REAL (2026-07-30): SSH to the target Pi and run
+    the full BuildWorkflow (config, RNS/LXMF stack, services, the health
+    reporter, hardening, hostname, certificate). Key-auth only: the Pi must be
+    reachable with the medic's SSH key (the SD-imaging step bakes it in; or
+    install it by hand). No address -> honest guidance, never a fake run."""
     from ui.hw_factories import demo_allowed, _HonestFailWorkflow
-    if demo_allowed():
-        return _demo_pi_build()
-    return _HonestFailWorkflow(
-        "provision_pi",
-        "This process is still under construction. Your Pi is detected fine — the "
-        "medic just can't auto-provision a Pi propagation node through this button "
-        "yet (and it won't fake it). For now: flash the RNode on its own (pick the "
-        "board, leave Host Pi empty), then set the Pi up over the wire by hand.\n\n"
-        "Noted for the developers to build.",
-        "Pi birth — under construction", under_construction=True)
+    address = (address or "").strip()
+    user = (user or "pi").strip() or "pi"
+    if not address:
+        if demo_allowed():
+            return _demo_pi_build()
+        return _HonestFailWorkflow(
+            "detect_hardware",
+            "Enter the Pi's network address first (e.g. raspberrypi.local or "
+            "192.168.1.50).\n\nThe Pi must be powered, on your WiFi, with SSH "
+            "enabled and the medic's key authorised — the SD-imaging step sets "
+            "all of that up, or add the key by hand to ~/.ssh/authorized_keys "
+            "on the Pi.",
+            "Pi address needed")
+    from transport.connection import SSHConnection
+    from node_profile import NodeRole
+    conn = SSHConnection(address, user=user)
+    profile = NodeProfile(role=NodeRole.PROPAGATION, ssh_user=user)
+    hn = _hostnameify(node_name)
+    if hn:
+        profile.hostname = hn
+    return BuildWorkflow(conn, profile)
 
 
 def _mitosis_factory():

@@ -287,6 +287,29 @@ class BirthScreen(BoxLayout):
                 self.header.add_widget(self._sel_button(
                     self._sel_pi[1] if self._sel_pi else "Tap to choose a Pi",
                     self._choose_pi))
+                # The REAL provision path SSHes to the Pi — it needs an address
+                # (and the login user; fresh RPi OS images default to 'pi').
+                self.header.add_widget(_line(
+                    "Pi address on your network  (the SD-imaging step sets the "
+                    "medic's SSH key on the Pi)", size="12.5sp",
+                    color="text_secondary"))
+                row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                height=dp(48), spacing=dp(8))
+                if not hasattr(self, "_pi_addr_in"):
+                    from ui.onscreen_keyboard import bind_field
+                    from kivy.uix.textinput import TextInput
+                    self._pi_addr_in = bind_field(TextInput(
+                        text="", multiline=False, font_size="15sp",
+                        hint_text="raspberrypi.local or 192.168.1.50"))
+                    self._pi_user_in = bind_field(TextInput(
+                        text="pi", multiline=False, font_size="15sp",
+                        hint_text="user", size_hint_x=0.3))
+                for w_ in (self._pi_addr_in, self._pi_user_in):
+                    if w_.parent is not None:
+                        w_.parent.remove_widget(w_)
+                row.add_widget(self._pi_addr_in)
+                row.add_widget(self._pi_user_in)
+                self.header.add_widget(row)
 
         # Mitosis (clone THIS Node Medic) — Heltec Wireless Tracker only (proven
         # GPS path); available from the RNode board path.
@@ -768,7 +791,10 @@ class BirthScreen(BoxLayout):
         self._last_type = node_type
         if node_type == "pi_rnode":
             # Pi + RNode: provision the Pi AND flash the chosen board it hosts.
-            workflow = self._factories["pi_rnode"]()
+            workflow = self._factories["pi_rnode"](
+                getattr(self, "_pi_addr_in", None) and self._pi_addr_in.text or "",
+                getattr(self, "_pi_user_in", None) and self._pi_user_in.text or "pi",
+                self._name_in.text.strip())
             prof = getattr(workflow, "profile", None)
             if prof is not None and board is not None:
                 prof.rnode_board_key = board.key
