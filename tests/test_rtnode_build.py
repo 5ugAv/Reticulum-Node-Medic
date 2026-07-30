@@ -32,7 +32,13 @@ def conn(port="/dev/cu.usbmodem2101", flash_code=0, beacon=BEACON_LINE):
     # "ls /dev/ttyACM* ..." — the tool ships on a Pi.
     c.rules.insert(0, ("^ls /dev/tty", 0 if port else 1, port, ""))
     c.rules.insert(0, ("pio run", flash_code, "SUCCESS" if flash_code == 0 else "err", ""))
-    c.rules.insert(0, ("rnm-serial-capture", 0, beacon, ""))
+    # verify_beacon now RESETS + captures serial via an inline python one-liner
+    # (the old rnm-serial-capture never existed on the medic); match its
+    # distinctive serial.Serial invocation.
+    c.rules.insert(0, ("serial.Serial", 0, beacon, ""))
+    # the outcome probe (board_configured_on_lan): default = not configured
+    c.rules.insert(0, ("curl -s -m 6 http://rtnode", 0, "", ""))
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, "", ""))
     return c
 
 
@@ -380,3 +386,144 @@ def test_wifi_onboarding_manual_fallback_when_not_auto():
     w = RTNodeBuildWorkflow(conn(), NodeProfile(), node_name="N")  # auto_provision off
     r = wifi_onboarding(w)
     assert r.skipped and "RTNode-Setup" in r.message
+
+
+# ---- single-pass hardening (2026-07-30: believe outcomes, not plumbing) -----
+
+CONFIGURED_STATUS = '{"fork":"RTNode","fw_version":"0.7.0","node_name":"FAITH B"}'
+BY_ID_LINE = ("lrwxrwxrwx 1 root root 13 Jul 30 18:00 "
+              "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:07:00:07-if00 "
+              "-> ../../ttyACM1")
+
+
+def _quiet_sleep(monkeypatch):
+    import workflows.rtnode_build as rb
+    monkeypatch.setattr(rb, "_sleep", lambda s: None)
+
+
+def test_helpers_derive_lan_host_from_usb_serial():
+    from workflows.rtnode_build import default_lan_host
+    assert default_lan_host("02:00:00:07:00:07") == "rtnode0007.local"
+    assert default_lan_host("") == ""
+
+
+def test_flash_retries_transient_failure_then_succeeds(monkeypatch):
+    _quiet_sleep(monkeypatch)
+    c = conn(port="/dev/ttyACM1")
+    calls = {"n": 0}
+    orig = c.run
+
+    def run(cmd, timeout=30):
+        if "pio run" in cmd:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return (1, "", "A fatal error occurred: transient USB")
+            return (0, "SUCCESS", "")
+        return orig(cmd, timeout)
+
+    c.run = run
+    w = wf(c)
+    w.steps[0][1](w)                     # detect
+    r = w.steps[1][1](w)                 # flash_firmware
+    assert r.success is True and "attempt 2" in r.message
+    assert calls["n"] == 2
+
+
+def test_flash_gives_up_after_three_attempts(monkeypatch):
+    _quiet_sleep(monkeypatch)
+    c = conn(port="/dev/ttyACM1", flash_code=1)
+    w = wf(c)
+    w.steps[0][1](w)
+    r = w.steps[1][1](w)
+    assert r.success is False
+
+
+def _auto_wf(c, provision, monkeypatch, creds=("HomeNet", "pw")):
+    _quiet_sleep(monkeypatch)
+    w = wf(c)
+    w.auto_provision = True
+    w._provision = provision
+    w._wifi_credentials = lambda: creds
+    w._join_ap = w._post = w._rejoin = None
+    w.node_name = "FAITH B"
+    w.steps[0][1](w)                     # detect (sets connection_port)
+    return w
+
+
+def test_onboarding_skips_portal_when_board_already_configured(monkeypatch):
+    c = conn(port="/dev/ttyACM1")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
+    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0,
+                       CONFIGURED_STATUS, ""))
+    never = {"called": False}
+
+    def provision(*a, **k):
+        never["called"] = True
+        return (False, "should not run")
+
+    w = _auto_wf(c, provision, monkeypatch)
+    r = next(f for n, f in w.steps if n == "wifi_onboarding")(w)
+    assert r.success is True
+    assert "already configured" in r.message
+    assert never["called"] is False
+
+
+def test_onboarding_trusts_outcome_when_provision_tail_fails(monkeypatch):
+    # provision claims failure (rejoin hiccup) but the config actually LANDED:
+    # the outcome probe finds the board serving /status -> step succeeds.
+    c = conn(port="/dev/ttyACM1")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
+    probe = {"n": 0}
+    orig = c.run
+
+    def run(cmd, timeout=30):
+        if "curl -s -m 6 http://rtnode0007.local/status" in cmd:
+            probe["n"] += 1
+            # not configured on the pre-check; configured after provision "failed"
+            return (0, "" if probe["n"] == 1 else CONFIGURED_STATUS, "")
+        return orig(cmd, timeout)
+
+    c.run = run
+    w = _auto_wf(c, lambda *a, **k: (False, "Could not rejoin medic wifi"),
+                 monkeypatch)
+    r = next(f for n, f in w.steps if n == "wifi_onboarding")(w)
+    assert r.success is True
+    assert "Config landed" in r.message
+
+
+def test_onboarding_retries_provision_then_fails_honestly(monkeypatch):
+    c = conn(port="/dev/ttyACM1")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
+    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0, "", ""))
+    tries = {"n": 0}
+
+    def provision(*a, **k):
+        tries["n"] += 1
+        return (False, "No network with SSID 'RTNode-Setup' found.")
+
+    w = _auto_wf(c, provision, monkeypatch)
+    r = next(f for n, f in w.steps if n == "wifi_onboarding")(w)
+    assert r.success is False
+    assert tries["n"] == 2               # full-cycle retry happened
+
+
+def test_verify_accepts_init_banner_without_announce():
+    c = conn(port="/dev/ttyACM1",
+             beacon="[HealthBeacon] init dst=8899aabbccddeeff00112233445566ab, first announce in ~30s")
+    w = wf(c)
+    w.steps[0][1](w)
+    r = next(f for n, f in w.steps if n == "verify_beacon")(w)
+    assert r.success is True
+    assert w.profile.reticulum_identity_hash.startswith("8899aabb")
+
+
+def test_verify_falls_back_to_lan_probe_when_serial_quiet():
+    c = conn(port="/dev/ttyACM1", beacon="")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
+    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0,
+                       CONFIGURED_STATUS, ""))
+    w = wf(c)
+    w.steps[0][1](w)
+    r = next(f for n, f in w.steps if n == "verify_beacon")(w)
+    assert r.success is True
+    assert "alive on the LAN" in r.message

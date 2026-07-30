@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
@@ -111,8 +112,66 @@ _PORT_GLOBS = ("/dev/ttyACM*", "/dev/ttyUSB*",
                "/dev/cu.usbmodem*", "/dev/cu.usbserial*",
                "/dev/cu.wchusbserial*", "/dev/cu.SLAB_USBtoUART*")
 _BEACON_RE = re.compile(r"\[HealthBeacon\][^\n]*dst=([0-9a-fA-F]+)[^\n]*data=([0-9a-fA-F]+)")
+_INIT_RE = re.compile(r"\[HealthBeacon\] init dst=([0-9a-fA-F]+)")
+
+#: Injectable sleep so the single-pass retry logic is unit-testable.
+_sleep = time.sleep
 
 _RTNODE_STEPS: List[Tuple[str, Callable]] = []
+
+
+# ---- single-pass helpers (2026-07-30: believe OUTCOMES, not plumbing) --------
+
+def board_mac_from_port(wf) -> str:
+    """The ESP32's MAC from its /dev/serial/by-id symlink (…_AA:BB:…:FF-if00).
+    Empty string when unknown."""
+    out = wf.connection.run("ls -l /dev/serial/by-id/ 2>/dev/null")[1]
+    port = (wf.profile.connection_port or "").split("/")[-1]
+    for line in out.splitlines():
+        if port and line.strip().endswith(port):
+            m = re.search(r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})", line)
+            if m:
+                return m.group(1)
+    return ""
+
+
+def default_lan_host(mac: str) -> str:
+    """The firmware's default mDNS hostname: ``rtnode`` + last two MAC octets
+    (verified live: MAC 02:00:00:07:00:07 -> rtnode0007.local)."""
+    if not mac:
+        return ""
+    return "rtnode" + mac.replace(":", "").lower()[-4:] + ".local"
+
+
+def board_configured_on_lan(wf) -> Tuple[bool, str]:
+    """OUTCOME check: a CONFIGURED board joins the medic's LAN and serves
+    ``GET /status``. This is the ground truth that survives plumbing hiccups —
+    a run whose rejoin failed AFTER the portal POST landed still configured the
+    board (the 2026-07-30 'stuck at provisioning' spiral: every retry hunted a
+    portal that no longer existed)."""
+    host = default_lan_host(board_mac_from_port(wf))
+    if not host:
+        return (False, "board MAC unknown — cannot derive its LAN name")
+    out = wf.connection.run(f"curl -s -m 6 http://{host}/status")[1]
+    if '"fw_version"' in (out or ""):
+        m = re.search(r'"node_name"\s*:\s*"([^"]*)"', out)
+        name = m.group(1) if m else "?"
+        return (True, f"{host} is up and serving /status (node_name '{name}')")
+    return (False, f"{host} not answering /status")
+
+
+def serial_capture_cmd(port: str, seconds: int = 55) -> str:
+    """Reset the board (RTS pulse) and capture its boot log from serial — the
+    REAL capture behind verify_beacon. (The old CAPTURE_COMMAND invoked
+    ``rnm-serial-capture``, which does not exist on the medic: verify_beacon
+    failed on EVERY birth, poisoning otherwise-successful runs.) ~`seconds`
+     1s-timeout reads ≈ that many seconds — long enough for boot + the first
+    health announce (~30 s after reset)."""
+    return ("python3 -c \"import serial,time; "
+            f"s=serial.Serial('{port}',115200,timeout=1); "
+            "s.dtr=False; s.rts=True; time.sleep(0.1); s.rts=False; "
+            f"d=b''.join(s.read(4096) for _ in range({seconds})); "
+            "s.close(); print(d.decode('utf-8','replace'))\"")
 
 
 def rtnode_build_step(func: Callable) -> Callable:
@@ -185,11 +244,21 @@ def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     cmd = (f"cd {RTNODE_PROJECT_DIR} && "
            f"nice -n 15 pio run -j 2 -e {wf.target.build_env} "
            f"-t upload --upload-port {port}")
-    code, out, err = wf.connection.run(cmd, timeout=900)
-    ok = code == 0
-    return StepResult("flash_firmware", ok,
-                      f"Flashed RTNode-2400 firmware ({wf.target.display})." if ok
-                      else f"Flash failed: {err or out}")
+    # SINGLE-PASS: the upload occasionally hits a transient (USB re-enumeration
+    # mid-reset, port briefly busy) — verified 2026-07-30: a failed upload
+    # succeeded by hand 3 minutes later, same command/port. Retry in-step so a
+    # blip never surfaces as a failed birth.
+    last = ""
+    for attempt in (1, 2, 3):
+        code, out, err = wf.connection.run(cmd, timeout=900)
+        if code == 0:
+            note = "" if attempt == 1 else f" (attempt {attempt})"
+            return StepResult("flash_firmware",
+                              True, f"Flashed RTNode-2400 firmware "
+                                    f"({wf.target.display}).{note}")
+        last = (err or out or "").strip()[-400:]
+        _sleep(6)                      # give USB a breath to re-enumerate
+    return StepResult("flash_firmware", False, f"Flash failed: {last}")
 
 
 @rtnode_build_step
@@ -224,8 +293,30 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
                               "Can't auto-provision: the medic isn't on WiFi to share "
                               "with the node. Join WiFi, or configure the node manually "
                               f"at {ONBOARDING_URL}.")
-        ok, msg = wf._provision(wf.profile, wf.node_name, ssid, psk, lat=lat, lon=lon,
-                                join_ap=wf._join_ap, post=wf._post, rejoin=wf._rejoin)
+        # SINGLE-PASS discipline (2026-07-30): believe OUTCOMES, not plumbing.
+        # 0) Already configured? Then there IS no portal — that's a birth that
+        #    already landed (a previous pass whose tail failed), not a failure.
+        cfg, who = board_configured_on_lan(wf)
+        if cfg:
+            return StepResult("wifi_onboarding", True,
+                              f"Board is already configured — {who}. Portal "
+                              "onboarding not needed.")
+        # 1) Provision, with a full-cycle retry; after any claimed failure,
+        #    RE-CHECK the outcome — the POST may have landed even though the
+        #    medic's rejoin/tail hiccupped.
+        ok, msg = False, "not attempted"
+        for attempt in (1, 2):
+            ok, msg = wf._provision(wf.profile, wf.node_name, ssid, psk,
+                                    lat=lat, lon=lon, join_ap=wf._join_ap,
+                                    post=wf._post, rejoin=wf._rejoin)
+            if ok:
+                break
+            _sleep(20)                # board may be saving + rebooting + joining
+            cfg, who = board_configured_on_lan(wf)
+            if cfg:
+                ok = True
+                msg = (f"Config landed — {who} (despite: {msg}).")
+                break
         return StepResult("wifi_onboarding", ok, msg)
 
     wf.onboarding = build_form(wf.profile, node_name=wf.node_name, lat=lat, lon=lon)
@@ -246,27 +337,50 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def verify_beacon(wf: "RTNodeBuildWorkflow") -> StepResult:
     # Runs AFTER onboarding: only a configured board reaches health_beacon_init()
-    # and fires its first beacon ~30 s after the post-onboarding reboot. Capture
-    # ~45-60 s from that reboot. (A fresh board is silent — that's not a fault.)
-    log = wf.connection.run(CAPTURE_COMMAND, timeout=60)[1]
+    # and fires its first beacon ~30 s after boot. We RESET the board over
+    # serial and capture its boot log — the init line carries the health dst,
+    # and the first announce (~30 s in) carries the payload.
+    #
+    # (Until 2026-07-30 this ran ``rnm-serial-capture`` — a command that does
+    # not EXIST on the medic. verify_beacon failed on every birth ever run,
+    # marking successful builds as failures. Believe outcomes: a LAN /status
+    # answer is accepted as the fallback proof of life.)
+    port = wf.profile.connection_port or wf.board_port or ""
+    log = ""
+    if port:
+        log = wf.connection.run(serial_capture_cmd(port), timeout=75)[1] or ""
     m = _BEACON_RE.search(log)
-    if not m:
-        return StepResult("verify_beacon", False,
-                          "No health beacon yet — has the board been onboarded "
-                          "via the portal and rebooted? A fresh board stays "
-                          "silent in setup mode. Verify over the mesh if USB is "
-                          "quiet.")
-    dest_hash, data_hex = m.group(1), m.group(2)
-    try:
-        beacon = decode(bytes.fromhex(data_hex))
-    except ValueError:
-        return StepResult("verify_beacon", False,
-                          "Beacon payload could not be decoded.")
-    wf.beacon = beacon
-    wf.profile.reticulum_identity_hash = dest_hash
-    return StepResult("verify_beacon", True,
-                      f"Board is beaconing: {beacon.board_label}, fw "
-                      f"{beacon.firmware_version}, id {dest_hash[:12]}...")
+    if m:
+        dest_hash, data_hex = m.group(1), m.group(2)
+        try:
+            beacon = decode(bytes.fromhex(data_hex))
+        except ValueError:
+            return StepResult("verify_beacon", False,
+                              "Beacon payload could not be decoded.")
+        wf.beacon = beacon
+        wf.profile.reticulum_identity_hash = dest_hash
+        return StepResult("verify_beacon", True,
+                          f"Board is beaconing: {beacon.board_label}, fw "
+                          f"{beacon.firmware_version}, id {dest_hash[:12]}...")
+    mi = _INIT_RE.search(log)
+    if mi:
+        # Boot banner seen with the health dst but the first announce didn't
+        # land inside the capture window — the identity is still ground truth.
+        wf.profile.reticulum_identity_hash = mi.group(1)
+        return StepResult("verify_beacon", True,
+                          f"Board booted healthy; health identity "
+                          f"{mi.group(1)[:12]}... (first announce follows "
+                          "within a minute — watch VITALS).")
+    cfg, who = board_configured_on_lan(wf)
+    if cfg:
+        return StepResult("verify_beacon", True,
+                          f"Serial was quiet but the board is alive on the "
+                          f"LAN — {who}. Its beacon will appear on VITALS.")
+    return StepResult("verify_beacon", False,
+                      "No health beacon yet — has the board been onboarded "
+                      "via the portal and rebooted? A fresh board stays "
+                      "silent in setup mode. Verify over the mesh if USB is "
+                      "quiet.")
 
 
 @rtnode_build_step
@@ -364,6 +478,15 @@ class RTNodeBuildWorkflow:
             _, func = self.steps[self.current_index]
             result = func(self)
             self.results.append(result)
+            # Every step lands in the (unbuffered) app log — a failed birth was
+            # undiagnosable remotely for a whole day without this.
+            try:
+                mark = ("skip" if result.skipped
+                        else "ok" if result.success else "FAIL")
+                print(f"[birth] {result.name}: {mark} — {result.message}",
+                      flush=True)
+            except Exception:
+                pass
             emit(result)
             if not result.success and not result.skipped:
                 break
