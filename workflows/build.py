@@ -98,6 +98,20 @@ def detect_rnode_port(connection) -> Optional[str]:
     return None
 
 
+def _ensure_pip(wf: "BuildWorkflow") -> "tuple[bool, str]":
+    """A minimal image may ship without pip3 entirely (found by the 2026-07-30
+    sandbox proof). Bootstrap it from apt before any pip-based install."""
+    if wf.connection.run("command -v pip3")[0] == 0:
+        return True, ""
+    wf.connection.run(wf.priv("apt-get update -o Acquire::Retries=2") + " || true",
+                      timeout=420)
+    wf.connection.run(wf.priv("apt-get install -y python3-pip"), timeout=600)
+    if wf.connection.run("command -v pip3")[0] == 0:
+        return True, " (installed python3-pip)"
+    return False, ("pip3 is missing and could not be installed from apt — "
+                   "the node needs internet (or a base image with pip).")
+
+
 def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
     """``rnodeconf`` (from the ``rns`` package) must exist for detect + flash, but
     on a stock Pi it isn't installed until install_software_stack (a later step).
@@ -106,6 +120,9 @@ def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
     (the common case: an imaged node). Returns (ok, note)."""
     if wf.connection.run("command -v rnodeconf")[0] == 0:
         return True, ""
+    pip_ok, pip_note = _ensure_pip(wf)
+    if not pip_ok:
+        return False, pip_note
     _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
     if wf.connection.run(f"ls {REMOTE_PACKAGE_DIR}/*.whl")[0] == 0:
         cmd = (f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
@@ -117,10 +134,14 @@ def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
     else:
         return False, ("rnodeconf missing and no carried wheels / no internet to "
                        "install rns — carry the wheelhouse for a field flash.")
-    wf.connection.run(cmd)
+    # pip needs minutes on a fresh Pi — the default 30s timeout KILLED the
+    # install mid-flight every time (found by the 2026-07-30 sandbox proof).
+    code, out, err = wf.connection.run(cmd, timeout=420)
     if wf.connection.run("command -v rnodeconf")[0] == 0:
         return True, f" (installed rns from {source})"
-    return False, "installed rns but rnodeconf still not found."
+    tail = ((err or out) or "").strip()[-220:]
+    return False, (f"installed rns but rnodeconf still not found "
+                   f"(pip exit {code}: {tail})")
 
 
 @build_step
@@ -322,7 +343,13 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
                 "install_software_stack", False,
                 f"Cannot install {pkgs}: no wheels in assets/packages and the "
                 f"node has no internet. Carry the wheels for a field build.")
-        code, out, err = wf.connection.run(cmd)
+        code, out, err = wf.connection.run(cmd, timeout=600)
+        if code != 0 and have_wheels and                 wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
+            # An INCOMPLETE wheelhouse (e.g. rns carried, lxmf not) must not
+            # kill the birth when the node has internet (2026-07-30 proof).
+            source = "online pip (wheelhouse incomplete)"
+            cmd = f"pip3 install --break-system-packages --user {pkgs}"
+            code, out, err = wf.connection.run(cmd, timeout=600)
         if code != 0:
             return StepResult("install_software_stack", False,
                               f"pip install failed ({source}): {err or out}")
@@ -331,14 +358,15 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
         installed = "Reticulum and LXMF already installed."
 
     # lrzsz is only needed for the serial file-push path; best-effort.
-    wf.connection.run(wf.priv("apt-get install -y lrzsz") + " || true")
+    wf.connection.run(wf.priv("apt-get install -y lrzsz") + " || true", timeout=300)
     return StepResult("install_software_stack", True, installed)
 
 
 @build_step
 def configure_services(wf: "BuildWorkflow") -> StepResult:
     user = wf.run_user()
-    home = "/root" if user == "root" else f"/home/{user}"
+    home = (wf.connection.run("echo $HOME")[1].strip()
+            or ("/root" if user == "root" else f"/home/{user}"))
     # Only configure services whose binary actually exists — LXMF/lxmd may not
     # be installed (RNS alone is enough for a transport node). ExecStart must be
     # the *resolved* absolute path (pip --user -> ~/.local/bin), and User=/HOME=
@@ -439,7 +467,8 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
                           skipped=True)
 
     user = wf.run_user()
-    home = "/root" if user == "root" else f"/home/{user}"
+    home = (wf.connection.run("echo $HOME")[1].strip()
+            or ("/root" if user == "root" else f"/home/{user}"))
     pkg_dir = f"{home}/.rnm-health/monitor"
     mon_dir = os.path.join(os.path.dirname(__file__), os.pardir, "monitor")
 

@@ -349,6 +349,9 @@ def nonroot_conn(**extra):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("id -u", 0, "1000", ""))          # not root
     c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
+    # services steps now ask the TARGET for its real home (the /home/{user}
+    # assumption broke on targets whose home dir differs from the username)
+    c.rules.insert(0, ("echo $HOME", 0, "/home/nodemedic", ""))
     c.rules.insert(0, ("command -v rnsd", 0, "/home/nodemedic/.local/bin/rnsd", ""))
     c.rules.insert(0, ("command -v lxmd", 0, "/home/nodemedic/.local/bin/lxmd", ""))
     for pattern, code, out in extra.get("rules", []):
