@@ -1104,7 +1104,7 @@ class BirthScreen(BoxLayout):
             onboarding = getattr(self._workflow, "onboarding", None)
             nm = (onboarding or {}).get("node_name", "") or "the node"
             if onboarding:
-                requirement_popup(
+                view = requirement_popup(
                     f"Build finished for {nm}.\n\nIf its screen still says "
                     "CONFIG MODE, the setup details are printed in the build "
                     "log — join the 'RTNode-Setup' WiFi and enter them at "
@@ -1113,11 +1113,23 @@ class BirthScreen(BoxLayout):
                     "beacon.",
                     "Build finished", False, tone="success")
             else:
-                requirement_popup(
+                view = requirement_popup(
                     "Build finished — details and the birth certificate are in "
                     "the build log below. Watch VITALS for the node's first "
                     "health beacon.",
                     "Build finished", False, tone="success")
+            # Dismissing the success card returns HOME — lingering on the
+            # board-select page after a finished birth read as 'am I meant to
+            # do this again?' (operator spec 2026-07-31).
+            def _home(*_a):
+                try:
+                    from kivy.app import App
+                    app = App.get_running_app()
+                    if app is not None and hasattr(app, "switch_mode"):
+                        app.switch_mode("home")
+                except Exception:
+                    pass
+            view.bind(on_dismiss=_home)
         except Exception:
             pass
 
