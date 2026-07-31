@@ -145,6 +145,14 @@ class BirthGuideScreen(BoxLayout):
                               "16sp", color="text_secondary", h=60))
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+        try:
+            # The banner read RESETS the board (USB re-enumerates for several
+            # seconds) — quiet the disconnect watch so it doesn't false-alarm
+            # right before the build chooser (live report 2026-07-31).
+            from kivy.app import App
+            App.get_running_app().quiet_board_watch(40)
+        except Exception:
+            pass
         import threading
 
         def work():

@@ -830,6 +830,15 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             return None
 
+    def quiet_board_watch(self, seconds=40):
+        """Silence the board-disconnect watch for a window. Called before any
+        DELIBERATE board reset (the detect step's chip-id read, the banner
+        read) — those re-enumerate USB for several seconds, which is not a
+        disconnect (operator hit the false alarm at the start of the guide,
+        2026-07-31)."""
+        import time as _t
+        self._bd_quiet_until = _t.time() + seconds
+
     def _start_board_disconnect_watch(self):
         """Warn LOUDLY when a work board vanishes from USB mid-birth (operator
         spec 2026-07-31: 'board disconnected!'). Watches only on the birth
@@ -870,8 +879,12 @@ class ReticulumNodeMedicApp(App):
                 if self.flash_in_progress():
                     clear_warning()
                     return
-                from ui.hw_factories import local_board_ports
                 import time as _t
+                # Inside a quiet window (a deliberate detect/banner reset).
+                if _t.time() < getattr(self, "_bd_quiet_until", 0):
+                    clear_warning()
+                    return
+                from ui.hw_factories import local_board_ports
                 if local_board_ports():
                     self._bd_seen = True
                     clear_warning()

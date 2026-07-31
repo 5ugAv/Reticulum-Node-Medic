@@ -53,17 +53,17 @@ _STEPS = {
                     "powers it and will detect it automatically."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
          "anim": "connect_board"},
+        # (The old third page — 'Let's set it up', a narration of what the
+        # button was about to do — was removed as unnecessary; operator
+        # decision 2026-07-31. This page now carries the Start-setup handoff.)
         {"title": tr("What happens next"),
          "body": tr("Nothing is running yet — this page just explains what's coming. "
                     "After flashing, Node Medic joins your node's own setup Wi-Fi, sets "
                     "its name and radio settings, and puts it on your network — no manual "
                     "web portal needed."),
          "hint": tr("The medic briefly leaves your Wi-Fi to talk to the node, then rejoins."),
-         "anim": "provision"},            # ANIMATION PLACEHOLDER — refine with the designer
-        {"title": tr("Let's set it up"),
-         "body": tr("Node Medic will now detect the board, flash the firmware, then name "
-                    "and configure the node automatically."),
-         "anim": None, "next": tr("Start setup  →")},
+         "anim": "provision",             # ANIMATION PLACEHOLDER — refine with the designer
+         "next": tr("Start setup  →")},
     ],
     "pi": [
         {"title": tr("Insert the Pi's SD card into Node Medic"),
@@ -77,11 +77,8 @@ _STEPS = {
         {"title": tr("Connect the radio board"),
          "body": tr("Put the SD card into the Pi and power it on, then plug the radio "
                     "board into Node Medic with a USB cable."),
-         "anim": "connect_board"},
-        {"title": tr("Let's set it up"),
-         "body": tr("Node Medic will now provision the Pi and its radio, then walk you "
-                    "through naming it."),
-         "anim": None, "next": tr("Start setup  →")},
+         "anim": "connect_board",
+         "next": tr("Start setup  →")},
     ],
     "host": [
         {"title": tr("Connect the radio board"),

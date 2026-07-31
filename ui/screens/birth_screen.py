@@ -469,6 +469,13 @@ class BirthScreen(BoxLayout):
         if self._detecting:
             return
         self._detecting = True
+        try:
+            # The chip-id read resets the board (USB re-enumerates) — don't
+            # let the disconnect watch false-alarm on our own detect.
+            from kivy.app import App
+            App.get_running_app().quiet_board_watch(40)
+        except Exception:
+            pass
         self._build_chooser()                         # show "Detecting board…"
         import threading
 

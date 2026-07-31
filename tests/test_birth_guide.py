@@ -11,8 +11,11 @@ def test_three_intro_paths_in_order():
 
 
 def test_step_counts_per_path():
-    assert len(guide_steps("radio")) == 3      # connect -> auto-provision -> setup
-    assert len(guide_steps("pi")) == 4
+    # The old final 'Let's set it up' filler page (a narration of what the
+    # button was about to do) was removed — operator decision 2026-07-31; the
+    # previous page now carries the Start-setup handoff.
+    assert len(guide_steps("radio")) == 2      # connect -> what-happens-next/setup
+    assert len(guide_steps("pi")) == 3
     assert len(guide_steps("host")) == 2
 
 
@@ -52,4 +55,4 @@ def test_last_step_hands_off_to_setup():
 def test_guide_steps_returns_a_copy():
     a = guide_steps("radio")
     a.append({"title": "x", "body": "y"})
-    assert len(guide_steps("radio")) == 3          # internal list untouched
+    assert len(guide_steps("radio")) == 2          # internal list untouched
