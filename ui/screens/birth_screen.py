@@ -609,6 +609,7 @@ class BirthScreen(BoxLayout):
         self._forced_firmware = None
         self._rtnode_target = None
         self._rtnode_cards = {}
+        self._sel_board = None       # a board picked under the OLD family is stale
         self._build_chooser()
 
     def _firmware_summary_row(self):

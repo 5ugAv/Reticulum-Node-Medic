@@ -15,8 +15,11 @@ from ui.i18n import tr  # i18n: wrapped — guided-birth titles/bodies/hints/war
 BIRTH_PATHS = [
     ("host", tr("A radio for phone or computer (RNode)"),
      tr("Just flash a radio (RNode) to plug into a phone or computer you've already set up.")),
-    ("radio", tr("A standalone radio (RTNode-2400)"),
-     tr("A transport node on its own — reports its health back and is remotely repairable.")),
+    # NOT "standalone radio" — operators wanting a plain RNode read that as
+    # "just the radio" and walked into an RTNode build (2026-07-31).
+    ("radio", tr("A mesh transport node (RTNode-2400)"),
+     tr("Runs the mesh by itself — no phone, computer or Pi attached. Reports "
+        "its health back and is remotely repairable.")),
     ("pi", tr("A Raspberry Pi + radio"),
      tr("A propagation node - reports its health back and is remotely repairable, and "
         "can hold messages for users who aren't online. It can also mesh LoRa radio to "
