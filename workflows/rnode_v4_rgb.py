@@ -496,6 +496,20 @@ class HeltecV4RGBWorkflow:
         low = out.lower()
         ok = ("eeprom is invalid" not in low and "corrupt" not in low
               and "firmware version" in low)
+        if ok:
+            # Identity-less RNode -> the birth record carries the board's USB
+            # fingerprint so the medic can recognise it as kin later.
+            from workflows.rnode_flash import usb_id_for_port
+            r = self.radio
+            self.birth_certificate = {
+                "node_type": "rnode",
+                "board": "Heltec LoRa32 v4 (RGB NeoPixel)",
+                "serial_port": self.port,
+                "usb_serial": usb_id_for_port(self.connection, self.port),
+                "radio": (f"{r.frequency_mhz:g} MHz / BW{r.bandwidth_khz:g} / "
+                          f"SF{r.spreading_factor} / CR{r.coding_rate} / "
+                          f"{r.tx_power_dbm} dBm") if r else "tool defaults",
+            }
         return StepResult(
             "verify", ok,
             "Board verified: valid RNode + NeoPixel firmware." if ok

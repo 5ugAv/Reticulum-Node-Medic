@@ -167,6 +167,27 @@ class BirthGuideScreen(BoxLayout):
                 banner = read_board_banner(port)         # identity + params
                 c = classify(banner, status)
                 c["_port"] = port
+                # A plain RNode has NO identity/banner — recognise one of our
+                # own by its USB fingerprint against stored birth certs
+                # (operator report 2026-08-01: a just-flashed RNode wasn't
+                # offered as kin).
+                if port and not c.get("identity_hash"):
+                    try:
+                        from ui.hw_factories import LocalConnection
+                        from workflows.rnode_flash import usb_id_for_port
+                        from ui.cert_store import load_certs
+                        usb = usb_id_for_port(LocalConnection(), port)
+                        if usb:
+                            for cert in load_certs():
+                                if cert.get("usb_serial") == usb:
+                                    c["_kin_by_serial"] = True
+                                    c["node_name"] = (c.get("node_name")
+                                                      or cert.get("node_name"))
+                                    c["board"] = (c.get("board")
+                                                  or cert.get("board"))
+                                    break
+                    except Exception:
+                        pass
             except Exception as e:      # noqa: BLE001
                 c = {"kind": "birth", "reason": f"Couldn't read the board: {e}"}
             from kivy.clock import Clock
@@ -175,7 +196,7 @@ class BirthGuideScreen(BoxLayout):
 
     def _route(self, c):
         from ui.adopt_live import is_kin
-        if is_kin(c.get("identity_hash")):
+        if is_kin(c.get("identity_hash")) or c.get("_kin_by_serial"):
             self._render_already_kin(c)   # already one of ours -> nothing to do
         elif c.get("kind") == "adopt":
             self._render_adopt(c)

@@ -119,6 +119,19 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
             False)
 
 
+def usb_id_for_port(connection: Connection, port: str):
+    """The /dev/serial/by-id basename for *port* — the board's USB fingerprint
+    (contains the chip MAC for native-CDC ESP32-S3s, the adapter serial for
+    CP2102 bridges like the V3's). A plain RNode has NO Reticulum identity,
+    so this fingerprint is how the medic recognises one of its own later
+    (operator report 2026-08-01: a just-flashed RNode wasn't offered as kin)."""
+    out = connection.run(
+        f'for l in /dev/serial/by-id/*; do t=$(readlink -f "$l" 2>/dev/null); '
+        f'[ "$t" = "{port}" ] && basename "$l"; done 2>/dev/null')[1]
+    lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+    return lines[0] if lines else None
+
+
 class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
@@ -226,6 +239,20 @@ class RNodeFlashWorkflow:
     def _verify(self) -> StepResult:
         out = self.connection.run(f"rnodeconf {self.port} --info")[1]
         ok = "Device signature" in out and "Firmware version" in out
+        if ok:
+            # An RNode has no Reticulum identity, so its birth record is keyed
+            # by the board's USB fingerprint — how the medic recognises it as
+            # kin when it's plugged in again.
+            r = self.radio
+            self.birth_certificate = {
+                "node_type": "rnode",
+                "board": self.board.display_name,
+                "serial_port": self.port,
+                "usb_serial": usb_id_for_port(self.connection, self.port),
+                "radio": (f"{r.frequency_mhz:g} MHz / BW{r.bandwidth_khz:g} / "
+                          f"SF{r.spreading_factor} / CR{r.coding_rate} / "
+                          f"{r.tx_power_dbm} dBm") if r else "tool defaults",
+            }
         return StepResult(
             "verify", ok,
             "Board verified as a provisioned RNode." if ok
