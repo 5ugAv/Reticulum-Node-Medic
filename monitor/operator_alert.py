@@ -79,7 +79,12 @@ try:
         ident = RNS.Identity.from_file(idp)
     else:
         ident = RNS.Identity(); os.makedirs(os.path.dirname(idp), exist_ok=True); ident.to_file(idp)
-    router = LXMF.LXMFRouter(storagepath=os.path.expanduser("~/.reticulum-node-medic/lxmf"))
+    # The class is LXMRouter (verified against LXMF 1.0.1 on the medic
+    # 2026-08-01) — the old LXMFRouter name does not exist, so EVERY operator
+    # push died with AttributeError before it ever reached the mesh. Accept
+    # either name so a future rename can't silence alerts again.
+    _Router = getattr(LXMF, "LXMRouter", None) or getattr(LXMF, "LXMFRouter")
+    router = _Router(storagepath=os.path.expanduser("~/.reticulum-node-medic/lxmf"))
     source = router.register_delivery_identity(ident, display_name="Node Medic")
     dh = bytes.fromhex(addr_hex)
     if not RNS.Transport.has_path(dh):
