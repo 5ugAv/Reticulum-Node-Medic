@@ -947,6 +947,7 @@ class BirthScreen(BoxLayout):
         taps OK — or edits a field first. One big OK confirms and starts."""
         self.list.clear_widgets()
         self._param_inputs = {}
+        self._param_edit_warned = False      # fresh form -> warn on first edit
         from provisioning.radio_defaults import load_defaults
         dd = load_defaults()                              # tool-wide defaults (Settings)
         if board is not None:
@@ -979,9 +980,65 @@ class BirthScreen(BoxLayout):
                        width=dp(160), height=dp(44), font_size="18sp",
                        input_filter="float" if key in ("freq", "bw") else "int")
         bind_field(ti, numeric=True)                 # number pad for radio params
+        # The FIRST touch on any param field gets the strong keep-the-presets
+        # warning (operator spec 2026-07-31 — the OK-start check alone let you
+        # edit away without ever being told).
+        ti.bind(focus=lambda inst, focused:
+                self._warn_param_edit(inst) if focused else None)
         self._param_inputs[key] = ti
         row.add_widget(ti)
         return row
+
+    def _warn_param_edit(self, field):
+        """Once per params form: warn the moment the operator taps INTO a
+        radio-param field — keep the presets (unfocus) or edit anyway."""
+        if getattr(self, "_param_edit_warned", False):
+            return
+        if getattr(self, "_pw_pop", None) is not None:    # doubled-tap guard
+            return
+        self._param_edit_warned = True
+        from provisioning import radio_defaults as rd
+        from kivy.uix.label import Label
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = Label(halign="center", valign="middle", markup=True, text=(
+            "[b]You're about to change the radio parameters.[/b]\n\n"
+            "It is STRONGLY advised to keep the preset parameters\n"
+            f"[b]{rd.summary(rd.load_defaults())}[/b]\n"
+            "so that ALL nodes can talk to each other. A node built on "
+            "different settings CANNOT hear the rest of the mesh.\n\n"
+            "To change the settings every build uses, do it once in\n"
+            "Settings ▸ Default radio parameters."),
+            color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(52), spacing=dp(8))
+        popup = Popup(title="Changing radio parameters", content=box,
+                      size_hint=(0.94, 0.7),
+                      title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
+        self._pw_pop = popup
+        popup.bind(on_dismiss=lambda *_: setattr(self, "_pw_pop", None))
+        keep = Button(text="Keep presets", bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _keep(*_):
+            popup.dismiss()
+            try:
+                field.focus = False           # back away from the field
+            except Exception:
+                pass
+        keep.bind(on_release=_keep)
+        edit = Button(text="⚠  Edit anyway", bold=True,
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        edit.bind(on_release=lambda *_: popup.dismiss())
+        row.add_widget(edit)                  # danger bottom-left
+        row.add_widget(keep)                  # safe bottom-right
+        box.add_widget(row)
+        popup.open()
 
     def _read_params(self):
         from provisioning.radio_defaults import load_defaults
