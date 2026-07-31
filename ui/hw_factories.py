@@ -159,7 +159,8 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
         # RGB is imperative for a boxed V4 — the dedicated build+flash workflow
         # (run_all skips the compile when the firmware is already built).
         return HeltecV4RGBWorkflow(connection, port=port)
-    return RNodeFlashWorkflow(connection, board, port=port)
+    return RNodeFlashWorkflow(connection, board, port=port,
+                              work_ports_fn=ports_fn)
 
 
 def make_rtnode_build(demo_factory: Callable, connection=None,

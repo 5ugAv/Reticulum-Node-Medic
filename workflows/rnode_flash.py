@@ -123,7 +123,7 @@ class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
                  version: str = FIRMWARE_VERSION, flash_timeout: int = 400,
-                 radio=None):
+                 radio=None, work_ports_fn=None):
         self.connection = connection
         self.board = board
         self.port = port
@@ -140,6 +140,10 @@ class RNodeFlashWorkflow:
             except Exception:
                 radio = None                 # set_params falls back to canonical
         self.radio = radio
+        # WORK-board enumerator (the medic's own radios excluded) — without
+        # it the single-board check counts Jonesey/the GPS tracker and can
+        # NEVER pass on the real medic (first live V3 lap, 2026-08-01).
+        self.work_ports_fn = work_ports_fn
         self.results: List[StepResult] = []
 
     # -- steps -------------------------------------------------------------
@@ -155,14 +159,23 @@ class RNodeFlashWorkflow:
 
     def _ensure_single_board(self) -> StepResult:
         # Flashing erases/re-provisions the EEPROM; never guess between boards.
-        out = self.connection.run("ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null")[1]
-        ports = [p for p in out.split() if p.startswith("/dev/")]
+        # Count WORK boards only — the medic's own permanent radios (Jonesey,
+        # the GPS tracker) are always plugged in and must not trip this.
+        if self.work_ports_fn is not None:
+            ports = list(self.work_ports_fn())
+        else:
+            out = self.connection.run("ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null")[1]
+            ports = [p for p in out.split() if p.startswith("/dev/")]
         if len(ports) > 1:
             return StepResult(
                 "ensure_single_board", False,
-                f"{len(ports)} boards connected ({', '.join(ports)}). Unplug "
-                f"all but the one you want to flash.")
-        return StepResult("ensure_single_board", True, "One board connected.")
+                f"{len(ports)} work boards connected ({', '.join(ports)}). "
+                f"Unplug all but the one you want to flash.")
+        if not ports:
+            return StepResult(
+                "ensure_single_board", False,
+                "The board vanished from USB — check the cable and replug.")
+        return StepResult("ensure_single_board", True, "One work board connected.")
 
     def _ensure_firmware(self) -> StepResult:
         if has_connectivity(self.connection):
