@@ -1102,7 +1102,13 @@ class ReticulumNodeMedicApp(App):
         if targets:
             self._lighthouse_on = True
             self._active_targets = targets
-            threading.Thread(target=self._beacon_loop, daemon=True).start()
+            # Generation token: re-entering TRIAGE used to start a SECOND
+            # beacon thread while the first still ran, doubling LoRa airtime
+            # (2026-08-01 bug hunt). Only the newest generation transmits.
+            self._beacon_gen = getattr(self, "_beacon_gen", 0) + 1
+            gen = self._beacon_gen
+            threading.Thread(target=self._beacon_loop, args=(gen,),
+                             daemon=True).start()
             names = self._target_names(targets)
             return {"state": "active", "names": names,
                     "text": f"Beacon on - commanding {names} to transmit. Aim "
@@ -1120,13 +1126,14 @@ class ReticulumNodeMedicApp(App):
                 "text": "Triage needs a distant RTNode to aim against. Build one "
                         "to pair as your lighthouse beacon."}
 
-    def _beacon_loop(self):
+    def _beacon_loop(self, gen=None):
         import time as _t
         try:
             import RNS
         except Exception:
             return
-        while getattr(self, "_lighthouse_on", False):
+        while (getattr(self, "_lighthouse_on", False)
+               and (gen is None or gen == getattr(self, "_beacon_gen", gen))):
             for _dh, ident in list(getattr(self, "_active_targets", {}).items()):
                 try:
                     dest = RNS.Destination(ident, RNS.Destination.OUT,

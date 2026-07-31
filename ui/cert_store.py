@@ -69,6 +69,28 @@ def load_certs(cert_dir: str = CERT_DIR) -> List[Dict]:
     return out
 
 
+def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
+    """Remove stored certificates whose board fingerprint is *usb_serial*.
+    Called when a board is WIPED (rebirth): leaving the old certificate behind
+    made the now-blank board recognise as 'already flashed' on the next plug-in
+    (2026-08-01 bug hunt). Returns how many were removed."""
+    if not usb_serial:
+        return 0
+    removed = 0
+    for cert in load_certs(cert_dir):
+        if cert.get("usb_serial") != usb_serial:
+            continue
+        cid = cert.get("_id")
+        if not cid:
+            continue
+        try:
+            os.remove(os.path.join(cert_dir, f"{cid}.json"))
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def search_certs(query: str, cert_dir: str = CERT_DIR) -> List[Dict]:
     """Certificates whose name/hostname/address contains *query* (case-insensitive).
     A blank query returns them all (newest first) — the natural 'browse' state."""

@@ -208,6 +208,7 @@ class BirthGuideScreen(BoxLayout):
                         if ("Firmware version" in info
                                 and "Device signature" in info):
                             c["_kin_by_serial"] = True     # -> already-flashed
+                            c["_probed_alive"] = True      # it ANSWERED just now
                             c["_our_signature"] = "Validated" in info
                     except Exception:
                         pass
@@ -254,11 +255,18 @@ class BirthGuideScreen(BoxLayout):
                    "Keep it as it is, or rebirth it as a different type of "
                    "node.").format(name=name, by=by),
                 "16sp", color="text_secondary", h=110))
-            # The --info probe is live proof: a silent-broken board wouldn't
-            # have answered at all (it would read as blank -> rebuild path).
-            wrap.add_widget(_line(
-                tr("Verified alive: it answered over USB just now."),
-                "13sp", color="green", h=24))
+            # Only the LIVE probe branch may claim live proof — recognition
+            # by stored fingerprint proves the board's IDENTITY, not that it
+            # is working (2026-08-01 bug hunt: the claim was unconditional).
+            if c.get("_probed_alive"):
+                wrap.add_widget(_line(
+                    tr("Verified alive: it answered over USB just now."),
+                    "13sp", color="green", h=24))
+            else:
+                wrap.add_widget(_line(
+                    tr("Recognised by its board ID from a past birth — not "
+                       "health-checked just now."),
+                    "13sp", color="text_secondary", h=34))
         else:
             # 'Already kin' must never mask a QUIET FAILURE (operator spec
             # 2026-08-01): verify the claim against when the medic actually
@@ -422,6 +430,19 @@ class BirthGuideScreen(BoxLayout):
                             break
                         msg = (r.stderr or r.stdout or "").strip()[-160:]
                         _t.sleep(3)
+                if ok:
+                    # The board is now BLANK — its old certificate must go too,
+                    # or the fingerprint match reports it as 'already flashed'
+                    # on the next plug-in (2026-08-01 bug hunt).
+                    try:
+                        from ui.hw_factories import LocalConnection
+                        from workflows.rnode_flash import usb_id_for_port
+                        from ui.cert_store import delete_by_usb_serial
+                        usb = usb_id_for_port(LocalConnection(), port)
+                        if usb:
+                            delete_by_usb_serial(usb)
+                    except Exception:
+                        pass
                 if ok and old_ident:
                     try:                              # forget the old identity
                         from monitor import kin_roster

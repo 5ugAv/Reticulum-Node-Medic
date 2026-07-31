@@ -203,7 +203,23 @@ class TriageScreen(FloatLayout):
             self._watchdog = None
         if self._lighthouse is None:
             return
-        result = self._lighthouse(True) or {}
+        # _lighthouse(True) can run a mesh DISCOVERY (an rnpath subprocess,
+        # seconds) — on the Kivy main thread that froze the whole UI on TRIAGE
+        # entry (2026-08-01 bug hunt). Do it off-thread and apply the result
+        # back on the main thread.
+        self._guidance.markup = False
+        self._guidance.text = tr("Looking for a beacon…")
+        import threading
+
+        def work():
+            try:
+                res = self._lighthouse(True) or {}
+            except Exception:              # noqa: BLE001
+                res = {}
+            Clock.schedule_once(lambda _dt: self._apply_lighthouse(res), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_lighthouse(self, result):
         state = result.get("state")
         self._beacon_names = result.get("names", "")
         self._guidance.markup = False
