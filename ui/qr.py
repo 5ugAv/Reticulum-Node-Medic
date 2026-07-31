@@ -24,6 +24,13 @@ def birth_cert_payload(cert: dict) -> str:
 
     if cert.get("node_name"):
         lines.append(f"Name: {cert['node_name']}")
+    _TYPES = {"rnode": "RNode (radio for a host)",
+              "rtnode2400": "RTNode-2400 (standalone transport)",
+              "pi_rnode": "Pi + RNode (propagation)",
+              "pi_propagation": "Pi + RNode (propagation)"}
+    if cert.get("node_type"):
+        lines.append("Type: " + _TYPES.get(cert["node_type"],
+                                           str(cert["node_type"])))
 
     host = cert.get("hostname") or ""
     ssh = cert.get("ssh_address") or ""
@@ -38,6 +45,8 @@ def birth_cert_payload(cert: dict) -> str:
         lines.append(f"MAC: {cert['mac_address']}")
     if cert.get("reticulum_address"):
         lines.append(f"Reticulum: {cert['reticulum_address']}")
+    if cert.get("identity_hash"):
+        lines.append(f"Identity: {cert['identity_hash']}")
     if cert.get("role"):
         lines.append(f"Role: {cert['role']}")
 
@@ -47,7 +56,23 @@ def birth_cert_payload(cert: dict) -> str:
         board_line = f"Board: {board}" + (f" (fw {fw})" if fw else "")
         if cert.get("rgb_led_pin") is not None:
             board_line += f", RGB pin {cert['rgb_led_pin']}"
+        if cert.get("firmware") and not fw:
+            board_line += f" (fw {cert['firmware']})"
         lines.append(board_line)
+
+    usb = cert.get("usb_serial") or ""
+    if usb:
+        # show the MAC (not the noisy by-id basename); its last two bytes are
+        # the 4-hex ID an RNode SHOWS ON ITS OWN SCREEN — so the paper record
+        # can be matched to the glass (CDBE-style)
+        import re as _re
+        macs = _re.findall(r"[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}", usb)
+        if macs:
+            mac = macs[-1].upper()
+            shows = mac.replace(":", "")[-4:]
+            lines.append(f"Board ID: {mac}  (screen ID {shows})")
+        else:
+            lines.append(f"Board ID: {usb}")
 
     freq = cert.get("frequency_mhz")
     if freq:
@@ -55,8 +80,14 @@ def birth_cert_payload(cert: dict) -> str:
             f"Radio: {freq:g} MHz BW{cert.get('bandwidth_khz'):g} "
             f"SF{cert.get('spreading_factor')} CR{cert.get('coding_rate')} "
             f"{cert.get('tx_power_dbm')}dBm")
+    elif cert.get("radio"):
+        lines.append(f"Radio: {cert['radio']}")
     if cert.get("location"):
         lines.append(f"Location: {cert['location']}")
+    if cert.get("born"):
+        lines.append(f"Born: {cert['born']}")
+    if cert.get("built_by"):
+        lines.append(f"Built by: {cert['built_by']}")
     if cert.get("session_id"):
         lines.append(f"Built: {cert['session_id']}")
     if cert.get("notes"):

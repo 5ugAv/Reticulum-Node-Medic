@@ -1717,6 +1717,17 @@ class BirthScreen(BoxLayout):
     def _commit_cert(self, cert):
         """Persist the (location-confirmed) cert, enrol kin, and render it."""
         from ui.cert_store import save_cert
+        # Every certificate records WHEN and BY WHOM (operator spec
+        # 2026-08-01: the scanned QR should tell the whole story).
+        import time as _t
+        cert.setdefault("born", _t.strftime("%Y-%m-%d %H:%M"))
+        try:
+            from provisioning import tool_identity
+            byline = tool_identity.tool_name() or "Node Medic"
+            uh = (tool_identity.identity_hash() or "")[:8]
+            cert.setdefault("built_by", byline + (f" ({uh})" if uh else ""))
+        except Exception:
+            pass
         try:
             self._saved_cert_id = save_cert(cert)     # keep it on the medic
             cert["_id"] = self._saved_cert_id
