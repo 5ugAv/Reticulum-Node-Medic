@@ -72,7 +72,7 @@ def test_bootloader_patches_header_but_app_keeps_it():
 # ---- escalation -----------------------------------------------------------
 
 def test_escalates_to_chunks_when_whole_write_drops():
-    conn = base_conn().rule("APPIMG", 1, "")   # any whole-image APP write drops
+    conn = base_conn().rule("write_flash -z --flash_size keep 0x10000 APPIMG", 1, "")  # whole-image APP write drops
     res = rf(conn).flash(FIXED, APP)
     assert res.success is True
     assert res.tier == "256KB chunks @460800"
@@ -80,7 +80,7 @@ def test_escalates_to_chunks_when_whole_write_drops():
 
 
 def test_escalation_emits_progress():
-    conn = base_conn().rule("APPIMG", 1, "")
+    conn = base_conn().rule("write_flash -z --flash_size keep 0x10000 APPIMG", 1, "")
     events = []
     rf(conn).flash(FIXED, APP, on_progress=events.append)
     kinds = [e.kind for e in events]
@@ -93,7 +93,7 @@ def test_escalation_emits_progress():
 # ---- autonomous recovery --------------------------------------------------
 
 def test_power_cycle_uses_uhubctl_for_the_boards_port():
-    conn = base_conn().rule("APPIMG", 1, "")
+    conn = base_conn().rule("write_flash -z --flash_size keep 0x10000 APPIMG", 1, "")
     rf(conn).flash(FIXED, APP)
     assert any("uhubctl -l 3 -p 1 -a off" in c for c in conn.history)
     assert any("uhubctl -l 3 -p 1 -a on" in c for c in conn.history)
@@ -186,3 +186,17 @@ def test_ladder_is_least_work_first():
     bauds = [t.baud for t in chunked]
     assert sizes == sorted(sizes, reverse=True)   # chunks shrink
     assert bauds == sorted(bauds, reverse=True)    # baud drops with them
+
+
+def test_failed_dd_slice_is_never_flashed_as_a_chunk():
+    """dd's exit status must be honoured: on a failed slice the scratch file
+    still holds the PREVIOUS chunk, which would be written at the new offset
+    AND verified against itself — a corrupt flash reported as success
+    (2026-08-01 bug hunt)."""
+    conn = (base_conn()
+            .rule("write_flash -z --flash_size keep 0x10000 APPIMG", 1, "")
+            .rule("dd if=APPIMG", 1, ""))          # slicing fails
+    res = rf(conn).flash(FIXED, APP)
+    assert res.success is False
+    assert not any("write_flash" in c and "/tmp/rf_chunk" in c
+                   for c in conn.history), "a stale slice was written to flash"

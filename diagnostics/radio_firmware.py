@@ -75,6 +75,12 @@ class RadioFirmwareCheck(DiagnosticCheck):
         for p in listing.split():
             if p == port:
                 continue
+            try:                       # never re-pin onto the medic's own radio
+                from ui.onboard_roster import is_onboard
+                if is_onboard(p):
+                    continue
+            except Exception:
+                pass
             alt = self._cmd_output(f"rnodeconf {p} --info")
             if self._device_read(alt):
                 self.profile.radio.serial_port = p     # remember the real port
@@ -368,14 +374,55 @@ class RadioFirmwareCheck(DiagnosticCheck):
                               f"{results[-1].name}: {results[-1].message}\n\n"
                               f"{FLASH_RECOVERY}"),
                 raw_output=detail)
-        code, out, err = self._run_cmd(
-            f"rnodeconf {port} --autoinstall", timeout=400)
-        ok = code == 0
+        # NOT a bare `rnodeconf --autoinstall`: its prompts read a KEYPRESS
+        # from the terminal, so with no PTY and no answers it can never
+        # succeed and holds the USB port until the timeout (2026-08-01 bug
+        # hunt). Drive the proven birth path instead, which uses a PTY
+        # locally, pre-fed answers remotely, and the assert_flashable gate.
+        board = self._board_for_repair()
+        if board is None:
+            return Fix(
+                issue=issue, success=False,
+                message=("Couldn't identify this board, so the EEPROM can't be "
+                         "reprovisioned safely from here. Birth it from BIRTH "
+                         "(pick the board by its silkscreen), or reflash "
+                         f"manually.\n\n{FLASH_RECOVERY}"),
+                raw_output="")
+        from workflows.rnode_flash import birth_flash
+        ok, msg, _already = birth_flash(self.connection, board, port)
         return Fix(issue=issue, success=ok,
-                   message=("Reprovisioned the EEPROM via autoinstall." if ok
-                            else f"autoinstall failed: {(err or out)[-200:]}\n\n"
-                                 f"{FLASH_RECOVERY}"),
-                   raw_output=out)
+                   message=(f"Reprovisioned the EEPROM ({board.display_name}): "
+                            f"{msg}" if ok
+                            else f"Reprovision failed: {msg}\n\n{FLASH_RECOVERY}"),
+                   raw_output=msg)
+
+    def _board_for_repair(self):
+        """Identify the attached board for a reprovision. PROBE builds a bare
+        NodeProfile whose hardware stays UNKNOWN, so profile.hardware alone
+        made the V4 branch dead code (2026-08-01 bug hunt) — read the board
+        back from the device instead, falling back to the profile."""
+        from workflows.rnode_boards import get_board
+        info = (self._rnode_info() or "").lower()
+        for needle, key in (("heltec32 v4", "heltec32_v4"),
+                            ("heltec v4", "heltec32_v4"),
+                            ("heltec32 v3", "heltec32_v3"),
+                            ("heltec v3", "heltec32_v3"),
+                            ("t-beam", "tbeam"),
+                            ("lora32 v2.1", "lora32_v21"),
+                            ("lora32 v2", "lora32_v20"),
+                            ("rak4631", "rak4631"),
+                            ("t-echo", "techo")):
+            if needle in info:
+                try:
+                    return get_board(key)
+                except Exception:
+                    return None
+        if self.profile.hardware is NodeHardware.HELTEC_V4:
+            try:
+                return get_board("heltec32_v4")
+            except Exception:
+                return None
+        return None
 
     def _fix_flow_control(self, issue: Issue) -> Fix:
         r = self.profile.radio

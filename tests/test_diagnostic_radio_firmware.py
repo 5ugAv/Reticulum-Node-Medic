@@ -306,15 +306,26 @@ def test_fix_eeprom_v4_reflashes_neopixel_firmware():
     assert any("-r --product c3" in c and "--model c8" in c for c in conn.history)
 
 
-def test_fix_eeprom_non_v4_uses_autoinstall_only():
-    # Any other RNode keeps its stock firmware — reprovision via autoinstall,
-    # no esptool overlay.
-    conn = conn_with()
-    conn.rule("rnodeconf /dev/ttyUSB0 --autoinstall", code=0, stdout="ok")
+def test_fix_eeprom_identified_board_uses_the_proven_birth_path():
+    # A board the device names (here a Heltec V3) is reprovisioned through
+    # birth_flash — NOT a bare `rnodeconf --autoinstall`, whose prompts read a
+    # keypress and would wedge the port for the full timeout (2026-08-01).
+    info = GOOD_INFO + "\n\tBoard              : Heltec32 V3"
+    conn = conn_with(info=info)
+    conn.rules.insert(0, ("--autoinstall", 0, "Autoinstallation complete", ""))
     fix = RadioFirmwareCheck(conn, NodeProfile()).fix(_eeprom_issue())
     assert fix.success is True
     assert any("--autoinstall" in c for c in conn.history)
     assert not any("esptool" in c for c in conn.history)
+
+
+def test_fix_eeprom_unidentified_board_fails_honestly():
+    # An unidentifiable board must NOT get a guessed image — say so instead of
+    # running a command that can never succeed.
+    conn = conn_with()
+    fix = RadioFirmwareCheck(conn, NodeProfile()).fix(_eeprom_issue())
+    assert fix.success is False
+    assert "identify" in fix.message.lower()
 
 
 def test_fix_eeprom_failure_surfaces_recovery_ladder():

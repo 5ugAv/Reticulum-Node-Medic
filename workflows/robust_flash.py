@@ -214,8 +214,17 @@ class RobustFlasher:
         n = math.ceil(total / chunk_bytes)
         for i in range(n):
             offset = app.offset + i * chunk_bytes
-            self.c.run(f"dd if={app.path} of={CHUNK_FILE} bs={chunk_bytes} "
-                       f"skip={i} count=1 2>/dev/null")
+            # dd's exit status MUST be checked: on failure (missing input,
+            # full /tmp) the scratch file keeps the PREVIOUS chunk's bytes,
+            # which would then be written at this offset AND verified against
+            # itself — a silently corrupt flash reported as success
+            # (2026-08-01 bug hunt).
+            if self.c.run(f"dd if={app.path} of={CHUNK_FILE} bs={chunk_bytes} "
+                          f"skip={i} count=1")[0] != 0:
+                emit(FlashProgress("chunk_fail",
+                                   detail=f"{i + 1}/{n} could not be read from "
+                                          f"the image"))
+                return False, offset
             for attempt in range(1, retries + 1):
                 if self._write_verified(offset, CHUNK_FILE, baud):
                     emit(FlashProgress("chunk_ok", detail=f"{i + 1}/{n} @0x{offset:x}"))

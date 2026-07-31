@@ -45,7 +45,20 @@ def scoped_sudoers_text(user: str) -> str:
     return "\n".join([
         "# Managed by Node Medic — scoped access (replaces NOPASSWD:ALL). C2 fix.",
         "# Only the fixed set of commands the medic runs on a provisioned node.",
-        "Cmnd_Alias NM_SYSTEMCTL = /usr/bin/systemctl, /bin/systemctl",
+        # Per-verb, per-unit. A BARE systemctl grant is root-equivalent
+        # (systemctl link/edit + a crafted unit runs anything as root), which
+        # defeated the whole point of scoping (2026-08-01 bug hunt).
+        "Cmnd_Alias NM_SYSTEMCTL = /usr/bin/systemctl daemon-reload, "
+        "/bin/systemctl daemon-reload, "
+        + ", ".join(
+            f"/usr/bin/systemctl {verb} {unit}, /bin/systemctl {verb} {unit}"
+            for verb in ("enable", "disable", "start", "stop", "restart",
+                         "is-active", "is-enabled", "status")
+            for unit in ("rnsd", "rnsd.service", "lxmd", "lxmd.service",
+                         "rnm-health", "rnm-health.service",
+                         "rnm-health.timer", "log2ram", "log2ram.service",
+                         "watchdog", "watchdog.service", "gpsd", "gpsd.service",
+                         "gpsd.socket")),
         "Cmnd_Alias NM_APT = /usr/bin/apt-get update, "
         "/usr/bin/apt-get install -y gpsd gpsd-clients, "
         "/usr/bin/apt-get install -y lrzsz",
