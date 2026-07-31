@@ -16,7 +16,7 @@ def test_step_counts_per_path():
     # previous page now carries the Start-setup handoff.
     assert len(guide_steps("radio")) == 2      # connect -> what-happens-next/setup
     assert len(guide_steps("pi")) == 3
-    assert len(guide_steps("host")) == 2
+    assert len(guide_steps("host")) == 1       # connect page carries Start setup
 
 
 def test_antenna_is_the_landing_not_a_guided_step():

@@ -81,15 +81,14 @@ _STEPS = {
          "next": tr("Start setup  →")},
     ],
     "host": [
+        # (The old second page — "Let's flash it", narrating its own button —
+        # was removed like its radio/pi siblings; operator decision 2026-07-31.)
         {"title": tr("Connect the radio board"),
          "body": tr("Plug the radio board into Node Medic with a USB cable so it can be "
                     "flashed as an RNode."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
-         "anim": "connect_board"},
-        {"title": tr("Let's flash it"),
-         "body": tr("Node Medic will detect the board and flash it as an RNode. Then "
-                    "plug it into your phone or computer."),
-         "anim": None, "next": tr("Start setup  →")},
+         "anim": "connect_board",
+         "next": tr("Start setup  →")},
     ],
 }
 
