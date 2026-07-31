@@ -340,9 +340,11 @@ inline void health_handle_status() {
     collect_health(h);
     health_server->sendHeader("Cache-Control", "no-store");
     health_server->send(200, "application/json", health_to_json(h));
-    // Visible "someone is talking to me" confirmation on the RGB LED, after
-    // the response is sent so it never adds latency to the data itself.
-    led_indicate_activity();
+    // NO LED here (operator decision 2026-07-31): the medic polls /status
+    // routinely (~every 30 s), and a green blink per poll floods the LED
+    // language until people ignore it. The pixel speaks only for RX, TX,
+    // fault, and a COMMANDED health check (the LoRa 0x01 double-pulse) —
+    // deliberate signals, each worth looking up for.
 }
 
 // Idempotent: starts the server the first time WiFi station mode is up, and
