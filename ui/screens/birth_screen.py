@@ -316,16 +316,21 @@ class BirthScreen(BoxLayout):
         if not self._firmware:
             # ENTRY POINT — nothing chosen yet: detect the board and/or pick a
             # firmware family. Once chosen, these collapse (see the else branch).
-            self.header.add_widget(_line("Choose your hardware:", size="13sp",
-                                         color="text_secondary"))
-            detect = Button(
-                text="Detecting board…" if self._detecting else "Detect connected board",
-                size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
-                background_normal="",
-                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                color=theme.hex_to_rgba(theme.COLORS["background"]))
-            detect.bind(on_release=lambda *_: self._detect_board())
-            self.header.add_widget(detect)
+            # The Detect button earns its place only while there's detecting
+            # left to do — once a board is FOUND, the green summary + the
+            # become-ask say it all (operator spec 2026-08-01: 'the board's
+            # already been connected').
+            if not (self._detected or {}).get("found"):
+                self.header.add_widget(_line("Choose your hardware:", size="13sp",
+                                             color="text_secondary"))
+                detect = Button(
+                    text="Detecting board…" if self._detecting else "Detect connected board",
+                    size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+                detect.bind(on_release=lambda *_: self._detect_board())
+                self.header.add_widget(detect)
             if self._detected is not None:
                 found = self._detected.get("found")
                 self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
