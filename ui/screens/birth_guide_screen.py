@@ -249,13 +249,47 @@ class BirthGuideScreen(BoxLayout):
                    "Keep it as it is, or rebirth it as a different type of "
                    "node.").format(name=name, by=by),
                 "16sp", color="text_secondary", h=110))
-        else:
-            wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True, h=44,
-                                  color="green"))
+            # The --info probe is live proof: a silent-broken board wouldn't
+            # have answered at all (it would read as blank -> rebuild path).
             wrap.add_widget(_line(
-                tr("{name} is already one of your kin — it's enrolled "
-                   "and reporting to VITALS. Nothing to do.").format(name=name),
-                "16sp", color="text_secondary", h=80))
+                tr("Verified alive: it answered over USB just now."),
+                "13sp", color="green", h=24))
+        else:
+            # 'Already kin' must never mask a QUIET FAILURE (operator spec
+            # 2026-08-01): verify the claim against when the medic actually
+            # LAST HEARD this node. 12 h = the cadence plan's 'quiet' line.
+            heard_h = None
+            try:
+                from kivy.app import App
+                import time as _t
+                app = App.get_running_app()
+                rec = app.monitor_service.registry.get(c.get("identity_hash"))
+                if rec is not None:
+                    heard_h = rec.last_seen_hours(_t.time())
+            except Exception:
+                pass
+            if heard_h is None or heard_h > 12:
+                ago = (tr("yet") if heard_h is None
+                       else tr("for {hours} hours").format(hours=int(heard_h)))
+                wrap.add_widget(_line(tr("Already kin — but silent"), "28sp",
+                                      bold=True, h=44, color="amber"))
+                wrap.add_widget(_line(
+                    tr("{name} is enrolled as your kin, but the medic hasn't "
+                       "heard its beacon {ago}. It may be failing quietly — a "
+                       "Rebirth gives it a clean start, or check its antenna "
+                       "and power in TRIAGE.").format(name=name, ago=ago),
+                    "16sp", color="text_secondary", h=100))
+            else:
+                wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True,
+                                      h=44, color="green"))
+                wrap.add_widget(_line(
+                    tr("{name} is already one of your kin — it's enrolled "
+                       "and reporting to VITALS. Nothing to do.").format(name=name),
+                    "16sp", color="text_secondary", h=80))
+                heard_txt = (tr("Last heard under an hour ago.") if heard_h < 1
+                             else tr("Last heard {hours} hours ago.").format(
+                                 hours=int(heard_h)))
+                wrap.add_widget(_line(heard_txt, "13sp", color="green", h=22))
             wrap.add_widget(_line(tr("Identity")
                                   + f"  {(c.get('identity_hash') or '')[:16]}…",
                                   "12.5sp", color="text_secondary", h=22))
