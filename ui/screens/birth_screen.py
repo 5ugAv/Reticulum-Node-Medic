@@ -311,30 +311,9 @@ class BirthScreen(BoxLayout):
                 row.add_widget(self._pi_user_in)
                 self.header.add_widget(row)
 
-        # Mitosis (clone THIS Node Medic) — Heltec Wireless Tracker only (proven
-        # GPS path); available from the RNode board path.
-        mit_ok = self._sel_board is not None and self._sel_board.key in MITOSIS_BOARDS
-        self.header.add_widget(Widget(size_hint_y=None, height=dp(14)))
-        mit = Button(text="Mitosis — clone this Node Medic",
-                     size_hint_y=None, height=dp(50), font_size="15sp",
-                     disabled=not mit_ok, background_normal="",
-                     background_color=theme.hex_to_rgba(
-                         theme.COLORS["green" if mit_ok else "surface"]),
-                     color=theme.hex_to_rgba(
-                         theme.COLORS["background" if mit_ok else "text_secondary"]))
-        mit.bind(on_release=lambda *_: self._on_mitosis and self._on_mitosis())
-        self.header.add_widget(mit)
-
-        # Guide entry, demoted to a quiet link below everything (see note above).
-        if self._on_guide is not None:
-            guide = Button(text="New here?  Open the step-by-step guide",
-                           size_hint_y=None, height=dp(36), font_size="12.5sp",
-                           background_normal="",
-                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-            guide.bind(on_release=lambda *_: self._on_guide())
-            self.header.add_widget(guide)
-
+        # (Mitosis moved out of this chooser — it lives at the start of the
+        # flow where the operator picks what they're doing; repeating it here
+        # cluttered the board-confirm page. Operator decision 2026-07-31.)
         # The scroll below shows the next action for the chosen firmware.
         if hasattr(self, "list"):
             self._build_action()
@@ -907,7 +886,9 @@ class BirthScreen(BoxLayout):
         self._build_busy.add_widget(self._build_ring)
         self._build_busy.add_widget(_line(
             "Working… the firmware compile is the slow part (a first build also "
-            "downloads the toolchain). Keep the board plugged in.",
+            "downloads the toolchain). Keep the board plugged in and WAIT for "
+            "the green 'Build finished' confirmation before touching anything — "
+            "verification keeps running after the ring fills.",
             size="13sp", color="accent"))
         self.list.add_widget(self._build_busy)
         self._pg_names = _workflow_step_names(workflow)
@@ -948,7 +929,11 @@ class BirthScreen(BoxLayout):
             cur = self._pg_secs[self._pg_done]
             elapsed = time.monotonic() - self._pg_step_start
             done += cur * min(0.97, elapsed / max(1.0, cur))
-        ring.set_fraction(done / self._pg_total)
+        # Cap at 95% until _finish() truly lands — a ring that hits full while
+        # verification still runs reads as 'done' and invites unplugging
+        # (operator feedback 2026-07-31: dead air between full ring and the
+        # finished popup).
+        ring.set_fraction(min(0.95, done / self._pg_total))
 
     def _stop_build_progress(self):
         ev = getattr(self, "_pg_ev", None)
@@ -1090,13 +1075,13 @@ class BirthScreen(BoxLayout):
                     "http://10.0.0.1. If it shows its status screen, it's "
                     "already configured — watch VITALS for its first health "
                     "beacon.",
-                    "Build finished", False)
+                    "Build finished", False, tone="success")
             else:
                 requirement_popup(
                     "Build finished — details and the birth certificate are in "
                     "the build log below. Watch VITALS for the node's first "
                     "health beacon.",
-                    "Build finished", False)
+                    "Build finished", False, tone="success")
         except Exception:
             pass
 

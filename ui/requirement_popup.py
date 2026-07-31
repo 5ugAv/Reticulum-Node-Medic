@@ -25,6 +25,7 @@ from kivy.uix.widget import Widget
 from ui import theme
 
 _YELLOW = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+_GREEN = theme.hex_to_rgba(theme.COLORS["green"])
 _RED = theme.hex_to_rgba(theme.COLORS["red"])
 _DARK = theme.hex_to_rgba(theme.COLORS["background"])          # text on yellow
 _LIGHT = theme.hex_to_rgba(theme.COLORS["text_primary"])       # text on red button
@@ -32,10 +33,13 @@ _RADIUS = dp(20)
 
 
 def requirement_popup(message: str, title: str = "Heads up",
-                      under_construction: bool = False) -> ModalView:
-    """Show a dismissible caution card stating why a path is unavailable. When
-    *under_construction*, the hit is logged for the developer (ui.construction_log)
-    so field-hit unbuilt features get caught. Returns the (opened) ModalView."""
+                      under_construction: bool = False,
+                      tone: str = "warning") -> ModalView:
+    """Show a dismissible card stating why a path is unavailable (or that it
+    FINISHED). *tone*: "warning" = caution-yellow card; "success" = GREEN card
+    (still the bold red outline) — a positive confirmation reads as a win, not
+    a warning (operator spec 2026-07-31). When *under_construction*, the hit is
+    logged for the developer (ui.construction_log). Returns the ModalView."""
     if under_construction:
         from ui.construction_log import log_hit
         log_hit(title, message)
@@ -47,7 +51,7 @@ def requirement_popup(message: str, title: str = "Heads up",
     def _redraw(*_):
         card.canvas.before.clear()
         with card.canvas.before:
-            Color(*_YELLOW)
+            Color(*(_GREEN if tone == "success" else _YELLOW))
             RoundedRectangle(pos=card.pos, size=card.size, radius=[_RADIUS] * 4)
             Color(*_RED)
             Line(width=dp(2.5), rounded_rectangle=(
