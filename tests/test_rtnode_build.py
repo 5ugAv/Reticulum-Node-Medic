@@ -208,8 +208,12 @@ def test_onboarding_captures_gps_and_fills_advert():
     w.steps[2][1](w)          # wifi_onboarding
     assert w.gps_fix is not None
     assert w.onboarding["advert_en"] == "1"
-    assert w.onboarding["advert_lat"] == "-37.814000"
-    assert w.onboarding["advert_lon"] == "144.963000"
+    # fuzzed before it leaves the medic (2026-08-01 audit); exact fix lives
+    # only in the birth certificate
+    assert w.onboarding["advert_lat"] != "-37.814000"
+    assert abs(float(w.onboarding["advert_lat"]) - (-37.814)) < 0.02
+    assert w.onboarding["advert_lon"] != "144.963000"
+    assert abs(float(w.onboarding["advert_lon"]) - 144.963) < 0.02
     assert w.onboarding["advert_jitter"] == "1"
 
 

@@ -113,7 +113,7 @@ _INVENTORY = [
      ["/usr/bin/nmcli", "device", "wifi", "connect", "RTNode-Setup"]),
     ("rtnode_portal.read_own_psk",
      ["/usr/bin/nmcli", "-s", "-g", "802-11-wireless-security.psk",
-      "connection", "show", "HomeNet_5g"]),
+      "connection", "show", "HomeNet-5g"]),
     ("tool_datetime.set_datetime.ntp",
      ["/usr/bin/timedatectl", "set-ntp", "false"]),
     ("tool_datetime.set_datetime",

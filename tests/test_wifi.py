@@ -24,7 +24,7 @@ def test_scan_merges_dupes_sorts_active_then_signal():
 IW_SCAN = """BSS aa:bb:cc:dd:ee:01(on wlan0)
     freq: 5180
     signal: -45.00 dBm
-    SSID: HomeNet_5g
+    SSID: HomeNet-5g
     RSN:     * Version: 1
 BSS aa:bb:cc:dd:ee:02(on wlan0)
     freq: 2412
@@ -63,14 +63,14 @@ def _iw_run(scan_out=IW_SCAN, link_ssid="", iface="wlan0"):
 
 def test_scan_lists_all_nearby_from_driver():
     # The real bug: nmcli wedges to the connected AP; parse the driver's full list.
-    nets = wifi.scan_networks(run=_iw_run(link_ssid="HomeNet_5g"))
+    nets = wifi.scan_networks(run=_iw_run(link_ssid="HomeNet-5g"))
     ssids = [n["ssid"] for n in nets]
-    assert ssids == ["HomeNet_5g", "HomeNet", "CoffeeShop"]  # hidden dropped
+    assert ssids == ["HomeNet-5g", "HomeNet", "CoffeeShop"]  # hidden dropped
     by = {n["ssid"]: n for n in nets}
-    assert by["HomeNet_5g"]["active"] is True and nets[0]["active"] is True  # pinned
+    assert by["HomeNet-5g"]["active"] is True and nets[0]["active"] is True  # pinned
     assert by["HomeNet"]["signal"] == 100 and by["HomeNet"]["secure"]  # -50 dBm, dedup
     assert by["CoffeeShop"]["secure"] is False                                   # open AP
-    assert by["HomeNet_5g"]["signal"] == 100                             # -45 dBm clamped
+    assert by["HomeNet-5g"]["signal"] == 100                             # -45 dBm clamped
 
 
 def test_scan_flags_connected_ssid():

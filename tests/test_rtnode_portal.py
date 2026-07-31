@@ -89,8 +89,11 @@ def test_operator_values_flow_in_and_enable_wifi():
 def test_location_advertisement_fuzzed_by_default():
     form = build_form(NodeProfile(), lat=-37.814, lon=144.963)
     assert form["advert_en"] == "1"
-    assert form["advert_lat"] == "-37.814000"
-    assert form["advert_lon"] == "144.963000"
+    # fuzzed on the MEDIC before it crosses the open AP (2026-08-01 audit)
+    assert form["advert_lat"] != "-37.814000"
+    assert abs(float(form["advert_lat"]) - (-37.814)) < 0.02
+    assert form["advert_lon"] != "144.963000"
+    assert abs(float(form["advert_lon"]) - 144.963) < 0.02
     assert form["advert_jitter"] == "1"          # privacy fuzz ON by default
 
 
@@ -110,13 +113,28 @@ def test_advertise_false_disables_even_with_coords():
     assert form["advert_en"] == "0"
 
 
-def test_onboard_includes_location():
+def test_onboard_sends_a_FUZZED_location_never_the_exact_fix():
+    """The form crosses an OPEN AP in cleartext and is stored in the node's
+    flash — so the medic must fuzz before sending (2026-08-01 audit). The
+    exact fix stays in the birth certificate on the medic."""
+    seen = {}
+
     def good_post(url, body, headers):
-        assert "advert_lat=-37.814000" in body
+        seen["body"] = body
         return (200, "reboot")
     ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
                     lat=-37.814, lon=144.963, do_join=False, post=good_post)
     assert ok is True
+    body = seen["body"]
+    assert "advert_lat=" in body and "advert_en=1" in body
+    # the EXACT coordinate must never appear
+    assert "-37.814000" not in body and "144.963000" not in body
+    import re
+    lat = float(re.search(r"advert_lat=(-?[\d.]+)", body).group(1))
+    lon = float(re.search(r"advert_lon=(-?[\d.]+)", body).group(1))
+    # ...but it must stay in the right neighbourhood (fuzz radius, not noise)
+    assert abs(lat - (-37.814)) < 0.02 and abs(lon - 144.963) < 0.02
+    assert (lat, lon) != (-37.814, 144.963)
 
 
 def test_overridden_radio_params_flow_through():
@@ -260,7 +278,7 @@ def test_onboard_captures_pi_gps_and_advertises_it():
                     do_join=False, post=cap_post)
     assert ok is True
     assert "advert_en=1" in body["b"]
-    assert "advert_lat=-37.814000" in body["b"]
+    assert "advert_lat=-37.814000" not in body["b"]   # fuzzed
     assert "advert_jitter=1" in body["b"]        # fuzzed public location
 
 
@@ -276,8 +294,9 @@ def test_onboard_operator_can_edit_coordinates_before_send():
                     gps_reader=lambda: (0.0, 0.0),
                     confirm_location=lambda la, lo: (-37.80, 144.90),
                     do_join=False, post=cap_post)
-    assert "advert_lat=-37.800000" in body["b"]
-    assert "advert_lon=144.900000" in body["b"]
+    assert "advert_lat=-37.800000" not in body["b"]      # fuzzed, never exact
+    assert "advert_lat=-37.79" in body["b"] or "advert_lat=-37.80" in body["b"]
+    assert "advert_lon=144.900000" not in body["b"]      # fuzzed, never exact
 
 
 def test_onboard_operator_can_decline_location():
@@ -358,14 +377,14 @@ def test_provision_node_rejoins_when_ap_join_fails():
 def test_medic_wifi_credentials_parses_nmcli():
     def fake_nmcli(argv):
         if "--active" in argv:
-            return "Wired connection 1:ethernet\nHomeNet_5g:802-11-wireless\n"
+            return "Wired connection 1:ethernet\nHomeNet-5g:802-11-wireless\n"
         if "802-11-wireless.ssid" in argv:
-            return "HomeNet_5g\n"
+            return "HomeNet-5g\n"
         if "psk" in " ".join(argv):
             return "s3cr3t\n"
         return ""
     ssid, psk = rp.medic_wifi_credentials(run=fake_nmcli)
-    assert ssid == "HomeNet_5g" and psk == "s3cr3t"
+    assert ssid == "HomeNet-5g" and psk == "s3cr3t"
 
 
 def test_medic_wifi_credentials_empty_when_no_wifi():

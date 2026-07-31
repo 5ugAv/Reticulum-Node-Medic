@@ -91,9 +91,21 @@ def build_form(
         "txp": str(r.tx_power_dbm),
     }
     if advertise and lat is not None and lon is not None:
+        # NEVER send the EXACT fix. This form crosses an OPEN WiFi AP as
+        # cleartext HTTP, so anyone in radio range during a birth could read
+        # it — and the node also stores it in flash, so anyone who later holds
+        # the node can dump it. The medic fuzzes here (its own
+        # monitor.geo.fuzz_location, deterministic per node so repeated
+        # readings can't be averaged back to the truth); the exact fix stays
+        # in the birth certificate ON THE MEDIC only. Previously the tool
+        # shipped 6-decimal (~0.1 m) coordinates and delegated all privacy to
+        # an unverified firmware constant (2026-08-01 stranger's-eye audit).
+        from monitor.geo import fuzz_location
+        seed = node_name or profile.reticulum_identity_hash or "node"
+        flat, flon, _radius = fuzz_location(lat, lon, seed)
         form["advert_en"] = "1"
-        form["advert_lat"] = format_coord(lat)
-        form["advert_lon"] = format_coord(lon)
+        form["advert_lat"] = format_coord(flat)
+        form["advert_lon"] = format_coord(flon)
         form["advert_jitter"] = "1" if jitter else "0"
     else:
         form["advert_en"] = "0"                    # off, not 0,0
