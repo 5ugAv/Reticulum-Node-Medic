@@ -457,10 +457,6 @@ class HeltecV4RGBWorkflow:
                           else f"Flash failed: {(err or out)[-200:]}")
 
     def _provision(self) -> StepResult:
-        # First boot after our flash plays the ~13 s birth cry (blocking, by
-        # design) before the console answers — wait it out on the target so
-        # rnodeconf doesn't knock mid-song. (Emulated runs return instantly.)
-        self.connection.run("sleep 16", timeout=30)
         # ROM-bootstrap the EEPROM as the VENDOR Heltec V4 (c3/c8). Model C8
         # declares Max TX 28 dBm, so the canonical 17 dBm is valid and the radio
         # comes ONLINE — generic homebrew (f0/ff, 14 dBm cap) kept it OFFLINE
@@ -507,9 +503,27 @@ class HeltecV4RGBWorkflow:
 
     # -- drivers -----------------------------------------------------------
 
+    def _birth_cry(self) -> StepResult:
+        # The finale: command the newborn to SING (KISS FEND 0xB5 0xF8 FEND —
+        # the trigger patched into the firmware) AFTER verify, so the ~13 s
+        # light show coincides with the green flashed-successfully
+        # confirmation instead of firing mid-provision (operator spec
+        # 2026-08-01; rnodeconf's hard-resets made a boot-time cry land
+        # mid-flow). Cosmetic: a failed trigger never fails a VERIFIED birth.
+        cmd = ("python3 -c \"import serial; "
+               f"s=serial.Serial('{self.port}',115200,timeout=2); "
+               "s.write(bytes([0xC0,0xB5,0xF8,0xC0])); s.flush(); s.close()\"")
+        code, out, err = self.connection.run(cmd, timeout=30)
+        if code == 0:
+            msg = "Birth cry commanded — watch the node's light show (~13 s)."
+        else:
+            msg = ("Couldn't trigger the birth cry (cosmetic — the node "
+                   f"itself verified OK): {(err or out)[-120:]}")
+        return StepResult("birth_cry", True, msg)
+
     _BUILD = ("_ensure_toolchain", "_ensure_source", "_build_firmware")
     _FLASH = ("_detect_port", "_erase", "_flash_firmware", "_provision",
-              "_set_hash", "_set_params", "_verify")
+              "_set_hash", "_set_params", "_verify", "_birth_cry")
 
     def planned_step_names(self):
         """Ordered StepResult names run_all will produce (the compile steps are

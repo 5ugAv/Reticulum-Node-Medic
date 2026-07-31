@@ -147,7 +147,7 @@ def flash_conn(info=GOOD_INFO, provisioned=True, has_bin=True):
 
 
 FLASH_STEPS = ["detect_port", "erase", "flash_firmware", "provision",
-               "set_hash", "set_params", "verify"]
+               "set_hash", "set_params", "verify", "birth_cry"]
 
 
 def test_flash_runs_erase_flash_provision_hash_params_verify():
@@ -213,20 +213,22 @@ def test_flash_refuses_when_firmware_not_built():
 def test_flash_repairs_invalid_eeprom_board_verify_passes():
     conn = flash_conn(info=BAD_INFO)
     results = wf(conn).flash()
-    assert results[-1].name == "verify"
+    assert results[-1].name == "verify"        # failed verify -> NO cry after
     assert results[-1].success is False
 
 
 def test_flash_verify_rejects_corrupt_firmware():
     conn = flash_conn(info="Device connected\nFirmware version 1.86\nfirmware corrupt")
     results = wf(conn).flash()
-    assert results[-1].name == "verify" and results[-1].success is False
+    assert results[-1].name == "verify"        # failed verify -> NO cry after
+    assert results[-1].success is False
 
 
 def test_flash_verify_accepts_valid_post_flash_info():
     conn = flash_conn(info=GOOD_INFO)
     results = wf(conn).flash()
-    assert results[-1].name == "verify"
+    assert results[-1].name == "birth_cry"      # the commanded finale
+    assert results[-2].name == "verify"
     assert results[-1].success is True
 
 
@@ -235,7 +237,8 @@ def test_run_all_skips_build_when_firmware_already_built():
     results = wf(conn).run_all()
     names = [r.name for r in results]
     assert "ensure_toolchain" not in names and "build_firmware" not in names
-    assert names[0] == "detect_port" and names[-1] == "verify"
+    assert names[0] == "detect_port" and names[-1] == "birth_cry"
+    assert names[-2] == "verify"          # the cry is the FINALE, after verify
 
 
 def test_run_all_builds_then_flashes_when_firmware_missing():
@@ -256,7 +259,7 @@ def test_run_all_builds_then_flashes_when_firmware_missing():
     results = wf(conn).run_all()
     names = [r.name for r in results]
     assert names[0] == "ensure_toolchain"          # built first
-    assert "build_firmware" in names and names[-1] == "verify"
+    assert "build_firmware" in names and names[-1] == "birth_cry"
 
 
 def test_run_all_stops_if_build_fails():

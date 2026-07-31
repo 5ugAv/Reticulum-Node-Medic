@@ -17,9 +17,16 @@ FAKE_INO = """\
 void setup() {
   boot_seq();
   led_init();
+}
 
-  // Validate board health, EEPROM and config
-  validate_status();
+void serial_callback(uint8_t sbyte) {
+    } else if (command == CMD_RESET) {
+      if (sbyte == CMD_RESET_BYTE) {
+        hard_reset();
+      }
+    } else if (command == CMD_ROM_READ) {
+      kiss_dump_eeprom();
+    }
 }
 """
 
@@ -30,15 +37,17 @@ def _write_sketch(tmp_path):
     return str(ino)
 
 
-def test_patch_inserts_include_and_setup_hook(tmp_path):
+def test_patch_inserts_include_and_serial_trigger(tmp_path):
     ino = _write_sketch(tmp_path)
     msg = bc.apply(ino)
     src = open(ino).read()
-    assert "include" in msg and "setup-hook" in msg
+    assert "include" in msg and "serial-trigger" in msg
     # include comes right after Utilities.h (BirthCry needs npset)
     assert '#include "Utilities.h"\n#include "BirthCry.h"' in src
-    # the hook sits BEFORE validate_status, at the end of setup
-    assert src.index("birth_cry_maybe();") < src.index("validate_status();")
+    # the trigger slots into the KISS chain BEFORE CMD_ROM_READ, and only
+    # sings on the 0xF8 confirmation byte
+    assert src.index("command == 0xB5") < src.index("command == CMD_ROM_READ")
+    assert "birth_cry();" in src
     assert (tmp_path / "BirthCry.h").exists()
 
 
@@ -49,7 +58,7 @@ def test_patch_is_idempotent(tmp_path):
     msg = bc.apply(ino)                      # second run: refresh only
     assert "already present" in msg
     assert open(ino).read() == once
-    assert once.count("birth_cry_maybe();") == 1
+    assert once.count("birth_cry();") == 1
 
 
 def test_missing_anchor_is_loud(tmp_path):
@@ -75,6 +84,13 @@ def test_choreography_matches_the_rtnode_cry():
         assert magic in bc.BIRTH_CRY_H, f"RNode cry differs: {magic}"
 
 
-def test_header_guards_non_esp32_boards():
-    assert "MCU_VARIANT == MCU_ESP32" in bc.BIRTH_CRY_H
-    assert "inline void birth_cry_maybe() {}" in bc.BIRTH_CRY_H  # no-op fallback
+def test_header_no_op_without_neopixel():
+    assert "inline void birth_cry() {}" in bc.BIRTH_CRY_H  # no-NP fallback
+
+
+def test_workflow_ends_with_the_cry():
+    """The flash pipeline's LAST step commands the song — after verify, so
+    the show lands with the green confirmation."""
+    from workflows.rnode_v4_rgb import HeltecV4RGBWorkflow
+    assert HeltecV4RGBWorkflow._FLASH[-1] == "_birth_cry"
+    assert HeltecV4RGBWorkflow._FLASH[-2] == "_verify"

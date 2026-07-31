@@ -5,17 +5,19 @@
 Writes ``BirthCry.h`` next to the sketch and hooks the sketch itself:
 
   * ``#include "BirthCry.h"`` right after ``#include "Utilities.h"`` (BirthCry
-    uses Utilities' ``npset``/pixel globals, so order matters);
-  * ``birth_cry_maybe();`` just before ``validate_status();`` at the end of
-    ``setup()`` — after all hardware init, before normal operation, so when the
-    cry ends the firmware's own LED language takes over (white standby
-    breathing while the radio waits for a host / Reticulum connection).
+    uses Utilities' ``npset``, so order matters);
+  * a serial trigger in the KISS command chain: host sends frame
+    ``FEND 0xB5 0xF8 FEND`` -> the board sings. The medic commands this as the
+    LAST build step, so the light show coincides with the green 'flashed
+    successfully' confirmation (operator spec 2026-08-01) — a boot-time cry
+    fired mid-provision, because rnodeconf hard-resets the board during the
+    late steps. Command-triggered also means a replayable IDENTIFY for any
+    plugged-in RNode, mirroring the RTNode-2400's 0x02 opcode.
 
 The choreography is BYTE-IDENTICAL to firmware/rtnode-2400/BirthCry.h (the
 operator-tuned ~13 s: 9 s ember grow -> 1 s rainbow ignition into white ->
-accelerating flutter-burst -> pop -> melt). Both firmwares share the same
-npset() with the same NP_M scaling on the V4, so it renders the same light.
-Plays ONCE per new build (NVS build stamp); later boots stay quiet.
+accelerating flutter-burst -> pop -> melt). When it ends the firmware's own
+LED language takes over (white standby breathe while waiting for a host).
 
 Idempotent: re-running refreshes BirthCry.h and skips existing hooks.
 """
@@ -27,33 +29,37 @@ import os
 import sys
 
 INCLUDE_ANCHOR = '#include "Utilities.h"'
-CALL_ANCHOR = "// Validate board health, EEPROM and config"
 INCLUDE_LINE = '#include "BirthCry.h"'
-CALL_LINES = (
-    "  // RNM: first-flash birth cry (~13 s, once per new build) — then the\n"
-    "  // normal LED language takes over (white standby breathing while the\n"
-    "  // radio waits for its host / Reticulum connection).\n"
-    "  birth_cry_maybe();\n\n")
+#: The serial-command chain anchor — the cry trigger slots in right before it.
+CMD_ANCHOR = "    } else if (command == CMD_ROM_READ) {"
+CMD_LINES = (
+    "    } else if (command == 0xB5) {\n"
+    "      // RNM: birth-cry / identify trigger (FEND 0xB5 0xF8 FEND) — the\n"
+    "      // medic commands the newborn to SING as the final build step, so\n"
+    "      // the light show lands WITH the flashed-successfully confirmation.\n"
+    "      if (sbyte == 0xF8) {\n"
+    "        birth_cry();\n"
+    "      }\n")
 
 BIRTH_CRY_H = r'''// Node Medic — Birth Cry for the stock RNode firmware (RGB V4 build).
 // Same operator-tuned choreography as the RTNode-2400 BirthCry.h (~13 s:
 // 9 s ember grow -> 1 s rainbow ignition into white -> accelerating
-// flutter-burst -> pop -> melt to black). Plays ONCE per newly-flashed
-// build (NVS build-stamp gate); every later power-cycle boots quietly and
+// flutter-burst -> pop -> melt to black). Plays ON COMMAND (KISS frame
+// FEND 0xB5 0xF8 FEND from the host) — the medic sends it as the last
+// build step so the song coincides with the birth being CONFIRMED, and can
+// resend it any time as an identify/celebrate signal. When the cry ends,
 // the firmware's own LED language (white standby breathe, RX blue, TX
-// amber) takes over the moment the cry ends.
+// amber) takes back the pixel.
 //
-// Uses npset() from Utilities.h — include this AFTER it. Preferences (NVS)
-// is ESP32-only; other MCUs compile to no-ops.
+// Uses npset() from Utilities.h — include this AFTER it. Boards without a
+// NeoPixel compile to no-ops.
 
 #ifndef RNM_BIRTHCRY_H
 #define RNM_BIRTHCRY_H
 
 #include <math.h>
 
-#if defined(HAS_NP) && HAS_NP == true && MCU_VARIANT == MCU_ESP32
-
-#include <Preferences.h>
+#if defined(HAS_NP) && HAS_NP == true
 
 // Minimal HSV -> RGB (h 0..360, s/v 0..1) for the rainbow sweep.
 inline void rnm_np_hsv(float h, float s, float v) {
@@ -71,8 +77,9 @@ inline void rnm_np_hsv(float h, float s, float v) {
           (uint8_t)((b + m) * 255));
 }
 
-// The cry (~13 s, blocking — runs at the end of setup(), before normal
-// operation). Choreography identical to the RTNode-2400 version.
+// The cry (~13 s, blocking — commanded at the end of a build, when the host
+// expects nothing else from the board). Choreography identical to the
+// RTNode-2400 version.
 inline void birth_cry() {
     // 1: SLOW GROW — nine seconds crawling up through the dim range.
     uint32_t t0 = millis();
@@ -121,26 +128,11 @@ inline void birth_cry() {
     npset(0, 0, 0);
 }
 
-// Once per NEW BUILD: the build stamp changes on every rebuild, and NVS
-// survives reboots — a fresh flash cries once, later boots stay quiet.
-inline void birth_cry_maybe() {
-    static Preferences _bc_prefs;
-    const char* stamp = __DATE__ " " __TIME__;
-    _bc_prefs.begin("rnm", false);
-    String seen = _bc_prefs.getString("birthcry", "");
-    if (seen != stamp) {
-        birth_cry();
-        _bc_prefs.putString("birthcry", stamp);
-    }
-    _bc_prefs.end();
-}
-
-#else   // no NeoPixel / not ESP32 — all no-ops
+#else   // no NeoPixel on this board — no-op
 
 inline void birth_cry() {}
-inline void birth_cry_maybe() {}
 
-#endif  // HAS_NP && ESP32
+#endif  // HAS_NP
 #endif  // RNM_BIRTHCRY_H
 '''
 
@@ -161,11 +153,11 @@ def apply(ino_path: str) -> str:
         src = src.replace(INCLUDE_ANCHOR,
                           INCLUDE_ANCHOR + "\n" + INCLUDE_LINE, 1)
         changed.append("include")
-    if "birth_cry_maybe();" not in src:
-        if CALL_ANCHOR not in src:
-            raise ValueError(f"anchor missing: {CALL_ANCHOR}")
-        src = src.replace("  " + CALL_ANCHOR, CALL_LINES + "  " + CALL_ANCHOR, 1)
-        changed.append("setup-hook")
+    if "command == 0xB5" not in src:
+        if CMD_ANCHOR not in src:
+            raise ValueError("anchor missing: the CMD_ROM_READ chain line")
+        src = src.replace(CMD_ANCHOR, CMD_LINES + CMD_ANCHOR, 1)
+        changed.append("serial-trigger")
     if changed:
         with open(ino_path, "w") as f:
             f.write(src)

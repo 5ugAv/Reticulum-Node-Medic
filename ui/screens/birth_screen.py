@@ -77,7 +77,7 @@ _STEP_SECONDS = {
     "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
     # provision = the 16 s birth-cry wait + rnodeconf (~40 s real; 26 pinned
     # the bar at 95% and read as a stall — live pacing feedback 2026-07-31)
-    "erase": 14, "provision": 48, "set_hash": 6, "verify": 8,
+    "erase": 14, "provision": 30, "set_hash": 6, "verify": 8, "birth_cry": 3,
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
     "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
@@ -109,6 +109,7 @@ _PHASE_LABELS = {
     "set_hostname": "Setting the hostname…",
     "final_verification": "Verifying the node…",
     "birth_certificate": "Writing the birth certificate…",
+    "birth_cry": "The birth cry — watch the node's light show.",
 }
 
 
