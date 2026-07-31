@@ -37,61 +37,50 @@ SAMPLE = {
 
 # ---- payload -------------------------------------------------------------
 
-def test_payload_leads_with_how_to_reach_the_node():
-    text = birth_cert_payload(SAMPLE)
+def test_payload_is_anonymous_no_reachability_or_provenance():
+    """THE anonymity guarantee (operator ethos 2026-08-01): a scanned QR must
+    never reveal where the node lives, whose network it is on, or who built
+    it — a wild node stays untraceable to a person or place."""
+    cert = dict(SAMPLE, node_name="Rooftop-East",
+                location="-37.5106, 145.5107 (map)",
+                notes="Mounted on the water tank, 4m mast",
+                built_by="nodemedic (5a160016)",
+                identity_hash="5a0b000b66778899")
+    text = birth_cert_payload(cert)
+    for leak in ("Host:", "IP:", "MAC: b8", "Reticulum:", "Identity:",
+                 "Location:", "Notes:", "Built", "192.168", "rtt-prop-01",
+                 "-37.512", "water tank", "nodemedic", "5a0b000b"):
+        assert leak not in text, f"QR leaks: {leak!r}\n{text}"
+
+
+def test_payload_carries_the_identity_lite_tier():
+    cert = dict(SAMPLE, node_name="Rooftop-East", node_type="pi_rnode",
+                born="2026-08-01 04:25")
+    text = birth_cert_payload(cert)
     lines = text.splitlines()
     assert lines[0].startswith("RETICULUM NODE")
-    # reachability comes before build details
-    assert text.index("Host:") < text.index("Board:")
-    assert "rtt-prop-01.local" in text
-    assert "IP: 192.168.1.42, 10.0.0.9" in text
-    assert "MAC: b8:27:eb:aa:bb:cc" in text
-    assert "Reticulum: 5a160016000000000000000000000003" in text
-
-
-def test_payload_includes_build_details_and_rgb_pin():
-    text = birth_cert_payload(SAMPLE)
+    assert lines[1] == "Name: Rooftop-East"
+    assert "Type: Pi + RNode (propagation)" in text
     assert "Board: Heltec LoRa32 v4 (fw 1.86), RGB pin 47" in text
     assert "Radio: 915.125 MHz BW125 SF9 CR5 17dBm" in text
-    assert "Built: 20260714_104500" in text
+    assert "Born: 2026-08-01 04:25" in text
+
+
+def test_payload_board_id_matches_the_glass():
+    cert = {"node_type": "rnode", "board": "Heltec Wireless Tracker",
+            "usb_serial": ("usb-Espressif_USB_JTAG_serial_debug_unit_"
+                           "02:00:00:02:00:06-if00"),
+            "radio": "915.125 MHz / BW125 / SF9 / CR5 / 17 dBm"}
+    text = birth_cert_payload(cert)
+    assert "Board ID: 02:00:00:02:00:06  (screen ID 0006)" in text
+    assert "Radio: 915.125 MHz / BW125 / SF9 / CR5 / 17 dBm" in text
+    assert "Type: RNode (radio for a host)" in text
 
 
 def test_payload_omits_missing_fields_without_crashing():
-    text = birth_cert_payload({"hostname": "bare", "ssh_address": "bare.local"})
-    assert "Host: bare" in text
-    assert "MAC:" not in text and "Reticulum:" not in text and "Radio:" not in text
-
-
-def test_payload_carries_name_notes_and_location():
-    cert = dict(SAMPLE, node_name="Rooftop-East",
-                location="-37.5106, 145.5107 (map)",
-                notes="Mounted on the water tank, 4m mast")
-    text = birth_cert_payload(cert)
-    lines = text.splitlines()
-    # name is the operator's first field — right under the title
-    assert lines[1] == "Name: Rooftop-East"
-    assert "Location: -37.5106, 145.5107 (map)" in text
-    assert "Notes: Mounted on the water tank, 4m mast" in text
-    # name before reachability, notes last
-    assert text.index("Name:") < text.index("Host:")
-    assert text.rstrip().endswith("Notes: Mounted on the water tank, 4m mast")
-
-
-def test_payload_omits_name_notes_location_when_absent():
-    text = birth_cert_payload(SAMPLE)
-    assert "Name:" not in text and "Notes:" not in text and "Location:" not in text
-
-
-def test_payload_no_rgb_pin_when_stock():
-    stock = dict(SAMPLE, rgb_led_pin=None)
-    text = birth_cert_payload(stock)
-    assert "RGB pin" not in text
-    assert "Board: Heltec LoRa32 v4 (fw 1.86)" in text
-
-
-def test_payload_stays_compact_enough_to_scan():
-    # keep the QR an easy scan — comfortably within a mid-version QR's capacity
-    assert len(birth_cert_payload(SAMPLE)) < 400
+    text = birth_cert_payload({"board": "bare"})
+    assert "Board: bare" in text
+    assert "Radio:" not in text and "Board ID:" not in text
 
 
 # ---- matrix generation ---------------------------------------------------
