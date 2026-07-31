@@ -77,7 +77,8 @@ _STEP_SECONDS = {
     "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
     # provision = the 16 s birth-cry wait + rnodeconf (~40 s real; 26 pinned
     # the bar at 95% and read as a stall — live pacing feedback 2026-07-31)
-    "erase": 14, "provision": 30, "set_hash": 6, "verify": 8, "birth_cry": 3,
+    "erase": 14, "provision": 30, "set_hash": 6, "verify": 8,
+    "birth_cry": 10,   # the ember dawn plays during this bar; popup ~ ignition
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
     "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,

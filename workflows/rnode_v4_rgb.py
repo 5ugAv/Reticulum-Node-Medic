@@ -515,7 +515,12 @@ class HeltecV4RGBWorkflow:
                "s.write(bytes([0xC0,0xB5,0xF8,0xC0])); s.flush(); s.close()\"")
         code, out, err = self.connection.run(cmd, timeout=30)
         if code == 0:
-            msg = "Birth cry commanded — watch the node's light show (~13 s)."
+            # The cry opens with a ~9 s near-invisible ember dawn — hold the
+            # step through it so the green confirmation lands right at the
+            # IGNITION (the bright part), not after the whole song
+            # (operator timing note 2026-08-01).
+            self.connection.run("sleep 9", timeout=20)
+            msg = "Birth cry commanded — watch the node's light show."
         else:
             msg = ("Couldn't trigger the birth cry (cosmetic — the node "
                    f"itself verified OK): {(err or out)[-120:]}")
