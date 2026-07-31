@@ -119,6 +119,16 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
             False)
 
 
+#: The medic's built custom-fork image for the Heltec Wireless Tracker — the
+#: SAME firmware its own Jonesey runs (patched markqvist fork + TFT motion
+#: animation, TX-fix build of 2026-07-31). Flashing a work Tracker = copying
+#: this proven image; native USB-JTAG needs --no-stub --baud 115200.
+TRACKER_BUILD_DIR = "~/overlay_test/RNode_Firmware/build/esp32.esp32.esp32s3"
+TRACKER_BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
+                     "tools/partitions/boot_app0.bin")
+TRACKER_ESPTOOL = "~/.arduino15/packages/esp32/tools/esptool_py/4.5.1/esptool.py"
+
+
 def usb_id_for_port(connection: Connection, port: str):
     """The /dev/serial/by-id basename for *port* — the board's USB fingerprint
     (contains the chip MAC for native-CDC ESP32-S3s, the adapter serial for
@@ -191,6 +201,17 @@ class RNodeFlashWorkflow:
         return StepResult("ensure_single_board", True, "One work board connected.")
 
     def _ensure_firmware(self) -> StepResult:
+        if self.board.flash_method != "autoinstall":
+            # custom fork: the medic's own build is the firmware source
+            if self.connection.run(
+                    f"test -f {TRACKER_BUILD_DIR}/RNode_Firmware.ino.bin")[0] != 0:
+                return StepResult(
+                    "ensure_firmware", False,
+                    "The medic's Tracker fork build is missing — rebuild it "
+                    "before flashing this board.")
+            return StepResult("ensure_firmware", True,
+                              "Custom fork firmware ready (the medic's own "
+                              "proven build).")
         if has_connectivity(self.connection):
             res = sync_firmware(self.connection)
             if res.failed:
@@ -209,9 +230,7 @@ class RNodeFlashWorkflow:
 
     def _flash(self) -> StepResult:
         if self.board.flash_method != "autoinstall":
-            return StepResult("flash", False,
-                              f"{self.board.key} is a custom board — flash it "
-                              f"with its arduino-cli flasher.")
+            return self._flash_custom_fork()
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)
@@ -226,6 +245,55 @@ class RNodeFlashWorkflow:
             "flash", ok,
             f"Flashed {self.board.display_name} from the offline cache — {msg}."
             if ok else f"Flash failed: {msg}")
+
+    def _flash_custom_fork(self) -> StepResult:
+        """Flash a custom-fork board (the Wireless Tracker) from the medic's
+        own PROVEN build — the image Jonesey runs — then ROM-bootstrap the
+        EEPROM with the board's provision codes and set the firmware hash so
+        it validates. One step, three acts, because the fixed step list
+        predates custom boards."""
+        try:                              # NEVER the medic's own radio
+            from ui.onboard_roster import assert_flashable
+            assert_flashable(self.port)
+        except Exception as e:            # noqa: BLE001
+            return StepResult("flash", False, f"Refusing to flash: {e}")
+        d = TRACKER_BUILD_DIR
+        code, out, err = self.connection.run(
+            f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
+            f"--baud 115200 --no-stub write_flash -z --flash_size 8MB "
+            f"0x0 {d}/RNode_Firmware.ino.bootloader.bin "
+            f"0x8000 {d}/RNode_Firmware.ino.partitions.bin "
+            f"0xe000 {TRACKER_BOOT_APP0} "
+            f"0x10000 {d}/RNode_Firmware.ino.bin",
+            timeout=self.flash_timeout)
+        low = (out or "").lower()
+        if code != 0 and "hash of data verified" not in low:
+            return StepResult("flash", False,
+                              f"esptool write failed: {(err or out)[-200:]}")
+        # boot, then ROM-bootstrap as the custom product (cb/ca for the
+        # Tracker) — signed with the medic's project key.
+        p = self.board.provision or {}
+        code, out, err = self.connection.run(
+            f"sleep 4 && rnodeconf {self.port} -r "
+            f"--product {p.get('product', 'cb')} "
+            f"--model {p.get('model', 'ca')} "
+            f"--platform {p.get('platform', '0x80')} "
+            f"--hwrev {p.get('hwrev', '1')}",
+            timeout=self.flash_timeout)
+        low = ((out or "") + (err or "")).lower()
+        if "bootstrapping successful" not in low and "signature validated" not in low:
+            return StepResult("flash", False,
+                              f"Flashed, but EEPROM bootstrap failed: "
+                              f"{(err or out)[-200:]}")
+        # firmware hash = the app image's embedded SHA (validates, not corrupt)
+        from workflows.rnode_v4_rgb import embedded_hash_command
+        self.connection.run(
+            embedded_hash_command(self.port, f"{d}/RNode_Firmware.ino.bin"),
+            timeout=120)
+        return StepResult(
+            "flash", True,
+            f"Flashed the medic's proven Tracker fork image and provisioned "
+            f"as {self.board.display_name}.")
 
     def _set_params(self) -> StepResult:
         # Bake the canonical radio params into the EEPROM AT BIRTH and leave the

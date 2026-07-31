@@ -72,7 +72,7 @@ _STEP_SECONDS = {
     # flash_firmware: ~45 s for the RGB full-image write, longer for RTNode's
     # pio upload — 90 keeps both bars moving (300 sat at a dot then teleported
     # full; live pacing feedback 2026-07-31).
-    "flash_firmware": 90, "flash": 120, "flash_rnode_firmware": 150,
+    "flash_firmware": 90, "flash": 170, "flash_rnode_firmware": 150,
     "set_params": 15, "set_firmware_radio_parameters": 15, "set_params_at_birth": 15,
     "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
     # provision = the 16 s birth-cry wait + rnodeconf (~40 s real; 26 pinned
