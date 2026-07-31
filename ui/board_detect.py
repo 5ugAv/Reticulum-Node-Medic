@@ -58,6 +58,41 @@ def _platform_key(p: str) -> str:
     return (p or "").replace("-", "").replace(" ", "").lower()
 
 
+#: How each board reaches USB: "bridge" (external UART chip -> /dev/ttyUSB*)
+#: or "native" (the MCU's own USB-CDC -> /dev/ttyACM*). This splits boards
+#: the chip read alone can't tell apart (operator spec 2026-08-01: only show
+#: boards the medic genuinely can't distinguish). Chip-level FACTS: classic
+#: ESP32 has no USB controller (always a bridge); nRF52840 is always native.
+#: S3 boards are per-board: V3 = CP2102 bridge (bench-proven ttyUSB), V4 /
+#: Wireless Tracker = native (bench-proven ttyACM), XIAO = bare module, no
+#: bridge chip exists; T-Deck / T-Beam Supreme / T3S3 = native per vendor
+#: docs (if a hardware revision proves otherwise, the full-board-list
+#: fallback still reaches them — wrong exclusion costs one tap, not a brick).
+_USB_KIND = {
+    # classic ESP32 -> always bridge
+    "lora32_v21": "bridge", "lora32_v20": "bridge", "lora32_v10": "bridge",
+    "tbeam": "bridge", "heltec32_v2": "bridge",
+    # nRF52 -> always native
+    "rak4631": "native", "techo": "native", "heltec_t114": "native",
+    # ESP32-S3, per-board
+    "heltec32_v3": "bridge",
+    "heltec32_v4": "native",
+    "heltec_wireless_tracker": "native",
+    "xiao_esp32s3": "native",
+    "tdeck": "native",
+    "tbeam_supreme": "native",
+    "t3s3": "native",
+}
+
+
+def _port_usb_kind(port: str):
+    if "ttyUSB" in (port or ""):
+        return "bridge"
+    if "ttyACM" in (port or ""):
+        return "native"
+    return None
+
+
 def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                  reader: Optional[Callable[[str], str]] = None) -> dict:
     """Detect the connected work board. Returns a result dict:
@@ -85,6 +120,15 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     platform = _PLATFORM_BY_CHIP.get(chip)
     shortlist = [b for b in boards
                  if _platform_key(getattr(b, "platform", "")) == _platform_key(platform)]
+    # Second cut: the PORT TYPE (bridge ttyUSB vs native ttyACM) rules out
+    # boards whose USB wiring can't produce this port. A lone survivor is
+    # auto-picked (e.g. an S3 on ttyUSB can only be the CP2102-bridged V3).
+    pk = _port_usb_kind(port)
+    if pk:
+        refined = [b for b in shortlist
+                   if _USB_KIND.get(b.key) in (pk, None)]
+        if refined:
+            shortlist = refined
     return {"found": True, "port": port, "chip": chip, "platform": platform,
             "firmware": firmware_options(chip), "boards": shortlist,
             "board_key": shortlist[0].key if len(shortlist) == 1 else None}

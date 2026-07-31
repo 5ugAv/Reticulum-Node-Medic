@@ -71,3 +71,26 @@ def test_detect_reader_exception_is_handled():
         raise OSError("port busy")
     res = detect_board(BOARDS, ports_fn=lambda: ["/dev/ttyACM1"], reader=boom)
     assert res["found"] is False and "port busy" in res["reason"]
+
+
+def test_port_type_refines_s3_shortlist_to_the_v3():
+    # An ESP32-S3 on ttyUSB can only be the CP2102-bridged V3 — auto-picked
+    # (operator spec 2026-08-01: only show boards the medic can't distinguish).
+    from ui.birth import rnode_board_choices
+    r = detect_board(rnode_board_choices(),
+                     ports_fn=lambda: ["/dev/ttyUSB0"],
+                     reader=lambda p: "Chip is ESP32-S3")
+    assert [b.key for b in r["boards"]] == ["heltec32_v3"]
+    assert r["board_key"] == "heltec32_v3"
+
+
+def test_port_type_keeps_native_s3_boards_ambiguous():
+    # Native-CDC S3s (ttyACM) stay a genuine multi-candidate list, V3 excluded.
+    from ui.birth import rnode_board_choices
+    r = detect_board(rnode_board_choices(),
+                     ports_fn=lambda: ["/dev/ttyACM1"],
+                     reader=lambda p: "Chip is ESP32-S3")
+    keys = [b.key for b in r["boards"]]
+    assert "heltec32_v3" not in keys
+    assert "heltec32_v4" in keys and len(keys) > 1
+    assert r["board_key"] is None
