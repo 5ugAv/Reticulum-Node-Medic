@@ -281,19 +281,49 @@ class BirthScreen(BoxLayout):
                 found = self._detected.get("found")
                 self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
                                              color="green" if found else "amber"))
-            self.header.add_widget(_line("Firmware", bold=True, size="15sp",
-                                         color="accent"))
-            fw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                               height=dp(50), spacing=dp(6))
-            for key, short in (("rtnode2400", "RTNode-2400"), ("rnode", "RNode"),
-                               ("pi_rnode", "Pi + RNode")):
-                b = Button(text=short, font_size="14sp", bold=True,
-                           background_normal="",
-                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-                b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
-                fw_row.add_widget(b)
-            self.header.add_widget(fw_row)
+            det = self._detected or {}
+            det_opts = det.get("firmware") if det.get("found") else None
+            if det_opts and len(det_opts) > 1:
+                # Detection NARROWED but couldn't decide — ask with the full
+                # labels so the operator picks the family deliberately
+                # (auto-leading with RTNode-2400 built the wrong firmware —
+                # Tern1 incident, 2026-07-31).
+                self.header.add_widget(_line(
+                    "What should this board become?", bold=True, size="15sp",
+                    color="accent"))
+                if "rnode" in det_opts and "pi_rnode" not in det_opts:
+                    # any RNode-capable board can also be a Pi's radio
+                    det_opts = list(det_opts) + ["pi_rnode"]
+                for key in det_opts:
+                    b = Button(text=FIRMWARE_LABEL.get(key, key),
+                               size_hint_y=None, height=dp(54), halign="left",
+                               font_size="14.5sp", bold=True,
+                               background_normal="",
+                               background_color=theme.hex_to_rgba(
+                                   theme.COLORS["surface"]),
+                               color=theme.hex_to_rgba(
+                                   theme.COLORS["text_primary"]))
+                    b.bind(size=lambda i, v: setattr(
+                        i, "text_size", (v[0] - dp(20), v[1])))
+                    b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
+                    self.header.add_widget(b)
+            else:
+                self.header.add_widget(_line("Firmware", bold=True, size="15sp",
+                                             color="accent"))
+                fw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                   height=dp(50), spacing=dp(6))
+                for key, short in (("rtnode2400", "RTNode-2400"),
+                                   ("rnode", "RNode"),
+                                   ("pi_rnode", "Pi + RNode")):
+                    b = Button(text=short, font_size="14sp", bold=True,
+                               background_normal="",
+                               background_color=theme.hex_to_rgba(
+                                   theme.COLORS["surface"]),
+                               color=theme.hex_to_rgba(
+                                   theme.COLORS["text_primary"]))
+                    b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
+                    fw_row.add_widget(b)
+                self.header.add_widget(fw_row)
         else:
             # CHOSEN (via detect or the guided flow): detection + firmware are DONE,
             # so collapse them to one line with a 'change' escape and go straight to
@@ -537,7 +567,12 @@ class BirthScreen(BoxLayout):
         self._detected = res
         if res.get("found"):
             if not self._forced_firmware:                 # guide-chosen kind wins
-                self._firmware = (res.get("firmware") or ["rnode"])[0]
+                opts = res.get("firmware") or ["rnode"]
+                # Auto-pick ONLY when the chip has a single possibility. An
+                # S3 can be RTNode-2400 OR RNode — silently leading with
+                # RTNode built the wrong firmware for an operator who wanted
+                # an RNode (Tern1 incident, 2026-07-31). Ambiguity -> ASK.
+                self._firmware = opts[0] if len(opts) == 1 else None
             if self._firmware == "rtnode2400":
                 # a chip read can't tell V3 from V4 — the operator CONFIRMS via the
                 # board photos, so don't pre-pick a target here.
