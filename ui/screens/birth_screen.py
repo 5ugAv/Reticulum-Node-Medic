@@ -72,6 +72,8 @@ _STEP_SECONDS = {
     "flash_firmware": 300, "flash": 120, "flash_rnode_firmware": 150,
     "set_params": 15, "set_firmware_radio_parameters": 15, "set_params_at_birth": 15,
     "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
+    "erase": 14, "provision": 26, "set_hash": 6, "verify": 8,
+    "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
     "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
     "birth_certificate": 3,
@@ -106,8 +108,15 @@ _PHASE_LABELS = {
 
 
 def _workflow_step_names(wf):
-    """Ordered step names of a build workflow (for progress weighting). Falls back
-    to the RNode-flash order when a workflow doesn't expose ``.steps``."""
+    """Ordered step names of a build workflow (for progress weighting and the
+    pre-listed checklist). Falls back to the RNode-flash order when a workflow
+    exposes neither ``planned_step_names()`` nor ``.steps``."""
+    planner = getattr(wf, "planned_step_names", None)
+    if planner is not None:
+        try:
+            return list(planner())
+        except Exception:
+            pass
     steps = getattr(wf, "steps", None)
     if steps:
         try:
@@ -115,6 +124,39 @@ def _workflow_step_names(wf):
         except Exception:
             pass
     return ["detect_port", "ensure_single_board", "ensure_firmware", "flash", "set_params"]
+
+
+class _StepBar(Widget):
+    """A slim horizontal loading bar for one checklist step — fills as the
+    step runs, lands full (green/red) when it finishes."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("size_hint", (1, None))
+        kwargs.setdefault("height", dp(9))
+        super().__init__(**kwargs)
+        self._frac = 0.0
+        self._color = "accent"
+        self.bind(pos=self._draw, size=self._draw)
+
+    def set(self, frac, color=None):
+        self._frac = max(0.0, min(1.0, frac))
+        if color is not None:
+            self._color = color
+        self._draw()
+
+    def _draw(self, *_):
+        from kivy.graphics import Color, RoundedRectangle
+        self.canvas.clear()
+        with self.canvas:
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            RoundedRectangle(pos=self.pos, size=self.size,
+                             radius=[dp(4)] * 4)
+            if self._frac > 0.02:
+                Color(*theme.hex_to_rgba(theme.COLORS[self._color]))
+                RoundedRectangle(
+                    pos=self.pos,
+                    size=(max(dp(8), self.width * self._frac), self.height),
+                    radius=[dp(4)] * 4)
 
 
 def _line(text, color="text_primary", bold=False, size="15sp"):
@@ -1246,6 +1288,24 @@ class BirthScreen(BoxLayout):
         self._build_busy.add_widget(self._busy_label)
         self.list.add_widget(self._build_busy)
         self._pg_names = _workflow_step_names(workflow)
+        # The whole journey listed UP FRONT: every step in grey with its own
+        # loading bar; the running step's bar fills, and a finished step's
+        # text goes green with a full bar (operator spec 2026-07-31 — steps
+        # popping into existence one at a time hid what was still to come).
+        self._step_rows = {}
+        from kivy.uix.anchorlayout import AnchorLayout
+        for n in self._pg_names:
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(28), spacing=dp(12))
+            lbl = _line("  " + n, color="text_secondary", size="13.5sp")
+            lbl.size_hint_x = 0.5
+            bar = _StepBar()
+            holder = AnchorLayout(anchor_y="center", size_hint_x=0.5)
+            holder.add_widget(bar)
+            row.add_widget(lbl)
+            row.add_widget(holder)
+            self.list.add_widget(row)
+            self._step_rows[n] = (lbl, bar)
         self._pg_secs = [_STEP_SECONDS.get(n, _DEFAULT_STEP_SECONDS) for n in self._pg_names]
         self._pg_total = max(1.0, float(sum(self._pg_secs)))
         self._pg_done = 0                        # completed step count
@@ -1283,6 +1343,11 @@ class BirthScreen(BoxLayout):
             cur = self._pg_secs[self._pg_done]
             elapsed = time.monotonic() - self._pg_step_start
             done += cur * min(0.97, elapsed / max(1.0, cur))
+            # the running step's own checklist bar creeps too
+            pair = getattr(self, "_step_rows", {}).get(
+                self._pg_names[self._pg_done])
+            if pair is not None:
+                pair[1].set(min(0.95, elapsed / max(1.0, cur)))
         # Cap at 95% until _finish() truly lands — a ring that hits full while
         # verification still runs reads as 'done' and invites unplugging
         # (operator feedback 2026-07-31: dead air between full ring and the
@@ -1387,8 +1452,19 @@ class BirthScreen(BoxLayout):
                  else "green" if result.success else "red")
         if not result.success and not result.skipped:
             self._had_failure = True
-        self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
-                                   size="14sp"))
+        pair = getattr(self, "_step_rows", {}).get(result.name)
+        if pair is not None:
+            # pre-listed checklist row: fill the bar, colour the text
+            lbl, bar = pair
+            lbl.color = theme.hex_to_rgba(theme.COLORS[color])
+            lbl.bold = not result.skipped
+            if result.skipped:
+                lbl.text = f"  {result.name}  (skipped)"
+            bar.set(1.0, color=("green" if result.success or result.skipped
+                                else "red"))
+        else:                                    # unplanned step -> old style
+            self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
+                                       size="14sp"))
         # advance the progress ring past the step that just finished
         if getattr(self, "_pg_secs", None) and self._pg_done < len(self._pg_secs):
             import time

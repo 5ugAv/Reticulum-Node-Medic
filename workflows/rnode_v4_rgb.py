@@ -511,6 +511,18 @@ class HeltecV4RGBWorkflow:
     _FLASH = ("_detect_port", "_erase", "_flash_firmware", "_provision",
               "_set_hash", "_set_params", "_verify")
 
+    def planned_step_names(self):
+        """Ordered StepResult names run_all will produce (the compile steps are
+        skipped when the firmware is already built) — lets the UI pre-list the
+        whole checklist before the build starts."""
+        flash = [n.lstrip("_") for n in self._FLASH]
+        try:
+            if self.connection.run(f"test -f {self.bin_path}")[0] == 0:
+                return flash
+        except Exception:
+            pass
+        return [n.lstrip("_") for n in self._BUILD] + flash
+
     def _run_steps(self, step_names, on_progress):
         emit = on_progress or (lambda r: None)
         for name in step_names:
