@@ -119,16 +119,26 @@ def test_detect_hardware_empty_cpuinfo_fails_gracefully():
     assert result.success is False
 
 
-def test_confirm_radio_parameters_sets_australian_defaults():
+def test_confirm_radio_parameters_keeps_operator_values():
+    # An explicitly customised radio is KEPT — this step used to stomp the
+    # BIRTH form's values with hardcoded 915.125 (fixed 2026-07-31).
     w = wf()
-    w.profile.radio.frequency_mhz = 433.0  # perturb
+    w.profile.radio.frequency_mhz = 433.0  # operator-set
     result = w.steps[1][1](w)
     assert result.success
-    assert w.profile.radio.frequency_mhz == 915.125
+    assert w.profile.radio.frequency_mhz == 433.0
+    assert "433" in result.message
+
+
+def test_confirm_radio_parameters_untouched_gets_defaults():
+    # A factory-default radio picks up the tool-wide saved defaults (which on
+    # a dev box with no store fall back to canonical).
+    w = wf()
+    result = w.steps[1][1](w)
+    assert result.success
     assert w.profile.radio.bandwidth_khz == 125.0
     assert w.profile.radio.spreading_factor == 9
     assert w.profile.radio.coding_rate == 5
-    assert w.profile.radio.tx_power_dbm == 17
 
 
 def blank_board_conn():

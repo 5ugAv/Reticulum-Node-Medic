@@ -80,11 +80,26 @@ def parse_status(status_json: Optional[str]) -> dict:
     return out
 
 
+def canonical_params() -> dict:
+    """The radio contract nodes must match to be adopted — read LIVE from the
+    saved tool-wide defaults (Settings ▸ Default radio parameters), so an
+    operator running a regional mesh adopts nodes on THEIR settings, not the
+    hardcoded AU canonical. Falls back to CANONICAL if the store is absent."""
+    try:
+        from provisioning.radio_defaults import load_defaults
+        p = load_defaults()
+        return {"freq": int(round(p["freq"] * 1_000_000)),
+                "bw": int(round(p["bw"] * 1000)),
+                "sf": int(p["sf"]), "cr": int(p["cr"]), "txp": int(p["txp"])}
+    except Exception:
+        return dict(CANONICAL)
+
+
 def params_match(params: Optional[dict]) -> bool:
     """True only if EVERY canonical field is present and equal."""
     if not params:
         return False
-    return all(params.get(k) == v for k, v in CANONICAL.items())
+    return all(params.get(k) == v for k, v in canonical_params().items())
 
 
 def classify(banner: str = "", status_json: Optional[str] = None) -> dict:

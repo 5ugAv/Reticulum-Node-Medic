@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from node_profile import NodeHardware, NodeProfile, NodeRole
+from node_profile import NodeHardware, NodeProfile, NodeRole, RadioConfig
 from transport.connection import Connection
 from workflows.rnode_boards import get_board
 from workflows.radio_params import set_params_at_birth
@@ -196,15 +196,30 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def confirm_radio_parameters(wf: "BuildWorkflow") -> StepResult:
+    # If the profile's radio is still the untouched factory default, apply the
+    # SAVED tool-wide defaults (Settings ▸ Default radio parameters) — that's
+    # how a regional operator's settings reach a headless Pi build. If the
+    # BIRTH form already customised it, KEEP the operator's values (this step
+    # used to stomp them with hardcoded 915.125 — fixed 2026-07-31).
     r = wf.profile.radio
-    r.frequency_mhz = 915.125
-    r.bandwidth_khz = 125.0
-    r.spreading_factor = 9
-    r.coding_rate = 5
-    r.tx_power_dbm = 17
+    keys = ("frequency_mhz", "bandwidth_khz", "spreading_factor",
+            "coding_rate", "tx_power_dbm")
+    factory = RadioConfig()
+    if all(getattr(r, k) == getattr(factory, k) for k in keys):
+        try:
+            from provisioning.radio_defaults import load_defaults
+            d = load_defaults()
+            r.frequency_mhz = d["freq"]
+            r.bandwidth_khz = d["bw"]
+            r.spreading_factor = int(d["sf"])
+            r.coding_rate = int(d["cr"])
+            r.tx_power_dbm = int(d["txp"])
+        except Exception:
+            pass                            # factory canonical stays
     return StepResult("confirm_radio_parameters", True,
-                      "Applied Australian defaults (915.125 MHz, BW125, SF9, "
-                      "CR5, 17 dBm).")
+                      f"Radio parameters: {r.frequency_mhz:g} MHz, "
+                      f"BW{r.bandwidth_khz:g}, SF{r.spreading_factor}, "
+                      f"CR{r.coding_rate}, {r.tx_power_dbm} dBm.")
 
 
 @build_step

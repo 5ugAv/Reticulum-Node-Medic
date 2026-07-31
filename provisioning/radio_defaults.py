@@ -104,6 +104,17 @@ def save_defaults(params: Dict, path: str = CONFIG) -> Dict[str, float]:
     return coerced
 
 
+def load_radio_config(path: str = CONFIG):
+    """The saved tool-wide defaults as a ``node_profile.RadioConfig`` — the
+    object every build workflow carries. THIS is how a changed Settings value
+    reaches all birth paths (RTNode portal pre-fill included)."""
+    from node_profile import RadioConfig
+    p = load_defaults(path)
+    return RadioConfig(frequency_mhz=p["freq"], bandwidth_khz=p["bw"],
+                       spreading_factor=int(p["sf"]), coding_rate=int(p["cr"]),
+                       tx_power_dbm=int(p["txp"]))
+
+
 def is_standard(params: Optional[Dict] = None, path: str = CONFIG) -> bool:
     """True when *params* (or the saved tool-wide defaults) match the canonical
     standard — the config every node ships with so the whole mesh can hear

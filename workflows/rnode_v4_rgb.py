@@ -308,9 +308,16 @@ class HeltecV4RGBWorkflow:
         self.connection = connection
         self.port = port
         self.band_mhz = band_mhz
-        # Radio params baked into the EEPROM at birth. Defaults to canonical
-        # (915.125/125/SF9/CR5/17); the BIRTH screen overrides it from the form.
-        self.radio = radio or RadioConfig()
+        # Radio params baked into the EEPROM at birth. Defaults to the SAVED
+        # tool-wide defaults (Settings ▸ Default radio parameters) so regional
+        # settings reach every flash; the BIRTH screen overrides from the form.
+        if radio is None:
+            try:
+                from provisioning.radio_defaults import load_radio_config
+                radio = load_radio_config()
+            except Exception:
+                radio = RadioConfig()
+        self.radio = radio
         # 'tnc' = standalone active radio (pocket RNode / LED signals on boot);
         # 'host' = host-controlled, a Pi running rnsd drives the radio.
         self.radio_mode = radio_mode

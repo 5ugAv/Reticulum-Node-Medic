@@ -145,6 +145,24 @@ class RadioDefaultsScreen(BoxLayout):
                 app.refresh_radio_badge()
         except Exception:
             pass
+        # Retune the medic's OWN radio to match (off-thread — it restarts
+        # rnsd), otherwise the medic goes deaf to the nodes it now builds.
+        import threading
+
+        def _tune():
+            try:
+                from provisioning.medic_radio import retune_medic
+                ok, msg = retune_medic(stored)
+            except Exception as e:      # noqa: BLE001
+                ok, msg = False, f"Medic retune failed: {str(e)[:100]}"
+            from kivy.clock import Clock
+
+            def show(_dt):
+                self._status.text += "   •  " + msg
+                if not ok:
+                    self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
+            Clock.schedule_once(show, 0)
+        threading.Thread(target=_tune, daemon=True).start()
 
     def _confirm_nonstandard(self, vals):
         if getattr(self, "_ns_pop", None) is not None:   # doubled-tap guard
@@ -157,7 +175,8 @@ class RadioDefaultsScreen(BoxLayout):
             "so that ALL nodes can communicate with each other.\n\n"
             "Nodes built with different parameters CANNOT hear the rest of "
             "the mesh. Only change this if every node you build will use the "
-            "same new settings.\n\nYou want to save:\n"
+            "same new settings. Node Medic will retune its OWN radio to "
+            "match, so it can still talk to your nodes.\n\nYou want to save:\n"
             f"[b]{rd.summary(vals)}[/b]"),
             color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))

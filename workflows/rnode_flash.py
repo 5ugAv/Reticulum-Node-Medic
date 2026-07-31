@@ -122,13 +122,24 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
 class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
-                 version: str = FIRMWARE_VERSION, flash_timeout: int = 400):
+                 version: str = FIRMWARE_VERSION, flash_timeout: int = 400,
+                 radio=None):
         self.connection = connection
         self.board = board
         self.port = port
         self.band_mhz = band_mhz
         self.version = version
         self.flash_timeout = flash_timeout
+        # Radio params baked at birth. Default = the SAVED tool-wide defaults
+        # (Settings ▸ Default radio parameters), so a regional operator's
+        # settings reach every flash; the BIRTH form can still override.
+        if radio is None:
+            try:
+                from provisioning.radio_defaults import load_radio_config
+                radio = load_radio_config()
+            except Exception:
+                radio = None                 # set_params falls back to canonical
+        self.radio = radio
         self.results: List[StepResult] = []
 
     # -- steps -------------------------------------------------------------
@@ -195,6 +206,7 @@ class RNodeFlashWorkflow:
         # board host-controlled, so a Pi's rnsd never aborts on a stale
         # 250/SF11 default ("Radio state mismatch").
         ok, detail = set_params_at_birth(self.connection, self.port,
+                                         cfg=self.radio,
                                          timeout=self.flash_timeout)
         return StepResult("set_params", ok, detail)
 

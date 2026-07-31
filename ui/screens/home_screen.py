@@ -147,6 +147,27 @@ class HomeScreen(FloatLayout):
             except Exception:
                 pass
             self.refresh_radio_badge()
+            # Retune the medic's own radio back to standard too (off-thread —
+            # restarts rnsd); complain only if it fails.
+            import threading
+
+            def _tune():
+                try:
+                    from provisioning.medic_radio import retune_medic
+                    ok, m = retune_medic()
+                except Exception as e:      # noqa: BLE001
+                    ok, m = False, str(e)[:100]
+                if not ok:
+                    from kivy.clock import Clock
+
+                    def warn(_dt):
+                        from ui.requirement_popup import requirement_popup
+                        requirement_popup(
+                            tr("Defaults reverted, but the medic's own radio "
+                               "couldn't be retuned: ") + m,
+                            tr("Radio parameters"), False)
+                    Clock.schedule_once(warn, 0)
+            threading.Thread(target=_tune, daemon=True).start()
         revert.bind(on_release=_revert)
         row.add_widget(keep)
         row.add_widget(revert)

@@ -193,7 +193,16 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
                   wifi_credentials=rp.medic_wifi_credentials,
                   join_ap=rp._default_join_ap, post=rp._default_post,
                   rejoin=rp.rejoin_medic_wifi)
-    return RTNodeBuildWorkflow(connection, NodeProfile(),
+    # The profile carries the SAVED tool-wide radio defaults (Settings ▸
+    # Default radio parameters) — an operator in another region sets them
+    # once and every birth, including the RTNode portal pre-fill, follows.
+    profile = NodeProfile()
+    try:
+        from provisioning.radio_defaults import load_radio_config
+        profile.radio = load_radio_config()
+    except Exception:
+        pass                               # canonical fallback stays baked in
+    return RTNodeBuildWorkflow(connection, profile,
                                target=target or DEFAULT_TARGET,
                                board_port=board_port, **kw)
 
