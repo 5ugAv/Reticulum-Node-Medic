@@ -83,16 +83,27 @@ def detect_rnode_port(connection) -> Optional[str]:
     format: ``usb-Espressif_USB_JTAG_serial_debug_unit_<mac>-if00 -> ttyACM0``),
     then fall back to the first ttyACM/ttyUSB device.
     """
+    def _mine(port: str) -> bool:
+        """The medic's OWN board? Its hints match Jonesey exactly, so an
+        unfiltered first-match hands out the medic's radio (verified live
+        2026-08-01 — the PROBE mis-target). Best-effort: a remote/dev host
+        has no roster and nothing to protect."""
+        try:
+            from ui.onboard_roster import is_onboard
+            return bool(is_onboard(port))
+        except Exception:
+            return False
+
     listing = connection.run("ls /dev/serial/by-id/ 2>/dev/null")[1]
     for name in listing.split():
         if any(h.lower() in name.lower() for h in _RNODE_ID_HINTS):
             resolved = connection.run(
                 f"readlink -f /dev/serial/by-id/{name}")[1].strip()
-            if resolved.startswith("/dev/"):
+            if resolved.startswith("/dev/") and not _mine(resolved):
                 return resolved
     for pattern in ("/dev/ttyACM*", "/dev/ttyUSB*"):
         found = [p for p in connection.run(f"ls {pattern} 2>/dev/null")[1].split()
-                 if p.startswith("/dev/")]
+                 if p.startswith("/dev/") and not _mine(p)]
         if found:
             return found[0]
     return None

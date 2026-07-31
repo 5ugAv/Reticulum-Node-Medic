@@ -85,6 +85,14 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
 
     Returns ``(ok, message, already_provisioned)``.
     """
+    # HARD GATE — autoinstall ERASES and reflashes; the medic's own radio must
+    # never reach here (house rule; hole found by the 2026-08-01 bug hunt).
+    try:
+        from ui.onboard_roster import assert_flashable, guard_is_active
+        if guard_is_active():
+            assert_flashable(port)
+    except Exception as e:            # noqa: BLE001
+        return False, f"Refusing to flash: {e}", False
     try:
         interactions = autoinstall_interactions(board, band_mhz)   # validates band
     except ValueError as exc:

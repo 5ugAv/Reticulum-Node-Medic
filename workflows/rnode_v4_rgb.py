@@ -431,9 +431,25 @@ class HeltecV4RGBWorkflow:
         self.port = port
         return StepResult("detect_port", True, f"Board on {port}.")
 
+    def _guard(self) -> "str | None":
+        """HARD GATE for this workflow's write boundaries — a FULL CHIP erase
+        of the medic's own radio is the catastrophic foot-gun (hole found by
+        the 2026-08-01 bug hunt: this whole workflow had no gate). Returns an
+        error string when the port must not be written, else None."""
+        try:
+            from ui.onboard_roster import assert_flashable, guard_is_active
+            if guard_is_active():
+                assert_flashable(self.port)
+        except Exception as e:        # noqa: BLE001
+            return f"Refusing to write to {self.port}: {e}"
+        return None
+
     def _erase(self) -> StepResult:
         # Clean slate before the full-image write (clears any partial/boot-looping
         # firmware + stale EEPROM). Unbrickable — esptool always reconnects.
+        blocked = self._guard()
+        if blocked:
+            return StepResult("erase", False, blocked)
         if self.connection.run(f"test -f {self.bin_path}")[0] != 0:
             return StepResult("erase", False,
                               "NeoPixel firmware not built yet — run build() first.")
@@ -445,6 +461,9 @@ class HeltecV4RGBWorkflow:
                           else f"Erase failed: {(err or out)[-160:]}")
 
     def _flash_firmware(self) -> StepResult:
+        blocked = self._guard()
+        if blocked:
+            return StepResult("flash_firmware", False, blocked)
         # Flash the COMPLETE RGB image (bootloader+partitions+boot_app0+app) with
         # --flash_size detect. `detect` patches the bootloader header to the real
         # flash size; `keep` boot-loops the V4 (~2.5s USB re-enum). This is a
@@ -457,6 +476,9 @@ class HeltecV4RGBWorkflow:
                           else f"Flash failed: {(err or out)[-200:]}")
 
     def _provision(self) -> StepResult:
+        blocked = self._guard()
+        if blocked:
+            return StepResult("provision", False, blocked)
         # ROM-bootstrap the EEPROM as the VENDOR Heltec V4 (c3/c8). Model C8
         # declares Max TX 28 dBm, so the canonical 17 dBm is valid and the radio
         # comes ONLINE — generic homebrew (f0/ff, 14 dBm cap) kept it OFFLINE
@@ -471,6 +493,9 @@ class HeltecV4RGBWorkflow:
             else f"Provision failed: {(err or out)[-200:]}")
 
     def _set_hash(self) -> StepResult:
+        blocked = self._guard()
+        if blocked:
+            return StepResult("set_hash", False, blocked)
         # Firmware hash = the app image's embedded trailing 32 bytes, so the
         # firmware's own integrity check passes (not "firmware corrupt").
         code, out, err = self.connection.run(

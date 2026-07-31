@@ -23,6 +23,16 @@ from diagnostics.network_mesh import NetworkMeshCheck
 from diagnostics.client_connectivity import ClientConnectivityCheck
 from diagnostics.gnss import GnssCheck
 
+
+def _is_onboard_port(port: str) -> bool:
+    """True when *port* is one of the medic's own permanent boards. Best-effort
+    (a non-medic host has no roster) — used to keep auto-detect off Jonesey."""
+    try:
+        from ui.onboard_roster import is_onboard
+        return bool(is_onboard(port))
+    except Exception:
+        return False
+
 #: Diagnostic modules in the order the operator sees them.
 MODULE_ORDER = [
     PowerHardwareCheck,
@@ -115,9 +125,17 @@ class RepairWorkflow:
         # same actual port. The profile default is often wrong (ttyUSB0 vs a real
         # Heltec V4 on ttyACM0), which false-flagged serial_port_exists and made
         # the radio checks probe the wrong device. Modules share this profile.
-        detected = detect_rnode_port(self.connection)
-        if detected:
-            self.profile.radio.serial_port = detected
+        # ...but NEVER stomp a port the caller deliberately pinned to the work
+        # board: detect_rnode_port has no onboard exclusion, and on the medic
+        # it returns JONESEY (verified live 2026-08-01 — work board on ttyACM1,
+        # override picked ttyACM0 = the medic's own radio). Auto-detect only
+        # when nothing was pinned, and never onto an onboard board.
+        pinned = (self.profile.radio.serial_port or "").strip()
+        pinned_is_real = bool(pinned) and not pinned.endswith("ttyUSB0")
+        if not pinned_is_real:
+            detected = detect_rnode_port(self.connection)
+            if detected and not _is_onboard_port(detected):
+                self.profile.radio.serial_port = detected
         session = RepairSession()
 
         for module in self.modules:

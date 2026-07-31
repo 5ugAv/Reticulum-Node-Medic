@@ -60,6 +60,15 @@ def set_params_at_birth(connection: Connection, port: str,
     Returns ``(ok, human_message)``. (Params must be valid for the provisioned
     model, e.g. TX power within the model's cap, or the radio stays offline.)"""
     cfg = cfg or RadioConfig()
+    # HARD GATE at the write boundary — writing radio params to the medic's own
+    # radio would break its mesh vantage (house rule; hole found by the
+    # 2026-08-01 bug hunt: this boundary had no gate).
+    try:
+        from ui.onboard_roster import assert_flashable, guard_is_active
+        if guard_is_active():
+            assert_flashable(port)
+    except Exception as e:            # noqa: BLE001
+        return False, f"Refusing to write radio params: {e}"
     code, out, err = connection.run(set_params_command(port, cfg), timeout=timeout)
     if code != 0:
         return False, (f"Could not write radio params (exit {code}): "

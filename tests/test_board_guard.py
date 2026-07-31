@@ -78,3 +78,40 @@ def test_rtnode_flash_calls_the_gate():
 def test_adopt_serial_read_calls_the_gate():
     assert "assert_flashable" in _src("ui/adopt_live.py"), (
         "read_board_banner must call assert_flashable before resetting a port")
+
+
+# ---- write-boundary coverage (2026-08-01 bug hunt) ----------------------
+
+def _src(rel):
+    import os
+    return open(os.path.join(os.path.dirname(__file__), os.pardir, rel)).read()
+
+
+def test_every_write_boundary_has_the_hard_gate():
+    """EVERY module that erases/flashes/writes a serial port must consult
+    assert_flashable. The 2026-08-01 hunt found the V4-RGB workflow (full-chip
+    erase!), birth_flash's autoinstall and set_params_at_birth all ungated —
+    reachable from PROBE's auto-fix with a mis-detected port."""
+    for rel in ("workflows/rnode_v4_rgb.py", "workflows/rnode_flash.py",
+                "workflows/radio_params.py", "workflows/rtnode_build.py",
+                "ui/adopt_live.py"):
+        assert "assert_flashable" in _src(rel), f"{rel} has no hard gate"
+
+
+def test_detect_rnode_port_excludes_onboard_boards():
+    """detect_rnode_port's hints match Jonesey exactly; unfiltered it hands out
+    the medic's own radio (verified live 2026-08-01: work board on ttyACM1,
+    detect returned ttyACM0 = Jonesey)."""
+    src = _src("workflows/build.py")
+    i = src.index("def detect_rnode_port")
+    body = src[i:i + 2000]
+    assert "is_onboard" in body, "detect_rnode_port has no onboard exclusion"
+
+
+def test_repair_run_does_not_stomp_a_pinned_work_board_port():
+    """PROBE pins the work board; run() must not overwrite it with an
+    unfiltered auto-detect (the mis-target that started this)."""
+    src = _src("workflows/repair.py")
+    i = src.index("def run(self, on_progress")
+    body = src[i:i + 1400]
+    assert "pinned" in body and "_is_onboard_port" in body
