@@ -774,6 +774,15 @@ class BirthScreen(BoxLayout):
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
         the operator lands on naming + a suggested setup, not a cold form."""
+        # FRESH LAP: this screen is reused, and a stale _sel_board from the
+        # previous build silently SKIPPED the board pick + confirm gate and
+        # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
+        # caught live 2026-08-01). Nothing selection-shaped survives.
+        self._sel_board = None
+        self._sel_pi = None
+        self._detected = None
+        self._rtnode_target = None
+        self._firmware = None
         self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
