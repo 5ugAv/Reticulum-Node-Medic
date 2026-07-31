@@ -18,11 +18,11 @@ class ProgressRing(Widget):
 
     fraction = NumericProperty(0.0)
 
-    def __init__(self, **kwargs):
+    def __init__(self, label_font_size="15sp", **kwargs):
         kwargs.setdefault("size_hint", (None, None))
         kwargs.setdefault("size", (dp(66), dp(66)))
         super().__init__(**kwargs)
-        self._label = Label(text="0%", bold=True, font_size="15sp",
+        self._label = Label(text="0%", bold=True, font_size=label_font_size,
                             color=theme.hex_to_rgba(theme.COLORS["accent"]))
         self.add_widget(self._label)
         self.bind(pos=self._draw, size=self._draw, fraction=self._draw)

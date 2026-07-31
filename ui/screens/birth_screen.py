@@ -352,6 +352,14 @@ class BirthScreen(BoxLayout):
         staring at 'select your board' while a flash runs (operator spec
         2026-07-31). Restored by _exit_flash_view when the outcome is read."""
         self._flash_view = True
+        try:
+            # The name field's keypad has no business on the flash page.
+            from kivy.app import App
+            kb = getattr(App.get_running_app(), "keyboard", None)
+            if kb is not None:
+                kb.hide()
+        except Exception:
+            pass
         self.header.clear_widgets()
         self.header.add_widget(_line(title, bold=True, size="20sp",
                                      color="accent"))
@@ -999,16 +1007,26 @@ class BirthScreen(BoxLayout):
         # not a scary indeterminate spinner. Weighted by estimated time per step
         # (the flash dominates), and ticked so it climbs during the long compile.
         import time
+        from kivy.uix.anchorlayout import AnchorLayout
         from ui.widgets.progress_ring import ProgressRing
-        self._build_ring = ProgressRing()
-        self._build_busy = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                     height=dp(74), spacing=dp(12), padding=[0, dp(4)])
-        self._build_busy.add_widget(self._build_ring)
+        # A BIG centred ring — this page's whole job is the flash, so the
+        # progress is the centrepiece (operator spec 2026-07-31).
+        self._build_ring = ProgressRing(size=(dp(150), dp(150)),
+                                        label_font_size="28sp")
+        ring_anchor = AnchorLayout(anchor_x="center", anchor_y="center",
+                                   size_hint_y=None, height=dp(170))
+        ring_anchor.add_widget(self._build_ring)
+        self._build_busy = BoxLayout(orientation="vertical", size_hint_y=None,
+                                     spacing=dp(8), padding=[0, dp(8)])
+        self._build_busy.bind(
+            minimum_height=self._build_busy.setter("height"))
+        self._build_busy.add_widget(ring_anchor)
         self._busy_label = _line(
             "Working… the firmware compile is the slow part (a first build also "
             "downloads the toolchain). Keep the board plugged in and WAIT for "
             "the green 'Build finished' confirmation before touching anything.",
             size="13sp", color="accent")
+        self._busy_label.halign = "center"
         self._build_busy.add_widget(self._busy_label)
         self.list.add_widget(self._build_busy)
         self._pg_names = _workflow_step_names(workflow)
