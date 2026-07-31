@@ -236,12 +236,14 @@ class BirthScreen(BoxLayout):
         btn.bind(on_release=lambda *_: on_tap())
         return btn
 
-    def _build_chooser(self):
+    def _build_chooser(self, keep_list=False):
         """The hardware chooser: a Board picker (required) and a Host Pi picker
         (optional — board-only is a standalone radio). Each opens a numbered,
-        scrollable list; a Spinner dropdown flickered shut on this panel."""
+        scrollable list; a Spinner dropdown flickered shut on this panel.
+        keep_list=True restores the chooser header WITHOUT wiping the scroll
+        below (used after a failed build so the log stays readable)."""
         self.header.clear_widgets()
-        if hasattr(self, "list"):
+        if hasattr(self, "list") and not keep_list:
             self.list.clear_widgets()
         self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
 
@@ -341,8 +343,28 @@ class BirthScreen(BoxLayout):
         # flow where the operator picks what they're doing; repeating it here
         # cluttered the board-confirm page. Operator decision 2026-07-31.)
         # The scroll below shows the next action for the chosen firmware.
-        if hasattr(self, "list"):
+        if hasattr(self, "list") and not keep_list:
             self._build_action()
+
+    def _enter_flash_view(self, title):
+        """A DISTINCT flashing page: the chooser header (name field, V3/V4
+        cards) is swapped out for the whole build, so the operator isn't left
+        staring at 'select your board' while a flash runs (operator spec
+        2026-07-31). Restored by _exit_flash_view when the outcome is read."""
+        self._flash_view = True
+        self.header.clear_widgets()
+        self.header.add_widget(_line(title, bold=True, size="20sp",
+                                     color="accent"))
+        self.header.add_widget(_line(
+            "The board will restart itself during the flash — its screen and "
+            "LED may blink, and it may vanish from USB for a few seconds. "
+            "That's normal. Keep it plugged in.",
+            size="13sp", color="text_secondary"))
+
+    def _exit_flash_view(self, keep_list=False):
+        if getattr(self, "_flash_view", False):
+            self._flash_view = False
+            self._build_chooser(keep_list=keep_list)
 
     def _build_action(self):
         """Populate the scroll with the next step for the chosen firmware: the
@@ -903,8 +925,8 @@ class BirthScreen(BoxLayout):
                 return
         except Exception:
             pass
+        self._enter_flash_view(title)          # the build gets its OWN page
         self.list.clear_widgets()
-        self.list.add_widget(_line(title, bold=True))
         # A progress RING that FILLS with a % as the build advances — determinate,
         # not a scary indeterminate spinner. Weighted by estimated time per step
         # (the flash dominates), and ticked so it climbs during the long compile.
@@ -1093,13 +1115,17 @@ class BirthScreen(BoxLayout):
         try:
             from ui.requirement_popup import requirement_popup
             if getattr(self, "_had_failure", False):
-                requirement_popup(
+                view = requirement_popup(
                     "A build step failed — the [FAIL] line in the build log "
                     "names it, with the reason under it. Fix that and run the "
                     "build again.\n\nBoard won't flash?  Hold BOOT, tap RST, "
                     "release BOOT, retry — or use a short, known-good USB data "
                     "cable.",
                     "Build didn't finish", False)
+                # Bring the chooser back so the operator can rerun, but KEEP
+                # the log below — it names what failed.
+                view.bind(on_dismiss=lambda *_:
+                          self._exit_flash_view(keep_list=True))
                 return
             onboarding = getattr(self._workflow, "onboarding", None)
             nm = (onboarding or {}).get("node_name", "") or "the node"
@@ -1123,6 +1149,9 @@ class BirthScreen(BoxLayout):
             # do this again?' (operator spec 2026-07-31).
             def _home(*_a):
                 try:
+                    # Full reset: next visit to BIRTH starts at a fresh chooser,
+                    # not this finished build's flash page.
+                    self._exit_flash_view()
                     from kivy.app import App
                     app = App.get_running_app()
                     if app is not None and hasattr(app, "switch_mode"):

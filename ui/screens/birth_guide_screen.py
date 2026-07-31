@@ -274,6 +274,15 @@ class BirthGuideScreen(BoxLayout):
                               "14sp", color="text_secondary", h=24))
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+        try:
+            # Mark the erase as a running flash: it resets the board on
+            # purpose, and the board-disconnect watch stays silent while
+            # flash_in_progress() (false 'Board disconnected!' otherwise).
+            from kivy.app import App
+            App.get_running_app().begin_activity(
+                "Wiping " + (old_name or "the board") + " — keep it plugged in")
+        except Exception:
+            pass
 
         def work():
             ok, msg = True, ""
@@ -317,6 +326,11 @@ class BirthGuideScreen(BoxLayout):
 
             def done(_dt):
                 self._rebirth_running = False
+                try:
+                    from kivy.app import App
+                    App.get_running_app().end_activity()
+                except Exception:
+                    pass
                 if ok:
                     # blank board -> the proven birth flow takes over; old name
                     # prefilled as a starting point (rename freely). Path "any":

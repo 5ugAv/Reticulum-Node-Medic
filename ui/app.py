@@ -840,21 +840,41 @@ class ReticulumNodeMedicApp(App):
         self._bd_seen = False
         self._bd_gone_at = None
         self._bd_warned = False
+        self._bd_popup = None
+
+        def clear_warning():
+            # The board came back (or a flash owns it) — a lingering
+            # 'disconnected!' card is now a lie; take it down ourselves.
+            pop = self._bd_popup
+            self._bd_popup = None
+            self._bd_warned = False
+            self._bd_gone_at = None
+            if pop is not None:
+                try:
+                    pop.dismiss()
+                except Exception:
+                    pass
 
         def tick(_dt):
             try:
                 current = self.sm.current if hasattr(self, "sm") else ""
                 if current not in ("birth", "birth_guide"):
                     self._bd_seen = False
-                    self._bd_gone_at = None
-                    self._bd_warned = False
+                    clear_warning()
+                    return
+                # A running flash resets and re-enumerates the board ON
+                # PURPOSE (esptool's hard reset, the birth-cry boot) — the
+                # port vanishing for many seconds is the flash WORKING, and
+                # the build verifies its own outcome. Stay silent
+                # (operator report 2026-07-31: false alarm mid-flash).
+                if self.flash_in_progress():
+                    clear_warning()
                     return
                 from ui.hw_factories import local_board_ports
                 import time as _t
                 if local_board_ports():
                     self._bd_seen = True
-                    self._bd_gone_at = None
-                    self._bd_warned = False
+                    clear_warning()
                     return
                 if not self._bd_seen or self._bd_warned:
                     return
@@ -863,7 +883,7 @@ class ReticulumNodeMedicApp(App):
                 elif _t.time() - self._bd_gone_at > 5:
                     self._bd_warned = True
                     from ui.requirement_popup import requirement_popup
-                    requirement_popup(
+                    self._bd_popup = requirement_popup(
                         "Board disconnected!\n\nThe board that was plugged in "
                         "has vanished from USB. Check the cable and plug it "
                         "back in before continuing.",
