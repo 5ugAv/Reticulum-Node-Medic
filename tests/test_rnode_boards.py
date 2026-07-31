@@ -99,7 +99,9 @@ def test_official_boards_are_autoinstall_with_unique_menu_indices():
 def test_official_boards_are_offline_flashable_via_autoinstall():
     b = get_board("heltec32_v3")
     assert b.autoinstall_index == 8
-    assert b.platform == "ESP32"
+    # V3 is an ESP32-S3 chip (verified live with esptool; the old "ESP32"
+    # label kept it out of the detect shortlist — fixed 2026-07-31)
+    assert b.platform == "ESP32-S3"
     cmd = b.autoinstall_command("/dev/ttyACM0", version="1.86")
     assert "rnodeconf /dev/ttyACM0 --autoinstall" in cmd
     assert "--nocheck" in cmd                       # offline by default

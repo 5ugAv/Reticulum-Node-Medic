@@ -152,10 +152,13 @@ _OFFICIAL = [
               "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1"),
     _official("heltec32_v2", "Heltec LoRa32 v2", 7, "ESP32", "SX1276/78",
               "410-525 / 850-950 MHz", recovery_key="Heltec V2"),
-    _official("heltec32_v3", "Heltec LoRa32 v3", 8, "ESP32", "SX1262/68",
+    # V3 + V4 are ESP32-S3 chips (verified live with esptool on both) — they
+    # were mislabelled "ESP32" here, which kept them OUT of the detect
+    # shortlist for every S3 chip read (the blank board pick, 2026-07-31).
+    _official("heltec32_v3", "Heltec LoRa32 v3", 8, "ESP32-S3", "SX1262/68",
               "410-525 / 850-950 MHz", recovery_key="Heltec V3",
               band_map={433: 1, 868: 2, 915: 3, 923: 4}),
-    _official("heltec32_v4", "Heltec LoRa32 v4", 9, "ESP32", "SX1262",
+    _official("heltec32_v4", "Heltec LoRa32 v4", 9, "ESP32-S3", "SX1262",
               "850-950 MHz", recovery_key="Heltec V4",
               band_map={868: 1, 915: 2, 923: 3}),          # verified on hardware
     _official("t3s3", "LilyGO LoRa T3S3", 10, "ESP32-S3", "SX1262/68, SX127x, SX1280",

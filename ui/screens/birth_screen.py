@@ -305,9 +305,11 @@ class BirthScreen(BoxLayout):
         elif self._firmware in ("rnode", "pi_rnode"):
             self.header.add_widget(_line("Board (radio)", bold=True, size="15sp",
                                          color="accent"))
-            self.header.add_widget(self._sel_button(
-                self._sel_board.display_name if self._sel_board
-                else "Tap to choose a board", self._choose_board))
+            if self._sel_board is None:
+                self._add_rnode_board_pick()
+            else:
+                self.header.add_widget(self._sel_button(
+                    self._sel_board.display_name, self._choose_board))
             if self._firmware == "pi_rnode":
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
                 self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
@@ -458,6 +460,44 @@ class BirthScreen(BoxLayout):
     def _pick_board(self, board):
         self._sel_board = board
         self._build_chooser()
+
+    def _add_rnode_board_pick(self):
+        """The RNode board pick, RTNode-style: detection narrows the catalogue
+        to boards matching the read chip and OFFERS them right here — photo
+        cards where we have photos, wide buttons otherwise (operator spec
+        2026-07-31: the old blank 'tap to choose' hid the choice in a popup).
+        No detection -> the full-list picker button, as before."""
+        det = self._detected or {}
+        shortlist = det.get("boards") or []
+        if not det.get("found") or not shortlist:
+            self.header.add_widget(self._sel_button("Tap to choose a board",
+                                                    self._choose_board))
+            return
+        self.header.add_widget(_line(
+            f"Detected {det.get('platform') or det.get('chip')} — which board "
+            "is this?", size="13sp", color="text_secondary"))
+        from ui import board_images
+        from ui.widgets.board_card import BoardCard
+        with_photo = [b for b in shortlist if board_images.get(b.key)]
+        if with_photo:
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(120), spacing=dp(10))
+            for b in with_photo:
+                row.add_widget(BoardCard(
+                    b.key, name=self._name_in.text.strip(),
+                    on_select=lambda bb=b: self._pick_board(bb)))
+            self.header.add_widget(row)
+        for b in shortlist:
+            if b in with_photo:
+                continue
+            self.header.add_widget(self._sel_button(
+                b.display_name, lambda bb=b: self._pick_board(bb)))
+        other = self._sel_button("Not one of these — full board list",
+                                 self._choose_board)
+        other.height = dp(40)
+        other.font_size = "13sp"
+        other.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
+        self.header.add_widget(other)
 
     def _choose_pi(self):
         """Full-screen picker of host Pis — plus 'None' for a standalone radio."""

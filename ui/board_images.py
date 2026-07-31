@@ -38,23 +38,27 @@ BOARDS: Dict[str, dict] = {
 }
 
 
+#: rnodeconf-catalogue keys -> our photo keys (same physical boards).
+_ALIASES = {"heltec32_v3": "heltec_v3", "heltec32_v4": "heltec_v4"}
+
+
 def get(key: str) -> Optional[dict]:
-    return BOARDS.get(key)
+    return BOARDS.get(_ALIASES.get(key, key))
 
 
 def image_for(key: str) -> Optional[str]:
     """The board photo path if we have it AND the file exists, else None."""
-    b = BOARDS.get(key)
+    b = get(key)
     if b and os.path.exists(b["image"]):
         return b["image"]
     return None
 
 
 def has_screen(key: str) -> bool:
-    b = BOARDS.get(key)
+    b = get(key)
     return bool(b and b.get("has_screen"))
 
 
 def label(key: str, default: str = "") -> str:
-    b = BOARDS.get(key)
+    b = get(key)
     return b["label"] if b else default
