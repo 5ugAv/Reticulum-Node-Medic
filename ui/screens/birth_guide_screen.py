@@ -188,6 +188,24 @@ class BirthGuideScreen(BoxLayout):
                                     break
                     except Exception:
                         pass
+                # STILL unknown? Ask the board itself: a provisioned RNode
+                # answers `rnodeconf --info` (no cert needed — catches boards
+                # flashed before record-keeping, or by another tool). A
+                # validated signature = flashed by THIS medic's key.
+                if (port and not c.get("identity_hash")
+                        and not c.get("_kin_by_serial")
+                        and c.get("kind") != "adopt"):
+                    try:
+                        from ui.hw_factories import LocalConnection
+                        code, out, err = LocalConnection().run(
+                            f"sleep 3 && rnodeconf {port} --info", timeout=45)
+                        info = (out or "") + (err or "")
+                        if ("Firmware version" in info
+                                and "Device signature" in info):
+                            c["_kin_by_serial"] = True     # -> already-flashed
+                            c["_our_signature"] = "Validated" in info
+                    except Exception:
+                        pass
             except Exception as e:      # noqa: BLE001
                 c = {"kind": "birth", "reason": f"Couldn't read the board: {e}"}
             from kivy.clock import Clock
@@ -212,25 +230,50 @@ class BirthGuideScreen(BoxLayout):
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True, h=44, color="green"))
-        wrap.add_widget(_line(tr("{name} is already one of your kin — it's enrolled "
-                                 "and reporting to VITALS. Nothing to do.").format(name=name),
-                              "16sp", color="text_secondary", h=80))
-        wrap.add_widget(_line(tr("Identity")
-                              + f"  {(c.get('identity_hash') or '')[:16]}…",
-                              "12.5sp", color="text_secondary", h=22))
+        # An identity-less board (a plain RNode) is 'already FLASHED', not
+        # 'already kin reporting to VITALS' — a silent radio never beacons.
+        # Either way the operator gets told UP FRONT it's not blank, with the
+        # keep / rebirth choice (operator spec 2026-08-01: with many boards
+        # on a bench, knowing what's flashed matters).
+        rnode_like = not c.get("identity_hash")
+        if rnode_like:
+            if not c.get("node_name"):
+                name = tr("This board")
+            by = (tr(" — built by this Node Medic")
+                  if c.get("_our_signature") else "")
+            wrap.add_widget(_line(tr("Already flashed"), "28sp", bold=True,
+                                  h=44, color="amber"))
+            wrap.add_widget(_line(
+                tr("{name} is already flashed as an RNode{by} — a radio for a "
+                   "phone, computer or Pi. It has no mesh identity of its own. "
+                   "Keep it as it is, or rebirth it as a different type of "
+                   "node.").format(name=name, by=by),
+                "16sp", color="text_secondary", h=110))
+        else:
+            wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True, h=44,
+                                  color="green"))
+            wrap.add_widget(_line(
+                tr("{name} is already one of your kin — it's enrolled "
+                   "and reporting to VITALS. Nothing to do.").format(name=name),
+                "16sp", color="text_secondary", h=80))
+            wrap.add_widget(_line(tr("Identity")
+                                  + f"  {(c.get('identity_hash') or '')[:16]}…",
+                                  "12.5sp", color="text_secondary", h=22))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(58),
                         spacing=dp(12))
-        vit = Button(text=tr("See in VITALS"), bold=True, font_size="16sp",
-                     background_normal="",
-                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                     color=theme.hex_to_rgba(theme.COLORS["background"]))
-        vit.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("vitals"))
-        done = Button(text=tr("Done"), bold=True, font_size="16sp", background_normal="",
+        if not rnode_like:
+            vit = Button(text=tr("See in VITALS"), bold=True, font_size="16sp",
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]))
+            vit.bind(on_release=lambda *_: self._on_navigate
+                     and self._on_navigate("vitals"))
+            row.add_widget(vit)
+        done = Button(text=tr("Keep it — done"), bold=True, font_size="16sp",
+                      background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         done.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("home"))
-        row.add_widget(vit)
         row.add_widget(done)
         wrap.add_widget(row)
         # REBIRTH (operator request 2026-07-31): wipe + flash fresh — the
