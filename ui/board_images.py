@@ -21,20 +21,42 @@ from typing import Dict, Optional
 _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "assets", "boards")
 
-#: Keyed by RTNODE_TARGETS key so the birth screen can look a target's photo up.
+def _b(key: str, label: str, has_screen: bool = True, oled=None) -> dict:
+    """A board entry whose photo lives at assets/boards/<key>.png. Entries are
+    PLACEHOLDERS until the file exists — image_for() checks the filesystem, so
+    dropping the PNG in upgrades that board from a text button to a photo card
+    in the birth flow with no code change (operator plan 2026-08-01: photos
+    arrive board-by-board as hardware is bought)."""
+    d = {"label": label, "image": os.path.join(_DIR, f"{key}.png"),
+         "has_screen": has_screen}
+    if oled:
+        d["oled"] = oled
+    return d
+
+
+#: Keyed by RTNODE_TARGETS key / rnode_boards catalogue key (see _ALIASES).
 BOARDS: Dict[str, dict] = {
-    "heltec_v4": {
-        "label": "Heltec V4",
-        "image": os.path.join(_DIR, "heltec_v4.png"),
-        "has_screen": True,
-        "oled": (0.413, 0.278, 0.793, 0.699),
-    },
-    "heltec_v3": {
-        "label": "Heltec V3",
-        "image": os.path.join(_DIR, "heltec_v3.png"),
-        "has_screen": True,
-        "oled": (0.378, 0.239, 0.835, 0.658),
-    },
+    # photos present in assets/boards/
+    "heltec_v4": _b("heltec_v4", "Heltec V4",
+                    oled=(0.413, 0.278, 0.793, 0.699)),
+    "heltec_v3": _b("heltec_v3", "Heltec V3",
+                    oled=(0.378, 0.239, 0.835, 0.658)),
+    # placeholders — drop assets/boards/<key>.png in to activate the card
+    "lora32_v21": _b("lora32_v21", "LilyGO LoRa32 v2.1"),
+    "lora32_v20": _b("lora32_v20", "LilyGO LoRa32 v2.0"),
+    "lora32_v10": _b("lora32_v10", "LilyGO LoRa32 v1.0"),
+    "tbeam": _b("tbeam", "LilyGO T-Beam"),
+    "heltec32_v2": _b("heltec32_v2", "Heltec LoRa32 v2"),
+    "t3s3": _b("t3s3", "LilyGO LoRa T3S3"),
+    "rak4631": _b("rak4631", "RAK4631", has_screen=False),
+    "techo": _b("techo", "LilyGO T-Echo"),
+    "tbeam_supreme": _b("tbeam_supreme", "LilyGO T-Beam Supreme"),
+    "tdeck": _b("tdeck", "LilyGO T-Deck"),
+    "heltec_t114": _b("heltec_t114", "Heltec Mesh Node T114"),
+    "xiao_esp32s3": _b("xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)",
+                       has_screen=False),
+    "heltec_wireless_tracker": _b("heltec_wireless_tracker",
+                                  "Heltec Wireless Tracker"),
 }
 
 

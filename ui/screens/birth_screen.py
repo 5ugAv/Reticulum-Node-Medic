@@ -561,7 +561,9 @@ class BirthScreen(BoxLayout):
             "is this?", size="13sp", color="text_secondary"))
         from ui import board_images
         from ui.widgets.board_card import BoardCard
-        with_photo = [b for b in shortlist if board_images.get(b.key)]
+        # image_for = the photo FILE exists (registry entries are placeholders
+        # until each board's PNG arrives — they stay text buttons meanwhile)
+        with_photo = [b for b in shortlist if board_images.image_for(b.key)]
         if with_photo:
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(120), spacing=dp(10))
@@ -892,7 +894,7 @@ class BirthScreen(BoxLayout):
             valign="middle", size_hint_y=None, height=dp(92))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(warn)
-        if board_images.get(board.key):
+        if board_images.image_for(board.key):
             body.add_widget(BoardCard(board.key,
                                       name=self._name_in.text.strip(),
                                       selected=True,
