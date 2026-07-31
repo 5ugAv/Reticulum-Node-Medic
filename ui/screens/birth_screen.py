@@ -858,6 +858,10 @@ class BirthScreen(BoxLayout):
         self._detected = None
         self._rtnode_target = None
         self._firmware = None
+        # A map-stamped position belongs to ONE node: left set, every later
+        # birth in the session inherited the previous node's coordinates
+        # (2026-08-01 bug hunt — a privacy leak as well as a wrong pin).
+        self._prefill_location = None
         self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
@@ -1735,6 +1739,9 @@ class BirthScreen(BoxLayout):
             self._saved_cert_id = None
         self._cert = cert
         self._register_kin(cert)                  # stamp builder=this medic's unit
+        # This position has been consumed by THIS node — never let it ride onto
+        # the next birth (2026-08-01 bug hunt).
+        self._prefill_location = None
         self.list.add_widget(_line("Birth certificate:", bold=True, size="16sp"))
         self.list.add_widget(_line("    (saved on this Node Medic)",
                                    size="12sp", color="text_secondary"))
@@ -1796,9 +1803,15 @@ class BirthScreen(BoxLayout):
                  or cert.get("identity_hash"))
             if not h:
                 return
+            # Coordinates come from the CERT — which the confirm-location gate
+            # owns (moved pin -> corrected; cancelled -> removed). Reading
+            # _prefill_location here bypassed that gate entirely: a rejected
+            # pin still landed on the SCAN map (2026-08-01 bug hunt).
             lat = lon = None
-            if self._prefill_location:
-                lat, lon = self._prefill_location[0], self._prefill_location[1]
+            from ui.screens.cert_view_screen import cert_latlon
+            ll = cert_latlon(cert)
+            if ll:
+                lat, lon = ll[0], ll[1]
             kin_roster.register(
                 h, cert.get("node_name") or cert.get("hostname") or "node",
                 node_type=cert.get("type", "rtnode2400"), lat=lat, lon=lon,

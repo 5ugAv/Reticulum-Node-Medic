@@ -142,6 +142,16 @@ class RobustFlasher:
         self.sleep(settle)
         return self._wait_port()
 
+    def _boot_flashed_firmware(self, settle: float = 3.0) -> bool:
+        """Leave the board RUNNING what we just wrote. The ladder's writes all
+        use --after no_reset (so the next tier can keep talking to the stub),
+        which means a successful flash otherwise ends with the chip parked in
+        download mode. A no-op read_mac with --after hard_reset boots it."""
+        self.c.run(f"{self.esptool} --chip {self.chip} --port {self.port} "
+                   f"--before no_reset --after hard_reset read_mac", 30)
+        self.sleep(settle)
+        return self._wait_port()
+
     def _wait_port(self, tries: int = 12) -> bool:
         for _ in range(tries):
             if self.c.run(f"test -e {self.port}")[0] == 0:
@@ -249,6 +259,12 @@ class RobustFlasher:
                     app, tier.chunk_bytes, tier.baud, tier.chunk_retries, emit)
             if ok:
                 emit(FlashProgress("tier_ok", tier=tier.name))
+                # Every write/verify runs --after no_reset, so the chip is
+                # still sitting in the download stub — the freshly written
+                # firmware is NOT running. Anything that talks to the board
+                # next (the firmware-hash stamp, a KISS probe) would fail
+                # against a chip that isn't listening (2026-08-01 bug hunt).
+                self._boot_flashed_firmware()
                 emit(FlashProgress("done", tier=tier.name))
                 return RobustFlashResult(True, tier.name)
             last_offset = failed or last_offset

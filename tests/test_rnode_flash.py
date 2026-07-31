@@ -107,7 +107,11 @@ def test_birth_flash_pty_second_pass_for_fresh_board():
 def test_flash_command_matches_verified_heltec_v4_sequence():
     cmd = flash_command(V4, "/dev/ttyACM0", band_mhz=915, version="1.86")
     # verified live: device 9 -> enter -> band 2 (915) -> confirm y
-    assert cmd.startswith("printf '%s\\n' 9 '' 2 y | ")
+    assert "printf '%s\\n' 9 '' 2 y | " in cmd
+    # …driven under a PTY on the remote host: rnodeconf's confirm reads a
+    # KEYPRESS, so a bare pipe hangs (2026-08-01 bug hunt). Bare-pipe
+    # fallback kept for hosts without util-linux `script`.
+    assert "script -qec" in cmd
     assert "rnodeconf /dev/ttyACM0 --autoinstall" in cmd
     assert "--nocheck" in cmd                    # offline, from the cache
     assert "--fw-version 1.86" in cmd

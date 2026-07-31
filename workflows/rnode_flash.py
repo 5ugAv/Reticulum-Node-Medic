@@ -38,8 +38,16 @@ def flash_command(board: RNodeBoard, port: str, band_mhz: int = 915,
     requested band."""
     answers = board.autoinstall_answers(band_mhz)
     ans = " ".join(shlex.quote(a) for a in answers)
-    return (f"printf '%s\\n' {ans} | "
-            + autoinstall_command(port, version=version, offline=True))
+    inner = (f"printf '%s\\n' {ans} | "
+             + autoinstall_command(port, version=version, offline=True))
+    # rnodeconf's confirm prompts read a KEYPRESS FROM THE TERMINAL, not
+    # stdin — a bare pipe blocks forever and wedges the USB port (proven on
+    # the medic; the local path uses pexpect for this reason). On a remote
+    # host we have no pexpect, so allocate a PTY with util-linux `script`
+    # (present on Raspberry Pi OS) and fall back to the bare pipe if it's
+    # missing (2026-08-01 bug hunt: the Pi+RNode blank-board path).
+    return (f"if command -v script >/dev/null 2>&1; then "
+            f"script -qec {shlex.quote(inner)} /dev/null; else {inner}; fi")
 
 
 #: Prompt patterns rnodeconf --autoinstall shows, paired with the answer index

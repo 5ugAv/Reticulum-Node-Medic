@@ -226,6 +226,18 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
                 "No board to PROBE")
         connection = LocalConnection()
     profile = NodeProfile()
+    # PROBE compares the board's params against this profile and its auto-fix
+    # REWRITES the board to match — so it must carry the operator's SAVED
+    # defaults, not the factory 915.125 (2026-08-01 bug hunt: on a medic set
+    # to an EU preset, PROBE flagged correct boards and 'fixed' them onto the
+    # wrong — possibly unlicensed — frequency).
+    try:
+        from provisioning.radio_defaults import load_radio_config
+        saved = load_radio_config()
+        saved.serial_port = profile.radio.serial_port
+        profile.radio = saved
+    except Exception:
+        pass
     if free:
         profile.radio.serial_port = free[0]      # the attached work board
     return RepairWorkflow(connection, profile)

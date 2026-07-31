@@ -247,14 +247,25 @@ def flash_rgb_carried(connection: Connection, port: str, band_mhz: int = 915,
             return True, f"flashed with the NeoPixel status LED ({tier}).", True
         last = (err or out)[-160:]
 
-    # Overlay failed — restore a clean working radio so the board
-    # is never left with a corrupt app. A working node without the LED is a WIN.
-    restore_ok, restore_msg, _ = birth_flash(connection, board, port,
-                                             band_mhz, version)
-    if restore_ok:
+    # Overlay failed — try to restore a clean working radio so the board is
+    # never left with a corrupt app. CAREFUL: the EEPROM was provisioned in
+    # step 1, and rnodeconf --autoinstall REFUSES an already-provisioned board
+    # (returns already=True having written NOTHING) — reporting that as
+    # "fully functional" was a false green over a possibly half-written app
+    # partition (2026-08-01 bug hunt). Only a restore that actually WROTE
+    # counts as a recovery.
+    restore_ok, restore_msg, restore_already = birth_flash(
+        connection, board, port, band_mhz, version)
+    if restore_ok and not restore_already:
         return True, ("flashed as a working RNode — the status-LED firmware "
                       "couldn't be applied this time, but the radio is fully "
                       "functional."), False
+    if restore_ok and restore_already:
+        return False, ("the status-LED overlay failed and the board could NOT "
+                       "be restored (it is already provisioned, so autoinstall "
+                       "refused to rewrite it) — its firmware may be "
+                       f"incomplete ({last}). Wipe the EEPROM and reflash: "
+                       "hold BOOT, tap RST, release BOOT, then retry."), False
     return False, ("status-LED overlay failed and stock restore also failed "
                    f"({last}); the board needs a manual bootloader flash "
                    "(hold BOOT, tap RST, release BOOT, then retry)."), False
