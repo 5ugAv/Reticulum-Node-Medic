@@ -125,9 +125,71 @@ class RadioDefaultsScreen(BoxLayout):
             self._inputs[key].text = f"{v:g}" if key in ("freq", "bw") else str(v)
 
     def _save(self):
-        stored = rd.save_defaults(self._read_fields())
+        vals = self._read_fields()
+        # Changing AWAY from the standard gets a strong warning first —
+        # mismatched parameters silently split the mesh (operator spec
+        # 2026-07-31). Saving standard values (or reverting) never nags.
+        if not rd.is_standard(vals):
+            self._confirm_nonstandard(vals)
+            return
+        self._commit(vals, "Saved")
+
+    def _commit(self, vals, verb):
+        stored = rd.save_defaults(vals)
         self._fill_fields(stored)                    # reflect coercion
-        self._status.text = f"Saved — BIRTH pre-fills {rd.summary(stored)}"
+        self._status.text = f"{verb} — BIRTH pre-fills {rd.summary(stored)}"
+        try:                                          # home badge follows
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is not None and hasattr(app, "refresh_radio_badge"):
+                app.refresh_radio_badge()
+        except Exception:
+            pass
+
+    def _confirm_nonstandard(self, vals):
+        if getattr(self, "_ns_pop", None) is not None:   # doubled-tap guard
+            return
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = Label(halign="center", valign="middle", markup=True, text=(
+            "[b]Keep the standard parameters?[/b]\n\n"
+            "It is STRONGLY recommended to keep the standard settings\n"
+            f"[b]{rd.summary(rd.DEFAULT_PARAMS)}[/b]\n"
+            "so that ALL nodes can communicate with each other.\n\n"
+            "Nodes built with different parameters CANNOT hear the rest of "
+            "the mesh. Only change this if every node you build will use the "
+            "same new settings.\n\nYou want to save:\n"
+            f"[b]{rd.summary(vals)}[/b]"),
+            color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
+                        spacing=dp(8))
+        popup = Popup(title="Non-standard radio parameters", content=box,
+                      size_hint=(0.94, 0.8),
+                      title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
+        self._ns_pop = popup
+        popup.bind(on_dismiss=lambda *_: setattr(self, "_ns_pop", None))
+        keep = Button(text="Keep standard", bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _keep(*_):
+            popup.dismiss()
+            self._commit(dict(rd.DEFAULT_PARAMS), "Kept standard")
+        keep.bind(on_release=_keep)
+        save_b = Button(text="⚠  Save anyway", bold=True, background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+
+        def _save_anyway(*_):
+            popup.dismiss()
+            self._commit(vals, "Saved NON-STANDARD")
+        save_b.bind(on_release=_save_anyway)
+        row.add_widget(save_b)                       # danger bottom-left
+        row.add_widget(keep)                         # safe bottom-right
+        box.add_widget(row)
+        popup.open()
 
     def _confirm_preset(self, key):
         params = rd.preset_params(key)
@@ -153,10 +215,7 @@ class RadioDefaultsScreen(BoxLayout):
 
         def _apply(*_):
             popup.dismiss()
-            stored = rd.save_defaults(params)
-            self._fill_fields(stored)
-            self._status.text = (f"Applied {rd.preset_label(key)} — "
-                                 f"BIRTH pre-fills {rd.summary(stored)}")
+            self._commit(params, f"Applied {rd.preset_label(key)}")
         apply_b.bind(on_release=_apply)
         row.add_widget(cancel)
         row.add_widget(apply_b)

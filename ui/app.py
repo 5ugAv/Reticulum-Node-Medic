@@ -830,6 +830,16 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             return None
 
+    def refresh_radio_badge(self):
+        """Re-check the home screen's 'radio params changed' badge (called by
+        Settings ▸ Default radio parameters after any save/revert)."""
+        try:
+            scr = getattr(self, "home_screen", None)
+            if scr is not None and hasattr(scr, "refresh_radio_badge"):
+                scr.refresh_radio_badge()
+        except Exception:
+            pass
+
     def quiet_board_watch(self, seconds=40):
         """Silence the board-disconnect watch for a window. Called before any
         DELIBERATE board reset (the detect step's chip-id read, the banner
@@ -1736,3 +1746,5 @@ class ReticulumNodeMedicApp(App):
             # forward push. Matches the left-edge back swipe.
             self.sm.transition.direction = "right" if mode_name == "home" else "left"
             self.sm.current = mode_name
+            if mode_name == "home":
+                self.refresh_radio_badge()   # keep the changed-params badge honest

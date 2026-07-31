@@ -104,6 +104,19 @@ def save_defaults(params: Dict, path: str = CONFIG) -> Dict[str, float]:
     return coerced
 
 
+def is_standard(params: Optional[Dict] = None, path: str = CONFIG) -> bool:
+    """True when *params* (or the saved tool-wide defaults) match the canonical
+    standard — the config every node ships with so the whole mesh can hear
+    itself. The home screen shows a 'changed' badge whenever this is False."""
+    p = _coerce(params if params is not None else load_defaults(path))
+    return p == _coerce(DEFAULT_PARAMS)
+
+
+def revert_to_standard(path: str = CONFIG) -> Dict[str, float]:
+    """Put the tool-wide defaults back to the canonical standard."""
+    return save_defaults(DEFAULT_PARAMS, path)
+
+
 def summary(params: Dict) -> str:
     """A one-line human summary, matching the birth-cert style."""
     p = _coerce(params)

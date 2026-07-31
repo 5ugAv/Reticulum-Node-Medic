@@ -69,3 +69,28 @@ def test_load_corrupt_json_is_canonical(tmp_path):
 
 def test_summary_matches_birth_style():
     assert rd.summary(rd.DEFAULT_PARAMS) == "915.125 MHz / BW125 / SF9 / CR5 / 17 dBm"
+
+
+def test_is_standard_true_for_canonical_and_fresh_file(tmp_path):
+    from provisioning import radio_defaults as rd
+    p = str(tmp_path / "radio.json")
+    assert rd.is_standard(path=p)                      # no file -> canonical
+    assert rd.is_standard(dict(rd.DEFAULT_PARAMS))
+    rd.save_defaults(rd.DEFAULT_PARAMS, path=p)        # explicit standard save
+    assert rd.is_standard(path=p)
+
+
+def test_is_standard_false_after_change_and_revert_restores(tmp_path):
+    from provisioning import radio_defaults as rd
+    p = str(tmp_path / "radio.json")
+    rd.save_defaults({**rd.DEFAULT_PARAMS, "freq": 869.525, "txp": 14}, path=p)
+    assert not rd.is_standard(path=p)                  # -> home badge shows
+    stored = rd.revert_to_standard(path=p)
+    assert stored == rd.load_defaults(path=p)
+    assert rd.is_standard(path=p)                      # badge hides again
+
+
+def test_eu_preset_counts_as_nonstandard():
+    from provisioning import radio_defaults as rd
+    assert not rd.is_standard(rd.preset_params("eu868"))
+    assert rd.is_standard(rd.preset_params("au_nz_americas"))

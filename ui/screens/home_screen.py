@@ -76,6 +76,83 @@ class HomeScreen(FloatLayout):
         self.battery_gauge = BatteryGauge(pos_hint={"x": 0.02, "top": 0.90})
         self.add_widget(self.battery_gauge)
 
+        # 'Radio parameters changed' badge — visible ONLY while the tool-wide
+        # radio defaults differ from the canonical standard, so a non-standard
+        # radio setup can never be forgotten (operator spec 2026-07-31).
+        # Tap -> compare + one-tap revert to standard. Left edge under the
+        # power slide; nudge down if the battery gauge (dormant until the UPS
+        # HAT) ever needs the spot.
+        self.radio_badge = Button(
+            text=tr("! Radio params changed"), size_hint=(None, None),
+            size=(dp(186), dp(36)), pos_hint={"x": 0.02, "top": 0.87},
+            font_size="13.5sp", bold=True, background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]),
+            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self.radio_badge.bind(on_release=lambda *_: self._radio_badge_tap())
+        self.add_widget(self.radio_badge)
+        self.refresh_radio_badge()
+
+    def refresh_radio_badge(self):
+        """Show/hide the non-standard-radio badge from the saved defaults."""
+        try:
+            from provisioning import radio_defaults as rd
+            changed = not rd.is_standard()
+        except Exception:
+            changed = False
+        self.radio_badge.opacity = 1 if changed else 0
+        self.radio_badge.disabled = not changed
+
+    def _radio_badge_tap(self):
+        """Explain what's non-standard and offer the one-tap revert."""
+        if getattr(self, "_rb_pop", None) is not None:   # doubled-tap guard
+            return
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+        from provisioning import radio_defaults as rd
+        cur = rd.load_defaults()
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = Label(halign="center", valign="middle", markup=True, text=(
+            "[b]" + tr("This medic's radio defaults are NON-STANDARD.") + "[/b]\n\n"
+            + tr("Current:") + f"  [b]{rd.summary(cur)}[/b]\n"
+            + tr("Standard:") + f"  {rd.summary(rd.DEFAULT_PARAMS)}\n\n"
+            + tr("New nodes are built with the CURRENT settings — they can only "
+                 "talk to nodes on the same settings. Revert to standard so "
+                 "every node can communicate, or keep them if this is a "
+                 "deliberate separate mesh.")),
+            color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(52), spacing=dp(8))
+        popup = Popup(title=tr("Radio parameters changed"), content=box,
+                      size_hint=(0.94, 0.72),
+                      title_color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]),
+                      separator_color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+        self._rb_pop = popup
+        popup.bind(on_dismiss=lambda *_: setattr(self, "_rb_pop", None))
+        keep = Button(text=tr("Keep changed"), background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        keep.bind(on_release=popup.dismiss)
+        revert = Button(text=tr("Revert to standard"), bold=True,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _revert(*_):
+            popup.dismiss()
+            try:
+                rd.revert_to_standard()
+            except Exception:
+                pass
+            self.refresh_radio_badge()
+        revert.bind(on_release=_revert)
+        row.add_widget(keep)
+        row.add_widget(revert)
+        box.add_widget(row)
+        popup.open()
+
     def _power_off(self):
         import threading
         from provisioning.power import power_off
