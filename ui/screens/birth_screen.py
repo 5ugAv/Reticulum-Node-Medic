@@ -484,7 +484,7 @@ class BirthScreen(BoxLayout):
                 num, tag = next_custom, "  (custom)"
                 next_custom += 1
             entries.append((num, f"{board.display_name}  [{board.platform}]{tag}",
-                            lambda b=board: self._pick_board(b)))
+                            lambda b=board: self._confirm_rnode_board_gate(b)))
         self._picker_popup("Select the board", entries)
 
     def _pick_board(self, board):
@@ -515,13 +515,14 @@ class BirthScreen(BoxLayout):
             for b in with_photo:
                 row.add_widget(BoardCard(
                     b.key, name=self._name_in.text.strip(),
-                    on_select=lambda bb=b: self._pick_board(bb)))
+                    on_select=lambda bb=b: self._confirm_rnode_board_gate(bb)))
             self.header.add_widget(row)
         for b in shortlist:
             if b in with_photo:
                 continue
             self.header.add_widget(self._sel_button(
-                b.display_name, lambda bb=b: self._pick_board(bb)))
+                b.display_name,
+                lambda bb=b: self._confirm_rnode_board_gate(bb)))
         other = self._sel_button("Not one of these — full board list",
                                  self._choose_board)
         other.height = dp(40)
@@ -806,6 +807,84 @@ class BirthScreen(BoxLayout):
             btn.text = "Starting build…"
             pop.dismiss()
             self._run_rtnode()
+        go.bind(on_release=_go)
+        pop.open()
+
+    def _confirm_rnode_board_gate(self, board):
+        """The SAME check-the-board gate as RTNode-2400, for the RNode/Pi
+        paths (operator spec 2026-07-31): after tapping a board, that ONE
+        board comes up enlarged with the brick warning and an explicit
+        confirm — only then on to the radio-params form."""
+        if getattr(self, "_gate_pop", None) is not None:   # doubled-tap guard
+            return
+        from ui.widgets.board_card import BoardCard
+        from ui import board_images
+        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+        dark = theme.hex_to_rgba(theme.COLORS["background"])
+        body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        warn = Label(
+            text=("WARNING:  Selecting the wrong board can BRICK the "
+                  "hardware.\nCheck the silkscreen on the board itself."),
+            bold=True, font_size="19sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(92))
+        warn.bind(size=lambda w, s: setattr(w, "text_size", s))
+        body.add_widget(warn)
+        if board_images.get(board.key):
+            body.add_widget(BoardCard(board.key,
+                                      name=self._name_in.text.strip(),
+                                      selected=True,
+                                      on_select=lambda *_: None,
+                                      size_hint_y=1))
+        else:                                  # no photo — the name, writ large
+            big = Label(text=board.display_name, bold=True, font_size="26sp",
+                        color=dark, halign="center", valign="middle",
+                        size_hint_y=1)
+            big.bind(size=lambda w, s: setattr(w, "text_size", s))
+            body.add_widget(big)
+        confirm_lbl = Label(
+            text=f"Confirm you've selected the correct board:  "
+                 f"{board.display_name}",
+            bold=True, font_size="16sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(44))
+        confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
+        body.add_widget(confirm_lbl)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(58), spacing=dp(10))
+        back = Button(text="Back — wrong board", bold=True, font_size="15sp",
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        go = Button(text=f"Confirm — flash as RNode\n({board.display_name})",
+                    bold=True, font_size="15sp", halign="center",
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                    color=dark)
+        row.add_widget(back)
+        row.add_widget(go)
+        body.add_widget(row)
+        with body.canvas.before:
+            from kivy.graphics import Color, Rectangle, Line
+            Color(*yellow)
+            rect = Rectangle()
+            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+            border = Line(width=dp(2))
+
+        def _sync(*_):
+            rect.pos, rect.size = body.pos, body.size
+            border.rectangle = (body.x + dp(2), body.y + dp(2),
+                                body.width - dp(4), body.height - dp(4))
+        body.bind(pos=_sync, size=_sync)
+        pop = Popup(title="Check the board", content=body, size_hint=(0.95, 0.9),
+                    title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                    auto_dismiss=False)
+        self._gate_pop = pop
+        pop.bind(on_dismiss=lambda *_: setattr(self, "_gate_pop", None))
+        back.bind(on_release=lambda *_: pop.dismiss())
+
+        def _go(btn, *_a):
+            btn.disabled = True
+            pop.dismiss()
+            self._pick_board(board)            # -> radio-params form
         go.bind(on_release=_go)
         pop.open()
 
