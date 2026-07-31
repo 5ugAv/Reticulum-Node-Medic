@@ -735,6 +735,19 @@ class BirthGuideScreen(BoxLayout):
         if not steps or self._i >= len(steps):
             self._finish()
             return
+        # A 'connect your board' step is REDUNDANT when the board is already
+        # plugged in (operator feedback 2026-07-31: being told to connect a
+        # connected board reads as a bug) — skip it silently.
+        if steps[self._i].get("anim") == "connect_board":
+            try:
+                from ui.hw_factories import local_board_ports
+                if local_board_ports():
+                    self._i += 1
+                    if self._i >= len(steps):
+                        self._finish()
+                        return
+            except Exception:
+                pass
         self._stop_current()
         self._back_action = self._back        # guided step -> previous step / name
         s = steps[self._i]
