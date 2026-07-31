@@ -570,30 +570,14 @@ class BirthScreen(BoxLayout):
             col.add_widget(lbl)
             row.add_widget(col)
         self.header.add_widget(row)
-        # THE action button lives HERE, right under the board choice — always
-        # visible. It used to live in the scroll area below, but the header now
-        # fills the 5" screen and starved that area to zero height, leaving the
-        # flow with no way forward (the 2026-07-30 04:14 dead-end loop).
-        if self._rtnode_target:
-            tgt = RTNODE_TARGETS[self._rtnode_target]
-            go = Button(text=f"Build RTNode-2400 ({tgt.display})",
-                        size_hint_y=None, height=dp(56), bold=True, font_size="17sp",
-                        background_normal="",
-                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                        color=theme.hex_to_rgba(theme.COLORS["background"]))
-
-            def _go(btn, *_a):
-                # INSTANT feedback under the finger — the invisible first
-                # seconds of a build made operators tap again all night.
-                btn.disabled = True
-                btn.text = "Starting build…"
-                self._run_rtnode()
-            go.bind(on_release=_go)
-            self.header.add_widget(go)
-        else:
-            self.header.add_widget(_line(
-                "Tap the board in front of you — the Build button appears here.",
-                size="12.5sp", color="text_secondary"))
+        # Tapping a board no longer arms a Build button directly — it opens a
+        # full CONFIRMATION gate (operator spec 2026-07-31: too easy to skim
+        # past the brick warning and build for the wrong board). The gate shows
+        # the warning LARGE, the chosen board in the middle, and an explicit
+        # confirm that then starts the build.
+        self.header.add_widget(_line(
+            "Tap the board in front of you — you'll confirm it before "
+            "anything builds.", size="12.5sp", color="text_secondary"))
         # T-Beam Supreme (SD transport) is a rarer RTNode target — keep it reachable
         # without cluttering the common V3/V4 choice.
         other = Button(text="Other RTNode board (T-Beam Supreme)…", size_hint_y=None,
@@ -633,6 +617,76 @@ class BirthScreen(BoxLayout):
     def _pick_rtnode_target(self, key):
         self._rtnode_target = key
         self._build_chooser()
+        self._confirm_board_gate(key)
+
+    def _confirm_board_gate(self, key):
+        """Full-screen confirmation between picking a board and building it:
+        the brick warning ENLARGED (yellow on red-outline, requirement style),
+        the chosen board pictured in the middle, and an explicit confirm that
+        launches the build. V3 and V4 look identical over USB — flashing the
+        wrong image bricks boards (operator spec 2026-07-31)."""
+        from kivy.uix.popup import Popup
+        from ui.widgets.board_card import BoardCard
+        from ui import board_images
+        tgt = RTNODE_TARGETS[key]
+        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+        dark = theme.hex_to_rgba(theme.COLORS["background"])
+        body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        warn = Label(
+            text=("WARNING:  Selecting the wrong board can BRICK the "
+                  "hardware.\nCheck the silkscreen on the board itself."),
+            bold=True, font_size="19sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(92))
+        warn.bind(size=lambda w, s: setattr(w, "text_size", s))
+        body.add_widget(warn)
+        card = BoardCard(key, name=self._name_in.text.strip(), selected=True,
+                         on_select=lambda *_: None, size_hint_y=1)
+        body.add_widget(card)
+        confirm_lbl = Label(
+            text=f"Confirm you've selected the correct board:  "
+                 f"{board_images.label(key)}",
+            bold=True, font_size="16sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(44))
+        confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
+        body.add_widget(confirm_lbl)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(58), spacing=dp(10))
+        back = Button(text="Back — wrong board", bold=True, font_size="15sp",
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        go = Button(text=f"Confirm — build RTNode-2400\n({tgt.display})",
+                    bold=True, font_size="15sp", halign="center",
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                    color=dark)
+        row.add_widget(back)
+        row.add_widget(go)
+        body.add_widget(row)
+        with body.canvas.before:
+            from kivy.graphics import Color, Rectangle, Line
+            Color(*yellow)
+            rect = Rectangle()
+            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+            border = Line(width=dp(2))
+
+        def _sync(*_):
+            rect.pos, rect.size = body.pos, body.size
+            border.rectangle = (body.x + dp(2), body.y + dp(2),
+                                body.width - dp(4), body.height - dp(4))
+        body.bind(pos=_sync, size=_sync)
+        pop = Popup(title="Check the board", content=body, size_hint=(0.95, 0.9),
+                    title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                    auto_dismiss=False)
+        back.bind(on_release=lambda *_: pop.dismiss())
+
+        def _go(btn, *_a):
+            btn.disabled = True
+            btn.text = "Starting build…"
+            pop.dismiss()
+            self._run_rtnode()
+        go.bind(on_release=_go)
+        pop.open()
 
     def _run_rtnode(self):
         """Kick off the real RTNode-2400 build on the attached board (or honest-fail
