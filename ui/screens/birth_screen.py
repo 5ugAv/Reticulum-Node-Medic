@@ -69,10 +69,15 @@ MITOSIS_BOARDS = {"heltec_wireless_tracker"}
 _STEP_SECONDS = {
     "detect_board": 8, "detect_port": 5, "detect_hardware": 20, "ensure_single_board": 3,
     "ensure_firmware": 25, "confirm_radio_parameters": 2,
-    "flash_firmware": 300, "flash": 120, "flash_rnode_firmware": 150,
+    # flash_firmware: ~45 s for the RGB full-image write, longer for RTNode's
+    # pio upload — 90 keeps both bars moving (300 sat at a dot then teleported
+    # full; live pacing feedback 2026-07-31).
+    "flash_firmware": 90, "flash": 120, "flash_rnode_firmware": 150,
     "set_params": 15, "set_firmware_radio_parameters": 15, "set_params_at_birth": 15,
     "wifi_onboarding": 2, "verify_beacon": 25, "verify_sd_overflow": 3,
-    "erase": 14, "provision": 26, "set_hash": 6, "verify": 8,
+    # provision = the 16 s birth-cry wait + rnodeconf (~40 s real; 26 pinned
+    # the bar at 95% and read as a stall — live pacing feedback 2026-07-31)
+    "erase": 14, "provision": 48, "set_hash": 6, "verify": 8,
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
     "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
