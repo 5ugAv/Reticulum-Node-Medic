@@ -219,6 +219,11 @@ class BirthGuideScreen(BoxLayout):
     def _confirm_rebirth(self, c):
         """Destructive-action gate: rebirth erases the board completely — new
         identity, config gone, VITALS history detaches from the old identity."""
+        # open-once guard: the touchscreen can deliver a tap twice, which
+        # stacked TWO identical confirms — the survivor looked like a popup
+        # that 'wouldn't close' (live 2026-07-31)
+        if getattr(self, "_rebirth_pop", None) is not None:
+            return
         from kivy.uix.popup import Popup
         body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(8))
         body.add_widget(_line(tr("This ERASES the node completely:"), "16sp",
@@ -244,6 +249,8 @@ class BirthGuideScreen(BoxLayout):
         pop = Popup(title=tr("Rebirth this node?"), content=body,
                     size_hint=(0.9, 0.55),
                     title_color=theme.hex_to_rgba(theme.COLORS["amber"]))
+        self._rebirth_pop = pop
+        pop.bind(on_dismiss=lambda *_: setattr(self, "_rebirth_pop", None))
         cancel.bind(on_release=lambda *_: pop.dismiss())
         go.bind(on_release=lambda *_: (pop.dismiss(), self._do_rebirth(c)))
         pop.open()
@@ -251,6 +258,9 @@ class BirthGuideScreen(BoxLayout):
     def _do_rebirth(self, c):
         """Erase the board (guard-checked), forget its old roster identity, and
         hand off to the normal (proven single-pass) birth flow."""
+        if getattr(self, "_rebirth_running", False):    # doubled-tap fuse
+            return
+        self._rebirth_running = True
         port = c.get("_port")
         old_ident = c.get("identity_hash") or ""
         old_name = c.get("node_name") or ""
@@ -306,11 +316,16 @@ class BirthGuideScreen(BoxLayout):
             from kivy.clock import Clock
 
             def done(_dt):
+                self._rebirth_running = False
                 if ok:
                     # blank board -> the proven birth flow takes over; old name
-                    # prefilled as a starting point (rename freely).
+                    # prefilled as a starting point (rename freely). Path "any":
+                    # a rebirth is EXACTLY when the node's type may change, so
+                    # land on an unscoped chooser — the operator picks the
+                    # family fresh (RTNode-2400 / RNode / Pi) instead of being
+                    # steered back to what it was (operator feedback 2026-07-31).
                     if self._on_complete:
-                        self._on_complete("radio", old_name)
+                        self._on_complete("any", old_name)
                 else:
                     from ui.requirement_popup import requirement_popup
                     requirement_popup(

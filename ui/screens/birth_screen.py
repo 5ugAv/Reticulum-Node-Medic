@@ -630,7 +630,9 @@ class BirthScreen(BoxLayout):
         the chosen board pictured in the middle, and an explicit confirm that
         launches the build. V3 and V4 look identical over USB — flashing the
         wrong image bricks boards (operator spec 2026-07-31)."""
-        from kivy.uix.popup import Popup
+        # open-once guard (doubled-touch stacks two gates otherwise)
+        if getattr(self, "_gate_pop", None) is not None:
+            return
         from ui.widgets.board_card import BoardCard
         from ui import board_images
         tgt = RTNODE_TARGETS[key]
@@ -683,6 +685,8 @@ class BirthScreen(BoxLayout):
         pop = Popup(title="Check the board", content=body, size_hint=(0.95, 0.9),
                     title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                     auto_dismiss=False)
+        self._gate_pop = pop
+        pop.bind(on_dismiss=lambda *_: setattr(self, "_gate_pop", None))
         back.bind(on_release=lambda *_: pop.dismiss())
 
         def _go(btn, *_a):
