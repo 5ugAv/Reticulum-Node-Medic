@@ -52,10 +52,27 @@ class NodeWatcher:
     grace_override_h: Optional[float] = None
     _notified: Set[str] = field(default_factory=set)
 
-    def tick(self, devices: List[dict]) -> List[dict]:
+    def tick(self, devices: List[dict], now: Optional[float] = None,
+             monotonic: Optional[float] = None) -> List[dict]:
         """Evaluate every device; return those that just escalated (continuous
         silence past the grace window, not yet warned). Auto-resolves: a node no
-        longer red is dropped from the warned set, so recovery re-arms it."""
+        longer red is dropped from the warned set, so recovery re-arms it.
+
+        A FORWARD CLOCK JUMP is not silence. This medic has no RTC: it boots
+        with a stale clock and leaps forward when NTP lands, which makes every
+        node look silent for days and fires instant false escalations
+        (2026-08-01 bug hunt). Detect the jump by comparing wall-clock drift
+        against the monotonic clock and skip that tick."""
+        import time as _t
+        wall = _t.time() if now is None else now
+        mono = _t.monotonic() if monotonic is None else monotonic
+        prev_w = getattr(self, "_last_wall", None)
+        prev_m = getattr(self, "_last_mono", None)
+        self._last_wall, self._last_mono = wall, mono
+        if prev_w is not None and prev_m is not None:
+            drift = (wall - prev_w) - (mono - prev_m)
+            if abs(drift) > 300:          # >5 min of unexplained clock motion
+                return []                 # this tick's ages are meaningless
         escalated: List[dict] = []
         for d in devices:
             nid = d.get("identity") or d.get("id")

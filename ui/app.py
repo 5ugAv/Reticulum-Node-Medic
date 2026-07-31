@@ -434,7 +434,11 @@ class ReticulumNodeMedicApp(App):
                 border.rectangle = (bar.x + dp(2), bar.y + dp(2),
                                     bar.width - dp(4), bar.height - dp(4))
             bar.bind(pos=_sync, size=_sync)
-            Window.bind(size=lambda *_a: _sync())
+            # Keep a reference so _hide_activity_banner can UNBIND it — every
+            # build used to leak a permanent Window size callback that kept
+            # syncing a removed widget (2026-08-01 bug hunt).
+            self._activity_banner_sync = lambda *_a: _sync()
+            Window.bind(size=self._activity_banner_sync)
             Window.add_widget(bar)
             _sync()
             self._activity_banner = bar
@@ -445,6 +449,13 @@ class ReticulumNodeMedicApp(App):
         try:
             from kivy.core.window import Window
             bar = getattr(self, "_activity_banner", None)
+            sync = getattr(self, "_activity_banner_sync", None)
+            if sync is not None:
+                try:
+                    Window.unbind(size=sync)
+                except Exception:
+                    pass
+                self._activity_banner_sync = None
             if bar is not None:
                 Window.remove_widget(bar)
                 self._activity_banner = None
@@ -515,7 +526,21 @@ class ReticulumNodeMedicApp(App):
                                            commission_attached)
             if load_roster() or not attached_serial_ports():
                 return                                 # already done, or nothing to adopt
-            adopted = commission_attached(probe=lambda _p: None)   # fast, no rnodeconf
+            # Adopt ONLY boards the medic's own services already hold. A work
+            # board attached during a clone's first boot would otherwise be
+            # recorded as the medic's own hardware — permanently unflashable
+            # (2026-08-01 bug hunt). If nothing is service-bound, don't guess:
+            # leave it to the deliberate binding ceremony.
+            from ui.onboard_roster import (service_bound_serials,
+                                             serial_for_port)
+            bound = set(service_bound_serials() or ())
+            if not bound:
+                print("[onboard] self-commission skipped: no board is bound to "
+                      "the medic's own services yet — bind deliberately instead")
+                return
+            ports = [p for p in attached_serial_ports()
+                     if serial_for_port(p) in bound]
+            adopted = commission_attached(ports=ports, probe=lambda _p: None)
             print(f"[onboard] self-commissioned own hardware: {adopted}")
         except Exception as e:
             print(f"[onboard] self-commission skipped: {e}")

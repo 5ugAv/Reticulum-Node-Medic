@@ -81,7 +81,7 @@ _STEP_SECONDS = {
     "birth_cry": 10,   # the ember dawn plays during this bar; popup ~ ignition
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
-    "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
+    "install_health_reporter": 25, "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
     "birth_certificate": 3,
 }
 _DEFAULT_STEP_SECONDS = 12
@@ -1033,6 +1033,10 @@ class BirthScreen(BoxLayout):
     def _run_rtnode(self):
         """Kick off the real RTNode-2400 build on the attached board (or honest-fail
         with why, if it can't run)."""
+        # The outcome panel reads these; a previous RNode lap's board made an
+        # RTNode build report as an RNode flash (2026-08-01 bug hunt).
+        self._last_board = None
+        self._last_type = "rtnode2400"
         workflow = self._factories["rtnode2400"](self._rtnode_target,
                                                  self._name_in.text.strip())
         tgt = RTNODE_TARGETS[self._rtnode_target]

@@ -94,3 +94,20 @@ def test_kin_still_escalates_past_grace():
     w = NodeWatcher()
     d = dev("kn", lsh=200.0); d["provenance"] = "kin"
     assert [x["identity"] for x in w.tick([d])] == ["kn"]
+
+
+def test_forward_clock_jump_does_not_escalate():
+    """The medic has no RTC: it boots stale and leaps forward when NTP lands.
+    That jump made every node look silent for days and fired instant false
+    escalations (2026-08-01 bug hunt) — the tick is skipped instead."""
+    from monitor.node_watch import NodeWatcher
+    w = NodeWatcher()
+    dead = [{"identity": "abc", "status": "alert", "last_seen_hours": 999.0,
+             "powered_by": "solar", "provenance": "kin"}]
+    # establish a baseline tick
+    w.tick([], now=1000.0, monotonic=1000.0)
+    # NTP lands: wall clock leaps 3 days, monotonic advanced 2 seconds
+    assert w.tick(dead, now=1000.0 + 3 * 86400, monotonic=1002.0) == []
+    # a normal tick afterwards escalates as usual
+    got = w.tick(dead, now=1000.0 + 3 * 86400 + 60, monotonic=1062.0)
+    assert [d["identity"] for d in got] == ["abc"]

@@ -157,11 +157,16 @@ class NodeRecord:
         return (now - self.last_seen) / 3600.0
 
     def signal_dbm(self) -> Optional[int]:
-        """Best available WiFi signal — HTTP /status first, then the beacon."""
-        if self.latest_http is not None and self.latest_http.wifi_rssi_dbm is not None:
-            return self.latest_http.wifi_rssi_dbm
-        if self.latest_beacon is not None:
-            return self.latest_beacon.wifi_rssi_dbm
+        """Best available WiFi signal — HTTP /status first, then the beacon.
+        None when WiFi is DOWN: the wire carries 0 for 'no reading', and
+        surfacing that as a real 0 dBm (a colossal signal!) misled VITALS and
+        poisoned the history graph (2026-08-01 bug hunt)."""
+        h = self.latest_http
+        if h is not None and h.wifi_rssi_dbm:      # 0 == "no reading"
+            return h.wifi_rssi_dbm
+        b = self.latest_beacon
+        if b is not None and b.wifi_rssi_dbm:
+            return b.wifi_rssi_dbm
         return None
 
     @property
@@ -208,9 +213,29 @@ class NodeRecord:
 
             "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
-            "battery_pct": None,          # no node type reports battery yet
-            "powered_by": "battery",
+            "battery_pct": self._battery_pct(),
+            "powered_by": self._powered_by(),
         }
+
+    def _battery_pct(self) -> Optional[int]:
+        """Battery charge from the v2 beacon — it was decoded and then thrown
+        away by a hardcoded None (2026-08-01 bug hunt), so a solar node's
+        charge never reached VITALS."""
+        b = self.latest_beacon
+        pct = getattr(b, "battery_pct", None) if b is not None else None
+        return pct if isinstance(pct, int) else None
+
+    def _powered_by(self) -> str:
+        """How the node is running, from the v2 beacon's power flags."""
+        b = self.latest_beacon
+        if b is not None:
+            if getattr(b, "on_solar", False):
+                return "solar"
+            if getattr(b, "on_mains", False):
+                return "mains"
+            if getattr(b, "on_battery", False):
+                return "battery"
+        return "battery"
 
     def status(self, now: float) -> str:
         if self.last_seen is None:
@@ -362,7 +387,9 @@ class NodeRegistry:
         rec.last_seen = now
         from monitor.history import HistoryPoint
         self.history.append(dst_hash, HistoryPoint(
-            t=now, rssi=beacon.wifi_rssi_dbm, uptime_s=beacon.uptime_s))
+            t=now,
+            rssi=(beacon.wifi_rssi_dbm or None),   # 0 == "no reading"
+            uptime_s=beacon.uptime_s))
         return rec
 
     @_locked
