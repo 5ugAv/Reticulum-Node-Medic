@@ -856,9 +856,70 @@ class BirthScreen(BoxLayout):
             workflow.radio = cfg
 
     def _confirm_params(self, node_type, board):
-        """OK — start. If the path can't run (not built yet / no board), say so up
-        front — a single popup, no pointless power warning for something that
-        won't run. Otherwise warn on a brownout-prone Pi+board combo, then build."""
+        """OK — start. Non-standard radio params get the SAME strong warning as
+        Settings (operator spec 2026-07-31) — a node built off-standard can't
+        hear the rest of the mesh. Then the blocked/power checks, then build."""
+        from provisioning import radio_defaults as rd
+        radio = self._read_params()
+        if not rd.is_standard(radio):
+            self._warn_nonstandard_params(
+                radio, lambda: self._start_build(node_type, board))
+            return
+        self._start_build(node_type, board)
+
+    def _warn_nonstandard_params(self, radio, proceed):
+        """Keep standard (fills the form back to standard, then builds) vs
+        ⚠ Use anyway (builds with the custom values)."""
+        if getattr(self, "_nsp_pop", None) is not None:   # doubled-tap guard
+            return
+        from provisioning import radio_defaults as rd
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        from kivy.uix.label import Label
+        msg = Label(halign="center", valign="middle", markup=True, text=(
+            "[b]Keep the standard parameters?[/b]\n\n"
+            "It is STRONGLY recommended to build every node with the standard "
+            "settings\n[b]" + rd.summary(rd.DEFAULT_PARAMS) + "[/b]\n"
+            "so that ALL nodes can communicate with each other.\n\n"
+            "A node built with different parameters CANNOT hear the rest of "
+            "the mesh.\n\nYou entered:\n[b]" + rd.summary(radio) + "[/b]"),
+            color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+        msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(52), spacing=dp(8))
+        popup = Popup(title="Non-standard radio parameters", content=box,
+                      size_hint=(0.94, 0.8),
+                      title_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
+        self._nsp_pop = popup
+        popup.bind(on_dismiss=lambda *_: setattr(self, "_nsp_pop", None))
+
+        def _keep(*_):
+            popup.dismiss()
+            for key, v in rd.DEFAULT_PARAMS.items():   # form back to standard
+                ti = self._param_inputs.get(key)
+                if ti is not None:
+                    ti.text = f"{v:g}" if key in ("freq", "bw") else str(int(v))
+            proceed()
+        keep = Button(text="Keep standard", bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        keep.bind(on_release=_keep)
+
+        def _anyway(*_):
+            popup.dismiss()
+            proceed()
+        anyway = Button(text="⚠  Use anyway", bold=True, background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        anyway.bind(on_release=_anyway)
+        row.add_widget(anyway)                        # danger bottom-left
+        row.add_widget(keep)                          # safe bottom-right
+        box.add_widget(row)
+        popup.open()
+
+    def _start_build(self, node_type, board):
+        """The blocked / power checks, then the build (params already vetted)."""
         workflow, title = self._make_workflow(node_type, board)
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
