@@ -214,6 +214,13 @@ class RNodeFlashWorkflow:
             return StepResult(
                 "ensure_single_board", False,
                 "The board vanished from USB — check the cable and replug.")
+        # The count passing means nothing if we're aimed somewhere else: the
+        # pinned port must BE that one work board (2026-08-01 bug hunt).
+        if self.port and self.work_ports_fn is not None and self.port not in ports:
+            return StepResult(
+                "ensure_single_board", False,
+                f"The board moved: this build targets {self.port}, but the "
+                f"attached work board is {ports[0]}. Replug it and start again.")
         return StepResult("ensure_single_board", True, "One work board connected.")
 
     def _ensure_firmware(self) -> StepResult:

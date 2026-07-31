@@ -761,11 +761,9 @@ class NodeRegistry:
         try:
             path = os.path.expanduser(path)
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
-            with os.fdopen(fd, "w") as f:
-                json.dump(self.to_dict(), f)
-            os.replace(tmp, path)                     # atomic swap into place
-            return True
+            from monitor.atomic_json import write_json
+            tmp = None                                # helper manages its own
+            return write_json(path, self.to_dict())   # fsync + atomic rename
         except Exception:
             if tmp:
                 try:

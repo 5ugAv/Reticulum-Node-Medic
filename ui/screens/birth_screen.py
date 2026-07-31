@@ -130,7 +130,8 @@ def _workflow_step_names(wf):
             return [n for n, _ in steps]
         except Exception:
             pass
-    return ["detect_port", "ensure_single_board", "ensure_firmware", "flash", "set_params"]
+    return ["detect_port", "ensure_single_board", "ensure_firmware", "flash",
+            "set_params", "verify"]      # 'verify' was missing -> ring hit 100% early
 
 
 class _StepBar(Widget):
@@ -844,11 +845,26 @@ class BirthScreen(BoxLayout):
             except Exception:
                 pass
 
+    def _busy_with_a_build(self) -> bool:
+        """True while a flash/build owns this screen — resetting state under a
+        running workflow corrupts the checklist and the outcome (2026-08-01
+        bug hunt)."""
+        if getattr(self, "_flash_view", False):
+            return True
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            return bool(app is not None and app.flash_in_progress())
+        except Exception:
+            return False
+
     def begin_guided(self, path):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
         the operator lands on naming + a suggested setup, not a cold form."""
+        if self._busy_with_a_build():
+            return                        # never reset under a running build
         # FRESH LAP: this screen is reused, and a stale _sel_board from the
         # previous build silently SKIPPED the board pick + confirm gate and
         # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
@@ -1856,6 +1872,8 @@ class BirthScreen(BoxLayout):
     def set_prefill_location(self, lat, lon, source):
         """Stamp a location onto this birth (from the map's 'Use this position').
         Shown as 'Location stamped …' and folded into the certificate at the end."""
+        if self._busy_with_a_build():
+            return                        # don't rebuild the page mid-flash
         self._prefill_location = (lat, lon, source)
         self._build_chooser()
 
@@ -1863,6 +1881,8 @@ class BirthScreen(BoxLayout):
         """Seed the 'Name this node' field — used when the operator taps a node the
         medic never birthed and chooses to birth it here (from the cert viewer's
         'not birthed here' nudge)."""
+        if self._busy_with_a_build():
+            return                        # don't rebuild the page mid-flash
         self._build_chooser()               # ensure the name field exists
         if getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name or "")
