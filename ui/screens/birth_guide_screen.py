@@ -204,8 +204,114 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(vit)
         row.add_widget(done)
         wrap.add_widget(row)
+        # REBIRTH (operator request 2026-07-31): wipe + flash fresh — the
+        # deliberate path for a RENAME or a hard reset of a misbehaving node.
+        reb = Button(text=tr("Rebirth — wipe this node & build it fresh"),
+                     size_hint_y=None, height=dp(46), font_size="14sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                     color=theme.hex_to_rgba(theme.COLORS["amber"]))
+        reb.bind(on_release=lambda *_: self._confirm_rebirth(c))
+        wrap.add_widget(reb)
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+
+    def _confirm_rebirth(self, c):
+        """Destructive-action gate: rebirth erases the board completely — new
+        identity, config gone, VITALS history detaches from the old identity."""
+        from kivy.uix.popup import Popup
+        body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(8))
+        body.add_widget(_line(tr("This ERASES the node completely:"), "16sp",
+                              bold=True, color="amber", h=28))
+        body.add_widget(_line(tr("• its identity is wiped — it becomes a brand-new "
+                                 "node (old history detaches)\n• its name, WiFi and "
+                                 "radio settings are wiped\n• then the normal birth "
+                                 "runs: flash, name it, auto-setup"),
+                              "14sp", color="text_secondary", h=96))
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(54),
+                        spacing=dp(10))
+        go = Button(text=tr("⚠  Wipe & rebirth"), bold=True, font_size="15sp",
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel = Button(text=tr("Cancel"), bold=True, font_size="15sp",
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+        row.add_widget(go)
+        row.add_widget(cancel)
+        body.add_widget(row)
+        pop = Popup(title=tr("Rebirth this node?"), content=body,
+                    size_hint=(0.9, 0.55),
+                    title_color=theme.hex_to_rgba(theme.COLORS["amber"]))
+        cancel.bind(on_release=lambda *_: pop.dismiss())
+        go.bind(on_release=lambda *_: (pop.dismiss(), self._do_rebirth(c)))
+        pop.open()
+
+    def _do_rebirth(self, c):
+        """Erase the board (guard-checked), forget its old roster identity, and
+        hand off to the normal (proven single-pass) birth flow."""
+        port = c.get("_port")
+        old_ident = c.get("identity_hash") or ""
+        old_name = c.get("node_name") or ""
+        self._stop_current()
+        self.clear_widgets()
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(14))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line(tr("Wiping the board…"), "24sp", bold=True, h=40))
+        wrap.add_widget(_line(tr("A few seconds — then the normal birth starts."),
+                              "14sp", color="text_secondary", h=24))
+        wrap.add_widget(Widget())
+        self.add_widget(wrap)
+
+        def work():
+            ok, msg = True, ""
+            try:
+                from ui.onboard_roster import assert_flashable
+                assert_flashable(port)               # NEVER the medic's own radio
+                import glob
+                import os
+                import subprocess
+                et = (glob.glob(os.path.expanduser(
+                    "~/.platformio/packages/tool-esptoolpy/esptool.py")) or [None])[0]
+                if not (port and et):
+                    ok, msg = False, tr("Couldn't find the board or the flash tool.")
+                else:
+                    r = subprocess.run(
+                        ["python3", et, "--port", port, "erase_flash"],
+                        capture_output=True, text=True, timeout=120)
+                    ok = r.returncode == 0
+                    if not ok:
+                        msg = (r.stderr or r.stdout or "").strip()[-160:]
+                if ok and old_ident:
+                    try:                              # forget the old identity
+                        from monitor import kin_roster
+                        ro = kin_roster.load_roster()
+                        if old_ident in ro:
+                            del ro[old_ident]
+                            kin_roster._save(ro, kin_roster.KIN_ROSTER_PATH)
+                    except Exception:
+                        pass
+            except Exception as e:                    # noqa: BLE001
+                ok, msg = False, str(e)[:160]
+            from kivy.clock import Clock
+
+            def done(_dt):
+                if ok:
+                    # blank board -> the proven birth flow takes over; old name
+                    # prefilled as a starting point (rename freely).
+                    if self._on_complete:
+                        self._on_complete("radio", old_name)
+                else:
+                    from ui.requirement_popup import requirement_popup
+                    requirement_popup(
+                        tr("Couldn't wipe the board: ") + (msg or tr("unknown")),
+                        tr("Rebirth failed"), False)
+                    self._render_detect()
+            Clock.schedule_once(done, 0)
+        import threading
+        threading.Thread(target=work, daemon=True).start()
 
     # -- adopt confirm / run ----------------------------------------------
     def _render_adopt(self, c):
