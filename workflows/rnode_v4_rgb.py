@@ -79,6 +79,14 @@ LOCAL_BOOT_ERR = os.path.join(
     os.path.dirname(__file__), os.pardir, "assets", "scripts",
     "apply_boot_error_color.py")
 REMOTE_BOOT_ERR = "/tmp/apply_boot_error_color.py"
+
+#: The birth-cry patcher: the operator-tuned ~13 s first-flash celebration
+#: (identical choreography to the RTNode-2400 cry), ending in the firmware's
+#: own white standby breathe. Once per build (NVS stamp).
+LOCAL_BIRTH_CRY = os.path.join(
+    os.path.dirname(__file__), os.pardir, "assets", "scripts",
+    "apply_birth_cry.py")
+REMOTE_BIRTH_CRY = "/tmp/apply_birth_cry.py"
 #: Red channel (pre-NP_M) for the boot-error LED — dim but visible, low current.
 BOOT_ERROR_RED = 0x40
 
@@ -380,6 +388,7 @@ class HeltecV4RGBWorkflow:
              f"--pin {self.neopixel_pin}"),
             ("Utilities.h", LOCAL_BOOT_ERR, REMOTE_BOOT_ERR,
              f"--red 0x{self.boot_error_red:02X}"),
+            ("RNode_Firmware.ino", LOCAL_BIRTH_CRY, REMOTE_BIRTH_CRY, ""),
         )
         for fname, local, remote, extra in patches:
             if not self.connection.push_file(local, remote):
@@ -395,8 +404,8 @@ class HeltecV4RGBWorkflow:
                                   f"{fname} patch failed: {(err or out)[-200:]}")
         return StepResult(
             "ensure_source", True,
-            "Firmware cloned + NeoPixel (GPIO47) + dim-red boot-error patches "
-            "applied.")
+            "Firmware cloned + NeoPixel (GPIO47), dim-red boot-error and "
+            "birth-cry patches applied.")
 
     def _build_firmware(self) -> StepResult:
         code, out, err = self.connection.run(
@@ -448,6 +457,10 @@ class HeltecV4RGBWorkflow:
                           else f"Flash failed: {(err or out)[-200:]}")
 
     def _provision(self) -> StepResult:
+        # First boot after our flash plays the ~13 s birth cry (blocking, by
+        # design) before the console answers — wait it out on the target so
+        # rnodeconf doesn't knock mid-song. (Emulated runs return instantly.)
+        self.connection.run("sleep 16", timeout=30)
         # ROM-bootstrap the EEPROM as the VENDOR Heltec V4 (c3/c8). Model C8
         # declares Max TX 28 dBm, so the canonical 17 dBm is valid and the radio
         # comes ONLINE — generic homebrew (f0/ff, 14 dBm cap) kept it OFFLINE
