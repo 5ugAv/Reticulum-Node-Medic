@@ -730,6 +730,30 @@ class BirthScreen(BoxLayout):
         return box
 
     def _add_rtnode_confirm(self):
+        # If the PLUGGED board is recognised (cert fingerprint) as hardware
+        # RTNode-2400 has NO build for, say so LOUDLY before the V3/V4 cards —
+        # a Wireless Tracker walked this page 2026-08-01, where either image
+        # would land on wrong pins and make a dud.
+        try:
+            port = (self._detected or {}).get("port")
+            if port:
+                from ui.hw_factories import LocalConnection
+                from workflows.rnode_flash import usb_id_for_port
+                from ui.cert_store import load_certs
+                usb = usb_id_for_port(LocalConnection(), port)
+                known = next((c for c in load_certs()
+                              if usb and c.get("usb_serial") == usb), None)
+                supported = ("Heltec LoRa32 v3", "Heltec LoRa32 v4")
+                if known and known.get("board") not in supported:
+                    self.header.add_widget(_line(
+                        f"STOP:  this plugged board is on record as a "
+                        f"{known.get('board')} — RTNode-2400 has NO build for "
+                        f"it (Heltec V3 / V4 only, T-Beam Supreme planned). "
+                        f"A V3/V4 image on this board will flash but NOT "
+                        f"work. Keep it as an RNode, or unplug it and "
+                        f"connect a V3/V4.", size="14.5sp", color="red"))
+        except Exception:
+            pass
         """V3/V4 board-photo chooser: the two Heltec boards look identical to Node
         Medic over USB, so the operator taps the one in front of them. The typed
         node name renders live on each board's little screen."""
