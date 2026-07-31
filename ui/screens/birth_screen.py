@@ -294,6 +294,10 @@ class BirthScreen(BoxLayout):
                 if "rnode" in det_opts and "pi_rnode" not in det_opts:
                     # any RNode-capable board can also be a Pi's radio
                     det_opts = list(det_opts) + ["pi_rnode"]
+                # Uniform family order EVERYWHERE (operator spec 2026-07-31):
+                # RNode -> RTNode-2400 -> Pi + RNode.
+                _rank = {"rnode": 0, "rtnode2400": 1, "pi_rnode": 2}
+                det_opts = sorted(det_opts, key=lambda k: _rank.get(k, 99))
                 for key in det_opts:
                     b = Button(text=FIRMWARE_LABEL.get(key, key),
                                size_hint_y=None, height=dp(54), halign="left",
@@ -312,8 +316,8 @@ class BirthScreen(BoxLayout):
                                              color="accent"))
                 fw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                    height=dp(50), spacing=dp(6))
-                for key, short in (("rtnode2400", "RTNode-2400"),
-                                   ("rnode", "RNode"),
+                for key, short in (("rnode", "RNode"),
+                                   ("rtnode2400", "RTNode-2400"),
                                    ("pi_rnode", "Pi + RNode")):
                     b = Button(text=short, font_size="14sp", bold=True,
                                background_normal="",
