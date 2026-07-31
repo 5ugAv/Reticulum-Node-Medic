@@ -197,8 +197,13 @@ class BirthGuideScreen(BoxLayout):
                         and c.get("kind") != "adopt"):
                     try:
                         from ui.hw_factories import LocalConnection
+                        # coreutils timeout = a HARD kill: rnodeconf never
+                        # answers on non-RNode firmware and can wedge the
+                        # port past our soft timeout (caught live 2026-08-01
+                        # — a stock Tracker held ttyACM1 hostage).
                         code, out, err = LocalConnection().run(
-                            f"sleep 3 && rnodeconf {port} --info", timeout=45)
+                            f"sleep 3 && timeout 25 rnodeconf {port} --info",
+                            timeout=45)
                         info = (out or "") + (err or "")
                         if ("Firmware version" in info
                                 and "Device signature" in info):

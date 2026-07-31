@@ -253,8 +253,9 @@ class RNodeFlashWorkflow:
         it validates. One step, three acts, because the fixed step list
         predates custom boards."""
         try:                              # NEVER the medic's own radio
-            from ui.onboard_roster import assert_flashable
-            assert_flashable(self.port)
+            from ui.onboard_roster import assert_flashable, guard_is_active
+            if guard_is_active():         # strict on the medic; dev hosts
+                assert_flashable(self.port)   # have no radio to protect
         except Exception as e:            # noqa: BLE001
             return StepResult("flash", False, f"Refusing to flash: {e}")
         d = TRACKER_BUILD_DIR
