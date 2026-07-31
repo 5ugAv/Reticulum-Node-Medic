@@ -93,11 +93,19 @@ class NotificationsScreen(BoxLayout):
             self._set_status(tr("That doesn't look like a valid Reticulum address "
                                 "(needs 32 hex characters)."), "amber")
             return
-        self.field.text = save_operator_address(raw)
+        try:
+            self.field.text = save_operator_address(raw)
+        except Exception as e:      # noqa: BLE001 — a failed write must SHOW
+            self._set_status(tr("Couldn't save: ") + str(e)[:90], "red")
+            return
         self._set_status(tr("Saved — you'll get a message when a node needs checking."),
                          "green")
 
     def _clear(self):
         self.field.text = ""
-        save_operator_address("")
+        try:
+            save_operator_address("")
+        except Exception as e:      # noqa: BLE001
+            self._set_status(tr("Couldn't save: ") + str(e)[:90], "red")
+            return
         self._set_status(tr("Cleared — alerts stay on the medic only."), "text_secondary")

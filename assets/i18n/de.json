@@ -69,6 +69,7 @@
   "Couldn't load street names — check WiFi and try again": "Straßennamen konnten nicht geladen werden — WLAN prüfen und erneut versuchen",
   "Couldn't read the node's name — enter one": "Knotenname nicht lesbar — geben Sie einen ein",
   "Couldn't run the checks: {err}": "Prüfungen konnten nicht ausgeführt werden: {err}",
+  "Couldn't save: ": "Konnte nicht speichern: ",
   "Couldn't wipe the board: ": "Board konnte nicht gelöscht werden: ",
   "Current:": "Aktuell:",
   "Date & time": "Datum und Uhrzeit",

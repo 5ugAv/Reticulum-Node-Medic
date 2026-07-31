@@ -99,8 +99,8 @@ def save_defaults(params: Dict, path: str = CONFIG) -> Dict[str, float]:
     Returns the stored dict."""
     coerced = _coerce(params)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(coerced, f, indent=2)
+    from monitor.atomic_json import write_json
+    write_json(path, coerced, indent=2)
     return coerced
 
 

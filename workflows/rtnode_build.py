@@ -480,13 +480,8 @@ class RTNodeBuildWorkflow:
             self.results.append(result)
             # Every step lands in the (unbuffered) app log — a failed birth was
             # undiagnosable remotely for a whole day without this.
-            try:
-                mark = ("skip" if result.skipped
-                        else "ok" if result.success else "FAIL")
-                print(f"[birth] {result.name}: {mark} — {result.message}",
-                      flush=True)
-            except Exception:
-                pass
+            from workflows.step_log import log_step
+            log_step(result)
             emit(result)
             if not result.success and not result.skipped:
                 break

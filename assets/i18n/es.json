@@ -69,6 +69,7 @@
   "Couldn't load street names — check WiFi and try again": "No se pudieron cargar los nombres de calles: revisa el WiFi e inténtalo de nuevo",
   "Couldn't read the node's name — enter one": "No se pudo leer el nombre del nodo: introduce uno",
   "Couldn't run the checks: {err}": "No se pudieron ejecutar las comprobaciones: {err}",
+  "Couldn't save: ": "No se pudo guardar: ",
   "Couldn't wipe the board: ": "No se pudo borrar la placa: ",
   "Current:": "Actual:",
   "Date & time": "Fecha y hora",

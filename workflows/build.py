@@ -758,6 +758,8 @@ class BuildWorkflow:
             _, func = self.steps[self.current_index]
             result = func(self)
             self.results.append(result)
+            from workflows.step_log import log_step
+            log_step(result)
             emit(result)
             if not result.success and not result.skipped:
                 break  # stop; do NOT advance current_index

@@ -133,8 +133,9 @@ def register(role: str, serial: str, path: str = ROSTER_PATH) -> dict:
     roster = load_roster(path)
     roster[role] = serial
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(roster, f, indent=2, sort_keys=True)
+    # atomic: losing this file makes the medic forget its OWN radio
+    from monitor.atomic_json import write_json
+    write_json(path, roster, indent=2, sort_keys=True)
     return roster
 
 

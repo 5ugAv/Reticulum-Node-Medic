@@ -59,8 +59,13 @@ def save_operator_address(addr: str) -> str:
         os.makedirs(os.path.dirname(OPERATOR_ADDR_FILE), exist_ok=True)
         with open(OPERATOR_ADDR_FILE, "w", encoding="utf-8") as f:
             f.write(to_store)
-    except OSError:
-        pass
+            f.flush()
+            os.fsync(f.fileno())
+    except OSError as e:
+        # Don't pretend it saved — the operator would believe alerts are
+        # configured and hear nothing (2026-08-01 bug hunt).
+        raise RuntimeError(
+            f"Couldn't save the operator address: {e}") from e
     return to_store
 
 

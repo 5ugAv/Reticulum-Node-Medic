@@ -69,6 +69,7 @@
   "Couldn't load street names — check WiFi and try again": "Impossible de charger les noms de rues : vérifiez le WiFi et réessayez",
   "Couldn't read the node's name — enter one": "Impossible de lire le nom du nœud : saisissez-en un",
   "Couldn't run the checks: {err}": "Impossible d'exécuter les vérifications : {err}",
+  "Couldn't save: ": "Échec de l'enregistrement : ",
   "Couldn't wipe the board: ": "Impossible d'effacer la carte : ",
   "Current:": "Actuel :",
   "Date & time": "Date et heure",

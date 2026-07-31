@@ -46,8 +46,9 @@ def save_cert(cert: Dict, cert_dir: str = CERT_DIR, now: Optional[float] = None)
     stored = dict(cert)
     stored["_id"] = cid
     stored.setdefault("_saved_at", now if now is not None else time.time())
-    with open(os.path.join(cert_dir, f"{cid}.json"), "w") as f:
-        json.dump(stored, f, indent=2)
+    # atomic: a power cut mid-write must not leave an empty certificate
+    from monitor.atomic_json import write_json
+    write_json(os.path.join(cert_dir, f"{cid}.json"), stored, indent=2)
     return cid
 
 
@@ -92,6 +93,6 @@ def update_notes(cid: str, notes: str, cert_dir: str = CERT_DIR) -> bool:
     except (OSError, ValueError):
         return False
     cert["notes"] = notes
-    with open(path, "w") as f:
-        json.dump(cert, f, indent=2)
+    from monitor.atomic_json import write_json
+    write_json(path, cert, indent=2)
     return True

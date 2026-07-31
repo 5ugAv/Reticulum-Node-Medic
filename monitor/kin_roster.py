@@ -39,8 +39,9 @@ def load_roster(path: str = KIN_ROSTER_PATH) -> dict:
 
 def _save(roster: dict, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(roster, f, indent=2, sort_keys=True)
+    # atomic: the roster is the medic's memory of its whole fleet
+    from monitor.atomic_json import write_json
+    write_json(path, roster, indent=2, sort_keys=True)
 
 
 #: Interfaces a node class physically HAS (the medic only hears LoRa, so it can't

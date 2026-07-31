@@ -597,6 +597,8 @@ class HeltecV4RGBWorkflow:
         for name in step_names:
             result = getattr(self, name)()
             self.results.append(result)
+            from workflows.step_log import log_step
+            log_step(result)
             emit(result)
             if not result.success:
                 break
