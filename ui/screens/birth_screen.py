@@ -569,13 +569,27 @@ class BirthScreen(BoxLayout):
         # image_for = the photo FILE exists (registry entries are placeholders
         # until each board's PNG arrives — they stay text buttons meanwhile)
         with_photo = [b for b in shortlist if board_images.image_for(b.key)]
-        if with_photo:
+        # Rank the medic's OWN fleet first: board types it has birthed before
+        # (from stored certs) lead the cards — a field medic mostly re-meets
+        # its own hardware (operator spec 2026-08-01: thin the crowd; among
+        # native-USB S3s the hardware is genuinely indistinguishable, so
+        # ranking + readable cards is the honest thinning).
+        try:
+            from ui.cert_store import load_certs
+            seen = {c.get("board") for c in load_certs()}
+            with_photo.sort(key=lambda b: b.display_name not in seen)
+        except Exception:
+            pass
+        # rows of 3 — five cards in one strip were unreadable thumbnails
+        for i in range(0, len(with_photo), 3):
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(120), spacing=dp(10))
-            for b in with_photo:
+            for b in with_photo[i:i + 3]:
                 row.add_widget(BoardCard(
                     b.key, name=self._name_in.text.strip(),
                     on_select=lambda bb=b: self._confirm_rnode_board_gate(bb)))
+            for _ in range(3 - len(with_photo[i:i + 3])):
+                row.add_widget(Widget())     # keep card widths consistent
             self.header.add_widget(row)
         for b in shortlist:
             if b in with_photo:
