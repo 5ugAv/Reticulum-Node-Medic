@@ -1235,7 +1235,28 @@ class ReticulumNodeMedicApp(App):
             out = _local_run(f"rnpath -w 20 {probe} 2>/dev/null")
             reachable, hops = parse_path_probe(out)
             if reachable:
+                # PING = INSTANT HEALTH READOUT (the vision, task #26): with a
+                # fresh path proven, command a health beacon (0x01). The node
+                # answers with full telemetry — and double-pulses GREEN, the
+                # visible "heard you, here's my health". The listener ingests
+                # the reply, so the detail screen's next refresh shows it.
+                pulled = False
+                try:
+                    import RNS
+                    ident = RNS.Identity.recall(bytes.fromhex(probe))
+                    if ident is not None:
+                        dest = RNS.Destination(ident, RNS.Destination.OUT,
+                                               RNS.Destination.SINGLE,
+                                               "rtnode", "health")
+                        RNS.Packet(dest, bytes([0x01])).send()
+                        pulled = True
+                except Exception:
+                    pass
                 msg = "Reachable now" + (f" — {hops} hop(s) away." if hops else ".")
+                if pulled:
+                    msg += (" Health requested — watch the node double-pulse "
+                            "GREEN as it answers; fresh readings arrive in "
+                            "seconds.")
                 Clock.schedule_once(lambda dt: report(msg, True), 0)
             else:
                 Clock.schedule_once(lambda dt: report(
