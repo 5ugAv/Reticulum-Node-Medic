@@ -90,7 +90,18 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             online=True,
             message="Online, but could not read the firmware manifest.")
 
-    version = next(iter(manifest.values())).get("version")
+    # A malformed manifest (entries that aren't dicts) must fail HONESTLY,
+    # not raise AttributeError out of a background sync (2026-08-01 bug hunt).
+    try:
+        first = next(iter(manifest.values()))
+        version = first.get("version") if isinstance(first, dict) else None
+    except Exception:                      # noqa: BLE001
+        version = None
+    if not version:
+        return SyncResult(
+            online=True,
+            message="Online, but the firmware manifest is malformed — keeping "
+                    "the carried cache.")
     dest = f"{RNODE_UPDATE_DIR}/{version}"
     connection.run(f"mkdir -p {dest}")
 

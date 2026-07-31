@@ -293,6 +293,16 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
                               "Can't auto-provision: the medic isn't on WiFi to share "
                               "with the node. Join WiFi, or configure the node manually "
                               f"at {ONBOARDING_URL}.")
+        # An EMPTY psk means the secret read failed (sudo/nmcli), not an open
+        # network we can join — provisioning with it silently births a node
+        # that can never reach WiFi (2026-08-01 bug hunt). Say so instead.
+        if not psk:
+            return StepResult(
+                "wifi_onboarding", False,
+                f"Can't auto-provision: the medic couldn't read the WiFi "
+                f"password for '{ssid}', so the node would be configured with "
+                f"a blank one and never join. Configure it manually at "
+                f"{ONBOARDING_URL}, or fix the medic's WiFi secret access.")
         # SINGLE-PASS discipline (2026-07-30): believe OUTCOMES, not plumbing.
         # 0) Already configured? Then there IS no portal — that's a birth that
         #    already landed (a previous pass whose tail failed), not a failure.

@@ -71,7 +71,13 @@ def _default_ssh_runner(argv: List[str], timeout: int) -> Result:
         )
         return (proc.returncode, proc.stdout, proc.stderr)
     except subprocess.TimeoutExpired:
-        return (255, "", "ssh: timed out")
+        # 124 (the shell's timeout convention), NOT 255: a LOCAL timeout means
+        # the remote command may still be RUNNING, so retrying would run a
+        # non-idempotent operation (a flash!) twice. 255 is reserved for ssh's
+        # own transient connection failures, which are safe to retry
+        # (2026-08-01 bug hunt).
+        return (124, "", "ssh: timed out locally (the remote command may still "
+                         "be running — not retried)")
     except FileNotFoundError:
         return (255, "", "ssh: command not found")
 

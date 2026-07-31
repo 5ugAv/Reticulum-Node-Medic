@@ -104,7 +104,24 @@ def local_board_ports(busy_fn: Callable[[str], bool] = _port_busy,
         svc = service_bound_serials()
         onboard_fn = lambda p: is_onboard(p, service_serials=svc)
     candidates = sorted(glob.glob("/dev/ttyACM*") + glob.glob("/dev/ttyUSB*"))
-    return [p for p in candidates if not busy_fn(p) and not onboard_fn(p)]
+    # FAIL CLOSED, like the roster documents: a port whose USB serial can't be
+    # resolved is NOT provably a work board, and flashing the medic's own radio
+    # is catastrophic while refusing a genuine work board is a mild annoyance
+    # (2026-08-01 bug hunt: this list was fail-OPEN, unlike assert_flashable).
+    from ui.onboard_roster import serial_for_port, guard_is_active
+    strict = guard_is_active()            # real medic (udev/roster present)
+    out = []
+    for p in candidates:
+        if busy_fn(p) or onboard_fn(p):
+            continue
+        if strict:
+            try:
+                if not serial_for_port(p):
+                    continue              # unidentifiable -> never a target
+            except Exception:
+                continue
+        out.append(p)
+    return out
 
 
 def hardware_present(ports_fn: Callable[[], list] = local_board_ports) -> bool:
