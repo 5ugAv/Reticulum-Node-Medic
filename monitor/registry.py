@@ -229,8 +229,30 @@ class NodeRecord:
         return "unknown"
 
 
+def _locked(fn):
+    """Hold the registry lock for the whole call. Applied to every method that
+    MUTATES nodes/history or WALKS them — the announce thread inserting a key
+    mid-iteration is the race (2026-08-01 bug hunt). The lock is an RLock, so
+    a guarded reader may call other guarded helpers."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(self, *a, **kw):
+        with self._lock:
+            return fn(self, *a, **kw)
+    return wrapper
+
+
 class NodeRegistry:
     def __init__(self):
+        # ONE lock guards nodes + history. Three threads touch this registry:
+        # the RNS announce handler (inserts new keys), the monitor poll thread
+        # (saves/dashboards) and the Kivy main thread (VITALS/SCAN/TRIAGE
+        # reads) — an announce arriving mid-iteration raised "dictionary
+        # changed size during iteration" (reproduced by the 2026-08-01 bug
+        # hunt). RLock so a locked reader can call a locked helper.
+        import threading
+        self._lock = threading.RLock()
         self.nodes: Dict[str, NodeRecord] = {}
         from monitor.history import NodeHistory
         self.history = NodeHistory()    # per-node time series (VITALS "History")
@@ -239,6 +261,7 @@ class NodeRegistry:
         #: KIN — even a plain propagation Pi the medic can't hear directly.
         self.kin_roster: Dict[str, dict] = {}
 
+    @_locked
     def set_kin_roster(self, roster: dict) -> None:
         """Load the medic's fleet roster. Seeds a NAMED, LOCATED record for every
         entry (so each fleet node shows in VITALS as kin and on the map at its
@@ -268,6 +291,7 @@ class NodeRegistry:
         if entry.get("builder"):
             rec.builder_hash = entry["builder"]
 
+    @_locked
     def ingest_relay(self, via_hash: str, interface: str, now: float) -> NodeRecord:
         """Surface the medic's DIRECT next-hop relay (a ``via`` in the path table)
         as a node. A via is the medic's 1-hop LoRa neighbour that the whole mesh
@@ -282,6 +306,7 @@ class NodeRegistry:
         self._apply_kin(rec)
         return rec
 
+    @_locked
     def register(self, dst_hash: str, name: str = "", location: str = "",
                  node_type: str = "rtnode2400", lat: Optional[float] = None,
                  lon: Optional[float] = None) -> NodeRecord:
@@ -304,6 +329,7 @@ class NodeRegistry:
         self._apply_kin(rec)
         return rec
 
+    @_locked
     def register_from_birth_certificate(self, cert: dict, name: str = "",
                                         now: float = 0.0,
                                         operator: str = "operator"
@@ -325,6 +351,7 @@ class NodeRegistry:
     def get(self, dst_hash: str) -> Optional[NodeRecord]:
         return self.nodes.get(dst_hash)
 
+    @_locked
     def ingest(self, dst_hash: str, beacon: HealthBeacon,
                now: float) -> NodeRecord:
         """Record a decoded beacon; auto-registers a never-seen node."""
@@ -338,6 +365,7 @@ class NodeRegistry:
             t=now, rssi=beacon.wifi_rssi_dbm, uptime_s=beacon.uptime_s))
         return rec
 
+    @_locked
     def ingest_line(self, text: str, now: float) -> Optional[NodeRecord]:
         """Parse a serial/announce ``[HealthBeacon]`` line and ingest it.
         Returns ``None`` for non-beacon or undecodable lines."""
@@ -350,6 +378,7 @@ class NodeRegistry:
             return None
         return self.ingest(m.group(1), beacon, now)
 
+    @_locked
     def ingest_announce(self, dst_hash: bytes, app_data: bytes,
                         now: float,
                         identity_hash: Optional[str] = None) -> Optional[NodeRecord]:
@@ -386,6 +415,7 @@ class NodeRegistry:
             rec.announced_name = name
         return rec
 
+    @_locked
     def ingest_mesh(self, node, now: float) -> NodeRecord:
         """Fold a mesh path (a monitor.mesh.MeshNode) into the registry, keyed by
         its destination hash — the same key birthed/HTTP nodes use. Records
@@ -432,6 +462,7 @@ class NodeRegistry:
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
+    @_locked
     def probe_hash_for(self, key: str) -> Optional[str]:
         """A probeable 32-hex mesh destination for the DEVICE that record *key*
         belongs to, or None. A consolidated VITALS row can be LED by a non-hex
@@ -461,6 +492,7 @@ class NodeRegistry:
                 return h                    # a real hex dest for the same device
         return None
 
+    @_locked
     def _device_groups(self) -> List[List[NodeRecord]]:
         """Group every record into physical DEVICES: first by announced identity,
         then collapsing identity-groups that resolve to the same non-empty NAME.
@@ -534,6 +566,7 @@ class NodeRegistry:
             merged.last_seen = max(seen)
         return merged
 
+    @_locked
     def consolidated_record(self, key: str, now: float) -> Optional[NodeRecord]:
         """The device-level health record for the row/record identified by *key*
         (any merged member's dst_hash). Returns a consolidated NodeRecord whose
@@ -547,6 +580,7 @@ class NodeRegistry:
                 return self._consolidate(members, now)
         return None
 
+    @_locked
     def devices(self, now: float) -> List[dict]:
         """The CONSOLIDATED dashboard: one row per physical device. Destinations
         that announced the same identity collapse into one entry (a phone's
@@ -606,6 +640,7 @@ class NodeRegistry:
             result.append(rec)
         return result
 
+    @_locked
     def summary(self, now: float) -> Dict[str, int]:
         counts = {"ok": 0, "warn": 0, "alert": 0, "unknown": 0}
         for rec in self.nodes.values():
@@ -627,12 +662,14 @@ class NodeRegistry:
         rec.events.append(CommissionEvent(now, kind, summary, operator))
         return rec
 
+    @_locked
     def nodes_needing_update(self, latest: str) -> List[NodeRecord]:
         return [r for r in self.nodes.values()
                 if r.needs_firmware_update(latest)]
 
     # -- persistence (the monitoring DB MITOSIS copies) -------------
 
+    @_locked
     def to_dict(self) -> dict:
         return {"nodes": [
             {
@@ -684,6 +721,7 @@ class NodeRegistry:
 
     # -- disk persistence (so history/activity survives an app restart) --------
 
+    @_locked
     def save(self, path: str) -> bool:
         """Atomically persist the registry (nodes + history) to *path* as JSON, so
         the heard-event / activity series accumulates ACROSS sessions instead of
