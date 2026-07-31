@@ -1559,21 +1559,18 @@ class BirthScreen(BoxLayout):
                     "the build log below. Watch VITALS for the node's first "
                     "health beacon.",
                     "Build finished", False, tone="success")
-            # Dismissing the success card returns HOME — lingering on the
-            # board-select page after a finished birth read as 'am I meant to
-            # do this again?' (operator spec 2026-07-31).
-            def _home(*_a):
+            # Dismissing the success card SCROLLS TO THE CERTIFICATE (QR
+            # included) — going straight home raced past it (operator spec
+            # 2026-08-01: 'let the user see the birth screen with QR code for
+            # all births'). The cert's own 'Done — back to home' button ends
+            # the ceremony (see _commit_cert).
+            def _show_cert(*_a):
                 try:
-                    # Full reset: next visit to BIRTH starts at a fresh chooser,
-                    # not this finished build's flash page.
-                    self._exit_flash_view()
-                    from kivy.app import App
-                    app = App.get_running_app()
-                    if app is not None and hasattr(app, "switch_mode"):
-                        app.switch_mode("home")
+                    from kivy.clock import Clock
+                    Clock.schedule_once(lambda dt: self._scroll_to_cert(), 0.3)
                 except Exception:
                     pass
-            view.bind(on_dismiss=_home)
+            view.bind(on_dismiss=_show_cert)
         except Exception:
             pass
 
@@ -1682,6 +1679,42 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
         self._add_cert_qr(cert)
         self._add_notes_panel()
+        # The ceremony's closing act: a deliberate DONE under the certificate
+        # (all births) — auto-home raced past the cert + QR (operator spec
+        # 2026-08-01).
+        done = Button(text="Done — back to home", size_hint_y=None,
+                      height=dp(56), bold=True, font_size="17sp",
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _done(*_a):
+            try:
+                self._exit_flash_view()    # next BIRTH visit starts fresh
+                from kivy.app import App
+                app = App.get_running_app()
+                if app is not None and hasattr(app, "switch_mode"):
+                    app.switch_mode("home")
+            except Exception:
+                pass
+        done.bind(on_release=_done)
+        self.list.add_widget(done)
+        try:
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self._scroll_to_cert(), 0.2)
+        except Exception:
+            pass
+
+    def _scroll_to_cert(self):
+        """Bring the certificate (QR) into view — best-effort."""
+        try:
+            for w in getattr(self, "_qr_widgets", []) or []:
+                if w.parent:
+                    self.scroll.scroll_to(w, padding=dp(30))
+                    return
+            self.scroll.scroll_y = 0       # cert lives at the bottom
+        except Exception:
+            pass
 
     def _register_kin(self, cert):
         """Record the birthed node in the medic's kin roster, stamped with
