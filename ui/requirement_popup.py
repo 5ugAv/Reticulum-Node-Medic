@@ -59,25 +59,28 @@ def requirement_popup(message: str, title: str = "Heads up",
                 card.width - dp(2), card.height - dp(2), _RADIUS))
     card.bind(pos=_redraw, size=_redraw)
 
-    # A drawn warning triangle with a "!" — the ⚠ emoji renders as tofu in the
-    # default font, so we draw it (no font dependency, always crisp).
-    icon = FloatLayout(size_hint_y=None, height=dp(66))
-    tri = Widget()
+    # Success cards carry NO warning glyph (operator 2026-07-31: a triangle on
+    # a green 'finished' card reads as a warning artefact).
+    if tone != "success":
+        # A drawn warning triangle with a "!" — the ⚠ emoji renders as tofu in the
+        # default font, so we draw it (no font dependency, always crisp).
+        icon = FloatLayout(size_hint_y=None, height=dp(66))
+        tri = Widget()
 
-    def _tri(*_):
-        tri.canvas.after.clear()
-        cx, half = tri.center_x, dp(30)
-        b, t = tri.y + dp(6), tri.top - dp(4)
-        with tri.canvas.after:
-            Color(*_RED)
-            Line(points=[cx - half, b, cx + half, b, cx, t],
-                 width=dp(3), close=True, joint="round", cap="round")
-    tri.bind(pos=_tri, size=_tri)
-    icon.add_widget(tri)
-    bang = Label(text="!", font_size="30sp", bold=True, color=_RED,
-                 pos_hint={"center_x": 0.5, "center_y": 0.40})
-    icon.add_widget(bang)
-    card.add_widget(icon)
+        def _tri(*_):
+            tri.canvas.after.clear()
+            cx, half = tri.center_x, dp(30)
+            b, t = tri.y + dp(6), tri.top - dp(4)
+            with tri.canvas.after:
+                Color(*_RED)
+                Line(points=[cx - half, b, cx + half, b, cx, t],
+                     width=dp(3), close=True, joint="round", cap="round")
+        tri.bind(pos=_tri, size=_tri)
+        icon.add_widget(tri)
+        bang = Label(text="!", font_size="30sp", bold=True, color=_RED,
+                     pos_hint={"center_x": 0.5, "center_y": 0.40})
+        icon.add_widget(bang)
+        card.add_widget(icon)
 
     heading = Label(text=title, font_size="23sp", bold=True, size_hint_y=None,
                     height=dp(36), color=_DARK, halign="center", valign="middle")

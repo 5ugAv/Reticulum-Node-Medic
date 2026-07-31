@@ -592,6 +592,7 @@ class ReticulumNodeMedicApp(App):
         self._apply_retention(None)                  # honour the saved retention window
         self._start_monitor_polling()
         self._start_announce_listener()
+        self._start_board_disconnect_watch()
 
         # SCAN is now the SINGLE map: coverage + offline caching + node placement.
         # A stationary tap (or the live GPS fix) sets a spot; "Use this position"
@@ -828,6 +829,49 @@ class ReticulumNodeMedicApp(App):
             return build_topology(self.monitor_service.registry, paths, time.time())
         except Exception:
             return None
+
+    def _start_board_disconnect_watch(self):
+        """Warn LOUDLY when a work board vanishes from USB mid-birth (operator
+        spec 2026-07-31: 'board disconnected!'). Watches only on the birth
+        screens, and debounces 5 s so a flash/reboot's normal USB re-enumeration
+        blip never false-alarms. Re-arms when a board returns."""
+        from kivy.clock import Clock
+
+        self._bd_seen = False
+        self._bd_gone_at = None
+        self._bd_warned = False
+
+        def tick(_dt):
+            try:
+                current = self.sm.current if hasattr(self, "sm") else ""
+                if current not in ("birth", "birth_guide"):
+                    self._bd_seen = False
+                    self._bd_gone_at = None
+                    self._bd_warned = False
+                    return
+                from ui.hw_factories import local_board_ports
+                import time as _t
+                if local_board_ports():
+                    self._bd_seen = True
+                    self._bd_gone_at = None
+                    self._bd_warned = False
+                    return
+                if not self._bd_seen or self._bd_warned:
+                    return
+                if self._bd_gone_at is None:
+                    self._bd_gone_at = _t.time()
+                elif _t.time() - self._bd_gone_at > 5:
+                    self._bd_warned = True
+                    from ui.requirement_popup import requirement_popup
+                    requirement_popup(
+                        "Board disconnected!\n\nThe board that was plugged in "
+                        "has vanished from USB. Check the cable and plug it "
+                        "back in before continuing.",
+                        "Board disconnected", False)
+            except Exception:
+                pass
+
+        Clock.schedule_interval(tick, 2)
 
     def _start_announce_listener(self):
         """Hear announces live (via the shared rnsd): each carries the device
