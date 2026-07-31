@@ -27,3 +27,4 @@ assets/maps/*
 !assets/maps/.gitkeep
 assets/apps/*
 !assets/apps/.gitkeep
+typescript
