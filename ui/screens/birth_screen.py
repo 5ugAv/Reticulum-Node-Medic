@@ -78,6 +78,32 @@ _STEP_SECONDS = {
 }
 _DEFAULT_STEP_SECONDS = 12
 
+#: Operator-facing label per running step — the busy text tracks the build's
+#: actual PHASE (operator spec 2026-07-31: the quiet verification tail after
+#: the flash needs its own visible heartbeat, not generic 'working').
+_PHASE_LABELS = {
+    "detect_board": "Detecting the board…",
+    "detect_hardware": "Detecting the hardware…",
+    "flash_firmware": "Flashing… keep the board plugged in — do not unplug.",
+    "flash_rnode_firmware": "Flashing the radio… keep it plugged in.",
+    "flash": "Flashing… keep the board plugged in.",
+    "set_firmware_radio_parameters": "Setting radio parameters…",
+    "set_params": "Setting radio parameters…",
+    "wifi_onboarding": "Configuring the node over its setup WiFi… the medic "
+                       "may briefly leave your WiFi and rejoin.",
+    "verify_beacon": "Verifying… listening for the node's first health beacon "
+                     "(up to a minute of quiet is normal — wait for the green "
+                     "confirmation).",
+    "install_software_stack": "Installing the software stack… (minutes on a "
+                              "fresh Pi).",
+    "configure_services": "Starting the node's services…",
+    "install_health_reporter": "Installing the health reporter…",
+    "apply_system_hardening": "Hardening the system…",
+    "set_hostname": "Setting the hostname…",
+    "final_verification": "Verifying the node…",
+    "birth_certificate": "Writing the birth certificate…",
+}
+
 
 def _workflow_step_names(wf):
     """Ordered step names of a build workflow (for progress weighting). Falls back
@@ -884,12 +910,12 @@ class BirthScreen(BoxLayout):
         self._build_busy = BoxLayout(orientation="horizontal", size_hint_y=None,
                                      height=dp(74), spacing=dp(12), padding=[0, dp(4)])
         self._build_busy.add_widget(self._build_ring)
-        self._build_busy.add_widget(_line(
+        self._busy_label = _line(
             "Working… the firmware compile is the slow part (a first build also "
             "downloads the toolchain). Keep the board plugged in and WAIT for "
-            "the green 'Build finished' confirmation before touching anything — "
-            "verification keeps running after the ring fills.",
-            size="13sp", color="accent"))
+            "the green 'Build finished' confirmation before touching anything.",
+            size="13sp", color="accent")
+        self._build_busy.add_widget(self._busy_label)
         self.list.add_widget(self._build_busy)
         self._pg_names = _workflow_step_names(workflow)
         self._pg_secs = [_STEP_SECONDS.get(n, _DEFAULT_STEP_SECONDS) for n in self._pg_names]
@@ -1040,6 +1066,12 @@ class BirthScreen(BoxLayout):
             import time
             self._pg_done += 1
             self._pg_step_start = time.monotonic()
+            # the busy text tracks the phase now RUNNING — 'verifying…' gets
+            # its own visible heartbeat instead of dead air after the flash
+            lbl = getattr(self, "_busy_label", None)
+            names = getattr(self, "_pg_names", None) or []
+            if lbl is not None and self._pg_done < len(names):
+                lbl.text = _PHASE_LABELS.get(names[self._pg_done], "Working…")
             if getattr(self, "_build_ring", None) is not None:
                 self._build_ring.set_fraction(
                     sum(self._pg_secs[:self._pg_done]) / self._pg_total)
