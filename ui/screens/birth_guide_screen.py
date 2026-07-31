@@ -278,12 +278,20 @@ class BirthGuideScreen(BoxLayout):
                 if not (port and et):
                     ok, msg = False, tr("Couldn't find the board or the flash tool.")
                 else:
-                    r = subprocess.run(
-                        ["python3", et, "--port", port, "erase_flash"],
-                        capture_output=True, text=True, timeout=120)
-                    ok = r.returncode == 0
-                    if not ok:
+                    # The detect step's serial banner-read can still hold the
+                    # port for a beat when the operator taps Rebirth right
+                    # after — Errno 11 'could not exclusively lock' (live,
+                    # 2026-07-31). Retry through the race instead of failing.
+                    import time as _t
+                    for attempt in range(4):
+                        r = subprocess.run(
+                            ["python3", et, "--port", port, "erase_flash"],
+                            capture_output=True, text=True, timeout=120)
+                        ok = r.returncode == 0
+                        if ok:
+                            break
                         msg = (r.stderr or r.stdout or "").strip()[-160:]
+                        _t.sleep(3)
                 if ok and old_ident:
                     try:                              # forget the old identity
                         from monitor import kin_roster
