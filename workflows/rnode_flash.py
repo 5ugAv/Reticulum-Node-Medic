@@ -257,6 +257,23 @@ class RNodeFlashWorkflow:
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)
+        if not ok and not already:
+            # A board that arrives carrying FOREIGN firmware (factory image,
+            # Meshtastic, a half-written flash) can present a USB serial port
+            # while speaking nothing rnodeconf understands, and autoinstall
+            # then dies at its post-write probe — "Serial port opened, but
+            # RNode did not respond" (live: a fresh T-Beam Supreme,
+            # 2026-08-01). The RTNode path never hits this because it ERASES
+            # first. Do the same here, once, then retry: on a truly blank chip
+            # autoinstall has nothing to be confused by.
+            erased, emsg = self._erase_chip()
+            if erased:
+                ok, msg, already = birth_flash(
+                    self.connection, self.board, self.port, self.band_mhz,
+                    self.version, self.flash_timeout)
+                msg = f"{msg} (after erasing the board's foreign firmware)"
+            else:
+                msg = f"{msg} — and the board could not be erased: {emsg}"
         if already:
             # Re-inserted an already-flashed board — birthing is already done.
             return StepResult(
@@ -268,6 +285,24 @@ class RNodeFlashWorkflow:
             "flash", ok,
             f"Flashed {self.board.display_name} from the offline cache — {msg}."
             if ok else f"Flash failed: {msg}")
+
+    def _erase_chip(self):
+        """Full chip erase via the bundled esptool, so a board carrying
+        foreign firmware becomes the blank slate autoinstall expects. Gated
+        like every other write boundary. Returns (ok, message)."""
+        try:
+            from ui.onboard_roster import assert_flashable, guard_is_active
+            if guard_is_active():
+                assert_flashable(self.port)
+        except Exception as e:            # noqa: BLE001
+            return False, f"refused: {e}"
+        cmd = (f"python3 ~/.config/rnodeconf/update/{self.version}/esptool.py "
+               f"--chip auto --port {self.port} --before default_reset "
+               f"erase_flash")
+        code, out, err = self.connection.run(cmd, timeout=self.flash_timeout)
+        low = ((out or "") + (err or "")).lower()
+        ok = code == 0 or "erase completed" in low
+        return ok, ("erased" if ok else (err or out or "")[-160:])
 
     def _flash_custom_fork(self) -> StepResult:
         """Flash a custom-fork board (the Wireless Tracker) from the medic's

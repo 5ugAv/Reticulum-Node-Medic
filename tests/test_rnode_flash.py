@@ -213,3 +213,35 @@ def test_workflow_already_provisioned_board_is_a_skip_not_a_failure():
     assert flash.success is True
     assert flash.skipped is True
     assert all(r.success for r in results)          # continues to verify
+
+
+def test_failed_autoinstall_erases_foreign_firmware_and_retries():
+    """A board carrying FOREIGN firmware presents a serial port but speaks
+    nothing rnodeconf understands, so autoinstall dies at its post-write probe
+    (live: a fresh T-Beam Supreme, 2026-08-01). The step erases the chip once
+    and retries — on a blank chip autoinstall has nothing to trip over."""
+    from workflows.rnode_flash import RNodeFlashWorkflow
+    from workflows.rnode_boards import get_board
+
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    state = {"erased": False}
+    _orig = conn.run
+
+    def run(command, timeout=30):
+        if "erase_flash" in command:
+            state["erased"] = True
+            return (0, "Chip erase completed successfully", "")
+        if "autoinstall" in command:
+            if not state["erased"]:
+                return (1, "Serial port opened, but RNode did not respond.", "")
+            return (0, "Autoinstallation complete", "")
+        return _orig(command, timeout)
+    conn.run = run
+
+    wf = RNodeFlashWorkflow(conn, get_board("tbeam_supreme"),
+                            port="/dev/ttyACM9",
+                            work_ports_fn=lambda: ["/dev/ttyACM9"])
+    r = wf._flash()
+    assert state["erased"], "the board was never erased"
+    assert r.success, r.message
+    assert "erasing" in r.message
