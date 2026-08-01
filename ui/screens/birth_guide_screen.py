@@ -22,11 +22,13 @@ from ui.i18n import tr  # i18n: wrapped — guided-birth screen labels/buttons
 from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
-                                    InsertSdAnim, ProvisionAnim)
+                                    InsertSdAnim, InsertSdIntoPiAnim,
+                                    ProvisionAnim)
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
 _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAnim,
-          "insert_sd": InsertSdAnim, "provision": ProvisionAnim}
+          "insert_sd": InsertSdAnim, "insert_sd_pi": InsertSdIntoPiAnim,
+          "provision": ProvisionAnim}
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):

@@ -40,6 +40,11 @@ SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")                    # the microSD
 BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
 ANTENNA_PNG = os.path.join(_ANIM_DIR, "antenna_sma.png")           # whip antenna w/ SMA female base
 PIGTAIL_PNG = os.path.join(_ANIM_DIR, "pigtail_ipex.png")          # SMA-male <-> U.FL/IPEX pigtail
+PI_ZERO_PNG = os.path.join(_ANIM_DIR, "pi_zero_2w.png")            # Pi Zero 2 W, SD slot on its left edge
+#: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
+#: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
+#: insert-into-the-MEDIC animation, whose geometry is measured against it.
+SD_ENDURANCE_PNG = os.path.join(_ANIM_DIR, "sd_card_endurance.png")
 
 #: The medic's USB plug tip within node_medic_cable.png (normalised, from top-left).
 #: The board's bottom USB port descends onto this point.
@@ -613,3 +618,80 @@ class InsertSdAnim(_LoopAnim):
                           color=theme.hex_to_rgba(theme.COLORS["background"]))
         card.size = (cw, ch)
         card.pos = (cx, cy - ch / 2)
+
+
+class InsertSdIntoPiAnim(_LoopAnim):
+    """The imaged microSD slides into the Pi Zero 2 W's own slot.
+
+    The mirror of InsertSdAnim: that one puts the card INTO THE MEDIC to be
+    written; this one shows the finished card going HOME into the Pi. The slot
+    is on the board's left edge, so the card approaches from the left and
+    disappears into it (clipped at the slot mouth so it visibly goes *in*).
+    Falls back to the schematic if the artwork is missing.
+    """
+
+    #: The slot mouth on pi_zero_2w.png, as a fraction of the sprite (y-DOWN):
+    #: the left edge of the metal microSD cage, and its vertical span.
+    _SLOT_X = 0.085
+    _SLOT_TOP = 0.245
+    _SLOT_BOT = 0.545
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("duration", 3.0)
+        super().__init__(**kwargs)
+
+    @staticmethod
+    def _ease(v):
+        v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+        return v * v * (3.0 - 2.0 * v)                    # smoothstep
+
+    def _draw(self):
+        pi_tex = _texture(PI_ZERO_PNG)
+        card = _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
+        if pi_tex is None or card is None:
+            return self._draw_fallback()
+        w, h = self.width, self.height
+        # the board sits centred-right, leaving room on the left for the card
+        pa = pi_tex.width / float(pi_tex.height)
+        pw = w * 0.68
+        ph = pw / pa
+        if ph > h * 0.7:
+            ph = h * 0.7
+            pw = ph * pa
+        px = self.x + w - pw - dp(8)
+        py = self.y + (h - ph) / 2.0
+        Color(1, 1, 1, 1)
+        Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+
+        # the card: travels left -> right into the slot, then holds
+        slot_x = px + pw * self._SLOT_X
+        slot_cy = py + ph * (1.0 - (self._SLOT_TOP + self._SLOT_BOT) / 2.0)
+        ch = ph * (self._SLOT_BOT - self._SLOT_TOP) * 0.92
+        cw = ch * (card.width / float(card.height))
+        travel = self._ease(min(1.0, self.phase * 1.35))  # arrive, then dwell
+        start_x = self.x + dp(4)
+        cx = start_x + (slot_x - cw * 0.55 - start_x) * travel
+
+        # clip the card at the slot mouth so it vanishes INTO the board
+        from kivy.graphics import StencilPush, StencilUse, StencilUnUse, StencilPop
+        StencilPush()
+        Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
+        StencilUse()
+        Color(1, 1, 1, 1)
+        Rectangle(texture=card, pos=(cx, slot_cy - ch / 2.0), size=(cw, ch))
+        StencilUnUse()
+        Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
+        StencilPop()
+
+    def _draw_fallback(self):
+        """No artwork — a plain board outline with the card entering its edge."""
+        w, h = self.width, self.height
+        bx, by = self.x + w * 0.30, self.y + h * 0.30
+        bw, bh = w * 0.62, h * 0.40
+        Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+        Rectangle(pos=(bx, by), size=(bw, bh))
+        Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+        travel = self._ease(min(1.0, self.phase * 1.35))
+        cw, ch = w * 0.12, h * 0.16
+        cx = self.x + w * 0.05 + (bx - cw * 0.5 - (self.x + w * 0.05)) * travel
+        Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))

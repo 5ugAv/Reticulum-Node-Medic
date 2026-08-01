@@ -77,9 +77,15 @@ _STEPS = {
          "body": tr("Now Node Medic writes Raspberry Pi OS to the card and sets its "
                     "name, Wi-Fi and login — a few details, no computer needed."),
          "anim": "insert_sd", "next": tr("Image the card  →"), "screen": "pi_imager"},
+        {"title": tr("Put the card into the Pi"),
+         "body": tr("Take the card out of Node Medic and slide it into the Pi's own "
+                    "microSD slot — it's on the edge of the board, next to the "
+                    "HDMI socket. Then give the Pi power and let it start up."),
+         "hint": tr("The first start-up takes a minute or two while the Pi sets "
+                    "itself up and joins your Wi-Fi."),
+         "anim": "insert_sd_pi"},
         {"title": tr("Connect the radio board"),
-         "body": tr("Put the SD card into the Pi and power it on, then plug the radio "
-                    "board into Node Medic with a USB cable."),
+         "body": tr("Now plug the radio board into Node Medic with a USB cable."),
          "anim": "connect_board",
          "next": tr("Start setup  →")},
     ],

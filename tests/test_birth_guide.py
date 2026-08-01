@@ -15,7 +15,8 @@ def test_step_counts_per_path():
     # button was about to do) was removed — operator decision 2026-07-31; the
     # previous page now carries the Start-setup handoff.
     assert len(guide_steps("radio")) == 2      # connect -> what-happens-next/setup
-    assert len(guide_steps("pi")) == 3
+    # insert-into-medic -> image -> insert-into-Pi -> connect radio
+    assert len(guide_steps("pi")) == 4
     assert len(guide_steps("host")) == 1       # connect page carries Start setup
 
 
