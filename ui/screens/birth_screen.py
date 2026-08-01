@@ -1841,6 +1841,18 @@ class BirthScreen(BoxLayout):
                     "already configured — watch VITALS for its first health "
                     "beacon.",
                     "Build finished", False, tone="success")
+            elif getattr(self, "_last_type", "") == "pi_rnode":
+                # Name the physical action. "Build finished" alone is true and
+                # useless here: the node does not exist yet — the Pi and its
+                # radio are both still plugged into Node Medic.
+                b = getattr(self, "_last_board", None)
+                bn = b.display_name if b is not None else "the radio"
+                view = requirement_popup(
+                    f"Built — but not finished yet.\n\nUnplug BOTH boards from "
+                    f"Node Medic, plug {bn} into the Pi's USB port (the DATA "
+                    f"one), and power the Pi from PWR IN.\n\nThe full steps are "
+                    f"on the screen behind this.",
+                    "One last step", False, tone="success")
             else:
                 view = requirement_popup(
                     "Build finished — details and the birth certificate are in "
@@ -1876,6 +1888,18 @@ class BirthScreen(BoxLayout):
             return
         self.list.add_widget(_line("OK  Done!", bold=True, size="20sp",
                                    color="green"))
+        # THE HAND-OFF. On the cable path the Pi and the radio have spent the
+        # whole build on Node Medic and are still there; the node does not exist
+        # until they are joined. The flow used to simply END here, leaving the
+        # operator holding two boards with nothing telling them what to do
+        # (operator, 2026-08-02). It lives in the PANEL, not only the popup: a
+        # dismissed popup is no use once your hands are full.
+        if getattr(self, "_last_type", "") == "pi_rnode":
+            self._handoff_block(board)
+            self.list.add_widget(_line("Birth another with Change at the top, "
+                                       "or hit BACK.", size="13sp",
+                                       color="text_secondary"))
+            return
         if board is not None:
             nxt = (f"{board.display_name} is flashed & verified as an RNode on the "
                    "standard channel (915.125 / 125 / SF9 / CR5 / 17 dBm). "
@@ -1886,6 +1910,96 @@ class BirthScreen(BoxLayout):
         self.list.add_widget(_line(nxt, size="15sp"))
         self.list.add_widget(_line("Birth another with Change at the top, or hit "
                                    "BACK.", size="13sp", color="text_secondary"))
+
+    def _handoff_photos(self, board):
+        """The Pi and the radio, side by side, with a joining arrow."""
+        from kivy.uix.image import Image
+        from ui import board_images
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(150), spacing=dp(6))
+        pi_key = self._sel_pi[0] if self._sel_pi else ""
+        pi_png = board_images.image_for_pi(pi_key) or ""
+        board_png = board_images.image_for(getattr(board, "key", "")) or ""
+
+        def _cell(png, caption):
+            col = BoxLayout(orientation="vertical", spacing=dp(2))
+            if png:
+                col.add_widget(Image(source=png, allow_stretch=True,
+                                     keep_ratio=True))
+            col.add_widget(_line(caption, size="12.5sp",
+                                 color="text_secondary"))
+            return col
+
+        row.add_widget(_cell(board_png,
+                             getattr(board, "display_name", "the radio")))
+        arrow = _line("->", size="30sp", bold=True, color="green")
+        arrow.size_hint_x = None
+        arrow.width = dp(44)
+        row.add_widget(arrow)
+        row.add_widget(_cell(pi_png, next(
+            (n for k, n in PI_HOSTS if k == pi_key), "the Raspberry Pi")))
+        return row
+
+    def _handoff_block(self, board):
+        """The three physical actions that turn a finished build into a node.
+
+        Wording comes from cable_birth.plan()/unmoved_warning() so the screen and
+        the model can't drift apart, and so the radio's stable port name is
+        stated where the operator is about to move it.
+        """
+        pi_name = "the Raspberry Pi"
+        try:
+            pi_name = next((n for k, n in PI_HOSTS
+                            if self._sel_pi and k == self._sel_pi[0]), pi_name)
+        except Exception:
+            pass
+        board_name = board.display_name if board is not None else "the radio"
+
+        self.list.add_widget(_line(
+            "Last step - join them together", bold=True, size="17sp",
+            color="accent"))
+        # Show the ACTUAL two boards, not a diagram. The operator is holding
+        # them; matching what's on screen to what's in their hands is the whole
+        # point (standing design aim, 2026-08-02). Whichever Pi and whichever
+        # radio were used, their own photos are used — and a model we have no
+        # photo of simply shows no picture rather than someone else's board.
+        try:
+            self.list.add_widget(self._handoff_photos(board))
+        except Exception:
+            pass
+        steps = [
+            f"1.  Unplug BOTH the {pi_name} and the {board_name} from Node Medic.",
+            f"2.  Plug the {board_name} into the {pi_name}'s USB port - the DATA "
+            f"port (nearer the mini-HDMI on a Pi Zero), not PWR IN.",
+            f"3.  Power the {pi_name} from its PWR IN port.",
+        ]
+        for line in steps:
+            self.list.add_widget(_line(line, size="15sp"))
+        self.list.add_widget(_line(
+            "It starts up, finds its radio and announces itself - watch VITALS "
+            "for its first health beacon.", size="14sp", color="green"))
+        # Which radio, specifically. The Pi's config names one port.
+        try:
+            from provisioning.cable_birth import stable_port_for, unmoved_warning
+            port = stable_port_for("/dev/ttyUSB0")
+            self.list.add_widget(_line(unmoved_warning(port), size="13sp",
+                                       color="amber"))
+        except Exception:
+            pass
+        # Honest about what this pairing costs once the medic stops feeding it.
+        try:
+            from workflows.power_compat import check as _power_check
+            pi_key = self._sel_pi[0] if self._sel_pi else ""
+            bkey = getattr(board, "key", "")
+            v = _power_check(pi_key, bkey) if (pi_key and bkey) else None
+            if v and v.get("verdict") in ("blocked", "caution"):
+                self.list.add_widget(_line(
+                    f"Note: Node Medic was powering the {board_name} during the "
+                    f"build. Once it runs off the {pi_name} the pairing's own "
+                    f"limits apply - {v.get('why', '')}", size="13sp",
+                    color="amber"))
+        except Exception:
+            pass
 
     def _finish(self):
         self._mark_activity(False)               # build done -> screensaver allowed again

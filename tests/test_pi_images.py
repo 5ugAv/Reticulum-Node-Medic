@@ -1,0 +1,69 @@
+"""Whichever Pi and whichever radio were used, show THEIR photos.
+
+Standing design aim (operator, 2026-08-02): the operator is holding the boards;
+matching what's on screen to what's in their hands is the point. A photo of the
+WRONG board is worse than no photo, because the check silently passes.
+"""
+
+import os
+
+from ui.board_images import image_for, image_for_pi, pi_art_status
+
+
+def test_the_pi_zero_photo_resolves():
+    """The art predates the assets/boards convention and lives in the animation
+    folder — the resolver must find it there rather than requiring a move."""
+    p = image_for_pi("pi_zero_2w")
+    assert p and os.path.exists(p)
+    assert p.endswith("pi_zero_2w.png")
+
+
+def test_the_heltec_v3_photo_resolves():
+    p = image_for("heltec32_v3")
+    assert p and os.path.exists(p)
+
+
+def test_a_pi_we_have_no_photo_of_returns_nothing():
+    """Degrade to the generic drawing, never to a different Pi's photo."""
+    assert image_for_pi("pi_4b") is None or os.path.exists(image_for_pi("pi_4b"))
+    assert image_for_pi("") is None
+    assert image_for_pi("not_a_pi") is None
+
+
+def test_the_5a_and_3a_pi5_share_one_photo():
+    """Same physical board — the split is about the power supply."""
+    assert image_for_pi("pi_5_full") == image_for_pi("pi_5")
+
+
+def test_art_status_covers_every_pi_the_power_model_knows():
+    from workflows.power_compat import PI_POWER
+    assert set(pi_art_status()) == set(PI_POWER)
+
+
+def test_drop_in_contract_holds_for_pis_too():
+    """Same as boards: putting assets/boards/<pi_key>.png in place starts using
+    it with no code change."""
+    import ui.board_images as bi
+    assert any("boards" in d for d in bi._PI_DIRS)
+
+
+# --- wiring -----------------------------------------------------------------
+
+def test_the_handoff_shows_both_real_photos():
+    src = open("ui/screens/birth_screen.py").read()
+    block = src[src.index("def _handoff_photos"):src.index("def _handoff_block")]
+    assert "image_for_pi" in block and "image_for" in block
+
+
+def test_the_pi_animation_can_render_the_detected_model():
+    src = open("ui/widgets/birth_anims.py").read()
+    cls = src[src.index("class ConnectPiAnim"):]
+    assert "pi_key" in cls and "image_for_pi" in cls
+    assert "PI_ZERO_PNG" in cls, "must still fall back to the generic drawing"
+
+
+def test_the_board_animation_can_render_the_detected_board():
+    src = open("ui/widgets/birth_anims.py").read()
+    cls = src[src.index("class ConnectBoardAnim"):src.index("class ConnectPiAnim")]
+    assert "board_key" in cls and "image_for" in cls
+    assert "LORA_PNG" in cls, "must still fall back to the generic drawing"

@@ -733,8 +733,25 @@ class ConnectPiAnim(ConnectBoardAnim):
     #: here if the cable root drifts off the socket.
     PORT = (0.055, 0.58)
 
+    def __init__(self, pi_key: str = "", **kwargs):
+        """*pi_key* renders THAT Raspberry Pi model instead of the stock Zero.
+
+        Falls back to the Zero drawing when we have no photo of the detected
+        model — generic art is honest, a photo of the WRONG Pi is not.
+        """
+        super().__init__(**kwargs)
+        self._pi_png = ""
+        if pi_key:
+            try:
+                from ui import board_images
+                self._pi_png = board_images.image_for_pi(pi_key) or ""
+            except Exception:
+                self._pi_png = ""
+
     def _draw(self):
-        medic_tex, board_tex = _texture(MEDIC_PNG), _texture(PI_ZERO_PNG)
+        medic_tex = _texture(MEDIC_PNG)
+        board_tex = (_texture(self._pi_png) if self._pi_png else None) \
+            or _texture(PI_ZERO_PNG)
         if medic_tex is None or board_tex is None:
             return self._draw_fallback()
         x, y, w, h = self.x, self.y, self.width, self.height

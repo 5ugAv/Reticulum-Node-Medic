@@ -466,3 +466,46 @@ def test_kin_names_are_matched_case_and_space_insensitively():
         kr.load_roster = orig
     assert names.get("faith rtnode") == "FAITH RTnode"
     assert names.get("faith-rtnode") == "FAITH RTnode"   # hostnames use dashes
+
+
+# --- the hand-off must actually be shown ------------------------------------
+
+def test_the_handoff_is_in_the_persistent_panel_not_only_a_popup():
+    """A dismissed popup is no use once the operator's hands are full of two
+    boards. The flow used to simply END after the build (operator, 2026-08-02)."""
+    src = open("ui/screens/birth_screen.py").read()
+    assert "_handoff_block" in src
+    panel = src[src.index("def _outcome_panel"):src.index("def _handoff_block")]
+    assert "_handoff_block(board)" in panel, "not wired into the outcome panel"
+
+
+def test_the_handoff_names_all_three_physical_actions():
+    src = open("ui/screens/birth_screen.py").read()
+    block = src[src.index("def _handoff_block"):src.index("def _finish")]
+    assert "Unplug BOTH" in block
+    assert "DATA" in block and "PWR IN" in block     # the Zero's two identical ports
+    assert "Power the" in block
+
+
+def test_the_completion_popup_does_not_claim_it_is_finished():
+    """The node does not exist yet — both boards are still on the medic."""
+    src = open("ui/screens/birth_screen.py").read()
+    assert "Built — but not finished yet" in src
+    assert "One last step" in src
+
+
+def test_the_handoff_reuses_the_shared_wording_not_a_copy():
+    """Screen and model must not drift: the radio-identity warning comes from
+    cable_birth, which knows whether the serial actually pins one board."""
+    src = open("ui/screens/birth_screen.py").read()
+    block = src[src.index("def _handoff_block"):src.index("def _finish")]
+    assert "unmoved_warning" in block and "stable_port_for" in block
+
+
+def test_the_handoff_is_honest_about_power_after_the_medic_lets_go():
+    """During the build the MEDIC powers the radio. Afterwards the Pi does, and
+    a Zero+V3 pairing is exactly the case the power model warns about."""
+    src = open("ui/screens/birth_screen.py").read()
+    block = src[src.index("def _handoff_block"):src.index("def _finish")]
+    assert "power_compat" in block
+    assert "was powering" in block

@@ -84,3 +84,49 @@ def has_screen(key: str) -> bool:
 def label(key: str, default: str = "") -> str:
     b = get(key)
     return b["label"] if b else default
+
+
+# --------------------------------------------------------------------------- #
+# Raspberry Pi photos
+# --------------------------------------------------------------------------- #
+
+#: Where Pi artwork may live. Radio boards settled on assets/boards/<key>.png;
+#: the first Pi photo predates that and sits in the animation folder. Search
+#: both rather than move a file the animations already reference.
+_PI_DIRS = (
+    os.path.join(os.path.dirname(_DIR), "boards"),
+    os.path.join(os.path.dirname(_DIR), "ui", "anim"),
+)
+
+#: Pis that are the same physical board, so they share a photo. The 3 A / 5 A
+#: split is about the SUPPLY, not the hardware.
+_PI_ALIASES = {"pi_5_full": "pi_5"}
+
+
+def image_for_pi(pi_key: str) -> Optional[str]:
+    """Path to a photo of this Raspberry Pi model, or None.
+
+    Same drop-in contract as the boards: put ``assets/boards/<pi_key>.png`` in
+    place and the flow starts using it, no code change. Missing art degrades to
+    the generic Pi drawing — never to a photo of a DIFFERENT Pi, which would be
+    worse than none at all, since the operator is using it to check what is in
+    their hand (standing design aim, 2026-08-02).
+    """
+    key = (pi_key or "").strip()
+    if not key:
+        return None
+    for candidate in (key, _PI_ALIASES.get(key, "")):
+        if not candidate:
+            continue
+        for d in _PI_DIRS:
+            path = os.path.join(d, f"{candidate}.png")
+            if os.path.exists(path):
+                return path
+    return None
+
+
+def pi_art_status() -> Dict[str, bool]:
+    """{pi_key: has a photo} — so a screen can tell what it can illustrate."""
+    keys = ("pi_zero_2w", "pi_3a_plus", "pi_3b_plus", "pi_4b", "pi_5",
+            "pi_5_full")
+    return {k: image_for_pi(k) is not None for k in keys}
