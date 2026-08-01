@@ -66,6 +66,19 @@ SENSITIVE_ROOTS = (
     ".reticulum",              # storage/transport_identity, storage/identities/, config
 )
 
+#: RECORDS-ONLY roots — the operator's chosen shape (2026-08-02). Only the
+#: medic's own records go in the vault: the kin roster with every node's EXACT
+#: coordinates, birth certificates, the GPS/activity history, the operator's
+#: LXMF address. The MESH IDENTITY (~/.reticulum, ~/.lxmd) deliberately stays
+#: OUTSIDE, so rnsd/lxmd start unattended and the medic rejoins the mesh by
+#: itself after a power cut — it is a home propagation node, and losing it
+#: from the mesh until someone walks home was judged the greater harm.
+#: The trade, stated honestly: a stolen card reveals that this is a Reticulum
+#: node and its mesh address, but NOT where the fleet is or who runs it.
+RECORDS_ROOTS = (
+    ".reticulum-node-medic",
+)
+
 #: Suffix for the pre-migration backup left in place (NOT deleted) so enabling
 #: the vault is reversible even if a copy went wrong. The human removes these
 #: after verifying the mesh still works.
