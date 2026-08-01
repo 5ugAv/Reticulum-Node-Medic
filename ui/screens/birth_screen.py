@@ -274,6 +274,13 @@ class BirthScreen(BoxLayout):
         self.list.bind(minimum_height=self.list.setter("height"))
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
+        # Mark content below the fold. A green start button under the fold reads
+        # as an ABSENT button, so the screen looks broken (operator, 2026-08-02).
+        try:
+            from ui.widgets.scroll_hint import attach as _attach_hint
+            _attach_hint(self.scroll, parent=self)
+        except Exception:
+            pass
 
     def _sel_button(self, label, on_tap):
         """A wide tappable selector showing the current pick (or a prompt)."""
@@ -399,6 +406,14 @@ class BirthScreen(BoxLayout):
             else:
                 self.header.add_widget(self._sel_button(
                     self._sel_board.display_name, self._choose_board))
+                # Say that this one was FOUND. Next to it sits the Host Pi row,
+                # which asks to be tapped — and with both rendered as identical
+                # grey buttons an operator reads the pair as "it's asking me to
+                # choose a board" even though the board is already known
+                # (walkthrough 2026-08-02).
+                self.header.add_widget(_line(
+                    "✓ Found by Node Medic — tap only to change it.",
+                    size="12.5sp", color="green"))
             if self._firmware == "pi_rnode":
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
                 self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
@@ -417,19 +432,23 @@ class BirthScreen(BoxLayout):
                         names = dict(PI_HOSTS)
                         if host.should_auto_select and host.key in names:
                             self._sel_pi = (host.key, names[host.key])
+                        _host_assumed = host.is_assumed
                         detected_note = pi_model.describe(
                             host, lambda k: names.get(k, k))
                     except Exception:
                         detected_note = ""
                 self.header.add_widget(self._sel_button(
-                    self._sel_pi[1] if self._sel_pi else "Tap to choose a Pi",
+                    self._sel_pi[1] if self._sel_pi else "Tap to choose which Raspberry Pi",
                     self._choose_pi))
-                if detected_note and self._sel_pi is not None:
-                    self.header.add_widget(_line(detected_note, size="12.5sp",
-                                                 color="green"))
-                elif detected_note:
-                    self.header.add_widget(_line(detected_note, size="12.5sp",
-                                                 color="amber"))
+                if detected_note:
+                    # Green only when the Pi actually told us. An assumption
+                    # gets amber, so a filled-in field is never mistaken for a
+                    # confirmed one (operator asked why it couldn't detect the
+                    # Pi, 2026-08-02 — the answer is that it can't YET).
+                    assumed = bool(locals().get("_host_assumed"))
+                    self.header.add_widget(_line(
+                        detected_note, size="12.5sp",
+                        color="amber" if assumed else "green"))
                 # The medic NAMED the Pi when it imaged the card, so it can
                 # offer the address itself — an operator has no way to know an
                 # IP, and being unable to continue without one blocked the
@@ -488,13 +507,12 @@ class BirthScreen(BoxLayout):
                         w_.parent.remove_widget(w_)
                 row.add_widget(self._pi_addr_in)
                 row.add_widget(self._pi_user_in)
-                find = Button(text="Find", size_hint=(None, 1), width=dp(78),
-                              bold=True, font_size="14sp", background_normal="",
-                              background_color=theme.hex_to_rgba(
-                                  theme.COLORS["accent"]),
-                              color=theme.hex_to_rgba(theme.COLORS["background"]))
-                find.bind(on_release=lambda *_: self._find_pi())
-                row.add_widget(find)
+                # No Find button. The medic looks by itself — over the cable
+                # first, then the name it gave the Pi — so a button asking the
+                # operator to trigger a search is asking them to do the tool's
+                # job (operator, 2026-08-02). It searches on open instead.
+                from kivy.clock import Clock as _Clock
+                _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
                 self.header.add_widget(row)
                 self._pi_find_status = _line("", size="12sp", color="green")
                 self.header.add_widget(self._pi_find_status)
@@ -1239,9 +1257,12 @@ class BirthScreen(BoxLayout):
         if board is not None:
             self.list.add_widget(_line(f"{board.display_name}", bold=True,
                                        size="16sp"))
-        self.list.add_widget(_line(
-            "Radio settings — pre-filled with your tool defaults. Change only "
-            "if you know why, then press OK.", size="14sp"))
+        # The five radio fields are correct by default and almost never touched,
+        # but expanded they pushed the green start button off the bottom of the
+        # screen — where it simply looks absent unless you already know to
+        # scroll (operator, 2026-08-02). Collapsed behind a summary line, the
+        # start button fits on the same screen; open them and you scroll past
+        # them, which is the right way round.
         fields = [
             ("freq", "Frequency (MHz)", f"{dd['freq']:g}"),
             ("bw", "Bandwidth (kHz)", f"{dd['bw']:g}"),
@@ -1249,8 +1270,48 @@ class BirthScreen(BoxLayout):
             ("cr", "Coding rate", str(dd['cr'])),
             ("txp", "TX power (dBm)", str(dd['txp'])),
         ]
+        summary = (f"{dd['freq']:g} MHz · BW{dd['bw']:g} · SF{dd['sf']} · "
+                   f"CR{dd['cr']} · {dd['txp']} dBm")
+        self._params_open = False
+        self._params_box = BoxLayout(orientation="vertical", size_hint_y=None,
+                                     spacing=dp(6))
+        self._params_box.bind(minimum_height=self._params_box.setter("height"))
+        self._params_box.height = 0
+
+        toggle = Button(size_hint_y=None, height=dp(54), font_size="15sp",
+                        halign="left", valign="middle", background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        toggle.bind(size=lambda i, v: setattr(i, "text_size",
+                                              (v[0] - dp(24), v[1])))
+
+        def _sync_toggle():
+            arrow = "▾" if self._params_open else "▸"
+            toggle.text = f"  {arrow}  Radio parameters     {summary}"
+
+        def _toggle(*_a):
+            self._params_open = not self._params_open
+            self._params_box.clear_widgets()
+            if self._params_open:
+                for key, label, value in fields:
+                    self._params_box.add_widget(
+                        self._param_row(key, label, value))
+            else:
+                # keep the inputs alive so edits survive collapsing
+                pass
+            _sync_toggle()
+
+        _sync_toggle()
+        toggle.bind(on_release=_toggle)
+        self.list.add_widget(toggle)
+        self.list.add_widget(self._params_box)
+
+        # Build the inputs up front (hidden) so _confirm_params always has them,
+        # whether or not the operator ever opened the drawer.
         for key, label, value in fields:
-            self.list.add_widget(self._param_row(key, label, value))
+            if key not in self._param_inputs:
+                self._param_row(key, label, value)
+
         ok = Button(text="OK — start", size_hint_y=None, height=dp(60),
                     font_size="20sp", bold=True, background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),

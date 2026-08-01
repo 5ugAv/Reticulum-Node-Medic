@@ -57,6 +57,11 @@ class PiImagerScreen(BoxLayout):
         self.col.bind(minimum_height=self.col.setter("height"))
         body.add_widget(self.col)
         self.add_widget(body)
+        try:
+            from ui.widgets.scroll_hint import attach as _attach_hint
+            _attach_hint(body, parent=self)
+        except Exception:
+            pass
         self._build()
 
     def _field(self, label, hint, key, password=False, numeric=False):

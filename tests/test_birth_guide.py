@@ -67,7 +67,10 @@ def test_the_radio_goes_on_the_MEDIC_not_on_the_pi():
     feed a Heltec V3, but the medic can, and it does the flashing."""
     radio = [s for s in guide_steps("pi") if "radio" in s["title"].lower()][0]
     assert "Node Medic" in radio["title"]
-    assert "not into the Pi" in radio["body"]
+    # A hub counts as Node Medic's side — the medic identifies boards by USB
+    # serial, not by which port they hang off (verified: nothing in the tree
+    # keys on bus/port). What must never happen is the radio going on the Pi.
+    assert "not into the pi" in radio["body"].lower()
 
 
 def test_the_operator_is_told_to_restart_the_pi_after_imaging():

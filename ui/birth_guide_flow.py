@@ -112,10 +112,10 @@ _STEPS = {
         # Heltec V3 (900 mA peak against a 500 mA budget), but the medic has
         # 1600 mA and does the flashing itself.
         {"title": tr("Connect the radio board to Node Medic"),
-         "body": tr("Plug the radio into a different USB port on Node Medic — "
-                    "not into the Pi. Node Medic powers and flashes it here, "
-                    "where there's plenty of power, and remembers which radio "
-                    "it is so the Pi finds it later."),
+         "body": tr("Plug the radio into Node Medic — or into the same USB hub, "
+                    "either works — but NOT into the Pi. Node Medic powers and "
+                    "flashes it here, where there's plenty of power, and "
+                    "remembers which radio it is so the Pi finds it later."),
          "hint": tr("Attach the antenna first if you haven't — never power a "
                     "radio board without one."),
          "anim": "connect_board",

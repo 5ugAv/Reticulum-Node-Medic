@@ -18,8 +18,16 @@ Two sources, in order of how much they actually prove:
    Zero 2 W has a 500 mA budget and a 3 A+ has 1000 mA, so guessing between them
    would silently change whether a Heltec V3 is safe to hang off it.
 
-So this module returns a confidence with every answer, and the UI is expected to
-auto-select only on ``exact`` — narrowing the choice on a hint, never making it.
+Measured on the medic, a Pi in boot-ROM mode advertises ``iSerial 0`` and
+``bcdDevice 0.00`` — there is literally no bit present that separates the three.
+So rather than stop the operator with a question the tool will be able to answer
+itself in a few minutes, it fills in the SAFEST candidate (lowest power budget)
+and labels it as assumed. The failure modes aren't symmetric: assuming a Zero
+2 W costs a warning that wasn't needed, assuming a 3 B+ costs a genuinely
+under-powered node shipping with no warning at all.
+
+Every answer carries how it was reached, so the screen can show the difference
+between "read from the Pi" and "assumed from the chip".
 Parsing is pure; only ``detect`` touches hardware.
 """
 
@@ -53,6 +61,14 @@ EXACT = "exact"        # read from the Pi itself
 NARROWED = "narrowed"  # SoC family known, model is not
 UNKNOWN = "unknown"
 
+#: When the chip can't say WHICH board it is, assume the one with the smallest
+#: power budget among the candidates. The only thing this field feeds is the
+#: powered-hub warning, and the failure modes are not symmetric: assume a Zero
+#: 2 W and the worst case is a warning the operator didn't need; assume a 3 B+
+#: and a genuinely under-powered node ships with no warning at all.
+#: Confirmed against the Pi itself the moment it boots.
+ASSUME_SMALLEST = True
+
 
 @dataclass
 class HostPi:
@@ -64,13 +80,19 @@ class HostPi:
 
     @property
     def should_auto_select(self) -> bool:
-        """Only an exact read may pick FOR the operator.
+        """May the screen fill this in without asking?
 
-        A guess between a Zero 2 W and a 3 A+ is a guess between a 500 mA and a
-        1000 mA budget, which is exactly the question the power check exists to
-        answer. Better to narrow the list than to answer it wrongly.
+        Yes even on a narrowed guess — but only because the guess is
+        deliberately the LOWEST-power candidate, so being wrong produces a
+        warning that wasn't needed rather than silence where one was. An exact
+        read replaces it the moment the Pi boots.
         """
-        return self.confidence == EXACT and bool(self.key)
+        return bool(self.key) and self.confidence in (EXACT, NARROWED)
+
+    @property
+    def is_assumed(self) -> bool:
+        """True when this was inferred from the chip, not read from the board."""
+        return self.confidence == NARROWED
 
 
 def key_from_model(model: str) -> str:
@@ -95,19 +117,36 @@ def from_model_string(model: str) -> HostPi:
                   how="read from the Pi itself")
 
 
+def _smallest_budget(keys: List[str]) -> str:
+    """The candidate with the least USB power to give."""
+    try:
+        from workflows.power_compat import PI_POWER
+        known = [k for k in keys if k in PI_POWER]
+        if known:
+            return min(known, key=lambda k: PI_POWER[k]["budget_ma"])
+    except Exception:                                  # noqa: BLE001
+        pass
+    return keys[0] if keys else ""
+
+
 def from_usb_id(usb_id: str) -> HostPi:
-    """A narrowing from the boot-ROM USB id — never an exact answer."""
+    """A narrowing from the boot-ROM USB id.
+
+    A Pi in boot-ROM mode advertises its chip and NOTHING else — measured on the
+    medic, ``iSerial 0``, ``bcdDevice 0.00``, product string "BCM2710 Boot".
+    There is no bit present that separates a Zero 2 W from a 3 A+, so this can
+    never be an exact answer; it fills in the safest candidate and says so.
+    """
     cands = SOC_CANDIDATES.get((usb_id or "").lower())
     if not cands:
         return HostPi(confidence=UNKNOWN, how="no Pi seen on USB")
     if len(cands) == 1:
-        # Still not proof of the board, but there is only one candidate we
-        # support, so the operator has nothing left to choose.
         return HostPi(key=cands[0], confidence=NARROWED, candidates=cands,
                       how="identified from the chip it uses")
-    return HostPi(confidence=NARROWED, candidates=cands,
-                  how="these all use the same chip — Node Medic can't tell them "
-                      "apart until the Pi has started up")
+    return HostPi(key=_smallest_budget(cands) if ASSUME_SMALLEST else "",
+                  confidence=NARROWED, candidates=cands,
+                  how="assumed from the chip — these boards are identical until "
+                      "one starts up. Node Medic will confirm it then")
 
 
 def detect(run_on_pi: Optional[Callable[[str], tuple]] = None,

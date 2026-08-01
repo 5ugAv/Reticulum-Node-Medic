@@ -23,7 +23,7 @@ def test_real_model_strings_map_to_the_right_power_profile(model, key):
     got = pm.from_model_string(model)
     assert got.key == key
     assert got.confidence == pm.EXACT
-    assert got.should_auto_select
+    assert got.should_auto_select and not got.is_assumed
 
 
 def test_a_trailing_null_from_device_tree_is_handled():
@@ -41,22 +41,32 @@ def test_something_that_is_not_a_pi_is_not_guessed_at():
 # --- the hint, from the boot-ROM USB id ------------------------------------
 
 def test_a_zero_and_a_3a_plus_are_NOT_told_apart_by_the_chip():
-    """Both are BCM2837-class. Guessing between them is guessing between a
-    500 mA and a 1000 mA budget — precisely the question the power check is
-    there to answer."""
+    """Both are BCM2837-class. Measured on the medic: iSerial 0, bcdDevice 0.00
+    — there is no bit present that separates them."""
     got = pm.from_usb_id("0a5c:2764")
     assert got.confidence == pm.NARROWED
-    assert got.should_auto_select is False
+    assert got.is_assumed
     assert set(got.candidates) >= {"pi_zero_2w", "pi_3a_plus"}
 
 
-def test_a_single_candidate_chip_still_is_not_called_exact():
-    """A Pi 4 is the only board we profile on BCM2711, so there is nothing left
-    to choose — but it was inferred, not read, and must not claim otherwise."""
+def test_an_ambiguous_chip_assumes_the_LOWEST_power_candidate():
+    """The failure modes are not symmetric. Assuming a Zero 2 W costs a warning
+    that wasn't needed; assuming a 3 B+ costs a genuinely under-powered node
+    shipping with no warning at all."""
+    from workflows.power_compat import PI_POWER
+    got = pm.from_usb_id("0a5c:2764")
+    budgets = {k: PI_POWER[k]["budget_ma"] for k in got.candidates if k in PI_POWER}
+    assert got.key == min(budgets, key=budgets.get) == "pi_zero_2w"
+    assert got.should_auto_select, "should fill in rather than block the operator"
+
+
+def test_a_single_candidate_chip_is_filled_in_but_still_not_called_exact():
+    """A Pi 4 is the only board we profile on BCM2711 — but it was inferred,
+    not read, and must not claim otherwise."""
     got = pm.from_usb_id("0a5c:2711")
     assert got.key == "pi_4b"
-    assert got.confidence == pm.NARROWED
-    assert got.should_auto_select is False
+    assert got.confidence == pm.NARROWED and got.is_assumed
+    assert got.should_auto_select
 
 
 def test_an_unknown_usb_id_says_so():
@@ -99,10 +109,11 @@ def test_an_exact_read_says_where_it_came_from():
     assert "Zero 2 W" in line and "read from the Pi itself" in line
 
 
-def test_an_ambiguous_chip_lists_the_options_and_asks():
+def test_an_assumed_answer_says_it_is_assumed_and_will_be_confirmed():
+    """The operator must be able to tell a guess from a reading."""
     line = pm.describe(pm.from_usb_id("0a5c:2764"), _name)
-    assert "Zero 2 W" in line and "3 A+" in line
-    assert "Pick one" in line
+    assert "Zero 2 W" in line
+    assert "assumed" in line and "confirm" in line
 
 
 def test_no_pi_at_all_falls_back_to_the_plain_prompt():
