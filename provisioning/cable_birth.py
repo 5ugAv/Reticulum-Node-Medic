@@ -250,12 +250,45 @@ def stable_port_for(port: str, runner=None) -> str:
     return port
 
 
+#: Serial numbers that are NOT unique. Seen live on a Heltec V3 (2026-08-01):
+#: its CP2102 reports "0001", the factory default — every V3 off that line has
+#: it. A by-id path is only as unique as the serial baked into it, so treating
+#: one of these as an identity would be a false promise.
+PLACEHOLDER_SERIALS = {"0001", "0000", "0", "1", "00000000", "12345678"}
+
+
+def by_id_serial(by_id_path: str) -> str:
+    """The serial embedded in a ``/dev/serial/by-id/`` name, or "" if there
+    isn't one. Format: ``usb-<vendor>_<product>_<serial>-ifXX[-portX]``."""
+    if not by_id_path.startswith("/dev/serial/by-id/"):
+        return ""
+    name = by_id_path.rsplit("/", 1)[-1]
+    stem = name.split("-if")[0]
+    return stem.rsplit("_", 1)[-1] if "_" in stem else ""
+
+
+def is_uniquely_identified(by_id_path: str) -> bool:
+    """Does this by-id path actually pin ONE physical board?"""
+    serial = by_id_serial(by_id_path)
+    return bool(serial) and serial not in PLACEHOLDER_SERIALS
+
+
 def unmoved_warning(by_id_path: str) -> str:
     """Wording for the one failure this hand-off can still have: the operator
-    plugs a DIFFERENT radio into the Pi from the one that was flashed."""
-    if not by_id_path.startswith("/dev/serial/by-id/"):
-        return ("The radio reports no unique serial, so the Pi will use the "
-                "first radio it finds. Make sure only the radio you just "
-                "flashed is plugged into it.")
-    return ("The Pi is configured for this exact radio, so plug in the one you "
-            "just flashed — another board of the same model won't be picked up.")
+    plugs a DIFFERENT radio into the Pi from the one that was flashed.
+
+    Only claims the radio is pinned when the serial really is unique — a
+    factory-default serial like the Heltec V3's "0001" would match any board of
+    that model, and saying otherwise would be a promise we can't keep.
+    """
+    if is_uniquely_identified(by_id_path):
+        return ("The Pi is configured for this exact radio, so plug in the one "
+                "you just flashed — another board of the same model won't be "
+                "picked up.")
+    if by_id_path.startswith("/dev/serial/by-id/"):
+        return ("This radio uses its maker's default serial number, so the Pi "
+                "can't tell it apart from another board of the same model. "
+                "Plug in only the radio you just flashed.")
+    return ("The radio reports no unique serial, so the Pi will use the "
+            "first radio it finds. Make sure only the radio you just "
+            "flashed is plugged into it.")

@@ -269,3 +269,36 @@ def test_warning_distinguishes_a_pinned_radio_from_an_anonymous_one():
     anon = cb.unmoved_warning("/dev/ttyUSB0")
     assert "this exact radio" in pinned
     assert "no unique serial" in anon and "only the radio you just" in anon
+
+
+# --- a by-id path is only as unique as its serial ---------------------------
+
+_LIVE_V3 = ("/dev/serial/by-id/"
+            "usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0")
+_LIVE_JONESEY = ("/dev/serial/by-id/"
+                 "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00")
+
+
+def test_serial_is_extracted_from_real_by_id_names():
+    """Both observed live on the medic, 2026-08-01."""
+    assert cb.by_id_serial(_LIVE_V3) == "0001"
+    assert cb.by_id_serial(_LIVE_JONESEY) == "A1:B2:C3:D4:E5:F6"
+    assert cb.by_id_serial("/dev/ttyUSB0") == ""
+
+
+def test_the_heltec_v3s_factory_serial_is_not_treated_as_an_identity():
+    """Live finding: the V3's CP2102 reports 0001, the factory default — every
+    board off that line has it. Claiming it pins one radio would be false."""
+    assert not cb.is_uniquely_identified(_LIVE_V3)
+    assert cb.is_uniquely_identified(_LIVE_JONESEY)
+
+
+def test_warning_only_promises_a_pinned_radio_when_it_can_keep_it():
+    assert "this exact radio" in cb.unmoved_warning(_LIVE_JONESEY)
+    v3 = cb.unmoved_warning(_LIVE_V3)
+    assert "this exact radio" not in v3
+    assert "default serial number" in v3 and "only the radio you just" in v3
+
+
+def test_a_bare_device_path_is_still_handled():
+    assert "first radio it finds" in cb.unmoved_warning("/dev/ttyUSB0")
