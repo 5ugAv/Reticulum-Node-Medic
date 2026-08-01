@@ -65,6 +65,12 @@ def list_target_disks(run: Runner = _run) -> List[Dict]:
             continue
         if name == sysd or name.startswith("loop") or name.startswith("zram"):
             continue                                  # never the system/virtual disks
+        if size.strip() in ("0B", "0", "0K", "0M"):
+            # An EMPTY slot of a multi-card reader enumerates as a 0-byte disk
+            # (seen live: a Genesys reader offering /dev/sda 0B beside the real
+            # card at /dev/sdb). Offering it as a target invites writing an OS
+            # to a slot with no card in it.
+            continue
         if tran == "usb" or rm == "1":                # removable / USB only
             disks.append({"name": name, "path": f"/dev/{name}", "size": size,
                           "model": model.strip(), "removable": True})

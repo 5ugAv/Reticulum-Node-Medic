@@ -190,3 +190,23 @@ def test_reseed_refuses_the_medics_own_disk():
     ok, msg = pi.reseed("/dev/mmcblk0", "hope", "pi", "pw", "id-1",
                         run=medic_run, run_shell=lambda c: (0, ""))
     assert ok is False and "Refusing" in msg
+
+
+def test_an_empty_card_reader_slot_is_not_offered_as_a_target():
+    """Live on the medic: a Genesys multi-slot reader presents its EMPTY slot
+    as /dev/sda 0B next to the real card at /dev/sdb. Listing it invites
+    writing an OS to a slot with no card in it."""
+    def run(argv, **kw):
+        if argv[:2] == ["findmnt", "-no"]:
+            return (0, "/dev/mmcblk0p2")
+        if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
+            return (0, "mmcblk0")
+        if argv[:2] == ["lsblk", "-dno"]:
+            return (0, "sda 0B disk usb 1 MassStorageClass\n"
+                       "sdb 29.7G disk usb 1 MassStorageClass\n"
+                       "mmcblk0 59.5G disk mmc 0 ")
+        return (0, "")
+
+    names = [d["name"] for d in pi.list_target_disks(run=run)]
+    assert names == ["sdb"], f"empty slot offered as a target: {names}"
+    assert pi.is_safe_target("/dev/sda", run=run) is False
