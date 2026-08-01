@@ -1129,19 +1129,36 @@ class BirthScreen(BoxLayout):
         """Warn that this Pi can't power this board over USB — Proceed (⚠ red,
         bottom-left) / Cancel (green, bottom-right)."""
         pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
-        body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(6))
-        headline = ("blocked" if verdict["verdict"] == "blocked"
-                    else "may brown out")
-        body.add_widget(_line(
-            f"The {pi_name} may not power the {board_name} over USB — {headline}.",
-            bold=True, size="16sp", color="amber"))
-        body.add_widget(_line(verdict.get("why", ""), size="14sp"))
-        body.add_widget(_line(
-            f"Use a POWERED USB HUB between the Pi and the {board_name}, or it "
-            "can fail mid-flash / mid-transmit.", size="14sp", color="amber"))
-        for rem in verdict.get("remedies", [])[:3]:
-            body.add_widget(_line("  • " + rem, size="12sp",
-                                  color="text_secondary"))
+        # The text can run long (warning + why + remedies + suggestions), and
+        # every child here has a FIXED height — so without a scroll the buttons
+        # get pushed off the bottom of the popup and become untappable. Same
+        # trap that hid the vault reset slider (operator report 2026-08-01).
+        root = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(6))
+        from kivy.uix.scrollview import ScrollView
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, bar_width=dp(4))
+        body = BoxLayout(orientation="vertical", spacing=dp(8),
+                         size_hint_y=None, padding=[0, 0, dp(6), 0])
+        body.bind(minimum_height=body.setter("height"))
+        scroll.add_widget(body)
+        root.add_widget(scroll)
+        # The COPY lives in workflows.power_compat.warning_lines() — pure, so
+        # the wording is unit-tested without a display, and the advice can
+        # never drift from the power model that produced the verdict.
+        from workflows.power_compat import warning_lines
+        _STYLE = {"head":   dict(bold=True, size="16sp", color="amber"),
+                  "warn":   dict(size="13.5sp", color="amber"),
+                  "body":   dict(size="14sp"),
+                  "bullet": dict(size="12sp", color="text_secondary"),
+                  "good":   dict(size="12.5sp", color="green")}
+        try:
+            lines = warning_lines(verdict, pi_name, board_name, pi_key)
+        except Exception:                                  # never block a birth
+            lines = [{"kind": "head", "text": verdict.get("why", "Power warning")}]
+        for ln in lines:
+            style = dict(_STYLE.get(ln["kind"], _STYLE["body"]))
+            if ln["kind"] == "good" and ln["text"].endswith(":"):
+                style["bold"] = True
+            body.add_widget(_line(ln["text"], **style))
         btns = BoxLayout(orientation="horizontal", size_hint_y=None,
                          height=dp(56), spacing=dp(10))
         proceed = Button(text="⚠  Proceed anyway", font_size="16sp",
@@ -1154,8 +1171,8 @@ class BirthScreen(BoxLayout):
                         color=theme.hex_to_rgba(theme.COLORS["background"]))
         btns.add_widget(proceed)       # bottom-left
         btns.add_widget(cancel)        # bottom-right
-        body.add_widget(btns)
-        popup = Popup(title="Power warning", content=body, size_hint=(0.92, 0.72),
+        root.add_widget(btns)          # OUTSIDE the scroll — always reachable
+        popup = Popup(title="Power warning", content=root, size_hint=(0.92, 0.86),
                       title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
         proceed.bind(on_release=lambda *_: (popup.dismiss(), on_proceed()))

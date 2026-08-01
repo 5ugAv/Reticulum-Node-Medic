@@ -105,6 +105,59 @@ def _remedies(pi_key: str, board_key: str, peak: int) -> List[str]:
     return out
 
 
+#: Human names for the recommendation list (the UI's own labels live in
+#: ui.screens.birth_screen; these keep this module standalone/testable).
+_PI_NAMES = {"pi_zero_2w": "Pi Zero 2 W", "pi_3a_plus": "Pi 3 A+",
+             "pi_3b_plus": "Pi 3 B+", "pi_4b": "Pi 4 B",
+             "pi_5": "Pi 5 (3 A)", "pi_5_full": "Pi 5 (5 A)"}
+_BOARD_NAMES = {"lora32_v21": "LilyGO LoRa32 v2.1", "lora32_v20": "LilyGO LoRa32 v2.0",
+                "lora32_v10": "LilyGO LoRa32 v1.0", "tbeam": "LilyGO T-Beam",
+                "heltec32_v2": "Heltec LoRa32 v2", "heltec32_v3": "Heltec LoRa32 v3",
+                "heltec32_v4": "Heltec LoRa32 v4", "t3s3": "LilyGO T3S3",
+                "rak4631": "RAK4631", "techo": "LilyGO T-Echo",
+                "tbeam_supreme": "LilyGO T-Beam Supreme", "tdeck": "LilyGO T-Deck",
+                "heltec_t114": "Heltec Mesh Node T114",
+                "xiao_esp32s3": "Seeed XIAO ESP32S3",
+                "heltec_wireless_tracker": "Heltec Wireless Tracker"}
+
+
+def recommended_pairings(limit: int = 4, pi_key: str = "") -> List[dict]:
+    """Pi + board combinations that power cleanly with real headroom — what to
+    suggest when the operator's chosen pair is blocked or marginal.
+
+    Computed from the same numbers as ``check`` (never hard-coded advice, so it
+    can't drift), ranked by MARGIN so the sturdiest pairing leads. When
+    *pi_key* is given, its own workable boards come first — an operator who
+    already owns that Pi would rather change the radio than the computer
+    (operator spec 2026-08-01).
+    """
+    # For each board, the SMALLEST Pi that still clears the headroom bar. A
+    # recommendation should be the simplest thing that works, not the biggest
+    # Pi in the catalogue — an operator reads "you need a Pi 5" as "this is
+    # expensive", when a 3 A+ would have done.
+    best = {}
+    for bk, board in BOARD_POWER.items():
+        for pk, pi in sorted(PI_POWER.items(), key=lambda kv: kv[1]["budget_ma"]):
+            v = check(pk, bk)
+            if not v or v.get("verdict") != "ok":
+                continue
+            best[bk] = {
+                "pi_key": pk, "board_key": bk,
+                "pi": _PI_NAMES.get(pk, pk),
+                "board": _BOARD_NAMES.get(bk, bk),
+                "margin_ma": pi["budget_ma"] - board["peak_ma"],
+                "pi_budget": pi["budget_ma"],
+                "same_pi": pk == pi_key,
+                "text": f"{_PI_NAMES.get(pk, pk)} + {_BOARD_NAMES.get(bk, bk)}",
+            }
+            break                       # smallest sufficient Pi wins
+    out = list(best.values())
+    # the operator's OWN Pi first (changing the radio is cheaper than the
+    # computer), then the simplest builds
+    out.sort(key=lambda r: (not r["same_pi"], r["pi_budget"], -r["margin_ma"]))
+    return out[:limit]
+
+
 def check(pi_key: str, board_key: str) -> Optional[dict]:
     """Verdict for powering *board_key* from *pi_key*'s USB:
     {verdict: ok|caution|blocked, why, remedies, src}. None = unknown pair."""
@@ -131,3 +184,44 @@ def check(pi_key: str, board_key: str) -> Optional[dict]:
             "why": f"This Pi cannot power this board: ~{peak} mA peak draw vs "
                    f"{budget} mA available - it will brown out.",
             "remedies": _remedies(pi_key, board_key, peak)}
+
+
+def warning_lines(verdict: dict, pi_name: str, board_name: str,
+                  pi_key: str = "") -> List[dict]:
+    """The power-warning copy, as ordered ``{text, kind}`` lines.
+
+    Pure so the WORDS can be tested without a display — the medic's Kivy popup
+    just renders whatever this returns. ``kind`` picks the colour:
+    ``head`` / ``warn`` / ``body`` / ``bullet`` / ``good``.
+
+    The operator's brief (2026-08-01): say plainly that the pairing will not run
+    reliably without a powered USB hub, and then point at combinations that
+    need no hub at all — most people don't own one, and a node that needs one
+    permanently isn't a simple build.
+    """
+    v = (verdict or {}).get("verdict", "")
+    headline = "blocked" if v == "blocked" else "may brown out"
+    lines = [
+        {"kind": "head",
+         "text": f"The {pi_name} may not power the {board_name} over USB "
+                 f"— {headline}."},
+    ]
+    if (verdict or {}).get("why"):
+        lines.append({"kind": "body", "text": verdict["why"]})
+    lines.append({"kind": "warn", "text":
+                  f"This pairing will NOT run reliably without a powered USB "
+                  f"hub between the Pi and the {board_name}. Note the flash "
+                  f"itself may well succeed — a radio draws its peak when "
+                  f"TRANSMITTING, so an under-powered node can brown out days "
+                  f"later in the field."})
+    for rem in (verdict or {}).get("remedies", [])[:3]:
+        lines.append({"kind": "bullet", "text": "  \u2022 " + rem})
+    recs = recommended_pairings(limit=3, pi_key=pi_key)
+    if recs:
+        lines.append({"kind": "good",
+                      "text": "Combinations that run without a powered hub:"})
+        for r in recs:
+            lines.append({"kind": "good",
+                          "text": f"  \u2713 {r['text']}   "
+                                  f"({r['margin_ma']} mA to spare)"})
+    return lines
