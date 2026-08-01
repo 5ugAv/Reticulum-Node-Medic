@@ -93,12 +93,23 @@ def cmdline_with_gadget(text: str) -> str:
 
 def config_txt_with_gadget(text: str) -> str:
     """Return *text* (a Pi ``config.txt``) with ``dtoverlay=dwc2`` present.
-    Idempotent — a no-op if the overlay is already declared."""
+    Idempotent — a no-op if the overlay is already declared.
+
+    The appended block opens with ``[all]``. config.txt is SECTIONED, and an
+    overlay inherits whichever section it falls under: stock Raspberry Pi OS
+    ends with ``[all]`` (verified on a real card, 2026-08-01) but it also ships
+    ``[cm4]``/``[cm5]``/``[pi5]`` blocks, and any image whose file ended on one
+    of those would have swallowed our line into a board filter that the target
+    board doesn't match — dwc2 silently absent, gadget silently dead, and
+    nothing to see in the file. Re-opening ``[all]`` costs one line and makes
+    the overlay apply wherever the card is booted.
+    """
     for line in text.splitlines():
         if line.strip() == _DWC2_OVERLAY:
             return text
     sep = "" if text.endswith("\n") or text == "" else "\n"
-    return f"{text}{sep}\n# USB gadget ethernet (Node Medic provisioning link)\n{_DWC2_OVERLAY}\n"
+    return (f"{text}{sep}\n# USB gadget ethernet (Node Medic provisioning link)\n"
+            f"[all]\n{_DWC2_OVERLAY}\n")
 
 
 @dataclass

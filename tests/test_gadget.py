@@ -70,3 +70,27 @@ def test_enable_gadget_idempotent_no_rewrite():
     assert res.ok and res.changed is False
     assert not any("tee /boot/firmware/config.txt" in c for c in conn.history)
     assert not any("tee /boot/firmware/cmdline.txt" in c for c in conn.history)
+
+
+def test_overlay_is_pinned_to_all_not_inherited_from_a_board_section():
+    """config.txt is SECTIONED. A file ending in [pi5] would swallow a bare
+    append into that filter — dwc2 absent on every other board, with nothing
+    wrong-looking in the file. Real stock Pi OS ships [cm4]/[cm5]/[pi5] blocks
+    (seen on a card imaged 2026-08-01), so the append must re-open [all]."""
+    from provisioning.gadget import config_txt_with_gadget
+    risky = "dtparam=audio=on\n\n[pi5]\ndtoverlay=nospi10\n"
+    out = config_txt_with_gadget(risky)
+    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    i = lines.index("dtoverlay=dwc2")
+    assert "[all]" in lines[:i], "overlay is not under an [all] section"
+    # and the last section header before our overlay must BE [all]
+    headers = [l for l in lines[:i] if l.startswith("[") and l.endswith("]")]
+    assert headers[-1] == "[all]"
+
+
+def test_pinning_stays_idempotent():
+    from provisioning.gadget import config_txt_with_gadget
+    once = config_txt_with_gadget("[pi5]\ndtoverlay=nospi10\n")
+    assert config_txt_with_gadget(once) == once
+    assert once.count("dtoverlay=dwc2") == 1
+    assert once.count("[all]") == 1

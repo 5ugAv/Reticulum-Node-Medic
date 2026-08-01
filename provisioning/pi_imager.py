@@ -220,6 +220,12 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         else:
             cable_msg = (" It can also be birthed over a USB cable straight into "
                          "Node Medic, with no WiFi at all.")
+    # Don't promise WiFi we were never given — a card imaged for the cable path
+    # has no PSK on it at all, and saying otherwise sends the operator hunting
+    # for a node that was never going to appear on their network.
+    reach = ("and power on — it will join WiFi and be reachable over SSH."
+             if wifi_ssid else
+             "and power on. No WiFi was configured, so reach it over the USB "
+             "cable to Node Medic.")
     return (True, f"SD card imaged and configured as '{hostname}'. Put it in the Pi "
-                  "and power on — it will join WiFi and be reachable over SSH."
-                  + cable_msg)
+                  f"{reach}" + cable_msg)

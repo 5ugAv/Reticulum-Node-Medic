@@ -302,3 +302,26 @@ def test_warning_only_promises_a_pinned_radio_when_it_can_keep_it():
 
 def test_a_bare_device_path_is_still_handled():
     assert "first radio it finds" in cb.unmoved_warning("/dev/ttyUSB0")
+
+
+def test_a_wifi_free_card_is_not_advertised_as_joining_wifi():
+    """It has no PSK at all — telling the operator it will join WiFi sends them
+    hunting for a node that can never appear on their network."""
+    from provisioning import pi_imager
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "hope", "pi", "pw", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=lambda c: (0, ""),
+        pw_hasher=lambda p: "$6$hash", authorized_keys=[])
+    assert ok
+    assert "join WiFi" not in msg
+    assert "No WiFi was configured" in msg and "USB cable" in msg
+
+
+def test_a_wifi_card_still_says_so():
+    from provisioning import pi_imager
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "hope", "pi", "pw", wifi_ssid="HomeNet",
+        wifi_password="x", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=lambda c: (0, ""),
+        pw_hasher=lambda p: "$6$hash", authorized_keys=[])
+    assert ok and "join WiFi" in msg
