@@ -62,10 +62,30 @@ class VaultUnlockScreen(BoxLayout):
         self._failed = 0
         self._render()
 
+    def add_widget(self, widget, *a, **kw):
+        """During rendering, children go into the scrolling column."""
+        col = getattr(self, "_col", None)
+        if col is not None and widget is not getattr(self, "_scroll", None):
+            return col.add_widget(widget, *a, **kw)
+        return BoxLayout.add_widget(self, widget, *a, **kw)
+
     # -- rendering ---------------------------------------------------------
 
     def _render(self):
         self.clear_widgets()
+        # Everything sits in a SCROLL so the on-screen keypad can never bury a
+        # control — the reset slider ended up unreachable behind it (operator
+        # report 2026-08-01). The column keeps its natural height and the view
+        # scrolls to whatever the keypad covers.
+        from kivy.uix.scrollview import ScrollView
+        self._scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False,
+                                  bar_width=dp(4))
+        col = BoxLayout(orientation="vertical", size_hint_y=None,
+                        spacing=dp(10), padding=[0, 0, 0, dp(8)])
+        col.bind(minimum_height=col.setter("height"))
+        self._col = col
+        self._scroll.add_widget(col)
+        BoxLayout.add_widget(self, self._scroll)
         self.add_widget(Widget(size_hint_y=None, height=dp(6)))
         self.add_widget(_line(tr("Node Medic"), "30sp", bold=True, h=44))
         self.add_widget(_line(
@@ -134,6 +154,22 @@ class VaultUnlockScreen(BoxLayout):
         box.add_widget(use)
         box.add_widget(Widget(size_hint_y=None, height=dp(14)))
         box.add_widget(self._reset_block())
+        # Put the keypad away and show the newly-revealed controls: with the
+        # keyboard up, the reset slider sat off-screen and couldn't be reached
+        # (operator report 2026-08-01).
+        try:
+            from kivy.app import App
+            kb = getattr(App.get_running_app(), "keyboard", None)
+            if kb is not None:
+                kb.hide()
+        except Exception:
+            pass
+        try:
+            from kivy.clock import Clock
+            Clock.schedule_once(
+                lambda _dt: setattr(self._scroll, "scroll_y", 0.0), 0.25)
+        except Exception:
+            pass
 
     def _reset_block(self):
         """The last resort — walled off behind a slide and a red warning."""
