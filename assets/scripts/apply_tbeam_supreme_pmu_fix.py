@@ -2,7 +2,15 @@
 
     python3 apply_tbeam_supreme_pmu_fix.py path/to/RNode_Firmware.ino
 
-THE BUG (found live 2026-08-01, on a brand-new T-Beam Supreme). Stock
+STATUS: **UNVERIFIED.** This patch was written while diagnosing a Supreme that
+turned out to have a *separate, hardware* fault — its BOOT pin (GPIO0) reads
+LOW, so the ESP32-S3 enters the ROM download loader at every power-up and never
+runs ANY application. The ordering problem described below is real in the
+source, but it was NOT the cause of that board's silence and the fix has never
+been observed working on hardware. Re-verify on a healthy Supreme before
+trusting it.
+
+THE ORDERING ISSUE (read live 2026-08-01, on a brand-new T-Beam Supreme). Stock
 ``RNode_Firmware.ino`` runs ``display_init()`` and only *afterwards*
 ``init_pmu()``. On most boards that is harmless — the OLED is wired straight to
 3V3. On the T-Beam Supreme it is not: the screen (with the IMU, magnetometer
