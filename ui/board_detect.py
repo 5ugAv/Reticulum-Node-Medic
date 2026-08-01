@@ -45,6 +45,48 @@ def parse_chip(esptool_output: str) -> Optional[str]:
     return None
 
 
+#: Chip VARIANT fragments that identify a specific board among boards that share
+#: a chip FAMILY. The classic-ESP32 group (LoRa32 v2.1/v2.0/v1.0, T-Beam, Heltec
+#: V2) all read as plain "esp32", so family alone leaves a five-way guess.
+#:
+#: Measured on the bench 2026-08-02, a LilyGO LoRa32 v2.1 (silkscreen T3 V1.6.1,
+#: microSD slot, unsigned.io Pocket Node build):
+#:     Chip is ESP32-PICO-D4 (revision v1.1)
+#:     Features: ... Embedded Flash ...   Detected flash size: 4MB
+#: The PICO-D4 is a system-in-package with the flash on the die, which is what
+#: distinguishes the T3 v1.6 from its siblings — Heltec V2 and T-Beam use a bare
+#: ESP32-D0WDQ6 with external flash.
+#:
+#: This NARROWS; it never overrides. Board revisions vary, so a variant we
+#: haven't seen simply leaves the shortlist as it was.
+_CHIP_VARIANT = {
+    "lora32_v21": ("pico-d4",),
+}
+
+
+def parse_chip_variant(esptool_output: str) -> Optional[str]:
+    """The specific package from esptool's "Chip is ..." line, lowercased
+    ("esp32-pico-d4"), or None."""
+    for line in (esptool_output or "").splitlines():
+        low = line.strip().lower()
+        if low.startswith("chip is "):
+            return low[len("chip is "):].split("(")[0].strip() or None
+    return None
+
+
+def narrow_by_variant(shortlist, variant: Optional[str]):
+    """Boards whose known chip variant matches *variant*.
+
+    Returns the narrowed list, or the original when the variant is unknown or
+    matches nothing — a wrong exclusion costs one tap, so this only ever helps.
+    """
+    if not variant:
+        return shortlist
+    hits = [b for b in shortlist
+            if any(frag in variant for frag in _CHIP_VARIANT.get(b.key, ()))]
+    return hits or shortlist
+
+
 def firmware_options(chip: Optional[str]) -> List[str]:
     """Firmware the chip can take, best-first. ESP32-S3 boards are the RTNode-2400
     targets (Grey Hat's standalone transport node — health beacon + remote repair),
@@ -187,6 +229,9 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                    if _USB_KIND.get(b.key) in (pk, None)]
         if refined:
             shortlist = refined
+    # Third cut: the chip PACKAGE. "esp32" covers five boards we stock; the
+    # exact variant separates them where we know it (bench-measured).
+    shortlist = narrow_by_variant(shortlist, parse_chip_variant(out))
     return {"found": True, "port": port, "chip": chip, "platform": platform,
             "firmware": firmware_options(chip), "boards": shortlist,
             "board_key": shortlist[0].key if len(shortlist) == 1 else None}
