@@ -67,3 +67,37 @@ def test_the_board_animation_can_render_the_detected_board():
     cls = src[src.index("class ConnectBoardAnim"):src.index("class ConnectPiAnim")]
     assert "board_key" in cls and "image_for" in cls
     assert "LORA_PNG" in cls, "must still fall back to the generic drawing"
+
+
+# --- look-alike boards: name the mark, don't rely on resemblance ------------
+
+def test_the_lora32_v21_says_the_board_never_prints_v2_1():
+    """Verified against LilyGO's wiki and their own two-sided product photo:
+    the white label reads MODEL: T3 V1.6.1 and the back is silkscreened
+    T3_V1.6. The name it is SOLD under appears nowhere on it, which is exactly
+    what sends an operator looking for a marking that does not exist."""
+    from ui.board_images import how_to_tell
+    tell = how_to_tell("lora32_v21")
+    assert "T3 V1.6.1" in tell
+    assert "T3_V1.6" in tell
+    assert "NOT say v2.1" in tell
+
+
+def test_boards_with_distinctive_looks_get_no_hint():
+    """The hint exists for families that look alike. A Heltec V3 does not need
+    one, and noise would train the operator to skip the line."""
+    from ui.board_images import how_to_tell
+    for k in ("heltec32_v3", "heltec32_v4", "rak4631", "tbeam_supreme"):
+        assert how_to_tell(k) == ""
+
+
+def test_only_verified_markings_are_claimed():
+    """Same rule as the chip-variant table: a marking nobody has read is a
+    guess, and a guess printed as instruction is worse than silence."""
+    from ui.board_images import HOW_TO_TELL
+    assert set(HOW_TO_TELL) == {"lora32_v21"}
+
+
+def test_the_birth_screen_shows_the_hint_with_the_photo():
+    src = open("ui/screens/birth_screen.py").read()
+    assert "how_to_tell" in src

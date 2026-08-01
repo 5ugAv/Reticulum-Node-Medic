@@ -130,3 +130,31 @@ def pi_art_status() -> Dict[str, bool]:
     keys = ("pi_zero_2w", "pi_3a_plus", "pi_3b_plus", "pi_4b", "pi_5",
             "pi_5_full")
     return {k: image_for_pi(k) is not None for k in keys}
+
+
+# --------------------------------------------------------------------------- #
+# "How to tell" — for boards that look alike
+# --------------------------------------------------------------------------- #
+
+#: Boards whose SIBLINGS are visually near-identical get a line naming the one
+#: mark that actually differs. A whole-board photo is a strong confirmation when
+#: boards look different and a WEAK one for a family that doesn't — the operator
+#: glances, thinks "yes, that's mine", and is wrong. So for these, point at the
+#: discriminating detail instead of the general resemblance (operator, 2026-08-02:
+#: "am I wrong in thinking all those lilygo ones look almost exactly the same?").
+#:
+#: ONLY verified markings belong here. Entries below are read off LilyGO's own
+#: documentation and product photography; anything unverified is left out rather
+#: than guessed, the same rule the chip-variant table follows.
+HOW_TO_TELL: Dict[str, str] = {
+    # Verified against wiki.lilygo.cc/products/t3-series/t3-lora32/ and LilyGO's
+    # own two-sided product photo. The board is SOLD as "LoRa32 v2.1" but that
+    # string appears NOWHERE on it — a real source of confusion, so say it.
+    "lora32_v21": ("Check the white label: MODEL: T3 V1.6.1 (the back is "
+                   "silkscreened T3_V1.6). It will NOT say v2.1 anywhere."),
+}
+
+
+def how_to_tell(board_key: str) -> str:
+    """The one mark that distinguishes this board from its look-alikes, or ""."""
+    return HOW_TO_TELL.get((board_key or "").strip(), "")

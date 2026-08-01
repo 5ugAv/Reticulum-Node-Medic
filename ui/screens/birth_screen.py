@@ -430,6 +430,16 @@ class BirthScreen(BoxLayout):
                 self.header.add_widget(_line(
                     "✓ Found by Node Medic — check it matches the board in your "
                     "hand. Tap to change it.", size="12.5sp", color="green"))
+                # For a board with near-identical siblings, name the mark that
+                # actually differs — a photo alone invites a false confirmation.
+                try:
+                    from ui import board_images as _bi
+                    tell = _bi.how_to_tell(self._sel_board.key)
+                    if tell:
+                        self.header.add_widget(_line(tell, size="12.5sp",
+                                                     color="accent"))
+                except Exception:
+                    pass
             if self._firmware == "pi_rnode":
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
                 self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
