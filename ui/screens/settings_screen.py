@@ -99,6 +99,10 @@ class SettingsScreen(BoxLayout):
                                     "Check & heal this medic's OWN onboard radio + GPS "
                                     "board (11 live checks + auto-repairs)",
                                     "self_diagnose"))
+        body.add_widget(self._entry(tr("Security preview  (encrypt-at-rest)"),
+                                    "Walk the lock screen, recovery key and "
+                                    "reset — nothing real behind it yet",
+                                    "security_preview"))
         body.add_widget(self._entry(tr("About"),
                                     "Software version, test-suite status, uptime, "
                                     "and licence", "about"))

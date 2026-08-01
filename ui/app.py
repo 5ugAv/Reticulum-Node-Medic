@@ -670,6 +670,15 @@ class ReticulumNodeMedicApp(App):
         language_scr.add_widget(self._with_back(LanguageScreen()))
         self.sm.add_widget(language_scr)
 
+        # Security preview — walk the encrypt-at-rest ceremony end to end
+        # (write-down key -> unlock screen -> three strikes -> recovery ->
+        # slide-to-reset) with NO real vault behind it, so the look can be
+        # judged before any of it is wired to cryptsetup (2026-08-02).
+        sec_scr = Screen(name="security_preview")
+        self._security_host = BoxLayout(orientation="vertical")
+        sec_scr.add_widget(self._with_back(self._security_host))
+        self.sm.add_widget(sec_scr)
+
         # Communication apps — hand Columba/Sideband to a phone over Wi-Fi + QR.
         comms_scr = Screen(name="comms")
         from ui.screens.comms_screen import CommsScreen
@@ -1767,6 +1776,40 @@ class ReticulumNodeMedicApp(App):
                 bs.begin_guided(path)
         self.switch_mode("birth")
 
+    def _start_security_preview(self):
+        """Walk the whole encrypt-at-rest ceremony with NOTHING real behind it:
+        a demo recovery key, a demo passphrase, and a reset that erases only a
+        message. Lets the look be judged before any of it touches cryptsetup."""
+        host = getattr(self, "_security_host", None)
+        if host is None:
+            return
+        host.clear_widgets()
+        from ui.screens.recovery_key_screen import RecoveryKeyScreen
+        from ui.screens.vault_unlock_screen import VaultUnlockScreen
+
+        DEMO_PASS = "medic"
+
+        def to_unlock(key):
+            host.clear_widgets()
+
+            def unlock(pw):
+                return ((True, "") if pw == DEMO_PASS
+                        else (False, "That password didn't open it."))
+
+            def recover(k):
+                from provisioning import recovery_key as rk
+                return ((True, "") if rk.normalize(k) == rk.normalize(key)
+                        else (False, "That recovery key didn't open it."))
+
+            host.add_widget(VaultUnlockScreen(
+                unlock_fn=unlock, recover_fn=recover,
+                reset_fn=lambda: (True, "Reset — starting fresh. (preview)"),
+                on_unlocked=lambda: self.switch_mode("settings")))
+            print(f"[preview] demo password is '{DEMO_PASS}'; recovery key {key}",
+                  flush=True)
+
+        host.add_widget(RecoveryKeyScreen(on_done=to_unlock))
+
     def switch_mode(self, mode_name):
         kb = getattr(self, "keyboard", None)
         if kb is not None:
@@ -1780,3 +1823,5 @@ class ReticulumNodeMedicApp(App):
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest
+            if mode_name == "security_preview":
+                self._start_security_preview()
