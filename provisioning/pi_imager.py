@@ -172,7 +172,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           run: Runner = _run,
           run_shell: Optional[Callable[[str], Tuple[int, str]]] = None,
           pw_hasher: Callable[[str], str] = None,
-          authorized_keys: Optional[List[str]] = None) -> Tuple[bool, str]:
+          authorized_keys: Optional[List[str]] = None,
+          cable_link: bool = True) -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
     ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
@@ -203,5 +204,22 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         code, out = run_shell(cmd)
         if code != 0:
             return (False, f"Image written, but applying the config failed: {out[-160:]}")
+    # Bake the USB-cable link in as well, so this card can be birthed with the
+    # Pi plugged straight into the medic — no WiFi, and no powered hub to let
+    # an under-powered Pi feed its own radio (operator's design, 2026-08-01).
+    # Never fatal: a card that boots and joins WiFi is still a usable card.
+    cable_msg = ""
+    if cable_link:
+        from provisioning.cable_birth import bake_commands
+        for cmd in bake_commands(device_path):
+            code, out = run_shell(cmd)
+            if code != 0:
+                cable_msg = (" The USB-cable link could not be baked in "
+                             f"({out.strip()[-120:]}) — birth this one over WiFi.")
+                break
+        else:
+            cable_msg = (" It can also be birthed over a USB cable straight into "
+                         "Node Medic, with no WiFi at all.")
     return (True, f"SD card imaged and configured as '{hostname}'. Put it in the Pi "
-                  "and power on — it will join WiFi and be reachable over SSH.")
+                  "and power on — it will join WiFi and be reachable over SSH."
+                  + cable_msg)
