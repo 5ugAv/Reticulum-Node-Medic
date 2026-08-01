@@ -403,9 +403,33 @@ class BirthScreen(BoxLayout):
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
                 self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
                                              color="accent"))
+                # Identify the Pi rather than asking. It is the input the power
+                # check reasons about, so a wrong pick produces a wrong verdict
+                # about needing a powered hub (operator asked for this mid-
+                # walkthrough, 2026-08-02). Auto-select ONLY on an exact read
+                # from the Pi itself — the boot-ROM chip id cannot tell a Zero
+                # 2 W from a 3 A+, and that is a 500 mA vs 1000 mA difference.
+                detected_note = ""
+                if self._sel_pi is None:
+                    try:
+                        from provisioning import pi_model
+                        host = pi_model.detect()
+                        names = dict(PI_HOSTS)
+                        if host.should_auto_select and host.key in names:
+                            self._sel_pi = (host.key, names[host.key])
+                        detected_note = pi_model.describe(
+                            host, lambda k: names.get(k, k))
+                    except Exception:
+                        detected_note = ""
                 self.header.add_widget(self._sel_button(
                     self._sel_pi[1] if self._sel_pi else "Tap to choose a Pi",
                     self._choose_pi))
+                if detected_note and self._sel_pi is not None:
+                    self.header.add_widget(_line(detected_note, size="12.5sp",
+                                                 color="green"))
+                elif detected_note:
+                    self.header.add_widget(_line(detected_note, size="12.5sp",
+                                                 color="amber"))
                 # The medic NAMED the Pi when it imaged the card, so it can
                 # offer the address itself — an operator has no way to know an
                 # IP, and being unable to continue without one blocked the
