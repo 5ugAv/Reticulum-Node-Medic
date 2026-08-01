@@ -126,12 +126,34 @@ def neighbours() -> List[Dict[str, str]]:
     return found
 
 
+def cable_address(timeout: float = 6.0) -> str:
+    """``10.55.0.1`` if a Pi is answering over the USB cable, else "".
+
+    The cable beats every other route and should be tried first: it needs no
+    network, no WiFi, no name resolution and no operator input, and it is the
+    route the medic itself set up when it imaged the card. Asking someone to
+    type an address for a Pi that is physically plugged into the tool was the
+    complaint that started this whole path (2026-08-01).
+    """
+    try:
+        from provisioning.link import discover_peer
+        return discover_peer(timeout=timeout, poll=2.0) or ""
+    except Exception:                      # noqa: BLE001 — never block a birth
+        return ""
+
+
 def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
     """Best effort at locating the Pi. Returns
     ``{address, ip, how}`` — *address* is what to hand the build (the mDNS name
     when we have one, since it survives a DHCP change), *how* explains the
     provenance so the UI can be honest about confidence. Empty dict if nothing
     was found."""
+    # The cable first — no network, no name, nothing to type.
+    if not hostname:
+        cable = cable_address()
+        if cable:
+            return {"address": cable, "ip": cable,
+                    "how": "plugged into Node Medic by cable"}
     host = (hostname or last_imaged_pi(path).get("hostname") or "").strip()
     if host:
         name = host if host.endswith(".local") else f"{host}.local"

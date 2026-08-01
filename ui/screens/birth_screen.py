@@ -416,6 +416,29 @@ class BirthScreen(BoxLayout):
                     suggestion = suggested_address()
                 except Exception:
                     pass
+                # If the Pi is plugged into the medic, there is nothing to ask.
+                # Showing an address box for a device physically in front of the
+                # operator is the thing they objected to in the first place
+                # (2026-08-01) — so say what we found and move on.
+                cable = ""
+                try:
+                    from provisioning.pi_discover import cable_address
+                    cable = cable_address(timeout=3.0)
+                except Exception:
+                    cable = ""
+                if cable:
+                    self.header.add_widget(_line(
+                        "Raspberry Pi connected by cable — nothing to enter.",
+                        size="13.5sp", color="green", bold=True))
+                    if not hasattr(self, "_pi_addr_in"):
+                        from ui.onscreen_keyboard import bind_field
+                        from kivy.uix.textinput import TextInput
+                        self._pi_addr_in = bind_field(TextInput(
+                            text="", multiline=False, font_size="15sp"))
+                        self._pi_user_in = bind_field(TextInput(
+                            text="pi", multiline=False, font_size="15sp"))
+                    self._pi_addr_in.text = cable
+                    return
                 self.header.add_widget(_line(
                     ("Where the Pi is on your network — filled in from the name "
                      "Node Medic gave it. Tap Find if it's blank or wrong."

@@ -325,3 +325,46 @@ def test_a_wifi_card_still_says_so():
         run=_medic_run, run_shell=lambda c: (0, ""),
         pw_hasher=lambda p: "$6$hash", authorized_keys=[])
     assert ok and "join WiFi" in msg
+
+
+# --- the operator should never type an address ------------------------------
+
+def test_the_cable_is_tried_before_any_network_route(monkeypatch):
+    """Asking a field operator for the IP of a Pi that is physically plugged
+    into the tool was the complaint that started this whole path."""
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "10.55.0.1")
+    called = []
+    monkeypatch.setattr(pi_discover, "resolve",
+                        lambda n: called.append(n) or "192.168.1.50")
+    r = pi_discover.find_pi()
+    assert r["address"] == "10.55.0.1"
+    assert "cable" in r["how"]
+    assert not called, "went to the network even though the cable was live"
+
+
+def test_an_explicit_hostname_still_wins_over_the_cable(monkeypatch):
+    """If the operator names a node, honour it — they may be birthing one Pi
+    while another sits on the cable."""
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "10.55.0.1")
+    monkeypatch.setattr(pi_discover, "resolve", lambda n: "192.168.1.50")
+    r = pi_discover.find_pi("faith")
+    assert r["ip"] == "192.168.1.50"
+
+
+def test_no_cable_falls_back_to_the_network_as_before(monkeypatch):
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "")
+    monkeypatch.setattr(pi_discover, "last_imaged_pi", lambda path=None: {"hostname": "hope"})
+    monkeypatch.setattr(pi_discover, "resolve", lambda n: "192.168.1.77")
+    r = pi_discover.find_pi()
+    assert r["ip"] == "192.168.1.77"
+
+
+def test_cable_lookup_never_raises(monkeypatch):
+    """A discovery hiccup must not be able to block a birth."""
+    from provisioning import pi_discover, link
+    monkeypatch.setattr(link, "discover_peer",
+                        lambda **k: (_ for _ in ()).throw(OSError("no iface")))
+    assert pi_discover.cable_address() == ""

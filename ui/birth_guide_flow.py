@@ -68,33 +68,56 @@ _STEPS = {
          "anim": "provision",             # ANIMATION PLACEHOLDER — refine with the designer
          "next": tr("Start setup  →")},
     ],
+    # THE CABLE BIRTH, proven end to end on 2026-08-01 (HOPE: Pi Zero 2 W +
+    # Heltec V3, no WiFi and no powered hub anywhere in it). These steps used to
+    # describe a different flow entirely — card into a USB reader, radio onto
+    # the Pi, then a network address typed in — and every one of those is now
+    # wrong. What actually happens:
+    #
+    #   the card goes in the PI, and the Pi becomes its own card reader;
+    #   the RADIO goes on the MEDIC, which has the power to flash it;
+    #   the medic reaches the Pi over the USB cable, so there is no address;
+    #   they are only joined at the very end.
+    #
+    # The operator's single unavoidable job is the replug after imaging: the
+    # medic cannot power-cycle a Pi (uhubctl on the Pi 5 root hub does not cut
+    # VBUS — measured, the device stays powered), so it must be asked for.
     "pi": [
-        {"title": tr("Insert the Pi's SD card into Node Medic"),
-         "body": tr("Put the Raspberry Pi's SD card into Node Medic's card reader so we "
-                    "can write its operating system."),
-         "anim": "insert_sd"},
-        {"title": tr("Image the Pi"),
-         "body": tr("Now Node Medic writes Raspberry Pi OS to the card and sets its "
-                    "name, Wi-Fi and login — a few details, no computer needed."),
-         "anim": "insert_sd", "next": tr("Image the card  →"), "screen": "pi_imager"},
-        {"title": tr("Put the card into the Pi"),
-         "body": tr("Take the card out of Node Medic and slide it into the Pi's own "
-                    "microSD slot — it's on the edge of the board, next to the "
-                    "HDMI socket. Then give the Pi power and let it start up."),
-         "hint": tr("The first start-up takes a minute or two while the Pi sets "
-                    "itself up and joins your Wi-Fi."),
+        {"title": tr("Put the SD card into the Raspberry Pi"),
+         "body": tr("Slide the blank microSD card into the Pi's own card slot. "
+                    "You don't need a card reader — the Pi will hand its card "
+                    "to Node Medic by itself."),
          "anim": "insert_sd_pi"},
-        # The radio goes on the PI, not the medic: this build SSHes into the Pi
-        # and flashes/configures the radio through THAT connection. The page
-        # used to say "plug it into Node Medic", which left the board in the
-        # wrong place and a build that found no radio (operator caught it
-        # walking the flow, 2026-08-01).
-        {"title": tr("Connect the radio board to the Pi"),
-         "body": tr("Plug the radio board into the Raspberry Pi's USB port — not "
-                    "into Node Medic. Node Medic reaches the Pi over your "
-                    "network and sets the radio up through it."),
-         "hint": tr("On a Pi Zero use the DATA micro-USB port (the inner one, "
-                    "marked USB) — the outer one is power only."),
+        {"title": tr("Connect the Pi to Node Medic"),
+         "body": tr("Plug the Pi into Node Medic with a USB cable. Node Medic "
+                    "powers it and opens its card automatically — no Wi-Fi and "
+                    "no network setup are needed anywhere in this build."),
+         "hint": tr("Use the Pi's DATA port. A Pi Zero has two identical "
+                    "micro-USB sockets: the one nearer the mini-HDMI is USB "
+                    "(data), the outer one is PWR IN and cannot carry data. "
+                    "Use a short, thick cable — a thin or coiled one drops the "
+                    "link."),
+         "anim": "connect_board",
+         "next": tr("Open the card  →"), "screen": "pi_imager"},
+        {"title": tr("Restart the Pi"),
+         "body": tr("The card now has an operating system on it. Unplug the Pi "
+                    "from Node Medic and plug it straight back in, so it starts "
+                    "up from the new system."),
+         "hint": tr("Node Medic can't switch the Pi off and on for you — this "
+                    "is the one step it needs your hands for. First start-up "
+                    "takes a minute or two."),
+         "anim": "connect_board"},
+        # The radio goes on the MEDIC, not the Pi. This is the step that removes
+        # the powered-hub problem entirely: a Pi Zero can't reliably feed a
+        # Heltec V3 (900 mA peak against a 500 mA budget), but the medic has
+        # 1600 mA and does the flashing itself.
+        {"title": tr("Connect the radio board to Node Medic"),
+         "body": tr("Plug the radio into a different USB port on Node Medic — "
+                    "not into the Pi. Node Medic powers and flashes it here, "
+                    "where there's plenty of power, and remembers which radio "
+                    "it is so the Pi finds it later."),
+         "hint": tr("Attach the antenna first if you haven't — never power a "
+                    "radio board without one."),
          "anim": "connect_board",
          "next": tr("Start setup  →")},
     ],
