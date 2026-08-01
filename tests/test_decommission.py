@@ -130,3 +130,45 @@ def test_verification_does_not_use_od_whose_output_lies():
 
 def test_verify_reads_from_the_same_device_it_wiped():
     assert "/dev/sdz" in dc.verify_commands("/dev/sdz")[0]
+
+
+# --- the operator-facing offer ----------------------------------------------
+# 2026-08-02: the imaging screen told the operator to "wipe it first" and then
+# offered no way to do it. The engine existed; the screen just never used it.
+
+def test_the_screen_offers_the_wipe_it_tells_the_operator_to_do():
+    src = open("ui/screens/pi_imager_screen.py").read()
+    assert "_add_wipe_offer" in src
+    assert "decommission" in src
+
+
+def test_the_wipe_is_behind_a_SLIDE_not_a_tap():
+    """This erases a working node. Modelled on the vault reset: the cost of an
+    accidental tap is far higher than the cost of a deliberate drag."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    block = src[src.index("def _add_wipe_offer"):src.index("def _do_wipe")]
+    assert "SlideToPowerOff" in block
+    assert "slide to wipe" in block
+
+
+def test_the_offer_says_what_is_lost_AND_what_is_not():
+    src = open("ui/screens/pi_imager_screen.py").read()
+    block = src[src.index("def _add_wipe_offer"):src.index("def _do_wipe")]
+    assert "identity" in block and "certificate" in block
+    assert "can't be undone" in block
+    assert "mesh is not affected" in block, "must say the network survives"
+
+
+def test_a_successful_wipe_tells_the_operator_to_power_cycle():
+    """The medic CANNOT do this itself — uhubctl on the Pi 5 root hub does not
+    cut VBUS. Without the prompt the flow silently stalls."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    block = src[src.index("def _wipe_done"):]
+    assert "unplug the Pi and plug it back in" in block
+
+
+def test_the_wipe_reports_failure_rather_than_pretending():
+    src = open("ui/screens/pi_imager_screen.py").read()
+    block = src[src.index("def _do_wipe"):src.index("def _wipe_done")]
+    assert "Couldn't reach the Pi" in block
+    assert "DATA port" in block

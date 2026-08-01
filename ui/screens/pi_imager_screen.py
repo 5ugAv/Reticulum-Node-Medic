@@ -102,9 +102,10 @@ class PiImagerScreen(BoxLayout):
                 "This Raspberry Pi already has an operating system and starts "
                 "up as a node — it isn't offering its card.", size="15sp",
                 color="amber", h=48))
-            self.col.add_widget(_line(
-                "To build it again from scratch, wipe it first.", size="14sp",
-                color="text_secondary", h=24))
+            # This screen used to say "wipe it first" and then offer no way to
+            # do it, which is an instruction with a dead end. The engine exists
+            # (provisioning.decommission) so give the operator the action here.
+            self._add_wipe_offer()
             return True
         if state.state != pi_usbboot.BOOTROM:
             return False                        # nothing plugged in — normal prompt
@@ -134,6 +135,87 @@ class PiImagerScreen(BoxLayout):
 
         threading.Thread(target=work, daemon=True).start()
         return True
+
+    # -- wipe and start over ------------------------------------------------
+
+    def _add_wipe_offer(self):
+        """Offer to make this Pi's card unbootable so it can be built again.
+
+        Gated behind a SLIDE, never a tap: this erases a working node. Modelled
+        on the vault reset for the same reason — the cost of an accidental tap
+        is far higher than the cost of a deliberate drag (operator spec
+        2026-08-02).
+        """
+        self.col.add_widget(_line(
+            "Build it again from scratch?", bold=True, size="16sp",
+            color="text_primary", h=28))
+        self.col.add_widget(_line(
+            "Node Medic can wipe this Pi's card so it starts fresh. It erases "
+            "the operating system, this node's identity and its certificate — "
+            "it will no longer be the node it is now, and it can't be undone.",
+            size="13.5sp", color="text_secondary", h=76))
+        self.col.add_widget(_line(
+            "Your mesh is not affected. Other nodes keep running.",
+            size="13sp", color="green", h=22))
+        self._wipe_status = _line("", size="13.5sp", color="amber", h=44)
+        from ui.widgets.slide_to_power import SlideToPowerOff
+        self.col.add_widget(SlideToPowerOff(
+            on_power_off=self._do_wipe,
+            hint_text="slide to wipe and start over  →"))
+        self.col.add_widget(self._wipe_status)
+
+    def _do_wipe(self):
+        """Wipe over the cable, off-thread. Names the node it is about to erase
+        and refuses if the medic can't confirm which node that is."""
+        status = self._wipe_status
+        status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
+        status.text = "Finding the Pi on the cable…"
+
+        def work():
+            msg, ok = "", False
+            try:
+                from provisioning.pi_discover import cable_address
+                from provisioning.decommission import decommission
+                from transport.connection import SSHConnection
+                addr = cable_address(timeout=8.0)
+                if not addr:
+                    msg = ("Couldn't reach the Pi over the cable. It needs to "
+                           "be plugged into Node Medic by its DATA port.")
+                else:
+                    conn = SSHConnection(addr, user="pi")
+                    # expected_hostname left empty on purpose: the medic has no
+                    # independent claim about WHICH node is on the cable here,
+                    # and asserting one it cannot check would be worse than the
+                    # guard decommission() already applies (it refuses to touch
+                    # anything calling itself the medic).
+                    r = decommission(conn)
+                    ok, msg = r.ok, r.message
+            except Exception as exc:                      # noqa: BLE001
+                msg = f"Couldn't wipe it: {str(exc)[:90]}"
+            Clock.schedule_once(lambda _dt: self._wipe_done(ok, msg), 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _wipe_done(self, ok, msg):
+        status = self._wipe_status
+        status.color = theme.hex_to_rgba(
+            theme.COLORS["green" if ok else "amber"])
+        status.text = msg or ("Wiped." if ok else "Couldn't wipe it.")
+        if not ok:
+            return
+        # The one step the medic cannot do for itself: uhubctl on the Pi 5 root
+        # hub does not cut VBUS (measured — the device stays powered across a
+        # 20-second "off"), so the operator has to power-cycle it.
+        self.col.add_widget(_line(
+            "Now unplug the Pi and plug it back in. It will start up with a "
+            "blank card and offer it to Node Medic.", size="14.5sp",
+            color="accent", h=48))
+        again = Button(text="I've replugged it — look again", size_hint_y=None,
+                       height=dp(52), bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        again.bind(on_release=lambda *_: self._build())
+        self.col.add_widget(again)
 
     def _reader_done(self, result):
         """Back on the UI thread once the Pi has (or hasn't) opened its card."""
