@@ -207,3 +207,49 @@ def test_a_card_whose_account_cannot_be_activated_is_reported_as_not_ready():
         authorized_keys=[KEY])
     assert ok is False
     assert "not ready" in msg and "unreachable" in msg
+
+
+# --- passwordless sudo, without which no build can run ---------------------
+
+def test_sudoers_drop_in_is_written(rootfs):
+    """BuildWorkflow runs every privileged step with `sudo -n`. Pi OS writes
+    this during the first-boot setup we bypass, so we must."""
+    (rootfs / "etc" / "sudoers.d").mkdir()
+    p = _run(rootfs)
+    assert "sudoers" in p.stdout
+    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
+    assert f.read_text() == "pi ALL=(ALL) NOPASSWD: ALL\n"
+
+
+def test_sudoers_mode_is_0440_or_sudo_refuses_to_run_at_all(rootfs):
+    """A group- or world-writable file in sudoers.d makes sudo abort every
+    invocation — that would lock the node out of all privileged actions."""
+    (rootfs / "etc" / "sudoers.d").mkdir()
+    _run(rootfs)
+    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
+    assert stat.S_IMODE(f.stat().st_mode) == 0o440
+
+
+def test_the_drop_in_is_valid_sudoers_syntax(rootfs):
+    """Bad syntax here breaks sudo entirely, so check it with the real
+    validator when one is available."""
+    import shutil
+    (rootfs / "etc" / "sudoers.d").mkdir()
+    _run(rootfs)
+    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
+    visudo = shutil.which("visudo") or "/usr/sbin/visudo"
+    if not os.path.exists(visudo):
+        pytest.skip("visudo not available")
+    r = subprocess.run([visudo, "-c", "-f", str(f)], capture_output=True,
+                       text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_no_sudoers_directory_is_survived_not_crashed(rootfs):
+    """Some images don't ship sudoers.d; activation must still complete."""
+    p = _run(rootfs)
+    assert "ACTIVATE_OK" in p.stdout and p.returncode == 0
+
+
+def test_verify_reads_back_the_sudoers_drop_in():
+    assert "sudoers.d/010_pi-nopasswd" in " ".join(ru.verify_commands("/m", "pi"))

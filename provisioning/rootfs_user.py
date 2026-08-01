@@ -14,8 +14,13 @@ The medic holds the card in its hands. Rather than write a request that some
 boot-time agent may or may not honour, do the thing itself: set the login shell,
 set the password hash, install the key. Deterministic, verifiable before the
 card ever leaves, and it works the same on any Debian-family image because it
-only touches /etc/passwd, /etc/shadow and ~/.ssh — the files that actually
-decide whether a login succeeds.
+only touches /etc/passwd, /etc/shadow, ~/.ssh and a sudoers drop-in — the
+files that actually decide whether a login, and then a build, can succeed.
+
+The sudo part is not optional: BuildWorkflow runs every privileged step with
+``sudo -n``, and Raspberry Pi OS writes its NOPASSWD drop-in during the same
+first-boot setup we bypass. (Tightening it once birth is finished is a separate,
+already-built step — see provisioning.node_sudoers.)
 
 Everything here builds strings; the caller runs them against a mounted rootfs.
 """
@@ -110,6 +115,26 @@ if keys:
             except Exception as exc:
                 print("ACTIVATE_WARN: chown %s: %s" % (p, exc))
 
+# --- passwordless sudo -----------------------------------------------------
+# Raspberry Pi OS normally writes this during ITS first-boot user setup, which
+# we deliberately bypass. Without it every `sudo -n` in the build fails and the
+# node cannot be provisioned at all.
+if os.environ.get("NM_SUDOERS", "1") == "1":
+    sd = path("/etc/sudoers.d")
+    if os.path.isdir(sd):
+        f = os.path.join(sd, "010_%s-nopasswd" % user)
+        body = "%s ALL=(ALL) NOPASSWD: ALL\n" % user
+        if not os.path.exists(f) or open(f).read() != body:
+            open(f, "w").write(body)
+            changed.append("sudoers")
+        # sudo REFUSES to run at all if this is group- or world-writable, which
+        # would lock the node out of every privileged action. 0440 root:root.
+        os.chmod(f, 0o440)
+        try:
+            os.chown(f, 0, 0)
+        except Exception as exc:
+            print("ACTIVATE_WARN: chown sudoers: %s" % exc)
+
 print("ACTIVATE_OK: " + (",".join(sorted(set(changed))) if changed
                          else "already active"))
 '''
@@ -137,6 +162,8 @@ def verify_commands(root_mnt: str, username: str) -> List[str]:
         f"sudo grep '^{username}:' {q}/etc/shadow | cut -d: -f1,2 | cut -c1-40",
         f"sudo ls -la {q}/home/{username}/.ssh/authorized_keys 2>/dev/null "
         f"|| echo 'NO authorized_keys'",
+        f"sudo ls -l {q}/etc/sudoers.d/010_{username}-nopasswd 2>/dev/null "
+        f"|| echo 'NO sudoers drop-in'",
     ]
 
 
