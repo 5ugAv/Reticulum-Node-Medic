@@ -1,7 +1,7 @@
 """Telling apart boards that share a chip family.
 
-Bench, 2026-08-02: a LilyGO LoRa32 v2.1 (silkscreen T3 V1.6.1, microSD slot,
-unsigned.io Pocket Node build) read as plain "esp32" — the same as the T-Beam,
+Bench, 2026-08-02: a LilyGO LoRa32 v2.1 (silkscreen "T3 V1.6.1", unsigned.io
+Pocket Node build) read as plain "esp32" — the same as the T-Beam,
 Heltec V2 and the older LoRa32s — leaving the operator a five-way guess. Its
 exact package settles it.
 """

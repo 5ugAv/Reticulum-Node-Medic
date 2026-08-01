@@ -49,8 +49,8 @@ def parse_chip(esptool_output: str) -> Optional[str]:
 #: a chip FAMILY. The classic-ESP32 group (LoRa32 v2.1/v2.0/v1.0, T-Beam, Heltec
 #: V2) all read as plain "esp32", so family alone leaves a five-way guess.
 #:
-#: Measured on the bench 2026-08-02, a LilyGO LoRa32 v2.1 (silkscreen T3 V1.6.1,
-#: microSD slot, unsigned.io Pocket Node build):
+#: Measured on the bench 2026-08-02, a LilyGO LoRa32 v2.1 (silkscreen reads
+#: "T3 V1.6.1"; unsigned.io Pocket Node build):
 #:     Chip is ESP32-PICO-D4 (revision v1.1)
 #:     Features: ... Embedded Flash ...   Detected flash size: 4MB
 #: The PICO-D4 is a system-in-package with the flash on the die, which is what

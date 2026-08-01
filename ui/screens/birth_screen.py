@@ -404,6 +404,22 @@ class BirthScreen(BoxLayout):
             if self._sel_board is None:
                 self._add_rnode_board_pick()
             else:
+                # Show the PHOTO of what was auto-picked. The medic identifies
+                # the board from silicon the operator can't see, so a name in
+                # text is a claim they have no way to check — with the picture
+                # they can hold the board up against it (operator, 2026-08-02).
+                try:
+                    from ui import board_images
+                    from ui.widgets.board_card import BoardCard
+                    if board_images.image_for(self._sel_board.key):
+                        card = BoardCard(self._sel_board.key,
+                                         name=self._sel_board.display_name,
+                                         on_select=lambda *_a: self._choose_board(),
+                                         selected=True,
+                                         size_hint_y=None, height=dp(150))
+                        self.header.add_widget(card)
+                except Exception:
+                    pass
                 self.header.add_widget(self._sel_button(
                     self._sel_board.display_name, self._choose_board))
                 # Say that this one was FOUND. Next to it sits the Host Pi row,
@@ -412,8 +428,8 @@ class BirthScreen(BoxLayout):
                 # choose a board" even though the board is already known
                 # (walkthrough 2026-08-02).
                 self.header.add_widget(_line(
-                    "✓ Found by Node Medic — tap only to change it.",
-                    size="12.5sp", color="green"))
+                    "✓ Found by Node Medic — check it matches the board in your "
+                    "hand. Tap to change it.", size="12.5sp", color="green"))
             if self._firmware == "pi_rnode":
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
                 self.header.add_widget(_line("Host Pi", bold=True, size="15sp",

@@ -138,3 +138,21 @@ def guide_steps(path):
     """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
     paths return an empty list. Returns a copy so callers can't mutate the source."""
     return [dict(s) for s in _STEPS.get(path, [])]
+
+
+def paths_for_chip(chip, rtnode_capable):
+    """Which build paths to offer for a board whose chip reads *chip*.
+
+    Returns ``(paths, why_missing)``. Pure so the rule is testable without a
+    display. *rtnode_capable* is ``firmware_options``-style: given the chip, does
+    it list rtnode2400?
+
+    Fail-open by design: an unreadable chip offers everything. A wrong exclusion
+    here blocks a build the operator legitimately wants, which is worse than one
+    extra choice.
+    """
+    if not chip:
+        return list(BIRTH_PATHS), ""
+    if rtnode_capable(chip):
+        return list(BIRTH_PATHS), ""
+    return [p for p in BIRTH_PATHS if p[0] != "radio"], "rtnode-needs-s3"

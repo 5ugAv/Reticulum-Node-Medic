@@ -14,6 +14,7 @@
   "A Raspberry Pi + radio": "Ein Raspberry Pi + Funkgerät",
   "A few seconds — then the normal birth starts.": "Ein paar Sekunden — dann beginnt die normale Geburt.",
   "A mesh transport node (RTNode-2400)": "Ein Mesh-Transportknoten (RTNode-2400)",
+  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "Ein Mesh-Transportknoten (RTNode-2400) wird nicht angeboten: dafür ist ein ESP32-S3 nötig, und {board} nutzt einen {chip}.",
   "A propagation node - reports its health back and is remotely repairable, and can hold messages for users who aren't online. It can also mesh LoRa radio to Wi-Fi, Bluetooth and the internet. The best node to future-proof the network.": "Ein Propagationsknoten — meldet seinen Zustand zurück, ist aus der Ferne reparierbar und hält Nachrichten für Nutzer bereit, die offline sind. Er kann LoRa-Funk auch mit WLAN, Bluetooth und Internet vernetzen. Der beste Knoten, um das Netz zukunftssicher zu machen.",
   "A radio for phone or computer (RNode)": "Ein Funkgerät für Handy oder Computer (RNode)",
   "A standalone radio (RTNode-2400)": "Ein eigenständiges Funkgerät (RTNode-2400)",

@@ -705,11 +705,22 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above. Node Medic "
                                  "will guide you the rest of the way."),
                               "16sp", color="text_secondary", h=56))
-        for key, title, subtitle in BIRTH_PATHS:
+        # Once the board has been READ, drop the builds it cannot do. RTNode-2400
+        # needs an ESP32-S3; a classic ESP32 (LoRa32, T-Beam, Heltec V2) can only
+        # ever be an RNode. Offering an impossible choice and failing later
+        # wastes the operator's time and teaches them to distrust the list
+        # (operator, 2026-08-02). firmware_options() already knew this — the
+        # chooser simply wasn't asking it.
+        paths, dropped = self._paths_for_connected_board()
+        for key, title, subtitle in paths:
             # the Pi card carries a longer description — give it room so it doesn't
             # clip; the shorter cards stay compact.
             h = 170 if key == "pi" else 104
             wrap.add_widget(self._path_button(key, title, subtitle, height=h))
+        if dropped:
+            # Say WHY it is missing. An option that silently disappears between
+            # one visit and the next reads as a glitch.
+            wrap.add_widget(_line(dropped, "13.5sp", color="text_secondary", h=40))
         # Mitosis is a different KIND of action — not building a node but cloning
         # the Node Medic itself — so it sits at the end, styled apart, and routes
         # straight to the MITOSIS screen (no guided build steps).
@@ -720,6 +731,33 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
         self.add_widget(wrap)
+
+    def _paths_for_connected_board(self):
+        """(paths to offer, why-one-is-missing line).
+
+        Best-effort and fail-open: if the board can't be read we offer
+        everything, because a wrong exclusion here blocks a real build.
+        """
+        try:
+            from ui.board_detect import detect_board, firmware_options
+            from workflows.rnode_boards import RNODE_BOARDS
+            from ui.hw_factories import local_board_ports
+            det = detect_board(list(RNODE_BOARDS.values()),
+                               ports_fn=local_board_ports)
+            from ui.birth_guide_flow import paths_for_chip
+            chip = det.get("chip") if det.get("found") else None
+            paths, why = paths_for_chip(
+                chip, lambda c: "rtnode2400" in firmware_options(c))
+            if not why:
+                return paths, ""
+            boards = det.get("boards") or []
+            name = boards[0].display_name if len(boards) == 1 else "this board"
+            return paths, tr(
+                "A mesh transport node (RTNode-2400) isn't offered: it needs an "
+                "ESP32-S3, and {board} uses an {chip}.").format(
+                    board=name, chip=(chip or "").upper())
+        except Exception:
+            return list(BIRTH_PATHS), ""
 
     def _over_air_button(self):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",

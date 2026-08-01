@@ -148,10 +148,26 @@ class ConnectBoardAnim(_LoopAnim):
     burst = NumericProperty(0.0)
     rise = NumericProperty(0.0)                       # "Connected!" banner slide-up
 
-    def __init__(self, **kwargs):
+    def __init__(self, board_key: str = "", **kwargs):
+        """*board_key* renders the REAL board the medic detected instead of the
+        generic radio sprite.
+
+        Standing design aim (operator, 2026-08-02): show a picture of the thing
+        in their hand. The medic identifies boards from silicon they cannot see
+        — chip package, USB vendor, flash size — so the picture is their only
+        check on that identification. Falls back to the generic art when the
+        board is genuinely unknown; never shows a WRONG board.
+        """
         super().__init__(**kwargs)
         self._connected = False
         self._conn_tex = None                         # cached "Connected!" glyph texture
+        self._board_png = ""
+        if board_key:
+            try:
+                from ui import board_images
+                self._board_png = board_images.image_for(board_key) or ""
+            except Exception:
+                self._board_png = ""
         self.bind(burst=self._redraw, rise=self._redraw)
 
     def mark_connected(self):
@@ -176,7 +192,9 @@ class ConnectBoardAnim(_LoopAnim):
         Animation(rise=1.0, duration=0.55, t="out_back").start(self)
 
     def _draw(self):
-        medic_tex, board_tex = _texture(MEDIC_CABLE_PNG), _texture(LORA_PNG)
+        medic_tex = _texture(MEDIC_CABLE_PNG)
+        board_tex = (_texture(self._board_png) if self._board_png else None) \
+            or _texture(LORA_PNG)
         if medic_tex is None or board_tex is None:
             return self._draw_fallback()
         x, y, w, h = self.x, self.y, self.width, self.height
