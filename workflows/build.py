@@ -109,18 +109,51 @@ def detect_rnode_port(connection) -> Optional[str]:
     return None
 
 
+#: Debian ships pip's own wheel here for python3-venv's benefit, even on images
+#: that do NOT install pip itself. A wheel is a zip, and pip is importable from
+#: inside it — so this is a complete OFFLINE pip, on the node already.
+#: Verified on Raspberry Pi OS Trixie: /usr/share/python-wheels/pip-25.1.1-*.whl
+PIP_WHEEL_GLOB = "/usr/share/python-wheels/pip-*.whl"
+
+
 def _ensure_pip(wf: "BuildWorkflow") -> "tuple[bool, str]":
-    """A minimal image may ship without pip3 entirely (found by the 2026-07-30
-    sandbox proof). Bootstrap it from apt before any pip-based install."""
-    if wf.connection.run("command -v pip3")[0] == 0:
-        return True, ""
+    """Find a usable pip and record it as ``wf.pip_cmd``.
+
+    Raspberry Pi OS Lite ships NO pip3 (found birthing HOPE, 2026-08-01, where
+    it stopped the build dead). It does ship pip's own wheel for python3-venv,
+    and pip can be run straight out of it — which is a fully offline bootstrap
+    needing no apt, no internet and no extra carried file.
+
+    Order matters: the offline sources are tried FIRST. Reaching for apt on a
+    node with no internet costs up to ~17 minutes of timeouts before failing,
+    and a field node is offline by definition — that is the normal case here,
+    not the exception.
+    """
+    for probe, cmd, note in (
+            ("command -v pip3", "pip3", ""),
+            ("python3 -m pip --version", "python3 -m pip", " (python3 -m pip)")):
+        if wf.connection.run(probe)[0] == 0:
+            wf.pip_cmd = cmd
+            return True, note
+
+    # Offline: run pip directly from the wheel Debian already put on the node.
+    code, out, _ = wf.connection.run(f"ls {PIP_WHEEL_GLOB} 2>/dev/null | head -1")
+    wheel = (out or "").strip().splitlines()
+    wheel = wheel[0].strip() if wheel else ""
+    if code == 0 and wheel.endswith(".whl"):
+        if wf.connection.run(f"python3 {wheel}/pip --version")[0] == 0:
+            wf.pip_cmd = f"python3 {wheel}/pip"
+            return True, " (pip from the image's own wheel, offline)"
+
+    # Last resort, and only useful with connectivity.
     wf.connection.run(wf.priv("apt-get update -o Acquire::Retries=2") + " || true",
                       timeout=420)
     wf.connection.run(wf.priv("apt-get install -y python3-pip"), timeout=600)
     if wf.connection.run("command -v pip3")[0] == 0:
+        wf.pip_cmd = "pip3"
         return True, " (installed python3-pip)"
-    return False, ("pip3 is missing and could not be installed from apt — "
-                   "the node needs internet (or a base image with pip).")
+    return False, ("No pip on the node: none installed, no pip wheel in "
+                   f"{PIP_WHEEL_GLOB}, and apt could not fetch one.")
 
 
 def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
@@ -136,11 +169,11 @@ def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
         return False, pip_note
     _push_dir(wf, PACKAGE_DIR, REMOTE_PACKAGE_DIR)
     if wf.connection.run(f"ls {REMOTE_PACKAGE_DIR}/*.whl")[0] == 0:
-        cmd = (f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
+        cmd = (f"{wf.pip_cmd} install --no-index --find-links {REMOTE_PACKAGE_DIR} "
                f"--break-system-packages --user rns")
         source = "carried wheels"
     elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
-        cmd = "pip3 install --break-system-packages --user rns"
+        cmd = f"{wf.pip_cmd} install --break-system-packages --user rns"
         source = "online pip"
     else:
         return False, ("rnodeconf missing and no carried wheels / no internet to "
@@ -351,6 +384,11 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
     missing = ([] if have_rns else ["rns"]) + ([] if have_lxmf else ["lxmf"])
 
     if missing:
+        # Resolve pip FIRST — a stock Pi OS Lite has none, and every branch
+        # below is a pip invocation (found birthing HOPE, 2026-08-01).
+        pip_ok, pip_note = _ensure_pip(wf)
+        if not pip_ok:
+            return StepResult("install_software_stack", False, pip_note)
         # Prefer carried wheels (the field build has no internet); stage them
         # onto the node and install --no-index. If none are carried, fall back
         # to online pip when the node has connectivity.
@@ -358,11 +396,11 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
         have_wheels = wf.connection.run(f"ls {REMOTE_PACKAGE_DIR}/*.whl")[0] == 0
         pkgs = " ".join(missing)
         if have_wheels:
-            cmd = (f"pip3 install --no-index --find-links {REMOTE_PACKAGE_DIR} "
+            cmd = (f"{wf.pip_cmd} install --no-index --find-links {REMOTE_PACKAGE_DIR} "
                    f"--break-system-packages --user {pkgs}")
             source = "carried wheels (offline)"
         elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
-            cmd = f"pip3 install --break-system-packages --user {pkgs}"
+            cmd = f"{wf.pip_cmd} install --break-system-packages --user {pkgs}"
             source = "online pip (no wheels carried)"
         else:
             return StepResult(
@@ -374,12 +412,12 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
             # An INCOMPLETE wheelhouse (e.g. rns carried, lxmf not) must not
             # kill the birth when the node has internet (2026-07-30 proof).
             source = "online pip (wheelhouse incomplete)"
-            cmd = f"pip3 install --break-system-packages --user {pkgs}"
+            cmd = f"{wf.pip_cmd} install --break-system-packages --user {pkgs}"
             code, out, err = wf.connection.run(cmd, timeout=600)
         if code != 0:
             return StepResult("install_software_stack", False,
                               f"pip install failed ({source}): {err or out}")
-        installed = f"Installed {pkgs} from {source}."
+        installed = f"Installed {pkgs} from {source}{pip_note}."
     else:
         installed = "Reticulum and LXMF already installed."
 
@@ -679,6 +717,10 @@ class BuildWorkflow:
         self.steps: List[Tuple[str, Callable]] = list(_BUILD_STEPS)
         self.current_index = 0
         self.results: List[StepResult] = []
+        #: How to invoke pip on THIS node — resolved by _ensure_pip,
+        #: which may find no pip3 at all and fall back to running it
+        #: out of the image's own wheel.
+        self.pip_cmd = "pip3"
         self.rendered_config = ""
         self.birth_certificate: Optional[dict] = None
         self._root: Optional[bool] = None
