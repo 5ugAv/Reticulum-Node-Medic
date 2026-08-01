@@ -96,10 +96,21 @@ def _toml_escape(s: str) -> str:
     return (s or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
+def medic_public_key(path: str = "~/.ssh/id_ed25519.pub") -> str:
+    """The medic's own SSH public key, so a Pi it images will accept it later.
+    Empty string if there is no keypair yet."""
+    try:
+        with open(os.path.expanduser(path)) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 def build_custom_toml(hostname: str, username: str, password: str,
                       wifi_ssid: str = "", wifi_password: str = "",
                       wifi_country: str = "AU", enable_ssh: bool = True,
-                      timezone: str = "", pw_hasher: Callable[[str], str] = None) -> str:
+                      timezone: str = "", pw_hasher: Callable[[str], str] = None,
+                      authorized_keys: "Optional[List[str]]" = None) -> str:
     """The Raspberry Pi OS ``custom.toml`` firstboot config (schema config_version=1).
     The user password is stored SHA-512-crypted; WiFi is included only when an SSID
     is given. Written to the card's boot partition."""
@@ -109,7 +120,15 @@ def build_custom_toml(hostname: str, username: str, password: str,
     lines += ["[user]", f'name = "{q(username)}"',
               f'password = "{q(hashed)}"', "password_encrypted = true", ""]
     lines += ["[ssh]", f"enabled = {str(bool(enable_ssh)).lower()}",
-              "password_authentication = true", ""]
+              "password_authentication = true"]
+    # The medic's own public key goes in at IMAGING time — the propagation
+    # BuildWorkflow authenticates by KEY only, so without this the medic could
+    # image a Pi and then be unable to log into it (2026-08-01).
+    keys = [k.strip() for k in (authorized_keys or []) if k and k.strip()]
+    if keys:
+        joined = ", ".join(f'"{q(k)}"' for k in keys)
+        lines.append(f"authorized_keys = [ {joined} ]")
+    lines.append("")
     if wifi_ssid:
         lines += ["[wlan]", f'ssid = "{q(wifi_ssid)}"',
                   f'password = "{q(wifi_password)}"', "password_encrypted = false",
@@ -152,13 +171,19 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           enable_ssh: bool = True, image_path: Optional[str] = None,
           run: Runner = _run,
           run_shell: Optional[Callable[[str], Tuple[int, str]]] = None,
-          pw_hasher: Callable[[str], str] = None) -> Tuple[bool, str]:
+          pw_hasher: Callable[[str], str] = None,
+          authorized_keys: Optional[List[str]] = None) -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
     ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
     if not is_safe_target(device_path, run):
         return (False, f"Refusing to write to {device_path}: it isn't a removable "
                        "USB card (or it's the medic's own system disk).")
+    # Default to the medic's OWN key: the propagation birth logs in by key,
+    # so a card imaged without it produces a Pi the medic can't reach.
+    if authorized_keys is None:
+        mk = medic_public_key()
+        authorized_keys = [mk] if mk else []
     image = image_path or carried_image()
     if not image:
         return (False, "No Pi OS image found to write (expected ~/pi_os_lite.img.xz).")
@@ -172,7 +197,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     if code != 0:
         return (False, f"Writing the image failed: {out[-200:]}")
     toml = build_custom_toml(hostname, username, password, wifi_ssid, wifi_password,
-                             wifi_country, enable_ssh, pw_hasher=pw_hasher)
+                             wifi_country, enable_ssh, pw_hasher=pw_hasher,
+                             authorized_keys=authorized_keys)
     for cmd in apply_config_commands(device_path, toml):
         code, out = run_shell(cmd)
         if code != 0:

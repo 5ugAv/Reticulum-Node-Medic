@@ -91,3 +91,39 @@ def test_carried_image_found_or_none(tmp_path):
     img.write_bytes(b"x")
     assert pi.carried_image([str(img)]) == str(img)
     assert pi.carried_image([str(tmp_path / "nope.xz")]) is None
+
+
+def test_config_carries_the_medics_public_key():
+    """The propagation birth logs in by KEY, so an imaged card must already
+    trust the medic — otherwise the medic images a Pi it cannot reach
+    (2026-08-01)."""
+    from provisioning.pi_imager import build_custom_toml
+    toml = build_custom_toml("rnm-prop-01", "pi", "pw",
+                             authorized_keys=["ssh-ed25519 AAAAKEY medic"],
+                             pw_hasher=lambda p: "HASH")
+    assert 'authorized_keys = [ "ssh-ed25519 AAAAKEY medic" ]' in toml
+    assert "[ssh]" in toml and "enabled = true" in toml
+
+
+def test_flash_defaults_to_the_medics_key(monkeypatch):
+    """flash() must include the medic's key without being asked."""
+    import provisioning.pi_imager as pi
+    monkeypatch.setattr(pi, "medic_public_key", lambda *a, **k: "ssh-ed25519 DEFAULTKEY m")
+    monkeypatch.setattr(pi, "is_safe_target", lambda *a, **k: True)
+    monkeypatch.setattr(pi, "carried_image", lambda *a, **k: "/tmp/os.img.xz")
+    seen = []
+    ok, msg = pi.flash("/dev/sdz", "h", "u", "p",
+                       run_shell=lambda cmd: (seen.append(cmd), (0, ""))[1],
+                       pw_hasher=lambda p: "HASH")
+    assert ok, msg
+    # the config is base64'd into the shell command, so decode to check
+    import base64, re
+    found = False
+    for c in seen:
+        for blob in re.findall(r"[A-Za-z0-9+/=]{40,}", c):
+            try:
+                if "DEFAULTKEY" in base64.b64decode(blob).decode("utf-8", "ignore"):
+                    found = True
+            except Exception:
+                pass
+    assert found, "medic key never reached the card"
