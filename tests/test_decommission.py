@@ -10,7 +10,7 @@ from provisioning import decommission as dc
 
 
 class FakeConn:
-    def __init__(self, hostname="hope", fail=(), readback="0" * 64):
+    def __init__(self, hostname="hope", fail=(), readback="0"):
         self.hostname = hostname
         self.fail = fail
         self.readback = readback
@@ -24,7 +24,7 @@ class FakeConn:
         for f in self.fail:
             if f in cmd:
                 return (1, "", "dd: writing: No space left on device")
-        if "od -An" in cmd:
+        if "wc -c" in cmd:
             return (0, self.readback, "")
         return (0, "", "")
 
@@ -102,20 +102,30 @@ def test_a_failed_dd_is_reported_not_swallowed():
 
 def test_a_card_that_still_has_data_is_reported_as_not_wiped():
     """Otherwise the operator only discovers it at the next boot."""
-    conn = FakeConn(readback="33c08ed0bc007c8ec0")     # a real MBR head
+    conn = FakeConn(readback="4096")     # 4096 non-zero bytes still there
     r = dc.decommission(conn, expected_hostname="hope")
     assert r.ok is False
     assert "still has data" in r.message and "would still boot" in r.message
 
 
-@pytest.mark.parametrize("dump,expect", [
-    ("0" * 64, True),
-    ("00000000", True),
-    ("33c08ed0", False),
+@pytest.mark.parametrize("count,expect", [
+    ("0", True),
+    ("0\n", True),
+    ("4096", False),
     ("", False),                       # no read-back is not proof of a wipe
+    ("dd: cannot open", False),        # nor is an error message
 ])
-def test_looks_wiped(dump, expect):
-    assert dc.looks_wiped(dump) is expect
+def test_looks_wiped(count, expect):
+    assert dc.looks_wiped(count) is expect
+
+
+def test_verification_does_not_use_od_whose_output_lies():
+    """od collapses runs of identical lines into '*', so an all-zero region
+    dumps as zeros-plus-asterisk and any all-zeros test fails on formatting.
+    That reported a GOOD wipe as failed the first time this ran."""
+    cmd = dc.verify_commands()[0]
+    assert "od " not in cmd
+    assert "tr -d" in cmd and "wc -c" in cmd
 
 
 def test_verify_reads_from_the_same_device_it_wiped():

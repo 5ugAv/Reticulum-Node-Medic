@@ -94,18 +94,33 @@ def wipe_commands(device: str = DEFAULT_NODE_DISK, megabytes: int = WIPE_MB
     ]
 
 
-def verify_commands(device: str = DEFAULT_NODE_DISK) -> List[str]:
-    """Read the front of the card back. Anything other than zeros means the
-    wipe did not take, and the operator would otherwise only find out at the
-    next boot."""
-    return [f"sudo -n dd if={device} bs=1M count=1 status=none | od -An -tx1 "
-            f"| tr -s ' ' | tr -d ' \\n' | head -c 64"]
+def verify_commands(device: str = DEFAULT_NODE_DISK, megabytes: int = WIPE_MB
+                   ) -> List[str]:
+    """Read the wiped region back and report how many NON-zero bytes remain.
+
+    Deliberately NOT ``od``: od collapses runs of identical lines into a single
+    ``*``, so a perfectly zeroed region dumps as zeros-plus-an-asterisk and any
+    "is it all zeros?" test on that output fails on its own formatting. That bug
+    reported a good wipe as a failure the first time this ran (2026-08-02).
+    Stripping NULs and counting what is left has no such trap: 0 means clean.
+    """
+    return [f"sudo -n dd if={device} bs=1M count={int(megabytes)} status=none "
+            f"| tr -d '\\000' | wc -c"]
 
 
-def looks_wiped(hexdump: str) -> bool:
-    """True when the read-back front of the card is all zeros."""
-    cleaned = (hexdump or "").strip()
-    return bool(cleaned) and set(cleaned) == {"0"}
+def looks_wiped(nonzero_count: str) -> bool:
+    """True when the read-back region contained no non-zero bytes.
+
+    Takes the output of ``verify_commands`` — a count, not a dump. An empty or
+    unparseable answer is NOT treated as success: no evidence is not evidence.
+    """
+    text = (nonzero_count or "").strip().split()
+    if not text:
+        return False
+    try:
+        return int(text[0]) == 0
+    except ValueError:
+        return False
 
 
 def decommission(connection, expected_hostname: str = "",
