@@ -23,10 +23,11 @@ from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, InsertSdIntoPiAnim,
-                                    ProvisionAnim)
+                                    ProvisionAnim, ConnectPiAnim)
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
 _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAnim,
+          "connect_pi": ConnectPiAnim,
           "insert_sd": InsertSdAnim, "insert_sd_pi": InsertSdIntoPiAnim,
           "provision": ProvisionAnim}
 
@@ -67,7 +68,30 @@ class BirthGuideScreen(BoxLayout):
         self._path = None
         self._i = 0
         self._node_name = ""
-        self._render_antenna()
+        # The antenna landing exists because plugging a RADIO in unpowered-
+        # without-antenna can destroy it. A Raspberry Pi has no antenna and no
+        # radio attached yet, so opening a Pi build with "attach the antenna"
+        # is an instruction about a board the operator isn't holding (walkthrough
+        # 2026-08-02). For the Pi path the same warning is carried on the step
+        # where the radio actually appears.
+        if self._pi_present_without_radio():
+            self._render_detect()
+        else:
+            self._render_antenna()
+
+    @staticmethod
+    def _pi_present_without_radio():
+        """A Pi is on USB and no radio work board is. Best-effort, never raises."""
+        try:
+            import subprocess
+            from provisioning import pi_usbboot
+            from ui.hw_factories import local_board_ports
+            out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                 timeout=8).stdout
+            pi = pi_usbboot.classify(out).state != pi_usbboot.ABSENT
+            return bool(pi) and not local_board_ports()
+        except Exception:
+            return False
 
     # -- antenna-first landing (before any board is powered) ---------------
     def _render_antenna(self):
@@ -125,6 +149,55 @@ class BirthGuideScreen(BoxLayout):
         step.next_btn.background_color = theme.hex_to_rgba("#78866b")
         step.next_btn.color = theme.hex_to_rgba("#f0f0f0")
         self._start_board_poll(anim, on_present=self._on_detect)
+        self._start_detect_pi_poll()
+
+    def _start_detect_pi_poll(self):
+        """Watch for a Raspberry Pi alongside the serial-board poll.
+
+        Without this the detect screen is blind to a Pi — it enumerates serial
+        ports and a Pi has no tty — so the operator had to reach for "Choose
+        manually", which is meant to be the ADVANCED escape, not the way anyone
+        builds a Pi (walkthrough 2026-08-02).
+        """
+        from kivy.clock import Clock
+        self._stop_detect_pi_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                found = False
+                try:
+                    import subprocess
+                    from provisioning import pi_usbboot
+                    out = subprocess.run(["lsusb"], capture_output=True,
+                                         text=True, timeout=8).stdout
+                    found = pi_usbboot.classify(out).state != pi_usbboot.ABSENT
+                except Exception:
+                    found = False
+                if found:
+                    Clock.schedule_once(lambda _d: self._on_pi_detected(), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._pi_poll = Clock.schedule_interval(tick, 1.5)
+        tick(0)
+
+    def _stop_detect_pi_poll(self):
+        poll = getattr(self, "_pi_poll", None)
+        if poll is not None:
+            try:
+                poll.cancel()
+            except Exception:
+                pass
+            self._pi_poll = None
+
+    def _on_pi_detected(self):
+        """A Pi is plugged in — take the Pi path without asking."""
+        self._stop_detect_pi_poll()
+        self._stop_board_poll()
+        self._path = "pi"
+        self._i = 0
+        self._render_name()
 
     def _on_detect(self, anim):
         """A board appeared — celebrate, then read + classify it off-thread."""
@@ -886,6 +959,23 @@ class BirthGuideScreen(BoxLayout):
         # A 'connect your board' step is REDUNDANT when the board is already
         # plugged in (operator feedback 2026-07-31: being told to connect a
         # connected board reads as a bug) — skip it silently.
+        if steps[self._i].get("anim") == "connect_pi":
+            # A Pi in boot-ROM mode is NOT a serial device — it has no tty at
+            # all — so the work-board check can never see one. Ask the USB
+            # classifier instead. (Walkthrough 2026-08-02: this step sat there
+            # telling the operator to connect an already-connected Pi.)
+            try:
+                import subprocess
+                from provisioning import pi_usbboot
+                out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                     timeout=8).stdout
+                if pi_usbboot.classify(out).state != pi_usbboot.ABSENT:
+                    self._i += 1
+                    if self._i >= len(steps):
+                        self._finish()
+                        return
+            except Exception:
+                pass
         if steps[self._i].get("anim") == "connect_board":
             try:
                 from ui.hw_factories import local_board_ports
@@ -914,7 +1004,9 @@ class BirthGuideScreen(BoxLayout):
         # A "connect your board" step loops until the medic SENSES a board on USB,
         # then the animation fires its green "Connected!" burst. Until then Next is
         # grayed out — you can't move on without a board actually plugged in.
-        if isinstance(anim, ConnectBoardAnim):
+        if isinstance(anim, ConnectPiAnim):
+            self._start_pi_poll(anim)
+        elif isinstance(anim, ConnectBoardAnim):
             step.set_next_enabled(False)
             self._start_board_poll(anim)
 
@@ -949,6 +1041,10 @@ class BirthGuideScreen(BoxLayout):
 
     def _stop_current(self):
         self._stop_board_poll()
+        # The Pi poll must die with the step too. Left running it keeps firing
+        # _on_pi_detected and yanks the operator back to the name screen from
+        # whatever step they had reached.
+        self._stop_detect_pi_poll()
         # Dismiss the on-screen keyboard on EVERY step change. It only auto-hides
         # on the ENTER key, so advancing with the Next button carried it into the
         # next step — where it sat covering that step's nav buttons (the
@@ -966,6 +1062,37 @@ class BirthGuideScreen(BoxLayout):
         self._current = None
 
     # -- board-presence gate ------------------------------------------------
+    def _start_pi_poll(self, anim):
+        """Poll for a RASPBERRY PI on USB — boot-ROM, card reader or node.
+
+        Deliberately separate from _start_board_poll: that one enumerates serial
+        ports, and a Pi never appears as one. Sharing it meant the "Connect the
+        Pi" step could never fire, no matter how many times the operator
+        replugged (walkthrough 2026-08-02).
+        """
+        from kivy.clock import Clock
+        self._stop_board_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                present = False
+                try:
+                    import subprocess
+                    from provisioning import pi_usbboot
+                    out = subprocess.run(["lsusb"], capture_output=True,
+                                         text=True, timeout=8).stdout
+                    present = pi_usbboot.classify(out).state != pi_usbboot.ABSENT
+                except Exception:
+                    present = False
+                if present:
+                    Clock.schedule_once(lambda _d: self._on_board_present(anim), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._board_poll = Clock.schedule_interval(tick, 1.5)
+        tick(0)
+
     def _start_board_poll(self, anim, on_present=None):
         """Poll for a work board on the medic's USB; fire *on_present(anim)* the
         moment one appears (default = the guided-flow handler). Checks off-thread

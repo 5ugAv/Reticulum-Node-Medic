@@ -97,7 +97,7 @@ _STEPS = {
                     "(data), the outer one is PWR IN and cannot carry data. "
                     "Use a short, thick cable — a thin or coiled one drops the "
                     "link."),
-         "anim": "connect_board",
+         "anim": "connect_pi",
          "next": tr("Open the card  →"), "screen": "pi_imager"},
         {"title": tr("Restart the Pi"),
          "body": tr("The card now has an operating system on it. Unplug the Pi "
@@ -106,7 +106,7 @@ _STEPS = {
          "hint": tr("Node Medic can't switch the Pi off and on for you — this "
                     "is the one step it needs your hands for. First start-up "
                     "takes a minute or two."),
-         "anim": "connect_board"},
+         "anim": "connect_pi"},
         # The radio goes on the MEDIC, not the Pi. This is the step that removes
         # the powered-hub problem entirely: a Pi Zero can't reliably feed a
         # Heltec V3 (900 mA peak against a 500 mA budget), but the medic has

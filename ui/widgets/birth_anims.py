@@ -695,3 +695,82 @@ class InsertSdIntoPiAnim(_LoopAnim):
         cw, ch = w * 0.12, h * 0.16
         cx = self.x + w * 0.05 + (bx - cw * 0.5 - (self.x + w * 0.05)) * travel
         Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
+
+
+class ConnectPiAnim(ConnectBoardAnim):
+    """The Raspberry Pi descends onto Node Medic's USB plug — on a GREEN cable.
+
+    Two operator notes from the first walkthrough (2026-08-02): this step is
+    about the Pi, so it must not show a radio board, and the cable wants its own
+    colour so the two connections read as different things at a glance. The
+    radio goes on a red cable to the medic; the Pi goes on a green one.
+
+    The shipped medic sprite has a RED cable baked into it, so this variant
+    draws the cable itself over the cable-less medic art — which also lets the
+    cable follow the Pi down as it docks instead of being a fixed picture.
+    """
+
+    #: Where the medic's USB socket sits in node_medic.png, as a fraction of the
+    #: sprite (x from left, y from TOP). Eyeball-tuned against the art; nudge
+    #: here if the cable root drifts off the socket.
+    PORT = (0.055, 0.58)
+
+    def _draw(self):
+        medic_tex, board_tex = _texture(MEDIC_PNG), _texture(PI_ZERO_PNG)
+        if medic_tex is None or board_tex is None:
+            return self._draw_fallback()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        ma = medic_tex.width / float(medic_tex.height)
+        mh = h * 0.96
+        mw = mh * ma
+        if mw > w * 0.60:
+            mw = w * 0.60
+            mh = mw / ma
+        mx = x + w - mw - dp(4)
+        my = y + (h - mh) / 2.0
+        portx = mx + self.PORT[0] * mw
+        porty = my + (1.0 - self.PORT[1]) * mh
+
+        ba = board_tex.width / float(board_tex.height)
+        bh = mh * 0.30
+        bw = bh * ba
+        p = min(1.0, self.phase / 0.9)
+        start_y = porty + h * 0.42
+        by = start_y - (start_y - porty) * p
+        bx = portx - bw / 2.0
+        # the Pi's USB socket, where the cable lands
+        plugx, plugy = bx + bw * 0.94, by + bh * 0.5
+
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
+            # GREEN cable: a slack loop from the medic's socket to the Pi's,
+            # sagging more when the Pi is further away.
+            sag = dp(18) + (1.0 - p) * h * 0.12
+            Color(0.20, 0.85, 0.38, 1)
+            Line(bezier=(portx, porty,
+                         portx - dp(30), porty - sag,
+                         plugx + dp(30), plugy - sag,
+                         plugx, plugy),
+                 width=dp(3.4))
+            Color(1, 1, 1, 1)
+            Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
+            if self._connected:
+                maxr = min(w, h) * 0.52
+                for i in range(4):
+                    f = self.burst - i * 0.16
+                    if f <= 0.0:
+                        continue
+                    f = min(1.0, f)
+                    Color(0.2, 0.9, 0.4, (1.0 - f) * 0.9)
+                    Line(circle=(portx, porty, dp(10) + f * maxr), width=dp(3.0))
+                if self._conn_tex is not None:
+                    tw, th = self._conn_tex.size
+                    s_y, t_y = y - dp(56), y + h * 0.24
+                    ry = s_y + (t_y - s_y) * self.rise
+                    g = theme.hex_to_rgba(theme.COLORS["green"])
+                    Color(g[0], g[1], g[2], self.rise)
+                    Rectangle(texture=self._conn_tex,
+                              pos=(x + (w - tw) / 2.0, ry), size=(tw, th))
+        self._hide_label("medic")
+        self._hide_label("board")

@@ -113,3 +113,60 @@ def test_guide_steps_returns_a_copy():
     a = guide_steps("radio")
     a.append({"title": "x", "body": "y"})
     assert len(guide_steps("radio")) == 2          # internal list untouched
+
+
+def test_the_pi_step_uses_the_pi_animation_not_the_radio_one():
+    """Walkthrough 2026-08-02: the step said 'Connect the Pi' while showing a
+    radio board sliding into the medic."""
+    connect = [s for s in guide_steps("pi") if "Connect the Pi" in s["title"]][0]
+    assert connect["anim"] == "connect_pi"
+
+
+def test_the_pi_connect_step_is_not_detected_by_serial_port_polling():
+    """The bug that stalled the first walkthrough: a Pi in boot-ROM mode is not
+    a serial device at all, so local_board_ports() can never see one and the
+    step sat there telling the operator to connect an already-connected Pi."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    assert "_start_pi_poll" in src
+    assert "pi_usbboot" in src
+    # the Pi branch must be chosen BEFORE the generic serial-board branch,
+    # since ConnectPiAnim subclasses ConnectBoardAnim
+    i_pi = src.index("isinstance(anim, ConnectPiAnim)")
+    i_board = src.index("isinstance(anim, ConnectBoardAnim)")
+    assert i_pi < i_board, "the Pi branch is unreachable behind its own base class"
+
+
+def test_the_restart_step_shows_the_pi_not_the_radio():
+    """Walkthrough 2026-08-02: 'Restart the Pi' showed a radio board sliding in
+    on a red cable."""
+    restart = [s for s in guide_steps("pi") if "Restart" in s["title"]][0]
+    assert restart["anim"] == "connect_pi"
+
+
+def test_no_pi_step_uses_the_radio_board_animation_except_the_radio_step():
+    for s in guide_steps("pi"):
+        if "radio" in s["title"].lower():
+            continue
+        assert s.get("anim") != "connect_board", f"{s['title']} shows a radio board"
+
+
+def test_detect_finds_a_pi_so_choose_manually_is_not_required():
+    """'Choose manually' is the ADVANCED escape. Needing it to build a Pi — the
+    commonest node — made the primary path the fallback."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    assert "_start_detect_pi_poll" in src and "_on_pi_detected" in src
+
+
+def test_the_pi_poll_is_stopped_when_the_step_changes():
+    """Left running it fires _on_pi_detected forever and drags the operator back
+    to the name screen from wherever they got to."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    stop_current = src[src.index("def _stop_current"):][:400]
+    assert "_stop_detect_pi_poll" in stop_current
+
+
+def test_a_pi_build_does_not_open_with_an_antenna_instruction():
+    """A Pi has no antenna and no radio attached yet. Opening with 'attach the
+    antenna' is an instruction about a board the operator isn't holding."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    assert "_pi_present_without_radio" in src
