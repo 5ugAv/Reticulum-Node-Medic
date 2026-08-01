@@ -103,7 +103,20 @@ class VaultUnlockScreen(BoxLayout):
         except Exception:
             pass
         self._field.bind(on_text_validate=lambda *_: self._try_passphrase())
-        self.add_widget(self._field)
+        # A masked field typed on a touchscreen keypad is easy to get wrong
+        # with no way to check — so the password can be revealed while typing
+        # (operator spec 2026-08-01). Starts hidden; the operator opts in.
+        pw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                           height=dp(56), spacing=dp(8))
+        pw_row.add_widget(self._field)
+        self._reveal = Button(
+            text=tr("Show"), size_hint=(None, 1), width=dp(92), bold=True,
+            font_size="15sp", background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+            color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        self._reveal.bind(on_release=lambda *_: self._toggle_reveal())
+        pw_row.add_widget(self._reveal)
+        self.add_widget(pw_row)
 
         go = Button(text=tr("Enter password to open Node Medic"),
                     size_hint_y=None, height=dp(58), bold=True,
@@ -202,6 +215,16 @@ class VaultUnlockScreen(BoxLayout):
             on_power_off=self._do_reset,
             hint_text=tr("slide to erase and start over  →")))
         return wrap
+
+    def _toggle_reveal(self):
+        """Show/hide the typed password. Re-focusing keeps the keypad up so
+        the operator can carry on typing while watching what they type."""
+        self._field.password = not self._field.password
+        self._reveal.text = tr("Hide") if not self._field.password else tr("Show")
+        try:
+            self._field.focus = True
+        except Exception:
+            pass
 
     # -- actions -----------------------------------------------------------
 
