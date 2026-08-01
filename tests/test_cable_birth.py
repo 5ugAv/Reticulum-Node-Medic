@@ -404,3 +404,65 @@ def test_the_cable_and_our_own_name_ARE_confirmed(monkeypatch):
 def test_the_screen_refuses_to_autofill_an_unconfirmed_address():
     src = open("ui/screens/birth_screen.py").read()
     assert 'res or {}).get("confirmed"' in src
+
+
+# --- recognising our OWN nodes on the network -------------------------------
+# 2026-08-02: the sweep offered 192.168.1.42 as a build target. It was
+# EVERYWHERE, the operator's live propagation node — and the medic knew its
+# name all along (mDNS resolves it) and had it in the kin roster. It simply
+# wasn't looking.
+
+def test_a_known_node_is_named_and_marked_as_ours(monkeypatch):
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "name_for_ip", lambda ip: "everywhere")
+    got = pi_discover.identify("192.168.1.42", kin={"everywhere": "EVERYWHERE"})
+    assert got["kin"] == "EVERYWHERE"
+    assert "already one of your nodes" in got["label"]
+    assert "192.168.1.42" in got["label"]
+
+
+def test_an_unknown_pi_is_named_but_not_claimed(monkeypatch):
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "name_for_ip", lambda ip: "someones-pi")
+    got = pi_discover.identify("192.168.1.9", kin={"everywhere": "EVERYWHERE"})
+    assert got["kin"] == ""
+    assert "someones-pi" in got["label"]
+    assert "already one of your nodes" not in got["label"]
+
+
+def test_a_nameless_host_falls_back_to_its_address(monkeypatch):
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "name_for_ip", lambda ip: "")
+    assert pi_discover.identify("192.168.1.9", kin={})["label"] == "192.168.1.9"
+
+
+def test_a_sweep_finding_only_our_own_nodes_says_there_is_nothing_to_build(monkeypatch):
+    """The exact situation on the bench: the one Pi on the LAN was EVERYWHERE."""
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "")
+    monkeypatch.setattr(pi_discover, "last_imaged_pi", lambda path=None: {})
+    monkeypatch.setattr(pi_discover, "neighbours",
+                        lambda: [{"ip": "192.168.1.42", "mac": "02:00:00:0a:00:0a"}])
+    monkeypatch.setattr(pi_discover, "known_kin_names",
+                        lambda *a, **k: {"everywhere": "EVERYWHERE"})
+    monkeypatch.setattr(pi_discover, "name_for_ip", lambda ip: "everywhere")
+    r = pi_discover.find_pi()
+    assert r["address"] == "" and r["confirmed"] is False
+    assert "EVERYWHERE" in r["how"]
+    assert "already yours" in r["how"] and "Nothing here to build" in r["how"]
+
+
+def test_kin_names_are_matched_case_and_space_insensitively():
+    from provisioning import pi_discover
+
+    class _R(dict):
+        pass
+    import monitor.kin_roster as kr
+    orig = kr.load_roster
+    kr.load_roster = lambda *a, **k: {"h": {"name": "FAITH RTnode"}}
+    try:
+        names = pi_discover.known_kin_names()
+    finally:
+        kr.load_roster = orig
+    assert names.get("faith rtnode") == "FAITH RTnode"
+    assert names.get("faith-rtnode") == "FAITH RTnode"   # hostnames use dashes

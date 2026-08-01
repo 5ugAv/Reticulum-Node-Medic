@@ -105,6 +105,60 @@ def resolve(name: str) -> Optional[str]:
     return None
 
 
+def name_for_ip(ip: str) -> str:
+    """The hostname behind an IP, via mDNS/DNS, or "".
+
+    ``getent hosts <ip>`` does the reverse lookup, and nss-mdns answers for
+    ``.local`` names on this LAN (verified on the medic: 192.168.1.42 resolves
+    to "everywhere").
+    """
+    out = _run(["getent", "hosts", (ip or "").strip()])
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            return parts[1].split(".")[0]
+    return ""
+
+
+def known_kin_names(path: str = "") -> Dict[str, str]:
+    """``{lowercased name: display name}`` for every node this medic built.
+
+    Used to recognise our OWN nodes on the network so they are never offered as
+    something to build over — the medic knows their names, it just wasn't
+    looking (2026-08-02).
+    """
+    try:
+        from monitor.kin_roster import load_roster
+        roster = load_roster(path) if path else load_roster()
+    except Exception:                                  # noqa: BLE001
+        return {}
+    out = {}
+    for entry in (roster or {}).values():
+        name = (entry or {}).get("name") or ""
+        if name:
+            out[name.strip().lower()] = name.strip()
+            out[name.strip().lower().replace(" ", "-")] = name.strip()
+    return out
+
+
+def identify(ip: str, kin: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """What is at *ip*? ``{ip, name, kin, label}``.
+
+    ``kin`` is the display name when this is one of the medic's own nodes —
+    which also means it must never be offered as a build target.
+    """
+    kin = known_kin_names() if kin is None else kin
+    name = name_for_ip(ip)
+    mine = kin.get((name or "").strip().lower(), "")
+    if mine:
+        label = f"{ip} — {mine} (already one of your nodes)"
+    elif name:
+        label = f"{ip} — {name}"
+    else:
+        label = ip
+    return {"ip": ip, "name": name, "kin": mine, "label": label}
+
+
 def neighbours() -> List[Dict[str, str]]:
     """Hosts in the kernel's neighbour table that look like Raspberry Pis.
     A HINT for the operator to choose from — other people's Pis can appear."""
@@ -177,10 +231,24 @@ def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
     # without the operator explicitly choosing it.
     nb = neighbours()
     if nb:
+        # Name them. The medic knows what its own nodes are called, so a sweep
+        # hit that IS one of them can be called out rather than offered as
+        # something to build over — 192.168.1.42 was EVERYWHERE, the
+        # operator's live propagation node (2026-08-02).
+        kin = known_kin_names()
+        seen = [identify(n["ip"], kin) for n in nb]
+        mine = [d for d in seen if d["kin"]]
+        if mine and len(mine) == len(seen):
+            names = ", ".join(d["kin"] for d in mine)
+            return {"address": "", "ip": "", "confirmed": False,
+                    "how": (f"The only Raspberry Pi{'s' if len(mine) != 1 else ''} "
+                            f"on your network {'are' if len(mine) != 1 else 'is'} "
+                            f"{names} — already yours. Nothing here to build."),
+                    "candidates": ", ".join(d["label"] for d in seen)}
         return {"address": "", "ip": "", "confirmed": False,
                 "how": (f"Found {len(nb)} Raspberry Pi"
                         f"{'s' if len(nb) != 1 else ''} on your network, but "
                         f"Node Medic can't tell if any of them is the one "
                         f"you're building. Pick one only if you're sure."),
-                "candidates": ", ".join(n["ip"] for n in nb)}
+                "candidates": ", ".join(d["label"] for d in seen)}
     return {}

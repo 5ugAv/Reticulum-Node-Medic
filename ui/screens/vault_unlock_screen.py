@@ -150,7 +150,14 @@ class VaultUnlockScreen(BoxLayout):
         self._key_field = TextInput(
             hint_text=tr("XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"),
             multiline=False, size_hint_y=None, height=dp(52),
-            font_size="30sp", halign="center")
+            # 24sp, NOT the ~57%-of-height rule the other fields use. The hint
+            # is XXXX-XXXX-... x8 = 39 characters, and a real key is the same
+            # length. This is the field a locked-out operator types their
+            # recovery key into, so seeing the WHOLE string at once matters more
+            # than size: if it scrolls under the cursor they cannot check what
+            # they typed against what they wrote down, and they get one field
+            # and no other way in.
+            font_size="24sp", halign="center")
         try:
             from ui.onscreen_keyboard import bind_field
             bind_field(self._key_field)
