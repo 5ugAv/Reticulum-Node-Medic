@@ -85,8 +85,66 @@ _USB_KIND = {
 }
 
 
+#: USB vendor IDs belonging to USB-SERIAL BRIDGE chips. A port behind one of
+#: these is bridged no matter what the device node is called.
+_BRIDGE_VENDORS = {
+    "10c4",   # Silicon Labs  CP210x
+    "1a86",   # QinHeng/WCH   CH340 / CH343 / CH9102
+    "0403",   # FTDI          FT232 etc
+    "067b",   # Prolific      PL2303
+    "04d8",   # Microchip     MCP2221
+}
+
+#: USB vendor IDs of MCUs whose own controller presents the port (native USB).
+_NATIVE_VENDORS = {
+    "303a",   # Espressif  (ESP32-S3 USB-JTAG/serial)
+    "239a",   # Adafruit   (nRF52840 CDC)
+    "1915",   # Nordic
+    "2e8a",   # Raspberry Pi Ltd
+}
+
+
+def port_usb_vendor(port: str) -> str:
+    """The USB vendor id behind a serial *port* ("1a86"), or "".
+
+    Walks sysfs from the tty up to the USB device node that owns it.
+    """
+    import os
+    name = os.path.basename((port or "").strip())
+    if not name:
+        return ""
+    try:
+        node = os.path.realpath(f"/sys/class/tty/{name}/device")
+        for _ in range(8):                       # bounded walk to the USB node
+            cand = os.path.join(node, "idVendor")
+            if os.path.isfile(cand):
+                with open(cand) as fh:
+                    return fh.read().strip().lower()
+            parent = os.path.dirname(node)
+            if parent == node:
+                break
+            node = parent
+    except Exception:                            # noqa: BLE001
+        pass
+    return ""
+
+
 def _port_usb_kind(port: str):
-    if "ttyUSB" in (port or ""):
+    """bridge / native / None for *port*.
+
+    Decided by the USB VENDOR, not the device-node name. A CH9102 (1a86) is a
+    bridge chip that enumerates as CDC — so it appears as ttyACM — and the old
+    name-based rule called it "native", inverting the answer for every recent
+    LilyGO board. Seen live on the bench (2026-08-02): a LoRa32 on ttyACM1
+    behind vendor 1a86. The name rule stays as a fallback for anything whose
+    vendor can't be read.
+    """
+    vendor = port_usb_vendor(port)
+    if vendor in _BRIDGE_VENDORS:
+        return "bridge"
+    if vendor in _NATIVE_VENDORS:
+        return "native"
+    if "ttyUSB" in (port or ""):                 # fallback: only ever a bridge
         return "bridge"
     if "ttyACM" in (port or ""):
         return "native"
