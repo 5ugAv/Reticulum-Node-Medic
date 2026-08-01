@@ -328,6 +328,29 @@ def reseed(device_path: str, hostname: str, username: str, password: str,
                   "and power it on — first-boot setup runs again.")
 
 
+def activate_account_commands(device_path: str, username: str,
+                              password_hash: str,
+                              authorized_keys: "Optional[List[str]]" = None,
+                              mnt: str = "/tmp/rnm-piroot-user") -> List[str]:
+    """Mount the card's rootfs and turn its shipped-but-DISABLED account into a
+    working login, then read back proof.
+
+    This is the step that actually makes a card reachable. Both boot-time
+    mechanisms we tried (custom.toml, cloud-init user-data) were silent no-ops
+    on the carried image — see provisioning.rootfs_user for why. Doing it here,
+    while the card is in our hands, means the medic can verify it BEFORE the
+    operator walks away with it.
+    """
+    from provisioning.rootfs_user import activate_commands
+    part = f"{device_path}p2" if device_path[-1].isdigit() else f"{device_path}2"
+    q = shlex.quote(mnt)
+    cmds = [f"sudo mkdir -p {q} && sudo mount {shlex.quote(part)} {q}",
+            f"test -f {q}/etc/passwd && test -f {q}/etc/shadow"]
+    cmds += activate_commands(mnt, username, password_hash, authorized_keys)
+    cmds.append(f"sudo sync && sudo umount {q}")
+    return cmds
+
+
 def flash(device_path: str, hostname: str, username: str, password: str,
           wifi_ssid: str = "", wifi_password: str = "", wifi_country: str = "AU",
           enable_ssh: bool = True, image_path: Optional[str] = None,
@@ -362,6 +385,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     toml = build_custom_toml(hostname, username, password, wifi_ssid, wifi_password,
                              wifi_country, enable_ssh, pw_hasher=pw_hasher,
                              authorized_keys=authorized_keys)
+    hasher = pw_hasher or password_hash
+    pw_hash = hasher(password) if password else ""
     user_data = build_cloud_init_user_data(
         hostname, username, password, enable_ssh, pw_hasher=pw_hasher,
         authorized_keys=authorized_keys)
@@ -374,6 +399,18 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     # Pi plugged straight into the medic — no WiFi, and no powered hub to let
     # an under-powered Pi feed its own radio (operator's design, 2026-08-01).
     # Never fatal: a card that boots and joins WiFi is still a usable card.
+    # THE step that makes the card reachable. The image ships its account
+    # disabled (nologin shell + locked password) and every boot-time mechanism
+    # we write is, on this image, a no-op — so do it ourselves while we hold
+    # the card. Failing this is fatal: a card that boots and cannot be logged
+    # into is worse than no card, because it looks like it worked.
+    for cmd in activate_account_commands(device_path, username, pw_hash,
+                                         authorized_keys):
+        code, out = run_shell(cmd)
+        if code != 0:
+            return (False, "Image written, but the login account could not be "
+                           f"activated ({out.strip()[-140:]}). The Pi would "
+                           "boot unreachable, so this card is not ready.")
     cable_msg = ""
     if cable_link:
         from provisioning.cable_birth import bake_commands

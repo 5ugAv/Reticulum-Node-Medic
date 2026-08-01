@@ -161,3 +161,49 @@ def test_verify_commands_read_back_all_three_things_that_matter():
     cmds = " ".join(ru.verify_commands("/mnt/root", "pi"))
     assert "/etc/passwd" in cmds and "/etc/shadow" in cmds
     assert "authorized_keys" in cmds
+
+
+# --- the imager does it automatically now ----------------------------------
+
+def _medic_run(argv, **kw):
+    if argv[:2] == ["findmnt", "-no"]:
+        return (0, "/dev/mmcblk0p2")
+    if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
+        return (0, "mmcblk0")
+    if argv[:2] == ["lsblk", "-dno"]:
+        return (0, "mmcblk0 59.5G disk mmc  0 \nsdb 29.7G disk usb  1 Reader")
+    return (0, "")
+
+
+def test_flash_activates_the_account_on_every_card_it_writes():
+    """The regression that cost three trips to the card reader."""
+    from provisioning import pi_imager
+    seen = []
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "hope", "pi", "Fixture-pw-1?", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=lambda c: (seen.append(c), (0, ""))[1],
+        pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    assert ok, msg
+    joined = " ".join(seen)
+    assert "/dev/sdb2" in joined, "rootfs never mounted - account not activated"
+    assert "base64 -d | sudo python3" in joined
+    # and it must run against the ROOTFS, not the boot partition
+    assert any("mount /dev/sdb2" in c for c in seen)
+
+
+def test_a_card_whose_account_cannot_be_activated_is_reported_as_not_ready():
+    """A card that boots but refuses every login is worse than no card,
+    because it looks like it worked."""
+    from provisioning import pi_imager
+
+    def shell(cmd):
+        if "/dev/sdb2" in cmd and "mount" in cmd:
+            return (1, "mount: unknown filesystem type")
+        return (0, "")
+
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "hope", "pi", "Fixture-pw-1?", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=shell, pw_hasher=lambda p: HASH,
+        authorized_keys=[KEY])
+    assert ok is False
+    assert "not ready" in msg and "unreachable" in msg
