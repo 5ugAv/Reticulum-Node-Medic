@@ -584,7 +584,7 @@ class BirthGuideScreen(BoxLayout):
         else:
             ti = TextInput(hint_text=tr("Couldn't read the node's name — enter one"),
                            multiline=False, size_hint_y=None, height=dp(56),
-                           font_size="19sp")
+                           font_size="32sp")
             bind_field(ti)
             self._adopt_name = ti
             self._adopt_name_value = ""
@@ -811,7 +811,7 @@ class BirthGuideScreen(BoxLayout):
                               color="text_secondary", h=44))
         ti = TextInput(text=c.get("name") or "", multiline=False,
                        hint_text=tr("Node name"), size_hint_y=None, height=dp(56),
-                       font_size="19sp")
+                       font_size="32sp")
         bind_field(ti)
         self._air_name = ti
         wrap.add_widget(_line(tr("Name"), "13sp", color="accent", h=20))
@@ -929,7 +929,7 @@ class BirthGuideScreen(BoxLayout):
         total = len(guide_steps(self._path)) + 1
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text=tr("Name this node  (e.g. Rooftop-East)"),
-                       size_hint_y=None, height=dp(58), font_size="20sp")
+                       size_hint_y=None, height=dp(58), font_size="33sp")
         bind_field(ti)
         self._name_input = ti
         step = WizardStep(index=0, total=total, title=tr("Name this node"),

@@ -174,7 +174,7 @@ class CertViewScreen(BoxLayout):
         self.notes_in = TextInput(text=self._cert.get("notes", ""),
                                   hint_text="Add a note (mounting, power, access)…",
                                   multiline=True, size_hint_y=None, height=dp(96),
-                                  font_size="14sp")
+                                  font_size="19sp")
         bind_field(self.notes_in)
         self.list.add_widget(self.notes_in)
         save = Button(text="Save notes", size_hint_y=None, height=dp(46), bold=True,

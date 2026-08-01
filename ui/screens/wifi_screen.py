@@ -80,7 +80,7 @@ class WifiScreen(BoxLayout):
         self.pw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                 height=dp(0), spacing=dp(6), opacity=0)
         self.pw_in = TextInput(hint_text="password", multiline=False, password=True,
-                               font_size="16sp")
+                               font_size="27sp")
         bind_field(self.pw_in)                       # pop the on-screen keyboard
         # Show/Hide toggle so the operator can check the password for typos.
         self.show_btn = Button(text="Show", size_hint_x=None, width=dp(78), bold=True,

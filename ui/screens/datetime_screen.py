@@ -69,14 +69,14 @@ class DateTimeScreen(BoxLayout):
         col.add_widget(_line("Date & time  (YYYY-MM-DD HH:MM:SS)",
                              size="13sp", color="text_secondary", h=22))
         self._dt = TextInput(text=td.now_string(), multiline=False,
-                             size_hint_y=None, height=dp(46), font_size="18sp")
+                             size_hint_y=None, height=dp(46), font_size="26sp")
         bind_field(self._dt)
         col.add_widget(self._dt)
 
         col.add_widget(_line("Timezone  (e.g. Australia/Melbourne)",
                              size="13sp", color="text_secondary", h=22))
         self._tz = TextInput(text="reading…", multiline=False,
-                             size_hint_y=None, height=dp(46), font_size="18sp")
+                             size_hint_y=None, height=dp(46), font_size="26sp")
         bind_field(self._tz)
         col.add_widget(self._tz)
 

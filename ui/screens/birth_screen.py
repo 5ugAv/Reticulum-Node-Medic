@@ -234,10 +234,10 @@ class BirthScreen(BoxLayout):
         # asked at the END (after the cert).
         self._name_in = TextInput(hint_text="Name this node  (e.g. Rooftop-East)",
                                   multiline=False, size_hint_y=None, height=dp(46),
-                                  font_size="16sp")
+                                  font_size="26sp")
         self._end_notes_in = TextInput(
             hint_text="Notes  (optional — mast height, landmarks…)",
-            multiline=True, size_hint_y=None, height=dp(70), font_size="15sp")
+            multiline=True, size_hint_y=None, height=dp(70), font_size="20sp")
         bind_field(self._name_in)
         bind_field(self._end_notes_in)
         # Live-render the typed name onto the board photo's on-screen display.
@@ -477,9 +477,9 @@ class BirthScreen(BoxLayout):
                         from ui.onscreen_keyboard import bind_field
                         from kivy.uix.textinput import TextInput
                         self._pi_addr_in = bind_field(TextInput(
-                            text="", multiline=False, font_size="15sp"))
+                            text="", multiline=False, font_size="27sp"))
                         self._pi_user_in = bind_field(TextInput(
-                            text="pi", multiline=False, font_size="15sp"))
+                            text="pi", multiline=False, font_size="27sp"))
                     self._pi_addr_in.text = cable
                     return
                 self.header.add_widget(_line(
@@ -495,10 +495,10 @@ class BirthScreen(BoxLayout):
                     from ui.onscreen_keyboard import bind_field
                     from kivy.uix.textinput import TextInput
                     self._pi_addr_in = bind_field(TextInput(
-                        text="", multiline=False, font_size="15sp",
+                        text="", multiline=False, font_size="27sp",
                         hint_text="found automatically — or tap Find"))
                     self._pi_user_in = bind_field(TextInput(
-                        text="pi", multiline=False, font_size="15sp",
+                        text="pi", multiline=False, font_size="27sp",
                         hint_text="user", size_hint_x=0.22))
                 if suggestion and not self._pi_addr_in.text.strip():
                     self._pi_addr_in.text = suggestion
@@ -659,6 +659,14 @@ class BirthScreen(BoxLayout):
     def _found_pi(self, res):
         status = getattr(self, "_pi_find_status", None)
         addr = (res or {}).get("address") or ""
+        # Only fill the field from an answer tied to THIS build — the cable, or
+        # the name the medic itself gave the Pi. A network sweep proves a Pi
+        # exists, never that it is ours: on 2026-08-02 it offered an unrelated
+        # Pi on the operator's LAN while the real target sat on USB with no
+        # address at all. The build rewrites the target's services, so filling
+        # that in automatically is the most destructive thing this screen does.
+        if addr and not (res or {}).get("confirmed", True):
+            addr = ""
         if addr:
             self._pi_addr_in.text = addr
             if status is not None:
@@ -1324,7 +1332,7 @@ class BirthScreen(BoxLayout):
                         spacing=dp(8))
         row.add_widget(_line(label, size="15sp"))
         ti = TextInput(text=value, multiline=False, size_hint=(None, None),
-                       width=dp(160), height=dp(44), font_size="18sp",
+                       width=dp(160), height=dp(44), font_size="25sp",
                        input_filter="float" if key in ("freq", "bw") else "int")
         bind_field(ti, numeric=True)                 # number pad for radio params
         # The FIRST touch on any param field gets the strong keep-the-presets

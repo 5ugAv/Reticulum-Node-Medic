@@ -99,7 +99,7 @@ class ConfirmLocationPopup(Popup):
         addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                              height=dp(50), spacing=dp(6))
         self._addr_in = TextInput(hint_text="Type an address to place the pin…",
-                                  multiline=False, font_size="15sp")
+                                  multiline=False, font_size="28sp")
         bind_field(self._addr_in)
         self._addr_in.bind(on_text_validate=self._find_address)
         find = Button(text="Find", size_hint_x=None, width=dp(78), bold=True,

@@ -928,7 +928,7 @@ class ScanScreen(BoxLayout):
             addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                  height=dp(44), spacing=dp(6))
             self.addr_in = TextInput(hint_text=tr("street address  (needs internet)"),
-                                     multiline=False, font_size="17sp")
+                                     multiline=False, font_size="25sp")
             bind_field(self.addr_in)
             find_btn = Button(text=tr("Find"), size_hint_x=None, width=dp(84), bold=True,
                               font_size="17sp",
@@ -941,9 +941,9 @@ class ScanScreen(BoxLayout):
             coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                   height=dp(44), spacing=dp(6))
             self.lat_in = TextInput(hint_text=tr("latitude"), multiline=False,
-                                    input_filter="float", font_size="18sp")
+                                    input_filter="float", font_size="25sp")
             self.lon_in = TextInput(hint_text=tr("longitude"), multiline=False,
-                                    input_filter="float", font_size="18sp")
+                                    input_filter="float", font_size="25sp")
             bind_field(self.lat_in, numeric=True)
             bind_field(self.lon_in, numeric=True)
             coord_row.add_widget(self.lat_in)
@@ -1005,7 +1005,8 @@ class ScanScreen(BoxLayout):
         self.center_input = TextInput(
             hint_text=tr("Couldn't find your location - type home base as: "
                          "lat, lon  (e.g. -37.79, 144.96)"),
-            multiline=False, size_hint=(1, None), height=0, opacity=0)
+            multiline=False, size_hint=(1, None), height=0, opacity=0,
+            font_size="25sp")
         self.center_input.bind(text=lambda *_: self._refresh_estimate())
         self._offline_panel.add_widget(self.center_input)
         self.add_widget(self._offline_panel)

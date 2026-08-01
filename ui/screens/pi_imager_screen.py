@@ -67,7 +67,7 @@ class PiImagerScreen(BoxLayout):
     def _field(self, label, hint, key, password=False, numeric=False):
         self.col.add_widget(_line(label, size="15sp", color="accent", bold=True, h=24))
         ti = TextInput(hint_text=hint, multiline=False, password=password,
-                       size_hint_y=None, height=dp(48), font_size="17sp")
+                       size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(ti, numeric=numeric)
         self._inputs[key] = ti
         self.col.add_widget(ti)

@@ -181,7 +181,7 @@ class VitalsScreen(BoxLayout):
         # Search on its OWN row BELOW the filters — the single top row (filters +
         # search + self-check) was too cramped on the 5in panel.
         search_row = BoxLayout(size_hint_y=None, height=dp(46), padding=(dp(6), 0))
-        search = TextInput(hint_text=tr("Search"), multiline=False)
+        search = TextInput(hint_text=tr("Search"), multiline=False, font_size="26sp")
         bind_field(search)                           # pop the on-screen keyboard
         search.bind(text=lambda i, v: self.set_search(v))
         search_row.add_widget(search)

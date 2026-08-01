@@ -94,7 +94,7 @@ class RadioDefaultsScreen(BoxLayout):
             v = cur[key]
             ti = TextInput(text=f"{v:g}" if key in ("freq", "bw") else str(v),
                            multiline=False, size_hint=(None, None), width=dp(150),
-                           height=dp(44), font_size="18sp",
+                           height=dp(44), font_size="25sp",
                            input_filter="float" if key in ("freq", "bw") else "int")
             bind_field(ti, numeric=True)
             self._inputs[key] = ti

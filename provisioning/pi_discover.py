@@ -143,30 +143,44 @@ def cable_address(timeout: float = 6.0) -> str:
 
 
 def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
-    """Best effort at locating the Pi. Returns
-    ``{address, ip, how}`` — *address* is what to hand the build (the mDNS name
-    when we have one, since it survives a DHCP change), *how* explains the
-    provenance so the UI can be honest about confidence. Empty dict if nothing
-    was found."""
+    """Best effort at locating the Pi.
+
+    Returns ``{address, ip, how, confirmed}``. ``confirmed`` is the important
+    field: True only when the answer can be tied to THIS build — the USB cable,
+    or the mDNS name the medic itself gave the Pi when it imaged the card. A
+    network sweep can only prove that *a* Raspberry Pi exists, never that it is
+    ours, so it returns ``confirmed=False`` and an empty address. Callers must
+    not auto-fill an unconfirmed answer: the build rewrites the target's
+    services and config.
+    """
     # The cable first — no network, no name, nothing to type.
     if not hostname:
         cable = cable_address()
         if cable:
-            return {"address": cable, "ip": cable,
+            return {"address": cable, "ip": cable, "confirmed": True,
                     "how": "plugged into Node Medic by cable"}
     host = (hostname or last_imaged_pi(path).get("hostname") or "").strip()
     if host:
         name = host if host.endswith(".local") else f"{host}.local"
         ip = resolve(name)
         if ip:
-            return {"address": name, "ip": ip,
+            return {"address": name, "ip": ip, "confirmed": True,
                     "how": "answered to the name Node Medic gave it"}
+    # A neighbour sweep finds RASPBERRY PIS, not OUR Pi. On 2026-08-02 it
+    # offered 192.168.1.42 — a real, unrelated Pi on the operator's LAN —
+    # as the build target, while the Pi actually being built sat on USB in
+    # card-reader mode with no network address at all. Provisioning rewrites
+    # a machine's services and config, so handing over an address we cannot
+    # tie to THIS build is the most destructive thing this module could do.
+    #
+    # So a sweep result is never `confirmed`, and callers must not act on it
+    # without the operator explicitly choosing it.
     nb = neighbours()
-    if len(nb) == 1:
-        return {"address": nb[0]["ip"], "ip": nb[0]["ip"],
-                "how": "the only Raspberry Pi on this network"}
     if nb:
-        return {"address": "", "ip": "",
-                "how": f"{len(nb)} Raspberry Pis on this network — pick one",
+        return {"address": "", "ip": "", "confirmed": False,
+                "how": (f"Found {len(nb)} Raspberry Pi"
+                        f"{'s' if len(nb) != 1 else ''} on your network, but "
+                        f"Node Medic can't tell if any of them is the one "
+                        f"you're building. Pick one only if you're sure."),
                 "candidates": ", ".join(n["ip"] for n in nb)}
     return {}

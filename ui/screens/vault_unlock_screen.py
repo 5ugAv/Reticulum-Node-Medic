@@ -95,7 +95,7 @@ class VaultUnlockScreen(BoxLayout):
 
         self._field = TextInput(
             hint_text=tr("Password"), multiline=False, password=True,
-            size_hint_y=None, height=dp(56), font_size="20sp",
+            size_hint_y=None, height=dp(56), font_size="32sp",
             halign="center")
         try:
             from ui.onscreen_keyboard import bind_field
@@ -150,7 +150,7 @@ class VaultUnlockScreen(BoxLayout):
         self._key_field = TextInput(
             hint_text=tr("XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"),
             multiline=False, size_hint_y=None, height=dp(52),
-            font_size="17sp", halign="center")
+            font_size="30sp", halign="center")
         try:
             from ui.onscreen_keyboard import bind_field
             bind_field(self._key_field)

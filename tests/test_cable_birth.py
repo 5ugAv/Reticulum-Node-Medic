@@ -368,3 +368,39 @@ def test_cable_lookup_never_raises(monkeypatch):
     monkeypatch.setattr(link, "discover_peer",
                         lambda **k: (_ for _ in ()).throw(OSError("no iface")))
     assert pi_discover.cable_address() == ""
+
+
+# --- never hand the build a Pi we can't tie to this build -------------------
+
+def test_a_network_sweep_never_yields_an_address_to_auto_fill(monkeypatch):
+    """2026-08-02: the sweep offered 192.168.1.42 — a real but UNRELATED Pi on
+    the operator's LAN — as the build target, while the Pi actually being built
+    sat on USB in card-reader mode with no network address at all. Provisioning
+    rewrites the target's services and config."""
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "")
+    monkeypatch.setattr(pi_discover, "last_imaged_pi", lambda path=None: {})
+    monkeypatch.setattr(pi_discover, "neighbours",
+                        lambda: [{"ip": "192.168.1.42", "mac": "02:00:00:0a:00:0a"}])
+    r = pi_discover.find_pi()
+    assert r["address"] == "", "a stranger's Pi would have been filled in"
+    assert r["confirmed"] is False
+    assert "can't tell if any of them is the one" in r["how"]
+    assert "192.168.1.42" in r["candidates"]      # offered, not chosen
+
+
+def test_the_cable_and_our_own_name_ARE_confirmed(monkeypatch):
+    from provisioning import pi_discover
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "10.55.0.1")
+    assert pi_discover.find_pi()["confirmed"] is True
+
+    monkeypatch.setattr(pi_discover, "cable_address", lambda *a, **k: "")
+    monkeypatch.setattr(pi_discover, "last_imaged_pi",
+                        lambda path=None: {"hostname": "hope"})
+    monkeypatch.setattr(pi_discover, "resolve", lambda n: "192.168.1.50")
+    assert pi_discover.find_pi()["confirmed"] is True
+
+
+def test_the_screen_refuses_to_autofill_an_unconfirmed_address():
+    src = open("ui/screens/birth_screen.py").read()
+    assert 'res or {}).get("confirmed"' in src
