@@ -1,0 +1,192 @@
+"""The first-boot config the carried image ACTUALLY reads.
+
+Found at the bench, 2026-08-01: the medic wrote only custom.toml, but the
+carried image (Raspberry Pi OS Trixie, pi-gen 2026-06-18) has cloud-init with
+`datasource_list: [NoCloud, None]` / `seedfrom: file:///boot/firmware`, and
+raspberrypi-sys-mods ships NO firstboot script. custom.toml was inert, so HOPE
+booted with no user at all and refused every login.
+"""
+
+import base64
+
+import pytest
+import yaml
+
+from provisioning import pi_imager as pi
+
+KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFIXTUREKEY/xyz nodemedic@nodemedic"
+HASH = "$6$FIXTUREsalt0002$fixture/hash.not.real.0002"
+
+
+def _ud(**kw):
+    kw.setdefault("hostname", "hope")
+    kw.setdefault("username", "pi")
+    kw.setdefault("password", "Fixture-pw-1?")
+    kw.setdefault("pw_hasher", lambda p: HASH)
+    kw.setdefault("authorized_keys", [KEY])
+    return pi.build_cloud_init_user_data(**kw)
+
+
+def test_user_data_is_valid_yaml_and_declares_cloud_config():
+    text = _ud()
+    assert text.startswith("#cloud-config")
+    assert yaml.safe_load(text)          # would raise on malformed YAML
+
+
+def test_it_creates_exactly_one_user_with_our_key():
+    """Defining users: replaces cloud-init's default account, which is what we
+    want — one account, ours."""
+    doc = yaml.safe_load(_ud())
+    assert len(doc["users"]) == 1
+    u = doc["users"][0]
+    assert u["name"] == "pi"
+    assert u["ssh_authorized_keys"] == [KEY]
+    assert u["passwd"] == HASH and u["lock_passwd"] is False
+
+
+def test_the_password_hash_survives_yaml_intact():
+    """A $6$ crypt is full of $ and / and . — unquoted it would mangle or be
+    read as something else, and the account would be unusable."""
+    doc = yaml.safe_load(_ud())
+    assert doc["users"][0]["passwd"] == HASH
+
+
+def test_the_user_can_actually_reach_the_radio_and_sudo():
+    """An account with no dialout can't open the serial port; no sudo can't
+    provision. Either makes the node useless."""
+    u = yaml.safe_load(_ud())["users"][0]
+    assert "dialout" in u["groups"] and "gpio" in u["groups"]
+    assert "NOPASSWD" in u["sudo"]
+
+
+def test_hostname_is_set():
+    assert yaml.safe_load(_ud())["hostname"] == "hope"
+
+
+def test_a_key_only_card_still_produces_a_valid_user():
+    doc = yaml.safe_load(_ud(password=""))
+    u = doc["users"][0]
+    assert "passwd" not in u and u["ssh_authorized_keys"] == [KEY]
+
+
+def test_ssh_password_auth_follows_the_flag():
+    assert yaml.safe_load(_ud(enable_ssh=True))["ssh_pwauth"] is True
+    assert yaml.safe_load(_ud(enable_ssh=False))["ssh_pwauth"] is False
+
+
+# --- network-config ---------------------------------------------------------
+
+def test_no_wifi_means_no_network_config_at_all():
+    """The cable path deliberately puts no PSK on the card."""
+    assert pi.build_cloud_init_network_config("", "") == ""
+
+
+def test_wifi_network_config_is_valid_netplan():
+    doc = yaml.safe_load(pi.build_cloud_init_network_config("HomeNet", "sec ret"))
+    assert doc["version"] == 2
+    ap = doc["wifis"]["wlan0"]["access-points"]
+    assert "HomeNet" in ap
+    assert ap["HomeNet"]["password"] == "sec ret"
+
+
+# --- it actually reaches the card ------------------------------------------
+
+def _decoded_writes(cmds):
+    """filename -> content, for every base64 tee in the command list."""
+    out = {}
+    for c in cmds:
+        if "base64 -d | sudo tee" not in c:
+            continue
+        blob = c.split("echo ")[1].split(" |")[0].strip("'")
+        name = c.rsplit("tee ", 1)[1].split()[0].rsplit("/", 1)[-1]
+        out[name] = base64.b64decode(blob).decode()
+    return out
+
+
+def test_the_seed_files_are_written_to_the_boot_partition():
+    cmds = pi.apply_config_commands("/dev/sdb", "toml=1",
+                                    user_data=_ud(),
+                                    network_config="version: 2\n")
+    written = _decoded_writes(cmds)
+    assert "user-data" in written, "cloud-init would find no seed"
+    assert "network-config" in written
+    assert written["user-data"].startswith("#cloud-config")
+
+
+def test_empty_seed_files_are_not_written():
+    written = _decoded_writes(pi.apply_config_commands("/dev/sdb", "toml=1"))
+    assert "user-data" not in written and "network-config" not in written
+
+
+def test_custom_toml_is_still_written_alongside():
+    """The two mechanisms are mutually inert, so writing both makes one card
+    work on either kind of image rather than betting on which we carry."""
+    written = _decoded_writes(pi.apply_config_commands("/dev/sdb", "toml=1",
+                                                       user_data=_ud()))
+    assert written.get("custom.toml") == "toml=1"
+
+
+def test_flash_puts_a_cloud_init_seed_on_the_card():
+    """The regression that cost a 9-minute write and an unreachable Pi."""
+    seen = []
+
+    def medic_run(argv, **kw):
+        if argv[:2] == ["findmnt", "-no"]:
+            return (0, "/dev/mmcblk0p2")
+        if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
+            return (0, "mmcblk0")
+        if argv[:2] == ["lsblk", "-dno"]:
+            return (0, "mmcblk0 59.5G disk mmc  0 \nsdb 29.7G disk usb  1 Reader")
+        return (0, "")
+
+    ok, _ = pi.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
+                     image_path="/tmp/x.img.xz", run=medic_run,
+                     run_shell=lambda c: (seen.append(c), (0, ""))[1],
+                     pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    assert ok
+    written = _decoded_writes(seen)
+    assert "user-data" in written
+    doc = yaml.safe_load(written["user-data"])
+    assert doc["users"][0]["ssh_authorized_keys"] == [KEY]
+
+
+# --- repairing a card in place (no 9-minute re-image) ----------------------
+
+def test_reseed_forces_cloud_init_to_run_again():
+    """The stock image ships a FIXED instance_id, and cloud-init skips setup
+    when it sees one it has already handled. A new id is what makes the
+    replacement user-data actually take effect."""
+    md = pi.build_cloud_init_meta_data("hope-2026-08-01")
+    doc = yaml.safe_load(md)
+    assert doc["instance_id"] == "hope-2026-08-01"
+    assert doc["instance_id"] != "rpios-image"       # the stock value
+    assert doc["dsmode"] == "local"
+
+
+def test_reseed_writes_seed_files_and_never_touches_the_image():
+    cmds = pi.reseed_commands("/dev/sdb", "#cloud-config\n", "id-1")
+    joined = " ".join(cmds)
+    assert "dd" not in joined and "xzcat" not in joined, "must not re-image"
+    written = _decoded_writes(cmds)
+    assert set(written) >= {"user-data", "meta-data"}
+
+
+def test_reseed_verifies_it_is_a_pi_boot_partition_before_writing():
+    cmds = pi.reseed_commands("/dev/sdb", "#cloud-config\n", "id-1")
+    assert any("test -f" in c and "config.txt" in c for c in cmds)
+    assert cmds[-1].startswith("sudo sync")
+
+
+def test_reseed_refuses_the_medics_own_disk():
+    def medic_run(argv, **kw):
+        if argv[:2] == ["findmnt", "-no"]:
+            return (0, "/dev/mmcblk0p2")
+        if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
+            return (0, "mmcblk0")
+        if argv[:2] == ["lsblk", "-dno"]:
+            return (0, "mmcblk0 59.5G disk mmc  0 \nsdb 29.7G disk usb  1 Reader")
+        return (0, "")
+
+    ok, msg = pi.reseed("/dev/mmcblk0", "hope", "pi", "pw", "id-1",
+                        run=medic_run, run_shell=lambda c: (0, ""))
+    assert ok is False and "Refusing" in msg

@@ -13,6 +13,7 @@ the destructive ``dd`` is behind a runner and never runs in tests.
 
 from __future__ import annotations
 
+import base64
 import os
 import shlex
 from typing import Callable, Dict, List, Optional, Tuple
@@ -146,7 +147,82 @@ def write_image_command(image_path: str, device_path: str) -> str:
             f"&& sync")
 
 
-def apply_config_commands(device_path: str, custom_toml: str) -> List[str]:
+#: Groups a Raspberry Pi OS "pi" user normally belongs to. Without these the
+#: account exists but can't reach the serial port (dialout) or GPIO — which is
+#: everything a node does.
+PI_USER_GROUPS = ["adm", "dialout", "cdrom", "sudo", "audio", "video",
+                  "plugdev", "games", "users", "input", "netdev", "gpio",
+                  "i2c", "spi"]
+
+
+def _yaml_str(s: str) -> str:
+    """A double-quoted YAML scalar. Password hashes are full of ``$`` and ``/``
+    and keys contain ``+``; quoting them is not optional."""
+    return '"' + (s or "").replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def build_cloud_init_user_data(hostname: str, username: str, password: str,
+                               enable_ssh: bool = True,
+                               pw_hasher: Callable[[str], str] = None,
+                               authorized_keys: "Optional[List[str]]" = None) -> str:
+    """The ``user-data`` cloud-config this image ACTUALLY reads on first boot.
+
+    Verified on the carried image (Raspberry Pi OS Trixie, pi-gen 2026-06-18):
+    ``/etc/cloud/cloud.cfg.d/99_raspberry-pi.cfg`` sets
+    ``datasource_list: [NoCloud, None]`` with ``seedfrom: file:///boot/firmware``,
+    and ``raspberrypi-sys-mods`` ships NO ``firstboot`` script — so the
+    ``custom.toml`` we also write is inert here. A card configured only by
+    custom.toml boots with no user at all: sshd answers, but every login is
+    refused ("SSH may not work until a valid user has been set up"). Found the
+    hard way birthing HOPE, 2026-08-01.
+
+    Defining ``users:`` replaces cloud-init's default user, which is what we
+    want — exactly one account, ours.
+    """
+    hasher = pw_hasher or password_hash
+    pw = hasher(password) if password else ""
+    keys = [k for k in (authorized_keys or []) if k.strip()]
+    lines = ["#cloud-config", ""]
+    if hostname:
+        lines += [f"hostname: {hostname}", "manage_etc_hosts: true", ""]
+    lines += ["users:", f"  - name: {username}"]
+    if pw:
+        lines += ["    lock_passwd: false", f"    passwd: {_yaml_str(pw)}"]
+    lines += ["    shell: /bin/bash",
+              '    sudo: "ALL=(ALL) NOPASSWD:ALL"',
+              f"    groups: [{', '.join(PI_USER_GROUPS)}]"]
+    if keys:
+        lines.append("    ssh_authorized_keys:")
+        lines += [f"      - {_yaml_str(k)}" for k in keys]
+    lines += ["", f"ssh_pwauth: {'true' if enable_ssh else 'false'}", ""]
+    return "\n".join(lines)
+
+
+def build_cloud_init_network_config(wifi_ssid: str = "",
+                                    wifi_password: str = "") -> str:
+    """``network-config`` (netplan v2) for a card that should join WiFi.
+
+    Returns "" when there is no SSID — the cable-birth path deliberately puts
+    no PSK on the card at all.
+    """
+    if not wifi_ssid:
+        return ""
+    return "\n".join([
+        "version: 2",
+        "wifis:",
+        "  wlan0:",
+        "    dhcp4: true",
+        "    optional: true",
+        "    access-points:",
+        f"      {_yaml_str(wifi_ssid)}:",
+        f"        password: {_yaml_str(wifi_password)}",
+        "",
+    ])
+
+
+def apply_config_commands(device_path: str, custom_toml: str,
+                          user_data: str = "",
+                          network_config: str = "") -> List[str]:
     """Shell commands to mount the card's boot partition and drop the firstboot
     config (custom.toml) + an empty ``ssh`` flag. Boot partition = first FAT part."""
     dev = shlex.quote(device_path)
@@ -154,16 +230,96 @@ def apply_config_commands(device_path: str, custom_toml: str) -> List[str]:
     part = f"{device_path}p1" if device_path[-1].isdigit() else f"{device_path}1"
     part = shlex.quote(part)
     mnt = "/tmp/rnm-piboot"
-    toml_b64 = None
-    import base64
     toml_b64 = base64.b64encode(custom_toml.encode()).decode()
-    return [
+    cmds = [
         "sudo partprobe " + dev + " 2>/dev/null; sleep 1",
         f"sudo mkdir -p {mnt} && sudo mount {part} {mnt}",
         f"echo {shlex.quote(toml_b64)} | base64 -d | sudo tee {mnt}/custom.toml >/dev/null",
         f"sudo touch {mnt}/ssh",
-        f"sudo sync && sudo umount {mnt}",
     ]
+    # Write the cloud-init seed too. The two mechanisms are mutually inert — an
+    # image without cloud-init ignores user-data, an image without the firstboot
+    # hook ignores custom.toml — so writing both makes one card work on either,
+    # rather than betting on which the carried image happens to be.
+    for name, content in (("user-data", user_data),
+                          ("network-config", network_config)):
+        if not content:
+            continue
+        b64 = base64.b64encode(content.encode()).decode()
+        cmds.append(f"echo {shlex.quote(b64)} | base64 -d | sudo tee "
+                    f"{mnt}/{name} >/dev/null")
+    cmds.append(f"sudo sync && sudo umount {mnt}")
+    return cmds
+
+
+def build_cloud_init_meta_data(instance_id: str) -> str:
+    """``meta-data`` for the NoCloud datasource.
+
+    cloud-init caches the instance_id and skips first-boot setup when it sees
+    the same one again — the stock image ships a FIXED ``rpios-image``. So
+    re-seeding a card that already booted needs a NEW id, or the new user-data
+    is read and ignored.
+    """
+    return "\n".join(["dsmode: local", f"instance_id: {instance_id}", ""])
+
+
+def reseed_commands(device_path: str, user_data: str, instance_id: str,
+                    network_config: str = "", mnt: str = "/tmp/rnm-reseed"
+                    ) -> List[str]:
+    """Rewrite a card's cloud-init seed WITHOUT re-imaging it.
+
+    For a card that booted unconfigured — the HOPE case, 2026-08-01: the image
+    was fine, only its first-boot config was in a format the image doesn't read.
+    Re-imaging costs ~9 minutes; replacing two small files on the FAT boot
+    partition costs seconds, and the next boot applies them.
+    """
+    part = f"{device_path}p1" if device_path[-1].isdigit() else f"{device_path}1"
+    q = shlex.quote(mnt)
+    cmds = [f"sudo partprobe {shlex.quote(device_path)} 2>/dev/null; sleep 1",
+            f"sudo mkdir -p {q} && sudo mount {shlex.quote(part)} {q}",
+            f"test -f {q}/config.txt && test -f {q}/cmdline.txt"]
+    for name, content in (("user-data", user_data),
+                          ("meta-data", build_cloud_init_meta_data(instance_id)),
+                          ("network-config", network_config)):
+        if not content:
+            continue
+        b64 = base64.b64encode(content.encode()).decode()
+        cmds.append(f"echo {shlex.quote(b64)} | base64 -d | sudo tee "
+                    f"{q}/{name} >/dev/null")
+    cmds += [f"sudo touch {q}/ssh", f"sudo sync && sudo umount {q}"]
+    return cmds
+
+
+def reseed(device_path: str, hostname: str, username: str, password: str,
+           instance_id: str, wifi_ssid: str = "", wifi_password: str = "",
+           enable_ssh: bool = True, run: Runner = _run,
+           run_shell: "Optional[Callable[[str], Tuple[int, str]]]" = None,
+           pw_hasher: Callable[[str], str] = None,
+           authorized_keys: "Optional[List[str]]" = None) -> Tuple[bool, str]:
+    """Repair an already-imaged card's first-boot config in place. Same hard
+    safety guard as ``flash`` — removable USB targets only, never the medic."""
+    if not is_safe_target(device_path, run):
+        return (False, f"Refusing to touch {device_path}: it isn't a removable "
+                       "USB card (or it's the medic's own system disk).")
+    if authorized_keys is None:
+        mk = medic_public_key()
+        authorized_keys = [mk] if mk else []
+    if run_shell is None:
+        def run_shell(cmd):
+            import subprocess
+            p = subprocess.run(["bash", "-c", cmd], capture_output=True,
+                               text=True, timeout=300)
+            return p.returncode, (p.stdout + p.stderr)
+    ud = build_cloud_init_user_data(hostname, username, password, enable_ssh,
+                                    pw_hasher=pw_hasher,
+                                    authorized_keys=authorized_keys)
+    net = build_cloud_init_network_config(wifi_ssid, wifi_password)
+    for cmd in reseed_commands(device_path, ud, instance_id, net):
+        code, out = run_shell(cmd)
+        if code != 0:
+            return (False, f"Re-seeding failed: {out.strip()[-160:]}")
+    return (True, f"Re-seeded the card as '{hostname}'. Put it back in the Pi "
+                  "and power it on — first-boot setup runs again.")
 
 
 def flash(device_path: str, hostname: str, username: str, password: str,
@@ -200,7 +356,11 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     toml = build_custom_toml(hostname, username, password, wifi_ssid, wifi_password,
                              wifi_country, enable_ssh, pw_hasher=pw_hasher,
                              authorized_keys=authorized_keys)
-    for cmd in apply_config_commands(device_path, toml):
+    user_data = build_cloud_init_user_data(
+        hostname, username, password, enable_ssh, pw_hasher=pw_hasher,
+        authorized_keys=authorized_keys)
+    net_cfg = build_cloud_init_network_config(wifi_ssid, wifi_password)
+    for cmd in apply_config_commands(device_path, toml, user_data, net_cfg):
         code, out = run_shell(cmd)
         if code != 0:
             return (False, f"Image written, but applying the config failed: {out[-160:]}")
