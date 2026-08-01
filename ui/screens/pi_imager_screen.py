@@ -175,6 +175,15 @@ class PiImagerScreen(BoxLayout):
             ok, msg = pi_imager.flash(
                 path, v["hostname"], "pi", v["pw"],
                 wifi_ssid=v.get("ssid", ""), wifi_password=v.get("psk", ""))
+            if ok:
+                # Remember what we just named it, so BIRTH can offer the Pi's
+                # address instead of asking the operator for an IP they have
+                # no way of knowing (operator report 2026-08-01).
+                try:
+                    from provisioning.pi_discover import record_imaged_pi
+                    record_imaged_pi(v["hostname"], "pi")
+                except Exception:
+                    pass
             Clock.schedule_once(lambda dt: self._done(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
 

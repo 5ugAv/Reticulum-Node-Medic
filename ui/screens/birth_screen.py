@@ -406,12 +406,23 @@ class BirthScreen(BoxLayout):
                 self.header.add_widget(self._sel_button(
                     self._sel_pi[1] if self._sel_pi else "Tap to choose a Pi",
                     self._choose_pi))
-                # The REAL provision path SSHes to the Pi — it needs an address
-                # (and the login user; fresh RPi OS images default to 'pi').
+                # The medic NAMED the Pi when it imaged the card, so it can
+                # offer the address itself — an operator has no way to know an
+                # IP, and being unable to continue without one blocked the
+                # whole path (operator report 2026-08-01).
+                suggestion = ""
+                try:
+                    from provisioning.pi_discover import suggested_address
+                    suggestion = suggested_address()
+                except Exception:
+                    pass
                 self.header.add_widget(_line(
-                    "Pi address on your network  (the SD-imaging step sets the "
-                    "medic's SSH key on the Pi)", size="12.5sp",
-                    color="text_secondary"))
+                    ("Where the Pi is on your network — filled in from the name "
+                     "Node Medic gave it. Tap Find if it's blank or wrong."
+                     if suggestion else
+                     "Where the Pi is on your network. Tap Find and Node Medic "
+                     "will look for it."),
+                    size="12.5sp", color="text_secondary"))
                 row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                 height=dp(48), spacing=dp(8))
                 if not hasattr(self, "_pi_addr_in"):
@@ -419,16 +430,27 @@ class BirthScreen(BoxLayout):
                     from kivy.uix.textinput import TextInput
                     self._pi_addr_in = bind_field(TextInput(
                         text="", multiline=False, font_size="15sp",
-                        hint_text="raspberrypi.local or 192.168.1.50"))
+                        hint_text="found automatically — or tap Find"))
                     self._pi_user_in = bind_field(TextInput(
                         text="pi", multiline=False, font_size="15sp",
-                        hint_text="user", size_hint_x=0.3))
+                        hint_text="user", size_hint_x=0.22))
+                if suggestion and not self._pi_addr_in.text.strip():
+                    self._pi_addr_in.text = suggestion
                 for w_ in (self._pi_addr_in, self._pi_user_in):
                     if w_.parent is not None:
                         w_.parent.remove_widget(w_)
                 row.add_widget(self._pi_addr_in)
                 row.add_widget(self._pi_user_in)
+                find = Button(text="Find", size_hint=(None, 1), width=dp(78),
+                              bold=True, font_size="14sp", background_normal="",
+                              background_color=theme.hex_to_rgba(
+                                  theme.COLORS["accent"]),
+                              color=theme.hex_to_rgba(theme.COLORS["background"]))
+                find.bind(on_release=lambda *_: self._find_pi())
+                row.add_widget(find)
                 self.header.add_widget(row)
+                self._pi_find_status = _line("", size="12sp", color="green")
+                self.header.add_widget(self._pi_find_status)
 
         # (Mitosis moved out of this chooser — it lives at the start of the
         # flow where the operator picks what they're doing; repeating it here
@@ -549,6 +571,45 @@ class BirthScreen(BoxLayout):
     def _pick_board(self, board):
         self._sel_board = board
         self._build_chooser()
+
+    def _find_pi(self):
+        """Look for the Pi on the network — by the name the medic gave it, then
+        by sweeping for Raspberry Pi hardware. Runs off-thread; says honestly
+        how it found what it found (or that it found nothing)."""
+        status = getattr(self, "_pi_find_status", None)
+        if status is not None:
+            status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
+            status.text = "Looking for the Pi…"
+        import threading
+
+        def work():
+            try:
+                from provisioning.pi_discover import find_pi
+                res = find_pi(self._pi_addr_in.text.strip())
+            except Exception as e:            # noqa: BLE001
+                res = {"how": f"couldn't search: {str(e)[:60]}"}
+            Clock.schedule_once(lambda _dt: self._found_pi(res), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _found_pi(self, res):
+        status = getattr(self, "_pi_find_status", None)
+        addr = (res or {}).get("address") or ""
+        if addr:
+            self._pi_addr_in.text = addr
+            if status is not None:
+                status.color = theme.hex_to_rgba(theme.COLORS["green"])
+                ip = res.get("ip", "")
+                status.text = (f"Found the Pi at {ip} — {res.get('how','')}."
+                               if ip else f"Found it — {res.get('how','')}.")
+            return
+        if status is not None:
+            status.color = theme.hex_to_rgba(theme.COLORS["amber"])
+            how = (res or {}).get("how")
+            cands = (res or {}).get("candidates")
+            status.text = (
+                f"{how}: {cands}" if cands else
+                (how or "Couldn't find the Pi yet — is it powered on and "
+                        "joined to your WiFi? It can take a minute or two."))
 
     def _add_rnode_board_pick(self):
         """The RNode board pick, RTNode-style: detection narrows the catalogue

@@ -84,8 +84,17 @@ _STEPS = {
          "hint": tr("The first start-up takes a minute or two while the Pi sets "
                     "itself up and joins your Wi-Fi."),
          "anim": "insert_sd_pi"},
-        {"title": tr("Connect the radio board"),
-         "body": tr("Now plug the radio board into Node Medic with a USB cable."),
+        # The radio goes on the PI, not the medic: this build SSHes into the Pi
+        # and flashes/configures the radio through THAT connection. The page
+        # used to say "plug it into Node Medic", which left the board in the
+        # wrong place and a build that found no radio (operator caught it
+        # walking the flow, 2026-08-01).
+        {"title": tr("Connect the radio board to the Pi"),
+         "body": tr("Plug the radio board into the Raspberry Pi's USB port — not "
+                    "into Node Medic. Node Medic reaches the Pi over your "
+                    "network and sets the radio up through it."),
+         "hint": tr("On a Pi Zero use the DATA micro-USB port (the inner one, "
+                    "marked USB) — the outer one is power only."),
          "anim": "connect_board",
          "next": tr("Start setup  →")},
     ],
