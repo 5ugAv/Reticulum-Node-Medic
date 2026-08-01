@@ -1005,6 +1005,47 @@ class BirthScreen(BoxLayout):
             except Exception:
                 pass
 
+    def _warn_build_running(self):
+        """Say WHICH build is running and take the operator to it.
+
+        These call sites used to `return` silently, so tapping Build during a
+        build did nothing at all — indistinguishable from a dead button, and the
+        operator taps again (which is how the "phantom flash" reports started).
+        The app already tracked the label and start time; nothing was asking it.
+        """
+        try:
+            from kivy.app import App
+            from ui.requirement_popup import requirement_popup
+            app = App.get_running_app()
+            label, secs = app.activity_info()
+            mins = int(secs // 60)
+            when = (f"{mins} minute{'s' if mins != 1 else ''} in"
+                    if mins else "just started")
+            view = requirement_popup(
+                f"{label}\n\nIt's {when} and still going. Starting another "
+                f"build now would interrupt it and can leave a board "
+                f"half-written.\n\nLet it finish — this screen shows its "
+                f"progress and the green confirmation when it's done.",
+                "A build is already running", False)
+
+            def _to_progress(*_a):
+                try:
+                    App.get_running_app().switch_mode("birth")
+                    from kivy.clock import Clock as _C
+                    _C.schedule_once(lambda _dt: self._scroll_to_progress(), 0.25)
+                except Exception:
+                    pass
+            view.bind(on_dismiss=_to_progress)
+        except Exception:
+            pass
+
+    def _scroll_to_progress(self):
+        """Put the running build's log in view."""
+        try:
+            self.scroll.scroll_y = 0.0
+        except Exception:
+            pass
+
     def _busy_with_a_build(self) -> bool:
         """True while a flash/build owns this screen — resetting state under a
         running workflow corrupts the checklist and the outcome (2026-08-01
@@ -1024,7 +1065,8 @@ class BirthScreen(BoxLayout):
         auto-run detection, since the board is already plugged in per the guide — so
         the operator lands on naming + a suggested setup, not a cold form."""
         if self._busy_with_a_build():
-            return                        # never reset under a running build
+            self._warn_build_running()    # never reset under a running build
+            return
         # FRESH LAP: this screen is reused, and a stale _sel_board from the
         # previous build silently SKIPPED the board pick + confirm gate and
         # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
@@ -2207,7 +2249,8 @@ class BirthScreen(BoxLayout):
         """Stamp a location onto this birth (from the map's 'Use this position').
         Shown as 'Location stamped …' and folded into the certificate at the end."""
         if self._busy_with_a_build():
-            return                        # don't rebuild the page mid-flash
+            self._warn_build_running()    # don't rebuild the page mid-flash
+            return
         self._prefill_location = (lat, lon, source)
         self._build_chooser()
 
@@ -2216,7 +2259,8 @@ class BirthScreen(BoxLayout):
         medic never birthed and chooses to birth it here (from the cert viewer's
         'not birthed here' nudge)."""
         if self._busy_with_a_build():
-            return                        # don't rebuild the page mid-flash
+            self._warn_build_running()    # don't rebuild the page mid-flash
+            return
         self._build_chooser()               # ensure the name field exists
         if getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name or "")
