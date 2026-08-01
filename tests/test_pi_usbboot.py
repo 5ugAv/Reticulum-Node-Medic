@@ -120,8 +120,149 @@ def test_guidance_names_the_data_port_when_nothing_is_plugged_in():
     assert "DATA USB port" in g and "PWR IN" in g
 
 
-def test_the_unproven_status_is_recorded_in_the_module():
-    """This path has never run on real hardware; the module must say so rather
-    than read as verified."""
-    assert "NOT YET PROVEN" in pu.__doc__
+def test_the_hardware_proof_is_recorded_with_what_was_actually_seen():
+    """The module claimed NOT YET PROVEN until 2026-08-01. It is proven now, and
+    a caveat left standing after the fact misleads exactly as much as an
+    unearned claim — so the docstring must carry the observed USB IDs."""
+    assert "NOT YET PROVEN" not in pu.__doc__
+    assert "PROVEN" in pu.__doc__
+    assert "0a5c:2764" in pu.__doc__ and "0a5c:0001" in pu.__doc__
     assert "0a5c:2764" in pu.BENCH_CHECK
+
+
+# --- doing it FOR the operator ---------------------------------------------
+# Operator requirement 2026-08-02: a brand-new Pi plugged in at the start of
+# BIRTH must become a card reader BY ITSELF. Running rpiboot by hand is fine on
+# a bench and useless in the field.
+
+class Fake:
+    """A medic whose USB state changes when rpiboot is 'run'."""
+
+    def __init__(self, lsusb, disks_before, disks_after=None, rpiboot_ok=True):
+        self.lsusb_text = lsusb
+        self.disks = list(disks_before)
+        self.after = disks_after
+        self.rpiboot_ok = rpiboot_ok
+        self.rpiboot_calls = []
+
+    def lsusb(self):
+        return self.lsusb_text
+
+    def disks_fn(self):
+        return list(self.disks)
+
+    def rpiboot(self, usb_id):
+        self.rpiboot_calls.append(usb_id)
+        if not self.rpiboot_ok:
+            return (False, "rpiboot failed: no device found")
+        if self.after is not None:
+            self.disks = list(self.after)
+        return (True, "presenting")
+
+
+CARD = {"name": "sda", "path": "/dev/sda", "size": "29.7G"}
+STICK = {"name": "sdb", "path": "/dev/sdb", "size": "8G"}
+
+
+def _run(fake, **kw):
+    return pu.ensure_card_reader(fake.lsusb, fake.disks_fn, fake.rpiboot,
+                                 sleep=lambda s: None,
+                                 now=_ticker(), **kw)
+
+
+def _ticker():
+    t = {"v": 0.0}
+
+    def now():
+        t["v"] += 1.0
+        return t["v"]
+    return now
+
+
+def test_a_brand_new_pi_is_turned_into_a_card_reader_automatically():
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[], disks_after=[CARD])
+    r = _run(f)
+    assert r.ok and r.state == pu.CARD_READER
+    assert r.device == "/dev/sda"
+    assert f.rpiboot_calls == ["0a5c:2764"], "rpiboot was not run for the operator"
+
+
+def test_it_claims_the_disk_that_APPEARED_not_whatever_is_lying_around():
+    """A USB stick already plugged in must never be chosen — this device is
+    about to have an operating system written over it."""
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[STICK], disks_after=[STICK, CARD])
+    r = _run(f)
+    assert r.ok and r.device == "/dev/sda", "grabbed the wrong disk"
+
+
+def test_an_already_imaged_node_is_never_converted():
+    """It boots as a node; forcing it into a reader would invite imaging over a
+    working node."""
+    f = Fake(_GADGET_NODE, disks_before=[])
+    r = _run(f)
+    assert r.ok is False and r.state == pu.GADGET
+    assert f.rpiboot_calls == []
+    assert "wipe it first" in r.message
+    assert r.needs_operator
+
+
+def test_nothing_plugged_in_asks_for_the_data_port():
+    f = Fake(_MEDIC_BASE, disks_before=[])
+    r = _run(f)
+    assert r.ok is False and r.state == pu.ABSENT
+    assert "DATA USB port" in r.message and r.needs_operator
+    assert f.rpiboot_calls == []
+
+
+def test_a_pi_that_never_offers_its_card_says_what_to_do():
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[], disks_after=[])   # no card ever
+    r = _run(f, timeout=5)
+    assert r.ok is False
+    assert "never offered its card" in r.message
+    assert "plug it back in" in r.message
+
+
+def test_rpiboot_failure_is_surfaced_verbatim():
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[], rpiboot_ok=False)
+    r = _run(f)
+    assert r.ok is False and "no device found" in r.message
+
+
+def test_progress_is_reported_in_the_operators_words():
+    """The word 'rpiboot' must never reach the screen."""
+    seen = []
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[], disks_after=[CARD])
+    pu.ensure_card_reader(f.lsusb, f.disks_fn, f.rpiboot, sleep=lambda s: None,
+                          now=_ticker(), on_progress=seen.append)
+    assert seen and all("rpiboot" not in m.lower() for m in seen)
+    assert any("card" in m.lower() for m in seen)
+
+
+def test_needs_operator_separates_retryable_from_go_do_something():
+    f = Fake(_ZERO_2W_BOOTROM, disks_before=[], disks_after=[])
+    assert _run(f, timeout=5).needs_operator is False   # retryable
+    assert _run(Fake(_MEDIC_BASE, [])).needs_operator is True
+
+
+def test_the_imager_screen_asks_the_pi_before_asking_for_a_reader():
+    """Source-level guard: the 'plug in a card reader' prompt must be the
+    FALLBACK, not the first thing an operator with a Pi in hand is told."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    assert "_offer_pi_as_reader" in src
+    i_pi = src.index("if not targets and self._offer_pi_as_reader()")
+    i_reader = src.index("Put the Pi's microSD into a USB card reader")
+    assert i_pi < i_reader, "the reader prompt comes first"
+
+
+def test_the_imager_screen_never_says_rpiboot_to_the_operator():
+    src = open("ui/screens/pi_imager_screen.py").read()
+    shown = [l for l in src.splitlines() if "_line(" in l or "text=" in l]
+    assert not any("rpiboot" in l.lower() for l in shown)
+
+
+def test_an_already_built_node_is_not_offered_imaging_by_the_screen():
+    """Converting a working node into a card reader would invite writing an OS
+    over it."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    assert "pi_usbboot.GADGET" in src
+    assert "wipe it first" in src

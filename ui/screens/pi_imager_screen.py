@@ -68,10 +68,90 @@ class PiImagerScreen(BoxLayout):
         self.col.add_widget(ti)
         return ti
 
+
+    # -- the Pi is its own card reader --------------------------------------
+
+    def _offer_pi_as_reader(self):
+        """If a brand-new Pi is plugged in, make it present its card — itself.
+
+        Operator requirement (2026-08-02): *"when it's initially plugged in and
+        Node Medic recognises it as a brand new Pi it needs to automatically
+        turn it into a card reader as we start the birth process."* Asking for a
+        USB card reader when the Pi in front of you can BE one is the tool
+        making its own limitation the operator's problem.
+
+        Returns True when it has taken over the screen (either working on it, or
+        explaining why it can't), False to fall through to the reader prompt.
+        """
+        try:
+            import subprocess
+            from provisioning import pi_usbboot
+            out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                 timeout=10).stdout
+            state = pi_usbboot.classify(out)
+        except Exception:                       # never block imaging on this
+            return False
+
+        if state.state == pi_usbboot.GADGET:
+            self.col.add_widget(_line(
+                "This Raspberry Pi already has an operating system and starts "
+                "up as a node — it isn't offering its card.", size="15sp",
+                color="amber", h=48))
+            self.col.add_widget(_line(
+                "To build it again from scratch, wipe it first.", size="14sp",
+                color="text_secondary", h=24))
+            return True
+        if state.state != pi_usbboot.BOOTROM:
+            return False                        # nothing plugged in — normal prompt
+
+        self.col.add_widget(_line("Raspberry Pi detected", size="17sp",
+                                  color="green", bold=True, h=28))
+        self.col.add_widget(_line(
+            "It's waiting with a blank card. Node Medic is opening the card now "
+            "— no card reader needed.", size="15sp", h=44))
+        status = _line("Waking the Pi's card…", size="14sp", color="accent", h=26)
+        self.col.add_widget(status)
+        ring = ProgressRing(size_hint_y=None, height=dp(160))
+        self.col.add_widget(ring)
+        try:
+            ring.start()
+        except Exception:
+            pass
+
+        def work():
+            r = pi_usbboot.ensure_card_reader(
+                lambda: subprocess.run(["lsusb"], capture_output=True,
+                                       text=True, timeout=10).stdout,
+                pi_imager.list_target_disks,
+                on_progress=lambda m: Clock.schedule_once(
+                    lambda _dt, msg=m: setattr(status, "text", msg), 0))
+            Clock.schedule_once(lambda _dt: self._reader_done(r), 0)
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def _reader_done(self, result):
+        """Back on the UI thread once the Pi has (or hasn't) opened its card."""
+        if result.ok:
+            self._build()                       # the card is a target now
+            return
+        self.col.clear_widgets()
+        self.col.add_widget(_line("Couldn't open the Pi's card", size="17sp",
+                                  color="amber", bold=True, h=28))
+        self.col.add_widget(_line(result.message, size="14sp", h=64))
+        again = Button(text="Try again", size_hint_y=None, height=dp(52),
+                       bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        again.bind(on_release=lambda *_: self._build())
+        self.col.add_widget(again)
+
     def _build(self):
         self.col.clear_widgets()
         self._inputs = {}
         targets = pi_imager.list_target_disks()
+        if not targets and self._offer_pi_as_reader():
+            return                      # a Pi is plugged in; we took the screen
         if not targets:
             # No card reader — show the insert animation + a rescan.
             self.col.add_widget(_line(

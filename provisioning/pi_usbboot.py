@@ -23,9 +23,11 @@ One cable, one port, two outcomes, and the medic can tell which by looking at
 what enumerated. Classification is pure (parses ``lsusb``) so it is fully
 unit-testable; only ``run_rpiboot`` touches hardware.
 
-NOT YET PROVEN ON A ZERO 2 W. The mechanism and the payload are confirmed
-present on the medic (rpiboot 20260603, ``/usr/share/rpiboot/msd``), but no Pi
-has been booted this way here — see ``BENCH_CHECK``.
+PROVEN on a Pi Zero 2 W, 2026-08-01: a blank card put it in boot-ROM mode with
+no jumper and no OTP change (``0a5c:2764``), bare ``rpiboot`` loaded the msd
+payload, and it re-enumerated as ``0a5c:0001`` presenting its card as
+``/dev/sda``. Repeated 2026-08-02 after wiping that card. See ``BENCH_CHECK``
+for the one-line way to confirm it on any new board.
 """
 
 from __future__ import annotations
@@ -167,3 +169,89 @@ def guidance(state: PiUsbState) -> str:
                 "node. It doesn't need imaging — it's ready to be set up.")
     return ("Plug the Pi into Node Medic using its DATA USB port (marked USB, "
             "not PWR IN), with the blank card already inserted.")
+
+
+# --------------------------------------------------------------------------- #
+# Doing it FOR the operator
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class ReaderResult:
+    """Outcome of trying to get a plugged-in Pi to present its card."""
+    ok: bool
+    state: str
+    message: str
+    device: str = ""
+    already: bool = False          # it was already presenting; we did nothing
+
+    @property
+    def needs_operator(self) -> bool:
+        """True when the answer is an action by the operator, not a retry."""
+        return self.state in (ABSENT, GADGET)
+
+
+def ensure_card_reader(lsusb_fn: Callable[[], str],
+                       disks_fn: Callable[[], List[dict]],
+                       rpiboot_fn: Optional[Callable[[str], tuple]] = None,
+                       sleep: Callable[[float], None] = None,
+                       now: Callable[[], float] = None,
+                       timeout: float = 45.0,
+                       poll: float = 2.0,
+                       on_progress: Optional[Callable[[str], None]] = None
+                       ) -> ReaderResult:
+    """Get the plugged-in Pi to present its SD card, without the operator ever
+    hearing the word "rpiboot".
+
+    The operator's requirement (2026-08-02): *"when it's initially plugged in
+    and Node Medic recognises it as a brand new Pi it needs to automatically
+    turn it into a card reader as we start the birth process."* Running that
+    step by hand is fine for a bench session and useless in the field.
+
+    The card is identified as the disk that APPEARED — the set of removable
+    disks is snapshotted first and the new one is claimed. Anything else risks
+    grabbing an unrelated USB stick the operator happens to have plugged in,
+    and this device is about to be written with an operating system.
+
+    Every dependency is injected so the whole decision tree is unit-testable
+    with no hardware.
+    """
+    import time as _time
+    sleep = sleep or _time.sleep
+    now = now or _time.monotonic
+    rpiboot_fn = rpiboot_fn or run_rpiboot
+
+    def say(msg):
+        if on_progress:
+            on_progress(msg)
+
+    before = {d.get("name") for d in (disks_fn() or [])}
+    state = classify(lsusb_fn())
+
+    if state.state == GADGET:
+        return ReaderResult(
+            False, GADGET,
+            "This Pi already has an operating system and starts up as a node. "
+            "It isn't offering its card. To image it again, wipe it first.")
+    if state.state == ABSENT:
+        return ReaderResult(False, ABSENT, guidance(state))
+
+    say("Waking the Pi's card…")
+    ok, msg = rpiboot_fn(state.usb_id)
+    if not ok:
+        return ReaderResult(False, BOOTROM, msg)
+
+    deadline = now() + timeout
+    while now() < deadline:
+        fresh = [d for d in (disks_fn() or []) if d.get("name") not in before]
+        if fresh:
+            d = fresh[0]
+            return ReaderResult(
+                True, CARD_READER,
+                f"The Pi is presenting its card ({d.get('size', '?')}).",
+                device=d.get("path", ""))
+        sleep(poll)
+
+    return ReaderResult(
+        False, BOOTROM,
+        "The Pi accepted the start-up code but never offered its card. Unplug "
+        "it, plug it back in, and try again.")
