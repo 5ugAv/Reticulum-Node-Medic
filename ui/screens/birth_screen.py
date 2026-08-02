@@ -523,6 +523,12 @@ class BirthScreen(BoxLayout):
                         # card" as the main action invites the operator to spend
                         # four minutes building the thing just refused
                         # (operator, 2026-08-02).
+                        # A powered hub in the room changes the answer — but
+                        # only if it goes WITH the node, which is the one thing
+                        # the medic cannot see. So it is offered as a question
+                        # (operator, 2026-08-02).
+                        if self._offer_hub_route():
+                            return
                         self.header.add_widget(_line(
                             "Options", bold=True, size="17sp", color="accent"))
                         self._recommend_button()
@@ -1235,6 +1241,45 @@ class BirthScreen(BoxLayout):
             return v.get("verdict") == "blocked"
         except Exception:
             return False                # never block the flow on advice
+
+    def _offer_hub_route(self):
+        """If a powered hub is plugged in, ask whether it ships with the node.
+
+        Returns True when it has taken over the panel. Deliberately a question:
+        the brown-out happens in the FIELD, and a hub sitting on the bench
+        proves the operator owns one, not that the finished node gets it.
+        """
+        try:
+            from provisioning.usb_hub import powered_hub_present, hub_question
+            from workflows.power_compat import short_board_name
+            hub = powered_hub_present()
+            if not hub:
+                return False
+            pi_key = self._sel_pi[0] if self._sel_pi else ""
+            pi_name = next((n for k, n in PI_HOSTS if k == pi_key), "this Pi")
+            board = self._sel_board
+            short = short_board_name(getattr(board, "key", ""),
+                                     getattr(board, "display_name", "the radio"))
+            q = hub_question(hub, pi_name, short)
+            self.header.add_widget(_line(q["head"], bold=True, size="16sp",
+                                         color="green"))
+            self.header.add_widget(_line(q["body"], size="14sp",
+                                         color="text_primary"))
+            go = Button(text=q["confirm"], size_hint_y=None, height=dp(54),
+                        bold=True, font_size="15.5sp", background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+            go.bind(on_release=lambda *_: self._go_image_pi())
+            self.header.add_widget(go)
+            self.header.add_widget(_line(q["note"], size="12.5sp",
+                                         color="amber"))
+            self.header.add_widget(_line("Options", bold=True, size="16sp",
+                                         color="accent"))
+            self._recommend_button()
+            self._back_home_button()
+            return True
+        except Exception:
+            return False                # no evidence -> keep the refusal
 
     def _recommend_button(self):
         """Bold: find hardware that actually works with what you have."""
