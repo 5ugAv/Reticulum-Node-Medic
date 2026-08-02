@@ -162,3 +162,32 @@ def test_birth_hands_the_name_to_the_imager():
     block = src[src.index("def _go_image_pi"):]
     assert "prefill_hostname" in block
     assert "_name_in.text" in block
+
+
+def test_next_steps_after_imaging_does_not_send_you_after_a_card_in_the_pi():
+    """rpiboot route: the card is already inside the Pi. Never say 'put it in'."""
+    from provisioning.pi_imager import next_steps_after_imaging
+    plan = next_steps_after_imaging(True, hostname="zero2w",
+                                    pi_name="the Pi Zero 2 W")
+    body = " ".join(plan["steps"]).lower()
+    assert "leave the card where it is" in body
+    assert "card reader" not in body
+    assert "take the microsd out" not in body
+    assert plan["cta"]                       # there IS a way forward
+
+
+def test_next_steps_after_imaging_moves_the_card_when_a_reader_was_used():
+    from provisioning.pi_imager import next_steps_after_imaging
+    plan = next_steps_after_imaging(False, hostname="zero2w",
+                                    pi_name="the Pi Zero 2 W")
+    body = " ".join(plan["steps"]).lower()
+    assert "take the microsd out of the card reader" in body
+    assert "the pi zero 2 w" in body
+
+
+def test_next_steps_never_promise_wifi_that_was_not_configured():
+    from provisioning.pi_imager import next_steps_after_imaging
+    assert "wifi" in next_steps_after_imaging(
+        True, hostname="h").get("note", "").lower()
+    assert "HomeNet" in next_steps_after_imaging(
+        True, hostname="h", wifi_ssid="HomeNet")["note"]

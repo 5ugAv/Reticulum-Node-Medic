@@ -464,3 +464,48 @@ def hostnameify(name: str) -> str:
     """
     import re
     return re.sub(r"[^a-z0-9-]+", "-", (name or "").lower()).strip("-")[:32]
+
+
+def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
+                             pi_name: str = "", wifi_ssid: str = ""):
+    """What the operator does NEXT, once a card is written.
+
+    A finished card is the MIDDLE of building a Pi node, not the end of a job.
+    The screen used to offer only "Image another card", which is the one thing
+    the operator almost never wants and which reads as "you're done" (operator,
+    2026-08-02). These are the physical actions that carry the same node
+    forward.
+
+    The steps genuinely differ by route, which is why this takes a flag rather
+    than printing one generic list:
+
+    * ``via_pi_reader`` — the card was opened THROUGH the Pi over rpiboot, so
+      it is already inside the Pi. Telling someone to "put the card in the Pi"
+      here sends them opening a machine that needs nothing done to it. The card
+      must not be removed; the Pi just needs a power cycle to boot what we
+      wrote.
+    * a USB card reader — the card is in the reader and has to be moved.
+
+    Pure copy (no Kivy) so the wording is testable, same split as
+    ``power_compat.warning_lines`` and :func:`hostnameify`.
+    """
+    pi = pi_name or "the Raspberry Pi"
+    steps = []
+    if via_pi_reader:
+        steps.append(f"1.  Leave the card where it is — it's already inside "
+                     f"{pi}.")
+        steps.append(f"2.  Unplug {pi} from Node Medic, then plug it back in.")
+        steps.append("3.  It boots the card we just wrote. Give it a minute.")
+    else:
+        steps.append("1.  Take the microSD out of the card reader.")
+        steps.append(f"2.  Put it into {pi}.")
+        steps.append(f"3.  Plug {pi} into Node Medic with a USB DATA cable.")
+    where = (f"It joins {wifi_ssid} and answers to '{hostname}'."
+             if wifi_ssid and hostname else
+             "It answers over the USB cable — no WiFi needed.")
+    return {
+        "title": "Next: bring this Pi to life",
+        "steps": steps,
+        "note": where,
+        "cta": "Continue building this node  →",
+    }

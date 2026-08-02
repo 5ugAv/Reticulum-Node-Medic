@@ -1129,7 +1129,29 @@ class BirthScreen(BoxLayout):
             scr = getattr(app, "pi_imager_screen", None)
             if scr is not None and hasattr(scr, "prefill_hostname"):
                 scr.prefill_hostname(name)
+            if scr is not None and hasattr(scr, "set_pi_name"):
+                scr.set_pi_name(next(
+                    (n for k, n in PI_HOSTS
+                     if self._sel_pi and k == self._sel_pi[0]), ""))
             app.switch_mode("pi_imager")
+        except Exception:
+            pass
+
+    def rescan_after_imaging(self):
+        """Come back from card imaging and look again.
+
+        The Pi that sent us there was in boot-ROM mode with a blank card. It now
+        has an operating system, so the answer to ``_pi_needs_imaging()`` has
+        changed — without a re-detect the screen would still be offering to
+        image the card we just wrote.
+
+        Detection is cheap and idempotent; if the operator hasn't power-cycled
+        the Pi yet it simply reports the same state as before and the imaging
+        offer stands, which is the correct thing to show.
+        """
+        self._detected = None
+        try:
+            self._detect_board()
         except Exception:
             pass
 

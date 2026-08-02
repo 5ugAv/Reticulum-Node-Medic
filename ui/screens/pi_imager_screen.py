@@ -51,6 +51,10 @@ class PiImagerScreen(BoxLayout):
         self._wifi_credentials = wifi_credentials
         self._target = None
         self._busy = False
+        # Which route opened the card. Decides what the operator is told to do
+        # afterwards: a card reached through the Pi itself is ALREADY in the Pi.
+        self._via_pi_reader = False
+        self._pi_name = ""
         self.add_widget(_line("Image a Raspberry Pi SD card", bold=True,
                               size="22sp", h=40))
         body = ScrollView()
@@ -77,6 +81,14 @@ class PiImagerScreen(BoxLayout):
         ti = (getattr(self, "_inputs", {}) or {}).get("hostname")
         if ti is not None and not ti.text.strip():
             ti.text = hostnameify(self._prefill_name)
+
+    def set_pi_name(self, pi_name):
+        """Which Raspberry Pi this card is for, in the operator's words.
+
+        Used only for wording — "Unplug the Pi Zero 2 W" beats "unplug the
+        Raspberry Pi" when there may be more than one thing plugged in.
+        """
+        self._pi_name = str(pi_name or "")
 
     def _field(self, label, hint, key, password=False, numeric=False):
         self.col.add_widget(_line(label, size="15sp", color="accent", bold=True, h=24))
@@ -258,6 +270,9 @@ class PiImagerScreen(BoxLayout):
     def _reader_done(self, result):
         """Back on the UI thread once the Pi has (or hasn't) opened its card."""
         if result.ok:
+            # Remember HOW we got at the card: it is inside the Pi, so when the
+            # write finishes the operator must not be told to go and fetch it.
+            self._via_pi_reader = True
             self._build()                       # the card is a target now
             return
         self.col.clear_widgets()
@@ -422,9 +437,53 @@ class PiImagerScreen(BoxLayout):
                                   bold=True, size="19sp",
                                   color="green" if ok else "red", h=30))
         self.col.add_widget(_line(msg, size="14sp", h=60))
+        if ok:
+            self._add_next_steps()
         again = Button(text="Image another card", size_hint_y=None, height=dp(50),
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        again.bind(on_release=lambda *_: self._build())
+        again.bind(on_release=lambda *_: self._image_another())
         self.col.add_widget(again)
+
+    def _image_another(self):
+        """Start over for a DIFFERENT card — so forget how the last one was
+        opened, or a fresh card in a USB reader would inherit the Pi's steps."""
+        self._via_pi_reader = False
+        self._build()
+
+    def _add_next_steps(self):
+        """The forward path, as the primary action.
+
+        A written card is the middle of building a node, not the end of one. The
+        only thing offered here used to be "Image another card" — which reads as
+        "that's the job done" and leaves the operator to work out for themselves
+        what to do with the Pi in their other hand (operator, 2026-08-02).
+        """
+        v = {k: t.text.strip() for k, t in (self._inputs or {}).items()
+             if hasattr(t, "text")}
+        plan = pi_imager.next_steps_after_imaging(
+            self._via_pi_reader, hostname=v.get("hostname", ""),
+            pi_name=self._pi_name, wifi_ssid=v.get("ssid", ""))
+        self.col.add_widget(_line(plan["title"], bold=True, size="17sp",
+                                  color="accent", h=30))
+        for step in plan["steps"]:
+            self.col.add_widget(_line(step, size="15sp", h=26))
+        self.col.add_widget(_line(plan["note"], size="14sp", color="green", h=40))
+        go = Button(text=plan["cta"], size_hint_y=None, height=dp(56),
+                    bold=True, font_size="16sp", background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+        go.bind(on_release=lambda *_: self._back_to_birth())
+        self.col.add_widget(go)
+
+    def _back_to_birth(self):
+        from kivy.app import App
+        app = App.get_running_app()
+        try:
+            scr = getattr(app, "birth_screen", None)
+            if scr is not None and hasattr(scr, "rescan_after_imaging"):
+                scr.rescan_after_imaging()
+        except Exception:
+            pass
+        app.switch_mode("birth")
