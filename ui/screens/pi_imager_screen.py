@@ -24,6 +24,7 @@ from ui import theme
 from ui.onscreen_keyboard import bind_field
 from ui.widgets.progress_ring import ProgressRing
 from ui.widgets.birth_anims import InsertSdAnim
+from ui.widgets.callout import Callout
 from provisioning import pi_imager
 from provisioning.pi_imager import hostnameify
 
@@ -353,14 +354,16 @@ class PiImagerScreen(BoxLayout):
         # password — it is hashed onto the card and cannot be read back. A node
         # whose password is lost can only be recovered by re-imaging it
         # (operator, 2026-08-02).
-        self.col.add_widget(_line(
-            "Write these down now", size="15sp", bold=True, color="amber", h=26))
-        self.col.add_widget(_line(
+        # Boxed, not just coloured: this is the one thing on the screen the
+        # operator has to DO before pressing Write, and an amber heading in a
+        # column of coloured headings did not read as different in kind
+        # (operator, 2026-08-02).
+        self.col.add_widget(Callout(
+            "Write these down now",
             "The node name and this password are how you reach this Pi over SSH "
             "later. Node Medic does NOT store the password — it goes onto the "
             "card as a one-way hash and can't be read back. Lose it and the only "
-            "way in is to image the card again.", size="13.5sp",
-            color="text_secondary", h=76))
+            "way in is to image the card again."))
 
         write = Button(text="Write SD card", size_hint_y=None, height=dp(56), bold=True,
                        font_size="18sp", background_normal="",
@@ -416,9 +419,19 @@ class PiImagerScreen(BoxLayout):
         self._ring = ProgressRing()
         ring_row.add_widget(self._ring)
         ring_row.add_widget(_line("Writing Pi OS and applying your settings. This "
-                                  "takes a few minutes — don't remove the card.",
+                                  "takes a few minutes.",
                                   size="13sp", color="accent"))
         self.col.add_widget(ring_row)
+        # Boxed, because this is the window where the operator can actually
+        # WRECK something, and a few minutes of a spinning ring is exactly when
+        # someone tidies cables or decides to plug the radio in (operator,
+        # 2026-08-02). Interrupting a write leaves a half-written card that
+        # boots far enough to look plausible and then fails.
+        self.col.add_widget(Callout(
+            "Leave everything alone until this finishes",
+            "Don't unplug anything from Node Medic, don't take the card out, "
+            "and don't power Node Medic off. A card interrupted part-way "
+            "through has to be written again from the start."))
         import time
         self._t0 = time.monotonic()
         self._ev = Clock.schedule_interval(self._tick, 0.3)
