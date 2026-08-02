@@ -25,6 +25,7 @@ from ui.onscreen_keyboard import bind_field
 from ui.widgets.progress_ring import ProgressRing
 from ui.widgets.birth_anims import InsertSdAnim
 from provisioning import pi_imager
+from provisioning.pi_imager import hostnameify
 
 _EST_WRITE_S = 240.0                       # rough dd+config time for the fill estimate
 
@@ -63,6 +64,19 @@ class PiImagerScreen(BoxLayout):
         except Exception:
             pass
         self._build()
+
+    def prefill_hostname(self, name):
+        """Seed the hostname from the node name the operator already typed.
+
+        They named the node once on the BIRTH screen; asking again here invites
+        two different names for one node — and the hostname is what the medic
+        later resolves to find it, so a mismatch means a node it cannot reach
+        (operator, 2026-08-02).
+        """
+        self._prefill_name = str(name or "")
+        ti = (getattr(self, "_inputs", {}) or {}).get("hostname")
+        if ti is not None and not ti.text.strip():
+            ti.text = hostnameify(self._prefill_name)
 
     def _field(self, label, hint, key, password=False, numeric=False):
         self.col.add_widget(_line(label, size="15sp", color="accent", bold=True, h=24))
@@ -287,7 +301,9 @@ class PiImagerScreen(BoxLayout):
             "Everything on this card will be erased.", size="13sp",
             color="warning_yellow", h=22))
 
-        self._field("Node hostname", "e.g. propagation-01", "hostname")
+        hn = self._field("Node hostname", "e.g. propagation-01", "hostname")
+        if not hn.text.strip():
+            hn.text = hostnameify(getattr(self, "_prefill_name", ""))
         ssid, psk = ("", "")
         if self._wifi_credentials:
             try:

@@ -453,3 +453,14 @@ def flash(device_path: str, hostname: str, username: str, password: str,
              "cable to Node Medic.")
     return (True, f"SD card imaged and configured as '{hostname}'. Put it in the Pi "
                   f"{reach}" + cable_msg)
+
+
+def hostnameify(name: str) -> str:
+    """A node name -> a valid hostname (lowercase, dashes, trimmed, <=32).
+
+    Lives here, not in the screen, so it is testable where Kivy is not
+    importable — CI has no Kivy and the suite installs process-global stubs that
+    only cover the submodules already in use.
+    """
+    import re
+    return re.sub(r"[^a-z0-9-]+", "-", (name or "").lower()).strip("-")[:32]

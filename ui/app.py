@@ -764,8 +764,11 @@ class ReticulumNodeMedicApp(App):
         pi_imager_scr = Screen(name="pi_imager")
         from ui.screens.pi_imager_screen import PiImagerScreen
         from workflows.rtnode_portal import medic_wifi_credentials
-        pi_imager_scr.add_widget(self._with_back(
-            PiImagerScreen(wifi_credentials=medic_wifi_credentials)))
+        # Kept on the app so BIRTH can hand it the node's name rather than
+        # making the operator type it twice (2026-08-02).
+        self.pi_imager_screen = PiImagerScreen(
+            wifi_credentials=medic_wifi_credentials)
+        pi_imager_scr.add_widget(self._with_back(self.pi_imager_screen))
         self.sm.add_widget(pi_imager_scr)
 
         triage = Screen(name="triage")

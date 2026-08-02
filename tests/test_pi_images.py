@@ -134,3 +134,31 @@ def test_the_operator_is_told_to_write_the_credentials_down():
     assert "Write these down now" in IMG_SRC
     assert "does NOT store the password" in IMG_SRC
     assert "image the card again" in IMG_SRC
+
+
+def test_hostnameify_turns_a_node_name_into_a_valid_hostname():
+    from provisioning.pi_imager import hostnameify   # pure: no Kivy
+    assert hostnameify("Zero V3") == "zero-v3"
+    assert hostnameify("HOPE") == "hope"
+    assert hostnameify("Rooftop East!!") == "rooftop-east"
+    assert hostnameify("  -- weird -- ") == "weird"
+    assert hostnameify("") == ""
+    assert len(hostnameify("x" * 80)) <= 32
+
+
+def test_the_imager_takes_a_prefilled_name():
+    """The operator named the node one screen ago. Asking again invites two
+    different names for one node — and the hostname is what the medic resolves
+    later to find it, so a mismatch means a node it cannot reach."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    assert "def prefill_hostname" in src
+    block = src[src.index("def prefill_hostname"):src.index("def _field")]
+    assert "hostnameify" in block
+    assert "not ti.text.strip()" in block, "must not clobber a typed hostname"
+
+
+def test_birth_hands_the_name_to_the_imager():
+    src = open("ui/screens/birth_screen.py").read()
+    block = src[src.index("def _go_image_pi"):]
+    assert "prefill_hostname" in block
+    assert "_name_in.text" in block

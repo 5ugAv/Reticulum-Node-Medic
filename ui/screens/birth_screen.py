@@ -1112,10 +1112,24 @@ class BirthScreen(BoxLayout):
             return False
 
     def _go_image_pi(self):
-        """Hand off to the card-imaging screen."""
+        """Hand off to the card-imaging screen, carrying the node's name.
+
+        The operator named this node one screen ago. Making them type it again
+        invites two different names for one node, and the hostname is what the
+        medic resolves later to find it.
+        """
+        name = ""
+        try:
+            name = (self._name_in.text or "").strip()
+        except Exception:
+            name = ""
         try:
             from kivy.app import App
-            App.get_running_app().switch_mode("pi_imager")
+            app = App.get_running_app()
+            scr = getattr(app, "pi_imager_screen", None)
+            if scr is not None and hasattr(scr, "prefill_hostname"):
+                scr.prefill_hostname(name)
+            app.switch_mode("pi_imager")
         except Exception:
             pass
 
