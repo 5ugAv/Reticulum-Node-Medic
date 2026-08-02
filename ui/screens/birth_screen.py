@@ -515,7 +515,25 @@ class BirthScreen(BoxLayout):
                     # spends anything on the plan (operator, 2026-08-02:
                     # "should I be warned already about the incompatibility of
                     # the board I'm about to use").
-                    self._power_banner()
+                    blocked = self._power_banner()
+                    if blocked:
+                        # Do NOT offer to write a card for a node that cannot
+                        # work. The next useful action is finding hardware that
+                        # does, so THAT is the button; leaving "Set up this Pi's
+                        # card" as the main action invites the operator to spend
+                        # four minutes building the thing just refused
+                        # (operator, 2026-08-02).
+                        self.header.add_widget(_line(
+                            "Options", bold=True, size="17sp", color="accent"))
+                        self._recommend_button()
+                        # The hub is the WORKAROUND, not the advice — so it sits
+                        # below the good answer and reads smaller.
+                        self.header.add_widget(_line(
+                            "Or use a powered USB hub between the Pi and the "
+                            "board to get around this.", size="12.5sp",
+                            color="text_secondary"))
+                        self._back_home_button()
+                        return
                     self.header.add_widget(_line(
                         "This Raspberry Pi has no operating system yet — it's "
                         "waiting with a blank card.", size="13.5sp",
@@ -1188,38 +1206,112 @@ class BirthScreen(BoxLayout):
             pass
 
     def _power_banner(self):
-        """Boxed warning when the chosen Pi cannot power the chosen board.
+        """One line in the box, the way out underneath it.
 
-        Shown as soon as BOTH are known, not at the build button. The card write
-        is the expensive step and it is entirely wasted if the pairing has to
-        change. Not a gate: the operator may well be planning to use a powered
-        hub, and it is their call — but it must be an informed one.
+        Trimmed on the bench (operator, 2026-08-02): the warning had grown to a
+        heading, a reason, a caution and two lists, and the thing they actually
+        needed — use a pairing that works — was buried in the middle of it. Now
+        the box carries a single sentence, and everything else lives outside it
+        as OPTIONS, with the powered hub last and small: it is the workaround,
+        not the recommendation.
+
+        Returns True when the pairing is blocked.
         """
         try:
             pi_key = self._sel_pi[0] if self._sel_pi else ""
             board = self._sel_board
             bkey = getattr(board, "key", "") if board is not None else ""
             if not pi_key or not bkey:
-                return
-            from workflows.power_compat import check as _check, warning_lines
+                return False
+            from workflows.power_compat import check as _check, short_board_name
             v = _check(pi_key, bkey)
             if not v or v.get("verdict") == "ok":
-                return
+                return False
             from ui.widgets.callout import Callout
             pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
-            lines = warning_lines(v, pi_name,
-                                  getattr(board, "display_name", bkey), pi_key)
-            head = next((l["text"] for l in lines if l.get("kind") == "head"), "")
-            body = " ".join(l["text"] for l in lines
-                            if l.get("kind") in ("body", "warn"))
-            self.header.add_widget(Callout(head or "Power problem", body))
-            for l in lines:
-                if l.get("kind") in ("bullet", "good"):
-                    self.header.add_widget(_line(
-                        l["text"], size="13sp",
-                        color="green" if l["kind"] == "good" else "text_secondary"))
+            short = short_board_name(bkey, getattr(board, "display_name", ""))
+            self.header.add_widget(Callout(
+                f"{pi_name} may not power {short} over USB"))
+            return v.get("verdict") == "blocked"
         except Exception:
-            pass                        # never block the flow on advice
+            return False                # never block the flow on advice
+
+    def _recommend_button(self):
+        """Bold: find hardware that actually works with what you have."""
+        b = Button(text="Use a Pi and radio board from the suggested list",
+                   size_hint_y=None, height=dp(56), bold=True, font_size="16sp",
+                   background_normal="",
+                   background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                   color=theme.hex_to_rgba(theme.COLORS["background"]))
+        b.bind(on_release=lambda *_: self._show_recommendations())
+        self.header.add_widget(b)
+
+    def _back_home_button(self):
+        """No forward action from a blocked pairing — only out."""
+        b = Button(text="←  Back", size_hint_y=None, height=dp(50),
+                   font_size="16sp", background_normal="",
+                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                   color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+
+        def _out(*_a):
+            from kivy.app import App
+            App.get_running_app().switch_mode("home")
+        b.bind(on_release=_out)
+        self.header.add_widget(b)
+
+    def _show_recommendations(self):
+        """Pairings that run with no powered hub, best margin first.
+
+        Answers the question a refused build actually raises — "then what DO I
+        use?" — with the Pi they already have listed first, since that is the
+        cheapest way out (operator, 2026-08-02).
+        """
+        from kivy.uix.popup import Popup
+        from kivy.uix.scrollview import ScrollView
+        from workflows.power_compat import recommended_pairings
+        pi_key = self._sel_pi[0] if self._sel_pi else ""
+        box = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
+        box.add_widget(_line(
+            "These run without a powered hub. Bigger spare current = more "
+            "headroom when the radio transmits.", size="14sp",
+            color="text_secondary", h=48))
+        body = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+        col.bind(minimum_height=col.setter("height"))
+        try:
+            pairs = recommended_pairings(limit=10, pi_key=pi_key)
+        except Exception:
+            pairs = []
+        yours = [p for p in pairs if p.get("pi_key") == pi_key]
+        others = [p for p in pairs if p.get("pi_key") != pi_key]
+        if yours:
+            col.add_widget(_line("With the Pi you already have", bold=True,
+                                 size="15sp", color="green", h=28))
+            for p in yours:
+                col.add_widget(_line(
+                    f"  {p['board']}   —  {p['margin_ma']} mA to spare",
+                    size="15sp", h=28))
+        if others:
+            col.add_widget(_line("With a different Pi", bold=True, size="15sp",
+                                 color="accent", h=32))
+            for p in others:
+                col.add_widget(_line(f"  {p['text']}   —  {p['margin_ma']} mA "
+                                     "to spare", size="14sp",
+                                     color="text_secondary", h=26))
+        if not pairs:
+            col.add_widget(_line("No pairing data available.", size="14sp",
+                                 color="amber", h=30))
+        body.add_widget(col)
+        box.add_widget(body)
+        popup = Popup(title="Combinations that work", content=box,
+                      size_hint=(0.92, 0.86))
+        close = Button(text="Close", size_hint_y=None, height=dp(50),
+                       bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        close.bind(on_release=popup.dismiss)
+        box.add_widget(close)
+        popup.open()
 
     def _busy_with_a_build(self) -> bool:
         """True while a flash/build owns this screen — resetting state under a

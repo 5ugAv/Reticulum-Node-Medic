@@ -186,6 +186,26 @@ def check(pi_key: str, board_key: str) -> Optional[dict]:
             "remedies": _remedies(pi_key, board_key, peak)}
 
 
+#: Short names for warnings. "Heltec LoRa32 v4" is the catalogue name; on a
+#: warning the operator is scanning, "Heltec V4" is what they call it and what
+#: is silkscreened on the board (operator, 2026-08-02: "don't even put the
+#: LoRa32 in").
+_BOARD_SHORT = {
+    "heltec32_v2": "Heltec V2", "heltec32_v3": "Heltec V3",
+    "heltec32_v4": "Heltec V4", "heltec_t114": "Heltec T114",
+    "heltec_wireless_tracker": "Heltec Tracker",
+    "lora32_v21": "LoRa32 v2.1", "lora32_v20": "LoRa32 v2.0",
+    "lora32_v10": "LoRa32 v1.0", "t3s3": "T3-S3", "tbeam": "T-Beam",
+    "tbeam_supreme": "T-Beam Supreme", "tdeck": "T-Deck",
+    "techo": "T-Echo", "rak4631": "RAK4631", "xiao_esp32s3": "XIAO S3",
+}
+
+
+def short_board_name(board_key: str, fallback: str = "") -> str:
+    """What the operator calls this board. Falls back to the catalogue name."""
+    return _BOARD_SHORT.get(board_key, fallback or _BOARD_NAMES.get(board_key, board_key))
+
+
 def warning_lines(verdict: dict, pi_name: str, board_name: str,
                   pi_key: str = "") -> List[dict]:
     """The power-warning copy, as ordered ``{text, kind}`` lines.

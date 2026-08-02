@@ -524,9 +524,11 @@ def test_the_screen_checks_whether_the_pi_has_an_os_before_asking_for_an_address
 
 
 def test_an_unimaged_pi_is_routed_to_imaging_not_to_a_text_box():
-    # Window widened: the power-compatibility banner now sits between the
-    # branch and the route, which pushed _go_image_pi past 1400 chars.
-    block = SRC[SRC.index("if self._pi_needs_imaging():"):][:2600]
+    # Bound the block by the NEXT branch rather than a character count: the
+    # power-compatibility banner and the blocked-pairing options now sit between
+    # the branch and the route, and a fixed window kept going stale.
+    _start = SRC.index("if self._pi_needs_imaging():")
+    block = SRC[_start:SRC.index("cable = \"\"", _start)]
     assert "no operating system yet" in block
     assert "no address to enter" in block
     assert "_go_image_pi" in block
