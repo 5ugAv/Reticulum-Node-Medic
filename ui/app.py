@@ -1823,18 +1823,16 @@ class ReticulumNodeMedicApp(App):
             # (direction="right") — the REVERSE, so back reads as back, not another
             # forward push. Matches the left-edge back swipe.
             self.sm.transition.direction = "right" if mode_name == "home" else "left"
-            self.sm.current = mode_name
-            if mode_name == "home":
-                self.refresh_radio_badge()   # keep the changed-params badge honest
             if mode_name == "pi_imager":
-                # Arriving to image a card — from BIRTH or from the guide. The
-                # screen is a singleton, so drop the LAST card's state: whether
-                # it was opened through the Pi or through a USB reader decides
-                # what the operator is told to do afterwards, and a stale answer
-                # is a wrong instruction. Safe to clear on every entry because
-                # the reader path re-derives it as it opens the card.
+                # Rebuild BEFORE the transition, not after. Resetting once the
+                # slide had started meant the previous card's panel was on
+                # screen for a beat and then snapped to the form — read as the
+                # screen flashing (operator, 2026-08-02).
                 scr = getattr(self, "pi_imager_screen", None)
                 if scr is not None and hasattr(scr, "reset_for_new_card"):
                     scr.reset_for_new_card()
+            self.sm.current = mode_name
+            if mode_name == "home":
+                self.refresh_radio_badge()   # keep the changed-params badge honest
             if mode_name == "security_preview":
                 self._start_security_preview()

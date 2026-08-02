@@ -211,3 +211,25 @@ def test_next_steps_never_promise_wifi_that_was_not_configured():
         False, hostname="h").get("note", "").lower()
     assert "HomeNet" in next_steps_after_imaging(
         False, hostname="h", wifi_ssid="HomeNet")["note"]
+
+
+def test_every_route_into_imaging_carries_the_node_name():
+    """Both ways in must prefill the hostname, not just one.
+
+    The BIRTH screen handed the name over; the guided flow — which collects the
+    name in its own first step and is the normal way in — did not, so the
+    operator reached the card form with an empty hostname and was asked to name
+    the same node twice (operator, 2026-08-02). Guarded by source inspection
+    because Kivy is not importable in CI.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    guide = (root / "ui" / "screens" / "birth_guide_screen.py").read_text()
+    birth = (root / "ui" / "screens" / "birth_screen.py").read_text()
+    assert "prefill_hostname" in birth, "BIRTH route stopped prefilling"
+    assert "_hand_over_name" in guide, "guided route stopped prefilling"
+    # and the hand-over must happen AFTER navigating, or entering the screen
+    # resets it away again
+    nav = guide.index('self._on_navigate(cur["screen"])')
+    hand = guide.index("self._hand_over_name(cur[\"screen\"])")
+    assert hand > nav, "name handed over before the screen reset — it will be lost"

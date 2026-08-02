@@ -1025,6 +1025,19 @@ class BirthGuideScreen(BoxLayout):
         self._i = 0
         self._render_step()
 
+    def _hand_over_name(self, screen_name):
+        """Give a full screen the node name this walkthrough already collected."""
+        if not self._node_name:
+            return
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            scr = getattr(app, f"{screen_name}_screen", None)
+            if scr is not None and hasattr(scr, "prefill_hostname"):
+                scr.prefill_hostname(self._node_name)
+        except Exception:
+            pass
+
     def _render_step(self):
         steps = guide_steps(self._path)
         if not steps or self._i >= len(steps):
@@ -1102,6 +1115,12 @@ class BirthGuideScreen(BoxLayout):
         if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
             self._stop_board_poll()
             self._on_navigate(cur["screen"])
+            # Carry the name across. The BIRTH screen route already did this;
+            # this one did not, so anyone walking the GUIDE — which is the
+            # normal way in, and which asks for the name in its own first step —
+            # reached the card form with an empty hostname and had to invent a
+            # second name for the same node (operator, 2026-08-02).
+            self._hand_over_name(cur["screen"])
             return
         self._i += 1
         if self._i >= len(steps):
