@@ -978,7 +978,10 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
-        Clock.schedule_once(lambda *_: setattr(ti, "focus", True), 0.3)
+        # Deliberately NOT auto-focused. The keyboard covers this step's own Back
+        # and Next, so opening it unasked made the first step of the walkthrough
+        # look like it had no way out (operator, 2026-08-02). The operator taps
+        # the field when they're ready to type, and DONE puts it away.
 
     def _name_next(self):
         name = (self._name_input.text or "").strip()

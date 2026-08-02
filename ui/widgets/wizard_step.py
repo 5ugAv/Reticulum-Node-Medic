@@ -107,14 +107,24 @@ class WizardStep(BoxLayout):
             warn_lbl = Label(text=warning, font_size="15sp", bold=True, halign="left",
                              valign="middle", size_hint_y=None, padding=(dp(12), dp(10)),
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
+            from kivy.graphics import Line
             with warn_lbl.canvas.before:
                 Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
                 warn_lbl._bg = RoundedRectangle(radius=[dp(8)] * 4)
+                # Red border, matching ui.widgets.callout: one look for "this one
+                # you must act on", so the operator learns it once (operator,
+                # 2026-08-02). Yellow alone reads as merely emphasised.
+                Color(0.84, 0.0, 0.0, 1)
+                warn_lbl._border = Line(rounded_rectangle=(0, 0, 0, 0, dp(8)),
+                                        width=dp(1.6))
+
+            def _fit(i, *_a):
+                i._bg.pos, i._bg.size = i.pos, i.size
+                i._border.rounded_rectangle = (i.x, i.y, i.width, i.height, dp(8))
             warn_lbl.bind(
                 width=lambda i, w: setattr(i, "text_size", (w - dp(24), None)),
                 texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(20)),
-                pos=lambda i, v: setattr(i._bg, "pos", i.pos),
-                size=lambda i, v: setattr(i._bg, "size", i.size))
+                pos=_fit, size=_fit)
             self.add_widget(warn_lbl)
 
         nav = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),

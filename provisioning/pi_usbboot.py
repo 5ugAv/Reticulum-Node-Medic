@@ -46,6 +46,16 @@ BOOTROM_IDS = {
     "0a5c:2712": "BCM2712 (Pi 5 / CM5)",
 }
 
+#: What a Pi looks like once rpiboot has loaded the mass-storage payload: it is
+#: no longer a boot-ROM device, it is a USB disk. It DOES still announce a
+#: Broadcom ID, so this is recognisable without being told a disk appeared —
+#: which matters because callers that only have `lsusb` (the guided flow's poll)
+#: were reading a Pi actively presenting its card as "no Pi seen on USB", and so
+#: took the radio path instead of the Pi path (walkthrough, 2026-08-02).
+MASS_STORAGE_IDS = {
+    "0a5c:0001": "The Pi is presenting its SD card.",
+}
+
 #: The Linux USB-gadget ethernet IDs an ALREADY-provisioned node shows up as —
 #: i.e. a card we imaged, now booting normally with the cable link up.
 GADGET_IDS = {
@@ -104,6 +114,9 @@ def classify(lsusb_output: str, disk_appeared: bool = False) -> PiUsbState:
     for usb_id in ids:
         if usb_id in BOOTROM_IDS:
             return PiUsbState(BOOTROM, BOOTROM_IDS[usb_id], usb_id)
+    for usb_id in ids:
+        if usb_id in MASS_STORAGE_IDS:
+            return PiUsbState(CARD_READER, MASS_STORAGE_IDS[usb_id], usb_id)
     if disk_appeared:
         return PiUsbState(CARD_READER, "The Pi is presenting its SD card.", "")
     for usb_id in ids:

@@ -193,6 +193,12 @@ class OnScreenKeyboard(BoxLayout):
             shown = label.upper() if self._upper() else label
         elif label == _SHIFT:
             shown = "CAPS" if self._caps_lock else ("SHIFT" if self._shift else "shift")
+        elif label == _ENTER and not getattr(self.target, "multiline", False):
+            # On a one-line field this key CLOSES the keyboard, and the keyboard
+            # is what is covering the screen's own Back/Next. "ENTER" does not
+            # say that, so the operator had no visible way off a step and
+            # reported the page as a dead end (walkthrough, 2026-08-02).
+            shown = "DONE"
         elif label in _DISPLAY:
             shown = _DISPLAY[label]
         else:
