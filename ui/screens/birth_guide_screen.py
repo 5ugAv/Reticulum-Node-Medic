@@ -1041,6 +1041,33 @@ class BirthGuideScreen(BoxLayout):
         except Exception:
             pass
 
+    def _step_is_redundant(self, step):
+        """True when the medic can SEE this step is already done.
+
+        Used going FORWARD to skip it, and going BACK to step over it. Sharing
+        one definition is the point: when only the forward path knew, Back
+        decremented onto a step that immediately re-skipped forward, so the
+        button did nothing at all while the board stayed plugged in (operator,
+        2026-08-02).
+        """
+        anim = step.get("anim")
+        if anim == "connect_pi":
+            try:
+                import subprocess
+                from provisioning import pi_usbboot
+                out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                     timeout=8).stdout
+                return pi_usbboot.classify(out).state != pi_usbboot.ABSENT
+            except Exception:
+                return False
+        if anim == "connect_board":
+            try:
+                from ui.hw_factories import local_board_ports
+                return bool(local_board_ports())
+            except Exception:
+                return False
+        return False
+
     def _render_step(self):
         steps = guide_steps(self._path)
         if not steps or self._i >= len(steps):
@@ -1049,33 +1076,14 @@ class BirthGuideScreen(BoxLayout):
         # A 'connect your board' step is REDUNDANT when the board is already
         # plugged in (operator feedback 2026-07-31: being told to connect a
         # connected board reads as a bug) — skip it silently.
-        if steps[self._i].get("anim") == "connect_pi":
-            # A Pi in boot-ROM mode is NOT a serial device — it has no tty at
-            # all — so the work-board check can never see one. Ask the USB
-            # classifier instead. (Walkthrough 2026-08-02: this step sat there
-            # telling the operator to connect an already-connected Pi.)
-            try:
-                import subprocess
-                from provisioning import pi_usbboot
-                out = subprocess.run(["lsusb"], capture_output=True, text=True,
-                                     timeout=8).stdout
-                if pi_usbboot.classify(out).state != pi_usbboot.ABSENT:
-                    self._i += 1
-                    if self._i >= len(steps):
-                        self._finish()
-                        return
-            except Exception:
-                pass
-        if steps[self._i].get("anim") == "connect_board":
-            try:
-                from ui.hw_factories import local_board_ports
-                if local_board_ports():
-                    self._i += 1
-                    if self._i >= len(steps):
-                        self._finish()
-                        return
-            except Exception:
-                pass
+        # A 'connect this' step is redundant when it is already connected. (A Pi
+        # in boot-ROM mode is NOT a serial device, so the work-board check can
+        # never see one — _step_is_redundant asks the USB classifier instead.)
+        while self._i < len(steps) and self._step_is_redundant(steps[self._i]):
+            self._i += 1
+        if self._i >= len(steps):
+            self._finish()
+            return
         self._stop_current()
         self._back_action = self._back        # guided step -> previous step / name
         s = steps[self._i]
@@ -1329,12 +1337,26 @@ class BirthGuideScreen(BoxLayout):
             self._render_step()
 
     def _back(self):
-        self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
-        if self._i == 0:
-            self._render_name()             # off the first step -> the name step
-        else:
-            self._i -= 1
-            self._render_step()
+        """One screen back — stepping OVER anything already done.
+
+        Walking back onto a redundant step used to bounce straight forward
+        again, so Back did nothing while the radio stayed plugged in. Now it
+        keeps going until it finds a screen worth showing, and lands on the
+        pairing questions (or the name) when it runs out.
+        """
+        self._advance_token = getattr(self, "_advance_token", 0) + 1
+        steps = guide_steps(self._path)
+        i = self._i - 1
+        while i >= 0 and self._step_is_redundant(steps[i]):
+            i -= 1
+        if i < 0:
+            if getattr(self, "_pair_checked", False):
+                self._render_pick_board()    # the screen actually before these
+            else:
+                self._render_name()
+            return
+        self._i = i
+        self._render_step()
 
     def _finish(self):
         path = self._path

@@ -39,7 +39,10 @@ class Callout(BoxLayout):
         self.padding = (dp(12), dp(10), dp(12), dp(10))
         self.spacing = dp(4)
 
-        self._head = Label(text=heading, bold=True, font_size="15.5sp",
+        # Big. This is the line that has to stop someone mid-flow — on the 5"
+        # panel at 15.5sp it read as just another bold line and the operator
+        # watched it float past (2026-08-02).
+        self._head = Label(text=heading, bold=True, font_size="21sp",
                            color=INK, size_hint_y=None, halign="left",
                            valign="middle", markup=False)
         self._body = Label(text=body, font_size="13.5sp", color=INK,

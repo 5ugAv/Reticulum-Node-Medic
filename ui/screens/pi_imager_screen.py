@@ -377,7 +377,7 @@ class PiImagerScreen(BoxLayout):
         # column of coloured headings did not read as different in kind
         # (operator, 2026-08-02).
         self.col.add_widget(Callout(
-            "Write these down now",
+            "Write these down now!",
             "The node name and this password are how you reach this Pi over SSH "
             "later. Node Medic does NOT store the password — it goes onto the "
             "card as a one-way hash and can't be read back. Lose it and the only "

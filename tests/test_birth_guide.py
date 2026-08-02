@@ -196,3 +196,24 @@ def test_a_pi_build_does_not_open_with_an_antenna_instruction():
     antenna' is an instruction about a board the operator isn't holding."""
     src = open("ui/screens/birth_guide_screen.py").read()
     assert "_pi_present_without_radio" in src
+
+
+def test_back_and_forward_share_one_notion_of_redundant():
+    """Back must never land on a step the forward path would skip.
+
+    While the radio stayed plugged in, Back decremented onto the 'connect the
+    radio' step, which the renderer then skipped forward again — so the button
+    did nothing at all (operator, 2026-08-02). Both directions now consult
+    _step_is_redundant, and Back walks past anything it reports.
+    """
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "ui" / "screens" / "birth_guide_screen.py").read_text()
+    assert "def _step_is_redundant" in src
+    back = src[src.index("    def _back(self):"):]
+    back = back[:back.index("\n    def ", 10)]
+    assert "_step_is_redundant" in back, "Back does not skip redundant steps"
+    assert "while" in back, "Back must walk past a RUN of redundant steps"
+    fwd = src[src.index("    def _render_step(self):"):]
+    fwd = fwd[:fwd.index("\n    def ", 10)]
+    assert "_step_is_redundant" in fwd, "forward skip stopped sharing the rule"
