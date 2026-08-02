@@ -41,11 +41,19 @@ def test_every_step_has_title_and_body():
             assert s["body"].strip()
 
 
-def test_pi_path_starts_with_sd_then_radio():
+def test_pi_path_does_the_RADIO_before_the_card():
+    """Radio first, then the Pi's card (operator, 2026-08-02).
+
+    Nothing forces the Pi first — the radio is flashed BY the medic, never
+    through the Pi. Doing it first means the medic knows exactly which radio
+    this is BEFORE it spends four minutes writing the Pi's card, so a pairing
+    that cannot work (a Pi Zero cannot feed a Heltec V4) is caught while it
+    still costs nothing to change.
+    """
     titles = [s["title"] for s in guide_steps("pi")]
-    assert "SD card" in titles[0]
-    # the radio board is connected before the hand-off to setup
-    assert any("radio board" in t.lower() for t in titles[1:])
+    i_radio = [i for i, t in enumerate(titles) if "radio board" in t.lower()][0]
+    i_card = [i for i, t in enumerate(titles) if "SD card" in t][0]
+    assert i_radio < i_card, titles
 
 
 # --- the CABLE birth (proven 2026-08-01, HOPE) -----------------------------
@@ -55,9 +63,9 @@ def test_pi_path_starts_with_sd_then_radio():
 def test_the_card_goes_into_the_PI_not_into_a_reader():
     """The Pi is its own card reader. Sending the operator hunting for a USB
     reader was the tool making its own limitation their problem."""
-    first = guide_steps("pi")[0]
-    assert "into the Raspberry Pi" in first["title"]
-    assert "don't need a card reader" in first["body"]
+    card = [s for s in guide_steps("pi") if "SD card" in s["title"]][0]
+    assert "into the Raspberry Pi" in card["title"]
+    assert "don't need a card reader" in card["body"]
     joined = " ".join(s["body"] for s in guide_steps("pi"))
     assert "card reader" not in joined.replace("don't need a card reader", "")
 
@@ -81,10 +89,13 @@ def test_the_operator_is_told_to_restart_the_pi_after_imaging():
     restart = [s for s in guide_steps("pi") if "Restart" in s["title"]]
     assert restart, "no restart step — the flow would silently stall"
     assert "can't switch the Pi off and on" in restart[0]["hint"]
-    # and it must come AFTER imaging and BEFORE the radio step
+    # and it must come AFTER the imaging hand-off. (It no longer needs to
+    # precede the radio step: the radio is now done first, so that the board is
+    # known before the card is written.)
     i_restart = titles.index(restart[0]["title"])
-    i_radio = [i for i, t in enumerate(titles) if "radio" in t.lower()][0]
-    assert 0 < i_restart < i_radio
+    i_image = [i for i, st in enumerate(guide_steps("pi"))
+               if st.get("screen") == "pi_imager"][0]
+    assert i_restart > i_image, titles
 
 
 def test_the_data_port_trap_is_called_out_where_it_happens():
@@ -107,9 +118,21 @@ def test_no_step_asks_for_a_network_address_or_wifi():
         assert phrase not in joined, f"still asks for {phrase!r}"
 
 
+#: Animations the wizard advances itself on, by watching USB. A step using one
+#: needs no button and deliberately has none (operator, 2026-08-02).
+_SELF_ADVANCING = {"connect_pi", "connect_board"}
+
+
 def test_last_step_hands_off_to_setup():
+    """Every path must END somewhere — by a labelled button, or by detection.
+
+    The Pi path now finishes on "Restart the Pi", which the medic detects and
+    carries forward on its own, so it correctly has no button.
+    """
     for path in ("radio", "pi", "host"):
-        assert guide_steps(path)[-1].get("next", "").strip()
+        last = guide_steps(path)[-1]
+        assert (last.get("next", "").strip()
+                or last.get("anim") in _SELF_ADVANCING), path
 
 
 def test_guide_steps_returns_a_copy():

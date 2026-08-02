@@ -508,6 +508,14 @@ class BirthScreen(BoxLayout):
                 # address needed", which is true and useless (operator hit this
                 # twice, 2026-08-02). Route to imaging instead.
                 if self._pi_needs_imaging():
+                    # Power-compatibility FIRST. It used to be checked at the
+                    # build button — after naming, after imaging, after a
+                    # four-minute card write. A blocked pairing changes WHICH
+                    # BOARD you use, so it has to arrive before the operator
+                    # spends anything on the plan (operator, 2026-08-02:
+                    # "should I be warned already about the incompatibility of
+                    # the board I'm about to use").
+                    self._power_banner()
                     self.header.add_widget(_line(
                         "This Raspberry Pi has no operating system yet — it's "
                         "waiting with a blank card.", size="13.5sp",
@@ -1178,6 +1186,40 @@ class BirthScreen(BoxLayout):
             self._detect_board()
         except Exception:
             pass
+
+    def _power_banner(self):
+        """Boxed warning when the chosen Pi cannot power the chosen board.
+
+        Shown as soon as BOTH are known, not at the build button. The card write
+        is the expensive step and it is entirely wasted if the pairing has to
+        change. Not a gate: the operator may well be planning to use a powered
+        hub, and it is their call — but it must be an informed one.
+        """
+        try:
+            pi_key = self._sel_pi[0] if self._sel_pi else ""
+            board = self._sel_board
+            bkey = getattr(board, "key", "") if board is not None else ""
+            if not pi_key or not bkey:
+                return
+            from workflows.power_compat import check as _check, warning_lines
+            v = _check(pi_key, bkey)
+            if not v or v.get("verdict") == "ok":
+                return
+            from ui.widgets.callout import Callout
+            pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
+            lines = warning_lines(v, pi_name,
+                                  getattr(board, "display_name", bkey), pi_key)
+            head = next((l["text"] for l in lines if l.get("kind") == "head"), "")
+            body = " ".join(l["text"] for l in lines
+                            if l.get("kind") in ("body", "warn"))
+            self.header.add_widget(Callout(head or "Power problem", body))
+            for l in lines:
+                if l.get("kind") in ("bullet", "good"):
+                    self.header.add_widget(_line(
+                        l["text"], size="13sp",
+                        color="green" if l["kind"] == "good" else "text_secondary"))
+        except Exception:
+            pass                        # never block the flow on advice
 
     def _busy_with_a_build(self) -> bool:
         """True while a flash/build owns this screen — resetting state under a
