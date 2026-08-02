@@ -25,6 +25,7 @@ from ui.onscreen_keyboard import bind_field
 from ui.widgets.progress_ring import ProgressRing
 from ui.widgets.birth_anims import InsertSdAnim
 from ui.widgets.callout import Callout
+from ui.widgets.surgery_anim import SurgeryAnim
 from provisioning import pi_imager
 from provisioning.pi_imager import hostnameify
 
@@ -432,6 +433,18 @@ class PiImagerScreen(BoxLayout):
             "Don't unplug anything from Node Medic, don't take the card out, "
             "and don't power Node Medic off. A card interrupted part-way "
             "through has to be written again from the start."))
+        # The wait is minutes long with nothing to look at, and the most costly
+        # thing an operator can do in that window is decide it has hung and pull
+        # the card. The theatre shows organs landing one at a time and a heart
+        # trace steadying, so "is this still working?" is answered without
+        # anyone having to trust a number (operator's scene, 2026-08-02).
+        self._surgery = SurgeryAnim(pi_key=self._pi_art_key(),
+                                    size_hint_y=None, height=dp(230))
+        self.col.add_widget(self._surgery)
+        self._stage_lbl = _line(pi_imager.current_stage_label(0.0),
+                                size="15sp", color="accent", h=28)
+        self.col.add_widget(self._stage_lbl)
+        self._surgery.start()
         import time
         self._t0 = time.monotonic()
         self._ev = Clock.schedule_interval(self._tick, 0.3)
@@ -454,16 +467,62 @@ class PiImagerScreen(BoxLayout):
             Clock.schedule_once(lambda dt: self._done(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
 
+    def _card_is_in_the_pi(self):
+        """Is the card we just wrote sitting inside a Raspberry Pi right now?
+
+        ASKED of the hardware, not remembered. The stored _via_pi_reader flag
+        only knew about a Pi that THIS visit converted with rpiboot — so a Pi
+        still presenting its card from an earlier attempt looked like a USB
+        reader, and the operator was told to take a card out of a reader that
+        was not in the room (walkthrough, 2026-08-02).
+
+        A Pi in mass-storage mode announces itself on USB, so the honest answer
+        is one lsusb away. Falls back to the flag if the check cannot run.
+        """
+        try:
+            import subprocess
+            from provisioning import pi_usbboot
+            out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                 timeout=8).stdout
+            return pi_usbboot.classify(out).state == pi_usbboot.CARD_READER
+        except Exception:
+            return bool(self._via_pi_reader)
+
+    def _pi_art_key(self):
+        """The detected Pi model, for the surgeon's portrait. "" = generic."""
+        try:
+            from kivy.app import App
+            guide = getattr(App.get_running_app(), "birth_guide_screen", None)
+            return getattr(guide, "_pi_art_key", "") or ""
+        except Exception:
+            return ""
+
     def _tick(self, _dt):
         import time
         frac = min(0.95, (time.monotonic() - self._t0) / _EST_WRITE_S)
         self._ring.set_fraction(frac)
+        surgery = getattr(self, "_surgery", None)
+        if surgery is not None:
+            surgery.set_fraction(frac)
+        lbl = getattr(self, "_stage_lbl", None)
+        if lbl is not None:
+            lbl.text = pi_imager.current_stage_label(frac)
 
     def _done(self, ok, msg):
         self._busy = False
         ev = getattr(self, "_ev", None)
         if ev is not None:
             ev.cancel()
+        surgery = getattr(self, "_surgery", None)
+        if surgery is not None:
+            if ok:
+                surgery.set_fraction(1.0)      # smile + thumbs up + happy beep
+            else:
+                surgery.stop()                 # a failure gets no celebration
+        lbl = getattr(self, "_stage_lbl", None)
+        if lbl is not None:
+            lbl.text = (pi_imager.current_stage_label(1.0) if ok
+                        else "The operation stopped.")
         self._ring.set_fraction(1.0 if ok else self._ring.fraction)
         self.col.add_widget(_line("✓  Done!" if ok else "✗  Couldn't finish",
                                   bold=True, size="19sp",
@@ -496,25 +555,119 @@ class PiImagerScreen(BoxLayout):
         v = {k: t.text.strip() for k, t in (self._inputs or {}).items()
              if hasattr(t, "text")}
         plan = pi_imager.next_steps_after_imaging(
-            self._via_pi_reader, hostname=v.get("hostname", ""),
+            self._card_is_in_the_pi(), hostname=v.get("hostname", ""),
             pi_name=self._pi_name, wifi_ssid=v.get("ssid", ""))
         self.col.add_widget(_line(plan["title"], bold=True, size="17sp",
                                   color="accent", h=30))
         for step in plan["steps"]:
             self.col.add_widget(_line(step, size="15sp", h=26))
         self.col.add_widget(_line(plan["note"], size="14sp", color="green", h=40))
-        go = Button(text=plan["cta"], size_hint_y=None, height=dp(56),
-                    bold=True, font_size="16sp", background_normal="",
-                    background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                    color=theme.hex_to_rgba(theme.COLORS["background"]))
-        go.bind(on_release=lambda *_: self._back_to_birth())
-        self.col.add_widget(go)
+        # No button. Replugging the Pi is a physical act the medic can SEE — a
+        # freshly imaged card boots into the USB-gadget link and announces
+        # itself — so asking for a press afterwards is asking the operator to
+        # tell the medic something it already knows (operator, 2026-08-02, the
+        # same rule as the connect steps in the guided flow).
+        self._boot_lbl = _line("Waiting for the Pi to come back…",
+                               size="15sp", color="accent", h=30)
+        self.col.add_widget(self._boot_lbl)
+        self._start_boot_poll(v.get("hostname", ""))
+
+    def _start_boot_poll(self, hostname=""):
+        """Watch for the imaged Pi booting its new card, then move on by itself.
+
+        The signal is the USB-gadget link: a card written by this screen brings
+        one up on first boot, so seeing it means the card WORKS -- a far better
+        thing to wait for than a timer. First boot expands the filesystem and
+        runs cloud-init, so it can take a couple of minutes; the escape hatch
+        only appears once that is clearly overdue, rather than inviting an early
+        press that skips past a Pi still starting.
+        """
+        import time
+        self._boot_t0 = time.monotonic()
+        self._boot_host = hostname or ""
+        self._stop_boot_poll()
+
+        def tick(_dt):
+            def work():
+                state, ip = None, ""
+                try:
+                    import subprocess
+                    from provisioning import pi_usbboot
+                    out = subprocess.run(["lsusb"], capture_output=True,
+                                         text=True, timeout=8).stdout
+                    state = pi_usbboot.classify(out).state
+                except Exception:
+                    state = None
+                # A card imaged WITH WiFi comes back on the network, not on
+                # USB — the operator can power it from anything. Watching only
+                # the cable would sit there saying "waiting" while the Pi was
+                # up and pingable (caught on the bench, 2026-08-02).
+                if self._boot_host:
+                    try:
+                        from provisioning import pi_discover
+                        ip = pi_discover.resolve(self._boot_host) or ""
+                    except Exception:
+                        ip = ""
+                Clock.schedule_once(lambda _d: self._boot_tick(state, ip), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._boot_ev = Clock.schedule_interval(tick, 2.0)
+        tick(0)
+
+    def _stop_boot_poll(self):
+        ev = getattr(self, "_boot_ev", None)
+        if ev is not None:
+            try:
+                ev.cancel()
+            except Exception:
+                pass
+            self._boot_ev = None
+
+    def _boot_tick(self, state, ip=""):
+        """One poll result, on the UI thread. Either route counts as alive."""
+        import time
+        from provisioning import pi_usbboot
+        lbl = getattr(self, "_boot_lbl", None)
+        if state == pi_usbboot.GADGET or ip:
+            self._stop_boot_poll()
+            if lbl is not None:
+                lbl.text = (f"The Pi is up on your network at {ip}." if ip
+                            else "The Pi is up and talking over the cable.")
+                lbl.color = theme.hex_to_rgba(theme.COLORS["green"])
+            Clock.schedule_once(lambda _d: self._back_to_birth(), 1.4)
+            return
+        waited = time.monotonic() - getattr(self, "_boot_t0", 0)
+        if lbl is not None:
+            if state == pi_usbboot.CARD_READER:
+                lbl.text = "Still showing its card — unplug the Pi and plug it back in."
+            elif state == pi_usbboot.ABSENT:
+                lbl.text = "Pi unplugged. Plug it back in when you're ready…"
+            else:
+                lbl.text = f"Waiting for the Pi to come back… ({int(waited)}s)"
+        # Overdue: offer a way on rather than trapping anyone behind a Pi that
+        # is not going to appear (bad cable, PWR-only port, a card that failed).
+        if waited > 180 and not getattr(self, "_boot_escape", None):
+            self._boot_escape = Button(
+                text="Carry on without waiting  →", size_hint_y=None,
+                height=dp(52), bold=True, background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            self._boot_escape.bind(on_release=lambda *_: (self._stop_boot_poll(),
+                                                          self._back_to_birth()))
+            self.col.add_widget(_line(
+                "Taking longer than expected. Check it's on a DATA port, not "
+                "PWR IN.", size="13.5sp", color="amber", h=40))
+            self.col.add_widget(self._boot_escape)
 
     def _back_to_birth(self):
         from kivy.app import App
         app = App.get_running_app()
         try:
             scr = getattr(app, "birth_screen", None)
+            if scr is not None and hasattr(scr, "arrived_from_imaging"):
+                v = {k: t.text.strip() for k, t in (self._inputs or {}).items()
+                     if hasattr(t, "text")}
+                scr.arrived_from_imaging(v.get("hostname", ""))
             if scr is not None and hasattr(scr, "rescan_after_imaging"):
                 scr.rescan_after_imaging()
         except Exception:

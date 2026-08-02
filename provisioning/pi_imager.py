@@ -509,3 +509,44 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
         "note": where,
         "cta": "Continue building this node  →",
     }
+
+
+#: The operation, as the operator sees it. Each entry is one glowing "organ" the
+#: Pi-doctor implants into the card, with the progress fraction it lands at.
+#:
+#: These are NOT decorative timings invented to fill the wait — they follow the
+#: real shape of flash(): the compressed image write is the long middle of the
+#: job (bootloader and kernel come off the front of the image, the root
+#: filesystem is the bulk of it), and everything Node Medic adds of its own —
+#: identity, cable link, the login account — happens afterwards when the card is
+#: mounted. If flash() is ever reordered, reorder these with it; an animation
+#: that narrates the wrong operation is worse than no animation, because the
+#: operator uses it to judge whether a stall is normal.
+IMAGING_STAGES = (
+    {"at": 0.02, "organ": "bootloader",
+     "label": "Bootloader in — it knows how to wake up."},
+    {"at": 0.18, "organ": "kernel",
+     "label": "Kernel in — the beating heart."},
+    {"at": 0.45, "organ": "filesystem",
+     "label": "Filesystem in — somewhere to keep things."},
+    {"at": 0.88, "organ": "reticulum",
+     "label": "Reticulum in — it can find the mesh now."},
+    {"at": 0.96, "organ": "identity",
+     "label": "Name, keys and cable link — it knows who it is."},
+)
+
+
+def stages_upto(fraction: float):
+    """Every stage implanted at or before *fraction*, in order."""
+    f = 0.0 if fraction is None else float(fraction)
+    return [s for s in IMAGING_STAGES if s["at"] <= f]
+
+
+def current_stage_label(fraction: float) -> str:
+    """The caption to show right now — the most recent organ, or the opening line."""
+    done = stages_upto(fraction)
+    if not done:
+        return "Prepping the card…"
+    if fraction >= 1.0:
+        return "Done — the card is alive."
+    return done[-1]["label"]

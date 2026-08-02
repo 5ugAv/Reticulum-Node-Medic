@@ -1085,9 +1085,13 @@ class BirthGuideScreen(BoxLayout):
         # then the animation fires its green "Connected!" burst. Until then Next is
         # grayed out — you can't move on without a board actually plugged in.
         if isinstance(anim, ConnectPiAnim):
+            # No Next button: plugging the Pi in IS the action, and the medic
+            # advances itself when it sees one. The button only ever invited a
+            # press that changed nothing (operator, 2026-08-02).
+            step.hide_next()
             self._start_pi_poll(anim)
         elif isinstance(anim, ConnectBoardAnim):
-            step.set_next_enabled(False)
+            step.hide_next()          # same: detection drives this step
             self._start_board_poll(anim)
 
     # -- navigation --------------------------------------------------------
@@ -1202,10 +1206,9 @@ class BirthGuideScreen(BoxLayout):
         self._stop_board_poll()
         if hasattr(anim, "mark_connected"):
             anim.mark_connected()
-        # A board is here — the green burst fires and Next un-grays (so the operator
-        # can go on, and the flow also auto-advances after the celebration below).
-        if self._current is not None and hasattr(self._current, "set_next_enabled"):
-            self._current.set_next_enabled(True)
+        # A board is here — the green burst fires. There is no Next to un-gray
+        # any more: the step has none, because the flow carries itself forward
+        # after the celebration below.
         # Let the "Connected!" celebration play, then carry the flow forward on its
         # own — detection drives the wizard, no tap needed. A manual Next/Back
         # bumps the token and cancels this pending auto-advance.

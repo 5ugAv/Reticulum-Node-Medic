@@ -302,7 +302,19 @@ class BirthScreen(BoxLayout):
         self.header.clear_widgets()
         if hasattr(self, "list") and not keep_list:
             self.list.clear_widgets()
-        self.header.add_widget(_line("Birth a new node", bold=True, size="22sp"))
+        arrived = getattr(self, "_from_imaging", None)
+        if arrived:
+            named = arrived if isinstance(arrived, str) else "this node"
+            self.header.add_widget(_line(
+                f"Card written — now building {named}", bold=True, size="22sp",
+                color="green"))
+            self.header.add_widget(_line(
+                "Everything below is already filled in from the card you just "
+                "wrote. This is the last step, not the start again.",
+                size="13.5sp", color="text_secondary"))
+        else:
+            self.header.add_widget(_line("Birth a new node", bold=True,
+                                         size="22sp"))
 
         # The step-by-step guide entry lives at the BOTTOM as a modest link —
         # a big green button at the top read as 'continue' and yanked operators
@@ -1138,6 +1150,16 @@ class BirthScreen(BoxLayout):
                      if self._sel_pi and k == self._sel_pi[0]), ""))
         except Exception:
             pass
+
+    def arrived_from_imaging(self, node_name=""):
+        """Say where we are. BIRTH is the FINISH of the card step, not a restart.
+
+        The screen is titled "Birth a new node", so arriving here straight after
+        writing a card reads as being dumped back at the beginning — the
+        operator reported it as looping (2026-08-02). It is in fact the handoff,
+        pre-filled with everything they just built; it only needed to say so.
+        """
+        self._from_imaging = (node_name or "").strip() or True
 
     def rescan_after_imaging(self):
         """Come back from card imaging and look again.

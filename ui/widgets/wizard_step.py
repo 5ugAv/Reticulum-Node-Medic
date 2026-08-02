@@ -142,6 +142,20 @@ class WizardStep(BoxLayout):
         nav.add_widget(self.back_btn)
         nav.add_widget(self.next_btn)
         self.add_widget(nav)
+        self._nav = nav
+
+    def hide_next(self):
+        """Drop the Next button entirely — for steps the medic advances itself.
+
+        On a "plug the thing in" step, detection drives the flow: the animation
+        fires its Connected! burst and the wizard moves on by itself. The button
+        was disabled until that moment and redundant after it, so it never did
+        anything except invite a press that changed nothing (operator,
+        2026-08-02). Back stays: leaving a step is still the operator's call.
+        """
+        if self.next_btn.parent is not None:
+            self._nav.remove_widget(self.next_btn)
+        self.back_btn.size_hint_x = 1        # Back takes the row on its own
 
     def set_next_enabled(self, on: bool):
         """Gray out / re-enable the Next button — used to gate a step until its
