@@ -653,6 +653,13 @@ class InsertSdIntoPiAnim(_LoopAnim):
     _SLOT_X = 0.085
     _SLOT_TOP = 0.245
     _SLOT_BOT = 0.545
+    #: Fine alignment of the card across the slot, as a fraction of the board's
+    #: on-screen height. POSITIVE moves the card DOWN. The slot bounds above are
+    #: measured off the sprite; this absorbs the small residual error between the
+    #: measured cage and where the card sprite's own edge falls, which showed as
+    #: the card's top edge sitting a hair proud of the cage (operator, on the
+    #: live screen, 2026-08-02). Nudge in ~0.005 steps and look at it.
+    _CARD_NUDGE = 0.013
 
     def __init__(self, pi_key: str = "", **kwargs):
         """*pi_key* renders THAT Raspberry Pi model instead of the stock Zero.
@@ -696,7 +703,8 @@ class InsertSdIntoPiAnim(_LoopAnim):
         px = self.x + w - pw - dp(8)
         py = self.y + (h - ph) / 2.0
         slot_x = px + pw * self._SLOT_X
-        slot_cy = py + ph * (1.0 - (self._SLOT_TOP + self._SLOT_BOT) / 2.0)
+        slot_cy = py + ph * (1.0 - (self._SLOT_TOP + self._SLOT_BOT) / 2.0
+                             - self._CARD_NUDGE)
         ch = ph * (self._SLOT_BOT - self._SLOT_TOP) * 0.92
         cw = ch * (card.width / float(card.height))
         travel = self._ease(min(1.0, self.phase * 1.35))  # arrive, then dwell
