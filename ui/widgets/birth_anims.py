@@ -52,6 +52,12 @@ PI_ZERO_CUT_PNG = os.path.join(_ANIM_DIR, "pi_zero_2w_cut.png")
 #: this animation exists: a Pi Zero has two identical micro-USB sockets and only
 #: the inner one carries data.
 PI_ZERO_PORTS = {"hdmi": 0.186, "data": 0.626, "power": 0.819}
+#: The operator's own micro-USB cable, cut from a white studio shot. Cropped to
+#: the plug end alone, tip UPWARD — which is the direction it enters a socket on
+#: the board's lower edge. The connector TYPE matters: a Pi Zero is micro-USB,
+#: and an earlier USB-C photo was rejected for this step precisely because it
+#: would have shown the wrong plug entering the socket the step points at.
+PLUG_MICRO_PNG = os.path.join(_ANIM_DIR, "plug_micro.png")
 PI_ZERO_PORT_Y = 0.93
 #: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
 #: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
@@ -794,6 +800,7 @@ class ConnectPiAnim(ConnectBoardAnim):
         if pi is None:
             return self._draw_fallback()
         medic = _texture(MEDIC_PNG)
+        plug = _texture(PLUG_MICRO_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
         # --- the Pi: still, right-hand side, ports along its lower edge ------
@@ -840,8 +847,16 @@ class ConnectPiAnim(ConnectBoardAnim):
 
             Color(*self._CABLE)
             Line(points=[sx, sy, px_, py_], width=dp(3.2))
-            RoundedRectangle(pos=(px_ - dp(8), py_ - dp(6)),
-                             size=(dp(16), dp(18)), radius=[dp(3)] * 4)
+            if plug is not None:
+                # the real connector, tip at the travelling point
+                gw = dp(26)
+                gh = gw * (plug.height / float(plug.width))
+                Color(1, 1, 1, 1)
+                Rectangle(texture=plug, pos=(px_ - gw / 2, py_ - gh * 0.16),
+                          size=(gw, gh))
+            else:
+                RoundedRectangle(pos=(px_ - dp(8), py_ - dp(6)),
+                                 size=(dp(16), dp(18)), radius=[dp(3)] * 4)
 
             # the socket it must go into — breathing so it cannot be missed
             pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
