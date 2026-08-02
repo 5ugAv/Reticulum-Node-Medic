@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import os
 import shlex
+import time as _time
 from typing import Callable, Dict, List, Optional, Tuple
 
 Runner = Callable[[list], Tuple[int, str]]
@@ -351,6 +352,34 @@ def activate_account_commands(device_path: str, username: str,
     return cmds
 
 
+#: The root-owned card-preparation helper. Everything that must happen to a
+#: card AS ROOT lives there in one program, granted a single narrow NOPASSWD
+#: entry — instead of a dozen separate sudo calls, one of which was
+#: `sudo python3 -` with a script piped in (which is unrestricted root wearing
+#: a hat, and would have gutted the medic's scoped allow-list).
+PREPARE_CARD = "/usr/local/lib/nodemedic/prepare-card"
+
+
+def prepare_card_commands(device_path: str, config: dict,
+                          config_path: str = "/tmp/nm-card-config.json") -> List[str]:
+    """Hand the whole card preparation to the root helper.
+
+    The configuration goes via a FILE rather than the command line: it carries a
+    password hash and possibly a WiFi PSK, and argv is world-readable through
+    /proc. Written 0600 and removed afterwards.
+    """
+    import json as _json
+    blob = base64.b64encode(_json.dumps(config).encode()).decode()
+    q = shlex.quote(config_path)
+    return [
+        f"install -m 600 /dev/null {q}",
+        f"echo {shlex.quote(blob)} | base64 -d > {q}",
+        f"sudo -n {PREPARE_CARD} --device {shlex.quote(device_path)} "
+        f"--config {q}",
+        f"shred -u {q} 2>/dev/null || rm -f {q}",
+    ]
+
+
 def flash(device_path: str, hostname: str, username: str, password: str,
           wifi_ssid: str = "", wifi_password: str = "", wifi_country: str = "AU",
           enable_ssh: bool = True, image_path: Optional[str] = None,
@@ -391,38 +420,30 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         hostname, username, password, enable_ssh, pw_hasher=pw_hasher,
         authorized_keys=authorized_keys)
     net_cfg = build_cloud_init_network_config(wifi_ssid, wifi_password)
-    for cmd in apply_config_commands(device_path, toml, user_data, net_cfg):
+    card_cfg = {
+        "custom_toml": toml,
+        "user_data": user_data,
+        "meta_data": build_cloud_init_meta_data(f"{hostname}-{int(_time.time())}"),
+        "network_config": net_cfg,
+        "cable_link": bool(cable_link),
+        "user": username,
+        "pwhash": pw_hash,
+        "keys": list(authorized_keys or []),
+    }
+    for cmd in prepare_card_commands(device_path, card_cfg):
         code, out = run_shell(cmd)
         if code != 0:
-            return (False, f"Image written, but applying the config failed: {out[-160:]}")
+            return (False, "Image written, but preparing the card failed: "
+                           f"{out.strip()[-180:]}")
     # Bake the USB-cable link in as well, so this card can be birthed with the
     # Pi plugged straight into the medic — no WiFi, and no powered hub to let
     # an under-powered Pi feed its own radio (operator's design, 2026-08-01).
     # Never fatal: a card that boots and joins WiFi is still a usable card.
-    # THE step that makes the card reachable. The image ships its account
-    # disabled (nologin shell + locked password) and every boot-time mechanism
-    # we write is, on this image, a no-op — so do it ourselves while we hold
-    # the card. Failing this is fatal: a card that boots and cannot be logged
-    # into is worse than no card, because it looks like it worked.
-    for cmd in activate_account_commands(device_path, username, pw_hash,
-                                         authorized_keys):
-        code, out = run_shell(cmd)
-        if code != 0:
-            return (False, "Image written, but the login account could not be "
-                           f"activated ({out.strip()[-140:]}). The Pi would "
-                           "boot unreachable, so this card is not ready.")
-    cable_msg = ""
-    if cable_link:
-        from provisioning.cable_birth import bake_commands
-        for cmd in bake_commands(device_path):
-            code, out = run_shell(cmd)
-            if code != 0:
-                cable_msg = (" The USB-cable link could not be baked in "
-                             f"({out.strip()[-120:]}) — birth this one over WiFi.")
-                break
-        else:
-            cable_msg = (" It can also be birthed over a USB cable straight into "
-                         "Node Medic, with no WiFi at all.")
+    # Account activation and the cable-link bake are BOTH the helper's job now
+    # (one root operation, one sudoers entry). It fails loudly, so reaching here
+    # means the card is genuinely ready.
+    cable_msg = (" It can also be birthed over a USB cable straight into "
+                 "Node Medic, with no WiFi at all." if cable_link else "")
     # Don't promise WiFi we were never given — a card imaged for the cable path
     # has no PSK on it at all, and saying otherwise sends the operator hunting
     # for a node that was never going to appear on their network.

@@ -68,7 +68,15 @@ def test_flash_happy_path_writes_then_configures():
     assert ok, msg
     joined = "\n".join(shell)
     assert "dd of=/dev/sdb" in joined and "/img.xz" in joined      # image written
-    assert "custom.toml" in joined and "mount" in joined           # config applied
+    # Configuration is now ONE root operation (the prepare-card helper) instead
+    # of a pile of mount/tee calls — the mounting happens inside it, as root,
+    # behind a single narrow sudoers entry.
+    assert pi.PREPARE_CARD in joined
+    assert "--device /dev/sdb" in joined
+    import base64 as _b, json as _j
+    blob = [c for c in shell if "base64 -d >" in c][0]
+    cfg = _j.loads(_b.b64decode(blob.split("echo ")[1].split(" |")[0].strip("'")).decode())
+    assert 'hostname = "faithpi"' in cfg["custom_toml"]             # config applied
 
 
 def test_build_custom_toml_has_hostname_hashed_pw_ssh_and_wifi():

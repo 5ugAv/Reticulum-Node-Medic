@@ -399,9 +399,9 @@ class BirthScreen(BoxLayout):
         if self._firmware == "rtnode2400":
             self._add_rtnode_confirm()
         elif self._firmware in ("rnode", "pi_rnode"):
-            self.header.add_widget(_line("Board (radio)", bold=True, size="15sp",
-                                         color="accent"))
             if self._sel_board is None:
+                self.header.add_widget(_line("Board (radio)", bold=True,
+                                             size="15sp", color="accent"))
                 self._add_rnode_board_pick()
             else:
                 # Show the PHOTO of what was auto-picked. The medic identifies
@@ -420,8 +420,10 @@ class BirthScreen(BoxLayout):
                         self.header.add_widget(card)
                 except Exception:
                     pass
-                self.header.add_widget(self._sel_button(
-                    self._sel_board.display_name, self._choose_board))
+                self.header.add_widget(self._labelled_row(
+                    "Board (radio)",
+                    self._sel_button(self._sel_board.display_name,
+                                     self._choose_board)))
                 # Say that this one was FOUND. Next to it sits the Host Pi row,
                 # which asks to be tapped — and with both rendered as identical
                 # grey buttons an operator reads the pair as "it's asking me to
@@ -442,8 +444,7 @@ class BirthScreen(BoxLayout):
                     pass
             if self._firmware == "pi_rnode":
                 self.header.add_widget(Widget(size_hint_y=None, height=dp(10)))
-                self.header.add_widget(_line("Host Pi", bold=True, size="15sp",
-                                             color="accent"))
+
                 # Identify the Pi rather than asking. It is the input the power
                 # check reasons about, so a wrong pick produces a wrong verdict
                 # about needing a powered hub (operator asked for this mid-
@@ -463,9 +464,12 @@ class BirthScreen(BoxLayout):
                             host, lambda k: names.get(k, k))
                     except Exception:
                         detected_note = ""
-                self.header.add_widget(self._sel_button(
-                    self._sel_pi[1] if self._sel_pi else "Tap to choose which Raspberry Pi",
-                    self._choose_pi))
+                self.header.add_widget(self._labelled_row(
+                    "Host Pi",
+                    self._sel_button(
+                        self._sel_pi[1] if self._sel_pi
+                        else "Tap to choose which Raspberry Pi",
+                        self._choose_pi)))
                 if detected_note:
                     # Green only when the Pi actually told us. An assumption
                     # gets amber, so a filled-in field is never mistaken for a
@@ -485,6 +489,31 @@ class BirthScreen(BoxLayout):
                     suggestion = suggested_address()
                 except Exception:
                     pass
+                # BEFORE asking for an address: does this Pi even have an
+                # operating system yet? A Pi in boot-ROM mode (blank card) has
+                # no network and CANNOT have an address, so asking for one is an
+                # unanswerable question — and pressing Start produced "Pi
+                # address needed", which is true and useless (operator hit this
+                # twice, 2026-08-02). Route to imaging instead.
+                if self._pi_needs_imaging():
+                    self.header.add_widget(_line(
+                        "This Raspberry Pi has no operating system yet — it's "
+                        "waiting with a blank card.", size="13.5sp",
+                        color="amber"))
+                    self.header.add_widget(_line(
+                        "Node Medic will write its card first, then reach it "
+                        "over the same cable. There's no address to enter.",
+                        size="13sp", color="text_secondary"))
+                    go = Button(text="Set up this Pi's card  →", size_hint_y=None,
+                                height=dp(54), bold=True, font_size="16sp",
+                                background_normal="",
+                                background_color=theme.hex_to_rgba(
+                                    theme.COLORS["accent"]),
+                                color=theme.hex_to_rgba(
+                                    theme.COLORS["background"]))
+                    go.bind(on_release=lambda *_: self._go_image_pi())
+                    self.header.add_widget(go)
+                    return
                 # If the Pi is plugged into the medic, there is nothing to ask.
                 # Showing an address box for a device physically in front of the
                 # operator is the thing they objected to in the first place
@@ -1043,6 +1072,50 @@ class BirthScreen(BoxLayout):
         """Put the running build's log in view."""
         try:
             self.scroll.scroll_y = 0.0
+        except Exception:
+            pass
+
+    def _labelled_row(self, label, widget, label_w=118):
+        """Heading on the LEFT, its control on the RIGHT, one line instead of two.
+
+        Stacked heading-above-control ate two rows of vertical space per field
+        and pushed the green start button below the fold, where it reads as
+        absent rather than hidden (operator, 2026-08-02). On a 5-inch panel the
+        headings are short and the space beside them is dead, so put them there.
+        """
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=max(dp(46), getattr(widget, "height", dp(46))),
+                        spacing=dp(8))
+        lbl = _line(label, bold=True, size="15sp", color="accent")
+        lbl.size_hint_x = None
+        lbl.width = dp(label_w)
+        row.add_widget(lbl)
+        row.add_widget(widget)
+        return row
+
+    @staticmethod
+    def _pi_needs_imaging():
+        """True when the attached Pi has no OS yet (boot-ROM or card-reader).
+
+        Best-effort and fails CLOSED-ish: if we can't tell, we say no and let
+        the normal address flow run, because wrongly claiming a working Pi is
+        blank would send the operator to reimage a node that was fine.
+        """
+        try:
+            import subprocess
+            from provisioning import pi_usbboot
+            out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                 timeout=8).stdout
+            return pi_usbboot.classify(out).state in (pi_usbboot.BOOTROM,
+                                                      pi_usbboot.CARD_READER)
+        except Exception:
+            return False
+
+    def _go_image_pi(self):
+        """Hand off to the card-imaging screen."""
+        try:
+            from kivy.app import App
+            App.get_running_app().switch_mode("pi_imager")
         except Exception:
             pass
 

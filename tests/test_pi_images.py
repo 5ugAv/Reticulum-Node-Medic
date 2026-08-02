@@ -101,3 +101,36 @@ def test_only_verified_markings_are_claimed():
 def test_the_birth_screen_shows_the_hint_with_the_photo():
     src = open("ui/screens/birth_screen.py").read()
     assert "how_to_tell" in src
+
+
+# --- imaging screen: see what you type, and write it down -------------------
+
+IMG_SRC = open("ui/screens/pi_imager_screen.py").read()
+
+
+def test_password_fields_can_be_revealed():
+    """A masked field on a touchscreen keypad is easy to get wrong with no way
+    to check, and a mistyped LOGIN password is only discovered much later —
+    when the Pi refuses to let you in."""
+    block = IMG_SRC[IMG_SRC.index("def _field"):IMG_SRC.index("def _build")]
+    assert 'text="Show"' in block and '"Hide"' in block
+    assert "ti.password = not ti.password" in block
+
+
+def test_reveal_starts_hidden():
+    """Revealing is the operator's choice, not the default."""
+    block = IMG_SRC[IMG_SRC.index("def _field"):IMG_SRC.index("def _build")]
+    assert "password=password" in block, "field must honour the masked default"
+
+
+def test_non_password_fields_get_no_toggle():
+    block = IMG_SRC[IMG_SRC.index("def _field"):IMG_SRC.index("def _build")]
+    assert "if not password:" in block
+
+
+def test_the_operator_is_told_to_write_the_credentials_down():
+    """The medic does not keep the password — it is hashed onto the card and
+    cannot be read back, so losing it means re-imaging."""
+    assert "Write these down now" in IMG_SRC
+    assert "does NOT store the password" in IMG_SRC
+    assert "image the card again" in IMG_SRC

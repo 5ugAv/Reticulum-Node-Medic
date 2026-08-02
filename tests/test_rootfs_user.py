@@ -175,8 +175,13 @@ def _medic_run(argv, **kw):
     return (0, "")
 
 
-def test_flash_activates_the_account_on_every_card_it_writes():
-    """The regression that cost three trips to the card reader."""
+def test_flash_hands_the_whole_card_to_the_root_helper():
+    """Card preparation is ONE root operation now, not a dozen sudo calls.
+
+    The old shape included `sudo python3 -` with a script piped in, which would
+    have needed NOPASSWD for python3 — unrestricted root by another name, and
+    the end of the medic's scoped allow-list.
+    """
     from provisioning import pi_imager
     seen = []
     ok, msg = pi_imager.flash(
@@ -185,20 +190,37 @@ def test_flash_activates_the_account_on_every_card_it_writes():
         pw_hasher=lambda p: HASH, authorized_keys=[KEY])
     assert ok, msg
     joined = " ".join(seen)
-    assert "/dev/sdb2" in joined, "rootfs never mounted - account not activated"
-    assert "base64 -d | sudo python3" in joined
-    # and it must run against the ROOTFS, not the boot partition
-    assert any("mount /dev/sdb2" in c for c in seen)
+    assert pi_imager.PREPARE_CARD in joined, "the root helper was never called"
+    assert "sudo python3" not in joined, "must not need NOPASSWD for python3"
+    assert "sudo -n mount" not in joined, "mounts are the helper's job now"
 
 
-def test_a_card_whose_account_cannot_be_activated_is_reported_as_not_ready():
-    """A card that boots but refuses every login is worse than no card,
+def test_the_card_config_never_travels_on_the_command_line():
+    """It carries a password hash and possibly a WiFi PSK, and argv is
+    world-readable through /proc."""
+    from provisioning import pi_imager
+    cmds = pi_imager.prepare_card_commands(
+        "/dev/sdb", {"pwhash": HASH, "user": "pi"})
+    joined = " ".join(cmds)
+    assert HASH not in joined, "the hash appeared in a command line"
+    assert "--config" in joined and "base64 -d" in joined
+    assert any("shred" in c or "rm -f" in c for c in cmds), "config left behind"
+
+
+def test_the_config_file_is_written_unreadable_to_others():
+    from provisioning import pi_imager
+    cmds = pi_imager.prepare_card_commands("/dev/sdb", {})
+    assert any("install -m 600" in c for c in cmds)
+
+
+def test_a_failed_preparation_is_reported_as_not_ready():
+    """A card that boots but cannot be logged into is worse than no card,
     because it looks like it worked."""
     from provisioning import pi_imager
 
     def shell(cmd):
-        if "/dev/sdb2" in cmd and "mount" in cmd:
-            return (1, "mount: unknown filesystem type")
+        if pi_imager.PREPARE_CARD in cmd:
+            return (1, "PREPARE_FAIL: could not mount /dev/sdb2")
         return (0, "")
 
     ok, msg = pi_imager.flash(
@@ -206,50 +228,26 @@ def test_a_card_whose_account_cannot_be_activated_is_reported_as_not_ready():
         run=_medic_run, run_shell=shell, pw_hasher=lambda p: HASH,
         authorized_keys=[KEY])
     assert ok is False
-    assert "not ready" in msg and "unreachable" in msg
+    assert "preparing the card failed" in msg
 
 
-# --- passwordless sudo, without which no build can run ---------------------
+def test_the_helper_config_carries_everything_the_card_needs():
+    """If a field is dropped here it fails silently on the card, hours later."""
+    from provisioning import pi_imager
+    captured = {}
 
-def test_sudoers_drop_in_is_written(rootfs):
-    """BuildWorkflow runs every privileged step with `sudo -n`. Pi OS writes
-    this during the first-boot setup we bypass, so we must."""
-    (rootfs / "etc" / "sudoers.d").mkdir()
-    p = _run(rootfs)
-    assert "sudoers" in p.stdout
-    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
-    assert f.read_text() == "pi ALL=(ALL) NOPASSWD: ALL\n"
+    def shell(cmd):
+        if "base64 -d >" in cmd:
+            import base64 as _b, json as _j
+            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
+            captured.update(_j.loads(_b.b64decode(blob).decode()))
+        return (0, "")
 
-
-def test_sudoers_mode_is_0440_or_sudo_refuses_to_run_at_all(rootfs):
-    """A group- or world-writable file in sudoers.d makes sudo abort every
-    invocation — that would lock the node out of all privileged actions."""
-    (rootfs / "etc" / "sudoers.d").mkdir()
-    _run(rootfs)
-    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
-    assert stat.S_IMODE(f.stat().st_mode) == 0o440
-
-
-def test_the_drop_in_is_valid_sudoers_syntax(rootfs):
-    """Bad syntax here breaks sudo entirely, so check it with the real
-    validator when one is available."""
-    import shutil
-    (rootfs / "etc" / "sudoers.d").mkdir()
-    _run(rootfs)
-    f = rootfs / "etc" / "sudoers.d" / "010_pi-nopasswd"
-    visudo = shutil.which("visudo") or "/usr/sbin/visudo"
-    if not os.path.exists(visudo):
-        pytest.skip("visudo not available")
-    r = subprocess.run([visudo, "-c", "-f", str(f)], capture_output=True,
-                       text=True)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_no_sudoers_directory_is_survived_not_crashed(rootfs):
-    """Some images don't ship sudoers.d; activation must still complete."""
-    p = _run(rootfs)
-    assert "ACTIVATE_OK" in p.stdout and p.returncode == 0
-
-
-def test_verify_reads_back_the_sudoers_drop_in():
-    assert "sudoers.d/010_pi-nopasswd" in " ".join(ru.verify_commands("/m", "pi"))
+    pi_imager.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
+                    image_path="/tmp/x.img.xz", run=_medic_run, run_shell=shell,
+                    pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    for field in ("custom_toml", "user_data", "meta_data", "cable_link",
+                  "user", "pwhash", "keys"):
+        assert field in captured, f"{field} never reached the helper"
+    assert captured["user"] == "pi" and captured["pwhash"] == HASH
+    assert captured["keys"] == [KEY]

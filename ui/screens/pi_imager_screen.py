@@ -70,7 +70,31 @@ class PiImagerScreen(BoxLayout):
                        size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(ti, numeric=numeric)
         self._inputs[key] = ti
-        self.col.add_widget(ti)
+        if not password:
+            self.col.add_widget(ti)
+            return ti
+        # A masked field typed on a touchscreen keypad is easy to get wrong with
+        # no way to check — and a mistyped login password is only discovered
+        # much later, when the Pi refuses to let you in (operator, 2026-08-02).
+        # Starts hidden; revealing is the operator's choice.
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(48), spacing=dp(8))
+        row.add_widget(ti)
+        btn = Button(text="Show", size_hint=(None, 1), width=dp(96), bold=True,
+                     font_size="15sp", background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                     color=theme.hex_to_rgba(theme.COLORS["accent"]))
+
+        def _toggle(*_a):
+            ti.password = not ti.password
+            btn.text = "Show" if ti.password else "Hide"
+            try:
+                ti.focus = True          # keep the keypad up so typing carries on
+            except Exception:
+                pass
+        btn.bind(on_release=_toggle)
+        row.add_widget(btn)
+        self.col.add_widget(row)
         return ti
 
 
@@ -274,6 +298,19 @@ class PiImagerScreen(BoxLayout):
         self._field("WiFi password", "WiFi password", "psk", password=True).text = psk
         self._field("Set a login password", "for user 'pi' (SSH login)", "pw",
                     password=True)
+        # WRITE IT DOWN. This name and password are how anyone reaches this node
+        # over SSH for the rest of its life, and Node Medic does not keep the
+        # password — it is hashed onto the card and cannot be read back. A node
+        # whose password is lost can only be recovered by re-imaging it
+        # (operator, 2026-08-02).
+        self.col.add_widget(_line(
+            "Write these down now", size="15sp", bold=True, color="amber", h=26))
+        self.col.add_widget(_line(
+            "The node name and this password are how you reach this Pi over SSH "
+            "later. Node Medic does NOT store the password — it goes onto the "
+            "card as a one-way hash and can't be read back. Lose it and the only "
+            "way in is to image the card again.", size="13.5sp",
+            color="text_secondary", h=76))
 
         write = Button(text="Write SD card", size_hint_y=None, height=dp(56), bold=True,
                        font_size="18sp", background_normal="",

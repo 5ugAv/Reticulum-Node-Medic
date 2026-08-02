@@ -182,43 +182,40 @@ def _medic_run(argv, **kw):
 
 
 def test_imager_bakes_the_cable_link_into_the_card_it_writes():
+    """Still true, just carried differently: the flag reaches the root helper
+    in its config instead of as a pile of mount/tee commands."""
+    import base64 as _b, json as _j
     from provisioning import pi_imager
-    seen = []
+    captured = {}
 
-    def fake_shell(cmd):
-        seen.append(cmd)
+    def shell(cmd):
+        if "base64 -d >" in cmd:
+            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
+            captured.update(_j.loads(_b.b64decode(blob).decode()))
         return (0, "")
 
     ok, msg = pi_imager.flash(
         "/dev/sdb", "faith", "pi", "pw", image_path="/tmp/x.img.xz",
-        run=_medic_run, run_shell=fake_shell,
-        pw_hasher=lambda p: "$6$hash", authorized_keys=[])
+        run=_medic_run, run_shell=shell, pw_hasher=lambda p: "$6$hash",
+        authorized_keys=[])
     assert ok, msg
-    joined = " ".join(seen)
-    assert "multi-user.target.wants" in joined, "gadget unit never installed"
-    assert "base64 -d | sudo python3" in joined, "boot files never transformed"
+    assert captured.get("cable_link") is True
     assert "USB cable" in msg
 
 
-def test_a_failed_bake_does_not_fail_the_whole_card():
-    """A card that boots and joins WiFi is still usable — losing the cable link
-    must degrade, not abort."""
-    from provisioning import pi_imager
-    calls = {"n": 0}
-
-    def fake_shell(cmd):
-        calls["n"] += 1
-        # fail only the gadget-unit write, after the image + config succeeded
-        if "multi-user.target.wants" in cmd:
-            return (1, "mount is read-only")
-        return (0, "")
-
-    ok, msg = pi_imager.flash(
-        "/dev/sdb", "faith", "pi", "pw", image_path="/tmp/x.img.xz",
-        run=_medic_run, run_shell=fake_shell,
-        pw_hasher=lambda p: "$6$hash", authorized_keys=[])
-    assert ok is True
-    assert "could not be baked" in msg and "over WiFi" in msg
+def test_a_failed_cable_bake_does_not_throw_away_a_good_card():
+    """The bake moved into the root helper, but its DEGRADATION had to survive
+    the move: a card without the cable link still boots and joins WiFi, so
+    losing the link must not discard an otherwise good card. Account
+    activation, in the same helper, stays fatal — without it the Pi boots and
+    refuses every login."""
+    src = open("assets/scripts/prepare_card.py").read()
+    boot = src[src.index("def write_boot"):src.index("def _write")]
+    assert "NOT fatal" in boot
+    assert "PREPARE_WARN" in boot and "over WiFi" in boot
+    # and the fatal one is still fatal
+    act = src[src.index("def activate_account"):]
+    assert "fail(" in act, "a missing account must still abort"
 
 
 def test_cable_link_can_be_turned_off():
@@ -509,3 +506,40 @@ def test_the_handoff_is_honest_about_power_after_the_medic_lets_go():
     block = src[src.index("def _handoff_block"):src.index("def _finish")]
     assert "power_compat" in block
     assert "was powering" in block
+
+
+# --- don't ask an unimaged Pi for an address --------------------------------
+# 2026-08-02: the operator reached "OK — start" with a Pi in boot-ROM mode and
+# got "Pi address needed". The Pi had a BLANK CARD — no OS, no network, and no
+# way to have an address. A true statement that cannot be acted on.
+
+SRC = open("ui/screens/birth_screen.py").read()
+
+
+def test_the_screen_checks_whether_the_pi_has_an_os_before_asking_for_an_address():
+    assert "_pi_needs_imaging" in SRC
+    i_check = SRC.index("if self._pi_needs_imaging():")
+    i_cable = SRC.index('cable = ""')
+    assert i_check < i_cable, "must decide BEFORE falling into the address flow"
+
+
+def test_an_unimaged_pi_is_routed_to_imaging_not_to_a_text_box():
+    block = SRC[SRC.index("if self._pi_needs_imaging():"):][:1400]
+    assert "no operating system yet" in block
+    assert "no address to enter" in block
+    assert "_go_image_pi" in block
+
+
+def test_the_check_fails_safe_when_it_cannot_tell():
+    """Wrongly calling a WORKING Pi blank would send the operator to reimage a
+    node that was fine — far worse than falling through to the address flow."""
+    block = SRC[SRC.index("def _pi_needs_imaging"):SRC.index("def _go_image_pi")]
+    assert "return False" in block
+    assert "except Exception" in block
+
+
+def test_only_pre_os_states_count_as_needing_imaging():
+    """A GADGET Pi has an OS and is reachable — it must NOT be offered imaging."""
+    block = SRC[SRC.index("def _pi_needs_imaging"):SRC.index("def _go_image_pi")]
+    assert "BOOTROM" in block and "CARD_READER" in block
+    assert "GADGET" not in block

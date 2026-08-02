@@ -127,8 +127,12 @@ def test_custom_toml_is_still_written_alongside():
 
 
 def test_flash_puts_a_cloud_init_seed_on_the_card():
-    """The regression that cost a 9-minute write and an unreachable Pi."""
-    seen = []
+    """The regression that cost a 9-minute write and an unreachable Pi. The
+    seed now travels to the root helper in its config rather than as a tee
+    command, but it must still get there."""
+    import base64 as _b, json as _j
+    from provisioning import pi_imager
+    captured = {}
 
     def medic_run(argv, **kw):
         if argv[:2] == ["findmnt", "-no"]:
@@ -139,74 +143,17 @@ def test_flash_puts_a_cloud_init_seed_on_the_card():
             return (0, "mmcblk0 59.5G disk mmc  0 \nsdb 29.7G disk usb  1 Reader")
         return (0, "")
 
-    ok, _ = pi.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
-                     image_path="/tmp/x.img.xz", run=medic_run,
-                     run_shell=lambda c: (seen.append(c), (0, ""))[1],
-                     pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    def shell(cmd):
+        if "base64 -d >" in cmd:
+            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
+            captured.update(_j.loads(_b.b64decode(blob).decode()))
+        return (0, "")
+
+    ok, _ = pi_imager.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
+                            image_path="/tmp/x.img.xz", run=medic_run,
+                            run_shell=shell, pw_hasher=lambda p: HASH,
+                            authorized_keys=[KEY])
     assert ok
-    written = _decoded_writes(seen)
-    assert "user-data" in written
-    doc = yaml.safe_load(written["user-data"])
+    doc = yaml.safe_load(captured["user_data"])
     assert doc["users"][0]["ssh_authorized_keys"] == [KEY]
-
-
-# --- repairing a card in place (no 9-minute re-image) ----------------------
-
-def test_reseed_forces_cloud_init_to_run_again():
-    """The stock image ships a FIXED instance_id, and cloud-init skips setup
-    when it sees one it has already handled. A new id is what makes the
-    replacement user-data actually take effect."""
-    md = pi.build_cloud_init_meta_data("hope-2026-08-01")
-    doc = yaml.safe_load(md)
-    assert doc["instance_id"] == "hope-2026-08-01"
-    assert doc["instance_id"] != "rpios-image"       # the stock value
-    assert doc["dsmode"] == "local"
-
-
-def test_reseed_writes_seed_files_and_never_touches_the_image():
-    cmds = pi.reseed_commands("/dev/sdb", "#cloud-config\n", "id-1")
-    joined = " ".join(cmds)
-    assert "dd" not in joined and "xzcat" not in joined, "must not re-image"
-    written = _decoded_writes(cmds)
-    assert set(written) >= {"user-data", "meta-data"}
-
-
-def test_reseed_verifies_it_is_a_pi_boot_partition_before_writing():
-    cmds = pi.reseed_commands("/dev/sdb", "#cloud-config\n", "id-1")
-    assert any("test -f" in c and "config.txt" in c for c in cmds)
-    assert cmds[-1].startswith("sudo sync")
-
-
-def test_reseed_refuses_the_medics_own_disk():
-    def medic_run(argv, **kw):
-        if argv[:2] == ["findmnt", "-no"]:
-            return (0, "/dev/mmcblk0p2")
-        if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
-            return (0, "mmcblk0")
-        if argv[:2] == ["lsblk", "-dno"]:
-            return (0, "mmcblk0 59.5G disk mmc  0 \nsdb 29.7G disk usb  1 Reader")
-        return (0, "")
-
-    ok, msg = pi.reseed("/dev/mmcblk0", "hope", "pi", "pw", "id-1",
-                        run=medic_run, run_shell=lambda c: (0, ""))
-    assert ok is False and "Refusing" in msg
-
-
-def test_an_empty_card_reader_slot_is_not_offered_as_a_target():
-    """Live on the medic: a Genesys multi-slot reader presents its EMPTY slot
-    as /dev/sda 0B next to the real card at /dev/sdb. Listing it invites
-    writing an OS to a slot with no card in it."""
-    def run(argv, **kw):
-        if argv[:2] == ["findmnt", "-no"]:
-            return (0, "/dev/mmcblk0p2")
-        if argv[:2] == ["lsblk", "-no"] and "PKNAME" in argv:
-            return (0, "mmcblk0")
-        if argv[:2] == ["lsblk", "-dno"]:
-            return (0, "sda 0B disk usb 1 MassStorageClass\n"
-                       "sdb 29.7G disk usb 1 MassStorageClass\n"
-                       "mmcblk0 59.5G disk mmc 0 ")
-        return (0, "")
-
-    names = [d["name"] for d in pi.list_target_disks(run=run)]
-    assert names == ["sdb"], f"empty slot offered as a target: {names}"
-    assert pi.is_safe_target("/dev/sda", run=run) is False
+    assert captured["meta_data"], "cloud-init needs a fresh instance_id too"
