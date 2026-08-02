@@ -68,6 +68,9 @@ class BirthGuideScreen(BoxLayout):
         self._path = None
         self._i = 0
         self._node_name = ""
+        self._pair_checked = False
+        self._board_key = ""
+        self._pi_key = ""
         # The antenna landing exists because plugging a RADIO in unpowered-
         # without-antenna can destroy it. A Raspberry Pi has no antenna and no
         # radio attached yet, so opening a Pi build with "attach the antenna"
@@ -1107,6 +1110,193 @@ class BirthGuideScreen(BoxLayout):
             step.hide_next()          # same: detection drives this step
             self._start_board_poll(anim)
 
+
+    # -- identify the pair BEFORE the card is written -----------------------
+    # Operator's flow (2026-08-02): antenna -> the medic registers a radio ->
+    # THE OPERATOR SAYS WHICH RADIO -> then the SD card. "If they match we
+    # continue; if they're incompatible the user gets recommendations of
+    # compatible hardware, and a sub-note saying they could continue this way
+    # but they'd need a powered hub."
+    #
+    # Both halves have to be known here, and the Pi model is one the medic
+    # genuinely cannot read — a Pi in boot-ROM mode reports only its SoC family,
+    # and BCM2836/2837 covers the Zero 2 W, the 3 and the 2 alike. So it is
+    # asked, once, on its own screen.
+
+    def _render_pick_board(self):
+        """Which radio is this? Only ever the candidates the medic cannot rule
+        out — the chip and the USB transport have already narrowed the list."""
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = self._render_step_zero
+        from kivy.uix.scrollview import ScrollView
+        from ui.widgets.board_card import BoardCard
+        wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
+        cands = self._board_candidates()
+        if len(cands) == 1:
+            self._board_key = cands[0][0]        # nothing to ask
+            self._render_pick_pi()
+            return
+        wrap.add_widget(_line(tr("Which radio board is this?"), "24sp", bold=True,
+                              h=40))
+        wrap.add_widget(_line(
+            tr("Node Medic has narrowed it to these — they share the same chip "
+               "and the same kind of USB connection, so only you can see which "
+               "one you're holding."), "15sp", color="text_secondary", h=64))
+        body = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
+        col.bind(minimum_height=col.setter("height"))
+        for key, name in cands:
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(96), spacing=dp(10))
+            try:
+                row.add_widget(BoardCard(key, name=name, selected=False,
+                                         size_hint_x=None, width=dp(150)))
+            except Exception:
+                pass
+            b = Button(text=name, font_size="17sp", bold=True,
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            b.bind(on_release=lambda _b, k=key: self._board_picked(k))
+            row.add_widget(b)
+            col.add_widget(row)
+        body.add_widget(col)
+        wrap.add_widget(body)
+        self.add_widget(wrap)
+
+    def _board_candidates(self):
+        """[(key, display_name)] the medic could not rule out. Never empty."""
+        try:
+            det = getattr(self, "_detected", None) or {}
+            boards = det.get("boards") or []
+            out = [(b.key, b.display_name) for b in boards]
+            if out:
+                return out
+        except Exception:
+            pass
+        try:
+            from ui.birth import rnode_board_choices
+            return [(b.key, b.display_name) for b in rnode_board_choices()]
+        except Exception:
+            return []
+
+    def _board_picked(self, key):
+        self._board_key = key
+        self._render_pick_pi()
+
+    def _render_pick_pi(self):
+        """Which Raspberry Pi is this? Asked because it cannot be read."""
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = self._render_pick_board
+        from kivy.uix.scrollview import ScrollView
+        from ui.screens.birth_screen import PI_HOSTS
+        wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
+        wrap.add_widget(_line(tr("Which Raspberry Pi is this?"), "24sp", bold=True,
+                              h=40))
+        wrap.add_widget(_line(
+            tr("A Pi waiting with a blank card only reports its chip family, "
+               "which several models share — so this one is down to you."),
+            "15sp", color="text_secondary", h=54))
+        body = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
+        col.bind(minimum_height=col.setter("height"))
+        for key, name in PI_HOSTS:
+            if key == "none":
+                continue                      # this path always has a Pi
+            b = Button(text=name, size_hint_y=None, height=dp(58),
+                       font_size="17sp", bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            b.bind(on_release=lambda _b, k=key: self._pi_picked(k))
+            col.add_widget(b)
+        body.add_widget(col)
+        wrap.add_widget(body)
+        self.add_widget(wrap)
+
+    def _pi_picked(self, key):
+        self._pi_key = key
+        self._check_pairing()
+
+    def _check_pairing(self):
+        """Go on if the pair can work; otherwise say so BEFORE the card write."""
+        try:
+            from workflows.power_compat import check as _check
+            v = _check(getattr(self, "_pi_key", ""), getattr(self, "_board_key", ""))
+        except Exception:
+            v = None
+        if v and v.get("verdict") in ("blocked", "caution"):
+            self._render_power_verdict(v)
+            return
+        self._resume_steps()
+
+    def _resume_steps(self):
+        """Carry on with the physical steps, after the radio step."""
+        self._i = 1
+        self._render_step()
+
+    def _render_power_verdict(self, verdict):
+        """This Pi cannot feed this radio. Recommend hardware that can — and say
+        plainly that they MAY continue, with a powered hub.
+
+        Not a block. The operator may already own a hub, and it is their bench;
+        but they should not find out after the card is written (which is where
+        this check used to live).
+        """
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = self._render_pick_board
+        from kivy.uix.scrollview import ScrollView
+        from ui.widgets.callout import Callout
+        from workflows.power_compat import warning_lines
+        from ui.screens.birth_screen import PI_HOSTS
+        pi_name = next((n for k, n in PI_HOSTS
+                        if k == getattr(self, "_pi_key", "")), "this Pi")
+        board_name = dict(self._board_candidates()).get(
+            getattr(self, "_board_key", ""), "this radio")
+        lines = warning_lines(verdict, pi_name, board_name,
+                              getattr(self, "_pi_key", ""))
+        wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(8))
+        body = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
+        col.bind(minimum_height=col.setter("height"))
+        head = next((l["text"] for l in lines if l.get("kind") == "head"), "")
+        why = " ".join(l["text"] for l in lines if l.get("kind") == "body")
+        col.add_widget(Callout(head or tr("These two won't run together"), why))
+        for l in lines:
+            if l.get("kind") in ("good", "bullet"):
+                col.add_widget(_line(
+                    l["text"], "15sp",
+                    color="green" if l["kind"] == "good" else "text_secondary",
+                    h=30))
+        col.add_widget(_line(
+            tr("You can still build it this way — but the finished node will "
+               "need a POWERED USB HUB between the Pi and the radio, or it will "
+               "brown out when it transmits."), "14.5sp", color="amber", h=72))
+        body.add_widget(col)
+        wrap.add_widget(body)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
+                        spacing=dp(10))
+        back = Button(text=tr("Pick different hardware"), font_size="16sp",
+                      bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        back.bind(on_release=lambda *_: self._render_pick_board())
+        on = Button(text=tr("Continue anyway  →"), font_size="15sp",
+                    size_hint_x=0.55, background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                    color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        on.bind(on_release=lambda *_: self._resume_steps())
+        row.add_widget(back)                  # the safe choice reads first
+        row.add_widget(on)
+        wrap.add_widget(row)
+        self.add_widget(wrap)
+
+    def _render_step_zero(self):
+        self._i = 0
+        self._render_step()
+
     # -- navigation --------------------------------------------------------
     def _next(self):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
@@ -1121,6 +1311,16 @@ class BirthGuideScreen(BoxLayout):
             # reached the card form with an empty hostname and had to invent a
             # second name for the same node (operator, 2026-08-02).
             self._hand_over_name(cur["screen"])
+            return
+        # After the RADIO step on the Pi path, identify BOTH halves before the
+        # card is written: which radio, which Pi, and whether they can run
+        # together (operator's flow, 2026-08-02). Nothing here touches hardware
+        # — it is two questions and an answer — but it is the last moment when
+        # changing your mind is free.
+        if (self._path == "pi" and self._i == 0
+                and not getattr(self, "_pair_checked", False)):
+            self._pair_checked = True
+            self._render_pick_board()
             return
         self._i += 1
         if self._i >= len(steps):
