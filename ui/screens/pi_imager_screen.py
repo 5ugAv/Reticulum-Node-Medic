@@ -82,6 +82,25 @@ class PiImagerScreen(BoxLayout):
         if ti is not None and not ti.text.strip():
             ti.text = hostnameify(self._prefill_name)
 
+    def reset_for_new_card(self):
+        """Forget the last card. Called when BIRTH sends us here for a new node.
+
+        This screen is a singleton, so state survives between nodes. If the last
+        node's card was opened through the Pi over rpiboot and the next one sits
+        in a USB card reader, a stale flag would tell the operator to "leave the
+        card where it is" when it is in fact in a reader on the desk. A new
+        birth is the real boundary, so it is where the reset belongs.
+
+        Rebuilds too, otherwise re-entering shows the LAST card's "Done!" panel
+        — which claims a card is written when none is.
+        """
+        if self._busy:
+            return                      # a write is running; leave it alone
+        self._via_pi_reader = False
+        self._pi_name = ""
+        self._target = None
+        self._build()
+
     def set_pi_name(self, pi_name):
         """Which Raspberry Pi this card is for, in the operator's words.
 
@@ -438,19 +457,20 @@ class PiImagerScreen(BoxLayout):
                                   color="green" if ok else "red", h=30))
         self.col.add_widget(_line(msg, size="14sp", h=60))
         if ok:
+            # Deliberately the ONLY action. There is no "image another card":
+            # every card carries one node's hostname, password and identity, so
+            # a second card off this same form would be a clone of the node just
+            # built, not a new one (operator, 2026-08-02). Another card means
+            # another node, which means starting another birth — and that is
+            # where the next name gets asked for.
             self._add_next_steps()
-        again = Button(text="Image another card", size_hint_y=None, height=dp(50),
-                       background_normal="",
-                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        again.bind(on_release=lambda *_: self._image_another())
-        self.col.add_widget(again)
-
-    def _image_another(self):
-        """Start over for a DIFFERENT card — so forget how the last one was
-        opened, or a fresh card in a USB reader would inherit the Pi's steps."""
-        self._via_pi_reader = False
-        self._build()
+            return
+        retry = Button(text="Try again", size_hint_y=None, height=dp(52),
+                       bold=True, font_size="16sp", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        retry.bind(on_release=lambda *_: self._build())
+        self.col.add_widget(retry)
 
     def _add_next_steps(self):
         """The forward path, as the primary action.

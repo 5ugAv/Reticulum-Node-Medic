@@ -1826,5 +1826,15 @@ class ReticulumNodeMedicApp(App):
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest
+            if mode_name == "pi_imager":
+                # Arriving to image a card — from BIRTH or from the guide. The
+                # screen is a singleton, so drop the LAST card's state: whether
+                # it was opened through the Pi or through a USB reader decides
+                # what the operator is told to do afterwards, and a stale answer
+                # is a wrong instruction. Safe to clear on every entry because
+                # the reader path re-derives it as it opens the card.
+                scr = getattr(self, "pi_imager_screen", None)
+                if scr is not None and hasattr(scr, "reset_for_new_card"):
+                    scr.reset_for_new_card()
             if mode_name == "security_preview":
                 self._start_security_preview()
