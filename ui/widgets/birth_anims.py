@@ -41,6 +41,18 @@ BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
 ANTENNA_PNG = os.path.join(_ANIM_DIR, "antenna_sma.png")           # whip antenna w/ SMA female base
 PIGTAIL_PNG = os.path.join(_ANIM_DIR, "pigtail_ipex.png")          # SMA-male <-> U.FL/IPEX pigtail
 PI_ZERO_PNG = os.path.join(_ANIM_DIR, "pi_zero_2w.png")            # Pi Zero 2 W, SD slot on its left edge
+#: The same board with its white studio background flood-filled away FROM THE
+#: EDGES, so silkscreen inside the board survives. Lets the Pi sit on the dark
+#: UI instead of in a white box (operator, 2026-08-02).
+PI_ZERO_CUT_PNG = os.path.join(_ANIM_DIR, "pi_zero_2w_cut.png")
+#: Connector centres along the bottom edge of that sprite, as fractions of its
+#: width. MEASURED, not eyeballed — found by scanning the image for each
+#: connector's metal shielding, and they agree with the board's own silkscreen
+#: (HDMI / USB). The middle one is the DATA port, which is the entire reason
+#: this animation exists: a Pi Zero has two identical micro-USB sockets and only
+#: the inner one carries data.
+PI_ZERO_PORTS = {"hdmi": 0.186, "data": 0.626, "power": 0.819}
+PI_ZERO_PORT_Y = 0.93
 #: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
 #: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
 #: insert-into-the-MEDIC animation, whose geometry is measured against it.
@@ -740,29 +752,28 @@ class InsertSdIntoPiAnim(_LoopAnim):
 
 
 class ConnectPiAnim(ConnectBoardAnim):
-    """The Raspberry Pi descends onto Node Medic's USB plug — on a GREEN cable.
+    """A cable slides into the Pi's DATA port. Both boards stay still.
 
-    Two operator notes from the first walkthrough (2026-08-02): this step is
-    about the Pi, so it must not show a radio board, and the cable wants its own
-    colour so the two connections read as different things at a glance. The
-    radio goes on a red cable to the medic; the Pi goes on a green one.
+    Rebuilt on the bench (operator, 2026-08-02): "have the Node Medic static and
+    the Raspberry Pi static, and we'll just have the USB cable moving into the
+    data port on the Pi."
 
-    The shipped medic sprite has a RED cable baked into it, so this variant
-    draws the cable itself over the cable-less medic art — which also lets the
-    cable follow the Pi down as it docks instead of being a fixed picture.
+    The old version slid the whole board along a line toward the medic. That
+    showed A connection being made but never showed WHICH SOCKET — and the
+    socket is the only thing this step is actually about. A Pi Zero has two
+    identical micro-USB shells side by side: the inner one carries data, the
+    outer one is PWR IN and cannot. Plug into the wrong one and nothing happens,
+    with no error to explain why. So nothing moves except the plug, the target
+    is ringed and named, and its identical twin is named as the one to avoid.
     """
 
-    #: Where the medic's USB socket sits in node_medic.png, as a fraction of the
-    #: sprite (x from left, y from TOP). Eyeball-tuned against the art; nudge
-    #: here if the cable root drifts off the socket.
-    PORT = (0.055, 0.58)
+    #: Green. The radio goes to the medic on a red cable, and these two
+    #: connections must not read as the same action (operator, 2026-08-02).
+    _CABLE = (0.30, 0.85, 0.36, 1)
+    _PWR = (0.96, 0.52, 0.22, 1)
 
     def __init__(self, pi_key: str = "", **kwargs):
-        """*pi_key* renders THAT Raspberry Pi model instead of the stock Zero.
-
-        Falls back to the Zero drawing when we have no photo of the detected
-        model — generic art is honest, a photo of the WRONG Pi is not.
-        """
+        """*pi_key* draws the detected Pi model; falls back to the Zero sprite."""
         super().__init__(**kwargs)
         self._pi_png = ""
         if pi_key:
@@ -772,64 +783,91 @@ class ConnectPiAnim(ConnectBoardAnim):
             except Exception:
                 self._pi_png = ""
 
-    def _draw(self):
-        medic_tex = _texture(MEDIC_PNG)
-        board_tex = (_texture(self._pi_png) if self._pi_png else None) \
-            or _texture(PI_ZERO_PNG)
-        if medic_tex is None or board_tex is None:
-            return self._draw_fallback()
-        x, y, w, h = self.x, self.y, self.width, self.height
-        ma = medic_tex.width / float(medic_tex.height)
-        mh = h * 0.96
-        mw = mh * ma
-        if mw > w * 0.60:
-            mw = w * 0.60
-            mh = mw / ma
-        mx = x + w - mw - dp(4)
-        my = y + (h - mh) / 2.0
-        portx = mx + self.PORT[0] * mw
-        porty = my + (1.0 - self.PORT[1]) * mh
+    @staticmethod
+    def _ease(v):
+        v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+        return v * v * (3.0 - 2.0 * v)
 
-        ba = board_tex.width / float(board_tex.height)
-        bh = mh * 0.30
-        bw = bh * ba
-        p = min(1.0, self.phase / 0.9)
-        start_y = porty + h * 0.42
-        by = start_y - (start_y - porty) * p
-        bx = portx - bw / 2.0
-        # the Pi's USB socket, where the cable lands
-        plugx, plugy = bx + bw * 0.94, by + bh * 0.5
+    def _draw(self):
+        pi = (_texture(self._pi_png) if self._pi_png else None) \
+            or _texture(PI_ZERO_CUT_PNG) or _texture(PI_ZERO_PNG)
+        if pi is None:
+            return self._draw_fallback()
+        medic = _texture(MEDIC_PNG)
+        x, y, w, h = self.x, self.y, self.width, self.height
+
+        # --- the Pi: still, right-hand side, ports along its lower edge ------
+        pw = w * 0.46
+        ph = pw * (pi.height / float(pi.width))
+        if ph > h * 0.52:
+            ph = h * 0.52
+            pw = ph * (pi.width / float(pi.height))
+        pxx = x + w - pw - dp(12)
+        pyy = y + h * 0.36
+
+        # --- the medic: still, left-hand side --------------------------------
+        mw = w * 0.26
+        mh = mw
+        mxx = x + dp(8)
+        myy = y + h * 0.40
+        if medic is not None:
+            mh = mw * (medic.height / float(medic.width))
+            if mh > h * 0.46:
+                mh = h * 0.46
+                mw = mh * (medic.width / float(medic.height))
+
+        # the two sockets, from the MEASURED sprite fractions
+        data_x = pxx + pw * PI_ZERO_PORTS["data"]
+        pwr_x = pxx + pw * PI_ZERO_PORTS["power"]
+        port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)
+
+        # the plug: out of the medic, along, and up into the data socket
+        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.3))
+        sx = mxx + mw * 0.5
+        sy = myy - dp(6)
+        approach_y = port_y - dp(34)
+        px_ = sx + (data_x - sx) * t
+        py_ = sy + (approach_y - sy) * t
+        seat = self._ease(max(0.0, (t - 0.82) / 0.18))     # last stretch: push in
+        py_ += (port_y - approach_y) * seat
 
         with self.canvas:
+            if medic is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
             Color(1, 1, 1, 1)
-            Rectangle(texture=medic_tex, pos=(mx, my), size=(mw, mh))
-            # GREEN cable: a slack loop from the medic's socket to the Pi's,
-            # sagging more when the Pi is further away.
-            sag = dp(18) + (1.0 - p) * h * 0.12
-            Color(0.20, 0.85, 0.38, 1)
-            Line(bezier=(portx, porty,
-                         portx - dp(30), porty - sag,
-                         plugx + dp(30), plugy - sag,
-                         plugx, plugy),
-                 width=dp(3.4))
-            Color(1, 1, 1, 1)
-            Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
-            if self._connected:
-                maxr = min(w, h) * 0.52
-                for i in range(4):
-                    f = self.burst - i * 0.16
-                    if f <= 0.0:
-                        continue
-                    f = min(1.0, f)
-                    Color(0.2, 0.9, 0.4, (1.0 - f) * 0.9)
-                    Line(circle=(portx, porty, dp(10) + f * maxr), width=dp(3.0))
-                if self._conn_tex is not None:
-                    tw, th = self._conn_tex.size
-                    s_y, t_y = y - dp(56), y + h * 0.24
-                    ry = s_y + (t_y - s_y) * self.rise
-                    g = theme.hex_to_rgba(theme.COLORS["green"])
-                    Color(g[0], g[1], g[2], self.rise)
-                    Rectangle(texture=self._conn_tex,
-                              pos=(x + (w - tw) / 2.0, ry), size=(tw, th))
-        self._hide_label("medic")
-        self._hide_label("board")
+            Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+
+            Color(*self._CABLE)
+            Line(points=[sx, sy, px_, py_], width=dp(3.2))
+            RoundedRectangle(pos=(px_ - dp(8), py_ - dp(6)),
+                             size=(dp(16), dp(18)), radius=[dp(3)] * 4)
+
+            # the socket it must go into — breathing so it cannot be missed
+            pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
+            Color(self._CABLE[0], self._CABLE[1], self._CABLE[2], 0.45 + 0.55 * pulse)
+            Line(circle=(data_x, port_y, dp(17)), width=dp(2.4))
+            # and the one beside it that looks the same but only carries power
+            Color(*self._PWR)
+            Line(circle=(pwr_x, port_y, dp(13)), width=dp(1.8))
+
+        lbl = self._label("data", text="DATA", font_size="13sp", bold=True,
+                          color=self._CABLE, halign="center")
+        lbl.size = (dp(80), dp(20))
+        lbl.pos = (data_x - dp(40), port_y - dp(46))
+        p = self._label("pwr", text="PWR IN - not this one", font_size="11sp",
+                        color=self._PWR, halign="center")
+        p.size = (dp(150), dp(18))
+        p.pos = (pwr_x - dp(75), port_y - dp(64))
+
+    def _draw_fallback(self):
+        w, h = self.width, self.height
+        t = self._ease(min(1.0, self.phase * 1.3))
+        with self.canvas:
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            RoundedRectangle(pos=(self.x + w * 0.5, self.y + h * 0.36),
+                             size=(w * 0.44, h * 0.3), radius=[dp(6)] * 4)
+            Color(*self._CABLE)
+            Line(points=[self.x + w * 0.08, self.y + h * 0.5,
+                         self.x + w * (0.08 + 0.44 * t), self.y + h * 0.5],
+                 width=dp(3))
