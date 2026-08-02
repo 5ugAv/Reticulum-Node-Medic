@@ -2261,6 +2261,23 @@ class BirthScreen(BoxLayout):
             cert.setdefault("built_by", byline + (f" ({uh})" if uh else ""))
         except Exception:
             pass
+        # THE BOARD'S FINGERPRINT. Recognition of "a board this medic flashed"
+        # reads cert["usb_serial"] in three places — and until now NOTHING wrote
+        # it. So a V4 the medic had flashed itself came back as an anonymous
+        # ESP32-S3 and the operator was made to pick it out of a grid of
+        # look-alikes (operator, 2026-08-02). A plain RNode carries no Reticulum
+        # identity, so this fingerprint is the ONLY way to know it again.
+        if not cert.get("usb_serial"):
+            try:
+                from ui.hw_factories import local_board_ports, LocalConnection
+                from workflows.rnode_flash import usb_id_for_port
+                ports = local_board_ports()
+                if ports:
+                    usb = usb_id_for_port(LocalConnection(), ports[0])
+                    if usb:
+                        cert["usb_serial"] = usb
+            except Exception:
+                pass                       # never block a birth on bookkeeping
         try:
             self._saved_cert_id = save_cert(cert)     # keep it on the medic
             cert["_id"] = self._saved_cert_id

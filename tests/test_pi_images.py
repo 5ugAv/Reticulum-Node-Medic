@@ -233,3 +233,18 @@ def test_every_route_into_imaging_carries_the_node_name():
     nav = guide.index('self._on_navigate(cur["screen"])')
     hand = guide.index("self._hand_over_name(cur[\"screen\"])")
     assert hand > nav, "name handed over before the screen reset — it will be lost"
+
+
+def test_birth_records_the_board_usb_fingerprint():
+    """cert['usb_serial'] must have a WRITER, not just readers.
+
+    Three code paths recognise a previously-flashed board by this field, and for
+    a long time nothing ever set it — so recognition could never fire and the
+    operator was asked to identify a board the medic had itself flashed
+    (2026-08-02). Source-level guard: Kivy is not importable in CI.
+    """
+    import pathlib, re
+    root = pathlib.Path(__file__).resolve().parent.parent
+    src = (root / "ui" / "screens" / "birth_screen.py").read_text()
+    assert re.search(r'cert\["usb_serial"\]\s*=', src), \
+        "nothing writes cert['usb_serial'] — board recognition cannot work"
