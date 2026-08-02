@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import math
 
-from kivy.graphics import Color, Ellipse, Line, Rectangle, RoundedRectangle
+from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle,
+                           RoundedRectangle)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
@@ -103,31 +104,54 @@ class SurgeryAnim(Widget):
         with self.canvas:
             self._draw_scene()
 
+    # -- layout ------------------------------------------------------------
+    # One place to move things. The first version scattered the pieces across
+    # the widget with dead space between them and they read as loose objects
+    # rather than a scene (operator, on the live screen, 2026-08-02). The stage
+    # is wide and short (roughly 700x230 on the 5" panel), so: monitor as a band
+    # across the top, table low and left, surgeon standing to its right and
+    # LEANING OVER the card — overlapping the table so the two are related.
+    _MON_H = 0.34            # monitor band, fraction of height
+    _TABLE_X, _TABLE_W = 0.04, 0.50
+    _TABLE_TOP = 0.22        # table surface height (card sits ON this)
+    _PI_X, _PI_W = 0.52, 0.44
+
     def _draw_scene(self):
         x, y, w, h = self.x, self.y, self.width, self.height
         done = self.fraction >= 1.0
 
         # --- the operating table -------------------------------------------
-        tw, th = w * 0.52, h * 0.10
-        tx = x + w * 0.06
-        ty = y + h * 0.30
+        tw = w * self._TABLE_W
+        tx = x + w * self._TABLE_X
+        ty = y + h * self._TABLE_TOP           # the SURFACE
+        th = h * 0.075
         Color(*_TABLE)
-        RoundedRectangle(pos=(tx, ty), size=(tw, th), radius=[dp(6)] * 4)
+        RoundedRectangle(pos=(tx, ty - th), size=(tw, th), radius=[dp(5)] * 4)
         Color(0.10, 0.12, 0.14, 1)
-        for leg in (tx + tw * 0.12, tx + tw * 0.80):
-            Rectangle(pos=(leg, ty - h * 0.16), size=(dp(6), h * 0.16))
+        for leg in (tx + tw * 0.10, tx + tw * 0.82):
+            Rectangle(pos=(leg, y), size=(dp(5), ty - th - y))
 
-        # --- the patient: the microSD card ---------------------------------
+        # --- the patient: the microSD card, LYING ON the table ---------------
         card = _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
-        cw = tw * 0.62
+        cw = tw * 0.60
         ch = cw * 0.72
         if card is not None:
             ch = cw * (card.height / float(card.width))
-            if ch > h * 0.30:
-                ch = h * 0.30
+            if ch > h * 0.34:
+                ch = h * 0.34
                 cw = ch * (card.width / float(card.height))
         cx = tx + (tw - cw) / 2.0
-        cy = ty + th
+        cy = ty                                 # resting on the surface
+        self._card_box = (cx, cy, cw, ch)
+
+        # --- the surgical light, tying the scene together --------------------
+        # A soft cone from above onto the patient. Cheap, and it does the job
+        # composition was failing at: it says these two things belong together.
+        top = y + h * (1.0 - self._MON_H) - dp(2)
+        Color(1.0, 0.98, 0.85, 0.07)
+        Quad(points=[cx + cw * 0.30, top, cx + cw * 0.70, top,
+                     cx + cw * 1.15, cy, cx - cw * 0.15, cy])
+
         if card is not None:
             Color(1, 1, 1, 1)
             Rectangle(texture=card, pos=(cx, cy), size=(cw, ch))
@@ -140,24 +164,22 @@ class SurgeryAnim(Widget):
         for key in self._landed:
             col, _lbl = _ORGANS.get(key, ((1, 1, 1, 1), ""))
             fx, fy = _ORGAN_SEATS.get(key, (0.5, 0.5))
-            ox = cx + cw * fx
-            oy = cy + ch * fy
-            # a soft glow that breathes, so an implanted organ reads as ALIVE
-            pulse = 0.5 + 0.5 * math.sin(self.phase * 2 * math.pi
-                                         + hash(key) % 7)
+            ox, oy = cx + cw * fx, cy + ch * fy
+            pulse = 0.5 + 0.5 * math.sin(self.phase * 2 * math.pi + hash(key) % 7)
             Color(col[0], col[1], col[2], 0.22 + 0.16 * pulse)
             Ellipse(pos=(ox - r * 1.9, oy - r * 1.9), size=(r * 3.8, r * 3.8))
             Color(*col)
             Ellipse(pos=(ox - r, oy - r), size=(r * 2, r * 2))
 
-        # the organ currently being carried in, travelling from surgeon to card
         self._draw_incoming(cx, cy, cw, ch)
 
-        # --- the surgeon ----------------------------------------------------
-        self._draw_surgeon(x + w * 0.66, ty, w * 0.30, h * 0.46, done)
+        # --- the surgeon, leaning in over the table -------------------------
+        self._draw_surgeon(x + w * self._PI_X, y + h * 0.06,
+                           w * self._PI_W, h * (0.94 - self._MON_H), done)
 
-        # --- the heart monitor ----------------------------------------------
-        self._draw_monitor(x + w * 0.06, y + h * 0.70, w * 0.88, h * 0.24, done)
+        # --- the heart monitor, as a band across the top ---------------------
+        self._draw_monitor(x + dp(2), y + h * (1.0 - self._MON_H),
+                           w - dp(4), h * self._MON_H - dp(2), done)
 
         if done:
             self._draw_smile(cx, cy, cw, ch)
@@ -184,17 +206,23 @@ class SurgeryAnim(Widget):
         Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
 
     def _draw_surgeon(self, x, y, w, h, done):
-        """The Pi, in a head mirror and mask. Thumbs up when the patient's well."""
+        """The Pi, in a head mirror and mask, leaning over the patient.
+
+        Drawn BIG. In the first version the board was ~30% of the stage and the
+        mirror and mask were a few pixels across — invisible on the panel, so it
+        read as a stray circuit board rather than a doctor.
+        """
         tex = (_texture(self._pi_png) if self._pi_png else None) \
             or _texture(PI_ZERO_PNG)
-        bw, bh = w, h * 0.55
+        bw = w * 0.86
+        bh = bw * 0.55
         if tex is not None:
             bh = bw * (tex.height / float(tex.width))
-            if bh > h * 0.62:
-                bh = h * 0.62
+            if bh > h * 0.66:
+                bh = h * 0.66
                 bw = bh * (tex.width / float(tex.height))
         bx = x + (w - bw) / 2.0
-        by = y + h * 0.10
+        by = y + h * 0.06
         if tex is not None:
             Color(1, 1, 1, 1)
             Rectangle(texture=tex, pos=(bx, by), size=(bw, bh))
@@ -202,31 +230,47 @@ class SurgeryAnim(Widget):
             Color(0.20, 0.55, 0.30, 1)
             RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(5)] * 4)
 
-        # head mirror: the round reflector every cartoon doctor wears
-        mr = min(bw, bh) * 0.20
+        # head mirror — sized to actually be seen on a 5" panel
+        mr = max(dp(9), min(bw, bh) * 0.26)
         mx = bx + bw * 0.5
-        my = by + bh + mr * 0.7
-        Color(0.85, 0.88, 0.92, 1)
+        my = by + bh + mr * 0.72
+        Color(0.87, 0.90, 0.94, 1)
         Ellipse(pos=(mx - mr, my - mr), size=(mr * 2, mr * 2))
-        Color(0.16, 0.18, 0.20, 1)
-        Ellipse(pos=(mx - mr * 0.38, my - mr * 0.38), size=(mr * 0.76, mr * 0.76))
-        Color(0.85, 0.88, 0.92, 1)
-        Line(points=[mx - mr, my, bx + bw * 0.5 - mr * 1.8, my - mr * 0.2],
-             width=dp(1.6))
+        Color(0.13, 0.15, 0.17, 1)
+        Ellipse(pos=(mx - mr * 0.40, my - mr * 0.40), size=(mr * 0.80, mr * 0.80))
+        Color(0.87, 0.90, 0.94, 1)
+        Line(points=[mx, my - mr, mx, by + bh], width=dp(2.0))
 
         # surgical mask across the board's lower edge
-        Color(0.60, 0.85, 0.85, 0.95)
-        RoundedRectangle(pos=(bx + bw * 0.16, by + bh * 0.06),
-                         size=(bw * 0.68, bh * 0.22), radius=[dp(4)] * 4)
+        Color(0.58, 0.86, 0.86, 0.95)
+        RoundedRectangle(pos=(bx + bw * 0.14, by + bh * 0.05),
+                         size=(bw * 0.72, bh * 0.26), radius=[dp(5)] * 4)
+        Color(0.45, 0.72, 0.74, 1)
+        Line(points=[bx + bw * 0.14, by + bh * 0.20,
+                     bx, by + bh * 0.34], width=dp(1.4))
+        Line(points=[bx + bw * 0.86, by + bh * 0.20,
+                     bx + bw, by + bh * 0.34], width=dp(1.4))
+
+        # the hands: two arms reaching down-left toward the patient, so the
+        # surgeon is clearly WORKING ON the card rather than standing near it
+        cb = getattr(self, "_card_box", None)
+        if cb:
+            cx, cy, cw, ch = cb
+            hx, hy = cx + cw * 0.72, cy + ch * 0.86
+            Color(0.98, 0.82, 0.64, 0.95)
+            for dxy in (0.0, dp(7)):
+                Line(points=[bx + bw * 0.10, by + bh * 0.45 - dxy,
+                             hx + dxy, hy], width=dp(2.4))
+            Ellipse(pos=(hx - dp(5), hy - dp(5)), size=(dp(10), dp(10)))
 
         if done:
-            # thumbs up: a fist with a raised thumb, drawn small beside the board
-            hx, hy = bx + bw * 1.02, by + bh * 0.55
-            s = min(bw, bh) * 0.26
+            hx2, hy2 = bx + bw * 1.00, by + bh * 0.62
+            s2 = max(dp(12), min(bw, bh) * 0.30)
             Color(0.98, 0.80, 0.62, 1)
-            RoundedRectangle(pos=(hx, hy), size=(s, s * 0.9), radius=[s * 0.28] * 4)
-            RoundedRectangle(pos=(hx + s * 0.30, hy + s * 0.72),
-                             size=(s * 0.34, s * 0.72), radius=[s * 0.17] * 4)
+            RoundedRectangle(pos=(hx2, hy2), size=(s2, s2 * 0.9),
+                             radius=[s2 * 0.28] * 4)
+            RoundedRectangle(pos=(hx2 + s2 * 0.30, hy2 + s2 * 0.72),
+                             size=(s2 * 0.34, s2 * 0.74), radius=[s2 * 0.17] * 4)
 
     def _draw_monitor(self, x, y, w, h, done):
         """The trace: noise and dropouts early, a clean rhythm by the end."""

@@ -101,6 +101,7 @@ class PiImagerScreen(BoxLayout):
         self._via_pi_reader = False
         self._pi_name = ""
         self._target = None
+        self._kept = {}                 # a new node, so no carried-over answers
         self._build()
 
     def set_pi_name(self, pi_name):
@@ -116,6 +117,9 @@ class PiImagerScreen(BoxLayout):
         ti = TextInput(hint_text=hint, multiline=False, password=password,
                        size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(ti, numeric=numeric)
+        prev = (getattr(self, "_kept", {}) or {}).get(key)
+        if prev:
+            ti.text = prev              # survived a rebuild — don't retype it
         self._inputs[key] = ti
         if not password:
             self.col.add_widget(ti)
@@ -308,6 +312,19 @@ class PiImagerScreen(BoxLayout):
         self.col.add_widget(again)
 
     def _build(self):
+        # Keep whatever the operator has already typed. This screen rebuilds
+        # whenever USB changes, and rpiboot MAKES USB change — the Pi
+        # re-enumerates as it starts presenting its card. So filling in the
+        # password and then watching the form reset itself was not a rare race,
+        # it was the normal path (walkthrough, 2026-08-02).
+        keep = {}
+        for k, t in (getattr(self, "_inputs", None) or {}).items():
+            try:
+                if t.text.strip():
+                    keep[k] = t.text
+            except Exception:
+                pass
+        self._kept = {**getattr(self, "_kept", {}), **keep}
         self.col.clear_widgets()
         self._inputs = {}
         targets = pi_imager.list_target_disks()
@@ -527,7 +544,12 @@ class PiImagerScreen(BoxLayout):
         self.col.add_widget(_line("✓  Done!" if ok else "✗  Couldn't finish",
                                   bold=True, size="19sp",
                                   color="green" if ok else "red", h=30))
-        self.col.add_widget(_line(msg, size="14sp", h=60))
+        # On success the next-steps block below carries the instruction, and
+        # flash()'s own prose still ends "Put it in the Pi and power on" — which
+        # is wrong when the card never left the Pi. Failures keep the full text:
+        # there the message IS the information (operator, 2026-08-02).
+        if not ok:
+            self.col.add_widget(_line(msg, size="14sp", h=60))
         if ok:
             # Deliberately the ONLY action. There is no "image another card":
             # every card carries one node's hostname, password and identity, so
@@ -639,11 +661,11 @@ class PiImagerScreen(BoxLayout):
         waited = time.monotonic() - getattr(self, "_boot_t0", 0)
         if lbl is not None:
             if state == pi_usbboot.CARD_READER:
-                lbl.text = "Still showing its card — unplug the Pi and plug it back in."
+                lbl.text = "Still showing its card…"      # instruction is above
             elif state == pi_usbboot.ABSENT:
-                lbl.text = "Pi unplugged. Plug it back in when you're ready…"
+                lbl.text = "Unplugged — plug it back in…"
             else:
-                lbl.text = f"Waiting for the Pi to come back… ({int(waited)}s)"
+                lbl.text = f"Waiting for the Pi… ({int(waited)}s)"
         # Overdue: offer a way on rather than trapping anyone behind a Pi that
         # is not going to appear (bad cable, PWR-only port, a card that failed).
         if waited > 180 and not getattr(self, "_boot_escape", None):

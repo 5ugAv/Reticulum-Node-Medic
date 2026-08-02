@@ -492,10 +492,12 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
     pi = pi_name or "the Raspberry Pi"
     steps = []
     if via_pi_reader:
-        steps.append(f"1.  Leave the card where it is — it's already inside "
-                     f"{pi}.")
-        steps.append(f"2.  Unplug {pi} from Node Medic, then plug it back in.")
-        steps.append("3.  It boots the card we just wrote. Give it a minute.")
+        # ONE action. The card is already in the Pi, so "leave the card where it
+        # is" tells the operator not to do a thing they were not doing — and
+        # "it boots the card we just wrote" describes what the medic is about to
+        # watch for anyway. Both were noise around the single physical act
+        # (operator, 2026-08-02). Numbering a one-item list is noise too.
+        steps.append(f"Unplug {pi} from Node Medic, then plug it back in.")
     else:
         steps.append("1.  Take the microSD out of the card reader.")
         steps.append(f"2.  Put it into {pi}.")
@@ -506,7 +508,10 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
     return {
         "title": "Next: bring this Pi to life",
         "steps": steps,
-        "note": where,
+        # Nothing to add on the in-the-Pi path: the medic is already watching
+        # for it to come back and says so live, so a static promise here is one
+        # more line to read for no new information.
+        "note": "" if via_pi_reader else where,
         "cta": "Continue building this node  →",
     }
 

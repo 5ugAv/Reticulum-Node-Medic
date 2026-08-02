@@ -170,10 +170,29 @@ def test_next_steps_after_imaging_does_not_send_you_after_a_card_in_the_pi():
     plan = next_steps_after_imaging(True, hostname="zero2w",
                                     pi_name="the Pi Zero 2 W")
     body = " ".join(plan["steps"]).lower()
-    assert "leave the card where it is" in body
     assert "card reader" not in body
     assert "take the microsd out" not in body
-    assert plan["cta"]                       # there IS a way forward
+    assert "unplug" in body and "plug it back in" in body
+
+
+def test_next_steps_in_the_pi_is_a_single_instruction():
+    """One physical act, one line.
+
+    The operator cut this block down on the bench (2026-08-02): telling someone
+    to leave a card alone is telling them not to do something they were not
+    doing, and narrating the boot duplicates the live status the medic already
+    shows while it watches for the Pi to return.
+    """
+    from provisioning.pi_imager import next_steps_after_imaging
+    plan = next_steps_after_imaging(True, hostname="zero2w",
+                                    pi_name="the Pi Zero 2 W",
+                                    wifi_ssid="Home")
+    assert len(plan["steps"]) == 1, plan["steps"]
+    assert not plan["steps"][0].startswith("1.")     # no numbering a lone step
+    assert plan["note"] == ""                        # nothing more to read
+    body = " ".join(plan["steps"]).lower()
+    assert "leave the card" not in body
+    assert "give it a minute" not in body
 
 
 def test_next_steps_after_imaging_moves_the_card_when_a_reader_was_used():
@@ -186,8 +205,9 @@ def test_next_steps_after_imaging_moves_the_card_when_a_reader_was_used():
 
 
 def test_next_steps_never_promise_wifi_that_was_not_configured():
+    """The reader route still tells you where it will turn up."""
     from provisioning.pi_imager import next_steps_after_imaging
     assert "wifi" in next_steps_after_imaging(
-        True, hostname="h").get("note", "").lower()
+        False, hostname="h").get("note", "").lower()
     assert "HomeNet" in next_steps_after_imaging(
-        True, hostname="h", wifi_ssid="HomeNet")["note"]
+        False, hostname="h", wifi_ssid="HomeNet")["note"]
