@@ -56,6 +56,21 @@ MASS_STORAGE_IDS = {
     "0a5c:0001": "The Pi is presenting its SD card.",
 }
 
+#: SoC USB id -> the board-art key, ONLY where the SoC names exactly one model.
+#: BCM283x is deliberately absent: 0a5c:2764 is a Pi 2, a Pi 3 AND a Zero 2 W, and
+#: showing a photo of the wrong Pi is worse than showing none — the picture is the
+#: operator's only check on an identification made from silicon they cannot see.
+PI_ART_KEYS = {
+    "0a5c:2711": "pi_4b",
+    "0a5c:2712": "pi_5",
+}
+
+
+def art_key(usb_id: str) -> str:
+    """The board-art key for a boot-ROM USB id, or "" when the SoC is ambiguous."""
+    return PI_ART_KEYS.get((usb_id or "").lower(), "")
+
+
 #: The Linux USB-gadget ethernet IDs an ALREADY-provisioned node shows up as —
 #: i.e. a card we imaged, now booting normally with the cable link up.
 GADGET_IDS = {

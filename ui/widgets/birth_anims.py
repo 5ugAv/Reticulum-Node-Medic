@@ -654,9 +654,21 @@ class InsertSdIntoPiAnim(_LoopAnim):
     _SLOT_TOP = 0.245
     _SLOT_BOT = 0.545
 
-    def __init__(self, **kwargs):
+    def __init__(self, pi_key: str = "", **kwargs):
+        """*pi_key* renders THAT Raspberry Pi model instead of the stock Zero.
+
+        Same contract as ConnectPiAnim: the operator is holding the board and
+        checking the screen against it, so it must be the right one.
+        """
         kwargs.setdefault("duration", 3.0)
         super().__init__(**kwargs)
+        self._pi_png = ""
+        if pi_key:
+            try:
+                from ui import board_images
+                self._pi_png = board_images.image_for_pi(pi_key) or ""
+            except Exception:
+                self._pi_png = ""
 
     @staticmethod
     def _ease(v):
@@ -664,7 +676,12 @@ class InsertSdIntoPiAnim(_LoopAnim):
         return v * v * (3.0 - 2.0 * v)                    # smoothstep
 
     def _draw(self):
-        pi_tex = _texture(PI_ZERO_PNG)
+        # NOTE: everything below must be inside `with self.canvas`. Without it
+        # the instructions are constructed and then thrown away — the widget
+        # renders nothing at all, which is exactly how this step reached the
+        # operator: a correct animation on a blank screen (2026-08-02).
+        pi_tex = (_texture(self._pi_png) if self._pi_png else None) \
+            or _texture(PI_ZERO_PNG)
         card = _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
         if pi_tex is None or card is None:
             return self._draw_fallback()
@@ -678,10 +695,6 @@ class InsertSdIntoPiAnim(_LoopAnim):
             pw = ph * pa
         px = self.x + w - pw - dp(8)
         py = self.y + (h - ph) / 2.0
-        Color(1, 1, 1, 1)
-        Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
-
-        # the card: travels left -> right into the slot, then holds
         slot_x = px + pw * self._SLOT_X
         slot_cy = py + ph * (1.0 - (self._SLOT_TOP + self._SLOT_BOT) / 2.0)
         ch = ph * (self._SLOT_BOT - self._SLOT_TOP) * 0.92
@@ -689,30 +702,33 @@ class InsertSdIntoPiAnim(_LoopAnim):
         travel = self._ease(min(1.0, self.phase * 1.35))  # arrive, then dwell
         start_x = self.x + dp(4)
         cx = start_x + (slot_x - cw * 0.55 - start_x) * travel
-
-        # clip the card at the slot mouth so it vanishes INTO the board
         from kivy.graphics import StencilPush, StencilUse, StencilUnUse, StencilPop
-        StencilPush()
-        Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
-        StencilUse()
-        Color(1, 1, 1, 1)
-        Rectangle(texture=card, pos=(cx, slot_cy - ch / 2.0), size=(cw, ch))
-        StencilUnUse()
-        Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
-        StencilPop()
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+            # clip the card at the slot mouth so it vanishes INTO the board
+            StencilPush()
+            Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
+            StencilUse()
+            Color(1, 1, 1, 1)
+            Rectangle(texture=card, pos=(cx, slot_cy - ch / 2.0), size=(cw, ch))
+            StencilUnUse()
+            Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
+            StencilPop()
 
     def _draw_fallback(self):
         """No artwork — a plain board outline with the card entering its edge."""
         w, h = self.width, self.height
         bx, by = self.x + w * 0.30, self.y + h * 0.30
         bw, bh = w * 0.62, h * 0.40
-        Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
-        Rectangle(pos=(bx, by), size=(bw, bh))
-        Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
         travel = self._ease(min(1.0, self.phase * 1.35))
         cw, ch = w * 0.12, h * 0.16
         cx = self.x + w * 0.05 + (bx - cw * 0.5 - (self.x + w * 0.05)) * travel
-        Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
+        with self.canvas:
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            Rectangle(pos=(bx, by), size=(bw, bh))
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
 
 
 class ConnectPiAnim(ConnectBoardAnim):

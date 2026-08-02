@@ -172,7 +172,13 @@ class BirthGuideScreen(BoxLayout):
                     from provisioning import pi_usbboot
                     out = subprocess.run(["lsusb"], capture_output=True,
                                          text=True, timeout=8).stdout
-                    found = pi_usbboot.classify(out).state != pi_usbboot.ABSENT
+                    st = pi_usbboot.classify(out)
+                    found = st.state != pi_usbboot.ABSENT
+                    # Remember the SoC while we can still see it: once rpiboot
+                    # runs, the Pi reports only a mass-storage id and the model
+                    # is no longer knowable.
+                    if st.usb_id and not getattr(self, "_pi_art_key", ""):
+                        self._pi_art_key = pi_usbboot.art_key(st.usb_id)
                 except Exception:
                     found = False
                 if found:
@@ -192,8 +198,24 @@ class BirthGuideScreen(BoxLayout):
             self._pi_poll = None
 
     def _on_pi_detected(self):
-        """A Pi is plugged in — take the Pi path without asking."""
+        """A Pi is plugged in — take the Pi path without asking.
+
+        Unless a radio board is here too. Both polls run on this screen, and for
+        a Pi+radio build BOTH fire: the operator got the name step, had it
+        whisked away 1.6s later by the board read, then got dropped back on the
+        name step (walkthrough, 2026-08-02). Reading the board wins, because it
+        is the step with a deadline — it resets the board and must not be
+        interrupted — and naming can be asked at any point afterwards.
+        """
         self._stop_detect_pi_poll()
+        if getattr(self, "_reading_pending", False):
+            return                        # a board read already owns the flow
+        try:
+            from ui.hw_factories import local_board_ports
+            if local_board_ports():
+                return                    # a board is here; let it be read first
+        except Exception:
+            pass
         self._stop_board_poll()
         self._path = "pi"
         self._i = 0
@@ -202,10 +224,21 @@ class BirthGuideScreen(BoxLayout):
     def _on_detect(self, anim):
         """A board appeared — celebrate, then read + classify it off-thread."""
         self._stop_board_poll()
+        # The Pi watch must stop too, or it fires DURING the read and replaces
+        # the "Reading the board…" screen with the name step.
+        self._stop_detect_pi_poll()
         if hasattr(anim, "mark_connected"):
             anim.mark_connected()
         from kivy.clock import Clock
-        Clock.schedule_once(lambda _d: self._render_reading(), 1.6)
+        # Tokened: navigating away (a manual Back, or any other route taking
+        # over) cancels this pending render instead of letting it land on top of
+        # whatever screen the operator is now looking at.
+        self._reading_pending = True
+        self._nav_token = getattr(self, "_nav_token", 0) + 1
+        tok = self._nav_token
+        Clock.schedule_once(
+            lambda _d: (getattr(self, "_nav_token", None) == tok
+                        and self._render_reading()), 1.6)
 
     def _render_reading(self):
         self._stop_current()
@@ -1031,7 +1064,13 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._back        # guided step -> previous step / name
         s = steps[self._i]
         anim_cls = _ANIMS.get(s.get("anim"))
-        anim = anim_cls() if anim_cls else None
+        # Pi steps draw the DETECTED model when we know it. art_key() returns ""
+        # for an ambiguous SoC, and the animations fall back to their generic
+        # drawing rather than showing a photo of some other Raspberry Pi.
+        if anim_cls in (InsertSdIntoPiAnim, ConnectPiAnim):
+            anim = anim_cls(pi_key=getattr(self, "_pi_art_key", ""))
+        else:
+            anim = anim_cls() if anim_cls else None
         # +1 on index/total for the name step folded in ahead of these
         step = WizardStep(index=self._i + 1, total=len(steps) + 1, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
