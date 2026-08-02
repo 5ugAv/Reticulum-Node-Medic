@@ -58,6 +58,14 @@ PI_ZERO_PORTS = {"hdmi": 0.186, "data": 0.626, "power": 0.819}
 #: and an earlier USB-C photo was rejected for this step precisely because it
 #: would have shown the wrong plug entering the socket the step points at.
 PLUG_MICRO_PNG = os.path.join(_ANIM_DIR, "plug_micro.png")
+#: A straight slice of the same cable's braid, taken from a genuinely vertical
+#: run of it (rows 423-672 of the source). Tiled down the screen so the cable
+#: between the medic and the plug is the REAL cable, not a drawn line.
+CABLE_BRAID_PNG = os.path.join(_ANIM_DIR, "cable_braid.png")
+#: The medic with its tall antenna cropped off. The full sprite is portrait
+#: (aspect 0.52) and this stage is wide and short, so height-capping the whole
+#: thing shrank it to a sliver. The body alone is 0.94 and sits properly.
+MEDIC_BODY_PNG = os.path.join(_ANIM_DIR, "node_medic_body.png")
 PI_ZERO_PORT_Y = 0.93
 #: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
 #: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
@@ -795,85 +803,98 @@ class ConnectPiAnim(ConnectBoardAnim):
         return v * v * (3.0 - 2.0 * v)
 
     def _draw(self):
+        """Medic below, Pi above, and the cable rises straight into the port.
+
+        Operator's correction (2026-08-02): "the USB cable permanently attached
+        to the bottom of the Node Medic, and just the plug moving straight up
+        into the port on the Pi Zero 2 W... the cable needs to be complete, and
+        only the end of it moving directly upwards."
+
+        So the medic sits DIRECTLY BELOW the socket, the run between them is the
+        operator's own cable braid tiled vertically, and the plug starts already
+        lined up with the hole it enters. Nothing travels diagonally and nothing
+        is a drawn line — the previous version did both and read as a green
+        stick crossing the screen.
+
+        Geometry was tuned against an offline render of these same sprites (the
+        medic was powered down), so the numbers here are the ones that were
+        actually looked at rather than guessed.
+        """
         pi = (_texture(self._pi_png) if self._pi_png else None) \
             or _texture(PI_ZERO_CUT_PNG) or _texture(PI_ZERO_PNG)
         if pi is None:
             return self._draw_fallback()
-        medic = _texture(MEDIC_PNG)
+        medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
         plug = _texture(PLUG_MICRO_PNG)
+        braid = _texture(CABLE_BRAID_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
-        # --- the Pi: still, right-hand side, ports along its lower edge ------
-        pw = w * 0.46
+        # --- the Pi, still, across the top ---------------------------------
+        pw = w * 0.56
         ph = pw * (pi.height / float(pi.width))
-        if ph > h * 0.52:
-            ph = h * 0.52
+        if ph > h * 0.34:
+            ph = h * 0.34
             pw = ph * (pi.width / float(pi.height))
-        pxx = x + w - pw - dp(12)
-        pyy = y + h * 0.36
+        pxx = x + (w - pw) / 2.0
+        pyy = y + h - ph - dp(4)                    # Kivy y is bottom-up
 
-        # --- the medic: still, left-hand side --------------------------------
-        mw = w * 0.26
-        mh = mw
-        mxx = x + dp(8)
-        myy = y + h * 0.40
-        if medic is not None:
-            mh = mw * (medic.height / float(medic.width))
-            if mh > h * 0.46:
-                mh = h * 0.46
-                mw = mh * (medic.width / float(medic.height))
-
-        # the two sockets, from the MEASURED sprite fractions
         data_x = pxx + pw * PI_ZERO_PORTS["data"]
         pwr_x = pxx + pw * PI_ZERO_PORTS["power"]
-        port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)
+        port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)  # fractions are top-down
 
-        # the plug: out of the medic, along, and up into the data socket
-        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.3))
-        sx = mxx + mw * 0.5
-        sy = myy - dp(6)
-        approach_y = port_y - dp(34)
-        px_ = sx + (data_x - sx) * t
-        py_ = sy + (approach_y - sy) * t
-        seat = self._ease(max(0.0, (t - 0.82) / 0.18))     # last stretch: push in
-        py_ += (port_y - approach_y) * seat
+        # --- the medic, still, directly below that socket -------------------
+        mh = h * 0.40
+        mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
+        mxx = data_x - mw / 2.0                     # so the cable runs true
+        myy = y + dp(2)
+
+        # --- the plug: lined up already, only the last stretch moves --------
+        travel = dp(30)
+        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
+        plug_w = dp(26)
+        plug_h = plug_w * (plug.height / float(plug.width)) if plug else dp(56)
+        top = port_y + dp(3) - travel * (1.0 - t)   # +3 = seats INTO the socket
+        plug_bottom = top - plug_h
 
         with self.canvas:
-            if medic is not None:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
             Color(1, 1, 1, 1)
             Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+            if medic is not None:
+                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
 
-            Color(*self._CABLE)
-            Line(points=[sx, sy, px_, py_], width=dp(3.2))
-            if plug is not None:
-                # the real connector, tip at the travelling point
-                gw = dp(26)
-                gh = gw * (plug.height / float(plug.width))
+            # one continuous piece of the operator's own cable, medic -> plug
+            if braid is not None:
+                bw = plug_w * 0.66
+                bh = bw * (braid.height / float(braid.width))
+                yy = myy + mh - dp(10)              # starts inside the medic
                 Color(1, 1, 1, 1)
-                Rectangle(texture=plug, pos=(px_ - gw / 2, py_ - gh * 0.16),
-                          size=(gw, gh))
-            else:
-                RoundedRectangle(pos=(px_ - dp(8), py_ - dp(6)),
-                                 size=(dp(16), dp(18)), radius=[dp(3)] * 4)
+                while yy < plug_bottom + dp(2):
+                    Rectangle(texture=braid, pos=(data_x - bw / 2.0, yy),
+                              size=(bw, bh))
+                    yy += bh * 0.92                 # overlap, so no seams
+            if plug is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=plug, pos=(data_x - plug_w / 2.0, plug_bottom),
+                          size=(plug_w, plug_h))
 
-            # the socket it must go into — breathing so it cannot be missed
-            pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
-            Color(self._CABLE[0], self._CABLE[1], self._CABLE[2], 0.45 + 0.55 * pulse)
-            Line(circle=(data_x, port_y, dp(17)), width=dp(2.4))
-            # and the one beside it that looks the same but only carries power
+            # the socket it is aiming at, breathing until it seats
+            if t < 1.0:
+                pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
+                Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
+                      0.30 + 0.45 * pulse)
+                Line(circle=(data_x, port_y, dp(14)), width=dp(2.0))
+            # and its identical twin, which carries power only
             Color(*self._PWR)
-            Line(circle=(pwr_x, port_y, dp(13)), width=dp(1.8))
+            Line(circle=(pwr_x, port_y, dp(10)), width=dp(1.6))
 
-        lbl = self._label("data", text="DATA", font_size="13sp", bold=True,
-                          color=self._CABLE, halign="center")
-        lbl.size = (dp(80), dp(20))
-        lbl.pos = (data_x - dp(40), port_y - dp(46))
-        p = self._label("pwr", text="PWR IN - not this one", font_size="11sp",
-                        color=self._PWR, halign="center")
-        p.size = (dp(150), dp(18))
-        p.pos = (pwr_x - dp(75), port_y - dp(64))
+        d = self._label("data", text="DATA", font_size="12sp", bold=True,
+                        color=self._CABLE, halign="center")
+        d.size = (dp(64), dp(18))
+        d.pos = (data_x - dp(32), port_y + dp(12))
+        p = self._label("pwr", text="PWR IN", font_size="11sp", color=self._PWR,
+                        halign="center")
+        p.size = (dp(64), dp(16))
+        p.pos = (pwr_x - dp(32), port_y + dp(12))
 
     def _draw_fallback(self):
         w, h = self.width, self.height
