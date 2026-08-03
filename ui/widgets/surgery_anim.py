@@ -23,6 +23,7 @@ as tofu boxes (the on-screen keyboard learned that the hard way).
 from __future__ import annotations
 
 import math
+import os
 
 from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle,
                            RoundedRectangle)
@@ -34,23 +35,16 @@ from ui import theme
 from ui.widgets.birth_anims import (PI_ZERO_PNG, SD_ENDURANCE_PNG, SD_PNG,
                                     _texture)
 
-#: Organ key -> (colour, label drawn beside it once implanted).
-_ORGANS = {
-    "bootloader":  ((1.00, 0.72, 0.20, 1), "boot"),
-    "kernel":      ((1.00, 0.30, 0.35, 1), "kernel"),
-    "filesystem":  ((0.35, 0.80, 1.00, 1), "files"),
-    "reticulum":   ((0.55, 0.95, 0.55, 1), "mesh"),
-    "identity":    ((0.85, 0.65, 1.00, 1), "name"),
-}
+from ui.organ_art import (CARD_WINDOW as _CARD_WINDOW, ORGANS as _ORGANS,
+                          ORGAN_SEATS as _ORGAN_SEATS,
+                          SPARE_ORGANS as _SPARE_ORGANS, organ_file)
 
-#: Where each organ settles on the card, as a fraction of the card sprite.
-_ORGAN_SEATS = {
-    "bootloader": (0.24, 0.34),
-    "kernel":     (0.46, 0.30),
-    "filesystem": (0.68, 0.36),
-    "reticulum":  (0.40, 0.62),
-    "identity":   (0.64, 0.64),
-}
+
+def _organ_texture(key):
+    """The sprite for an organ, or None so the caller falls back to a disc."""
+    path = organ_file(key)
+    return _texture(path) if path else None
+
 
 _TABLE = (0.16, 0.19, 0.22, 1)
 _TRACE = (0.35, 0.95, 0.55, 1)
@@ -159,17 +153,41 @@ class SurgeryAnim(Widget):
             Color(0.90, 0.90, 0.92, 1)
             RoundedRectangle(pos=(cx, cy), size=(cw, ch), radius=[dp(4)] * 4)
 
+        # --- the window the organs live in ----------------------------------
+        wx0, wy0, wx1, wy1 = _CARD_WINDOW
+        win_x = cx + cw * wx0
+        win_w = cw * (wx1 - wx0)
+        win_h = ch * (wy1 - wy0)
+        win_y = cy + ch * (1.0 - wy1)          # fractions are top-down
+        Color(0.10, 0.10, 0.11, 1)
+        RoundedRectangle(pos=(win_x, win_y), size=(win_w, win_h),
+                         radius=[dp(3)] * 4)
+
         # --- the organs, seated in the patient ------------------------------
-        r = min(cw, ch) * 0.13
+        # Sized so FIVE fit the row: the seats are ~0.19 apart, and an organ
+        # is drawn at r*2.6, so r must be about win_w/14. At win_w/5.6 each
+        # organ came out 46% of the window wide and they overlapped and spilled
+        # off both ends (offline render, 2026-08-04).
+        r = min(win_w / 14.0, win_h * 0.38)
         for key in self._landed:
-            col, _lbl = _ORGANS.get(key, ((1, 1, 1, 1), ""))
+            art = _ORGANS.get(key)
+            col = art[1] if art else (1, 1, 1, 1)
             fx, fy = _ORGAN_SEATS.get(key, (0.5, 0.5))
-            ox, oy = cx + cw * fx, cy + ch * fy
+            ox, oy = win_x + win_w * fx, win_y + win_h * fy
+            # a soft glow that breathes, so an implanted organ reads as ALIVE
             pulse = 0.5 + 0.5 * math.sin(self.phase * 2 * math.pi + hash(key) % 7)
             Color(col[0], col[1], col[2], 0.22 + 0.16 * pulse)
             Ellipse(pos=(ox - r * 1.9, oy - r * 1.9), size=(r * 3.8, r * 3.8))
-            Color(*col)
-            Ellipse(pos=(ox - r, oy - r), size=(r * 2, r * 2))
+            tex = _organ_texture(key)
+            if tex is not None:
+                gw = r * 2.6
+                gh = gw * (tex.height / float(tex.width))
+                Color(1, 1, 1, 1)
+                Rectangle(texture=tex, pos=(ox - gw / 2, oy - gh / 2),
+                          size=(gw, gh))
+            else:
+                Color(*col)
+                Ellipse(pos=(ox - r, oy - r), size=(r * 2, r * 2))
 
         self._draw_incoming(cx, cy, cw, ch)
 
@@ -190,20 +208,30 @@ class SurgeryAnim(Widget):
         nxt = next((s for s in IMAGING_STAGES if s["at"] > self.fraction), None)
         if nxt is None:
             return
-        col, _ = _ORGANS.get(nxt["organ"], ((1, 1, 1, 1), ""))
+        art = _ORGANS.get(nxt["organ"])
+        col = art[1] if art else (1, 1, 1, 1)
         fx, fy = _ORGAN_SEATS.get(nxt["organ"], (0.5, 0.5))
+        wx0, wy0, wx1, wy1 = _CARD_WINDOW
         # travel is the free-running phase, so it keeps moving even when the
         # write is between stages — a still picture reads as a hang
         t = 0.5 - 0.5 * math.cos(self.phase * 2 * math.pi)
         sx, sy = self.x + self.width * 0.72, self.y + self.height * 0.52
-        tx_, ty_ = cx + cw * fx, cy + ch * fy
+        tx_ = cx + cw * wx0 + cw * (wx1 - wx0) * fx
+        ty_ = cy + ch * (1.0 - wy1) + ch * (wy1 - wy0) * fy
         px = sx + (tx_ - sx) * t
         py = sy + (ty_ - sy) * t
         r = min(cw, ch) * 0.11
         Color(col[0], col[1], col[2], 0.30)
         Ellipse(pos=(px - r * 2, py - r * 2), size=(r * 4, r * 4))
-        Color(col[0], col[1], col[2], 0.95)
-        Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
+        tex = _organ_texture(nxt["organ"])
+        if tex is not None:
+            gw = r * 2.4
+            gh = gw * (tex.height / float(tex.width))
+            Color(1, 1, 1, 1)
+            Rectangle(texture=tex, pos=(px - gw / 2, py - gh / 2), size=(gw, gh))
+        else:
+            Color(col[0], col[1], col[2], 0.95)
+            Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
 
     def _draw_surgeon(self, x, y, w, h, done):
         """The Pi, in a head mirror and mask, leaning over the patient.
