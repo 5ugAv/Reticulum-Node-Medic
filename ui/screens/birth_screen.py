@@ -1384,6 +1384,10 @@ class BirthScreen(BoxLayout):
         # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
         # caught live 2026-08-01). Nothing selection-shaped survives.
         self._sel_board = None
+        # Cleared here too, or every later visit to BIRTH shows the green
+        # "Card written — now building <the PREVIOUS node>" banner over an
+        # empty form (audit, 2026-08-03).
+        self._from_imaging = None
         self._sel_pi = None
         self._detected = None
         self._rtnode_target = None

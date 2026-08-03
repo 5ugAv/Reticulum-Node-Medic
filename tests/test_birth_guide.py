@@ -186,9 +186,13 @@ def test_detect_finds_a_pi_so_choose_manually_is_not_required():
 def test_the_pi_poll_is_stopped_when_the_step_changes():
     """Left running it fires _on_pi_detected forever and drags the operator back
     to the name screen from wherever they got to."""
-    src = open("ui/screens/birth_guide_screen.py").read()
-    stop_current = src[src.index("def _stop_current"):][:400]
-    assert "_stop_detect_pi_poll" in stop_current
+    from tests.srcutil import func_source
+    body = func_source("ui/screens/birth_guide_screen.py", "_stop_current")
+    assert "_stop_detect_pi_poll" in body
+    assert "_stop_board_poll" in body
+    # and it must cancel pending renders, or a scheduled "Reading the board…"
+    # lands on top of wherever the operator navigated to
+    assert "_nav_token" in body
 
 
 def test_a_pi_build_does_not_open_with_an_antenna_instruction():
@@ -217,3 +221,57 @@ def test_back_and_forward_share_one_notion_of_redundant():
     fwd = src[src.index("    def _render_step(self):"):]
     fwd = fwd[:fwd.index("\n    def ", 10)]
     assert "_step_is_redundant" in fwd, "forward skip stopped sharing the rule"
+
+
+# --- the 2026-08-03 audit findings, pinned --------------------------------
+
+def test_the_pairing_gate_is_keyed_on_the_path_not_on_the_step_index():
+    """It must fire even though step 0 auto-skips.
+
+    The gate first lived in _next() keyed on `self._i == 0`. But _render_step
+    advances _i past redundant steps BEFORE rendering, and step 0 of the Pi
+    path is "connect the radio" — redundant precisely because the radio IS
+    plugged in by then. So _i was always 1 when _next() looked, the gate never
+    fired once, and the operator reached the four-minute card write with no
+    power-compatibility check at all.
+    """
+    from tests.srcutil import func_source
+    render = func_source("ui/screens/birth_guide_screen.py", "_render_step")
+    assert "_pair_checked" in render, "gate is not in _render_step"
+    assert 'self._path == "pi"' in render, "gate must key on the path"
+    nxt = func_source("ui/screens/birth_guide_screen.py", "_next")
+    assert "_render_pick_board" not in nxt, \
+        "gate is back in _next(), where the skip logic outruns it"
+
+
+def test_the_board_detection_result_is_kept_for_the_picker():
+    """_board_candidates reads self._detected; nothing assigned it, so the
+    picker listed the whole ~15-board catalogue under copy saying it had been
+    narrowed."""
+    from tests.srcutil import src
+    text = src("ui/screens/birth_guide_screen.py")
+    assert "self._detected = det" in text, \
+        "detection result discarded — the picker cannot narrow"
+
+
+def test_every_cross_walkthrough_flag_is_cleared_on_reset():
+    """Flags that outlive one walkthrough break the NEXT one.
+
+    _reading_pending stuck True killed the Pi auto-detect for the rest of the
+    session; _pi_art_key stuck gave the second Pi the first Pi's portrait.
+    """
+    from tests.srcutil import func_source
+    reset = func_source("ui/screens/birth_guide_screen.py", "reset")
+    for flag in ("_pair_checked", "_board_key", "_pi_key",
+                 "_reading_pending", "_pi_art_key"):
+        assert flag in reset, f"{flag} survives reset() into the next build"
+
+
+def test_back_from_the_board_pick_reaches_the_name_step():
+    """It pointed at _render_step_zero, which sets _i=0 and re-renders — and
+    the redundant radio step then skips straight to step 1. Back moved the
+    operator FORWARDS, into a closed two-screen loop."""
+    from tests.srcutil import func_source
+    pick = func_source("ui/screens/birth_guide_screen.py", "_render_pick_board")
+    assert "= self._render_step_zero" not in pick, "Back still loops forward"
+    assert "self._back_action = self._render_name" in pick

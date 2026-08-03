@@ -18,7 +18,9 @@ from typing import Callable, List, Optional
 
 #: esptool bundled with the rnodeconf firmware cache on the medic (same as the
 #: flash workflows use). ``chip_id`` with ``--chip auto`` prints "Chip is <X>".
-DEFAULT_ESPTOOL = "python3 ~/.config/rnodeconf/update/1.86/esptool.py"
+from workflows.rnode_flash import esptool_cmd as _esptool_cmd
+#: Derived, never literal — see rnode_flash.esptool_path.
+DEFAULT_ESPTOOL = _esptool_cmd()
 
 #: Order matters — the specific S3/C3/S2 needles are tried before plain esp32,
 #: since "esp32-s3" also contains "esp32".

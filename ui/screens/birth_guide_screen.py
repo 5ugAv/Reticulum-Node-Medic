@@ -71,6 +71,11 @@ class BirthGuideScreen(BoxLayout):
         self._pair_checked = False
         self._board_key = ""
         self._pi_key = ""
+        # Never cleared before: after ONE board read it stayed True, so
+        # _on_pi_detected returned early for the rest of the session and the Pi
+        # auto-detect was dead (audit, 2026-08-03).
+        self._reading_pending = False
+        self._pi_art_key = ""
         # The antenna landing exists because plugging a RADIO in unpowered-
         # without-antenna can destroy it. A Raspberry Pi has no antenna and no
         # radio attached yet, so opening a Pi build with "attach the antenna"
@@ -780,6 +785,12 @@ class BirthGuideScreen(BoxLayout):
             from ui.hw_factories import local_board_ports
             det = detect_board(list(RNODE_BOARDS.values()),
                                ports_fn=local_board_ports)
+            # KEEP IT. _board_candidates reads self._detected to offer only the
+            # boards the medic could not rule out; nothing ever assigned it, so
+            # the fallback always fired and "Which radio board is this?" listed
+            # the entire ~15-board catalogue directly under copy claiming it had
+            # been narrowed (audit, 2026-08-03).
+            self._detected = det
             from ui.birth_guide_flow import paths_for_chip
             chip = det.get("chip") if det.get("found") else None
             paths, why = paths_for_chip(
@@ -1073,6 +1084,20 @@ class BirthGuideScreen(BoxLayout):
         if not steps or self._i >= len(steps):
             self._finish()
             return
+        # IDENTIFY THE PAIR FIRST. This gate used to live in _next() keyed on
+        # `self._i == 0` — but _render_step advances _i past redundant steps
+        # BEFORE rendering, and step 0 of the Pi path is "connect the radio",
+        # which is redundant precisely because the radio is already plugged in.
+        # So _i was always 1 by the time _next() looked, the gate never fired,
+        # and the operator walked into the four-minute card write with no
+        # power-compatibility check at all — defeating the whole reason the
+        # radio step was moved first (audit, 2026-08-03).
+        #
+        # Keyed on the PATH now, which the skip logic cannot mutate.
+        if self._path == "pi" and not getattr(self, "_pair_checked", False):
+            self._pair_checked = True
+            self._render_pick_board()
+            return
         # A 'connect your board' step is REDUNDANT when the board is already
         # plugged in (operator feedback 2026-07-31: being told to connect a
         # connected board reads as a bug) — skip it silently.
@@ -1136,7 +1161,10 @@ class BirthGuideScreen(BoxLayout):
         out — the chip and the USB transport have already narrowed the list."""
         self._stop_current()
         self.clear_widgets()
-        self._back_action = self._render_step_zero
+        # NOT _render_step_zero: that sets _i = 0 and re-renders, which skips
+        # the redundant radio step straight to step 1 — so Back moved the
+        # operator FORWARD into a two-screen loop (audit, 2026-08-03).
+        self._back_action = self._render_name
         from kivy.uix.scrollview import ScrollView
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
@@ -1325,11 +1353,6 @@ class BirthGuideScreen(BoxLayout):
         # together (operator's flow, 2026-08-02). Nothing here touches hardware
         # — it is two questions and an answer — but it is the last moment when
         # changing your mind is free.
-        if (self._path == "pi" and self._i == 0
-                and not getattr(self, "_pair_checked", False)):
-            self._pair_checked = True
-            self._render_pick_board()
-            return
         self._i += 1
         if self._i >= len(steps):
             self._finish()
@@ -1365,6 +1388,12 @@ class BirthGuideScreen(BoxLayout):
             self._on_complete(path, self._node_name)
 
     def _stop_current(self):
+        """Leaving a screen. Bumping the token here cancels any render that a
+        poll scheduled but has not yet delivered — the comment on _on_detect
+        claimed this happened, but nothing outside _on_detect ever moved the
+        token, so a 1.6s "Reading the board…" could still land on top of a
+        screen the operator had already navigated to (audit, 2026-08-03)."""
+        self._nav_token = getattr(self, "_nav_token", 0) + 1
         self._stop_board_poll()
         # The Pi poll must die with the step too. Left running it keeps firing
         # _on_pi_detected and yanks the operator back to the name screen from

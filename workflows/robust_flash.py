@@ -35,7 +35,9 @@ from typing import Callable, List, Optional, Tuple
 from transport.connection import Connection
 
 #: esptool bundled in the rnodeconf firmware cache on the node.
-DEFAULT_ESPTOOL = "python3 ~/.config/rnodeconf/update/1.86/esptool.py"
+from workflows.rnode_flash import esptool_cmd as _esptool_cmd
+#: Derived, never literal — see rnode_flash.esptool_path.
+DEFAULT_ESPTOOL = _esptool_cmd()
 #: Scratch file the app is sliced into, one chunk at a time.
 CHUNK_FILE = "/tmp/rf_chunk"
 

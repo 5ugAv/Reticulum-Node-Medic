@@ -24,6 +24,24 @@ from workflows.updater import (
 
 #: Firmware bundle version the tool carries / targets.
 FIRMWARE_VERSION = "1.86"
+
+
+def esptool_path(version: str = FIRMWARE_VERSION) -> str:
+    """Where rnodeconf caches esptool, alongside the firmware it downloads.
+
+    THE SINGLE SOURCE. This path was hardcoded as a literal in three other
+    modules (board_detect, robust_flash, rnode_v4_rgb) with the version baked
+    in. Bump FIRMWARE_VERSION and those three keep pointing at a directory
+    rnodeconf no longer populates — board detection and flashing both break,
+    silently, in the field (audit, 2026-08-03). That bump is imminent: reading
+    eFuses to tell the native-USB S3 boards apart needs esptool >= 4.7.
+    """
+    return f"~/.config/rnodeconf/update/{version}/esptool.py"
+
+
+def esptool_cmd(version: str = FIRMWARE_VERSION) -> str:
+    """The full `python3 <path>` invocation the callers actually use."""
+    return f"python3 {esptool_path(version)}"
 #: rnodeconf prints this once a device is flashed AND provisioned.
 SUCCESS_MARKER = "autoinstallation complete"
 #: rnodeconf refuses (exit 0) to re-flash an already-provisioned RNode.

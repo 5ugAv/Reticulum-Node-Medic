@@ -100,7 +100,23 @@ Cmnd_Alias NM_IMAGING = \
     /usr/bin/umount /tmp/rnm-piboot, \
     /usr/bin/tee /tmp/rnm-piboot/custom.toml, \
     /usr/bin/touch /tmp/rnm-piboot/ssh, \
-    /usr/bin/sync
+    /usr/bin/sync, \
+    /usr/local/lib/nodemedic/prepare-card --device /dev/* --config /tmp/*
+
+# --- Pi-as-card-reader (rpiboot pushes the mass-storage payload to a blank Pi)
+# provisioning/pi_usbboot.py rpiboot_command() -> sudo -n rpiboot [-d <payload>]
+# WHY THESE TWO ENTRIES EXIST AS A PAIR: both were granted by hand on the live
+# medic and never written back here, so this template — the one a CLONE gets —
+# would have produced a medic that images a card and then fails to configure it,
+# and a Pi that never becomes a card reader at all (audit, 2026-08-03).
+# BENCH-VERIFY the absolute paths before trusting this: sudo matches on the full
+# path, and rpiboot may live in /usr/bin or /usr/local/bin depending on how it
+# was installed.
+Cmnd_Alias NM_PIBOOT = \
+    /usr/bin/rpiboot, \
+    /usr/bin/rpiboot -d *, \
+    /usr/local/bin/rpiboot, \
+    /usr/local/bin/rpiboot -d *
 
 # --- USB-gadget link bring-up (claim host end of the /29 to a plugged node) --
 # provisioning/link.py  discover_peer() -> sudo -n ip addr add 10.55.0.2/29 dev <if>
@@ -133,4 +149,5 @@ Cmnd_Alias NM_DIAG = \
 # password that this login has no way to supply).
 # ---------------------------------------------------------------------------
 nodemedic ALL=(root) NOPASSWD: NM_BACKLIGHT, NM_WIFI, NM_PORTAL, NM_CLOCK, \
-    NM_SERVICES, NM_UHUBCTL, NM_SD_EDIT, NM_IMAGING, NM_USBLINK, NM_GPS, NM_DIAG
+    NM_SERVICES, NM_UHUBCTL, NM_SD_EDIT, NM_IMAGING, NM_PIBOOT, NM_USBLINK, \
+    NM_GPS, NM_DIAG

@@ -120,7 +120,9 @@ BUILD_PARTITIONS = f"{BUILD_DIR}/RNode_Firmware.ino.partitions.bin"
 #: ESP32 Arduino builds. Same version pin as ESP32_CORE.
 BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
              "tools/partitions/boot_app0.bin")
-ESPTOOL = "python3 ~/.config/rnodeconf/update/1.86/esptool.py"
+from workflows.rnode_flash import esptool_cmd as _esptool_cmd
+#: Derived, never literal — see rnode_flash.esptool_path.
+ESPTOOL = _esptool_cmd()
 ESP_CHIP = "esp32s3"
 #: Standard ESP32-S3 Arduino flash offsets.
 OFF_BOOTLOADER, OFF_PARTITIONS, OFF_BOOT_APP0, OFF_APP = 0x0, 0x8000, 0xe000, 0x10000
