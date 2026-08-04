@@ -279,6 +279,86 @@ def line_of_sight(store: TileStore, lat1: float, lon1: float, h1_m: float,
                        worst, worst_at, n)
 
 
+#: Hypsometric ramp for the map overlay, low -> high. Deliberately NOT a
+#: rainbow: rainbows have no perceptual order, so an operator cannot tell which
+#: of two colours is higher without consulting a key. This runs dark blue-green
+#: (low) through tan to near-white (high) — monotonically lighter, so "brighter
+#: is higher" needs no legend to read at a glance.
+_RAMP = (
+    (0.00, (28, 62, 66)),
+    (0.20, (46, 92, 72)),
+    (0.40, (104, 128, 74)),
+    (0.60, (168, 148, 90)),
+    (0.80, (206, 178, 130)),
+    (1.00, (238, 232, 220)),
+)
+
+
+def elevation_colour(m: float, lo: float, hi: float):
+    """(r, g, b) 0-255 for an elevation, scaled between *lo* and *hi*.
+
+    Scaled to the VISIBLE RANGE, not to absolute height. This is the point the
+    overlay exists to make: what helps a radio is standing above its
+    surroundings, so a 40 m rise in a flat suburb must read as prominently as a
+    peak does in a mountain range. An absolute scale would paint all of
+    Sampleton the same colour and tell the operator nothing.
+    """
+    if hi - lo < 1e-6:
+        t = 0.5
+    else:
+        t = (m - lo) / (hi - lo)
+    t = 0.0 if t < 0 else 1.0 if t > 1 else t
+    for i in range(len(_RAMP) - 1):
+        t0, c0 = _RAMP[i]
+        t1, c1 = _RAMP[i + 1]
+        if t <= t1:
+            f = 0.0 if t1 == t0 else (t - t0) / (t1 - t0)
+            return tuple(int(round(c0[k] + (c1[k] - c0[k]) * f)) for k in range(3))
+    return _RAMP[-1][1]
+
+
+def relative_prominence(store, lat: float, lon: float, radius_m: float = 1500.0,
+                        samples: int = 12):
+    """How far this point stands ABOVE its surroundings, in metres.
+
+    The honest answer to "is this high ground?". Absolute altitude is nearly
+    irrelevant to a radio: a node on a 300 m hill ringed by 400 m hills is worse
+    off than one on a 50 m rise in flat country. What matters is how much of the
+    surrounding land it can see over.
+
+    Returns None when terrain is unknown — never 0, which would read as "level".
+    """
+    here = store.elevation(lat, lon)
+    if here is None:
+        return None
+    ring = []
+    for i in range(samples):
+        ang = 2 * math.pi * i / samples
+        dlat = (radius_m * math.cos(ang)) / 111_320.0
+        dlon = (radius_m * math.sin(ang)) / (111_320.0 *
+                                             max(0.05, math.cos(math.radians(lat))))
+        e = store.elevation(lat + dlat, lon + dlon)
+        if e is not None:
+            ring.append(e)
+    if not ring:
+        return None
+    return here - (sum(ring) / len(ring))
+
+
+def prominence_note(p: Optional[float]) -> str:
+    """Plain words for a prominence figure."""
+    if p is None:
+        return "No terrain data here."
+    if p >= 30:
+        return f"Stands ~{p:.0f} m above the ground around it — good for a radio."
+    if p >= 8:
+        return f"Slightly raised (~{p:.0f} m) over its surroundings."
+    if p > -8:
+        return "Level with the ground around it — height won't help here."
+    return (f"Sits ~{abs(p):.0f} m BELOW the surrounding ground — expect it to "
+            "be shadowed.")
+
+
 def advice(v: PathVerdict) -> str:
     """What the operator should DO about it, in their terms."""
     if v.status == "unknown":

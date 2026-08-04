@@ -321,6 +321,56 @@ class MapPlot(Widget):
 
     # -- optional overlays: mesh lines + placement suggestions --------------
 
+    def set_terrain(self, store):
+        """Shade high ground light and low ground dark, or None to turn it off.
+
+        Drawn UNDER the nodes and links: it is context for reading them, not a
+        thing to read on its own. Sampled on a coarse grid rather than
+        per-pixel — this is a 5" panel on a Pi, and the map already has one
+        documented redraw-storm in its history.
+        """
+        self._terrain = store
+        self._terrain_grid = None                # recomputed on the next redraw
+        self._redraw()
+
+    def _draw_terrain(self, view):
+        """A hypsometric wash over the visible area.
+
+        The scale is stretched to the RANGE ACTUALLY IN VIEW, not to absolute
+        altitude, because what helps a radio is standing above its surroundings.
+        A 40 m rise in a flat suburb has to read as strongly as a peak does in a
+        mountain range, or the overlay tells a Sampleton operator nothing.
+        """
+        store = getattr(self, "_terrain", None)
+        if store is None:
+            return
+        from monitor.terrain import elevation_colour
+        STEP = dp(18)                            # coarse: legibility, not detail
+        cols = max(2, int(self.width / STEP))
+        rows = max(2, int(self.height / STEP))
+        cw, ch = self.width / cols, self.height / rows
+        grid, lo, hi = [], None, None
+        for i in range(cols):
+            for j in range(rows):
+                sx = (i + 0.5) * cw
+                sy = (j + 0.5) * ch
+                try:
+                    lat, lon = view.to_latlon(sx, sy)
+                except Exception:
+                    continue
+                m = store.elevation(lat, lon)
+                if m is None:
+                    continue
+                grid.append((i, j, m))
+                lo = m if lo is None else min(lo, m)
+                hi = m if hi is None else max(hi, m)
+        if not grid or lo is None or hi is None:
+            return
+        for i, j, m in grid:
+            r, g, b = elevation_colour(m, lo, hi)
+            Color(r / 255.0, g / 255.0, b / 255.0, 0.45)
+            Rectangle(pos=(self.x + i * cw, self.y + j * ch), size=(cw, ch))
+
     def set_show_links(self, on):
         """Toggle the who-hears-whom connection lines between located nodes.
         No-op visual change unless a ``links_provider`` was supplied."""
@@ -691,6 +741,7 @@ class MapPlot(Widget):
         with self.canvas:
             for t in tiles_for_view(view):
                 self._draw_tile(t)
+            self._draw_terrain(view)              # high/low wash UNDER everything
             self._draw_links(view)                # faint connection lines UNDER dots
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
@@ -859,8 +910,16 @@ class ScanScreen(BoxLayout):
         # does nothing visible unless a links_provider was wired.
         self.links_btn = Button(text=tr("Links  off"), size_hint=(None, 1), width=dp(92))
         self.links_btn.bind(on_release=lambda *_: self._toggle_links())
+        # Terrain overlay: high ground shaded light, low ground dark. Default
+        # OFF and silent when no terrain has been cached — the map download
+        # fetches it in the same pass, so it appears when there is something to
+        # show (operator, 2026-08-04).
+        self.terrain_btn = Button(text=tr("Terrain  off"), size_hint=(None, 1),
+                                  width=dp(104))
+        self.terrain_btn.bind(on_release=lambda *_: self._toggle_terrain())
         header_row.add_widget(self.header)
         header_row.add_widget(self.links_btn)
+        header_row.add_widget(self.terrain_btn)
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
@@ -1073,6 +1132,41 @@ class ScanScreen(BoxLayout):
         self._links_on = not self._links_on
         self.plot.set_show_links(self._links_on)
         self.links_btn.text = tr("Links  on") if self._links_on else tr("Links  off")
+
+    def _toggle_terrain(self):
+        """Flip the terrain shading on/off.
+
+        Says so plainly when there is nothing cached, rather than appearing to
+        do nothing: an overlay that silently fails looks like a broken button.
+        """
+        want = not getattr(self, "_terrain_on", False)
+        if want and not self._terrain_store():
+            self._set_status(tr("No terrain cached for this area yet — it "
+                                "downloads with the offline map."), "alert")
+            return
+        self._terrain_on = want
+        self.plot.set_terrain(self._terrain_store() if want else None)
+        self.terrain_btn.text = (tr("Terrain  on") if want
+                                 else tr("Terrain  off"))
+
+    def _terrain_store(self):
+        """The cached terrain beside the current basemap, or None."""
+        cached = getattr(self, "_terrain_cache", "unset")
+        if cached != "unset":
+            return cached
+        store = None
+        try:
+            import os
+            from ui.map_download import TERRAIN_ZOOM, terrain_dest
+            from monitor.terrain import TerrariumStore
+            if self._tiles:
+                path = terrain_dest(self._tiles)
+                if os.path.exists(path):
+                    store = TerrariumStore(path, zoom=TERRAIN_ZOOM)
+        except Exception:
+            store = None
+        self._terrain_cache = store
+        return store
 
     # -- placement ----------------------------------------------------------
     def _recenter(self):

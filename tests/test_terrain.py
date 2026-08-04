@@ -276,3 +276,59 @@ def test_the_whole_chain_works_off_terrarium_tiles(tmp_path):
     assert v.status in ("clear", "unknown")         # flat ground, raised antennas
     if v.status == "clear":
         assert v.worst_clearance >= FRESNEL_CLEARANCE
+
+
+# --- the map overlay ------------------------------------------------------
+
+def test_the_ramp_gets_monotonically_lighter():
+    """Not a rainbow. Rainbows have no perceptual order, so an operator cannot
+    tell which of two colours is higher without a key. Brighter = higher must
+    be readable at a glance."""
+    from monitor.terrain import elevation_colour
+    lums = [sum(elevation_colour(v, 0, 100)) for v in (0, 25, 50, 75, 100)]
+    assert lums == sorted(lums), lums
+    assert lums[-1] > lums[0] * 2
+
+
+def test_the_ramp_stretches_to_the_range_in_view():
+    """A 40 m rise in a flat suburb must read as strongly as a mountain peak,
+    or the overlay tells a Sampleton operator nothing."""
+    from monitor.terrain import elevation_colour
+    flat_top = elevation_colour(40, 0, 40)      # 40 m is the high point here
+    alp_top = elevation_colour(2000, 0, 2000)   # 2000 m is the high point here
+    assert flat_top == alp_top
+
+
+def test_prominence_is_relative_not_absolute(tmp_path):
+    """A node on a 300 m hill ringed by 400 m hills is worse off than one on a
+    50 m rise in flat country. Absolute altitude is nearly irrelevant."""
+    from monitor.terrain import relative_prominence
+
+    class Bowl:
+        """High everywhere except the middle."""
+        def elevation(self, lat, lon):
+            return 300.0 if abs(lat - -37.5) < 0.001 else 400.0
+
+    class Knoll:
+        def elevation(self, lat, lon):
+            return 50.0 if abs(lat - -37.5) < 0.001 else 10.0
+
+    assert relative_prominence(Bowl(), -37.5, 145.0) < 0     # in a hollow
+    assert relative_prominence(Knoll(), -37.5, 145.0) > 0    # standing proud
+
+
+def test_prominence_is_unknown_not_flat_when_there_is_no_data():
+    from monitor.terrain import prominence_note, relative_prominence
+
+    class Blind:
+        def elevation(self, lat, lon):
+            return None
+    assert relative_prominence(Blind(), -37.5, 145.0) is None
+    assert "no terrain data" in prominence_note(None).lower()
+
+
+def test_prominence_wording_is_actionable():
+    from monitor.terrain import prominence_note
+    assert "good for a radio" in prominence_note(45)
+    assert "shadowed" in prominence_note(-25)
+    assert "won't help" in prominence_note(0)
