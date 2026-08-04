@@ -67,6 +67,27 @@ CABLE_BRAID_PNG = os.path.join(_ANIM_DIR, "cable_braid.png")
 #: thing shrank it to a sliver. The body alone is 0.94 and sits properly.
 MEDIC_BODY_PNG = os.path.join(_ANIM_DIR, "node_medic_body.png")
 PI_ZERO_PORT_Y = 0.93
+
+#: The operator's own drawing of the medic with its micro-USB cable attached
+#: (supplied 2026-08-04), white studio background flood-filled from the EDGES so
+#: the cream screen face survives. Kept whole for reference; the connect-Pi step
+#: uses the three pieces cut from it below.
+MEDIC_CABLE_MICRO_PNG = os.path.join(_ANIM_DIR, "node_medic_cable_micro.png")
+#: Why that sprite is CUT rather than drawn whole: its plug tip sits only 30% up
+#: from the medic's base, so wherever the plug meets the Pi's socket the medic's
+#: body and antenna rise above it — and this stage is wide and short, so the two
+#: cannot be separated vertically. An offline render showed the medic squarely on
+#: top of the Pi. Split, the braid tiles to ANY length, which is what restores
+#: the operator's spec: cable permanently attached, complete, only the end moving.
+#: The medic's knob + body + horn. No antenna (portrait sprites shrink to a
+#: sliver when height-capped here) and no cable.
+MEDIC_CASE_MICRO_PNG = os.path.join(_ANIM_DIR, "medic_case_micro.png")
+#: The drawn micro-USB plug, tip UPWARD. A real micro-USB moulding is about
+#: 2.4:1, and it is drawn at that ratio — sized any wider it swallows the whole
+#: gap between the boards.
+PLUG_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "plug_micro_drawn.png")
+#: A straight slice of the same drawing's braid, from its dead-vertical run.
+BRAID_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "braid_micro_drawn.png")
 #: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
 #: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
 #: insert-into-the-MEDIC animation, whose geometry is measured against it.
@@ -824,9 +845,12 @@ class ConnectPiAnim(ConnectBoardAnim):
             or _texture(PI_ZERO_CUT_PNG) or _texture(PI_ZERO_PNG)
         if pi is None:
             return self._draw_fallback()
-        medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
-        plug = _texture(PLUG_MICRO_PNG)
-        braid = _texture(CABLE_BRAID_PNG)
+        # The operator's drawn art (2026-08-04) first; the earlier photo cut-outs
+        # stay as fallback so a missing file degrades instead of blanking.
+        medic = (_texture(MEDIC_CASE_MICRO_PNG) or _texture(MEDIC_BODY_PNG)
+                 or _texture(MEDIC_PNG))
+        plug = _texture(PLUG_MICRO_DRAWN_PNG) or _texture(PLUG_MICRO_PNG)
+        braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
         # --- the Pi, still, across the top ---------------------------------
@@ -843,7 +867,9 @@ class ConnectPiAnim(ConnectBoardAnim):
         port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)  # fractions are top-down
 
         # --- the medic, still, directly below that socket -------------------
-        mh = h * 0.40
+        # 0.37 rather than 0.40: the taller it sits, the less of the cable run
+        # is left to see. Tuned on an offline render of these exact sprites.
+        mh = h * 0.37
         mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
         mxx = data_x - mw / 2.0                     # so the cable runs true
         myy = y + dp(2)
@@ -851,7 +877,10 @@ class ConnectPiAnim(ConnectBoardAnim):
         # --- the plug: lined up already, only the last stretch moves --------
         travel = dp(30)
         t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
-        plug_w = dp(26)
+        # A real micro-USB moulding is ~2.4:1, and the drawn one keeps that
+        # ratio — at dp(26) it grew tall enough to swallow the whole gap
+        # between the two boards, leaving no cable visible.
+        plug_w = dp(21)
         plug_h = plug_w * (plug.height / float(plug.width)) if plug else dp(56)
         top = port_y + dp(3) - travel * (1.0 - t)   # +3 = seats INTO the socket
         plug_bottom = top - plug_h
@@ -859,19 +888,23 @@ class ConnectPiAnim(ConnectBoardAnim):
         with self.canvas:
             Color(1, 1, 1, 1)
             Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
-            if medic is not None:
-                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
 
-            # one continuous piece of the operator's own cable, medic -> plug
+            # One continuous piece of the operator's own cable, medic -> plug.
+            # Drawn BEFORE the medic: painted after, the braid ran as a stripe
+            # straight down the medic's screen (offline render, 2026-08-04).
+            # The medic then covers the end, so the cable reads as entering it.
             if braid is not None:
-                bw = plug_w * 0.66
+                bw = plug_w * 0.42
                 bh = bw * (braid.height / float(braid.width))
-                yy = myy + mh - dp(10)              # starts inside the medic
+                yy = myy + mh * 0.16               # ends behind the case
                 Color(1, 1, 1, 1)
                 while yy < plug_bottom + dp(2):
                     Rectangle(texture=braid, pos=(data_x - bw / 2.0, yy),
                               size=(bw, bh))
                     yy += bh * 0.92                 # overlap, so no seams
+            if medic is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
             if plug is not None:
                 Color(1, 1, 1, 1)
                 Rectangle(texture=plug, pos=(data_x - plug_w / 2.0, plug_bottom),
