@@ -854,10 +854,14 @@ class ConnectPiAnim(ConnectBoardAnim):
         x, y, w, h = self.x, self.y, self.width, self.height
 
         # --- the Pi, still, across the top ---------------------------------
-        pw = w * 0.56
+        # The height cap is the number that actually governs: a Pi Zero is about
+        # 0.46 tall for its width, so the width fraction is never the binding
+        # constraint on this stage. Operator, 2026-08-04: medic bigger, Pi
+        # smaller — the medic is the thing being introduced here.
+        pw = w * 0.40
         ph = pw * (pi.height / float(pi.width))
-        if ph > h * 0.34:
-            ph = h * 0.34
+        if ph > h * 0.30:
+            ph = h * 0.30
             pw = ph * (pi.width / float(pi.height))
         pxx = x + (w - pw) / 2.0
         pyy = y + h - ph - dp(4)                    # Kivy y is bottom-up
@@ -867,9 +871,10 @@ class ConnectPiAnim(ConnectBoardAnim):
         port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)  # fractions are top-down
 
         # --- the medic, still, directly below that socket -------------------
-        # 0.37 rather than 0.40: the taller it sits, the less of the cable run
-        # is left to see. Tuned on an offline render of these exact sprites.
-        mh = h * 0.37
+        # Sized against the Pi's height cap above, not chosen alone: the two
+        # together decide how much cable is left visible between them. Tuned on
+        # an offline render of these exact sprites (operator, 2026-08-04).
+        mh = h * 0.52
         mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
         mxx = data_x - mw / 2.0                     # so the cable runs true
         myy = y + dp(2)
