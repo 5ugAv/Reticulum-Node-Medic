@@ -1,9 +1,9 @@
 # Reticulum-Node-Medic
 
-Easy to use [Reticulum](https://reticulum.network) network
-**building / monitoring / maintenance** tool.
+**Easy to use Reticulum network building/monitoring/maintenance tool.**
 
-It runs on a Raspberry Pi 5 with a 5-inch touchscreen, powered from a battery
+For [Reticulum](https://reticulum.network) meshes. It runs on a Raspberry Pi 5
+with a 5-inch touchscreen, powered from a battery
 bank, and reaches nodes over USB serial, SSH, a USB-gadget cable link, or by
 running commands on the medic itself. Built for a community LoRa mesh on Heltec
 WiFi LoRa32 boards and Raspberry Pi nodes. It is designed to work with no

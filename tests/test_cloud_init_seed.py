@@ -10,7 +10,11 @@ booted with no user at all and refused every login.
 import base64
 
 import pytest
-import yaml
+
+# Test-only dependency. Skip rather than error where it is absent, so a bare
+# environment can still run the rest of the suite — CI installs it so the
+# YAML actually gets validated somewhere.
+yaml = pytest.importorskip("yaml")
 
 from provisioning import pi_imager as pi
 

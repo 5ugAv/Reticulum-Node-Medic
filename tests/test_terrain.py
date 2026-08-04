@@ -10,6 +10,10 @@ import struct
 
 import pytest
 
+# Test-only dependency: these build synthetic terrarium tiles. Skip rather than
+# error where Pillow is absent; CI installs it so the round trip is verified.
+pytest.importorskip("PIL")
+
 from monitor.terrain import (FRESNEL_CLEARANCE, SRTM_VOID, TileStore,
                              advice, earth_bulge_m, fresnel_radius_m,
                              grid_size_for, haversine_m, line_of_sight,
