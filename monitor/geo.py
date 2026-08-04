@@ -242,6 +242,36 @@ def splitter_gps_reader(path: str = SPLITTER_STATE, max_age_s: float = 30.0
 
 FUZZ_RADIUS_M = 800.0
 
+#: The RTNode firmware applies its OWN offset on top of whatever coordinates it
+#: is given, when its "Randomize Offset" setting is on (we set advert_jitter=1
+#: by default in workflows/rtnode_portal.py).
+#:
+#: VERIFIED against the upstream source this firmware is forked from,
+#: jrl290/RTNode-HeltecV4 (read 2026-08-04): "the advertised coordinates are
+#: shifted by a deterministic per-device offset of approximately half a
+#: kilometre ... The exact stored coordinates are not changed, and the offset is
+#: stable across announces so the pin doesn't move around."
+#:
+#: DETERMINISTIC is the word that matters. Our own fuzz is deterministic per
+#: node for a specific reason — an offset that re-rolled each announce could be
+#: averaged away by an observer watching long enough. Had the firmware's been
+#: random per announce, stacking it on ours would have handed that attack back.
+#: It isn't, so the two layers compose safely: both stable, both bounded.
+FIRMWARE_JITTER_M = 500.0
+
+
+def public_pin_radius_m(firmware_jitter: bool = True) -> float:
+    """How far the PUBLIC pin can be from the truth, in metres.
+
+    Two independent offsets stack when the firmware's own randomisation is on,
+    so anything that tells the operator "accurate to within X" must say the
+    total, not just ours. Getting this wrong understates the displacement by
+    almost a kilometre — which matters in the other direction too: someone
+    reading the public map should not expect to walk to the pin and find
+    hardware.
+    """
+    return FUZZ_RADIUS_M + (FIRMWARE_JITTER_M if firmware_jitter else 0.0)
+
 
 def fuzz_location(lat: float, lon: float, node_key: str,
                   radius_m: float = FUZZ_RADIUS_M) -> Tuple[float, float, float]:

@@ -176,3 +176,31 @@ def test_geocode_address_no_retry_on_empty_result(monkeypatch):
     assert geo.geocode_address("nowhere at all", fetch=empty) is None
     assert calls["n"] == 1          # no retry on a legitimate empty result
     assert slept == []              # and no delay was taken
+
+
+def test_the_public_pin_radius_counts_BOTH_offsets():
+    """The firmware adds its own ~500 m on top of the medic's ~800 m.
+
+    Verified against upstream jrl290/RTNode-HeltecV4 (2026-08-04): the
+    advertised coordinates are shifted by "a deterministic per-device offset of
+    approximately half a kilometre", applied on top of the stored ones. Anything
+    telling the operator how far the public pin sits from the hardware must add
+    both, or it understates the displacement by almost a kilometre.
+    """
+    from monitor.geo import (FIRMWARE_JITTER_M, FUZZ_RADIUS_M,
+                             public_pin_radius_m)
+    assert public_pin_radius_m(True) == FUZZ_RADIUS_M + FIRMWARE_JITTER_M
+    assert public_pin_radius_m(False) == FUZZ_RADIUS_M
+    assert public_pin_radius_m(True) > 1000, "a public pin is >1 km out"
+
+
+def test_the_fuzz_seed_is_stable_so_the_proof_of_work_is_not_rerun():
+    """Upstream caches the LXMF stamp (cost 14) and re-runs the proof-of-work
+    only when advertised parameters change. A fuzz that moved between births
+    would force that work again — and, worse, re-rolling could be averaged back
+    to the true position."""
+    from monitor.geo import fuzz_location
+    a = fuzz_location(-37.79, 144.96, "Rooftop-East")
+    b = fuzz_location(-37.79, 144.96, "Rooftop-East")
+    assert a == b, "same node must always advertise the same fuzzed pin"
+    assert fuzz_location(-37.79, 144.96, "Rooftop-West") != a

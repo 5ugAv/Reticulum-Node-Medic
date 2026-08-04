@@ -100,6 +100,17 @@ def build_form(
         # in the birth certificate ON THE MEDIC only. Previously the tool
         # shipped 6-decimal (~0.1 m) coordinates and delegated all privacy to
         # an unverified firmware constant (2026-08-01 stranger's-eye audit).
+        # The SEED MUST BE STABLE for this node, for two reasons:
+        #  1. privacy — a fuzz that re-rolls could be averaged back to the truth;
+        #  2. cost — upstream seals the discovery announce with an LXMF
+        #     proof-of-work stamp (cost 14, matching RNS/Discovery.py's
+        #     DEFAULT_STAMP_VALUE) and caches it, re-running the work only when
+        #     the advertised parameters change. Feeding it a different fuzzed
+        #     coordinate on every birth would force that proof-of-work again for
+        #     no gain (upstream jrl290/RTNode-HeltecV4, read 2026-08-04).
+        # RENAMING a node therefore genuinely moves its public pin and costs a
+        # fresh stamp. That is correct — it is a different advertised identity —
+        # but it is a real consequence, not an accident.
         from monitor.geo import fuzz_location
         seed = node_name or profile.reticulum_identity_hash or "node"
         flat, flon, _radius = fuzz_location(lat, lon, seed)

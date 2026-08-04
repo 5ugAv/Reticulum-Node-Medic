@@ -417,8 +417,12 @@ def verify_sd_overflow(wf: "RTNodeBuildWorkflow") -> StepResult:
 @rtnode_build_step
 def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
     r = wf.profile.radio
-    # Exact, un-fuzzed coordinates — ground truth for a repair visit (the public
-    # map only ever sees the firmware's ~800 m-fuzzed pin).
+    # Exact, un-fuzzed coordinates — ground truth for a repair visit. The public
+    # map never sees these: the MEDIC fuzzes by ~800 m before the coordinates
+    # ever leave here (monitor.geo.fuzz_location — this comment used to credit
+    # the firmware, which was the exact mistake the 2026-08-01 audit found), and
+    # the firmware then adds its own deterministic ~500 m on top. So a public
+    # pin sits up to ~1.3 km from the hardware: monitor.geo.public_pin_radius_m.
     location = None
     if wf.gps_fix is not None:
         location = {"lat": wf.gps_fix.lat, "lon": wf.gps_fix.lon,
