@@ -49,7 +49,8 @@ from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_fo
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
     DETAIL_MAX_ZOOM, ATTRIBUTION, WORLD, download_region, download_world,
-    download_node_details, estimate_download, estimate_world, is_online,
+    download_node_details, download_terrain, estimate_download,
+    estimate_world, is_online,
     storage_summary, disk_free_mb, parse_latlon, ip_geolocate,
     add_point_detail, SPOT_MIN_ZOOM, SPOT_MAX_ZOOM, SPOT_RADIUS_KM)
 
@@ -1415,6 +1416,26 @@ class ScanScreen(BoxLayout):
                                       zmin=DEFAULT_MIN_ZOOM,
                                       zmax=DEFAULT_MAX_ZOOM,
                                       on_progress=progress)
+        # TERRAIN, in the same pass. The operator asked for "map data for this
+        # area" — elevation IS map data, and it answers the question the
+        # placement suggester cannot answer from distance alone. One zoom level,
+        # so it adds a few dozen tiles to a run of thousands. A separate button
+        # would be a chore nobody does until the day they need it, in the field,
+        # with no internet (operator, 2026-08-04).
+        if (self._radius_km != WORLD and not summary.get("blocked")
+                and not summary.get("cancelled")):
+            def tprog(s):
+                Clock.schedule_once(lambda dt: self._set_status(
+                    tr("Caching terrain… {done}/{total}").format(
+                        done=s['done'], total=s['total'])), 0)
+            try:
+                terr = download_terrain(lat, lon, dest,
+                                        radius_km=self._radius_km,
+                                        on_progress=tprog)
+                summary["terrain"] = terr.get("fetched", 0) + terr.get("skipped", 0)
+            except Exception:
+                summary["terrain"] = 0     # never fail the map for the terrain
+
         # Street-detail top-up: a small z13-15 circle around every PLACED node,
         # so a service visit can navigate to the node's street. Tiny + polite.
         if not summary.get("blocked") and not summary.get("cancelled"):

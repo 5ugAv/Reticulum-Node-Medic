@@ -190,3 +190,89 @@ def test_no_tiles_for_the_area_says_so_rather_than_implying_clear(tmp_path):
                                "est_rssi_dbm": -100}])
     out = check_terrain([s], T(), TileStore(str(tmp_path)))
     assert any("distance only" in c for c in out[0].cautions)
+
+
+# --- terrain from the map cache (one button, both datasets) ---------------
+
+def test_terrarium_decode_matches_the_published_range():
+    """metres = (R*256 + G + B/256) - 32768. Tilezen documents the range as
+    ~-11000 m at (85,8,0) to ~8900 m at (162,198,0); a wrong formula would put
+    every hill at the wrong height and quietly ruin every profile."""
+    from monitor.terrain import TerrariumStore
+    assert round(TerrariumStore.decode(85, 8, 0)) == -11000
+    assert 8890 < TerrariumStore.decode(162, 198, 0) < 8910
+    assert TerrariumStore.decode(128, 0, 0) == 0.0
+
+
+def test_terrain_is_cached_beside_the_map_not_inside_it(tmp_path):
+    """Terrarium tiles are elevation that happens to be a PNG. In the basemap's
+    own .mbtiles the renderer would draw them as pictures — lurid green squares
+    over the operator's suburb."""
+    from ui.map_download import terrain_dest
+    assert terrain_dest("/m/offline.mbtiles") == "/m/offline.terrain.mbtiles"
+    assert terrain_dest("/m/offline") == "/m/offline.terrain.mbtiles"
+
+
+def test_a_missing_terrain_cache_reads_as_unknown(tmp_path):
+    from monitor.terrain import TerrariumStore
+    s = TerrariumStore(str(tmp_path / "nope.mbtiles"))
+    assert s.elevation(-37.73, 145.0) is None
+
+
+def test_terrain_survives_a_round_trip_through_the_map_cache(tmp_path):
+    """End to end: write a terrarium tile the way download_terrain would, then
+    read a known height back out of it."""
+    import io, sqlite3
+    from PIL import Image
+    from monitor.terrain import TerrariumStore
+
+    z, lat, lon = 12, -37.73, 145.00
+    n = 2 ** z
+    xf = (lon + 180.0) / 360.0 * n
+    lat_r = math.radians(lat)
+    yf = (1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r)) / math.pi) / 2.0 * n
+    x, y = int(xf), int(yf)
+
+    # 137 m above sea level, encoded
+    v = 137 + 32768
+    img = Image.new("RGB", (256, 256), (v // 256, v % 256, 0))
+    buf = io.BytesIO(); img.save(buf, format="PNG")
+
+    path = str(tmp_path / "offline.terrain.mbtiles")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE tiles (zoom_level INT, tile_column INT, "
+                "tile_row INT, tile_data BLOB)")
+    con.execute("INSERT INTO tiles VALUES (?,?,?,?)",
+                (z, x, (2 ** z - 1) - y, buf.getvalue()))
+    con.commit(); con.close()
+
+    got = TerrariumStore(path, zoom=z).elevation(lat, lon)
+    assert got is not None, "tile written but not read back — row flip is wrong"
+    assert abs(got - 137) < 1.0, got
+
+
+def test_the_whole_chain_works_off_terrarium_tiles(tmp_path):
+    """line_of_sight does not care which store it is given."""
+    import io, sqlite3
+    from PIL import Image
+    from monitor.terrain import TerrariumStore, line_of_sight
+
+    z = 12
+    path = str(tmp_path / "t.mbtiles")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE tiles (zoom_level INT, tile_column INT, "
+                "tile_row INT, tile_data BLOB)")
+    v = 20 + 32768                                  # flat 20 m everywhere
+    img = Image.new("RGB", (256, 256), (v // 256, v % 256, 0))
+    buf = io.BytesIO(); img.save(buf, format="PNG")
+    for x in range(3680, 3700):
+        for yy in range(2490, 2510):
+            con.execute("INSERT INTO tiles VALUES (?,?,?,?)",
+                        (z, x, (2 ** z - 1) - yy, buf.getvalue()))
+    con.commit(); con.close()
+
+    store = TerrariumStore(path, zoom=z)
+    v = line_of_sight(store, -37.73, 145.00, 5.0, -37.535, 145.505, 5.0)
+    assert v.status in ("clear", "unknown")         # flat ground, raised antennas
+    if v.status == "clear":
+        assert v.worst_clearance >= FRESNEL_CLEARANCE

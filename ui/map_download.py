@@ -42,6 +42,26 @@ _AVG_TILE_KB = 15.0
 #: tiles, poisoning the cache. Carto's CDN is built for app traffic; both
 #: require the attribution shown on the SCAN screen.
 OSM_URL = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+
+#: TERRAIN, from the same button and the same radius. Tilezen/Mapzen terrain
+#: tiles on AWS Open Data: z/x/y PNGs in Web Mercator, exactly the scheme the
+#: basemap already uses, and reachable with NO account (the bucket is
+#: --no-sign-request). Elevation is packed into the pixel:
+#:
+#:     metres = (R * 256 + G + B / 256) - 32768
+#:
+#: This is why terrain folds into the map download instead of being its own
+#: chore. The alternative — NASA SRTM .hgt — is 26 MB per 1-degree tile AND now
+#: needs an Earthdata login, which a field tool cannot ask for (2026-08-04).
+#: Source data is SRTM plus other open datasets; bare earth, so it sees hills,
+#: not buildings.
+TERRAIN_URL = ("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"
+               "{z}/{x}/{y}.png")
+
+#: ONE zoom is enough for a line-of-sight profile. z12 is ~38 m per pixel at the
+#: equator — comparable to SRTM's 30 m postings — so a whole region's terrain is
+#: a few dozen tiles rather than the thousands the basemap needs.
+TERRAIN_ZOOM = 12
 ATTRIBUTION = "(c) OpenStreetMap contributors, (c) CARTO"
 USER_AGENT = "ReticulumNodeMedic/1.0 (+offline field node-coverage map)"
 
@@ -298,6 +318,49 @@ def osm_fetch(z: int, x: int, y: int, url_template: str = OSM_URL,
 
 
 # ---- the download --------------------------------------------------------
+
+def terrain_fetch(z: int, x: int, y: int, timeout: int = 15) -> Optional[bytes]:
+    """One terrain tile. Same shape as osm_fetch, different bucket."""
+    return osm_fetch(z, x, y, url_template=TERRAIN_URL, timeout=timeout)
+
+
+def terrain_dest(map_dest: str) -> str:
+    """Where terrain lives, given the basemap's .mbtiles path.
+
+    A SEPARATE file, deliberately: terrarium tiles are elevation data that
+    happens to be encoded as PNG. Dropped into the basemap's .mbtiles they would
+    be handed to the map renderer as pictures, and the operator would get
+    lurid green squares over their suburb.
+    """
+    base = map_dest[:-8] if map_dest.endswith(".mbtiles") else map_dest
+    return base + ".terrain.mbtiles"
+
+
+def download_terrain(lat: float, lon: float, map_dest: str,
+                     radius_km: float = DEFAULT_RADIUS_KM,
+                     fetch: Optional[Callable[[int, int, int], Optional[bytes]]] = None,
+                     on_progress: Optional[Callable[[Dict], None]] = None,
+                     rate_limit_s: float = 0.1,
+                     stop: Optional[Callable[[], bool]] = None) -> Dict:
+    """Terrain for the SAME circle the operator just asked for map tiles in.
+
+    Folded into the one button because it answers a question the operator
+    already has — "can these two nodes see each other?" — and because a second
+    button for a second download of the same area is a chore nobody would do
+    until the day they needed it, in the field, with no internet.
+
+    One zoom level, so this adds a few dozen tiles to a run that fetches
+    thousands.
+    """
+    fetch = fetch or terrain_fetch
+    tiles = tiles_in_radius(lat, lon, radius_km,
+                            zmin=TERRAIN_ZOOM, zmax=TERRAIN_ZOOM)
+    writer = MBTilesWriter(
+        terrain_dest(map_dest), f"terrain {radius_km:g}km @ {lat:.3f},{lon:.3f}",
+        radius_bounds(lat, lon, radius_km), TERRAIN_ZOOM, TERRAIN_ZOOM,
+        center=f"{lon},{lat},{TERRAIN_ZOOM}")
+    return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
+
 
 def download_region(lat: float, lon: float, dest_path: str,
                     radius_km: float = DEFAULT_RADIUS_KM,

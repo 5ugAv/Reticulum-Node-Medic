@@ -121,6 +121,74 @@ class TileStore:
         return None if v == SRTM_VOID else float(v)
 
 
+class TerrariumStore:
+    """Elevation from the tiles the map download already fetched.
+
+    Same z/x/y scheme as the basemap, so one button caches both. Elevation is
+    packed into the pixel: ``metres = (R * 256 + G + B / 256) - 32768``.
+
+    Reads the .mbtiles cache and nothing else. Missing tile means None, never
+    zero — the whole point of the TileStore contract, for the same reason: a
+    missing tile that read as sea level would make a mountain look like clear
+    air.
+    """
+
+    def __init__(self, mbtiles_path: str, zoom: int = 12):
+        self.path = mbtiles_path
+        self.zoom = zoom
+        self._cache: dict = {}
+
+    @staticmethod
+    def decode(r: int, g: int, b: int) -> float:
+        """Terrarium pixel -> metres above sea level."""
+        return (r * 256 + g + b / 256.0) - 32768.0
+
+    def _tile(self, x: int, y: int):
+        key = (self.zoom, x, y)
+        if key in self._cache:
+            return self._cache[key]
+        img = None
+        try:
+            import sqlite3
+            con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+            # MBTiles stores rows flipped (TMS); the map writer already does
+            # this conversion on the way in, so mirror it on the way out.
+            flipped = (2 ** self.zoom - 1) - y
+            row = con.execute(
+                "SELECT tile_data FROM tiles WHERE zoom_level=? AND "
+                "tile_column=? AND tile_row=?", (self.zoom, x, flipped)).fetchone()
+            con.close()
+            if row:
+                import io
+                from PIL import Image
+                img = Image.open(io.BytesIO(row[0])).convert("RGB")
+        except Exception:
+            img = None
+        self._cache[key] = img
+        return img
+
+    def elevation(self, lat: float, lon: float) -> Optional[float]:
+        z = self.zoom
+        n = 2 ** z
+        xf = (lon + 180.0) / 360.0 * n
+        lat_r = math.radians(max(-85.05, min(85.05, lat)))
+        yf = (1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r))
+              / math.pi) / 2.0 * n
+        img = self._tile(int(xf), int(yf))
+        if img is None:
+            return None
+        w, h = img.size
+        px = int((xf - int(xf)) * w)
+        py = int((yf - int(yf)) * h)
+        try:
+            r, g, b = img.getpixel((min(w - 1, px), min(h - 1, py)))
+        except Exception:
+            return None
+        m = self.decode(r, g, b)
+        # terrarium encodes ocean as ~0; -32768 would be a decode failure
+        return None if m < -12000 else m
+
+
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
