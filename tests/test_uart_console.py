@@ -6,6 +6,7 @@ from provisioning.uart_console import (
     config_txt_with_uart, cmdline_with_uart, enable_uart_console,
     CONSOLE_BAUD, _ENABLE_UART, _CONSOLE_TOKEN,
 )
+from tests.teeutil import wrote
 
 
 # ---- config.txt (enable_uart) --------------------------------------------
@@ -68,8 +69,8 @@ def test_enable_uart_writes_both_files_and_getty():
     res = enable_uart_console(conn)
     assert res.ok and res.changed
     h = conn.history
-    assert any("config.txt" in c and "enable_uart=1" in c for c in h)
-    assert any("cmdline.txt" in c and "console=serial0" in c for c in h)
+    assert wrote(h, "config.txt", "enable_uart=1")
+    assert wrote(h, "cmdline.txt", "console=serial0")
     assert any("serial-getty@ttyS0" in c for c in h)
     # writes go through the passwordless-sudo priv wrapper
     assert all("sudo -n" in c for c in h if "tee " in c)

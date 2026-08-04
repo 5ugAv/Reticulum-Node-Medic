@@ -15,6 +15,7 @@ transforms (unit-tested); ``enable_gadget`` applies them over a Connection.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import List
 
@@ -162,8 +163,14 @@ def enable_gadget(conn: Connection, boot_dir: str = "/boot/firmware") -> GadgetR
 
 
 def _tee(path: str, content: str) -> str:
-    """A privileged heredoc `tee` that writes *content* to *path* without quoting
-    hell. The heredoc + ``>/dev/null`` are the CALLER's shell redirection; the
-    privileged token is exactly ``sudo -n tee <path>`` (whitelistable, no shell)."""
-    marker = "NM_GADGET_EOF"
-    return f"sudo -n tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"
+    """A privileged write of *content* to *path* without quoting hell. The
+    privileged token is exactly ``sudo -n tee <path>`` (whitelistable, no shell).
+
+    base64 rather than a heredoc: a quoted marker stops variable expansion but
+    NOT early termination, so a line in the content equal to the marker ends the
+    heredoc and the rest runs as shell. Content here is tool-generated rather
+    than attacker-supplied, but the three _tee helpers are copies of each other
+    and the one in sd_edit.py IS reachable from a crafted SD card — so they move
+    together rather than leaving a safe-looking twin to be copied again."""
+    b64 = base64.b64encode(content.encode()).decode()
+    return f"echo {b64} | base64 -d | sudo -n tee {path} > /dev/null"

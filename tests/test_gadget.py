@@ -6,6 +6,7 @@ from provisioning.gadget import (
     cmdline_with_gadget, config_txt_with_gadget, enable_gadget,
     GADGET_USB_IP, _GADGET_MODULES, _DWC2_OVERLAY,
 )
+from tests.teeutil import wrote
 
 
 # ---- pure transforms ------------------------------------------------------
@@ -48,18 +49,24 @@ def test_enable_gadget_uses_discrete_sudo_commands_not_bash_c():
     assert res.ok and res.changed
     h = conn.history
     # Boot files + the static-IP unit are written, and the unit enabled.
-    assert any("config.txt" in c and _DWC2_OVERLAY in c for c in h)
-    assert any("cmdline.txt" in c and _GADGET_MODULES in c for c in h)
+    assert wrote(h, "config.txt", _DWC2_OVERLAY)
+    assert wrote(h, "cmdline.txt", _GADGET_MODULES)
     assert any("nodemedic-gadget-ip.service" in c for c in h)
-    # THE hardening guarantee: the privileged INVOCATION is `sudo -n tee` /
-    # `sudo -n systemctl` — never `sudo -n bash -c` / `sudo -n sh -c`. (The unit
-    # file written by tee legitimately CONTAINS a `/bin/sh -c` ExecStartPre; that
-    # is file content, not a sudo target, so we check the invocation prefix only.)
+    # THE hardening guarantee: the privileged TARGET is `tee` / `systemctl` —
+    # never `bash -c` / `sh -c`. (The unit file written by tee legitimately
+    # CONTAINS a `/bin/sh -c` ExecStartPre; that is file content, not a sudo
+    # target, so only what follows `sudo -n` is checked.)
+    #
+    # Checked on the sudo target rather than the start of the line, because a
+    # tee is now `echo <b64> | base64 -d | sudo -n tee <path>` — the encode and
+    # decode happen UNPRIVILEGED, before the pipe, and only `tee` runs as root.
     priv = [c for c in h if "sudo -n" in c]
     assert priv, "no privileged commands issued"
-    assert all("sudo -n bash -c" not in c and "sudo -n sh -c" not in c for c in priv)
-    assert all(c.lstrip().startswith("sudo -n tee ")
-               or c.lstrip().startswith("sudo -n systemctl ") for c in priv)
+    targets = [c.split("sudo -n", 1)[1].lstrip() for c in priv]
+    assert all(not t.startswith("bash -c") and not t.startswith("sh -c")
+               for t in targets)
+    assert all(t.startswith("tee ") or t.startswith("systemctl ")
+               for t in targets), targets
     assert GADGET_USB_IP in res.message
 
 

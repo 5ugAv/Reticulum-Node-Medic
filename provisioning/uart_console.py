@@ -18,6 +18,7 @@ over a Connection. The medic side (drive the login, run commands) is separate.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import List
 
@@ -125,8 +126,11 @@ def enable_uart_console(conn: Connection,
 
 
 def _tee(path: str, content: str) -> str:
-    """A privileged heredoc `tee`. The heredoc + ``>/dev/null`` are the caller's
-    shell redirection; the privileged token is exactly ``sudo -n tee <path>``
-    (whitelistable, no ``bash -c``)."""
-    marker = "NM_UART_EOF"
-    return f"sudo -n tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"
+    """A privileged write of *content* to *path*. The privileged token is exactly
+    ``sudo -n tee <path>`` (whitelistable, no ``bash -c``).
+
+    base64 rather than a heredoc — see the note in sd_edit._tee: a quoted marker
+    does not prevent a line in the content from terminating the heredoc early
+    and turning the remainder into shell."""
+    b64 = base64.b64encode(content.encode()).decode()
+    return f"echo {b64} | base64 -d | sudo -n tee {path} > /dev/null"

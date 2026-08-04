@@ -18,6 +18,7 @@ with mocked ``lsblk`` / ``findmnt`` output; the real mounts need root + hardware
 
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 from dataclasses import dataclass
@@ -185,5 +186,18 @@ def bake_reachability_via_sd(hardware: NodeHardware,
 
 
 def _tee(path: str, content: str) -> str:
-    marker = "NM_SD_EOF"
-    return f"sudo -n tee {path} > /dev/null <<'{marker}'\n{content}\n{marker}"
+    """A privileged write of *content* to *path*, base64'd so the content can
+    never be parsed as shell.
+
+    This one matters most of the three: *content* is derived from the config.txt
+    and cmdline.txt READ OFF AN OPERATOR-SUPPLIED SD CARD and written back. The
+    old form was a quoted heredoc, and a quoted marker stops variable expansion
+    but NOT early termination — a line in the content equal to the marker ends
+    the heredoc and everything after it runs as nodemedic. A card carrying a
+    line "NM_SD_EOF" followed by a command was therefore code execution, and
+    servicing other people's cards is this tool's job, not an edge case.
+
+    base64's alphabet is [A-Za-z0-9+/=], none of which are shell metacharacters,
+    so the encoded blob is inert. Same pattern as node_sudoers.py."""
+    b64 = base64.b64encode(content.encode()).decode()
+    return f"echo {b64} | base64 -d | sudo -n tee {path} > /dev/null"
