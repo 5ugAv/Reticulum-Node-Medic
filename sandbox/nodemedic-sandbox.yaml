@@ -61,7 +61,7 @@ provision:
       #!/bin/bash
       set -eux
       install -d -m 0750 /etc/sudoers.d
-      # Keep the VM's OWN admin (the limactl-shell user, e.g. uid-501 'operator')
+      # Keep the VM's OWN admin (the limactl-shell user, e.g. uid-501 — your macOS login)
       # passwordless in a file the hardening apply NEVER touches (it only removes
       # files granting *nodemedic* the blanket) — so we can keep driving the sandbox
       # AFTER nodemedic is scoped. Copy cloud-init's real grant aside (uid/name
@@ -117,7 +117,7 @@ provision:
       echo '{}'                    > "$H/.reticulum/storage/known_destinations"
       printf '[reticulum]\nenable_transport = Yes\n' > "$H/.reticulum/config"
       cat > "$H/.reticulum-node-medic/kin.json" <<'EOF'
-      {"EVERYWHERE": {"node_name": "EVERYWHERE", "lat": -37.5106, "lon": 145.5107, "builder": "self"}}
+      {"EVERYWHERE": {"node_name": "EVERYWHERE", "lat": -37.5000, "lon": 145.5000, "builder": "self"}}
       EOF
       chmod 0664 "$H/.reticulum-node-medic/kin.json"
       echo '{"nodes": [], "history": {}}' > "$H/.reticulum-node-medic/registry.json"

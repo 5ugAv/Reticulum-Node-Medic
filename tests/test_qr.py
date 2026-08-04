@@ -42,7 +42,7 @@ def test_payload_is_anonymous_no_reachability_or_provenance():
     never reveal where the node lives, whose network it is on, or who built
     it — a wild node stays untraceable to a person or place."""
     cert = dict(SAMPLE, node_name="Rooftop-East",
-                location="-37.5106, 145.5107 (map)",
+                location="-37.512345, 145.523456 (map)",
                 notes="Mounted on the water tank, 4m mast",
                 built_by="nodemedic (5a160016)",
                 identity_hash="5a0b000b66778899")

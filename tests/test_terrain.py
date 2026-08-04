@@ -30,7 +30,7 @@ def _write_tile(directory, name, n=1201, height_fn=lambda r, c: 0):
 
 def test_tiles_are_named_for_their_south_west_corner():
     """Sampleton (-37.7, 145.0) lives in S38E145 — the FLOOR, not the round."""
-    assert tile_name(-37.73, 145.00) == "S38E145.hgt"
+    assert tile_name(-37.50, 145.50) == "S38E145.hgt"
     assert tile_name(37.73, -122.4) == "N37W123.hgt"
     assert tile_name(0.5, 0.5) == "N00E000.hgt"
 
@@ -82,6 +82,8 @@ def test_the_earth_bulges_most_at_the_midpoint():
 
 
 def test_haversine_is_sane():
+    # Synthetic point, NOT anyone's home: this repo is public and the whole
+    # project's ethos is that a node cannot be traced to a place.
     d = haversine_m(-37.5000, 145.5000, -37.5100, 145.5000)   # ~1.1 km south
     assert 1000 < d < 1200
 
@@ -216,7 +218,7 @@ def test_terrain_is_cached_beside_the_map_not_inside_it(tmp_path):
 def test_a_missing_terrain_cache_reads_as_unknown(tmp_path):
     from monitor.terrain import TerrariumStore
     s = TerrariumStore(str(tmp_path / "nope.mbtiles"))
-    assert s.elevation(-37.73, 145.0) is None
+    assert s.elevation(-37.50, 145.50) is None
 
 
 def test_terrain_survives_a_round_trip_through_the_map_cache(tmp_path):
@@ -226,7 +228,7 @@ def test_terrain_survives_a_round_trip_through_the_map_cache(tmp_path):
     from PIL import Image
     from monitor.terrain import TerrariumStore
 
-    z, lat, lon = 12, -37.73, 145.00
+    z, lat, lon = 12, -37.50, 145.50
     n = 2 ** z
     xf = (lon + 180.0) / 360.0 * n
     lat_r = math.radians(lat)
@@ -272,7 +274,7 @@ def test_the_whole_chain_works_off_terrarium_tiles(tmp_path):
     con.commit(); con.close()
 
     store = TerrariumStore(path, zoom=z)
-    v = line_of_sight(store, -37.73, 145.00, 5.0, -37.535, 145.505, 5.0)
+    v = line_of_sight(store, -37.50, 145.50, 5.0, -37.505, 145.505, 5.0)
     assert v.status in ("clear", "unknown")         # flat ground, raised antennas
     if v.status == "clear":
         assert v.worst_clearance >= FRESNEL_CLEARANCE
