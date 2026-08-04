@@ -16,6 +16,13 @@ ANIM = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 WIDGET = "ui/widgets/birth_anims.py"
 
 
+def _connect_pi():
+    """Just ConnectPiAnim's source. The module has several _draw methods, so a
+    bare func_source would happily return somebody else's."""
+    whole = src(WIDGET)
+    return whole[whole.index("class ConnectPiAnim"):]
+
+
 def _open(name):
     Image = pytest.importorskip("PIL.Image", reason="Pillow not installed")
     path = os.path.join(ANIM, name)
@@ -64,12 +71,44 @@ def test_the_step_prefers_the_drawn_art_but_still_falls_back():
     assert "BRAID_MICRO_DRAWN_PNG" in body and "CABLE_BRAID_PNG" in body
 
 
-def test_the_braid_is_drawn_before_the_medic():
-    """Painted after, it runs as a stripe straight down the medic's screen —
-    caught in an offline render, which is the only place it is visible."""
-    body = src(WIDGET)
-    start = body.index("class ConnectPiAnim")
-    seg = body[start:]
-    braid_at = seg.index("texture=braid")
-    medic_at = seg.index("texture=medic")
-    assert braid_at < medic_at, "the braid must be painted behind the medic"
+def test_the_layers_stack_medic_cable_pi_plug():
+    """Order is load-bearing, and every step of it was learned the hard way.
+
+    The medic is the backdrop. The cable goes over it, because with the Pi to
+    the LEFT the braid runs beside the case, not across its screen. The Pi goes
+    over the cable. The plug goes last — it is the thing in motion and must
+    never be occluded by the board it is entering.
+
+    Putting the medic last is the tempting mistake: it covers the socket, which
+    is the one thing this step exists to point at.
+    """
+    seg = _connect_pi()
+    order = [seg.index(f"texture={n}") for n in ("medic", "braid", "pi", "plug")]
+    assert order == sorted(order), (
+        "draw order must be medic -> braid -> pi -> plug, got "
+        f"{dict(zip(('medic', 'braid', 'pi', 'plug'), order))}")
+
+
+def test_the_plug_actually_enters_the_socket():
+    """It must look INSERTED, not merely touching (operator, 2026-08-04). The
+    metal tongue is the top of the moulding, so seating means sinking part of
+    the plug's own height past the port line — a fixed dp(3) nudge just kissed
+    the edge."""
+    assert "plug_h * 0.28" in _connect_pi(), \
+        "seating depth must scale with the plug"
+
+
+def test_the_plug_starts_clear_of_the_board():
+    """The step is 'plug it in', so it has to begin unplugged: a short nudge
+    read as a plug already in the socket, twitching."""
+    assert "travel = plug_h" in _connect_pi(), \
+        "travel must be a real gap, not a nudge"
+
+
+def test_the_power_port_is_marked_forbidden_not_merely_different():
+    """Two coloured rings say 'here are two ports'. A struck-through red one
+    says 'not this one' — which is the whole point of the step."""
+    seg = _connect_pi()
+    assert "_NO = (" in seg, "needs its own forbidden colour"
+    bar = seg.index("bar = dp(10)")
+    assert bar > seg.index("circle=(pwr_x"), "the bar goes with the power ring"

@@ -82,6 +82,20 @@ MEDIC_CABLE_MICRO_PNG = os.path.join(_ANIM_DIR, "node_medic_cable_micro.png")
 #: The medic's knob + body + horn. No antenna (portrait sprites shrink to a
 #: sliver when height-capped here) and no cable.
 MEDIC_CASE_MICRO_PNG = os.path.join(_ANIM_DIR, "medic_case_micro.png")
+#: The same drawing with ONLY its plug erased — the drawn curve of the cable is
+#: kept, because that curve is what lets the Pi sit to the LEFT of the medic
+#: rather than stacked above it (operator, 2026-08-04). Deliberately NOT cropped
+#: to its bounding box: the anchors below are fractions of THIS canvas, and
+#: trimming the now-empty left margin would shift every one of them.
+MEDIC_CABLE_BODY_PNG = os.path.join(_ANIM_DIR, "medic_cable_body_micro.png")
+#: Where the drawing's cable ends — the tip of the plug that was erased. The
+#: moving plug starts here and the braid bridges from here up to the socket.
+MEDIC_CABLE_TIP = (0.0361, 0.7010)          # (x, y) fractions, y top-down
+#: Top edge of the medic's case. The Pi is parked just above this so the two
+#: never overlap: placed level with the cable's end they sit on top of each
+#: other, and hiding the Pi behind the medic hides the very socket the step is
+#: about.
+MEDIC_CASE_TOP = 0.4197
 #: The drawn micro-USB plug, tip UPWARD. A real micro-USB moulding is about
 #: 2.4:1, and it is drawn at that ratio — sized any wider it swallows the whole
 #: gap between the boards.
@@ -806,6 +820,9 @@ class ConnectPiAnim(ConnectBoardAnim):
     #: connections must not read as the same action (operator, 2026-08-02).
     _CABLE = (0.30, 0.85, 0.36, 1)
     _PWR = (0.96, 0.52, 0.22, 1)
+    #: The forbidden port. Red with a bar through it, not amber — this socket
+    #: does not merely differ, it must not be used (operator, 2026-08-04).
+    _NO = (0.90, 0.20, 0.20, 1)
 
     def __init__(self, pi_key: str = "", **kwargs):
         """*pi_key* draws the detected Pi model; falls back to the Zero sprite."""
@@ -824,12 +841,23 @@ class ConnectPiAnim(ConnectBoardAnim):
         return v * v * (3.0 - 2.0 * v)
 
     def _draw(self):
-        """Medic below, Pi above, and the cable rises straight into the port.
+        """Medic on the right, Pi to its LEFT, cable rising into the port.
 
-        Operator's correction (2026-08-02): "the USB cable permanently attached
-        to the bottom of the Node Medic, and just the plug moving straight up
-        into the port on the Pi Zero 2 W... the cable needs to be complete, and
-        only the end of it moving directly upwards."
+        Operator, 2026-08-04: "don't put the pi on top, keep it to the left."
+        Which is what their own drawing shows — the cable leaves the medic's
+        bottom, curves left, and the plug points up at the far left. So the
+        drawn curve is kept and the Pi hangs off its end, rather than the two
+        being stacked.
+
+        The Pi is parked just ABOVE the medic's case. Placed level with the
+        cable's own end the two sprites sit squarely on top of each other, and
+        the obvious alternative — tucking the Pi behind the medic — hides the
+        socket, which is the one thing this step exists to point at.
+
+        Operator's earlier correction (2026-08-02) still holds: "the USB cable
+        permanently attached to the bottom of the Node Medic, and just the plug
+        moving straight up into the port on the Pi Zero 2 W... the cable needs
+        to be complete, and only the end of it moving directly upwards."
 
         So the medic sits DIRECTLY BELOW the socket, the run between them is the
         operator's own cable braid tiled vertically, and the plug starts already
@@ -847,69 +875,93 @@ class ConnectPiAnim(ConnectBoardAnim):
             return self._draw_fallback()
         # The operator's drawn art (2026-08-04) first; the earlier photo cut-outs
         # stay as fallback so a missing file degrades instead of blanking.
-        medic = (_texture(MEDIC_CASE_MICRO_PNG) or _texture(MEDIC_BODY_PNG)
+        medic = (_texture(MEDIC_CABLE_BODY_PNG) or _texture(MEDIC_BODY_PNG)
                  or _texture(MEDIC_PNG))
         plug = _texture(PLUG_MICRO_DRAWN_PNG) or _texture(PLUG_MICRO_PNG)
         braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
-        # --- the Pi, still, across the top ---------------------------------
-        # The height cap is the number that actually governs: a Pi Zero is about
-        # 0.46 tall for its width, so the width fraction is never the binding
-        # constraint on this stage. Operator, 2026-08-04: medic bigger, Pi
-        # smaller — the medic is the thing being introduced here.
+        # --- the medic, still, standing on the floor at the RIGHT -----------
+        # Operator, 2026-08-04: "don't put the pi on top, keep it to the left."
+        # That is the arrangement the drawing itself depicts — the cable leaves
+        # the medic's bottom, curves LEFT, and the plug points up at the far
+        # left — so the drawn curve is kept and the Pi hangs off its end.
+        mh = h * 0.80
+        mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
+        myy = y + dp(2)
+
+        # --- the Pi, still, to the LEFT and just clear of the case ----------
+        # A Pi Zero is ~0.46 tall for its width, so the height cap governs and
+        # the width fraction never binds on this stage.
         pw = w * 0.40
         ph = pw * (pi.height / float(pi.width))
         if ph > h * 0.30:
             ph = h * 0.30
             pw = ph * (pi.width / float(pi.height))
-        pxx = x + (w - pw) / 2.0
-        pyy = y + h - ph - dp(4)                    # Kivy y is bottom-up
 
-        data_x = pxx + pw * PI_ZERO_PORTS["data"]
+        # Centre the PAIR, not each sprite: the medic is portrait, so anchoring
+        # it to one edge strands the other half of a very wide stage.
+        left_of_tip = pw * PI_ZERO_PORTS["data"]
+        tip_dx = mw * MEDIC_CABLE_TIP[0]
+        group = left_of_tip + (mw - tip_dx)
+        data_x = x + (w - group) / 2.0 + left_of_tip
+        mxx = data_x - tip_dx
+
+        # Kivy y is bottom-up; the sprite fractions are top-down, hence 1.0 - f.
+        cable_end = myy + mh * (1.0 - MEDIC_CABLE_TIP[1])
+        case_top = myy + mh * (1.0 - MEDIC_CASE_TOP)
+        # Parked just ABOVE the case, so the boards never overlap. Level with
+        # the cable's own end they sit squarely on top of each other.
+        port_y = max(case_top + dp(6), cable_end + dp(8))
+
+        pxx = data_x - left_of_tip
+        pyy = port_y - ph * (1.0 - PI_ZERO_PORT_Y)
         pwr_x = pxx + pw * PI_ZERO_PORTS["power"]
-        port_y = pyy + ph * (1.0 - PI_ZERO_PORT_Y)  # fractions are top-down
 
-        # --- the medic, still, directly below that socket -------------------
-        # Sized against the Pi's height cap above, not chosen alone: the two
-        # together decide how much cable is left visible between them. Tuned on
-        # an offline render of these exact sprites (operator, 2026-08-04).
-        mh = h * 0.52
-        mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
-        mxx = data_x - mw / 2.0                     # so the cable runs true
-        myy = y + dp(2)
-
-        # --- the plug: lined up already, only the last stretch moves --------
-        travel = dp(30)
+        # --- the plug travels up and INSERTS ---------------------------------
+        # It must start clear of the board, approach, and go in (operator,
+        # 2026-08-04). A short nudge read as a plug that was already in the
+        # socket and merely twitching, so the travel is a real gap: the plug
+        # begins a whole connector-length below the port and closes it.
         t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
         # A real micro-USB moulding is ~2.4:1, and the drawn one keeps that
         # ratio — at dp(26) it grew tall enough to swallow the whole gap
         # between the two boards, leaving no cable visible.
         plug_w = dp(21)
         plug_h = plug_w * (plug.height / float(plug.width)) if plug else dp(56)
-        top = port_y + dp(3) - travel * (1.0 - t)   # +3 = seats INTO the socket
+        travel = plug_h * 0.85 + dp(10)
+        # The metal tongue is the top ~28% of the moulding, so seating it means
+        # sinking that much INTO the shell — at dp(3) the plug just kissed the
+        # edge and never looked inserted.
+        seated = port_y + plug_h * 0.28
+        top = seated - travel * (1.0 - t)
         plug_bottom = top - plug_h
 
         with self.canvas:
-            Color(1, 1, 1, 1)
-            Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+            # Medic first, then the cable, then the Pi, then the plug on top.
+            # The Pi goes in FRONT of the medic's thin antenna rather than
+            # behind it: put the medic last and it covers the socket, which is
+            # the one thing this step exists to point at.
+            if medic is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
 
-            # One continuous piece of the operator's own cable, medic -> plug.
-            # Drawn BEFORE the medic: painted after, the braid ran as a stripe
-            # straight down the medic's screen (offline render, 2026-08-04).
-            # The medic then covers the end, so the cable reads as entering it.
+            # Bridge the DRAWING's cable end up to wherever the socket sits.
+            # The drawn curve is untouched; braid is only added above it, cut
+            # from the dead-vertical run of the very same cable, so the join is
+            # the same rope rather than a drawn line.
             if braid is not None:
                 bw = plug_w * 0.42
                 bh = bw * (braid.height / float(braid.width))
-                yy = myy + mh * 0.16               # ends behind the case
+                yy = cable_end - dp(4)
                 Color(1, 1, 1, 1)
                 while yy < plug_bottom + dp(2):
                     Rectangle(texture=braid, pos=(data_x - bw / 2.0, yy),
                               size=(bw, bh))
                     yy += bh * 0.92                 # overlap, so no seams
-            if medic is not None:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
+
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
             if plug is not None:
                 Color(1, 1, 1, 1)
                 Rectangle(texture=plug, pos=(data_x - plug_w / 2.0, plug_bottom),
@@ -921,9 +973,16 @@ class ConnectPiAnim(ConnectBoardAnim):
                 Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
                       0.30 + 0.45 * pulse)
                 Line(circle=(data_x, port_y, dp(14)), width=dp(2.0))
-            # and its identical twin, which carries power only
-            Color(*self._PWR)
-            Line(circle=(pwr_x, port_y, dp(10)), width=dp(1.6))
+            # And its identical twin, which carries power only. Drawn as a NO
+            # ENTRY sign — ring plus a bar through it — not just a differently
+            # coloured ring (operator, 2026-08-04). Two rings side by side say
+            # "here are two ports"; a struck-through one says "not this one",
+            # which is the entire point of the step.
+            Color(*self._NO)
+            Line(circle=(pwr_x, port_y, dp(10)), width=dp(2.0))
+            bar = dp(10) * 0.707                    # 45°, ends on the ring
+            Line(points=[pwr_x - bar, port_y - bar, pwr_x + bar, port_y + bar],
+                 width=dp(2.0), cap="none")
 
         d = self._label("data", text="DATA", font_size="12sp", bold=True,
                         color=self._CABLE, halign="center")
