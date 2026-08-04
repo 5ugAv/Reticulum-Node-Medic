@@ -135,3 +135,42 @@ def test_flash_defaults_to_the_medics_key(monkeypatch):
             except Exception:
                 pass
     assert found, "medic key never reached the card"
+def test_password_pair_must_match():
+    ok, msg = pi.validate_new_password("correcthorse", "correcthorse")
+    assert ok and msg == ""
+    ok, msg = pi.validate_new_password("correcthorse", "correcthose")
+    assert not ok and "match" in msg.lower()
+
+
+def test_password_pair_rejects_empty():
+    ok, msg = pi.validate_new_password("", "")
+    assert not ok and "password" in msg.lower()
+
+
+def test_password_pair_enforces_min_length():
+    # matching but too short
+    ok, msg = pi.validate_new_password("abc", "abc")
+    assert not ok and "least" in msg.lower()
+    # a matching password at the boundary passes
+    exactly = "x" * pi.MIN_PASSWORD_LEN
+    assert pi.validate_new_password(exactly, exactly)[0]
+
+
+def test_password_mismatch_checked_before_length():
+    # A short mismatch should report the mismatch (the more actionable error),
+    # not the length — the operator needs to know they mistyped.
+    ok, msg = pi.validate_new_password("abc", "abd")
+    assert not ok and "match" in msg.lower()
+
+
+def test_password_validates_without_a_confirm_field():
+    """The imaging screen answers the mistyped-password risk with a Show/Hide
+    reveal rather than a second field, so it calls this with one argument. The
+    empty and length rules must still bite — a one-character password is as
+    unrecoverable as a mistyped one once it is hashed onto the card."""
+    ok, msg = pi.validate_new_password("correcthorse")
+    assert ok and msg == ""
+    ok, msg = pi.validate_new_password("")
+    assert not ok and "password" in msg.lower()
+    ok, msg = pi.validate_new_password("abc")
+    assert not ok and "least" in msg.lower()

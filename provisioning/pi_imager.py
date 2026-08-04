@@ -100,6 +100,36 @@ def password_hash(password: str, run: Runner = _run) -> str:
     return out.strip() if code == 0 else ""
 
 
+#: Minimum login-password length accepted at imaging. Deliberately modest — the
+#: operator has to type it on a touchscreen and WRITE IT DOWN, and SSH key auth is
+#: the primary access path; this password is the human-held recovery credential.
+MIN_PASSWORD_LEN = 8
+
+
+def validate_new_password(pw1: str, pw2: Optional[str] = None,
+                          min_len: int = MIN_PASSWORD_LEN) -> Tuple[bool, str]:
+    """Gate for the imaging screen's login-password field. Returns (ok, message);
+    *message* is empty on success and a user-facing reason on failure. Pure — no
+    Kivy — so the rules are unit-tested without a display. The UI must refuse to
+    write the card unless this returns ok.
+
+    Why it matters: a mistyped password becomes an *unknown* password baked into
+    the card (exactly how Medic A lost its login), and there is no way to recover
+    it short of re-imaging.
+
+    *pw2* is the confirmation field where one exists. The imaging screen answers
+    the same risk with a Show/Hide reveal instead of a second field, so it calls
+    this with pw2 omitted and only the empty/length rules bite. Pass both when a
+    confirm field is in play and the match is checked too."""
+    if not pw1:
+        return (False, "Enter a login password.")
+    if pw2 is not None and pw1 != pw2:
+        return (False, "The two passwords don't match — retype them.")
+    if len(pw1) < min_len:
+        return (False, f"Use at least {min_len} characters.")
+    return (True, "")
+
+
 def _toml_escape(s: str) -> str:
     return (s or "").replace("\\", "\\\\").replace('"', '\\"')
 

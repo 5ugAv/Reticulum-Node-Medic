@@ -27,7 +27,7 @@ from ui.widgets.birth_anims import InsertSdAnim
 from ui.widgets.callout import Callout
 from ui.widgets.surgery_anim import SurgeryAnim
 from provisioning import pi_imager
-from provisioning.pi_imager import hostnameify
+from provisioning.pi_imager import hostnameify, validate_new_password
 
 _EST_WRITE_S = 240.0                       # rough dd+config time for the fill estimate
 
@@ -399,8 +399,16 @@ class PiImagerScreen(BoxLayout):
         if self._busy or not self._target:
             return
         v = self._vals()
-        if not v.get("hostname") or not v.get("pw"):
+        if not v.get("hostname"):
             self._status.text = "Enter at least a hostname and a login password."
+            self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
+            return
+        # A too-short password is as unrecoverable as a mistyped one: it is
+        # hashed onto the card and can never be read back. Empty was already
+        # refused here; the length floor was not.
+        pw_ok, pw_msg = validate_new_password(v.get("pw", ""))
+        if not pw_ok:
+            self._status.text = pw_msg
             self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
