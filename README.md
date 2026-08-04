@@ -1,8 +1,7 @@
 # Reticulum-Node-Medic
 
-A portable field tool for **provisioning, diagnosing, repairing and monitoring**
-[Reticulum](https://reticulum.network) mesh nodes — an OBD scanner, but for a
-Reticulum mesh.
+An easy-to-use tool for **building, monitoring and maintaining**
+[Reticulum](https://reticulum.network) networks.
 
 It runs on a Raspberry Pi 5 with a 5-inch touchscreen, powered from a battery
 bank, and reaches nodes over USB serial, SSH, a USB-gadget cable link, or by

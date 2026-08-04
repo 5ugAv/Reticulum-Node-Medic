@@ -1,8 +1,7 @@
 # Reticulum Node Medic — Specification
 
-A portable Raspberry Pi 5 device for **provisioning, diagnosing, repairing and
-monitoring** Reticulum mesh nodes. Think of it as an OBD scanner, but for a
-Reticulum mesh.
+A portable Raspberry Pi 5 device: an easy-to-use tool for **building,
+monitoring and maintaining** Reticulum networks.
 
 - **Hardware:** Raspberry Pi 5, 5-inch touchscreen (1280×720 landscape), Anker
   Prime 26K power bank.
