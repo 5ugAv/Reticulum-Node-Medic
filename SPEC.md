@@ -1,7 +1,7 @@
 # Reticulum Node Medic — Specification
 
-A portable Raspberry Pi 5 device: an easy-to-use tool for **building,
-monitoring and maintaining** Reticulum networks.
+Easy to use Reticulum network **building / monitoring / maintenance** tool,
+on a portable Raspberry Pi 5 device.
 
 - **Hardware:** Raspberry Pi 5, 5-inch touchscreen (1280×720 landscape), Anker
   Prime 26K power bank.

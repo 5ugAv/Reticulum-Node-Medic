@@ -1,7 +1,7 @@
 # Reticulum-Node-Medic
 
-An easy-to-use tool for **building, monitoring and maintaining**
-[Reticulum](https://reticulum.network) networks.
+Easy to use [Reticulum](https://reticulum.network) network
+**building / monitoring / maintenance** tool.
 
 It runs on a Raspberry Pi 5 with a 5-inch touchscreen, powered from a battery
 bank, and reaches nodes over USB serial, SSH, a USB-gadget cable link, or by
