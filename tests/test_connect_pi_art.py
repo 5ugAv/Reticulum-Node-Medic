@@ -90,10 +90,24 @@ def test_the_layers_stack_cable_medic_pi_plug():
     is entering.
     """
     seg = _connect_pi()
-    order = [seg.index(f"texture={n}") for n in ("braid", "medic", "pi", "plug")]
+    # "texture=braid" is a PREFIX of "texture=braid_h", so match the horizontal
+    # leg by its full token or index() silently returns the wrong occurrence.
+    names = ("texture=braid_h", "texture=braid,", "texture=medic",
+             "texture=pi,", "texture=plug")
+    order = [seg.index(n) for n in names]
     assert order == sorted(order), (
-        "draw order must be braid -> medic -> pi -> plug, got "
-        f"{dict(zip(('braid', 'medic', 'pi', 'plug'), order))}")
+        f"draw order wrong: {dict(zip(names, order))}")
+
+
+def test_the_cable_turns_a_corner():
+    """THE reason the Pi can sit to the LEFT rather than on top. A plug enters
+    a Pi Zero's socket vertically, so with one straight run the medic is forced
+    below the socket — which on a wide, short stage reads as underneath. The
+    elbow keeps the final segment vertical while the boards stand side by
+    side. Operator asked for this three times."""
+    seg = _connect_pi()
+    assert "texture=braid_h" in seg, "no horizontal leg — the Pi will stack"
+    assert "corner_y" in seg, "the elbow needs an explicit turn point"
 
 
 def test_the_plug_actually_enters_the_socket():
@@ -110,9 +124,9 @@ def test_the_plug_starts_clear_of_the_board():
     read as a plug already in the socket, twitching."""
     seg = _connect_pi()
     assert "travel = plug_h" in seg, "travel must be a real gap, not a nudge"
-    assert "gap = travel" in seg, (
-        "the space between the boards must be DERIVED from the travel — sized "
-        "independently, the plug passes straight through the medic")
+    assert "corner_y + travel + plug_h" in seg, (
+        "the vertical leg must be DERIVED from the travel — sized on its own, "
+        "the plug sets off from inside its own cable")
 
 
 def test_the_power_port_is_marked_forbidden_not_merely_different():
