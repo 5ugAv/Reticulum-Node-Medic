@@ -30,8 +30,8 @@ def _open(name):
     return Image.open(path)
 
 
-def test_the_three_cut_sprites_ship():
-    for name in ("medic_case_micro.png", "plug_micro_drawn.png",
+def test_the_cut_sprites_ship():
+    for name in ("medic_nocable_micro.png", "plug_micro_drawn.png",
                  "braid_micro_drawn.png"):
         im = _open(name)
         assert im.mode == "RGBA", f"{name} needs alpha to sit on the dark UI"
@@ -53,40 +53,47 @@ def test_the_braid_slice_is_a_tall_thin_strip():
     assert im.height > im.width * 3
 
 
-def test_the_medic_case_carries_no_antenna_and_no_cable():
-    """The full drawing is portrait; height-capping it on this wide, short stage
-    shrank it to a sliver. The case crop is much closer to square, and the cable
-    is cut away because the braid is tiled separately so it can be any length."""
-    im = _open("medic_case_micro.png")
-    ratio = im.width / im.height
-    assert 0.6 <= ratio <= 1.1, f"case aspect {ratio:.2f} — antenna left in?"
+def test_the_medic_sprite_has_no_cable_left_on_it():
+    """THE uniform-cable invariant, checked on the pixels.
+
+    The cable is now drawn entirely by tiling the braid at one width. If any of
+    the DRAWING's own cable survives on the medic, it renders at the medic's
+    scale — about a third of the tiled width — and the rope visibly steps where
+    the two meet, which is the fault this sprite exists to remove.
+    """
+    im = _open("medic_nocable_micro.png").convert("RGBA")
+    px = im.load()
+    blue = 0
+    for y in range(0, im.height, 2):
+        for x in range(0, im.width, 2):
+            r, g, b, a = px[x, y]
+            if a > 60 and b > 120 and (b - r) > 45:
+                blue += 1
+    assert blue < 40, f"{blue} cable-blue pixels still on the medic sprite"
 
 
 def test_the_step_prefers_the_drawn_art_but_still_falls_back():
     """A missing file must degrade to the older photo cut-outs, not blank the
     stage."""
     body = src(WIDGET)
-    assert "MEDIC_CASE_MICRO_PNG" in body and "MEDIC_BODY_PNG" in body
+    assert "MEDIC_NOCABLE_PNG" in body and "MEDIC_BODY_PNG" in body
     assert "PLUG_MICRO_DRAWN_PNG" in body and "PLUG_MICRO_PNG" in body
     assert "BRAID_MICRO_DRAWN_PNG" in body and "CABLE_BRAID_PNG" in body
 
 
-def test_the_layers_stack_medic_cable_pi_plug():
-    """Order is load-bearing, and every step of it was learned the hard way.
+def test_the_layers_stack_cable_medic_pi_plug():
+    """Order is load-bearing and every step of it was learned from a render.
 
-    The medic is the backdrop. The cable goes over it, because with the Pi to
-    the LEFT the braid runs beside the case, not across its screen. The Pi goes
-    over the cable. The plug goes last — it is the thing in motion and must
-    never be occluded by the board it is entering.
-
-    Putting the medic last is the tempting mistake: it covers the socket, which
-    is the one thing this step exists to point at.
+    The cable goes down FIRST so the case hides where it enters — painted over
+    the medic it ran as a stripe across its screen. Then the Pi. The plug goes
+    last: it is the thing in motion and must never be occluded by the board it
+    is entering.
     """
     seg = _connect_pi()
-    order = [seg.index(f"texture={n}") for n in ("medic", "braid", "pi", "plug")]
+    order = [seg.index(f"texture={n}") for n in ("braid", "medic", "pi", "plug")]
     assert order == sorted(order), (
-        "draw order must be medic -> braid -> pi -> plug, got "
-        f"{dict(zip(('medic', 'braid', 'pi', 'plug'), order))}")
+        "draw order must be braid -> medic -> pi -> plug, got "
+        f"{dict(zip(('braid', 'medic', 'pi', 'plug'), order))}")
 
 
 def test_the_plug_actually_enters_the_socket():
@@ -101,8 +108,11 @@ def test_the_plug_actually_enters_the_socket():
 def test_the_plug_starts_clear_of_the_board():
     """The step is 'plug it in', so it has to begin unplugged: a short nudge
     read as a plug already in the socket, twitching."""
-    assert "travel = plug_h" in _connect_pi(), \
-        "travel must be a real gap, not a nudge"
+    seg = _connect_pi()
+    assert "travel = plug_h" in seg, "travel must be a real gap, not a nudge"
+    assert "gap = travel" in seg, (
+        "the space between the boards must be DERIVED from the travel — sized "
+        "independently, the plug passes straight through the medic")
 
 
 def test_the_power_port_is_marked_forbidden_not_merely_different():
