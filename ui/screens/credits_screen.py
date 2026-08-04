@@ -31,13 +31,21 @@ DONATE_QR = os.path.normpath(os.path.join(
 
 #: (role, name) — shown in order. Edit to taste.
 #: (Add the designer's design credit when her pages land.)
+#: Ordered as the LINEAGE runs, so the thanks read as a chain rather than a
+#: list: Reticulum, the C++ port that let it fit on a microcontroller, the
+#: firmware forks built on that, then this tool. Everything from Qvist down to
+#: GrayHatGuy is GPL-3.0 and we are downstream of all of it.
 CREDITS = [
     ("Reticulum & RNode", "Mark Qvist"),
+    ("microReticulum — Reticulum in C++, small enough for a microcontroller",
+     "Chris Attermann"),
     ("RNode Firmware CE", "Liberated Systems & contributors"),
+    ("RTNode for Heltec V4 — the base our fork grew from", "jrl290"),
     ("RTNode-2400 firmware — github.com/GrayHatGuy", "GrayHatGuy"),
     ("Concept, build, field testing & front page", "5ugAv"),
     ("Engineering companion", "Claude (Anthropic)"),
     ("Maps", "OpenStreetMap contributors & CARTO"),
+    ("Terrain", "Tilezen & AWS Open Data (SRTM)"),
     ("And", "every neighbour who puts a node on a roof"),
 ]
 
