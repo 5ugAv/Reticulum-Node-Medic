@@ -651,6 +651,30 @@ class BirthScreen(BoxLayout):
             self._flash_view = False
             self._build_chooser(keep_list=keep_list)
 
+    def handle_back(self):
+        """Left-edge swipe off BIRTH. Always returns False — BIRTH is a single
+        page, so the swipe goes home either way — but the finished build's view
+        is dropped on the way out.
+
+        Without this, swiping home from the certificate instead of tapping
+        'Done' left ``_flash_view`` True forever: the two places that cleared it
+        were the failure popup's on_dismiss and the Done button, and the swipe
+        is a first-class exit that reached neither. The next visit to BIRTH then
+        opened on the previous build's page (audit, 2026-08-03).
+
+        A RUNNING build keeps its page: the operator may swipe home to watch the
+        banner and come back, and they should return to the progress they left,
+        not a chooser."""
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            running = bool(app is not None and app.flash_in_progress())
+        except Exception:
+            running = False
+        if not running:
+            self._exit_flash_view()
+        return False
+
     def _build_action(self):
         """Populate the scroll with the next step for the chosen firmware: the
         RTNode-2400 build button, the RNode radio-params form, or a prompt."""
@@ -1359,11 +1383,18 @@ class BirthScreen(BoxLayout):
         popup.open()
 
     def _busy_with_a_build(self) -> bool:
-        """True while a flash/build owns this screen — resetting state under a
-        running workflow corrupts the checklist and the outcome (2026-08-01
-        bug hunt)."""
-        if getattr(self, "_flash_view", False):
-            return True
+        """True while a flash/build is actually RUNNING — resetting state under a
+        live workflow corrupts the checklist and the outcome (2026-08-01 bug
+        hunt).
+
+        Deliberately does NOT consult ``_flash_view``. That flag is view state —
+        which header is showing — not whether hardware is being written, and it
+        stays True across the whole certificate page, long after
+        ``_mark_activity(False)`` has run in ``_finish()``. Treating it as "busy"
+        meant that any exit from the cert page that wasn't the Done button left
+        every later build permanently refused, with two stacked "a build is
+        already running" popups bouncing the operator onto a finished build
+        (audit, 2026-08-03)."""
         try:
             from kivy.app import App
             app = App.get_running_app()
@@ -1384,6 +1415,10 @@ class BirthScreen(BoxLayout):
         # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
         # caught live 2026-08-01). Nothing selection-shaped survives.
         self._sel_board = None
+        # The previous build's page is over: _build_chooser() below puts the
+        # chooser back, so the flag has to agree or it describes a header that
+        # is no longer on screen.
+        self._flash_view = False
         # Cleared here too, or every later visit to BIRTH shows the green
         # "Card written — now building <the PREVIOUS node>" banner over an
         # empty form (audit, 2026-08-03).
