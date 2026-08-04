@@ -407,9 +407,9 @@ def test_devices_collapses_same_name_across_destinations():
     from monitor.registry import NodeRegistry
     reg = NodeRegistry()
     # kin/health record under the beacon dest, named via the kin roster
-    reg.set_kin_roster({"5a0b000b": {"name": "FAITH RTnode", "type": "rtnode2400",
+    reg.set_kin_roster({"b7c8d9e0": {"name": "FAITH RTnode", "type": "rtnode2400",
                                      "builder": "medic-unit"}})
-    reg.ingest("5a0b000b", beacon(), NOW)
+    reg.ingest("b7c8d9e0", beacon(), NOW)
     # HTTP /status record keyed by name (no shared identity_hash)
     reg.record_http_status("rtnode:FAITH RTnode", http(name="FAITH RTnode"), NOW)
     # a bare rnpath neighbour with a DIFFERENT device, unnamed -> stays separate
@@ -430,7 +430,7 @@ def test_devices_collapses_same_name_across_destinations():
 
 def test_probe_hash_for_returns_hex_key_directly():
     reg = NodeRegistry()
-    h = "5a0b000b000000000000000000000006"
+    h = "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     reg.register(h, name="FAITH RTnode")
     assert reg.probe_hash_for(h) == h
 
@@ -439,7 +439,7 @@ def test_probe_hash_for_resolves_non_hex_key_by_name():
     # The FAITH case: a non-hex HTTP-discovery row 'rtnode:FAITH RTnode' shares a
     # NAME with the real hex mesh dest — probe must resolve to the hex one.
     reg = NodeRegistry()
-    hexh = "5a0b000b000000000000000000000006"
+    hexh = "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     reg.register(hexh, name="FAITH RTnode")
     reg.register("rtnode:FAITH RTnode", name="FAITH RTnode")   # HTTP key, non-hex
     assert reg.probe_hash_for("rtnode:FAITH RTnode") == hexh
@@ -467,7 +467,7 @@ def test_probe_hash_for_none_when_no_hex_dest():
 def _faith_registry():
     """The FAITH case: a hex health-beacon dest carrying the decoded beacon, plus
     a non-hex HTTP `rtnode:<name>` aspect sharing the name but with NO beacon."""
-    hexh = "5a0b000b000000000000000000000006"
+    hexh = "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     reg = NodeRegistry()
     reg.set_kin_roster({hexh: {"name": "FAITH RTnode", "type": "rtnode2400",
                                "builder": "medic-unit"}})

@@ -27,7 +27,7 @@ def rnstatus_json(status=True, chload=0.07, announce_freq=0.05):
 # a real remote path (non-local interface) -> peers heard + table populated
 RNPATH_JSON = json.dumps([
     {"hash": "66778899aabbccddeeff001122334455",
-     "via": "5a130013000000000000000000000009", "hops": 1,
+     "via": "33445566778899aabbccddeeff001122", "hops": 1,
      "expires": 1784171781,
      "interface": "TCPInterface[everywhere/192.168.1.42:4242]"},
 ])

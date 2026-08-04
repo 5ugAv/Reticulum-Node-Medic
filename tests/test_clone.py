@@ -222,7 +222,7 @@ def test_copy_kin_roster_carries_locations(monkeypatch):
     clone's kin.json, so a mitosis clone shows the same kin on its map."""
     import monitor.kin_roster as kr
     monkeypatch.setattr(kr, "load_roster", lambda *a, **k: {
-        "5a130013": {"name": "EVERYWHERE", "type": "pi_propagation",
+        "e5e2a1c0": {"name": "EVERYWHERE", "type": "pi_propagation",
                      "lat": -37.5106, "lon": 145.5107,
                      "links": {"lora": True, "wifi": True,
                                "bluetooth": True, "internet": True}}})

@@ -33,12 +33,12 @@ def test_adopts_faith_end_to_end():
     # certificate carries FAITH's real identity + on-spec params + adopted flag
     cert = saved["cert"]
     assert cert["adopted"] is True
-    assert cert["identity_hash"] == "5a0b000b000000000000000000000006"
+    assert cert["identity_hash"] == "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     assert cert["node_name"] == "FAITH RTnode"
     assert cert["spreading_factor"] == 9 and cert["frequency_mhz"] == 915.125
     assert cert["location"] == {"lat": -37.7, "lon": 145.0, "source": "gps"}
     # kin enrolled under the beacon dest, stamped with this medic as builder
-    assert kin["rns_hash"] == "5a0b000b000000000000000000000006"
+    assert kin["rns_hash"] == "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     assert kin["name"] == "FAITH RTnode"
     assert kin["node_type"] == "rtnode2400"
     assert kin["builder"] == "medic-unit-hash"

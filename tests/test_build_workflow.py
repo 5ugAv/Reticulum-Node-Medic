@@ -475,7 +475,7 @@ def test_birth_certificate_records_reachability_and_build_details():
     conn.rules.insert(0, ("^hostname -I", 0, "192.168.1.42 10.0.0.9", ""))  # first
     conn.rules.insert(0, ("ip route get", 0, "wlan0", ""))
     conn.rules.insert(0, ("class/net/wlan0/address", 0, "b8:27:eb:aa:bb:cc", ""))
-    conn.rules.insert(0, ("RNS.Identity.from_file", 0, "5a160016000000000000000000000003", ""))
+    conn.rules.insert(0, ("RNS.Identity.from_file", 0, "a1b2c3d4e5f60718293a4b5c6d7e8f90", ""))
     w = wf(conn)
     w.steps[0][1](w)                             # detect (sets radio port etc.)
     w.profile.rnode_rgb_pin = 47                 # RGB build was flashed
@@ -486,11 +486,11 @@ def test_birth_certificate_records_reachability_and_build_details():
     assert cert["ssh_address"] == "rtt-prop-01.local"
     assert cert["ip_addresses"] == ["192.168.1.42", "10.0.0.9"]
     assert cert["mac_address"] == "b8:27:eb:aa:bb:cc"
-    assert cert["reticulum_address"] == "5a160016000000000000000000000003"
+    assert cert["reticulum_address"] == "a1b2c3d4e5f60718293a4b5c6d7e8f90"
     assert cert["rgb_led_pin"] == 47
     assert cert["frequency_mhz"] == 915.125 and cert["spreading_factor"] == 9
     # the resolved Reticulum address is also stored back on the profile
-    assert w.profile.reticulum_identity_hash == "5a160016000000000000000000000003"
+    assert w.profile.reticulum_identity_hash == "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 
 def test_birth_certificate_handles_missing_reticulum_address():

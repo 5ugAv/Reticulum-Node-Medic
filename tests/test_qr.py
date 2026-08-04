@@ -20,7 +20,7 @@ SAMPLE = {
     "ip_addresses": ["192.168.1.42", "10.0.0.9"],
     "primary_interface": "wlan0",
     "mac_address": "b8:27:eb:aa:bb:cc",
-    "reticulum_address": "5a160016000000000000000000000003",
+    "reticulum_address": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
     "role": "LXMF propagation node",
     "board": "Heltec LoRa32 v4",
     "rnode_firmware": "1.86",
@@ -44,12 +44,12 @@ def test_payload_is_anonymous_no_reachability_or_provenance():
     cert = dict(SAMPLE, node_name="Rooftop-East",
                 location="-37.512345, 145.523456 (map)",
                 notes="Mounted on the water tank, 4m mast",
-                built_by="nodemedic (5a160016)",
-                identity_hash="5a0b000b66778899")
+                built_by="nodemedic (a1b2c3d4)",
+                identity_hash="b7c8d9e066778899")
     text = birth_cert_payload(cert)
     for leak in ("Host:", "IP:", "MAC: b8", "Reticulum:", "Identity:",
                  "Location:", "Notes:", "Built", "192.168", "rtt-prop-01",
-                 "-37.512", "water tank", "nodemedic", "5a0b000b"):
+                 "-37.512", "water tank", "nodemedic", "b7c8d9e0"):
         assert leak not in text, f"QR leaks: {leak!r}\n{text}"
 
 
