@@ -64,14 +64,19 @@ provision:
       # Keep the VM's OWN admin (the limactl-shell user, e.g. uid-501 — your macOS login)
       # passwordless in a file the hardening apply NEVER touches (it only removes
       # files granting *nodemedic* the blanket) — so we can keep driving the sandbox
-      # AFTER nodemedic is scoped. Copy cloud-init's real grant aside (uid/name
-      # agnostic); if cloud-init hasn't written it yet, synthesise one for the login
-      # user. Done BEFORE nodemedic exists, so the copy can't contain nodemedic.
-      if [ -f /etc/sudoers.d/90-cloud-init-users ]; then
-        cp -a /etc/sudoers.d/90-cloud-init-users /etc/sudoers.d/00-sandbox-admin
+      # AFTER nodemedic is scoped.
+      #
+      # NEVER copy 90-cloud-init-users here. On the FIRST boot it holds the
+      # admin's grant, but on every LATER boot it holds the *nodemedic* blanket
+      # written by step 2 below — so the copy silently turns the "preserve the
+      # admin" file into a nodemedic grant, apply_sudoers.sh removes it as a
+      # blanket (correctly), and the sandbox admin loses sudo with no root left.
+      # Always derive the admin name explicitly, and never emit 'nodemedic'.
+      ADMIN="$(awk -F: '$3>=500 && $7 ~ /sh$/ && $1!="root" && $1!="nodemedic"{print $1; exit}' /etc/passwd)"
+      if [ -n "$ADMIN" ]; then
+        printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$ADMIN" > /etc/sudoers.d/00-sandbox-admin
       else
-        ADMIN="$(awk -F: '$7 ~ /sh$/ && $1!="root" && $1!="nodemedic"{print $1; exit}' /etc/passwd)"
-        [ -n "$ADMIN" ] && printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$ADMIN" > /etc/sudoers.d/00-sandbox-admin
+        echo "WARNING: no non-nodemedic admin found; scoping could lock this VM out" >&2
       fi
       chmod 0440 /etc/sudoers.d/00-sandbox-admin 2>/dev/null || true
       # The app user (auto uid).
@@ -117,7 +122,7 @@ provision:
       echo '{}'                    > "$H/.reticulum/storage/known_destinations"
       printf '[reticulum]\nenable_transport = Yes\n' > "$H/.reticulum/config"
       cat > "$H/.reticulum-node-medic/kin.json" <<'EOF'
-      {"EVERYWHERE": {"node_name": "EVERYWHERE", "lat": -37.5000, "lon": 145.5000, "builder": "self"}}
+      {"00000000000000000000000000000001": {"name": "EVERYWHERE", "type": "pi_propagation", "lat": -37.5000, "lon": 145.5000, "builder": "self"}}
       EOF
       chmod 0664 "$H/.reticulum-node-medic/kin.json"
       echo '{"nodes": [], "history": {}}' > "$H/.reticulum-node-medic/registry.json"
