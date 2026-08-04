@@ -161,10 +161,53 @@ def suggest_extend_reach(topo: Topology, interference_log=None,
     return out
 
 
-def suggest(topo: Topology, interference_log=None) -> List[Suggestion]:
+def check_terrain(suggestions: List[Suggestion], topo: Topology,
+                  store=None, antenna_m: float = 3.0) -> List[Suggestion]:
+    """Ask the ground whether each suggested spot can actually see its partners.
+
+    estimate_rssi_dbm knows only DISTANCE. That is how a sub-kilometre link between
+    FAITH and the medic came out looking comfortable and then failed — the path
+    ran through houses. Terrain cannot see houses either, but it can see hills,
+    and a hill is the failure a distance model is least equipped to notice.
+
+    Fail-OPEN by design: no tiles, or tiles that do not cover the path, leave
+    the suggestion exactly as it was with a caution saying so. A field tool that
+    withheld advice because it lacked a map would be worse than one that gave
+    advice with a stated limit.
+    """
+    if store is None:
+        return suggestions
+    from monitor.terrain import advice, line_of_sight
+    for s in suggestions:
+        blocked, unknown = [], 0
+        for est in s.estimates:
+            node = next((n for n in topo.nodes if n.id == est.get("node")), None)
+            if node is None or node.lat is None or node.lon is None:
+                continue
+            v = line_of_sight(store, s.lat, s.lon, antenna_m,
+                              node.lat, node.lon, antenna_m)
+            est["terrain"] = v.status
+            est["terrain_reason"] = v.reason
+            if v.status == "obstructed":
+                blocked.append((est.get("name") or est.get("node"), v))
+            elif v.status == "unknown":
+                unknown += 1
+        if blocked:
+            names = ", ".join(str(b[0]) for b in blocked)
+            worst = min(blocked, key=lambda b: b[1].worst_clearance or 0)[1]
+            s.cautions.append(f"Ground blocks the path to {names}. {worst.reason} "
+                              f"{advice(worst)}")
+        elif unknown and unknown == len(s.estimates):
+            s.cautions.append("No terrain map for this area — this estimate is "
+                              "distance only. Walk the path before committing.")
+    return suggestions
+
+
+def suggest(topo: Topology, interference_log=None, terrain_store=None
+            ) -> List[Suggestion]:
     """The 'Suggest next node' button: fill gaps when there are any, otherwise
-    extend the network's reach."""
+    extend the network's reach. *terrain_store* (a monitor.terrain.TileStore)
+    adds a line-of-sight check when tiles are available."""
     gaps = suggest_fill_gaps(topo, interference_log)
-    if gaps:
-        return gaps
-    return suggest_extend_reach(topo, interference_log)
+    out = gaps if gaps else suggest_extend_reach(topo, interference_log)
+    return check_terrain(out, topo, terrain_store)
