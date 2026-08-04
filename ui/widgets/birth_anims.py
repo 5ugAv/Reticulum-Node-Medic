@@ -79,9 +79,6 @@ MEDIC_CABLE_MICRO_PNG = os.path.join(_ANIM_DIR, "node_medic_cable_micro.png")
 #: separated vertically. An offline render showed the medic squarely on top of
 #: the Pi. Cut, the braid tiles to ANY length, which is what lets the boards be
 #: placed freely while the cable still runs between them.
-#: Left edge of the case (also the antenna's column) as a fraction of the
-#: sprite's width. The cable enters a little in from it.
-MEDIC_CASE_LEFT = 0.1873
 #: The drawing with its blue cable AND plug removed entirely — case, antenna and
 #: the power lead that curls off to the right.
 #:
@@ -100,15 +97,6 @@ MEDIC_NOCABLE_PNG = os.path.join(_ANIM_DIR, "medic_nocable_micro.png")
 PLUG_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "plug_micro_drawn.png")
 #: A straight slice of the same drawing's braid, from its dead-vertical run.
 BRAID_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "braid_micro_drawn.png")
-#: The same slice rotated 90°, for the cable's horizontal leg.
-#:
-#: Why there IS a horizontal leg: a plug enters a Pi Zero's socket VERTICALLY,
-#: because the socket is on the board's underside. With a single straight braid
-#: the medic must therefore sit below the socket — which is what kept pulling
-#: the Pi back on top of it. An elbow lets the two stand SIDE BY SIDE (operator
-#: asked three times for the Pi on the left) while the last segment stays
-#: vertical, so the plug still goes in straight.
-BRAID_MICRO_H_PNG = os.path.join(_ANIM_DIR, "braid_micro_h.png")
 #: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
 #: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
 #: insert-into-the-MEDIC animation, whose geometry is measured against it.
@@ -194,6 +182,20 @@ class _LoopAnim(Widget):
 
     def _draw(self):
         raise NotImplementedError
+
+
+def _bezier(p0, p1, p2, p3, n):
+    """*n*+1 points along a cubic Bezier. Used to sweep a cable along a curve
+    instead of a right angle — see ConnectPiAnim."""
+    pts = []
+    for i in range(n + 1):
+        s = i / float(n)
+        m = 1.0 - s
+        pts.append((m ** 3 * p0[0] + 3 * m * m * s * p1[0]
+                    + 3 * m * s * s * p2[0] + s ** 3 * p3[0],
+                    m ** 3 * p0[1] + 3 * m * m * s * p1[1]
+                    + 3 * m * s * s * p2[1] + s ** 3 * p3[1]))
+    return pts
 
 
 def _draw_medic_vector(x, y, w, h):
@@ -887,14 +889,8 @@ class ConnectPiAnim(ConnectBoardAnim):
                  or _texture(MEDIC_PNG))
         plug = _texture(PLUG_MICRO_DRAWN_PNG) or _texture(PLUG_MICRO_PNG)
         braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
-        braid_h = _texture(BRAID_MICRO_H_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
-        # --- the medic, still, standing on the floor at the RIGHT -----------
-        # Operator, 2026-08-04: "don't put the pi on top, keep it to the left."
-        # That is the arrangement the drawing itself depicts — the cable leaves
-        # the medic's bottom, curves LEFT, and the plug points up at the far
-        # left — so the drawn curve is kept and the Pi hangs off its end.
         t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
         # A real micro-USB moulding is ~2.4:1 and the drawn one keeps that
         # ratio, so this is sized by WIDTH and the height follows.
@@ -909,17 +905,20 @@ class ConnectPiAnim(ConnectBoardAnim):
         ph = h * 0.27
         pw = ph * (pi.width / float(pi.height))
 
-        span = dp(64)                               # the gap the cable crosses
+        # The medic sprite's leftmost ink IS its antenna, so this gap is
+        # measured Pi-edge-to-antenna: the operator wants them almost
+        # touching, which also buys back screen width.
+        span = dp(14)
         total = pw + span + mw
         pxx = x + (w - total) / 2.0                 # centre the pair
         mxx = pxx + pw + span
 
         data_x = pxx + pw * PI_ZERO_PORTS["data"]
         pwr_x = pxx + pw * PI_ZERO_PORTS["power"]
-        corner_y = y + dp(24)                       # where the run turns
-        # The vertical leg has to be long enough that the plug still starts
-        # ABOVE the elbow at t=0, or it sets off from inside its own cable.
-        port_y = corner_y + travel + plug_h + dp(10)
+        floor = y + dp(16)                          # where the sweep bottoms out
+        # Enough height that the plug still starts ABOVE the curve at t=0, or it
+        # sets off from inside its own cable.
+        port_y = floor + travel + plug_h + dp(34)
         pyy = port_y - ph * (1.0 - PI_ZERO_PORT_Y)
 
         # --- the plug travels up and INSERTS --------------------------------
@@ -941,26 +940,38 @@ class ConnectPiAnim(ConnectBoardAnim):
             # board it is entering.
             bw = plug_w * 0.42
             Color(1, 1, 1, 1)
-            # horizontal leg: the elbow across to inside the medic's case
-            if braid_h is not None:
-                hw = bw * (braid_h.width / float(braid_h.height))
-                xx = data_x - bw / 2.0
-                stop = mxx + mw * (MEDIC_CASE_LEFT + 0.12)
-                while xx < stop:
-                    Rectangle(texture=braid_h, pos=(xx, corner_y - bw / 2.0),
-                              size=(min(hw, stop - xx), bw))
-                    xx += hw * 0.92                 # overlap, so no seams
-            # vertical leg: the elbow up to the plug
             if braid is not None:
-                bh = bw * (braid.height / float(braid.width))
-                yy = corner_y - bw / 2.0
-                while yy < plug_bottom + dp(3):
-                    # the LAST tile is squashed to land on the plug rather than
-                    # run past it — a whole tile of overshoot is a visible tail
-                    seg = min(bh, plug_bottom + dp(3) - yy)
-                    Rectangle(texture=braid, pos=(data_x - bw / 2.0, yy),
-                              size=(bw, seg))
-                    yy += bh * 0.92
+                # A SWEEP, not an elbow. Modelled on the radio-board step's own
+                # sprite (node_medic_cable.png), which the operator pointed at:
+                # a thick braided cable leaving the medic's base, swooping down
+                # and round, and rising to a plug that points up.
+                #
+                # The last control point sits directly beneath the plug, which
+                # forces the final tangent VERTICAL — the plug still enters the
+                # socket straight, which is the physical constraint behind this
+                # whole layout. Both controls stay inside the widget: Kivy does
+                # not clip a canvas, so dipping them below the floor would paint
+                # over the body text under the stage.
+                p0 = (mxx + mw * 0.42, myy + dp(6))      # out of the base
+                p1 = (p0[0], y + dp(8))
+                p2 = (data_x, y + dp(8))
+                p3 = (data_x, plug_bottom + dp(3))
+                pts = _bezier(p0, p1, p2, p3, 34)
+                for i in range(len(pts) - 1):
+                    (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+                    ddx, ddy = x1 - x0, y1 - y0
+                    ln = math.hypot(ddx, ddy)
+                    if ln < 0.5:
+                        continue
+                    # the braid slice runs along +y, so subtract 90°
+                    ang = math.degrees(math.atan2(ddy, ddx)) - 90.0
+                    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                    PushMatrix()
+                    Rotate(angle=ang, origin=(cx, cy))
+                    Rectangle(texture=braid,
+                              pos=(cx - bw / 2.0, cy - ln / 2.0),
+                              size=(bw, ln + dp(1.5)))   # overlap, no seams
+                    PopMatrix()
 
             if medic is not None:
                 Color(1, 1, 1, 1)

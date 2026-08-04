@@ -92,22 +92,41 @@ def test_the_layers_stack_cable_medic_pi_plug():
     seg = _connect_pi()
     # "texture=braid" is a PREFIX of "texture=braid_h", so match the horizontal
     # leg by its full token or index() silently returns the wrong occurrence.
-    names = ("texture=braid_h", "texture=braid,", "texture=medic",
-             "texture=pi,", "texture=plug")
+    names = ("texture=braid,", "texture=medic", "texture=pi,", "texture=plug")
     order = [seg.index(n) for n in names]
     assert order == sorted(order), (
         f"draw order wrong: {dict(zip(names, order))}")
 
 
-def test_the_cable_turns_a_corner():
-    """THE reason the Pi can sit to the LEFT rather than on top. A plug enters
-    a Pi Zero's socket vertically, so with one straight run the medic is forced
-    below the socket — which on a wide, short stage reads as underneath. The
-    elbow keeps the final segment vertical while the boards stand side by
-    side. Operator asked for this three times."""
+def test_the_cable_sweeps_instead_of_running_straight():
+    """THE reason the Pi can sit to the LEFT rather than on top.
+
+    A plug enters a Pi Zero's socket vertically, so with one straight run the
+    medic is forced below the socket — which on a wide, short stage reads as
+    underneath. A curve lets the boards stand side by side, and it is modelled
+    on the radio-board step's own sprite, which draws exactly this shape
+    (operator, 2026-08-04). A right-angle elbow was the earlier, wrong answer.
+    """
     seg = _connect_pi()
-    assert "texture=braid_h" in seg, "no horizontal leg — the Pi will stack"
-    assert "corner_y" in seg, "the elbow needs an explicit turn point"
+    assert "_bezier(" in seg, "no sweep — a straight run stacks the Pi again"
+    assert "Rotate(angle=ang" in seg, (
+        "each braid tile must follow the local tangent, or the rope kinks")
+
+
+def test_the_sweep_ends_vertical_under_the_plug():
+    """The final control point sits directly beneath the plug, which forces the
+    last tangent vertical. Without that the cable would drag the plug in at an
+    angle, and a micro-USB plug only goes in straight."""
+    seg = _connect_pi()
+    assert "p2 = (data_x," in seg and "p3 = (data_x," in seg, (
+        "the last two control points must share the plug's x")
+
+
+def test_the_sweep_stays_inside_the_widget():
+    """Kivy does not clip a widget's canvas, so a control point below the floor
+    paints over the body text beneath the stage."""
+    seg = _connect_pi()
+    assert "p1 = (p0[0], y + dp(" in seg and "p2 = (data_x, y + dp(" in seg
 
 
 def test_the_plug_actually_enters_the_socket():
@@ -124,9 +143,9 @@ def test_the_plug_starts_clear_of_the_board():
     read as a plug already in the socket, twitching."""
     seg = _connect_pi()
     assert "travel = plug_h" in seg, "travel must be a real gap, not a nudge"
-    assert "corner_y + travel + plug_h" in seg, (
-        "the vertical leg must be DERIVED from the travel — sized on its own, "
-        "the plug sets off from inside its own cable")
+    assert "floor + travel + plug_h" in seg, (
+        "the socket's height must be DERIVED from the travel — sized on its "
+        "own, the plug sets off from inside its own cable")
 
 
 def test_the_power_port_is_marked_forbidden_not_merely_different():
