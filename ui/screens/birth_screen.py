@@ -1215,6 +1215,10 @@ class BirthScreen(BoxLayout):
         operator reported it as looping (2026-08-02). It is in fact the handoff,
         pre-filled with everything they just built; it only needed to say so.
         """
+        if self._busy_with_a_build():
+            self._warn_build_running()    # don't rebuild the page mid-flash
+            return
+        self._fresh_lap()                   # no stale board from the last lap
         self._from_imaging = (node_name or "").strip() or True
 
     def rescan_after_imaging(self):
@@ -1402,6 +1406,52 @@ class BirthScreen(BoxLayout):
         except Exception:
             return False
 
+    def _fresh_lap(self):
+        """Drop everything SELECTION-shaped from the previous build.
+
+        This screen is reused across builds, and a stale ``_sel_board`` silently
+        SKIPPED the board pick + confirm gate and offered the last lap's board —
+        a V3 nearly flashed as a 'Heltec V4', caught live 2026-08-01. It only
+        got reset on the guided path, so the other four ways into BIRTH each
+        carried the previous lap's selection in (audit, 2026-08-03).
+
+        Deliberately does NOT clear the per-caller prefills (``_prefill_location``,
+        ``_from_imaging``, the name field). Every caller resets FIRST and applies
+        its own prefill after, so a shared reset must not undo what the caller is
+        about to set. begin_guided clears those separately, because a fresh
+        guided lap really does start from nothing.
+
+        Sets ``_lap_prepared`` so ``enter_birth`` knows this lap is already
+        clean and does not reset a second time — which would rebuild the chooser
+        out from under a just-prefilled name field."""
+        self._sel_board = None
+        self._sel_pi = None
+        self._detected = None
+        self._rtnode_target = None
+        self._firmware = None
+        # The previous build's page is over; whoever calls _build_chooser next
+        # puts the chooser back, so the flag has to agree or it describes a
+        # header that is no longer on screen.
+        self._flash_view = False
+        self._lap_prepared = True
+
+    def enter_birth(self):
+        """Called by ``switch_mode`` BEFORE the transition, on EVERY entry to
+        BIRTH — the one choke point that catches entries nobody thought to wire
+        up, including future ones.
+
+        Does nothing while a build is running (it owns the screen), and nothing
+        when a caller already prepared this lap via _fresh_lap — otherwise a
+        plain reset here would wipe the name/location they just stamped on."""
+        if self._busy_with_a_build():
+            return
+        if getattr(self, "_lap_prepared", False):
+            self._lap_prepared = False
+            return
+        self._fresh_lap()
+        self._lap_prepared = False
+        self._build_chooser()
+
     def begin_guided(self, path):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
@@ -1410,23 +1460,11 @@ class BirthScreen(BoxLayout):
         if self._busy_with_a_build():
             self._warn_build_running()    # never reset under a running build
             return
-        # FRESH LAP: this screen is reused, and a stale _sel_board from the
-        # previous build silently SKIPPED the board pick + confirm gate and
-        # offered the last lap's board (a V3 nearly flashed as 'Heltec V4' —
-        # caught live 2026-08-01). Nothing selection-shaped survives.
-        self._sel_board = None
-        # The previous build's page is over: _build_chooser() below puts the
-        # chooser back, so the flag has to agree or it describes a header that
-        # is no longer on screen.
-        self._flash_view = False
+        self._fresh_lap()
         # Cleared here too, or every later visit to BIRTH shows the green
         # "Card written — now building <the PREVIOUS node>" banner over an
         # empty form (audit, 2026-08-03).
         self._from_imaging = None
-        self._sel_pi = None
-        self._detected = None
-        self._rtnode_target = None
-        self._firmware = None
         # A map-stamped position belongs to ONE node: left set, every later
         # birth in the session inherited the previous node's coordinates
         # (2026-08-01 bug hunt — a privacy leak as well as a wrong pin).
@@ -2619,6 +2657,7 @@ class BirthScreen(BoxLayout):
         if self._busy_with_a_build():
             self._warn_build_running()    # don't rebuild the page mid-flash
             return
+        self._fresh_lap()                   # no stale board from the last lap
         self._prefill_location = (lat, lon, source)
         self._build_chooser()
 
@@ -2629,6 +2668,7 @@ class BirthScreen(BoxLayout):
         if self._busy_with_a_build():
             self._warn_build_running()    # don't rebuild the page mid-flash
             return
+        self._fresh_lap()                   # no stale board from the last lap
         self._build_chooser()               # ensure the name field exists
         if getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name or "")

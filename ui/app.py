@@ -1831,6 +1831,17 @@ class ReticulumNodeMedicApp(App):
                 scr = getattr(self, "pi_imager_screen", None)
                 if scr is not None and hasattr(scr, "reset_for_new_card"):
                     scr.reset_for_new_card()
+            if mode_name == "birth":
+                # THE choke point for BIRTH. Five callers reach this screen and
+                # only the guided one used to clear the previous lap, so the
+                # others carried a stale _sel_board in — which skips the
+                # board-confirm gate (a V3 nearly flashed as a 'Heltec V4',
+                # 2026-08-01). Callers that prefill a name or location reset
+                # themselves and mark the lap prepared, so this is a no-op for
+                # them; it catches the plain entries, and any added later.
+                scr = getattr(self, "birth_screen", None)
+                if scr is not None and hasattr(scr, "enter_birth"):
+                    scr.enter_birth()
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest

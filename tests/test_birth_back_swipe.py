@@ -114,8 +114,89 @@ def test_busy_check_does_not_consult_the_view_flag():
 
 # ---- the fresh lap --------------------------------------------------------
 
-def test_begin_guided_clears_the_flash_view():
-    """Now that the flag no longer gates anything, a new lap started from the
-    certificate page must still drop it — begin_guided puts the chooser back,
-    so the flag has to agree or it describes a header that isn't on screen."""
-    assert "_flash_view = False" in func_source(SCREEN, "begin_guided")
+def test_the_fresh_lap_clears_the_flash_view():
+    """Now that the flag no longer gates anything, a new lap must still drop it —
+    the lap puts the chooser back, so the flag has to agree or it describes a
+    header that isn't on screen."""
+    assert "self._flash_view = False" in func_source(SCREEN, "_fresh_lap")
+
+
+# ---- one reset, reached from every entry ----------------------------------
+
+def test_every_way_into_birth_starts_a_fresh_lap():
+    """The V3-nearly-flashed-as-a-V4 hazard: a stale _sel_board skips the
+    board-confirm gate. Only begin_guided used to reset, so the other four
+    entries carried the previous lap's selection in (audit, 2026-08-03)."""
+    for preparer in ("begin_guided", "prefill_name", "set_prefill_location",
+                     "arrived_from_imaging"):
+        assert "_fresh_lap()" in func_source(SCREEN, preparer), preparer
+
+
+def test_fresh_lap_drops_the_board_selection():
+    body = func_source(SCREEN, "_fresh_lap")
+    for attr in ("_sel_board", "_sel_pi", "_detected", "_rtnode_target", "_firmware"):
+        assert f"self.{attr} = None" in body, attr
+
+
+def test_fresh_lap_leaves_the_per_caller_prefills_alone():
+    """Every caller resets FIRST and applies its own prefill after, so a shared
+    reset must not undo what the caller is about to set. prefill_name writes
+    into the name WIDGET, so a second reset would silently blank it.
+
+    Checks the parsed CODE — the docstring names these on purpose, to say why
+    they are deliberately absent."""
+    import ast
+    tree = ast.parse(textwrap.dedent(func_source(SCREEN, "_fresh_lap")))
+    touched = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    assert "_prefill_location" not in touched
+    assert "_from_imaging" not in touched
+
+
+def test_enter_birth_skips_a_lap_a_caller_already_prepared(monkeypatch):
+    _stub_kivy_app(monkeypatch, flashing=False)
+    enter_birth = _load("enter_birth")
+    rebuilt = []
+    screen = types.SimpleNamespace(
+        _lap_prepared=True,
+        _busy_with_a_build=lambda: False,
+        _fresh_lap=lambda: rebuilt.append("reset"),
+        _build_chooser=lambda *a, **k: rebuilt.append("chooser"))
+    enter_birth(screen)
+    assert rebuilt == [], "a prepared lap must not be reset out from under"
+    assert screen._lap_prepared is False, "the flag must be consumed"
+
+
+def test_enter_birth_resets_a_plain_entry(monkeypatch):
+    """The triage 'Build' button just switches mode with no preparation — this
+    is the entry that carried a stale board in."""
+    _stub_kivy_app(monkeypatch, flashing=False)
+    enter_birth = _load("enter_birth")
+    did = []
+    screen = types.SimpleNamespace(
+        _lap_prepared=False,
+        _busy_with_a_build=lambda: False,
+        _fresh_lap=lambda: did.append("reset"),
+        _build_chooser=lambda *a, **k: did.append("chooser"))
+    enter_birth(screen)
+    assert did == ["reset", "chooser"]
+
+
+def test_enter_birth_leaves_a_running_build_alone(monkeypatch):
+    _stub_kivy_app(monkeypatch, flashing=True)
+    enter_birth = _load("enter_birth")
+    did = []
+    screen = types.SimpleNamespace(
+        _lap_prepared=False,
+        _busy_with_a_build=lambda: True,
+        _fresh_lap=lambda: did.append("reset"),
+        _build_chooser=lambda *a, **k: did.append("chooser"))
+    enter_birth(screen)
+    assert did == [], "resetting under a live workflow corrupts the checklist"
+
+
+def test_switch_mode_routes_birth_through_enter_birth():
+    """The choke point itself — without this wiring the plain entries are still
+    unreset, however correct enter_birth is."""
+    body = func_source("ui/app.py", "switch_mode")
+    assert 'mode_name == "birth"' in body
+    assert "enter_birth()" in body

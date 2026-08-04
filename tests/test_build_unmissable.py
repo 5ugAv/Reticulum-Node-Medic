@@ -10,14 +10,30 @@ it started; nothing was asking it.
 SRC = open("ui/screens/birth_screen.py").read()
 
 
+#: Methods whose busy-check is NOT an operator-facing refusal, so warning would
+#: be wrong rather than merely noisy. Keep this list short and justified.
+#:
+#: enter_birth is a navigation hook: switch_mode calls it on EVERY entry to
+#: BIRTH, including the operator deliberately going to WATCH a running build.
+#: Popping "a build is already running" there would fire on the very navigation
+#: that answers it — and would loop, because _warn_build_running's own dismiss
+#: handler calls switch_mode("birth").
+_SILENT_BY_DESIGN = {"enter_birth"}
+
+
 def test_no_busy_guard_returns_silently():
-    """Every place that refuses because a build is running must say so."""
-    import re
-    # find each `if self._busy_with_a_build():` and check the following lines
-    for m in re.finditer(r"if self\._busy_with_a_build\(\):\n((?:.*\n){1,3})", SRC):
-        block = m.group(1)
-        assert "_warn_build_running" in block, (
-            "a busy guard returns without telling the operator:\n" + block)
+    """Every place that REFUSES AN ACTION because a build is running must say so."""
+    import ast
+    tree = ast.parse(SRC)
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef) or fn.name in _SILENT_BY_DESIGN:
+            continue
+        body = ast.get_source_segment(SRC, fn) or ""
+        if "self._busy_with_a_build()" not in body:
+            continue
+        assert "_warn_build_running" in body, (
+            f"{fn.name} refuses because a build is running but never tells the "
+            f"operator — indistinguishable from a dead button (2026-07-30).")
 
 
 def test_the_warning_names_the_running_build_and_its_age():
