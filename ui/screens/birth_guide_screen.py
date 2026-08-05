@@ -754,9 +754,11 @@ class BirthGuideScreen(BoxLayout):
         # chooser simply wasn't asking it.
         paths, dropped = self._paths_for_connected_board()
         for key, title, subtitle in paths:
-            # the Pi card carries a longer description — give it room so it doesn't
-            # clip; the shorter cards stay compact.
-            h = 170 if key == "pi" else 104
+            # The Pi card carries a longer description, so it needs more room.
+            # Both grew by the 22dp the title gained (2026-08-05) — the card
+            # height has to move with the title box or the description loses
+            # exactly what the title gained.
+            h = 192 if key == "pi" else 126
             wrap.add_widget(self._path_button(key, title, subtitle, height=h))
         if dropped:
             # Say WHY it is missing. An option that silently disappears between
@@ -984,40 +986,34 @@ class BirthGuideScreen(BoxLayout):
         return btn
 
     def _path_button(self, key, title, subtitle, height=104):
-        """A choice card that GROWS to fit its own text.
+        """A choice card. The title gets room for TWO lines.
 
-        The title used to be pinned to 30dp and the card to a hard-coded 104
-        (170 for the Pi one). "A radio for phone or computer (RNode)" wraps to
-        two lines at 21sp, so its second line — the "(RNode)" that names the
-        thing — was squashed into the description under it (operator, on the
-        5" panel, 2026-08-05). Hard-coded heights only ever fit the strings
-        they were measured against, and these strings are translated into
-        eight languages, several of which run longer than the English.
+        "A radio for phone or computer (RNode)" was squashed on the 5" panel —
+        the "(RNode)" that names the thing collided with the description under
+        it (operator, 2026-08-05). The title box was 30dp, one line's worth.
 
-        So *height* is now a MINIMUM, not the size: both labels take the height
-        their rendered text actually needs, and the card follows. No loop —
-        width flows down from the button, height flows up from the text, and
-        the two never depend on each other.
+        The extra room is given rather than computed, deliberately. An earlier
+        attempt made the card size itself to its content and that OVERFLOWED:
+        the description ran past the card and over the text below it, which was
+        worse than the clipping it replaced. Sizing a Button's overlaid content
+        reactively is fiddly, and this screen is in the operator's hands right
+        now. A fixed, generous box cannot overflow — the labels clip inside it
+        at worst — and it costs a little whitespace on the short titles.
+
+        Honest limit: this was NOT reproducible off the device. The string
+        measures 25px at every width from 560 to 720, in both the default font
+        and the DejaVu the app switches to, so the reason it wraps on the panel
+        is still unknown. Two lines of room covers it either way.
         """
         btn = Button(size_hint_y=None, height=dp(height), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
-        pad_y = dp(12)
-        inner = BoxLayout(orientation="vertical", size_hint=(None, None),
-                          padding=[dp(18), pad_y], spacing=dp(4))
-
-        def _grows(lbl):
-            lbl.size_hint_y = None
-            lbl.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1]))
-            return lbl
-
-        inner.add_widget(_grows(_line(title, "21sp", bold=True)))
-        inner.add_widget(_grows(_line(subtitle, "14sp", color="text_secondary")))
-        inner.bind(minimum_height=inner.setter("height"))
-        # width DOWN from the card (so the labels know where to wrap), height UP
-        # from the text (so nothing is ever clipped).
-        btn.bind(width=lambda _b, w: setattr(inner, "width", w),
+        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
+        inner.add_widget(_line(title, "21sp", bold=True, h=52))
+        sub = _line(subtitle, "14sp", color="text_secondary")
+        inner.add_widget(sub)
+        inner.size = btn.size
+        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
                  pos=lambda _b, v: setattr(inner, "pos", v))
-        inner.bind(height=lambda _i, h: setattr(btn, "height", max(dp(height), h)))
         btn.add_widget(inner)
         btn.bind(on_release=lambda *_: self._choose(key))
         return btn
