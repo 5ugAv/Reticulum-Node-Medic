@@ -91,3 +91,53 @@ def test_the_esp32_style_serial_still_matches(tmp_path):
     esp = "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:04:00:04-if00"
     save_cert(_cert("rnode-5a59", esp), cert_dir=d)
     assert delete_by_usb_serial(esp, cert_dir=d) == 1
+
+
+# -- a repair-rebirth keeps its name AND stays kin ----------------------------
+
+def test_a_board_is_recognised_whichever_mode_it_is_plugged_in(tmp_path):
+    """Operator, 2026-08-05: "someone's rebirthing a node ... because it's got
+    issues, not because they need to change it ... the user should be able to
+    use the same name on a board that was kin and reflashing it as the same
+    name and still making it kin after that rebirth."
+
+    That only holds if the board's identity survives the reflash. The cert is
+    written in FIRMWARE mode; the board may next be seen in its BOOTLOADER. Both
+    must resolve to the same board or it comes back a stranger and loses its
+    name — the exact opposite of keeping fleet records consistent.
+    """
+    from ui.cert_store import cert_for_usb_serial
+    d = str(tmp_path)
+    save_cert(_cert("rak4", FIRMWARE_ID), cert_dir=d)
+    found = cert_for_usb_serial(BOOTLOADER_ID, cert_dir=d)
+    assert found is not None, "a rebirthed board came back unrecognised"
+    assert found["node_name"] == "rak4", "it lost its name"
+
+
+def test_the_same_name_may_be_reused_and_leaves_ONE_record(tmp_path):
+    """Reusing the name is legitimate: the node is the same node, repaired. The
+    end state must be one certificate, not a duplicate and not a hole."""
+    d = str(tmp_path)
+    save_cert(_cert("rak4", FIRMWARE_ID), cert_dir=d)
+    delete_by_usb_serial(BOOTLOADER_ID, cert_dir=d)      # the wipe
+    save_cert(_cert("rak4", FIRMWARE_ID), cert_dir=d)    # reborn, same name
+    from ui.cert_store import load_certs
+    same = [c for c in load_certs(d) if c.get("node_name") == "rak4"]
+    assert len(same) == 1, f"expected one record, got {len(same)}"
+
+
+def test_a_different_board_is_never_confused_for_it(tmp_path):
+    from ui.cert_store import cert_for_usb_serial, same_board
+    d = str(tmp_path)
+    save_cert(_cert("rak1", OTHER_ID), cert_dir=d)
+    assert cert_for_usb_serial(BOOTLOADER_ID, cert_dir=d) is None
+    assert not same_board(OTHER_ID, FIRMWARE_ID)
+    assert same_board(OTHER_ID, OTHER_ID)
+
+
+def test_an_empty_fingerprint_matches_nothing(tmp_path):
+    """Older certificates carry usb_serial: None. Two of those must not be
+    treated as 'the same board' just because both are blank."""
+    from ui.cert_store import same_board
+    assert not same_board(None, None)
+    assert not same_board("", "")

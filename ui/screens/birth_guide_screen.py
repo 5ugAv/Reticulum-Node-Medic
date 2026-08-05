@@ -294,14 +294,23 @@ class BirthGuideScreen(BoxLayout):
                         from ui.cert_store import load_certs
                         usb = usb_id_for_port(LocalConnection(), port)
                         if usb:
-                            for cert in load_certs():
-                                if cert.get("usb_serial") == usb:
-                                    c["_kin_by_serial"] = True
-                                    c["node_name"] = (c.get("node_name")
-                                                      or cert.get("node_name"))
-                                    c["board"] = (c.get("board")
-                                                  or cert.get("board"))
-                                    break
+                            # Match by HARDWARE SERIAL, not the whole by-id
+                            # name. An exact compare failed on every nRF52
+                            # board, because the vendor string differs between
+                            # bootloader and firmware (RAKWireless vs
+                            # RAKwireless). A rebirthed board came back
+                            # unrecognised and LOST ITS NAME — the opposite of
+                            # what a repair-rebirth needs, where the operator
+                            # deliberately keeps the same name so their fleet
+                            # records stay consistent (operator, 2026-08-05).
+                            from ui.cert_store import cert_for_usb_serial
+                            cert = cert_for_usb_serial(usb)
+                            if cert:
+                                c["_kin_by_serial"] = True
+                                c["node_name"] = (c.get("node_name")
+                                                  or cert.get("node_name"))
+                                c["board"] = (c.get("board")
+                                              or cert.get("board"))
                     except Exception:
                         pass
                 # STILL unknown? Ask the board itself: a provisioned RNode

@@ -69,6 +69,50 @@ def load_certs(cert_dir: str = CERT_DIR) -> List[Dict]:
     return out
 
 
+def usb_serial_key(usb_serial: str) -> str:
+    """The comparable identity of a board, out of a /dev/serial/by-id name.
+
+    THE ONE WAY to ask "is this the same board?". Never compare the whole by-id
+    basename: the vendor part of it is not stable across a reset. A RAK4631
+    announces itself as ``RAKWireless`` from its bootloader and ``RAKwireless``
+    once running firmware — one capital letter apart — so an exact compare
+    silently fails on every nRF52 board.
+
+    That single letter broke four separate things on 2026-08-05: the post-flash
+    port re-acquire, the DFU pre-touch, retiring an old certificate on rebirth,
+    and recognising a board as kin. Only the hardware serial survives, so key on
+    that and fold case for the rest.
+
+    A rebirth is usually a REPAIR, not a replacement (operator, 2026-08-05): the
+    node keeps its name and must still be kin afterwards. That only works if the
+    board's identity is stable across the reflash — which is this function.
+    """
+    if not usb_serial:
+        return ""
+    try:
+        from workflows.rnode_flash import by_id_serial
+        return (by_id_serial(usb_serial) or usb_serial).lower()
+    except Exception:                                             # noqa: BLE001
+        return usb_serial.lower()
+
+
+def same_board(a: str, b: str) -> bool:
+    """True when two by-id names denote the same physical board."""
+    ka = usb_serial_key(a)
+    return bool(ka) and ka == usb_serial_key(b)
+
+
+def cert_for_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR):
+    """The stored certificate for this board, or None — matched by serial, so a
+    board recognises whether it is in its bootloader or running firmware."""
+    if not usb_serial:
+        return None
+    for cert in load_certs(cert_dir):
+        if same_board(cert.get("usb_serial"), usb_serial):
+            return cert
+    return None
+
+
 def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
     """Remove stored certificates whose board fingerprint is *usb_serial*.
     Called when a board is WIPED (rebirth): leaving the old certificate behind
@@ -76,25 +120,10 @@ def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
     (2026-08-01 bug hunt). Returns how many were removed."""
     if not usb_serial:
         return 0
-    # Match on the board's HARDWARE SERIAL, not the whole by-id string. The
-    # rest of that string is not stable across a reset: a RAK4631 announces
-    # itself as RAKWireless from its bootloader and RAKwireless once running
-    # firmware — one capital letter apart. A certificate is written after
-    # verify (firmware mode) but the wipe that should retire it runs while the
-    # board is in DFU, so an exact compare never matched and the old
-    # certificate survived. Live 2026-08-05: rebirthing rak2 as rak3 left TWO
-    # certificates pointing at the same physical board.
-    def _key(s):
-        try:
-            from workflows.rnode_flash import by_id_serial
-            return (by_id_serial(s) or s or "").lower()
-        except Exception:                                         # noqa: BLE001
-            return (s or "").lower()
-
-    want = _key(usb_serial)
+    want = usb_serial_key(usb_serial)
     removed = 0
     for cert in load_certs(cert_dir):
-        if _key(cert.get("usb_serial")) != want:
+        if not want or usb_serial_key(cert.get("usb_serial")) != want:
             continue
         cid = cert.get("_id")
         if not cid:
