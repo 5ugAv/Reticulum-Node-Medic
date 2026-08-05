@@ -584,14 +584,24 @@ class BirthGuideScreen(BoxLayout):
                 except Exception:
                     pass
                 if ok:
-                    # blank board -> the proven birth flow takes over; old name
-                    # prefilled as a starting point (rename freely). Path "any":
-                    # a rebirth is EXACTLY when the node's type may change, so
-                    # land on an unscoped chooser — the operator picks the
-                    # family fresh (RTNode-2400 / RNode / Pi) instead of being
-                    # steered back to what it was (operator feedback 2026-07-31).
-                    if self._on_complete:
-                        self._on_complete("any", old_name)
+                    # A rebirth is EXACTLY when the node's type may change, so
+                    # land on the CARD CHOOSER — the one that visibly offers
+                    # RNode / RTNode-2400 / Pi + RNode — and let the operator
+                    # pick the family afresh.
+                    #
+                    # This used to hand straight off to the BIRTH form, which
+                    # arrives with a type already chosen and only a small
+                    # "change" link, so a rebirth read as "same thing again"
+                    # (operator, 2026-08-06: "reuse the screen that gives the
+                    # user visible options of what they want to birth").
+                    #
+                    # _render_intro re-reads the board on the way in, which is
+                    # exactly right here: the wipe just changed what this board
+                    # is, so the options are computed from what it is NOW.
+                    self._node_name = old_name or ""   # carried to the name step
+                    self._pair_checked = False         # a fresh lap re-checks
+                    self._i = 0
+                    self._render_intro(builds_only=True)
                 else:
                     from ui.requirement_popup import requirement_popup
                     requirement_popup(
@@ -736,7 +746,10 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(wrap)
 
     # -- rendering ---------------------------------------------------------
-    def _render_intro(self):
+    def _render_intro(self, builds_only=False):
+        """The card chooser. *builds_only* drops Mitosis and adopt-over-the-air,
+        for the rebirth case where the question is only "what shall THIS board
+        become?" — see the wipe handler."""
         self.clear_widgets()
         self._current = None
         self._back_action = self._render_detect   # chooser -> detect landing
@@ -768,13 +781,19 @@ class BirthGuideScreen(BoxLayout):
             # Say WHY it is missing. An option that silently disappears between
             # one visit and the next reads as a glitch.
             wrap.add_widget(_line(dropped, "13.5sp", color="text_secondary", h=40))
-        # Mitosis is a different KIND of action — not building a node but cloning
-        # the Node Medic itself — so it sits at the end, styled apart, and routes
-        # straight to the MITOSIS screen (no guided build steps).
-        wrap.add_widget(self._mitosis_button())
-        # Adopt a node the medic HEARS over LoRa (no USB) — field fleet enrolment.
-        if self._heard_fn is not None:
-            wrap.add_widget(self._over_air_button())
+        # After a WIPE the operator is answering a narrower question: this board,
+        # in my hand, blank — what shall it become? Cloning the Node Medic and
+        # adopting a node over the air are neither of those, and offering them
+        # there invites a mis-tap that abandons the board mid-rebirth (operator,
+        # 2026-08-06: "except without the mitosis or over air options").
+        if not builds_only:
+            # Mitosis is a different KIND of action — not building a node but
+            # cloning the Node Medic itself — so it sits at the end, styled
+            # apart, and routes straight to the MITOSIS screen.
+            wrap.add_widget(self._mitosis_button())
+            # Adopt a node the medic HEARS over LoRa (no USB) — field enrolment.
+            if self._heard_fn is not None:
+                wrap.add_widget(self._over_air_button())
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
         self.add_widget(wrap)
