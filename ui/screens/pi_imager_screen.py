@@ -454,11 +454,17 @@ class PiImagerScreen(BoxLayout):
         # someone tidies cables or decides to plug the radio in (operator,
         # 2026-08-02). Interrupting a write leaves a half-written card that
         # boots far enough to look plausible and then fails.
-        self.col.add_widget(Callout(
+        # Kept on the screen object: the moment the write finishes this exact
+        # box has to STOP saying "don't unplug anything", because the very next
+        # instruction is to unplug the Pi. Leaving it up put two contradictory
+        # instructions on one screen with the louder one wrong (operator,
+        # 2026-08-06: "conflicting instructions at this stage").
+        self._callout = Callout(
             "Leave everything alone until this finishes",
             "Don't unplug anything from Node Medic, don't take the card out, "
             "and don't power Node Medic off. A card interrupted part-way "
-            "through has to be written again from the start."))
+            "through has to be written again from the start.")
+        self.col.add_widget(self._callout)
         # The wait is minutes long with nothing to look at, and the most costly
         # thing an operator can do in that window is decide it has hung and pull
         # the card. The theatre shows organs landing one at a time and a heart
@@ -588,6 +594,11 @@ class PiImagerScreen(BoxLayout):
         plan = pi_imager.next_steps_after_imaging(
             self._card_is_in_the_pi(), hostname=v.get("hostname", ""),
             pi_name=self._pi_name, wifi_ssid=v.get("ssid", ""))
+        # THE BOX CHANGES ITS MIND HERE. Same position on the screen, so the eye
+        # that has been resting on "leave everything alone" for four minutes
+        # lands on the thing to do next — in green, because the operator has
+        # been trained by the yellow one to read that colour as "don't".
+        self._swap_callout_to_action(plan)
         self.col.add_widget(_line(plan["title"], bold=True, size="17sp",
                                   color="accent", h=30))
         for step in plan["steps"]:
@@ -678,8 +689,15 @@ class PiImagerScreen(BoxLayout):
         # Overdue: offer a way on rather than trapping anyone behind a Pi that
         # is not going to appear (bad cable, PWR-only port, a card that failed).
         if waited > 180 and not getattr(self, "_boot_escape", None):
+            # NOT "carry on without waiting" — that reads as though the step is
+            # optional and quietly done, when in fact the Pi has NOT come up and
+            # nothing downstream will work until it does. It is safe (it only
+            # stops the poll and navigates; nothing is written), but the label
+            # has to say what it really is: giving up on this attempt and going
+            # back to sort the Pi out (operator, 2026-08-06: "seems like asking
+            # for trouble... this needs to be super user friendly").
             self._boot_escape = Button(
-                text="Carry on without waiting  →", size_hint_y=None,
+                text="Stop waiting — go back and check the Pi", size_hint_y=None,
                 height=dp(52), bold=True, background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -689,6 +707,30 @@ class PiImagerScreen(BoxLayout):
                 "Taking longer than expected. Check it's on a DATA port, not "
                 "PWR IN.", size="13.5sp", color="amber", h=40))
             self.col.add_widget(self._boot_escape)
+
+    def _swap_callout_to_action(self, plan):
+        """Turn the "don't touch anything" box into the DO-THIS-NOW box.
+
+        In place, at the same spot on the screen, because that is where the
+        operator has been looking. The instruction underneath is easy to miss
+        after four minutes of watching a progress ring — and worse than missed,
+        it was being contradicted by the yellow box still shouting "don't unplug
+        anything from Node Medic" (operator, 2026-08-06).
+        """
+        old = getattr(self, "_callout", None)
+        if old is None or old.parent is None:
+            return
+        steps = [s for s in (plan.get("steps") or []) if s.strip()]
+        body = " ".join(steps) or plan.get("note", "")
+        try:
+            idx = self.col.children.index(old)          # children are reversed
+            self.col.remove_widget(old)
+            self._callout = Callout(plan.get("title") or "Do this next", body,
+                                    act=True)
+            self.col.add_widget(self._callout, index=idx)
+        except Exception:                                         # noqa: BLE001
+            pass            # a missing swap must never cost the operator the
+                            # next-steps text, which is added separately below
 
     def _back_to_birth(self):
         from kivy.app import App

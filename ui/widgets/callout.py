@@ -24,6 +24,15 @@ FILL = (0.99, 0.85, 0.20, 1)          # yellow
 OUTLINE = (0.84, 0.00, 0.00, 1)       # red
 INK = (0.10, 0.08, 0.00, 1)           # near-black, for contrast on yellow
 
+#: The DO-THIS-NOW variant. Same red outline so it still reads as "this one
+#: matters", green fill so it does not read as the same warning the operator has
+#: just spent four minutes obeying. Introduced because the imager left the
+#: yellow "don't unplug anything" box on screen while the step underneath it
+#: said to unplug the Pi — two instructions in direct contradiction, with the
+#: louder one wrong (operator, 2026-08-06).
+FILL_ACT = (0.22, 0.78, 0.35, 1)      # green
+INK_ACT = (0.03, 0.14, 0.05, 1)       # near-black, for contrast on green
+
 
 class Callout(BoxLayout):
     """A heading and body in a yellow box with a red border.
@@ -32,7 +41,12 @@ class Callout(BoxLayout):
     the failure that makes a boxed warning look broken.
     """
 
-    def __init__(self, heading: str, body: str = "", **kwargs):
+    def __init__(self, heading: str, body: str = "", act: bool = False,
+                 **kwargs):
+        """*act* switches to the green DO-THIS-NOW fill. Use it for the step the
+        operator must perform, and keep yellow for the thing they must NOT do —
+        the two must never be the same colour on the same screen."""
+        fill, ink = (FILL_ACT, INK_ACT) if act else (FILL, INK)
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
@@ -42,10 +56,10 @@ class Callout(BoxLayout):
         # Big. This is the line that has to stop someone mid-flow — on the 5"
         # panel at 15.5sp it read as just another bold line and the operator
         # watched it float past (2026-08-02).
-        self._head = Label(text=heading, bold=True, font_size="21sp",
-                           color=INK, size_hint_y=None, halign="left",
+        self._head = Label(text=heading, bold=True, font_size="23sp",
+                           color=ink, size_hint_y=None, halign="left",
                            valign="middle", markup=False)
-        self._body = Label(text=body, font_size="13.5sp", color=INK,
+        self._body = Label(text=body, font_size="15sp", color=ink,
                            size_hint_y=None, halign="left", valign="top")
         for lbl in (self._head, self._body):
             # Wrap to the box's width, not the screen's, or long lines run out
@@ -57,7 +71,7 @@ class Callout(BoxLayout):
             self.remove_widget(self._body)
 
         with self.canvas.before:
-            Color(*FILL)
+            Color(*fill)
             self._bg = Rectangle(pos=self.pos, size=self.size)
             Color(*OUTLINE)
             self._border = Line(rectangle=(0, 0, 0, 0), width=dp(1.6))
