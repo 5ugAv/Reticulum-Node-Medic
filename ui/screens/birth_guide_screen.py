@@ -1227,11 +1227,41 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(wrap)
 
     def _board_candidates(self):
-        """[(key, display_name)] the medic could not rule out. Never empty."""
+        """[(key, display_name)] the medic could not rule out. Never empty.
+
+        Re-reads the board when the snapshot cannot be trusted. ``_detected`` is
+        taken once, on the "What are you building?" chooser — but on the Pi path
+        this question comes several screens and a naming step later, so the
+        operator may well have plugged the radio in AFTER that snapshot, or
+        swapped it for another. Trusting it produced the exact failure the
+        operator hit (2026-08-06): the RAK4631 was connected and cleanly
+        identifiable (vendor 239a -> board_key rak4631, no ambiguity at all),
+        yet the screen listed the whole ESP32 catalogue — with no RAK4631 in it —
+        under copy promising the list had been narrowed. The medic knew and
+        asked anyway.
+        """
+        det = getattr(self, "_detected", None) or {}
+        stale = not det.get("boards")
+        if not stale:
+            try:                       # snapshot's board gone or swapped?
+                from ui.hw_factories import local_board_ports
+                stale = det.get("port") not in set(local_board_ports())
+            except Exception:          # noqa: BLE001
+                stale = False
+        if stale:
+            try:
+                from ui.board_detect import detect_board
+                from ui.hw_factories import local_board_ports
+                from workflows.rnode_boards import RNODE_BOARDS
+                fresh = detect_board(list(RNODE_BOARDS.values()),
+                                     ports_fn=local_board_ports) or {}
+                if fresh.get("boards"):
+                    self._detected = fresh
+                    det = fresh
+            except Exception:          # noqa: BLE001
+                pass                   # fail OPEN — a wrong exclusion blocks a build
         try:
-            det = getattr(self, "_detected", None) or {}
-            boards = det.get("boards") or []
-            out = [(b.key, b.display_name) for b in boards]
+            out = [(b.key, b.display_name) for b in (det.get("boards") or [])]
             if out:
                 return out
         except Exception:
