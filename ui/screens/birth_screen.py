@@ -358,6 +358,18 @@ class BirthScreen(BoxLayout):
                                              color="green" if found else "amber"))
             det = self._detected or {}
             det_opts = det.get("firmware") if det.get("found") else None
+            # ANY RNode-capable board can equally be a Pi's radio, so that is a
+            # second option and the operator has to be ASKED which they want.
+            # This used to live inside the `len > 1` branch below, which made it
+            # unreachable for precisely the boards that needed it: a RAK4631
+            # detects as firmware ['rnode'] — length ONE — so the branch was
+            # skipped, pi_rnode was never added, and the screen presented "RNode"
+            # as already decided with only a small "change" link. Rebirthing a
+            # board therefore led straight back to what it had been (operator,
+            # 2026-08-06: "it just goes straight back to flashing what the board
+            # previously was").
+            if det_opts and "rnode" in det_opts and "pi_rnode" not in det_opts:
+                det_opts = list(det_opts) + ["pi_rnode"]
             if det_opts and len(det_opts) > 1:
                 # Detection NARROWED but couldn't decide — ask with the full
                 # labels so the operator picks the family deliberately
@@ -366,9 +378,6 @@ class BirthScreen(BoxLayout):
                 self.header.add_widget(_line(
                     "What should this board become?", bold=True, size="15sp",
                     color="accent"))
-                if "rnode" in det_opts and "pi_rnode" not in det_opts:
-                    # any RNode-capable board can also be a Pi's radio
-                    det_opts = list(det_opts) + ["pi_rnode"]
                 # Uniform family order EVERYWHERE (operator spec 2026-07-31):
                 # RNode -> RTNode-2400 -> Pi + RNode.
                 _rank = {"rnode": 0, "rtnode2400": 1, "pi_rnode": 2}
