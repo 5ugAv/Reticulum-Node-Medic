@@ -522,30 +522,25 @@ class BirthGuideScreen(BoxLayout):
         def work():
             ok, msg = True, ""
             try:
-                from ui.onboard_roster import assert_flashable
-                assert_flashable(port)               # NEVER the medic's own radio
                 import glob
                 import os
-                import subprocess
+                # Wipe by the means the board's CHIP FAMILY supports. This used
+                # to run esptool unconditionally, which on a RAK4631 failed with
+                # "Could not connect to Espressif device" and sent the operator
+                # to Espressif's troubleshooting page for a chip that isn't on
+                # the board (live, 2026-08-05). assert_flashable and the
+                # lock-race retry both live inside wipe_for_rebirth now.
+                from ui.hw_factories import LocalConnection
+                from workflows.rnode_flash import wipe_for_rebirth
                 et = (glob.glob(os.path.expanduser(
-                    "~/.platformio/packages/tool-esptoolpy/esptool.py")) or [None])[0]
-                if not (port and et):
+                    "~/.platformio/packages/tool-esptoolpy/esptool.py")) or [""])[0]
+                if not port:
                     ok, msg = False, tr("Couldn't find the board or the flash tool.")
                 else:
-                    # The detect step's serial banner-read can still hold the
-                    # port for a beat when the operator taps Rebirth right
-                    # after — Errno 11 'could not exclusively lock' (live,
-                    # 2026-07-31). Retry through the race instead of failing.
-                    import time as _t
-                    for attempt in range(4):
-                        r = subprocess.run(
-                            ["python3", et, "--port", port, "erase_flash"],
-                            capture_output=True, text=True, timeout=120)
-                        ok = r.returncode == 0
-                        if ok:
-                            break
-                        msg = (r.stderr or r.stdout or "").strip()[-160:]
-                        _t.sleep(3)
+                    ok, msg = wipe_for_rebirth(LocalConnection(), port,
+                                               esptool_path=et)
+                    if ok:
+                        msg = ""
                 if ok:
                     # The board is now BLANK — its old certificate must go too,
                     # or the fingerprint match reports it as 'already flashed'

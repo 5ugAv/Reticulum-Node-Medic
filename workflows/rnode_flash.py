@@ -256,6 +256,61 @@ def find_port_by_usb_serial(connection, serial, tries: int = 20,
     return None
 
 
+def wipe_for_rebirth(connection, port: str, esptool_path: str = "",
+                     vendor_fn=None, timeout: int = 120, sleep=None,
+                     tries: int = 4):
+    """Make a birthed board blank again, by whatever its CHIP FAMILY supports.
+
+    A rebirth used to run ``esptool erase_flash`` unconditionally. On a RAK4631
+    that produced "Rebirth failed — Couldn't wipe the board: Could not connect
+    to Espressif device: No serial data received" (live, 2026-08-05), because
+    esptool cannot talk to an nRF52 at all. The board was fine; the tool was
+    simply the wrong one, and the error pointed at Espressif's troubleshooting
+    page for a chip that isn't on the board.
+
+    * **nRF52** — there is no chip erase to run. The Adafruit bootloader is the
+      only way back in, so erasing it would brick the board rather than reset
+      it. What a rebirth actually needs is for the board to stop presenting as a
+      provisioned RNode, and ``rnodeconf --eeprom-wipe`` does exactly that. The
+      firmware itself is fully overwritten by the next DFU flash regardless.
+    * **ESP32** — full chip erase, as before, so a board carrying foreign
+      firmware becomes the blank slate autoinstall expects.
+
+    Retries through the "could not exclusively lock port" race, where the detect
+    step's banner read still holds the port for a beat.
+
+    Returns ``(ok, message)``.
+    """
+    from ui.onboard_roster import assert_flashable, guard_is_active
+    if guard_is_active():
+        assert_flashable(port)               # NEVER the medic's own radio
+
+    if vendor_fn is None:
+        from ui.board_detect import port_usb_vendor as vendor_fn
+    from ui.board_detect import _NRF52_VENDORS
+    is_nrf = (vendor_fn(port) or "").lower() in _NRF52_VENDORS
+
+    if is_nrf:
+        cmd = f"rnodeconf {shlex.quote(port)} --eeprom-wipe"
+    elif esptool_path:
+        cmd = f"python3 {shlex.quote(esptool_path)} --port {shlex.quote(port)} erase_flash"
+    else:
+        return False, "Couldn't find the board or the flash tool."
+
+    import time as _t
+    nap = sleep or _t.sleep
+    msg = ""
+    for attempt in range(max(1, tries)):
+        code, out, err = connection.run(cmd, timeout=timeout)
+        low = ((out or "") + (err or "")).lower()
+        if code == 0 or "erase completed" in low or "eeprom wiped" in low:
+            return True, "wiped"
+        msg = ((err or "") or (out or "")).strip()[-160:]
+        if attempt < tries - 1:
+            nap(3)
+    return False, msg
+
+
 class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
