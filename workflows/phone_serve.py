@@ -83,3 +83,32 @@ class AppServer:
             self._httpd.shutdown()
             self._httpd.server_close()
             self._httpd = None
+
+
+def current_ssid() -> Optional[str]:
+    """The Wi-Fi network the medic is ON right now, or None.
+
+    So the phone instruction can NAME the network instead of saying "join the
+    medic's Wi-Fi" — which the operator rightly asked about (2026-08-06: "what
+    does that mean?"). It is ambiguous because the medic does not create a
+    network here: it serves the APK at its OWN address on whatever network it
+    happens to be joined to, so what the phone actually needs is to be on THAT
+    SAME network. Naming it removes the guesswork.
+
+    ``nmcli`` is what the medic has (there is no ``iw`` on it — established by
+    the self-diagnose work). Best-effort: a medic on Ethernet, or with nmcli
+    absent, simply gets the generic wording.
+    """
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "IN-USE,SSID", "dev", "wifi"],
+            capture_output=True, text=True, timeout=6).stdout or ""
+    except Exception:                                             # noqa: BLE001
+        return None
+    for line in out.splitlines():
+        # "*:MyNetwork" — the asterisk marks the connected one.
+        if line.startswith("*:"):
+            ssid = line[2:].strip()
+            return ssid or None
+    return None

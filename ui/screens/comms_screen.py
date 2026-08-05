@@ -147,9 +147,67 @@ class CommsScreen(BoxLayout):
                 "Get the medic and the phone on the SAME Wi-Fi first (or the medic's "
                 "hotspot), then try again."), size="13sp", color="warning_yellow", h=44))
         else:
-            panel.add_widget(_line(tr("On your phone: join the medic's Wi-Fi, scan this, "
-                                      "then allow install from unknown sources."),
-                                   size="12.5sp", color="text_secondary", h=40))
+            # ANDROID REFUSES TWICE, and neither refusal explains itself. The
+            # old one-liner said "allow install from unknown sources", which
+            # assumes the operator knows how — and on Android 8+ there is no
+            # such global setting any more: permission is PER-APP and only
+            # appears part-way through the install, worded as a flat "can't
+            # install" (operator, 2026-08-06: "the phone will say unknown app
+            # can't install ... there needs to be a short instruction").
+            #
+            # So the two scary screens are named, in the order they appear,
+            # with the button to press on each. Someone who has never sideloaded
+            # reads the first warning as "this is malware" and stops.
+            panel.add_widget(_line(tr("On your phone — Android"), bold=True,
+                                   size="13.5sp", color="accent", h=24))
+            # NAME the network. "Join the medic's Wi-Fi" sounds like the medic
+            # broadcasts one — it does not: it serves the APK at its OWN address
+            # on whatever network it is already joined to, so what the phone
+            # needs is to be on THAT SAME network (operator, 2026-08-06: "join
+            # the medic's Wi-Fi. What does that mean?"). The medic knows the
+            # name, so there is no reason to make anyone guess it.
+            try:
+                from workflows.phone_serve import current_ssid
+                ssid = current_ssid()
+            except Exception:                                     # noqa: BLE001
+                ssid = None
+            step_one = (
+                tr("1.  Put your phone on the same Wi-Fi as this medic: {ssid}"
+                   ).format(ssid=ssid) if ssid else
+                tr("1.  Put your phone on the same Wi-Fi network this medic "
+                   "is using."))
+            for step in (
+                step_one,
+                # WHY, because a QR code normally means "open this web link" and
+                # this one does not. The medic IS the server: the code points at
+                # its own address on the local network (192.168.x.x), which
+                # nothing outside that network can reach. A phone with perfect
+                # mobile signal and no shared Wi-Fi will fail, and the operator
+                # would have no way to guess why (2026-08-06: "doesn't the qr
+                # code just require Internet connection of any sort?").
+                tr("     The app comes from this medic, not the internet — "
+                   "mobile data alone cannot reach it."),
+                tr("2.  The browser warns the file may be harmful — "
+                   "choose Download anyway."),
+                tr("3.  Open the downloaded file. Android says it is not "
+                   "allowed to install unknown apps — tap Settings."),
+                tr("4.  Turn on Allow from this source, go back, "
+                   "then tap Install."),
+            ):
+                panel.add_widget(_line(step, size="12.5sp",
+                                       color="text_secondary", h=34))
+            panel.add_widget(_line(tr(
+                "Both warnings are normal: they appear for any app not from the "
+                "Play Store. This one came from the medic in front of you."),
+                size="12sp", color="text_secondary", h=32))
+            # The field answer when there is no shared network to join. The
+            # medic JOINS networks (provisioning/wifi.py — RTNode setup APs,
+            # phone hotspots, venue Wi-Fi); it never raises one of its own, so
+            # the phone has to be the hotspot.
+            panel.add_widget(_line(tr(
+                "No Wi-Fi you both can join? Turn on your phone's hotspot, then "
+                "connect this medic to it in Settings ▸ Wi-Fi."),
+                size="12sp", color="text_secondary", h=32))
             matrix = qr_matrix(url)
             if matrix:
                 holder = AnchorLayout(anchor_x="center", size_hint_y=None)
