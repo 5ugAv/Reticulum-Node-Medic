@@ -89,6 +89,29 @@ def _autoinstall_ok(code: int, out: str) -> bool:
     return (ALREADY_PROVISIONED_MARKER in low) or (SUCCESS_MARKER in low)
 
 
+#: The flasher rnodeconf shells out to for every nRF52 board. Named here so the
+#: preflight and any future carrier of it agree on one string.
+NRF_FLASHER = "adafruit-nrfutil"
+
+
+def _missing_nrf_flasher(connection):
+    """Empty string if the nRF52 flasher is present, else why not and the fix.
+
+    Checked through the CONNECTION, not the tool host: on the cable-birth path
+    the flash runs on the medic, and what matters is whether the binary is on
+    the PATH of whatever will actually run rnodeconf.
+    """
+    try:
+        code, out, _err = connection.run(f"command -v {NRF_FLASHER}", timeout=20)
+    except Exception:                                  # noqa: BLE001
+        return ""                                      # cannot tell — let it try
+    if code == 0 and (out or "").strip():
+        return ""
+    return (f"{NRF_FLASHER} is not installed, and nRF52 boards cannot be "
+            f"flashed without it (rnodeconf calls it to write the DFU). "
+            f"Install it with:  pip3 install --user {NRF_FLASHER}")
+
+
 def birth_flash(connection: Connection, board: RNodeBoard, port: str,
                 band_mhz: int = 915, version: str = FIRMWARE_VERSION,
                 timeout: int = 400):
@@ -123,6 +146,15 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
         interactions = autoinstall_interactions(board, band_mhz)   # validates band
     except ValueError as exc:
         return False, str(exc), False
+
+    # nRF52 boards are flashed by rnodeconf shelling out to `adafruit-nrfutil
+    # dfu serial`. When that binary is missing rnodeconf gets all the way to the
+    # write, prints a pip hint and stops — after erasing nothing but having
+    # spent the operator's time. Say so up front, and say how to fix it.
+    if (board.platform or "").lower().startswith("nrf"):
+        missing = _missing_nrf_flasher(connection)
+        if missing:
+            return False, missing, False
 
     if hasattr(connection, "run_interactive"):
         cmd = board.autoinstall_command(port, version=version, offline=True)

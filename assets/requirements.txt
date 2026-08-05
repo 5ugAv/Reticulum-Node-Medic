@@ -10,3 +10,9 @@ rns==1.3.8
 lxmf==1.0.1
 segno==1.6.6
 kivy==2.3.1
+# The nRF52 flasher. rnodeconf shells out to `adafruit-nrfutil dfu serial` for
+# every nRF52 board (RAK4631, T-Echo, Heltec T114) and simply tells the
+# operator to pip-install it when absent — so without this, those boards cannot
+# be flashed at all. Listed here rather than installed by hand so a CLONE gets
+# it too, and so the wheelhouse carries it for a field birth with no internet.
+adafruit-nrfutil==0.5.3.post16

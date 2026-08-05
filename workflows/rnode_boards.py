@@ -163,10 +163,26 @@ _OFFICIAL = [
               band_map={868: 1, 915: 2, 923: 3}),          # verified on hardware
     _official("t3s3", "LilyGO LoRa T3S3", 10, "ESP32-S3", "SX1262/68, SX127x, SX1280",
               "410-525 / 850-950 MHz / 2.4 GHz", recovery_key="T3S3"),
+    # The three nRF52 boards share one band menu, transcribed from the
+    # rnodeconf 2.5.0 source on the medic (RNS/Utilities/rnodeconf.py) rather
+    # than guessed: "[1] 433  [2] 868  [3] 915  [4] 923".
+    #
+    # Without a band_map, autoinstall_answers() raises "band 915 MHz not yet
+    # verified" and birth_flash returns that as a failure BEFORE any flashing
+    # tool runs. That is exactly what a RAK4631 birth did on 2026-08-05: the
+    # operator saw "Build didn't finish" and nothing had been attempted.
+    #
+    # Note rnodeconf collapses 868/915/923 onto ONE model byte (MODEL_12 here,
+    # MODEL_C7 for the T114) — `elif c_model > 1`. So there is no 915-specific
+    # model, and none is needed: the firmware has no frequency gate at all, and
+    # TX power is clamped by MODEM (SX1262 -> 22 dBm), not by model. 915.125 at
+    # 17 dBm is within both.
     _official("rak4631", "RAK4631", 11, "nRF52", "SX1262",
-              "430-510 / 779-928 MHz", recovery_key="RAK4631"),
+              "430-510 / 779-928 MHz", recovery_key="RAK4631",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("techo", "LilyGO T-Echo", 12, "nRF52", "SX1262",
-              "430-510 / 779-928 MHz", recovery_key="T-Echo"),
+              "430-510 / 779-928 MHz", recovery_key="T-Echo",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("tbeam_supreme", "LilyGO T-Beam Supreme", 13, "ESP32-S3", "SX1262/68",
               "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam Supreme",
               band_map={433: 1, 868: 2, 915: 2, 923: 2}),
