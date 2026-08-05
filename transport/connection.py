@@ -242,8 +242,24 @@ def _pexpect_interactive(command: str, interactions, timeout: int) -> Result:
     except Exception as exc:                       # pragma: no cover
         return (255, "", f"pexpect unavailable: {exc}")
     patterns = [p for p, _ in interactions]
+    # A PTY without TERM is not a terminal any curses/tput call will accept, and
+    # rnodeconf's autoinstall died on exactly that: "autoinstall did not
+    # complete: TERM environment variable not set" (live, 2026-08-05).
+    #
+    # pexpect.spawn inherits the parent environment, so TERM was only ever
+    # present by luck — the UI gets it when launched from a login session and
+    # NOT when relaunched by restart_ui.sh over a non-interactive ssh. That made
+    # flashing depend on how the app happened to be started, which is why the
+    # same board flashed at 21:38 and failed at 22:20.
+    #
+    # Set it outright rather than defaulting: we create this PTY and we fix its
+    # size, so we may as well fix its type. "xterm" is the safe, universally
+    # present terminfo entry — "dumb" would be inherited-but-useless.
+    import os as _os
+    env = dict(_os.environ)
+    env["TERM"] = "xterm"
     child = pexpect.spawn("/bin/bash", ["-lc", command], encoding="utf-8",
-                          timeout=timeout, dimensions=(40, 120))
+                          timeout=timeout, dimensions=(40, 120), env=env)
     pats = patterns + [pexpect.EOF, pexpect.TIMEOUT]
     transcript: List[str] = []
     # A prompt appears at most a handful of times; cap iterations so a genuinely
