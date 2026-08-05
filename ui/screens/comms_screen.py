@@ -30,7 +30,8 @@ from ui.screens.birth_screen import QRCodeWidget
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=28):
-    lbl = Label(text=text, bold=bold, font_size=size, halign="left", valign="middle",
+    lbl = Label(text=text, bold=bold, font_size=theme.font_sp(size),
+                halign="left", valign="middle",
                 size_hint_y=None, color=theme.hex_to_rgba(theme.COLORS[color]))
     lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
              texture_size=lambda i, ts: setattr(i, "height", max(dp(h), ts[1])))

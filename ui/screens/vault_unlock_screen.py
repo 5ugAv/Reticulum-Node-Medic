@@ -37,11 +37,11 @@ from provisioning import recovery_key
 
 def _line(text, size="16sp", color="text_primary", bold=False, h=None,
           halign="center"):
-    lbl = Label(text=text, font_size=size, bold=bold, halign=halign,
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold, halign=halign,
                 valign="middle", color=theme.hex_to_rgba(theme.COLORS[color]))
     if h is not None:
         lbl.size_hint_y = None
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size)))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
@@ -146,7 +146,9 @@ class VaultUnlockScreen(BoxLayout):
         box.add_widget(_line(
             tr("Forgotten your password? Enter the recovery key you wrote "
                "down when this Node Medic was first built."),
-            "14sp", color="accent", h=44))
+            # two lines: the Spanish and German translations of this already run
+            # long, and at the enlarged size they wrap where English does not
+            "14sp", color="accent", h=2 * theme.line_dp("14sp")))
         self._key_field = TextInput(
             hint_text=tr("XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"),
             multiline=False, size_hint_y=None, height=dp(52),

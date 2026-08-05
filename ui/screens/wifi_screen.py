@@ -25,8 +25,10 @@ from provisioning import wifi
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=26):
-    lbl = Label(text=text, bold=bold, font_size=size, halign="left", valign="middle",
-                size_hint_y=None, height=dp(h),
+    lbl = Label(text=text, bold=bold, font_size=theme.font_sp(size),
+                halign="left", valign="middle",
+                size_hint_y=None,
+                height=dp(max(h, theme.line_dp(size))),
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl

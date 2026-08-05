@@ -22,12 +22,13 @@ from provisioning import about
 
 
 def _line(text, size="15sp", color="text_primary", bold=False, h=None, mono=False):
-    lbl = Label(text=text, font_size=size, bold=bold, halign="left", valign="middle",
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                halign="left", valign="middle",
                 color=theme.hex_to_rgba(theme.COLORS[color]),
                 font_name="RobotoMono-Regular" if mono else "Roboto")
     if h is not None:
         lbl.size_hint_y = None
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size, mono=mono)))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 

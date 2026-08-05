@@ -170,7 +170,8 @@ class _StepBar(Widget):
 def _line(text, color="text_primary", bold=False, size="15sp"):
     # height follows the wrapped text — fixed heights made long lines overlap
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
-                font_size=size, color=theme.hex_to_rgba(theme.COLORS[color]),
+                font_size=theme.font_sp(size),
+                color=theme.hex_to_rgba(theme.COLORS[color]),
                 size_hint_y=None)
     lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
     lbl.bind(texture_size=lambda i, ts: setattr(i, "height",

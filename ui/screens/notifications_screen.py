@@ -23,11 +23,12 @@ from monitor.operator_alert import (
 
 
 def _lbl(text, size="14sp", color="text_secondary", h=None, bold=False):
-    lbl = Label(text=text, font_size=size, halign="left", valign="top", bold=bold,
+    lbl = Label(text=text, font_size=theme.font_sp(size), halign="left",
+                valign="top", bold=bold,
                 color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     if h:
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size)))
     else:
         lbl.bind(texture_size=lambda i, v: setattr(i, "height", v[1]))
     return lbl

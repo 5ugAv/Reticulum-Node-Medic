@@ -22,9 +22,14 @@ from monitor.formatting import beacon_lines
 
 
 def _line(text, color="text_primary", size="15sp", bold=False):
+    # *size* is the DESIGN size; theme.font_sp maps it onto the readable type
+    # scale (ui/theme.py). The row height has to follow it in the SAME edit: at
+    # the old flat dp(24) the 20sp title already needed exactly 24 dp, so any
+    # enlargement would have clipped it.
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
-                font_size=size, color=theme.hex_to_rgba(theme.COLORS[color]),
-                size_hint_y=None, height=dp(24))
+                font_size=theme.font_sp(size),
+                color=theme.hex_to_rgba(theme.COLORS[color]),
+                size_hint_y=None, height=dp(max(24, theme.line_dp(size))))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
@@ -32,7 +37,7 @@ def _line(text, color="text_primary", size="15sp", bold=False):
 def _wrap(text, color="text_primary", size="14sp"):
     """A left-aligned label that wraps and grows to fit — for the longer activity /
     insight sentences inside the scrolling detail column."""
-    lbl = Label(text=text, halign="left", valign="top", font_size=size,
+    lbl = Label(text=text, halign="left", valign="top", font_size=theme.font_sp(size),
                 color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
     lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
     lbl.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1]))
@@ -79,8 +84,8 @@ class NodeDetailScreen(BoxLayout):
                    "green" if batt > 50 else "amber" if batt > 20 else "red")))
 
         if watch_line:
-            wl = Label(text=watch_line, halign="left", valign="top", font_size="13sp",
-                       size_hint_y=None,
+            wl = Label(text=watch_line, halign="left", valign="top",
+                       font_size=theme.font_sp("13sp"), size_hint_y=None,
                        color=theme.hex_to_rgba(theme.COLORS["amber"]))
             wl.bind(size=lambda i, v: setattr(i, "text_size", v))
             wl.bind(texture_size=lambda i, v: setattr(i, "height", v[1]))
@@ -138,21 +143,22 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(body)
 
         self.ping_status = Label(text="", halign="left", valign="middle",
-                                 font_size="13sp", size_hint_y=None, height=dp(26),
+                                 font_size=theme.font_sp("13sp"), size_hint_y=None,
+                                 height=dp(max(26, theme.line_dp("13sp"))),
                                  color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         self.ping_status.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.ping_status)
 
         actions = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(52), spacing=dp(8))
-        ping = Button(text=tr("Ping node now"), font_size="18sp",
+        ping = Button(text=tr("Ping node now"), font_size=theme.font_sp("18sp"),
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         ping.bind(on_release=lambda *_: self._ping())
         actions.add_widget(ping)
         if record.has_location():
-            nav_btn = Button(text=tr("Navigate"), font_size="18sp",
+            nav_btn = Button(text=tr("Navigate"), font_size=theme.font_sp("18sp"),
                              background_normal="",
                              background_color=theme.hex_to_rgba(
                                  theme.COLORS["green"]),

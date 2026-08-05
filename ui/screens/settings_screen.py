@@ -29,8 +29,10 @@ from provisioning import brightness as bright
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=30):
-    lbl = Label(text=text, bold=bold, font_size=size, halign="left", valign="middle",
-                size_hint_y=None, height=dp(h),
+    lbl = Label(text=text, bold=bold, font_size=theme.font_sp(size),
+                halign="left", valign="middle",
+                size_hint_y=None,
+                height=dp(max(h, theme.line_dp(size))),
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
@@ -152,7 +154,9 @@ class SettingsScreen(BoxLayout):
         box.add_widget(_line(
             "What the medic does at HOME (the front-page toggle). Backpack always "
             "turns transport OFF so moving it can't disturb the mesh.",
-            size="12.5sp", color="text_secondary", h=34))
+            # two lines at the enlarged size — measured, this sentence wraps onto
+            # a second line once the type scale lifts it, and dp(34) held one
+            size="12.5sp", color="text_secondary", h=2 * theme.line_dp("12.5sp")))
         current = load_home_profile()
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
@@ -314,7 +318,8 @@ class SettingsScreen(BoxLayout):
         box.add_widget(_line(
             "Visual for now — a banner on VITALS and the affected nodes pushed to "
             "the top. (An audible option can be added later.)",
-            size="12sp", color="text_secondary", h=34))
+            # two lines at the enlarged size (see _home_mode_section)
+            size="12sp", color="text_secondary", h=2 * theme.line_dp("12sp")))
         return box
 
     # -- beacon history retention -------------------------------------------

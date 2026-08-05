@@ -66,9 +66,14 @@ _HIDDEN = {"notes"}
 
 
 def _line(text, color="text_primary", size="15sp", bold=False, h=24):
+    # *size* is the DESIGN size; theme.font_sp maps it onto the readable type
+    # scale (ui/theme.py) and theme.line_dp grows the row in the SAME edit so
+    # bigger text can never be clipped by a row that stayed 24 dp tall. The rows
+    # here sit in a ScrollView, so a taller row costs scroll length, not content.
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
-                font_size=size, color=theme.hex_to_rgba(theme.COLORS[color]),
-                size_hint_y=None, height=dp(h))
+                font_size=theme.font_sp(size),
+                color=theme.hex_to_rgba(theme.COLORS[color]),
+                size_hint_y=None, height=dp(max(h, theme.line_dp(size))))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
@@ -110,7 +115,7 @@ class CertViewScreen(BoxLayout):
         # screen, since it's an action on an existing node, not a new one.
         if self._on_triage is not None:
             tri = Button(text="Triage — aim this node's antenna", size_hint_y=None,
-                         height=dp(50), bold=True, font_size="16sp",
+                         height=dp(50), bold=True, font_size=theme.font_sp("16sp"),
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["amber"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -174,7 +179,7 @@ class CertViewScreen(BoxLayout):
         self.notes_in = TextInput(text=self._cert.get("notes", ""),
                                   hint_text="Add a note (mounting, power, access)…",
                                   multiline=True, size_hint_y=None, height=dp(96),
-                                  font_size="19sp")
+                                  font_size=theme.font_sp("19sp"))
         bind_field(self.notes_in)
         self.list.add_widget(self.notes_in)
         save = Button(text="Save notes", size_hint_y=None, height=dp(46), bold=True,

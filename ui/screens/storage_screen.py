@@ -31,11 +31,12 @@ _KIVY_LOGS = "~/.kivy/logs"
 
 
 def _line(text, size="15sp", color="text_primary", bold=False, h=None):
-    lbl = Label(text=text, font_size=size, bold=bold, halign="left", valign="middle",
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                halign="left", valign="middle",
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     if h is not None:
         lbl.size_hint_y = None
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size)))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
@@ -121,7 +122,11 @@ class StorageScreen(BoxLayout):
         for label, nbytes in sorted(cats, key=lambda c: -c[1]):
             row = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(46),
                             spacing=dp(3))
-            head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(22))
+            # the label inside has no height of its own, so it takes the row's:
+            # dp(22) held 14.5sp but clips it at the enlarged size. The dp(46)
+            # outer row has the slack, so this costs the screen nothing.
+            head = BoxLayout(orientation="horizontal", size_hint_y=None,
+                             height=dp(theme.line_dp("14.5sp")))
             head.add_widget(_line(label, size="14.5sp"))
             amt = _line(fs(nbytes), size="14.5sp", color="text_secondary")
             amt.halign = "right"

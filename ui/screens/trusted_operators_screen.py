@@ -33,12 +33,13 @@ _STATUS = {
 
 
 def _line(text, size="15sp", color="text_primary", bold=False, h=None, mono=False):
-    lbl = Label(text=text, font_size=size, bold=bold, halign="left", valign="middle",
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                halign="left", valign="middle",
                 color=theme.hex_to_rgba(theme.COLORS[color]),
                 font_name="RobotoMono-Regular" if mono else "Roboto")
     if h is not None:
         lbl.size_hint_y = None
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size, mono=mono)))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
@@ -57,7 +58,8 @@ class TrustedOperatorsScreen(BoxLayout):
         self.add_widget(_line(
             "Node Medic units and the trust between them. Trust is per-unit and "
             "never inherited — a clone of a clone must be approved by you.",
-            size="13sp", color="text_secondary", h=40))
+            # two lines at the enlarged size; dp(40) held one and would clip
+            size="13sp", color="text_secondary", h=2 * theme.line_dp("13sp")))
         body = ScrollView()
         self._list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         self._list.bind(minimum_height=self._list.setter("height"))

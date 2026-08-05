@@ -28,10 +28,11 @@ _SEV_COLOR = {SEV_OK: "green", SEV_WARN: "amber", SEV_CRIT: "red"}
 
 
 def _line(text, color="text_primary", bold=False, size="14sp", h=None):
-    lbl = Label(text=text, halign="left", valign="middle", bold=bold, font_size=size,
+    lbl = Label(text=text, halign="left", valign="middle", bold=bold,
+                font_size=theme.font_sp(size),
                 color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
     if h is not None:
-        lbl.height = dp(h)
+        lbl.height = dp(max(h, theme.line_dp(size)))
         lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     else:
         lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))

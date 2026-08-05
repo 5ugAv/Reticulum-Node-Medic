@@ -31,7 +31,8 @@ _SEV_COLOR = {"critical": "red", "warning": "amber", "info": "text_secondary"}
 
 def _label(text, color="text_primary", bold=False, size="16sp"):
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
-                font_size=size, color=theme.hex_to_rgba(theme.COLORS[color]))
+                font_size=theme.font_sp(size),
+                color=theme.hex_to_rgba(theme.COLORS[color]))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 

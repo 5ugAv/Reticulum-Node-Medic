@@ -19,7 +19,8 @@ from provisioning import network_guide as g
 
 def _wrap(text, size="15sp", color="text_primary", bold=False):
     """A left-aligned label that wraps to its width and grows to fit its text."""
-    lbl = Label(text=text, font_size=size, bold=bold, halign="left", valign="top",
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                halign="left", valign="top",
                 color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
     def _sync(_i, _v):
         lbl.text_size = (lbl.width, None)
