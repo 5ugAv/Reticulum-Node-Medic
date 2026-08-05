@@ -200,6 +200,34 @@ def port_usb_vendor(port: str) -> str:
     return ""
 
 
+def port_usb_product_id(port: str) -> str:
+    """The USB product id behind a serial *port* ("8029"), or "".
+
+    Same bounded sysfs walk as ``port_usb_vendor``. Needed to tell an nRF52
+    board's two personalities apart: the RAK4631 runs as 239a:8029 and its
+    bootloader as 239a:002a, and knowing which one is present decides whether
+    the board still has to be reset into DFU before it can be flashed.
+    """
+    import os
+    name = os.path.basename((port or "").strip())
+    if not name:
+        return ""
+    try:
+        node = os.path.realpath(f"/sys/class/tty/{name}/device")
+        for _ in range(8):                       # bounded walk to the USB node
+            cand = os.path.join(node, "idProduct")
+            if os.path.isfile(cand):
+                with open(cand) as fh:
+                    return fh.read().strip().lower()
+            parent = os.path.dirname(node)
+            if parent == node:
+                break
+            node = parent
+    except Exception:                            # noqa: BLE001
+        pass
+    return ""
+
+
 def port_usb_product(port: str) -> str:
     """The USB product string behind a serial *port* ("WisCore RAK4631 Board"),
     or "". Same bounded sysfs walk as ``port_usb_vendor``."""

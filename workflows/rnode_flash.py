@@ -256,6 +256,63 @@ def find_port_by_usb_serial(connection, serial, tries: int = 20,
     return None
 
 
+#: The Adafruit nRF52 bootloader's USB product id. In DFU the board enumerates
+#: as this instead of its application id (0x8029 on the RAK4631).
+NRF_DFU_PID = "002a"
+
+
+def in_dfu_already(connection, port: str, vendor_fn=None, pid_fn=None) -> bool:
+    """Is this nRF52 board already sitting in its bootloader?
+
+    Cheap check so a board that is ALREADY in DFU is not reset back out of it.
+    """
+    try:
+        from ui.board_detect import _NRF52_VENDORS
+        if vendor_fn is None:
+            from ui.board_detect import port_usb_vendor as vendor_fn
+        if (vendor_fn(port) or "").lower() not in _NRF52_VENDORS:
+            return False
+        if pid_fn is None:
+            from ui.board_detect import port_usb_product_id as pid_fn
+        return (pid_fn(port) or "").lower() == NRF_DFU_PID
+    except Exception:                                             # noqa: BLE001
+        return False
+
+
+def touch_into_dfu(connection, port: str, serial: str, settle: float = 2.0,
+                   sleep=None):
+    """Reset an nRF52 board into its bootloader, then return its NEW port.
+
+    Why this exists. rnodeconf is handed one port and expects it to stay put,
+    but opening the port of a RUNNING RNode toggles DTR and resets the board:
+    it re-enumerates as the bootloader on a DIFFERENT tty, and rnodeconf then
+    dies with "Could not find specified port /dev/ttyACM2, exiting now" (live,
+    2026-08-05, birthing an already-provisioned RAK4631). Re-acquiring the port
+    BEFORE the flash cannot help — the port was still valid when we looked; it
+    vanishes underneath rnodeconf a moment later.
+
+    So do the move ourselves and let it settle first. Once the board is in DFU,
+    autoinstall's own 1200-baud touch is a no-op and the port it was given stays
+    valid for the whole run — which is exactly why birthing a board that arrived
+    ALREADY in DFU worked while an already-provisioned one did not.
+
+    The touch is the standard Arduino-core convention: open at 1200 baud, drop
+    DTR, close. Verified live on a RAK4631 (239a:8029 -> 239a:002a).
+
+    Returns the port the board is on afterwards — possibly unchanged.
+    """
+    import time as _t
+    nap = sleep or _t.sleep
+    quoted = shlex.quote(port)
+    connection.run(
+        "python3 -c \"import serial,time; "
+        f"s=serial.Serial({quoted!r}, 1200); s.dtr=False; "
+        "time.sleep(0.25); s.close()\" 2>/dev/null || true", timeout=30)
+    nap(settle)
+    found = find_port_by_usb_serial(connection, serial)
+    return found or port
+
+
 def wipe_for_rebirth(connection, port: str, esptool_path: str = "",
                      vendor_fn=None, timeout: int = 120, sleep=None,
                      tries: int = 4):
@@ -446,6 +503,16 @@ class RNodeFlashWorkflow:
             self._usb_serial = by_id_serial(
                 usb_id_for_port(self.connection, self.port))
         self._reacquire_port()
+        # An nRF52 that is RUNNING resets the instant its port is opened, so it
+        # would re-enumerate onto a new tty in the middle of autoinstall and
+        # rnodeconf would lose the port it was given. Make the move happen HERE,
+        # where we can wait for it and follow the board, instead of underneath a
+        # tool that cannot. A board already in DFU is left alone.
+        if ((self.board.platform or "").lower().startswith("nrf")
+                and self._usb_serial
+                and not in_dfu_already(self.connection, self.port)):
+            self.port = touch_into_dfu(self.connection, self.port,
+                                       self._usb_serial)
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)
