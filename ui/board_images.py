@@ -42,7 +42,9 @@ BOARDS: Dict[str, dict] = {
     "heltec_v3": _b("heltec_v3", "Heltec V3",
                     oled=(0.378, 0.239, 0.835, 0.658)),
     # placeholders — drop assets/boards/<key>.png in to activate the card
-    "lora32_v21": _b("lora32_v21", "LilyGO LoRa32 v2.1"),
+    # name carries the silkscreen revision, same as the catalogue entry — the
+    # board never prints "v2.1" anywhere (see HOW_TO_TELL below)
+    "lora32_v21": _b("lora32_v21", "LilyGO LoRa32 v2.1 (T3 v1.6.1)"),
     "lora32_v20": _b("lora32_v20", "LilyGO LoRa32 v2.0"),
     "lora32_v10": _b("lora32_v10", "LilyGO LoRa32 v1.0"),
     "tbeam": _b("tbeam", "LilyGO T-Beam"),

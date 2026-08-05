@@ -79,6 +79,15 @@ class RNodeBoard:
         (ui.safety returns generic guidance for anything unknown)."""
         return recovery_text(self.recovery_key or self.display_name)
 
+    @property
+    def picker_label(self) -> str:
+        """The row text in the board picker — the ONE moment the operator
+        commits to a firmware image, so the disambiguation has to live here and
+        not in a note nobody opens (operator, 2026-08-06: "lillygo naming is
+        confusing"). Both picker screens render this, so there is one string to
+        keep short enough for the 5" panel and one string to test."""
+        return f"{self.display_name}  [{self.platform}]"
+
     # -- official (autoinstall) boards -------------------------------------
 
     def autoinstall_command(self, port: str, version: Optional[str] = None,
@@ -150,9 +159,23 @@ def _official(key, name, index, platform, modem, bands, recovery_key="",
 # (T-Beam) and un-read menus (Heltec V2, RAK4631, T-Echo) are left blank so
 # autoinstall_answers() refuses rather than guess.
 _OFFICIAL = [
-    _official("lora32_v21", "LilyGO LoRa32 v2.1", 3, "ESP32", "SX1276/78",
-              "410-525 / 850-950 MHz",
+    # The board is SOLD as "LoRa32 v2.1" but that string is printed NOWHERE on
+    # it: the white label reads MODEL: T3 V1.6.1 and the back is silkscreened
+    # T3_V1.6 (verified 2026-08-02 against LilyGO's wiki + their own two-sided
+    # product photo, and against the board on the bench). An operator holding a
+    # board marked 1.6.1 reads it as far closer to "v1.0" than to "v2.1" — and
+    # picking v1.0 flashes lora32v10.zip onto v2.1 hardware. So the silkscreen
+    # number goes in the NAME, where the choice is actually made. rnodeconf's
+    # own menu carries the same alias ("aka T3 v1.6 / T3 v1.6.1"); ours is the
+    # short form because the row has to fit an 800x480 panel.
+    _official("lora32_v21", "LilyGO LoRa32 v2.1 (T3 v1.6.1)", 3, "ESP32",
+              "SX1276/78", "410-525 / 850-950 MHz",
               band_map={433: 1, 868: 2, 915: 2, 923: 2}),
+    # v2.0 / v1.0 carry no parenthetical because nobody here has read their
+    # silkscreens — a marking we haven't seen is a guess, and a guess printed as
+    # instruction is worse than silence (same rule as board_images.HOW_TO_TELL).
+    # Naming the T3 revision on v2.1 alone still resolves the reported trap:
+    # it is the only entry that mentions a T3 number.
     _official("lora32_v20", "LilyGO LoRa32 v2.0", 4, "ESP32", "SX1276/78",
               "410-525 / 850-950 MHz",
               band_map={433: 1, 868: 2, 915: 3, 923: 4}),
@@ -164,6 +187,13 @@ _OFFICIAL = [
               "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1"),
     _official("heltec32_v2", "Heltec LoRa32 v2", 7, "ESP32", "SX1276/78",
               "410-525 / 850-950 MHz", recovery_key="Heltec V2"),
+    # V3 vs V4 is the other trap on this list — mixing their images BOOT-LOOPS
+    # the board — but it is NOT a naming problem: the two are told apart by a
+    # photo the operator can hold the board against (assets/boards/heltec_v3.png
+    # + heltec_v4.png, both present) and, medic-side, by chip + USB kind (V2 =
+    # classic ESP32; V3 = CP2102 bridge -> ttyUSB, V4 = native USB -> ttyACM,
+    # both bench-proven — see ui.board_detect._USB_KIND). Nobody here has read
+    # the two silkscreens side by side, so no marking is claimed in the name.
     # V3 + V4 are ESP32-S3 chips (verified live with esptool on both) — they
     # were mislabelled "ESP32" here, which kept them OUT of the detect
     # shortlist for every S3 chip read (the blank board pick, 2026-07-31).

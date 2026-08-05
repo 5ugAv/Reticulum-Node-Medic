@@ -752,7 +752,10 @@ class BirthScreen(BoxLayout):
             else:
                 num, tag = next_custom, "  (custom)"
                 next_custom += 1
-            entries.append((num, f"{board.display_name}  [{board.platform}]{tag}",
+            # picker_label, not display_name: it carries the silkscreen marking
+            # for boards sold under a name that is printed nowhere on them
+            # (LoRa32 v2.1 = T3 v1.6.1) — the row IS the moment of choice.
+            entries.append((num, f"{board.picker_label}{tag}",
                             lambda b=board: self._confirm_rnode_board_gate(b)))
         self._picker_popup("Select the board", entries)
 
@@ -2154,7 +2157,9 @@ class BirthScreen(BoxLayout):
                 next_custom += 1
                 tag = "  (custom)"
             btn = Button(
-                text=f"{num:>2}.  {board.display_name}  [{board.platform}]{tag}",
+                # same one string as the birth picker (RNodeBoard.picker_label),
+                # so the two lists can never disagree about which board is which
+                text=f"{num:>2}.  {board.picker_label}{tag}",
                 size_hint_y=None, height=dp(40), halign="left",
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["surface"]),

@@ -96,6 +96,91 @@ def test_official_boards_are_autoinstall_with_unique_menu_indices():
     assert all(b.flash_method == "autoinstall" for b in off)
 
 
+# ---- the picker names the number PRINTED ON THE BOARD --------------------
+#
+# Operator, 2026-08-06, about to bench-test several boards: "lillygo v1.6.1 / v2
+# please check this when I plug it in as lillygo naming is confusing". They are
+# right, and it is a flashing hazard, not a cosmetic one: LilyGO silkscreens the
+# board T3_V1.6 / labels it MODEL: T3 V1.6.1, while the RNode world calls that
+# same board "LoRa32 v2.1" — and 1.6.1 looks far closer to v1.0 than to v2.1.
+# Picking v1.0 flashes lora32v10.zip at v2.1 hardware.
+
+
+def test_the_lora32_v21_row_names_the_silkscreen_number():
+    b = get_board("lora32_v21")
+    assert "T3 v1.6.1" in b.picker_label, "the number ON the board must be in "\
+        "the row the operator taps, not only in a note"
+    assert "v2.1" in b.picker_label      # still findable by the name it's sold as
+
+
+def test_the_three_lora32_entries_stay_distinct_and_only_one_claims_a_t3_number():
+    v21, v20, v10 = (get_board(k) for k in
+                     ("lora32_v21", "lora32_v20", "lora32_v10"))
+    names = [b.display_name for b in (v21, v20, v10)]
+    assert len(set(names)) == 3
+    assert (v21.autoinstall_index, v20.autoinstall_index,
+            v10.autoinstall_index) == (3, 4, 5)
+    # Nobody here has read the v2.0 / v1.0 silkscreens, so they claim no T3
+    # revision — which is also what makes entry 3 unambiguous.
+    assert "T3" not in v20.display_name and "T3" not in v10.display_name
+
+
+def test_autoinstall_indices_match_rnodeconfs_own_device_menu():
+    """Verbatim from rnodeconf 2.5.0's "What kind of device is this?" menu.
+    The index IS the answer typed into autoinstall, so a drift here flashes a
+    different board's firmware while the screen says the right name."""
+    menu = {
+        3: "lora32_v21", 4: "lora32_v20", 5: "lora32_v10", 6: "tbeam",
+        7: "heltec32_v2", 8: "heltec32_v3", 9: "heltec32_v4", 10: "t3s3",
+        11: "rak4631", 12: "techo", 13: "tbeam_supreme", 14: "tdeck",
+        15: "heltec_t114", 16: "xiao_esp32s3",
+    }
+    assert {b.autoinstall_index: b.key for b in official_boards()} == menu
+
+
+def test_picker_rows_stay_short_enough_for_the_5_inch_panel():
+    """800x480, and the picker button wraps rather than shortens — a long row
+    spills out of its dp(46) height. The disambiguation must not cost more
+    width than rows that already ship (the XIAO and the Tracker are 48/50)."""
+    off = official_boards()
+    num = max(b.autoinstall_index for b in off) + 1     # customs continue after
+    for b in available_boards():
+        if b.flash_method == "autoinstall":
+            row = f"{b.autoinstall_index:>2}.  {b.picker_label}"
+        else:
+            row = f"{num:>2}.  {b.picker_label}  (custom)"
+            num += 1
+        assert len(row) <= 50, f"picker row too wide: {row!r} ({len(row)})"
+
+
+def test_boards_with_no_transcribed_flash_sequence_still_refuse_to_guess():
+    """The catalogue's safety property, pinned next to the naming change that
+    sits beside it: an EMPTY band_map means nobody has read that board's
+    autoinstall menu, so autoinstall_answers() must raise rather than type a
+    band choice into rnodeconf and hope."""
+    # rak4631 and techo were on this list until 2026-08-05, when their menus
+    # were transcribed from rnodeconf and the RAK was then flashed four times
+    # end-to-end on real hardware. They belong on the OTHER side of this line
+    # now — leaving them here would have asserted that a proven board still
+    # refuses to flash.
+    for key in ("tbeam", "heltec32_v2", "t3s3"):
+        b = get_board(key)
+        assert b.autoinstall_bands == {}
+        with pytest.raises(ValueError):
+            b.autoinstall_answers(915)
+    # ...and the transcribed ones must NOT refuse.
+    for key in ("rak4631", "techo"):
+        assert get_board(key).autoinstall_answers(915)
+
+
+def test_both_board_pickers_render_the_disambiguated_label():
+    """Guards the wiring, not just the data: a picker that goes back to
+    display_name silently drops the silkscreen number again."""
+    src = open("ui/screens/birth_screen.py").read()
+    assert src.count("board.picker_label") == 2      # popup + guidance list
+    assert "{board.display_name}  [{board.platform}]" not in src
+
+
 def test_official_boards_are_offline_flashable_via_autoinstall():
     b = get_board("heltec32_v3")
     assert b.autoinstall_index == 8
