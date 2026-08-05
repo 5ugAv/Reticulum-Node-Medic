@@ -42,6 +42,20 @@ DEFAULT_ESPTOOL = _esptool_cmd()
 CHUNK_FILE = "/tmp/rf_chunk"
 
 
+def _assert_work_board(port: str) -> None:
+    """Refuse to touch the medic's OWN radio / GPS board.
+
+    Deliberately NOT swallowed: a ``ProtectedBoardError`` must propagate out of
+    the constructor so the ladder never starts. ``guard_is_active`` keeps this
+    inert on a dev host or CI, where there is no onboard radio to protect and
+    every port is a fake — the medic and any clone have a roster and/or udev
+    serial links, so it is live exactly where it matters.
+    """
+    from ui.onboard_roster import assert_flashable, guard_is_active
+    if guard_is_active():
+        assert_flashable(port)
+
+
 def find_hub_port(connection: Connection,
                   serial: str) -> Tuple[Optional[str], Optional[int]]:
     """Locate the ``(hub, port)`` the USB device with *serial* sits on by parsing
@@ -111,6 +125,15 @@ class RobustFlasher:
                  flash_size: str = "16MB",
                  sleep: Optional[Callable[[float], None]] = None,
                  write_timeout: int = 400, verify_timeout: int = 200):
+        # HARD GATE, at the lowest write primitive there is. Everything this
+        # class does to a port is destructive — write_flash, verify_flash,
+        # hard_reset, and a uhubctl POWER CUT — so the check belongs here and
+        # not only in whichever workflow happened to construct it. Found
+        # 2026-08-05: _robust_rgb_overlay() builds a RobustFlasher directly from
+        # module scope, bypassing the class-level gate in rnode_v4_rgb entirely.
+        # Same shape as the 2026-07-22 near-miss where a naive ports[0] aimed a
+        # PlatformIO upload at Jonesey and only a busy port saved the radio.
+        _assert_work_board(port)
         self.c = connection
         self.port = port
         self.hub = hub

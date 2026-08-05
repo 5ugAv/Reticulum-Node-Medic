@@ -523,9 +523,17 @@ class ReticulumNodeMedicApp(App):
             return
         try:
             from ui.onboard_roster import (load_roster, attached_serial_ports,
-                                           commission_attached)
-            if load_roster() or not attached_serial_ports():
-                return                                 # already done, or nothing to adopt
+                                           commission_attached, onboard_serials)
+            if not attached_serial_ports():
+                return                                              # nothing to adopt
+            # NOTE: this used to bail out entirely once the roster held anything,
+            # so the FIRST board commissioned was the only one ever protected. On
+            # this medic that meant Jonesey was covered and a GPS Tracker added
+            # later never could be — it could not be registered by any code path
+            # (audit 2026-08-05). Now each run adopts any service-bound board not
+            # already known, so a second piece of the medic's own hardware is
+            # protected the moment its service claims it.
+            already = onboard_serials()
             # Adopt ONLY boards the medic's own services already hold. A work
             # board attached during a clone's first boot would otherwise be
             # recorded as the medic's own hardware — permanently unflashable
@@ -539,7 +547,10 @@ class ReticulumNodeMedicApp(App):
                       "the medic's own services yet — bind deliberately instead")
                 return
             ports = [p for p in attached_serial_ports()
-                     if serial_for_port(p) in bound]
+                     if serial_for_port(p) in bound
+                     and serial_for_port(p) not in already]
+            if not ports:
+                return                       # every service-bound board is known
             adopted = commission_attached(ports=ports, probe=lambda _p: None)
             print(f"[onboard] self-commissioned own hardware: {adopted}")
         except Exception as e:

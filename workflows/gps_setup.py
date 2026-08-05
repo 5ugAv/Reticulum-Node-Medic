@@ -43,6 +43,29 @@ def upload_command(port: str, sketch_dir: str = REMOTE_SKETCH_DIR) -> str:
     return f"arduino-cli upload -p {port} --fqbn {FQBN} {sketch_dir}"
 
 
+def _assert_work_board(port: str) -> None:
+    """Raise ProtectedBoardError if *port* is the medic's own radio / GPS board.
+    Inert on a dev host or CI (no roster, no udev serial links) — live on the
+    medic and on every clone, which is where an onboard board exists to lose."""
+    from ui.onboard_roster import assert_flashable, guard_is_active
+    if guard_is_active():
+        assert_flashable(port)
+
+
+def _is_candidate_work_board(port: str) -> bool:
+    """Can this port be OFFERED as the Tracker to flash? Fail-closed: a port
+    whose USB serial cannot be resolved is not provably a work board, and
+    erasing the medic's own radio is unrecoverable while refusing a genuine work
+    board is a mild annoyance."""
+    from ui.onboard_roster import is_flashable_work_board, guard_is_active
+    if not guard_is_active():
+        return True                      # dev host / CI: no onboard board exists
+    try:
+        return is_flashable_work_board(port)
+    except Exception:                                             # noqa: BLE001
+        return False
+
+
 # -- NMEA / port detection -------------------------------------------------
 
 #: An NMEA sentence: '$' + 2-char talker + 3-char type + comma-delimited fields.
@@ -172,16 +195,32 @@ class GpsTrackerSetup:
         if self.port:
             return StepResult("ensure_single_board", True,
                               f"Flashing the board on {self.port}.")
-        ports = _serial_ports(self.connection)
+        # The medic's OWN boards are never candidates. This used to be a bare
+        # ports[0] over every attached tty, guarded only by telling the operator
+        # to "plug in ONLY the Tracker" — but Jonesey is PERMANENTLY attached, so
+        # on a medic with nothing else plugged in there is exactly one port and
+        # it is the medic's own radio. Following the instruction on screen was
+        # the way to destroy it. (Same ports[0] shape as the 2026-07-22
+        # near-miss; found by audit 2026-08-05.)
+        ports = [p for p in _serial_ports(self.connection)
+                 if _is_candidate_work_board(p)]
         if len(ports) != 1:
             return StepResult(
                 "ensure_single_board", False,
-                f"{len(ports)} boards connected — plug in ONLY the Tracker to "
-                f"flash it (reconnect the RNode afterwards).")
+                f"{len(ports)} work boards connected — plug in ONLY the Tracker "
+                f"to flash it. (The medic's own radio is excluded "
+                f"automatically; you do not need to unplug it.)")
         self.port = ports[0]
         return StepResult("ensure_single_board", True, f"Tracker on {self.port}.")
 
     def _flash(self) -> StepResult:
+        # Last line of defence, immediately before the write: even a caller that
+        # handed us an explicit port cannot reach the medic's own hardware.
+        try:
+            _assert_work_board(self.port)
+        except Exception as e:                                    # noqa: BLE001
+            return StepResult("flash", False,
+                              f"Refusing to flash {self.port}: {e}")
         code, out, err = self.connection.run(
             upload_command(self.port), timeout=self.flash_timeout)
         return StepResult("flash", code == 0,
