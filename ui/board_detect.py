@@ -35,7 +35,34 @@ _CHIP_PATTERNS = [
 _PLATFORM_BY_CHIP = {
     "esp32s3": "ESP32-S3", "esp32": "ESP32", "esp32c3": "ESP32-C3",
     "esp32s2": "ESP32-S2", "esp32c6": "ESP32-C6",
+    # nRF52 boards are never read by esptool — see _NRF52_VENDORS below.
+    "nrf52840": "nRF52",
 }
+
+#: USB vendors that mean "this is an nRF52 board, and esptool can NEVER read
+#: it". 239a is Adafruit's, used by the Adafruit nRF52 bootloader that RAK,
+#: LilyGO and Heltec all ship; 1915 is Nordic's own.
+#:
+#: Why this exists (operator, 2026-08-05): a RAK4631 was plugged in and the
+#: board picker offered NOTHING. Detection ran esptool unconditionally, esptool
+#: timed out against an nRF52840 — as it always must — and with no chip there
+#: were no candidates. Worse, the failure advised "hold BOOT, tap RST", which
+#: this board family does not have: it double-taps RESET into a UF2 bootloader.
+#: Everything else was already in place (the vendor was classified, the boards
+#: were in the catalogue with art and power profiles). Only the identify step
+#: assumed every board is an ESP32.
+_NRF52_VENDORS = {"239a", "1915"}
+
+#: Fragments of the USB product string that name a board outright. The string
+#: is far better evidence than esptool ever gives for these: the RAK reports
+#: "WisCore RAK4631 Board", which IS the model, with no probing at all.
+_NRF52_PRODUCT_KEYS = (
+    ("rak4631", "rak4631"),
+    ("wiscore", "rak4631"),
+    ("t-echo", "techo"),
+    ("techo", "techo"),
+    ("t114", "heltec_t114"),
+)
 
 
 def parse_chip(esptool_output: str) -> Optional[str]:
@@ -173,6 +200,40 @@ def port_usb_vendor(port: str) -> str:
     return ""
 
 
+def port_usb_product(port: str) -> str:
+    """The USB product string behind a serial *port* ("WisCore RAK4631 Board"),
+    or "". Same bounded sysfs walk as ``port_usb_vendor``."""
+    import os
+    name = os.path.basename((port or "").strip())
+    if not name:
+        return ""
+    try:
+        node = os.path.realpath(f"/sys/class/tty/{name}/device")
+        for _ in range(8):
+            cand = os.path.join(node, "product")
+            if os.path.isfile(cand):
+                with open(cand) as fh:
+                    return fh.read().strip()
+            parent = os.path.dirname(node)
+            if parent == node:
+                break
+            node = parent
+    except Exception:                            # noqa: BLE001
+        pass
+    return ""
+
+
+def nrf52_board_key(product: str) -> Optional[str]:
+    """The board key a USB product string names, or None if it names none we
+    stock. None is not a failure — the caller then offers every nRF52 board
+    rather than guessing, because a wrong board costs a bad flash."""
+    low = (product or "").lower()
+    for needle, key in _NRF52_PRODUCT_KEYS:
+        if needle in low:
+            return key
+    return None
+
+
 def _port_usb_kind(port: str):
     """bridge / native / None for *port*.
 
@@ -196,7 +257,9 @@ def _port_usb_kind(port: str):
 
 
 def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
-                 reader: Optional[Callable[[str], str]] = None) -> dict:
+                 reader: Optional[Callable[[str], str]] = None,
+                 vendor_fn: Optional[Callable[[str], str]] = None,
+                 product_fn: Optional[Callable[[str], str]] = None) -> dict:
     """Detect the connected work board. Returns a result dict:
     ``{found, port?, chip?, platform?, firmware?, boards?, board_key?, reason?}``.
     ``boards`` is the full board catalogue (to shortlist); ``ports_fn`` returns the
@@ -208,6 +271,27 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                 "No work board on the medic's USB — plug the board in with a "
                 "known-good data cable (its own onboard board doesn't count)."}
     port = ports[0]
+
+    # nRF52 boards FIRST, before esptool is ever reached. esptool cannot read an
+    # nRF52840 — it will always time out — so running it here produced an empty
+    # picker and told the operator to hold a BOOT button this family does not
+    # have (RAK4631, 2026-08-05). Identify from the USB product string instead,
+    # which for these boards literally names the model.
+    if (vendor_fn or port_usb_vendor)(port) in _NRF52_VENDORS:
+        product = (product_fn or port_usb_product)(port)
+        key = nrf52_board_key(product)
+        nrf = [b for b in boards
+               if _platform_key(getattr(b, "platform", "")) == "nrf52"]
+        named = [b for b in nrf if b.key == key] if key else []
+        # A named board wins; otherwise offer every nRF52 board we stock rather
+        # than guessing one. Never an empty list — that is the bug being fixed.
+        shortlist = named or nrf
+        return {"found": True, "port": port, "chip": "nrf52840",
+                "platform": "nRF52", "product": product,
+                "firmware": firmware_options("nrf52840"),
+                "boards": shortlist,
+                "board_key": shortlist[0].key if len(shortlist) == 1 else None}
+
     try:
         out = (reader or _default_reader)(port)
     except Exception as e:
