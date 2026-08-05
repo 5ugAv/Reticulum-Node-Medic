@@ -984,15 +984,40 @@ class BirthGuideScreen(BoxLayout):
         return btn
 
     def _path_button(self, key, title, subtitle, height=104):
+        """A choice card that GROWS to fit its own text.
+
+        The title used to be pinned to 30dp and the card to a hard-coded 104
+        (170 for the Pi one). "A radio for phone or computer (RNode)" wraps to
+        two lines at 21sp, so its second line — the "(RNode)" that names the
+        thing — was squashed into the description under it (operator, on the
+        5" panel, 2026-08-05). Hard-coded heights only ever fit the strings
+        they were measured against, and these strings are translated into
+        eight languages, several of which run longer than the English.
+
+        So *height* is now a MINIMUM, not the size: both labels take the height
+        their rendered text actually needs, and the card follows. No loop —
+        width flows down from the button, height flows up from the text, and
+        the two never depend on each other.
+        """
         btn = Button(size_hint_y=None, height=dp(height), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
-        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line(title, "21sp", bold=True, h=30))
-        sub = _line(subtitle, "14sp", color="text_secondary")
-        inner.add_widget(sub)
-        inner.size = btn.size
-        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
+        pad_y = dp(12)
+        inner = BoxLayout(orientation="vertical", size_hint=(None, None),
+                          padding=[dp(18), pad_y], spacing=dp(4))
+
+        def _grows(lbl):
+            lbl.size_hint_y = None
+            lbl.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+            return lbl
+
+        inner.add_widget(_grows(_line(title, "21sp", bold=True)))
+        inner.add_widget(_grows(_line(subtitle, "14sp", color="text_secondary")))
+        inner.bind(minimum_height=inner.setter("height"))
+        # width DOWN from the card (so the labels know where to wrap), height UP
+        # from the text (so nothing is ever clipped).
+        btn.bind(width=lambda _b, w: setattr(inner, "width", w),
                  pos=lambda _b, v: setattr(inner, "pos", v))
+        inner.bind(height=lambda _i, h: setattr(btn, "height", max(dp(height), h)))
         btn.add_widget(inner)
         btn.bind(on_release=lambda *_: self._choose(key))
         return btn
