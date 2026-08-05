@@ -12,6 +12,8 @@ verify the board reports as a provisioned RNode.
 
 from __future__ import annotations
 
+import os
+import re
 import shlex
 from typing import Callable, List, Optional
 
@@ -208,6 +210,52 @@ def usb_id_for_port(connection: Connection, port: str):
     return lines[0] if lines else None
 
 
+#: ``usb-<vendor>_<product>_<SERIAL>-if00`` — the tail is the board's stable
+#: hardware serial, the ONE thing that survives a re-enumeration.
+_BY_ID_SERIAL = re.compile(r"_([^_]+)-if\d+$")
+
+
+def by_id_serial(by_id_name):
+    """The hardware serial out of a /dev/serial/by-id basename, or None.
+
+    The rest of the name is NOT stable across a flash: the RAK4631 announces
+    itself as ``RAKWireless_WisBlock_RAK4631`` from its bootloader and
+    ``RAKwireless_WisBlock_RAK4631`` once running RNode firmware — a capital W
+    becomes lowercase. Only the serial (``4631000000000002``) is constant.
+    """
+    m = _BY_ID_SERIAL.search(by_id_name or "")
+    return m.group(1) if m else None
+
+
+def find_port_by_usb_serial(connection, serial, tries: int = 20,
+                            delay: float = 1.0, sleep=None):
+    """Poll for the tty currently carrying USB *serial*, or None.
+
+    Needed because a board does not keep its port number across a flash. An
+    nRF52 in DFU (239a:002a) and the same board running RNode firmware
+    (239a:8029) are two different USB devices to the kernel, so the tty is
+    re-issued — verified live 2026-08-05: a RAK4631 flashed on ``ttyACM1`` came
+    back on ``ttyACM2``. Polling rather than a fixed sleep because the gap
+    between the write finishing and udev publishing the new symlink is not
+    fixed.
+    """
+    if not serial:
+        return None
+    import time as _t
+    nap = sleep or _t.sleep
+    for attempt in range(max(1, tries)):
+        out = connection.run(
+            'for l in /dev/serial/by-id/*; do echo "$l $(readlink -f "$l")"; '
+            'done 2>/dev/null')[1] or ""
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and by_id_serial(os.path.basename(parts[0])) == serial:
+                return parts[1]
+        if attempt < tries - 1:
+            nap(delay)
+    return None
+
+
 class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
@@ -301,9 +349,37 @@ class RNodeFlashWorkflow:
         return StepResult("ensure_firmware", True,
                           f"Offline — using cached firmware {self.version}.")
 
+    def _reacquire_port(self) -> str:
+        """Re-find the board after a flash, because the tty can MOVE.
+
+        Live 2026-08-05: a RAK4631 was flashed on ``ttyACM1`` and came back on
+        ``ttyACM2`` — DFU and the running firmware are different USB devices, so
+        the kernel issues a new tty. ``set_params`` then aimed at a node that no
+        longer existed, ``serial_for_port`` returned None, and the onboard guard
+        (rightly) refused to write to something it could not identify. The guard
+        was correct: writing blind to a vanished tty is exactly how the wrong
+        board gets flashed once something else claims that number.
+
+        Only re-point when the CURRENT port has genuinely gone; a board that
+        stayed put is left alone.
+        """
+        serial = getattr(self, "_usb_serial", None)
+        if not serial:
+            return self.port
+        if self.connection.run(f"test -e {self.port}")[0] == 0:
+            return self.port                          # still there, nothing to do
+        found = find_port_by_usb_serial(self.connection, serial)
+        if found and found != self.port:
+            self.port = found
+        return self.port
+
     def _flash(self) -> StepResult:
         if self.board.flash_method != "autoinstall":
             return self._flash_custom_fork()
+        # Fingerprint the board BEFORE the write — after it, the port may be a
+        # different number and this serial is the only way back to it.
+        self._usb_serial = by_id_serial(
+            usb_id_for_port(self.connection, self.port))
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)
@@ -408,12 +484,14 @@ class RNodeFlashWorkflow:
         # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
         # board host-controlled, so a Pi's rnsd never aborts on a stale
         # 250/SF11 default ("Radio state mismatch").
+        self._reacquire_port()          # the flash may have moved the board
         ok, detail = set_params_at_birth(self.connection, self.port,
                                          cfg=self.radio,
                                          timeout=self.flash_timeout)
         return StepResult("set_params", ok, detail)
 
     def _verify(self) -> StepResult:
+        self._reacquire_port()          # ditto — the board may have moved
         out = self.connection.run(f"rnodeconf {self.port} --info")[1]
         ok = "Device signature" in out and "Firmware version" in out
         if ok:
