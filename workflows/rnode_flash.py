@@ -347,6 +347,11 @@ class RNodeFlashWorkflow:
                               "No board found — plug it in (some USB-C cables "
                               "are charge-only).")
         self.port = port
+        # Fingerprint the board the moment we first see it. The tty number is
+        # the one property that does NOT survive a reset, and every later step
+        # needs a way back to THIS board rather than to whatever now holds the
+        # number it used to have.
+        self._usb_serial = by_id_serial(usb_id_for_port(self.connection, port))
         return StepResult("detect_port", True, f"Board on {port}.")
 
     def _ensure_single_board(self) -> StepResult:
@@ -431,10 +436,16 @@ class RNodeFlashWorkflow:
     def _flash(self) -> StepResult:
         if self.board.flash_method != "autoinstall":
             return self._flash_custom_fork()
-        # Fingerprint the board BEFORE the write — after it, the port may be a
-        # different number and this serial is the only way back to it.
-        self._usb_serial = by_id_serial(
-            usb_id_for_port(self.connection, self.port))
+        # The board can move between detect_port and here — an already-birthed
+        # RNode re-enumerates whenever anything opens its port, so by the time
+        # autoinstall ran it was on a different tty and rnodeconf died with
+        # "Could not find specified port /dev/ttyACM2, exiting now" (live,
+        # 2026-08-05, lap 2 of the acceptance matrix). Re-point before the write
+        # as well as after it.
+        if not getattr(self, "_usb_serial", None):
+            self._usb_serial = by_id_serial(
+                usb_id_for_port(self.connection, self.port))
+        self._reacquire_port()
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)

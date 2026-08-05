@@ -123,3 +123,47 @@ def test_a_vanished_port_is_re_pointed_at_the_same_board():
     wf = _WF(C(), "/dev/ttyACM1", "4631000000000002")
     assert wf._reacquire_port() == "/dev/ttyACM2"
     assert wf.port == "/dev/ttyACM2"
+
+
+# -- the port can move BEFORE the flash too ----------------------------------
+
+def test_an_already_birthed_board_that_moved_is_re_found_before_the_write():
+    """Lap 2 of the acceptance matrix, live 2026-08-05:
+
+        [birth] detect_port: ok - Board on /dev/ttyACM2.
+        [birth] flash: FAIL - autoinstall did not complete:
+                Could not find specified port /dev/ttyACM2, exiting now
+
+    An already-provisioned RNode re-enumerates whenever something opens its
+    port, so the tty found by detect_port was stale by the time autoinstall ran.
+    Re-acquiring only AFTER the flash was not enough.
+    """
+    class C:
+        def __init__(self):
+            self.checked = []
+
+        def run(self, cmd, timeout=None):
+            if cmd.startswith("test -e"):
+                self.checked.append(cmd)
+                return (1, "", "")                    # ttyACM2 is gone
+            return (0, f"/dev/serial/by-id/{RUN} /dev/ttyACM1", "")
+
+    wf = _WF(C(), "/dev/ttyACM2", "4631000000000002")
+    assert wf._reacquire_port() == "/dev/ttyACM1"
+
+
+def test_detect_port_records_the_fingerprint_so_later_steps_can_re_find_it():
+    """The serial must be captured when the board is FIRST seen — capturing it
+    inside _flash left nothing to search with if the board moved before that."""
+    import workflows.rnode_flash as rf
+
+    class C:
+        def run(self, cmd, timeout=None):
+            return (0, RUN, "")
+
+    wf = rf.RNodeFlashWorkflow.__new__(rf.RNodeFlashWorkflow)
+    wf.connection = C()
+    wf.port = "/dev/ttyACM2"
+    res = rf.RNodeFlashWorkflow._detect_port(wf)
+    assert res.success
+    assert wf._usb_serial == "4631000000000002"
