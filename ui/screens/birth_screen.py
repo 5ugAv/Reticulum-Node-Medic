@@ -2259,12 +2259,18 @@ class BirthScreen(BoxLayout):
         try:
             from ui.requirement_popup import requirement_popup
             if getattr(self, "_had_failure", False):
+                # Recovery advice must match the board in the operator's hand.
+                # This said "hold BOOT, tap RST" to everyone, and a RAK4631 has
+                # no BOOT button at all — it double-taps RESET into a UF2
+                # bootloader. Being told to press a button that does not exist
+                # is worse than being told nothing (operator, 2026-08-05).
+                from ui.safety import recovery_for_board
+                recover = recovery_for_board(getattr(self, "_last_board", None))
                 view = requirement_popup(
                     "A build step failed — the [FAIL] line in the build log "
                     "names it, with the reason under it. Fix that and run the "
-                    "build again.\n\nBoard won't flash?  Hold BOOT, tap RST, "
-                    "release BOOT, retry — or use a short, known-good USB data "
-                    "cable.",
+                    f"build again.\n\nBoard won't flash?  {recover}  If it "
+                    "still won't, try a short, known-good USB data cable.",
                     "Build didn't finish", False)
                 # Bring the chooser back so the operator can rerun, but KEEP
                 # the log below — it names what failed.
@@ -2322,9 +2328,10 @@ class BirthScreen(BoxLayout):
         if getattr(self, "_had_failure", False):
             self.list.add_widget(_line("X  Something didn't finish", bold=True,
                                        size="18sp", color="red"))
+            from ui.safety import recovery_for_board
             self.list.add_widget(_line(
-                "Fix the failed step above and run it again. If a board won't "
-                "flash: hold BOOT, tap RST, release BOOT, then retry - or use a "
+                "Fix the failed step above and run it again. If the board won't "
+                f"flash: {recovery_for_board(board)}  If it still won't, try a "
                 "short, known-good USB data cable.", size="14sp", color="amber"))
             return
         self.list.add_widget(_line("OK  Done!", bold=True, size="20sp",
