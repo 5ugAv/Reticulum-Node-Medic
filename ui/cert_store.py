@@ -76,9 +76,25 @@ def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
     (2026-08-01 bug hunt). Returns how many were removed."""
     if not usb_serial:
         return 0
+    # Match on the board's HARDWARE SERIAL, not the whole by-id string. The
+    # rest of that string is not stable across a reset: a RAK4631 announces
+    # itself as RAKWireless from its bootloader and RAKwireless once running
+    # firmware — one capital letter apart. A certificate is written after
+    # verify (firmware mode) but the wipe that should retire it runs while the
+    # board is in DFU, so an exact compare never matched and the old
+    # certificate survived. Live 2026-08-05: rebirthing rak2 as rak3 left TWO
+    # certificates pointing at the same physical board.
+    def _key(s):
+        try:
+            from workflows.rnode_flash import by_id_serial
+            return (by_id_serial(s) or s or "").lower()
+        except Exception:                                         # noqa: BLE001
+            return (s or "").lower()
+
+    want = _key(usb_serial)
     removed = 0
     for cert in load_certs(cert_dir):
-        if cert.get("usb_serial") != usb_serial:
+        if _key(cert.get("usb_serial")) != want:
             continue
         cid = cert.get("_id")
         if not cid:
