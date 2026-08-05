@@ -125,3 +125,51 @@ def test_the_medics_own_radio_is_refused_before_any_wipe(monkeypatch):
     with pytest.raises(ProtectedBoardError):
         wipe_for_rebirth(c, "/dev/ttyACM0", vendor_fn=_nrf)
     assert c.cmds == [], "a command ran against a protected board"
+
+
+# -- the same wrong-tool trap inside the birth's own fallback ----------------
+
+def _wf(port, vendor, run):
+    """A minimal RNodeFlashWorkflow just able to run _erase_chip."""
+    import workflows.rnode_flash as rf
+    wf = rf.RNodeFlashWorkflow.__new__(rf.RNodeFlashWorkflow)
+    wf.port = port
+    wf.version = "1.86"
+    wf.flash_timeout = 60
+    wf.connection = run
+    return wf
+
+
+def test_the_foreign_firmware_fallback_does_not_run_esptool_on_an_nrf52(monkeypatch):
+    """_flash falls back to an erase when a board arrives carrying foreign
+    firmware — "factory image, Meshtastic, a half-written flash". That is
+    EXACTLY the factory-fresh RAK4631 case, and it ran esptool, so the rescue
+    path could never rescue the boards it was written for."""
+    import workflows.rnode_flash as rf
+    import ui.board_detect as bd
+    monkeypatch.setattr(bd, "port_usb_vendor", lambda p: "239a")
+    monkeypatch.setattr(rf, "guard_is_active", lambda *a, **k: False,
+                        raising=False)
+
+    c = _Conn()
+    wf = _wf("/dev/ttyACM1", "239a", c)
+    monkeypatch.setattr("ui.onboard_roster.guard_is_active",
+                        lambda *a, **k: False)
+    ok, msg = rf.RNodeFlashWorkflow._erase_chip(wf)
+    assert ok
+    assert not any("esptool" in cmd for cmd in c.cmds), \
+        "an nRF52 board was handed to the ESP32 flasher"
+    assert any("--eeprom-wipe" in cmd for cmd in c.cmds)
+
+
+def test_the_fallback_still_chip_erases_an_esp32(monkeypatch):
+    import workflows.rnode_flash as rf
+    import ui.board_detect as bd
+    monkeypatch.setattr(bd, "port_usb_vendor", lambda p: "303a")
+    monkeypatch.setattr("ui.onboard_roster.guard_is_active",
+                        lambda *a, **k: False)
+    c = _Conn()
+    wf = _wf("/dev/ttyUSB0", "303a", c)
+    ok, _ = rf.RNodeFlashWorkflow._erase_chip(wf)
+    assert ok
+    assert any("esptool" in cmd and "erase_flash" in cmd for cmd in c.cmds)

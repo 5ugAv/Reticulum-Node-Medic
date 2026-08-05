@@ -488,12 +488,30 @@ class RNodeFlashWorkflow:
                 assert_flashable(self.port)
         except Exception as e:            # noqa: BLE001
             return False, f"refused: {e}"
-        cmd = (f"python3 ~/.config/rnodeconf/update/{self.version}/esptool.py "
-               f"--chip auto --port {self.port} --before default_reset "
-               f"erase_flash")
+        # Clear the board by the means ITS CHIP FAMILY has. This fallback exists
+        # for a board arriving with foreign firmware — a factory image being the
+        # commonest case — so running esptool unconditionally aimed the wrong
+        # tool at exactly the boards it was written to rescue. An nRF52 got
+        # "could not be erased: Could not connect to Espressif device", which
+        # says nothing true about a board that has no Espressif chip on it.
+        try:
+            from ui.board_detect import _NRF52_VENDORS, port_usb_vendor
+            is_nrf = (port_usb_vendor(self.port) or "").lower() in _NRF52_VENDORS
+        except Exception:                                         # noqa: BLE001
+            is_nrf = False
+        if is_nrf:
+            # No chip erase exists here: the Adafruit bootloader is the only way
+            # back in, and erasing it bricks rather than resets. What actually
+            # confuses rnodeconf's post-write probe is a stale/invalid EEPROM,
+            # and the DFU write replaces the application wholesale regardless.
+            cmd = f"rnodeconf {shlex.quote(self.port)} --eeprom-wipe"
+        else:
+            cmd = (f"python3 ~/.config/rnodeconf/update/{self.version}/esptool.py "
+                   f"--chip auto --port {self.port} --before default_reset "
+                   f"erase_flash")
         code, out, err = self.connection.run(cmd, timeout=self.flash_timeout)
         low = ((out or "") + (err or "")).lower()
-        ok = code == 0 or "erase completed" in low
+        ok = code == 0 or "erase completed" in low or "eeprom wiped" in low
         return ok, ("erased" if ok else (err or out or "")[-160:])
 
     def _flash_custom_fork(self) -> StepResult:
