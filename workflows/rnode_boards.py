@@ -31,9 +31,21 @@ _ESP32_BOOTLOADER = (
     "This board enters flash mode automatically over USB. If flashing fails, "
     "hold BOOT (labelled PRG or USER on some boards), tap RST/RESET once, then "
     "release BOOT and retry.")
+#: VERIFIED on a RAK4631, 2026-08-05. rnodeconf flashes nRF52 boards with
+#: ``adafruit-nrfutil dfu serial ... -t 1200`` — the ``-t 1200`` IS the touch, so
+#: the flasher drops the port to 1200 baud and puts the board into its
+#: bootloader itself. The operator does not have to press anything.
+#:
+#: And NO USB drive appears. This bootloader is serial DFU only: in DFU mode the
+#: board (239a:002a) exposes just CDC interfaces — class 02 and 0a, both bound to
+#: cdc_acm, nothing on usb-storage and no block device. The old wording promised
+#: a drive that never shows up, which left the operator waiting for a sign that
+#: could not come.
 _NRF52_BOOTLOADER = (
-    "Double-tap the RESET button to enter the UF2 bootloader — a USB drive "
-    "appears, and the tool flashes into it.")
+    "The tool puts this board into its bootloader by itself over USB — no "
+    "button to press. Nothing appears as a USB drive: this bootloader talks "
+    "over the serial port only. If a flash does fail, double-tap RESET and "
+    "run it again.")
 
 
 @dataclass

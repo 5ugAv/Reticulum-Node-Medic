@@ -27,8 +27,17 @@ def test_supreme_and_t3s3_auto_reset():
     assert "automatically" in safety.recovery_text("T3S3")
 
 
-def test_rak4631_double_tap():
-    assert "Double-tap" in safety.recovery_text("RAK4631")
+def test_rak4631_offers_the_double_tap_only_as_a_fallback():
+    """The flasher does the 1200-baud touch itself (`adafruit-nrfutil dfu serial
+    ... -t 1200`), so the board enters DFU with nobody touching it. The
+    double-tap still belongs here — it is the fallback when that fails — but it
+    must not be the headline instruction, and we must not promise a USB drive:
+    verified 2026-08-05, in DFU the RAK exposes only CDC interfaces (class 02 +
+    0a on cdc_acm), no mass storage, no block device."""
+    text = safety.recovery_text("RAK4631")
+    assert "double-tap" in text.lower(), "keep the fallback"
+    assert "no button" in text.lower(), "lead with the automatic reset"
+    assert "serial-only" in text.lower()
 
 
 def test_atmega_is_high_risk():

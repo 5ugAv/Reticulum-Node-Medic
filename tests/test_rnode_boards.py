@@ -114,11 +114,32 @@ def test_every_board_has_bootloader_and_recovery_text():
         assert b.recovery_instructions.strip()
 
 
-def test_nrf52_boards_use_uf2_recovery_wording():
+def test_nrf52_guidance_never_promises_a_usb_drive():
+    """No UF2 drive appears on this board, so we must not say one does.
+
+    Verified on a RAK4631 (2026-08-05): in DFU the board enumerates as
+    239a:002a exposing ONLY CDC interfaces — class 02 and 0a, both bound to
+    cdc_acm — with nothing on usb-storage and no block device. It is serial DFU,
+    full stop. The text used to read "a USB drive appears, and the tool flashes
+    into it", which left the operator watching for a sign that could never come
+    while the real failure sat elsewhere.
+    """
     rak = get_board("rak4631")
     assert rak.platform == "nRF52"
-    assert "UF2" in rak.bootloader_instructions or "double-tap" in \
-        rak.bootloader_instructions.lower()
+    txt = rak.bootloader_instructions.lower()
+    assert "usb drive" not in txt or "no usb drive" in txt or \
+        "nothing appears as a usb drive" in txt, \
+        "nRF52 guidance promises a UF2 drive that does not exist"
+    assert "serial" in txt, "say what the bootloader actually speaks"
+
+
+def test_nrf52_guidance_does_not_demand_a_button_press():
+    """rnodeconf flashes nRF52 with `adafruit-nrfutil dfu serial ... -t 1200`;
+    the -t 1200 IS the touch, so the tool enters the bootloader by itself. The
+    double-tap is a fallback and must not be presented as the required step."""
+    txt = get_board("rak4631").bootloader_instructions.lower()
+    assert "no button" in txt or "by itself" in txt or "on its own" in txt, \
+        "the automatic touch is the normal path — don't send someone hunting RST"
 
 
 def test_custom_boards_are_the_tracker_only():

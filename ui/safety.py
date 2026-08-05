@@ -27,8 +27,14 @@ BOARD_RECOVERY = {
     "T-Echo":
         "Hold the lower button, press the upper button briefly, then release "
         "both. The LED pulses green to confirm.",
+    # VERIFIED on the board, 2026-08-05: no USB drive ever appears. In DFU the
+    # RAK exposes only CDC interfaces (class 02 + 0a on cdc_acm) — serial DFU,
+    # no mass storage. The flasher also does the 1200-baud touch itself, so the
+    # double-tap is a fallback, not the normal path.
     "RAK4631":
-        "Double-tap RST. A USB drive appears to confirm recovery mode.",
+        "The tool resets this board into its bootloader on its own — no button "
+        "needed. If it still won't flash, double-tap RST and retry. Don't wait "
+        "for a USB drive to appear: this bootloader is serial-only.",
     "ATmega":
         "HIGH RISK: this board cannot self-recover. An external programmer is "
         "required to reflash it if the operation is interrupted.",
