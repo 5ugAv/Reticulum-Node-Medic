@@ -46,11 +46,30 @@ def _hermetic_onboard_guard(request, monkeypatch, tmp_path):
         import ui.onboard_roster as roster
     except Exception:                      # module unavailable — nothing to do
         return
-    # A roster path that does not exist: guard_is_active() consults it, and so
-    # does every default-argument caller of load_roster/is_onboard.
+    # A roster path that does not exist: guard_is_active() consults it.
     monkeypatch.setattr(roster, "ROSTER_PATH", str(tmp_path / "no-onboard.json"),
                         raising=False)
     # The gate is skipped on a host with nothing to protect. Tests inherit that
     # so they behave identically wherever they run.
     monkeypatch.setattr(roster, "guard_is_active", lambda *a, **k: False,
+                        raising=False)
+    # AND the two host lookups themselves. Patching ROSTER_PATH alone does NOT
+    # reach them, and an earlier comment here claimed it did — it cannot.
+    # ``is_onboard(port, path=ROSTER_PATH)`` binds that default ONCE, at import
+    # time, so a caller passing no path still reads the REAL roster however the
+    # module attribute is rebound afterwards.
+    #
+    # That is what kept six tests red on the medic and green on the Mac. On the
+    # medic ``/dev/ttyACM0`` genuinely exists, so ``serial_for_port`` resolved
+    # JONESEY'S OWN serial, ``is_onboard`` said True, and detect_rnode_port
+    # correctly refused to hand out the medic's radio — returning None where the
+    # test expected a port. The product was right every time; the test was
+    # asking a question that means something different on the machine the tool
+    # actually runs on.
+    #
+    # Tests that drive the guard itself carry the ``onboard_guard`` marker and
+    # returned above, so they still exercise the real lookups.
+    monkeypatch.setattr(roster, "serial_for_port", lambda *a, **k: "",
+                        raising=False)
+    monkeypatch.setattr(roster, "is_onboard", lambda *a, **k: False,
                         raising=False)

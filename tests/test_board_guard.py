@@ -16,6 +16,11 @@ from ui import onboard_roster as R
 from ui.onboard_roster import ProtectedBoardError, assert_flashable
 
 
+# Drives the guard directly, so it is exempt from the conftest stand-down.
+# Hermetic: each test patches the host lookups and passes its own roster.
+pytestmark = pytest.mark.onboard_guard
+
+
 @pytest.fixture
 def roster_file(tmp_path):
     p = tmp_path / "onboard.json"

@@ -1,3 +1,4 @@
+import pytest
 """The Tracker-as-RNode custom-fork path — full emulated dry-run.
 
 Written before the first live Tracker lap (2026-08-01) to prove, without
@@ -88,6 +89,7 @@ def test_certificate_carries_the_usb_fingerprint():
     assert "02:00:00:02:00:06" in (cert.get("usb_serial") or "")
 
 
+@pytest.mark.onboard_guard   # drives the guard; needs the real lookups
 def test_gate_would_block_the_medics_own_radio():
     """assert_flashable inside _flash refuses a rostered port outright."""
     import ui.onboard_roster as ob

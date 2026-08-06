@@ -605,3 +605,35 @@ def test_detect_fails_cleanly_when_rnodeconf_missing_and_no_wheels_or_net():
     w = wf(conn)
     result = w.steps[0][1](w)
     assert result.success is False and "wheelhouse" in result.message
+
+
+# --- the suite must mean the same thing on the medic as on a Mac -------------
+# These two pin conftest's hermetic fixture. They pass trivially on a dev Mac
+# either way, which is exactly why they are worth writing down: the bug they
+# guard against is INVISIBLE here and only shows on the machine the tool
+# actually lives on.
+#
+# History: patching `roster.ROSTER_PATH` was believed to cover callers that take
+# `path=ROSTER_PATH` as a default. It cannot — a default argument is bound once,
+# at import. So on the medic `is_onboard("/dev/ttyACM0")` read the REAL roster,
+# resolved Jonesey's real serial, and detect_rnode_port correctly refused to
+# hand out the medic's own radio. Six tests went red for the product doing the
+# right thing (task #64).
+
+def test_the_host_lookups_are_neutralised_for_ordinary_tests():
+    """On the medic these resolve real hardware. In the suite they must not."""
+    import ui.onboard_roster as roster
+    assert roster.serial_for_port("/dev/ttyACM0") == ""
+    assert roster.is_onboard("/dev/ttyACM0") is False
+
+
+def test_the_guard_exemption_marker_is_actually_used():
+    """`onboard_guard` was declared in conftest and applied to NOTHING for
+    months, so the modules it was meant to protect were silently relying on a
+    stand-down that did not reach them. If this hits zero again, the exemption
+    has been dropped and the guard's own tests are being neutralised."""
+    import pathlib
+    tests = pathlib.Path(__file__).parent
+    users = [p.name for p in tests.glob("test_*.py")
+             if "onboard_guard" in p.read_text()]
+    assert users, "nothing carries the onboard_guard marker any more"

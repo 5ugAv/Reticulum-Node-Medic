@@ -8,6 +8,15 @@ from ui import onboard_roster as roster
 from ui import hw_factories as hw
 
 
+import pytest
+
+# This module IS the onboard guard's own test. The autouse fixture in
+# conftest stands the guard down for the suite at large; these tests must see
+# the real functions, and they are hermetic on their own — every one patches
+# serial_for_port itself and supplies its own roster path.
+pytestmark = pytest.mark.onboard_guard
+
+
 def test_register_and_load_roundtrip(tmp_path):
     p = str(tmp_path / "onboard.json")
     roster.register("jonesey_lora", "A1:B2:C3:D4:E5:F6", path=p)
