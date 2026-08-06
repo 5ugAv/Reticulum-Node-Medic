@@ -106,29 +106,42 @@ _STEPS = {
                        "transmitting without one can permanently damage its "
                        "radio."),
          "anim": "connect_board"},
-        {"title": tr("Put the SD card into the Raspberry Pi"),
-         "body": tr("Now the Pi. Slide the blank microSD card into its own card "
-                    "slot. You don't need a card reader — the Pi will hand its "
-                    "card to Node Medic by itself."),
+        # ONE ROUTE FOR EVERY BOARD — the medic's own card reader (operator
+        # decision, 2026-08-06). This replaced "card into the Pi, Pi becomes its
+        # own card reader" (rpiboot), which was clever and board-dependent in a
+        # way the operator could not see: a Pi 3A+ can NEVER do it, because its
+        # OTG ID signal is hardwired to 0V (permanent host mode), so it cannot
+        # present itself as a USB device at all. Verified live — powered, LED
+        # on, never appeared on the medic's USB. And it was circular: the only
+        # override lives on a card that has not been written yet.
+        #
+        # The old route also failed SILENTLY and identically to a bad cable,
+        # which is the worst possible failure for a field tool. One uniform
+        # route is teachable, demonstrable, and behaves the same everywhere.
+        {"title": tr("Put the SD card into Node Medic"),
+         "body": tr("Slide the blank microSD card into the card reader on Node "
+                    "Medic. Node Medic writes the whole system onto it here, "
+                    "where it can check its own work before you carry it away."),
+         "anim": "insert_sd",
+         "next": tr("Write the card  \u2192"), "screen": "pi_imager"},
+        {"title": tr("Move the card to the Raspberry Pi"),
+         "body": tr("The card is ready. Take it out of the reader and slide it "
+                    "into the Pi's own card slot."),
          "anim": "insert_sd_pi"},
         {"title": tr("Connect the Pi to Node Medic"),
-         "body": tr("Plug the Pi into Node Medic with a USB cable. Node Medic "
-                    "powers it and opens its card automatically — no Wi-Fi and "
-                    "no network setup are needed anywhere in this build."),
-         "hint": tr("Use the Pi's DATA port. A Pi Zero has two identical "
-                    "micro-USB sockets: the one nearer the mini-HDMI is USB "
-                    "(data), the outer one is PWR IN and cannot carry data. "
-                    "Use a short, thick cable — a thin or coiled one drops the "
-                    "link."),
-         "anim": "connect_pi",
-         "next": tr("Open the card  →"), "screen": "pi_imager"},
-        {"title": tr("Restart the Pi"),
-         "body": tr("The card now has an operating system on it. Unplug the Pi "
-                    "from Node Medic and plug it straight back in, so it starts "
-                    "up from the new system."),
-         "hint": tr("Node Medic can't switch the Pi off and on for you — this "
-                    "is the one step it needs your hands for. First start-up "
-                    "takes a minute or two."),
+         "body": tr("Plug the Pi into Node Medic with a USB cable and let it "
+                    "start up. It boots straight from the card you just wrote "
+                    "\u2014 no Wi-Fi and no network setup anywhere in this build."),
+         # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
+         # session were cables, and every one first looked like a software bug.
+         # A charge-only lead powers the Pi perfectly and never appears.
+         "hint": tr("Use the Pi's DATA port, and a cable that carries DATA \u2014 a "
+                    "charge-only lead will power the Pi perfectly and never "
+                    "show up here. On a Pi Zero it's the inner micro-USB, "
+                    "nearer the mini-HDMI; the outer one is PWR IN and cannot "
+                    "carry data. On a Pi 3A+ it's the full-size USB-A socket "
+                    "\u2014 its micro-USB is power only. Use a short, thick cable "
+                    "\u2014 a thin or coiled one drops the link."),
          "anim": "connect_pi"},
     ],
     "host": [

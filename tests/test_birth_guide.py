@@ -60,14 +60,16 @@ def test_pi_path_does_the_RADIO_before_the_card():
 # These steps described a different flow until then: card into a USB reader,
 # radio onto the Pi, network address typed in. Every one of those was wrong.
 
-def test_the_card_goes_into_the_PI_not_into_a_reader():
-    """The Pi is its own card reader. Sending the operator hunting for a USB
-    reader was the tool making its own limitation their problem."""
+def test_the_card_goes_into_the_MEDICS_READER_not_into_the_pi():
+    """REVERSED 2026-08-06 by operator decision. The old rule was "the Pi is its
+    own card reader" (rpiboot), which read as kindness but was board-dependent
+    in a way the operator could not see: a Pi 3A+ has its OTG ID hardwired to
+    0V, so it can NEVER present itself as a USB device, and the step failed
+    silently and identically to a bad cable. One uniform route instead."""
     card = [s for s in guide_steps("pi") if "SD card" in s["title"]][0]
-    assert "into the Raspberry Pi" in card["title"]
-    assert "don't need a card reader" in card["body"]
-    joined = " ".join(s["body"] for s in guide_steps("pi"))
-    assert "card reader" not in joined.replace("don't need a card reader", "")
+    assert "into Node Medic" in card["title"]
+    assert "card reader on Node Medic" in card["body"]
+    assert card.get("screen") == "pi_imager", "writing happens from this step"
 
 
 def test_the_radio_goes_on_the_MEDIC_not_on_the_pi():
@@ -81,21 +83,18 @@ def test_the_radio_goes_on_the_MEDIC_not_on_the_pi():
     assert "not into the pi" in radio["body"].lower()
 
 
-def test_the_operator_is_told_to_restart_the_pi_after_imaging():
-    """The medic CANNOT power-cycle a Pi — uhubctl on the Pi 5 root hub does
-    not cut VBUS (measured: the device stays powered and never reboots). If the
-    flow doesn't ask, the operator waits forever for a node that never boots."""
+def test_no_replug_is_needed_because_the_card_is_written_first():
+    """The old flow imaged the card INSIDE the Pi, so the Pi had to be power
+    cycled to boot what had just been written — and the medic cannot do that
+    itself (uhubctl on the Pi 5 root hub does not cut VBUS; measured). Writing
+    the card before it goes near the Pi removes the step, and with it the
+    commonest place for the flow to silently stall."""
     titles = [s["title"] for s in guide_steps("pi")]
-    restart = [s for s in guide_steps("pi") if "Restart" in s["title"]]
-    assert restart, "no restart step — the flow would silently stall"
-    assert "can't switch the Pi off and on" in restart[0]["hint"]
-    # and it must come AFTER the imaging hand-off. (It no longer needs to
-    # precede the radio step: the radio is now done first, so that the board is
-    # known before the card is written.)
-    i_restart = titles.index(restart[0]["title"])
-    i_image = [i for i, st in enumerate(guide_steps("pi"))
+    assert not any("Restart" in t for t in titles), titles
+    idx = {t: i for i, t in enumerate(titles)}
+    i_write = [i for i, st in enumerate(guide_steps("pi"))
                if st.get("screen") == "pi_imager"][0]
-    assert i_restart > i_image, titles
+    assert i_write < idx["Move the card to the Raspberry Pi"] < idx["Connect the Pi to Node Medic"]
 
 
 def test_the_data_port_trap_is_called_out_where_it_happens():
@@ -160,13 +159,6 @@ def test_the_pi_connect_step_is_not_detected_by_serial_port_polling():
     i_pi = src.index("isinstance(anim, ConnectPiAnim)")
     i_board = src.index("isinstance(anim, ConnectBoardAnim)")
     assert i_pi < i_board, "the Pi branch is unreachable behind its own base class"
-
-
-def test_the_restart_step_shows_the_pi_not_the_radio():
-    """Walkthrough 2026-08-02: 'Restart the Pi' showed a radio board sliding in
-    on a red cable."""
-    restart = [s for s in guide_steps("pi") if "Restart" in s["title"]][0]
-    assert restart["anim"] == "connect_pi"
 
 
 def test_no_pi_step_uses_the_radio_board_animation_except_the_radio_step():
@@ -275,3 +267,55 @@ def test_back_from_the_board_pick_reaches_the_name_step():
     pick = func_source("ui/screens/birth_guide_screen.py", "_render_pick_board")
     assert "= self._render_step_zero" not in pick, "Back still loops forward"
     assert "self._back_action = self._render_name" in pick
+
+
+# --- ONE birth route: the medic's own card reader --------------------------
+# Operator decision, 2026-08-06, after a Pi 3A+ birth stalled on a step that
+# board physically cannot perform: "make all births the uniform process...
+# using the SD card reader in the medic instead of through the pi".
+
+def test_the_pi_route_writes_the_card_in_the_medics_reader():
+    """Pi-as-card-reader (rpiboot) is OFF the birth path. It cannot work on a
+    Pi 3A+ at all — that board's OTG ID is hardwired to 0V, so it can never
+    present itself as a USB device — and it failed silently and identically to
+    a bad cable, which is the worst failure mode for a field tool."""
+    steps = guide_steps("pi")
+    titles = " | ".join(s["title"] for s in steps)
+    bodies = " ".join(s.get("body", "") for s in steps)
+
+    assert "card reader on Node Medic" in bodies, "card must go in the MEDIC's reader"
+    assert "Put the SD card into Node Medic" in titles
+    # and the old route's promise must be gone
+    assert "the Pi will hand its card to Node Medic" not in bodies
+    assert "You don't need a card reader" not in bodies
+
+
+def test_the_card_is_written_before_it_reaches_the_pi():
+    """Order matters: write, THEN move it. The old flow put the card in the Pi
+    first and imaged through it."""
+    steps = guide_steps("pi")
+    idx = {s["title"]: i for i, s in enumerate(steps)}
+    write = idx["Put the SD card into Node Medic"]
+    move = idx["Move the card to the Raspberry Pi"]
+    connect = idx["Connect the Pi to Node Medic"]
+    assert write < move < connect, "must write, then move, then connect"
+    # the imager is opened from the WRITE step, not from a Pi-connected step
+    assert steps[write].get("screen") == "pi_imager"
+
+
+def test_there_is_no_replug_step_any_more():
+    """With the card written before it goes in, the Pi boots from it first
+    time. The old 'Restart the Pi' step existed only because the card was
+    imaged while inside the Pi."""
+    titles = [s["title"] for s in guide_steps("pi")]
+    assert "Restart the Pi" not in titles
+
+
+def test_the_cable_hint_names_the_data_trap_and_both_boards():
+    """Three separate faults in one bench session (2026-08-06) were cables, and
+    every one first presented as a software bug. A charge-only lead powers a Pi
+    perfectly and never enumerates — the operator has no way to tell by eye."""
+    hints = " ".join(s.get("hint", "") for s in guide_steps("pi"))
+    assert "DATA" in hints and "charge-only" in hints
+    assert "Pi Zero" in hints and "mini-HDMI" in hints      # inner vs PWR IN
+    assert "3A+" in hints and "USB-A" in hints              # its micro-USB is power only

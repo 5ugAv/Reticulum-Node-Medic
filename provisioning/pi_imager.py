@@ -549,9 +549,22 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
         steps.append(f"Unplug {pi} from Node Medic, wait ten seconds, "
                      f"then plug it back in.")
     else:
+        # THE ROUTE FOR EVERY BOARD from 2026-08-06 (operator decision). The
+        # rpiboot branch above is kept only for card RECOVERY — reading a card
+        # out of a Pi when no reader is to hand — because it cannot work on a
+        # 3A+ at all (OTG ID hardwired to host) and fails silently when it
+        # can't.
         steps.append("1.  Take the microSD out of the card reader.")
         steps.append(f"2.  Put it into {pi}.")
-        steps.append(f"3.  Plug {pi} into Node Medic with a USB DATA cable.")
+        # NAMING THE CABLE TRAP, because it cost a whole bench night. Three
+        # separate faults in one session were cables, and every one of them
+        # first looked like a software bug: a charge-only lead powers a Pi
+        # perfectly, boots it to a login prompt, and never enumerates — the
+        # node's own USB controller reports "not attached" while the operator
+        # stares at a healthy green LED (2026-08-06).
+        steps.append(f"3.  Plug {pi} into Node Medic with a USB cable that "
+                     f"carries DATA — a charge-only lead will power it and "
+                     f"never appear here.")
     where = (f"It joins {wifi_ssid} and answers to '{hostname}'."
              if wifi_ssid and hostname else
              "It answers over the USB cable — no WiFi needed.")
