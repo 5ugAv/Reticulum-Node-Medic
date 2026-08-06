@@ -597,7 +597,13 @@ class PiImagerScreen(BoxLayout):
         def work():
             ok, msg = pi_imager.flash(
                 path, v["hostname"], "pi", v["pw"],
-                wifi_ssid=v.get("ssid", ""), wifi_password=v.get("psk", ""))
+                wifi_ssid=v.get("ssid", ""), wifi_password=v.get("psk", ""),
+                # WHICH Pi this card is for. It picks the dwc2 dr_mode: a 3A+
+                # exposes its OTG controller on a USB-A socket, which has no ID
+                # pin, so the default dr_mode=otg resolves to HOST and the board
+                # can never appear on the medic. Empty (board unknown) keeps the
+                # plain overlay, which is what every board got before.
+                pi_key=self._pi_art_key())
             if ok:
                 # Remember what we just named it, so BIRTH can offer the Pi's
                 # address instead of asking the operator for an IP they have

@@ -598,3 +598,82 @@ def test_a_clean_prepare_still_promises_the_cable_birth():
         authorized_keys=[])
     assert ok and "It can also be birthed over a USB cable" in msg
     assert "Note:" not in msg
+
+
+# --- dr_mode: some boards cannot infer that they should be a device ---------
+# Watched live 2026-08-07. A Pi 3A+, booting off a card the medic had just
+# written, in a SELF-POWERED hub with the 5V rail steady at 4.92 V, produced not
+# one USB event on the medic. Not the card, not the cable, not the power — the
+# board was never going to be a device.
+#
+# Bare `dtoverlay=dwc2` leaves dr_mode=otg, which means "read the ID pin". A Pi
+# Zero's micro-USB and a Pi 4/5's USB-C have one. A 3A+ puts its OTG controller
+# on a full-size USB-A socket, which has NO ID pin, so otg resolves to host
+# every time. dr_mode=peripheral overrides it.
+
+def test_a_3a_plus_is_told_to_be_a_peripheral():
+    from provisioning.gadget import config_txt_with_gadget
+    out = config_txt_with_gadget("# stock\n", pi_key="pi_3a_plus")
+    assert "dtoverlay=dwc2,dr_mode=peripheral" in out
+
+
+def test_boards_that_can_infer_it_are_left_alone():
+    """The Zero 2 W route is PROVEN with the bare overlay (HOPE, 2026-08-01).
+    Adding dr_mode there would be changing something that works."""
+    from provisioning.gadget import config_txt_with_gadget
+    for key in ("pi_zero_2w", "pi_4b", "pi_5", ""):
+        out = config_txt_with_gadget("# stock\n", pi_key=key)
+        assert "dr_mode" not in out, f"{key or '(unknown)'} got an unneeded dr_mode"
+        assert "dtoverlay=dwc2\n" in out
+
+
+def test_an_unknown_board_is_never_made_worse():
+    """Fail-open: a board we have not characterised gets exactly what every
+    board got before this existed."""
+    from provisioning.gadget import config_txt_with_gadget
+    assert config_txt_with_gadget("# stock\n", pi_key="pi_nonesuch") == \
+           config_txt_with_gadget("# stock\n")
+
+
+def test_an_existing_dwc2_line_is_never_rewritten():
+    """Including one that already carries a dr_mode — re-running must not append
+    a second, conflicting overlay line."""
+    from provisioning.gadget import config_txt_with_gadget
+    for existing in ("dtoverlay=dwc2", "dtoverlay=dwc2,dr_mode=peripheral"):
+        text = f"# stock\n{existing}\n"
+        assert config_txt_with_gadget(text, pi_key="pi_3a_plus") == text
+
+
+def test_a_similarly_named_overlay_is_not_mistaken_for_ours():
+    """`dtoverlay=dwc2-foo` is a different overlay; it must not suppress ours."""
+    from provisioning.gadget import config_txt_with_gadget
+    out = config_txt_with_gadget("# stock\ndtoverlay=dwc2-something\n")
+    assert out.count("dtoverlay=dwc2\n") == 1
+
+
+def test_the_root_card_helper_agrees_with_the_module():
+    """assets/scripts/prepare_card.py is a standalone stdlib-only root helper —
+    it CANNOT import provisioning.gadget, so the board table is duplicated. If
+    the two drift, cards written by the medic's own reader (the one birth route
+    there is) get a different dr_mode than everything else claims."""
+    import ast
+    from provisioning.gadget import DR_MODE_BY_BOARD
+    src = open("assets/scripts/prepare_card.py").read()
+    tree = ast.parse(src)
+    found = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+                getattr(t, "id", "") == "DR_MODE_BY_BOARD" for t in node.targets):
+            found = ast.literal_eval(node.value)
+    assert found == DR_MODE_BY_BOARD, (
+        f"prepare_card {found} vs gadget {DR_MODE_BY_BOARD}")
+
+
+def test_the_board_keys_are_ones_the_ui_can_actually_produce():
+    """A typo here is silent: the lookup misses and the board quietly gets the
+    default. Caught exactly that once — 'pi3a_plus' vs the real 'pi_3a_plus'."""
+    from provisioning.gadget import DR_MODE_BY_BOARD
+    from ui.pi_sd_geometry import ALIASES, PI_SLOTS
+    known = set(PI_SLOTS) | set(ALIASES)
+    unknown = set(DR_MODE_BY_BOARD) - known
+    assert not unknown, f"dr_mode keyed on boards that do not exist: {unknown}"

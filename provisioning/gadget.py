@@ -34,6 +34,42 @@ _GADGET_MODULES = "modules-load=dwc2,g_ether"
 #: config.txt line that binds the OTG-capable USB controller in peripheral mode.
 _DWC2_OVERLAY = "dtoverlay=dwc2"
 
+#: Boards whose OTG port CANNOT work out for itself that it should be a device,
+#: mapped to the ``dr_mode`` they must be told explicitly.
+#:
+#: Bare ``dtoverlay=dwc2`` leaves ``dr_mode=otg``, and otg means "look at the ID
+#: pin and decide". That works on the boards where there IS an ID pin to look
+#: at: a Pi Zero's micro-USB and a Pi 4/5's USB-C both carry one, which is why
+#: the Zero 2 W route has always worked (HOPE, 2026-08-01).
+#:
+#: A Pi 3A+ exposes its OTG controller on a full-size USB-A socket, and USB-A
+#: has NO ID pin — the port is wired as a host and otg resolves to host, every
+#: time. Watched live on 2026-08-07: 3A+ powered, booting off a card we had just
+#: written, plugged into a self-powered hub with the rail steady at 4.92 V, and
+#: the medic logged not one USB event. Nothing was wrong with the card, the
+#: cable or the power. The board was never going to be a device.
+#:
+#: ``dr_mode=peripheral`` overrides the pin and forces the controller into
+#: device mode. That is the whole point of the parameter.
+#:
+#: This does NOT make the 3A+ route work on its own — see #72. An A-to-A cable
+#: carries VBUS at both ends, so a separately-powered 3A+ and the host both
+#: drive 5 V onto the same rail. That needs a VBUS-cut cable and is the
+#: operator's half of the problem. This is ours.
+DR_MODE_BY_BOARD = {
+    "pi_3a_plus": "peripheral",
+}
+
+
+def dwc2_overlay_for(pi_key: str = "") -> str:
+    """The ``dtoverlay=dwc2`` line this board needs, with ``dr_mode`` if any.
+
+    Unknown or empty *pi_key* gets the plain overlay — the behaviour every
+    board had before, so a board we have not characterised is never made worse.
+    """
+    mode = DR_MODE_BY_BOARD.get((pi_key or "").strip())
+    return f"{_DWC2_OVERLAY},dr_mode={mode}" if mode else _DWC2_OVERLAY
+
 #: Tell NetworkManager to keep its hands off the gadget link.
 #:
 #: THIS IS NOT OPTIONAL. NM manages every ethernet device it sees, and usb0 is
@@ -117,9 +153,15 @@ def cmdline_with_gadget(text: str) -> str:
     return " ".join(out) + trailing_nl
 
 
-def config_txt_with_gadget(text: str) -> str:
+def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
     """Return *text* (a Pi ``config.txt``) with ``dtoverlay=dwc2`` present.
     Idempotent — a no-op if the overlay is already declared.
+
+    *pi_key* selects the ``dr_mode`` this board needs (see
+    :func:`dwc2_overlay_for`). A card already carrying a dwc2 line is left
+    exactly as it is: rewriting someone's boot config to change a mode we only
+    inferred is a bigger risk than the mode being wrong, and the operator can
+    always re-image.
 
     The appended block opens with ``[all]``. config.txt is SECTIONED, and an
     overlay inherits whichever section it falls under: stock Raspberry Pi OS
@@ -130,12 +172,16 @@ def config_txt_with_gadget(text: str) -> str:
     nothing to see in the file. Re-opening ``[all]`` costs one line and makes
     the overlay apply wherever the card is booted.
     """
+    overlay = dwc2_overlay_for(pi_key)
     for line in text.splitlines():
-        if line.strip() == _DWC2_OVERLAY:
+        s = line.strip()
+        # match the bare overlay AND any dr_mode variant, but never a longer
+        # overlay name that merely starts the same way (dtoverlay=dwc2-foo)
+        if s == _DWC2_OVERLAY or s.startswith(_DWC2_OVERLAY + ","):
             return text
     sep = "" if text.endswith("\n") or text == "" else "\n"
     return (f"{text}{sep}\n# USB gadget ethernet (Node Medic provisioning link)\n"
-            f"[all]\n{_DWC2_OVERLAY}\n")
+            f"[all]\n{overlay}\n")
 
 
 @dataclass

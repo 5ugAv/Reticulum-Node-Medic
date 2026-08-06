@@ -456,7 +456,7 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           run_shell: Optional[Callable[[str], Tuple[int, str]]] = None,
           pw_hasher: Callable[[str], str] = None,
           authorized_keys: Optional[List[str]] = None,
-          cable_link: bool = True) -> Tuple[bool, str]:
+          cable_link: bool = True, pi_key: str = "") -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
     ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
@@ -495,6 +495,9 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         "meta_data": build_cloud_init_meta_data(f"{hostname}-{int(_time.time())}"),
         "network_config": net_cfg,
         "cable_link": bool(cable_link),
+        # which Pi this card is FOR — picks the dwc2 dr_mode (a 3A+ must be
+        # told "peripheral"; its USB-A socket has no ID pin to infer from)
+        "pi_key": pi_key or "",
         "user": username,
         "pwhash": pw_hash,
         "keys": list(authorized_keys or []),
