@@ -283,8 +283,9 @@ class PiImagerScreen(BoxLayout):
         # hub does not cut VBUS (measured — the device stays powered across a
         # 20-second "off"), so the operator has to power-cycle it.
         self.col.add_widget(_line(
-            "Now unplug the Pi and plug it back in. It will start up with a "
-            "blank card and offer it to Node Medic.", size="14.5sp",
+            "Now unplug the Pi, wait ten seconds, then plug it back in. It will "
+            "start up with a blank card and offer it to Node Medic.",
+            size="14.5sp",
             color="accent", h=48))
         again = Button(text="I've replugged it — look again", size_hint_y=None,
                        height=dp(52), bold=True, background_normal="",

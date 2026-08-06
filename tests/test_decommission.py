@@ -161,10 +161,18 @@ def test_the_offer_says_what_is_lost_AND_what_is_not():
 
 def test_a_successful_wipe_tells_the_operator_to_power_cycle():
     """The medic CANNOT do this itself — uhubctl on the Pi 5 root hub does not
-    cut VBUS. Without the prompt the flow silently stalls."""
+    cut VBUS. Without the prompt the flow silently stalls.
+
+    Asserts the INTENT rather than one phrasing: the operator must be told to
+    unplug and plug back in, AND to wait, because a fast in-and-out can leave
+    enough charge in the Pi to stop it cold-booting (operator, 2026-08-06) —
+    which produces the same silent stall the prompt exists to prevent.
+    """
     src = open("ui/screens/pi_imager_screen.py").read()
     block = src[src.index("def _wipe_done"):]
-    assert "unplug the Pi and plug it back in" in block
+    assert "unplug the Pi" in block and "plug it back in" in block
+    assert "ten seconds" in block, (
+        "no wait in the power-cycle prompt — a quick replug may not reset the Pi")
 
 
 def test_the_wipe_reports_failure_rather_than_pretending():

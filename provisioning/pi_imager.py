@@ -460,11 +460,23 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         "pwhash": pw_hash,
         "keys": list(authorized_keys or []),
     }
+    # The helper's WARN lines are the only account of the two steps it is
+    # allowed to skip (the cable link and the gadget service). They are
+    # deliberately non-fatal — a card that still boots and joins WiFi is worth
+    # keeping — but discarding them, as this loop used to, produces the worst
+    # possible outcome: a card reported as fully configured whose cable link was
+    # never baked, and a screen that then promises a USB-cable birth that cannot
+    # happen. Diagnosing that from the far end costs a bench night (2026-08-06).
+    warnings: List[str] = []
     for cmd in prepare_card_commands(device_path, card_cfg):
         code, out = run_shell(cmd)
         if code != 0:
             return (False, "Image written, but preparing the card failed: "
                            f"{out.strip()[-180:]}")
+        warnings += [line.split("PREPARE_WARN:", 1)[1].strip()
+                     for line in (out or "").splitlines()
+                     if "PREPARE_WARN:" in line]
+    cable_failed = any("cable link" in w for w in warnings)
     # Bake the USB-cable link in as well, so this card can be birthed with the
     # Pi plugged straight into the medic — no WiFi, and no powered hub to let
     # an under-powered Pi feed its own radio (operator's design, 2026-08-01).
@@ -473,7 +485,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     # (one root operation, one sudoers entry). It fails loudly, so reaching here
     # means the card is genuinely ready.
     cable_msg = (" It can also be birthed over a USB cable straight into "
-                 "Node Medic, with no WiFi at all." if cable_link else "")
+                 "Node Medic, with no WiFi at all."
+                 if cable_link and not cable_failed else "")
     # Don't promise WiFi we were never given — a card imaged for the cable path
     # has no PSK on it at all, and saying otherwise sends the operator hunting
     # for a node that was never going to appear on their network.
@@ -481,8 +494,9 @@ def flash(device_path: str, hostname: str, username: str, password: str,
              if wifi_ssid else
              "and power on. No WiFi was configured, so reach it over the USB "
              "cable to Node Medic.")
+    caveat = ("  Note: " + "  ".join(warnings)) if warnings else ""
     return (True, f"SD card imaged and configured as '{hostname}'. Put it in the Pi "
-                  f"{reach}" + cable_msg)
+                  f"{reach}" + cable_msg + caveat)
 
 
 def hostnameify(name: str) -> str:
@@ -527,7 +541,13 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
         # "it boots the card we just wrote" describes what the medic is about to
         # watch for anyway. Both were noise around the single physical act
         # (operator, 2026-08-02). Numbering a one-item list is noise too.
-        steps.append(f"Unplug {pi} from Node Medic, then plug it back in.")
+        # TEN SECONDS, not a quick in-and-out. A fast replug can leave enough
+        # charge in the Pi's capacitors that it never fully powers down, so it
+        # resumes in whatever half-state it was in instead of cold-booting the
+        # new card — and the medic then waits for a gadget link that will never
+        # come up (operator, 2026-08-06).
+        steps.append(f"Unplug {pi} from Node Medic, wait ten seconds, "
+                     f"then plug it back in.")
     else:
         steps.append("1.  Take the microSD out of the card reader.")
         steps.append(f"2.  Put it into {pi}.")

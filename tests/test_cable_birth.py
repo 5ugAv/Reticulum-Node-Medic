@@ -547,3 +547,51 @@ def test_only_pre_os_states_count_as_needing_imaging():
     block = SRC[SRC.index("def _pi_needs_imaging"):SRC.index("def _go_image_pi")]
     assert "BOOTROM" in block and "CARD_READER" in block
     assert "GADGET" not in block
+
+
+def test_a_silently_skipped_cable_bake_is_reported_not_swallowed():
+    """The helper's WARN lines were the ONLY record that the cable link had been
+    skipped, and flash() read them only on failure — on success it threw them
+    away. So a card came back reported as fully configured AND advertising a
+    USB-cable birth whose link had never been baked.
+
+    That is the exact shape of the 2026-08-06 hunt: a Pi that boots perfectly
+    and simply never appears on the medic's USB, with nothing anywhere saying
+    why. Degrading to WiFi stays correct; degrading SILENTLY does not.
+    """
+    from provisioning import pi_imager
+
+    def shell(cmd):
+        if "prepare-card" in cmd:
+            return (0, "PREPARE: wrote first-boot config\n"
+                       "PREPARE_WARN: cable link not baked (no space left) — "
+                       "this card can still be birthed over WiFi\n"
+                       "PREPARE: activated the 'pi' account\n")
+        return (0, "")
+
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "faith", "pi", "pw", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=shell, pw_hasher=lambda p: "$6$hash",
+        authorized_keys=[])
+
+    assert ok, msg                       # a card without the link is still good
+    assert "cable link not baked" in msg, "the warning was swallowed again"
+    assert "It can also be birthed over a USB cable" not in msg, (
+        "advertised a cable birth whose link was never baked")
+
+
+def test_a_clean_prepare_still_promises_the_cable_birth():
+    """Guard the other side: warnings must not make the normal path timid."""
+    from provisioning import pi_imager
+
+    def shell(cmd):
+        if "prepare-card" in cmd:
+            return (0, "PREPARE: baked the USB-cable link\nPREPARE_OK\n")
+        return (0, "")
+
+    ok, msg = pi_imager.flash(
+        "/dev/sdb", "faith", "pi", "pw", image_path="/tmp/x.img.xz",
+        run=_medic_run, run_shell=shell, pw_hasher=lambda p: "$6$hash",
+        authorized_keys=[])
+    assert ok and "It can also be birthed over a USB cable" in msg
+    assert "Note:" not in msg
