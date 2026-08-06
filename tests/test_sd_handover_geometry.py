@@ -519,3 +519,52 @@ def test_the_card_found_ripple_says_nothing_about_writing():
     seg = body[body.index("def mark_card_found"):body.index("def _blit", body.index(
         "def mark_card_found"))]
     assert "CoreLabel" not in seg and "_label(" not in seg
+
+
+# --- the doc and the runtime must AGREE, loudly --------------------------------
+# 2026-08-07: the doc override failed in two ways at once, both SILENTLY.
+#   * retention: the cell reads "friction — no click"; the parser matched the
+#     bare word "click" and set push_push — reading a denial as an affirmation,
+#     so every board claimed a click while the doc and every built-in said
+#     friction.
+#   * along: the doc's column is "`v` (from GPIO edge)", which matched none of
+#     the parser's aliases, so it never overrode at all and a stale 0.43 stood
+#     against the measured 0.41.
+# A parser that misreads quietly and skips quietly is worse than no parser: it
+# looks like a single source of truth while being neither.
+
+_MEASURED = {
+    "pi_zero_2w": (0.41, "top",       "friction"),
+    "pi_3a_plus": (0.50, "underside", "friction"),
+    "pi_3b_plus": (0.48, "underside", "friction"),
+    "pi_4b":      (0.49, "underside", "friction"),
+    "pi_5":       (0.49, "underside", "friction"),
+}
+
+
+def test_runtime_geometry_matches_what_was_actually_measured():
+    """These numbers came from underside photographs located against each
+    board's own mounting holes. If this fails, either the doc changed or the
+    parser broke — and the operator would be shown a card entering the wrong
+    place with nothing to warn them."""
+    from ui.pi_sd_geometry import geometry_for
+    for key, (along, face, retention) in _MEASURED.items():
+        g = geometry_for(key)
+        assert g is not None, f"no geometry for {key}"
+        assert abs(g.along - along) < 0.005, f"{key} along {g.along} != {along}"
+        assert g.face == face, f"{key} face {g.face} != {face}"
+        assert g.retention == retention, f"{key} retention {g.retention}"
+
+
+def test_a_denial_of_clicking_is_not_read_as_clicking():
+    """Guards the exact misread: the words 'no click' must never produce a
+    push-push socket."""
+    from ui.pi_sd_geometry import parse_doc
+    doc = (
+        "| Model | Slot edge | `v` (from GPIO edge) | Face | Retention |\n"
+        "|---|---|---|---|---|\n"
+        "| `pi_4b` | left short edge | **0.49** | UNDERSIDE | friction — no click |\n"
+    )
+    got = parse_doc(doc)
+    assert got.get("pi_4b", {}).get("retention") == "friction", got
+    assert abs(got.get("pi_4b", {}).get("along", 0) - 0.49) < 0.005, got

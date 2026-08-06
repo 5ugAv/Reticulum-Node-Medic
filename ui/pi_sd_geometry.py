@@ -702,7 +702,11 @@ _EDGE_WORDS = {"left": "left", "right": "right", "top": "top", "bottom": "bottom
                "front": "bottom", "back": "top"}
 _FIELDS = {
     "edge": ("edge", "side"),
-    "along": ("along", "position", "distance", "offset"),
+    # "v" is what the measurement doc's column is actually called ("`v` (from
+    # GPIO edge)"). Without it that column matched nothing, so the doc silently
+    # failed to override and the built-in stood — 0.43 against a measured 0.41,
+    # with nothing anywhere saying they disagreed (2026-08-07).
+    "along": ("along", "position", "distance", "offset", "v", "v ("),
     "mouth": ("mouth", "width", "span"),
     "inset": ("inset", "depth", "setback"),
     "face": ("face", "mounted", "surface"),
@@ -779,11 +783,20 @@ def parse_doc(text: str) -> Dict[str, dict]:
                 elif "top" in low or "upper" in low or "front" in low:
                     rec["face"] = "top"
             elif field == "retention":
-                if (low.count("push") >= 2 or "spring" in low
+                # NEGATION FIRST. The doc says "friction — no click", and the
+                # old order matched the bare word "click" and concluded the
+                # socket clicks — reading an explicit DENIAL as an affirmation,
+                # then overriding a correct built-in with the opposite of the
+                # truth. Every board came out push_push while every default and
+                # the document itself said friction (2026-08-07).
+                denied = ("no click" in low or "not push" in low
+                          or "no spring" in low or "doesn't click" in low
+                          or "does not click" in low)
+                if "friction" in low or "pull" in low or denied:
+                    rec["retention"] = "friction"
+                elif (low.count("push") >= 2 or "spring" in low
                         or "click" in low):
                     rec["retention"] = "push_push"
-                elif "friction" in low or "pull" in low:
-                    rec["retention"] = "friction"
             elif field == "card_face_up":
                 if "down" in low or "away" in low or "contacts up" in low:
                     rec["card_face_up"] = False
