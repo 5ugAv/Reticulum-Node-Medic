@@ -101,3 +101,44 @@ def test_pinning_stays_idempotent():
     assert config_txt_with_gadget(once) == once
     assert once.count("dtoverlay=dwc2") == 1
     assert once.count("[all]") == 1
+
+
+# --- the link has to SURVIVE, not just be set ------------------------------
+# 2026-08-06: a gadget finally enumerated on the bench (cdc_ether, stable, one
+# enumeration) and the link still never carried traffic. Neither end held an
+# address. Two independent causes, both of which made the whole cable birth
+# unusable while every file on the card looked correct.
+
+def test_networkmanager_is_told_to_leave_the_gadget_link_alone():
+    """NM manages every ethernet device it sees, and usb0 IS one the moment
+    g_ether enumerates. Claiming a device FLUSHES the addresses already on it,
+    so a bare `ip addr add` from our oneshot is set and then silently wiped.
+
+    Watched live on the medic: a hand-set 10.55.0.2/29 vanished on its own.
+    Without this drop-in the gadget service is decoration.
+    """
+    from provisioning import gadget
+    assert gadget.NM_UNMANAGED_PATH.startswith("/etc/NetworkManager/conf.d/")
+    assert "unmanaged-devices=interface-name:usb0" in gadget.NM_UNMANAGED_CONF
+    assert "[keyfile]" in gadget.NM_UNMANAGED_CONF, (
+        "unmanaged-devices only takes effect under [keyfile]")
+
+
+def test_the_root_helper_actually_writes_that_drop_in():
+    """gadget.py is the reference; prepare_card.py is what touches real cards.
+    They are deliberately duplicated (the helper imports nothing from the
+    user-writable repo), so they can drift — and a drift here is silent."""
+    src = open("assets/scripts/prepare_card.py").read()
+    assert "unmanaged-devices=interface-name:usb0" in src
+    assert "NetworkManager/conf.d" in src
+    body = src[src.index("def write_rootfs"):src.index("def activate_account")]
+    assert "NM_UNMANAGED_PATH" in body, "drop-in defined but never written"
+
+
+def test_the_address_is_set_with_replace_not_add():
+    """`ip addr add` fails if the address is already there, which turns a
+    harmless re-run (or a second enumeration) into a failed unit."""
+    from provisioning import gadget
+    assert "addr replace" in gadget.GADGET_USB0_SERVICE
+    assert "addr add" not in gadget.GADGET_USB0_SERVICE
+    assert "addr replace" in open("assets/scripts/prepare_card.py").read()

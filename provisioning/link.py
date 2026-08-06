@@ -27,6 +27,13 @@ from transport.connection import SSHConnection
 #: runner(argv, input=None, env=None, timeout=int) -> (rc, stdout, stderr)
 Runner = Callable[..., tuple]
 
+#: The `ip` binary BY ABSOLUTE PATH, because sudoers matches on the path string.
+#: /usr/sbin/ip and /sbin/ip are symlinks to this same binary, and sudo's
+#: secure_path finds /usr/sbin/ip first — which does not match a rule naming
+#: /usr/bin/ip, so the call is refused. Any `sudo` invocation in this codebase
+#: must name the same path the medic's sudoers entry does.
+IP_BIN = "/usr/bin/ip"
+
 
 def _default_runner(argv: List[str], input: Optional[str] = None,
                     env: Optional[dict] = None, timeout: int = 30) -> tuple:
@@ -80,9 +87,19 @@ def discover_peer(runner: Optional[Runner] = None, timeout: float = 90.0,
         rc, out, _ = runner(["ip", "-o", "link"], timeout=5)
         for ifc in parse_usb_interfaces(out):
             # Claim our end of the /29 (harmless if already assigned) + bring up.
-            runner(["sudo", "-n", "ip", "addr", "add",
+            #
+            # ABSOLUTE PATH, NOT `ip`. The medic's sudoers names /usr/bin/ip
+            # literally, but sudo resolves a bare `ip` through secure_path and
+            # finds /usr/sbin/ip first (a symlink to the same binary — sudo
+            # matches on the path, not the inode). The rule does not match, sudo
+            # refuses, and BOTH calls below silently do nothing: the medic never
+            # claims its end, the SSH probe never succeeds, and discover_peer
+            # returns None while a perfectly good gadget sits there answering.
+            # Verified on the live medic 2026-08-06: `sudo -n ip addr add ...`
+            # is refused, `sudo -n /usr/bin/ip addr add ...` succeeds.
+            runner(["sudo", "-n", IP_BIN, "addr", "add",
                     f"{HOST_USB_IP}/{USB_PREFIX}", "dev", ifc], timeout=5)
-            runner(["sudo", "-n", "ip", "link", "set", ifc, "up"], timeout=5)
+            runner(["sudo", "-n", IP_BIN, "link", "set", ifc, "up"], timeout=5)
             if probe(GADGET_USB_IP, 22):
                 return GADGET_USB_IP
         sleep(poll)

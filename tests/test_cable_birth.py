@@ -106,7 +106,10 @@ def test_the_unit_content_survives_transport_unmangled():
     blob = [c for c in cmds if "base64 -d" in c][0]
     payload = blob.split("echo ")[1].split(" |")[0].strip("'")
     decoded = base64.b64decode(payload).decode()
-    assert "ExecStart=/sbin/ip addr add" in decoded
+    # The point of this test is that $(seq ...) and the quotes arrive intact,
+    # not which verb sets the address — `add` became `replace` on 2026-08-06 so
+    # a re-run or a second enumeration doesn't fail the unit.
+    assert "ExecStart=/sbin/ip addr replace" in decoded
     assert GADGET_USB_IP in decoded
     assert "$(seq 1 20)" in decoded
 

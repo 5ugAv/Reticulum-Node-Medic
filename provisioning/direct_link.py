@@ -39,6 +39,7 @@ import time
 from typing import Callable, List, Optional, Tuple
 
 from provisioning.gadget import GADGET_USB_IP, HOST_USB_IP, USB_PREFIX
+from provisioning.link import IP_BIN
 
 #: B's end of the cable once the static service is installed (same /29 as the
 #: gadget link — see the module docstring for why we reuse it).
@@ -140,9 +141,13 @@ def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
     while now() < deadline:
         rc, out, _ = runner(["ip", "-o", "link"], timeout=5)
         for ifc in parse_wired_interfaces(out):
-            runner(["sudo", "-n", "ip", "addr", "add",
+            # Absolute path — see provisioning.link.IP_BIN. A bare `ip` resolves
+            # through sudo's secure_path to /usr/sbin/ip, which does not match
+            # the sudoers rule naming /usr/bin/ip, so the call is refused and
+            # the medic silently never claims its end of the link.
+            runner(["sudo", "-n", IP_BIN, "addr", "add",
                     f"{MEDIC_ETH_IP}/{ETH_PREFIX}", "dev", ifc], timeout=5)
-            runner(["sudo", "-n", "ip", "link", "set", ifc, "up"], timeout=5)
+            runner(["sudo", "-n", IP_BIN, "link", "set", ifc, "up"], timeout=5)
         for target in candidate_targets(hostname):
             if probe(target, 22):
                 return target

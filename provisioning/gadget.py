@@ -34,8 +34,33 @@ _GADGET_MODULES = "modules-load=dwc2,g_ether"
 #: config.txt line that binds the OTG-capable USB controller in peripheral mode.
 _DWC2_OVERLAY = "dtoverlay=dwc2"
 
-#: Sets the gadget's static address the instant usb0 appears — independent of
-#: NetworkManager / dhcpcd / networkd, which differ across Pi OS releases.
+#: Tell NetworkManager to keep its hands off the gadget link.
+#:
+#: THIS IS NOT OPTIONAL. NM manages every ethernet device it sees, and usb0 is
+#: an ethernet device the moment g_ether enumerates. When NM claims a device it
+#: FLUSHES the addresses already on it and starts its own autoconnect/DHCP — so
+#: a bare `ip addr add` from a oneshot service is set, then silently wiped, and
+#: the link goes quiet with nothing in the file looking wrong.
+#:
+#: Watched happen live on 2026-08-06: a static 10.55.0.2/29 set by hand on the
+#: MEDIC disappeared on its own, and the node end of that same link never
+#: answered even an IPv6 all-nodes ping — its usb0 was down, not just
+#: unaddressed. The old comment here claimed this service was "independent of
+#: NetworkManager"; being independent of NM does not stop NM undoing your work.
+NM_UNMANAGED_PATH = "/etc/NetworkManager/conf.d/99-nodemedic-usb0.conf"
+NM_UNMANAGED_CONF = """\
+# Node Medic provisioning link. usb0 carries a fixed point-to-point address set
+# by nodemedic-gadget-ip.service; NetworkManager must not claim it, because
+# claiming it flushes that address and the medic then waits for a link that
+# will never answer.
+[keyfile]
+unmanaged-devices=interface-name:usb0
+"""
+
+#: Sets the gadget's static address once usb0 exists.
+#:
+#: `addr replace` rather than `addr add`: add fails if the address is already
+#: present, which turns a harmless re-run into a unit failure.
 GADGET_USB0_SERVICE = f"""\
 [Unit]
 Description=USB gadget link static IP (Node Medic provisioning)
@@ -47,7 +72,7 @@ Type=oneshot
 RemainAfterExit=yes
 # usb0 may take a moment to enumerate after g_ether loads; wait briefly for it.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do ip link show usb0 && exit 0; sleep 0.5; done; exit 0'
-ExecStart=/sbin/ip addr add {GADGET_USB_IP}/{USB_PREFIX} dev usb0
+ExecStart=/sbin/ip addr replace {GADGET_USB_IP}/{USB_PREFIX} dev usb0
 ExecStart=/sbin/ip link set usb0 up
 
 [Install]

@@ -136,3 +136,54 @@ def test_bootstrap_access_reports_bad_password():
     res = bootstrap_access("10.55.0.1", "everywhere", "wrongpw", runner=runner)
     assert not res.ok and not res.key_installed
     assert "password" in res.message.lower()
+
+
+def test_sudo_names_ip_by_the_path_sudoers_actually_permits():
+    """THE MEDIC COULD NEVER CLAIM ITS END OF THE LINK.
+
+    The sudoers entry names `/usr/bin/ip`. sudo resolves a bare `ip` through
+    secure_path (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:...) and
+    finds /usr/sbin/ip FIRST — a symlink to the very same binary, but sudo
+    matches on the path string, not the inode. So the rule does not match and
+    the call is refused.
+
+    Both `ip` calls in discover_peer were therefore no-ops on every run: the
+    medic never claimed 10.55.0.2, the SSH probe never succeeded, and
+    discover_peer returned None while a perfectly healthy gadget sat on the
+    other end of the cable answering nothing.
+
+    Verified on the live medic 2026-08-06:
+        sudo -n ip addr add ...            -> "sudo: a password is required"
+        sudo -n /usr/bin/ip addr add ...   -> succeeds
+    `ip` is the ONLY command we sudo whose bare name resolves somewhere other
+    than its sudoers path (tee/systemctl/nmcli/iw/rpiboot/uhubctl/mount/
+    partprobe/dd were all checked on the device and all match).
+    """
+    from provisioning import link
+
+    calls = []
+
+    def runner(argv, **kw):
+        calls.append(argv)
+        if argv[:2] == ["ip", "-o"]:
+            return (0, "3: usb0: <BROADCAST> mtu 1500 link/ether\n", "")
+        return (0, "", "")
+
+    link.discover_peer(runner=runner, timeout=0.01, poll=0,
+                       sleep=lambda _s: None, probe=lambda h, p: False)
+
+    sudo_ip = [c for c in calls if c[:2] == ["sudo", "-n"]]
+    assert sudo_ip, "discover_peer never tried to claim the medic's end"
+    for c in sudo_ip:
+        assert c[2] == "/usr/bin/ip", (
+            f"sudo called {c[2]!r}; sudoers permits /usr/bin/ip, and a bare "
+            "'ip' resolves to /usr/sbin/ip and is refused")
+
+
+def test_the_clone_link_uses_the_same_absolute_path():
+    """direct_link (the cable-clone path) had the identical bug."""
+    src = open("provisioning/direct_link.py").read()
+    block = src[src.index("def discover_clone_peer"):] \
+        if "def discover_clone_peer" in src else src
+    assert '"sudo", "-n", "ip"' not in block, "bare 'ip' will be refused by sudo"
+    assert "IP_BIN" in block

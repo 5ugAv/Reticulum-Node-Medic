@@ -59,11 +59,28 @@ Wants=network-pre.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do ip link show usb0 && exit 0; sleep 0.5; done; exit 0'
-ExecStart=/sbin/ip addr add {GADGET_USB_IP}/{USB_PREFIX} dev usb0
+ExecStart=/sbin/ip addr replace {GADGET_USB_IP}/{USB_PREFIX} dev usb0
 ExecStart=/sbin/ip link set usb0 up
 
 [Install]
 WantedBy=multi-user.target
+"""
+
+#: NetworkManager must not claim usb0. It manages every ethernet device it sees,
+#: and claiming one FLUSHES the addresses already on it — so the static address
+#: above is set and then silently wiped, leaving a link that never answers and a
+#: card with nothing wrong-looking on it. Observed live 2026-08-06.
+#: Duplicated from provisioning.gadget on purpose: this file imports nothing
+#: from the user-writable repo (see the module docstring).
+NM_CONF_DIR = "/etc/NetworkManager/conf.d"
+NM_UNMANAGED_PATH = f"{NM_CONF_DIR}/99-nodemedic-usb0.conf"
+NM_UNMANAGED_CONF = """\
+# Node Medic provisioning link. usb0 carries a fixed point-to-point address set
+# by nodemedic-gadget-ip.service; NetworkManager must not claim it, because
+# claiming it flushes that address and the medic then waits for a link that
+# will never answer.
+[keyfile]
+unmanaged-devices=interface-name:usb0
 """
 
 PI_USER_GROUPS = ["adm", "dialout", "cdrom", "sudo", "audio", "video",
@@ -224,6 +241,17 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
             say("installed the gadget link service")
         except Exception as exc:                        # noqa: BLE001
             print(f"PREPARE_WARN: gadget service not installed ({exc})")
+
+        # Without this the service above is pointless: NetworkManager claims
+        # usb0 the moment it appears and flushes the address the unit just set.
+        try:
+            os.makedirs(os.path.join(mnt, NM_CONF_DIR.lstrip("/")), exist_ok=True)
+            _write(os.path.join(mnt, NM_UNMANAGED_PATH.lstrip("/")),
+                   NM_UNMANAGED_CONF)
+            say("told NetworkManager to leave the gadget link alone")
+        except Exception as exc:                        # noqa: BLE001
+            print(f"PREPARE_WARN: NetworkManager may claim usb0 and wipe the "
+                  f"link address ({exc})")
 
     user = cfg.get("user") or ""
     if not user:

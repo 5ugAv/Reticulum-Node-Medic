@@ -41,6 +41,7 @@ from typing import List, Optional
 
 from provisioning.gadget import (GADGET_USB_IP, HOST_USB_IP, USB_PREFIX,
                                  GADGET_USB0_SERVICE, GADGET_SERVICE_PATH,
+                                 NM_UNMANAGED_PATH, NM_UNMANAGED_CONF,
                                  cmdline_with_gadget, config_txt_with_gadget)
 from node_profile import NodeHardware
 
@@ -111,12 +112,19 @@ def rootfs_commands(mnt: str) -> List[str]:
     Without this the gadget enumerates but has no address, leaving discovery to
     guess. We can't ``systemctl enable`` a cold filesystem, so the wants-symlink
     is created directly — exactly what enable would have done.
+
+    The NetworkManager drop-in is not optional garnish: NM claims usb0 the
+    moment it appears and FLUSHES the address this unit sets, which is a link
+    that enumerates perfectly and carries nothing (bench, 2026-08-06).
     """
+    nm_dir = NM_UNMANAGED_PATH.rsplit("/", 1)[0]
     return [
         f"sudo mkdir -p {shlex.quote(mnt)}{_WANTS_DIR}",
         _tee(f"{mnt}{GADGET_SERVICE_PATH}", GADGET_USB0_SERVICE),
         f"sudo ln -sf {shlex.quote(GADGET_SERVICE_PATH)} "
         f"{shlex.quote(mnt + _WANTS_LINK)}",
+        f"sudo mkdir -p {shlex.quote(mnt + nm_dir)}",
+        _tee(f"{mnt}{NM_UNMANAGED_PATH}", NM_UNMANAGED_CONF),
     ]
 
 
