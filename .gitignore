@@ -33,3 +33,7 @@ typescript
 # device, kept out of git like the other carried binaries.
 assets/fonts/*
 !assets/fonts/.gitkeep
+
+# Agent scratch: worktrees + local settings. Never belongs in history —
+# a `git add -A` once swept an unreviewed agent worktree into a commit.
+.claude/
