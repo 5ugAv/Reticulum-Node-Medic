@@ -319,3 +319,39 @@ def test_the_cable_hint_names_the_data_trap_and_both_boards():
     assert "DATA" in hints and "charge-only" in hints
     assert "Pi Zero" in hints and "mini-HDMI" in hints      # inner vs PWR IN
     assert "3A+" in hints and "USB-A" in hints              # its micro-USB is power only
+
+
+def test_the_card_step_watches_for_the_card_and_greets_it():
+    """Operator, looking straight at the step, 2026-08-07: "should I be getting
+    the green circles when I plug an sd card in reader into medic here?" The
+    answer was no — only the imager screen was watching, so a step that says
+    "Put the SD card into Node Medic" sat there saying nothing. Same complaint
+    as #71: the medic visibly not knowing what is plugged into it.
+    """
+    src = open("ui/screens/birth_guide_screen.py").read()
+    assert "InsertSdAnim)" in src and "_start_card_poll" in src
+    seen = src[src.index("def _on_card_seen"):src.index("def _pi_key_for_art")]
+    assert "mark_card_found" in seen, "must fire the same burst a board gets"
+    assert "_card_greeted" in seen, "poll repeats; greet once"
+
+
+def test_the_card_poll_dies_with_the_step():
+    """A poll outliving its screen is a real bug in this file's history — the
+    Pi poll used to yank the operator back to the name screen from wherever
+    they had got to."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    i = src.index("def _stop_current")
+    stop = src[i:i + 1800]          # the body, wherever it sits in the file
+    assert "_stop_card_poll" in stop
+
+
+def test_seeing_a_card_does_not_advance_or_write():
+    """The connect steps hide Next because plugging in IS the action. This step
+    is followed by a DESTRUCTIVE write, so the deliberate press stays."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    block = src[src.index("elif isinstance(anim, InsertSdAnim):"):]
+    block = block[:block.index("\n\n")]
+    assert "hide_next" not in block, "the write must stay behind a press"
+    seen = src[src.index("def _on_card_seen"):src.index("def _pi_key_for_art")]
+    for destructive in ("_next(", "flash(", "_confirm("):
+        assert destructive not in seen, f"{destructive!r} fires on merely seeing a card"

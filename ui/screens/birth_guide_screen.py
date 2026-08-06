@@ -1130,6 +1130,59 @@ class BirthGuideScreen(BoxLayout):
                 return False
         return False
 
+    # -- the card arriving in the medic's own reader ------------------------
+
+    def _start_card_poll(self, anim):
+        """Watch for a card while the "put the SD card in" step is showing.
+
+        Receive-only in spirit: it looks, it celebrates, it does not act. The
+        write that follows is destructive and stays behind the operator's press
+        — a card appearing must never begin one.
+        """
+        from kivy.clock import Clock
+        self._stop_card_poll()
+        self._card_greeted = False
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                try:
+                    from provisioning import pi_imager
+                    st = pi_imager.card_status()
+                except Exception:                                  # noqa: BLE001
+                    return
+                if st["state"] == "none":
+                    return
+                Clock.schedule_once(lambda _d: self._on_card_seen(anim), 0)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        self._card_ev = Clock.schedule_interval(tick, 1.5)
+
+    def _stop_card_poll(self):
+        ev = getattr(self, "_card_ev", None)
+        if ev is not None:
+            try:
+                ev.cancel()
+            except Exception:                                      # noqa: BLE001
+                pass
+            self._card_ev = None
+
+    def _on_card_seen(self, anim):
+        """Fire the green ripple — the medic's "I can see it now" signal, the
+        same burst a board gets, so it reads identically whatever the hardware."""
+        if getattr(self, "_card_greeted", False):
+            return                        # the poll keeps firing; greet once
+        self._card_greeted = True
+        self._stop_card_poll()
+        fn = getattr(anim, "mark_card_found", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:                                      # noqa: BLE001
+                pass
+
     def _pi_key_for_art(self, anim_cls):
         """Which Pi the animation should draw.
 
@@ -1215,6 +1268,20 @@ class BirthGuideScreen(BoxLayout):
         elif isinstance(anim, ConnectBoardAnim):
             step.hide_next()          # same: detection drives this step
             self._start_board_poll(anim)
+        elif isinstance(anim, InsertSdAnim):
+            # THE MEDIC MUST NOTICE THE CARD ARRIVE. The operator asked exactly
+            # this while looking at the step (2026-08-07): "should I be getting
+            # the green circles when I plug an sd card in reader into medic
+            # here?" — and the honest answer was no, because only the imager
+            # screen was watching. A step that says "Put the SD card into Node
+            # Medic" and then sits there is the same complaint as #71: the medic
+            # visibly not knowing what is plugged into it.
+            #
+            # Next is NOT hidden here, unlike the connect steps. Those are
+            # waiting on hardware that reports itself; this one is followed by a
+            # DESTRUCTIVE write, so the operator keeps the deliberate press.
+            # The ripple says "I can see your card", nothing more.
+            self._start_card_poll(anim)
 
 
     # -- identify the pair BEFORE the card is written -----------------------
@@ -1502,6 +1569,9 @@ class BirthGuideScreen(BoxLayout):
         # _on_pi_detected and yanks the operator back to the name screen from
         # whatever step they had reached.
         self._stop_detect_pi_poll()
+        # And the card poll, for the same reason. Left running it would keep
+        # firing the ripple at an InsertSdAnim that is no longer on screen.
+        self._stop_card_poll()
         # Dismiss the on-screen keyboard on EVERY step change. It only auto-hides
         # on the ENTER key, so advancing with the Next button carried it into the
         # next step — where it sat covering that step's nav buttons (the
