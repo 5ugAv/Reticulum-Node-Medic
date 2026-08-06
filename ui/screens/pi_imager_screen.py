@@ -38,8 +38,26 @@ def _line(text, size="15sp", color="text_primary", bold=False, h=None):
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     if h is not None:
         lbl.size_hint_y = None
-        lbl.height = dp(max(h, theme.line_dp(size)))
-    lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        floor = dp(max(h, theme.line_dp(size)))
+        lbl.height = floor
+        # GROW RATHER THAN CLIP. This used to pin the height and bind text_size
+        # to the whole size, so anything that wrapped past one line was silently
+        # cut off mid-sentence — the operator saw "…a USB cable that carries
+        # DATA — a charge-only" and nothing else (reported live, 2026-08-07).
+        #
+        # Binding WIDTH (not size) to text_size is the important part: width ->
+        # text_size -> texture_size -> height is a one-way chain. Binding the
+        # full size would make height feed back into text_size and spin, which
+        # is exactly the redraw storm that froze the map screen.
+        #
+        # `floor` is a floor, never a ceiling, so nothing that already fits can
+        # move — and translations that run longer than the English (German and
+        # Spanish routinely do) get the room they need instead of being cropped.
+        lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        lbl.bind(texture_size=lambda i, ts: setattr(i, "height",
+                                                    max(floor, ts[1])))
+    else:
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
 
@@ -151,6 +169,68 @@ class PiImagerScreen(BoxLayout):
 
 
     # -- the Pi is its own card reader --------------------------------------
+
+    # --- noticing a card arrive, without a button press --------------------
+
+    def _start_card_poll(self, anim=None):
+        """Watch for a card appearing while the 'no card' screen is showing.
+
+        Same shape as the guided flow's board poll: a Clock tick that does the
+        blocking lsblk on a worker thread and only touches widgets back on the
+        main thread.
+
+        On finding one it fires the animation's card-found celebration (the
+        green ripple burst — the medic's established "I can see it now" signal,
+        the same language the board-connect step speaks) and then rebuilds, so
+        the operator lands on the write screen without pressing anything.
+        """
+        from kivy.clock import Clock
+        self._stop_card_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                try:
+                    st = pi_imager.card_status()
+                except Exception:                              # noqa: BLE001
+                    return
+                if st["state"] == "none":
+                    return
+                Clock.schedule_once(lambda _d: self._on_card_found(anim), 0)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        self._card_ev = Clock.schedule_interval(tick, 1.5)
+
+    def _stop_card_poll(self):
+        ev = getattr(self, "_card_ev", None)
+        if ev is not None:
+            try:
+                ev.cancel()
+            except Exception:                                  # noqa: BLE001
+                pass
+            self._card_ev = None
+
+    def _on_card_found(self, anim=None):
+        """A card appeared. Celebrate, then show the write screen."""
+        if getattr(self, "_card_greeted", False):
+            return                        # the poll can fire more than once
+        self._card_greeted = True
+        self._stop_card_poll()
+        # The ripple lives in birth_anims and may not be present in every build
+        # — never let a missing flourish stop the flow.
+        for name in ("mark_card_found", "mark_found", "mark_connected"):
+            fn = getattr(anim, name, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:                              # noqa: BLE001
+                    pass
+                break
+        from kivy.clock import Clock
+        # Let the burst play before the screen changes under it.
+        Clock.schedule_once(lambda _d: self._build(), 0.9)
 
     def _offer_pi_as_reader(self):
         """If a brand-new Pi is plugged in, make it present its card — itself.
@@ -346,6 +426,36 @@ class PiImagerScreen(BoxLayout):
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
             rescan.bind(on_release=lambda *_: self._build())
             self.col.add_widget(rescan)
+            # NOTICE THE CARD BY ITSELF. The operator asked for this watching the
+            # step live (2026-08-06): "is it possible for node medic to register
+            # that the SD card has been plugged in and start working by itself
+            # instead of having to press the button". The button stays as the
+            # manual fallback, but nobody should have to press it.
+            #
+            # Deliberately this is auto-DETECT, not auto-WRITE. Writing is
+            # destructive and irreversible; on this very bench a card that looked
+            # blank held the previous night's evidence. Notice automatically,
+            # destroy on purpose.
+            self._start_card_poll(anim)
+            return
+        # NEVER GUESS BETWEEN TWO CARDS. This used to take targets[0] blindly. A
+        # medic that silently picks one of two will eventually pick the wrong
+        # one, and the operator has no way to know a choice was even made.
+        st = pi_imager.card_status()
+        if st["state"] == "several":
+            self.col.add_widget(_line("More than one card is plugged in",
+                                      bold=True, size="16sp",
+                                      color="warning_yellow", h=28))
+            self.col.add_widget(_line(st["detail"], size="14sp", h=44))
+            self.col.add_widget(_line(st["label"], size="13sp",
+                                      color="text_secondary", h=24))
+            again = Button(text="I've taken the others out — look again",
+                           size_hint_y=None, height=dp(52), bold=True,
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+            again.bind(on_release=lambda *_: self._build())
+            self.col.add_widget(again)
             return
         self._target = targets[0]
         self.col.add_widget(_line(

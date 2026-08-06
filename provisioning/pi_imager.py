@@ -78,6 +78,45 @@ def list_target_disks(run: Runner = _run) -> List[Dict]:
     return disks
 
 
+def card_status(run: Runner = _run) -> Dict:
+    """What is in the medic's card reader, right now, and may we act on it?
+
+    Returns {state, path, label, detail} where state is one of:
+      "none"    — nothing to write to yet
+      "one"     — exactly one removable card; ``path`` is it
+      "several" — more than one; the operator must decide, we must NOT guess
+
+    WHY THIS EXISTS
+    The operator asked for the medic to notice the card by itself instead of
+    waiting on a button (2026-08-06). Noticing is safe and welcome. ACTING
+    automatically is not: writing a card is destructive and irreversible, and
+    on this very bench a card that looked blank turned out to hold the previous
+    night's evidence — caught only because someone checked before writing.
+
+    So this reports, and the write stays behind a deliberate press.
+
+    "several" is not an edge case to smooth over. A medic that silently picks
+    one of two cards will eventually pick the wrong one, and the operator will
+    have no idea it made a choice at all.
+
+    Pure copy + data (no Kivy), same as ``next_steps_after_imaging``.
+    """
+    disks = list_target_disks(run)
+    if not disks:
+        return {"state": "none", "path": "", "label": "",
+                "detail": "No card yet — slide one into the reader on Node Medic."}
+    if len(disks) > 1:
+        names = ", ".join(f"{d['size']} {d['model']}".strip() for d in disks)
+        return {"state": "several", "path": "", "label": names,
+                "detail": ("More than one card is plugged in — take out the ones "
+                           "you don't want written, so there's no doubt which "
+                           "this is about.")}
+    d = disks[0]
+    label = f"{d['size']} {d['model']}".strip()
+    return {"state": "one", "path": d["path"], "label": label,
+            "detail": f"Found {label}. Everything on it will be replaced."}
+
+
 def is_safe_target(device_path: str, run: Runner = _run) -> bool:
     """True only if *device_path* is a currently-present removable USB disk (and
     thus NOT the system disk). The guard every write must pass."""
@@ -556,15 +595,21 @@ def next_steps_after_imaging(via_pi_reader: bool, hostname: str = "",
         # can't.
         steps.append("1.  Take the microSD out of the card reader.")
         steps.append(f"2.  Put it into {pi}.")
-        # NAMING THE CABLE TRAP, because it cost a whole bench night. Three
-        # separate faults in one session were cables, and every one of them
-        # first looked like a software bug: a charge-only lead powers a Pi
-        # perfectly, boots it to a login prompt, and never enumerates — the
-        # node's own USB controller reports "not attached" while the operator
-        # stares at a healthy green LED (2026-08-06).
-        steps.append(f"3.  Plug {pi} into Node Medic with a USB cable that "
-                     f"carries DATA — a charge-only lead will power it and "
-                     f"never appear here.")
+        # A NUMBERED STEP IS AN INSTRUCTION, NOT A PARAGRAPH. The cable warning
+        # first went inline here and ran so long the line was clipped mid
+        # sentence on the 5" screen — the operator saw "...a USB cable that
+        # carries DATA — a charge-only" and nothing more (2026-08-07). The
+        # underlying clipping is fixed too, but the lesson stands: keep each
+        # step short enough to scan while holding hardware, and put the
+        # reasoning on its own line underneath.
+        steps.append(f"3.  Plug {pi} into Node Medic with a DATA cable.")
+        # THE TRAP, on its own line. Three separate faults in one bench session
+        # were cables, and every one first looked like a software bug: a
+        # charge-only lead powers a Pi perfectly, boots it to a login prompt,
+        # and never enumerates — the node's own USB controller reports "not
+        # attached" while the operator stares at a healthy green LED.
+        steps.append("     A charge-only lead will power it and never appear "
+                     "here.")
     where = (f"It joins {wifi_ssid} and answers to '{hostname}'."
              if wifi_ssid and hostname else
              "It answers over the USB cable — no WiFi needed.")
