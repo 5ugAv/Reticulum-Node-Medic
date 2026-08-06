@@ -28,10 +28,34 @@ from transport.connection import Connection
 #: enable_uart pins the core clock; the medic's serial link must match.
 CONSOLE_BAUD = 115200
 
-#: config.txt line that routes a usable UART to GPIO14/15 AND pins the core clock
-#: so the mini-UART's baud is stable (the whole reason a stock mini-UART console
-#: is flaky without it).
+#: config.txt line that routes a usable UART to GPIO14/15.
 _ENABLE_UART = "enable_uart=1"
+
+#: RELEASE THE GOOD UART TO THE HEADER. This is NOT optional garnish on a
+#: BCM2837 board (Pi 3A+, 3B+, AND the Zero 2 W — i.e. exactly the boards
+#: ``reachability`` sends down the UART path because their single USB port is
+#: taken by the radio).
+#:
+#: On those boards Bluetooth owns the PL011, so GPIO14/15 are served by the
+#: MINI-uart, whose baud is derived from the VPU core clock. The core clock
+#: moves with load and temperature, so the effective baud drifts and the stream
+#: turns to noise under any activity. Measured on a 3A+ 2026-08-06: the login
+#: prompt arrived clean at an idle 115200 (100% printable), then degraded to
+#: garbage the moment the CPU did anything — a login could not be driven at all,
+#: not by hand and not by ``uart_link.connect_uart``. Adding this line fixed it
+#: outright and the console has been solid since.
+#:
+#: The comment that used to sit above ``enable_uart`` claimed it pinned the core
+#: clock and that this was "the whole reason a stock mini-UART console is flaky".
+#: That is not sufficient on BCM2837 in practice — the observed behaviour
+#: contradicted it, which is why this exists.
+#:
+#: THE TRADE, stated plainly because it is a real one: this turns OFF onboard
+#: Bluetooth. For a mesh node that is almost certainly right — it needs a
+#: reliable wired console far more than it needs BT, and the console is its only
+#: way in once the radio occupies the USB port — but it must be a decision, not
+#: a silent side effect.
+_DISABLE_BT = "dtoverlay=disable-bt"
 
 #: The kernel/login console on the primary UART. ``serial0`` is the Pi's stable
 #: alias for whichever UART is on GPIO14/15 (ttyS0 on Bluetooth boards like the
@@ -41,14 +65,19 @@ _CONSOLE_TOKEN = f"console=serial0,{CONSOLE_BAUD}"
 
 
 def config_txt_with_uart(text: str) -> str:
-    """Return *text* (a Pi ``config.txt``) with ``enable_uart=1`` present.
-    Idempotent — a no-op if it's already declared."""
-    for line in text.splitlines():
-        if line.strip() == _ENABLE_UART:
-            return text
+    """Return *text* (a Pi ``config.txt``) with a USABLE GPIO UART console —
+    ``enable_uart=1`` AND ``dtoverlay=disable-bt``. Idempotent per line, so a
+    file that already has one gains only the other."""
+    have = {ln.strip() for ln in text.splitlines()}
+    missing = [ln for ln in (_ENABLE_UART, _DISABLE_BT) if ln not in have]
+    if not missing:
+        return text
     sep = "" if text.endswith("\n") or text == "" else "\n"
-    return (f"{text}{sep}\n# GPIO UART login console "
-            f"(Node Medic wired link)\n{_ENABLE_UART}\n")
+    return (f"{text}{sep}\n# GPIO UART login console (Node Medic wired link).\n"
+            f"# disable-bt hands GPIO14/15 the real PL011 instead of the\n"
+            f"# mini-uart, whose baud drifts with the core clock and turns the\n"
+            f"# console to garbage under load. Costs onboard Bluetooth.\n"
+            + "".join(f"{ln}\n" for ln in missing))
 
 
 def cmdline_with_uart(text: str) -> str:

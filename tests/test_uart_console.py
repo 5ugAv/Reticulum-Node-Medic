@@ -24,8 +24,16 @@ def test_config_is_idempotent():
 
 
 def test_config_noop_when_already_present():
-    text = "enable_uart=1\n"
+    """A COMPLETE console is both lines. enable_uart=1 on its own used to count
+    as done — proven wrong on a Pi 3A+ 2026-08-06, where GPIO14/15 fell back to
+    the mini-uart and the console drifted into garbage under load. A card with
+    only half of it must gain the other half, not be left alone."""
+    text = "enable_uart=1\ndtoverlay=disable-bt\n"
     assert config_txt_with_uart(text) == text
+
+    half = "enable_uart=1\n"
+    assert config_txt_with_uart(half) != half, "half-configured must be completed"
+    assert "dtoverlay=disable-bt" in config_txt_with_uart(half)
 
 
 # ---- cmdline.txt (console=serial0) ---------------------------------------
@@ -77,7 +85,9 @@ def test_enable_uart_writes_both_files_and_getty():
 
 
 def test_enable_uart_is_idempotent_no_rewrite():
-    conn = _boot_conn(config="enable_uart=1\n",
+    """No-op only when the console is FULLY configured — both enable_uart and
+    disable-bt (see test_config_noop_when_already_present for why)."""
+    conn = _boot_conn(config="enable_uart=1\ndtoverlay=disable-bt\n",
                       cmdline=f"console=serial0,{CONSOLE_BAUD} console=tty1 rootwait\n")
     res = enable_uart_console(conn)
     assert res.ok and res.changed is False
