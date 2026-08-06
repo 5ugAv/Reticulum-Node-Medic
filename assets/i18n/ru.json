@@ -88,6 +88,7 @@
   "Couldn't save: ": "Не удалось сохранить: ",
   "Couldn't wipe the board: ": "Не удалось очистить плату: ",
   "Current:": "Текущие:",
+  "DISCHARGED": "DISCHARGED",
   "Date & time": "Дата и время",
   "Default radio parameters": "Параметры радио по умолчанию",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Значения по умолчанию возвращены, но собственное радио медика не удалось перенастроить: ",

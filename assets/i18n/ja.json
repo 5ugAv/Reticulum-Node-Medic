@@ -88,6 +88,7 @@
   "Couldn't save: ": "保存できませんでした: ",
   "Couldn't wipe the board: ": "ボードを消去できませんでした: ",
   "Current:": "現在:",
+  "DISCHARGED": "DISCHARGED",
   "Date & time": "日付と時刻",
   "Default radio parameters": "既定の無線パラメータ",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "既定値は戻しましたが、medic 自身の無線を再設定できませんでした: ",

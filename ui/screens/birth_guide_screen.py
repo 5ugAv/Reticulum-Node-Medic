@@ -128,6 +128,33 @@ class BirthGuideScreen(BoxLayout):
         self._current = step
         step.start()
 
+    def _back_row(self):
+        """A VISIBLE way out of any screen that isn't a guided step.
+
+        handle_back() and _back_action have existed all along, but they were
+        reachable only by a left-edge SWIPE. An invisible affordance is no
+        affordance: the operator hit the "Which Raspberry Pi is this?" chooser
+        twice and reported it as a trap both times, because six options and no
+        exit is exactly what it looks like ("this screen will not allow me to go
+        back", 2026-08-06; "this screen is still a trap", 2026-08-07). It had to
+        be recovered by restarting the UI over SSH — which a field operator
+        cannot do.
+
+        Returns None when there is nowhere to go (a terminal outcome), so the
+        caller adds nothing rather than a button that lies.
+        """
+        if not callable(getattr(self, "_back_action", None)):
+            return None
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44))
+        b = Button(text=tr("←  Back"), size_hint=(None, 1), width=dp(150),
+                   font_size="16sp", bold=True, background_normal="",
+                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                   color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        b.bind(on_release=lambda *_: self.handle_back())
+        row.add_widget(b)
+        row.add_widget(BoxLayout())            # push it left, matching the steps
+        return row
+
     def handle_back(self):
         """Left-edge swipe: step back ONE page within the flow. Returns True if it
         stepped back; False at the root (the detect landing) so the app goes home.
@@ -267,6 +294,9 @@ class BirthGuideScreen(BoxLayout):
                                  "(this resets the board briefly)."),
                               "16sp", color="text_secondary", h=60))
         wrap.add_widget(Widget())
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
         try:
             # The banner read RESETS the board (USB re-enumerates for several
@@ -465,6 +495,9 @@ class BirthGuideScreen(BoxLayout):
         reb.bind(on_release=lambda *_: self._confirm_rebirth(c))
         wrap.add_widget(reb)
         wrap.add_widget(Widget())
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _confirm_rebirth(self, c):
@@ -673,6 +706,9 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(reb)
         row.add_widget(adopt)
         wrap.add_widget(row)
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _do_adopt(self, c):
@@ -803,6 +839,9 @@ class BirthGuideScreen(BoxLayout):
                 wrap.add_widget(self._over_air_button())
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _paths_for_connected_board(self):
@@ -890,6 +929,9 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(self._heard_row(c))
         sv.add_widget(col)
         root.add_widget(sv)
+        _bk = self._back_row()
+        if _bk is not None:
+            root.add_widget(_bk)
         self.add_widget(root)
 
     def _heard_row(self, c):
@@ -954,6 +996,9 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(cancel)
         row.add_widget(adopt)
         wrap.add_widget(row)
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _do_over_air(self, c):
@@ -1339,6 +1384,9 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(row)
         body.add_widget(col)
         wrap.add_widget(body)
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _board_candidates(self):
@@ -1419,6 +1467,9 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(b)
         body.add_widget(col)
         wrap.add_widget(body)
+        back = self._back_row()
+        if back is not None:
+            wrap.add_widget(back)
         self.add_widget(wrap)
 
     def _pi_picked(self, key):
@@ -1497,6 +1548,9 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(back)                  # the safe choice reads first
         row.add_widget(on)
         wrap.add_widget(row)
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _render_step_zero(self):

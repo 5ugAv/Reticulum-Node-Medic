@@ -49,3 +49,57 @@ def test_the_spare_sprites_are_kept_not_referenced():
     for fname in _SPARE_ORGANS:
         assert os.path.exists(os.path.normpath(os.path.join(_ORGAN_ART, fname)))
         assert fname not in [a[0] for a in _ORGANS.values()]
+
+
+# --- the monitor has to STOP -----------------------------------------------
+# Operator, watching a finished write on the live screen (2026-08-07):
+#   "the heartbeat has been going all through the load — let's get rid of the
+#    heartbeat to let the user know that this is actually finished."
+# _done() called set_fraction(1.0) and nothing else, so Clock kept ticking and
+# the trace scrolled for ever. A monitor that never stops says the operation
+# never ended. CI has no Kivy, so like the tests above these assert the source
+# contract rather than the draw path.
+
+def _surgery_src():
+    return open("ui/widgets/surgery_anim.py").read()
+
+
+def test_finishing_stops_the_free_running_clock():
+    """Whatever else finish() does, the ticking must end — that IS the fix."""
+    src = _surgery_src()
+    body = src[src.index("def finish(self)"):src.index("# -- drawing")]
+    assert "self.stop()" in body, "finish() never stops the clock"
+
+
+def test_the_monitor_never_flatlines():
+    """A flat green line is the most legible image in medicine and it means the
+    patient died — the exact opposite of what this screen is reporting. The
+    trace must FADE while still beating, never be zeroed."""
+    src = _surgery_src()
+    mon = src[src.index("def _draw_monitor"):src.index("def _draw_discharged")]
+    # the fade multiplies alpha; it must not touch the amplitude
+    assert "(1.0 - gone)" in mon, "the trace is not faded out"
+    assert "amp = h * (0.16 + 0.26 * steady)" in mon, (
+        "amplitude changed — check it is not being driven to zero (flatline)")
+
+
+def test_the_tick_waits_for_the_trace_to_clear():
+    """Found by rendering it offline before it ever reached the medic: the tick
+    came up over the QRS spike and the two green shapes crossed. It is held
+    back until the trace has mostly gone."""
+    src = _surgery_src()
+    d = src[src.index("def _draw_discharged"):]
+    assert "p = (t - 0.45) / 0.55" in d, "the tick no longer waits"
+    assert "if p <= 0.0:\n            return" in d
+
+
+def test_only_a_SUCCESSFUL_write_is_discharged():
+    """A failure gets stop() — no tick, no celebration. Discharging a patient
+    who did not survive the operation is the worst thing this screen could
+    say."""
+    src = open("ui/screens/pi_imager_screen.py").read()
+    done = src[src.index("def _done(self, ok, msg)"):]
+    done = done[:done.index("lbl = getattr(self, \"_stage_lbl\"")]
+    assert "surgery.finish()" in done
+    ok_at, fail_at = done.index("surgery.finish()"), done.index("surgery.stop()")
+    assert ok_at < fail_at, "finish() must be the ok branch, stop() the failure"

@@ -88,6 +88,7 @@
   "Couldn't save: ": "Nie udało się zapisać: ",
   "Couldn't wipe the board: ": "Nie udało się wyczyścić płytki: ",
   "Current:": "Obecne:",
+  "DISCHARGED": "DISCHARGED",
   "Date & time": "Data i godzina",
   "Default radio parameters": "Domyślne parametry radia",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Przywrócono ustawienia domyślne, ale nie udało się przestroić własnego radia medica: ",

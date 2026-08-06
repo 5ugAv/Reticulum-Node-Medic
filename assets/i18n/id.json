@@ -88,6 +88,7 @@
   "Couldn't save: ": "Tidak bisa menyimpan: ",
   "Couldn't wipe the board: ": "Tidak bisa menghapus papan: ",
   "Current:": "Saat ini:",
+  "DISCHARGED": "DISCHARGED",
   "Date & time": "Tanggal & waktu",
   "Default radio parameters": "Parameter radio bawaan",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Bawaan dikembalikan, tetapi radio milik medic sendiri tidak bisa disetel ulang: ",

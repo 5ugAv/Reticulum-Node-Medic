@@ -355,3 +355,38 @@ def test_seeing_a_card_does_not_advance_or_write():
     seen = src[src.index("def _on_card_seen"):src.index("def _pi_key_for_art")]
     for destructive in ("_next(", "flash(", "_confirm("):
         assert destructive not in seen, f"{destructive!r} fires on merely seeing a card"
+
+
+# --- no screen may be a trap -----------------------------------------------
+# Reported twice, on the same screen, a day apart:
+#   "this screen will not allow me to go back" (2026-08-06)
+#   "this screen is still a trap, user cant go back from here" (2026-08-07)
+# Both times it was the "Which Raspberry Pi is this?" chooser: six options and
+# no exit. handle_back() and _back_action existed the whole time — but only a
+# LEFT-EDGE SWIPE reached them, and nothing on screen said so. An invisible
+# affordance is no affordance; recovering it needed a UI restart over SSH,
+# which a field operator does not have.
+
+def test_every_screen_with_somewhere_to_go_back_to_SHOWS_it():
+    """If a screen sets _back_action it must also render a visible control.
+    Guided steps get theirs from WizardStep(on_back=...); the rest use
+    _back_row()."""
+    import re
+    src = open("ui/screens/birth_guide_screen.py").read()
+    bad = []
+    for name, body in re.findall(r"def (_render_\w+)\(self[^)]*\):(.*?)(?=\n    def |\Z)",
+                                 src, re.S):
+        sets_back = re.search(r"_back_action\s*=\s*self\._(render|back)", body)
+        shows = "_back_row()" in body or "on_back=" in body
+        if sets_back and not shows:
+            bad.append(name)
+    assert not bad, f"back target but no visible way to use it: {bad}"
+
+
+def test_the_back_control_never_lies_about_being_there():
+    """A terminal screen has nowhere to go. _back_row returns None then, so the
+    caller adds nothing rather than a button that does nothing."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    row = src[src.index("def _back_row"):src.index("def handle_back")]
+    assert "return None" in row
+    assert 'callable(getattr(self, "_back_action"' in row

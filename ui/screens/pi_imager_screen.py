@@ -659,7 +659,11 @@ class PiImagerScreen(BoxLayout):
         surgery = getattr(self, "_surgery", None)
         if surgery is not None:
             if ok:
-                surgery.set_fraction(1.0)      # smile + thumbs up + happy beep
+                # smile + thumbs up + happy beep, then the monitor is switched
+                # off and says DISCHARGED. set_fraction(1.0) alone left the
+                # trace scrolling for ever, so the screen never looked finished
+                # (operator, live, 2026-08-07).
+                surgery.finish()
             else:
                 surgery.stop()                 # a failure gets no celebration
         lbl = getattr(self, "_stage_lbl", None)

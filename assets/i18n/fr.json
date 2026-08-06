@@ -88,6 +88,7 @@
   "Couldn't save: ": "Échec de l'enregistrement : ",
   "Couldn't wipe the board: ": "Impossible d'effacer la carte : ",
   "Current:": "Actuel :",
+  "DISCHARGED": "SORTI",
   "Date & time": "Date et heure",
   "Default radio parameters": "Paramètres radio par défaut",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Valeurs par défaut rétablies, mais la radio du Node Medic n'a pas pu être réaccordée : ",

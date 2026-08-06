@@ -88,6 +88,7 @@
   "Couldn't save: ": "Konnte nicht speichern: ",
   "Couldn't wipe the board: ": "Board konnte nicht gelöscht werden: ",
   "Current:": "Aktuell:",
+  "DISCHARGED": "ENTLASSEN",
   "Date & time": "Datum und Uhrzeit",
   "Default radio parameters": "Standard-Funkparameter",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Standardwerte wiederhergestellt, aber das eigene Funkgerät des Node Medic konnte nicht neu abgestimmt werden: ",

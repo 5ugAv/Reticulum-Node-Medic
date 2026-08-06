@@ -61,6 +61,30 @@ def _organ_texture(key):
 _TABLE = (0.16, 0.19, 0.22, 1)
 _TRACE = (0.35, 0.95, 0.55, 1)
 
+_DISCHARGE_TEX = None
+
+
+def _discharge_texture():
+    """The word on the monitor once the patient has left, rendered once.
+
+    "DISCHARGED" is the honest word for what happened and it keeps the theatre
+    intact — but it is also the one word here an operator might not know in a
+    hospital sense, so it is run through ``tr()`` like everything else and the
+    screen underneath still says "Done" in plain language.
+    """
+    global _DISCHARGE_TEX
+    if _DISCHARGE_TEX is None:
+        try:
+            from kivy.core.text import Label as CoreLabel
+            from ui.i18n import tr
+            cl = CoreLabel(text=tr("DISCHARGED"), font_size=dp(15), bold=True,
+                           color=(_TRACE[0], _TRACE[1], _TRACE[2], 1))
+            cl.refresh()
+            _DISCHARGE_TEX = cl.texture
+        except Exception:
+            _DISCHARGE_TEX = False        # never try again; the tick carries it
+    return _DISCHARGE_TEX or None
+
 
 class SurgeryAnim(Widget):
     """Drive with :meth:`set_fraction` (0→1).
@@ -74,13 +98,15 @@ class SurgeryAnim(Widget):
 
     phase = NumericProperty(0.0)          # free-running, for the idle motion
     fraction = NumericProperty(0.0)       # the real progress of the write
+    #: 0 = under the monitor, 1 = discharged. See :meth:`finish`.
+    discharged = NumericProperty(0.0)
 
     def __init__(self, pi_key: str = "", **kwargs):
         super().__init__(**kwargs)
         self._ev = None
         self._landed = []                 # organ keys already implanted
         self.bind(phase=self._redraw, fraction=self._redraw,
-                  pos=self._redraw, size=self._redraw)
+                  discharged=self._redraw, pos=self._redraw, size=self._redraw)
 
     # -- driving ----------------------------------------------------------
     def start(self):
@@ -101,6 +127,44 @@ class SurgeryAnim(Widget):
         f = max(0.0, min(1.0, float(f or 0.0)))
         self._landed = [s["organ"] for s in stages_upto(f)]
         self.fraction = f
+
+    #: How long the happy rhythm holds before the patient is discharged, and
+    #: how long the handover itself takes. Short enough not to make anyone wait,
+    #: long enough that the beat is seen to be STRONG before it stops.
+    SETTLE_S = 1.6
+    DISCHARGE_S = 1.2
+
+    def finish(self):
+        """End the operation: settle, then DISCHARGE — and stop the clock.
+
+        The bug this exists to fix (operator, on the live screen, 2026-08-07):
+        *"the heartbeat has been going all through the load — let's get rid of
+        the heartbeat to let the user know that this is actually finished."*
+        ``_done`` called ``set_fraction(1.0)`` and nothing else, so the trace
+        scrolled on for ever. A monitor that never stops says the operation
+        never ended; the operator sat looking at a finished card being watched
+        by a machine that had not noticed.
+
+        The one thing this must NOT do is flatline. A flat green line is the
+        single most legible image in medicine and it means the patient died —
+        exactly backwards on the screen that says the card is alive. So the
+        trace keeps its rhythm and FADES, and a tick rises in its place: the
+        monitoring stopped because there is nothing left to watch for.
+        """
+        from kivy.clock import Clock
+        self.set_fraction(1.0)
+        if self._ev is None:              # never started, or already stopped
+            self.start()
+        Clock.schedule_once(lambda _dt: self._discharge(), self.SETTLE_S)
+
+    def _discharge(self):
+        from kivy.animation import Animation
+        anim = Animation(discharged=1.0, duration=self.DISCHARGE_S, t="out_cubic")
+        # Stop the free-running clock only once the fade is DONE — the trace has
+        # to still be beating while it fades, or it freezes mid-stroke and reads
+        # as a crash rather than an ending.
+        anim.bind(on_complete=lambda *_: self.stop())
+        anim.start(self)
 
     # -- drawing ----------------------------------------------------------
     def _redraw(self, *_):
@@ -351,14 +415,77 @@ class SurgeryAnim(Widget):
                     v *= 0.15
                 v += (1.0 - steady) * 0.10 * math.sin(u * 47.0 + scroll * 6.0)
             pts.extend([x + w * u, mid + amp * v])
-        Color(_TRACE[0], _TRACE[1], _TRACE[2], 0.55 + 0.45 * steady)
-        Line(points=pts, width=dp(1.8))
+        gone = self.discharged                  # 0 = still monitoring, 1 = left
+        if gone < 1.0:
+            Color(_TRACE[0], _TRACE[1], _TRACE[2],
+                  (0.55 + 0.45 * steady) * (1.0 - gone))
+            Line(points=pts, width=dp(1.8))
 
-        if done:
-            # a happy beep: a bright ring at the last spike
-            Color(_TRACE[0], _TRACE[1], _TRACE[2], 0.9)
-            r = h * 0.18
-            Line(circle=(x + w * 0.86, mid + amp * 0.9, r), width=dp(2))
+            if done:
+                # a happy beep: a bright ring at the last spike
+                Color(_TRACE[0], _TRACE[1], _TRACE[2], 0.9 * (1.0 - gone))
+                r = h * 0.18
+                Line(circle=(x + w * 0.86, mid + amp * 0.9, r), width=dp(2))
+
+        if gone > 0.0:
+            self._draw_discharged(x, y, w, h, gone)
+
+    def _draw_discharged(self, x, y, w, h, t):
+        """What replaces the trace: a tick, and the word for what happened.
+
+        Drawn from primitives like everything else here. The tick is LINES, not
+        a glyph — this panel's fonts render a U+2713 as a tofu box, which is how
+        the on-screen keyboard learned the same lesson.
+
+        Two things the first offline render (PIL, before this ever reached the
+        medic) showed were wrong, and both only show up as a PICTURE:
+
+        * the tick came up while the trace was still bright and landed straight
+          across the QRS spike — two green shapes crossing, illegible;
+        * the word butted against the tick with no gap, so mid-fade it read as
+          one smeared blob.
+
+        So the tick is HELD BACK until the trace is mostly gone, and the tick
+        and word are laid out as one group and centred together.
+        """
+        cy = y + h * 0.5
+        s = min(h * 0.30, w * 0.06)             # tick half-size
+        gap = s * 0.85
+
+        # Hold back until the trace has largely faded. Below this the panel
+        # belongs to the heartbeat and nothing else may share it.
+        p = (t - 0.45) / 0.55
+        if p <= 0.0:
+            return
+        p = min(1.0, p)
+
+        tex = _discharge_texture()
+        tw = tex.width if tex is not None else 0.0
+        group = s * 2.0 + (gap + tw if tw else 0.0)
+        left = x + (w - group) / 2.0
+        tx = left + s                            # tick centre-ish
+
+        # the tick draws itself on, left stroke first
+        Color(_TRACE[0], _TRACE[1], _TRACE[2], p)
+        start = (tx - s, cy + s * 0.05)
+        knee = (tx - s * 0.35, cy - s * 0.55)
+        if p <= 0.45:
+            u = p / 0.45
+            Line(points=[start[0], start[1],
+                         start[0] + (knee[0] - start[0]) * u,
+                         start[1] + (knee[1] - start[1]) * u],
+                 width=dp(3), cap="round")
+        else:
+            u = (p - 0.45) / 0.55
+            Line(points=[start[0], start[1], knee[0], knee[1],
+                         knee[0] + (s * 1.35) * u, knee[1] + (s * 1.25) * u],
+                 width=dp(3), cap="round")
+
+        # the word only once the tick is complete, so they never blur together
+        if tex is not None and p > 0.9:
+            Color(1, 1, 1, (p - 0.9) / 0.1)
+            Rectangle(texture=tex, pos=(tx + s + gap, cy - tex.height / 2.0),
+                      size=(tex.width, tex.height))
 
     def _draw_smile(self, cx, cy, cw, ch):
         """The patient, pleased with the outcome."""

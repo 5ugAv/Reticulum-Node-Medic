@@ -88,6 +88,7 @@
   "Couldn't save: ": "Kunde inte spara: ",
   "Couldn't wipe the board: ": "Kunde inte rensa kortet: ",
   "Current:": "Nuvarande:",
+  "DISCHARGED": "DISCHARGED",
   "Date & time": "Datum och tid",
   "Default radio parameters": "Standardradioparametrar",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Standardvärdena återställdes, men medicens egen radio kunde inte ställas om: ",

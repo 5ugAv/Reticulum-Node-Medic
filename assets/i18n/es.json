@@ -88,6 +88,7 @@
   "Couldn't save: ": "No se pudo guardar: ",
   "Couldn't wipe the board: ": "No se pudo borrar la placa: ",
   "Current:": "Actual:",
+  "DISCHARGED": "DADO DE ALTA",
   "Date & time": "Fecha y hora",
   "Default radio parameters": "Parámetros de radio predeterminados",
   "Defaults reverted, but the medic's own radio couldn't be retuned: ": "Valores revertidos, pero la radio propia del Node Medic no se pudo resintonizar: ",
