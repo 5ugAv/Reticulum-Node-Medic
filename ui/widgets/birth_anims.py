@@ -26,6 +26,7 @@ from kivy.properties import NumericProperty
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
+from ui import pi_sd_geometry as sdgeo
 from ui import theme
 
 _ANIM_DIR = os.path.normpath(os.path.join(
@@ -208,6 +209,139 @@ def _draw_medic_vector(x, y, w, h):
     arm = min(w, h) * 0.28
     RoundedRectangle(pos=(cx - t / 2, cy - arm), size=(t, 2 * arm), radius=[t / 2] * 4)
     RoundedRectangle(pos=(cx - arm, cy - t / 2), size=(2 * arm, t), radius=[t / 2] * 4)
+
+
+def _blit_card(tex, frame, card_len, card_w, alpha=1.0):
+    """Draw the card for *frame*: right way round, right way up, right side out.
+
+    Three things happen here that keep one piece of drawing code correct for
+    every board:
+
+    ROTATION. The card sprite's leading (contact) edge points +x, so a slot on
+    another edge is the same blit at another angle rather than a second code
+    path.
+
+    FORESHORTENING. ``face_scale`` squeezes the short axis to nothing and back
+    as the card turns over, which is what a flip looks like seen head-on.
+
+    THE OTHER SIDE. Past halfway the CONTACT face is toward the viewer, and the
+    artwork is the label face — so the reverse is drawn instead, from the shapes
+    in ui.pi_sd_geometry. Mirroring the sprite was the alternative and it is not
+    honest: a back-to-front SanDisk logo is a rendering artefact, not the other
+    side of a card.
+    """
+    w = card_len
+    h = max(1.0, card_w * frame.face_scale)
+    if frame.angle:
+        PushMatrix()
+        Rotate(angle=frame.angle, origin=(frame.cx, frame.cy), axis=(0, 0, 1))
+    if frame.showing_back:
+        body, pads = sdgeo.card_back_shapes(w, h)
+        Color(sdgeo.CARD_BACK_RGB[0], sdgeo.CARD_BACK_RGB[1],
+              sdgeo.CARD_BACK_RGB[2], alpha)
+        RoundedRectangle(pos=(frame.cx + body[0], frame.cy + body[1]),
+                         size=(body[2], body[3]),
+                         radius=[min(dp(3), h * 0.22)] * 4)
+        Color(sdgeo.CARD_PAD_RGB[0], sdgeo.CARD_PAD_RGB[1],
+              sdgeo.CARD_PAD_RGB[2], alpha)
+        for px, py, pw, ph in pads:
+            Rectangle(pos=(frame.cx + px, frame.cy + py), size=(pw, ph))
+    else:
+        Color(1, 1, 1, alpha)
+        Rectangle(texture=tex, pos=(frame.cx - w / 2.0, frame.cy - h / 2.0),
+                  size=(w, h))
+    if frame.angle:
+        PopMatrix()
+
+
+def _card_texture():
+    """The operator's own SanDisk MAX Endurance illustration — the card they
+    are actually holding. The square placeholder stays as a fallback only."""
+    return _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
+
+
+class _CardStage(_LoopAnim):
+    """Shared plumbing for the two steps that put a card into a Raspberry Pi.
+
+    Both need the same three things: the RIGHT Pi's picture, that Pi's slot
+    geometry, and a way to draw a card sliding into it and disappearing at the
+    mouth. Neither may improvise when the model is unknown — see ``_pi_art``.
+    """
+
+    def __init__(self, pi_key: str = "", **kwargs):
+        super().__init__(**kwargs)
+        self._pi_key = (pi_key or "").strip()
+        self._geo = sdgeo.geometry_for(self._pi_key)
+        # The picture comes from the GEOMETRY, not from board_images: the slot
+        # fractions are measured inside one particular crop, so the two travel
+        # together (see sdgeo.sprite_path).
+        self._pi_png = sdgeo.sprite_path(self._geo) if self._geo else None
+
+    def _pi_art(self):
+        """``(texture, geometry)``, or ``(None, None)`` to draw the generic board.
+
+        Deliberately all-or-nothing. A photo without geometry would send the
+        card into a made-up edge; geometry without the photo has nothing to
+        enter. And when the model is unknown, this shows a plain outline rather
+        than the Pi Zero sprite the old code reached for — a Zero drawn while a
+        3A+ is in the operator's hand is the exact fault the standing rule was
+        restated for (2026-08-06). The picture is their only check on an
+        identification made from silicon they cannot see, so an honest blank
+        beats a confident wrong answer.
+        """
+        if not self._pi_png or self._geo is None:
+            return (None, None)
+        tex = _texture(self._pi_png)
+        return (tex, self._geo) if tex is not None else (None, None)
+
+    def _stage_bounds(self):
+        return (self.x, self.y, self.width, self.height)
+
+    def _draw_card(self, card, frame, card_len, card_w, behind_ok=True):
+        """Blit the card for *frame*, clipped at the slot mouth when it has one.
+
+        Two ways a card vanishes into a board, and which one is correct is a
+        property of the BOARD: a top-mounted holder (the Pi Zero's) swallows it
+        at the mouth line, so the card is clipped; an underside holder means it
+        passes BEHIND the board and the board itself hides it. Callers draw the
+        board between the two cases — see the ordering in each _draw.
+        """
+        if frame.clip_point is None or (frame.behind_board and behind_ok):
+            _blit_card(card, frame, card_len, card_w)
+            return
+        mask = sdgeo.half_plane(frame.clip_point, frame.clip_normal,
+                                self._stage_bounds())
+        StencilPush()
+        Quad(points=mask)
+        StencilUse()
+        _blit_card(card, frame, card_len, card_w)
+        StencilUnUse()
+        Quad(points=mask)
+        StencilPop()
+
+    def _draw_card_ghost(self, card, frame, card_len, card_w):
+        """The part of the card that is UNDER the board, shown faintly through it.
+
+        Only for underside slots, and it earns its keep: drawn honestly, the
+        last two thirds of that action are invisible — the card slides beneath
+        the board and the operator watches nothing happen (offline render,
+        pi_4b). A dimmed card showing through is the cutaway convention every
+        assembly diagram uses; it adds no hardware that isn't there and it is
+        the only way this step can say WHERE under the board the card goes.
+        """
+        if frame.clip_point is None:
+            return
+        # the complement of the visible half-plane: everything past the mouth
+        mask = sdgeo.half_plane(frame.clip_point,
+                               (-frame.clip_normal[0], -frame.clip_normal[1]),
+                               self._stage_bounds())
+        StencilPush()
+        Quad(points=mask)
+        StencilUse()
+        _blit_card(card, frame, card_len, card_w, alpha=0.30)
+        StencilUnUse()
+        Quad(points=mask)
+        StencilPop()
 
 
 class ConnectBoardAnim(_LoopAnim):
@@ -584,9 +718,65 @@ class InsertSdAnim(_LoopAnim):
     _SLOT_L = (0.10, 0.505)
     _SLOT_R = (0.50, 0.705)
 
+    burst = NumericProperty(0.0)                     # card-found ripple, 0->1
+
     def __init__(self, **kwargs):
         kwargs.setdefault("duration", 3.8)           # three phases -> a touch slower
         super().__init__(**kwargs)
+        self._found = False
+        self.bind(burst=self._redraw)
+
+    def mark_card_found(self):
+        """The medic can SEE the card — stop looping and fire the green ripple.
+
+        Deliberately the same burst ConnectBoardAnim fires when a board appears:
+        four green rings radiating from the junction, fading as they grow. It is
+        one shared visual language meaning "the medic can see it now", and it
+        should read identically whether what turned up is a board or a card.
+
+        This is not decoration. A whole bench session went by with no way to
+        tell whether the medic had noticed a hardware change (#71 — the medic
+        sitting on a screen oblivious to what is plugged in), and the ripple is
+        the answer to that.
+
+        What it does NOT say is that anything is being written. Writing is
+        destructive and stays behind a deliberate press; this means "I can see
+        your card", so it is rings and no words.
+
+        Safe to call repeatedly (the poll will), and safe to call before the
+        widget has been laid out — the burst is a property animation, and the
+        draw is skipped until there is a stage to draw on.
+        """
+        if self._found:
+            return
+        self._found = True
+        self.stop()                                  # hold the finished frame
+        self.phase = 1.0
+        Animation(burst=1.0, duration=1.1, t="out_quad").start(self)
+
+    def _ripples(self, cx, cy):
+        """The four rings, matching ConnectBoardAnim's exactly — except for how
+        far they get to grow.
+
+        That one radiates from a point near the middle of its stage; this one
+        radiates from a card reader parked in the left-hand corner, and at the
+        shared 0.52-of-the-stage radius the rings ran off the edge. Kivy does
+        not clip a widget's canvas, so "off the edge" means drawn across the
+        title above and the body text below (seen in the offline render before
+        it went anywhere). The radius is capped to the room actually available;
+        colour, count, stagger, fade and width are untouched, and those are
+        what carry the meaning.
+        """
+        room = min(cx - self.x, cy - self.y,
+                   self.x + self.width - cx, self.y + self.height - cy)
+        maxr = min(min(self.width, self.height) * 0.52, max(dp(24), room))
+        for i in range(4):
+            f = self.burst - i * 0.16                # stagger: they radiate out
+            if f <= 0.0:
+                continue
+            f = min(1.0, f)
+            Color(0.2, 0.9, 0.4, (1.0 - f) * 0.9)    # fade as each ring grows
+            Line(circle=(cx, cy, dp(10) + f * maxr), width=dp(3.0))
 
     def _blit(self, tex, tlx, tly, w, h):
         """Draw *tex* given its TOP-LEFT in a y-DOWN widget frame (0,0 = top-left)."""
@@ -685,6 +875,12 @@ class InsertSdAnim(_LoopAnim):
                     ecx, ecy = self._kv(*E)
                     Color(1.0, 0.4, 0.4, 1)           # bright red flash ring
                     Line(circle=(ecx, ecy, dp(11)), width=dp(3))
+            if self._found:
+                # centred on the reader's own slot — the rings come from where
+                # the card actually is, not from the middle of the stage
+                self._ripples(*self._kv(
+                    rtx + (self._SLOT_L[0] + self._SLOT_R[0]) / 2.0 * rw,
+                    rty + (self._SLOT_L[1] + self._SLOT_R[1]) / 2.0 * rh))
         self._hide_label("medic")
         self._hide_label("card")
 
@@ -701,6 +897,8 @@ class InsertSdAnim(_LoopAnim):
             _draw_medic_vector(mx, my, mw, mh)
             Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
             RoundedRectangle(pos=(cx, cy - ch / 2), size=(cw, ch), radius=[dp(4)] * 4)
+            if self._found:                    # same signal without the artwork
+                self._ripples(cx + cw / 2, cy)
         card = self._label("card", text="SD", font_size="14sp", bold=True,
                           halign="center", valign="middle",
                           color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -708,62 +906,34 @@ class InsertSdAnim(_LoopAnim):
         card.pos = (cx, cy - ch / 2)
 
 
-class InsertSdIntoPiAnim(_LoopAnim):
-    """The imaged microSD slides into the Pi Zero 2 W's own slot.
+class InsertSdIntoPiAnim(_CardStage):
+    """The imaged microSD slides into THIS Pi's own slot.
 
     The mirror of InsertSdAnim: that one puts the card INTO THE MEDIC to be
-    written; this one shows the finished card going HOME into the Pi. The slot
-    is on the board's left edge, so the card approaches from the left and
-    disappears into it (clipped at the slot mouth so it visibly goes *in*).
-    Falls back to the schematic if the artwork is missing.
+    written; this one shows the finished card going HOME into the Pi.
+
+    It used to know one board. The slot was three constants measured off
+    pi_zero_2w.png and the card always came in from the left, so selecting a
+    3A+ produced a Zero-shaped animation with the card entering an edge that
+    model has nothing on. Which edge, which face and which way up now come from
+    ``ui.pi_sd_geometry`` per model, and an unknown model gets an honest
+    outline instead of somebody else's board.
     """
 
-    #: The slot mouth on pi_zero_2w.png, as a fraction of the sprite (y-DOWN):
-    #: the left edge of the metal microSD cage, and its vertical span.
-    _SLOT_X = 0.085
-    _SLOT_TOP = 0.245
-    _SLOT_BOT = 0.545
-    #: Fine alignment of the card across the slot, as a fraction of the board's
-    #: on-screen height. POSITIVE moves the card DOWN. The slot bounds above are
-    #: measured off the sprite; this absorbs the small residual error between the
-    #: measured cage and where the card sprite's own edge falls, which showed as
-    #: the card's top edge sitting a hair proud of the cage (operator, on the
-    #: live screen, 2026-08-02). Nudge in ~0.005 steps and look at it.
-    _CARD_NUDGE = 0.013
-
     def __init__(self, pi_key: str = "", **kwargs):
-        """*pi_key* renders THAT Raspberry Pi model instead of the stock Zero.
-
-        Same contract as ConnectPiAnim: the operator is holding the board and
-        checking the screen against it, so it must be the right one.
-        """
         kwargs.setdefault("duration", 3.0)
-        super().__init__(**kwargs)
-        self._pi_png = ""
-        if pi_key:
-            try:
-                from ui import board_images
-                self._pi_png = board_images.image_for_pi(pi_key) or ""
-            except Exception:
-                self._pi_png = ""
-
-    @staticmethod
-    def _ease(v):
-        v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
-        return v * v * (3.0 - 2.0 * v)                    # smoothstep
+        super().__init__(pi_key=pi_key, **kwargs)
 
     def _draw(self):
         # NOTE: everything below must be inside `with self.canvas`. Without it
         # the instructions are constructed and then thrown away — the widget
         # renders nothing at all, which is exactly how this step reached the
         # operator: a correct animation on a blank screen (2026-08-02).
-        pi_tex = (_texture(self._pi_png) if self._pi_png else None) \
-            or _texture(PI_ZERO_PNG)
-        card = _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
+        pi_tex, geo = self._pi_art()
+        card = _card_texture()
         if pi_tex is None or card is None:
             return self._draw_fallback()
         w, h = self.width, self.height
-        # the board sits centred-right, leaving room on the left for the card
         pa = pi_tex.width / float(pi_tex.height)
         pw = w * 0.68
         ph = pw / pa
@@ -772,34 +942,31 @@ class InsertSdIntoPiAnim(_LoopAnim):
             pw = ph * pa
         px = self.x + w - pw - dp(8)
         py = self.y + (h - ph) / 2.0
-        slot_x = px + pw * self._SLOT_X
-        slot_cy = py + ph * (1.0 - (self._SLOT_TOP + self._SLOT_BOT) / 2.0
-                             - self._CARD_NUDGE)
-        ch = ph * (self._SLOT_BOT - self._SLOT_TOP) * 0.92
-        cw = ch * (card.width / float(card.height))
-        travel = self._ease(min(1.0, self.phase * 1.35))  # arrive, then dwell
-        start_x = self.x + dp(4)
-        cx = start_x + (slot_x - cw * 0.55 - start_x) * travel
-        from kivy.graphics import StencilPush, StencilUse, StencilUnUse, StencilPop
+        brect = sdgeo.board_rect(geo, (px, py, pw, ph))
+        card_len, card_w = sdgeo.card_size(geo, brect,
+                                           card.width / float(card.height))
+        t = min(1.0, self.phase * 1.35)              # arrive, then dwell
+        frame = sdgeo.insert_frame(t, geo, brect, card_len, gap=1.4)
         with self.canvas:
-            Color(1, 1, 1, 1)
-            Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
-            # clip the card at the slot mouth so it vanishes INTO the board
-            StencilPush()
-            Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
-            StencilUse()
-            Color(1, 1, 1, 1)
-            Rectangle(texture=card, pos=(cx, slot_cy - ch / 2.0), size=(cw, ch))
-            StencilUnUse()
-            Rectangle(pos=(self.x, self.y), size=(slot_x - self.x, h))
-            StencilPop()
+            if frame.behind_board:                   # underside slot: it goes
+                self._draw_card(card, frame, card_len, card_w)   # UNDER the board
+                Color(1, 1, 1, 1)
+                Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+                self._draw_card_ghost(card, frame, card_len, card_w)
+            else:                                    # top-mounted: clipped at
+                Color(1, 1, 1, 1)                    # the mouth
+                Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+                self._draw_card(card, frame, card_len, card_w, behind_ok=False)
 
     def _draw_fallback(self):
-        """No artwork — a plain board outline with the card entering its edge."""
+        """No artwork, or a model we can't place the slot on — a plain board
+        outline with the card entering its edge. Deliberately generic: it says
+        'a board', which is true, rather than naming the wrong one."""
         w, h = self.width, self.height
         bx, by = self.x + w * 0.30, self.y + h * 0.30
         bw, bh = w * 0.62, h * 0.40
-        travel = self._ease(min(1.0, self.phase * 1.35))
+        travel = min(1.0, self.phase * 1.35)
+        travel = travel * travel * (3.0 - 2.0 * travel)
         cw, ch = w * 0.12, h * 0.16
         cx = self.x + w * 0.05 + (bx - cw * 0.5 - (self.x + w * 0.05)) * travel
         with self.canvas:
@@ -807,6 +974,103 @@ class InsertSdIntoPiAnim(_LoopAnim):
             Rectangle(pos=(bx, by), size=(bw, bh))
             Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
             Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
+
+
+class SdHandoverAnim(_CardStage):
+    """The card leaves Node Medic's reader and goes home into the operator's Pi.
+
+    One continuous motion, because it is one continuous action: the medic has
+    finished writing the card, so it comes OUT of the reader, travels across,
+    and goes INTO the Pi — at the edge that Pi's slot is actually on, the right
+    way round, on the right face.
+
+    Everything board-specific is data (``ui.pi_sd_geometry``); everything here
+    is the staging. The medic side is held in the two constants below because
+    the reader hardware is not settled — a built-in reader is planned, and when
+    it arrives this is a layout edit rather than a rewrite.
+    """
+
+    def __init__(self, pi_key: str = "", **kwargs):
+        kwargs.setdefault("duration", 4.4)           # three phases + a dwell
+        super().__init__(pi_key=pi_key, **kwargs)
+
+    @staticmethod
+    def reader_slot_fraction(reader_tex_aspect):
+        """How long the reader's own slot is, as a fraction of its sprite
+        height — used to scale the reader so its mouth matches the card. The
+        mouth runs from _SLOT_L to _SLOT_R across sd_reader_body.png, angled,
+        because the dongle is drawn in perspective."""
+        sl, sr = InsertSdAnim._SLOT_L, InsertSdAnim._SLOT_R
+        return math.hypot((sr[0] - sl[0]) * reader_tex_aspect, sr[1] - sl[1])
+
+    def _draw(self):
+        pi_tex, geo = self._pi_art()
+        card = _card_texture()
+        reader = _texture(SD_READER_BODY_PNG)
+        medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
+        if pi_tex is None or card is None or reader is None:
+            return self._draw_fallback()
+        ra = reader.width / float(reader.height)
+        lay = sdgeo.handover_layout(
+            (self.x, self.y, self.width, self.height), geo,
+            pi_tex.width / float(pi_tex.height),
+            card.width / float(card.height), ra,
+            self.reader_slot_fraction(ra),
+            medic.width / float(medic.height) if medic is not None else None)
+        frame = sdgeo.handover_frame(self.phase, geo, lay.board, lay.card_len,
+                                     lay.reader_seat, sdgeo.READER_AXIS_DEG)
+        with self.canvas:
+            if lay.medic is not None and medic is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=lay.medic[:2], size=lay.medic[2:])
+            Color(1, 1, 1, 1)
+            Rectangle(texture=reader, pos=lay.reader[:2], size=lay.reader[2:])
+            # the board goes down BEFORE the card for an underside slot (it has
+            # to hide it) and AFTER for a top-mounted one (the card lies on the
+            # board and is swallowed at the mouth)
+            if frame.behind_board:
+                self._draw_card(card, frame, lay.card_len, lay.card_w)
+                Color(1, 1, 1, 1)
+                Rectangle(texture=pi_tex, pos=lay.pi[:2], size=lay.pi[2:])
+                self._draw_card_ghost(card, frame, lay.card_len, lay.card_w)
+            else:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=pi_tex, pos=lay.pi[:2], size=lay.pi[2:])
+                self._draw_card(card, frame, lay.card_len, lay.card_w,
+                                behind_ok=False)
+            # seated: a short green pulse at the mouth. It is the only moment
+            # the operator is told "that's it, it's in" without any words.
+            if frame.seated >= 1.0:
+                mxx, myy, _span = sdgeo.slot_mouth(geo, lay.board)
+                pulse = 0.5 + 0.5 * math.sin(self.phase * 14.0)
+                g = theme.hex_to_rgba(theme.COLORS["green"])
+                Color(g[0], g[1], g[2], 0.35 + 0.45 * pulse)
+                Line(circle=(mxx, myy, lay.card_w * 0.9), width=dp(2.0))
+
+    def _draw_fallback(self):
+        """Unknown model or missing art: the medic, and a card going into a
+        plain board. Never a specific Pi we haven't confirmed."""
+        x, y, w, h = self.x, self.y, self.width, self.height
+        medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
+        bw, bh = w * 0.30, h * 0.46
+        bx, by = x + w - bw - dp(8), y + (h - bh) / 2.0
+        t = min(1.0, self.phase * 1.25)
+        t = t * t * (3.0 - 2.0 * t)
+        cw, ch = w * 0.09, h * 0.20
+        start = x + w * 0.30
+        cx = start + (bx - cw * 0.4 - start) * t
+        with self.canvas:
+            if medic is not None:
+                mh = h * 0.9
+                mw = mh * (medic.width / float(medic.height))
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(x + dp(2), y + (h - mh) / 2.0),
+                          size=(mw, mh))
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(6)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            RoundedRectangle(pos=(cx, y + (h - ch) / 2.0), size=(cw, ch),
+                             radius=[dp(3)] * 4)
 
 
 class ConnectPiAnim(ConnectBoardAnim):

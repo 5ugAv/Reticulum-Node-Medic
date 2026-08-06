@@ -23,13 +23,20 @@ from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, InsertSdIntoPiAnim,
-                                    ProvisionAnim, ConnectPiAnim)
+                                    ProvisionAnim, ConnectPiAnim,
+                                    SdHandoverAnim)
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
 _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAnim,
           "connect_pi": ConnectPiAnim,
           "insert_sd": InsertSdAnim, "insert_sd_pi": InsertSdIntoPiAnim,
+          # the written card leaving the medic's reader and going home into
+          # THIS operator's Pi — board-aware, see ui.pi_sd_geometry
+          "sd_handover": SdHandoverAnim,
           "provision": ProvisionAnim}
+
+#: Animations that draw a specific Raspberry Pi and so must be told which one.
+_PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim)
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):
@@ -1123,6 +1130,28 @@ class BirthGuideScreen(BoxLayout):
                 return False
         return False
 
+    def _pi_key_for_art(self, anim_cls):
+        """Which Pi the animation should draw.
+
+        The operator's own answer to "Which Raspberry Pi is this?" comes first.
+        The USB fallback can only ever name a SoC, and BCM283x is a Zero 2 W, a
+        3A+ and a 3B+ at once — so ``_pi_art_key`` is "" for all three, and the
+        card-into-the-Pi step used to fall through to a Pi Zero drawing while a
+        3A+ sat on the bench. That is the fault behind the operator's restating
+        of the rule as absolute (2026-08-06): every picture must be the
+        hardware in their hand.
+
+        ConnectPiAnim is the exception, and it is left alone deliberately: it
+        marks the DATA and PWR-IN sockets using port fractions measured on the
+        Zero sprite, so handing it another model would move the board picture
+        while leaving the rings pointing at nothing. That step needs the same
+        per-model treatment the SD slots just got, and until it has one it must
+        keep the board its own numbers describe.
+        """
+        if anim_cls is ConnectPiAnim:
+            return getattr(self, "_pi_art_key", "")
+        return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
+
     def _render_step(self):
         steps = guide_steps(self._path)
         if not steps or self._i >= len(steps):
@@ -1160,8 +1189,8 @@ class BirthGuideScreen(BoxLayout):
         # Pi steps draw the DETECTED model when we know it. art_key() returns ""
         # for an ambiguous SoC, and the animations fall back to their generic
         # drawing rather than showing a photo of some other Raspberry Pi.
-        if anim_cls in (InsertSdIntoPiAnim, ConnectPiAnim):
-            anim = anim_cls(pi_key=getattr(self, "_pi_art_key", ""))
+        if anim_cls in _PI_ANIMS:
+            anim = anim_cls(pi_key=self._pi_key_for_art(anim_cls))
         else:
             anim = anim_cls() if anim_cls else None
         # +1 on index/total for the name step folded in ahead of these

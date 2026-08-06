@@ -127,7 +127,17 @@ _STEPS = {
         {"title": tr("Move the card to the Raspberry Pi"),
          "body": tr("The card is ready. Take it out of the reader and slide it "
                     "into the Pi's own card slot."),
-         "anim": "insert_sd_pi"},
+         # BOARD-AWARE, and it earns the change. The card leaves the medic's
+         # reader, crosses, and enters the slot WHERE THAT MODEL'S SLOT ACTUALLY
+         # IS — measured per board, not assumed from one of them.
+         #
+         # It also turns over in mid-air on the four boards whose slot is on the
+         # UNDERSIDE (3A+/3B+/4B/5), because those take the card contacts-up.
+         # Showing a label-up card sliding into a top-view Pi 4 would be
+         # depicting the operator doing it wrong — and this step is the one most
+         # likely to be got wrong. A Zero 2 W never flips, so the difference
+         # between the two families is visible in the animation itself.
+         "anim": "sd_handover"},
         {"title": tr("Connect the Pi to Node Medic"),
          "body": tr("Plug the Pi into Node Medic with a USB cable and let it "
                     "start up. It boots straight from the card you just wrote "

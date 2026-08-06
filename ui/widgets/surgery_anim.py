@@ -1,10 +1,22 @@
-"""The card's operation: a Pi in a head mirror, implanting organs into an SD card.
+"""The card's operation: NODE MEDIC implanting organs into an SD card.
 
-The operator's own scene (2026-08-02): *"The Raspberry Pi is dressed as a
-miniature doctor. The SD card lies on an operating table. The Pi gently installs
-little glowing components — kernel, filesystem, reticulum logo, bootloader —
-like organs. A heart monitor gradually stabilises. At the end: the monitor beeps
-happily, the SD card smiles, the Pi gives a thumbs up."*
+The operator's own scene (2026-08-02): *"The SD card lies on an operating table.
+The surgeon gently installs little glowing components — kernel, filesystem,
+reticulum logo, bootloader — like organs. A heart monitor gradually stabilises.
+At the end: the monitor beeps happily, the SD card smiles, the surgeon gives a
+thumbs up."*
+
+THE SURGEON CHANGED, and the reason is a change in the hardware route rather
+than a change of mind. The scene was built when the card was imaged INSIDE the
+Pi — the Pi acted as its own card reader over rpiboot — so the Pi was quite
+literally the one doing the work. That route is retired: the card is written in
+Node Medic's own reader now. Operator, watching this screen live (2026-08-06):
+*"it's not the pie provisioning the SD card anymore. I need to change it to the
+node medic as the character that's provisioning the SD card."*
+
+So the actor is the medic, drawn from the same illustration the card steps use,
+and the Pi is not in this scene at all — at this moment it is in the operator's
+other hand, waiting for the card.
 
 Why it earns its screen. Writing a card takes minutes with nothing to look at,
 and the most damaging thing an operator can do in that window is decide it has
@@ -32,8 +44,8 @@ from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
 
 from ui import theme
-from ui.widgets.birth_anims import (PI_ZERO_PNG, SD_ENDURANCE_PNG, SD_PNG,
-                                    _texture)
+from ui.widgets.birth_anims import (MEDIC_BODY_PNG, MEDIC_PNG,
+                                    SD_ENDURANCE_PNG, SD_PNG, _texture)
 
 from ui.organ_art import (CARD_WINDOW as _CARD_WINDOW, ORGANS as _ORGANS,
                           ORGAN_SEATS as _ORGAN_SEATS,
@@ -51,7 +63,14 @@ _TRACE = (0.35, 0.95, 0.55, 1)
 
 
 class SurgeryAnim(Widget):
-    """Drive with :meth:`set_fraction` (0→1). ``pi_key`` picks the surgeon's art."""
+    """Drive with :meth:`set_fraction` (0→1).
+
+    ``pi_key`` is accepted and IGNORED. It used to pick the surgeon's board,
+    back when the Pi wrote its own card; the surgeon is Node Medic now and the
+    Pi is not in the scene, so there is nothing for it to choose. Kept only so
+    the imaging screen's call site does not have to change in the same breath —
+    it is not a hook to hang a Pi back on.
+    """
 
     phase = NumericProperty(0.0)          # free-running, for the idle motion
     fraction = NumericProperty(0.0)       # the real progress of the write
@@ -59,13 +78,6 @@ class SurgeryAnim(Widget):
     def __init__(self, pi_key: str = "", **kwargs):
         super().__init__(**kwargs)
         self._ev = None
-        self._pi_png = ""
-        if pi_key:
-            try:
-                from ui import board_images
-                self._pi_png = board_images.image_for_pi(pi_key) or ""
-            except Exception:
-                self._pi_png = ""
         self._landed = []                 # organ keys already implanted
         self.bind(phase=self._redraw, fraction=self._redraw,
                   pos=self._redraw, size=self._redraw)
@@ -234,61 +246,65 @@ class SurgeryAnim(Widget):
             Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
 
     def _draw_surgeon(self, x, y, w, h, done):
-        """The Pi, in a head mirror and mask, leaning over the patient.
+        """Node Medic, leaning over the patient with both hands on it.
 
-        Drawn BIG. In the first version the board was ~30% of the stage and the
-        mirror and mask were a few pixels across — invisible on the panel, so it
-        read as a stray circuit board rather than a doctor.
+        Drawn BIG, and portrait: the medic sprite is taller than it is wide
+        (0.94:1), so it is sized by HEIGHT here where the Pi board was sized by
+        width. Fitted to 0.86 of the surgeon's box rather than the board's 0.66
+        — at the old cap a portrait sprite came out a third of the width of the
+        space it was given and read as a small object standing nearby rather
+        than as the one doing the work.
+
+        No head mirror and no surgical mask. Both existed to turn a bare
+        circuit board into something recognisably a doctor; the medic arrives
+        already wearing a red cross and its own name, and drawing a mask across
+        its front panel would cover exactly the markings that identify it.
         """
-        tex = (_texture(self._pi_png) if self._pi_png else None) \
-            or _texture(PI_ZERO_PNG)
-        bw = w * 0.86
-        bh = bw * 0.55
+        tex = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
+        bw = w * 0.60
+        bh = bw * 1.06
         if tex is not None:
-            bh = bw * (tex.height / float(tex.width))
-            if bh > h * 0.66:
-                bh = h * 0.66
-                bw = bh * (tex.width / float(tex.height))
+            bh = h * 0.86
+            bw = bh * (tex.width / float(tex.height))
+            if bw > w * 0.86:
+                bw = w * 0.86
+                bh = bw * (tex.height / float(tex.width))
         bx = x + (w - bw) / 2.0
         by = y + h * 0.06
         if tex is not None:
             Color(1, 1, 1, 1)
             Rectangle(texture=tex, pos=(bx, by), size=(bw, bh))
         else:
-            Color(0.20, 0.55, 0.30, 1)
+            Color(0.20, 0.22, 0.24, 1)
             RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(5)] * 4)
-
-        # head mirror — sized to actually be seen on a 5" panel
-        mr = max(dp(9), min(bw, bh) * 0.26)
-        mx = bx + bw * 0.5
-        my = by + bh + mr * 0.72
-        Color(0.87, 0.90, 0.94, 1)
-        Ellipse(pos=(mx - mr, my - mr), size=(mr * 2, mr * 2))
-        Color(0.13, 0.15, 0.17, 1)
-        Ellipse(pos=(mx - mr * 0.40, my - mr * 0.40), size=(mr * 0.80, mr * 0.80))
-        Color(0.87, 0.90, 0.94, 1)
-        Line(points=[mx, my - mr, mx, by + bh], width=dp(2.0))
-
-        # surgical mask across the board's lower edge
-        Color(0.58, 0.86, 0.86, 0.95)
-        RoundedRectangle(pos=(bx + bw * 0.14, by + bh * 0.05),
-                         size=(bw * 0.72, bh * 0.26), radius=[dp(5)] * 4)
-        Color(0.45, 0.72, 0.74, 1)
-        Line(points=[bx + bw * 0.14, by + bh * 0.20,
-                     bx, by + bh * 0.34], width=dp(1.4))
-        Line(points=[bx + bw * 0.86, by + bh * 0.20,
-                     bx + bw, by + bh * 0.34], width=dp(1.4))
+            Color(0.84, 0.0, 0.0, 1)      # the red cross, so it is still a medic
+            t = min(bw, bh) * 0.16
+            ccx, ccy = bx + bw / 2.0, by + bh / 2.0
+            arm = min(bw, bh) * 0.30
+            RoundedRectangle(pos=(ccx - t / 2, ccy - arm), size=(t, 2 * arm),
+                             radius=[t / 2] * 4)
+            RoundedRectangle(pos=(ccx - arm, ccy - t / 2), size=(2 * arm, t),
+                             radius=[t / 2] * 4)
 
         # the hands: two arms reaching down-left toward the patient, so the
         # surgeon is clearly WORKING ON the card rather than standing near it
+        # They leave from the medic's LOWER-left and sag on the way, because the
+        # medic is a tall portrait object where the Pi board was a short wide
+        # one: taken from halfway up its side and drawn dead straight, the two
+        # arms crossed the gap as taut horizontal lines and read as string
+        # rather than as somebody reaching (offline render, before this went
+        # near the panel).
         cb = getattr(self, "_card_box", None)
         if cb:
             cx, cy, cw, ch = cb
-            hx, hy = cx + cw * 0.72, cy + ch * 0.86
+            hx, hy = cx + cw * 0.90, cy + ch * 0.62
             Color(0.98, 0.82, 0.64, 0.95)
-            for dxy in (0.0, dp(7)):
-                Line(points=[bx + bw * 0.10, by + bh * 0.45 - dxy,
-                             hx + dxy, hy], width=dp(2.4))
+            for i, dxy in enumerate((0.0, dp(7))):
+                ax, ay = bx + bw * 0.06, by + bh * (0.30 - 0.12 * i)
+                mx_ = (ax + hx) / 2.0
+                my_ = (ay + hy) / 2.0 - min(bh, ch) * 0.16      # the sag
+                Line(points=[ax, ay, mx_, my_, hx + dxy, hy],
+                     width=dp(3.0), joint="round", cap="round")
             Ellipse(pos=(hx - dp(5), hy - dp(5)), size=(dp(10), dp(10)))
 
         if done:

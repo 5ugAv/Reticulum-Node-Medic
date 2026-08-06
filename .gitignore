@@ -37,3 +37,6 @@ assets/fonts/*
 # Agent scratch: worktrees + local settings. Never belongs in history —
 # a `git add -A` once swept an unreviewed agent worktree into a commit.
 .claude/
+
+# Rendered animation preview frames — regenerate with scripts/preview_*.py
+docs/previews/
