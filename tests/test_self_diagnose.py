@@ -77,3 +77,63 @@ def test_summarize_all_healthy():
     s = summarize([check_usb_present(f"x{ONBOARD_SERIAL}"),
                    check_rns_link("ok"), check_gps_fresh('{"updated":100}', now=110)])
     assert s["healthy"] and s["worst"] == SEV_OK and s["fixes"] == []
+
+
+# --- the GPS check has to say something TRUE (2026-08-07) -------------------
+# It reported "Telemetry fresh" for months on a medic that had never once had a
+# fix. True, and useless: freshness is a fact about the serial link, not about
+# whether the medic knows where it is.
+
+import json as _json
+
+
+def _gps(**kw):
+    st = {"updated": 1000.0, "sats": 0, "has_fix": False, "gps_frames": 50}
+    st.update(kw)
+    return _json.dumps(st)
+
+
+def test_a_live_fix_reports_the_satellite_count():
+    f = check_gps_fresh(_gps(sats=9, has_fix=True), now=1001.0)
+    assert f.severity == SEV_OK
+    assert "9 satellites" in f.detail
+
+
+def test_a_COASTING_fix_is_a_warning_even_though_the_link_is_healthy():
+    """The dangerous state: a position with no satellites behind it. It looks
+    like an answer and is not one."""
+    f = check_gps_fresh(_gps(sats=0, has_fix=True), now=1001.0)
+    assert f.severity == SEV_WARN
+    assert "COASTING" in f.detail
+    assert "WAS" in f.detail              # names the actual risk
+
+
+def test_no_fix_indoors_is_NOT_a_fault():
+    """Most of a medic's life is indoors. Crying warning for that trains the
+    operator to ignore the screen."""
+    f = check_gps_fresh(_gps(sats=0, has_fix=False), now=1001.0)
+    assert f.severity == SEV_OK
+    assert "normal indoors" in f.detail
+
+
+def test_a_radio_that_never_mentions_gps_is_called_out_separately():
+    """Board/firmware question, not a sky question. Sending someone outside
+    with a receiver that was never going to answer wastes an afternoon."""
+    f = check_gps_fresh(_gps(gps_frames=0), now=1001.0)
+    assert f.severity == SEV_WARN
+    assert "never sent a GPS frame" in f.detail
+    assert "Not a sky problem" in f.detail
+
+
+def test_stale_telemetry_still_wins_over_everything():
+    """If the splitter is not getting frames at all, the position fields are
+    meaningless and the link is the story."""
+    f = check_gps_fresh(_gps(sats=9, has_fix=True), now=1000.0 + 3600)
+    assert f.severity == SEV_WARN
+    assert "stale" in f.detail
+
+
+def test_the_findings_carry_the_evidence_not_just_prose():
+    f = check_gps_fresh(_gps(sats=9, has_fix=True), now=1001.0)
+    assert f.data["sats"] == 9 and f.data["has_fix"] is True
+    assert f.data["gps_frames"] == 50

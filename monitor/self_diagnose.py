@@ -115,9 +115,29 @@ def check_rns_link(rns_recent_output: str) -> Finding:
 
 
 def check_gps_fresh(gps_state_text: str, now: float, max_age_s: float = 600.0) -> Finding:
-    """The splitter writes gps_state.json continuously while it reads valid frames
-    from the board. A stale file (old 'updated') means nothing's coming through —
-    but GPS is also legitimately null indoors, so this is a WARNING, not critical."""
+    """Does the medic know where it is — and can it be trusted?
+
+    This used to report only whether the splitter's file was FRESH, which is a
+    fact about the serial link and says nothing about position. It reported
+    "Telemetry fresh" for months on a medic that had never once had a fix
+    (2026-08-07), which is true and useless.
+
+    It now separates the three things that are actually different, because each
+    wants a different action:
+
+      * the radio is not reporting GPS AT ALL  -> the firmware/board, not the sky
+      * a LIVE fix                             -> we know where we are
+      * a HELD fix                             -> COASTING on an old lock. The
+        receiver still asserts a position while tracking zero satellites, so it
+        LOOKS like an answer and is not one. This is the dangerous state and the
+        only one that warrants a warning when the link is healthy.
+      * no fix                                 -> legitimately normal indoors
+
+    Demonstrated on hardware the day this was written: pointing the Tracker's
+    ceramic patch at the sky gave 9 satellites and a lock in ~75 s; turning it
+    to face the ground dropped satellites to 0 within a minute while the fix
+    flag stayed 1 and the stale position kept being served.
+    """
     try:
         st = json.loads(gps_state_text) if gps_state_text.strip() else {}
     except (ValueError, TypeError):
@@ -129,7 +149,36 @@ def check_gps_fresh(gps_state_text: str, now: float, max_age_s: float = 600.0) -
                        f"GPS/radio telemetry is stale ({age/60:.0f} min old) — the "
                        "splitter isn't getting fresh frames from the board.",
                        data={"age_s": age})
-    return Finding("gps", SEV_OK, f"Telemetry fresh ({age:.0f}s).", data={"age_s": age})
+
+    sats = st.get("sats") or 0
+    has_fix = bool(st.get("has_fix"))
+    frames = st.get("gps_frames")
+    data = {"age_s": age, "sats": sats, "has_fix": has_fix, "gps_frames": frames}
+
+    # The radio is talking, but never about GPS. That is a board/firmware
+    # question, not a sky question — and telling someone to "go outside" here
+    # wastes an afternoon on a receiver that was never going to answer.
+    if frames == 0:
+        return Finding("gps", SEV_WARN,
+                       "The radio is reporting, but has never sent a GPS frame — "
+                       "this firmware may not have GPS enabled. Not a sky problem.",
+                       data=data)
+
+    if has_fix and sats > 0:
+        return Finding("gps", SEV_OK,
+                       f"GPS live — {sats} satellites, position known.", data=data)
+
+    if has_fix:
+        # THE ONE THAT MATTERS. A position with no satellites behind it.
+        return Finding("gps", SEV_WARN,
+                       "GPS is COASTING — it still reports a position but is "
+                       "tracking 0 satellites, so that position may be where "
+                       "Node Medic WAS. Give the antenna a clear view of the sky.",
+                       data=data)
+
+    return Finding("gps", SEV_OK,
+                   "No GPS fix yet (normal indoors) — the radio link is healthy.",
+                   data=data)
 
 
 def check_disk_space(df_output: str, warn_pct: int = 85, crit_pct: int = 95) -> Finding:
