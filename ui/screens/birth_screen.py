@@ -2577,9 +2577,16 @@ class BirthScreen(BoxLayout):
         # a key/value list to find out whether it was ever heard (#77).
         proof = getattr(self, "_radio_proof", None)
         if proof is not None:
-            self.list.add_widget(_line(
-                ("✓  " if proof.heard else "!  ") + proof.summary, bold=True,
-                size="15sp", color="green" if proof.heard else "amber"))
+            # "Not applicable" is neither good news nor bad — amber would read
+            # as a problem the operator should go and fix, and there isn't one.
+            if proof.not_applicable:
+                mark, colour = "–  ", "text_secondary"
+            elif proof.heard:
+                mark, colour = "✓  ", "green"
+            else:
+                mark, colour = "!  ", "amber"
+            self.list.add_widget(_line(mark + proof.summary, bold=True,
+                                       size="15sp", color=colour))
             for c in (proof.checks or []):
                 self.list.add_widget(_line("      · " + c, size="12.5sp",
                                            color="text_secondary"))
@@ -2637,10 +2644,20 @@ class BirthScreen(BoxLayout):
         not a failure of the birth — the field is left off rather than recorded
         as a failure the node could never have passed.
         """
+        from workflows.radio_proof import RadioProof
         h = (cert.get("health_dst") or cert.get("reticulum_address")
              or cert.get("identity_hash") or "")
         if not h:
-            return                      # nothing addressable — nothing to prove
+            # NOT APPLICABLE, said out loud (operator, 2026-08-07). A plain
+            # RNode has no Reticulum identity of its own, so there is nothing
+            # addressable to hear — that is not a test it failed, and it is not
+            # a blank either. A blank invites the reader to guess whether the
+            # check errored, was skipped, or was forgotten.
+            self._radio_proof = RadioProof.na(
+                "Not applicable — this node has no mesh address of its own to "
+                "call, so there is nothing for the radio check to listen for.")
+            cert.update(self._radio_proof.cert_fields())
+            return
         try:
             from ui.app import _local_run      # LOGIN shell: rnpath is in ~/.local/bin
             from workflows.radio_proof import live_probes, prove_radio

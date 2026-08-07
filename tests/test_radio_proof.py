@@ -203,13 +203,16 @@ def test_the_proof_runs_BEFORE_the_certificate_is_saved():
     assert add < save, "the certificate is saved before the radio is checked"
 
 
-def test_a_node_with_no_mesh_address_is_not_marked_as_failed():
-    """A plain RNode has no Reticulum identity of its own — there is nothing to
-    hear, and that is not a test it failed."""
+def test_a_node_with_no_mesh_address_reads_NOT_APPLICABLE():
+    """Operator, 2026-08-07: the radio fields on an RNode should read 'Not
+    Applicable'. A plain RNode has no Reticulum identity of its own, so there is
+    nothing addressable to hear — that is not a test it failed, and a BLANK is
+    worse than either, because the reader has to guess whether the check errored,
+    was skipped, or was forgotten."""
     src = open("ui/screens/birth_screen.py").read()
     fn = src[src.index("def _add_radio_proof"):src.index("def _register_kin")]
-    assert "if not h:" in fn and "return" in fn
-    assert "radio_verified" not in fn, "it must not stamp a verdict it never took"
+    assert "RadioProof.na(" in fn
+    assert "Not applicable" in fn
 
 
 def test_a_failed_radio_check_never_fails_the_birth():
@@ -225,3 +228,47 @@ def test_the_verdict_is_shown_before_the_certificate_fields():
     verdict = src.index("proof.summary")
     fields = src.index('_line("Birth certificate:"')
     assert verdict < fields
+
+
+# --- "Not applicable" must not be mistaken for a pass ------------------------
+
+def test_not_applicable_says_so_on_every_field():
+    f = rp.RadioProof.na("nothing to call").cert_fields()
+    for k in ("radio_verified", "radio_interface", "radio_rssi", "radio_snr",
+              "radio_checked_at"):
+        assert f[k] == rp.NOT_APPLICABLE, k
+
+
+def test_THE_TRUTHY_TRAP():
+    """'Not applicable' is a non-empty string, so `if cert["radio_verified"]:`
+    is TRUE for it. That would report a node as radio-verified precisely when no
+    radio test was ever possible — on the one document whose job is to state
+    what was actually checked. radio_was_verified() is the only safe reader."""
+    na = rp.RadioProof.na("x").cert_fields()
+    assert bool(na["radio_verified"]) is True          # the trap is real
+    assert rp.radio_was_verified(na) is False          # and this closes it
+
+
+def test_radio_was_verified_is_true_ONLY_for_a_real_pass():
+    assert rp.radio_was_verified(_prove(node_name="f").cert_fields()) is True
+    assert rp.radio_was_verified(_prove(reachable=False).cert_fields()) is False
+    assert rp.radio_was_verified(_prove(iface="AutoInterface").cert_fields()) is False
+    assert rp.radio_was_verified({}) is False
+    assert rp.radio_was_verified(None) is False
+
+
+def test_not_applicable_is_not_the_same_as_not_heard():
+    na = rp.RadioProof.na("nothing to call")
+    no = _prove(reachable=False)
+    assert na.not_applicable is True and no.not_applicable is False
+    assert na.checks == [], "there is nothing to go and check"
+    assert no.checks, "a real failure must still advise"
+
+
+def test_the_screen_does_not_colour_not_applicable_as_a_problem():
+    """Amber would send the operator looking for a fault that does not exist."""
+    src = open("ui/screens/birth_screen.py").read()
+    blk = src[src.index("proof = getattr(self, \"_radio_proof\""):]
+    blk = blk[:blk.index("Birth certificate:")]
+    assert "proof.not_applicable" in blk
+    assert "text_secondary" in blk

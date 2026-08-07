@@ -56,6 +56,29 @@ LORA_HINTS = ("rnode", "lora", "rnodeinterface")
 NOT_PROOF_HINTS = ("auto", "local", "tcp", "i2p", "usb", "shared", "loopback")
 
 
+#: What the certificate says when there was never a radio test to take — a
+#: plain RNode has no Reticulum identity of its own, so there is nothing
+#: addressable to hear. Operator, 2026-08-07: the fields should read this rather
+#: than be missing. A blank is ambiguous (did it fail? not run? get forgotten?);
+#: this states the reason.
+NOT_APPLICABLE = "Not applicable"
+
+
+def radio_was_verified(cert: Dict) -> bool:
+    """THE ONLY safe way to ask "was this node heard on the radio?".
+
+    Read ``cert["radio_verified"]`` directly and you will eventually write
+    ``if cert.get("radio_verified"):`` — which is True for the STRING
+    "Not applicable", because non-empty strings are truthy. That would report a
+    node as radio-verified precisely when no radio test was ever possible, on
+    the one document whose whole job is to state what was actually checked.
+
+    So the field is human-readable and this is strict: True only for boolean
+    True.
+    """
+    return (cert or {}).get("radio_verified") is True
+
+
 @dataclass
 class RadioProof:
     """What was actually established about the radio path."""
@@ -72,6 +95,13 @@ class RadioProof:
     checks: List[str] = field(default_factory=list)
     #: True when the node answered but NOT over the air — the flattering case.
     answered_off_air: bool = False
+    #: True when there was no radio test to take at all (see NOT_APPLICABLE).
+    not_applicable: bool = False
+
+    @classmethod
+    def na(cls, reason: str) -> "RadioProof":
+        """No radio test was possible — which is not the same as failing one."""
+        return cls(heard=False, not_applicable=True, summary=reason)
 
     def cert_fields(self) -> Dict:
         """What the birth certificate records.
@@ -80,6 +110,17 @@ class RadioProof:
         which interface, and when. A certificate that claims a working radio it
         never heard is the same lie as a fake birth ([[no-fake-demos-honesty-gate]]).
         """
+        if self.not_applicable:
+            # Say so on every field, so nobody reads a blank as a failure — or
+            # worse, as a pass nobody checked.
+            return {
+                "radio_verified": NOT_APPLICABLE,
+                "radio_interface": NOT_APPLICABLE,
+                "radio_rssi": NOT_APPLICABLE,
+                "radio_snr": NOT_APPLICABLE,
+                "radio_checked_at": NOT_APPLICABLE,
+                "radio_result": self.summary or NOT_APPLICABLE,
+            }
         return {
             "radio_verified": bool(self.heard),
             "radio_interface": self.interface,
