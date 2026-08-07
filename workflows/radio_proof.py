@@ -185,3 +185,77 @@ def prove_radio(dst_hash: bytes,
         rssi=getattr(beacon, "rssi", None),
         snr=getattr(beacon, "snr", None),
         summary=f"Heard {who} over the radio on {iface}.")
+
+
+# --- reading the interface out of the path table -----------------------------
+
+def path_interface(rnpath_json: str, dst_hex: str) -> str:
+    """The interface a destination's path is known through, from
+    ``rnpath -t --json``.
+
+    This is the attribution the whole test rests on, and it is available:
+    each entry carries an explicit ``interface``, e.g.
+
+        {"hash": "d4b1...", "hops": 0, "interface": "LocalInterface[rns/default]"}
+
+    Read AFTER the probe, so the entry reflects the path just re-established
+    rather than a stale one — which is why prove_radio drops the path first.
+
+    Pure, so the parsing is testable without a mesh. Unparseable input yields
+    "", which is_over_air treats as not-proof: a reading we could not take is
+    not a reading that passed.
+    """
+    import json
+    want = (dst_hex or "").strip().lower()
+    if not want:
+        return ""
+    try:
+        rows = json.loads(rnpath_json or "[]")
+    except (ValueError, TypeError):
+        return ""
+    if not isinstance(rows, list):
+        return ""
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("hash", "")).strip().lower() == want:
+            return str(row.get("interface", "") or "")
+    return ""
+
+
+def live_probes(run_shell: Callable[[str], str], wait_s: int = 20) -> Dict:
+    """The four callables prove_radio needs, wired to the real tools.
+
+    *run_shell* must run through a LOGIN shell: rnpath and rnstatus live in
+    ~/.local/bin and are NOT on a non-login PATH. ui/app.py's ``_local_run``
+    already exists for exactly this, and this function was written after being
+    caught by it once.
+
+    The sequence mirrors ``_ping_node`` (#26), which learned it the hard way:
+    dropping the path and reading the table immediately reports "not answering"
+    for every node, healthy or not, because no fresh path has resolved yet.
+    ``rnpath -w`` does the request AND the wait.
+    """
+    import time
+    from monitor.mesh import parse_path_probe
+
+    def drop(dst: str) -> None:
+        run_shell(f"rnpath --drop {dst} 2>/dev/null")
+
+    def poll(dst: str):
+        out = run_shell(f"rnpath -w {wait_s} {dst} 2>/dev/null")
+        reachable, hops = parse_path_probe(out)
+        return _Reached(bool(reachable), hops)
+
+    def interface_for(dst: str) -> str:
+        return path_interface(run_shell("rnpath -t --json 2>/dev/null"), dst)
+
+    return {"drop_cached_path": drop, "poll": poll,
+            "interface_for": interface_for, "now": time.time}
+
+
+@dataclass
+class _Reached:
+    reachable: bool
+    hops: Optional[int] = None
+    beacon: object = None

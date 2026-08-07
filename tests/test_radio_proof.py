@@ -140,3 +140,88 @@ def test_an_unheard_node_never_claims_verification_on_the_certificate():
     f = _prove(reachable=False).cert_fields()
     assert f["radio_verified"] is False
     assert f["radio_rssi"] is None
+
+
+# --- reading the interface out of the real path table ------------------------
+# This attribution is what the whole test rests on. rnpath -t --json carries an
+# explicit "interface" per destination — verified against the live medic.
+
+REAL_JSON = ('[{"hash": "5566778899aabbccddeeff0011223344", "hops": 0, '
+             '"interface": "LocalInterface[rns/default]"}, '
+             '{"hash": "5a0b000baabb", "hops": 1, '
+             '"interface": "RNodeInterface[RNode LoRa Interface]"}]')
+
+
+def test_the_interface_is_read_for_the_right_destination():
+    assert rp.path_interface(REAL_JSON, "5a0b000baabb") == \
+        "RNodeInterface[RNode LoRa Interface]"
+    assert rp.path_interface(REAL_JSON, "5566778899aabbccddeeff0011223344") == \
+        "LocalInterface[rns/default]"
+
+
+def test_a_destination_not_in_the_table_reads_as_unknown():
+    assert rp.path_interface(REAL_JSON, "deadbeef") == ""
+
+
+def test_unparseable_path_output_is_not_proof():
+    """A reading we could not take is not a reading that passed."""
+    for junk in ("", "not json", "{}", None):
+        assert rp.path_interface(junk, "abc") == ""
+        assert rp.is_over_air(rp.path_interface(junk, "abc")) is False
+
+
+def test_the_medics_own_LOCAL_interface_is_not_proof():
+    """Every entry in the live table today is LocalInterface — the medic's own
+    destinations. None of them proves a radio."""
+    assert rp.is_over_air("LocalInterface[rns/default]") is False
+
+
+def test_live_probes_runs_rnpath_through_the_given_shell():
+    calls = []
+    probes = rp.live_probes(lambda cmd: (calls.append(cmd) or REAL_JSON))
+    probes["drop_cached_path"]("5a0b000baabb")
+    probes["interface_for"]("5a0b000baabb")
+    assert any("rnpath --drop 5a0b000baabb" in c for c in calls)
+    assert any("rnpath -t --json" in c for c in calls)
+
+
+def test_live_probes_WAITS_for_a_fresh_path():
+    """_ping_node learned this the hard way: read the table straight after
+    dropping and every node reports 'not answering', healthy or not, because no
+    fresh path has resolved yet. rnpath -w does the request AND the wait."""
+    calls = []
+    rp.live_probes(lambda cmd: (calls.append(cmd) or ""))["poll"]("abc")
+    assert any("rnpath -w" in c for c in calls), "no wait — this will misreport"
+
+
+# --- the birth flow wiring --------------------------------------------------
+
+def test_the_proof_runs_BEFORE_the_certificate_is_saved():
+    src = open("ui/screens/birth_screen.py").read()
+    add = src.index("self._add_radio_proof(cert)")
+    save = src.index("self._saved_cert_id = save_cert(cert)")
+    assert add < save, "the certificate is saved before the radio is checked"
+
+
+def test_a_node_with_no_mesh_address_is_not_marked_as_failed():
+    """A plain RNode has no Reticulum identity of its own — there is nothing to
+    hear, and that is not a test it failed."""
+    src = open("ui/screens/birth_screen.py").read()
+    fn = src[src.index("def _add_radio_proof"):src.index("def _register_kin")]
+    assert "if not h:" in fn and "return" in fn
+    assert "radio_verified" not in fn, "it must not stamp a verdict it never took"
+
+
+def test_a_failed_radio_check_never_fails_the_birth():
+    src = open("ui/screens/birth_screen.py").read()
+    fn = src[src.index("def _add_radio_proof"):src.index("def _register_kin")]
+    assert "except Exception:" in fn
+
+
+def test_the_verdict_is_shown_before_the_certificate_fields():
+    """An operator about to put this on a pole should not have to read a
+    key/value list to find out whether it was ever heard."""
+    src = open("ui/screens/birth_screen.py").read()
+    verdict = src.index("proof.summary")
+    fields = src.index('_line("Birth certificate:"')
+    assert verdict < fields

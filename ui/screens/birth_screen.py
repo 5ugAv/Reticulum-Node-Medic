@@ -2556,6 +2556,12 @@ class BirthScreen(BoxLayout):
                         cert["usb_serial"] = usb
             except Exception:
                 pass                       # never block a birth on bookkeeping
+        # PROVE THE RADIO BEFORE THE CERTIFICATE CLAIMS ANYTHING (#77). Birth so
+        # far has proved the node is CONFIGURED; only hearing it proves it is
+        # REACHABLE, and reachable is what the node is for. Runs here, with the
+        # cert assembled but not yet saved, so the outcome is recorded ON it.
+        # Never fatal: "configured, but I could not hear it" is a real result.
+        self._add_radio_proof(cert)
         try:
             self._saved_cert_id = save_cert(cert)     # keep it on the medic
             cert["_id"] = self._saved_cert_id
@@ -2566,6 +2572,17 @@ class BirthScreen(BoxLayout):
         # This position has been consumed by THIS node — never let it ride onto
         # the next birth (2026-08-01 bug hunt).
         self._prefill_location = None
+        # THE RADIO VERDICT, said plainly and before the certificate fields —
+        # an operator who is about to put this on a pole should not have to read
+        # a key/value list to find out whether it was ever heard (#77).
+        proof = getattr(self, "_radio_proof", None)
+        if proof is not None:
+            self.list.add_widget(_line(
+                ("✓  " if proof.heard else "!  ") + proof.summary, bold=True,
+                size="15sp", color="green" if proof.heard else "amber"))
+            for c in (proof.checks or []):
+                self.list.add_widget(_line("      · " + c, size="12.5sp",
+                                           color="text_secondary"))
         self.list.add_widget(_line("Birth certificate:", bold=True, size="16sp"))
         self.list.add_widget(_line("    (saved on this Node Medic)",
                                    size="12sp", color="text_secondary"))
@@ -2611,6 +2628,30 @@ class BirthScreen(BoxLayout):
             self.scroll.scroll_y = 0       # cert lives at the bottom
         except Exception:
             pass
+
+    def _add_radio_proof(self, cert):
+        """Try to hear the node over the air; fold the result onto *cert* (#77).
+
+        Best-effort by design. A node with no mesh address (a plain RNode has no
+        Reticulum identity of its own) simply has nothing to hear, and that is
+        not a failure of the birth — the field is left off rather than recorded
+        as a failure the node could never have passed.
+        """
+        h = (cert.get("health_dst") or cert.get("reticulum_address")
+             or cert.get("identity_hash") or "")
+        if not h:
+            return                      # nothing addressable — nothing to prove
+        try:
+            from ui.app import _local_run      # LOGIN shell: rnpath is in ~/.local/bin
+            from workflows.radio_proof import live_probes, prove_radio
+            proof = prove_radio(h, node_name=cert.get("node_name") or "",
+                                **live_probes(_local_run))
+            cert.update(proof.cert_fields())
+            self._radio_proof = proof
+        except Exception:
+            # A birth that has otherwise succeeded must not be thrown away
+            # because the radio check could not run.
+            self._radio_proof = None
 
     def _register_kin(self, cert):
         """Record the birthed node in the medic's kin roster, stamped with
