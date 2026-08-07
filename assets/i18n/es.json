@@ -317,6 +317,7 @@
   "These two won't run together": "Estos dos no funcionarán juntos",
   "This ERASES the node completely:": "Esto BORRA el nodo por completo:",
   "This board": "Esta placa",
+  "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.": "Esta placa era {old}. Ahora está en blanco, así que necesita un nombre para su nueva vida — hemos sugerido el siguiente, y puedes cambiarlo por el que quieras.",
   "This is the only way back in if you forget your password.": "Es la única forma de volver a entrar si olvidas tu contraseña.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Esta es tu clave de recuperación: la ÚNICA forma de entrar en este Node Medic si olvidas tu contraseña. Se muestra una vez y nunca más.",
   "This medic's radio defaults are NON-STANDARD.": "Los parámetros de radio de este Node Medic NO SON ESTÁNDAR.",

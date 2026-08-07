@@ -317,6 +317,7 @@
   "These two won't run together": "De här två fungerar inte ihop",
   "This ERASES the node completely:": "Detta RADERAR noden fullständigt:",
   "This board": "Det här kortet",
+  "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.": "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.",
   "This is the only way back in if you forget your password.": "Det här är enda vägen in igen om du glömmer ditt lösenord.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Det här är din återställningsnyckel – ENDA vägen in i denna Node Medic om du glömmer ditt lösenord. Den visas en gång och aldrig mer.",
   "This medic's radio defaults are NON-STANDARD.": "Den här medicens radiostandardvärden är ICKE-STANDARD.",

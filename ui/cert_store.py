@@ -40,7 +40,29 @@ def cert_id(cert: Dict) -> str:
 
 def save_cert(cert: Dict, cert_dir: str = CERT_DIR, now: Optional[float] = None) -> str:
     """Persist *cert* and return its id. Idempotent on the id (re-save overwrites).
-    ``now`` is injectable for tests; defaults to wall-clock (runtime only)."""
+    ``now`` is injectable for tests; defaults to wall-clock (runtime only).
+
+    ONE BOARD, ONE RECORD (operator decision, 2026-08-07). Saving a certificate
+    RETIRES any other certificate describing the same physical board, matched on
+    the USB serial rather than the name.
+
+    Why this lives here and not on the rebirth path: it was on the rebirth path,
+    and that was not enough. ``delete_by_usb_serial`` was called from exactly one
+    place — the wipe flow — so any ordinary birth or adopt of a board that
+    already had a certificate simply added another. Measured on the live medic
+    2026-08-07: serial ...4631000000000001 had THREE certificates (rak4,
+    zerorak, zerorak1) and one Tracker had two (newt, track). save_cert is the
+    single choke point every path goes through, so the rule holds wherever a
+    certificate comes from.
+
+    A certificate with NO usb_serial retires nothing. Otherwise every unserialled
+    record — the Pi nodes, the older ones — would delete each other, which would
+    turn a tidy-up into data loss.
+
+    This DELETES rather than archiving, and the previous born date, stamped
+    location and notes go with it. That is the operator's explicit choice: the
+    fleet list must show one live node per board.
+    """
     os.makedirs(cert_dir, exist_ok=True)
     cid = cert.get("_id") or cert_id(cert)
     stored = dict(cert)
@@ -49,6 +71,11 @@ def save_cert(cert: Dict, cert_dir: str = CERT_DIR, now: Optional[float] = None)
     # atomic: a power cut mid-write must not leave an empty certificate
     from monitor.atomic_json import write_json
     write_json(os.path.join(cert_dir, f"{cid}.json"), stored, indent=2)
+    # Retire older records of the SAME BOARD — after the write, so a failure
+    # here leaves a duplicate rather than nothing at all.
+    serial = stored.get("usb_serial") or ""
+    if serial:
+        delete_by_usb_serial(serial, cert_dir, keep_id=cid)
     return cid
 
 
@@ -113,11 +140,18 @@ def cert_for_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR):
     return None
 
 
-def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
+def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR,
+                         keep_id: str = "") -> int:
     """Remove stored certificates whose board fingerprint is *usb_serial*.
+
     Called when a board is WIPED (rebirth): leaving the old certificate behind
     made the now-blank board recognise as 'already flashed' on the next plug-in
-    (2026-08-01 bug hunt). Returns how many were removed."""
+    (2026-08-01 bug hunt). Also called by ``save_cert`` to keep one record per
+    board. Returns how many were removed.
+
+    *keep_id* spares one certificate — the one just written. Without it,
+    save_cert would delete the record it had this moment created.
+    """
     if not usb_serial:
         return 0
     want = usb_serial_key(usb_serial)
@@ -126,7 +160,7 @@ def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
         if not want or usb_serial_key(cert.get("usb_serial")) != want:
             continue
         cid = cert.get("_id")
-        if not cid:
+        if not cid or cid == keep_id:
             continue
         try:
             os.remove(os.path.join(cert_dir, f"{cid}.json"))
@@ -134,6 +168,44 @@ def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR) -> int:
         except OSError:
             pass
     return removed
+
+
+def next_free_name(previous: str, cert_dir: str = CERT_DIR) -> str:
+    """A safe default name for a board being rebirthed: ``rak3`` -> ``rak4``.
+
+    Operator, walking a RAK4631 rebirth (2026-08-05): *"It says wiping rak3 ...
+    but I'm not prompted to change the name from rak3."* The old name was seeded
+    into the field with nothing drawing attention to it, so it was simply
+    carried forward — and carrying it forward OVERWRITES the previous
+    certificate, born date, location and notes included.
+
+    So the default becomes the next unused number instead of the old name
+    (operator's choice, 2026-08-07). The operator can still type anything; this
+    only decides what is already in the box, and what is in the box should be
+    safe when nobody reads it.
+
+    Rules, in the order they matter:
+      * a trailing number is incremented until the name is free — rak3 -> rak4,
+        and rak4 -> rak5 if rak4 also exists;
+      * a name with NO trailing number gains "2" — hope -> hope2;
+      * an empty previous name yields "" — there is nothing to suggest, and
+        inventing one would be worse than leaving the field blank.
+
+    Pure apart from reading the cert dir, so the numbering is testable.
+    """
+    base = (previous or "").strip()
+    if not base:
+        return ""
+    import re
+    m = re.match(r"^(.*?)(\d+)$", base)
+    stem, n = (m.group(1), int(m.group(2))) if m else (base, 1)
+    taken = {str(c.get("node_name", "")).strip().lower()
+             for c in load_certs(cert_dir)}
+    for i in range(n + 1, n + 1000):
+        cand = f"{stem}{i}"
+        if cand.lower() not in taken:
+            return cand
+    return f"{stem}{n + 1}"          # pathological; still not the old name
 
 
 def search_certs(query: str, cert_dir: str = CERT_DIR) -> List[Dict]:

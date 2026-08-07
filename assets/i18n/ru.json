@@ -317,6 +317,7 @@
   "These two won't run together": "Эти двое вместе не заработают",
   "This ERASES the node completely:": "Это ПОЛНОСТЬЮ стирает узел:",
   "This board": "Эта плата",
+  "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.": "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.",
   "This is the only way back in if you forget your password.": "Это единственный путь обратно, если вы забудете пароль.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Это ваш ключ восстановления — ЕДИНСТВЕННЫЙ путь в этот Node Medic, если вы забудете пароль. Он показывается один раз и больше никогда.",
   "This medic's radio defaults are NON-STANDARD.": "Значения радио по умолчанию у этого медика НЕСТАНДАРТНЫЕ.",

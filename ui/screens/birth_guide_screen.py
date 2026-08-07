@@ -638,7 +638,24 @@ class BirthGuideScreen(BoxLayout):
                     # _render_intro re-reads the board on the way in, which is
                     # exactly right here: the wipe just changed what this board
                     # is, so the options are computed from what it is NOW.
-                    self._node_name = old_name or ""   # carried to the name step
+                    # THE DEFAULT MUST BE SAFE WHEN NOBODY READS IT. This used
+                    # to carry the old name straight through — operator,
+                    # 2026-08-05: "It says wiping rak3 ... but I'm not prompted
+                    # to change the name from rak3." Nothing drew attention to
+                    # the field, so the old name was simply kept, and keeping it
+                    # OVERWRITES the previous certificate: born date, stamped
+                    # location and notes gone, unannounced.
+                    #
+                    # So the box now offers the next free number (rak3 -> rak4).
+                    # The old name is still shown on the way past as history, and
+                    # the operator can type anything they like — this only
+                    # decides what is already there.
+                    try:
+                        from ui.cert_store import next_free_name
+                        self._node_name = next_free_name(old_name or "")
+                    except Exception:
+                        self._node_name = ""      # rather than the old name
+                    self._rebirth_of = old_name or ""   # shown as history
                     self._pair_checked = False         # a fresh lap re-checks
                     self._i = 0
                     self._render_intro(builds_only=True)
@@ -1113,9 +1130,18 @@ class BirthGuideScreen(BoxLayout):
                        size_hint_y=None, height=dp(58), font_size="33sp")
         bind_field(ti)
         self._name_input = ti
+        body = tr("Give this node a short, memorable name — you'll see it "
+                  "on the map and on its birth certificate.")
+        # After a wipe, say what the board USED to be — as history, not as the
+        # answer. The operator watched a screen announce "wiping rak3" and then
+        # offer them "rak3" with nothing marking it as a decision still to make.
+        was = getattr(self, "_rebirth_of", "")
+        if was:
+            body = tr("This board was {old}. It's blank now, so it needs a name "
+                      "for its new life — we've suggested the next one, and you "
+                      "can change it to anything.").format(old=was)
         step = WizardStep(index=0, total=total, title=tr("Name this node"),
-                          body=tr("Give this node a short, memorable name — you'll see it "
-                                  "on the map and on its birth certificate."),
+                          body=body,
                           input_widget=ti, next_text=tr("Next  →"),
                           on_next=self._name_next, on_back=self.reset)
         self.clear_widgets()

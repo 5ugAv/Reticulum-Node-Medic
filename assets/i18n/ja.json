@@ -317,6 +317,7 @@
   "These two won't run together": "この 2 つは一緒には動きません",
   "This ERASES the node completely:": "これはノードを完全に消去します:",
   "This board": "このボード",
+  "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.": "This board was {old}. It's blank now, so it needs a name for its new life — we've suggested the next one, and you can change it to anything.",
   "This is the only way back in if you forget your password.": "パスワードを忘れた場合、これが戻る唯一の方法です。",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "これがあなたの復旧キーです — パスワードを忘れた場合に この Node Medic へ入る唯一の方法です。表示は一度きりで、二度と表示されません。",
   "This medic's radio defaults are NON-STANDARD.": "この medic の無線の既定値は標準ではありません。",

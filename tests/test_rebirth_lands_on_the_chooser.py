@@ -44,12 +44,29 @@ def test_the_wipe_no_longer_hands_off_to_the_birth_form():
         "the success path still hands off to the BIRTH form instead of asking")
 
 
-def test_the_old_name_is_carried_to_the_name_step():
-    """Reusing the name is legitimate and common — a repair keeps its identity
-    ([[#68]]). Losing it here would force the operator to retype it."""
+def test_the_old_name_is_NOT_carried_to_the_name_step():
+    """REVERSED 2026-08-07, by operator decision — and the reasoning it replaces
+    is kept because it was not silly.
+
+    The old assertion argued: "reusing the name is legitimate and common — a
+    repair keeps its identity. Losing it here would force the operator to retype
+    it." True as far as it goes, but it optimised for typing and ignored what
+    the reused name DOES. The certificate id derives from the node name, so
+    saving under the old name overwrites the previous certificate — born date,
+    stamped location and notes — with no warning at all.
+
+    Then the operator met it: "It says wiping rak3 ... but I'm not prompted to
+    change the name from rak3." Nothing marked the field as a decision, so the
+    destructive answer was the one that happened by default.
+
+    The default in the box now has to be safe when nobody reads it. It offers
+    the next free name; the old one is shown alongside as history, so nothing
+    is lost and retyping is still not required."""
     src = _wipe_done_source()
-    assert "_node_name = old_name" in src.replace(" ", "").replace(
-        "_node_name=old_name", "_node_name = old_name")
+    flat = src.replace(" ", "")
+    assert "_node_name=old_name" not in flat, "the old name is back as the default"
+    assert "next_free_name(old_name" in flat
+    assert "_rebirth_of=old_name" in flat, "the old name must survive as history"
 
 
 def test_the_pi_pair_check_is_re_armed():
