@@ -32,16 +32,28 @@ _NUM = (0.77, 0.42, 0.23, 1)      # rust / terracotta — number keys
 _LET = (0.79, 0.75, 0.56, 1)      # khaki / tan       — letter & space keys
 _SPEC = (0.66, 0.71, 0.87, 1)     # periwinkle blue   — shift/backspace/enter/layer
 _CAPS = (0.98, 0.82, 0.35, 1)     # amber             — Shift key while Caps Lock is on
+_DONEC = (0.35, 0.78, 0.42, 1)    # green             — DONE, matching the screens'
+                                  #                     own green "finish" buttons
 _GROUND = (0.08, 0.07, 0.06, 1)   # near-black tray
 _KEYTEXT = (0.13, 0.11, 0.08, 1)  # dark glyphs on the light keys
 
 # special key sentinels (identity only — never shown raw; the glyphs render as
 # tofu in the default font, so _DISPLAY maps each to an ASCII word instead)
 _BKSP, _SHIFT, _ENTER, _SYM, _ABC, _SPACE = "⌫", "⇧", "↵", "?#", "ABC", "␣"
-_DISPLAY = {_BKSP: "DEL", _ENTER: "ENTER", _SYM: "?#", _ABC: "ABC", _SPACE: "space"}
+#: The way OFF a multiline field. On a one-line field ENTER already closes the
+#: keyboard and is labelled DONE for exactly that reason (walkthrough,
+#: 2026-08-02). A multiline field cannot borrow it — there ENTER has to mean
+#: "new line" — so until now those fields had NO key that dismissed the
+#: keyboard, and the keyboard is what covers the screen's own buttons. The
+#: operator hit it on BIRTH ▸ Add notes: text typed, notes unsaveable, page
+#: unleaveable. Same dead end as 2026-08-02, reached by the other door.
+_DONE = "✔"
+_DISPLAY = {_BKSP: "DEL", _ENTER: "ENTER", _SYM: "?#", _ABC: "ABC",
+            _SPACE: "space", _DONE: "DONE"}
 
 # label -> weight (relative width in its row); default 1.0
-_WIDE = {_SHIFT: 1.5, _BKSP: 1.5, _SYM: 1.6, _ABC: 1.6, _ENTER: 1.6, _SPACE: 5.0}
+_WIDE = {_SHIFT: 1.5, _BKSP: 1.5, _SYM: 1.6, _ABC: 1.6, _ENTER: 1.6, _SPACE: 5.0,
+         _DONE: 1.6}
 
 # --- layouts (rows of key labels) -----------------------------------------
 _DIGITS = list("1234567890")
@@ -155,10 +167,17 @@ class OnScreenKeyboard(BoxLayout):
 
     def _rows(self):
         if self._layer == "numeric":
-            return _NUMERIC
-        if self._layer == "symbols":
-            return _SYMBOLS
-        return _TEXT_LOWER
+            rows = _NUMERIC
+        elif self._layer == "symbols":
+            rows = _SYMBOLS
+        else:
+            rows = _TEXT_LOWER
+        if not getattr(self.target, "multiline", False):
+            return rows
+        # Multiline: ENTER is a new line, so hand the operator a separate way
+        # out. Appended to the last row rather than replacing anything, so both
+        # readings are on screen at once — ENTER makes a line, DONE finishes.
+        return rows[:-1] + [list(rows[-1]) + [_DONE]]
 
     def _build(self):
         self.clear_widgets()
@@ -177,6 +196,8 @@ class OnScreenKeyboard(BoxLayout):
     def _key(self, label):
         if label == _SHIFT and self._caps_lock:
             fill = _CAPS                        # highlight so 'locked' is obvious
+        elif label == _DONE:
+            fill = _DONEC                       # the way out reads as the way out
         elif label in (_SHIFT, _BKSP, _ENTER, _SYM, _ABC):
             fill = _SPEC
         elif label == _SPACE:
@@ -225,6 +246,9 @@ class OnScreenKeyboard(BoxLayout):
             return
         self._last_key_t, self._last_key_label = now, label
         t = self.target
+        if label == _DONE:
+            self.hide()
+            return
         if label == _BKSP:
             if t:
                 t.do_backspace()
