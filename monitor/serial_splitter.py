@@ -61,6 +61,16 @@ class KissGpsSplitter:
         self.lng: Optional[float] = None
         self.sats: int = 0
         self.fix: int = 0
+        # HAS THE FIRMWARE EVER SPOKEN ABOUT GPS? sats/fix both start at 0 and
+        # only move when a GPS_CMD_STATE frame arrives, so "sats: 0, fix: 0" was
+        # ambiguous in the worst way — it reads identically for
+        #   (a) this firmware has no GPS support at all, and
+        #   (b) the GPS is fitted and working but has not locked yet.
+        # Those need opposite responses: reflash versus go outside and wait.
+        # The medic could not tell them apart, so neither could the operator
+        # (2026-08-07: Jonesey reporting healthy radio telemetry and zero GPS).
+        self.gps_frames: int = 0
+        self.gps_seen_at: Optional[float] = None
         self.updated: Optional[float] = None
         # live signal state, recorded from stat frames passing through to rnsd
         self.last_rssi: Optional[int] = None       # dBm, per received packet
@@ -118,6 +128,8 @@ class KissGpsSplitter:
             self.lng = int.from_bytes(payload[:4], "big", signed=True) / _MICRODEG
         elif sub == GPS_CMD_STATE and len(payload) >= 2:
             self.sats, self.fix = payload[0], payload[1]
+        self.gps_frames += 1
+        self.gps_seen_at = self._now()
         self.updated = self._now()
         return True                       # all CMD_GPS frames are kept from rnsd
 
@@ -126,6 +138,11 @@ class KissGpsSplitter:
             "lat": self.lat, "lng": self.lng,
             "sats": self.sats, "fix": self.fix,
             "has_fix": self.lat is not None and self.lng is not None,
+            # Evidence, not inference: how many CMD_GPS frames this radio has
+            # sent, and when the last one arrived. gps_frames == 0 means the
+            # firmware is not reporting GPS AT ALL — a different fault from a
+            # receiver that is reporting and has not locked.
+            "gps_frames": self.gps_frames, "gps_seen_at": self.gps_seen_at,
             # live signal (for TRIAGE / VITALS): per-packet + periodic channel stats
             "last_rssi": self.last_rssi, "last_snr": self.last_snr,
             "packet_heard_at": self.packet_heard_at,

@@ -153,3 +153,50 @@ def test_sampleton_coordinate_survives_firmware_format_roundtrip():
     assert st["lat"] == pytest.approx(LAT, abs=1e-6)
     assert st["lng"] == pytest.approx(LNG, abs=1e-6)
     assert st["has_fix"] is True
+
+
+# --- "no GPS at all" and "GPS with no lock" are different faults ------------
+# 2026-08-07: Jonesey reported healthy radio telemetry (rssi -63, snr 10.75) and
+# lat/lng null, sats 0, fix 0. Those zeros are the INITIAL values and only move
+# when a GPS_CMD_STATE frame arrives — so the state read identically for
+#   (a) firmware with no GPS support, and
+#   (b) a working receiver that has not locked yet.
+# One needs a reflash, the other needs a window. The medic could not tell them
+# apart, so neither could the operator.
+
+def test_a_radio_that_never_mentions_gps_is_distinguishable_from_one_with_no_lock():
+    from monitor.serial_splitter import KissGpsSplitter
+    st = KissGpsSplitter(now=lambda: 100.0)
+    assert st.state()["gps_frames"] == 0, "silence must be visible as silence"
+    assert st.state()["gps_seen_at"] is None
+
+
+def test_a_gps_state_frame_is_counted_even_when_it_reports_no_lock():
+    """The frame that says 'I have no fix' is still PROOF the GPS is alive and
+    talking — it is the single most useful fact when a fix is missing."""
+    from monitor.serial_splitter import (CMD_GPS, GPS_CMD_STATE, KissGpsSplitter)
+    st = KissGpsSplitter(now=lambda: 100.0)
+    st._consume_gps(bytearray([CMD_GPS, GPS_CMD_STATE, 0, 0]))   # 0 sats, no fix
+    s = st.state()
+    assert s["gps_frames"] == 1
+    assert s["gps_seen_at"] == 100.0
+    assert s["sats"] == 0 and s["has_fix"] is False
+
+
+def test_every_gps_frame_counts_not_just_state_ones():
+    from monitor.serial_splitter import (CMD_GPS, GPS_CMD_LAT, GPS_CMD_STATE,
+                                         KissGpsSplitter)
+    st = KissGpsSplitter(now=lambda: 1.0)
+    st._consume_gps(bytearray([CMD_GPS, GPS_CMD_LAT, 0, 0, 0, 0]))
+    st._consume_gps(bytearray([CMD_GPS, GPS_CMD_STATE, 7, 1]))
+    assert st.state()["gps_frames"] == 2
+
+
+def test_non_gps_frames_never_inflate_the_count():
+    """Radio stat frames pour through constantly. If they counted, gps_frames
+    would say the GPS is talking on a board that has none — which is exactly
+    the confusion this exists to end."""
+    from monitor.serial_splitter import CMD_GPS, KissGpsSplitter
+    st = KissGpsSplitter(now=lambda: 1.0)
+    assert st._consume_gps(bytearray([0x07, 0x01, 0x02])) is False
+    assert st.state()["gps_frames"] == 0
