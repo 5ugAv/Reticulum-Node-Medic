@@ -76,17 +76,50 @@ def read_gps(reader: Callable[[], Optional[Tuple[float, float]]]
 # (monitor.serial_splitter), so LoRa (rnsd) and GPS never fight over the one serial
 # port. We read that file here rather than owning a port ourselves.
 
-SPLITTER_STATE = os.path.expanduser("~/gps_state.json")
+#: WHERE THE MEDIC'S POSITION LIVES — RAM, not the SD card.
+#:
+#: Operator's design decision, 2026-08-07: *"the NodeMedic can just access the
+#: GPS at that moment and centralize the map to where the NodeMedic is currently
+#: situated. It doesn't need to have a permanent home address."* Position is a
+#: thing the tool has in the MOMENT, never a thing it keeps.
+#:
+#: This file is the handoff between the splitter service and the app, so it must
+#: exist — but it does not have to be durable. On disk it left the medic's most
+#: recent position sitting on removable media, surviving power-off, in a tool
+#: whose whole ethos is that nodes stay untraceable to a person or a place
+#: ([[anonymity-ethos]]). /dev/shm is tmpfs: it is gone when the power is.
+#:
+#: Second benefit: one fewer continuous writer to the SD card, which the
+#: solar-node corruption work says is the failure that actually bites
+#: ([[sd-reliability-overlayfs]]).
+SPLITTER_STATE = "/dev/shm/nodemedic-gps.json"
+
+#: Where it used to live. Read-only fallback so the code can be deployed BEFORE
+#: the systemd unit is updated (that needs root) — otherwise GPS would go blind
+#: in the gap between the two changes.
+LEGACY_SPLITTER_STATE = os.path.expanduser("~/gps_state.json")
 
 
 def read_splitter_state(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
                         now: Callable[[], float] = time.time) -> Optional[dict]:
     """The splitter's latest GPS state, or ``None`` if the file is missing,
     unreadable, or older than *max_age_s* (the GPS/splitter isn't feeding now)."""
-    try:
-        with open(path) as f:
-            st = json.load(f)
-    except (OSError, ValueError):
+    # The legacy fallback applies ONLY when the caller took the default. An
+    # explicit path must be honoured exactly — tests inject their own, and a
+    # caller asking about a specific file does not want a different one.
+    # (Caught by the suite ON THE MEDIC, where the legacy file exists and a
+    # deliberately-missing path quietly returned real GPS state.)
+    candidates = ((path, LEGACY_SPLITTER_STATE) if path == SPLITTER_STATE
+                  else (path,))
+    st = None
+    for candidate in candidates:
+        try:
+            with open(candidate) as f:
+                st = json.load(f)
+            break
+        except (OSError, ValueError):
+            continue
+    if st is None:
         return None
     upd = st.get("updated")
     if not isinstance(upd, (int, float)) or (now() - upd) > max_age_s:

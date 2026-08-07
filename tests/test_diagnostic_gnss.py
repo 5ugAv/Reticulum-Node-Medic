@@ -1,5 +1,11 @@
-"""GNSS diagnostics — reads the splitter's ~/gps_state.json over a mocked
-connection. No hardware, no serial port."""
+"""GNSS diagnostics — reads the splitter's state file over a mocked connection.
+No hardware, no serial port.
+
+The rule below keys off the FILENAME from diagnostics.gnss rather than a literal
+"gps_state": the state file moved to tmpfs on 2026-08-07 so the medic's position
+never reaches the SD card, and a hardcoded fragment here silently stopped
+matching — every check then read an empty file and reported "no GPS data" on
+perfectly good state."""
 
 import json
 
@@ -14,7 +20,10 @@ def _tracker():
 
 def _conn(state, epoch=1000):
     c = EmulatedConnection()
-    c.rule("gps_state", code=0, stdout="" if state is None else json.dumps(state))
+    import os
+    from diagnostics.gnss import GPS_STATE_PATH
+    c.rule(os.path.basename(GPS_STATE_PATH), code=0,
+           stdout="" if state is None else json.dumps(state))
     c.rule("date", code=0, stdout=str(epoch))
     return c
 

@@ -48,7 +48,7 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     cpu, up = _splitter_cpu_uptime(run)
     log = run("journalctl -u rnode-splitter -n 12 --no-pager 2>/dev/null")
     findings.append(sd.check_splitter(active, cpu, up, log))
-    findings.append(sd.check_gps_fresh(run("cat $HOME/gps_state.json 2>/dev/null"),
+    findings.append(sd.check_gps_fresh(run("cat /dev/shm/nodemedic-gps.json 2>/dev/null || cat $HOME/gps_state.json 2>/dev/null"),
                                        now_fn()))
     # medic system health (safe reads — no board reset, no port steal)
     findings.append(sd.check_disk_space(run("df -P / 2>/dev/null")))

@@ -259,3 +259,60 @@ def test_the_movement_anchor_requires_a_measured_position():
     blk = src[src.index("def _reanchor_movement"):]
     blk = blk[:blk.index("\n    def ", 10)]
     assert 'classify_fix(fix) == "live"' in blk
+
+
+# --- position lives in the moment, not on the card (2026-08-07) -------------
+# Operator: "the NodeMedic can just access the GPS at that moment and centralize
+# the map to where the NodeMedic is currently situated. It doesn't need to have
+# a permanent home address."
+#
+# Nothing persists a position by design — but the splitter's handoff file was
+# written to the SD card, so the medic's most recent position survived power-off
+# on removable media.
+
+def test_the_state_file_lives_in_ram_not_on_the_card():
+    from monitor.geo import SPLITTER_STATE
+    assert SPLITTER_STATE.startswith("/dev/shm/"), (
+        "the medic's position is being written to durable storage again")
+
+
+def test_the_old_on_disk_path_is_still_READ_during_the_changeover():
+    """The systemd unit needs root to update, so the code ships first. Without
+    a fallback the GPS would go blind in the gap between the two changes."""
+    from monitor.geo import LEGACY_SPLITTER_STATE
+    assert LEGACY_SPLITTER_STATE.endswith("gps_state.json")
+    src = open("monitor/geo.py").read()
+    fn = src[src.index("def read_splitter_state"):src.index("def read_splitter_fix")]
+    assert "LEGACY_SPLITTER_STATE" in fn
+
+
+def test_the_state_file_is_not_world_readable():
+    """/dev/shm is world-readable by default, and this file says where the medic
+    is right now."""
+    src = open("monitor/serial_splitter.py").read()
+    fn = src[src.index("def _write_state"):src.index("def run(")]
+    assert "0o600" in fn
+
+
+def test_an_explicit_path_is_never_silently_swapped_for_the_legacy_one(tmp_path):
+    """Caught on the medic, where the legacy file exists: a deliberately-missing
+    path returned real GPS state through the fallback. An explicit path must be
+    honoured exactly, or every injected path in the suite is a lie."""
+    from monitor.geo import read_splitter_state
+    missing = str(tmp_path / "definitely-not-here.json")
+    assert read_splitter_state(path=missing) is None
+
+
+def test_only_ONE_module_defines_where_the_state_file_lives():
+    """Four modules each held their own copy of the path. A migration that
+    changed some and not others would have left Triage and Self Diagnose reading
+    a file that had stopped being written — silently, with stale positions.
+    Caught before deploying, not after."""
+    import pathlib
+    root = pathlib.Path(__file__).parent.parent
+    offenders = []
+    for f in list(root.glob("monitor/*.py")) + list(root.glob("diagnostics/*.py")):
+        txt = f.read_text()
+        if 'expanduser("~/gps_state.json")' in txt and "LEGACY" not in txt:
+            offenders.append(f.name)
+    assert not offenders, f"these still define the path themselves: {offenders}"

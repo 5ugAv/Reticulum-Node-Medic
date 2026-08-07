@@ -18,7 +18,10 @@ import os
 import time
 from typing import Callable, Optional
 
-SPLITTER_STATE = os.path.expanduser("~/gps_state.json")
+# ONE definition, in monitor.geo. This file used to carry its own copy of the
+# path, which meant the tmpfs migration (2026-08-07) would have left Triage
+# reading a file that had stopped being written.
+from monitor.geo import SPLITTER_STATE  # noqa: F401  (re-exported)
 
 
 def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,

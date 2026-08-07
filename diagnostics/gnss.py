@@ -1,7 +1,7 @@
 """GNSS (GPS) diagnostics for the Heltec Wireless Tracker RNode.
 
 The Tracker's firmware pushes its GPS fix over KISS; the serial splitter skims it
-to a small JSON state file (``~/gps_state.json``). These checks read that file to
+to a small JSON state file (tmpfs — see monitor.geo.SPLITTER_STATE). These checks read that file to
 confirm the GNSS is powered, wired, and — outdoors — actually getting a fix. All
 plain-English. They no-op on any node that isn't a Wireless Tracker, so adding the
 module to the run is safe for every other kind of node.
@@ -15,7 +15,9 @@ from typing import List, Optional
 from node_profile import NodeHardware
 from diagnostics.base import DiagnosticCheck, Issue
 
-GPS_STATE_PATH = "~/gps_state.json"
+from monitor.geo import SPLITTER_STATE as _STATE
+#: Kept as a name for callers; the path itself lives in monitor.geo now.
+GPS_STATE_PATH = _STATE
 STALE_AFTER_S = 30
 MIN_SATS = 4
 

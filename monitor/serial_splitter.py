@@ -153,8 +153,18 @@ class KissGpsSplitter:
 
 
 def _write_state(path: str, state: dict) -> None:
+    """Atomically publish the state for readers.
+
+    Mode 0600 on purpose. The default home now is /dev/shm (tmpfs, so the
+    position never reaches the SD card and dies with the power) — but /dev/shm
+    is world-READABLE by default, and this file carries where the medic is right
+    now. It is written for one reader on one machine; nothing else has business
+    with it. Costs nothing, and matters most on a tool built around nodes being
+    untraceable to a person or a place.
+    """
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(state, f)
     os.replace(tmp, path)                 # atomic for the reader
 
@@ -170,7 +180,8 @@ def run(real_port: str = "/dev/ttyACM0",
     import serial
 
     if state_file is None:
-        state_file = os.path.expanduser("~/gps_state.json")
+        from monitor.geo import SPLITTER_STATE
+        state_file = SPLITTER_STATE
 
     ser = serial.Serial(real_port, baud, timeout=0)
     master, slave = pty.openpty()
