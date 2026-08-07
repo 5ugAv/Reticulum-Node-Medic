@@ -306,3 +306,71 @@ def test_noticing_a_card_does_not_start_writing_it():
         assert destructive not in found, (
             f"{destructive!r} in the auto-detect path — a card appearing must "
             "never begin an irreversible write")
+
+
+# --- the four-minute window in which the medic said nothing (task #53) -------
+# Found by the UI audit 2026-08-03. _write never called begin_activity(), so for
+# the WHOLE write flash_in_progress() was False: no red "don't power off"
+# banner, and the home screen's slide-to-power-off gave no warning — while the
+# imaging screen's own callout was saying "don't power Node Medic off. A card
+# interrupted part-way through has to be written again from the start."
+#
+# The tool contradicting itself, with a ruined card as the prize. It had already
+# happened from the other direction: a UI restart killed a write 80 seconds in
+# (2026-08-02). restart_ui.sh guards that path; this was the one still open.
+#
+# CI has no Kivy, so these assert the source contract.
+
+def _imager_src():
+    return open("ui/screens/pi_imager_screen.py").read()
+
+
+def test_the_write_tells_the_app_it_is_running():
+    src = _imager_src()
+    assert "self._mark_activity(True" in src
+    assert "begin_activity(" in src
+
+
+def test_the_activity_is_released_when_the_write_ends():
+    src = _imager_src()
+    done = src[src.index("def _done(self, ok, msg)"):]
+    done = done[:done.index("\n    def ")]
+    assert "self._mark_activity(False)" in done
+
+
+def test_the_release_happens_BEFORE_anything_that_can_raise():
+    """begin_activity is a COUNTER. A write that ends without its matching
+    end_activity leaves the medic believing a flash runs for ever — banner
+    stuck, power-off blocked, next build refused, and only a restart to clear
+    it. Failing to release is worse than never marking."""
+    src = _imager_src()
+    done = src[src.index("def _done(self, ok, msg)"):]
+    done = done[:done.index("\n    def ")]
+    # CODE only. The first version of this test searched the raw text and
+    # matched the word "try:" inside the very comment explaining why the release
+    # comes before the try — the same trap as grepping a docstring for the thing
+    # it promises not to do.
+    code = "\n".join(l.split("#")[0] for l in done.splitlines())
+    release = code.index("_mark_activity(False)")
+    first_try = code.find("try:")
+    assert first_try == -1 or release < first_try
+
+
+def test_every_exit_from_the_worker_reaches_done():
+    """flash() can raise — its subprocess carries a 1800s timeout, and a card
+    yanked mid-write surfaces as an OSError. An escaping exception would wedge
+    the counter, which is exactly what the counter must never do."""
+    src = _imager_src()
+    work = src[src.index("def work():\n            # EVERY exit"):]
+    work = work[:work.index("def _flash():")]
+    assert "except Exception" in work
+    assert "self._done(ok, msg)" in work
+
+
+def test_the_operator_is_told_which_card_is_being_written():
+    """A banner reading 'Working — please wait' over an unattended four-minute
+    write says nothing about what would be lost by pulling the plug."""
+    src = _imager_src()
+    fn = src[src.index("def _mark_activity"):src.index("def _done(self, ok, msg)")]
+    assert "Writing" in fn and "card" in fn
+    assert "don't power off" in fn

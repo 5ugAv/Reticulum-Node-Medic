@@ -604,6 +604,20 @@ class PiImagerScreen(BoxLayout):
             self._written_card_serial = ""
 
         def work():
+            # EVERY exit must reach _done, because _done is what releases the
+            # activity counter. flash() can raise — its subprocess carries a
+            # 1800s timeout, and a card yanked mid-write surfaces as an OSError
+            # — and an escaping exception would leave the medic believing a
+            # flash is running for ever: banner stuck, power-off blocked, the
+            # next build refused, and only a restart to clear it.
+            ok, msg = False, ""
+            try:
+                ok, msg = _flash()
+            except Exception as exc:                          # noqa: BLE001
+                ok, msg = False, f"The write stopped unexpectedly: {exc}"
+            Clock.schedule_once(lambda dt: self._done(ok, msg), 0)
+
+        def _flash():
             ok, msg = pi_imager.flash(
                 path, v["hostname"], "pi", v["pw"],
                 wifi_ssid=v.get("ssid", ""), wifi_password=v.get("psk", ""),
@@ -622,7 +636,19 @@ class PiImagerScreen(BoxLayout):
                     record_imaged_pi(v["hostname"], "pi")
                 except Exception:
                     pass
-            Clock.schedule_once(lambda dt: self._done(ok, msg), 0)
+            return ok, msg
+        # TELL THE APP A CARD IS BEING WRITTEN. Without this, flash_in_progress()
+        # stays False for the whole four minutes: no red "don't power off"
+        # banner, and the home screen's slide-to-power-off offers no warning at
+        # all — while THIS screen's own callout is saying "don't power Node
+        # Medic off. A card interrupted part-way through has to be written again
+        # from the start." The tool contradicting itself, with a ruined card as
+        # the prize.
+        #
+        # It has already happened from the other direction: a UI restart killed
+        # a write 80 seconds in (2026-08-02). restart_ui.sh guards that path;
+        # this was the one still open.
+        self._mark_activity(True, v["hostname"])
         threading.Thread(target=work, daemon=True).start()
 
     def _card_is_in_the_pi(self):
@@ -666,7 +692,32 @@ class PiImagerScreen(BoxLayout):
         if lbl is not None:
             lbl.text = pi_imager.current_stage_label(frac)
 
+    def _mark_activity(self, on, hostname=""):
+        """Tell the app a card write is (not) running, so the screensaver stays
+        off and the persistent 'don't power off' banner shows. Best-effort —
+        never let bookkeeping break a write."""
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is None:
+                return
+            if on:
+                nm = (hostname or "").strip() or "this Pi"
+                app.begin_activity(
+                    f"Writing {nm}'s card — keep everything plugged in, "
+                    "don't power off")
+            else:
+                app.end_activity()
+        except Exception:
+            pass
+
     def _done(self, ok, msg):
+        # FIRST, and outside the try: begin_activity is a COUNTER. A write that
+        # ends without its matching end_activity leaves the medic believing a
+        # flash is running for ever — power-off blocked, banner stuck, and the
+        # next build refused. Failing to clear it is worse than never setting
+        # it, so it is released before anything here can raise.
+        self._mark_activity(False)
         self._busy = False
         ev = getattr(self, "_ev", None)
         if ev is not None:
