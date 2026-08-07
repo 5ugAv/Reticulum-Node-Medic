@@ -19,7 +19,27 @@ from typing import Optional
 CARDS_TOP = 0.79          # y-fraction where the card row begins
 CARDS_LEFT = 0.0
 CARDS_RIGHT = 1.0   # the 720x1280 cut runs the cards full-bleed
-CARD_ORDER = ["vitals", "scan", "birth", "triage", "probe"]
+CARD_ORDER = ["vitals", "scan", "birth", "triage", "chat"]
+
+#: WHAT THE POSTER ACTUALLY SAYS, read off assets/ui/front_page.png. The home
+#: screen is a TAP-MAP over a painted image: this list is not a menu the tool
+#: renders, it is a claim about words already printed on the artwork.
+#:
+#: So CARD_ORDER cannot be reordered or re-pointed in code alone. Changing the
+#: fifth entry to "chat" — which #22/#23 want — would leave a card labelled
+#: "PROBE / DIAGNOSE & REPAIR", illustrated with a toolbox, opening a chat
+#: screen. That is the operator's standing rule broken at its most literal:
+#: everything the operator sees must correspond to what it does, and here the
+#: mismatch would be in WORDS rather than a picture.
+#:
+#: The fifth card became CHAT on 2026-08-07: the operator supplied artwork in
+#: the poster's own style, it was composited into the row, and the zone followed
+#: it in the same commit. PROBE keeps its own door in the sidebar, so nothing
+#: became unreachable — Self Diagnose in particular.
+#:
+#: A test holds these two in step so the mismatch cannot be introduced by an
+#: innocent-looking one-line edit.
+POSTER_CARD_LABELS = ["VITALS", "SCAN", "BIRTH", "TRIAGE", "CHAT"]
 
 # The red-cross emblem — the Easter egg (credits).
 CROSS_CX = 0.50
@@ -55,3 +75,17 @@ def zone_at(fx: float, fy: float) -> Optional[str]:
     if (dx * dx + dy_x * dy_x) ** 0.5 <= CROSS_R:
         return "credits"
     return None
+
+
+#: When the word on the card is not the screen's internal name. CHAT is painted
+#: on the poster; the screen that answers it has been called "comms" since it
+#: was built (ui/screens/comms_screen.py — "the mesh messenger for your
+#: pocket"). Renaming the screen would have churned every reference for a label;
+#: this states the translation in one place instead.
+ZONE_SCREEN = {"chat": "comms"}
+
+
+def screen_for(zone: str) -> str:
+    """The screen a tapped zone should open. Identity unless ZONE_SCREEN says
+    otherwise."""
+    return ZONE_SCREEN.get(zone, zone)

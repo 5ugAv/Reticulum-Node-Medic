@@ -18,7 +18,7 @@ from kivy.uix.image import Image
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — power slider hint + flash-warning title
-from ui.home_zones import zone_at
+from ui.home_zones import screen_for, zone_at
 
 POSTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       os.pardir, "assets", "ui", "front_page.png")
@@ -218,6 +218,9 @@ class HomeScreen(FloatLayout):
         if frac:
             mode = zone_at(*frac)
             if mode and self._on_select:
-                self._on_select(mode)
+                # The painted word is not always the screen's internal name —
+                # CHAT opens "comms", which has been called that since it was
+                # built. One translation, stated in home_zones.
+                self._on_select(screen_for(mode))
                 return True
         return super().on_touch_up(touch)

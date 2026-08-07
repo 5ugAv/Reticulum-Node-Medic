@@ -78,13 +78,6 @@ def _demo_pi_build():
     return BuildWorkflow(conn, NodeProfile())
 
 
-def _hostnameify(name: str) -> str:
-    """A node name -> a valid hostname (lowercase, dashes, trimmed)."""
-    import re as _re
-    h = _re.sub(r"[^a-z0-9-]+", "-", (name or "").lower()).strip("-")
-    return h[:32] or ""
-
-
 def _pi_rnode_factory(address: str = "", user: str = "pi", node_name: str = ""):
     """Pi propagation birth — REAL (2026-07-30): SSH to the target Pi and run
     the full BuildWorkflow (config, RNS/LXMF stack, services, the health
@@ -109,7 +102,8 @@ def _pi_rnode_factory(address: str = "", user: str = "pi", node_name: str = ""):
     from node_profile import NodeRole
     conn = SSHConnection(address, user=user)
     profile = NodeProfile(role=NodeRole.PROPAGATION, ssh_user=user)
-    hn = _hostnameify(node_name)
+    from provisioning.pi_imager import hostnameify
+    hn = hostnameify(node_name)
     if hn:
         profile.hostname = hn
     return BuildWorkflow(conn, profile)

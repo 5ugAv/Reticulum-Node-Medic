@@ -57,11 +57,18 @@ PI_HOSTS = [
     ("none", "None — standalone radio (flash only)"),
 ]
 
-#: Mitosis (cloning this Node Medic) is restricted to the Heltec Wireless Tracker
-#: ONLY at this stage — it's the board whose GPS/location path we've proven on
-#: hardware (Jonesey), so a clone's location function is guaranteed correct.
-#: Other GPS-capable boards can be added once their GPS is verified end-to-end.
-MITOSIS_BOARDS = {"heltec_wireless_tracker"}
+# MITOSIS_BOARDS lived here and was removed 2026-08-07 (task #57). It read
+# {"heltec_wireless_tracker"} and restricted cloning to the one board whose
+# GPS path we had proven, "so a clone's location function is guaranteed
+# correct". Nothing ever referenced it — and the reason is that the design
+# moved underneath it: MITOSIS now clones this medic onto a fresh PI over the
+# wire (ui/app.py _mitosis_factory), so there is no board for it to restrict.
+#
+# THE INTENT IS STILL LIVE, just relocated: a Pi has no GPS of its own, so a
+# clone's location comes from a Heltec Tracker plugged into IT
+# ([[medic-gps-via-tracker]]). Whoever wires the real clone flow should carry
+# the rule forward there — only bless a GPS board proven end-to-end — rather
+# than rediscover it.
 
 #: Rough seconds per build step, so the progress ring fills by ESTIMATED TIME (the
 #: firmware compile dominates) rather than jumping one flat notch per step. Under-
