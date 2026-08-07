@@ -593,6 +593,15 @@ class PiImagerScreen(BoxLayout):
         self._ev = Clock.schedule_interval(self._tick, 0.3)
 
         dev, path = self._target, self._target["path"]
+        # Remember WHICH card this is, while it is still in the reader. If it
+        # comes back later the medic can say "that's the one I just wrote"
+        # instead of asking again for a Pi the operator has already put down
+        # (task #71). Best-effort: a reader that reports no serial degrades to
+        # "a card", never to a false claim of recognition.
+        try:
+            self._written_card_serial = pi_imager.disk_serial(path)
+        except Exception:
+            self._written_card_serial = ""
 
         def work():
             ok, msg = pi_imager.flash(
@@ -750,15 +759,37 @@ class PiImagerScreen(BoxLayout):
         self._boot_host = hostname or ""
         self._stop_boot_poll()
 
+        # What was already on USB when the wait began. Without this, "nothing
+        # ever appeared" (cable/port/power) and "something appeared but offers
+        # no link" (the card's setup) are indistinguishable — and they are
+        # different faults with different fixes. See provisioning/plugged_in.py.
+        self._boot_baseline = []
+        try:
+            import subprocess as _sp
+            from provisioning import plugged_in as _pin
+            self._boot_baseline = _pin._ids(
+                _sp.run(["lsusb"], capture_output=True, text=True,
+                        timeout=8).stdout)
+        except Exception:
+            pass
+
         def tick(_dt):
             def work():
-                state, ip = None, ""
+                state, ip, out, card, serial = None, "", "", {}, ""
                 try:
                     import subprocess
-                    from provisioning import pi_usbboot
+                    from provisioning import pi_usbboot, pi_imager
                     out = subprocess.run(["lsusb"], capture_output=True,
                                          text=True, timeout=8).stdout
                     state = pi_usbboot.classify(out).state
+                    # ALSO look at our own card reader. The operator moved on
+                    # to a different step — took the card out of the Pi and put
+                    # it in the medic — and the screen kept asking for the Pi
+                    # (2026-08-06). The medic had the facts and said the wrong
+                    # thing; now it looks.
+                    card = pi_imager.card_status()
+                    if card.get("state") == "one" and card.get("path"):
+                        serial = pi_imager.disk_serial(card["path"])
                 except Exception:
                     state = None
                 # A card imaged WITH WiFi comes back on the network, not on
@@ -771,7 +802,8 @@ class PiImagerScreen(BoxLayout):
                         ip = pi_discover.resolve(self._boot_host) or ""
                     except Exception:
                         ip = ""
-                Clock.schedule_once(lambda _d: self._boot_tick(state, ip), 0)
+                Clock.schedule_once(
+                    lambda _d: self._boot_tick(state, ip, out, card, serial), 0)
             threading.Thread(target=work, daemon=True).start()
 
         self._boot_ev = Clock.schedule_interval(tick, 2.0)
@@ -786,7 +818,63 @@ class PiImagerScreen(BoxLayout):
                 pass
             self._boot_ev = None
 
-    def _boot_tick(self, state, ip=""):
+    def _show_situation(self, sit):
+        """Say what was found, and offer the branches the operator really has.
+
+        Replaces a single button reading "Stop waiting — go back and check the
+        Pi". That was honest about being an abandonment, which was an
+        improvement on "carry on" — but abandonment was never the only option.
+        A Pi that came up in boot-ROM wants the card rewritten; a card sitting
+        in the medic's reader wants putting into the Pi. Naming those is the
+        difference between a tool that noticed and one that gave up.
+        """
+        if getattr(self, "_situation_shown", None) == sit.state:
+            return                       # already on screen; don't stack copies
+        self._situation_shown = sit.state
+
+        # ONE container, rebuilt in place. The poll keeps running for the
+        # unsettled states, so the situation can legitimately change (nothing
+        # on USB -> a hub appears -> the gadget comes up); appending each time
+        # would leave a growing pile of stale advice and contradictory buttons
+        # on screen.
+        # SELF-HEALING on purpose. This screen is a singleton and self.col is
+        # rebuilt by clear_widgets() in three separate places today. A remembered
+        # box would then be an ORPHAN — still a live widget, still accepting
+        # children, but detached from the tree, so the advice and buttons would
+        # render precisely nowhere and the screen would look like it had ignored
+        # the operator again. Checking the parent costs nothing and cannot be
+        # forgotten at a fourth call site.
+        box = getattr(self, "_sit_box", None)
+        if box is None or box.parent is not self.col:
+            box = BoxLayout(orientation="vertical", size_hint_y=None,
+                            spacing=dp(6))
+            box.bind(minimum_height=box.setter("height"))
+            self._sit_box = box
+            self.col.add_widget(box)
+        box.clear_widgets()
+
+        if sit.detail:
+            box.add_widget(_line(sit.detail, size="13.5sp", color="amber", h=56))
+        for act in sit.actions:
+            b = Button(text=act["label"], size_hint_y=None, height=dp(52),
+                       bold=True, background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            b.bind(on_release=lambda _b, k=act["key"]: self._situation_action(k))
+            box.add_widget(b)
+
+    def _situation_action(self, key):
+        """Carry out one named branch. Nothing here is destructive on its own —
+        'rewrite_card' returns to the imaging screen, where the write still sits
+        behind its own deliberate press (pi_imager.card_status' rule)."""
+        self._stop_boot_poll()
+        if key == "rewrite_card":
+            self._situation_shown = None
+            self.reset()
+            return
+        self._back_to_birth()
+
+    def _boot_tick(self, state, ip="", lsusb_out="", card=None, card_serial=""):
         """One poll result, on the UI thread. Either route counts as alive."""
         import time
         from provisioning import pi_usbboot
@@ -800,34 +888,36 @@ class PiImagerScreen(BoxLayout):
             Clock.schedule_once(lambda _d: self._back_to_birth(), 1.4)
             return
         waited = time.monotonic() - getattr(self, "_boot_t0", 0)
+
+        # Ask what is ACTUALLY plugged in, rather than mapping one USB state to
+        # one sentence. Four different situations used to produce "Unplugged —
+        # plug it back in…", including the operator having already moved the
+        # card into the medic's own reader (task #71).
+        from provisioning import plugged_in
+        sit = plugged_in.read(
+            lsusb_output=lsusb_out or "",
+            card=card or {},
+            waited_s=waited,
+            baseline_ids=getattr(self, "_boot_baseline", ()),
+            our_card_serial=getattr(self, "_written_card_serial", ""),
+            card_serial=card_serial or "",
+            node_name=self._boot_host or "")
         if lbl is not None:
-            if state == pi_usbboot.CARD_READER:
-                lbl.text = "Still showing its card…"      # instruction is above
-            elif state == pi_usbboot.ABSENT:
-                lbl.text = "Unplugged — plug it back in…"
-            else:
-                lbl.text = f"Waiting for the Pi… ({int(waited)}s)"
-        # Overdue: offer a way on rather than trapping anyone behind a Pi that
-        # is not going to appear (bad cable, PWR-only port, a card that failed).
-        if waited > 180 and not getattr(self, "_boot_escape", None):
-            # NOT "carry on without waiting" — that reads as though the step is
-            # optional and quietly done, when in fact the Pi has NOT come up and
-            # nothing downstream will work until it does. It is safe (it only
-            # stops the poll and navigates; nothing is written), but the label
-            # has to say what it really is: giving up on this attempt and going
-            # back to sort the Pi out (operator, 2026-08-06: "seems like asking
-            # for trouble... this needs to be super user friendly").
-            self._boot_escape = Button(
-                text="Stop waiting — go back and check the Pi", size_hint_y=None,
-                height=dp(52), bold=True, background_normal="",
-                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            self._boot_escape.bind(on_release=lambda *_: (self._stop_boot_poll(),
-                                                          self._back_to_birth()))
-            self.col.add_widget(_line(
-                "Taking longer than expected. Check it's on a DATA port, not "
-                "PWR IN.", size="13.5sp", color="amber", h=40))
-            self.col.add_widget(self._boot_escape)
+            lbl.text = sit.headline
+            lbl.color = theme.hex_to_rgba(theme.COLORS[
+                "amber" if sit.is_settled and not sit.is_good else "text_primary"])
+        if sit.is_settled:
+            # Something definite. Stop polling, say the rest, offer the real
+            # branches instead of the single "Stop waiting" this replaces.
+            self._stop_boot_poll()
+            self._show_situation(sit)
+            return
+        if sit.state != plugged_in.WAITING:
+            # A diagnosis, but one that could still come good on its own (the
+            # card's setup may yet finish coming up). Say it and offer the ways
+            # out — but KEEP POLLING, so a Pi that arrives late is still caught
+            # and the screen corrects itself.
+            self._show_situation(sit)
 
     def _swap_callout_to_action(self, plan):
         """Turn the "don't touch anything" box into the DO-THIS-NOW box.

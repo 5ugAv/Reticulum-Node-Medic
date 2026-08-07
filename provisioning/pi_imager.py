@@ -78,6 +78,20 @@ def list_target_disks(run: Runner = _run) -> List[Dict]:
     return disks
 
 
+def disk_serial(device_path: str, run: Runner = _run) -> str:
+    """The USB serial of one disk, or "" if it can't be read.
+
+    Deliberately a SEPARATE call rather than another column on
+    ``list_target_disks``. That function's lsblk parse is positional, MODEL is
+    last because it contains spaces, and it feeds ``is_safe_target`` — the guard
+    that stops the medic writing an OS over its own system disk. Widening its
+    column list to carry a serial would shift every field for the sake of a
+    nice-to-have, so it stays exactly as it is.
+    """
+    code, out = run(["lsblk", "-dno", "SERIAL", device_path])
+    return (out or "").strip() if code == 0 else ""
+
+
 def card_status(run: Runner = _run) -> Dict:
     """What is in the medic's card reader, right now, and may we act on it?
 
