@@ -29,6 +29,68 @@ DEFAULT_BOARD = "BOARD_HELTEC32_V4"
 DEFAULT_PIN = 47
 HAS_NP_TRUE = "#define HAS_NP true"
 
+# --- WHICH PIN, ON WHICH BOARD -------------------------------------------
+# The standing rule is that a NeoPixel data pin is VERIFIED free per board and
+# never guessed, because a pin already owned by the LoRa modem or the bootloader
+# looks fine and fails in the field. Until now this script enforced none of it:
+# it would write any pin into any board's block, and its default is 47.
+#
+# On a Heltec V4, 47 is a free J2 header pin. On a RAK4631 the SAME NUMBER is
+# the LoRa modem's DIO line — so running the V4 recipe against a RAK would break
+# the radio in a way that reads as a firmware bug, on a board whose whole job is
+# the radio. One flag away, with nothing to stop it.
+#
+# Numbers here are ARDUINO pin numbers as the firmware uses them. On the nRF52
+# that is not the same as the P0.xx/P1.xx silicon name: WB_IO1 on the RAK is
+# Arduino 17, which is P0.17.
+VERIFIED_NP_PIN = {
+    # Heltec V4: free J2 header pin. Proven on hardware — the case glows.
+    "BOARD_HELTEC32_V4": 47,
+    # RAK4631: WB_IO1 = Arduino 17 = P0.17, exposed on WisBlock SLOT A/B.
+    # Researched per [[rak4631-free-pins]]; NOT yet proven on hardware.
+    "BOARD_RAK4631": 17,
+}
+
+#: Pins we KNOW are already owned on a given board, and what owns them. Writing
+#: one of these is never a judgement call — it is a mistake with a known cost,
+#: so it is refused outright rather than warned about.
+CLAIMED_PINS = {
+    "BOARD_RAK4631": {
+        47: "the LoRa modem's DIO line",
+        # The IO-slot pins labelled SPI are the on-board QSPI flash; WB_IO5/6
+        # are the NFC pins; WB_IO2 controls the 3V3 rail that powers the slots.
+        30: "the on-board QSPI flash", 31: "the on-board QSPI flash",
+        9: "an NFC pin (WB_IO5)", 10: "an NFC pin (WB_IO6)",
+        34: "the 3V3 rail control (WB_IO2) — pulling it kills the slots",
+    },
+}
+
+
+class UnverifiedPin(ValueError):
+    """The pin has not been verified free on this board."""
+
+
+def check_pin(board: str, pin: int, force: bool = False) -> None:
+    """Refuse a pin that is known-claimed, or unverified without an explicit
+    override. Raises UnverifiedPin with a reason a human can act on."""
+    owned = CLAIMED_PINS.get(board, {}).get(pin)
+    if owned:
+        raise UnverifiedPin(
+            f"Pin {pin} on {board} is {owned}. Refusing — this is not a "
+            f"preference, it is a known collision. Use "
+            f"{VERIFIED_NP_PIN.get(board, 'a researched free pin')}.")
+    known = VERIFIED_NP_PIN.get(board)
+    if known is None and not force:
+        raise UnverifiedPin(
+            f"No verified NeoPixel pin recorded for {board}. Research its "
+            f"pinout first, add it to VERIFIED_NP_PIN, or pass "
+            f"--i-have-verified-this-pin to take responsibility.")
+    if known is not None and pin != known and not force:
+        raise UnverifiedPin(
+            f"{board}'s verified free pin is {known}, not {pin}. Pass "
+            f"--i-have-verified-this-pin if you have genuinely checked this one "
+            f"against the board's own pinout.")
+
 
 def _block_bounds(lines, board):
     """``(start, end)`` line indices of the ``BOARD_MODEL == board`` preprocessor
@@ -104,9 +166,27 @@ def main(argv=None):
     ap.add_argument("path", help="path to RNode_Firmware/Boards.h")
     ap.add_argument("--board", default=DEFAULT_BOARD,
                     help="BOARD_MODEL macro to patch (default Heltec V4)")
-    ap.add_argument("--pin", type=int, default=DEFAULT_PIN,
-                    help="NeoPixel data GPIO (default 47 — V4-verified)")
+    ap.add_argument("--pin", type=int, default=None,
+                    help="NeoPixel data pin. Default: the verified pin for the "
+                         "chosen board (Arduino numbering).")
+    ap.add_argument("--i-have-verified-this-pin", action="store_true",
+                    dest="force",
+                    help="override the per-board pin check — only after "
+                         "checking the board's own pinout")
     args = ap.parse_args(argv)
+    # Default to the board's OWN verified pin rather than the V4's. Inheriting
+    # 47 by default is what made a RAK one flag away from a broken radio.
+    pin = args.pin if args.pin is not None else VERIFIED_NP_PIN.get(args.board)
+    if pin is None:
+        print(f"No verified NeoPixel pin for {args.board}; pass --pin with "
+              f"--i-have-verified-this-pin.", file=sys.stderr)
+        return 2
+    try:
+        check_pin(args.board, pin, force=args.force)
+    except UnverifiedPin as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
+    args.pin = pin
     with open(args.path) as fh:
         contents = fh.read()
     if is_patched(contents, args.board, args.pin):

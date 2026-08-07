@@ -343,3 +343,63 @@ def test_flash_rgb_carried_fails_if_provision_fails(tmp_path):
     assert ok is False and rgb is False and "provision" in msg
     # never carried the firmware if the board wasn't provisioned
     assert not conn.pushed
+
+
+# --- a NeoPixel pin is verified per board, never inherited (task #66) -------
+# The patcher would write ANY pin into ANY board's block, and defaulted to 47.
+# On a Heltec V4 that is a free J2 header pin. On a RAK4631 the same number is
+# the LoRa modem's DIO line — so the V4 recipe was one --board flag away from
+# breaking the radio on a board whose entire job is the radio.
+
+import importlib.util as _ilu
+import os as _os
+
+_SPEC = _ilu.spec_from_file_location(
+    "np_patch", _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), "assets", "scripts",
+        "apply_neopixel_patch.py"))
+np_patch = _ilu.module_from_spec(_SPEC); _SPEC.loader.exec_module(np_patch)
+
+
+def test_the_v4s_pin_is_REFUSED_on_a_rak():
+    """The exact accident this exists to prevent."""
+    with __import__("pytest").raises(np_patch.UnverifiedPin) as e:
+        np_patch.check_pin("BOARD_RAK4631", 47)
+    assert "LoRa modem" in str(e.value)
+
+
+def test_a_known_claimed_pin_cannot_be_forced():
+    """Not a preference — a known collision. force must not open this door."""
+    for pin in (47, 30, 34):
+        with __import__("pytest").raises(np_patch.UnverifiedPin):
+            np_patch.check_pin("BOARD_RAK4631", pin, force=True)
+
+
+def test_each_board_keeps_its_own_verified_pin():
+    np_patch.check_pin("BOARD_HELTEC32_V4", 47)      # proven on hardware
+    np_patch.check_pin("BOARD_RAK4631", 17)          # WB_IO1 = P0.17
+
+
+def test_an_unresearched_board_is_refused_rather_than_guessed():
+    with __import__("pytest").raises(np_patch.UnverifiedPin) as e:
+        np_patch.check_pin("BOARD_SOMETHING_NEW", 12)
+    assert "Research its pinout" in str(e.value)
+
+
+def test_an_unverified_pin_can_be_taken_on_deliberately():
+    """The override exists, but it has to be typed out in full — you cannot
+    reach it by accident."""
+    np_patch.check_pin("BOARD_SOMETHING_NEW", 12, force=True)
+
+
+def test_the_wrong_pin_for_a_KNOWN_board_needs_the_override_too():
+    with __import__("pytest").raises(np_patch.UnverifiedPin) as e:
+        np_patch.check_pin("BOARD_HELTEC32_V4", 12)
+    assert "verified free pin is 47" in str(e.value)
+
+
+def test_the_default_pin_follows_the_BOARD_not_the_v4():
+    """Inheriting 47 by default is what made a RAK one flag from a dead radio."""
+    src = open("assets/scripts/apply_neopixel_patch.py").read()
+    main = src[src.index("def main("):]
+    assert "VERIFIED_NP_PIN.get(args.board)" in main
