@@ -1587,9 +1587,19 @@ class ReticulumNodeMedicApp(App):
             from workflows.node_mode import load_auto_backpack
             if not load_auto_backpack():
                 return
-            from monitor.geo import read_splitter_fix
+            from monitor.geo import classify_fix, read_splitter_fix
             fix = read_splitter_fix()
             if fix is None or fix.lat is None or fix.lon is None:
+                return
+            # A HELD fix is the receiver COASTING on an old lock: the position
+            # is frozen, not measured. Feeding that to a movement detector is
+            # worse than feeding it nothing — a frozen reading looks like
+            # "definitely stationary" while the medic could be in a car, and the
+            # re-acquire afterwards lands as one enormous jump that reads as
+            # movement nothing actually observed.
+            # Proven live 2026-08-07: patch turned to face the ground, 10 sats
+            # -> 0 inside a minute, fix stayed 1, position kept being served.
+            if classify_fix(fix) != "live":
                 return
             if det.update(fix.lat, fix.lon):
                 Clock.schedule_once(lambda dt: self._auto_backpack(), 0)
@@ -1611,9 +1621,13 @@ class ReticulumNodeMedicApp(App):
         if det is None:
             return
         try:
-            from monitor.geo import read_splitter_fix
+            from monitor.geo import classify_fix, read_splitter_fix
             fix = read_splitter_fix()
-            if fix is not None and fix.lat is not None and fix.lon is not None:
+            # Only a MEASURED position may become the anchor. Anchoring on a
+            # coasting fix pins the trip's origin to wherever the receiver last
+            # saw sky, which may be streets away from here.
+            if (fix is not None and fix.lat is not None and fix.lon is not None
+                    and classify_fix(fix) == "live"):
                 det.reset(fix.lat, fix.lon)
             else:
                 det.reset()

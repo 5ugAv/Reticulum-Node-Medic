@@ -204,3 +204,58 @@ def test_the_fuzz_seed_is_stable_so_the_proof_of_work_is_not_rerun():
     b = fuzz_location(-37.79, 144.96, "Rooftop-East")
     assert a == b, "same node must always advertise the same fuzzed pin"
     assert fuzz_location(-37.79, 144.96, "Rooftop-West") != a
+
+
+# --- a fix is not automatically a PLACE (2026-08-07) ------------------------
+# Demonstrated live by turning the Tracker's patch antenna to face the ground:
+# satellites went 10 -> 0 inside a minute, while fix stayed 1 and the receiver
+# kept serving its LAST position. classify_fix calls that "held". Three
+# consumers were taking any fix with lat/lon and never asking.
+
+def _held():
+    from monitor.geo import GpsFix
+    return GpsFix(lat=-37.7, lon=145.0, source="tracker_gps", sats=0,
+                  fix_quality=1, fix_time="2026-08-07T00:00:00+00:00")
+
+
+def _live():
+    from monitor.geo import GpsFix
+    return GpsFix(lat=-37.7, lon=145.0, source="tracker_gps", sats=9,
+                  fix_quality=1, fix_time="2026-08-07T00:00:00+00:00")
+
+
+def test_the_coasting_case_is_classified_held_not_live():
+    from monitor.geo import classify_fix
+    assert classify_fix(_held()) == "held"
+    assert classify_fix(_live()) == "live"
+    assert classify_fix(None) == "none"
+
+
+def test_triage_refuses_to_stamp_a_node_from_a_coasting_fix():
+    """Writing a frozen position onto a node puts it on the map in the wrong
+    place — which is how a repair crew is sent to where the medic USED to be."""
+    src = open("ui/screens/triage_screen.py").read()
+    save = src[src.index("def _save(self"):]
+    save = save[:save.index("\n    def ")]
+    assert "classify_fix" in save
+    assert 'trust == "held"' in save
+    idx_guard = save.index('trust == "held"')
+    idx_save = save.index("Location saved")
+    assert idx_guard < idx_save, "the held check must come before the save copy"
+
+
+def test_the_movement_detector_ignores_a_frozen_position():
+    """Worse than no reading: a coasting fix looks like 'definitely stationary'
+    while the medic could be in a car, and the re-acquire afterwards lands as
+    one huge jump that reads as movement nothing observed."""
+    src = open("ui/app.py").read()
+    blk = src[src.index("load_auto_backpack"):]
+    blk = blk[:blk.index("def _auto_backpack")]
+    assert 'classify_fix(fix) != "live"' in blk
+
+
+def test_the_movement_anchor_requires_a_measured_position():
+    src = open("ui/app.py").read()
+    blk = src[src.index("def _reanchor_movement"):]
+    blk = blk[:blk.index("\n    def ", 10)]
+    assert 'classify_fix(fix) == "live"' in blk

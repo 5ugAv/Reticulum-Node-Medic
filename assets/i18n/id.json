@@ -212,6 +212,7 @@
   "Not a photo you'll delete, not a note on the medic itself — somewhere you'll still have it in a year.": "Bukan foto yang akan Anda hapus, bukan catatan di medic itu sendiri — di tempat yang setahun lagi masih Anda punya.",
   "Not carried yet — refresh it while the medic is online (Settings ▸ Storage).": "Belum dibawa — segarkan saat medic online (Pengaturan ▸ Penyimpanan).",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Tidak membaca sinyal apa pun - periksa antena dan kabel, serta pastikan node beacon menyala dan memancar.",
+  "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
   "Not sure which is which? Tap the  ?  above. Node Medic will guide you the rest of the way.": "Tidak yakin mana yang mana? Ketuk  ?  di atas. Node Medic akan memandu Anda selanjutnya.",
   "Not yet — show me the key": "Belum — tunjukkan kuncinya",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Catatan: simpan-dan-teruskan pesan MATI. Beralih ke Rumah ▸ node propagasi penuh agar medic bisa menyimpan pesan untuk ponsel offline.",

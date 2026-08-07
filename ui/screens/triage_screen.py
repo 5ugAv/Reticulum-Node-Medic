@@ -379,11 +379,27 @@ class TriageScreen(FloatLayout):
         captured automatically as the goal). Pin the confirmation ~10s so the
         live guidance loop doesn't wipe it before it can be read."""
         try:
-            from monitor.geo import read_splitter_fix
+            from monitor.geo import classify_fix, read_splitter_fix
             fix = read_splitter_fix()
         except Exception:
             fix = None
-        if fix is not None:
+        # A FIX IS NOT AUTOMATICALLY A PLACE. A GPS that has lost the sky keeps
+        # asserting fix=1 and keeps reporting its LAST position — it coasts. So
+        # `fix is not None` was never the right question: it accepts a frozen
+        # reading and writes it onto a node and onto the map, which is how a
+        # repair crew gets sent to where the medic used to be.
+        #
+        # Demonstrated live on 2026-08-07 by turning the Tracker's patch antenna
+        # to face the ground: satellites 10 -> 0 within a minute, while fix
+        # stayed 1 and the position kept being served. classify_fix() calls that
+        # "held" and it exists for exactly this.
+        trust = classify_fix(fix) if fix is not None else "none"
+        if fix is not None and trust == "held":
+            msg = tr("Not saved — the GPS is coasting on an old lock (no "
+                     "satellites right now), so this position may be where Node "
+                     "Medic WAS, not where it is. Give the antenna a clear view "
+                     "of the sky and try again.")
+        elif fix is not None:
             best = self._session.best_reading
             extra = (tr(", best clarity {snr} dB").format(snr=f"{best['snr']:+.1f}")
                      if best else "")

@@ -212,6 +212,7 @@
   "Not a photo you'll delete, not a note on the medic itself — somewhere you'll still have it in a year.": "消してしまう写真でも、medic 自身に置くメモでもなく — 1 年後にもまだ手元にある場所へ。",
   "Not carried yet — refresh it while the medic is online (Settings ▸ Storage).": "まだ搭載されていません — medic がオンラインの間に更新してください（設定 ▸ ストレージ）。",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "信号をまったく読み取れません — アンテナとケーブル、そしてビーコンノードが電源オンで送信中か確認してください。",
+  "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
   "Not sure which is which? Tap the  ?  above. Node Medic will guide you the rest of the way.": "どれがどれか分からない？ 上の  ?  をタップしてください。Node Medic が残りを案内します。",
   "Not yet — show me the key": "まだです — キーを表示",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "注意: メッセージの蓄積転送がオフです。medic がオフラインのスマホのメッセージを保持できるよう、ホーム ▸ 完全な伝播ノードに切り替えてください。",

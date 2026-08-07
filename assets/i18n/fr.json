@@ -212,6 +212,7 @@
   "Not a photo you'll delete, not a note on the medic itself — somewhere you'll still have it in a year.": "Pas une photo que vous supprimerez, ni une note sur le medic lui-même — quelque part où vous l'aurez encore dans un an.",
   "Not carried yet — refresh it while the medic is online (Settings ▸ Storage).": "Pas encore embarquée : actualisez-la quand le medic est en ligne (Réglages ▸ Stockage).",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Aucun signal lu : vérifiez l'antenne et le câble, et qu'un nœud balise est allumé et émet.",
+  "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Non enregistré — le GPS fonctionne sur un ancien verrouillage (aucun satellite actuellement), donc cette position peut être là où Node Medic ÉTAIT, pas où il est. Dégagez la vue du ciel et réessayez.",
   "Not sure which is which? Tap the  ?  above. Node Medic will guide you the rest of the way.": "Vous hésitez ? Touchez le  ?  ci-dessus. Node Medic vous guidera pour la suite.",
   "Not yet — show me the key": "Pas encore — montrez-moi la clé",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Note : le stockage-et-retransmission des messages est DÉSACTIVÉ. Passez en Home ▸ nœud de propagation complet pour que le medic conserve les messages des téléphones hors ligne.",
