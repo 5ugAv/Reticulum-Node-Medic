@@ -47,7 +47,8 @@ def _wrap(text, color="text_primary", size="14sp"):
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
                  watch_line=None, activity_text=None, by_hour=None,
-                 insights=None, **kwargs):
+                 insights=None, on_rebirth=None, board_attached=False,
+                 **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -55,6 +56,11 @@ class NodeDetailScreen(BoxLayout):
         self.record = record
         self._on_poll = on_poll
         self._on_navigate = on_navigate
+        # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
+        # board_attached defaults False on purpose: a caller that cannot tell
+        # must not have a repair button appear that quietly does nothing.
+        self._on_rebirth = on_rebirth
+        self._board_attached = bool(board_attached)
 
         # header: hex status + name + location
         head = BoxLayout(orientation="horizontal", size_hint_y=None,
@@ -116,6 +122,24 @@ class NodeDetailScreen(BoxLayout):
                     color="red" if sev == "alert" else
                     "amber" if sev == "warn" else "text_primary"))
 
+        # WHAT TO DO ABOUT IT. An operator arrives here because a dot went red,
+        # and until now the page described the problem without once suggesting
+        # a repair (operator, 2026-07-31). The cheaper checks come first — a
+        # rebirth destroys the node's identity, and a solar node waiting for sun
+        # is not a node that needs wiping.
+        from ui.rebirth_advice import advise
+        adv = advise(record.status(now), board_attached=self._board_attached,
+                     name=record.name or "", hours_quiet=None)
+        if adv is not None:
+            col.add_widget(_line(tr("What to try"), bold=True, size="17sp"))
+            col.add_widget(_wrap("  " + adv.headline, color="amber"))
+            for i, s in enumerate(adv.steps, 1):
+                col.add_widget(_wrap(f"  {i}. {s}", size="13.5sp"))
+            if adv.rebirth_note:
+                col.add_widget(_wrap("  " + adv.rebirth_note,
+                                     color="text_secondary", size="13sp"))
+        self._advice = adv
+
         nav = record.navigation()
         if nav:
             col.add_widget(_line(tr("Location (exact — repair visit)"), bold=True,
@@ -165,6 +189,17 @@ class NodeDetailScreen(BoxLayout):
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
             nav_btn.bind(on_release=lambda *_: self._navigate())
             actions.add_widget(nav_btn)
+        # Only when the board is REALLY here and there is somewhere to send it.
+        # A rebirth is a USB erase; a button for a node three streets away would
+        # be a repair path that looks one tap from working and isn't.
+        if (self._advice is not None and self._advice.offer_rebirth
+                and self._on_rebirth is not None):
+            rb = Button(text=tr("Rebirth this node"),
+                        font_size=theme.font_sp("18sp"), background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+            rb.bind(on_release=lambda *_: self._rebirth())
+            actions.add_widget(rb)
         self.add_widget(actions)
 
     def _ping(self):
@@ -181,3 +216,15 @@ class NodeDetailScreen(BoxLayout):
     def _navigate(self):
         if self._on_navigate:
             self._on_navigate(self.record)
+
+    def _rebirth(self):
+        """Hand off to the existing wipe-and-rebuild flow (a805c43).
+
+        Deliberately NOT destructive here — this only navigates. The erase sits
+        behind that flow's own confirm popup, which names the node it is about
+        to destroy. Two confirms for one irreversible act is right; putting the
+        erase on this button would put it one tap from a page an operator opens
+        just to read a battery level.
+        """
+        if self._on_rebirth:
+            self._on_rebirth(self.record)
