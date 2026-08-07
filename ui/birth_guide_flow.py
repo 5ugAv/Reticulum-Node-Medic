@@ -167,10 +167,28 @@ _STEPS = {
 }
 
 
-def guide_steps(path):
+def guide_steps(path, pi_key=""):
     """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
-    paths return an empty list. Returns a copy so callers can't mutate the source."""
-    return [dict(s) for s in _STEPS.get(path, [])]
+    paths return an empty list. Returns a copy so callers can't mutate the source.
+
+    *pi_key* makes the connector wording follow the board the operator actually
+    picked. Without it every Pi got one hint written around a Pi Zero, so a 3A+
+    operator was told to find "the inner micro-USB, nearer the mini-HDMI" on a
+    board that has no data micro-USB at all (operator, 2026-08-06). One string
+    for every board is the same bug as one photo for every board — and worse in
+    one way, because wrong text reads as authoritative while a wrong photo just
+    looks wrong.
+
+    Empty pi_key keeps the generic line. Naming a specific socket on a board we
+    have not identified is precisely the failure being fixed.
+    """
+    from ui.pi_connectors import connect_hint
+    steps = [dict(s) for s in _STEPS.get(path, [])]
+    if pi_key:
+        for s in steps:
+            if s.get("anim") == "connect_pi":
+                s["hint"] = connect_hint(pi_key)
+    return steps
 
 
 def paths_for_chip(chip, rtnode_capable):

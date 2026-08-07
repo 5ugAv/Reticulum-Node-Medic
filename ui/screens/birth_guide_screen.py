@@ -1107,7 +1107,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.clock import Clock
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_intro    # name step -> the chooser
-        total = len(guide_steps(self._path)) + 1
+        total = len(guide_steps(self._path, self._pi_key_for_text())) + 1
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                        size_hint_y=None, height=dp(58), font_size="33sp")
@@ -1250,8 +1250,24 @@ class BirthGuideScreen(BoxLayout):
             return getattr(self, "_pi_art_key", "")
         return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
 
+    def _pi_key_for_text(self):
+        """Which board the WORDS should describe.
+
+        Deliberately different from the art rule above. For a picture we prefer
+        what we DETECTED, because a photo is a claim about the object in front of
+        the operator and a measured sprite must match its own numbers. For text
+        we prefer what the operator CHOSE, because they are holding the board and
+        they told us what it is — and because the connector guidance has to be
+        right before anything is detected at all: it is what gets the Pi plugged
+        in in the first place.
+
+        Empty when we know neither, which yields the generic line. Naming a
+        specific socket on an unidentified board is the bug this exists to stop.
+        """
+        return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
+
     def _render_step(self):
-        steps = guide_steps(self._path)
+        steps = guide_steps(self._path, self._pi_key_for_text())
         if not steps or self._i >= len(steps):
             self._finish()
             return
@@ -1560,7 +1576,7 @@ class BirthGuideScreen(BoxLayout):
     # -- navigation --------------------------------------------------------
     def _next(self):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
-        steps = guide_steps(self._path)
+        steps = guide_steps(self._path, self._pi_key_for_text())
         cur = steps[self._i] if self._i < len(steps) else {}
         if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
             self._stop_board_poll()
@@ -1592,7 +1608,7 @@ class BirthGuideScreen(BoxLayout):
         pairing questions (or the name) when it runs out.
         """
         self._advance_token = getattr(self, "_advance_token", 0) + 1
-        steps = guide_steps(self._path)
+        steps = guide_steps(self._path, self._pi_key_for_text())
         i = self._i - 1
         while i >= 0 and self._step_is_redundant(steps[i]):
             i -= 1
