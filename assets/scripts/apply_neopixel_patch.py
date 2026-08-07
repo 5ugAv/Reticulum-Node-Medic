@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 
 DEFAULT_BOARD = "BOARD_HELTEC32_V4"
@@ -47,7 +48,10 @@ VERIFIED_NP_PIN = {
     # Heltec V4: free J2 header pin. Proven on hardware — the case glows.
     "BOARD_HELTEC32_V4": 47,
     # RAK4631: WB_IO1 = Arduino 17 = P0.17, exposed on WisBlock SLOT A/B.
-    # Researched per [[rak4631-free-pins]]; NOT yet proven on hardware.
+    # CROSS-CHECKED against the firmware's own pin list: the BOARD_RAK4631 block
+    # (Boards.h 724-761 at d39339f) claims 9, 37, 38, 42, 43, 44, 45, 46, 47 and
+    # the two base-board LEDs. 17 appears nowhere in it. Still NOT proven on
+    # hardware — nothing has been soldered to WB_IO1 yet.
     "BOARD_RAK4631": 17,
 }
 
@@ -56,6 +60,9 @@ VERIFIED_NP_PIN = {
 #: so it is refused outright rather than warned about.
 CLAIMED_PINS = {
     "BOARD_RAK4631": {
+        # CONFIRMED from the firmware source, not inferred: the BOARD_RAK4631
+        # block declares `const int pin_dio = 47;`. On a Heltec V4 the same
+        # number is the free header pin the whole recipe was built around.
         47: "the LoRa modem's DIO line",
         # The IO-slot pins labelled SPI are the on-board QSPI flash; WB_IO5/6
         # are the NFC pins; WB_IO2 controls the 3V3 rail that powers the slots.
@@ -93,18 +100,32 @@ def check_pin(board: str, pin: int, force: bool = False) -> None:
 
 
 def _block_bounds(lines, board):
-    """``(start, end)`` line indices of the ``BOARD_MODEL == board`` preprocessor
-    block. ``end`` is the next ``#elif``/``#else``/``#endif`` at the SAME nesting
-    level (exclusive), so a nested ``#if HAS_NP == false ... #endif`` inside the
-    block does not prematurely end it. ``None`` if the board is not present."""
-    start = None
-    for i, ln in enumerate(lines):
-        s = ln.lstrip()
-        if s.startswith("#") and "BOARD_MODEL ==" in ln and board in ln:
-            start = i
-            break
-    if start is None:
+    """``(start, end)`` line indices of the board's PIN block. ``None`` if the
+    board is not present.
+
+    A board can be tested by ``#if BOARD_MODEL == ...`` in SEVERAL places. The
+    RAK4631 appears twice in Boards.h: once at line 143 selecting its modem
+    (``#define MODEM SX1262``, no pins at all) and once at line 724 declaring
+    its pin list. Taking the first match found the modem block and then failed
+    with "no pin anchor" — the Heltec V4 has only one such block, so this never
+    showed up. Prefer the candidate that actually declares pins.
+
+    ``end`` is the next ``#elif``/``#else``/``#endif`` at the SAME nesting level
+    (exclusive), so a nested ``#if HAS_NP == false ... #endif`` inside the block
+    does not prematurely end it."""
+    starts = [i for i, ln in enumerate(lines)
+              if ln.lstrip().startswith("#") and "BOARD_MODEL ==" in ln and board in ln]
+    if not starts:
         return None
+    bounds = [(s, _block_end(lines, s)) for s in starts]
+    for s, e in bounds:
+        if any("const int pin_" in lines[k] for k in range(s, e)):
+            return (s, e)
+    return bounds[0]
+
+
+def _block_end(lines, start):
+    """Index of the directive that closes the block opened at *start*."""
     depth = 0
     for j in range(start + 1, len(lines)):
         s = lines[j].lstrip()
@@ -112,11 +133,11 @@ def _block_bounds(lines, board):
             depth += 1
         elif s.startswith("#endif"):
             if depth == 0:
-                return (start, j)
+                return j
             depth -= 1
         elif depth == 0 and (s.startswith("#elif") or s.startswith("#else")):
-            return (start, j)
-    return (start, len(lines))
+            return j
+    return len(lines)
 
 
 def _anchor(lines, start, end):
@@ -131,34 +152,85 @@ def _anchor(lines, start, end):
     return sclk if sclk is not None else last_pin
 
 
+#: A ``#define HAS_NP <anything>`` line. Deliberately NOT matching
+#: ``#if HAS_NP == false``, which the firmware also contains — see _block_bounds.
+#: WHY THESE EXIST. The Heltec V4's block declares no HAS_NP at all, so the
+#: original recipe — append ``#define HAS_NP true`` after the pin list — was
+#: correct there and nobody looked further. The RAK4631's block DOES declare one
+#: (``#define HAS_NP false``, Boards.h line 731 at firmware d39339f), ABOVE its
+#: pin list. Appending a second definition below it is a macro redefinition: the
+#: compiler warns, the last one happens to win, and the build looks fine until
+#: something turns that warning into an error. Flip the existing line instead.
+_HAS_NP_DEFINE = re.compile(r"^\s*#\s*define\s+HAS_NP\b")
+#: A ``const int pin_np = N;`` declaration. Two of these in one block is a hard
+#: C++ redefinition error, not a warning.
+_PIN_NP_DECL = re.compile(r"^\s*const\s+int\s+pin_np\b")
+
+
 def is_patched(contents, board=DEFAULT_BOARD, pin=DEFAULT_PIN):
-    """True if *board*'s block already carries the NeoPixel directives."""
+    """True if *board*'s block carries EXACTLY the NeoPixel directives we want.
+
+    Strict on purpose. A block holding two HAS_NP defines, or a stale
+    ``pin_np`` from a different pin, is not "patched" — it is damaged, and
+    saying so is what lets :func:`apply_patch` repair it instead of reporting
+    "Already patched." over a block that will not compile."""
     lines = contents.splitlines()
     bounds = _block_bounds(lines, board)
     if not bounds:
         return False
     start, end = bounds
-    block = "\n".join(lines[start:end])
-    return HAS_NP_TRUE in block and f"pin_np = {pin}" in block
+    block = lines[start:end]
+    defines = [ln for ln in block if _HAS_NP_DEFINE.match(ln)]
+    decls = [ln for ln in block if _PIN_NP_DECL.match(ln)]
+    if len(defines) != 1 or len(decls) != 1:
+        return False
+    return ("true" in defines[0].split("HAS_NP", 1)[1]
+            and f"pin_np = {pin}" in decls[0])
 
 
 def apply_patch(contents, board=DEFAULT_BOARD, pin=DEFAULT_PIN):
-    """Return *contents* with the NeoPixel directives added to *board*'s block
-    (idempotent). Raises ValueError if the block or its pin anchor is missing."""
-    if is_patched(contents, board, pin):
-        return contents
+    """Return *contents* with the NeoPixel directives set on *board*'s block.
+
+    NORMALISES rather than appends: any existing HAS_NP defines and pin_np
+    declarations in the block are reduced to exactly one of each. That makes it
+    idempotent, and it repairs a block an older version of this script left
+    doubly-defined. Raises ValueError if the block or its pin anchor is
+    missing."""
     lines = contents.splitlines()
     bounds = _block_bounds(lines, board)
     if not bounds:
         raise ValueError(f"Board block {board} not found in Boards.h")
     start, end = bounds
-    idx = _anchor(lines, start, end)
+
+    # Keep the FIRST HAS_NP where it stands (flipped true) so a board that
+    # declares one among its other HAS_* flags keeps its house style; drop any
+    # duplicate, and drop every pin_np so exactly one is re-added below.
+    cleaned, seen_np = [], False
+    for ln in lines[start:end]:
+        if _HAS_NP_DEFINE.match(ln):
+            if not seen_np:
+                seen_np = True
+                pad = ln[:len(ln) - len(ln.lstrip())]
+                cleaned.append(f"{pad}{HAS_NP_TRUE}")
+            continue
+        if _PIN_NP_DECL.match(ln):
+            continue
+        cleaned.append(ln)
+
+    idx = _anchor(cleaned, 0, len(cleaned))
     if idx is None:
         raise ValueError(f"No pin anchor (const int pin_*) in {board} block")
-    indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
-    lines.insert(idx + 1, f"{indent}{HAS_NP_TRUE}")
-    lines.insert(idx + 2, f"{indent}const int pin_np = {pin};")
-    return "\n".join(lines) + ("\n" if contents.endswith("\n") else "")
+    indent = cleaned[idx][:len(cleaned[idx]) - len(cleaned[idx].lstrip())]
+    if not seen_np:
+        cleaned.insert(idx + 1, f"{indent}{HAS_NP_TRUE}")
+    # pin_np goes after the anchor, but after the HAS_NP line when that sits
+    # directly against it — otherwise the two would swap on a second run.
+    if idx + 1 < len(cleaned) and _HAS_NP_DEFINE.match(cleaned[idx + 1]):
+        idx += 1
+    cleaned.insert(idx + 1, f"{indent}const int pin_np = {pin};")
+
+    out = lines[:start] + cleaned + lines[end:]
+    return "\n".join(out) + ("\n" if contents.endswith("\n") else "")
 
 
 def main(argv=None):
