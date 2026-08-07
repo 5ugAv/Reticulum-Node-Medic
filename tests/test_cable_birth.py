@@ -382,6 +382,16 @@ def test_a_network_sweep_never_yields_an_address_to_auto_fill(monkeypatch):
     monkeypatch.setattr(pi_discover, "last_imaged_pi", lambda path=None: {})
     monkeypatch.setattr(pi_discover, "neighbours",
                         lambda: [{"ip": "192.168.1.42", "mac": "02:00:00:0a:00:0a"}])
+    # AND the kin roster. Injecting `neighbours` alone looked like enough on a
+    # Mac and was not: find_pi also asks known_kin_names(), which on the medic
+    # reads the operator's REAL fleet. 192.168.1.42 is EVERYWHERE, their live
+    # propagation node, so the medic answered "already yours" instead of "can't
+    # tell" and this test failed for describing a situation that cannot arise
+    # there (2026-08-07, the first full suite run on the device).
+    #
+    # A test must not depend on whose network it is running on. The stranger's
+    # Pi has to be a STRANGER, so the roster is empty by construction.
+    monkeypatch.setattr(pi_discover, "known_kin_names", lambda *a, **k: {})
     r = pi_discover.find_pi()
     assert r["address"] == "", "a stranger's Pi would have been filled in"
     assert r["confirmed"] is False

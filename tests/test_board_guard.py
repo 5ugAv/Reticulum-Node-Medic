@@ -16,10 +16,6 @@ from ui import onboard_roster as R
 from ui.onboard_roster import ProtectedBoardError, assert_flashable
 
 
-# Drives the guard directly, so it is exempt from the conftest stand-down.
-# Hermetic: each test patches the host lookups and passes its own roster.
-pytestmark = pytest.mark.onboard_guard
-
 
 @pytest.fixture
 def roster_file(tmp_path):
@@ -38,12 +34,14 @@ def test_work_board_passes(monkeypatch, roster_file):
                             service_serials=set()) is True
 
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_onboard_by_roster_is_refused(monkeypatch, roster_file):
     _stub_serial(monkeypatch, {"/dev/ttyACM1": "A1:B2:C3:D4:E5:F6"})   # Jonesey
     with pytest.raises(ProtectedBoardError):
         assert_flashable("/dev/ttyACM1", path=roster_file, service_serials=set())
 
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_onboard_by_service_binding_is_refused(monkeypatch, tmp_path):
     # empty roster (e.g. a fresh clone) but rnsd holds the radio -> still refused
     empty = tmp_path / "onboard.json"
@@ -60,6 +58,7 @@ def test_unresolvable_serial_fails_closed(monkeypatch, roster_file):
         assert_flashable("/dev/ttyACM9", path=roster_file, service_serials=set())
 
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_error_message_names_the_board(monkeypatch, roster_file):
     _stub_serial(monkeypatch, {"/dev/ttyACM1": "A1:B2:C3:D4:E5:F6"})
     with pytest.raises(ProtectedBoardError) as ei:

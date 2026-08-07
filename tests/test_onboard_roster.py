@@ -10,12 +10,6 @@ from ui import hw_factories as hw
 
 import pytest
 
-# This module IS the onboard guard's own test. The autouse fixture in
-# conftest stands the guard down for the suite at large; these tests must see
-# the real functions, and they are hermetic on their own — every one patches
-# serial_for_port itself and supplies its own roster path.
-pytestmark = pytest.mark.onboard_guard
-
 
 def test_register_and_load_roundtrip(tmp_path):
     p = str(tmp_path / "onboard.json")
@@ -33,6 +27,7 @@ def test_load_missing_roster_is_empty(tmp_path):
     assert roster.onboard_serials(str(tmp_path / "nope.json")) == set()
 
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_serial_for_port_reads_by_id_symlink():
     link = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00"
     with patch("glob.glob", return_value=[link]), \
@@ -41,6 +36,7 @@ def test_serial_for_port_reads_by_id_symlink():
         assert roster.serial_for_port("/dev/ttyACM0") == "A1:B2:C3:D4:E5:F6"
 
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_is_onboard_matches_by_identity(tmp_path):
     p = str(tmp_path / "onboard.json")
     roster.register("jonesey_lora", "A1:B2:C3:D4:E5:F6", path=p)
@@ -105,6 +101,7 @@ def test_commission_skips_ports_without_a_serial(tmp_path):
 
 # ---- two-layer is_onboard + fail-closed -------------------------------------
 
+@pytest.mark.onboard_guard   # drives the real lookups
 def test_is_onboard_second_layer_is_service_bound(tmp_path):
     p = str(tmp_path / "onboard.json")                 # empty roster
     with patch.object(roster, "serial_for_port", side_effect=lambda _port: "SVC:1"):
