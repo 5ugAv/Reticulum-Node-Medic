@@ -330,3 +330,30 @@ def test_the_connect_ripple_finishes_like_the_card_one():
     for i in range(count):
         alpha = (1.0 - min(1.0, target - i * stagger)) * 0.9
         assert alpha == 0, f"ring {i} left at alpha {alpha:.3f} when the burst ends"
+
+
+# --- a hand-off must prepare the destination ------------------------------
+#
+# Live, 2026-08-09: "Flash this radio →" landed the operator on the full,
+# unscoped BIRTH form with an EMPTY name field. The walkthrough already knows
+# the name and the job; making them retype it is asking twice, and an unscoped
+# form does not say what it is for.
+
+def test_the_handoff_scopes_the_birth_screen_to_the_radio_job():
+    src = func_source(SCREEN, "_hand_over_name")
+    assert 'begin_guided("host")' in src, \
+        "the radio step's job is flash-this-as-an-RNode, not the whole Pi build"
+
+
+def test_it_scopes_before_naming():
+    """begin_guided resets the form, so a name set first would be wiped."""
+    src = func_source(SCREEN, "_hand_over_name")
+    # the CALLS, not the docstring mentions
+    assert src.index("scr.begin_guided") < src.index("scr.prefill_name")
+
+
+def test_it_uses_the_method_each_screen_actually_has():
+    """BIRTH takes prefill_name; the imager takes prefill_hostname. Calling the
+    wrong one silently does nothing, which is how the empty field happened."""
+    src = func_source(SCREEN, "_hand_over_name")
+    assert "prefill_name" in src and "prefill_hostname" in src

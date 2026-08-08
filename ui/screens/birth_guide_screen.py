@@ -1206,16 +1206,38 @@ class BirthGuideScreen(BoxLayout):
         self._render_step()
 
     def _hand_over_name(self, screen_name):
-        """Give a full screen the node name this walkthrough already collected."""
-        if not self._node_name:
-            return
+        """Hand the destination the name AND the job it has been sent to do.
+
+        A hand-off used to pass only a name, and only via prefill_hostname —
+        which the BIRTH screen does not have (it takes prefill_name). So tapping
+        "Flash this radio" landed the operator on the full, unscoped birth form
+        with an empty name field and no indication of why they were there
+        (operator, live, 2026-08-09). The walkthrough already knows the answers
+        to every question on that form; making them retype it is asking twice.
+
+        The radio step's job is specifically "flash this board as an RNode",
+        which is what begin_guided("host") scopes the screen to. Sending the
+        Pi path's own key would scope it to the whole Pi+radio build, which is
+        the walkthrough we are standing in the middle of.
+        """
         try:
             from kivy.app import App
             app = App.get_running_app()
             scr = getattr(app, f"{screen_name}_screen", None)
-            if scr is not None and hasattr(scr, "prefill_hostname"):
-                scr.prefill_hostname(self._node_name)
-        except Exception:
+            if scr is None:
+                return
+            name = self._node_name or ""
+            if screen_name == "birth":
+                # scope FIRST — begin_guided resets the form, so a name set
+                # before it would be wiped by the very call meant to prepare it
+                if hasattr(scr, "begin_guided"):
+                    scr.begin_guided("host")
+                if name and hasattr(scr, "prefill_name"):
+                    scr.prefill_name(name)
+                return
+            if name and hasattr(scr, "prefill_hostname"):
+                scr.prefill_hostname(name)
+        except Exception:                                          # noqa: BLE001
             pass
 
     def _step_is_redundant(self, step):
