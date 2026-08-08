@@ -931,6 +931,17 @@ class ReticulumNodeMedicApp(App):
                 if self.flash_in_progress():
                     clear_warning()
                     return
+                # A STEP MAY ASK FOR THE BOARD TO GO. The guided birth's
+                # "Take the radio out of Node Medic" does exactly that, and
+                # this watcher fired five seconds later telling the operator
+                # the board "has vanished from USB — plug it back in before
+                # continuing" (reported live, 2026-08-09). The tool told them
+                # off for following its own instruction, on the step that gave
+                # it. Every step after that one also expects it gone: the radio
+                # is on the bench until it goes onto the Pi at the end.
+                if getattr(self, "_board_absence_expected", False):
+                    clear_warning()
+                    return
                 import time as _t
                 # Inside a quiet window (a deliberate detect/banner reset).
                 if _t.time() < getattr(self, "_bd_quiet_until", 0):
@@ -1785,6 +1796,16 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             pass
         return cert
+
+    def expect_board_absence(self, expected=True):
+        """Tell the disconnect watcher that an unplugged board is INTENDED.
+
+        Set while a walkthrough step asks for the radio to come off the medic —
+        and left set for the rest of that walkthrough, because the radio stays
+        off until it goes onto the Pi at the very end. Cleared when the guide
+        resets, so a later session gets the warning back.
+        """
+        self._board_absence_expected = bool(expected)
 
     def resume_guided_birth(self, result=None):
         """Hand control back to the walkthrough after a screen has done its job.

@@ -142,3 +142,47 @@ def test_a_broken_resume_cannot_strand_the_operator():
     guard = src[:src.index("switch_mode")]
     assert "except Exception" in guard
     assert "switch_mode" in src, "there must still be an unconditional exit"
+
+
+# --- the tool must not tell you off for obeying it ------------------------
+#
+# Reported live 2026-08-09, with a photo: the screen said "Take the radio out of
+# Node Medic" (step 4 of 8) and five seconds later a popup said "Board
+# disconnected! The board that was plugged in has vanished from USB. Check the
+# cable and plug it back in before continuing."
+#
+# The tool contradicting its own instruction is worse than saying nothing: it
+# teaches the operator that the warnings are noise, and the next one might be
+# real.
+
+def test_the_disconnect_watcher_can_be_told_an_absence_is_intended():
+    src = func_source(APP, "expect_board_absence")
+    assert "_board_absence_expected" in src
+
+
+def test_the_watcher_actually_checks_that_flag():
+    src = open(APP).read()
+    i = src.index("Board disconnected!")
+    watcher = src[max(0, i - 3000):i]
+    assert "_board_absence_expected" in watcher, \
+        "the warning must be suppressed when a step asked for the board to go"
+    assert watcher.index("_board_absence_expected") > watcher.index("flash_in_progress"), \
+        "checked alongside the other legitimate-absence escapes"
+
+
+def test_the_unplug_step_declares_it():
+    src = func_source(SCREEN, "_render_step")
+    assert "_expect_board_absence(True)" in src
+    assert "DisconnectBoardAnim" in src
+
+
+def test_a_new_walkthrough_gets_the_warning_back():
+    """Otherwise one guided birth would silence a real fault for the rest of
+    the session."""
+    src = func_source(SCREEN, "reset")
+    assert "_expect_board_absence(False)" in src
+
+
+def test_declaring_it_can_never_raise_inside_a_step_render():
+    src = func_source(SCREEN, "_expect_board_absence")
+    assert "except Exception" in src

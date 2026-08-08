@@ -93,6 +93,10 @@ class BirthGuideScreen(BoxLayout):
         self._resume_at = None
         self._radio_verified = False
         self._gate_warning = ""
+        # A fresh walkthrough starts with the radio going ON, so the disconnect
+        # warning must come back — otherwise one guided birth would silence it
+        # for the rest of the session.
+        self._expect_board_absence(False)
         # Never cleared before: after ONE board read it stayed True, so
         # _on_pi_detected returned early for the rest of the session and the Pi
         # auto-detect was dead (audit, 2026-08-03).
@@ -1431,6 +1435,12 @@ class BirthGuideScreen(BoxLayout):
             step.hide_next()
             self._start_pi_poll(anim)
         elif isinstance(anim, (DisconnectBoardAnim, RadioToPiAnim)):
+            # From here to the end of the walkthrough the radio is DELIBERATELY
+            # off the medic, so the global disconnect watcher must stop calling
+            # that a fault. It fired on this very step and told the operator to
+            # plug the board back in (2026-08-09) — the tool contradicting its
+            # own instruction, which is worse than silence.
+            self._expect_board_absence(True)
             # BEFORE the ConnectBoardAnim branch, because both subclass it — and
             # inheriting that branch would be exactly wrong. It hides Next and
             # waits for a board to APPEAR on the medic's USB; on these two steps
@@ -1734,6 +1744,22 @@ class BirthGuideScreen(BoxLayout):
     def cancel_resume(self):
         """Forget the return point — the operator left the walkthrough."""
         self._resume_at = None
+
+    def _expect_board_absence(self, expected=True):
+        """Ask the app's disconnect watcher to treat a missing board as normal.
+
+        Best-effort: if the app has no such hook the walkthrough still works,
+        it just gets the spurious warning back. Never let a cosmetic concern
+        raise inside a step render.
+        """
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            fn = getattr(app, "expect_board_absence", None)
+            if callable(fn):
+                fn(expected)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _gate_state(self, gate):
         """``(may_proceed, why_not)`` for a gated step.
