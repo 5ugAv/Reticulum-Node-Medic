@@ -1685,8 +1685,21 @@ class BirthGuideScreen(BoxLayout):
         self._resume_steps()
 
     def _resume_steps(self):
-        """Carry on with the physical steps, after the radio step."""
-        self._i = 1
+        """Carry on with the physical steps, from the TOP of the list.
+
+        This used to start at index 1, on the reasoning that step 0 was "connect
+        the radio" and the radio was self-evidently already connected — the pair
+        check only happens because a radio was detected. Reasonable then.
+
+        It is wrong now. Step 0 is where the radio is FLASHED AND VERIFIED, and
+        skipping it left the operator on the gate step being told "this radio
+        hasn't been flashed and verified yet — finish it here first" with no
+        step in front of them that could (operator, live, 2026-08-09).
+
+        Start at 0 and let _step_is_redundant decide, which it can now do
+        safely: a step carrying a gate or a hand-off is never judged redundant.
+        """
+        self._i = 0
         self._render_step()
 
     def _render_power_verdict(self, verdict):

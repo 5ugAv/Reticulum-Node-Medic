@@ -291,3 +291,42 @@ def test_the_radio_steps_survive_a_board_being_plugged_in():
     for s in (radio, gate):
         assert s.get("gate") or s.get("screen"), \
             f"{s['title']!r} must carry a gate or a hand-off to be protected"
+
+
+# --- the gate must have something in front of it --------------------------
+#
+# Live, 2026-08-09: the gate fired correctly and said "This radio hasn't been
+# flashed and verified yet. Finish it here first" — while the step that could
+# finish it had been skipped. A refusal the operator cannot act on is a wall.
+
+def test_resuming_after_the_pair_check_starts_at_the_top():
+    """It used to hardcode index 1, skipping step 0 on the reasoning that the
+    radio was already connected. Step 0 is now where the radio is FLASHED."""
+    src = func_source(SCREEN, "_resume_steps")
+    assert "self._i = 0" in src
+    assert "self._i = 1" not in src
+
+
+def test_the_step_before_the_gate_can_actually_satisfy_it():
+    """Whatever precedes the gate must hand off to real work, or the gate's
+    instruction ("finish it here first") points at nothing."""
+    from ui.birth_guide_flow import guide_steps
+    steps = guide_steps("pi")
+    gate_at = next(i for i, s in enumerate(steps) if s.get("gate"))
+    assert gate_at > 0, "a gate cannot be the first step"
+    assert steps[gate_at - 1].get("screen"), \
+        "the step before a gate must hand off to the work that satisfies it"
+
+
+def test_the_connect_ripple_finishes_like_the_card_one():
+    """Same maths, same bug, reported the same way: 'this animation stopped'."""
+    import re
+    body = open("ui/widgets/birth_anims.py").read()
+    seg = body[body.index("def mark_connected"):][:2600]
+    target = float(re.search(r"Animation\(burst=([\d.]+)", seg).group(1))
+    rip = body[body.index("def _ripples"):][:1400]
+    count = int(re.search(r"for i in range\((\d+)\)", rip).group(1))
+    stagger = float(re.search(r"i \* ([\d.]+)", rip).group(1))
+    for i in range(count):
+        alpha = (1.0 - min(1.0, target - i * stagger)) * 0.9
+        assert alpha == 0, f"ring {i} left at alpha {alpha:.3f} when the burst ends"

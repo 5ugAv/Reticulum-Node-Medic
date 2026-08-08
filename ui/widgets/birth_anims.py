@@ -395,7 +395,13 @@ class ConnectBoardAnim(_LoopAnim):
             self._conn_tex = cl.texture
         except Exception:
             self._conn_tex = None
-        Animation(burst=1.0, duration=1.1, t="out_quad").start(self)
+        # PAST 1.0, or it does not finish. Each ring's alpha is (1 - f) * 0.9
+        # with f = burst - i*0.16, so at 1.0 only the FIRST ring has faded and
+        # the other three stop mid-flight and sit there forever. The card burst
+        # had the identical bug and the operator read it as a hang; they read
+        # this one the same way ("this animation stopped and looks exactly like
+        # this screen grab", 2026-08-09). The last ring needs 1 + 3*0.16 = 1.48.
+        Animation(burst=1.6, duration=1.4, t="out_quad").start(self)
         Animation(rise=1.0, duration=0.55, t="out_back").start(self)
 
     def _draw(self):
