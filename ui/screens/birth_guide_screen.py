@@ -78,6 +78,13 @@ class BirthGuideScreen(BoxLayout):
         self._pair_checked = False
         self._board_key = ""
         self._pi_key = ""
+        # A new walkthrough owes nothing to the last one. A stale return point
+        # would send a screen finishing LATE — a card write that outlived the
+        # operator's patience, say — back into a walkthrough that has since
+        # started over, landing them at a step for a different node.
+        self._resume_at = None
+        self._radio_verified = False
+        self._gate_warning = ""
         # Never cleared before: after ONE board read it stayed True, so
         # _on_pi_detected returned early for the rest of the session and the Pi
         # auto-detect was dead (audit, 2026-08-03).
@@ -1658,6 +1665,45 @@ class BirthGuideScreen(BoxLayout):
             wrap.add_widget(_bk)
         self.add_widget(wrap)
 
+    # -- returning from a hand-off ------------------------------------------
+
+    def has_pending_resume(self) -> bool:
+        """Is a walkthrough waiting mid-flight for a screen to hand back?
+
+        Screens ask this before offering "Continue the walkthrough", so the
+        offer only appears when there is genuinely somewhere to go back to —
+        never on a card written from the BIRTH screen directly.
+        """
+        return getattr(self, "_resume_at", None) is not None
+
+    def resume(self, result=None):
+        """Come back from a hand-off and carry on at the next step.
+
+        *result* is whatever the screen achieved, so the guide can record it and
+        gates can consult it. ``{"radio_verified": True}`` is what will arm the
+        radio gate once the radio step hands off to the flash.
+
+        Safe to call when nothing is pending — a screen that finishes its work
+        after the operator has already walked away must not drag them back.
+        """
+        at = getattr(self, "_resume_at", None)
+        if at is None:
+            return False
+        self._resume_at = None
+        for key, val in (result or {}).items():
+            setattr(self, f"_{key}", val)
+        steps = guide_steps(self._path, self._pi_key_for_text())
+        self._i = at
+        if self._i >= len(steps):
+            self._finish()
+        else:
+            self._render_step()
+        return True
+
+    def cancel_resume(self):
+        """Forget the return point — the operator left the walkthrough."""
+        self._resume_at = None
+
     def _gate_state(self, gate):
         """``(may_proceed, why_not)`` for a gated step.
 
@@ -1713,6 +1759,19 @@ class BirthGuideScreen(BoxLayout):
         self._gate_warning = ""
         if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
             self._stop_board_poll()
+            # REMEMBER WHERE TO COME BACK TO. A hand-off used to be the END of
+            # the walkthrough: control went to the full screen and the guide's
+            # remaining steps were simply never reached. That is why the imager
+            # has to print "Next: take the card out, put it in the Pi, plug the
+            # Pi in" as its own plain text — those are guide steps, stranded on
+            # the far side of a one-way door — and why the operator watched that
+            # screen "just sit there" on 2026-08-08. It was not waiting for
+            # anything; it was the end of the road.
+            #
+            # It is also why the radio is never flashed mid-flow and why the
+            # final "put the radio on the Pi and prove it" step has never
+            # existed: neither can be a hand-off if a hand-off cannot return.
+            self._resume_at = self._i + 1
             self._on_navigate(cur["screen"])
             # Carry the name across. The BIRTH screen route already did this;
             # this one did not, so anyone walking the GUIDE — which is the

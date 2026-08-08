@@ -1786,6 +1786,31 @@ class ReticulumNodeMedicApp(App):
             pass
         return cert
 
+    def resume_guided_birth(self, result=None):
+        """Hand control back to the walkthrough after a screen has done its job.
+
+        Returns True if a walkthrough was actually waiting. Screens call this
+        instead of leaving the operator on a finished page — before this existed
+        a hand-off was one-way, so the guide's remaining steps were unreachable
+        and each screen had to narrate them itself in plain text.
+
+        *result* records what the screen achieved (e.g. ``{"radio_verified":
+        True}``), which is what lets a later step's gate consult it.
+        """
+        g = getattr(self, "birth_guide_screen", None)
+        if g is None or not g.has_pending_resume():
+            return False
+        self.switch_mode("birth_guide")
+        g.resume(result or {})
+        return True
+
+    def guided_birth_pending(self) -> bool:
+        """Is a walkthrough mid-flight, waiting for a screen to hand back?
+        Screens ask before offering to continue, so the offer never appears for
+        work started directly from the BIRTH screen."""
+        g = getattr(self, "birth_guide_screen", None)
+        return bool(g is not None and g.has_pending_resume())
+
     def _guided_birth_complete(self, path, name=""):
         """The guide's steps are done — hand off to the real BIRTH screen,
         pre-scoped to the chosen kind with the node name (collected in the guide)

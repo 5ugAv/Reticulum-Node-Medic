@@ -1048,6 +1048,18 @@ class PiImagerScreen(BoxLayout):
     def _back_to_birth(self):
         from kivy.app import App
         app = App.get_running_app()
+        # IF A WALKTHROUGH SENT US HERE, GIVE IT BACK. Until the guide could be
+        # resumed this screen was a terminus: the card was written, the Pi came
+        # back, and the operator was dropped on the BIRTH screen with the rest of
+        # the walkthrough — move the card, connect the Pi, connect the radio,
+        # prove it — stranded behind a one-way hand-off. That is why this screen
+        # has to narrate those steps itself in plain text, and why the operator
+        # watched it "just sit there" (2026-08-08). It was the end of the road.
+        try:
+            if getattr(app, "resume_guided_birth", None) and app.resume_guided_birth():
+                return
+        except Exception:                                          # noqa: BLE001
+            pass            # a broken resume must never strand the operator here
         try:
             scr = getattr(app, "birth_screen", None)
             if scr is not None and hasattr(scr, "arrived_from_imaging"):
