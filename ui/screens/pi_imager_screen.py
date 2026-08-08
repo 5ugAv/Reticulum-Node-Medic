@@ -136,8 +136,14 @@ class PiImagerScreen(BoxLayout):
         ti = TextInput(hint_text=hint, multiline=False, password=password,
                        size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(ti, numeric=numeric)
+        if password:
+            # NEVER carried across. Tracked by an explicit set rather than by
+            # reading ti.password, because the Show/Hide button FLIPS that
+            # attribute — so a revealed password would have looked like an
+            # ordinary field and been cached.
+            self._secret_keys = getattr(self, "_secret_keys", set()) | {key}
         prev = (getattr(self, "_kept", {}) or {}).get(key)
-        if prev:
+        if prev and not password:
             ti.text = prev              # survived a rebuild — don't retype it
         self._inputs[key] = ti
         if not password:
@@ -399,14 +405,33 @@ class PiImagerScreen(BoxLayout):
         # re-enumerates as it starts presenting its card. So filling in the
         # password and then watching the form reset itself was not a rare race,
         # it was the normal path (walkthrough, 2026-08-02).
+        #
+        # EXCEPT SECRETS. The login password used to be carried too, and it
+        # outlived the rebuild it was meant to survive: the operator reached
+        # this screen at the START OF THE NEXT BIRTH with the PREVIOUS node's
+        # password already in the box, in the clear (2026-08-08). Unnoticed,
+        # two nodes ship with the same login — and the medic deliberately does
+        # not store passwords, so nothing would ever surface it.
+        #
+        # The WiFi PSK is masked too and so is excluded here as well, which
+        # costs nothing: it is re-supplied from the medic's own saved network
+        # every time the form is built, not recovered from this cache. The
+        # login password has no such source — it is a fact about ONE node, it
+        # is hashed onto the card and cannot be read back, and it must be typed
+        # afresh for every birth.
+        secrets = getattr(self, "_secret_keys", set())
         keep = {}
         for k, t in (getattr(self, "_inputs", None) or {}).items():
+            if k in secrets:
+                continue
             try:
                 if t.text.strip():
                     keep[k] = t.text
             except Exception:
                 pass
         self._kept = {**getattr(self, "_kept", {}), **keep}
+        for k in secrets:                 # belt and braces: never linger
+            self._kept.pop(k, None)
         self.col.clear_widgets()
         self._inputs = {}
         targets = pi_imager.list_target_disks()
@@ -626,7 +651,7 @@ class PiImagerScreen(BoxLayout):
                 # pin, so the default dr_mode=otg resolves to HOST and the board
                 # can never appear on the medic. Empty (board unknown) keeps the
                 # plain overlay, which is what every board got before.
-                pi_key=self._pi_art_key())
+                pi_key=self._pi_config_key())
             if ok:
                 # Remember what we just named it, so BIRTH can offer the Pi's
                 # address instead of asking the operator for an IP they have
@@ -680,6 +705,32 @@ class PiImagerScreen(BoxLayout):
             return getattr(guide, "_pi_art_key", "") or ""
         except Exception:
             return ""
+
+    def _pi_config_key(self):
+        """Which Pi the CARD is being written for. The operator's answer first.
+
+        NOT :meth:`_pi_art_key`, and the difference is not cosmetic. That one is
+        the USB-DETECTED model, and USB can only ever name a SoC: BCM283x is a
+        Zero 2 W, a 3A+ and a 3B+ at once, so it returns "" for all three. The
+        card writer was being handed that "", which made dwc2_overlay_for()
+        produce a BARE ``dtoverlay=dwc2`` — dr_mode=otg, "read the ID pin" — on
+        a 3A+ whose USB-A socket has no ID pin. The Pi booted perfectly and
+        presented no USB device (operator, live, 2026-08-08).
+
+        The board's identity was never actually unknown: the operator was asked
+        "Which Raspberry Pi is this?" and answered. The guide already draws this
+        distinction for its own text — a picture prefers what was DETECTED, but
+        words prefer what the operator CHOSE, "because they are holding the
+        board and they told us what it is". A dr_mode is not a picture. It is a
+        hardware fact, and the operator is the better source.
+        """
+        try:
+            from kivy.app import App
+            guide = getattr(App.get_running_app(), "birth_guide_screen", None)
+            chosen = getattr(guide, "_pi_key", "") or ""
+            return chosen or self._pi_art_key()
+        except Exception:
+            return self._pi_art_key()
 
     def _tick(self, _dt):
         import time

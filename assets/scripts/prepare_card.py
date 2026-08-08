@@ -304,6 +304,19 @@ def write_boot(mnt: str, cfg: dict) -> None:
                 print("PREPARE_WARN: cable link INCOMPLETE — " + "; ".join(missing)
                       + ". The Pi will boot and join WiFi, but it will NOT appear "
                         "over the USB cable. Birth this one over WiFi.")
+            elif not pi_key:
+                # "I don't know which Pi this is" and "this Pi needs no dr_mode"
+                # produced IDENTICAL output — a bare dtoverlay=dwc2 — and the
+                # first of those is a silent failure on any board whose OTG port
+                # has no ID pin to read. A Pi 3A+ written this way booted
+                # perfectly and presented nothing (2026-08-08). Say which case
+                # this is.
+                print("PREPARE_WARN: no Pi model was given, so the gadget "
+                      "overlay was written WITHOUT a dr_mode. That is correct "
+                      "for a Zero/4/5 (their OTG ports have an ID pin) and "
+                      "WRONG for a 3A+, whose USB-A socket has none — it will "
+                      "boot fine and never appear over the cable.")
+                say("baked the USB-cable link (no dr_mode — model unknown)")
             else:
                 say("baked the USB-cable link")
         except Exception as exc:                        # noqa: BLE001

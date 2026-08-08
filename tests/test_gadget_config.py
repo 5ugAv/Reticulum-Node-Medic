@@ -89,3 +89,64 @@ def test_the_root_helper_agrees_with_the_module():
                gadget.config_txt_has_gadget(STOCK_TAIL, key), key
         assert pc.config_txt_with_gadget(STOCK_TAIL, key) == \
                gadget.config_txt_with_gadget(STOCK_TAIL, key), key
+
+
+# --- the password must never outlive one birth ----------------------------
+
+def test_the_imager_never_caches_a_masked_field():
+    """The login password was prefilled at the START OF THE NEXT BIRTH with the
+    PREVIOUS node's password, in the clear (operator, 2026-08-08). Unnoticed,
+    two nodes ship with the same login — and the medic deliberately does not
+    store passwords, so nothing would ever surface it.
+
+    Source inspection: the screen needs Kivy, which this suite cannot import.
+    """
+    from tests.srcutil import func_source
+    SCREEN = "ui/screens/pi_imager_screen.py"
+
+    field = func_source(SCREEN, "_field")
+    # a masked field registers as secret, and is never restored from the cache
+    assert "_secret_keys" in field
+    assert "prev and not password" in field, "a password must not be refilled"
+
+    build = func_source(SCREEN, "_build")
+    assert "_secret_keys" in build, "the cache must skip secrets"
+    assert "continue" in build
+    assert "pop(k, None)" in build, "and actively evict any that got in"
+
+
+def test_secrecy_is_not_keyed_off_the_show_hide_toggle():
+    """ti.password FLIPS when the operator taps Show. Keying off it would cache
+    the secret precisely when it was visible."""
+    from tests.srcutil import func_source
+    field = func_source("ui/screens/pi_imager_screen.py", "_field")
+    secret_line = [l for l in field.splitlines() if "_secret_keys" in l
+                   and "|" in l]
+    assert secret_line, "expected an explicit set membership, not an attribute read"
+    assert "ti.password" not in "".join(secret_line)
+
+
+# --- the card must be written for the board the OPERATOR named -------------
+
+def test_the_card_writer_uses_the_operators_choice_not_the_usb_guess():
+    """USB can only name a SoC — BCM283x is a Zero 2 W, a 3A+ and a 3B+ at once
+    — so the detected key is "" for all three. Handing that "" to the writer
+    produced a BARE dtoverlay=dwc2 (dr_mode=otg, "read the ID pin") on a 3A+
+    whose USB-A socket has no ID pin. It booted perfectly and presented nothing.
+    """
+    from tests.srcutil import func_source
+    SCREEN = "ui/screens/pi_imager_screen.py"
+    src = open(SCREEN).read()
+    # the write call must not take the art key
+    # scope to the write_image(...) call itself — the SurgeryAnim PORTRAIT
+    # legitimately uses the detected key, because a picture is a claim about
+    # the object in front of the operator.
+    i = src.index("pi_imager.flash(")
+    call = src[i:i + 700]                       # the call and its arguments
+    assert "pi_key=self._pi_config_key()" in call, \
+        f"the card writer must use the operator's chosen model, got: {call[-60:]}"
+    assert "_pi_art_key" not in call
+
+    cfg = func_source(SCREEN, "_pi_config_key")
+    assert "_pi_key" in cfg, "the operator's answer comes first"
+    assert "_pi_art_key" in cfg, "falling back to detection is still fine"
