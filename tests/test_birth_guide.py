@@ -345,16 +345,46 @@ def test_the_card_poll_dies_with_the_step():
     assert "_stop_card_poll" in stop
 
 
-def test_seeing_a_card_does_not_advance_or_write():
-    """The connect steps hide Next because plugging in IS the action. This step
-    is followed by a DESTRUCTIVE write, so the deliberate press stays."""
+def test_seeing_a_card_does_not_write():
+    """Seeing a card may ADVANCE, but must never WRITE.
+
+    This guard used to forbid advancing too, on the reasoning that "this step is
+    followed by a DESTRUCTIVE write, so the deliberate press stays". The
+    operator changed the design live on the bench (2026-08-08): once the medic
+    can see a card there is nothing left for them to decide on that step, and a
+    green "Write the card →" button sitting under a finished animation reads as
+    the tool waiting on them.
+
+    The safety property is UNCHANGED, and that is why the change is allowed: the
+    step advances to the imager screen, which asks. That screen is explicitly
+    "auto-DETECT, not auto-WRITE", and its write is bound to a popup button
+    (``on_release ... self._write(v)``). The deliberate press still exists — it
+    now lives on the screen that actually names what is about to be destroyed,
+    which is the better place for it.
+
+    So this guards what still matters: no write, flash or confirm may be
+    triggered by merely seeing a card."""
     src = open("ui/screens/birth_guide_screen.py").read()
     block = src[src.index("elif isinstance(anim, InsertSdAnim):"):]
     block = block[:block.index("\n\n")]
-    assert "hide_next" not in block, "the write must stay behind a press"
+    assert "hide_next" not in block, (
+        "Next must stay on the card step: detection can fail on a marginal "
+        "reader, and a step whose only way forward needs hardware to work is a "
+        "dead end when it doesn't.")
     seen = src[src.index("def _on_card_seen"):src.index("def _pi_key_for_art")]
-    for destructive in ("_next(", "flash(", "_confirm("):
+    for destructive in ("flash(", "_confirm(", "_write("):
         assert destructive not in seen, f"{destructive!r} fires on merely seeing a card"
+
+
+def test_the_card_auto_advance_cannot_outrun_the_operator():
+    """The advance is delayed past the ripple, so a manual tap can land first.
+    It must lose that race rather than skip a step nobody saw — hence the
+    _advance_token check, the same token _next bumps."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    fn = src[src.index("def _advance_after_card"):]
+    fn = fn[:fn.index("\n    def ", 1)]
+    assert "_advance_token" in fn, "a manual tap during the ripple must win"
+    assert "insert_sd" in fn, "must confirm it is still on the card step"
 
 
 # --- no screen may be a trap -----------------------------------------------

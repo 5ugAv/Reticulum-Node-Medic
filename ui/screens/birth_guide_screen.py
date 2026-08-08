@@ -1140,9 +1140,14 @@ class BirthGuideScreen(BoxLayout):
             body = tr("This board was {old}. It's blank now, so it needs a name "
                       "for its new life — we've suggested the next one, and you "
                       "can change it to anything.").format(old=was)
+        # A name already in the family is warned about ONCE, then allowed —
+        # see _name_next. Re-rendering with the warning is what puts it on
+        # screen, so the button changes with it.
+        warn = getattr(self, "_name_warning", "")
         step = WizardStep(index=0, total=total, title=tr("Name this node"),
-                          body=body,
-                          input_widget=ti, next_text=tr("Next  →"),
+                          body=body, warning=warn,
+                          input_widget=ti,
+                          next_text=tr("Use it anyway  →") if warn else tr("Next  →"),
                           on_next=self._name_next, on_back=self.reset)
         self.clear_widgets()
         self.add_widget(step)
@@ -1157,6 +1162,26 @@ class BirthGuideScreen(BoxLayout):
         if not name:                         # a name is required to continue
             self._name_input.focus = True
             return
+        # A name already in the family: WARN, then allow. Reusing a name can be
+        # deliberate — rebuilding a node that died, keeping its place on the map
+        # — so refusing would be wrong. But two nodes with one name are hard to
+        # tell apart on the map and in a repair months from now, when whoever
+        # built them may be long gone. Warn once per name; a second tap on the
+        # (now differently-labelled) button goes ahead.
+        if name != getattr(self, "_name_warned", None):
+            try:
+                from ui.node_names import clash
+                msg = clash(name)
+            except Exception:
+                msg = ""                     # advice must never block a birth
+            if msg:
+                self._name_warned = name
+                self._name_warning = msg
+                self._node_name = name       # keep what they typed
+                self._render_name()
+                return
+        self._name_warning = ""
+        self._name_warned = None
         self._node_name = name
         self._i = 0
         self._render_step()
@@ -1253,6 +1278,40 @@ class BirthGuideScreen(BoxLayout):
                 fn()
             except Exception:                                      # noqa: BLE001
                 pass
+        # SEEING THE CARD IS THE ANSWER TO THIS STEP, so answer it. The step
+        # asks the operator to insert a card; once the medic can see one there
+        # is nothing left for them to decide here, and leaving a green "Write
+        # the card →" button under a finished animation invites the reading
+        # that the tool is waiting on them (operator, 2026-08-08).
+        #
+        # Delayed past the ripple so the acknowledgement is still SEEN — the
+        # ripple is the medic's only way of saying "I noticed", and skipping
+        # straight past it would undo #71. 1.6s = the 1.4s burst plus a beat.
+        #
+        # The button stays for the case where NO card is found: detection can
+        # fail on a marginal reader, and a step whose only way forward depends
+        # on hardware working is a dead end when it doesn't. Two of those have
+        # been fixed today already.
+        from kivy.clock import Clock
+        token = getattr(self, "_advance_token", 0)
+        Clock.schedule_once(lambda _dt: self._advance_after_card(token), 1.6)
+
+    def _advance_after_card(self, token):
+        """Move on from the card step, unless the operator already has.
+
+        Guarded by the SAME ``_advance_token`` ``_next`` bumps, so a manual tap
+        during the ripple wins and this fires into nothing rather than skipping
+        a step nobody saw."""
+        try:
+            if token != getattr(self, "_advance_token", 0):
+                return                      # they moved first
+            steps = guide_steps(self._path, self._pi_key_for_text())
+            cur = steps[self._i] if 0 <= self._i < len(steps) else {}
+            if cur.get("anim") != "insert_sd":
+                return                      # not on the card step any more
+            self._next()
+        except Exception:                                          # noqa: BLE001
+            pass               # never let an auto-advance break the walkthrough
 
     def _pi_key_for_art(self, anim_cls):
         """Which Pi the animation should draw.

@@ -348,6 +348,7 @@
   "Unlocked with the recovery key. Set a new password in Settings.": "復旧キーでロックを解除しました。設定で新しいパスワードを決めてください。",
   "Unlocked.": "ロックを解除しました。",
   "Use a DATA USB cable — a charge-only cable won't be seen.": "データ用 USB ケーブルを使ってください — 充電専用ケーブルは認識されません。",
+  "Use it anyway  →": "それでも使う  →",
   "Use the Pi's DATA port and a cable that carries DATA — a charge-only lead will power the Pi perfectly and never show up here.": "Use the Pi's DATA port and a cable that carries DATA — a charge-only lead will power the Pi perfectly and never show up here.",
   "Use the Pi's DATA port, and a cable that carries DATA — a charge-only lead will power the Pi perfectly and never show up here. On a Pi Zero it's the inner micro-USB, nearer the mini-HDMI; the outer one is PWR IN and cannot carry data. On a Pi 3A+ it's the full-size USB-A socket — its micro-USB is power only. Use a short, thick cable — a thin or coiled one drops the link.": "PiのDATAポートと、データを通すケーブルを使用してください — 充電専用ケーブルはPiに問題なく給電しますが、ここには決して現れません。Pi Zeroではmini-HDMIに近い内側のmicro-USB、外側はPWR INでデータを通せません。Pi 3A+では大型のUSB-Aソケット — micro-USBは給電専用です。短くて太いケーブルを使用してください — 細いものや巻いたものはリンクを切ります。",
   "Use the Pi's DATA port. A Pi Zero has two identical micro-USB sockets: the one nearer the mini-HDMI is USB (data), the outer one is PWR IN and cannot carry data. Use a short, thick cable — a thin or coiled one drops the link.": "Pi の DATA ポートを使ってください。Pi Zero には同じ形の micro-USB 端子が 2 つあります: mini-HDMI に近い方が USB（データ）、外側は PWR IN でデータは流せません。短く太いケーブルを使ってください — 細いものやコイル状のものは接続が切れます。",

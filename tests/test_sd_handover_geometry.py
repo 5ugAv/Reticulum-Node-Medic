@@ -503,9 +503,37 @@ def test_the_card_found_ripple_matches_the_board_connected_one():
     is a board or a card (operator, live on the medic)."""
     body = src(WIDGET)
     i = body.index("def mark_card_found")
-    seg = body[i:i + 1600]
+    seg = body[i:i + 3200]
     assert "self._found" in seg and "return" in seg, "must be idempotent"
-    assert "Animation(burst=1.0" in seg
+    assert "Animation(burst=1.6" in seg
+
+
+def test_the_card_found_ripple_actually_finishes():
+    """Every ring must reach zero alpha, or the burst leaves a frozen residue.
+
+    Ring i's alpha is (1 - f) * 0.9 where f = min(1, burst - i*0.16). At the old
+    burst target of 1.0 only ring 0 faded; rings 1-3 stopped mid-flight and sat
+    at 0.14 / 0.29 / 0.43 forever. The operator read that as a hang — "the green
+    ring animation ... froze ... it gives the impression the process has
+    stalled" (2026-08-08) — and they were right to: a finished animation that
+    looks stuck is worse than a slow one, because there is nothing to wait for.
+
+    Derived from the source rather than hardcoded, so changing the stagger or
+    the ring count re-checks the maths instead of silently breaking it."""
+    import re
+    body = src(WIDGET)
+    seg = body[body.index("def mark_card_found"):][:3200]
+    target = float(re.search(r"Animation\(burst=([\d.]+)", seg).group(1))
+    rip = body[body.index("def _ripples"):][:1400]
+    count = int(re.search(r"for i in range\((\d+)\)", rip).group(1))
+    stagger = float(re.search(r"i \* ([\d.]+)", rip).group(1))
+    for i in range(count):
+        f = min(1.0, target - i * stagger)
+        alpha = (1.0 - f) * 0.9
+        assert alpha == 0, (
+            f"ring {i} is left at alpha {alpha:.3f} when the burst ends — "
+            f"burst must reach {1 + (count - 1) * stagger:.2f} for every ring "
+            f"to fade out")
     rip = body[body.index("def _ripples"):]
     assert "Color(0.2, 0.9, 0.4," in rip, "same green, same fade"
     assert "for i in range(4)" in rip, "same four rings"

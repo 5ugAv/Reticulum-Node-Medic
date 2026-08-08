@@ -752,7 +752,19 @@ class InsertSdAnim(_LoopAnim):
         self._found = True
         self.stop()                                  # hold the finished frame
         self.phase = 1.0
-        Animation(burst=1.0, duration=1.1, t="out_quad").start(self)
+        # RUN THE BURST PAST 1.0 SO IT ACTUALLY ENDS. Each ring's alpha is
+        # (1 - f) * 0.9 where f = burst - i*0.16, so at burst == 1.0 only the
+        # FIRST ring has faded out; the other three stop mid-flight and sit
+        # there at alpha 0.14 / 0.29 / 0.43 forever. The operator read exactly
+        # that as a hang: "the green ring animation ... froze ... it gives the
+        # impression the process has stalled" (2026-08-08). It had in fact
+        # finished — which is worse, because a finished animation that looks
+        # stuck is indistinguishable from a wedged UI.
+        #
+        # The last ring needs f >= 1.0, i.e. burst >= 1 + 3*0.16 = 1.48. 1.6
+        # leaves a margin and costs nothing: every ring completes its fade and
+        # the stage returns to clean.
+        Animation(burst=1.6, duration=1.4, t="out_quad").start(self)
 
     def _ripples(self, cx, cy):
         """The four rings, matching ConnectBoardAnim's exactly — except for how
