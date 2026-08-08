@@ -235,3 +235,59 @@ def test_the_gate_step_cannot_advance_itself():
     # it must be reached by a press, and its own render must not auto-advance
     assert gate_step.get("anim") == "connect_board"   # the branch above covers it
     assert not gate_step.get("screen"), "a gate step must not also hand off"
+
+
+# --- the silent skip loop ate the gate ------------------------------------
+#
+# THE ROOT CAUSE of 2026-08-09, and the second time this trap has been walked
+# into. _render_step advances _i BEFORE rendering:
+#
+#     while self._i < len(steps) and self._step_is_redundant(steps[self._i]):
+#         self._i += 1
+#
+# so anything checked in _next() is simply bypassed. The comment in
+# _render_step already records the first instance (2026-08-03, the
+# power-compatibility check, fixed by re-keying it on the path).
+#
+# The radio gate was then added to _next() and eaten the same way: both new
+# steps carry the connect_board animation, the V4 was plugged in, so BOTH were
+# judged "already done" and skipped in silence — the flash hand-off and the gate
+# guarding it. The operator reached "Take the radio out" having flashed nothing,
+# and the trace was empty because _next never ran.
+#
+# "The board is plugged in" answers "have you plugged the board in?". It does
+# not answer "has it been flashed?" or "did it pass?".
+
+def test_a_gated_step_can_never_be_skipped_as_redundant():
+    src = func_source(SCREEN, "_step_is_redundant")
+    assert 'step.get("gate")' in src
+    guard = src[:src.index('anim = step.get("anim")')]
+    assert "return False" in guard, "the guard must sit BEFORE the anim checks"
+
+
+def test_a_handoff_step_can_never_be_skipped_either():
+    """Skipping one silently discards the real work it exists to start."""
+    src = func_source(SCREEN, "_step_is_redundant")
+    assert 'step.get("screen")' in src
+
+
+def test_on_the_pi_path_only_the_plug_in_the_pi_step_is_skippable():
+    """A live check against the real flow, with a board notionally present."""
+    from ui.birth_guide_flow import guide_steps
+    skippable = [
+        s["title"] for s in guide_steps("pi", "pi_3a_plus")
+        if s.get("anim") in ("connect_board", "connect_pi")
+        and not (s.get("gate") or s.get("screen"))
+    ]
+    assert skippable == ["Connect the Pi to Node Medic"], skippable
+
+
+def test_the_radio_steps_survive_a_board_being_plugged_in():
+    """The exact case that broke it: the radio already on the medic."""
+    from ui.birth_guide_flow import guide_steps
+    steps = guide_steps("pi", "pi_3a_plus")
+    radio = steps[0]
+    gate = next(s for s in steps if s.get("gate"))
+    for s in (radio, gate):
+        assert s.get("gate") or s.get("screen"), \
+            f"{s['title']!r} must carry a gate or a hand-off to be protected"

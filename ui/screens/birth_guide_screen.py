@@ -1227,6 +1227,25 @@ class BirthGuideScreen(BoxLayout):
         button did nothing at all while the board stayed plugged in (operator,
         2026-08-02).
         """
+        # A STEP THAT DOES WORK, OR GUARDS IT, IS NEVER REDUNDANT.
+        #
+        # This is the trap the comment in _render_step already describes, walked
+        # into a second time. That loop advances _i BEFORE rendering, so any
+        # check living in _next() is simply bypassed — which is why the
+        # power-compatibility gate had to be re-keyed on the path in 2026-08-03.
+        #
+        # On 2026-08-09 the radio gate was added to _next() and the same loop
+        # ate it. Both new steps carry the connect_board animation, the V4 was
+        # plugged in, so BOTH were judged "already done" and skipped in silence:
+        # the flash hand-off and the gate guarding it, gone. The operator landed
+        # on "Take the radio out" having flashed nothing, and the trace was empty
+        # because _next never ran.
+        #
+        # "The board is plugged in" answers "have you plugged the board in?".
+        # It does not answer "has it been flashed?" or "did it pass?" — and a
+        # step carrying a `screen` hand-off or a `gate` is asking one of those.
+        if step.get("gate") or step.get("screen"):
+            return False
         anim = step.get("anim")
         if anim == "connect_pi":
             try:
