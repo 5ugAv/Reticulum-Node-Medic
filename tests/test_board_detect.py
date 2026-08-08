@@ -94,3 +94,67 @@ def test_port_type_keeps_native_s3_boards_ambiguous():
     assert "heltec32_v3" not in keys
     assert "heltec32_v4" in keys and len(keys) > 1
     assert r["board_key"] is None
+
+
+# --- a board that keeps rebooting is not a board that isn't there ----------
+#
+# Live, 2026-08-09: a Heltec V4 with a bad bootloader header re-enumerated about
+# every two seconds. The operator tapped "Flash this radio", detection took ONE
+# snapshot, landed in a gap, and the medic said "No work board on the medic's
+# USB — plug the board in with a known-good data cable". It was plugged in the
+# whole time, with a good cable. The medic blamed the operator for its own
+# sampling window.
+
+def _flaky_ports(pattern):
+    """ports_fn returning the given sequence of snapshots, one per call."""
+    seq = list(pattern)
+    def fn():
+        return seq.pop(0) if seq else []
+    return fn
+
+
+def test_a_present_board_costs_no_delay():
+    slept = []
+    res = detect_board(BOARDS, ports_fn=lambda: ["/dev/ttyACM1"],
+                       reader=lambda p: S3_OUT, sleep_fn=slept.append)
+    assert res["found"] is True
+    assert slept == [], "the normal case must not wait"
+    assert not res.get("unstable")
+
+
+def test_a_flapping_port_is_waited_for_and_named():
+    slept = []
+    res = detect_board(BOARDS,
+                       ports_fn=_flaky_ports([[], [], ["/dev/ttyACM1"]]),
+                       reader=lambda p: S3_OUT, sleep_fn=slept.append)
+    assert res["found"] is True and res["port"] == "/dev/ttyACM1"
+    assert slept == [1.0, 1.0]
+    assert res.get("unstable") is True
+    assert "rebooting in a loop" in res["unstable_reason"]
+
+
+def test_a_flapping_board_that_cannot_be_read_still_says_why():
+    # The chip read fails too — the board is resetting under esptool. The
+    # operator must not be sent hunting for another cable.
+    res = detect_board(BOARDS,
+                       ports_fn=_flaky_ports([[], ["/dev/ttyACM1"]]),
+                       reader=lambda p: "connecting...___ failed",
+                       sleep_fn=lambda s: None)
+    assert res["found"] is False
+    assert res.get("unstable") is True
+
+
+def test_a_genuinely_absent_board_still_says_so():
+    slept = []
+    res = detect_board(BOARDS, ports_fn=lambda: [],
+                       reader=lambda p: S3_OUT, attempts=3, sleep_fn=slept.append)
+    assert res["found"] is False
+    assert "No work board" in res["reason"]
+    assert len(slept) == 2, "it should look a few times before giving up"
+
+
+def test_the_flapping_warning_reaches_the_birth_screen():
+    """The reason is useless if the screen never renders it."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_build_chooser")
+    assert "unstable" in src and "unstable_reason" in src

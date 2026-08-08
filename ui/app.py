@@ -1838,10 +1838,12 @@ class ReticulumNodeMedicApp(App):
         prefilled and detection already running."""
         bs = getattr(self, "birth_screen", None)
         if bs is not None:
-            if name and hasattr(bs, "prefill_name"):
-                bs.prefill_name(name)
+            # One call: begin_guided applies the name itself, so a second reset
+            # can't undo the scoping it just set (see BirthScreen.begin_guided).
             if hasattr(bs, "begin_guided"):
-                bs.begin_guided(path)
+                bs.begin_guided(path, name=name or None)
+            elif name and hasattr(bs, "prefill_name"):
+                bs.prefill_name(name)
         self.switch_mode("birth")
 
     def _start_security_preview(self):

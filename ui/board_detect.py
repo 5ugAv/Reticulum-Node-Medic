@@ -284,21 +284,74 @@ def _port_usb_kind(port: str):
     return None
 
 
+def sample_ports(ports_fn: Callable[[], List[str]], attempts: int = 6,
+                 sleep_fn: Optional[Callable[[float], None]] = None):
+    """Look for work-board ports over a few seconds. Returns ``(ports, flapping)``.
+
+    A single snapshot is the wrong instrument for a board that is REBOOTING IN A
+    LOOP. A Heltec V4 flashed with a bad bootloader header re-enumerates about
+    every two seconds, so /dev/ttyACM* exists most of the time and is missing the
+    rest — and a one-shot look that lands in a gap reports "no work board on the
+    medic's USB", i.e. "you didn't plug it in". The operator had it plugged in
+    the whole time (live, 2026-08-09); the board was the fault, and the medic
+    named the cable instead.
+
+    So: take the first look; if it is empty, keep looking once a second. The
+    normal case (board present) still costs one snapshot and no delay. If a port
+    turns up only after an empty look, the port is FLAPPING — that is a finding
+    in its own right, not noise, and the caller says so.
+    """
+    if sleep_fn is None:
+        import time
+        sleep_fn = time.sleep
+    ports = list(ports_fn() or [])
+    if ports:
+        return ports, False
+    for _ in range(max(0, attempts - 1)):
+        sleep_fn(1.0)
+        ports = list(ports_fn() or [])
+        if ports:
+            return ports, True
+    return [], False
+
+
+#: Shown when a board is present but keeps re-enumerating. It is not a warning
+#: about the cable — the medic has SEEN the board, repeatedly.
+FLAPPING_REASON = (
+    "This board keeps disconnecting and reappearing — it is rebooting in a "
+    "loop, which is what a bad firmware image looks like. Leave it plugged in: "
+    "flashing it is the repair.")
+
+
 def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                  reader: Optional[Callable[[str], str]] = None,
                  vendor_fn: Optional[Callable[[str], str]] = None,
-                 product_fn: Optional[Callable[[str], str]] = None) -> dict:
+                 product_fn: Optional[Callable[[str], str]] = None,
+                 attempts: int = 6,
+                 sleep_fn: Optional[Callable[[float], None]] = None) -> dict:
     """Detect the connected work board. Returns a result dict:
     ``{found, port?, chip?, platform?, firmware?, boards?, board_key?, reason?}``.
     ``boards`` is the full board catalogue (to shortlist); ``ports_fn`` returns the
     connected WORK-board ports (onboard excluded); ``reader`` reads a chip on a port.
-    Both are injected in tests and default to the medic's real hardware."""
-    ports = (ports_fn or _default_ports)()
+    Both are injected in tests and default to the medic's real hardware.
+
+    A found board carries ``unstable``: True when the port had to be waited for
+    (see :func:`sample_ports`)."""
+    ports, flapping = sample_ports(ports_fn or _default_ports, attempts, sleep_fn)
     if not ports:
         return {"found": False, "reason":
                 "No work board on the medic's USB — plug the board in with a "
                 "known-good data cable (its own onboard board doesn't count)."}
     port = ports[0]
+
+    def _out(res: dict) -> dict:
+        # Carried on FAILURES too: "couldn't read the chip" on a board that is
+        # rebooting under the reader is the boot loop talking, and the operator
+        # must not be sent hunting for another cable.
+        if flapping:
+            res["unstable"] = True
+            res["unstable_reason"] = FLAPPING_REASON
+        return res
 
     # nRF52 boards FIRST, before esptool is ever reached. esptool cannot read an
     # nRF52840 — it will always time out — so running it here produced an empty
@@ -314,23 +367,23 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
         # A named board wins; otherwise offer every nRF52 board we stock rather
         # than guessing one. Never an empty list — that is the bug being fixed.
         shortlist = named or nrf
-        return {"found": True, "port": port, "chip": "nrf52840",
+        return _out({"found": True, "port": port, "chip": "nrf52840",
                 "platform": "nRF52", "product": product,
                 "firmware": firmware_options("nrf52840"),
                 "boards": shortlist,
-                "board_key": shortlist[0].key if len(shortlist) == 1 else None}
+                "board_key": shortlist[0].key if len(shortlist) == 1 else None})
 
     try:
         out = (reader or _default_reader)(port)
     except Exception as e:
-        return {"found": False, "port": port, "reason": f"Couldn't talk to the "
+        return _out({"found": False, "port": port, "reason": f"Couldn't talk to the "
                 f"board on {port}: {e}. Try another data cable, or hold BOOT while "
-                "plugging it in."}
+                "plugging it in."})
     chip = parse_chip(out)
     if not chip:
-        return {"found": False, "port": port, "raw": out, "reason":
+        return _out({"found": False, "port": port, "raw": out, "reason":
                 "Reached the port but couldn't read the chip — hold BOOT, tap RST, "
-                "release BOOT, then Detect again (S3 boards need download mode)."}
+                "release BOOT, then Detect again (S3 boards need download mode)."})
     platform = _PLATFORM_BY_CHIP.get(chip)
     shortlist = [b for b in boards
                  if _platform_key(getattr(b, "platform", "")) == _platform_key(platform)]
@@ -346,9 +399,9 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     # Third cut: the chip PACKAGE. "esp32" covers five boards we stock; the
     # exact variant separates them where we know it (bench-measured).
     shortlist = narrow_by_variant(shortlist, parse_chip_variant(out))
-    return {"found": True, "port": port, "chip": chip, "platform": platform,
+    return _out({"found": True, "port": port, "chip": chip, "platform": platform,
             "firmware": firmware_options(chip), "boards": shortlist,
-            "board_key": shortlist[0].key if len(shortlist) == 1 else None}
+            "board_key": shortlist[0].key if len(shortlist) == 1 else None})
 
 
 def _default_ports() -> List[str]:

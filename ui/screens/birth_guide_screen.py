@@ -147,8 +147,13 @@ class BirthGuideScreen(BoxLayout):
         self._current = step
         step.start()
 
-    def _back_row(self):
+    def _back_row(self, label=None, height=44):
         """A VISIBLE way out of any screen that isn't a guided step.
+
+        *label* renames the control where "Back" would understate it — the
+        hardware-confirmation screen's way out is "Not right — change", which is
+        the same journey and must stay the SAME control, so every screen keeps
+        exactly one exit and the guard that checks for one keeps working.
 
         handle_back() and _back_action have existed all along, but they were
         reachable only by a left-edge SWIPE. An invisible affordance is no
@@ -164,8 +169,10 @@ class BirthGuideScreen(BoxLayout):
         """
         if not callable(getattr(self, "_back_action", None)):
             return None
-        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44))
-        b = Button(text=tr("←  Back"), size_hint=(None, 1), width=dp(150),
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(height))
+        b = Button(text=tr(label) if label else tr("←  Back"),
+                   size_hint=(None, 1), width=dp(220 if label else 150),
                    font_size="16sp", bold=True, background_normal="",
                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                    color=theme.hex_to_rgba(theme.COLORS["accent"]))
@@ -1228,11 +1235,12 @@ class BirthGuideScreen(BoxLayout):
                 return
             name = self._node_name or ""
             if screen_name == "birth":
-                # scope FIRST — begin_guided resets the form, so a name set
-                # before it would be wiped by the very call meant to prepare it
+                # ONE call carries both. Scoping and naming used to be two calls
+                # in a fixed order, and the second (prefill_name) reset the form
+                # again and threw the scoping away — see BirthScreen.begin_guided.
                 if hasattr(scr, "begin_guided"):
-                    scr.begin_guided("host")
-                if name and hasattr(scr, "prefill_name"):
+                    scr.begin_guided("host", name=name or None)
+                elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
             if name and hasattr(scr, "prefill_hostname"):
@@ -1692,7 +1700,81 @@ class BirthGuideScreen(BoxLayout):
 
     def _pi_picked(self, key):
         self._pi_key = key
-        self._check_pairing()
+        self._render_confirm_pair()
+
+    def _render_confirm_pair(self):
+        """Show BOTH chosen boards back, with their pictures, before anything acts.
+
+        Asked for on the bench, 2026-08-09: "if I miss touched the selection I
+        can't tell. there should be a hardware selected confirmation step for
+        safety."
+
+        This is not politeness. The Pi answer decides the dwc2 dr_mode written
+        onto the card — a 3A+ needs dr_mode=peripheral because its USB-A socket
+        has no ID pin. Choose the wrong Pi by a thumb's width and the card boots
+        perfectly and never appears on the medic, which is a failure that reads
+        as a dead cable and cost most of a night to find. Neither list gives any
+        feedback that a row was hit, and both are scrolled with the same thumb
+        that selects.
+
+        Pictures, not just names — the operator is holding the hardware, and a
+        photo is checkable at a glance where "v3" and "v4" are not.
+        """
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = self._render_pick_board
+        from kivy.uix.scrollview import ScrollView
+        from ui.screens.birth_screen import PI_HOSTS
+        from ui import board_images
+
+        board_name = dict(self._board_candidates()).get(
+            getattr(self, "_board_key", ""), "this radio")
+        pi_name = next((n for k, n in PI_HOSTS
+                        if k == getattr(self, "_pi_key", "")), "this Pi")
+
+        wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
+        wrap.add_widget(_line("Is this what you're holding?", bold=True,
+                              size="22sp", h=38))
+        wrap.add_widget(_line("Check both before Node Medic writes anything — "
+                              "the wrong Pi here makes a card that boots and "
+                              "never appears.", size="14.5sp",
+                              color="text_secondary", h=44))
+        body = ScrollView()
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
+        col.bind(minimum_height=col.setter("height"))
+        for label, name, png in (
+                ("Radio", board_name,
+                 board_images.image_for(getattr(self, "_board_key", "")) or ""),
+                ("Raspberry Pi", pi_name,
+                 board_images.image_for_pi(getattr(self, "_pi_key", "")) or "")):
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(96), spacing=dp(12))
+            if png:
+                from kivy.uix.image import Image as KvImage
+                img = KvImage(source=png, size_hint_x=None, width=dp(130))
+                img.fit_mode = "contain"
+                row.add_widget(img)
+            txt = BoxLayout(orientation="vertical")
+            txt.add_widget(_line(label, size="13sp", color="text_secondary", h=20))
+            txt.add_widget(_line(name, bold=True, size="19sp", h=32))
+            row.add_widget(txt)
+            col.add_widget(row)
+        body.add_widget(col)
+        wrap.add_widget(body)
+
+        # "Not right — change" IS the way back, so it is the back control
+        # itself, named for this screen. One exit per screen, always the same
+        # one — see _back_row.
+        btns = self._back_row(label="←  Not right — change", height=56)
+        btns.spacing = dp(10)
+        yes = Button(text="Yes, that's right  →", bold=True, font_size="17sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        yes.bind(on_release=lambda *_: self._check_pairing())
+        btns.add_widget(yes)
+        wrap.add_widget(btns)
+        self.add_widget(wrap)
 
     def _check_pairing(self):
         """Go on if the pair can work; otherwise say so BEFORE the card write."""

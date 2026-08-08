@@ -458,7 +458,10 @@ def test_every_screen_with_somewhere_to_go_back_to_SHOWS_it():
     for name, body in re.findall(r"def (_render_\w+)\(self[^)]*\):(.*?)(?=\n    def |\Z)",
                                  src, re.S):
         sets_back = re.search(r"_back_action\s*=\s*self\._(render|back)", body)
-        shows = "_back_row()" in body or "on_back=" in body
+        # "_back_row(" not "_back_row()": a screen may rename its exit (the
+        # hardware confirmation calls it "Not right — change") and it still has
+        # to be THE back control, not a second one.
+        shows = "_back_row(" in body or "on_back=" in body
         if sets_back and not shows:
             bad.append(name)
     assert not bad, f"back target but no visible way to use it: {bad}"

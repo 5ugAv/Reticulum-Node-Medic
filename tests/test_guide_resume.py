@@ -339,17 +339,85 @@ def test_the_connect_ripple_finishes_like_the_card_one():
 # the name and the job; making them retype it is asking twice, and an unscoped
 # form does not say what it is for.
 
-def test_the_handoff_scopes_the_birth_screen_to_the_radio_job():
-    src = func_source(SCREEN, "_hand_over_name")
-    assert 'begin_guided("host")' in src, \
-        "the radio step's job is flash-this-as-an-RNode, not the whole Pi build"
+# These were three substring checks over _hand_over_name's source, and all
+# three PASSED while the screen the operator actually landed on was unscoped
+# (live, 2026-08-09, second lap): scoping then naming was the documented order,
+# but prefill_name calls _fresh_lap() too, and _fresh_lap clears ``_firmware``.
+# The source said "begin_guided before prefill_name" and the behaviour was
+# "begin_guided undone by prefill_name". So run the shipped code instead.
+
+BIRTH = "ui/screens/birth_screen.py"
 
 
-def test_it_scopes_before_naming():
-    """begin_guided resets the form, so a name set first would be wiped."""
-    src = func_source(SCREEN, "_hand_over_name")
-    # the CALLS, not the docstring mentions
-    assert src.index("scr.begin_guided") < src.index("scr.prefill_name")
+def _real_birth_screen():
+    """A stand-in BIRTH screen running the SHIPPED begin_guided / prefill_name /
+    _fresh_lap, with only the Kivy-shaped parts stubbed. Kivy cannot open a
+    window here, but these three methods are pure attribute logic."""
+    import textwrap
+    import types
+
+    scr = types.SimpleNamespace(
+        _firmware="stale", _forced_firmware=None, _sel_board="stale",
+        _sel_pi=None, _detected="stale", _rtnode_target=None,
+        _flash_view=False, _lap_prepared=False, _from_imaging="stale",
+        _prefill_location=("x", "y", "z"),
+        _name_in=types.SimpleNamespace(text=""),
+        chooser_builds=0, detects=0)
+    scr._busy_with_a_build = lambda: False
+    scr._warn_build_running = lambda: None
+    scr._build_chooser = lambda *a, **k: setattr(
+        scr, "chooser_builds", scr.chooser_builds + 1)
+    scr._detect_board = lambda: setattr(scr, "detects", scr.detects + 1)
+    for name in ("_fresh_lap", "begin_guided", "prefill_name"):
+        ns = {}
+        exec(compile(textwrap.dedent(func_source(BIRTH, name)), BIRTH, "exec"), ns)
+        setattr(scr, name, types.MethodType(ns[name], scr))
+    return scr
+
+
+def test_begin_guided_scopes_and_names_in_one_call():
+    scr = _real_birth_screen()
+    scr.begin_guided("host", name="Rooftop-East")
+    assert scr._firmware == "rnode", "the radio step's job is flash-as-an-RNode"
+    assert scr._name_in.text == "Rooftop-East", "the guide already asked the name"
+    assert scr.detects == 1, "the board is already plugged in per the guide"
+
+
+def test_naming_never_undoes_the_scoping():
+    """THE 2026-08-09 bug, as behaviour: whatever the hand-off does to carry the
+    name across, the screen must still be scoped when it settles."""
+    scr = _real_birth_screen()
+    scr.begin_guided("host", name="Rooftop-East")
+    assert (scr._firmware, scr._name_in.text) == ("rnode", "Rooftop-East")
+
+
+def test_the_handoff_hands_over_both_at_once():
+    """Run the shipped _hand_over_name against a real-behaviour BIRTH screen."""
+    import sys
+    import textwrap
+    import types
+
+    scr = _real_birth_screen()
+    app = types.SimpleNamespace(birth_screen=scr)
+    mod = types.ModuleType("kivy.app")
+    mod.App = types.SimpleNamespace(get_running_app=lambda: app)
+    pkg = sys.modules.get("kivy") or types.ModuleType("kivy")
+    saved = {k: sys.modules.get(k) for k in ("kivy", "kivy.app")}
+    sys.modules["kivy"], sys.modules["kivy.app"] = pkg, mod
+    try:
+        ns = {}
+        exec(compile(textwrap.dedent(func_source(SCREEN, "_hand_over_name")),
+                     SCREEN, "exec"), ns)
+        guide = types.SimpleNamespace(_node_name="Rooftop-East")
+        types.MethodType(ns["_hand_over_name"], guide)("birth")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+    assert scr._firmware == "rnode", "landed on the unscoped chooser again"
+    assert scr._name_in.text == "Rooftop-East", "made to retype the name"
 
 
 def test_it_uses_the_method_each_screen_actually_has():

@@ -363,6 +363,13 @@ class BirthScreen(BoxLayout):
                 found = self._detected.get("found")
                 self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
                                              color="green" if found else "amber"))
+                # A board that had to be WAITED for is rebooting in a loop. Say
+                # that here rather than let the operator read a clean green
+                # "Detected ESP32-S3" and wonder why the flash then fought them.
+                if self._detected.get("unstable"):
+                    self.header.add_widget(_line(
+                        self._detected.get("unstable_reason", ""),
+                        size="12.5sp", color="amber"))
             det = self._detected or {}
             det_opts = det.get("firmware") if det.get("found") else None
             # ANY RNode-capable board can equally be a Pi's radio, so that is a
@@ -1472,15 +1479,27 @@ class BirthScreen(BoxLayout):
         self._lap_prepared = False
         self._build_chooser()
 
-    def begin_guided(self, path):
+    def begin_guided(self, path, name=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
-        the operator lands on naming + a suggested setup, not a cold form."""
+        the operator lands on naming + a suggested setup, not a cold form.
+
+        *name* is the node name the guide already asked for, applied HERE rather
+        than by a following prefill_name() call. That ordering was the bug: the
+        caller had to scope first (begin_guided resets the form) and prefill
+        second — but prefill_name calls _fresh_lap() too, which clears
+        ``_firmware``. So the scoping was undone by the very next line, and the
+        operator arrived on the full unscoped chooser being asked to pick
+        RNode / RTNode-2400 / Pi + RNode all over again (live, 2026-08-09).
+        One call, one reset, no order to get wrong.
+        """
         if self._busy_with_a_build():
             self._warn_build_running()    # never reset under a running build
             return
         self._fresh_lap()
+        if name is not None and getattr(self, "_name_in", None) is not None:
+            self._name_in.text = str(name)
         # Cleared here too, or every later visit to BIRTH shows the green
         # "Card written — now building <the PREVIOUS node>" banner over an
         # empty form (audit, 2026-08-03).
