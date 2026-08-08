@@ -24,10 +24,18 @@ from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, InsertSdIntoPiAnim,
                                     ProvisionAnim, ConnectPiAnim,
-                                    SdHandoverAnim)
+                                    SdHandoverAnim,
+    DisconnectBoardAnim, RadioToPiAnim,
+)
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
 _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAnim,
+          # the connect scene run BACKWARDS — the radio leaving the medic. Using
+          # connect_board here drew the operator doing the opposite of the words.
+          "disconnect_board": DisconnectBoardAnim,
+          # the radio meeting the PI, not the medic. Deliberately points at no
+          # socket: that is a per-board measurement, not a guess.
+          "radio_to_pi": RadioToPiAnim,
           "connect_pi": ConnectPiAnim,
           "insert_sd": InsertSdAnim, "insert_sd_pi": InsertSdIntoPiAnim,
           # the written card leaving the medic's reader and going home into
@@ -36,7 +44,7 @@ _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAn
           "provision": ProvisionAnim}
 
 #: Animations that draw a specific Raspberry Pi and so must be told which one.
-_PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim)
+_PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim, RadioToPiAnim)
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):
@@ -1422,6 +1430,17 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
+        elif isinstance(anim, (DisconnectBoardAnim, RadioToPiAnim)):
+            # BEFORE the ConnectBoardAnim branch, because both subclass it — and
+            # inheriting that branch would be exactly wrong. It hides Next and
+            # waits for a board to APPEAR on the medic's USB; on these two steps
+            # the board is LEAVING (unplugged from the medic) or going onto the
+            # PI, where the medic will never see it. The operator would be left
+            # with no button and a poll that could not succeed.
+            #
+            # So: keep Next, and no poll. These are the two steps in the flow the
+            # medic genuinely cannot verify for itself.
+            pass
         elif isinstance(anim, ConnectBoardAnim):
             step.hide_next()          # same: detection drives this step
             self._start_board_poll(anim)
@@ -1434,10 +1453,22 @@ class BirthGuideScreen(BoxLayout):
             # Medic" and then sits there is the same complaint as #71: the medic
             # visibly not knowing what is plugged into it.
             #
-            # Next is NOT hidden here, unlike the connect steps. Those are
-            # waiting on hardware that reports itself; this one is followed by a
-            # DESTRUCTIVE write, so the operator keeps the deliberate press.
-            # The ripple says "I can see your card", nothing more.
+            # NO GREEN BUTTON. Asked for twice — "the previous green write card
+            # button can be removed and node medic can move on by itself after
+            # the sd card found animation completes" (2026-08-08), then "please
+            # remove the green button" (2026-08-09).
+            #
+            # It was kept the first time as an escape hatch for a card the medic
+            # fails to see. That was the wrong call. A button whose only purpose
+            # is a failure mode still reads, on every SUCCESSFUL run, as "the
+            # tool is waiting for you" — sitting under a finished animation,
+            # which is precisely how this step came to look stalled.
+            #
+            # Nothing is trapped: Back is still on the step, and the destructive
+            # write is still behind a deliberate press — it lives on the imager's
+            # confirmation, which names the device, its size and what is lost.
+            # That is the better place for it.
+            step.hide_next()
             self._start_card_poll(anim)
 
 

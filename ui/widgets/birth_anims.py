@@ -352,6 +352,9 @@ class ConnectBoardAnim(_LoopAnim):
     burst = NumericProperty(0.0)
     rise = NumericProperty(0.0)                       # "Connected!" banner slide-up
 
+    #: Run the docking motion backwards (board lifts off the plug). See _draw.
+    REVERSED = False
+
     def __init__(self, board_key: str = "", **kwargs):
         """*board_key* renders the REAL board the medic detected instead of the
         generic radio sprite.
@@ -419,6 +422,12 @@ class ConnectBoardAnim(_LoopAnim):
         bh = mh * 0.25
         bw = bh * ba
         p = min(1.0, self.phase / 0.9)
+        if self.REVERSED:
+            # Same sprites, same junction, motion RUN BACKWARDS: the board sits
+            # docked and lifts away. Reversing beats drawing a new scene because
+            # the operator has already learnt this picture on the way in — they
+            # are being asked to undo the exact thing they just did.
+            p = 1.0 - p
         start_y = tipy + h * 0.42                     # begins above, moves down
         by = start_y - (start_y - tipy) * p
         bx = tipx - bw / 2.0
@@ -470,6 +479,98 @@ class ConnectBoardAnim(_LoopAnim):
         board.size = (bw, bh)
         board.pos = (bx, cy - bh / 2)
 
+
+
+class DisconnectBoardAnim(ConnectBoardAnim):
+    """The radio LIFTS OFF the medic's plug — the connect scene, run backwards.
+
+    Steps 3 and 7 of the Pi path used to reuse ConnectBoardAnim, which draws a
+    board descending ONTO Node Medic. On "take the radio out of Node Medic" that
+    is not merely unhelpful, it depicts the operator doing the opposite of what
+    the words ask — and the standing rule is that every picture must match the
+    physical act, because a wrong picture reads as authoritative while wrong
+    words merely read as wrong.
+
+    Reversing the existing scene rather than drawing a new one is deliberate:
+    the operator learnt this exact picture on the way in, and is now being asked
+    to undo that exact thing. Same sprites, same junction, motion backwards.
+
+    No "Connected!" banner and no green ripples: those mean "the medic can see
+    it now", and this step is the moment it stops being able to.
+    """
+
+    REVERSED = True
+
+    def mark_connected(self):                     # noqa: D102 - deliberately inert
+        return
+
+
+class RadioToPiAnim(ConnectBoardAnim):
+    """The radio meets the RASPBERRY PI — the last step, and the one that makes
+    a node out of two halves.
+
+    DELIBERATELY DOES NOT POINT AT A SOCKET. ConnectPiAnim's own note explains
+    why: its port markers are fractions measured on the Pi Zero sprite, so
+    handing it another model moves the board picture while leaving the rings
+    pointing at nothing. A 3A+ has one USB-A socket, a 4B has four, and claiming
+    a specific one without having measured that board is the same class of
+    mistake as showing the wrong board entirely.
+
+    So this shows the two objects coming together and stops there. It is honest
+    about what is known: THIS radio, THIS Pi, joined. Which socket is a per-board
+    fact that has to be measured before it can be drawn — see ui.pi_sd_geometry
+    for how the SD slots were done, and do the same before adding a marker here.
+    """
+
+    def __init__(self, board_key: str = "", pi_key: str = "", **kwargs):
+        super().__init__(board_key=board_key, **kwargs)
+        self._pi_png = ""
+        if pi_key:
+            try:
+                from ui import board_images
+                self._pi_png = board_images.image_for_pi(pi_key) or ""
+            except Exception:
+                self._pi_png = ""
+
+    def _draw(self):
+        """Its OWN scene, not the parent's. Inheriting ConnectBoardAnim's layout
+        would inherit _PLUG_TIP, which is a fraction measured on the MEDIC
+        sprite — landing the radio on a point of a Pi that means nothing.
+        """
+        pi_tex = _texture(self._pi_png) if self._pi_png else None
+        board_tex = (_texture(self._board_png) if self._board_png else None) \
+            or _texture(LORA_PNG)
+        if pi_tex is None or board_tex is None:
+            # An unknown Pi falls back to the schematic rather than borrowing the
+            # medic art: drawing Node Medic here would say "plug it back into the
+            # medic", which is the opposite of this step.
+            return self._draw_fallback()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        # Pi on the right, radio approaching from the left. Left-to-right because
+        # every other step in this flow moves that way, and the operator reads
+        # the row as a sequence.
+        pa = pi_tex.width / float(pi_tex.height)
+        ph = h * 0.78
+        pw = ph * pa
+        if pw > w * 0.52:
+            pw = w * 0.52
+            ph = pw / pa
+        px = x + w - pw - dp(10)
+        py = y + (h - ph) / 2.0
+
+        ba = board_tex.width / float(board_tex.height)
+        bh = ph * 0.46
+        bw = bh * ba
+        p = min(1.0, self.phase / 0.9)
+        far_x = x + dp(6)
+        near_x = px - bw * 0.72           # overlapping, not touching a named port
+        bx = far_x + (near_x - far_x) * p
+        by = y + (h - bh) / 2.0
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+            Color(1, 1, 1, 1)
+            Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
 
 class ConnectAntennaAnim(_LoopAnim):
     """Antenna-first: three illustrated sprites — the LoRa32 board, the SMA<->U.FL

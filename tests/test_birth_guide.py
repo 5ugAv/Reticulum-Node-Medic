@@ -416,10 +416,12 @@ def test_seeing_a_card_does_not_write():
     src = open("ui/screens/birth_guide_screen.py").read()
     block = src[src.index("elif isinstance(anim, InsertSdAnim):"):]
     block = block[:block.index("\n\n")]
-    assert "hide_next" not in block, (
-        "Next must stay on the card step: detection can fail on a marginal "
-        "reader, and a step whose only way forward needs hardware to work is a "
-        "dead end when it doesn't.")
+    # The green "Write the card →" button is GONE — asked for twice, 2026-08-08
+    # and again 2026-08-09. It was kept the first time as an escape hatch for a
+    # card the medic fails to see; that was wrong, because a button whose only
+    # purpose is a failure mode still reads on every successful run as "the tool
+    # is waiting for you", under a finished animation. Back covers the failure.
+    assert "hide_next" in block, "the green Write-the-card button must not return"
     seen = src[src.index("def _on_card_seen"):src.index("def _pi_key_for_art")]
     for destructive in ("flash(", "_confirm(", "_write("):
         assert destructive not in seen, f"{destructive!r} fires on merely seeing a card"

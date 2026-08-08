@@ -152,7 +152,7 @@ _STEPS = {
          "body": tr("The radio is done. Unplug it from Node Medic and set it "
                     "aside — it goes onto the Raspberry Pi at the very end. "
                     "Leaving it here draws power the Pi is about to need."),
-         "anim": "connect_board"},
+         "anim": "disconnect_board"},
         # ONE ROUTE FOR EVERY BOARD — the medic's own card reader (operator
         # decision, 2026-08-06). This replaced "card into the Pi, Pi becomes its
         # own card reader" (rpiboot), which was clever and board-dependent in a
@@ -218,7 +218,12 @@ _STEPS = {
                     "the mesh through this radio from now on."),
          "hint": tr("Same rule as everywhere else: a DATA cable. The Pi powers "
                     "the radio now, so keep the lead short."),
-         "anim": "connect_board"},
+         # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
+         # the medic senses the board itself. It cannot sense this one: the radio
+         # is on the PI now, on the Pi's USB, not the medic's. Hiding Next here
+         # would leave the last step of the walkthrough with no way to finish.
+         "next": tr("That's the node built  →"),
+         "anim": "radio_to_pi"},
     ],
     "host": [
         # (The old second page — "Let's flash it", narrating its own button —

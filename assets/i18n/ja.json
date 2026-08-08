@@ -322,6 +322,7 @@
   "That password didn't open it — {n} attempts left.": "そのパスワードでは開きませんでした — 残り {n} 回。",
   "That password didn't open it.": "そのパスワードでは開きませんでした。",
   "That recovery key didn't open it.": "その復旧キーでは開きませんでした。",
+  "That's the node built  →": "ノードが完成  →",
   "The Node Medic always alerts on its own screen. It can ALSO message you when a node has been unreachable for 3 days and needs a physical check — sent to your Reticulum address, so it reaches Sideband, Columba, or any LXMF app on your phone. This is optional.": "Node Medic は常に自身の画面で警告します。さらに、ノードが3日間到達不能で物理的な確認が必要なときにメッセージを送ることもできます — あなたの Reticulum アドレスに送られ、スマホの Sideband、Columba、その他の LXMF アプリに届きます。これは任意です。",
   "The USB-C port carries both power and data, so one cable to Node Medic does everything.": "The USB-C port carries both power and data, so one cable to Node Medic does everything.",
   "The cable must carry DATA — a charge-only lead will power the Pi perfectly and never show up here.": "The cable must carry DATA — a charge-only lead will power the Pi perfectly and never show up here.",

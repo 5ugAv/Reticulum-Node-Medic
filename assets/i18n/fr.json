@@ -322,6 +322,7 @@
   "That password didn't open it — {n} attempts left.": "Ce mot de passe n'a pas fonctionné — {n} tentatives restantes.",
   "That password didn't open it.": "Ce mot de passe n'a pas fonctionné.",
   "That recovery key didn't open it.": "Cette clé de récupération n'a pas fonctionné.",
+  "That's the node built  →": "Le nœud est construit  →",
   "The Node Medic always alerts on its own screen. It can ALSO message you when a node has been unreachable for 3 days and needs a physical check — sent to your Reticulum address, so it reaches Sideband, Columba, or any LXMF app on your phone. This is optional.": "Node Medic alerte toujours sur son propre écran. Il peut AUSSI vous envoyer un message quand un nœud est injoignable depuis 3 jours et nécessite une vérification physique, à votre adresse Reticulum, pour qu'il atteigne Sideband, Columba ou toute appli LXMF de votre téléphone. C'est facultatif.",
   "The USB-C port carries both power and data, so one cable to Node Medic does everything.": "The USB-C port carries both power and data, so one cable to Node Medic does everything.",
   "The cable must carry DATA — a charge-only lead will power the Pi perfectly and never show up here.": "The cable must carry DATA — a charge-only lead will power the Pi perfectly and never show up here.",
