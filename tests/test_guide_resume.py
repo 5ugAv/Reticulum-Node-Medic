@@ -186,3 +186,52 @@ def test_a_new_walkthrough_gets_the_warning_back():
 def test_declaring_it_can_never_raise_inside_a_step_render():
     src = func_source(SCREEN, "_expect_board_absence")
     assert "except Exception" in src
+
+
+# --- detection is feedback, not consent -----------------------------------
+#
+# Operator, 2026-08-09: "the birth process asked me to remove the radio awfully
+# fast. I've got a feeling it hasn't been flashed in that time." They were
+# right — the log showed no flash at all, and 511 USB attach/detach events in
+# 25 minutes from a boot-looping V4.
+#
+# Steps 1 and 2 both used the connect_board animation, whose branch hides Next
+# and advances the moment a board is SEEN. So step 1 never showed its "Flash
+# this radio" button and moved on from mere presence — and a board that
+# boot-loops is present. Step 2, the gate, auto-advanced past itself for the
+# same reason. Presence is not a flash, and it is certainly not a pass.
+
+def test_a_step_that_hands_off_or_gates_requires_a_press():
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index("isinstance(anim, ConnectBoardAnim)"):]
+    branch = branch[:branch.index("elif isinstance(anim, InsertSdAnim)")]
+    assert 's.get("screen") or s.get("gate")' in branch, \
+        "a hand-off or a gate must suppress the auto-advance"
+    # the plain 'plug it in' step keeps its old behaviour
+    assert "hide_next()" in branch
+    assert "else:" in branch
+
+
+def test_the_ripple_still_fires_on_those_steps():
+    """Detection remains useful feedback — "I can see your board" — it just
+    stops deciding anything."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index("isinstance(anim, ConnectBoardAnim)"):]
+    branch = branch[:branch.index("elif isinstance(anim, InsertSdAnim)")]
+    assert "mark_connected" in branch and "on_present=" in branch
+
+
+def test_the_radio_step_still_carries_its_button():
+    """Which is what the operator presses to actually start the flash."""
+    from ui.birth_guide_flow import guide_steps
+    first = guide_steps("pi")[0]
+    assert first.get("screen") == "birth"
+    assert first.get("next", "").strip(), "no button = nothing starts the flash"
+
+
+def test_the_gate_step_cannot_advance_itself():
+    from ui.birth_guide_flow import guide_steps
+    gate_step = next(s for s in guide_steps("pi") if s.get("gate"))
+    # it must be reached by a press, and its own render must not auto-advance
+    assert gate_step.get("anim") == "connect_board"   # the branch above covers it
+    assert not gate_step.get("screen"), "a gate step must not also hand off"

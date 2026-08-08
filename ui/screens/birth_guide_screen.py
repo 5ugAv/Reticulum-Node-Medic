@@ -1452,8 +1452,32 @@ class BirthGuideScreen(BoxLayout):
             # medic genuinely cannot verify for itself.
             pass
         elif isinstance(anim, ConnectBoardAnim):
-            step.hide_next()          # same: detection drives this step
-            self._start_board_poll(anim)
+            # DETECTION IS FEEDBACK, NOT CONSENT.
+            #
+            # This branch's contract is "the medic senses a board, so hide Next
+            # and carry the flow forward by itself" — right for a step whose
+            # whole content IS "plug it in". It is WRONG for a step that hands
+            # off to real work, or that guards it.
+            #
+            # Both new radio steps had it and both misbehaved (operator,
+            # 2026-08-09, "it asked me to remove the radio awfully fast... I've
+            # got a feeling it hasn't been flashed in that time"). They were
+            # right: step 1 never showed its "Flash this radio" button and
+            # advanced on the mere PRESENCE of a board — and a boot-looping V4
+            # is present. Nothing was flashed. Step 2, the gate, auto-advanced
+            # past itself for the same reason.
+            #
+            # So: a step carrying a `screen` hand-off or a `gate` keeps its
+            # button and requires a press. The poll still runs, because the
+            # green ripple is genuinely useful ("I can see your board") — it
+            # just no longer decides anything.
+            if s.get("screen") or s.get("gate"):
+                self._start_board_poll(
+                    anim, on_present=lambda a: (hasattr(a, "mark_connected")
+                                                and a.mark_connected()))
+            else:
+                step.hide_next()      # same: detection drives this step
+                self._start_board_poll(anim)
         elif isinstance(anim, InsertSdAnim):
             # THE MEDIC MUST NOTICE THE CARD ARRIVE. The operator asked exactly
             # this while looking at the step (2026-08-07): "should I be getting
