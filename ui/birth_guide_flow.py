@@ -105,7 +105,30 @@ _STEPS = {
          "warning": tr("Never power a radio board with no antenna attached — "
                        "transmitting without one can permanently damage its "
                        "radio."),
-         "anim": "connect_board"},
+         "anim": "connect_board",
+         # THE GATE. Finish the radio before anything else starts.
+         #
+         # This step used to say "plug it in" and let the operator walk straight
+         # past. On 2026-08-08 they did: the Heltec V4 on the bench was
+         # boot-looping every 2.4 seconds — its bootloader written with
+         # --flash_size keep — and the flow happily went on to write TWO SD cards
+         # and spend an evening diagnosing a Pi, while the dead radio sat on the
+         # bus re-enumerating 97 times.
+         #
+         # The radio is the cheapest thing to test and the most likely to be
+         # broken, so it goes first AND it has to pass. A four-minute card write
+         # for a radio that cannot work is wasted; worse, its failure arrives
+         # later, attached to the wrong suspect.
+         #
+         # THE GATE IS NOT ATTACHED YET, deliberately. The machinery exists
+         # (birth_guide_screen._gate_state / _radio_gate, and _next honours it),
+         # but this step does not FLASH anything — it only asks for the board to
+         # be plugged in. Until the flash-and-verify happens here, nothing can
+         # satisfy "radio_ready", so turning it on would wall the walkthrough
+         # off with no way forward: the same dead end this flow has been bitten
+         # by twice. Wire the flash handoff first, then add:
+         #     "gate": "radio_ready",
+         },
         # ONE ROUTE FOR EVERY BOARD — the medic's own card reader (operator
         # decision, 2026-08-06). This replaced "card into the Pi, Pi becomes its
         # own card reader" (rpiboot), which was clever and board-dependent in a

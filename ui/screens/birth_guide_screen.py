@@ -1395,7 +1395,11 @@ class BirthGuideScreen(BoxLayout):
         # +1 on index/total for the name step folded in ahead of these
         step = WizardStep(index=self._i + 1, total=len(steps) + 1, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
-                          warning=s.get("warning", ""),
+                          # A gate refusal outranks the step's standing warning:
+                          # it is the reason THIS tap did nothing, and the
+                          # standing one is already familiar by now.
+                          warning=(getattr(self, "_gate_warning", "")
+                                   or s.get("warning", "")),
                           next_text=s.get("next", "Next  →"),
                           on_next=self._next, on_back=self._back)
         self.clear_widgets()
@@ -1654,6 +1658,39 @@ class BirthGuideScreen(BoxLayout):
             wrap.add_widget(_bk)
         self.add_widget(wrap)
 
+    def _gate_state(self, gate):
+        """``(may_proceed, why_not)`` for a gated step.
+
+        A gate is not a nag. It exists where continuing past a failure costs the
+        operator real time and then mis-attributes the fault — so the message has
+        to say what is wrong and what to do, never just "no".
+        """
+        if gate == "radio_ready":
+            return self._radio_gate()
+        return True, ""                    # unknown gate: never block on it
+
+    def _radio_gate(self):
+        """Has a radio been flashed and verified for this birth?
+
+        Deliberately consults the BIRTH RESULT rather than "is something
+        plugged in". A board can be present, powered, enumerating and still
+        useless: the Heltec V4 on the bench on 2026-08-08 was visible to the
+        medic the whole evening while boot-looping every 2.4 seconds, because
+        its bootloader had been written with --flash_size keep. Presence proves
+        nothing; a completed flash-and-verify does.
+        """
+        if getattr(self, "_radio_verified", False):
+            return True, ""
+        board = getattr(self, "_board_key", "") or getattr(self, "_board", "")
+        if not board:
+            return False, tr(
+                "Node Medic can't see a radio board yet. Plug it into Node "
+                "Medic (not into the Pi) and wait for it to be recognised.")
+        return False, tr(
+            "This radio hasn't been flashed and verified yet. Finish it here "
+            "first — a radio that can't work costs a four-minute card write to "
+            "find out later, and the failure turns up blamed on the Pi.")
+
     def _render_step_zero(self):
         self._i = 0
         self._render_step()
@@ -1663,6 +1700,17 @@ class BirthGuideScreen(BoxLayout):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
         steps = guide_steps(self._path, self._pi_key_for_text())
         cur = steps[self._i] if self._i < len(steps) else {}
+        # A gated step will not be walked past. See birth_guide_flow for why the
+        # radio has one: an unusable radio discovered AFTER a four-minute card
+        # write arrives attached to the wrong suspect.
+        gate = cur.get("gate")
+        if gate:
+            ok, why = self._gate_state(gate)
+            if not ok:
+                self._gate_warning = why
+                self._render_step()
+                return
+        self._gate_warning = ""
         if cur.get("screen") and self._on_navigate:   # step hands off to a full screen
             self._stop_board_poll()
             self._on_navigate(cur["screen"])
