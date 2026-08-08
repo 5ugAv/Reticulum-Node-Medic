@@ -120,15 +120,39 @@ _STEPS = {
          # for a radio that cannot work is wasted; worse, its failure arrives
          # later, attached to the wrong suspect.
          #
-         # THE GATE IS NOT ATTACHED YET, deliberately. The machinery exists
-         # (birth_guide_screen._gate_state / _radio_gate, and _next honours it),
-         # but this step does not FLASH anything — it only asks for the board to
-         # be plugged in. Until the flash-and-verify happens here, nothing can
-         # satisfy "radio_ready", so turning it on would wall the walkthrough
-         # off with no way forward: the same dead end this flow has been bitten
-         # by twice. Wire the flash handoff first, then add:
-         #     "gate": "radio_ready",
-         },
+         # THE RADIO IS FINISHED HERE. This step hands off to the BIRTH screen,
+         # which flashes and verifies it, and hands back with the VERIFY verdict
+         # (birth_screen._hand_back_to_guide). Only then does the walkthrough
+         # continue — the gate below reads that verdict.
+         "next": tr("Flash this radio  →"), "screen": "birth"},
+        # THE GATE. Nothing past this point starts until the radio has passed.
+        #
+        # Its own step, so the refusal has somewhere to be SEEN. Attaching the
+        # gate to the step above would re-render the "plug the radio in"
+        # instructions on every refusal, burying the reason in text the operator
+        # has already read.
+        {"title": tr("The radio has to work first"),
+         "body": tr("Node Medic flashes the radio and asks it to report back "
+                    "before anything else begins. A radio that can't answer "
+                    "isn't a radio yet, and the rest of this build assumes one."),
+         "hint": tr("If it failed, go back and try again — a different USB port "
+                    "or a fresh cable is worth trying before a different board."),
+         "anim": "connect_board",
+         "gate": "radio_ready"},
+        # AND THEN TAKE IT OFF. Asked for explicitly on 2026-08-09: the operator
+        # reached the Pi steps with the radio still on the medic and was never
+        # told to remove it.
+        #
+        # It is not tidiness. The radio's job is done, it draws current the Pi is
+        # about to want, and a board left plugged in keeps re-enumerating on the
+        # same bus the medic is trying to watch for the Pi — on 2026-08-08 a
+        # boot-looping V4 added 97 USB events to exactly that window. Its next
+        # appearance should be on the PI, at the end.
+        {"title": tr("Take the radio out of Node Medic"),
+         "body": tr("The radio is done. Unplug it from Node Medic and set it "
+                    "aside — it goes onto the Raspberry Pi at the very end. "
+                    "Leaving it here draws power the Pi is about to need."),
+         "anim": "connect_board"},
         # ONE ROUTE FOR EVERY BOARD — the medic's own card reader (operator
         # decision, 2026-08-06). This replaced "card into the Pi, Pi becomes its
         # own card reader" (rpiboot), which was clever and board-dependent in a
@@ -176,6 +200,25 @@ _STEPS = {
                     "\u2014 its micro-USB is power only. Use a short, thick cable "
                     "\u2014 a thin or coiled one drops the link."),
          "anim": "connect_pi"},
+        # THE HAND-OFF, AND THE ONLY STEP THAT MAKES THIS A NODE.
+        #
+        # It has never existed. Task #40 has carried the same line since
+        # 2026-08-01: "the physical hand-off (radio onto the Pi) has not been
+        # done yet, so the radio has never been exercised FROM the Pi." Every
+        # birth in this project has ended with two working halves on a bench and
+        # nothing joining them \u2014 because a hand-off could not return, so there
+        # was nowhere to put a step that came after one.
+        #
+        # The radio was flashed on the MEDIC, where there is power to spare. It
+        # comes back out (three steps ago) and lands here, on the Pi, which is
+        # where it lives for the rest of its life.
+        {"title": tr("Put the radio onto the Raspberry Pi"),
+         "body": tr("Take the radio you flashed at the start and plug it into "
+                    "the Raspberry Pi. That's the node built \u2014 the Pi talks to "
+                    "the mesh through this radio from now on."),
+         "hint": tr("Same rule as everywhere else: a DATA cable. The Pi powers "
+                    "the radio now, so keep the lead short."),
+         "anim": "connect_board"},
     ],
     "host": [
         # (The old second page — "Let's flash it", narrating its own button —

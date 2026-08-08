@@ -15,9 +15,58 @@ def test_step_counts_per_path():
     # button was about to do) was removed — operator decision 2026-07-31; the
     # previous page now carries the Start-setup handoff.
     assert len(guide_steps("radio")) == 2      # connect -> what-happens-next/setup
-    # insert-into-medic -> image -> insert-into-Pi -> connect radio
-    assert len(guide_steps("pi")) == 4
     assert len(guide_steps("host")) == 1       # connect page carries Start setup
+    # The Pi path was rebuilt 2026-08-09 to the operator's order: the radio is
+    # FINISHED first and must pass before anything else starts, then it comes
+    # off the medic, and it goes onto the Pi at the very end.
+    assert [s["title"] for s in guide_steps("pi")] == [
+        "Connect the radio board to Node Medic",   # -> BIRTH, flashes + verifies
+        "The radio has to work first",             # GATE: radio_ready
+        "Take the radio out of Node Medic",
+        "Put the SD card into Node Medic",         # -> pi_imager
+        "Move the card to the Raspberry Pi",
+        "Connect the Pi to Node Medic",
+        "Put the radio onto the Raspberry Pi",     # the hand-off that makes a node
+    ]
+
+
+def test_the_radio_is_finished_before_anything_else_begins():
+    """The operator's order, 2026-08-09: "recognise radio board — flash as
+    rnode (finish this first) — then image sd card".
+
+    The radio is the cheapest thing to test and the likeliest to be broken. On
+    2026-08-08 a boot-looping Heltec V4 was walked straight past, two cards were
+    written, and an evening went on diagnosing a Pi while the dead radio
+    re-enumerated 97 times on the same bus.
+    """
+    steps = guide_steps("pi")
+    titles = [s["title"] for s in steps]
+    radio = titles.index("Connect the radio board to Node Medic")
+    gate = next(i for i, s in enumerate(steps) if s.get("gate") == "radio_ready")
+    card = titles.index("Put the SD card into Node Medic")
+    assert radio < gate < card, "the gate must stand between the radio and the card"
+    assert steps[radio].get("screen") == "birth", \
+        "the radio step must actually hand off to the flash, not just say 'plug it in'"
+
+
+def test_the_operator_is_told_to_take_the_radio_back_off():
+    """Reported 2026-08-09: reached the Pi steps with the radio still plugged
+    into the medic and was never told to remove it. Not tidiness — it draws
+    current the Pi is about to want, and a board left on the bus keeps
+    re-enumerating in the window the medic is watching for the Pi."""
+    steps = guide_steps("pi")
+    titles = [s["title"] for s in steps]
+    out = titles.index("Take the radio out of Node Medic")
+    assert out < titles.index("Put the SD card into Node Medic")
+    assert out < titles.index("Connect the Pi to Node Medic")
+
+
+def test_the_walkthrough_ends_by_joining_the_two_halves():
+    """#40 has said since 2026-08-01: "the radio has never been exercised FROM
+    the Pi". Every birth ended with two working halves and nothing joining
+    them, because a hand-off could not return so nothing could come after one."""
+    steps = guide_steps("pi")
+    assert steps[-1]["title"] == "Put the radio onto the Raspberry Pi"
 
 
 def test_antenna_is_the_landing_not_a_guided_step():

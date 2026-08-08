@@ -2234,7 +2234,39 @@ class BirthScreen(BoxLayout):
         finally:
             Clock.schedule_once(lambda dt: self._finish(), 0)
 
+    def _hand_back_to_guide(self):
+        """A guided birth sent us here to do one job. Give it back.
+
+        Carries the VERIFY verdict, not "the flash finished" — the radio gate
+        must be able to stall on a board that flashed and still does not report
+        as an RNode. Delayed a beat so the outcome popup is seen: a screen that
+        vanishes the instant it says "failed" has not told anybody anything.
+
+        Silent when no walkthrough is waiting, so a flash started straight from
+        the BIRTH screen behaves exactly as it always has.
+        """
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if not getattr(app, "guided_birth_pending", lambda: False)():
+                return
+            verified = bool(getattr(self, "_radio_verified", False))
+            Clock.schedule_once(
+                lambda _dt: app.resume_guided_birth({"radio_verified": verified}),
+                2.5)
+        except Exception:                                          # noqa: BLE001
+            pass            # a failed hand-back must never break the outcome
+
     def _step(self, result):
+        # REMEMBER WHETHER THE RADIO ACTUALLY PASSED. `verify` is the step that
+        # asks the board to report as a provisioned RNode, so it — not "the
+        # flash returned" — is the honest answer to "have we got a working
+        # radio". A board can flash, enumerate and still be useless: the Heltec
+        # V4 on the bench on 2026-08-08 was visible all evening while
+        # boot-looping every 2.4 seconds. The guided birth's radio gate reads
+        # this (see birth_guide_screen._radio_gate).
+        if result.name == "verify" and not result.skipped:
+            self._radio_verified = bool(result.success)
         mark = "skip" if result.skipped else ("ok" if result.success else "FAIL")
         color = ("text_secondary" if result.skipped
                  else "green" if result.success else "red")
@@ -2476,6 +2508,7 @@ class BirthScreen(BoxLayout):
         self._stop_build_progress()              # build done -> ring to 100%, remove
         self._outcome_panel()
         self._popup_outcome()                    # the outcome comes TO the operator
+        self._hand_back_to_guide()
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
             self.list.add_widget(_line("Onboarding (enter at RTNode-Setup / "
