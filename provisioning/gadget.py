@@ -158,10 +158,17 @@ def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
     Idempotent — a no-op if the overlay is already declared.
 
     *pi_key* selects the ``dr_mode`` this board needs (see
-    :func:`dwc2_overlay_for`). A card already carrying a dwc2 line is left
-    exactly as it is: rewriting someone's boot config to change a mode we only
-    inferred is a bigger risk than the mode being wrong, and the operator can
-    always re-image.
+    :func:`dwc2_overlay_for`). An applicable dwc2 line that is not the one this
+    board needs is UPGRADED IN PLACE — never duplicated, and never left alone.
+
+    That last part changed on 2026-08-08. The rule used to be "a card already
+    carrying a dwc2 line is left exactly as it is", on the reasoning that
+    rewriting an inferred mode is riskier than the mode being wrong. On a Pi 3A+
+    that reasoning inverts: a bare ``dtoverlay=dwc2`` means dr_mode=otg, "read
+    the ID pin", and USB-A has no ID pin — so leaving it is not caution, it is a
+    guaranteed silent failure. We only rewrite where DR_MODE_BY_BOARD gives this
+    board a known required mode; for any board without an entry our overlay IS
+    the bare line, so an existing one already matches and nothing is touched.
 
     The appended block opens with ``[all]``. config.txt is SECTIONED, and an
     overlay inherits whichever section it falls under: stock Raspberry Pi OS
@@ -173,15 +180,80 @@ def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
     the overlay apply wherever the card is booted.
     """
     overlay = dwc2_overlay_for(pi_key)
-    for line in text.splitlines():
-        s = line.strip()
-        # match the bare overlay AND any dr_mode variant, but never a longer
-        # overlay name that merely starts the same way (dtoverlay=dwc2-foo)
-        if s == _DWC2_OVERLAY or s.startswith(_DWC2_OVERLAY + ","):
-            return text
+    if config_txt_has_gadget(text, pi_key):
+        return text
+    # An applicable dwc2 line that is not the one we need gets UPGRADED IN
+    # PLACE, never duplicated. Two dwc2 overlays in force is ambiguous, and
+    # leaving a bare one is not the conservative choice it looks like: bare
+    # means dr_mode=otg, "read the ID pin", and a USB-A socket has none — so
+    # the gadget silently never comes up. We only rewrite when this board has a
+    # KNOWN required mode; for a board with no entry our overlay IS the bare
+    # line, so an existing one already matches and nothing is touched.
+    at = _applicable_dwc2_line(text, _DWC2_OVERLAY)
+    if at is not None:
+        lines = text.splitlines(keepends=True)
+        pad = lines[at][:len(lines[at]) - len(lines[at].lstrip())]
+        nl = "\n" if lines[at].endswith("\n") else ""
+        lines[at] = f"{pad}{overlay}{nl}"
+        return "".join(lines)
     sep = "" if text.endswith("\n") or text == "" else "\n"
     return (f"{text}{sep}\n# USB gadget ethernet (Node Medic provisioning link)\n"
             f"[all]\n{overlay}\n")
+
+
+
+def _applicable_dwc2_line(text, base):
+    """Index of a dwc2 overlay line that is IN FORCE for every board, or None.
+
+    Only lines outside board-filtered sections count — a [cm5] line is not in
+    force on a 3A+ and must never be treated as ours."""
+    section = "all"
+    for i, line in enumerate(text.splitlines()):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if section == "all" and (s == base or s.startswith(base + ",")):
+            return i
+    return None
+
+def config_txt_applies_to_all(text: str) -> list:
+    """The lines of *text* in force on EVERY board, headers stripped.
+
+    Lines before any ``[section]`` apply to all boards, and ``[all]`` returns to
+    that state; anything under ``[pi5]``/``[cm4]``/``[cm5]``/``[board-type=…]``
+    applies only there."""
+    out, section = [], "all"
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if section == "all":
+            out.append(s)
+    return out
+
+
+def config_txt_has_gadget(text: str, pi_key: str = "") -> bool:
+    """Is OUR overlay present in a section that applies to this board?
+
+    THE BUG THIS REPLACES, caught on a real card 2026-08-08. The check used to
+    scan every line regardless of section. Raspberry Pi OS ships::
+
+        [cm5]
+        dtoverlay=dwc2,dr_mode=host
+
+    and ``startswith("dtoverlay=dwc2,")`` matched it, so a Pi 3A+ card was
+    declared already-prepared and returned untouched — on the strength of a
+    Compute Module 5 line, saying dr_mode=HOST. cmdline.txt still received its
+    half, so the card carried ``modules-load=dwc2,g_ether`` with no dwc2 in the
+    device tree: the Pi booted perfectly and presented no USB device at all.
+    Indistinguishable from a bad cable, and it cost most of a bench session.
+
+    Both conditions matter. The section, because a [cm5] line is not in force on
+    a 3A+; and the exact overlay, because a bare ``dtoverlay=dwc2`` leaves
+    dr_mode=otg — "read the ID pin" — and a USB-A socket has no ID pin."""
+    return dwc2_overlay_for(pi_key) in config_txt_applies_to_all(text)
 
 
 @dataclass

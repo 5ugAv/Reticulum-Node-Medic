@@ -645,13 +645,38 @@ def test_an_unknown_board_is_never_made_worse():
            config_txt_with_gadget("# stock\n")
 
 
-def test_an_existing_dwc2_line_is_never_rewritten():
-    """Including one that already carries a dr_mode — re-running must not append
-    a second, conflicting overlay line."""
-    from provisioning.gadget import config_txt_with_gadget
+def test_an_existing_dwc2_line_is_never_DUPLICATED():
+    """Re-running must never append a second, conflicting overlay line.
+
+    This used to assert the line was never REWRITTEN either. That changed on
+    2026-08-08, after a real card: on a Pi 3A+ a bare ``dtoverlay=dwc2`` means
+    dr_mode=otg — "read the ID pin" — and USB-A has no ID pin, so leaving it
+    alone guarantees the gadget never comes up. Leaving it was not the
+    conservative choice it looked like. It is now upgraded in place, which
+    honours what this test actually cares about (exactly one overlay in force)
+    without preserving a value that cannot work.
+    """
+    from provisioning.gadget import config_txt_with_gadget, config_txt_applies_to_all
     for existing in ("dtoverlay=dwc2", "dtoverlay=dwc2,dr_mode=peripheral"):
         text = f"# stock\n{existing}\n"
-        assert config_txt_with_gadget(text, pi_key="pi_3a_plus") == text
+        out = config_txt_with_gadget(text, pi_key="pi_3a_plus")
+        live = [l for l in config_txt_applies_to_all(out)
+                if l.startswith("dtoverlay=dwc2")]
+        assert live == ["dtoverlay=dwc2,dr_mode=peripheral"], (existing, live)
+
+
+def test_our_exact_line_is_left_untouched():
+    from provisioning.gadget import config_txt_with_gadget
+    text = "# stock\ndtoverlay=dwc2,dr_mode=peripheral\n"
+    assert config_txt_with_gadget(text, pi_key="pi_3a_plus") == text
+
+
+def test_a_board_with_no_required_mode_keeps_its_bare_line():
+    # Our overlay IS the bare line there, so there is nothing to upgrade and
+    # nothing gets rewritten — the old caution still applies where it made sense.
+    from provisioning.gadget import config_txt_with_gadget
+    text = "# stock\ndtoverlay=dwc2\n"
+    assert config_txt_with_gadget(text, pi_key="pi_zero_2w") == text
 
 
 def test_a_similarly_named_overlay_is_not_mistaken_for_ours():

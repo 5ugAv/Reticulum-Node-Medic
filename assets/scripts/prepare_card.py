@@ -186,12 +186,70 @@ def cmdline_with_gadget(text: str) -> str:
     return " ".join(out) + trailing
 
 
-def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
-    overlay = dwc2_overlay_for(pi_key)
+
+def _applicable_dwc2_line(text, base):
+    """Index of a dwc2 overlay line that is IN FORCE for every board, or None.
+
+    Only lines outside board-filtered sections count — a [cm5] line is not in
+    force on a 3A+ and must never be treated as ours."""
+    section = "all"
+    for i, line in enumerate(text.splitlines()):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if section == "all" and (s == base or s.startswith(base + ",")):
+            return i
+    return None
+
+def config_txt_applies_to_all(text: str) -> list:
+    """The lines of *text* that apply to EVERY board, with their section.
+
+    config.txt is sectioned. Lines before any header apply to all boards, and
+    ``[all]`` returns to that state; anything under ``[pi5]``, ``[cm4]``,
+    ``[cm5]``, ``[board-type=...]`` and friends applies only to those.
+    """
+    out, section = [], "all"
     for line in text.splitlines():
         s = line.strip()
-        if s == DWC2_OVERLAY or s.startswith(DWC2_OVERLAY + ","):
-            return text
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if section == "all":
+            out.append(s)
+    return out
+
+
+def config_txt_has_gadget(text: str, pi_key: str = "") -> bool:
+    """Is the gadget overlay present AND actually in force for this board?
+
+    THE BUG THIS EXISTS TO KILL (found on a real card, 2026-08-08). The old
+    check scanned every line for ``dtoverlay=dwc2`` with no regard for which
+    section it sat in. Raspberry Pi OS ships this in its stock config.txt::
+
+        [cm5]
+        dtoverlay=dwc2,dr_mode=host
+
+    ``startswith("dtoverlay=dwc2,")`` matched it, so the writer concluded the
+    card was already prepared and returned it untouched — on a Pi 3A+, for
+    which a [cm5] line means precisely nothing, and saying dr_mode=HOST at
+    that. cmdline.txt still got its half of the edit, so the card carried
+    ``modules-load=dwc2,g_ether`` with no dwc2 in the device tree to bind to:
+    the Pi booted perfectly and presented no USB device at all, which is
+    indistinguishable from a bad cable and cost most of a bench session.
+
+    Two things must both hold: the line must be OUR overlay (a bare
+    ``dtoverlay=dwc2`` leaves dr_mode=otg, which reads an ID pin the 3A+'s
+    USB-A does not have), and it must be in a section that applies here.
+    """
+    want = dwc2_overlay_for(pi_key)
+    return want in config_txt_applies_to_all(text)
+
+
+def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
+    overlay = dwc2_overlay_for(pi_key)
+    if config_txt_has_gadget(text, pi_key):
+        return text
     sep = "" if text.endswith("\n") or text == "" else "\n"
     # [all] re-opened deliberately: config.txt is sectioned, and an append that
     # lands under [cm5]/[pi5] silently applies to nothing on other boards.
@@ -230,7 +288,24 @@ def write_boot(mnt: str, cfg: dict) -> None:
                          else fn(before))
                 if after != before:
                     _write(q, after)
-            say("baked the USB-cable link")
+            # READ IT BACK. Both halves are needed and they fail independently:
+            # cmdline.txt loads the modules, config.txt puts dwc2 in the device
+            # tree for them to bind to. A card with only the first boots
+            # perfectly and presents nothing — the 2026-08-08 bench failure.
+            # Never again assert this from the fact that write() returned.
+            missing = []
+            if GADGET_MODULES not in open(os.path.join(mnt, "cmdline.txt")).read():
+                missing.append("cmdline.txt: " + GADGET_MODULES)
+            cfg_txt = open(os.path.join(mnt, "config.txt")).read()
+            if not config_txt_has_gadget(cfg_txt, pi_key):
+                missing.append("config.txt: " + dwc2_overlay_for(pi_key)
+                               + " (in a section that applies to this board)")
+            if missing:
+                print("PREPARE_WARN: cable link INCOMPLETE — " + "; ".join(missing)
+                      + ". The Pi will boot and join WiFi, but it will NOT appear "
+                        "over the USB cable. Birth this one over WiFi.")
+            else:
+                say("baked the USB-cable link")
         except Exception as exc:                        # noqa: BLE001
             print(f"PREPARE_WARN: cable link not baked ({exc}) — "
                   f"this card can still be birthed over WiFi")
