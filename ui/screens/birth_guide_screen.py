@@ -1755,6 +1755,7 @@ class BirthGuideScreen(BoxLayout):
         if at is None:
             return False
         self._resume_at = None
+        self._trace(f"resumed at step {at + 1} with {result or {}}")
         for key, val in (result or {}).items():
             setattr(self, f"_{key}", val)
         steps = guide_steps(self._path, self._pi_key_for_text())
@@ -1768,6 +1769,23 @@ class BirthGuideScreen(BoxLayout):
     def cancel_resume(self):
         """Forget the return point — the operator left the walkthrough."""
         self._resume_at = None
+
+    def _trace(self, what):
+        """One line per navigation decision, into ui.log.
+
+        Added 2026-08-09 after two changes in one night behaved differently from
+        what their tests asserted, and the only way to find out was the operator
+        noticing at the bench. Reconstructing "how did I get from step 1 to step
+        3" from USB events and guesswork cost more than this line ever will.
+
+        Deliberately print(), which the UI already routes to ui.log unbuffered
+        (main.py runs under python3 -u), so it lands in the same capture as
+        everything else and needs no new plumbing.
+        """
+        try:
+            print(f"[guide] {what}", flush=True)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _expect_board_absence(self, expected=True):
         """Ask the app's disconnect watcher to treat a missing board as normal.
@@ -1830,9 +1848,13 @@ class BirthGuideScreen(BoxLayout):
         # A gated step will not be walked past. See birth_guide_flow for why the
         # radio has one: an unusable radio discovered AFTER a four-minute card
         # write arrives attached to the wrong suspect.
+        self._trace(f"next from step {self._i + 1} "
+                    f"({cur.get('title', '?')!r}) "
+                    f"gate={cur.get('gate') or '-'} screen={cur.get('screen') or '-'}")
         gate = cur.get("gate")
         if gate:
             ok, why = self._gate_state(gate)
+            self._trace(f"gate {gate}: {'PASS' if ok else 'BLOCKED'} {why[:60]}")
             if not ok:
                 self._gate_warning = why
                 self._render_step()
@@ -1853,6 +1875,8 @@ class BirthGuideScreen(BoxLayout):
             # final "put the radio on the Pi and prove it" step has never
             # existed: neither can be a hand-off if a hand-off cannot return.
             self._resume_at = self._i + 1
+            self._trace(f"hand off to {cur['screen']}, resume at step "
+                        f"{self._resume_at + 1}")
             self._on_navigate(cur["screen"])
             # Carry the name across. The BIRTH screen route already did this;
             # this one did not, so anyone walking the GUIDE — which is the
