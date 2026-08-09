@@ -526,6 +526,15 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         # which Pi this card is FOR — picks the dwc2 dr_mode (a 3A+ must be
         # told "peripheral"; its USB-A socket has no ID pin to infer from)
         "pi_key": pi_key or "",
+        # THE WI-FI, PUT ON THE CARD RATHER THAN ASKED OF IT. custom.toml's
+        # [wlan] block and cloud-init's network-config are both inert on this
+        # image, exactly like the two account mechanisms rootfs_user replaced —
+        # so the details rode along on every card and were never applied
+        # (proven twice, 2026-08-09). The helper writes a NetworkManager
+        # connection onto the rootfs instead.
+        "wifi_ssid": wifi_ssid or "",
+        "wifi_psk": wifi_password or "",
+        "wifi_country": wifi_country or "",
         "user": username,
         "pwhash": pw_hash,
         "keys": list(authorized_keys or []),

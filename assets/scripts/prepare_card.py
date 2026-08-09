@@ -363,10 +363,78 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
             print(f"PREPARE_WARN: NetworkManager may claim usb0 and wipe the "
                   f"link address ({exc})")
 
+    write_wifi(mnt, cfg.get("wifi_ssid", ""), cfg.get("wifi_psk", ""),
+               cfg.get("wifi_country", ""))
+
     user = cfg.get("user") or ""
     if not user:
         return
     activate_account(mnt, user, cfg.get("pwhash", ""), cfg.get("keys") or [])
+
+
+#: Mirrors provisioning/rootfs_wifi.py. This helper runs as ROOT and
+#: deliberately imports nothing from the repo — that is the privilege boundary —
+#: so the content is duplicated here on purpose. A test pins the two together so
+#: they cannot drift.
+NM_DIR = "etc/NetworkManager/system-connections"
+WPA_CONF = "etc/wpa_supplicant/wpa_supplicant.conf"
+
+
+def wifi_connection_text(ssid: str, psk: str) -> str:
+    """A NetworkManager keyfile for this network."""
+    import uuid as _uuid
+    uid = str(_uuid.uuid5(_uuid.NAMESPACE_DNS, "nodemedic-wifi-" + ssid))
+    return "\n".join([
+        "[connection]", "id=" + ssid, "uuid=" + uid, "type=wifi",
+        "autoconnect=true", "",
+        "[wifi]", "mode=infrastructure", "ssid=" + ssid, "",
+        "[wifi-security]", "key-mgmt=wpa-psk", "psk=" + psk, "",
+        "[ipv4]", "method=auto", "",
+        "[ipv6]", "method=auto", "addr-gen-mode=default", "",
+    ])
+
+
+def wifi_country_text(country: str) -> str:
+    return "\n".join([
+        "ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev",
+        "update_config=1",
+        "country=" + country.upper(),
+        "",
+    ])
+
+
+def write_wifi(mnt: str, ssid: str, psk: str, country: str) -> None:
+    """Put the Wi-Fi ON the card, because asking the image to do it is a no-op.
+
+    custom.toml's [wlan] and cloud-init's network-config are both inert on this
+    image — the same reason activate_account exists. Two cards in a row carried
+    correct Wi-Fi details and joined nothing (2026-08-09).
+
+    NetworkManager REFUSES a connection file that is not 0600 root-owned, and
+    complains only in its own log, so the permissions are the feature. The
+    country matters too: 5 GHz is unusable until the regulatory domain is set,
+    and a card aimed at a 5 GHz-only network joins nothing without it.
+    """
+    if not ssid:
+        return                          # cable-birth cards carry no PSK at all
+    try:
+        safe = ssid.replace("/", "_")
+        d = os.path.join(mnt, NM_DIR)
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, safe + ".nmconnection")
+        _write(path, wifi_connection_text(ssid, psk))
+        os.chmod(path, 0o600)
+        os.chown(path, 0, 0)
+        if country:
+            wc = os.path.join(mnt, WPA_CONF)
+            os.makedirs(os.path.dirname(wc), exist_ok=True)
+            _write(wc, wifi_country_text(country))
+            os.chmod(wc, 0o600)
+            os.chown(wc, 0, 0)
+        say("wrote the Wi-Fi connection onto the card (" + safe + ")")
+    except Exception as exc:                            # noqa: BLE001
+        print("PREPARE_WARN: could not write the Wi-Fi settings onto the card "
+              "(" + str(exc) + ") - the node will not join Wi-Fi")
 
 
 def activate_account(mnt: str, user: str, pwhash: str, keys: list) -> None:

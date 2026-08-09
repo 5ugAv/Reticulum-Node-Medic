@@ -1,0 +1,130 @@
+"""The Wi-Fi has to be PUT on the card, not requested of it.
+
+rootfs_user exists because both boot-time config mechanisms are silent no-ops
+on the carried image: custom.toml is inert (no raspberrypi-sys-mods/firstboot)
+and cloud-init user-data is inert too. The ACCOUNT got a direct-to-rootfs
+fallback because of that. The WI-FI never did.
+
+So it never worked. Two cards in a row, 2026-08-09, both diagnosed by the medic
+as "Wi-Fi details are on the card but were NEVER APPLIED", and a first boot on a
+clean supply changed nothing — there was nothing to change, because no agent on
+that image reads the request.
+"""
+from provisioning import rootfs_wifi as rw
+
+
+def test_no_ssid_writes_nothing():
+    """The cable-birth path deliberately puts no PSK on the card at all, and
+    that choice must survive this."""
+    assert rw.activate_commands("/mnt", "", "") == []
+
+
+def test_the_connection_names_the_network_and_secures_it():
+    text = rw.connection_file("Home_5g", "hunter2")
+    assert "ssid=Home_5g" in text
+    assert "key-mgmt=wpa-psk" in text and "psk=hunter2" in text
+    assert "type=wifi" in text and "autoconnect=true" in text
+    assert "method=auto" in text, "a node on someone's LAN wants DHCP"
+
+
+def test_the_uuid_is_stable_not_random():
+    """The same card written twice must not accumulate two connections for one
+    network, and a fixed value keeps the file byte-comparable."""
+    assert rw.connection_uuid("Home_5g") == rw.connection_uuid("Home_5g")
+    assert rw.connection_uuid("Home_5g") != rw.connection_uuid("Other")
+
+
+def test_permissions_are_set_or_networkmanager_ignores_the_file():
+    """NM REFUSES a connection file that is not 0600 and root-owned, and says
+    so only in its own log. A world-readable file is the same as no file —
+    which is the exact failure being fixed."""
+    cmds = rw.activate_commands("/mnt", "Home_5g", "hunter2")
+    joined = " ".join(cmds)
+    assert "chmod 0600" in joined
+    assert "chown 0:0" in joined
+
+
+def test_the_regulatory_country_is_written():
+    """5 GHz channels are unusable until the country is set, so a card aimed at
+    a 5 GHz-only SSID joins nothing without it. The operator's own network is
+    '..._5g', so this is not hypothetical."""
+    cmds = rw.activate_commands("/mnt", "Home_5g", "hunter2", country="AU")
+    joined = " ".join(cmds)
+    assert rw.WPA_CONF in joined
+    assert "country=AU" in rw.wpa_country_file("au"), "and it is upper-cased"
+
+
+def test_secrets_never_ride_in_a_heredoc():
+    """An SSID or PSK is operator text; a heredoc would let it terminate the
+    document — the same injection already fixed for the card-prepare path."""
+    cmds = rw.activate_commands("/mnt", "Home_5g", "hunter2")
+    joined = "\n".join(cmds)
+    assert "<<" not in joined, "no heredocs"
+    assert "base64 -d" in joined
+    assert "hunter2" not in joined, "the secret is encoded, not pasted inline"
+
+
+def test_it_writes_under_the_mount_never_the_medics_own_root():
+    cmds = rw.activate_commands("/tmp/rnm-piroot", "Home_5g", "hunter2")
+    for c in cmds:
+        assert "/tmp/rnm-piroot" in c, f"escaped the mount: {c}"
+
+
+def test_a_slash_in_an_ssid_cannot_become_a_path():
+    cmds = rw.activate_commands("/mnt", "a/b", "x")
+    assert any("a_b.nmconnection" in c for c in cmds)
+
+
+def test_it_can_prove_what_it_wrote():
+    """The same standard rootfs_user holds itself to: verify before the card
+    leaves, rather than hope."""
+    cmds = rw.verify_commands("/mnt", "Home_5g")
+    assert any("stat" in c for c in cmds)
+
+
+# --- the root helper must not drift from this module -----------------------
+#
+# assets/scripts/prepare_card.py runs as ROOT and deliberately imports nothing
+# from the repo — that is the privilege boundary — so the same logic exists
+# twice on purpose. Twice on purpose is fine; twice by accident is a bug that
+# only shows up on a card.
+
+def _helper():
+    import importlib.util
+    from tests.srcutil import ROOT
+    import os
+    spec = importlib.util.spec_from_file_location(
+        "prepare_card_helper", os.path.join(ROOT, "assets/scripts/prepare_card.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_root_helper_writes_the_same_connection():
+    h = _helper()
+    assert h.wifi_connection_text("Home_5g", "hunter2") == \
+        rw.connection_file("Home_5g", "hunter2")
+
+
+def test_the_root_helper_writes_the_same_country_file():
+    h = _helper()
+    assert h.wifi_country_text("au") == rw.wpa_country_file("au")
+
+
+def test_the_root_helper_locks_the_file_down_and_skips_empty_ssids():
+    from tests.srcutil import src
+    text = src("assets/scripts/prepare_card.py")
+    body = text[text.index("def write_wifi("):]
+    body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
+    assert "0o600" in body, "NetworkManager ignores a looser file"
+    assert "os.chown(path, 0, 0)" in body
+    assert "if not ssid" in body, "cable-birth cards carry no PSK at all"
+
+
+def test_the_imager_actually_hands_the_wifi_to_the_helper():
+    """The mirrored writer is useless if nothing passes it the network."""
+    from tests.srcutil import func_source
+    src = func_source("provisioning/pi_imager.py", "flash")
+    assert '"wifi_ssid": wifi_ssid' in src
+    assert '"wifi_psk": wifi_password' in src
+    assert '"wifi_country": wifi_country' in src
