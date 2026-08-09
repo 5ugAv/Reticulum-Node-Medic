@@ -553,3 +553,28 @@ def test_a_manual_tap_still_wins_the_race():
     src = func_source(SCREEN, "_on_board_absent")
     assert "_advance_token" in src, "a tap during the beat must not be overtaken"
     assert "mark_removed" in src, "let the picture finish before moving on"
+
+
+def test_a_gate_that_has_passed_does_not_stop_you():
+    """Operator, 2026-08-09: "this step also does not need user to press the
+    button." The radio verdict is a fact the medic is already holding — the
+    flash and the verify happened two screens ago. It still STOPS on a failure;
+    that is what the gate is for."""
+    src = func_source(SCREEN, "_render_step")
+    assert 's.get("gate") and not s.get("screen")' in src
+    branch = src[src.index('s.get("gate") and not s.get("screen")'):]
+    assert "_gate_state" in branch and "if ok:" in branch
+    assert "_advance_token" in branch, "a manual tap must still win the race"
+
+
+def test_a_gate_guarding_real_work_keeps_its_button():
+    """The last step is a gate AND a hand-off. Auto-advancing it would start a
+    minutes-long provisioning run, at the highest current draw of the build,
+    without anyone choosing to begin it."""
+    from ui.birth_guide_flow import guide_steps
+    last = guide_steps("pi")[-1]
+    assert last.get("gate") and last.get("screen"), "still both"
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index('s.get("gate") and not s.get("screen")'):]
+    branch = branch[:branch.index('elif s.get("gate") == "node_online"')]
+    assert "hide_next" not in branch

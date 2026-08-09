@@ -1499,6 +1499,32 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
+        elif s.get("gate") and not s.get("screen"):
+            # A GATE THAT HAS PASSED HAS NOTHING TO ASK.
+            #
+            # This step's whole content is a verdict on work already done: the
+            # radio was flashed and verified two screens ago, and the medic is
+            # holding the answer. Stopping to be told "yes, carry on" is the
+            # tool asking to be told what it already knows (operator,
+            # 2026-08-09: "this step also does not need user to press the
+            # button").
+            #
+            # It still STOPS on a failure — that is the entire point of the
+            # gate, and the screen then has something the operator must act on.
+            #
+            # Only gates on pure verdict steps. A gate guarding a hand-off keeps
+            # its button, because there the press is what STARTS real work: the
+            # provisioning run is minutes long and draws the most current of the
+            # whole build, and nobody should find it already going.
+            ok, _why = self._gate_state(s["gate"])
+            if ok:
+                from kivy.clock import Clock
+                self._advance_token = getattr(self, "_advance_token", 0) + 1
+                tok = self._advance_token
+                Clock.schedule_once(
+                    lambda _d: (getattr(self, "_advance_token", None) == tok
+                                and self._current is not None and self._next()),
+                    1.6)
         elif s.get("gate") == "node_online":
             # The only gate whose answer the medic has to go and FETCH. Start
             # looking the moment the step appears, so by the time the operator
