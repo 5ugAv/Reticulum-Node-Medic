@@ -43,14 +43,14 @@ def test_an_unreadable_cmdline_is_unknown_not_false():
 # --- "unknown" must never be rendered as "fine" ----------------------------
 
 def test_could_not_look_is_not_a_clean_result():
-    r = CardReport(checks=[Check("pi_card", "ok"), Check("first_boot", "unknown")])
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"), Check("first_boot", "unknown")])
     assert r.booted is None
     assert r.needs_reimaging is None, "no verdict without evidence"
     assert "unclear" in r.headline
 
 
 def test_a_card_with_no_pi_system_needs_writing():
-    r = CardReport(checks=[Check("pi_card", "bad")])
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "bad")])
     assert r.needs_reimaging is True
     assert "no Raspberry Pi system" in r.headline
 
@@ -58,14 +58,14 @@ def test_a_card_with_no_pi_system_needs_writing():
 def test_missing_cable_settings_need_writing_even_if_it_booted():
     """It can boot perfectly and still never appear over USB — which is exactly
     the failure that looks identical to a dead cable."""
-    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "bad"),
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"), Check("gadget", "bad"),
                            Check("first_boot", "ok")])
     assert r.needs_reimaging is True
     assert "never appear over USB" in r.headline
 
 
 def test_a_card_that_has_booted_does_not_need_writing():
-    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "ok"),
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"), Check("gadget", "ok"),
                            Check("first_boot", "ok")])
     assert r.needs_reimaging is False
     assert r.booted is True
@@ -74,7 +74,7 @@ def test_a_card_that_has_booted_does_not_need_writing():
 def test_never_booted_is_not_by_itself_a_verdict():
     """A card that has never booted may simply never have been powered. The
     card cannot know that, so it does not pretend to."""
-    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "ok"),
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"), Check("gadget", "ok"),
                            Check("first_boot", "bad")])
     assert r.booted is False
     assert r.needs_reimaging is None
@@ -106,3 +106,12 @@ def test_it_never_writes():
     for danger in ("mkfs", "dd ", " > ", "rm -", "wipefs", "parted", "fdisk"):
         assert danger not in body, f"{danger!r} has no business in a diagnosis"
     assert "-o ro" in body, "the only mount must be read-only"
+
+
+def test_an_empty_reader_makes_no_claim_about_a_card():
+    """Caught the first time this ran against a real (empty) reader: it said
+    "This card has no Raspberry Pi system on it" — a confident statement about
+    a card that was not there."""
+    r = CardReport(checks=[Check("present", "bad")])
+    assert "no card in Node Medic's reader" in r.headline
+    assert r.needs_reimaging is None, "nothing to judge"

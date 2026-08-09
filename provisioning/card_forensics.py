@@ -98,6 +98,8 @@ class CardReport:
     def needs_reimaging(self) -> Optional[bool]:
         """The operator's actual question. None when we genuinely cannot say —
         which is an answer too, and a more useful one than a guess."""
+        if not self.is_present:
+            return None                      # nothing to judge
         if not self.is_a_pi_card:
             return True                      # nothing bootable on it at all
         if self._states("gadget") == "bad":
@@ -113,7 +115,17 @@ class CardReport:
         return None
 
     @property
+    def is_present(self) -> bool:
+        return self._states("present") == "ok"
+
+    @property
     def headline(self) -> str:
+        # BEFORE anything about the card: is there one? Caught the moment this
+        # first ran against an empty reader, which reported "This card has no
+        # Raspberry Pi system on it" — a confident claim about a card that was
+        # not there.
+        if not self.is_present:
+            return "There is no card in Node Medic's reader."
         if not self.is_a_pi_card:
             return "This card has no Raspberry Pi system on it."
         if self._states("gadget") == "bad":
