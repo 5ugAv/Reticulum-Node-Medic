@@ -156,7 +156,21 @@ def password_hash(password: str, run: Runner = _run) -> str:
 #: Minimum login-password length accepted at imaging. Deliberately modest — the
 #: operator has to type it on a touchscreen and WRITE IT DOWN, and SSH key auth is
 #: the primary access path; this password is the human-held recovery credential.
-MIN_PASSWORD_LEN = 8
+#: Operator's call, 2026-08-09: eight was too long to thumb in on a touchscreen
+#: at a bench. Six is the floor, not a recommendation.
+#:
+#: BE HONEST ABOUT WHAT THIS GUARDS. The medic itself never uses this password —
+#: the card bakes its SSH key in, and every later connection is key auth. But a
+#: birthed node does NOT get the medic's own SSH hardening: build.py's
+#: apply_system_hardening installs Log2Ram, logrotate and a watchdog and touches
+#: sshd not at all, so the node keeps Raspberry Pi OS's default
+#: `PasswordAuthentication yes` — and the same card puts it on WiFi. Until that
+#: is closed, this string is a live network credential, and six characters of it
+#: is guessable.
+#:
+#: The fix is not a longer password, it is turning password auth off once key
+#: auth is proven; the length is the operator's convenience either way.
+MIN_PASSWORD_LEN = 6
 
 
 def validate_new_password(pw1: str, pw2: Optional[str] = None,
