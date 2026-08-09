@@ -165,6 +165,22 @@ class WizardStep(BoxLayout):
             self._nav.remove_widget(self.next_btn)
         self.back_btn.size_hint_x = 1        # Back takes the row on its own
 
+    def show_next(self):
+        """Put the Next button back — for a wait that has gone on long enough
+        to need a way out.
+
+        The counterpart to hide_next. A step the medic normally carries itself
+        should NOT offer a button while it is still working: an early press
+        skips past hardware that was merely slow, which is how a Pi still
+        expanding its card gets abandoned. But a poll that never fires must not
+        strand anyone either — that trap cost a whole step this morning. So the
+        button is withheld while the wait is reasonable and appears once it
+        clearly is not.
+        """
+        if self.next_btn.parent is None:
+            self.back_btn.size_hint_x = 0.4
+            self._nav.add_widget(self.next_btn)
+
     def set_next_enabled(self, on: bool):
         """Gray out / re-enable the Next button — used to gate a step until its
         precondition is met (e.g. a board has been detected on USB)."""

@@ -581,3 +581,30 @@ def test_the_wait_says_how_long_a_pi_takes():
     a text box stating the wake up time of a pi"."""
     src = func_source(SCREEN, "_node_gate")
     assert "30" in src and "two minutes" in src
+
+
+def test_a_reasonable_wait_offers_no_button_to_press():
+    """Operator, 2026-08-09: "it looked like I didn't have to press the try
+    again button, if that's the case the button should be replaced with a text
+    box that says please wait." An escape hatch offered too early invites a
+    press that skips past hardware which was merely slow — a Pi expanding its
+    card on first boot looks exactly like a Pi that will never come up."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index('elif s.get("gate"):'):]
+    assert "hide_next()" in branch
+    assert "show_next()" in branch, "and it must come back if the wait is overdue"
+    assert "WAIT_PATIENCE_S" in branch
+
+
+def test_the_wait_says_please_wait_and_that_nothing_needs_pressing():
+    src = func_source(SCREEN, "_node_gate")
+    assert "Please wait" in src
+    assert "nothing" in src and "press" in src
+
+
+def test_the_reason_is_on_screen_before_any_press():
+    """It used to be set only by a BLOCKED press, so a step that carries itself
+    forward showed nothing at all while it worked."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index('elif s.get("gate"):'):]
+    assert "_gate_warning = why" in branch

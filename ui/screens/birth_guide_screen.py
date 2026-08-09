@@ -1575,7 +1575,34 @@ class BirthGuideScreen(BoxLayout):
                 # Start looking the moment the step appears, so the wait happens
                 # while the operator is reading rather than after.
                 self._start_node_poll()
-            ok, _why = self._gate_state(s["gate"])
+            ok, why = self._gate_state(s["gate"])
+            if not ok and why and not self._gate_warning:
+                # Say what is being waited for FROM THE START. The warning used
+                # to appear only after a blocked press, so a step that advances
+                # itself showed nothing at all while it worked.
+                self._gate_warning = why
+                self._render_step()
+                return
+            if not ok and s["gate"] == "node_online":
+                # NO BUTTON WHILE THE WAIT IS REASONABLE.
+                #
+                # Operator, 2026-08-09: "it looked like I didn't have to press
+                # the try again button, if that's the case the button should be
+                # replaced with a text box that says please wait."
+                #
+                # They are right, and the imager already works this way: an
+                # escape hatch offered too early invites a press that skips past
+                # hardware which was merely slow — a Pi expanding its card on
+                # first boot looks identical to a Pi that will never come up.
+                # The message carries the wait; the button appears only once the
+                # wait is clearly overdue, so nobody is stranded either.
+                step.hide_next()
+                from kivy.clock import Clock
+                tok = getattr(self, "_nav_token", 0)
+                Clock.schedule_once(
+                    lambda _d: (getattr(self, "_nav_token", None) == tok
+                                and self._current is step
+                                and step.show_next()), self.WAIT_PATIENCE_S)
             if ok:
                 from kivy.clock import Clock
                 self._advance_token = getattr(self, "_advance_token", 0) + 1
@@ -2135,6 +2162,12 @@ class BirthGuideScreen(BoxLayout):
             return self._node_gate()
         return True, ""                    # unknown gate: never block on it
 
+    #: How long a wait may run before the operator is offered a way out. A Pi
+    #: answers in 30-45 s from power, but a FIRST boot expands the filesystem and
+    #: runs cloud-init, which on a slow card is minutes. Offer the escape after
+    #: that is plainly overdue, not during it.
+    WAIT_PATIENCE_S = 150.0
+
     def _node_gate(self):
         """Can the medic actually REACH the node at the other end of the cable?
 
@@ -2150,11 +2183,10 @@ class BirthGuideScreen(BoxLayout):
             return True, ""
         if getattr(self, "_node_looking", False):
             return False, tr(
-                "Still looking for the Pi over the cable. A Raspberry Pi takes "
-                "about 30–45 seconds from power to answering, and longer on its "
-                "very first boot while it expands its card — up to two minutes. "
-                "This starts by itself the moment it answers; the button is "
-                "only there if it doesn't.")
+                "Please wait — Node Medic is looking for the Pi over the cable. "
+                "This starts by itself the moment it answers; there is nothing "
+                "to press. Usually under a minute, but a Pi's very first boot "
+                "expands its card and runs its setup, which can take up to five.")
         return False, tr(
             "Node Medic can't reach the Pi over the cable yet. Check it is "
             "plugged into Node Medic with a DATA cable and that its power light "
