@@ -1134,6 +1134,17 @@ class SdHandoverAnim(_CardStage):
     def __init__(self, pi_key: str = "", **kwargs):
         kwargs.setdefault("duration", 4.4)           # three phases + a dwell
         super().__init__(pi_key=pi_key, **kwargs)
+        self._moved = False
+
+    def mark_moved(self):
+        """The medic has SEEN the card go — its reader is empty. Stop looping,
+        hold the card seated in the Pi, and release the green pulse that until
+        now had nothing behind it."""
+        if self._moved:
+            return
+        self._moved = True
+        self.stop()
+        self.phase = 1.0
 
     @staticmethod
     def reader_slot_fraction(reader_tex_aspect):
@@ -1180,8 +1191,21 @@ class SdHandoverAnim(_CardStage):
                 self._draw_card(card, frame, lay.card_len, lay.card_w,
                                 behind_ok=False)
             # seated: a short green pulse at the mouth. It is the only moment
-            # the operator is told "that's it, it's in" without any words.
-            if frame.seated >= 1.0:
+            # the operator is told "that's it, it's in" without any words —
+            # which is exactly why it must not be said until it is TRUE.
+            #
+            # This is a LOOPING animation: phase wraps 0 -> 1 -> 0 for as long
+            # as the step is on screen, so a pulse keyed on the loop reaching
+            # its end fired every few seconds, over and over, while the card was
+            # still sitting in the medic's reader (operator, 2026-08-09: "the
+            # animation shows the connect reward green circles on loop before
+            # connection"). A success signal that plays before the success is a
+            # fake demo with extra steps, and it trains the operator to stop
+            # believing the green.
+            #
+            # It now waits for mark_moved() — the medic actually seeing the card
+            # leave its reader — and the loop only ever draws the motion.
+            if frame.seated >= 1.0 and getattr(self, "_moved", False):
                 mxx, myy, _span = sdgeo.slot_mouth(geo, lay.board)
                 pulse = 0.5 + 0.5 * math.sin(self.phase * 14.0)
                 g = theme.hex_to_rgba(theme.COLORS["green"])

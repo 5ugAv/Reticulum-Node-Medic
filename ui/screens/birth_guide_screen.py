@@ -1340,6 +1340,57 @@ class BirthGuideScreen(BoxLayout):
 
         self._card_ev = Clock.schedule_interval(tick, 1.5)
 
+    def _start_card_gone_poll(self, anim):
+        """Watch for the card LEAVING the medic's reader, on the step that asks
+        for it to be moved into the Pi.
+
+        Operator, 2026-08-09: "node medic should register when the sd card and
+        pi are plugged in correctly, no need for user to press button here."
+        The medic can see both halves of that — the card vanishing from its own
+        reader, and the Pi appearing on USB a minute later — so being asked to
+        confirm it is the tool asking to be told what it can already see.
+
+        The card leaving is the signal, not the Pi arriving: the Pi takes the
+        better part of a minute to boot, and the very next step is the one that
+        waits for it. Advancing when the card goes puts the operator on that
+        waiting screen while the waiting is happening, instead of after.
+
+        The button stays, as everywhere else this pattern is used: sensing is an
+        accelerator, never the only road out.
+        """
+        from kivy.clock import Clock
+        self._stop_card_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                gone = False
+                try:
+                    from provisioning import pi_imager
+                    gone = pi_imager.card_status()["state"] == "none"
+                except Exception:                                  # noqa: BLE001
+                    gone = False                    # can't tell -> don't advance
+                if gone:
+                    Clock.schedule_once(lambda _d: self._on_card_gone(anim), 0)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        self._card_ev = Clock.schedule_interval(tick, 1.5)
+        tick(0)
+
+    def _on_card_gone(self, anim):
+        """The card is out of the reader. NOW the animation may celebrate."""
+        self._stop_card_poll()
+        if hasattr(anim, "mark_moved"):
+            anim.mark_moved()
+        from kivy.clock import Clock
+        self._advance_token = getattr(self, "_advance_token", 0) + 1
+        tok = self._advance_token
+        Clock.schedule_once(
+            lambda _d: (getattr(self, "_advance_token", None) == tok
+                        and self._current is not None and self._next()), 2.0)
+
     def _stop_card_poll(self):
         ev = getattr(self, "_card_ev", None)
         if ev is not None:
@@ -1499,7 +1550,7 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
-        elif s.get("gate") and not s.get("screen"):
+        elif s.get("gate"):
             # A GATE THAT HAS PASSED HAS NOTHING TO ASK.
             #
             # This step's whole content is a verdict on work already done: the
@@ -1512,10 +1563,18 @@ class BirthGuideScreen(BoxLayout):
             # It still STOPS on a failure — that is the entire point of the
             # gate, and the screen then has something the operator must act on.
             #
-            # Only gates on pure verdict steps. A gate guarding a hand-off keeps
-            # its button, because there the press is what STARTS real work: the
-            # provisioning run is minutes long and draws the most current of the
-            # whole build, and nobody should find it already going.
+            # This holds for the gate that guards the provisioning hand-off
+            # too. I had it keeping its button on the grounds that nobody should
+            # find a minutes-long run already going — but the operator had
+            # already pressed "That's the node built" one screen earlier, and
+            # this screen says plainly what it is about to do. Consent was given
+            # there; asking again here is asking twice (operator, 2026-08-09).
+            # The button remains, and now only ever means "try again".
+            if s["gate"] == "node_online":
+                # The only gate whose answer the medic has to go and FETCH.
+                # Start looking the moment the step appears, so the wait happens
+                # while the operator is reading rather than after.
+                self._start_node_poll()
             ok, _why = self._gate_state(s["gate"])
             if ok:
                 from kivy.clock import Clock
@@ -1525,11 +1584,7 @@ class BirthGuideScreen(BoxLayout):
                     lambda _d: (getattr(self, "_advance_token", None) == tok
                                 and self._current is not None and self._next()),
                     1.6)
-        elif s.get("gate") == "node_online":
-            # The only gate whose answer the medic has to go and FETCH. Start
-            # looking the moment the step appears, so by the time the operator
-            # has read it the answer is usually already there.
-            self._start_node_poll()
+
         elif isinstance(anim, (DisconnectBoardAnim, RadioToPiAnim)):
             # From here to the end of the walkthrough the radio is DELIBERATELY
             # off the medic, so the global disconnect watcher must stop calling
@@ -1607,6 +1662,9 @@ class BirthGuideScreen(BoxLayout):
             # That is the better place for it.
             step.hide_next()
             self._start_card_poll(anim)
+        elif isinstance(anim, SdHandoverAnim):
+            # The card going INTO the Pi is the mirror of it arriving here.
+            self._start_card_gone_poll(anim)
 
 
     # -- identify the pair BEFORE the card is written -----------------------
@@ -2092,12 +2150,16 @@ class BirthGuideScreen(BoxLayout):
             return True, ""
         if getattr(self, "_node_looking", False):
             return False, tr(
-                "Still looking for the Pi over the cable — give it a moment. "
-                "A freshly booted Pi takes about half a minute to come up.")
+                "Still looking for the Pi over the cable. A Raspberry Pi takes "
+                "about 30–45 seconds from power to answering, and longer on its "
+                "very first boot while it expands its card — up to two minutes. "
+                "This starts by itself the moment it answers; the button is "
+                "only there if it doesn't.")
         return False, tr(
             "Node Medic can't reach the Pi over the cable yet. Check it is "
-            "plugged into Node Medic with a DATA cable, that its power light "
-            "is on, and give it thirty seconds to boot.")
+            "plugged into Node Medic with a DATA cable and that its power light "
+            "is on. A Pi takes 30–45 seconds from power to answering, and up to "
+            "two minutes on its very first boot.")
 
     def _radio_gate(self):
         """Has a radio been flashed and verified for this birth?
@@ -2246,8 +2308,8 @@ class BirthGuideScreen(BoxLayout):
                "— that is where its health beacons arrive."),
             "15sp", color="text_secondary", h=72))
         wrap.add_widget(_line(
-            tr("You can unplug it from Node Medic and give it power of its "
-               "own."), "14.5sp", color="green", h=26))
+            tr("It is off Node Medic and running on its own power now."),
+            "14.5sp", color="green", h=26))
         wrap.add_widget(Widget())
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(58), spacing=dp(10))

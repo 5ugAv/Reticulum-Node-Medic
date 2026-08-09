@@ -26,8 +26,8 @@ def test_step_counts_per_path():
         "Put the SD card into Node Medic",         # -> pi_imager
         "Move the card to the Raspberry Pi",
         "Connect the Pi to Node Medic",
-        "Put the radio onto the Raspberry Pi",     # the two halves joined
         "Bring the node to life",                  # GATE: node_online -> BIRTH
+        "Unplug the Pi, put the radio on it, give it power",
     ]
 
 
@@ -68,7 +68,7 @@ def test_the_walkthrough_ends_by_joining_the_two_halves():
     them, because a hand-off could not return so nothing could come after one."""
     steps = guide_steps("pi")
     titles = [s["title"] for s in steps]
-    assert "Put the radio onto the Raspberry Pi" in titles
+    assert any("put the radio on it" in t for t in titles)
 
 
 def test_joining_the_halves_is_not_the_end_of_it():
@@ -76,15 +76,28 @@ def test_joining_the_halves_is_not_the_end_of_it():
     stock Raspberry Pi OS. The mesh software is installed OVER that cable, and
     the walkthrough is not finished until it has been."""
     steps = guide_steps("pi")
-    last = steps[-1]
-    assert last["title"] == "Bring the node to life"
-    assert last.get("gate") == "node_online", \
-        "provisioning must not start against a Pi that isn't answering"
-    assert last.get("screen") == "birth", "the existing build flow does the work"
-    assert last.get("job") == "pi", \
+    life = next(s for s in steps if s.get("gate") == "node_online")
+    assert life["title"] == "Bring the node to life"
+    assert life.get("screen") == "birth", "the existing build flow does the work"
+    assert life.get("job") == "pi", \
         "sent to BIRTH to provision the node, NOT to flash a radio"
-    join = [s["title"] for s in steps].index("Put the radio onto the Raspberry Pi")
-    assert join < len(steps) - 1, "the radio goes on BEFORE the node is woken"
+
+
+def test_the_radio_goes_on_the_pi_only_after_the_cable_is_finished_with():
+    """A Pi 3 A+ has ONE USB-A socket, and a Zero 2 W one data micro-USB. The
+    cable to Node Medic and the radio want the SAME hole. Asking for the radio
+    before provisioning made the flow impossible to complete on either board
+    (operator, holding the hardware, 2026-08-09) — and the next screen then
+    waited for the Pi over the cable it had just had them pull."""
+    steps = guide_steps("pi")
+    titles = [s["title"] for s in steps]
+    life = titles.index("Bring the node to life")
+    radio = next(i for i, t in enumerate(titles) if "put the radio on it" in t)
+    assert life < radio, "provision over the cable BEFORE the socket is taken"
+    assert radio == len(steps) - 1, "the radio going on is the last act"
+    assert "Unplug the Pi" in titles[radio], "say the socket is being freed"
+    assert "power" in steps[radio]["body"].lower(), \
+        "off the medic means it needs its own supply — say so here"
 
 
 def test_each_birth_handoff_declares_its_own_job():
@@ -546,14 +559,15 @@ def test_the_hint_grows_with_its_text():
 
 def test_the_provisioning_step_says_where_power_comes_from():
     from ui.birth_guide_flow import guide_steps
-    last = guide_steps("pi", "pi_3a_plus")[-1]
-    assert last["title"] == "Bring the node to life"
-    assert "power" in last["hint"].lower()
+    life = next(s for s in guide_steps("pi", "pi_3a_plus")
+                if s.get("gate") == "node_online")
+    assert "power" in life["hint"].lower()
 
 
 def test_the_power_line_differs_by_board():
     from ui.birth_guide_flow import guide_steps
-    hints = {k: guide_steps("pi", k)[-1]["hint"]
+    hints = {k: next(s for s in guide_steps("pi", k)
+                     if s.get("gate") == "node_online")["hint"]
              for k in ("pi_zero_2w", "pi_3a_plus", "pi_4b")}
     assert len(set(hints.values())) == 3, "one sentence for all boards is the bug"
 
@@ -562,8 +576,8 @@ def test_it_never_contradicts_the_connector_warning():
     """The 3A+ hint at step 6 says a second supply will fight the medic's over
     an ordinary A-to-A. The power line must not then tell them to add one."""
     from ui.birth_guide_flow import guide_steps
-    steps = guide_steps("pi", "pi_3a_plus")
-    power = steps[-1]["hint"]
+    power = next(s for s in guide_steps("pi", "pi_3a_plus")
+                 if s.get("gate") == "node_online")["hint"]
     assert "do NOT plug a supply" in power or "Do NOT plug a supply" in power
     assert "5V wire removed" in power, "name the one case where it IS safe"
 
@@ -572,7 +586,8 @@ def test_the_zero_is_told_to_use_its_own_supply():
     """PWR IN is a separate socket, so there is nothing to fight — and it takes
     the long install off Node Medic's rail, which has browned out before."""
     from ui.birth_guide_flow import guide_steps
-    power = guide_steps("pi", "pi_zero_2w")[-1]["hint"]
+    power = next(s for s in guide_steps("pi", "pi_zero_2w")
+                 if s.get("gate") == "node_online")["hint"]
     assert "PWR IN" in power and "own power" in power
 
 

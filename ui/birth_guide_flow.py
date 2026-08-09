@@ -225,18 +225,21 @@ _STEPS = {
         # The radio was flashed on the MEDIC, where there is power to spare. It
         # comes back out (three steps ago) and lands here, on the Pi, which is
         # where it lives for the rest of its life.
-        {"title": tr("Put the radio onto the Raspberry Pi"),
-         "body": tr("Take the radio you flashed at the start and plug it into "
-                    "the Raspberry Pi. That's the node built \u2014 the Pi talks to "
-                    "the mesh through this radio from now on."),
-         "hint": tr("Same rule as everywhere else: a DATA cable. The Pi powers "
-                    "the radio now, so keep the lead short."),
-         # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
-         # the medic senses the board itself. It cannot sense this one: the radio
-         # is on the PI now, on the Pi's USB, not the medic's. Hiding Next here
-         # would leave the last step of the walkthrough with no way to finish.
-         "next": tr("That's the node built  →"),
-         "anim": "radio_to_pi"},
+        # ORDER FIXED 2026-08-09, mid-walkthrough, by the operator holding the
+        # hardware: "we have just been instructed to use the usb plug on pi to
+        # attach radio so pi is not currently connected to medic."
+        #
+        # A Pi 3 A+ has ONE USB-A socket. The step before this one puts it into
+        # Node Medic; putting the radio on the Pi needs that same socket. So the
+        # walkthrough asked for the cable to be pulled and then, on the next
+        # screen, waited for the Pi over that cable. A Zero 2 W has the same
+        # problem with its single data micro-USB. The flow could not be
+        # completed on either board, however carefully it was followed.
+        #
+        # Provisioning happens over the cable, so it goes FIRST. The radio goes
+        # on at the very END — which is also when the Pi leaves Node Medic and
+        # takes its own power, so the power question answers itself instead of
+        # colliding with a back-feeding A-to-A.
         # THE STEP THAT ACTUALLY MAKES IT A NODE.
         #
         # Until this existed the walkthrough's last button — "That's the node
@@ -265,8 +268,31 @@ _STEPS = {
          "gate": "node_online",
          "screen": "birth",
          "job": "pi",
-         "next": tr("Wake it up  →"),
+         # ONLY EVER A RETRY. The operator already consented on the previous
+         # screen — "That's the node built →" — and this one says exactly what
+         # it is about to do, so making them press again is asking twice
+         # (operator, 2026-08-09: "wake it up is unnecessary, we just clicked a
+         # button to get here that could lead straight to wake up. if no node is
+         # detected then a button can appear saying try again"). It advances
+         # itself the moment the node answers; the button exists for the case
+         # where it does not.
+         "next": tr("Try again  →"),
          "anim": "provision"},
+        {"title": tr("Unplug the Pi, put the radio on it, give it power"),
+         "body": tr("The software is on. Unplug the Pi from Node Medic \u2014 that "
+                    "socket is the one the radio needs \u2014 plug in the radio you "
+                    "flashed at the start, and give the Pi its own power "
+                    "supply. That's the node built: from now on it talks to "
+                    "the mesh through this radio, on its own."),
+         "hint": tr("A DATA cable to the radio, same rule as everywhere else, "
+                    "and keep it short \u2014 the Pi powers the radio now, so its "
+                    "supply has to carry both."),
+         # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
+         # the medic senses the board itself. It cannot sense this one: the radio
+         # is on the PI now, on the Pi's USB, not the medic's. Hiding Next here
+         # would leave the last step of the walkthrough with no way to finish.
+         "next": tr("That's the node built  →"),
+         "anim": "radio_to_pi"},
     ],
     "host": [
         # (The old second page — "Let's flash it", narrating its own button —
@@ -309,7 +335,12 @@ def guide_steps(path, pi_key=""):
             # A-to-A a second supply back-feeds into the medic, so this is a
             # per-board line and never one sentence for all of them (operator
             # asked for it, 2026-08-09; the answer differs by board).
-            if s.get("gate") == "node_online":
+            # Both of the steps where power actually matters: the one that
+            # hangs the radio off the Pi (its load appears here) and the one
+            # that spends minutes installing. Operator asked for it on both
+            # (2026-08-09) — and on a 3 A+ the honest answer at both is the
+            # same warning about a second supply, not an instruction to add one.
+            if s.get("gate") == "node_online" or s.get("anim") == "radio_to_pi":
                 s["hint"] = power_hint(pi_key) + " " + s.get("hint", "")
     return steps
 

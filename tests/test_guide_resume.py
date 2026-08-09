@@ -561,20 +561,23 @@ def test_a_gate_that_has_passed_does_not_stop_you():
     flash and the verify happened two screens ago. It still STOPS on a failure;
     that is what the gate is for."""
     src = func_source(SCREEN, "_render_step")
-    assert 's.get("gate") and not s.get("screen")' in src
-    branch = src[src.index('s.get("gate") and not s.get("screen")'):]
+    assert 'elif s.get("gate"):' in src
+    branch = src[src.index('elif s.get("gate"):'):]
     assert "_gate_state" in branch and "if ok:" in branch
     assert "_advance_token" in branch, "a manual tap must still win the race"
 
 
-def test_a_gate_guarding_real_work_keeps_its_button():
-    """The last step is a gate AND a hand-off. Auto-advancing it would start a
-    minutes-long provisioning run, at the highest current draw of the build,
-    without anyone choosing to begin it."""
+def test_the_provisioning_button_only_ever_means_try_again():
+    """Consent was given one screen earlier — "That's the node built" — and this
+    screen says plainly what it is about to do. Asking again is asking twice
+    (operator, 2026-08-09: "wake it up is unnecessary")."""
     from ui.birth_guide_flow import guide_steps
-    last = guide_steps("pi")[-1]
-    assert last.get("gate") and last.get("screen"), "still both"
-    src = func_source(SCREEN, "_render_step")
-    branch = src[src.index('s.get("gate") and not s.get("screen")'):]
-    branch = branch[:branch.index('elif s.get("gate") == "node_online"')]
-    assert "hide_next" not in branch
+    life = next(s for s in guide_steps("pi") if s.get("gate") == "node_online")
+    assert life["next"].startswith("Try again")
+
+
+def test_the_wait_says_how_long_a_pi_takes():
+    """"if no node is detected then a button can appear saying try again, with
+    a text box stating the wake up time of a pi"."""
+    src = func_source(SCREEN, "_node_gate")
+    assert "30" in src and "two minutes" in src
