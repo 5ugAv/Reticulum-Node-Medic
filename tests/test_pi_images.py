@@ -248,3 +248,46 @@ def test_birth_records_the_board_usb_fingerprint():
     src = (root / "ui" / "screens" / "birth_screen.py").read_text()
     assert re.search(r'cert\["usb_serial"\]\s*=', src), \
         "nothing writes cert['usb_serial'] — board recognition cannot work"
+
+
+# --- the imager must not narrate the guide's own steps ---------------------
+#
+# Operator, live 2026-08-09: "user shouldn't have to press go back here, that's
+# confusing... it should go automatically to the next step, but the next step is
+# a repeat of take sd card out of medic and put in pi and plug pi into medic."
+#
+# Both halves are the same leftover. The next-steps block exists because this
+# screen used to be a terminus, with those guide steps stranded behind a
+# one-way hand-off. The hand-off returns now.
+
+def test_a_written_card_hands_straight_back_to_the_walkthrough():
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/pi_imager_screen.py", "_done")
+    ok = src[src.index("if ok:"):]
+    assert "guided_birth_pending" in ok
+    assert ok.index("guided_birth_pending") < ok.index("_add_next_steps"), \
+        "the hand-back must come BEFORE the narration it replaces"
+    assert "_back_to_birth" in ok
+
+
+def test_the_narration_survives_for_a_standalone_card():
+    """A card written straight from the imager, with no walkthrough waiting,
+    still needs telling what to do next — and has nowhere to hand back to."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/pi_imager_screen.py", "_done")
+    assert "_add_next_steps()" in src
+
+
+def test_a_state_the_operator_is_about_to_change_keeps_the_poll_alive():
+    """OUR_CARD_BACK — "the card I just wrote is in my reader" — was called
+    settled, so the poll stopped at the exact moment the screen was asking for
+    that card to be moved. The operator moved it, the Pi booted and came up on
+    the cable, and the medic never looked again."""
+    from provisioning import plugged_in as pin
+    assert not pin.Situation(state=pin.OUR_CARD_BACK).is_settled
+    assert not pin.Situation(state=pin.A_CARD_BACK).is_settled
+    assert not pin.Situation(state=pin.PI_AS_READER).is_settled
+    # a real conclusion still stops it
+    assert pin.Situation(state=pin.PI_ALIVE).is_settled
+    assert pin.Situation(state=pin.PI_WONT_BOOT).is_settled
+    assert pin.Situation(state=pin.SEVERAL_CARDS).is_settled

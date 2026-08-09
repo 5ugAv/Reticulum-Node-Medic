@@ -77,9 +77,25 @@ class Situation:
 
     @property
     def is_settled(self) -> bool:
-        """True when there is nothing further to wait for — stop polling."""
-        return self.state in (PI_ALIVE, PI_WONT_BOOT, PI_AS_READER,
-                              OUR_CARD_BACK, SEVERAL_CARDS)
+        """True when there is nothing further to wait for — stop polling.
+
+        "Settled" means the medic has reached a conclusion it cannot talk
+        itself out of by looking again. It does NOT mean "the situation will
+        not change" — the operator is standing there with the hardware in their
+        hands, and most of these states name something they are about to fix.
+
+        OUR_CARD_BACK is the one that got this wrong (live, 2026-08-09). "The
+        card I just wrote is in my reader" was called settled, so the poll
+        stopped — at the exact moment the screen was telling the operator to
+        take that card out and put it in the Pi. They did, the Pi booted and
+        came up on the cable, and the medic never looked again. The only way
+        forward was a button, on a screen whose whole design is "the medic can
+        see this, so it should not have to ask".
+
+        A state the operator is being ASKED to change is the last thing that
+        should stop the watching.
+        """
+        return self.state in (PI_ALIVE, PI_WONT_BOOT, SEVERAL_CARDS)
 
     @property
     def is_good(self) -> bool:

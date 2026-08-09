@@ -798,6 +798,29 @@ class PiImagerScreen(BoxLayout):
         if not ok:
             self.col.add_widget(_line(msg, size="14sp", h=60))
         if ok:
+            # A WALKTHROUGH IS WAITING: give it straight back.
+            #
+            # The next-steps block below — take the card out, put it in the Pi,
+            # plug the Pi in — exists because this screen used to be a terminus,
+            # with those guide steps stranded behind a one-way hand-off. The
+            # hand-off returns now, and the guide says all three itself, each on
+            # its own screen with its own animation. Printing them here as well
+            # means the operator does the work, taps a button, and is then told
+            # to do it again (operator, live, 2026-08-09: "user shouldn't have
+            # to press go back here, that's confusing... the next step is a
+            # repeat").
+            #
+            # Short beat first, so "Done!" and the discharged monitor are
+            # actually seen — a screen that vanishes the instant it succeeds has
+            # told nobody anything.
+            try:
+                from kivy.app import App
+                app = App.get_running_app()
+                if getattr(app, "guided_birth_pending", lambda: False)():
+                    Clock.schedule_once(lambda _d: self._back_to_birth(), 1.8)
+                    return
+            except Exception:                                     # noqa: BLE001
+                pass            # never let a hand-back cost the next-steps text
             # Deliberately the ONLY action. There is no "image another card":
             # every card carries one node's hostname, password and identity, so
             # a second card off this same form would be a clone of the node just

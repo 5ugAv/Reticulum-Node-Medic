@@ -532,3 +532,64 @@ def test_the_hint_grows_with_its_text():
         "a fixed-height hint overflows into the body text above it"
     body = src[src.index("body_lbl = Label"):src.index("if hint:")]
     assert "texture_size" in body, "the body already does this — keep it"
+
+
+# --- power, on the step that spends it -------------------------------------
+#
+# Operator, 2026-08-09, looking at the final step: "this screen also needs to
+# tell the user to attach the pi to a power source."
+#
+# Right on one board, WRONG on another and impossible on a third — so it is a
+# per-board line, exactly like the connector hint. On a 3A+ over an ordinary
+# A-to-A a second supply back-feeds into Node Medic, which the step-6 hint has
+# warned about all along; saying "plug in power" there would contradict it.
+
+def test_the_provisioning_step_says_where_power_comes_from():
+    from ui.birth_guide_flow import guide_steps
+    last = guide_steps("pi", "pi_3a_plus")[-1]
+    assert last["title"] == "Bring the node to life"
+    assert "power" in last["hint"].lower()
+
+
+def test_the_power_line_differs_by_board():
+    from ui.birth_guide_flow import guide_steps
+    hints = {k: guide_steps("pi", k)[-1]["hint"]
+             for k in ("pi_zero_2w", "pi_3a_plus", "pi_4b")}
+    assert len(set(hints.values())) == 3, "one sentence for all boards is the bug"
+
+
+def test_it_never_contradicts_the_connector_warning():
+    """The 3A+ hint at step 6 says a second supply will fight the medic's over
+    an ordinary A-to-A. The power line must not then tell them to add one."""
+    from ui.birth_guide_flow import guide_steps
+    steps = guide_steps("pi", "pi_3a_plus")
+    power = steps[-1]["hint"]
+    assert "do NOT plug a supply" in power or "Do NOT plug a supply" in power
+    assert "5V wire removed" in power, "name the one case where it IS safe"
+
+
+def test_the_zero_is_told_to_use_its_own_supply():
+    """PWR IN is a separate socket, so there is nothing to fight — and it takes
+    the long install off Node Medic's rail, which has browned out before."""
+    from ui.birth_guide_flow import guide_steps
+    power = guide_steps("pi", "pi_zero_2w")[-1]["hint"]
+    assert "PWR IN" in power and "own power" in power
+
+
+def test_an_unknown_board_claims_no_socket():
+    from ui.pi_connectors import power_hint
+    h = power_hint("something_new")
+    assert "if this pi has" in h.lower(), "no socket may be named for a board we don't know"
+
+
+def test_the_end_of_a_walkthrough_is_not_headed_like_the_start():
+    """Operator, 2026-08-09: "i pressed wake it up and got taken to this name
+    screen, the node has already been named." Nothing was being re-asked — the
+    radio, the board, the Pi and the address were all carried across — but the
+    screen was headed "Birth a new node" over "Name this node", which reads as
+    starting over."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_build_chooser")
+    assert "_declared_pi_address" in src
+    assert "Bring {nm} to life" in src or 'f"Bring {nm} to life"' in src
+    assert '"Its name" if' in src, "the name field must stop asking for a name"

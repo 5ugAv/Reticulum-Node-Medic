@@ -323,6 +323,25 @@ class BirthScreen(BoxLayout):
                 "Everything below is already filled in from the card you just "
                 "wrote. This is the last step, not the start again.",
                 size="13.5sp", color="text_secondary"))
+        elif getattr(self, "_declared_pi_address", ""):
+            # ARRIVED FROM THE END OF A WALKTHROUGH, not from the start of one.
+            # The radio is flashed, the card is written, the Pi is up on the
+            # cable — this screen's only remaining job is to install the mesh
+            # software and issue the certificate. Headed "Birth a new node"
+            # above an editable "Name this node" field, it reads as starting
+            # over, and the operator said so the moment they saw it (2026-08-09:
+            # "i pressed wake it up and got taken to this name screen, the node
+            # has already been named"). Nothing WAS being re-asked; the heading
+            # was simply describing the wrong thing.
+            nm = (getattr(self, "_name_in", None) is not None
+                  and self._name_in.text.strip()) or "this node"
+            self.header.add_widget(_line(f"Bring {nm} to life", bold=True,
+                                         size="22sp"))
+            self.header.add_widget(_line(
+                "The radio is flashed, the card is written and the Pi is "
+                "answering on the cable. This is the last part: the mesh "
+                "software, and its birth certificate.",
+                size="13.5sp", color="text_secondary"))
         else:
             self.header.add_widget(_line("Birth a new node", bold=True,
                                          size="22sp"))
@@ -333,8 +352,13 @@ class BirthScreen(BoxLayout):
 
         # Step one: name the NEW node being built. (Existing nodes live in VITALS /
         # SCAN — tap one to open its certificate, which offers Triage.)
-        self.header.add_widget(_line("Name this node", bold=True, size="15sp",
-                                     color="accent"))
+        #
+        # Past the end of a walkthrough the node HAS a name — one the operator
+        # chose several screens ago — so asking for it again is the wrong label
+        # on a field that is merely still editable.
+        self.header.add_widget(_line(
+            "Its name" if getattr(self, "_declared_pi_address", "")
+            else "Name this node", bold=True, size="15sp", color="accent"))
         self.header.add_widget(self._name_in)
         if self._prefill_location:
             lat, lon, src = self._prefill_location

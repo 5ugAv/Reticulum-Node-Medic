@@ -128,6 +128,57 @@ def connect_hint(pi_key: str) -> str:
     return " ".join(bits)
 
 
+#: Where a node's power comes from during the provisioning run, per board. The
+#: operator asked for the final step to "tell the user to attach the pi to a
+#: power source" (2026-08-09), which is right on one of these boards, wrong on
+#: another and impossible on a third — so it is a per-board line, exactly like
+#: connect_hint above.
+#:
+#: WHY IT MATTERS RATHER THAN BEING TIDINESS. Provisioning is the longest, most
+#: current-hungry thing a node does on the cable: a full apt/pip install with
+#: the radio attached. The medic reads `throttled=0x50000` — undervoltage has
+#: occurred — on a 3 A supply, and a browning-out rail has already taken out a
+#: whole xhci controller on this bench once. Where a node CAN take its own
+#: supply, it should.
+_POWER_HINTS = {
+    # Separate PWR IN socket, electrically apart from the data port: its own
+    # supply is safe AND wanted, and the medic then carries data only.
+    "pi_zero_2w": tr("Give the Pi its own power on the OUTER micro-USB marked "
+                     "PWR IN. It is a separate socket from the data one, so "
+                     "the two never fight — and Node Medic is left carrying "
+                     "data alone, which is the safest way through a long "
+                     "install."),
+    # One USB-A, one micro-USB, and an ordinary A-to-A carries 5V at BOTH ends.
+    # A second supply back-feeds into the medic. Only safe with the cable's
+    # power wire lifted.
+    "pi_3a_plus": tr("The Pi is drawing its power from Node Medic through this "
+                     "cable. Do NOT plug a supply into its micro-USB as well "
+                     "unless your A-to-A cable has its 5V wire removed — an "
+                     "ordinary one carries 5V at both ends and the two "
+                     "supplies will fight. With a power-less cable, do give it "
+                     "its own supply: this is the longest, hungriest part of "
+                     "the build."),
+    # Same socket for both; nothing to add.
+    "pi_4b": tr("The Pi is powered through the same USB-C carrying the data, "
+                "so there is no second socket to add a supply to. Keep the run "
+                "short and the cable good."),
+    "pi_5": tr("The Pi is powered through the same USB-C carrying the data, so "
+               "there is no second socket to add a supply to. Keep the run "
+               "short and the cable good."),
+}
+
+#: Said when the board is unknown: true of every Pi, and claims no socket.
+UNKNOWN_POWER_HINT = tr(
+    "Installing takes several minutes and draws more current than anything "
+    "before it. If this Pi has a power socket separate from its data one, give "
+    "it its own supply.")
+
+
+def power_hint(pi_key: str) -> str:
+    """What to do about POWER for the long provisioning run, per board."""
+    return _POWER_HINTS.get((pi_key or "").strip(), UNKNOWN_POWER_HINT)
+
+
 def can_cable(pi_key: str) -> bool:
     """False only when we KNOW the board cannot do it. An unknown board is not
     declared impossible — fail open, and let the operator try."""

@@ -296,12 +296,21 @@ def guide_steps(path, pi_key=""):
     Empty pi_key keeps the generic line. Naming a specific socket on a board we
     have not identified is precisely the failure being fixed.
     """
-    from ui.pi_connectors import connect_hint
+    from ui.pi_connectors import connect_hint, power_hint
     steps = [dict(s) for s in _STEPS.get(path, [])]
     if pi_key:
         for s in steps:
             if s.get("anim") == "connect_pi":
                 s["hint"] = connect_hint(pi_key)
+            # POWER, on the step that spends it. Provisioning is the longest and
+            # hungriest thing a node does on the cable, and the medic has
+            # already recorded undervoltage on this bench. Where a board CAN
+            # take its own supply it should — but on a 3 A+ over an ordinary
+            # A-to-A a second supply back-feeds into the medic, so this is a
+            # per-board line and never one sentence for all of them (operator
+            # asked for it, 2026-08-09; the answer differs by board).
+            if s.get("gate") == "node_online":
+                s["hint"] = power_hint(pi_key) + " " + s.get("hint", "")
     return steps
 
 
