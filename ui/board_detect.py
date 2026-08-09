@@ -383,7 +383,8 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                  vendor_fn: Optional[Callable[[str], str]] = None,
                  product_fn: Optional[Callable[[str], str]] = None,
                  attempts: int = 6,
-                 sleep_fn: Optional[Callable[[float], None]] = None) -> dict:
+                 sleep_fn: Optional[Callable[[float], None]] = None,
+                 use_memory: bool = True) -> dict:
     """Detect the connected work board. Returns a result dict:
     ``{found, port?, chip?, platform?, firmware?, boards?, board_key?, reason?}``.
     ``boards`` is the full board catalogue (to shortlist); ``ports_fn`` returns the
@@ -462,7 +463,14 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     # Fifth, and the one that ends the question for good: what the operator
     # already told us THIS chip is. Their answer beats every inference we can
     # make from silicon, because they can see the board and we cannot.
-    if mac:
+    # use_memory=False is how a caller says "the operator has just told me the
+    # remembered answer is WRONG — show them everything". It is deliberately a
+    # read-time switch rather than an erase: a navigation gesture must never
+    # destroy learned state. Whatever they pick next overwrites the memory
+    # anyway, which is the correction, and it costs nothing if they change
+    # their mind again on the way (live, 2026-08-09: backing out of the
+    # confirmation wiped the file, so the grid came straight back).
+    if mac and use_memory:
         try:
             from ui.board_memory import recall
             known = recall(mac)

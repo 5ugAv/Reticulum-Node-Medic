@@ -155,20 +155,55 @@ def test_a_memory_of_a_board_that_cannot_be_this_chip_is_ignored(tmp_path, monke
 
 # --- and it must not become a trap ----------------------------------------
 
-def test_the_escape_from_a_remembered_board_forgets_it_first():
+def test_the_escape_from_a_remembered_board_shows_the_full_list():
     """A remembered board leaves ONE candidate, and a one-candidate list
-    auto-advances. Without forgetting + force_ask, "Not right — change" bounces
-    straight back to the same confirmation."""
+    auto-advances. Without force_ask, "Not right — change" bounces straight
+    back to the same confirmation."""
     from tests.srcutil import func_source
     S = "ui/screens/birth_guide_screen.py"
     src = func_source(S, "_change_hardware")
-    assert "forget" in src
     assert "force_ask=True" in src
-    assert "_back_action = self._change_hardware" in \
-        func_source(S, "_render_confirm_pair"), \
-        "the confirmation's way out must be the forgetting one"
+    assert "_detected = None" in src, "re-read rather than trust the snapshot"
     pick = func_source(S, "_render_pick_board")
-    assert "force_ask" in pick, "the one-candidate skip has to be overridable"
+    assert "ignore_memory=force_ask" in pick, \
+        "forcing the ask must also bypass the remembered shortcut"
+
+
+def test_walking_backwards_never_unlearns_a_board():
+    """THE 2026-08-09 regression, and the rule it produced. _change_hardware is
+    a BACK action — reachable by the left-edge swipe as well as the button —
+    and it used to erase the memory of the chip. One stray back gesture and the
+    medic had unlearned a board it had been told about correctly, so the
+    six-way grid returned. Navigation must not destroy learned state; the next
+    pick overwrites it, which is the correction."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_change_hardware")
+    assert "forget" not in src.split('"""')[2], \
+        "a back gesture must not erase what the operator taught the medic"
+
+
+def test_ignoring_the_memory_is_a_read_switch_not_an_erase():
+    import types
+    from ui import board_memory
+    from ui.board_detect import detect_board
+    from ui.birth import rnode_board_choices
+
+    import tempfile
+    import os
+    path = os.path.join(tempfile.mkdtemp(), "m.json")
+    board_memory.remember("aa:bb:cc:dd:ee:01", "heltec32_v4", path)
+    real = board_memory.MEMORY_PATH
+    board_memory.MEMORY_PATH = path
+    try:
+        wide = detect_board(rnode_board_choices(),
+                            ports_fn=lambda: ["/dev/ttyACM1"],
+                            reader=lambda p: V4_OUT, use_memory=False)
+        assert len(wide["boards"]) > 1, "asked to ignore memory -> show them all"
+        assert not wide.get("remembered")
+        # and it is STILL remembered afterwards
+        assert board_memory.recall("aa:bb:cc:dd:ee:01", path) == "heltec32_v4"
+    finally:
+        board_memory.MEMORY_PATH = real
 
 
 def test_picking_a_board_records_it():

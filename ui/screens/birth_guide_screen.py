@@ -1575,16 +1575,17 @@ class BirthGuideScreen(BoxLayout):
         A remembered board collapses the candidate list to one, and a one-item
         list auto-advances — so without this, "Not right — change" would bounce
         straight back to the same confirmation, which is a trap wearing the
-        clothes of an escape hatch. Forgetting first is also the correction
-        itself: whatever we remembered about this chip was wrong.
+        clothes of an escape hatch.
+
+        This used to ERASE the memory of the board first. That was wrong, and
+        it cost a walkthrough (live, 2026-08-09): backing out of the
+        confirmation emptied the file, so the six-way grid came straight back
+        and the medic had unlearned a board it had been told about correctly.
+        A navigation gesture must never destroy learned state. Ignoring the
+        memory for this one lookup shows the full list just as well, and
+        whatever they pick next overwrites it — which is the correction, made
+        by the choice itself rather than by walking backwards past a screen.
         """
-        try:
-            mac = (getattr(self, "_detected", None) or {}).get("mac")
-            if mac:
-                from ui.board_memory import forget
-                forget(mac)
-        except Exception:                                          # noqa: BLE001
-            pass
         self._detected = None            # re-read rather than trust the snapshot
         self._render_pick_board(force_ask=True)
 
@@ -1604,7 +1605,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.scrollview import ScrollView
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
-        cands = self._board_candidates()
+        cands = self._board_candidates(ignore_memory=force_ask)
         if len(cands) == 1 and not force_ask:
             self._board_key = cands[0][0]        # nothing to ask
             self._render_pick_pi()
@@ -1643,8 +1644,13 @@ class BirthGuideScreen(BoxLayout):
             wrap.add_widget(_bk)
         self.add_widget(wrap)
 
-    def _board_candidates(self):
+    def _board_candidates(self, ignore_memory=False):
         """[(key, display_name)] the medic could not rule out. Never empty.
+
+        *ignore_memory* re-reads the board WITHOUT the "you already told me
+        what this chip is" shortcut, for the operator who has just said the
+        remembered answer is wrong. It does not unlearn anything — see
+        _change_hardware.
 
         Re-reads the board when the snapshot cannot be trusted. ``_detected`` is
         taken once, on the "What are you building?" chooser — but on the Pi path
@@ -1671,7 +1677,8 @@ class BirthGuideScreen(BoxLayout):
                 from ui.hw_factories import local_board_ports
                 from workflows.rnode_boards import RNODE_BOARDS
                 fresh = detect_board(list(RNODE_BOARDS.values()),
-                                     ports_fn=local_board_ports) or {}
+                                     ports_fn=local_board_ports,
+                                     use_memory=not ignore_memory) or {}
                 if fresh.get("boards"):
                     self._detected = fresh
                     det = fresh
