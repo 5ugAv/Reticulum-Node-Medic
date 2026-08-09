@@ -512,3 +512,44 @@ def test_changing_the_board_here_takes_over_the_choice():
 def test_the_guide_hands_the_confirmed_board_over():
     src = func_source(SCREEN, "_hand_over_name")
     assert "board_key" in src, "the guide knows the board; it must say so"
+
+
+# --- doing the thing IS the interaction ------------------------------------
+#
+# Operator, mid-walkthrough 2026-08-09: "when the Node Medic senses the radio's
+# been removed, the user doesn't have to press next — it automatically goes to
+# the next step."
+#
+# The connect steps already advance when a board APPEARS, because plugging it
+# in is the action. Unplugging is the action here, for the same reason.
+
+def test_taking_the_radio_out_advances_by_itself():
+    src = func_source(SCREEN, "_render_step")
+    assert "_start_absence_poll" in src
+    branch = src[src.index("DisconnectBoardAnim, RadioToPiAnim"):]
+    assert "isinstance(anim, DisconnectBoardAnim)" in branch, \
+        "only the step the medic can SEE — a board landing on the Pi it cannot"
+
+
+def test_the_absence_poll_only_fires_on_a_confirmed_absence():
+    """'Can't tell' must never read as 'gone'. An exception in the port scan
+    advancing the flow would skip the step on a transient error."""
+    src = func_source(SCREEN, "_start_absence_poll")
+    assert "gone = False" in src.split("except Exception")[1][:120]
+
+
+def test_the_button_stays_on_the_unplug_step():
+    """The connect steps hide Next because sensing is the only road. Here it is
+    an accelerator: a poll that never fires must not strand the operator — which
+    is exactly what happened on step 7 of 8 the same day, when a Pi's USB id was
+    missing from a table and there was no button to press."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index("DisconnectBoardAnim, RadioToPiAnim"):]
+    branch = branch[:branch.index("elif isinstance(anim, ConnectBoardAnim)")]
+    assert "hide_next" not in branch
+
+
+def test_a_manual_tap_still_wins_the_race():
+    src = func_source(SCREEN, "_on_board_absent")
+    assert "_advance_token" in src, "a tap during the beat must not be overtaken"
+    assert "mark_removed" in src, "let the picture finish before moving on"

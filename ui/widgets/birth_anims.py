@@ -519,6 +519,18 @@ class DisconnectBoardAnim(ConnectBoardAnim):
     def mark_connected(self):                     # noqa: D102 - deliberately inert
         return
 
+    def mark_removed(self):
+        """The medic has SEEN the board go. Freeze the scene fully separated, so
+        the last thing on screen agrees with the fact — a loop that carried on
+        would swing the board back onto the plug while the flow moved forward,
+        which is the same "picture contradicts the words" fault this class
+        exists to fix."""
+        if getattr(self, "_removed", False):
+            return
+        self._removed = True
+        self.stop()                                   # halt the lift-off loop
+        self.phase = 1.0                              # held clear of the plug
+
 
 class RadioToPiAnim(ConnectBoardAnim):
     """The radio meets the RASPBERRY PI — the last step, and the one that makes

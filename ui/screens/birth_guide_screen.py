@@ -1511,6 +1511,13 @@ class BirthGuideScreen(BoxLayout):
             # plug the board back in (2026-08-09) — the tool contradicting its
             # own instruction, which is worse than silence.
             self._expect_board_absence(True)
+            # "Take the radio out" is something the medic CAN see: it watches
+            # the board leave and advances itself (operator's ask, 2026-08-09).
+            # "Put the radio onto the Pi" is not — that board lands on the PI's
+            # USB, which the medic will never enumerate — so it keeps to its
+            # button alone.
+            if isinstance(anim, DisconnectBoardAnim):
+                self._start_absence_poll(anim)
             # BEFORE the ConnectBoardAnim branch, because both subclass it — and
             # inheriting that branch would be exactly wrong. It hides Next and
             # waits for a board to APPEAR on the medic's USB; on these two steps
@@ -2394,6 +2401,62 @@ class BirthGuideScreen(BoxLayout):
         # Let the "Connected!" celebration play, then carry the flow forward on its
         # own — detection drives the wizard, no tap needed. A manual Next/Back
         # bumps the token and cancels this pending auto-advance.
+        from kivy.clock import Clock
+        self._advance_token = getattr(self, "_advance_token", 0) + 1
+        tok = self._advance_token
+        Clock.schedule_once(
+            lambda _d: (getattr(self, "_advance_token", None) == tok
+                        and self._current is not None and self._next()), 2.0)
+
+    def _start_absence_poll(self, anim):
+        """Watch for the work board LEAVING, and carry the flow forward itself.
+
+        Operator's ask, mid-walkthrough 2026-08-09: "when the Node Medic senses
+        the radio's been removed, the user doesn't have to press next — it
+        automatically goes to the next step."
+
+        The mirror image of _start_board_poll: those steps advance when a board
+        APPEARS, because plugging it in IS the action; this one advances when a
+        board GOES, for exactly the same reason. Doing the thing the screen
+        asked for should be the whole interaction — a Next tap afterwards is the
+        tool asking to be told what it can already see.
+
+        THE BUTTON STAYS. The connect steps hide theirs, and this step could
+        follow — but a poll that never fires then leaves the operator on a
+        screen with no way forward, which is precisely how they ended up stuck
+        on step 7 of 8 earlier the same day when a Pi's USB id was missing from
+        a table. Sensing is an accelerator here, not the only road.
+        """
+        from kivy.clock import Clock
+        self._stop_board_poll()
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                gone = False
+                try:
+                    from ui.hw_factories import hardware_present
+                    gone = not hardware_present()
+                except Exception:                                  # noqa: BLE001
+                    gone = False                    # can't tell -> don't advance
+                if gone:
+                    Clock.schedule_once(lambda _d: self._on_board_absent(anim), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._board_poll = Clock.schedule_interval(tick, 1.2)
+        tick(0)
+
+    def _on_board_absent(self, anim):
+        """The radio is off the medic. Let the picture finish, then move on.
+
+        Same delayed, token-guarded advance as _on_board_present: the animation
+        has to be SEEN completing, and a manual tap during that beat must win
+        rather than be overtaken by a step that skips past it.
+        """
+        self._stop_board_poll()
+        if hasattr(anim, "mark_removed"):
+            anim.mark_removed()
         from kivy.clock import Clock
         self._advance_token = getattr(self, "_advance_token", 0) + 1
         tok = self._advance_token
