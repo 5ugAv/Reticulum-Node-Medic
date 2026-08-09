@@ -277,7 +277,10 @@ _STEPS = {
          # itself the moment the node answers; the button exists for the case
          # where it does not.
          "next": tr("Try again  →"),
-         "anim": "provision"},
+         # A PI ON A CABLE, not a radio board broadcasting. "provision"
+         # draws radio waves, which is exactly what this step is not
+         # (operator, reading it off the screen, 2026-08-09).
+         "anim": "provision_cable"},
         {"title": tr("Unplug the Pi, put the radio on it, give it power"),
          "body": tr("The software is on. Unplug the Pi from Node Medic \u2014 that "
                     "socket is the one the radio needs \u2014 plug in the radio you "

@@ -25,7 +25,7 @@ from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, InsertSdIntoPiAnim,
                                     ProvisionAnim, ConnectPiAnim,
                                     SdHandoverAnim,
-    DisconnectBoardAnim, RadioToPiAnim,
+    DisconnectBoardAnim, RadioToPiAnim, ProvisionOverCableAnim,
 )
 
 #: Animation key (from ui.birth_guide_flow) -> the widget class that draws it.
@@ -36,6 +36,9 @@ _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAn
           # the radio meeting the PI, not the medic. Deliberately points at no
           # socket: that is a per-board measurement, not a guess.
           "radio_to_pi": RadioToPiAnim,
+          # NOT "provision": that one draws a radio board sending radio
+          # waves. This step is a Pi on the end of a cable.
+          "provision_cable": ProvisionOverCableAnim,
           "connect_pi": ConnectPiAnim,
           "insert_sd": InsertSdAnim, "insert_sd_pi": InsertSdIntoPiAnim,
           # the written card leaving the medic's reader and going home into
@@ -44,7 +47,8 @@ _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAn
           "provision": ProvisionAnim}
 
 #: Animations that draw a specific Raspberry Pi and so must be told which one.
-_PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim, RadioToPiAnim)
+_PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim,
+             RadioToPiAnim, ProvisionOverCableAnim)
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):

@@ -608,3 +608,34 @@ def test_the_end_of_a_walkthrough_is_not_headed_like_the_start():
     assert "_declared_pi_address" in src
     assert "Bring {nm} to life" in src or 'f"Bring {nm} to life"' in src
     assert '"Its name" if' in src, "the name field must stop asking for a name"
+
+
+def test_the_provisioning_step_draws_a_cable_not_radio_waves():
+    """Operator, reading it off the screen 2026-08-09: "the animation depicts a
+    radio board talking via radio signals to the node medic; in fact it's a
+    Raspberry Pi talking to the medic over cable." Same class as the wrong Pi
+    picture — the words were right and the picture taught something else."""
+    from ui.birth_guide_flow import guide_steps
+    life = next(s for s in guide_steps("pi") if s.get("gate") == "node_online")
+    assert life["anim"] == "provision_cable"
+    assert life["anim"] != "provision", "that one broadcasts"
+
+
+def test_the_cable_animation_gets_the_operators_own_pi():
+    """Standing rule: every picture is the hardware in their hand."""
+    src = open("ui/screens/birth_guide_screen.py").read()
+    assert "ProvisionOverCableAnim" in src
+    pi_anims = src[src.index("_PI_ANIMS = ("):]
+    pi_anims = pi_anims[:pi_anims.index(")")]
+    assert "ProvisionOverCableAnim" in pi_anims, \
+        "it must be in _PI_ANIMS or it never receives pi_key"
+
+
+def test_the_boluses_travel_and_swell():
+    """"the cable's like a python swallowing a tennis ball — there'll be balls
+    going down the tube travelling towards the Node Medic from the Pi"."""
+    from tests.srcutil import func_source
+    src = func_source("ui/widgets/birth_anims.py", "_draw",
+                      cls="ProvisionOverCableAnim")
+    assert "BOLUSES" in src and "swell" in src
+    assert "self.phase" in src, "they have to move"

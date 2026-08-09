@@ -829,6 +829,118 @@ class ProvisionAnim(_LoopAnim):
         lbl.pos = (x, y + dp(4))
 
 
+class ProvisionOverCableAnim(_LoopAnim):
+    """The Pi being worked on THROUGH THE CABLE — boluses down a tube.
+
+    The step it replaces used ProvisionAnim, which draws a radio board sending
+    radio waves to Node Medic. Nothing about this step is radio: it is a
+    Raspberry Pi on the end of a USB cable, having its software installed over
+    that cable. The operator caught it on the screen (2026-08-09): "the
+    animation depicts a radio board talking via radio signals to the node medic;
+    in fact it's a Raspberry Pi talking to the medic over cable."
+
+    Their picture for it, and it is a good one: "the cable's like a python
+    swallowing a tennis ball — there'll be balls going down the tube travelling
+    towards the Node Medic from the Pi." So the cable is drawn as a TUBE whose
+    thickness swells where a payload is passing, and the swellings travel. It
+    reads as substance moving through a physical thing, which is exactly what is
+    happening and exactly what radio waves fail to say.
+
+    The board is the operator's OWN Pi, per the standing rule that every picture
+    is the hardware in their hand.
+    """
+
+    #: Which way the boluses travel. The operator asked for Pi -> Node Medic.
+    #: The session is two-way — the medic pushes packages and the Pi answers —
+    #: so neither direction is false; this is the one they specified.
+    TOWARD_MEDIC = True
+    #: How many are in flight at once, evenly spaced around the loop.
+    BOLUSES = 3
+
+    def __init__(self, pi_key: str = "", **kwargs):
+        kwargs.setdefault("duration", 2.6)
+        super().__init__(**kwargs)
+        self._pi_png = ""
+        if pi_key:
+            try:
+                from ui import board_images
+                self._pi_png = board_images.image_for_pi(pi_key) or ""
+            except Exception:                                      # noqa: BLE001
+                self._pi_png = ""
+
+    def _draw(self):
+        pi = (_texture(self._pi_png) if self._pi_png else None) \
+            or _texture(PI_ZERO_CUT_PNG) or _texture(PI_ZERO_PNG)
+        medic = (_texture(MEDIC_NOCABLE_PNG) or _texture(MEDIC_BODY_PNG)
+                 or _texture(MEDIC_PNG))
+        if pi is None or medic is None:
+            return self._draw_fallback()
+        x, y, w, h = self.x, self.y, self.width, self.height
+
+        mh = h * 0.74
+        mw = mh * (medic.width / float(medic.height))
+        ph = h * 0.46
+        pw = ph * (pi.width / float(pi.height))
+        gap = max(dp(70), w * 0.18)
+        total = pw + gap + mw
+        pxx = x + (w - total) / 2.0
+        pyy = y + (h - ph) / 2.0
+        mxx = pxx + pw + gap
+        myy = y + (h - mh) / 2.0
+
+        # The tube runs from the Pi's edge to the medic's, with a gentle sag so
+        # it reads as a cable lying there rather than a wire diagram.
+        a = (pxx + pw - dp(2), pyy + ph * 0.42)
+        b = (mxx + dp(2), myy + mh * 0.42)
+        sag = min(h * 0.10, dp(26))
+        pts = _bezier(a, (a[0] + gap * 0.35, a[1] - sag),
+                      (b[0] - gap * 0.35, b[1] - sag), b, 56)
+
+        base_r = dp(4.2)
+        swell = dp(7.0)
+        spread = 0.085                       # how much of the run each bolus fills
+        cable = theme.hex_to_rgba(theme.COLORS["accent"])
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+            Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
+            Color(cable[0], cable[1], cable[2], 0.95)
+            n = len(pts)
+            for i, (cx, cy) in enumerate(pts):
+                u = i / float(n - 1)                 # 0 at the Pi, 1 at the medic
+                r = base_r
+                for k in range(self.BOLUSES):
+                    c = (self.phase + k / float(self.BOLUSES)) % 1.0
+                    if not self.TOWARD_MEDIC:
+                        c = 1.0 - c
+                    d = abs(u - c)
+                    if d < spread:
+                        # a smooth hump, fattest at the centre of the bolus
+                        f = 1.0 - (d / spread)
+                        r = max(r, base_r + swell * f * f * (3.0 - 2.0 * f))
+                Ellipse(pos=(cx - r, cy - r), size=(r * 2, r * 2))
+
+    def _draw_fallback(self):
+        """No art: still a TUBE with something moving along it, never waves."""
+        x, y, w, h = self.x, self.y, self.width, self.height
+        cy = y + h * 0.5
+        cable = theme.hex_to_rgba(theme.COLORS["accent"])
+        with self.canvas:
+            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            RoundedRectangle(pos=(x + dp(8), cy - h * 0.18),
+                             size=(w * 0.22, h * 0.36), radius=[dp(6)] * 4)
+            RoundedRectangle(pos=(x + w - dp(8) - w * 0.22, cy - h * 0.22),
+                             size=(w * 0.22, h * 0.44), radius=[dp(6)] * 4)
+            Color(cable[0], cable[1], cable[2], 0.95)
+            x0 = x + dp(8) + w * 0.22
+            x1 = x + w - dp(8) - w * 0.22
+            for k in range(self.BOLUSES):
+                c = (self.phase + k / float(self.BOLUSES)) % 1.0
+                bx = x0 + (x1 - x0) * c
+                Ellipse(pos=(bx - dp(9), cy - dp(9)), size=(dp(18), dp(18)))
+            Line(points=[x0, cy, x1, cy], width=dp(3.5), cap="round")
+
+
 class InsertSdAnim(_LoopAnim):
     """Two-phase: the microSD card slides into the card reader, then the reader +
     card move together toward the Node Medic (it has no native card slot). Uses the
