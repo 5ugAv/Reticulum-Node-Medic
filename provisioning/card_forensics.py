@@ -289,6 +289,46 @@ def diagnose(run: Runner = _default_run, pi_key: str = "") -> CardReport:
                 "for a different Pi, so this card can never appear over USB. "
                 "Write it again."))
 
+        # WHO IS THIS CARD FOR, AND CAN IT EVER GET ON WI-FI?
+        #
+        # Both live in the same place — Raspberry Pi Imager's custom.toml, or
+        # the firstrun.sh generated from it — and both are questions the
+        # operator ends up asking a card in the dark. On 2026-08-09 a Pi ran
+        # perfectly off its own supply and never appeared on the network, and
+        # answering "is Wi-Fi even written on this card" took a LAN sweep and
+        # twenty minutes, with the card by then back inside the Pi.
+        toml = (_read(run, f"{mnt}/custom.toml")
+                or _read(run, f"{mnt}/firstrun.sh") or "")
+        name = ""
+        for line in toml.splitlines():
+            t = line.strip()
+            if t.startswith("hostname") and "=" in t:
+                name = t.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+            if "set_hostname" in t and "'" in t:
+                name = t.split("'")[1]
+                break
+        if name:
+            rep.checks.append(Check("node_name", "ok",
+                                    f"This card was written for '{name}'."))
+        has_wifi = ("[wlan]" in toml or "ssid" in toml.lower()
+                    or "wpa_supplicant" in toml)
+        if not toml:
+            rep.checks.append(Check(
+                "wifi", "unknown",
+                "Couldn't read the setup file, so whether Wi-Fi is configured "
+                "is unknown."))
+        elif has_wifi:
+            rep.checks.append(Check(
+                "wifi", "ok",
+                "Wi-Fi details are on this card, so the node can come back on "
+                "your network as well as over the cable."))
+        else:
+            rep.checks.append(Check(
+                "wifi", "bad",
+                "No Wi-Fi on this card — this node can ONLY ever be reached "
+                "over the cable."))
+
         firstrun = _exists(run, f"{mnt}/firstrun.sh")
         sshflag = _exists(run, f"{mnt}/ssh")
         booted = first_boot_completed(cmdline, firstrun, sshflag)

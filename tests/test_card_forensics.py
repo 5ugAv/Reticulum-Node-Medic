@@ -143,3 +143,16 @@ def test_it_mounts_only_where_the_medic_allows():
     text = src("provisioning/card_forensics.py")
     assert "from provisioning.sd_edit import SD_MOUNT as INSPECT_MOUNT" in text, \
         "sudo whitelists mount by full command line — an invented path is refused"
+
+
+def test_it_says_who_the_card_is_for_and_whether_wifi_is_on_it():
+    """2026-08-09: a Pi ran perfectly off its own supply and never appeared on
+    the network. Answering "is Wi-Fi even written on this card" took a LAN
+    sweep and twenty minutes, with the card by then back inside the Pi. Both
+    facts live in custom.toml, right next to everything else this reads."""
+    from tests.srcutil import func_source
+    src = func_source("provisioning/card_forensics.py", "diagnose")
+    assert "custom.toml" in src
+    assert "node_name" in src and "wifi" in src
+    assert "ONLY ever be reached" in src, \
+        "a card with no Wi-Fi is a node with one road in — say so"
