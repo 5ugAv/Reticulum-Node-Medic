@@ -1,0 +1,264 @@
+"""Read a node's SD card and say whether it needs writing again.
+
+THE QUESTION THIS ANSWERS. A Pi that will not come up leaves the operator with
+nothing to act on: the board looks the same whether its card is fine, half
+written, or was never booted from at all. Operator, 2026-08-09, with a Pi that
+enumerated on USB and then wedged: "can you diagnose the sd card from here, this
+is worth doing if it wont connect, to let the user know if the sd needs to be
+re imaged."
+
+READ-ONLY, ALWAYS. Nothing here writes, formats or repairs. It reports, and the
+decision to spend four minutes writing the card again stays with the operator —
+the same rule pi_imager.card_status already follows, and for the same reason: a
+card that looks blank has held the evidence of the previous night before now.
+
+WHAT IT CAN SEE, AND WHAT IT CANNOT.
+
+The boot partition is FAT and readable without root, so most of this comes free.
+Raspberry Pi OS leaves a very legible trail there:
+
+  * ``cmdline.txt`` ships with ``systemd.run=/boot/firstrun.sh``. First boot runs
+    that script and REWRITES cmdline.txt without it. So the marker still being
+    present is proof the first boot never completed — the single most useful
+    fact on the whole card.
+  * ``firstrun.sh`` itself is deleted by that same run.
+  * ``ssh`` (the empty flag file that enables sshd) is consumed on first boot.
+
+Those three agree with each other, which is what makes them trustworthy: one
+could be a fluke, three is a story.
+
+The root partition is ext4 and needs root to mount, which the medic's scoped
+sudo may refuse. Every root-partition check is therefore BEST EFFORT and its
+absence is reported as "couldn't look", never as "nothing there" — the
+difference between those two is the whole value of the report.
+
+Pure logic + an injected runner, so the reasoning is tested without a card.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from dataclasses import dataclass, field
+from typing import Callable, List, Optional
+
+Runner = Callable[[str], str]
+
+#: Where a boot partition is mounted to be read, when it is not already.
+INSPECT_MOUNT = "/tmp/rnm-card-inspect"
+
+#: The marker Raspberry Pi OS puts in cmdline.txt and removes once first boot
+#: has completed. Its presence is the clearest "this has never finished booting"
+#: signal a card can give.
+FIRSTRUN_MARKER = "systemd.run="
+
+
+def _default_run(command: str) -> str:
+    try:
+        p = subprocess.run(["bash", "-lc", command], capture_output=True,
+                           text=True, timeout=30)
+        return (p.stdout or "") + (p.stderr or "")
+    except Exception:                                        # noqa: BLE001
+        return ""
+
+
+@dataclass
+class Check:
+    """One thing looked at, and what it means in the operator's terms."""
+    key: str
+    #: "ok" | "bad" | "unknown" — unknown means WE COULD NOT LOOK, which is not
+    #: the same as a clean result and must never be rendered as one.
+    state: str
+    detail: str = ""
+
+
+@dataclass
+class CardReport:
+    checks: List[Check] = field(default_factory=list)
+    boot_partition: Optional[str] = None
+    disk: Optional[str] = None
+
+    def _states(self, key: str) -> str:
+        for c in self.checks:
+            if c.key == key:
+                return c.state
+        return "unknown"
+
+    @property
+    def is_a_pi_card(self) -> bool:
+        return self._states("pi_card") == "ok"
+
+    @property
+    def booted(self) -> Optional[bool]:
+        """True / False / None(unknown) — has anything ever booted this card?"""
+        s = self._states("first_boot")
+        return {"ok": True, "bad": False}.get(s)
+
+    @property
+    def needs_reimaging(self) -> Optional[bool]:
+        """The operator's actual question. None when we genuinely cannot say —
+        which is an answer too, and a more useful one than a guess."""
+        if not self.is_a_pi_card:
+            return True                      # nothing bootable on it at all
+        if self._states("gadget") == "bad":
+            return True                      # it can never present a USB gadget
+        if self.booted is False:
+            # It has never finished a first boot. That is not proof the card is
+            # bad — it may simply never have been powered — so it is only a
+            # "yes" once we also know it HAS been given power, which the card
+            # cannot tell us. Left to the caller, who knows.
+            return None
+        if self.booted is True:
+            return False
+        return None
+
+    @property
+    def headline(self) -> str:
+        if not self.is_a_pi_card:
+            return "This card has no Raspberry Pi system on it."
+        if self._states("gadget") == "bad":
+            return ("The system is there, but the cable-link settings are "
+                    "missing — this card can never appear over USB.")
+        if self.booted is False:
+            return "The card is written, but nothing has ever booted from it."
+        if self.booted is True:
+            return "This card has booted before — the system on it is sound."
+        return "The card is written; whether it has ever booted is unclear."
+
+
+def _read(run: Runner, path: str) -> Optional[str]:
+    """File contents, or None when it is absent/unreadable. The distinction
+    matters: absent is evidence, unreadable is not."""
+    out = run(f"test -f {path} && cat {path} 2>/dev/null; echo __rc=$?")
+    if "__rc=0" not in out:
+        return None
+    return out.rsplit("__rc=", 1)[0]
+
+
+def _exists(run: Runner, path: str) -> Optional[bool]:
+    out = run(f"test -e {path}; echo __rc=$?").strip()
+    if "__rc=" not in out:
+        return None
+    return out.rsplit("__rc=", 1)[1].strip() == "0"
+
+
+def first_boot_completed(cmdline_text: str, firstrun_present: Optional[bool],
+                         ssh_flag_present: Optional[bool]) -> Optional[bool]:
+    """Has a first boot run to completion on this card?
+
+    Pure, and deliberately conservative: it says True or False only when the
+    signals AGREE. Raspberry Pi OS rewrites cmdline.txt to drop the
+    ``systemd.run=`` marker, deletes firstrun.sh, and consumes the ``ssh`` flag
+    file — all during that first boot. One of those could be a quirk of an
+    image; together they are a story.
+    """
+    if cmdline_text is None:
+        return None
+    marker = FIRSTRUN_MARKER in cmdline_text
+    if marker:
+        # The marker is the strongest single signal, and it is still there.
+        return False
+    # Marker gone. Corroborate before claiming a boot.
+    votes = [v for v in (firstrun_present, ssh_flag_present) if v is not None]
+    if votes and all(v is False for v in votes):
+        return True
+    if not votes:
+        return True          # marker gone is itself the rewrite; nothing contradicts
+    return None              # signals disagree — say so rather than pick one
+
+
+def diagnose(run: Runner = _default_run, pi_key: str = "") -> CardReport:
+    """Look at whatever node card is in the medic's reader and report.
+
+    Never touches the medic's own disk — find_pi_boot_partition refuses to
+    return one, and refuses entirely if it cannot tell which disk is the
+    medic's.
+    """
+    from provisioning.sd_edit import find_pi_boot_partition
+
+    rep = CardReport()
+    part, disk = find_pi_boot_partition(run)
+    rep.boot_partition, rep.disk = part, disk
+    if not part:
+        rep.checks.append(Check(
+            "present", "bad",
+            "No node card in Node Medic's reader — slide the card in and try "
+            "again. (Node Medic's own disk is never inspected.)"))
+        return rep
+    rep.checks.append(Check("present", "ok", f"Card found at {part}."))
+
+    # Use an existing mount if the desktop already auto-mounted it, so nothing
+    # here needs root for the part that matters most.
+    mnt = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
+    mounted_here = False
+    if not mnt:
+        run(f"mkdir -p {INSPECT_MOUNT}")
+        run(f"sudo -n mount -o ro {part} {INSPECT_MOUNT} 2>/dev/null")
+        chk = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
+        if chk:
+            mnt, mounted_here = chk, True
+    if not mnt:
+        rep.checks.append(Check(
+            "readable", "unknown",
+            "The card is there but its boot partition could not be mounted, so "
+            "nothing below could be looked at."))
+        return rep
+
+    try:
+        cfg = _read(run, f"{mnt}/config.txt")
+        cmdline = _read(run, f"{mnt}/cmdline.txt")
+        if cfg is None or cmdline is None:
+            rep.checks.append(Check(
+                "pi_card", "bad",
+                "No config.txt / cmdline.txt on it — this is not a Raspberry Pi "
+                "boot card. It needs writing."))
+            return rep
+        rep.checks.append(Check("pi_card", "ok",
+                                "A Raspberry Pi boot partition, as expected."))
+
+        # THE CABLE LINK. Section-aware, because config.txt is sectioned and a
+        # line under [cm5] applies to nothing on a 3A+ — one of the two silent
+        # bake bugs that cost a night (see provisioning.gadget).
+        try:
+            from provisioning.gadget import config_txt_has_gadget
+            ok_gadget = config_txt_has_gadget(cfg, pi_key)
+        except Exception:                                    # noqa: BLE001
+            ok_gadget = None
+        if ok_gadget is None:
+            rep.checks.append(Check("gadget", "unknown",
+                                    "Couldn't check the cable-link settings."))
+        elif ok_gadget:
+            rep.checks.append(Check(
+                "gadget", "ok",
+                "The cable-link settings are on it — this card can appear over "
+                "USB."))
+        else:
+            rep.checks.append(Check(
+                "gadget", "bad",
+                "The cable-link settings are missing or written under a section "
+                "for a different Pi, so this card can never appear over USB. "
+                "Write it again."))
+
+        firstrun = _exists(run, f"{mnt}/firstrun.sh")
+        sshflag = _exists(run, f"{mnt}/ssh")
+        booted = first_boot_completed(cmdline, firstrun, sshflag)
+        if booted is True:
+            rep.checks.append(Check(
+                "first_boot", "ok",
+                "It has booted at least once: the first-run marker is gone from "
+                "cmdline.txt, which only that boot removes."))
+        elif booted is False:
+            rep.checks.append(Check(
+                "first_boot", "bad",
+                "Nothing has ever finished booting from this card — cmdline.txt "
+                "still carries its first-run marker. If the Pi has been powered "
+                "and still got here, suspect the Pi or its power, not the "
+                "writing."))
+        else:
+            rep.checks.append(Check(
+                "first_boot", "unknown",
+                "Whether it has booted is unclear — the signals on it disagree."))
+    finally:
+        if mounted_here:
+            run(f"sudo -n umount {INSPECT_MOUNT} 2>/dev/null")
+    return rep

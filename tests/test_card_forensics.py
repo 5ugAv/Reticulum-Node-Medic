@@ -1,0 +1,108 @@
+"""Reading a node's card to answer "does this need writing again?".
+
+Operator, 2026-08-09, with a Pi that enumerated on USB and then wedged: "can you
+diagnose the sd card from here, this is worth doing if it wont connect, to let
+the user know if the sd needs to be re imaged."
+
+The reasoning is pure and tested here; the mounting needs a card and root.
+"""
+from provisioning.card_forensics import (CardReport, Check, first_boot_completed,
+                                         diagnose)
+
+CMDLINE_FRESH = ("console=serial0,115200 root=PARTUUID=abc rootfstype=ext4 "
+                 "fsck.repair=yes rootwait systemd.run=/boot/firstrun.sh "
+                 "systemd.run_success_action=reboot")
+CMDLINE_BOOTED = ("console=serial0,115200 root=PARTUUID=abc rootfstype=ext4 "
+                  "fsck.repair=yes rootwait")
+
+
+# --- the single most useful fact on the card -------------------------------
+
+def test_the_firstrun_marker_means_it_has_never_finished_booting():
+    """Raspberry Pi OS rewrites cmdline.txt to drop systemd.run= during the
+    first boot. Still there = that boot never completed."""
+    assert first_boot_completed(CMDLINE_FRESH, True, True) is False
+    # and it outranks anything else: marker present is decisive
+    assert first_boot_completed(CMDLINE_FRESH, False, False) is False
+
+
+def test_agreeing_signals_are_needed_to_claim_a_boot():
+    """One signal could be a quirk of an image; three is a story."""
+    assert first_boot_completed(CMDLINE_BOOTED, False, False) is True
+
+
+def test_disagreeing_signals_say_so_rather_than_pick_one():
+    # marker gone (suggests booted) but firstrun.sh still sitting there
+    assert first_boot_completed(CMDLINE_BOOTED, True, False) is None
+
+
+def test_an_unreadable_cmdline_is_unknown_not_false():
+    assert first_boot_completed(None, None, None) is None
+
+
+# --- "unknown" must never be rendered as "fine" ----------------------------
+
+def test_could_not_look_is_not_a_clean_result():
+    r = CardReport(checks=[Check("pi_card", "ok"), Check("first_boot", "unknown")])
+    assert r.booted is None
+    assert r.needs_reimaging is None, "no verdict without evidence"
+    assert "unclear" in r.headline
+
+
+def test_a_card_with_no_pi_system_needs_writing():
+    r = CardReport(checks=[Check("pi_card", "bad")])
+    assert r.needs_reimaging is True
+    assert "no Raspberry Pi system" in r.headline
+
+
+def test_missing_cable_settings_need_writing_even_if_it_booted():
+    """It can boot perfectly and still never appear over USB — which is exactly
+    the failure that looks identical to a dead cable."""
+    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "bad"),
+                           Check("first_boot", "ok")])
+    assert r.needs_reimaging is True
+    assert "never appear over USB" in r.headline
+
+
+def test_a_card_that_has_booted_does_not_need_writing():
+    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "ok"),
+                           Check("first_boot", "ok")])
+    assert r.needs_reimaging is False
+    assert r.booted is True
+
+
+def test_never_booted_is_not_by_itself_a_verdict():
+    """A card that has never booted may simply never have been powered. The
+    card cannot know that, so it does not pretend to."""
+    r = CardReport(checks=[Check("pi_card", "ok"), Check("gadget", "ok"),
+                           Check("first_boot", "bad")])
+    assert r.booted is False
+    assert r.needs_reimaging is None
+    assert "nothing has ever booted from it" in r.headline
+
+
+# --- safety ----------------------------------------------------------------
+
+def test_no_card_is_reported_plainly_and_nothing_is_touched():
+    calls = []
+
+    def run(cmd):
+        calls.append(cmd)
+        return ""                       # findmnt / lsblk see nothing
+    r = diagnose(run=run)
+    assert r.boot_partition is None
+    assert "No node card" in r.checks[0].detail
+    assert not any("mount" in c and "-o ro" not in c for c in calls), \
+        "nothing may be mounted read-write"
+
+
+def test_it_never_writes():
+    """Read-only, always: the decision to spend four minutes writing a card
+    stays with the operator, and a card that looks blank has held the previous
+    night's evidence before now."""
+    from tests.srcutil import src
+    text = src("provisioning/card_forensics.py")
+    body = text.split('"""', 2)[2]      # past the module docstring
+    for danger in ("mkfs", "dd ", " > ", "rm -", "wipefs", "parted", "fdisk"):
+        assert danger not in body, f"{danger!r} has no business in a diagnosis"
+    assert "-o ro" in body, "the only mount must be read-only"
