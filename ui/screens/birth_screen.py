@@ -269,6 +269,8 @@ class BirthScreen(BoxLayout):
         self._rtnode_target = None                   # RTNODE_TARGETS key (RTNode-2400)
         self._detected = None                        # last board_detect result
         self._detecting = False
+        self._declared_board_key = None              # board the operator confirmed
+        self._declared_mismatch = ""                 # ...and how the silicon disagrees
 
         self.header = BoxLayout(orientation="vertical", size_hint_y=None,
                                 spacing=dp(6))
@@ -435,10 +437,26 @@ class BirthScreen(BoxLayout):
         if self._firmware == "rtnode2400":
             self._add_rtnode_confirm()
         elif self._firmware in ("rnode", "pi_rnode"):
+            if self._declared_mismatch:
+                self.header.add_widget(_line(self._declared_mismatch,
+                                             size="14sp", color="amber"))
             if self._sel_board is None:
                 self.header.add_widget(_line("Board (radio)", bold=True,
                                              size="15sp", color="accent"))
                 self._add_rnode_board_pick()
+            elif self._declared_board_key:
+                # ONE choice, ONE confirmation (operator's rule, 2026-08-09).
+                # The board was picked in the guide and confirmed there against
+                # its photograph. Re-showing the photo under "check it matches"
+                # is the same question a third time, and a question asked when
+                # the answer is already known trains people to tap past it.
+                self.header.add_widget(self._labelled_row(
+                    "Board (radio)",
+                    self._sel_button(self._sel_board.display_name,
+                                     self._choose_board)))
+                self.header.add_widget(_line(
+                    "✓ Confirmed earlier — tap to change it.",
+                    size="12.5sp", color="green"))
             else:
                 # Show the PHOTO of what was auto-picked. The medic identifies
                 # the board from silicon the operator can't see, so a name in
@@ -785,6 +803,11 @@ class BirthScreen(BoxLayout):
 
     def _pick_board(self, board):
         self._sel_board = board
+        # Picked HERE, through this screen's own confirm gate — so this is now
+        # the one choice and the one confirmation, and whatever the guide was
+        # told earlier no longer stands (nor does its disagreement warning).
+        self._declared_board_key = None
+        self._declared_mismatch = ""
         self._build_chooser()
 
     def _find_pi(self):
@@ -937,6 +960,22 @@ class BirthScreen(BoxLayout):
                 # a chip read can't tell V3 from V4 — the operator CONFIRMS via the
                 # board photos, so don't pre-pick a target here.
                 pass
+            elif self._declared_board_key:
+                # The operator already picked this board AND confirmed it against
+                # its photograph. Detection does not get to ask again — but it
+                # DOES get to disagree, and a disagreement is worth stopping for:
+                # it means the board in the medic is not the board they think
+                # they are holding.
+                keys = [b.key for b in (res.get("boards") or [])]
+                if keys and self._declared_board_key not in keys:
+                    said = next((b.display_name for b in self._boards
+                                 if b.key == self._declared_board_key),
+                                self._declared_board_key)
+                    self._declared_mismatch = (
+                        f"You confirmed {said}, but the board plugged in reads as "
+                        f"{res.get('platform') or res.get('chip')}. Check which "
+                        f"board is in the medic before flashing anything.")
+                    self._sel_board = None       # now it IS worth asking
             elif res.get("board_key"):
                 self._sel_board = next(
                     (b for b in self._boards if b.key == res["board_key"]), None)
@@ -1456,6 +1495,8 @@ class BirthScreen(BoxLayout):
         self._detected = None
         self._rtnode_target = None
         self._firmware = None
+        self._declared_board_key = None
+        self._declared_mismatch = ""
         # The previous build's page is over; whoever calls _build_chooser next
         # puts the chooser back, so the flag has to agree or it describes a
         # header that is no longer on screen.
@@ -1479,7 +1520,7 @@ class BirthScreen(BoxLayout):
         self._lap_prepared = False
         self._build_chooser()
 
-    def begin_guided(self, path, name=None):
+    def begin_guided(self, path, name=None, board_key=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1493,6 +1534,15 @@ class BirthScreen(BoxLayout):
         operator arrived on the full unscoped chooser being asked to pick
         RNode / RTNode-2400 / Pi + RNode all over again (live, 2026-08-09).
         One call, one reset, no order to get wrong.
+
+        *board_key* is the radio the operator already picked AND confirmed
+        against its photograph in the guide. Without it this screen asked a
+        THIRD time — "Detected ESP32-S3, which board is this?" — with a grid of
+        near-identical S3 boards (operator, live, 2026-08-09: "we have already
+        selected the radio board, is this screen necessary?"). It isn't: the
+        answer is known, and every extra pass over that grid is another chance
+        to tap the wrong one and flash the wrong image. Detection still runs and
+        still gets to DISAGREE — see _detected_done.
         """
         if self._busy_with_a_build():
             self._warn_build_running()    # never reset under a running build
@@ -1500,6 +1550,10 @@ class BirthScreen(BoxLayout):
         self._fresh_lap()
         if name is not None and getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name)
+        if board_key:
+            self._declared_board_key = board_key
+            self._sel_board = next((b for b in self._boards
+                                    if b.key == board_key), None)
         # Cleared here too, or every later visit to BIRTH shows the green
         # "Card written — now building <the PREVIOUS node>" banner over an
         # empty form (audit, 2026-08-03).

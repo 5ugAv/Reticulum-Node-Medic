@@ -425,3 +425,77 @@ def test_it_uses_the_method_each_screen_actually_has():
     wrong one silently does nothing, which is how the empty field happened."""
     src = func_source(SCREEN, "_hand_over_name")
     assert "prefill_name" in src and "prefill_hostname" in src
+
+
+# --- one board choice, one confirmation ------------------------------------
+#
+# Operator, live, 2026-08-09, landing on the BIRTH screen after picking the
+# radio AND confirming it against its photo in the guide: "we have already
+# selected the radio board. is this screen necessary?" — then the rule:
+# "board choice once, and one confirmation."
+#
+# It matters beyond tidiness. The screen it landed on was a grid of
+# near-identical ESP32-S3 boards, and picking the wrong one there flashes the
+# wrong image. A question whose answer is already known trains people to tap
+# past it, and that is the tap that bricks a board.
+
+def _declared(mismatch_boards=None):
+    """A BIRTH screen handed a board the operator already confirmed, with
+    detection's opinion applied."""
+    import types
+
+    scr = _real_birth_screen()
+    scr._boards = [types.SimpleNamespace(key="heltec32_v4",
+                                         display_name="Heltec LoRa32 v4"),
+                   types.SimpleNamespace(key="t3s3", display_name="LilyGO T3S3")]
+    scr.begin_guided("host", name="Rooftop", board_key="heltec32_v4")
+    if mismatch_boards is not None:
+        _run(scr, "_detected_done", {"found": True, "platform": "ESP32",
+                                     "boards": mismatch_boards})
+    return scr
+
+
+def _run(scr, name, *args):
+    import textwrap
+    import types
+
+    ns = {}
+    exec(compile(textwrap.dedent(func_source(BIRTH, name)), BIRTH, "exec"), ns)
+    return types.MethodType(ns[name], scr)(*args)
+
+
+def test_a_confirmed_board_is_not_asked_for_again():
+    scr = _declared()
+    assert scr._sel_board is not None and scr._sel_board.key == "heltec32_v4"
+
+
+def test_detection_agreeing_leaves_the_choice_alone():
+    import types
+    agree = [types.SimpleNamespace(key="heltec32_v4"),
+             types.SimpleNamespace(key="t3s3")]
+    scr = _declared(mismatch_boards=agree)
+    assert scr._sel_board.key == "heltec32_v4"
+    assert not scr._declared_mismatch
+
+
+def test_detection_disagreeing_stops_and_says_so():
+    """Not 'ask again' — REPORT. The board in the medic is not the board they
+    believe they are holding, and that has to be said out loud."""
+    import types
+    scr = _declared(mismatch_boards=[types.SimpleNamespace(key="tbeam")])
+    assert scr._sel_board is None, "a real conflict must not be auto-resolved"
+    assert "Heltec LoRa32 v4" in scr._declared_mismatch
+    assert "ESP32" in scr._declared_mismatch
+
+
+def test_changing_the_board_here_takes_over_the_choice():
+    import types
+    scr = _declared(mismatch_boards=[types.SimpleNamespace(key="tbeam")])
+    _run(scr, "_pick_board", types.SimpleNamespace(key="t3s3",
+                                                   display_name="LilyGO T3S3"))
+    assert scr._declared_board_key is None and scr._declared_mismatch == ""
+
+
+def test_the_guide_hands_the_confirmed_board_over():
+    src = func_source(SCREEN, "_hand_over_name")
+    assert "board_key" in src, "the guide knows the board; it must say so"

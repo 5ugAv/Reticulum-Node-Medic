@@ -1239,7 +1239,9 @@ class BirthGuideScreen(BoxLayout):
                 # in a fixed order, and the second (prefill_name) reset the form
                 # again and threw the scoping away — see BirthScreen.begin_guided.
                 if hasattr(scr, "begin_guided"):
-                    scr.begin_guided("host", name=name or None)
+                    scr.begin_guided(
+                        "host", name=name or None,
+                        board_key=getattr(self, "_board_key", None) or None)
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
@@ -1767,6 +1769,13 @@ class BirthGuideScreen(BoxLayout):
         # one — see _back_row.
         btns = self._back_row(label="←  Not right — change", height=56)
         btns.spacing = dp(10)
+        # _back_row pads with a stretchy spacer so Back sits alone on the left.
+        # Here the primary action takes that room instead — left in, it halved
+        # the green button and clipped its label to ", that's right" (photo,
+        # 2026-08-09).
+        for w in list(btns.children):
+            if isinstance(w, BoxLayout):
+                btns.remove_widget(w)
         yes = Button(text="Yes, that's right  →", bold=True, font_size="17sp",
                      background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
