@@ -18,9 +18,9 @@ import math
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import (Color, Line, PopMatrix, PushMatrix, Quad, Rectangle,
-                           Rotate, RoundedRectangle, StencilPop, StencilPush,
-                           StencilUnUse, StencilUse)
+from kivy.graphics import (Color, Ellipse, Line, PopMatrix, PushMatrix, Quad,
+                           Rectangle, Rotate, RoundedRectangle, StencilPop,
+                           StencilPush, StencilUnUse, StencilUse)
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.label import Label
