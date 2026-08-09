@@ -116,6 +116,61 @@ def narrow_by_variant(shortlist, variant: Optional[str]):
     return hits or shortlist
 
 
+def parse_mac(esptool_output: str) -> Optional[str]:
+    """The chip's eFuse MAC from esptool's "MAC: ..." line, or None.
+
+    Unique to the silicon and unchanged by any reflash, which is what makes it
+    a usable name for "this exact board" — see ui.board_memory. Local use only;
+    it is never announced or written into a certificate.
+    """
+    for line in (esptool_output or "").splitlines():
+        low = line.strip()
+        if low.lower().startswith("mac:"):
+            mac = low.split(":", 1)[1].strip()
+            return mac or None
+    return None
+
+
+def parse_flash_size(esptool_output: str) -> Optional[str]:
+    """The flash size esptool DETECTED ("16MB"), or None.
+
+    Detected, not declared. The Heltec V4's own datasheet says ESP32-S3FN8 —
+    8MB — and the V4 on this bench measured 16MB (2026-08-09). Vendor documents
+    describe a design; boards ship with whatever flash the factory had.
+    """
+    for line in (esptool_output or "").splitlines():
+        low = line.strip().lower()
+        if low.startswith("detected flash size:"):
+            return low.split(":", 1)[1].strip().upper() or None
+    return None
+
+
+#: Flash sizes MEASURED on boards in hand, per board key. Never copied from a
+#: datasheet — see parse_flash_size for why that would be worse than useless.
+#: A board with no entry here is never excluded by size: we do not know it yet,
+#: and a wrong exclusion hides the board the operator is actually holding.
+#:
+#: Fill this in as boards pass across the bench. Every entry added permanently
+#: shortens the "which radio board is this?" list for everyone after.
+_FLASH_SIZE = {
+    "heltec32_v4": ("16MB",),      # measured 2026-08-09, Boya 68/4018
+}
+
+
+def narrow_by_flash_size(shortlist, size: Optional[str]):
+    """Boards whose MEASURED flash size matches *size*.
+
+    Same contract as narrow_by_variant: unknown size, or no measured board
+    matching it, leaves the list exactly as it was.
+    """
+    if not size:
+        return shortlist
+    hits = [b for b in shortlist if size in _FLASH_SIZE.get(b.key, ())]
+    unmeasured = [b for b in shortlist if b.key not in _FLASH_SIZE]
+    # A board we have never measured cannot be ruled out by a measurement.
+    return (hits + unmeasured) if hits else shortlist
+
+
 def firmware_options(chip: Optional[str]) -> List[str]:
     """Firmware the chip can take, best-first. ESP32-S3 boards are the RTNode-2400
     targets (Grey Hat's standalone transport node — health beacon + remote repair),
@@ -399,7 +454,31 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     # Third cut: the chip PACKAGE. "esp32" covers five boards we stock; the
     # exact variant separates them where we know it (bench-measured).
     shortlist = narrow_by_variant(shortlist, parse_chip_variant(out))
+    # Fourth cut: the flash size actually on the board. Only measured boards
+    # count, so today this mostly re-orders; every board measured onto the bench
+    # makes it cut deeper.
+    shortlist = narrow_by_flash_size(shortlist, parse_flash_size(out))
+    mac = parse_mac(out)
+    # Fifth, and the one that ends the question for good: what the operator
+    # already told us THIS chip is. Their answer beats every inference we can
+    # make from silicon, because they can see the board and we cannot.
+    if mac:
+        try:
+            from ui.board_memory import recall
+            known = recall(mac)
+        except Exception:                            # noqa: BLE001
+            known = None
+        if known:
+            hit = [b for b in shortlist if b.key == known]
+            if hit:
+                return _out({"found": True, "port": port, "chip": chip,
+                             "platform": platform, "mac": mac,
+                             "flash_size": parse_flash_size(out),
+                             "firmware": firmware_options(chip),
+                             "boards": hit, "board_key": known,
+                             "remembered": True})
     return _out({"found": True, "port": port, "chip": chip, "platform": platform,
+            "mac": mac, "flash_size": parse_flash_size(out),
             "firmware": firmware_options(chip), "boards": shortlist,
             "board_key": shortlist[0].key if len(shortlist) == 1 else None})
 
@@ -417,6 +496,11 @@ def _default_reader(port: str, esptool: str = DEFAULT_ESPTOOL) -> str:
     # distinct argument that can never be shell-parsed. ``esptool`` is a static
     # literal, safe to tokenise; ``~`` is expanded here (no shell to do it).
     argv = [os.path.expanduser(tok) for tok in shlex.split(esptool)]
-    argv += ["--chip", "auto", "--port", port, "--before", "default_reset", "chip_id"]
+    # flash_id, not chip_id: it prints everything chip_id does (chip, revision,
+    # features, MAC) AND the detected flash size, in one connection. Both are
+    # read-only. The extra line is what narrows six identical-looking S3 boards
+    # and what lets the medic remember this chip — see narrow_by_flash_size and
+    # ui.board_memory.
+    argv += ["--chip", "auto", "--port", port, "--before", "default_reset", "flash_id"]
     r = subprocess.run(argv, capture_output=True, text=True, timeout=40)
     return (r.stdout or "") + (r.stderr or "")

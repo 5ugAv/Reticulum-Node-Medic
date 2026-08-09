@@ -44,6 +44,7 @@
   "Already flashed": "書き込み済み",
   "Already kin": "すでに kin",
   "Already kin — but silent": "すでに身内 — ただし沈黙中",
+  "Answer once and Node Medic remembers this exact board — you won't be asked for it again.": "Answer once and Node Medic remembers this exact board — you won't be asked for it again.",
   "Antenna on  →": "アンテナ接続済み  →",
   "Attach the antenna first if you haven't — never power a radio board without one.": "まだならアンテナを先に取り付けてください — アンテナなしで無線ボードに電源を入れてはいけません。",
   "Attach the antenna to the radio board": "アンテナを無線ボードに取り付ける",

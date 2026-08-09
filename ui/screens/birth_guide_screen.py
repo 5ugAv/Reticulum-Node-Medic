@@ -1569,9 +1569,32 @@ class BirthGuideScreen(BoxLayout):
     # and BCM2836/2837 covers the Zero 2 W, the 3 and the 2 alike. So it is
     # asked, once, on its own screen.
 
-    def _render_pick_board(self):
+    def _change_hardware(self):
+        """The operator says the confirmed pair is wrong. Take them at their word.
+
+        A remembered board collapses the candidate list to one, and a one-item
+        list auto-advances — so without this, "Not right — change" would bounce
+        straight back to the same confirmation, which is a trap wearing the
+        clothes of an escape hatch. Forgetting first is also the correction
+        itself: whatever we remembered about this chip was wrong.
+        """
+        try:
+            mac = (getattr(self, "_detected", None) or {}).get("mac")
+            if mac:
+                from ui.board_memory import forget
+                forget(mac)
+        except Exception:                                          # noqa: BLE001
+            pass
+        self._detected = None            # re-read rather than trust the snapshot
+        self._render_pick_board(force_ask=True)
+
+    def _render_pick_board(self, force_ask=False):
         """Which radio is this? Only ever the candidates the medic cannot rule
-        out — the chip and the USB transport have already narrowed the list."""
+        out — the chip and the USB transport have already narrowed the list.
+
+        *force_ask* keeps the list on screen even when only one candidate
+        survives, for the operator who has just said the one we chose is wrong.
+        """
         self._stop_current()
         self.clear_widgets()
         # NOT _render_step_zero: that sets _i = 0 and re-renders, which skips
@@ -1582,7 +1605,7 @@ class BirthGuideScreen(BoxLayout):
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
         cands = self._board_candidates()
-        if len(cands) == 1:
+        if len(cands) == 1 and not force_ask:
             self._board_key = cands[0][0]        # nothing to ask
             self._render_pick_pi()
             return
@@ -1592,6 +1615,9 @@ class BirthGuideScreen(BoxLayout):
             tr("Node Medic has narrowed it to these — they share the same chip "
                "and the same kind of USB connection, so only you can see which "
                "one you're holding."), "15sp", color="text_secondary", h=64))
+        wrap.add_widget(_line(
+            tr("Answer once and Node Medic remembers this exact board — you "
+               "won't be asked for it again."), "13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
@@ -1665,7 +1691,29 @@ class BirthGuideScreen(BoxLayout):
 
     def _board_picked(self, key):
         self._board_key = key
+        self._remember_board(key)
         self._render_pick_pi()
+
+    def _remember_board(self, key):
+        """Tie the operator's answer to THIS chip, so it is never asked twice.
+
+        The medic can read a chip family off the silicon; it cannot read which
+        PCB the chip was soldered to, which is why six ESP32-S3 boards look
+        identical over USB. The operator can see that in a glance — and having
+        told us once, about a MAC that will never change, they should not be
+        shown that grid again ("I'm just hoping that we can whittle down this
+        section of boards", 2026-08-09).
+
+        Stays on this medic; a chip MAC is a bench note, not something to
+        announce. Failing to remember costs one question, so it never raises.
+        """
+        try:
+            mac = (getattr(self, "_detected", None) or {}).get("mac")
+            if mac:
+                from ui.board_memory import remember
+                remember(mac, key)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _render_pick_pi(self):
         """Which Raspberry Pi is this? Asked because it cannot be read."""
@@ -1724,7 +1772,9 @@ class BirthGuideScreen(BoxLayout):
         """
         self._stop_current()
         self.clear_widgets()
-        self._back_action = self._render_pick_board
+        # _change_hardware, not _render_pick_board: a remembered board leaves one
+        # candidate, and a one-candidate list auto-advances straight back here.
+        self._back_action = self._change_hardware
         from kivy.uix.scrollview import ScrollView
         from ui.screens.birth_screen import PI_HOSTS
         from ui import board_images
@@ -1741,6 +1791,13 @@ class BirthGuideScreen(BoxLayout):
                               "the wrong Pi here makes a card that boots and "
                               "never appears.", size="14.5sp",
                               color="text_secondary", h=44))
+        # When the radio came from memory rather than from a tap this lap, say
+        # so — otherwise a board nobody chose just appears, and a confirmation
+        # you don't know the origin of is one you can't really give.
+        if (getattr(self, "_detected", None) or {}).get("remembered"):
+            wrap.add_widget(_line(
+                "Radio recognised from a previous birth — you told Node Medic "
+                "what this board is.", size="13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
