@@ -417,24 +417,41 @@ def write_wifi(mnt: str, ssid: str, psk: str, country: str) -> None:
     """
     if not ssid:
         return                          # cable-birth cards carry no PSK at all
+    safe = ssid.replace("/", "_")
+    # SEPARATE ATTEMPTS ON PURPOSE. These were one try/except, and running the
+    # installed helper against a real filesystem showed why that is wrong: a
+    # failing chown aborted the rest, so the country file was never written AND
+    # a connection file was left behind with the wrong owner. NetworkManager
+    # ignores such a file without a word — a decoy is worse than nothing, since
+    # the next person finds "the Wi-Fi is on the card" and believes it.
     try:
-        safe = ssid.replace("/", "_")
         d = os.path.join(mnt, NM_DIR)
         os.makedirs(d, exist_ok=True)
         path = os.path.join(d, safe + ".nmconnection")
         _write(path, wifi_connection_text(ssid, psk))
         os.chmod(path, 0o600)
         os.chown(path, 0, 0)
-        if country:
-            wc = os.path.join(mnt, WPA_CONF)
-            os.makedirs(os.path.dirname(wc), exist_ok=True)
-            _write(wc, wifi_country_text(country))
-            os.chmod(wc, 0o600)
-            os.chown(wc, 0, 0)
         say("wrote the Wi-Fi connection onto the card (" + safe + ")")
     except Exception as exc:                            # noqa: BLE001
-        print("PREPARE_WARN: could not write the Wi-Fi settings onto the card "
-              "(" + str(exc) + ") - the node will not join Wi-Fi")
+        # Leave NO half-made file: unreadable-by-NM is indistinguishable from
+        # working right up until the node fails to appear.
+        try:
+            os.remove(path)
+        except Exception:                               # noqa: BLE001
+            pass
+        print("PREPARE_WARN: could not write the Wi-Fi connection onto the card "
+              "(" + str(exc) + ") - the node will NOT join Wi-Fi")
+    if not country:
+        return
+    try:
+        wc = os.path.join(mnt, WPA_CONF)
+        os.makedirs(os.path.dirname(wc), exist_ok=True)
+        _write(wc, wifi_country_text(country))
+        os.chmod(wc, 0o600)
+        os.chown(wc, 0, 0)
+    except Exception as exc:                            # noqa: BLE001
+        print("PREPARE_WARN: could not set the wireless country on the card "
+              "(" + str(exc) + ") - 5 GHz networks will be unusable")
 
 
 def activate_account(mnt: str, user: str, pwhash: str, keys: list) -> None:

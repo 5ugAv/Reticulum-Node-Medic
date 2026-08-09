@@ -128,3 +128,20 @@ def test_the_imager_actually_hands_the_wifi_to_the_helper():
     assert '"wifi_ssid": wifi_ssid' in src
     assert '"wifi_psk": wifi_password' in src
     assert '"wifi_country": wifi_country' in src
+
+
+def test_a_failed_connection_write_leaves_no_decoy():
+    """Found by running the INSTALLED helper against a real filesystem: chown
+    failed, and because it all sat in one try/except the country file was never
+    written AND a connection file was left with the wrong owner. NetworkManager
+    ignores such a file without a word, so the next person finds "the Wi-Fi is
+    on the card" and believes it."""
+    from tests.srcutil import src
+    body = src("assets/scripts/prepare_card.py")
+    body = body[body.index("def write_wifi("):]
+    body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
+    assert "os.remove(path)" in body, "a half-made connection file must go"
+    assert body.count("except Exception") >= 2, \
+        "the country file must not be lost to a connection-file failure"
+    assert "5 GHz networks will be unusable" in body, \
+        "and a missing country has its own consequence, so it gets its own words"

@@ -639,3 +639,19 @@ def test_the_boluses_travel_and_swell():
                       cls="ProvisionOverCableAnim")
     assert "BOLUSES" in src and "swell" in src
     assert "self.phase" in src, "they have to move"
+
+
+def test_a_failed_pi_build_gets_pi_advice_not_board_advice():
+    """Operator, live 2026-08-09, on a Pi + RNode build that died at its first
+    step: the popup said "Board won't flash? Hold PRG, press RST once… try a
+    known-good USB data cable". A Pi has no PRG button and the cable was not
+    the problem — it had wedged on a browning-out supply. Advice for the wrong
+    failure spends the one thing the operator has least of."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_popup_outcome")
+    assert '_last_type' in src and 'pi_rnode' in src
+    pi_branch = src[src.index('== "pi_rnode"'):src.index("else:")]
+    assert "power" in pi_branch.lower()
+    assert "PRG" not in pi_branch and "cable" not in pi_branch.lower() or \
+        "brown out" in pi_branch.lower()
+    assert "reader" in pi_branch, "point at the card check, which now exists"

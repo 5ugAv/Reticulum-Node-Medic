@@ -2438,14 +2438,30 @@ class BirthScreen(BoxLayout):
                 # no BOOT button at all — it double-taps RESET into a UF2
                 # bootloader. Being told to press a button that does not exist
                 # is worse than being told nothing (operator, 2026-08-05).
-                from ui.safety import recovery_for_board
-                recover = recovery_for_board(getattr(self, "_last_board", None))
-                view = requirement_popup(
-                    "A build step failed — the [FAIL] line in the build log "
-                    "names it, with the reason under it. Fix that and run the "
-                    f"build again.\n\nBoard won't flash?  {recover}  If it "
-                    "still won't, try a short, known-good USB data cable.",
-                    "Build didn't finish", False)
+                # ...AND IT HAS TO MATCH WHAT FAILED, not just which board.
+                # A Pi + RNode build is an SSH session to a Raspberry Pi; when
+                # it dies, the advice above sent the operator hunting for a PRG
+                # button a Pi does not have, and a data cable that was not the
+                # problem (operator, live, 2026-08-09 — the node had wedged on
+                # a browning-out supply). Advice for the wrong failure is worse
+                # than none: it spends the one thing they have least of.
+                head = ("A build step failed — the [FAIL] line in the build log "
+                        "names it, with the reason under it. Fix that and run "
+                        "the build again.")
+                if getattr(self, "_last_type", "") == "pi_rnode":
+                    body = (f"{head}\n\nIf it failed at the first step, the Pi "
+                            "stopped answering. Check its power light, and that "
+                            "it is still plugged in — a Pi drawing its power "
+                            "from Node Medic can brown out part-way through. "
+                            "Its card can be checked too: put it in Node "
+                            "Medic's reader and it will say whether the card "
+                            "needs writing again.")
+                else:
+                    from ui.safety import recovery_for_board
+                    recover = recovery_for_board(getattr(self, "_last_board", None))
+                    body = (f"{head}\n\nBoard won't flash?  {recover}  If it "
+                            "still won't, try a short, known-good USB data cable.")
+                view = requirement_popup(body, "Build didn't finish", False)
                 # Bring the chooser back so the operator can rerun, but KEEP
                 # the log below — it names what failed.
                 view.bind(on_dismiss=lambda *_:
