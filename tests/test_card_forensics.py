@@ -156,3 +156,32 @@ def test_it_says_who_the_card_is_for_and_whether_wifi_is_on_it():
     assert "node_name" in src and "wifi" in src
     assert "ONLY ever be reached" in src, \
         "a card with no Wi-Fi is a node with one road in — say so"
+
+
+# --- written is not the same as applied ------------------------------------
+
+def test_settings_written_but_never_applied_needs_writing_again():
+    """2026-08-09: a card said "Wi-Fi details are on it" AND "it has booted",
+    and the node never appeared on the network. Both boot-partition facts were
+    true. What they cannot see is a first boot that STARTED, cleared its own
+    marker, and then died on a browning-out rail before writing the network
+    config."""
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"),
+                           Check("gadget", "ok"), Check("wifi", "ok"),
+                           Check("first_boot", "ok"), Check("applied", "bad")])
+    assert r.needs_reimaging is True
+    assert "never applied" in r.headline
+
+
+def test_applied_settings_leave_the_card_alone():
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"),
+                           Check("gadget", "ok"), Check("first_boot", "ok"),
+                           Check("applied", "ok")])
+    assert r.needs_reimaging is False
+
+
+def test_not_being_able_to_open_the_system_partition_is_not_a_verdict():
+    r = CardReport(checks=[Check("present", "ok"), Check("pi_card", "ok"),
+                           Check("gadget", "ok"), Check("first_boot", "ok"),
+                           Check("applied", "unknown")])
+    assert r.needs_reimaging is False, "the boot partition still said it booted"

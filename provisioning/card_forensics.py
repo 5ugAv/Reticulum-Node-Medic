@@ -131,6 +131,10 @@ class CardReport:
             # "yes" once we also know it HAS been given power, which the card
             # cannot tell us. Left to the caller, who knows.
             return None
+        if self._states("applied") == "bad":
+            # Written but never applied — the failure that looks exactly like a
+            # working card until the node fails to appear.
+            return True
         if self.booted is True:
             return False
         return None
@@ -160,6 +164,9 @@ class CardReport:
                     "missing — this card can never appear over USB.")
         if self.booted is False:
             return "The card is written, but nothing has ever booted from it."
+        if self._states("applied") == "bad":
+            return ("It has booted, but its Wi-Fi settings were never applied — "
+                    "a first boot that started and did not finish.")
         if self.booted is True:
             return "This card has booted before — the system on it is sound."
         return "The card is written; whether it has ever booted is unclear."
@@ -351,4 +358,77 @@ def diagnose(run: Runner = _default_run, pi_key: str = "") -> CardReport:
     finally:
         if mounted_here:
             run(f"sudo -n umount {INSPECT_MOUNT} 2>/dev/null")
+
+    # THE ROOT PARTITION: was the setup on the boot partition ever APPLIED?
+    #
+    # The two are different questions and they came apart on 2026-08-09. A card
+    # said "Wi-Fi details are on it" AND "it has booted" — and the node never
+    # appeared on the network. Both boot-partition facts were true; what they
+    # cannot see is a first boot that STARTED, cleared its own marker, and then
+    # died on a browning-out rail before writing the network config. Reading the
+    # rootfs is the only way to tell "configured" from "configured and applied".
+    _check_rootfs(run, rep, disk)
     return rep
+
+
+#: Where Raspberry Pi OS keeps the network settings once first boot has applied
+#: them. NetworkManager on Bookworm and later; wpa_supplicant before that.
+_APPLIED_WIFI_PATHS = ("/etc/NetworkManager/system-connections",
+                       "/etc/wpa_supplicant/wpa_supplicant.conf")
+
+
+def _root_partition_for(run: Runner, disk: Optional[str]) -> Optional[str]:
+    """The ext4 partition on the same card as the boot partition."""
+    if not disk:
+        return None
+    out = run(f"lsblk -n -o PATH,FSTYPE /dev/{disk} 2>/dev/null")
+    for line in out.splitlines():
+        bits = line.split()
+        if len(bits) >= 2 and bits[1].lower() in ("ext4", "ext3", "ext2"):
+            return bits[0]
+    return None
+
+
+def _check_rootfs(run: Runner, rep: CardReport, disk: Optional[str]) -> None:
+    part = _root_partition_for(run, disk)
+    if not part:
+        rep.checks.append(Check("applied", "unknown",
+                                "No system partition found to look inside."))
+        return
+    mnt = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
+    mounted_here = False
+    if not mnt:
+        run(f"mkdir -p {INSPECT_MOUNT}")
+        run(f"sudo -n mount -o ro {part} {INSPECT_MOUNT} 2>/dev/null")
+        chk = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
+        if chk:
+            mnt, mounted_here = chk, True
+    if not mnt:
+        rep.checks.append(Check(
+            "applied", "unknown",
+            "Couldn't open the system partition, so whether the settings were "
+            "ever applied is unknown."))
+        return
+    try:
+        found = []
+        for path in _APPLIED_WIFI_PATHS:
+            out = run(f"ls -A {mnt}{path} 2>/dev/null | head -3; "
+                      f"test -s {mnt}{path} && echo __file")
+            if out.strip():
+                found.append(path)
+        if found:
+            rep.checks.append(Check(
+                "applied", "ok",
+                "The Wi-Fi settings were applied to the system — this node "
+                "should join your network when it is powered."))
+        else:
+            rep.checks.append(Check(
+                "applied", "bad",
+                "The Wi-Fi details are on the card but were NEVER APPLIED to "
+                "the system. A first boot that starts and then dies — on a "
+                "browning-out supply, say — clears its own marker without "
+                "finishing the job. Give the Pi a supply of its own and write "
+                "the card again."))
+    finally:
+        if mounted_here:
+            run(f"sudo -n umount {INSPECT_MOUNT} 2>/dev/null")
