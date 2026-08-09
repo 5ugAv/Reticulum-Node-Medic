@@ -266,3 +266,56 @@ def test_an_already_built_node_is_not_offered_imaging_by_the_screen():
     src = open("ui/screens/pi_imager_screen.py").read()
     assert "pi_usbboot.GADGET" in src
     assert "wipe it first" in src
+
+
+# --- a booted node is a Pi, whatever id it gives -----------------------------
+#
+# Live, 2026-08-09. The medic wrote a card, the Pi 3 A+ booted from it, and the
+# cable link came up. classify() said "No Pi seen on USB". The "Connect the Pi"
+# step has no Next button — by design, because the medic is supposed to sense
+# the Pi itself — so the operator sat on step 7 of 8, with a working node in
+# front of them, and nothing to press.
+#
+# GADGET_IDS listed the legacy NetChip ids that g_ether borrowed. Current
+# Raspberry Pi OS presents Raspberry Pi Ltd's OWN vendor id.
+
+LSUSB_PI3AP_GADGET = """Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 003 Device 002: ID 303a:1001 Espressif USB JTAG/serial debug unit
+Bus 003 Device 005: ID 2e8a:0013 Raspberry Pi Ltd. Raspberry Pi USB Gadget
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+"""
+
+
+def test_a_booted_pi_gadget_is_seen():
+    from provisioning.pi_usbboot import GADGET, classify
+    st = classify(LSUSB_PI3AP_GADGET)
+    assert st.state == GADGET, st
+    assert st.usb_id == "2e8a:0013"
+
+
+def test_it_still_recognises_the_gadget_by_name_if_the_id_moves():
+    """Raspberry Pi Ltd has changed vendor id once already. An id table records
+    what we have SEEN; the name the device gives itself outlives it."""
+    from provisioning.pi_usbboot import GADGET, classify
+    st = classify("Bus 003 Device 009: ID 2e8a:9999 Raspberry Pi Ltd. "
+                  "Raspberry Pi USB Gadget\n")
+    assert st.state == GADGET
+
+
+def test_an_rp2040_is_not_a_node():
+    """Vendor 2e8a is Raspberry Pi Ltd, which also covers every Pico. A blanket
+    vendor match would call a Pico a booted node."""
+    from provisioning.pi_usbboot import ABSENT, classify
+    st = classify("Bus 001 Device 004: ID 2e8a:0003 Raspberry Pi RP2 Boot\n")
+    assert st.state == ABSENT
+
+
+def test_the_bootrom_still_wins_over_a_gadget():
+    """A Pi held in device-boot mode is a different situation and a different
+    offer; the order of the checks must not drift."""
+    from provisioning.pi_usbboot import BOOTROM, classify
+    st = classify(LSUSB_PI3AP_GADGET +
+                  "Bus 001 Device 007: ID 0a5c:2764 Broadcom Corp.\n")
+    assert st.state == BOOTROM

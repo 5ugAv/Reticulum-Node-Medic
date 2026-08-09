@@ -77,7 +77,24 @@ GADGET_IDS = {
     "0525:a4a2": "Linux g_ether / CDC gadget",
     "0525:a4a1": "Linux gadget",
     "1d6b:0104": "Linux multifunction gadget",
+    # Raspberry Pi Ltd's OWN vendor id, which is what current Raspberry Pi OS
+    # actually presents — not the legacy NetChip 0525 that g_ether borrowed.
+    # Measured on the bench, Pi 3 A+ booted from a card the medic had just
+    # written (2026-08-09):
+    #     Bus 003 Device 005: ID 2e8a:0013 Raspberry Pi Ltd. Raspberry Pi USB Gadget
+    # Without it, classify() called a live, correctly-booted node "No Pi seen on
+    # USB", so the "Connect the Pi" step — which has no Next button because the
+    # medic is supposed to sense the Pi itself — could never advance. The
+    # operator sat on step 7 of 8 with a working link and nothing to press.
+    "2e8a:0013": "Raspberry Pi USB gadget",
 }
+
+#: Product strings that mean "this is a Pi presenting a USB gadget", checked
+#: when no id matches. An id table is a list of what we have SEEN; the name the
+#: device gives itself survives the next id change, and Raspberry Pi Ltd has
+#: already moved once. Matched on the description only, so an RP2040 (also
+#: vendor 2e8a, and never a node) cannot be swept up by a blanket vendor match.
+GADGET_PRODUCT_HINTS = ("raspberry pi usb gadget",)
 
 #: rpiboot's default (no ``-d``) payload is the 32-bit BCM283x mass-storage one
 #: at /usr/share/rpiboot/msd — the right one for a Zero 2 W. BCM2711/2712 have
@@ -137,6 +154,15 @@ def classify(lsusb_output: str, disk_appeared: bool = False) -> PiUsbState:
     for usb_id in ids:
         if usb_id in GADGET_IDS:
             return PiUsbState(GADGET, GADGET_IDS[usb_id], usb_id)
+    # Nothing matched by id — ask the device what it calls itself.
+    low = (lsusb_output or "").lower()
+    for hint in GADGET_PRODUCT_HINTS:
+        if hint in low:
+            for line in (lsusb_output or "").splitlines():
+                if hint in line.lower():
+                    m = _ID_RE.search(line)
+                    return PiUsbState(GADGET, "Raspberry Pi USB gadget",
+                                      m.group(0).lower() if m else "")
     return PiUsbState(ABSENT, "No Pi seen on USB.")
 
 

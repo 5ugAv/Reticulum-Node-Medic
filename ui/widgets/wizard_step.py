@@ -94,10 +94,18 @@ class WizardStep(BoxLayout):
         self.add_widget(body_lbl)
 
         if hint:
+            # Height FOLLOWS the wrapped text, exactly like the body above.
+            # Pinned at dp(40) it fitted two lines; the per-model connector
+            # guidance runs to six ("On a Pi 3A+ it's the full-size USB-A
+            # socket — its micro-USB is power only..."), and the overflow drew
+            # straight through the body text. Two paragraphs on top of each
+            # other, on the step that tells you which socket to use (photo,
+            # 2026-08-09).
             hint_lbl = Label(text=hint, font_size="14sp", halign="left", valign="top",
                              size_hint_y=None, height=dp(40),
                              color=theme.hex_to_rgba(theme.COLORS["warning_yellow"], 0.95))
-            hint_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+            hint_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                          texture_size=lambda i, ts: setattr(i, "height", ts[1]))
             self.add_widget(hint_lbl)
 
         # A warning is weightier than a hint (e.g. "no antenna can damage the board"):

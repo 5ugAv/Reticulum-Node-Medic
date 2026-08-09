@@ -474,3 +474,23 @@ def test_the_back_control_never_lies_about_being_there():
     row = src[src.index("def _back_row"):src.index("def handle_back")]
     assert "return None" in row
     assert 'callable(getattr(self, "_back_action"' in row
+
+
+# --- a hint must not be drawn through the body ------------------------------
+#
+# Photo, 2026-08-09, step 7 of 8: the body paragraph and the yellow connector
+# hint rendered ON TOP OF EACH OTHER, unreadable. The hint's height was pinned
+# at dp(40) — two lines — while the per-model connector guidance runs to six
+# ("On a Pi 3A+ it's the full-size USB-A socket — its micro-USB is power
+# only..."). The overflow drew straight through the paragraph above it, on the
+# one step whose entire job is telling you which socket to use.
+
+def test_the_hint_grows_with_its_text():
+    # Read the file, not func_source: there are two __init__s here (_Dots has
+    # one) and it returns the first.
+    src = open("ui/widgets/wizard_step.py").read()
+    hint = src[src.index("if hint:"):src.index("if warning:")]
+    assert "texture_size" in hint, \
+        "a fixed-height hint overflows into the body text above it"
+    body = src[src.index("body_lbl = Label"):src.index("if hint:")]
+    assert "texture_size" in body, "the body already does this — keep it"
