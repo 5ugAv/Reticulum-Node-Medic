@@ -185,3 +185,42 @@ def test_not_being_able_to_open_the_system_partition_is_not_a_verdict():
                            Check("gadget", "ok"), Check("first_boot", "ok"),
                            Check("applied", "unknown")])
     assert r.needs_reimaging is False, "the boot partition still said it booted"
+
+
+def test_an_empty_settings_directory_is_not_applied_settings():
+    """THE false OK, 2026-08-09. `test -s` on a DIRECTORY always succeeds — a
+    directory has non-zero size whether or not anything is in it. So an empty
+    /etc/NetworkManager/system-connections read as "the Wi-Fi settings were
+    applied", and the report told the operator their card was fine while the
+    node sat there unable to join anything. A false OK ends the search."""
+    from tests.srcutil import func_source
+    src = func_source("provisioning/card_forensics.py", "_check_rootfs")
+    assert "-d " in src, "a directory must be LISTED, not size-tested"
+    assert "elif [ -s " in src, "the size test is for files only"
+
+
+def test_the_directory_branch_needs_a_real_entry(tmp_path):
+    """Behavioural: an empty directory must not count."""
+    import os
+    from provisioning.card_forensics import CardReport, _check_rootfs
+    empty = tmp_path / "etc" / "NetworkManager" / "system-connections"
+    empty.mkdir(parents=True)
+    calls = {}
+
+    def run(cmd):
+        if "lsblk" in cmd:
+            return "/dev/sdb1 vfat\n/dev/sdb2 ext4\n"
+        if "findmnt" in cmd:
+            return str(tmp_path) if calls.get("mounted") else ""
+        if "mount -o ro" in cmd:
+            calls["mounted"] = True
+            return ""
+        if cmd.startswith("if [ -d "):
+            import subprocess
+            return subprocess.run(["bash", "-lc", cmd.replace("{mnt}", "")],
+                                  capture_output=True, text=True).stdout
+        return ""
+    rep = CardReport()
+    _check_rootfs(run, rep, "sdb")
+    states = {c.key: c.state for c in rep.checks}
+    assert states.get("applied") == "bad", "an empty directory is not settings"

@@ -412,8 +412,16 @@ def _check_rootfs(run: Runner, rep: CardReport, disk: Optional[str]) -> None:
     try:
         found = []
         for path in _APPLIED_WIFI_PATHS:
-            out = run(f"ls -A {mnt}{path} 2>/dev/null | head -3; "
-                      f"test -s {mnt}{path} && echo __file")
+            # A DIRECTORY IS NOT A FILE, and `test -s` on one always succeeds —
+            # a directory has non-zero size whether or not anything is in it.
+            # That single mistake made an EMPTY system-connections directory
+            # read as "the Wi-Fi settings were applied", and the report told the
+            # operator their card was fine while the node sat there unable to
+            # join anything (live, 2026-08-09). A false OK is worse than no
+            # answer: it ends the search.
+            out = run(f"if [ -d {mnt}{path} ]; then "
+                      f"  ls -A {mnt}{path} 2>/dev/null | head -3; "
+                      f"elif [ -s {mnt}{path} ]; then echo __file; fi")
             if out.strip():
                 found.append(path)
         if found:
