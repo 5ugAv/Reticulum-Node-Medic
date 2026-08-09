@@ -26,7 +26,8 @@ def test_step_counts_per_path():
         "Put the SD card into Node Medic",         # -> pi_imager
         "Move the card to the Raspberry Pi",
         "Connect the Pi to Node Medic",
-        "Put the radio onto the Raspberry Pi",     # the hand-off that makes a node
+        "Put the radio onto the Raspberry Pi",     # the two halves joined
+        "Bring the node to life",                  # GATE: node_online -> BIRTH
     ]
 
 
@@ -66,7 +67,44 @@ def test_the_walkthrough_ends_by_joining_the_two_halves():
     the Pi". Every birth ended with two working halves and nothing joining
     them, because a hand-off could not return so nothing could come after one."""
     steps = guide_steps("pi")
-    assert steps[-1]["title"] == "Put the radio onto the Raspberry Pi"
+    titles = [s["title"] for s in steps]
+    assert "Put the radio onto the Raspberry Pi" in titles
+
+
+def test_joining_the_halves_is_not_the_end_of_it():
+    """Two working halves and a cable are not a node: the Pi is still running
+    stock Raspberry Pi OS. The mesh software is installed OVER that cable, and
+    the walkthrough is not finished until it has been."""
+    steps = guide_steps("pi")
+    last = steps[-1]
+    assert last["title"] == "Bring the node to life"
+    assert last.get("gate") == "node_online", \
+        "provisioning must not start against a Pi that isn't answering"
+    assert last.get("screen") == "birth", "the existing build flow does the work"
+    assert last.get("job") == "pi", \
+        "sent to BIRTH to provision the node, NOT to flash a radio"
+    join = [s["title"] for s in steps].index("Put the radio onto the Raspberry Pi")
+    assert join < len(steps) - 1, "the radio goes on BEFORE the node is woken"
+
+
+def test_each_birth_handoff_declares_its_own_job():
+    """The Pi path hands off to the BIRTH screen twice for opposite reasons.
+    Hard-coded to one of them, the final step scoped the screen to a radio
+    flash and then hunted for a radio that was, by then, on the Pi."""
+    jobs = [s.get("job") for s in guide_steps("pi") if s.get("screen") == "birth"]
+    assert jobs == ["host", "pi"]
+
+
+def test_the_pi_walkthrough_does_not_end_on_a_form():
+    """Its last button used to call _on_complete, which handed straight back to
+    the BIRTH form scoped to build a Pi + RNode — asking for the thing that had
+    just been built, and failing, because the radio was on the Pi by then."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_finish")
+    body = src.split('"""')[2]          # past the docstring, which names both
+    assert 'path == "pi"' in body and "_render_done" in body
+    assert body.index('path == "pi"') < body.index("_on_complete"), \
+        "the Pi path must return before the intro-path hand-off"
 
 
 def test_antenna_is_the_landing_not_a_guided_step():

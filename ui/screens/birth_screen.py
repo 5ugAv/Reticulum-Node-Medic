@@ -271,6 +271,7 @@ class BirthScreen(BoxLayout):
         self._detecting = False
         self._declared_board_key = None              # board the operator confirmed
         self._declared_mismatch = ""                 # ...and how the silicon disagrees
+        self._declared_pi_address = ""               # link the walkthrough proved
 
         self.header = BoxLayout(orientation="vertical", size_hint_y=None,
                                 spacing=dp(6))
@@ -537,12 +538,18 @@ class BirthScreen(BoxLayout):
                 # offer the address itself — an operator has no way to know an
                 # IP, and being unable to continue without one blocked the
                 # whole path (operator report 2026-08-01).
-                suggestion = ""
-                try:
-                    from provisioning.pi_discover import suggested_address
-                    suggestion = suggested_address()
-                except Exception:
-                    pass
+                # An address the WALKTHROUGH already proved wins outright: its
+                # gate would not have opened until the node answered on it, so
+                # it is measured rather than suggested. suggested_address()
+                # re-runs the same discovery on the UI thread, which is a stall
+                # of up to a minute for an answer we are already holding.
+                suggestion = getattr(self, "_declared_pi_address", "") or ""
+                if not suggestion:
+                    try:
+                        from provisioning.pi_discover import suggested_address
+                        suggestion = suggested_address()
+                    except Exception:
+                        pass
                 # BEFORE asking for an address: does this Pi even have an
                 # operating system yet? A Pi in boot-ROM mode (blank card) has
                 # no network and CANNOT have an address, so asking for one is an
@@ -1497,6 +1504,7 @@ class BirthScreen(BoxLayout):
         self._firmware = None
         self._declared_board_key = None
         self._declared_mismatch = ""
+        self._declared_pi_address = ""
         # The previous build's page is over; whoever calls _build_chooser next
         # puts the chooser back, so the flag has to agree or it describes a
         # header that is no longer on screen.
@@ -1520,7 +1528,8 @@ class BirthScreen(BoxLayout):
         self._lap_prepared = False
         self._build_chooser()
 
-    def begin_guided(self, path, name=None, board_key=None):
+    def begin_guided(self, path, name=None, board_key=None, pi_key=None,
+                     pi_address=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1554,6 +1563,12 @@ class BirthScreen(BoxLayout):
             self._declared_board_key = board_key
             self._sel_board = next((b for b in self._boards
                                     if b.key == board_key), None)
+        if pi_key:
+            names = dict(PI_HOSTS)
+            if pi_key in names:
+                self._sel_pi = (pi_key, names[pi_key])
+        if pi_address:
+            self._declared_pi_address = pi_address
         # Cleared here too, or every later visit to BIRTH shows the green
         # "Card written — now building <the PREVIOUS node>" banner over an
         # empty form (audit, 2026-08-03).
@@ -1567,6 +1582,14 @@ class BirthScreen(BoxLayout):
         if self._forced_firmware:
             self._firmware = self._forced_firmware
         self._build_chooser()
+        # DON'T GO LOOKING FOR A BOARD THAT ISN'T HERE. The Pi path's final
+        # hand-off arrives with the radio already flashed and already moved onto
+        # the Pi — so a USB scan finds nothing and the screen greets the end of a
+        # successful walkthrough with "No work board on the medic's USB"
+        # (audit, 2026-08-09). The board is not unknown; it was chosen,
+        # confirmed, flashed and verified several steps ago.
+        if path == "pi" and board_key:
+            return
         self._detect_board()
 
     def _choose_rtnode_target(self):

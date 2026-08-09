@@ -229,12 +229,25 @@ def test_the_radio_step_still_carries_its_button():
     assert first.get("next", "").strip(), "no button = nothing starts the flash"
 
 
-def test_the_gate_step_cannot_advance_itself():
+def test_the_radio_gate_cannot_advance_itself():
     from ui.birth_guide_flow import guide_steps
-    gate_step = next(s for s in guide_steps("pi") if s.get("gate"))
-    # it must be reached by a press, and its own render must not auto-advance
-    assert gate_step.get("anim") == "connect_board"   # the branch above covers it
-    assert not gate_step.get("screen"), "a gate step must not also hand off"
+    gate_step = next(s for s in guide_steps("pi")
+                     if s.get("gate") == "radio_ready")
+    # No animation, deliberately: this step is a VERDICT, not an action. It used
+    # to loop connect_board — a board descending onto Node Medic — while the
+    # board in question was already plugged in and being judged.
+    assert gate_step.get("anim") is None
+    assert not gate_step.get("screen"), \
+        "the radio verdict has nowhere to hand off TO; the flash already ran"
+
+
+def test_a_gate_is_checked_before_the_step_hands_off():
+    """The last step is BOTH a gate and a hand-off — provisioning must not start
+    against a Pi that is not answering. That is only safe because _next tests
+    the gate before it looks at `screen`."""
+    src = func_source(SCREEN, "_next")
+    body = src.split('"""')[2] if '"""' in src else src
+    assert body.index('gate = cur.get("gate")') < body.index('cur.get("screen")')
 
 
 # --- the silent skip loop ate the gate ------------------------------------

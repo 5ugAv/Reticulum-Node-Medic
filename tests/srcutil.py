@@ -36,14 +36,33 @@ def src(rel_path: str) -> str:
         return fh.read()
 
 
-def func_source(rel_path: str, name: str) -> str:
+def func_source(rel_path: str, name: str, cls: str = "") -> str:
     """The source of one function/method, located by NAME rather than offset.
 
     Exact regardless of length or reordering. Raises if *name* is absent, so a
     rename fails loudly instead of silently covering nothing.
+
+    *cls* scopes the search to one class. Without it the FIRST match wins,
+    which is silently wrong in a module of siblings: birth_anims.py holds a
+    dozen ``_draw`` methods, so a test meaning ConnectPiAnim's asserted against
+    whichever animation happened to be defined first.
     """
     text = src(rel_path)
     tree = ast.parse(text)
+    if cls:
+        holder = next((n for n in ast.walk(tree)
+                       if isinstance(n, ast.ClassDef) and n.name == cls), None)
+        if holder is None:
+            raise AssertionError(
+                f"class {cls} not found in {rel_path} — renamed or removed?")
+        for node in holder.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and node.name == name:
+                seg = ast.get_source_segment(text, node)
+                if seg:
+                    return seg
+        raise AssertionError(
+            f"{cls}.{name}() not found in {rel_path} — renamed or removed?")
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
                 and node.name == name:

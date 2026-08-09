@@ -37,6 +37,15 @@ MEDIC_CABLE_PNG = os.path.join(_ANIM_DIR, "node_medic_cable.png")  # medic w/ US
 LORA_PNG = os.path.join(_ANIM_DIR, "lora32.png")                   # the radio board
 SD_READER_PNG = os.path.join(_ANIM_DIR, "sd_reader.png")           # microSD + card reader (combined)
 SD_READER_BODY_PNG = os.path.join(_ANIM_DIR, "sd_reader_body.png")  # card reader alone
+
+#: The card reader is drawn in a warm beige with a gold USB-A tab standing
+#: proud of a blocky body. At full size it is obviously a dongle; at the size
+#: the handover step draws it, the operator read the silhouette as a raised
+#: middle finger (bench, 2026-08-09) — and once seen it cannot be unseen on a
+#: screen that is meant to be teaching. Tinted cool so it reads as metal rather
+#: than skin. A multiply, not a redraw: the sprite is the operator's own art and
+#: the same object has to look the same on both screens that show it.
+READER_TINT = (0.70, 0.79, 0.92, 1)
 SD_PNG = os.path.join(_ANIM_DIR, "sd_card.png")                    # the microSD card alone
 BOARD_PNG = os.path.join(_ANIM_DIR, "radio_board.png")
 ANTENNA_PNG = os.path.join(_ANIM_DIR, "antenna_sma.png")           # whip antenna w/ SMA female base
@@ -962,6 +971,7 @@ class InsertSdAnim(_LoopAnim):
                      self.x + self.width, kR, self.x, kL]
         with self.canvas:
             self._blit(medic, m_tlx, m_tly, mw, mh)
+            Color(*READER_TINT)
             self._blit(reader, rtx, rty, rw, rh)
             StencilPush()
             Quad(points=slot_mask)
@@ -1142,7 +1152,7 @@ class SdHandoverAnim(_CardStage):
             if lay.medic is not None and medic is not None:
                 Color(1, 1, 1, 1)
                 Rectangle(texture=medic, pos=lay.medic[:2], size=lay.medic[2:])
-            Color(1, 1, 1, 1)
+            Color(*READER_TINT)
             Rectangle(texture=reader, pos=lay.reader[:2], size=lay.reader[2:])
             # the board goes down BEFORE the card for an underside slot (it has
             # to hide it) and AFTER for a top-mounted one (the card lies on the
@@ -1217,15 +1227,42 @@ class ConnectPiAnim(ConnectBoardAnim):
     _NO = (0.90, 0.20, 0.20, 1)
 
     def __init__(self, pi_key: str = "", **kwargs):
-        """*pi_key* draws the detected Pi model; falls back to the Zero sprite."""
+        """Draw the operator's OWN Pi, and only mark sockets we have measured.
+
+        ART AND GEOMETRY COME FROM THE SAME BOARD, ALWAYS. That is the whole
+        rule. Before it, the sprite fell back to a Zero while the ring positions
+        stayed the Zero's, so every operator was shown a Zero — with a 3 A+ on
+        the bench, a picture of the wrong board with its sockets in the wrong
+        places, under words that correctly described the right one.
+
+        A board we have measured (ui.pi_connector_geometry) gets its own
+        picture with its own sockets marked. A board we have not gets its own
+        picture with NOTHING marked, and the per-model wording carries the
+        answer. Only when we know no board at all does the Zero appear, and then
+        the Zero's own numbers are the right ones to use.
+        """
         super().__init__(**kwargs)
         self._pi_png = ""
+        self._geo = None
         if pi_key:
             try:
                 from ui import board_images
                 self._pi_png = board_images.image_for_pi(pi_key) or ""
             except Exception:
                 self._pi_png = ""
+            try:
+                from ui.pi_connector_geometry import sockets_for
+                self._geo = sockets_for(pi_key)
+            except Exception:
+                self._geo = None
+        if not self._pi_png:
+            # No art for this model: the Zero sprite is what will be drawn, so
+            # the Zero's fractions are the only consistent ones to mark with.
+            try:
+                from ui.pi_connector_geometry import sockets_for
+                self._geo = sockets_for("pi_zero_2w")
+            except Exception:
+                self._geo = None
 
     @staticmethod
     def _ease(v):
@@ -1266,6 +1303,13 @@ class ConnectPiAnim(ConnectBoardAnim):
             or _texture(PI_ZERO_CUT_PNG) or _texture(PI_ZERO_PNG)
         if pi is None:
             return self._draw_fallback()
+        # A socket on the board's RIGHT EDGE is entered sideways, not from
+        # below, and the whole scene below is built around a plug rising into
+        # the bottom edge. A 3 A+ is the case in hand: full-size USB-A on the
+        # right, micro-USB power underneath. Its own scene, rather than the
+        # vertical one with the numbers bent to fit.
+        if self._geo is not None and self._geo.approach == "right":
+            return self._draw_side_entry(pi)
         # The operator's drawn art (2026-08-04) first; the earlier photo cut-outs
         # stay as fallback so a missing file degrades instead of blanking.
         medic = (_texture(MEDIC_NOCABLE_PNG) or _texture(MEDIC_BODY_PNG)
@@ -1296,13 +1340,21 @@ class ConnectPiAnim(ConnectBoardAnim):
         pxx = x + (w - total) / 2.0                 # centre the pair
         mxx = pxx + pw + span
 
-        data_x = pxx + pw * PI_ZERO_PORTS["data"]
-        pwr_x = pxx + pw * PI_ZERO_PORTS["power"]
+        geo = self._geo
+        # A board with no measured geometry is drawn TRUTHFULLY and marked not
+        # at all — see __init__. The plug still travels and still seats, so the
+        # step keeps showing a connection being made; it simply stops claiming
+        # to know which hole, which is the one thing it was getting wrong.
+        gdx = geo.data[0] if geo else 0.5
+        gpx = geo.power[0] if (geo and geo.power) else None
+        data_x = pxx + pw * gdx
+        pwr_x = pxx + pw * gpx if gpx is not None else None
         floor = y + dp(16)                          # where the sweep bottoms out
         # Enough height that the plug still starts ABOVE the curve at t=0, or it
         # sets off from inside its own cable.
         port_y = floor + travel + plug_h + dp(34)
-        pyy = port_y - ph * (1.0 - PI_ZERO_PORT_Y)
+        gdy = geo.data[1] if geo else PI_ZERO_PORT_Y
+        pyy = port_y - ph * (1.0 - gdy)
 
         # --- the plug travels up and INSERTS --------------------------------
         # It starts clear of the board, approaches, and goes in (operator,
@@ -1368,7 +1420,7 @@ class ConnectPiAnim(ConnectBoardAnim):
                           size=(plug_w, plug_h))
 
             # the socket it is aiming at, breathing until it seats
-            if t < 1.0:
+            if t < 1.0 and geo is not None:
                 pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
                 Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
                       0.30 + 0.45 * pulse)
@@ -1378,20 +1430,137 @@ class ConnectPiAnim(ConnectBoardAnim):
             # coloured ring (operator, 2026-08-04). Two rings side by side say
             # "here are two ports"; a struck-through one says "not this one",
             # which is the entire point of the step.
-            Color(*self._NO)
-            Line(circle=(pwr_x, port_y, dp(10)), width=dp(2.0))
-            bar = dp(10) * 0.707                    # 45°, ends on the ring
-            Line(points=[pwr_x - bar, port_y - bar, pwr_x + bar, port_y + bar],
-                 width=dp(2.0), cap="none")
+            if pwr_x is not None:
+                Color(*self._NO)
+                Line(circle=(pwr_x, port_y, dp(10)), width=dp(2.0))
+                bar = dp(10) * 0.707                # 45°, ends on the ring
+                Line(points=[pwr_x - bar, port_y - bar,
+                             pwr_x + bar, port_y + bar],
+                     width=dp(2.0), cap="none")
 
+        if geo is not None:
+            d = self._label("data", text="DATA", font_size="12sp", bold=True,
+                            color=self._CABLE, halign="center")
+            d.size = (dp(64), dp(18))
+            d.pos = (data_x - dp(32), port_y + dp(12))
+        if pwr_x is not None:
+            pl = self._label("pwr", text="PWR IN", font_size="11sp",
+                             color=self._PWR, halign="center")
+            pl.size = (dp(64), dp(16))
+            pl.pos = (pwr_x - dp(32), port_y + dp(12))
+
+    def _draw_side_entry(self, pi):
+        """The plug goes in from the SIDE — for boards whose data socket is on
+        an edge facing the medic (Pi 3 A+: full-size USB-A on the right).
+
+        Same grammar as the bottom-entry scene, turned through ninety degrees:
+        nothing moves but the plug, the target socket is ringed and named, and
+        the socket that takes power only is struck through where it actually is
+        — underneath, on a different edge, which is exactly the confusion this
+        step exists to prevent.
+
+        The Pi keeps the LEFT, as the operator asked three times. With the
+        socket facing right, the cable now runs straight across to the medic
+        instead of swooping underneath, which is both simpler and truer.
+        """
+        geo = self._geo
+        medic = (_texture(MEDIC_NOCABLE_PNG) or _texture(MEDIC_BODY_PNG)
+                 or _texture(MEDIC_PNG))
+        plug = _texture(PLUG_MICRO_DRAWN_PNG) or _texture(PLUG_MICRO_PNG)
+        braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
+        x, y, w, h = self.x, self.y, self.width, self.height
+        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
+
+        plug_w = dp(20)
+        plug_h = plug_w * (plug.height / float(plug.width)) if plug else dp(48)
+
+        mh = h * 0.72
+        mw = mh * (medic.width / float(medic.height)) if medic else w * 0.2
+        ph = h * 0.62
+        pw = ph * (pi.width / float(pi.height))
+        gap = plug_h + dp(26)                       # room for the plug between
+        total = pw + gap + mw
+        pxx = x + (w - total) / 2.0
+        pyy = y + (h - ph) / 2.0
+        mxx = pxx + pw + gap
+        myy = y + (h - mh) / 2.0
+
+        # y measured DOWN in the geometry, up on the canvas
+        data_x = pxx + pw * geo.data[0]
+        data_y = pyy + ph * (1.0 - geo.data[1])
+        pwr_x = pwr_y = None
+        if geo.power:
+            pwr_x = pxx + pw * geo.power[0]
+            pwr_y = pyy + ph * (1.0 - geo.power[1])
+
+        # The plug lies on its side, entering leftwards. Seated means its metal
+        # tongue is INSIDE the shell, not kissing the edge.
+        seated_x = data_x + plug_h * 0.22
+        start_x = seated_x + plug_h * 0.55 + dp(10)
+        cx = start_x + (seated_x - start_x) * t
+
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            if braid is not None:
+                bw = plug_w * 0.42
+                p0 = (mxx + mw * 0.10, myy + mh * 0.30)
+                p3 = (cx + plug_h * 0.5, data_y)
+                pts = _bezier(p0, (p0[0] - dp(20), p0[1]),
+                              (p3[0] + dp(24), p3[1]), p3, 24)
+                for i in range(len(pts) - 1):
+                    (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+                    ddx, ddy = x1 - x0, y1 - y0
+                    ln = math.hypot(ddx, ddy)
+                    if ln < 0.5:
+                        continue
+                    ang = math.degrees(math.atan2(ddy, ddx)) - 90.0
+                    mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                    PushMatrix()
+                    Rotate(angle=ang, origin=(mx, my))
+                    Rectangle(texture=braid, pos=(mx - bw / 2.0, my - ln / 2.0),
+                              size=(bw, ln + dp(1.5)))
+                    PopMatrix()
+
+            if medic is not None:
+                Color(1, 1, 1, 1)
+                Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+
+            if plug is not None:
+                # the moulding is drawn pointing UP; -90° aims it left
+                Color(1, 1, 1, 1)
+                PushMatrix()
+                Rotate(angle=-90, origin=(cx, data_y))
+                Rectangle(texture=plug,
+                          pos=(cx - plug_w / 2.0, data_y - plug_h / 2.0),
+                          size=(plug_w, plug_h))
+                PopMatrix()
+
+            if t < 1.0:
+                pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
+                Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
+                      0.30 + 0.45 * pulse)
+                Line(circle=(data_x, data_y, dp(14)), width=dp(2.0))
+            if pwr_x is not None:
+                Color(*self._NO)
+                Line(circle=(pwr_x, pwr_y, dp(10)), width=dp(2.0))
+                bar = dp(10) * 0.707
+                Line(points=[pwr_x - bar, pwr_y - bar, pwr_x + bar, pwr_y + bar],
+                     width=dp(2.0), cap="none")
+
+        # Labels go OUTSIDE the board. Sat next to their sockets they landed on
+        # the PCB itself — green text on green silkscreen, over the very detail
+        # the operator is being asked to look at (offline render, 2026-08-09).
         d = self._label("data", text="DATA", font_size="12sp", bold=True,
                         color=self._CABLE, halign="center")
         d.size = (dp(64), dp(18))
-        d.pos = (data_x - dp(32), port_y + dp(12))
-        p = self._label("pwr", text="PWR IN", font_size="11sp", color=self._PWR,
-                        halign="center")
-        p.size = (dp(64), dp(16))
-        p.pos = (pwr_x - dp(32), port_y + dp(12))
+        d.pos = (data_x - dp(32), pyy + ph + dp(4))
+        if pwr_x is not None:
+            pl = self._label("pwr", text="PWR IN", font_size="11sp",
+                             color=self._PWR, halign="center")
+            pl.size = (dp(64), dp(16))
+            pl.pos = (pwr_x - dp(32), pyy - dp(20))
 
     def _draw_fallback(self):
         w, h = self.width, self.height

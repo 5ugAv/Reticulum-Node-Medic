@@ -93,6 +93,11 @@ class BirthGuideScreen(BoxLayout):
         self._resume_at = None
         self._radio_verified = False
         self._gate_warning = ""
+        # The cable link belongs to ONE node. Carried over, the next
+        # walkthrough's gate would open on the PREVIOUS node still answering,
+        # and the medic would provision the wrong Pi.
+        self._stop_node_poll()
+        self._node_addr = ""
         # A fresh walkthrough starts with the radio going ON, so the disconnect
         # warning must come back — otherwise one guided birth would silence it
         # for the rest of the session.
@@ -1212,7 +1217,7 @@ class BirthGuideScreen(BoxLayout):
         self._i = 0
         self._render_step()
 
-    def _hand_over_name(self, screen_name):
+    def _hand_over_name(self, screen_name, job="host"):
         """Hand the destination the name AND the job it has been sent to do.
 
         A hand-off used to pass only a name, and only via prefill_hostname —
@@ -1235,13 +1240,22 @@ class BirthGuideScreen(BoxLayout):
                 return
             name = self._node_name or ""
             if screen_name == "birth":
-                # ONE call carries both. Scoping and naming used to be two calls
-                # in a fixed order, and the second (prefill_name) reset the form
-                # again and threw the scoping away — see BirthScreen.begin_guided.
+                # ONE call carries everything. Scoping and naming used to be two
+                # calls in a fixed order, and the second (prefill_name) reset the
+                # form again and threw the scoping away — see
+                # BirthScreen.begin_guided.
+                #
+                # *job* is the step's own declaration of why it is going there:
+                # "host" = flash this radio, "pi" = provision the finished node.
+                # Hard-coded to "host", the final step scoped the screen to a
+                # radio flash and then looked for a radio that was, by then,
+                # attached to the Pi.
                 if hasattr(scr, "begin_guided"):
                     scr.begin_guided(
-                        "host", name=name or None,
-                        board_key=getattr(self, "_board_key", None) or None)
+                        job, name=name or None,
+                        board_key=getattr(self, "_board_key", None) or None,
+                        pi_key=getattr(self, "_pi_key", None) or None,
+                        pi_address=getattr(self, "_node_addr", None) or None)
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
@@ -1485,6 +1499,11 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
+        elif s.get("gate") == "node_online":
+            # The only gate whose answer the medic has to go and FETCH. Start
+            # looking the moment the step appears, so by the time the operator
+            # has read it the answer is usually already there.
+            self._start_node_poll()
         elif isinstance(anim, (DisconnectBoardAnim, RadioToPiAnim)):
             # From here to the end of the walkthrough the radio is DELIBERATELY
             # off the medic, so the global disconnect watcher must stop calling
@@ -2021,7 +2040,31 @@ class BirthGuideScreen(BoxLayout):
         """
         if gate == "radio_ready":
             return self._radio_gate()
+        if gate == "node_online":
+            return self._node_gate()
         return True, ""                    # unknown gate: never block on it
+
+    def _node_gate(self):
+        """Can the medic actually REACH the node at the other end of the cable?
+
+        Provisioning is an SSH session; starting one against a Pi that is not
+        answering produces a wall of connection errors and no clue which of the
+        four physical things is wrong. The poll (see _start_node_poll) says
+        plainly which stage it got to.
+
+        Never blocks the UI thread: discover_peer waits on hardware, so it runs
+        off-thread and this only ever reads the answer it left behind.
+        """
+        if getattr(self, "_node_addr", ""):
+            return True, ""
+        if getattr(self, "_node_looking", False):
+            return False, tr(
+                "Still looking for the Pi over the cable — give it a moment. "
+                "A freshly booted Pi takes about half a minute to come up.")
+        return False, tr(
+            "Node Medic can't reach the Pi over the cable yet. Check it is "
+            "plugged into Node Medic with a DATA cable, that its power light "
+            "is on, and give it thirty seconds to boot.")
 
     def _radio_gate(self):
         """Has a radio been flashed and verified for this birth?
@@ -2092,7 +2135,7 @@ class BirthGuideScreen(BoxLayout):
             # normal way in, and which asks for the name in its own first step —
             # reached the card form with an empty hostname and had to invent a
             # second name for the same node (operator, 2026-08-02).
-            self._hand_over_name(cur["screen"])
+            self._hand_over_name(cur["screen"], job=cur.get("job", "host"))
             return
         # After the RADIO step on the Pi path, identify BOTH halves before the
         # card is written: which radio, which Pi, and whether they can run
@@ -2128,10 +2171,74 @@ class BirthGuideScreen(BoxLayout):
         self._render_step()
 
     def _finish(self):
+        """The walkthrough is over.
+
+        The Pi path ENDS HERE. Every other path is an introduction that hands
+        off to the BIRTH screen to do the actual work, and for those this
+        hand-off is right. The Pi path is not an introduction: it flashes the
+        radio, writes the card, brings the Pi up and provisions it over the
+        cable, all through hand-offs that come BACK. Calling _on_complete at the
+        end of that dropped the operator onto the same form again, scoped to
+        build the node they had just built, and — with the radio now on the Pi —
+        greeted them with "No work board on the medic's USB" (audit,
+        2026-08-09). The last screen of a successful build must not be a form.
+        """
         path = self._path
         self._stop_current()
+        if path == "pi":
+            self._render_done()
+            return
         if self._on_complete:
             self._on_complete(path, self._node_name)
+
+    def _render_done(self):
+        """The closing screen: what was built, and the way out.
+
+        Deliberately makes no claim the medic did not measure. The BIRTH screen
+        has already shown its own step-by-step outcome and the certificate; this
+        says the walkthrough is finished and points at where the node now lives.
+        """
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = None            # nothing behind a finished build
+        name = self._node_name or tr("the node")
+        wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(12))
+        from kivy.uix.widget import Widget
+        wrap.add_widget(Widget())
+        wrap.add_widget(_line(tr("{name} is built").format(name=name),
+                              "28sp", bold=True, h=44))
+        wrap.add_widget(_line(
+            tr("The radio was flashed and verified, the card written, and the "
+               "Pi provisioned over the cable. It lives in VITALS from now on "
+               "— that is where its health beacons arrive."),
+            "15sp", color="text_secondary", h=72))
+        wrap.add_widget(_line(
+            tr("You can unplug it from Node Medic and give it power of its "
+               "own."), "14.5sp", color="green", h=26))
+        wrap.add_widget(Widget())
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(58), spacing=dp(10))
+        vitals = Button(text=tr("See it in VITALS"), bold=True, font_size="16sp",
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        vitals.bind(on_release=lambda *_: self._go("vitals"))
+        done = Button(text=tr("Done"), bold=True, font_size="17sp",
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        done.bind(on_release=lambda *_: self._go("home"))
+        row.add_widget(vitals)
+        row.add_widget(done)
+        wrap.add_widget(row)
+        self.add_widget(wrap)
+
+    def _go(self, mode):
+        try:
+            from kivy.app import App
+            App.get_running_app().switch_mode(mode)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _stop_current(self):
         """Leaving a screen. Bumping the token here cancels any render that a
@@ -2141,6 +2248,7 @@ class BirthGuideScreen(BoxLayout):
         screen the operator had already navigated to (audit, 2026-08-03)."""
         self._nav_token = getattr(self, "_nav_token", 0) + 1
         self._stop_board_poll()
+        self._stop_node_poll()
         # The Pi poll must die with the step too. Left running it keeps firing
         # _on_pi_detected and yanks the operator back to the name screen from
         # whatever step they had reached.
@@ -2163,6 +2271,61 @@ class BirthGuideScreen(BoxLayout):
         if self._current is not None and hasattr(self._current, "stop"):
             self._current.stop()
         self._current = None
+
+    def _start_node_poll(self):
+        """Look for the node on the cable link, off-thread, feeding _node_gate.
+
+        discover_peer does three things the UI thread must never do: it waits on
+        an interface appearing, it shells out to claim the medic's end of the
+        /29, and it probes a TCP port. On the main thread that is a frozen
+        screen for up to a minute.
+
+        Short per-attempt timeout, repeated, rather than one long wait — so the
+        gate's message can change from "still looking" to a real answer, and so
+        a Pi plugged in late is still found.
+        """
+        from kivy.clock import Clock
+        self._stop_node_poll()
+        if getattr(self, "_node_addr", ""):
+            return                       # already answered; don't go asking again
+        self._node_looking = True
+
+        def tick(_dt):
+            import threading
+
+            def work():
+                addr = ""
+                try:
+                    from provisioning.link import discover_peer
+                    addr = discover_peer(timeout=8.0, poll=2.0) or ""
+                except Exception:                                  # noqa: BLE001
+                    addr = ""
+                if addr:
+                    Clock.schedule_once(lambda _d: self._on_node_online(addr), 0)
+            threading.Thread(target=work, daemon=True).start()
+
+        self._node_poll = Clock.schedule_interval(tick, 10.0)
+        tick(0)
+
+    def _stop_node_poll(self):
+        ev = getattr(self, "_node_poll", None)
+        if ev is not None:
+            try:
+                ev.cancel()
+            except Exception:                                      # noqa: BLE001
+                pass
+        self._node_poll = None
+        self._node_looking = False
+
+    def _on_node_online(self, addr):
+        """The node answered. Record it, stop looking, and re-render so the
+        gate's warning clears without the operator having to tap anything."""
+        self._stop_node_poll()
+        self._node_addr = addr
+        self._trace(f"node online at {addr}")
+        if self._gate_warning:
+            self._gate_warning = ""
+            self._render_step()
 
     # -- board-presence gate ------------------------------------------------
     def _start_pi_poll(self, anim):

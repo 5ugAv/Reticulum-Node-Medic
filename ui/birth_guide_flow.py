@@ -100,8 +100,11 @@ _STEPS = {
                     "the Pi. Node Medic powers and flashes it here, where "
                     "there's plenty of power, and remembers which radio it is "
                     "so the Pi finds it later."),
-         "hint": tr("Attach the antenna first if you haven't — never power a "
-                    "radio board without one."),
+         # NO HINT HERE. The antenna caution used to appear twice on this one
+         # screen — as the amber warning box below, and again as a yellow hint
+         # in almost the same words. Two identical alarms side by side teach the
+         # operator to skim both, which is the opposite of what a warning is
+         # for. One warning, once, in the heavier style.
          "warning": tr("Never power a radio board with no antenna attached — "
                        "transmitting without one can permanently damage its "
                        "radio."),
@@ -124,7 +127,11 @@ _STEPS = {
          # which flashes and verifies it, and hands back with the VERIFY verdict
          # (birth_screen._hand_back_to_guide). Only then does the walkthrough
          # continue — the gate below reads that verdict.
-         "next": tr("Flash this radio  →"), "screen": "birth"},
+         # WHICH JOB the BIRTH screen is being sent to do. The Pi path hands
+         # off to that screen twice, for completely different reasons — flash a
+         # radio here, provision the finished node at the end — and a hand-off
+         # that could not say which one always scoped to the first.
+         "next": tr("Flash this radio  →"), "screen": "birth", "job": "host"},
         # THE GATE. Nothing past this point starts until the radio has passed.
         #
         # Its own step, so the refusal has somewhere to be SEEN. Attaching the
@@ -137,7 +144,13 @@ _STEPS = {
                     "isn't a radio yet, and the rest of this build assumes one."),
          "hint": tr("If it failed, go back and try again — a different USB port "
                     "or a fresh cable is worth trying before a different board."),
-         "anim": "connect_board",
+         # NO ANIMATION. This step is a VERDICT, not an action — there is nothing
+         # for the operator to do with their hands. It used to loop
+         # connect_board, a picture of a board descending onto Node Medic, while
+         # the board in question was already plugged in and being judged. Same
+         # fault as the one fixed for "take the radio out": the picture showed a
+         # different act from the words, and a picture reads as authoritative.
+         "anim": None,
          "gate": "radio_ready"},
         # AND THEN TAKE IT OFF. Asked for explicitly on 2026-08-09: the operator
         # reached the Pi steps with the radio still on the medic and was never
@@ -224,6 +237,36 @@ _STEPS = {
          # would leave the last step of the walkthrough with no way to finish.
          "next": tr("That's the node built  →"),
          "anim": "radio_to_pi"},
+        # THE STEP THAT ACTUALLY MAKES IT A NODE.
+        #
+        # Until this existed the walkthrough's last button — "That's the node
+        # built" — called _finish(), which handed straight back to the BIRTH
+        # form scoped to "Pi + RNode" and started board detection. So the final
+        # act of the walkthrough was to ask for the thing it had just finished;
+        # and because the radio is on the PI by then, that detection reported
+        # "No work board on the medic's USB". The flow ended by demanding its
+        # own output and then failing (audit, 2026-08-09).
+        #
+        # Two working halves joined by a cable are not yet a node. The Pi is
+        # running stock Raspberry Pi OS: no Reticulum, no LXMF, no health
+        # reporter, no certificate. All of that is installed OVER THE CABLE, by
+        # the same BuildWorkflow every other birth uses — which is why this is a
+        # hand-off and not a new mechanism.
+        #
+        # The gate is what makes it safe: provisioning cannot start until the
+        # medic has actually reached the node at the other end of the cable.
+        {"title": tr("Bring the node to life"),
+         "body": tr("The two halves are joined, but the Pi is still just a "
+                    "Raspberry Pi. Node Medic reaches it over the cable and "
+                    "installs the mesh software, then issues its birth "
+                    "certificate."),
+         "hint": tr("Nothing to unplug. Leave the Pi on Node Medic until this "
+                    "finishes — it is being worked on through that cable."),
+         "gate": "node_online",
+         "screen": "birth",
+         "job": "pi",
+         "next": tr("Wake it up  →"),
+         "anim": "provision"},
     ],
     "host": [
         # (The old second page — "Let's flash it", narrating its own button —

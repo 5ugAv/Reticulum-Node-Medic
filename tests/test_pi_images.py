@@ -231,7 +231,7 @@ def test_every_route_into_imaging_carries_the_node_name():
     # and the hand-over must happen AFTER navigating, or entering the screen
     # resets it away again
     nav = guide.index('self._on_navigate(cur["screen"])')
-    hand = guide.index("self._hand_over_name(cur[\"screen\"])")
+    hand = guide.index("self._hand_over_name(cur[\"screen\"]")
     assert hand > nav, "name handed over before the screen reset — it will be lost"
 
 
