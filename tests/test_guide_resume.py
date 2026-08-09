@@ -608,3 +608,25 @@ def test_the_reason_is_on_screen_before_any_press():
     src = func_source(SCREEN, "_render_step")
     branch = src[src.index('elif s.get("gate"):'):]
     assert "_gate_warning = why" in branch
+
+
+def test_the_gate_tries_wifi_when_the_cable_is_dead():
+    """Operator, 2026-08-09, with a Pi that had gone deaf on the cable: "did you
+    think about the wifi connection attempt if the cable connection fails?"
+
+    No, and the imager already knew better — its boot poll watches BOTH, because
+    "a card imaged WITH WiFi comes back on the network, not on USB" (bench,
+    2026-08-02). Provisioning does not care which road it takes."""
+    src = func_source(SCREEN, "_start_node_poll")
+    assert "discover_peer" in src, "the cable stays the first road"
+    assert "pi_discover" in src and "resolve" in src, "and Wi-Fi the second"
+    assert src.index("discover_peer") < src.index("resolve"), \
+        "cable first — it is the one the walkthrough set up"
+    assert "hostnameify" in src, "the node is found by the name we gave it"
+
+
+def test_the_refusal_names_both_roads():
+    """Saying only 'not over the cable' sends the operator to check a cable when
+    the Pi may be missing from the network entirely."""
+    src = func_source(SCREEN, "_node_gate")
+    assert "not over the cable" in src and "Wi-Fi" in src

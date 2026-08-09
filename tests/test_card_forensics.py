@@ -115,3 +115,31 @@ def test_an_empty_reader_makes_no_claim_about_a_card():
     r = CardReport(checks=[Check("present", "bad")])
     assert "no card in Node Medic's reader" in r.headline
     assert r.needs_reimaging is None, "nothing to judge"
+
+
+# --- the rule this module exists to keep, broken by its own first live run ---
+
+def test_a_failed_mount_is_never_a_verdict():
+    """Live, 2026-08-09: the mount was refused (the medic's sudo whitelists
+    mount BY FULL COMMAND LINE, and this module had invented its own mount
+    point). is_a_pi_card then read False and fell through to "nothing bootable
+    on it at all" — needs_reimaging: True, against a card that was fine."""
+    r = CardReport(checks=[Check("present", "ok"), Check("readable", "unknown")])
+    assert r.needs_reimaging is None, "could not look is not a fault in the card"
+    assert "not the same as the card being bad" in r.headline
+
+
+def test_labels_still_say_something_when_the_files_cannot_be_read():
+    """lsblk names the partitions without any mounting, and Raspberry Pi OS
+    labels them bootfs/rootfs. Weaker than reading the files, but real."""
+    r = CardReport(checks=[Check("present", "ok"), Check("readable", "unknown"),
+                           Check("pi_card", "ok")])
+    assert r.needs_reimaging is None
+    assert "could not read into it" in r.headline
+
+
+def test_it_mounts_only_where_the_medic_allows():
+    from tests.srcutil import src
+    text = src("provisioning/card_forensics.py")
+    assert "from provisioning.sd_edit import SD_MOUNT as INSPECT_MOUNT" in text, \
+        "sudo whitelists mount by full command line — an invented path is refused"

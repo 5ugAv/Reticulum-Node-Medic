@@ -45,7 +45,13 @@ from typing import Callable, List, Optional
 Runner = Callable[[str], str]
 
 #: Where a boot partition is mounted to be read, when it is not already.
-INSPECT_MOUNT = "/tmp/rnm-card-inspect"
+#:
+#: THE MEDIC'S SUDO IS SCOPED, and it whitelists mount by its FULL COMMAND LINE
+#: — "/usr/bin/mount * /tmp/nm_sd_boot" and nothing else. This module invented
+#: its own mount point, so every mount was silently refused and the report came
+#: back "couldn't look" against a perfectly good card (live, 2026-08-09).
+#: Reusing sd_edit's path is not tidiness; it is the only path that is allowed.
+from provisioning.sd_edit import SD_MOUNT as INSPECT_MOUNT
 
 #: The marker Raspberry Pi OS puts in cmdline.txt and removes once first boot
 #: has completed. Its presence is the clearest "this has never finished booting"
@@ -84,6 +90,14 @@ class CardReport:
                 return c.state
         return "unknown"
 
+    def _unread(self) -> bool:
+        """Was the card there but unreadable? Only true when that was actually
+        RECORDED. An absent check means the question never arose (diagnose only
+        adds "readable" when the mount fails) — treating absence as failure made
+        every report claim the card could not be read."""
+        return any(c.key == "readable" and c.state == "unknown"
+                   for c in self.checks)
+
     @property
     def is_a_pi_card(self) -> bool:
         return self._states("pi_card") == "ok"
@@ -100,6 +114,13 @@ class CardReport:
         which is an answer too, and a more useful one than a guess."""
         if not self.is_present:
             return None                      # nothing to judge
+        if self._unread():
+            # THE RULE THIS MODULE EXISTS TO KEEP, broken by its own first live
+            # run: a failed mount made is_a_pi_card False, which fell through to
+            # "nothing bootable on it at all" and returned True. That would have
+            # told the operator to wipe a card that was fine. Not being able to
+            # look is never a verdict.
+            return None
         if not self.is_a_pi_card:
             return True                      # nothing bootable on it at all
         if self._states("gadget") == "bad":
@@ -126,6 +147,12 @@ class CardReport:
         # not there.
         if not self.is_present:
             return "There is no card in Node Medic's reader."
+        if self._unread():
+            if self.is_a_pi_card:
+                return ("There is a Raspberry Pi system on this card, but Node "
+                        "Medic could not read into it to check any further.")
+            return ("Node Medic could not read this card — that is not the same "
+                    "as the card being bad.")
         if not self.is_a_pi_card:
             return "This card has no Raspberry Pi system on it."
         if self._states("gadget") == "bad":
@@ -212,8 +239,19 @@ def diagnose(run: Runner = _default_run, pi_key: str = "") -> CardReport:
     if not mnt:
         rep.checks.append(Check(
             "readable", "unknown",
-            "The card is there but its boot partition could not be mounted, so "
-            "nothing below could be looked at."))
+            "The card is there, but Node Medic could not open its boot "
+            "partition to read it — so nothing below could be checked. This "
+            "says nothing about whether the card is good."))
+        # Say what CAN still be said. lsblk already named the partitions, and
+        # Raspberry Pi OS labels them "bootfs" and "rootfs" — weaker evidence
+        # than reading the files, but real, and far better than silence.
+        labels = (run(f"lsblk -n -o LABEL {disk and '/dev/' + disk or ''} "
+                      "2>/dev/null") or "").lower()
+        if "bootfs" in labels and "rootfs" in labels:
+            rep.checks.append(Check(
+                "pi_card", "ok",
+                "Its partitions are labelled bootfs and rootfs, which is how a "
+                "Raspberry Pi system is written — so there IS a system on it."))
         return rep
 
     try:

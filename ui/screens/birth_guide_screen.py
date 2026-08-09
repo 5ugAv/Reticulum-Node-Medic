@@ -2192,10 +2192,11 @@ class BirthGuideScreen(BoxLayout):
                 "to press. Usually under a minute, but a Pi's very first boot "
                 "expands its card and runs its setup, which can take up to five.")
         return False, tr(
-            "Node Medic can't reach the Pi over the cable yet. Check it is "
-            "plugged into Node Medic with a DATA cable and that its power light "
-            "is on. A Pi takes 30–45 seconds from power to answering, and up to "
-            "two minutes on its very first boot.")
+            "Node Medic can't reach the Pi — not over the cable, and not by "
+            "name on your Wi-Fi either. Check it is plugged in with a DATA "
+            "cable and that its power light is on. A Pi takes 30–45 seconds "
+            "from power to answering, and up to two minutes on its very first "
+            "boot.")
 
     def _radio_gate(self):
         """Has a radio been flashed and verified for this birth?
@@ -2431,6 +2432,27 @@ class BirthGuideScreen(BoxLayout):
                     addr = discover_peer(timeout=8.0, poll=2.0) or ""
                 except Exception:                                  # noqa: BLE001
                     addr = ""
+                if not addr:
+                    # AND OVER WI-FI. The card we wrote joins the operator's
+                    # network, so a Pi whose cable link is dead may be perfectly
+                    # reachable by name — and provisioning does not care which
+                    # road it takes.
+                    #
+                    # The imager learned this on the bench in 2026-08-02 ("a
+                    # card imaged WITH WiFi comes back on the network, not on
+                    # USB... watching only the cable would sit there saying
+                    # waiting while the Pi was up and pingable") and this gate,
+                    # written later, did not inherit it. Operator asked the
+                    # question outright on 2026-08-09, with a Pi that had gone
+                    # deaf on the cable: "did you think about the wifi
+                    # connection attempt if the cable connection fails?"
+                    try:
+                        from provisioning.pi_discover import resolve
+                        from provisioning.pi_imager import hostnameify
+                        host = hostnameify(getattr(self, "_node_name", "") or "")
+                        addr = (resolve(host) or "") if host else ""
+                    except Exception:                              # noqa: BLE001
+                        addr = ""
                 if addr:
                     Clock.schedule_once(lambda _d: self._on_node_online(addr), 0)
             threading.Thread(target=work, daemon=True).start()
