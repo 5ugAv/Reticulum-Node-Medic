@@ -1554,6 +1554,19 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
+            # ...BUT NOT FOREVER. Hiding Next is right while the medic is
+            # genuinely watching for a Pi on its own USB — but it is not the
+            # only road to a node any more. A Pi given its OWN supply (which is
+            # what a marginal medic rail forces, and what its first boot really
+            # wants) never appears here at all: it comes back on Wi-Fi, which
+            # the next step now looks for. Without a way past this screen that
+            # operator is stranded, holding a working node (2026-08-09).
+            from kivy.clock import Clock
+            tok = getattr(self, "_nav_token", 0)
+            Clock.schedule_once(
+                lambda _d: (getattr(self, "_nav_token", None) == tok
+                            and self._current is step
+                            and step.show_next()), self.WAIT_PATIENCE_S)
         elif s.get("gate"):
             # A GATE THAT HAS PASSED HAS NOTHING TO ASK.
             #

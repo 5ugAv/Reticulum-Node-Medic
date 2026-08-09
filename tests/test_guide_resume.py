@@ -630,3 +630,16 @@ def test_the_refusal_names_both_roads():
     the Pi may be missing from the network entirely."""
     src = func_source(SCREEN, "_node_gate")
     assert "not over the cable" in src and "Wi-Fi" in src
+
+
+def test_the_connect_pi_step_is_not_a_dead_end_for_a_self_powered_pi():
+    """Hiding Next is right while the medic watches its own USB — but that is
+    not the only road any more. A Pi on its OWN supply (what a marginal rail
+    forces, and what a first boot really wants) never appears there at all: it
+    comes back on Wi-Fi, which the next step looks for. Without a way past this
+    screen the operator is stranded holding a working node."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index("isinstance(anim, ConnectPiAnim)"):]
+    branch = branch[:branch.index("elif")]
+    assert "hide_next()" in branch and "show_next()" in branch
+    assert "WAIT_PATIENCE_S" in branch
