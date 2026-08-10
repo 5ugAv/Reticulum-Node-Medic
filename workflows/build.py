@@ -782,6 +782,65 @@ def final_verification(wf: "BuildWorkflow") -> StepResult:
                       else "Verification failed: " + "; ".join(problems))
 
 
+#: What the card bakes so Node Medic can reach the Pi over the cable, and what
+#: has to replace it once that is no longer needed.
+_GADGET_OVERLAY = "dtoverlay=dwc2,dr_mode=peripheral"
+_HOST_OVERLAY = "dtoverlay=dwc2,dr_mode=host"
+
+
+@build_step
+def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
+    """Stop being a gadget; start being able to host a radio.
+
+    THE LAST BUG IN THE PI BIRTH, and the one that made every earlier fix
+    unreachable. The card bakes ``dr_mode=peripheral`` so the medic can talk to
+    the Pi over USB during the build. A Pi 3 A+ has ONE dwc2 controller driving
+    its ONE USB-A socket — so in peripheral mode that port can only ever BE a
+    device. ``lsusb`` on the finished node returned nothing at all. It could not
+    see the radio plugged into it: no ttyACM0, no /dev/rnode, nothing for rnsd
+    to open, and an RNode sitting on its version screen forever.
+
+    The setting that makes the birth POSSIBLE is the setting that makes the
+    finished node USELESS, and nothing ever switched it back. Two nodes went out
+    that way on 2026-08-10 before it was found by asking the node itself what
+    USB devices it could see, and being told: none.
+
+    RUNS LAST, DELIBERATELY. Everything before it talks over that cable. After
+    this the cable link is gone — which is correct, because the node is finished
+    and reachable over Wi-Fi from here on, and because the socket is now needed
+    for the radio it was built to carry.
+
+    Takes effect on the node's next boot, which is the reboot it gets when the
+    operator unplugs it and gives it its own power.
+    """
+    boot = "/boot/firmware/config.txt"
+    if wf.connection.run(f"test -f {boot}")[0] != 0:
+        boot = "/boot/config.txt"
+    if wf.connection.run(f"test -f {boot}")[0] != 0:
+        return StepResult("hand_the_usb_port_back", True,
+                          "No Pi boot config here — nothing to hand back.",
+                          skipped=True)
+    if wf.connection.run(f"grep -q '{_GADGET_OVERLAY}' {boot}")[0] != 0:
+        return StepResult("hand_the_usb_port_back", True,
+                          "This node was never put in gadget mode.", skipped=True)
+    code, out, err = wf.connection.run(wf.priv(
+        f"sed -i 's|^{_GADGET_OVERLAY}|{_HOST_OVERLAY}|' {boot}"))
+    if code != 0:
+        return StepResult("hand_the_usb_port_back", False,
+                          f"Could not hand the USB port back: {err or out}")
+    # g_ether is the gadget-ethernet module. Harmless in host mode, but leaving
+    # it says the node still expects to be a device, and the next person reading
+    # this card should not have to wonder.
+    for cmd in ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt"):
+        if wf.connection.run(f"test -f {cmd}")[0] == 0:
+            wf.connection.run(wf.priv(
+                f"sed -i 's/modules-load=dwc2,g_ether/modules-load=dwc2/' {cmd}"))
+            break
+    return StepResult("hand_the_usb_port_back", True,
+                      "USB port handed back to the node — it can host its radio "
+                      "from its next boot. The cable link ends here, by design.")
+
+
 #: RNS reads the node's own identity hash straight off disk (no networking, no
 #: clash with the running rnsd) — try the client identity, then the transport
 #: instance identity (a transport-only node has only the latter).

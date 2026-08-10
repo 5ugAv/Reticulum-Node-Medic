@@ -20,6 +20,7 @@ EXPECTED_STEPS = [
     "apply_system_hardening",
     "set_hostname",
     "final_verification",
+    "hand_the_usb_port_back",
     "birth_certificate",
 ]
 
@@ -748,3 +749,38 @@ def test_the_rule_is_written_before_the_services_start():
     from workflows.build import _BUILD_STEPS
     names = [n for n, _ in _BUILD_STEPS]
     assert names.index("install_radio_rule") < names.index("configure_services")
+
+
+# --- the port the node needs back ------------------------------------------
+
+def test_the_node_stops_being_a_gadget_before_it_is_certified():
+    """SolarLove, 2026-08-10, found by asking the node what USB devices it could
+    see and being told: none. The card bakes dr_mode=peripheral so the medic can
+    reach the Pi over USB. A Pi 3 A+ has ONE dwc2 controller driving its ONE
+    USB-A socket, so in peripheral mode that port can only ever BE a device —
+    and the finished node could never see the radio plugged into it. No ttyACM0,
+    no /dev/rnode, nothing for rnsd to open."""
+    from workflows.build import _BUILD_STEPS
+    names = [n for n, _ in _BUILD_STEPS]
+    assert "hand_the_usb_port_back" in names
+    # LAST, because everything before it talks over that cable
+    assert names.index("hand_the_usb_port_back") > names.index("final_verification")
+    assert names.index("hand_the_usb_port_back") < names.index("birth_certificate")
+
+
+def test_it_swaps_peripheral_for_host_and_not_the_other_way():
+    from tests.srcutil import func_source
+    from workflows.build import _GADGET_OVERLAY, _HOST_OVERLAY
+    assert "peripheral" in _GADGET_OVERLAY and "host" in _HOST_OVERLAY
+    src = func_source("workflows/build.py", "hand_the_usb_port_back")
+    assert f"s|^{{_GADGET_OVERLAY}}|{{_HOST_OVERLAY}}|" in src or \
+        ("_GADGET_OVERLAY" in src and "_HOST_OVERLAY" in src)
+    assert "skipped=True" in src, "a node never put in gadget mode is left alone"
+
+
+def test_a_node_that_was_never_a_gadget_is_left_alone():
+    """A Pi 4/5 birthed over the network has no peripheral line to undo, and
+    rewriting its boot config for no reason is how a working node breaks."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "hand_the_usb_port_back")
+    assert "never put in gadget mode" in src
