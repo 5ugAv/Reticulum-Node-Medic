@@ -35,7 +35,10 @@ import sys
 os.environ.setdefault("KIVY_NO_ARGS", "1")
 os.environ.setdefault("KIVY_NO_CONSOLELOG", "1")
 
-ROOT = "<the repo checkout on the Mac>"
+# The repo this script lives in — NOT a hardcoded path. It has to run on the
+# medic (the only machine with a working Kivy window) and be editable on the
+# Mac, and the first committed version carried the Mac's path into both.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
