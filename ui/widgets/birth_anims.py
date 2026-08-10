@@ -1721,10 +1721,17 @@ class ConnectPiAnim(ConnectBoardAnim):
             self._draw_card_seated(self._pi_key, (pxx, pyy, pw, ph))
 
             if plug is not None:
-                # the moulding is drawn pointing UP; -90° aims it left
+                # THE TIP MUST POINT AT THE PI, NOT BACK AT THE MEDIC.
+                # The moulding is drawn pointing UP (+y). Rotating -90° turns
+                # +y into +x — to the RIGHT, i.e. back the way the cable came,
+                # while the plug travelled left into the socket. So it slid in
+                # backwards for a fortnight and read as a plug being pulled
+                # OUT (operator, 2026-08-10: "the plug is facing towards the
+                # node medic, it needs to face towards the Raspberry Pi").
+                # +90° turns +y into -x: tip leading, into the board.
                 Color(1, 1, 1, 1)
                 PushMatrix()
-                Rotate(angle=-90, origin=(cx, data_y))
+                Rotate(angle=90, origin=(cx, data_y))
                 Rectangle(texture=plug,
                           pos=(cx - plug_w / 2.0, data_y - plug_h / 2.0),
                           size=(plug_w, plug_h))

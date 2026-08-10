@@ -25,7 +25,7 @@ def test_step_counts_per_path():
         "Take the radio out of Node Medic",
         "Put the SD card into Node Medic",         # -> pi_imager
         "Move the card to the Raspberry Pi",
-        "Connect the Pi to Node Medic",
+        "Check the SD card is in the Pi, then connect it to Node Medic",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
         "Unplug the Pi, put the radio on it, give it power",
     ]
@@ -59,7 +59,7 @@ def test_the_operator_is_told_to_take_the_radio_back_off():
     titles = [s["title"] for s in steps]
     out = titles.index("Take the radio out of Node Medic")
     assert out < titles.index("Put the SD card into Node Medic")
-    assert out < titles.index("Connect the Pi to Node Medic")
+    assert out < titles.index("Check the SD card is in the Pi, then connect it to Node Medic")
 
 
 def test_the_walkthrough_ends_by_joining_the_two_halves():
@@ -194,13 +194,16 @@ def test_no_replug_is_needed_because_the_card_is_written_first():
     idx = {t: i for i, t in enumerate(titles)}
     i_write = [i for i, st in enumerate(guide_steps("pi"))
                if st.get("screen") == "pi_imager"][0]
-    assert i_write < idx["Move the card to the Raspberry Pi"] < idx["Connect the Pi to Node Medic"]
+    assert i_write < idx["Move the card to the Raspberry Pi"] < idx["Check the SD card is in the Pi, then connect it to Node Medic"]
 
 
 def test_the_data_port_trap_is_called_out_where_it_happens():
     """A Zero has two identical micro-USB sockets and only one carries data.
     This cost an hour on the bench, to the person who designed the flow."""
-    connect = [s for s in guide_steps("pi") if "Connect the Pi" in s["title"]][0]
+    # keyed on the ANIMATION, not the title: the title now leads with the SD
+    # card ("Check the SD card is in the Pi, then connect it to Node Medic")
+    # and will be reworded again — the step's identity is what it draws.
+    connect = [s for s in guide_steps("pi") if s.get("anim") == "connect_pi"][0]
     hint = connect["hint"]
     assert "DATA port" in hint and "PWR IN" in hint
     assert "mini-HDMI" in hint, "must say WHICH socket, not just 'the data one'"
@@ -243,7 +246,10 @@ def test_guide_steps_returns_a_copy():
 def test_the_pi_step_uses_the_pi_animation_not_the_radio_one():
     """Walkthrough 2026-08-02: the step said 'Connect the Pi' while showing a
     radio board sliding into the medic."""
-    connect = [s for s in guide_steps("pi") if "Connect the Pi" in s["title"]][0]
+    # keyed on the ANIMATION, not the title: the title now leads with the SD
+    # card ("Check the SD card is in the Pi, then connect it to Node Medic")
+    # and will be reworded again — the step's identity is what it draws.
+    connect = [s for s in guide_steps("pi") if s.get("anim") == "connect_pi"][0]
     assert connect["anim"] == "connect_pi"
 
 
@@ -397,7 +403,7 @@ def test_the_card_is_written_before_it_reaches_the_pi():
     idx = {s["title"]: i for i, s in enumerate(steps)}
     write = idx["Put the SD card into Node Medic"]
     move = idx["Move the card to the Raspberry Pi"]
-    connect = idx["Connect the Pi to Node Medic"]
+    connect = idx["Check the SD card is in the Pi, then connect it to Node Medic"]
     assert write < move < connect, "must write, then move, then connect"
     # the imager is opened from the WRITE step, not from a Pi-connected step
     assert steps[write].get("screen") == "pi_imager"

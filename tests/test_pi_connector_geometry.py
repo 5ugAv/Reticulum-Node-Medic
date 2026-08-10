@@ -92,7 +92,13 @@ def test_a_side_entry_board_gets_its_own_scene():
     src = func_source(ANIM, "_draw", cls="ConnectPiAnim")
     assert 'approach == "right"' in src and "_draw_side_entry" in src
     side = func_source(ANIM, "_draw_side_entry", cls="ConnectPiAnim")
-    assert "Rotate(angle=-90" in side, "the plug has to point the way it travels"
+    # +90, NOT -90. This test asserted -90 and so held the bug in place: the
+    # moulding is drawn tip UP (+y), the plug travels LEFT into the socket,
+    # and -90 turns +y into +x — pointing back at the medic. It read as a
+    # plug being pulled OUT, and shipped that way until the operator said so
+    # (2026-08-10). A test can only protect the direction it was told.
+    assert "Rotate(angle=90" in side, "the plug has to point the way it travels"
+    assert "Rotate(angle=-90" not in side
 
 
 def test_the_labels_sit_off_the_board():

@@ -198,10 +198,28 @@ _STEPS = {
          # likely to be got wrong. A Zero 2 W never flips, so the difference
          # between the two families is visible in the animation itself.
          "anim": "sd_handover"},
-        {"title": tr("Connect the Pi to Node Medic"),
+        # THE CARD FIRST, IN THE TITLE. The step before this one moves the card
+        # into the Pi, and the picture here shows it seated — but on a 3 A+ the
+        # slot is on the UNDERSIDE, so the drawing cannot show it at all. A
+        # forgotten card presents as a Pi that powers up and never appears,
+        # which is the same symptom as a charge-only cable and a dead gadget:
+        # three suspects, one of them free to rule out (operator, 2026-08-10,
+        # asked for it in the title).
+        {"title": tr("Check the SD card is in the Pi, then connect it to "
+                     "Node Medic"),
+         # AND SAY HOW LONG IT TAKES. The step advances itself, so there is
+         # nothing to press — which from the operator's side is indistinguishable
+         # from a screen that has hung (asked for outright, 2026-08-10: "user
+         # should also be told at this stage that medic will take up to 60
+         # seconds to recognise attached pi, please wait"). A Pi answers in
+         # 30-45 s from power; a first boot expands the card and takes longer.
          "body": tr("Plug the Pi into Node Medic with a USB cable and let it "
                     "start up. It boots straight from the card you just wrote "
-                    "\u2014 no Wi-Fi and no network setup anywhere in this build."),
+                    "\u2014 no Wi-Fi and no network setup anywhere in this "
+                    "build.\n\nNode Medic can take up to a minute to see it, "
+                    "and longer on a card's first boot. There is nothing to "
+                    "press \u2014 this moves on by itself the moment the Pi "
+                    "answers."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.
