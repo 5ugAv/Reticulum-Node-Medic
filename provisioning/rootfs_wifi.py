@@ -48,6 +48,61 @@ WPA_CONF = "/etc/wpa_supplicant/wpa_supplicant.conf"
 #: NetworkManager ignores a connection file with looser permissions than this.
 CONNECTION_MODE = "0600"
 
+#: NetworkManager's own memory of whether its radios are switched on. It is
+#: written on shutdown and read at boot, and a card that has never booted has
+#: no such file — so we write it, and the node comes up with Wi-Fi ENABLED
+#: instead of whatever the image last remembered.
+NM_STATE = "/var/lib/NetworkManager/NetworkManager.state"
+
+
+def regdom_cmdline(text: str, country: str) -> str:
+    """*text* (the kernel command line) with the wireless regulatory domain set.
+
+    THE PIECE THAT WAS MISSING FOR MONTHS, and the reason "the Wi-Fi details are
+    on the card but it joins nothing" survived every attempt to fix it as a
+    CREDENTIALS problem. On the carried image the Wi-Fi radio ships SOFT-BLOCKED
+    by rfkill:
+
+        /sys/class/rfkill/phy0: type=wlan soft=1
+        NetworkManager: "Wi-Fi disabled by radio killswitch"
+
+    A blocked radio joins nothing however perfect its keyfile, and rootfs_wifi's
+    keyfile was perfect — found on SolarLove, 2026-08-10, after two nodes had
+    gone out mute.
+
+    ``cfg80211.ieee80211_regdom=`` on the KERNEL COMMAND LINE is what releases
+    it, and it is what makes the release survive a power cut: it is read at
+    every boot, needs nothing to have run cleanly beforehand, and lives in a
+    file the medic already edits for the USB gadget. This is exactly what
+    raspi-config's ``do_wifi_country`` writes — read out of raspi-config itself
+    rather than guessed, then proven on the node: after a cold boot,
+    ``phy0 soft=0`` with nothing run by hand.
+
+    Any existing regdom is replaced, so a card written twice does not
+    accumulate two.
+    """
+    trailing = "\n" if text.endswith("\n") else ""
+    if not country:
+        return text
+    tokens = [t for t in text.split()
+              if not t.startswith("cfg80211.ieee80211_regdom=")]
+    tokens.append(f"cfg80211.ieee80211_regdom={country.upper()}")
+    return " ".join(tokens) + trailing
+
+
+def nm_state_file() -> str:
+    """NetworkManager's saved radio state, with Wi-Fi ON.
+
+    Belt to the regdom's braces. The regdom is what unblocks the hardware;
+    this is what stops NetworkManager remembering a previous "wireless off"
+    and quietly leaving it off — the exact wording in its log on the failing
+    node was "disabled by state file".
+    """
+    return ("[main]\n"
+            "NetworkingEnabled=true\n"
+            "WirelessEnabled=true\n"
+            "WWANEnabled=true\n")
+
 
 def connection_uuid(ssid: str) -> str:
     """A stable UUID for this SSID.

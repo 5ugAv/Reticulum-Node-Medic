@@ -145,3 +145,49 @@ def test_a_failed_connection_write_leaves_no_decoy():
         "the country file must not be lost to a connection-file failure"
     assert "5 GHz networks will be unusable" in body, \
         "and a missing country has its own consequence, so it gets its own words"
+
+
+# --- the radio ships switched off ------------------------------------------
+
+def test_the_regdom_goes_on_the_kernel_command_line():
+    """The months-old mystery, closed on 2026-08-10: the Wi-Fi radio ships
+    SOFT-BLOCKED by rfkill, and a blocked radio joins nothing however perfect
+    its keyfile. Every earlier theory was about credentials. The regdom on the
+    kernel command line is what releases it, and it is read at every boot — so
+    it survives the power cut a field node actually gets."""
+    from provisioning.rootfs_wifi import regdom_cmdline
+    out = regdom_cmdline("console=tty1 rootwait modules-load=dwc2,g_ether\n", "AU")
+    assert "cfg80211.ieee80211_regdom=AU" in out
+    assert out.endswith("\n"), "cmdline.txt keeps its trailing newline"
+    assert "modules-load=dwc2,g_ether" in out, "must not disturb the gadget"
+
+
+def test_a_second_write_does_not_stack_two_regdoms():
+    from provisioning.rootfs_wifi import regdom_cmdline
+    once = regdom_cmdline("a b", "GB")
+    twice = regdom_cmdline(once, "AU")
+    assert twice.count("cfg80211.ieee80211_regdom=") == 1
+    assert "AU" in twice and "GB" not in twice
+
+
+def test_no_country_changes_nothing():
+    """The cable-birth path deliberately carries no network at all."""
+    from provisioning.rootfs_wifi import regdom_cmdline
+    assert regdom_cmdline("a b\n", "") == "a b\n"
+
+
+def test_networkmanager_is_told_its_radio_is_on():
+    """Its log named two separate refusals — the killswitch AND "disabled by
+    state file". Unblocking the hardware is not enough on its own."""
+    from provisioning.rootfs_wifi import nm_state_file, NM_STATE
+    assert "WirelessEnabled=true" in nm_state_file()
+    assert NM_STATE.endswith("NetworkManager.state")
+
+
+def test_the_card_writer_does_both_and_reads_them_back():
+    src = open("assets/scripts/prepare_card.py").read()
+    assert "cmdline_with_regdom" in src, "the regdom must reach the real card"
+    assert "NetworkManager.state" in src
+    # read-back, like the gadget's two halves already are
+    assert "the wireless regulatory domain" in src, \
+        "a write that is not read back is a claim, not a fact"

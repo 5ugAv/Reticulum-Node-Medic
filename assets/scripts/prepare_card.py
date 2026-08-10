@@ -187,6 +187,31 @@ def cmdline_with_gadget(text: str) -> str:
 
 
 
+def cmdline_with_regdom(text: str, country: str) -> str:
+    """*text* with the wireless regulatory domain set on the kernel command line.
+
+    THE PIECE THAT WAS MISSING FOR MONTHS. On this image the Wi-Fi radio ships
+    SOFT-BLOCKED by rfkill — "Wi-Fi disabled by radio killswitch" — and a
+    blocked radio joins nothing however perfect its credentials. Every previous
+    theory was about credentials, and the keyfile on the card was flawless
+    (found on SolarLove, 2026-08-10, after two nodes went out mute).
+
+    ``cfg80211.ieee80211_regdom=`` is what releases it, and putting it on the
+    KERNEL COMMAND LINE is what makes the release survive a power cut: read at
+    every boot, needing nothing to have shut down cleanly. It is what
+    raspi-config's do_wifi_country writes — read out of raspi-config rather
+    than guessed, then proven on the node (cold boot, phy0 soft=0, nothing run
+    by hand).
+    """
+    trailing = "\n" if text.endswith("\n") else ""
+    if not country:
+        return text
+    tokens = [t for t in text.split()
+              if not t.startswith("cfg80211.ieee80211_regdom=")]
+    tokens.append("cfg80211.ieee80211_regdom=" + country.upper())
+    return " ".join(tokens) + trailing
+
+
 def _applicable_dwc2_line(text, base):
     """Index of a dwc2 overlay line that is IN FORCE for every board, or None.
 
@@ -280,12 +305,19 @@ def write_boot(mnt: str, cfg: dict) -> None:
         # without it the Pi boots and refuses every login.
         try:
             pi_key = cfg.get("pi_key", "")
+            country = cfg.get("wifi_country", "AU")
             for name, fn in (("cmdline.txt", cmdline_with_gadget),
                              ("config.txt", config_txt_with_gadget)):
                 q = os.path.join(mnt, name)
                 before = open(q).read()
                 after = (fn(before, pi_key) if name == "config.txt"
                          else fn(before))
+                # AND THE REGULATORY DOMAIN, on the same file and in the same
+                # breath. Without it the node's Wi-Fi radio stays rfkill-blocked
+                # and joins nothing, which is not a credentials failure and was
+                # mistaken for one for months.
+                if name == "cmdline.txt":
+                    after = cmdline_with_regdom(after, country)
                 if after != before:
                     _write(q, after)
             # READ IT BACK. Both halves are needed and they fail independently:
@@ -294,8 +326,12 @@ def write_boot(mnt: str, cfg: dict) -> None:
             # perfectly and presents nothing — the 2026-08-08 bench failure.
             # Never again assert this from the fact that write() returned.
             missing = []
-            if GADGET_MODULES not in open(os.path.join(mnt, "cmdline.txt")).read():
+            cmdline_txt = open(os.path.join(mnt, "cmdline.txt")).read()
+            if GADGET_MODULES not in cmdline_txt:
                 missing.append("cmdline.txt: " + GADGET_MODULES)
+            if country and "cfg80211.ieee80211_regdom=" not in cmdline_txt:
+                missing.append("cmdline.txt: the wireless regulatory domain "
+                               "(without it the radio stays blocked)")
             cfg_txt = open(os.path.join(mnt, "config.txt")).read()
             if not config_txt_has_gadget(cfg_txt, pi_key):
                 missing.append("config.txt: " + dwc2_overlay_for(pi_key)
@@ -432,6 +468,22 @@ def write_wifi(mnt: str, ssid: str, psk: str, country: str) -> None:
         os.chmod(path, 0o600)
         os.chown(path, 0, 0)
         say("wrote the Wi-Fi connection onto the card (" + safe + ")")
+        # AND TELL NETWORKMANAGER ITS RADIO IS ON. Its own log on the failing
+        # node read "Wi-Fi disabled by radio killswitch; disabled by state
+        # file" — two separate refusals, and this is the second. The regdom on
+        # the kernel command line unblocks the hardware; this stops NM
+        # remembering a previous "wireless off" and quietly leaving it there.
+        try:
+            nmd = os.path.join(mnt, "var/lib/NetworkManager")
+            os.makedirs(nmd, exist_ok=True)
+            st = os.path.join(nmd, "NetworkManager.state")
+            _write(st, "[main]\nNetworkingEnabled=true\n"
+                       "WirelessEnabled=true\nWWANEnabled=true\n")
+            os.chown(st, 0, 0)
+            say("told NetworkManager its Wi-Fi radio is enabled")
+        except Exception as exc:                        # noqa: BLE001
+            print("PREPARE_WARN: could not set NetworkManager's radio state "
+                  "(" + str(exc) + ") - the node may come up with Wi-Fi off")
     except Exception as exc:                            # noqa: BLE001
         # Leave NO half-made file: unreadable-by-NM is indistinguishable from
         # working right up until the node fails to appear.
