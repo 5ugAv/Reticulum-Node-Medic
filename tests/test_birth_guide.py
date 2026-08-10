@@ -820,3 +820,39 @@ def test_a_stale_address_is_replaced_by_one_that_answers():
     src = func_source("ui/screens/birth_screen.py", "_find_pi")
     assert "_pi_candidates" in src and "_port_open" in src
     assert "confirmed" in src, "an address that answered is confirmed, not guessed"
+
+
+def test_a_name_is_expanded_into_the_addresses_it_resolves_to():
+    """A node with two roads has ONE name. Plugged into the medic and joined to
+    Wi-Fi, a Pi advertises the same mDNS name on both — so <name>.local resolves
+    to 10.55.0.1 or to its LAN address depending which it announced most
+    recently. skyfinger.local answered on Wi-Fi when the medic probed it, and
+    handed back the dead cable when the build asked a minute later: the probe
+    and the build were talking about different machines under one name
+    (2026-08-11)."""
+    from tests.srcutil import func_source
+    src = func_source("provisioning/pi_discover.py", "addresses_for")
+    assert "getaddrinfo" in src, "every address, not just the first"
+    assert "10.55.0." in src, "the cable sorts last — it is the road that dies"
+    cand = func_source("ui/screens/birth_screen.py", "_pi_candidates")
+    assert "addresses_for" in cand, "candidates must be addresses, not names"
+
+
+def test_the_cable_address_is_tried_last_among_equals():
+    """When both roads answer, the network one is the one that will still be
+    there after the operator walks away — the cable depends on a USB gadget, a
+    lead, and the socket the radio also wants."""
+    # pi_discover, not the screen: resolving an address is not a UI concern,
+    # and a test that has to import Kivy to check a sort order is a test that
+    # will be skipped on the machine where it matters.
+    from provisioning.pi_discover import addresses_for
+    import socket
+    real = socket.getaddrinfo
+    socket.getaddrinfo = lambda *a, **k: [
+        (2, 1, 6, "", ("10.55.0.1", 22)), (2, 1, 6, "", ("192.168.1.2", 22))]
+    try:
+        out = addresses_for("skyfinger.local")
+    finally:
+        socket.getaddrinfo = real
+    assert out[0] == "192.168.1.2", "the network road leads"
+    assert "10.55.0.1" in out, "but the cable is still tried"

@@ -800,7 +800,10 @@ def test_a_wedged_link_is_not_reported_as_a_brown_out():
     def wedged(argv):
         if argv[0] == "vcgencmd":
             return "throttled=0x0\n"
-        return "cdc_ether usb0: NETDEV WATCHDOG: transmit queue 0 timed out\n"
+        if argv[:2] == ["cat", "/proc/uptime"]:
+            return "150.0 90.0\n"          # the wedge below is 50 s old
+        return ("[  100.500000] cdc_ether usb0: NETDEV WATCHDOG: "
+                "transmit queue 0 timed out\n")
 
     msg = _link_died_reason(wedged)
     assert "NETDEV WATCHDOG" in msg
@@ -814,6 +817,8 @@ def test_a_real_brown_out_is_still_called_power():
     def sagging(argv):
         if argv[0] == "vcgencmd":
             return "throttled=0x50000\n"
+        if argv[:2] == ["cat", "/proc/uptime"]:
+            return "150.0 90.0\n"
         return ""
 
     msg = _link_died_reason(sagging)
@@ -825,7 +830,9 @@ def test_no_evidence_either_way_claims_neither():
     """The honest third answer. Guessing between two causes is what this
     replaced, so silence about which must stay available."""
     from workflows.build import _link_died_reason
-    msg = _link_died_reason(lambda argv: "throttled=0x0\n" if argv[0] == "vcgencmd" else "")
+    msg = _link_died_reason(
+        lambda argv: "throttled=0x0\n" if argv[0] == "vcgencmd"
+        else ("150.0 90.0\n" if argv[:2] == ["cat", "/proc/uptime"] else ""))
     assert "cannot see why" in msg
     assert "NETDEV" not in msg and "brown out" not in msg
 
@@ -852,3 +859,26 @@ def test_the_usb_handback_reads_back_what_it_wrote():
     assert "still says gadget" in src, "and say what it means for the node"
     fails = code[code.index("check ="):]
     assert "False" in fails, "a card that did not take must fail the step"
+
+
+# --- evidence has to be about NOW -------------------------------------------
+
+def test_an_old_wedge_is_not_evidence_about_this_build():
+    """The first version grepped the whole ring buffer, so once a medic had
+    wedged even once it blamed the link for every timeout afterwards —
+    including two builds AFTER the NetworkManager fix had stopped it happening,
+    where the real cause was a dead cable address behind an ambiguous mDNS name
+    (2026-08-11). The same fault this function exists to prevent, one level
+    down: a confident sentence outrunning its evidence."""
+    from workflows.build import _wedged_recently
+    line = "[  100.500000] cdc_ether usb0: NETDEV WATCHDOG: transmit queue 0 timed out"
+    assert _wedged_recently(line, "11000.0 5000.0") is False, "three hours ago"
+    assert _wedged_recently(line, "150.0 90.0") is True, "fifty seconds ago"
+
+
+def test_an_undateable_log_claims_nothing():
+    """dmesg without a usable timestamp, or no /proc/uptime — the honest answer
+    is silence, not the more likely-sounding of two causes."""
+    from workflows.build import _wedged_recently
+    assert _wedged_recently("NETDEV WATCHDOG somewhere", "") is False
+    assert _wedged_recently("NETDEV WATCHDOG no timestamp", "150.0 1.0") is False

@@ -252,3 +252,41 @@ def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
                         f"you're building. Pick one only if you're sure."),
                 "candidates": ", ".join(d["label"] for d in seen)}
     return {}
+
+
+def addresses_for(addr: str) -> list:
+    """Every address *addr* currently resolves to, best first.
+
+    A NODE WITH TWO ROADS HAS ONE NAME. Plugged into the medic and joined to
+    Wi-Fi, a Pi advertises the same mDNS name on both — so ``<name>.local``
+    resolves to 10.55.0.1 or to its LAN address depending on which it announced
+    most recently. skyfinger.local answered on Wi-Fi when the medic probed it,
+    and handed back the (dead) cable when the build asked a minute later. The
+    probe and the build were talking about different machines under one name
+    (2026-08-11).
+
+    So a name is expanded to ALL of its addresses and each is tried. The name
+    itself is kept at the end: if resolution fails entirely, the caller is no
+    worse off than before.
+
+    The cable address sorts LAST among equals. It is the road that dies — it
+    depends on a USB gadget, a cable and a socket the radio also wants — and
+    when both answer, the network one is the one that will still be there when
+    the operator walks away.
+    """
+    if not addr:
+        return []
+    out = []
+    try:
+        import socket
+        for fam, _t, _p, _c, sa in socket.getaddrinfo(addr, 22,
+                                                      proto=socket.IPPROTO_TCP):
+            ip = sa[0]
+            if ip and ip not in out:
+                out.append(ip)
+    except Exception:                                          # noqa: BLE001
+        pass
+    out.sort(key=lambda a: a.startswith("10.55.0."))
+    if addr not in out:
+        out.append(addr)
+    return out

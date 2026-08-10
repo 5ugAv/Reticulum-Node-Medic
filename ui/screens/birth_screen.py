@@ -933,11 +933,13 @@ class BirthScreen(BoxLayout):
                 out.append(sa)
         except Exception:                                      # noqa: BLE001
             pass
+        from provisioning.pi_discover import addresses_for
         seen, ordered = set(), []
         for a in out:
-            if a and a not in seen:
-                seen.add(a)
-                ordered.append(a)
+            for one in addresses_for(a):
+                if one and one not in seen:
+                    seen.add(one)
+                    ordered.append(one)
         return ordered
 
     def _node_name_hint(self):
@@ -966,8 +968,20 @@ class BirthScreen(BoxLayout):
                 from provisioning.link import _port_open
                 for addr in self._pi_candidates():
                     if _port_open(addr, 22, timeout=4.0):
-                        res = {"address": addr, "ip": addr, "confirmed": True,
-                               "how": "it answered there"}
+                        # KEEP THE IP IT ANSWERED ON, NOT THE NAME.
+                        #
+                        # A node with a cable AND Wi-Fi advertises the same
+                        # mDNS name on both, and <name>.local resolves to
+                        # whichever it announced most recently. skyfinger.local
+                        # answered here on Wi-Fi, and by the time the build
+                        # asked, mDNS handed it the cable — which was dead
+                        # (2026-08-11). The probe and the build were talking
+                        # about different machines under one name.
+                        #
+                        # A name that can resolve two ways is not an address.
+                        # Pin the one that actually answered.
+                        res = {"address": addr, "ip": addr,
+                               "confirmed": True, "how": "it answered there"}
                         break
                 if not res:
                     from provisioning.pi_discover import find_pi

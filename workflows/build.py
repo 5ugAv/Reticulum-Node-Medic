@@ -208,10 +208,48 @@ def _medic_evidence(run=None) -> dict:
                 return ""
     throttled = (run(["vcgencmd", "get_throttled"]) or "").strip()
     dmesg = run(["dmesg"]) or ""
+    uptime = run(["cat", "/proc/uptime"]) or ""
     return {
         "undervolted": ("throttled=0x0" not in throttled) and bool(throttled),
-        "wedged": "NETDEV WATCHDOG" in dmesg,
+        "wedged": _wedged_recently(dmesg, uptime),
     }
+
+
+#: How far back a kernel complaint still counts as "this is happening now".
+#: A build's first contact is seconds old; anything older belongs to a
+#: different story.
+WEDGE_WINDOW_S = 300.0
+
+
+def _wedged_recently(dmesg: str, uptime: str, window_s: float = WEDGE_WINDOW_S) -> bool:
+    """Did the USB gadget wedge WITHIN THE LAST FEW MINUTES?
+
+    THE WHOLE RING BUFFER IS NOT EVIDENCE ABOUT NOW. The first version grepped
+    all of dmesg for NETDEV WATCHDOG, so once a medic had wedged even once it
+    blamed the link for every timeout thereafter — including two builds AFTER
+    the NetworkManager fix had stopped it happening, where the real cause was a
+    dead cable address behind an ambiguous mDNS name (2026-08-11).
+
+    That is the same fault this function was added to prevent, one level down:
+    a confident sentence outrunning its evidence. dmesg timestamps are seconds
+    since boot and /proc/uptime is the same clock, so "recently" is arithmetic
+    rather than a guess.
+    """
+    try:
+        now = float((uptime or "").split()[0])
+    except (IndexError, ValueError):
+        return False            # cannot date it -> cannot claim it
+    import re
+    newest = None
+    for line in (dmesg or "").splitlines():
+        if "NETDEV WATCHDOG" not in line:
+            continue
+        m = re.match(r"\s*\[\s*(\d+\.\d+)\]", line)
+        if m:
+            t = float(m.group(1))
+            if newest is None or t > newest:
+                newest = t
+    return newest is not None and (now - newest) <= window_s
 
 
 def _link_died_reason(run=None) -> str:

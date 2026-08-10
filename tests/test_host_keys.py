@@ -177,3 +177,42 @@ def test_hashed_entries_are_removed_by_ssh_keygen_not_a_line_scan(tmp_path):
     assert calls, "a hashed file cannot be cleaned by string matching"
     assert calls[0][:2] == ["ssh-keygen", "-f"]
     assert calls[0][1:] == ["-f", str(p), "-R", "10.55.0.1"]
+
+
+def test_a_reimaged_node_forgets_its_old_ADDRESSES_too():
+    """ssh stores a host key under the name AND under the address, and clearing
+    one leaves the other. A rebuilt skyfinger cleared cleanly by name and still
+    failed, because the PREVIOUS node's key sat under 192.168.1.2 — three
+    entries, found only by asking what the name resolved to (2026-08-11).
+
+    At card-write time the name usually still points at the node being
+    replaced, which is exactly the one whose key must go."""
+    from provisioning import host_keys
+    asked = []
+
+    def fake_resolver(name):
+        asked.append(name)
+        return ["192.168.1.2"] if name.endswith(".local") else []
+
+    cleared = []
+    real = host_keys.forget_host_key
+    host_keys.forget_host_key = lambda h, paths=None: cleared.append(h) or 1
+    try:
+        host_keys.forget_reimaged_node("skyfinger", resolver=fake_resolver)
+    finally:
+        host_keys.forget_host_key = real
+    assert "10.55.0.1" in cleared, "the cable address every node inherits"
+    assert "skyfinger" in cleared and "skyfinger.local" in cleared
+    assert "192.168.1.2" in cleared, "and the address that name resolves to"
+
+
+def test_it_does_not_clear_the_same_address_twice():
+    from provisioning import host_keys
+    cleared = []
+    real = host_keys.forget_host_key
+    host_keys.forget_host_key = lambda h, paths=None: cleared.append(h) or 0
+    try:
+        host_keys.forget_reimaged_node("n", resolver=lambda _n: ["10.55.0.1"])
+    finally:
+        host_keys.forget_host_key = real
+    assert cleared.count("10.55.0.1") == 1

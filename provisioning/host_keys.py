@@ -246,13 +246,46 @@ def forget_host_key(host: str, paths: Optional[List[str]] = None,
     return gone
 
 
-def forget_reimaged_node(hostname: str = "", paths: Optional[List[str]] = None) -> int:
+def addresses_of(name: str) -> List[str]:
+    """Every IP *name* currently resolves to. Empty if it resolves to nothing.
+
+    Used to forget a re-imaged node's keys by ADDRESS as well as by name. ssh
+    keeps host keys under both, and clearing one does not clear the other.
+    """
+    if not name:
+        return []
+    out = []
+    try:
+        import socket
+        for _f, _t, _p, _c, sa in socket.getaddrinfo(name, 22,
+                                                     proto=socket.IPPROTO_TCP):
+            if sa[0] and sa[0] not in out:
+                out.append(sa[0])
+    except Exception:                                          # noqa: BLE001
+        pass
+    return out
+
+
+def forget_reimaged_node(hostname: str = "", paths: Optional[List[str]] = None,
+                         resolver=addresses_of) -> int:
     """Forget every identity a freshly written card has just invalidated.
 
     The cable address always, because every node inherits it; the node's own
     name too, since a rebirth reuses that as well.
+
+    AND THE ADDRESSES THAT NAME CURRENTLY RESOLVES TO. ssh stores a host key
+    under the name AND under the address, and clearing one leaves the other.
+    That is not hypothetical: a rebuilt skyfinger cleared cleanly by name and
+    still failed, because the PREVIOUS node's key was sitting under
+    192.168.1.2 — three entries, found only by asking what the name resolved to
+    (2026-08-11). At card-write time the name usually still points at the node
+    being replaced, which is exactly the one whose key must go.
     """
     hosts = [CABLE_ADDRESS]
     if hostname:
         hosts += [hostname, f"{hostname}.local"]
+        for nm in (hostname, f"{hostname}.local"):
+            for ip in resolver(nm):
+                if ip not in hosts:
+                    hosts.append(ip)
     return sum(forget_host_key(h, paths) for h in hosts)
