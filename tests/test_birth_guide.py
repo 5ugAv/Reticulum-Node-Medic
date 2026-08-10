@@ -794,3 +794,29 @@ def test_the_closing_screen_says_to_wait_before_looking_in_vitals():
     body = src[:src.rindex("See it in VITALS")]
     assert "two minutes" in body, "the wait must be stated, and BEFORE the button"
     assert "nothing is wrong" in body, "and named as expected, not as a failure"
+
+
+def test_the_operator_never_has_to_type_an_address():
+    """Operator, 2026-08-11: "the users can't be expected to do this. They have
+    to type a name and the rest is done for them — maybe Node Medic can take the
+    name and add .local."
+
+    They named the node; the medic gave that name to the card; so it already
+    knows what the node calls itself. Asking a person to translate their own
+    node's name into a hostname is asking them to do the tool's arithmetic."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_pi_candidates")
+    assert "hostnameify" in src and ".local" in src
+    # ordered: the PROVED address first, then the derived name, then the fallback
+    assert src.index("_declared_pi_address") < src.index("hostnameify")
+    assert src.index("hostnameify") < src.index("suggested_address")
+
+
+def test_a_stale_address_is_replaced_by_one_that_answers():
+    """SkyFinger's cable wedged mid-build while the node sat perfectly reachable
+    on Wi-Fi, and the screen went on insisting on 10.55.0.1. The candidates are
+    PROBED, in order, and the first that opens SSH wins."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_find_pi")
+    assert "_pi_candidates" in src and "_port_open" in src
+    assert "confirmed" in src, "an address that answered is confirmed, not guessed"

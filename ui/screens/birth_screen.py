@@ -736,9 +736,12 @@ class BirthScreen(BoxLayout):
                     # first, then the name it gave the Pi — so a button asking the
                     # operator to trigger a search is asking them to do the tool's
                     # job (operator, 2026-08-02). It searches on open instead.
-                    if not settled:
-                        from kivy.clock import Clock as _Clock
-                        _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
+                    # ALWAYS, even over a prefilled proof: it is the check
+                    # that turns a five-minute-old address into a current one,
+                    # and it only ever REPLACES the field with somewhere that
+                    # actually answered.
+                    from kivy.clock import Clock as _Clock
+                    _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
                     self.header.add_widget(row)
                     self._pi_find_status = _line("", size="12sp", color="green")
                     self.header.add_widget(self._pi_find_status)
@@ -895,10 +898,62 @@ class BirthScreen(BoxLayout):
         self._declared_mismatch = ""
         self._build_chooser()
 
+    def _pi_candidates(self):
+        """Every address this node could answer on, best first.
+
+        THE OPERATOR SHOULD NEVER TYPE AN ADDRESS. They named the node; the
+        medic gave that name to the card, so it already knows what the node
+        calls itself on the network. Asking a person to translate their own
+        node's name into a hostname is asking them to do the tool's arithmetic
+        (operator, 2026-08-11: "they have to type a name and the rest is done
+        for them — maybe Node Medic can take the name and add .local").
+
+        Ordered, because the answers age differently:
+          1. the address the walkthrough actually PROVED, if there is one;
+          2. <name>.local — derived from the name they typed, which is exactly
+             what the card was written with;
+          3. the last Pi this medic imaged, for a lap that lost its name.
+        """
+        out = []
+        proved = getattr(self, "_declared_pi_address", "") or ""
+        if proved:
+            out.append(proved)
+        try:
+            from provisioning.pi_imager import hostnameify
+            nm = hostnameify((self._name_in.text if hasattr(self, "_name_in")
+                              else "") or self._node_name_hint())
+            if nm:
+                out.append(f"{nm}.local")
+        except Exception:                                      # noqa: BLE001
+            pass
+        try:
+            from provisioning.pi_discover import suggested_address
+            sa = suggested_address()
+            if sa:
+                out.append(sa)
+        except Exception:                                      # noqa: BLE001
+            pass
+        seen, ordered = set(), []
+        for a in out:
+            if a and a not in seen:
+                seen.add(a)
+                ordered.append(a)
+        return ordered
+
+    def _node_name_hint(self):
+        return (getattr(self, "_declared_name", "")
+                or getattr(self, "_node_name", "") or "")
+
     def _find_pi(self):
-        """Look for the Pi on the network — by the name the medic gave it, then
-        by sweeping for Raspberry Pi hardware. Runs off-thread; says honestly
-        how it found what it found (or that it found nothing)."""
+        """Try every address the node could answer on, and keep the one that does.
+
+        Was: ask pi_discover, take what it says. Now it walks _pi_candidates in
+        order and stops at the first that opens SSH — because the address that
+        was true five minutes ago may not be true now. SkyFinger proved that the
+        hard way: its cable link wedged mid-build, the node was perfectly
+        reachable on Wi-Fi, and the screen went on insisting on 10.55.0.1
+        (2026-08-11). Runs off-thread; probes are a TCP connect, not a sweep.
+        """
         status = getattr(self, "_pi_find_status", None)
         if status is not None:
             status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
@@ -906,9 +961,17 @@ class BirthScreen(BoxLayout):
         import threading
 
         def work():
+            res = {}
             try:
-                from provisioning.pi_discover import find_pi
-                res = find_pi(self._pi_addr_in.text.strip())
+                from provisioning.link import _port_open
+                for addr in self._pi_candidates():
+                    if _port_open(addr, 22, timeout=4.0):
+                        res = {"address": addr, "ip": addr, "confirmed": True,
+                               "how": "it answered there"}
+                        break
+                if not res:
+                    from provisioning.pi_discover import find_pi
+                    res = find_pi(self._pi_addr_in.text.strip())
             except Exception as e:            # noqa: BLE001
                 res = {"how": f"couldn't search: {str(e)[:60]}"}
             Clock.schedule_once(lambda _dt: self._found_pi(res), 0)
