@@ -325,7 +325,8 @@ def guide_steps(path, pi_key=""):
     Empty pi_key keeps the generic line. Naming a specific socket on a board we
     have not identified is precisely the failure being fixed.
     """
-    from ui.pi_connectors import connect_hint, power_hint
+    from ui.pi_connectors import (connect_hint, power_hint,
+                                  standalone_power_hint)
     steps = [dict(s) for s in _STEPS.get(path, [])]
     if pi_key:
         for s in steps:
@@ -343,8 +344,16 @@ def guide_steps(path, pi_key=""):
             # that spends minutes installing. Operator asked for it on both
             # (2026-08-09) — and on a 3 A+ the honest answer at both is the
             # same warning about a second supply, not an instruction to add one.
-            if s.get("gate") == "node_online" or s.get("anim") == "radio_to_pi":
+            if s.get("gate") == "node_online":
                 s["hint"] = power_hint(pi_key) + " " + s.get("hint", "")
+            # THE LAST STEP ASKS THE OPPOSITE QUESTION. Both steps are about
+            # power, so both got the same sentence — but by this one the Pi has
+            # been unplugged from Node Medic, and power_hint's 3 A+ line ("do
+            # NOT plug a supply into its micro-USB") then contradicts the
+            # instruction directly above it. The back-feed it guards against
+            # cannot happen with the medic's cable gone.
+            elif s.get("anim") == "radio_to_pi":
+                s["hint"] = standalone_power_hint(pi_key) + " " + s.get("hint", "")
     return steps
 
 

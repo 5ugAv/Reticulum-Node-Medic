@@ -184,3 +184,40 @@ def can_cable(pi_key: str) -> bool:
     declared impossible — fail open, and let the operator try."""
     c = get(pi_key)
     return True if c is None else c.can_cable
+
+
+#: The wiring AFTER the Pi comes off Node Medic — the last step of the birth.
+#:
+#: A different question from power_hint, and the two had been answered with one
+#: string. The 3 A+ line reads "The Pi is drawing its power from Node Medic
+#: through this cable. Do NOT plug a supply into its micro-USB" — correct while
+#: it IS on the cable, and a flat contradiction on the step whose whole
+#: instruction is "unplug the Pi from Node Medic and give it its own power
+#: supply" (seen in a render, 2026-08-10). The back-feed it warns about cannot
+#: happen once the medic's cable is gone; the operator is left choosing between
+#: two sentences on the same screen.
+_STANDALONE_HINTS = {
+    "pi_zero_2w": tr("Power on the OUTER micro-USB marked PWR IN. The radio "
+                     "goes on the other one — the inner micro-USB — so it "
+                     "needs a micro-USB OTG adapter."),
+    "pi_3a_plus": tr("Power on the micro-USB. The radio goes in the full-size "
+                     "USB-A — the socket Node Medic was using. Nothing can "
+                     "back-feed now that the medic's cable is off, so the "
+                     "earlier warning about two supplies no longer applies."),
+    "pi_4b": tr("Power on the USB-C. The radio goes in any of the USB-A "
+                "sockets."),
+    "pi_5": tr("Power on the USB-C. The radio goes in any of the USB-A "
+               "sockets."),
+}
+
+#: Claims no socket, because we do not know which board it is.
+UNKNOWN_STANDALONE_HINT = tr(
+    "Give the Pi its own power supply, and put the radio on one of its data "
+    "ports. It has to run on its own from here — the radio's transmissions are "
+    "the hungriest thing it does.")
+
+
+def standalone_power_hint(pi_key: str) -> str:
+    """Power and radio wiring once the node is off Node Medic and on its own."""
+    return _STANDALONE_HINTS.get((pi_key or "").strip(),
+                                 UNKNOWN_STANDALONE_HINT)

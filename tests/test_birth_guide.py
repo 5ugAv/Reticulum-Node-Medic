@@ -737,3 +737,35 @@ def test_the_screen_that_needs_no_address_still_has_something_to_press():
         "no address branch may leave before the Build button is drawn"
     assert code.count("settled = True") == 2, "both branches settle rather than return"
     assert "if not settled:" in code, "and the address form only draws when it isn't"
+
+
+def test_the_last_step_does_not_argue_with_itself_about_power():
+    """Seen in a render, 2026-08-10. The step says "Unplug the Pi from Node
+    Medic ... and give the Pi its own power supply", and the yellow hint
+    underneath said "The Pi is drawing its power from Node Medic through this
+    cable. Do NOT plug a supply into its micro-USB."
+
+    Both steps are about power, so both got the same sentence — but by this one
+    the medic's cable is gone, and the back-feed it warns about cannot happen.
+    The operator is left choosing between two sentences on one screen."""
+    from ui.birth_guide_flow import guide_steps
+    last = next(s for s in guide_steps("pi", "pi_3a_plus")
+                if s.get("anim") == "radio_to_pi")
+    assert "Do NOT plug a supply" not in last["hint"]
+    assert "drawing its power from Node Medic" not in last["hint"]
+    # and it still answers the question the step actually raises
+    assert "micro-USB" in last["hint"] and "USB-A" in last["hint"]
+
+    # the INSTALL step keeps the warning — there the cable really is carrying it
+    life = next(s for s in guide_steps("pi", "pi_3a_plus")
+                if s.get("gate") == "node_online")
+    assert "Do NOT plug a supply" in life["hint"]
+
+
+def test_the_standalone_hint_names_no_socket_on_an_unknown_board():
+    """Same rule as connect_hint: naming a socket on a board we have not
+    identified is the bug pi_connectors exists to prevent."""
+    from ui.pi_connectors import standalone_power_hint
+    h = standalone_power_hint("something_we_have_never_seen")
+    for socket in ("micro-USB", "USB-C", "PWR IN"):
+        assert socket not in h
