@@ -188,12 +188,55 @@ def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
                    f"(pip exit {code}: {tail})")
 
 
+def first_contact_reason(code: int, err: str) -> str:
+    """Why the very first command on the node came back with nothing.
+
+    "Is the node reachable?" was the old answer, and on 2026-08-10 it was
+    printed a second after the walkthrough's own gate had proved the node
+    reachable — it had opened a TCP session to sshd on 10.55.0.1 to get there.
+    Both statements were about the same cable, one of them was wrong, and the
+    operator was left holding a contradiction instead of a cause.
+
+    They are different questions. The gate asks whether sshd ANSWERS; this asks
+    whether it will let us IN. ``ssh`` says which, in its stderr, and
+    ``cmd_output`` was throwing that away. So read it, and name the failure the
+    operator actually has: a key that is not on the card is a different evening
+    from a Pi that has browned out.
+    """
+    e = (err or "").lower()
+    if "permission denied" in e or "no supported authentication" in e:
+        return ("The Pi answered, but refused the login — Node Medic's SSH key "
+                "isn't authorised on it. That key is written onto the card at "
+                "imaging time, so the card is the thing to check: put it in "
+                "Node Medic's reader and it will say. Writing the card again "
+                "fixes it.")
+    if "connection refused" in e:
+        return ("Nothing is listening for SSH on the Pi. It is powered and on "
+                "the network, but its SSH service is not running — the card "
+                "was written without it, or first boot has not finished.")
+    if "timed out" in e or "no route to host" in e or "unreachable" in e:
+        return ("The Pi stopped answering part-way through. Check its power "
+                "light and the cable — a Pi drawing its power from Node Medic "
+                "can brown out under load.")
+    if "host key verification failed" in e or "remote host identification" in e:
+        return ("The Pi's SSH identity has changed since Node Medic last saw "
+                "it — expected after re-imaging, but it will not connect until "
+                "the old key is cleared.")
+    tail = (err or "").strip()[-200:]
+    return ("Could not read /proc/cpuinfo from the node"
+            + (f" (ssh exit {code}: {tail})" if tail else
+               f" (ssh exit {code}) — is it reachable?"))
+
+
 @build_step
 def detect_hardware(wf: "BuildWorkflow") -> StepResult:
-    cpuinfo = wf.cmd_output("cat /proc/cpuinfo")
-    if not cpuinfo:
+    # NOT cmd_output: it returns "" for every kind of failure alike, and this is
+    # the FIRST thing the build says to the node — the one place where knowing
+    # which failure it was is worth most.
+    code, cpuinfo, err = wf.connection.run("cat /proc/cpuinfo")
+    if code != 0 or not cpuinfo:
         return StepResult("detect_hardware", False,
-                          "Could not read /proc/cpuinfo — is the node reachable?")
+                          first_contact_reason(code, err))
 
     # rnodeconf must be present before we probe/flash the radio (a fresh Pi has
     # none until the later install step) — ensure it up front.

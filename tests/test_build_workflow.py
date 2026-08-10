@@ -637,3 +637,39 @@ def test_the_guard_exemption_marker_is_actually_used():
     users = [p.name for p in tests.glob("test_*.py")
              if "onboard_guard" in p.read_text()]
     assert users, "nothing carries the onboard_guard marker any more"
+
+
+# --- the first word the build says to a node ------------------------------
+
+def test_first_contact_names_the_failure_it_actually_had():
+    """2026-08-10: the walkthrough's gate proved the node reachable — it had
+    opened a TCP session to sshd at 10.55.0.1 to get past — and one second
+    later the build's first step said "is the node reachable?". Both were about
+    the same cable and one was wrong. They are different questions: does sshd
+    ANSWER, and will it let us IN. ssh says which, in stderr, and cmd_output
+    was throwing it away."""
+    from workflows.build import first_contact_reason
+    key = first_contact_reason(255, "pi@10.55.0.1: Permission denied (publickey).")
+    assert "key" in key.lower() and "card" in key.lower(), \
+        "an unauthorised key sends the operator to the card, not the cable"
+    assert "reachable" not in key.lower(), "it plainly was reachable"
+
+    refused = first_contact_reason(255, "ssh: connect to host port 22: Connection refused")
+    assert "listening" in refused.lower() or "not running" in refused.lower()
+
+    gone = first_contact_reason(255, "ssh: connect to host 10.55.0.1 port 22: "
+                                     "Operation timed out")
+    assert "power" in gone.lower(), "a Pi that stops mid-build is usually power"
+
+    # never silently swallow something unrecognised
+    odd = first_contact_reason(3, "some novel failure")
+    assert "some novel failure" in odd
+
+
+def test_detect_hardware_reads_the_error_rather_than_guessing():
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "detect_hardware")
+    line = next(l for l in src.splitlines() if "/proc/cpuinfo" in l)
+    assert "cmd_output" not in line, "cmd_output discards the reason"
+    assert "connection.run" in line
+    assert "first_contact_reason" in src
