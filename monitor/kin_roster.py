@@ -96,3 +96,33 @@ def set_location(rns_hash: str, lat: float, lon: float,
         roster[rns_hash]["lon"] = lon
         _save(roster, path)
     return roster
+
+
+#: A certificate's ``role`` -> the roster type whose DEFAULT_LINKS describe it.
+#: The role string is the one thing every birth records honestly: it comes from
+#: NodeRole, which the build workflow sets from what it actually built.
+_ROLE_TYPES = {
+    "LXMF propagation node": "pi_propagation",   # Pi + RNode: rnsd + lxmd
+    "Transport node": "rtnode2400",              # RTNode-2400, microReticulum
+}
+
+
+def type_for_cert(cert: dict) -> str:
+    """Which roster type this certificate describes.
+
+    THE DEFAULT USED TO BE "rtnode2400" AND IT WAS WRONG FOR EVERY PI. The
+    caller read ``cert.get("type", "rtnode2400")``, no birth has ever written a
+    ``type`` key, so the fallback answered every time — and the first Pi
+    propagation node ever built showed up in VITALS labelled "rtnode2400" with
+    LoRa as its only interface (operator, 2026-08-10, minutes after 2k13 came
+    up). The node had wifi, bluetooth and an internet path, all invisible,
+    because a default had been asked to do a lookup's job.
+
+    ``role`` is the honest signal: NodeRole is set by the build workflow from
+    what it actually built, and it is on every certificate. An unrecognised
+    role returns "" so the caller can decide rather than being handed a guess.
+    """
+    explicit = (cert or {}).get("type")
+    if explicit:
+        return str(explicit)
+    return _ROLE_TYPES.get((cert or {}).get("role", ""), "")

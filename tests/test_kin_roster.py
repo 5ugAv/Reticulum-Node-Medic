@@ -206,3 +206,37 @@ def test_capabilities_reads_lora_up_from_beacon():
     dev = reg.devices(0.0)[0]
     assert dev["capabilities"]["lora"] is True    # was ignored before this fix
     assert dev["capabilities"]["wifi"] is True
+
+
+# --- the type is looked up, never defaulted --------------------------------
+
+def test_a_pi_propagation_cert_is_not_called_an_rtnode():
+    """2026-08-10, the first Pi propagation node ever built: VITALS showed 2k13
+    as "rtnode2400" with LoRa as its only interface. The caller read
+    cert.get("type", "rtnode2400"), no birth has ever written a "type" key, so
+    the fallback answered every time — and DEFAULT_LINKS["rtnode2400"] is
+    LoRa-only, so the node's wifi, bluetooth and internet went invisible."""
+    from monitor.kin_roster import type_for_cert, DEFAULT_LINKS
+    t = type_for_cert({"role": "LXMF propagation node", "board": "Heltec LoRa32 v4"})
+    assert t == "pi_propagation"
+    links = DEFAULT_LINKS[t]
+    assert links["wifi"] and links["internet"], "a Pi has more than a radio"
+
+
+def test_a_transport_node_is_still_an_rtnode():
+    from monitor.kin_roster import type_for_cert
+    assert type_for_cert({"role": "Transport node"}) == "rtnode2400"
+
+
+def test_an_explicit_type_wins():
+    from monitor.kin_roster import type_for_cert
+    assert type_for_cert({"type": "something_new",
+                          "role": "Transport node"}) == "something_new"
+
+
+def test_an_unknown_role_returns_nothing_rather_than_guessing():
+    """Handing back a confident wrong answer is what caused this. Empty lets the
+    caller decide, and makes the decision visible where it is made."""
+    from monitor.kin_roster import type_for_cert
+    assert type_for_cert({"role": "Gateway node"}) == ""
+    assert type_for_cert({}) == ""

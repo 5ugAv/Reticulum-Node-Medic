@@ -166,11 +166,21 @@ class NodeDetailScreen(BoxLayout):
         body.add_widget(col)
         self.add_widget(body)
 
-        self.ping_status = Label(text="", halign="left", valign="middle",
+        # HEIGHT FOLLOWS THE TEXT. Pinned to one line, the two-line answers ran
+        # straight under the button row below and could only be half read —
+        # "Not answering right now — it may be down or out of range. The medic
+        # keeps watching it" lost its second line behind "Ping node now"
+        # (operator, 2026-08-10, on the first node ever birthed). This is the
+        # third label in the project to be pinned at a fixed height and then
+        # overflow; the rule is that any label carrying a SENTENCE sizes itself.
+        self.ping_status = Label(text="", halign="left", valign="top",
                                  font_size=theme.font_sp("13sp"), size_hint_y=None,
                                  height=dp(max(26, theme.line_dp("13sp"))),
                                  color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        self.ping_status.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.ping_status.bind(
+            width=lambda i, w: setattr(i, "text_size", (w, None)),
+            texture_size=lambda i, ts: setattr(
+                i, "height", max(dp(max(26, theme.line_dp("13sp"))), ts[1] + dp(4))))
         self.add_widget(self.ping_status)
 
         actions = BoxLayout(orientation="horizontal", size_hint_y=None,

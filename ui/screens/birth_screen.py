@@ -2922,7 +2922,12 @@ class BirthScreen(BoxLayout):
                 lat, lon = ll[0], ll[1]
             kin_roster.register(
                 h, cert.get("node_name") or cert.get("hostname") or "node",
-                node_type=cert.get("type", "rtnode2400"), lat=lat, lon=lon,
+                # NOT a default — a lookup. See kin_roster.type_for_cert:
+                # "rtnode2400" as the fallback labelled the first Pi propagation
+                # node ever built as an RTNode-2400 and hid its wifi, bluetooth
+                # and internet links (2026-08-10).
+                node_type=kin_roster.type_for_cert(cert) or "rtnode2400",
+                lat=lat, lon=lon,
                 builder=tool_identity.identity_hash())
         except Exception as e:
             print(f"[kin] register skipped: {e}")

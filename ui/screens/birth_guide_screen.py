@@ -2427,6 +2427,20 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line(
             tr("It is off Node Medic and running on its own power now."),
             "14.5sp", color="green", h=26))
+        # GIVE IT TIME TO BOOT BEFORE LOOKING FOR IT.
+        #
+        # This screen appears the moment the operator plugs the node in, and
+        # "See it in VITALS" is right there — so the natural next action is to
+        # press it immediately and find nothing. The node has to boot, start
+        # the mesh software and announce itself first; an empty VITALS in that
+        # window is not a fault, but it looks exactly like one, at the end of a
+        # build the operator has just spent twenty minutes on (operator asked
+        # for this warning, 2026-08-10, on the first birth that ever completed).
+        wrap.add_widget(_line(
+            tr("Give it about two minutes first. It has to boot, start the "
+               "mesh software and announce itself before Node Medic can hear "
+               "it — until then VITALS will not show it, and nothing is wrong."),
+            "14sp", color="amber", h=54))
         wrap.add_widget(Widget())
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(58), spacing=dp(10))

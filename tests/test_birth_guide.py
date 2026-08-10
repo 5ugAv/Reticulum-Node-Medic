@@ -775,3 +775,18 @@ def test_the_standalone_hint_names_no_socket_on_an_unknown_board():
     h = standalone_power_hint("something_we_have_never_seen")
     for socket in ("micro-USB", "USB-C", "PWR IN"):
         assert socket not in h
+
+
+def test_the_closing_screen_says_to_wait_before_looking_in_vitals():
+    """Operator, 2026-08-10, on the first birth that ever completed: this screen
+    appears the moment the node is plugged in, and "See it in VITALS" is right
+    there — so the natural next action is to press it immediately and find
+    nothing. An empty VITALS in that window is not a fault, but at the end of a
+    twenty-minute build it looks exactly like one."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_render_done")
+    # rindex, not index: the explanatory comment above the warning quotes the
+    # button's own label, so searching forwards cut the slice at the comment.
+    body = src[:src.rindex("See it in VITALS")]
+    assert "two minutes" in body, "the wait must be stated, and BEFORE the button"
+    assert "nothing is wrong" in body, "and named as expected, not as a failure"
