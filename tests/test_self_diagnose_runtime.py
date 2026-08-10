@@ -97,3 +97,16 @@ def test_the_drop_in_is_read_not_shell_tested():
     code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
     assert "test -f" not in code, "no shell operators reach safe_shell"
     assert 'unmanaged-devices" in run' in code
+
+
+def test_rns_tools_are_called_by_absolute_path():
+    """pip --user puts every RNS console script in ~/.local/bin, and safe_shell
+    runs without a shell — a non-login subprocess gets
+    PATH=/usr/local/bin:/usr/bin:/bin:/usr/games. Calling "rnstatus" by name
+    could never have worked on this medic."""
+    from tests.srcutil import func_source
+    src = func_source("monitor/self_diagnose_runtime.py", "gather")
+    assert '_tool(\'rnstatus\')' in src or '_tool("rnstatus")' in src
+    helper = func_source("monitor/self_diagnose_runtime.py", "_tool")
+    assert ".local/bin" in helper or "_USER_BIN" in helper
+    assert "return name" in helper, "unresolved falls through honestly, not empty"

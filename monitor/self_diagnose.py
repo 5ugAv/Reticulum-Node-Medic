@@ -339,8 +339,24 @@ def check_rns_responding(rnstatus_output: str) -> Finding:
     rnstatus can't reach it the mesh stack is effectively down; if it answers but no
     interface is Up, the radio/network links are the problem."""
     low = (rnstatus_output or "").lower()
-    if not low.strip() or "could not connect" in low or "connection refused" in low \
-            or "no such" in low:
+    # "I COULD NOT RUN THE TOOL" IS NOT "THE MESH IS DOWN".
+    #
+    # rnstatus lives in ~/.local/bin (pip --user), which a non-login subprocess
+    # does not have on PATH — so the runner handed this check the text
+    # "[errno 2] no such file or directory: 'rnstatus'", it matched "no such",
+    # and PROBE reported the mesh stack down on a medic that was hearing
+    # announces and talking to nodes over LoRa at that moment (2026-08-11).
+    #
+    # The two are different findings and want different actions: one is "restart
+    # rnsd", the other is "the medic cannot find its own tools". Reporting the
+    # first for the second teaches the operator to distrust the screen.
+    if "errno 2" in low or "no such file or directory" in low:
+        return Finding("rns", SEV_WARN,
+                       "Could not run rnstatus, so rnsd's state is unknown — this "
+                       "is not evidence that the mesh is down. rnstatus lives in "
+                       "~/.local/bin; the medic is looking somewhere else.",
+                       data={"unrunnable": True})
+    if not low.strip() or "could not connect" in low or "connection refused" in low:
         return Finding("rns", SEV_CRIT,
                        "rnsd isn't responding (rnstatus can't reach it) — the mesh "
                        "stack is down. Restart it.", fix="restart_rnsd")

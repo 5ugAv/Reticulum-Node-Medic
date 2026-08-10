@@ -173,3 +173,32 @@ def test_the_cable_link_check_actually_runs():
     assert "check_cable_link_unmanaged" in src
     assert "NM_USB0_CONF" in src, "it has to look for the real file"
     assert "NetworkManager" in src, "and read NM's log for the DHCP evidence"
+
+
+def test_a_tool_it_cannot_run_is_not_a_dead_mesh():
+    """2026-08-11: rnstatus lives in ~/.local/bin (pip --user), which a non-login
+    subprocess does not have on PATH. The checker was handed
+    "[Errno 2] No such file or directory: 'rnstatus'", matched "no such", and
+    PROBE reported the mesh stack DOWN on a medic that was hearing announces and
+    talking to nodes over LoRa at that moment.
+
+    The two findings want opposite actions — "restart rnsd" versus "the medic
+    cannot find its own tools" — and reporting the first for the second teaches
+    the operator to distrust the screen."""
+    from monitor.self_diagnose import check_rns_responding, SEV_WARN, SEV_CRIT
+    f = check_rns_responding("[Errno 2] No such file or directory: 'rnstatus'")
+    assert f.severity == SEV_WARN
+    assert "not evidence that the mesh is down" in f.detail
+    assert f.fix is None, "restarting rnsd would not help and would be a lie"
+
+    # a genuinely dead daemon is still critical
+    dead = check_rns_responding("Could not connect to shared instance")
+    assert dead.severity == SEV_CRIT and dead.fix == "restart_rnsd"
+
+
+def test_a_working_mesh_still_reads_as_working():
+    from monitor.self_diagnose import check_rns_responding, SEV_OK
+    out = ("Shared Instance[rns/default]\n   Status : Up\n"
+           "RNodeInterface[RNode LoRa Interface]\n   Status : Up\n")
+    f = check_rns_responding(out)
+    assert f.severity == SEV_OK and f.data["interfaces_up"] == 2

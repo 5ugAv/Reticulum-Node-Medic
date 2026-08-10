@@ -10,6 +10,7 @@ deeper firmware probe (which does reset the board) is a separate, explicit actio
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Callable, List, Tuple
 
@@ -41,6 +42,26 @@ def _splitter_cpu_uptime(run: Runner) -> Tuple[float, float]:
         return 0.0, 0.0
 
 
+#: Where pip --user puts the RNS console scripts (rnsd, rnstatus, rnpath...).
+#: Not on a non-login subprocess's PATH, which is how PROBE came to report the
+#: mesh stack down on a medic that was talking to nodes at the time.
+_USER_BIN = os.path.expanduser("~/.local/bin")
+
+
+def _tool(name: str) -> str:
+    """*name* as an absolute path if we can find it, else *name* unchanged.
+
+    Unchanged rather than empty on purpose: a check that receives a plain name
+    and fails to run it still produces an honest "could not run" finding, which
+    is better than a silently skipped check.
+    """
+    for d in (_USER_BIN, "/usr/local/bin", "/usr/bin", "/bin"):
+        p = os.path.join(d, name)
+        if os.path.exists(p):
+            return p
+    return name
+
+
 def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     """Run the SAFE checks against the medic's own onboard radio/GPS board."""
     findings = [sd.check_usb_present(run("ls /dev/serial/by-id/ 2>/dev/null"))]
@@ -59,7 +80,10 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_wifi(
         run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
     findings.append(sd.check_clock_sync(run("timedatectl show 2>/dev/null"), now_fn()))
-    findings.append(sd.check_rns_responding(run("rnstatus 2>/dev/null")))
+    # BY ABSOLUTE PATH. safe_shell runs without a shell and a non-login
+    # subprocess gets PATH=/usr/local/bin:/usr/bin:/bin:/usr/games — which does
+    # not include ~/.local/bin, where pip --user puts every RNS console script.
+    findings.append(sd.check_rns_responding(run(f"{_tool('rnstatus')} 2>/dev/null")))
     # lxmd is mode-aware: only expected when this medic is a HOME propagation node
     mode = run("cat ~/.reticulum-node-medic/node_mode 2>/dev/null").strip().lower()
     profile = run("cat ~/.reticulum-node-medic/home_profile 2>/dev/null").strip().lower()
