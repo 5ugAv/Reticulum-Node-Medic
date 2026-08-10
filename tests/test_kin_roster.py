@@ -131,9 +131,16 @@ def test_service_ignores_self_and_local_vias():
     assert set(reg.nodes) == {"bb22"}              # no self-via phantom
 
 
-def test_kin_declared_links_show_in_capabilities():
-    """A kin Pi propagation node the medic only HEARS on LoRa still shows its real
-    wifi/bt/internet in VITALS, because the roster declares what it physically has."""
+def test_a_roster_declaration_does_not_become_a_working_interface():
+    """REVERSED ON PURPOSE, 2026-08-10. This test used to assert that a roster
+    entry saying "this board has wifi and bluetooth" made VITALS show wifi and
+    bluetooth as WORKING on a node the medic had only ever heard on LoRa.
+
+    It caught up with us on SolarLove: the row showed BT for a node whose
+    Bluetooth adapter was rfkill-blocked and had never been asked about. The
+    operator's rule — nothing is stated unless it is true, and what is true is
+    what the NODE said — makes a datasheet inadmissible as evidence about a
+    particular node on a particular roof."""
     reg = NodeRegistry()
     reg.set_kin_roster({EVERYWHERE: {"name": "EVERYWHERE", "type": "pi_propagation",
                                      "links": {"lora": True, "wifi": True,
@@ -141,23 +148,44 @@ def test_kin_declared_links_show_in_capabilities():
     reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=10.0)   # heard on LoRa only
     dev = next(d for d in reg.devices(now=10.0) if d.get("name") == "EVERYWHERE")
     caps = dev["capabilities"]
-    assert caps["lora"] is True and caps["wifi"] is True
-    assert caps["bluetooth"] is True and caps["internet"] is True
+    assert caps["lora"] is True, "heard over the radio IS evidence"
+    for unheard in ("wifi", "bluetooth", "internet"):
+        assert caps[unheard] is None, (
+            f"{unheard} was never reported by the node — unknown, not working")
 
 
-def test_register_defaults_links_by_node_type(tmp_path):
+def test_register_records_no_links_it_was_not_given(tmp_path):
+    """It used to fall back to the board type's datasheet and write that into the
+    roster as fact, where the display read it straight back out. An assumption
+    that gets persisted stops looking like an assumption."""
     path = str(tmp_path / "kin.json")
     kin_roster.register(EVERYWHERE, "EVERYWHERE", "pi_propagation", path=path)
-    links = kin_roster.load_roster(path)[EVERYWHERE]["links"]
-    assert links == {"lora": True, "wifi": True, "bluetooth": True, "internet": True}
+    entry = kin_roster.load_roster(path)[EVERYWHERE]
+    assert not entry.get("links"), "no links were measured, so none are recorded"
 
 
-def test_kin_rtnode_declares_lora_by_type():
-    """FAITH (an RTNode-2400 reached over WiFi) must still show LoRa — an RTNode is
-    definitionally a LoRa node. Declared by node type, but ONLY because it's kin."""
+def test_register_still_records_links_it_was_given(tmp_path):
+    """A deliberate answer — an operator choosing Bluetooth at birth, or a
+    measurement — is evidence and is kept."""
+    path = str(tmp_path / "kin.json")
+    kin_roster.register(EVERYWHERE, "EVERYWHERE", "pi_propagation",
+                        links={"bluetooth": False}, path=path)
+    assert kin_roster.load_roster(path)[EVERYWHERE]["links"] == {"bluetooth": False}
+
+
+def test_even_an_rtnode_has_to_say_so_itself():
+    """"An RTNode-2400 is definitionally a LoRa node" was the most defensible
+    version of the assumption, and it is still an assumption: a node that has
+    said nothing may be off, may be broken, may have lost its antenna. Registered
+    and never heard from, it shows unknown — and the moment it IS heard on the
+    radio, or reports lora_up in its beacon, that becomes True on evidence."""
     reg = NodeRegistry()
     reg.register("fa02cafe", name="FAITH RTnode", node_type="rtnode2400")  # kin (named)
     dev = next(d for d in reg.devices(now=0.0) if d.get("name") == "FAITH RTnode")
+    assert dev["capabilities"]["lora"] is None
+
+    reg.ingest_relay("fa02cafe", "RNodeInterface", now=1.0)     # now it has spoken
+    dev = next(d for d in reg.devices(now=1.0) if d.get("name") == "FAITH RTnode")
     assert dev["capabilities"]["lora"] is True
 
 
@@ -216,11 +244,14 @@ def test_a_pi_propagation_cert_is_not_called_an_rtnode():
     cert.get("type", "rtnode2400"), no birth has ever written a "type" key, so
     the fallback answered every time — and DEFAULT_LINKS["rtnode2400"] is
     LoRa-only, so the node's wifi, bluetooth and internet went invisible."""
-    from monitor.kin_roster import type_for_cert, DEFAULT_LINKS
+    from monitor.kin_roster import type_for_cert, CAPABLE_OF
     t = type_for_cert({"role": "LXMF propagation node", "board": "Heltec LoRa32 v4"})
     assert t == "pi_propagation"
-    links = DEFAULT_LINKS[t]
-    assert links["wifi"] and links["internet"], "a Pi has more than a radio"
+    # CAPABLE_OF is reference material — what a board of this class CAN have. It
+    # is deliberately not consulted by anything that draws a screen; see
+    # monitor/registry.py _capabilities. The type still has to be right, because
+    # it is how the medic knows what to ASK about a node.
+    assert CAPABLE_OF[t]["wifi"], "a Pi is capable of more than a radio"
 
 
 def test_a_transport_node_is_still_an_rtnode():
@@ -240,3 +271,43 @@ def test_an_unknown_role_returns_nothing_rather_than_guessing():
     from monitor.kin_roster import type_for_cert
     assert type_for_cert({"role": "Gateway node"}) == ""
     assert type_for_cert({}) == ""
+
+
+# --- nothing is stated unless the node said it -----------------------------
+
+def test_capabilities_never_invents_an_interface(tmp_path):
+    """The rule the operator drew on 2026-08-10, after VITALS showed Bluetooth
+    for a node whose adapter was rfkill-blocked and had never been asked:
+    nothing is stated unless it is true, and what is true is what the NODE said.
+    A board's datasheet is not evidence about the thing on the roof."""
+    reg = NodeRegistry()
+    reg.register("aabbccdd", name="ROOFTOP", node_type="pi_propagation")
+    dev = next(d for d in reg.devices(now=0.0) if d.get("name") == "ROOFTOP")
+    caps = dev["capabilities"]
+    assert set(caps) == {"lora", "wifi", "bluetooth", "internet"}
+    assert all(v is None for v in caps.values()), \
+        "a node that has said nothing has claimed nothing"
+
+
+def test_bluetooth_is_never_claimed_from_a_board_type():
+    """The specific one that was wrong on screen. No node reports Bluetooth
+    today, so it must read unknown everywhere until one does."""
+    reg = NodeRegistry()
+    reg.set_kin_roster({EVERYWHERE: {"name": "EVERYWHERE", "type": "pi_propagation",
+                                     "links": {"bluetooth": True}}})
+    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=5.0)
+    dev = next(d for d in reg.devices(now=5.0) if d.get("name") == "EVERYWHERE")
+    assert dev["capabilities"]["bluetooth"] is None
+
+
+def test_the_three_states_are_kept_apart_on_screen():
+    """True/False/None used to collapse into two looks — green for working and
+    one grey for both "the node says it is down" and "never mentioned". That
+    shared grey is the gap the board-type guess was poured into."""
+    from tests.srcutil import func_source
+    src = open("ui/screens/vitals_screen.py").read()
+    assert "state is False" in src, "reported-down needs its own look"
+    assert 'COLORS[colour]' in src or '"amber"' in src
+    detail = open("ui/screens/node_detail_screen.py").read()
+    assert "not reported by the node" in detail
+    assert "down — the node says so" in detail

@@ -44,11 +44,13 @@ def _save(roster: dict, path: str) -> None:
     write_json(path, roster, indent=2, sort_keys=True)
 
 
-#: Interfaces a node class physically HAS (the medic only hears LoRa, so it can't
-#: infer these — a Pi 3A+ propagation node has onboard wifi + bluetooth, and its
-#: internet rides that wifi; it has no Ethernet port). VITALS shows these unless a
-#: live reading contradicts them.
-DEFAULT_LINKS = {
+#: What a board of this class CAN have. Reference only — never a claim about a
+#: particular node, and deliberately not consulted by anything that draws a
+#: screen. A node's interfaces are whatever the node itself reports; its board's
+#: datasheet is not evidence about the thing on the roof. Kept because it is
+#: genuinely useful when deciding what to ASK an operator at birth, and as the
+#: record of why the assumption was tempting.
+CAPABLE_OF = {
     "pi_propagation": {"lora": True, "wifi": True, "bluetooth": True, "internet": True},
     "pi": {"lora": True, "wifi": True, "bluetooth": True, "internet": True},
     # An RTNode-2400 is definitionally a LoRa mesh node; its WiFi config AP may be
@@ -78,7 +80,12 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
         entry["lat"] = lat
     if lon is not None:
         entry["lon"] = lon
-    resolved = links if links is not None else DEFAULT_LINKS.get(node_type)
+    # ONLY WHAT WAS ACTUALLY DECIDED OR MEASURED. This used to fall back to
+    # DEFAULT_LINKS — the board type's datasheet — and write that into the
+    # roster as though it were fact, where the display then read it back and
+    # showed it to the operator as a working interface. See _capabilities in
+    # monitor/registry.py for where that surfaced, and what it cost.
+    resolved = links
     if resolved is not None:
         entry["links"] = resolved
     roster[rns_hash] = entry
@@ -98,7 +105,7 @@ def set_location(rns_hash: str, lat: float, lon: float,
     return roster
 
 
-#: A certificate's ``role`` -> the roster type whose DEFAULT_LINKS describe it.
+#: A certificate's ``role`` -> the roster type for this node.
 #: The role string is the one thing every birth records honestly: it comes from
 #: NodeRole, which the build workflow sets from what it actually built.
 _ROLE_TYPES = {

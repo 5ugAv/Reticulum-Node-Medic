@@ -48,7 +48,7 @@ class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
-                 **kwargs):
+                 capabilities=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -88,6 +88,46 @@ class NodeDetailScreen(BoxLayout):
                 status=f"{batt}%" if batt is not None else tr("not reported")),
             color=("text_secondary" if batt is None else
                    "green" if batt > 50 else "amber" if batt > 20 else "red")))
+
+        # SIGNAL, and WHEN it was measured. A dBm figure with no timestamp is a
+        # trap on a node that has since moved, gone quiet or lost its antenna —
+        # it reads as current and is not (operator asked for transmission
+        # strength on this screen, 2026-08-10).
+        sig = getattr(record, "signal_dbm", None)
+        if sig is not None:
+            self.add_widget(_line(
+                tr("Signal when last heard: {dbm} dBm").format(dbm=sig),
+                color=("green" if sig > -90 else "amber" if sig > -110 else "red")))
+        else:
+            self.add_widget(_line(tr("Signal: not measured"),
+                                  color="text_secondary"))
+
+        # CONNECTIONS, IN WORDS, AND ONLY WHAT THE NODE SAID.
+        #
+        # The chips in VITALS are a glance; this is the place that has room to
+        # be explicit. The three states are kept apart on purpose — "not
+        # reported" is not a quiet way of saying "off", it means the node has
+        # never mentioned it and the medic is not going to guess from the
+        # board's datasheet. That guess is exactly what showed Bluetooth on a
+        # node whose adapter was switched off (SolarLove, 2026-08-10), and the
+        # rule that came out of it: nothing is stated unless it is true, and
+        # what is true is what the node said.
+        # PASSED IN, not read off the record: the registry is what knows what
+        # the node has said, and it is the only thing entitled to an opinion.
+        caps = capabilities
+        if isinstance(caps, dict):
+            self.add_widget(_line(tr("Connections"), bold=True, size="17sp"))
+            for key, label in (("lora", tr("LoRa radio")), ("wifi", tr("Wi-Fi")),
+                               ("bluetooth", tr("Bluetooth")),
+                               ("internet", tr("Internet"))):
+                st = caps.get(key)
+                word = (tr("working") if st is True
+                        else tr("down — the node says so") if st is False
+                        else tr("not reported by the node"))
+                self.add_widget(_line(
+                    "  " + label + ": " + word, size="14sp",
+                    color=("green" if st is True
+                           else "amber" if st is False else "text_secondary")))
 
         if watch_line:
             wl = Label(text=watch_line, halign="left", valign="top",

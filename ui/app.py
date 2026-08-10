@@ -1338,13 +1338,26 @@ class ReticulumNodeMedicApp(App):
             insights = analyse(pts, now)
         except Exception:
             pass
+        # THE NODE'S OWN ACCOUNT OF ITS INTERFACES. Computed by the registry
+        # from what the node has actually said — heard on an interface, or
+        # self-reported — and passed in rather than looked up from its board
+        # type. See monitor/registry.py _capabilities for why that distinction
+        # is the whole point.
+        caps = None
+        try:
+            for d in self.monitor_service.registry.devices(now=now):
+                if d.get("dst_hash") == rec.dst_hash:
+                    caps = d.get("capabilities")
+                    break
+        except Exception:                                      # noqa: BLE001
+            caps = None
         from ui.screens.node_detail_screen import NodeDetailScreen
         scr = self.sm.get_screen("node_detail")
         scr.clear_widgets()
         scr.add_widget(self._with_back(NodeDetailScreen(
             rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
-            insights=insights)))
+            insights=insights, capabilities=caps)))
         self.switch_mode("node_detail")
 
     def _local_tz_offset_hours(self):

@@ -99,14 +99,29 @@ class NodeRow(BoxLayout):
                               height=dp(18), spacing=dp(10))
             for key, label in (("lora", "LORA"), ("wifi", "WIFI"),
                                ("bluetooth", "BT"), ("internet", "NET")):
-                active = caps.get(key) is True
+                # THREE STATES, THREE LOOKS. True/False/None used to collapse
+                # into two: green for working, one grey for everything else —
+                # so "the node says this is down" and "the node has never
+                # mentioned it" were indistinguishable. That is the gap the
+                # board-type guess used to be poured into, and it is how VITALS
+                # came to show BT on a node whose Bluetooth was switched off
+                # (SolarLove, 2026-08-10).
+                #
+                #   green bold   the node reported it working — evidence
+                #   amber        the node reported it DOWN — actionable
+                #   faint grey   never mentioned — unknown, and not a claim
+                state = caps.get(key)
+                active = state is True
+                colour = ("green" if active
+                          else "amber" if state is False
+                          else "text_secondary")
                 chip = Label(text=label, font_size="11sp", bold=active,
                              halign="left", valign="middle",
                              size_hint_x=None, width=dp(44),
                              color=theme.hex_to_rgba(
-                                 theme.COLORS["green"] if active
-                                 else theme.COLORS["text_secondary"],
-                                 1.0 if active else 0.45))
+                                 theme.COLORS[colour],
+                                 1.0 if active else 0.8 if state is False
+                                 else 0.3))
                 chip.bind(size=lambda i, v: setattr(i, "text_size", v))
                 chips.add_widget(chip)
             if node.get("aspects", 1) > 1:

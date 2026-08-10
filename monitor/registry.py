@@ -57,23 +57,24 @@ def _capabilities(members) -> dict:
                 wifi = bool(beacon.wifi_up)
             if internet is None:
                 internet = bool(beacon.tcp_backbone_up)
-    from monitor.kin_roster import DEFAULT_LINKS
-    caps = {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
-    # KIN nodes declare the interfaces they physically have — a Pi 3A+ propagation
-    # node has wifi + bluetooth (internet rides that wifi); an RTNode-2400 is always
-    # a LoRa node. The medic only HEARS one interface, so without this they'd read
-    # single-transport. Sources: an explicit roster ``links`` entry, then the
-    # node-type default (kin only — never guess for an anonymous neighbour). A live
-    # reading (True/False above) always wins over a declared capability.
-    for r in members:
-        declared = dict(getattr(r, "links", None) or {})
-        if r.provenance == "kin":
-            for k, v in DEFAULT_LINKS.get(r.node_type, {}).items():
-                declared.setdefault(k, v)
-        for k, v in declared.items():
-            if v and caps.get(k) is None:
-                caps[k] = True
-    return caps
+    # NOTHING IS ADDED HERE. Everything above came from the node itself — heard
+    # over an interface, or self-reported in its own health beacon or /status.
+    #
+    # THIS USED TO PROMOTE DECLARED CAPABILITIES TO TRUE. A kin node's board
+    # type was looked up in DEFAULT_LINKS ("a Pi 3 A+ has wifi and bluetooth")
+    # and anything the node had not spoken about was filled in as working. The
+    # docstring above already promised the honest three states; the guess was
+    # bolted on beneath it.
+    #
+    # It caught up with us on SolarLove, 2026-08-10: VITALS showed BT for a node
+    # whose Bluetooth adapter was rfkill-blocked and had never been asked. The
+    # operator spotted it — "SolarLove doesn't have Bluetooth access" — and drew
+    # the rule this now follows: nothing is stated unless it is true, and what
+    # is true is what the NODE said, never what its board could in principle do.
+    #
+    # A board's datasheet is not a node's state. An interface the node has not
+    # mentioned stays None and renders as unknown, which is the truth.
+    return {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
 
 
 def _printable_name(app_data) -> str:
