@@ -162,3 +162,14 @@ def test_missing_config_without_evidence_is_a_warning_not_a_crisis():
     from monitor.self_diagnose import check_cable_link_unmanaged, SEV_WARN
     f = check_cable_link_unmanaged(conf_present=False, nm_log_tail="")
     assert f.severity == SEV_WARN
+
+
+def test_the_cable_link_check_actually_runs():
+    """A check that exists but is never called is a check that does not exist.
+    This one was written and left unwired for an hour — the same shape as the
+    bug it catches, where the medic diagnosed everything except itself."""
+    from tests.srcutil import func_source
+    src = func_source("monitor/self_diagnose_runtime.py", "gather")
+    assert "check_cable_link_unmanaged" in src
+    assert "NM_USB0_CONF" in src, "it has to look for the real file"
+    assert "NetworkManager" in src, "and read NM's log for the DHCP evidence"

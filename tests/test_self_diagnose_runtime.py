@@ -32,10 +32,13 @@ def test_gather_all_healthy():
         "rnstatus": "Shared Instance[37428]\n  Status  : Up",
         "node_mode": "home",
         "is-active lxmd": "active",
+        # the NetworkManager drop-in that keeps the cable-birth link alive
+        "99-nodemedic-usb0.conf": "yes",
     })
     findings = rt.gather(run=run, now_fn=lambda: now)
-    assert all(f.severity == SEV_OK for f in findings)
-    assert len(findings) == 11                       # 3 radio/gps + 8 system health
+    assert all(f.severity == SEV_OK for f in findings), \
+        [f"{f.check}: {f.detail}" for f in findings if f.severity != SEV_OK]
+    assert len(findings) == 12                       # 3 radio/gps + 9 system health
 
 
 def test_gather_catches_the_jonesey_incident():

@@ -66,6 +66,14 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     wants_prop = mode == "home" and profile != "transport"     # default = propagation
     lxmd_active = run("systemctl is-active lxmd 2>/dev/null").strip() == "active"
     findings.append(sd.check_lxmd(lxmd_active, wants_prop))
+    # THE OTHER END OF THE CABLE. The medic checks its own rail, its own USB and
+    # its own services, and never asked whether its own NetworkManager was
+    # eating the cable-birth link — which it was, killing builds for an evening
+    # while the blame went to a power supply, a new cable, two Pis and two USB
+    # ports (2026-08-11). The node side had been immune for months.
+    findings.append(sd.check_cable_link_unmanaged(
+        run(f"test -f {sd.NM_USB0_CONF} && echo yes 2>/dev/null").strip() == "yes",
+        run("journalctl -u NetworkManager -n 200 --no-pager 2>/dev/null")))
     return findings
 
 
