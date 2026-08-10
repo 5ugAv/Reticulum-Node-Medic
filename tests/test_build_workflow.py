@@ -14,6 +14,7 @@ EXPECTED_STEPS = [
     "set_firmware_radio_parameters",
     "write_reticulum_config",
     "install_software_stack",
+    "install_radio_rule",
     "configure_services",
     "install_health_reporter",
     "apply_system_hardening",
@@ -229,7 +230,12 @@ def test_write_config_substitutes_placeholders():
     rendered = w.rendered_config
     assert "{{" not in rendered
     assert "}}" not in rendered
-    assert w.profile.radio.serial_port in rendered
+    # NOT the detected port. On the board this tool is built around the radio
+    # cannot be attached during the build, so serial_port is whatever the
+    # default happened to be — and it was baked into every node ever birthed.
+    from workflows.build import RNODE_SYMLINK
+    assert RNODE_SYMLINK in rendered
+    assert "/dev/ttyUSB0" not in rendered
     assert "enable_transport = Yes" in rendered
 
 
@@ -338,7 +344,11 @@ def test_install_fails_without_wheels_or_internet():
 def test_hardening_stages_deb_on_node_and_uses_remote_path():
     conn = build_conn(rnode=True)
     w = wf(conn)
-    w.steps[8][1](w)            # apply_system_hardening (index shifts if steps change)
+    # BY NAME, not by index. The old form was w.steps[8][1] with a comment
+    # admitting "index shifts if steps change" — and it duly broke the moment a
+    # step was inserted before it. A test that has to be renumbered by hand is a
+    # test that will one day be renumbered wrong.
+    _run_step(w, "apply_system_hardening")
     assert any(dst == f"{REMOTE_ASSET_DIR}/log2ram.deb" for _, dst in conn.pushed)
     dpkg_cmd = next(c for c in conn.history if "dpkg -i" in c)
     assert REMOTE_ASSET_DIR in dpkg_cmd
@@ -673,3 +683,49 @@ def test_detect_hardware_reads_the_error_rather_than_guessing():
     assert "cmd_output" not in line, "cmd_output discards the reason"
     assert "connection.run" in line
     assert "first_contact_reason" in src
+
+
+# --- the radio the build never gets to meet --------------------------------
+
+def test_the_config_never_names_a_port_the_build_could_not_have_seen():
+    """2026-08-10, SolarLove and 2k13. A Pi 3 A+ has ONE USB-A socket and the
+    medic's cable is in it, so the radio is physically absent for the whole
+    build. detect_rnode_port() looks for it, finds nothing, and NodeProfile's
+    /dev/ttyUSB0 default survives into the node's Reticulum config — while the
+    Heltec V4 is native USB and comes up as /dev/ttyACM0. rnsd opened a device
+    that would never exist, and two nodes went into the world born, powered,
+    antenna on, and mute."""
+    from workflows.build import RNODE_SYMLINK
+    assert RNODE_SYMLINK.startswith("/dev/")
+    assert "tty" not in RNODE_SYMLINK, "a symlink, not a guess at a port name"
+
+
+def test_the_udev_rule_covers_every_radio_this_tool_flashes():
+    from workflows.build import rnode_udev_rules
+    r = rnode_udev_rules()
+    for vid, why in (("303a", "Espressif ESP32-S3 — Heltec V3/V4"),
+                     ("10c4", "CP210x — older Heltec"),
+                     ("1a86", "CH340"),
+                     ("239a", "RAK4631 nRF52840")):
+        assert f'"{vid}"' in r, f"no rule for {why}"
+    assert 'SYMLINK+="rnode"' in r
+
+
+def test_the_rule_lets_systemd_see_the_device_and_recovers_a_hot_plug():
+    """Two different needs. TAG+="systemd" is what makes dev-rnode.device exist
+    so a unit can wait on it. The try-restart is for the field order — "unplug
+    the Pi, put the radio on it, give it power" — where the radio may arrive
+    after rnsd has already given up on a port that was not there."""
+    from workflows.build import rnode_udev_rules
+    r = rnode_udev_rules()
+    assert 'TAG+="systemd"' in r
+    assert "try-restart rnsd" in r
+    assert "--no-block" in r, "a blocking systemctl inside udev can deadlock it"
+
+
+def test_the_rule_is_written_before_the_services_start():
+    """Otherwise rnsd starts first, fails to find the radio, and only recovers
+    on the hot-plug path — which is the fragile one."""
+    from workflows.build import _BUILD_STEPS
+    names = [n for n, _ in _BUILD_STEPS]
+    assert names.index("install_radio_rule") < names.index("configure_services")

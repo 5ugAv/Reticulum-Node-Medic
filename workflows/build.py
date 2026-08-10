@@ -469,6 +469,84 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
     return StepResult("install_software_stack", True, installed)
 
 
+#: The stable name the node's Reticulum config points its radio at.
+#:
+#: NOT a detected port. On a Pi 3 A+ the radio CANNOT be attached while the
+#: build runs — the board has exactly one USB-A socket, and the medic's cable is
+#: in it. So detect_rnode_port() looks for a radio that is physically absent,
+#: finds nothing, and NodeProfile's /dev/ttyUSB0 default survives into the
+#: node's config. A Heltec V4 is native USB and comes up as /dev/ttyACM0, so
+#: rnsd opened a device that would never exist and the radio was never touched:
+#: born, powered, antenna on, and mute. Two nodes went out that way on
+#: 2026-08-10 before the operator spotted it on the RNode's own screen — a
+#: working radio reads "On @ 1.8kbps" with a filled bar, theirs sat on the
+#: version screen with an empty one, which is the display saying "no host has
+#: opened me".
+#:
+#: A udev symlink removes the question. Whatever port the radio lands on,
+#: whenever it is plugged in, it is /dev/rnode.
+RNODE_SYMLINK = "/dev/rnode"
+
+#: USB vendor:product of every radio this tool flashes, as udev sees them.
+#: Vendor alone is enough and stays right when a board revision changes its
+#: product id.
+_RNODE_USB_VENDORS = (
+    ("303a", "Espressif native USB (ESP32-S3: Heltec V3/V4, T-Beam Supreme)"),
+    ("10c4", "Silicon Labs CP210x (older Heltec, LilyGO)"),
+    ("1a86", "WCH CH340/CH9102"),
+    ("0403", "FTDI"),
+    ("239a", "Adafruit/Nordic CDC (RAK4631 nRF52840)"),
+)
+
+
+def rnode_udev_rules() -> str:
+    """The udev rules that give any attached radio a stable name.
+
+    TAG+="systemd" is what lets systemd see it as dev-rnode.device, so a unit
+    can wait on it. The try-restart is for the HOT-PLUG case — the field order
+    is "unplug the Pi from the medic, put the radio on it, give it power", so
+    the radio usually arrives at boot and udev wins the race anyway; but when it
+    does not, rnsd has already given up on a port that did not exist, and only a
+    restart makes it look again. --no-block because a blocking systemctl inside
+    a udev rule can deadlock the device manager.
+    """
+    lines = [
+        "# Node Medic: give the attached RNode a stable name.",
+        "# Written at birth. See workflows/build.py (RNODE_SYMLINK).",
+    ]
+    for vid, why in _RNODE_USB_VENDORS:
+        lines.append(f"# {why}")
+        lines.append(
+            f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vid}", '
+            f'SYMLINK+="{RNODE_SYMLINK.rsplit("/", 1)[-1]}", TAG+="systemd", '
+            f'RUN+="/bin/systemctl --no-block try-restart rnsd.service"')
+    return "\n".join(lines) + "\n"
+
+
+@build_step
+def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
+    """Give the node a stable name for its radio, before the services start.
+
+    Runs whether or not a radio is attached — the whole point is that it works
+    for the radio that is not here yet.
+    """
+    rules = rnode_udev_rules()
+    heredoc = (f"{wf.priv('tee /etc/udev/rules.d/60-rnode.rules')} "
+               f">/dev/null <<'RTTEOF'\n{rules}\nRTTEOF")
+    code, out, err = wf.connection.run(heredoc)
+    if code != 0:
+        return StepResult("install_radio_rule", False,
+                          f"Could not write the radio's udev rule: {err or out}")
+    # Reload so a radio plugged in later is named without a reboot. A node that
+    # boots with its radio attached does not need this; one being assembled on
+    # the bench does.
+    wf.connection.run(wf.priv("udevadm control --reload-rules"))
+    wf.connection.run(wf.priv("udevadm trigger --subsystem-match=tty"))
+    return StepResult("install_radio_rule", True,
+                      f"The radio will answer to {RNODE_SYMLINK} whenever it is "
+                      "plugged in, on whichever port it lands.")
+
+
 @build_step
 def configure_services(wf: "BuildWorkflow") -> StepResult:
     user = wf.run_user()
@@ -817,7 +895,11 @@ class BuildWorkflow:
             template = fh.read()
         r = self.profile.radio
         subs = {
-            "{{SERIAL_PORT}}": r.serial_port,
+            # THE SYMLINK, NOT r.serial_port. See RNODE_SYMLINK: on the board
+            # this tool is built around, the radio cannot be attached while the
+            # build runs, so r.serial_port is whatever the default happened to
+            # be — and it was wrong for every Pi ever birthed.
+            "{{SERIAL_PORT}}": RNODE_SYMLINK,
             "{{FREQUENCY}}": str(int(r.frequency_mhz * 1_000_000)),
             "{{BANDWIDTH}}": str(int(r.bandwidth_khz * 1000)),
             "{{SF}}": str(r.spreading_factor),
