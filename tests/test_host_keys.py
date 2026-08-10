@@ -108,3 +108,72 @@ def test_check_reachable_flags_changed_key_as_tamper():
 def test_check_reachable_plain_failure_is_unreachable():
     c = _conn(255, "ssh: connect to host 10.55.0.1 port 22: Connection timed out")
     assert c.check_reachable() == (False, "unreachable")
+
+
+# --- the identity a new card destroys -------------------------------------
+
+def test_forget_host_key_removes_only_that_host(tmp_path):
+    from provisioning import host_keys
+    p = tmp_path / "known_hosts"
+    p.write_text("10.55.0.1 ssh-ed25519 AAAAold\n"
+                 "other.local ssh-ed25519 AAAAkeep\n")
+    gone = host_keys.forget_host_key("10.55.0.1", paths=[str(p)])
+    assert gone == 1
+    left = p.read_text()
+    assert "AAAAold" not in left and "AAAAkeep" in left
+
+
+def test_it_cleans_the_ORDINARY_known_hosts_too(tmp_path):
+    """The bug was in ~/.ssh/known_hosts, not the pinned file. Nothing in this
+    project ever wrote there deliberately — `accept-new` did, behind our backs —
+    so nothing thought to clean it."""
+    from provisioning import host_keys
+    files = host_keys.known_hosts_files(pinned=str(tmp_path / "pinned"))
+    assert any(f.endswith("/.ssh/known_hosts") for f in files)
+    assert any("reticulum-node-medic" in f or f.endswith("pinned") for f in files)
+
+
+def test_a_new_card_forgets_the_cable_address_and_the_name(tmp_path):
+    """Every cable-born node answers on 10.55.0.1, so the stale key breaks the
+    NEXT birth, not the one that made it. A rebirth reuses the name too."""
+    from provisioning import host_keys
+    p = tmp_path / "kh"
+    p.write_text("10.55.0.1 ssh-ed25519 AAAAcable\n"
+                 "y2k8 ssh-ed25519 AAAAshort\n"
+                 "y2k8.local ssh-ed25519 AAAAmdns\n"
+                 "someone.else ssh-ed25519 AAAAkeep\n")
+    gone = host_keys.forget_reimaged_node("y2k8", paths=[str(p)])
+    assert gone == 3
+    assert p.read_text().strip() == "someone.else ssh-ed25519 AAAAkeep"
+
+
+def test_a_missing_known_hosts_is_not_an_error(tmp_path):
+    from provisioning import host_keys
+    assert host_keys.forget_reimaged_node("x", paths=[str(tmp_path / "nope")]) == 0
+
+
+def test_the_imager_forgets_it_at_the_moment_it_writes_the_card():
+    """Not at connect time — at the moment the old identity ceases to exist.
+    Anywhere later and the failure has already happened."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/pi_imager_screen.py", "_flash")
+    assert "forget_reimaged_node" in src
+    assert src.index("if ok:") < src.index("forget_reimaged_node"), \
+        "only after a card was actually written"
+
+
+def test_hashed_entries_are_removed_by_ssh_keygen_not_a_line_scan(tmp_path):
+    """OpenSSH hashes known_hosts by default — the real file on the medic is all
+    `|1|...` — so `line.split()[0] == host` matches nothing and returns a
+    confident zero. That is what the first version of this did, and it reported
+    success while removing nothing."""
+    from provisioning import host_keys
+    p = tmp_path / "kh"
+    p.write_text("|1|abc=|def= ssh-ed25519 AAAAhashed\n")
+    calls = []
+    # the runner stands in for ssh-keygen: prove we DELEGATE, and to the right file
+    host_keys.forget_host_key("10.55.0.1", paths=[str(p)],
+                              runner=lambda argv: calls.append(argv))
+    assert calls, "a hashed file cannot be cleaned by string matching"
+    assert calls[0][:2] == ["ssh-keygen", "-f"]
+    assert calls[0][1:] == ["-f", str(p), "-R", "10.55.0.1"]

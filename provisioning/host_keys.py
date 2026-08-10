@@ -170,3 +170,89 @@ def write_known_hosts(host: str, line: str, path: str = PINNED_KNOWN_HOSTS,
     except OSError:
         return False
     return True
+
+
+#: Every cable-born node answers on the SAME address. That is the point of the
+#: /29 — no network, no names, no operator input — and it is also why a stale key
+#: here does not break the birth that made it, but the NEXT one.
+CABLE_ADDRESS = "10.55.0.1"
+
+#: Both files that can refuse a connection: the medic's own pinned file, and the
+#: ordinary OpenSSH one that ``accept-new`` writes to behind our backs. The bug
+#: on 2026-08-10 was in the SECOND: nothing in this project had ever written to
+#: it deliberately, so nothing thought to clean it.
+def known_hosts_files(pinned: str = PINNED_KNOWN_HOSTS) -> List[str]:
+    return [pinned, os.path.expanduser("~/.ssh/known_hosts")]
+
+
+def forget_host_key(host: str, paths: Optional[List[str]] = None,
+                    port: int = 22, runner=None) -> int:
+    """Drop every stored key for *host*. Returns how many entries went.
+
+    THIS IS NOT "TRUST A CHANGED KEY". C1 exists because a key that changes
+    under you may mean the node was swapped or is being impersonated, and that
+    warning must keep its teeth. This is the one case that is provably not
+    that: the medic has just written a new operating system onto the card
+    itself, so the identity it pinned no longer exists anywhere. Refusing to
+    talk to the node you just created is not caution, it is a dead end.
+
+    And it was one. Y2K8's build died at its first command with "Could not read
+    /proc/cpuinfo" while the Pi sat there answering perfectly — the medic held
+    the previous node's key for 10.55.0.1, ``accept-new`` accepts a new host but
+    NOT a changed one, and every cable birth after the first hit it. It reads
+    exactly like a dead cable or a brown-out, which is where the evening went.
+
+    ``ssh-keygen -R`` DOES THE REMOVING, not a line scan of our own. OpenSSH
+    hashes known_hosts by default — the real file on the medic is all
+    ``|1|...`` — so the obvious `line.split()[0] == host` test matches nothing
+    and reports a confident zero. That is exactly what it did the first time
+    this was written, half an hour after the same class of bug (a `test -s` on
+    a directory) was fixed elsewhere. A plain-text pass still runs afterwards,
+    for the un-hashed files we write ourselves.
+    """
+    if paths is None:
+        paths = known_hosts_files()
+    want = _hostpart(host, port)
+    gone = 0
+    for path in paths:
+        try:
+            before = len(open(path).read().splitlines())
+        except OSError:
+            continue
+        if runner is None:
+            import subprocess
+            try:
+                subprocess.run(["ssh-keygen", "-f", path, "-R", host],
+                               capture_output=True, text=True, timeout=20)
+            except Exception:                                  # noqa: BLE001
+                pass
+        else:
+            runner(["ssh-keygen", "-f", path, "-R", host])
+        try:
+            lines = open(path).read().splitlines()
+        except OSError:
+            continue
+        # and the plain-text form, for files we write ourselves (never hashed)
+        kept = [ln for ln in lines
+                if not (ln.strip() and ln.split()[0] == want)]
+        if len(kept) != len(lines):
+            try:
+                with open(path, "w") as f:
+                    f.write("\n".join(kept) + ("\n" if kept else ""))
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+        gone += max(0, before - len(kept))
+    return gone
+
+
+def forget_reimaged_node(hostname: str = "", paths: Optional[List[str]] = None) -> int:
+    """Forget every identity a freshly written card has just invalidated.
+
+    The cable address always, because every node inherits it; the node's own
+    name too, since a rebirth reuses that as well.
+    """
+    hosts = [CABLE_ADDRESS]
+    if hostname:
+        hosts += [hostname, f"{hostname}.local"]
+    return sum(forget_host_key(h, paths) for h in hosts)

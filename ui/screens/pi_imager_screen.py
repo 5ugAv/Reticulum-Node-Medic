@@ -661,6 +661,24 @@ class PiImagerScreen(BoxLayout):
                     record_imaged_pi(v["hostname"], "pi")
                 except Exception:
                     pass
+                # AND FORGET THE IDENTITY THIS CARD JUST REPLACED.
+                #
+                # Every cable-born node answers on 10.55.0.1, so the second one
+                # presents a different host key at an address the medic already
+                # knows — and ssh's accept-new accepts an UNKNOWN host, never a
+                # CHANGED one. The build then died at its very first command
+                # while the Pi sat there answering perfectly (Y2K8, 2026-08-10:
+                # "Could not read /proc/cpuinfo"), which reads exactly like a
+                # dead cable or a brown-out. An evening went to those.
+                #
+                # This is the one moment where a changed key is provably not a
+                # warning worth keeping: the medic has just written the new OS
+                # itself, so the key it pinned no longer exists.
+                try:
+                    from provisioning import host_keys
+                    host_keys.forget_reimaged_node(v["hostname"])
+                except Exception:
+                    pass
             return ok, msg
         # TELL THE APP A CARD IS BEING WRITTEN. Without this, flash_in_progress()
         # stays False for the whole four minutes: no red "don't power off"
