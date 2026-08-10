@@ -188,6 +188,51 @@ def _ensure_rnodeconf(wf: "BuildWorkflow") -> "tuple[bool, str]":
                    f"(pip exit {code}: {tail})")
 
 
+def _medic_evidence(run=None) -> dict:
+    """What the MEDIC can say about why a link to the node died.
+
+    Two independent readings, both cheap, both on the medic itself:
+      * ``vcgencmd get_throttled`` — bit 0 is undervoltage NOW, bit 16 is "it
+        has happened since boot". Clear means the rail held.
+      * ``NETDEV WATCHDOG`` in dmesg — the USB gadget's transmit queue stopped
+        being serviced. The link is wedged; the Pi is not necessarily unwell.
+    """
+    if run is None:
+        import subprocess
+
+        def run(argv):
+            try:
+                return subprocess.run(argv, capture_output=True, text=True,
+                                      timeout=15).stdout
+            except Exception:                                  # noqa: BLE001
+                return ""
+    throttled = (run(["vcgencmd", "get_throttled"]) or "").strip()
+    dmesg = run(["dmesg"]) or ""
+    return {
+        "undervolted": ("throttled=0x0" not in throttled) and bool(throttled),
+        "wedged": "NETDEV WATCHDOG" in dmesg,
+    }
+
+
+def _link_died_reason(run=None) -> str:
+    """Name which of the two killed the link, from evidence, not from a guess."""
+    ev = _medic_evidence(run)
+    if ev["undervolted"]:
+        return ("The Pi stopped answering and Node Medic's own supply sagged "
+                "while it did — this is power. The Pi is drawing from Node "
+                "Medic, and the pair of them are more than the supply can "
+                "carry. A bigger supply, or a powered hub between them.")
+    if ev["wedged"]:
+        return ("The USB link wedged — the kernel logged NETDEV WATCHDOG, the "
+                "cable's transmit queue stopped being serviced. Node Medic's "
+                "own power is FINE, so this is the link and not the Pi. "
+                "Unplug the Pi, count to five, plug it back in; if it keeps "
+                "happening, try a different A-to-A cable.")
+    return ("The Pi stopped answering part-way through, and Node Medic cannot "
+            "see why from its own side — its power is fine and the USB link "
+            "logged no fault. Check the Pi's power light and its cable.")
+
+
 def first_contact_reason(code: int, err: str) -> str:
     """Why the very first command on the node came back with nothing.
 
@@ -215,9 +260,14 @@ def first_contact_reason(code: int, err: str) -> str:
                 "the network, but its SSH service is not running — the card "
                 "was written without it, or first boot has not finished.")
     if "timed out" in e or "no route to host" in e or "unreachable" in e:
-        return ("The Pi stopped answering part-way through. Check its power "
-                "light and the cable — a Pi drawing its power from Node Medic "
-                "can brown out under load.")
+        # A TIMEOUT HAS TWO VERY DIFFERENT CAUSES AND THE MEDIC CAN TELL THEM
+        # APART. It was guessing "brown out" at both, and said so on SkyFinger
+        # while its own rail sat at 5.08 V with the undervoltage flag clear and
+        # the kernel had logged the real reason three lines away (2026-08-11).
+        # Sending an operator to check a power supply that is provably fine is
+        # the same failure as the old "is the node reachable?" — a plausible
+        # sentence in place of a reading.
+        return _link_died_reason()
     if "host key verification failed" in e or "remote host identification" in e:
         return ("The Pi's SSH identity has changed since Node Medic last saw "
                 "it — expected after re-imaging, but it will not connect until "

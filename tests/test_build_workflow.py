@@ -784,3 +784,47 @@ def test_a_node_that_was_never_a_gadget_is_left_alone():
     from tests.srcutil import func_source
     src = func_source("workflows/build.py", "hand_the_usb_port_back")
     assert "never put in gadget mode" in src
+
+
+# --- a timeout has two causes and the medic can tell them apart ------------
+
+def test_a_wedged_link_is_not_reported_as_a_brown_out():
+    """SkyFinger, 2026-08-11. The build said "a Pi drawing its power from Node
+    Medic can brown out under load" while the medic's own rail sat at 5.08 V
+    with the undervoltage flag CLEAR, and the kernel had logged NETDEV WATCHDOG
+    — the real reason — three lines away. Sending an operator to check a supply
+    that is provably fine is the same failure as the old "is the node
+    reachable?": a plausible sentence in place of a reading."""
+    from workflows.build import _link_died_reason
+
+    def wedged(argv):
+        if argv[0] == "vcgencmd":
+            return "throttled=0x0\n"
+        return "cdc_ether usb0: NETDEV WATCHDOG: transmit queue 0 timed out\n"
+
+    msg = _link_died_reason(wedged)
+    assert "NETDEV WATCHDOG" in msg
+    assert "power is FINE" in msg, "say the thing they would otherwise go and check"
+    assert "different A-to-A cable" in msg, "and what to try when it repeats"
+
+
+def test_a_real_brown_out_is_still_called_power():
+    from workflows.build import _link_died_reason
+
+    def sagging(argv):
+        if argv[0] == "vcgencmd":
+            return "throttled=0x50000\n"
+        return ""
+
+    msg = _link_died_reason(sagging)
+    assert "power" in msg.lower()
+    assert "supply" in msg.lower()
+
+
+def test_no_evidence_either_way_claims_neither():
+    """The honest third answer. Guessing between two causes is what this
+    replaced, so silence about which must stay available."""
+    from workflows.build import _link_died_reason
+    msg = _link_died_reason(lambda argv: "throttled=0x0\n" if argv[0] == "vcgencmd" else "")
+    assert "cannot see why" in msg
+    assert "NETDEV" not in msg and "brown out" not in msg
