@@ -2496,9 +2496,19 @@ class BirthScreen(BoxLayout):
             # saying something didn't work"). A walkthrough that celebrates a
             # failed build sends a dead node into the field.
             failed = bool(getattr(self, "_had_failure", False))
+            # AND WHERE IT REACHED THE NODE. The closing screen is the record of
+            # what happened, and it was asserting "provisioned over the cable"
+            # for a node provisioned over Wi-Fi (SkyFinger, 2026-08-11). The
+            # route is not a detail: it is the difference between a node that
+            # needs a cable to be repaired and one that does not.
+            try:
+                reached = (self._pi_addr_in.text or "").strip()
+            except Exception:                                  # noqa: BLE001
+                reached = ""
             Clock.schedule_once(
                 lambda _dt: app.resume_guided_birth({"radio_verified": verified,
-                                                     "build_failed": failed}),
+                                                     "build_failed": failed,
+                                                     "reached_at": reached}),
                 2.5)
         except Exception:                                          # noqa: BLE001
             pass            # a failed hand-back must never break the outcome

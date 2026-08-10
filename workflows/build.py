@@ -866,29 +866,55 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     boot = "/boot/firmware/config.txt"
     if wf.connection.run(f"test -f {boot}")[0] != 0:
         boot = "/boot/config.txt"
-    if wf.connection.run(f"test -f {boot}")[0] != 0:
+    code, before, _ = wf.connection.run(f"cat {boot}")
+    if code != 0 or not before:
         return StepResult("hand_the_usb_port_back", True,
                           "No Pi boot config here — nothing to hand back.",
                           skipped=True)
-    if wf.connection.run(f"grep -q '{_GADGET_OVERLAY}' {boot}")[0] != 0:
+    if _GADGET_OVERLAY not in before:
         return StepResult("hand_the_usb_port_back", True,
                           "This node was never put in gadget mode.", skipped=True)
-    code, out, err = wf.connection.run(wf.priv(
-        f"sed -i 's|^{_GADGET_OVERLAY}|{_HOST_OVERLAY}|' {boot}"))
+
+    # TRANSFORM IN PYTHON, WRITE WITH tee. The first version ran a sed
+    # expression through ssh and it silently did nothing: rc=0, no output, file
+    # unchanged, and the step reported success (SkyFinger, 2026-08-11 — the
+    # node came up still a gadget, still unable to see its own radio, and the
+    # operator had to power-cycle it a second time). A regex full of | and ^
+    # crossing shlex.quote, bash -c and the remote shell has three chances to
+    # arrive as something else; the same tee-a-whole-file idiom configure_services
+    # uses has none.
+    after = before.replace(_GADGET_OVERLAY, _HOST_OVERLAY)
+    heredoc = (f"{wf.priv(f'tee {boot}')} >/dev/null <<'RTTEOF'\n{after}\nRTTEOF")
+    code, out, err = wf.connection.run(heredoc)
     if code != 0:
         return StepResult("hand_the_usb_port_back", False,
                           f"Could not hand the USB port back: {err or out}")
-    # g_ether is the gadget-ethernet module. Harmless in host mode, but leaving
-    # it says the node still expects to be a device, and the next person reading
-    # this card should not have to wonder.
+
+    # AND READ IT BACK. A write that is not read back is a claim, not a fact —
+    # this project has now been bitten by that four times in two days (the Wi-Fi
+    # country file, a `test -s` on a directory, a `test -f` through safe_shell,
+    # and this). The whole point of the step is that the operator will not find
+    # out until the node is assembled and mute.
+    check = wf.connection.run(f"cat {boot}")[1]
+    if _GADGET_OVERLAY in check or _HOST_OVERLAY not in check:
+        return StepResult(
+            "hand_the_usb_port_back", False,
+            "Wrote the USB mode back but the card still says gadget — the node "
+            "would come up unable to see its own radio. Nothing else is wrong "
+            "with it; this is the one edit that did not take.")
+
     for cmd in ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt"):
         if wf.connection.run(f"test -f {cmd}")[0] == 0:
-            wf.connection.run(wf.priv(
-                f"sed -i 's/modules-load=dwc2,g_ether/modules-load=dwc2/' {cmd}"))
+            cl = wf.connection.run(f"cat {cmd}")[1]
+            if "modules-load=dwc2,g_ether" in cl:
+                cl2 = cl.replace("modules-load=dwc2,g_ether", "modules-load=dwc2")
+                wf.connection.run(
+                    f"{wf.priv(f'tee {cmd}')} >/dev/null <<'RTTEOF'\n{cl2}\nRTTEOF")
             break
     return StepResult("hand_the_usb_port_back", True,
-                      "USB port handed back to the node — it can host its radio "
-                      "from its next boot. The cable link ends here, by design.")
+                      "USB port handed back and checked on the card — it hosts "
+                      "its radio from its next boot, which is the one it gets "
+                      "when you move it onto the radio and power it up.")
 
 
 #: RNS reads the node's own identity hash straight off disk (no networking, no

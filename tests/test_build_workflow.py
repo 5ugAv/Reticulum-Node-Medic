@@ -828,3 +828,27 @@ def test_no_evidence_either_way_claims_neither():
     msg = _link_died_reason(lambda argv: "throttled=0x0\n" if argv[0] == "vcgencmd" else "")
     assert "cannot see why" in msg
     assert "NETDEV" not in msg and "brown out" not in msg
+
+
+def test_the_usb_handback_reads_back_what_it_wrote():
+    """SkyFinger, 2026-08-11. The first version ran a sed expression through ssh:
+    rc=0, no output, file unchanged, step reported success. The node came up
+    still a gadget, still blind to its own radio, and the operator had to
+    power-cycle it a second time to recover an edit that had never happened.
+
+    A regex full of | and ^ crossing shlex.quote, bash -c and the remote shell
+    has three chances to arrive as something else. Transform in Python, write
+    the whole file with tee, then READ IT BACK — the operator does not find out
+    until the node is assembled and mute."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "hand_the_usb_port_back")
+    code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert "sed -i" not in code, "no regex crossing three parsers"
+    assert "tee" in code and "RTTEOF" in code, "the same idiom as configure_services"
+    # the read-back, and it must FAIL rather than warn
+    # rindex: it reads the file BEFORE too, to transform it. The verify is the
+    # read that comes AFTER the write.
+    assert code.index("tee") < code.rindex("cat {boot}"), "write, then verify"
+    assert "still says gadget" in src, "and say what it means for the node"
+    fails = code[code.index("check ="):]
+    assert "False" in fails, "a card that did not take must fail the step"

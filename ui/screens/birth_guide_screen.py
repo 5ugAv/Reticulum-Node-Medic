@@ -2420,10 +2420,25 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(Widget())
         wrap.add_widget(_line(tr("{name} is built").format(name=name),
                               "28sp", bold=True, h=44))
+        # SAY WHICH ROAD IT ACTUALLY TOOK. This asserted "over the cable" for
+        # every birth, and SkyFinger was provisioned over Wi-Fi (2026-08-11).
+        # The operator caught it: "was SkyFinger provisioned over the cable as
+        # stated here? the text should never mislead the user."
+        #
+        # It is not a detail. A node reached over Wi-Fi can be repaired from
+        # anywhere on the network; one reached over the cable needs a hand and
+        # a lead. Saying the wrong one teaches the wrong thing about the node.
+        reached = getattr(self, "_reached_at", "") or ""
+        if reached.startswith("10.55.0."):
+            how = tr("over the cable")
+        elif reached:
+            how = tr("over your network, at {addr}").format(addr=reached)
+        else:
+            how = tr("by Node Medic")
         wrap.add_widget(_line(
             tr("The radio was flashed and verified, the card written, and the "
-               "Pi provisioned over the cable. It lives in VITALS from now on "
-               "— that is where its health beacons arrive."),
+               "Pi provisioned {how}. It lives in VITALS from now on — that is "
+               "where its health beacons arrive.").format(how=how),
             "15sp", color="text_secondary", h=72))
         wrap.add_widget(_line(
             tr("It is off Node Medic and running on its own power now."),
