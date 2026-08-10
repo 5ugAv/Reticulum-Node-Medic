@@ -2884,6 +2884,27 @@ class BirthScreen(BoxLayout):
                 "call, so there is nothing for the radio check to listen for.")
             cert.update(self._radio_proof.cert_fields())
             return
+        # A PI+RNODE HAS NO RADIO YET, AND SAYING IT FAILED IS A LIE.
+        #
+        # On this path the radio is attached to the node AFTER the build — it
+        # has to be, because the medic's cable holds the Pi's only USB-A until
+        # then. So the check runs at a moment when the answer is guaranteed to
+        # be no, and every Pi certificate ever issued has read "did not answer
+        # over the radio" (Y2K8 and SolarLove, 2026-08-10). That is a false
+        # negative printed on a birth certificate, which is the same offence as
+        # a false positive and reads worse: the operator is told their good node
+        # is deaf.
+        #
+        # Not applicable is the honest answer, and it is already a thing this
+        # module can say.
+        if getattr(self, "_last_type", "") == "pi_rnode":
+            self._radio_proof = RadioProof.na(
+                "Not tested yet — the radio goes onto this node after the "
+                "build, so there was nothing on the air to hear. Watch the "
+                "radio's own screen once it is attached and powered: it reads "
+                "'On @ 1.8kbps' with a filled bar when the node has opened it.")
+            cert.update(self._radio_proof.cert_fields())
+            return
         try:
             from ui.app import _local_run      # LOGIN shell: rnpath is in ~/.local/bin
             from workflows.radio_proof import live_probes, prove_radio

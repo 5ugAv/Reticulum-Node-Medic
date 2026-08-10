@@ -272,3 +272,21 @@ def test_the_screen_does_not_colour_not_applicable_as_a_problem():
     blk = blk[:blk.index("Birth certificate:")]
     assert "proof.not_applicable" in blk
     assert "text_secondary" in blk
+
+
+def test_a_pi_build_records_not_tested_rather_than_failed():
+    """Y2K8 and SolarLove, 2026-08-10: every Pi certificate read "did not answer
+    over the radio". On this path the radio is attached AFTER the build — it has
+    to be, the medic's cable holds the Pi's only USB-A until then — so the check
+    ran when the answer was guaranteed to be no.
+
+    A false negative on a birth certificate is the same offence as a false
+    positive, and reads worse: the operator is told their good node is deaf."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_add_radio_proof")
+    assert '_last_type", "") == "pi_rnode"' in src
+    assert "RadioProof.na(" in src
+    # and it must say where the real answer is
+    assert "On @ 1.8kbps" in src, "point at the radio's own screen"
+    # the na() branch has to come BEFORE the probe that cannot succeed
+    assert src.index("pi_rnode") < src.index("prove_radio")
