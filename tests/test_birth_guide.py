@@ -676,11 +676,15 @@ def test_a_proved_address_is_not_re_litigated_by_a_weaker_search():
     from tests.srcutil import func_source
     src = func_source("ui/screens/birth_screen.py", "_build_chooser")
     proved = src.split('proved = getattr(self, "_declared_pi_address"')[1]
-    head = proved[:900]
+    head = proved[:1800]
     # "settled", not "return": ending the QUESTION must not end the METHOD —
     # the Build button is drawn at the bottom of it (2026-08-10).
-    assert "settled = True" in head, "a proved address must end the question"
+    assert 'settled = "prefilled"' in head, "a proved address leads, not decides"
     assert "_pi_addr_in.text = proved" in head
+    # ...AND THE FIELD STAYS EDITABLE. Removing it meant a proof that had gone
+    # stale could not be corrected, which is exactly what happened the next day
+    # when SkyFinger's cable wedged and the node moved to Wi-Fi (2026-08-11).
+    assert "change it below" in head, "a five-minute-old proof is not a fact"
     # and it must settle BEFORE the search that can contradict it
     assert src.index("proved = getattr") < src.index("self._find_pi()")
 
@@ -741,7 +745,7 @@ def test_the_screen_that_needs_no_address_still_has_something_to_press():
     code = "\n".join(l for l in block.splitlines() if not l.strip().startswith("#"))
     assert "return" not in code, \
         "no address branch may leave before the Build button is drawn"
-    assert code.count("settled = True") == 2, "both branches settle rather than return"
+    assert code.count("settled = ") >= 2, "both branches settle rather than return"
     assert "if not settled:" in code, "and the address form only draws when it isn't"
 
 

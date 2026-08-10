@@ -655,10 +655,22 @@ class BirthScreen(BoxLayout):
                             text="pi", multiline=False, font_size="27sp"))
                     self._pi_addr_in.text = proved
                     self.header.add_widget(_line(
-                        f"Raspberry Pi answering at {proved} — confirmed a "
-                        "moment ago. Nothing to enter.",
+                        f"Raspberry Pi answered at {proved} a moment ago — "
+                        "change it below if that is no longer where it is.",
                         size="13.5sp", color="green", bold=True))
-                    settled = True   # nothing to ask; fall through to the Build button
+                    # THE FIELD STAYS, AND THAT IS THE WHOLE POINT.
+                    #
+                    # This branch was added the same day to stop a slower probe
+                    # contradicting an address the walkthrough had just proved.
+                    # It went too far: it removed the field entirely, so a proof
+                    # that had since gone STALE could not be corrected. It duly
+                    # did — SkyFinger's cable link wedged, the node moved to
+                    # Wi-Fi, and the screen sat insisting on 10.55.0.1 with
+                    # nowhere to type (2026-08-11).
+                    #
+                    # A proof from five minutes ago is evidence, not a fact
+                    # about now. Lead with it, and let the operator overrule it.
+                    settled = "prefilled"
                 # If the Pi is plugged into the medic, there is nothing to ask.
                 # Showing an address box for a device physically in front of the
                 # operator is the thing they objected to in the first place
@@ -690,7 +702,7 @@ class BirthScreen(BoxLayout):
                 # just proved it could reach the Pi was the one screen with
                 # nothing to press (operator, 2026-08-10: "this page needs
                 # to direct the user what to do next?").
-                if not settled:
+                if settled != True:
                     self.header.add_widget(_line(
                         # There is no Find button — it was removed on 2026-08-02
                         # because the medic searches by itself. The copy telling
@@ -724,8 +736,9 @@ class BirthScreen(BoxLayout):
                     # first, then the name it gave the Pi — so a button asking the
                     # operator to trigger a search is asking them to do the tool's
                     # job (operator, 2026-08-02). It searches on open instead.
-                    from kivy.clock import Clock as _Clock
-                    _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
+                    if not settled:
+                        from kivy.clock import Clock as _Clock
+                        _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
                     self.header.add_widget(row)
                     self._pi_find_status = _line("", size="12sp", color="green")
                     self.header.add_widget(self._pi_find_status)
