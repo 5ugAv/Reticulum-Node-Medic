@@ -578,7 +578,13 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
             f"Environment=HOME={home}\n"
             f"ExecStart={path}{args}\n"
             "Restart=always\n"
-            "RestartSec=5\n\n"
+            "RestartSec=5\n"
+            # NO RATE LIMIT. Restart=always gives up after systemd's default
+            # burst (5 starts in 10 s) and parks the unit in `failed` — which
+            # is exactly wrong here, because the thing being waited for is a
+            # radio that may not be plugged in for another hour. The node must
+            # keep trying for as long as it takes.
+            "StartLimitIntervalSec=0\n\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n"
         )
