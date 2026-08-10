@@ -725,17 +725,21 @@ def test_the_rule_hands_the_device_to_systemd_rather_than_calling_systemctl():
     assert "systemctl" not in r, "do not call systemctl from a udev rule"
 
 
-def test_rnsd_is_bound_to_the_radio_device():
-    """Otherwise rnsd starts at boot with no radio — which on this hardware is
-    ALWAYS, since the medic's cable holds the node's only USB-A until the build
-    ends — and then holds a dead interface for the rest of the node's life."""
+def test_rnsd_is_not_bound_to_a_device_unit_we_never_verified():
+    """BindsTo=dev-rnode.device was added and reverted on 2026-08-10. If systemd
+    does not publish that alias for a SYMLINK+= rule on this image, BindsTo
+    means rnsd never starts AT ALL — worse than the bug it was meant to fix. And
+    for the case that matters (a node powered up with its radio attached) it is
+    unnecessary: udev creates the symlink during USB enumeration, long before
+    rnsd starts after network-online.target."""
     from tests.srcutil import func_source
     src = func_source("workflows/build.py", "configure_services")
-    assert "BindsTo=" in src and "dev-rnode.device" in src
-    assert "lxmd" in src
-    # lxmd must NOT be bound: a propagation node has duties beyond its radio
-    binds = src[src.index("bind = {"):src.index("services: List[str]")]
-    assert "lxmd" not in binds
+    # comments stripped: the explanation of WHY it was reverted names the
+    # directive, and searching the raw source finds its own tombstone.
+    code = "\n".join(l for l in src.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "BindsTo=" not in code, \
+        "do not gate the radio daemon on a device unit that was never observed"
 
 
 def test_the_rule_is_written_before_the_services_start():

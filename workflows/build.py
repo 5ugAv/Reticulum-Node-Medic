@@ -567,33 +567,34 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
     # and starts After rnsd so it joins rnsd's shared Reticulum instance rather
     # than trying to own the radio itself (which rnsd already holds). Monitoring
     # attaches to the same shared instance, so both roles run side by side.
-    # rnsd LIVES AND DIES WITH ITS RADIO. Without this, rnsd starts at boot
-    # whether or not a radio is attached — and on this hardware it never is at
-    # first, because the medic's cable occupies the node's only USB-A socket
-    # until the build is over. It then holds a dead interface for the rest of
-    # the node's life, deaf to the radio arriving five minutes later. Two nodes
-    # were born that way on 2026-08-10.
+    # NO BindsTo=dev-rnode.device HERE, AND THAT IS A DELIBERATE RETREAT.
     #
-    # BindsTo + After means: no radio, no rnsd; radio appears, udev's
-    # SYSTEMD_WANTS starts it with the device already present; radio removed,
-    # rnsd stops rather than pretending. lxmd is only After= rnsd, never
-    # Requires=, so a propagation node still runs its other duties.
-    bind = {"rnsd": ("dev-rnode.device", True)}
+    # It was added on 2026-08-10 to make rnsd start when the radio appears, and
+    # reverted the same evening. Two reasons, and the second is the important
+    # one. First: it was never verified that systemd really publishes a
+    # dev-rnode.device alias for a SYMLINK+= rule on this image — and if it does
+    # not, BindsTo means rnsd never starts AT ALL, which is worse than the bug
+    # it was meant to fix. Second: for the case that actually matters in the
+    # field — a node powered up with its radio already attached — nothing extra
+    # is needed. udev creates the symlink during USB enumeration, long before
+    # rnsd starts after network-online.target, so the port simply exists.
+    #
+    # The symlink is the fix. This was scaffolding around it, added blind
+    # because the assembled node could not be reached to test anything, and
+    # shipping untested scaffolding into a birth path is how a node ends up
+    # worse than before. See task #84.
     services: List[str] = []
     for svc, tool, args, after in (
-            ("rnsd", "rnsd", "", "network-online.target dev-rnode.device"),
+            ("rnsd", "rnsd", "", "network-online.target"),
             ("lxmd", "lxmd", " -p --service", "rnsd.service network-online.target")):
         path = wf.tool_path(tool)
         if not path:
             continue
-        binds, _ = bind.get(svc, ("", False))
         unit = (
             "[Unit]\n"
             f"Description={svc} (Reticulum Node Medic)\n"
             f"After={after}\n"
-            "Wants=network-online.target\n"
-            + (f"BindsTo={binds}\n" if binds else "")
-            + "\n"
+            "Wants=network-online.target\n\n"
             "[Service]\n"
             "Type=simple\n"
             f"User={user}\n"
