@@ -90,6 +90,51 @@ Back + Home on every screen except Monitor · safety panel during active
 operations · same diagnostic code runs Tier 1/2/3 · test first, implement
 second, test again before moving on.
 
+## Say only what you have checked
+
+**Nothing is stated unless it is true, and what is true is what the thing in
+front of you reported — now.** Not what its datasheet allows, not what was true
+five minutes ago, not what the more likely-sounding of two causes would be.
+
+This is a build rule, not a sentiment. Over 9–11 August 2026 every hard bug on
+the bench turned out to be the tool asserting something it had not checked, and
+each one cost hours pointed at the wrong suspect:
+
+| The claim | What was actually true |
+|---|---|
+| "This node has Bluetooth" | Read off the board type. Its adapter was rfkill-blocked and had never been asked. |
+| "The USB link wedged" | `NETDEV WATCHDOG` from hours earlier, still in the ring buffer, cited against a build running after the cause was fixed. |
+| "The mesh stack is down" | `rnstatus` was not on `PATH`. The mesh was hearing announces at that moment. |
+| "USB port handed back" | A `sed` through three parsers returned rc=0 and changed nothing. The node came up blind to its own radio. |
+| "Radio did not answer" | Printed on every Pi certificate, for a radio that is attached *after* the build. |
+| "Could not read /proc/cpuinfo — is the node reachable?" | It was reachable. ssh's stderr said `Host key verification failed`, and was being discarded. |
+
+**Three of those were introduced while fixing the others.** So the discipline
+has to be procedural rather than a matter of care:
+
+1. **Read back every privileged or remote write.** A write that is not read back
+   is a claim, not a fact. Prefer transforming in Python and writing the whole
+   file with `tee` over a regex crossing `shlex.quote`, `bash -c` and a remote
+   shell — three chances to arrive as something else, all of them silent.
+2. **Date your evidence.** `dmesg` is a ring buffer, not a statement about now.
+   If a reading cannot be timed, it cannot be cited.
+3. **A capability is what the thing reported.** Never promote a board's
+   datasheet, a roster entry or a node type into a live fact. Keep
+   *reported-working*, *reported-down* and *never-mentioned* visibly distinct —
+   collapsing the last two is the gap assumptions get poured into.
+4. **"I could not check" is its own answer.** Distinct from "it is broken", and
+   it must not offer a repair that would not help.
+5. **Probe addresses, not names.** A name that can resolve two ways is not an
+   address; use the one that answered.
+6. **Prefer the operator's own diagnostic.** The radio's screen reads
+   `On @ 1.8kbps` with a filled bar when a host has opened it. That needs no
+   tools, works on a node three streets away, and found a bug the tool had been
+   misreporting for two days.
+
+When the evidence is missing, say so. A screen that admits it does not know is
+worth more than one that guesses well, because the operator has to be able to
+believe the warnings that matter.
+
 ## Testing discipline
 
 TDD every unit: write the test, watch it fail for the right reason, implement,
