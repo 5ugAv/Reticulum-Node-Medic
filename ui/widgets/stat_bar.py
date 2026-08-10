@@ -57,6 +57,10 @@ class StatBar(BoxLayout):
             self.add_widget(_StatIcon(
                 f"SIG {int(self.signal_dbm)}dBm",
                 theme.signal_status(self.signal_dbm)))
+        # DAYS ONCE IT IS DAYS. "SEEN 268h" makes the reader do the division,
+        # and the thing they are dividing towards — is this node overdue? — is
+        # measured in days (operator, 2026-08-10).
+        from monitor.formatting import format_age
         self.add_widget(_StatIcon(
-            f"SEEN {self.last_seen_hours:.1f}h",
+            f"SEEN {format_age(self.last_seen_hours)}",
             theme.last_seen_status(self.last_seen_hours)))

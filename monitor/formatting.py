@@ -40,3 +40,33 @@ def beacon_lines(record) -> List[str]:
         f"Last reset: {b.reset_reason_label}",
     ]
     return lines
+
+
+def format_age(hours) -> str:
+    """How long ago, in units a person can act on.
+
+    Operator, 2026-08-10, looking at the VITALS list: "when it goes over 24
+    hours let's call it days and hours — instead of saying SEEN 210 hours ago
+    or 268 hours ago, that's hard to work out how many days that is."
+
+    They are right, and the arithmetic is the whole point: a node last heard
+    268 hours ago is a node that has been down for ELEVEN DAYS, and nobody
+    reads that off "268h" without stopping to divide. The solar grace period
+    that decides whether a quiet node is a fault is measured in days, so the
+    display should be too.
+
+    Under a day, hours stay — "3.2h" is already the right size of thought.
+    """
+    try:
+        h = float(hours)
+    except (TypeError, ValueError):
+        return "?"
+    if h < 0:
+        h = 0.0
+    if h < 24:
+        return f"{h:.1f}h"
+    days = int(h // 24)
+    rest = int(round(h - days * 24))
+    if rest == 24:                      # 47.6h -> 2d, not 1d 24h
+        days, rest = days + 1, 0
+    return f"{days}d" if rest == 0 else f"{days}d {rest}h"

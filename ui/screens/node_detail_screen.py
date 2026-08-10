@@ -18,7 +18,7 @@ from kivy.uix.scrollview import ScrollView
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — node detail section headers/labels/buttons
 from ui.widgets.hex_status import HexStatus
-from monitor.formatting import beacon_lines
+from monitor.formatting import beacon_lines, format_age
 
 
 def _line(text, color="text_primary", size="15sp", bold=False):
@@ -79,7 +79,7 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(_line(
             tr("Last heard: {when}").format(
                 when=tr("never") if seen is None
-                else tr("{h} h ago").format(h=f"{seen:.1f}")),
+                else tr("{age} ago").format(age=format_age(seen))),
             color="text_secondary"))
 
         batt = getattr(record, "battery_pct", None)

@@ -19,6 +19,7 @@ from kivy.uix.label import Label
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — guided-birth screen labels/buttons
+from monitor.formatting import format_age
 from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
@@ -480,7 +481,7 @@ class BirthGuideScreen(BoxLayout):
                 pass
             if heard_h is None or heard_h > 12:
                 ago = (tr("yet") if heard_h is None
-                       else tr("for {hours} hours").format(hours=int(heard_h)))
+                       else tr("for {age}").format(age=format_age(heard_h)))
                 wrap.add_widget(_line(tr("Already kin — but silent"), "28sp",
                                       bold=True, h=44, color="amber"))
                 wrap.add_widget(_line(
@@ -497,8 +498,8 @@ class BirthGuideScreen(BoxLayout):
                        "and reporting to VITALS. Nothing to do.").format(name=name),
                     "16sp", color="text_secondary", h=80))
                 heard_txt = (tr("Last heard under an hour ago.") if heard_h < 1
-                             else tr("Last heard {hours} hours ago.").format(
-                                 hours=int(heard_h)))
+                             else tr("Last heard {age} ago.").format(
+                                 age=format_age(heard_h)))
                 wrap.add_widget(_line(heard_txt, "13sp", color="green", h=22))
             wrap.add_widget(_line(tr("Identity")
                                   + f"  {(c.get('identity_hash') or '')[:16]}…",
@@ -996,7 +997,7 @@ class BirthGuideScreen(BoxLayout):
         inner.add_widget(_line(f"{c.get('name', tr('(unnamed)'))}{tag}", "18sp",
                                bold=True, h=26))
         lsh = c.get("last_seen_hours")
-        seen = (tr("heard {h}h ago").format(h=f"{lsh:.1f}")
+        seen = (tr("heard {age} ago").format(age=format_age(lsh))
                 if isinstance(lsh, (int, float)) else tr("heard"))
         sig = c.get("signal_dbm")
         sigs = f" · {sig} dBm" if sig is not None else ""

@@ -47,3 +47,40 @@ def test_beacon_lines_flag_fault_and_unarmed_watchdog():
     joined = "\n".join(lines)
     assert "Fault: YES" in joined
     assert "NOT armed" in joined
+
+
+# --- how long ago, in units a person can act on ----------------------------
+
+def test_over_a_day_reads_in_days():
+    """Operator, 2026-08-10, on the VITALS list: "instead of saying SEEN 210
+    hours ago or 268 hours ago — that's hard to work out how many days that
+    is". 268h is ELEVEN DAYS down, and nobody reads that off the number without
+    stopping to divide. The solar grace period that decides whether a quiet node
+    is a fault is counted in days, so the display should be too."""
+    from monitor.formatting import format_age
+    assert format_age(268.0) == "11d 4h"
+    assert format_age(210.0) == "8d 18h"
+
+
+def test_under_a_day_keeps_hours():
+    """"3.2h" is already the right size of thought — no change wanted there."""
+    from monitor.formatting import format_age
+    assert format_age(0.1) == "0.1h"
+    assert format_age(23.9) == "23.9h"
+
+
+def test_a_whole_number_of_days_says_so_plainly():
+    from monitor.formatting import format_age
+    assert format_age(24.0) == "1d"
+    assert format_age(72.0) == "3d"
+    # and rounding must never produce "1d 24h"
+    assert format_age(47.6) == "2d"
+
+
+def test_nonsense_and_negatives_do_not_crash_the_row():
+    """This runs in the VITALS list for every node; a bad value must degrade,
+    not take the screen down."""
+    from monitor.formatting import format_age
+    assert format_age(None) == "?"
+    assert format_age("x") == "?"
+    assert format_age(-5) == "0.0h"
