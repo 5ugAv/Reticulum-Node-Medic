@@ -671,7 +671,9 @@ def test_a_proved_address_is_not_re_litigated_by_a_weaker_search():
     src = func_source("ui/screens/birth_screen.py", "_build_chooser")
     proved = src.split('proved = getattr(self, "_declared_pi_address"')[1]
     head = proved[:900]
-    assert "return" in head, "a proved address must end the question"
+    # "settled", not "return": ending the QUESTION must not end the METHOD —
+    # the Build button is drawn at the bottom of it (2026-08-10).
+    assert "settled = True" in head, "a proved address must end the question"
     assert "_pi_addr_in.text = proved" in head
     # and it must settle BEFORE the search that can contradict it
     assert src.index("proved = getattr") < src.index("self._find_pi()")
@@ -716,3 +718,22 @@ def test_a_failed_build_stops_the_step_driving_itself():
         "and the way out must not be hidden behind the patience timer"
     nxt = func_source("ui/screens/birth_guide_screen.py", "_next")
     assert "self._build_failed = False" in nxt, "retrying clears the failure"
+
+
+def test_the_screen_that_needs_no_address_still_has_something_to_press():
+    """Operator, 2026-08-10, photo: "this page needs to direct the user what to
+    do next?" — the Pi was found, the green confirmation was there, and the
+    screen had no button at all.
+
+    Both "nothing to enter" branches ended in `return`, which skipped the end of
+    _build_chooser — and the end of _build_chooser is where the Build button is
+    drawn. Proving you can reach the Pi is exactly the wrong moment to remove
+    the way forward."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_build_chooser")
+    block = src[src.index("settled = False"):src.index("_build_action()")]
+    code = "\n".join(l for l in block.splitlines() if not l.strip().startswith("#"))
+    assert "return" not in code, \
+        "no address branch may leave before the Build button is drawn"
+    assert code.count("settled = True") == 2, "both branches settle rather than return"
+    assert "if not settled:" in code, "and the address form only draws when it isn't"

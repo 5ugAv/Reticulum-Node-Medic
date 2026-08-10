@@ -538,15 +538,27 @@ def test_the_absence_poll_only_fires_on_a_confirmed_absence():
     assert "gone = False" in src.split("except Exception")[1][:120]
 
 
-def test_the_button_stays_on_the_unplug_step():
-    """The connect steps hide Next because sensing is the only road. Here it is
-    an accelerator: a poll that never fires must not strand the operator — which
-    is exactly what happened on step 7 of 8 the same day, when a Pi's USB id was
-    missing from a table and there was no button to press."""
+def test_the_unplug_step_has_no_button_to_press():
+    """Operator, 2026-08-10: "that doesn't need to be there because when the
+    radio is disconnected the Node Medic automatically detects that and moves to
+    the next screen." A button that only ever repeats what the medic already saw
+    is an invitation to press it.
+
+    It kept its Next until now on the grounds that a poll which never fires must
+    not strand anyone — which really did happen on step 7 of 8 the same day, a
+    Pi's USB id missing from a table. So the button is hidden and scheduled
+    back after the patience wait: nothing to press while this works, a way out
+    if it does not."""
     src = func_source(SCREEN, "_render_step")
     branch = src[src.index("DisconnectBoardAnim, RadioToPiAnim"):]
     branch = branch[:branch.index("elif isinstance(anim, ConnectBoardAnim)")]
-    assert "hide_next" not in branch
+    assert "hide_next" in branch
+    assert "show_next" in branch and "WAIT_PATIENCE_S" in branch, \
+        "hidden is not the same as gone — the dead end is the worse failure"
+    # and ONLY that step: the radio going onto the Pi is not something the medic
+    # can ever see, so its button is the only road forward.
+    disc = branch[branch.index("isinstance(anim, DisconnectBoardAnim)"):]
+    assert "hide_next" in disc
 
 
 def test_a_manual_tap_still_wins_the_race():
@@ -646,3 +658,50 @@ def test_the_connect_pi_step_is_not_a_dead_end_for_a_self_powered_pi():
     branch = branch[:branch.index("elif")]
     assert "hide_next()" in branch and "show_next()" in branch
     assert "WAIT_PATIENCE_S" in branch
+
+
+# --- THE STANDING RULE: if the medic drives, there is nothing to press -----
+
+def test_no_self_advancing_step_offers_a_button_to_press():
+    """Operator, 2026-08-10: "anywhere where the Node Medic moves the screen on
+    by itself, if the user is asked to move that page on by themselves, we need
+    to remove that green button and just let the Node Medic do the work."
+
+    Stated as a rule because it had to be asked for four separate times, once
+    per step — the card into the reader, the radio out, the card into the Pi,
+    the Pi onto the cable. A Next sitting under a finished animation reads as
+    "the tool is waiting for you" on every successful run, which is exactly how
+    these steps came to look stalled."""
+    src = func_source(SCREEN, "_render_step")
+    # every poll that ADVANCES the flow by itself (as opposed to _start_board_poll's
+    # feedback-only form, which passes on_present and decides nothing)
+    drivers = ("_start_absence_poll", "_start_card_poll", "_start_card_gone_poll",
+               "_start_pi_poll")
+    for call in drivers:
+        assert call in src, f"{call} is not wired into the step renderer"
+        # the branch it lives in: back to the nearest elif/if, forward to the next
+        at = src.index(call)
+        head = max(src.rfind("\n        elif ", 0, at), src.rfind("\n        if ", 0, at))
+        nxt = src.find("\n        elif ", at)
+        branch = src[head:nxt if nxt > 0 else len(src)]
+        assert "hide_next" in branch, \
+            f"{call} drives the flow but its step still offers a button"
+        if call == "_start_card_poll":
+            # THE ONE DELIBERATE EXCEPTION, and it predates the rule. "Put the
+            # SD card into Node Medic" has no patience button because the step
+            # after it WRITES the card: a way to walk past a card the medic
+            # cannot see leads straight to a destructive write against an
+            # unknown device. Back is the escape here, and the write keeps its
+            # own confirmation naming the device and its size.
+            continue
+        assert "show_next" in branch and "WAIT_PATIENCE_S" in branch, \
+            f"{call} must still offer a way out if the sensing never fires"
+
+
+def test_a_gate_that_has_passed_offers_nothing_to_press_either():
+    """Same rule, the other mechanism: a gate that passed advances itself after
+    a beat, so its button is an invitation to race the tool. It stays only while
+    the gate is BLOCKED, where it means "try again"."""
+    src = func_source(SCREEN, "_render_step")
+    branch = src[src.index("if ok and not failed:"):]
+    assert "hide_next" in branch[:400]

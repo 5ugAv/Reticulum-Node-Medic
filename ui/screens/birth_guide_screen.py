@@ -1633,6 +1633,11 @@ class BirthGuideScreen(BoxLayout):
                                 and self._current is step
                                 and step.show_next()), self.WAIT_PATIENCE_S)
             if ok and not failed:
+                # Driving itself -> nothing to press. The button is the retry
+                # for a gate that is BLOCKED; on one that has passed it is an
+                # invitation to race the tool (same rule as the unplug and
+                # card-handover steps, operator 2026-08-10).
+                step.hide_next()
                 from kivy.clock import Clock
                 self._advance_token = getattr(self, "_advance_token", 0) + 1
                 tok = self._advance_token
@@ -1657,18 +1662,34 @@ class BirthGuideScreen(BoxLayout):
             # "Put the radio onto the Pi" is not — that board lands on the PI's
             # USB, which the medic will never enumerate — so it keeps to its
             # button alone.
+            # BEFORE the ConnectBoardAnim branch, because both subclass it — and
+            # inheriting that branch would be exactly wrong. It waits for a board
+            # to APPEAR on the medic's USB; on these two steps the board is
+            # LEAVING (unplugged from the medic) or going onto the PI, where the
+            # medic will never see it.
+            #
+            # The two steps then part company. Taking the radio OUT is something
+            # the medic watches and acts on by itself, so its button is the tool
+            # asking to be told what it can already see (operator, 2026-08-10:
+            # "that doesn't need to be there because when the radio is
+            # disconnected the Node Medic automatically detects that and moves
+            # to the next screen"). Putting the radio ON THE PI is not — that
+            # board lands on the Pi's USB — so that step keeps its button as its
+            # only road.
             if isinstance(anim, DisconnectBoardAnim):
                 self._start_absence_poll(anim)
-            # BEFORE the ConnectBoardAnim branch, because both subclass it — and
-            # inheriting that branch would be exactly wrong. It hides Next and
-            # waits for a board to APPEAR on the medic's USB; on these two steps
-            # the board is LEAVING (unplugged from the medic) or going onto the
-            # PI, where the medic will never see it. The operator would be left
-            # with no button and a poll that could not succeed.
-            #
-            # So: keep Next, and no poll. These are the two steps in the flow the
-            # medic genuinely cannot verify for itself.
-            pass
+                step.hide_next()
+                # ...but not into a dead end. Same escape as the connect steps:
+                # if the removal is somehow never sensed, the way forward comes
+                # back once the wait is plainly overdue rather than never. That
+                # is the trap that stranded the operator on step 7 of 8 when a
+                # Pi's USB id was missing from a table.
+                from kivy.clock import Clock
+                tok = getattr(self, "_nav_token", 0)
+                Clock.schedule_once(
+                    lambda _d: (getattr(self, "_nav_token", None) == tok
+                                and self._current is step
+                                and step.show_next()), self.WAIT_PATIENCE_S)
         elif isinstance(anim, ConnectBoardAnim):
             # DETECTION IS FEEDBACK, NOT CONSENT.
             #
@@ -1723,8 +1744,21 @@ class BirthGuideScreen(BoxLayout):
             step.hide_next()
             self._start_card_poll(anim)
         elif isinstance(anim, SdHandoverAnim):
-            # The card going INTO the Pi is the mirror of it arriving here.
+            # The card going INTO the Pi is the mirror of it arriving here —
+            # and so is its button. Taking the card out of the reader is the
+            # action; the medic sees it go and moves on by itself, so a Next
+            # sitting under a finished animation only ever reads as "the tool
+            # is waiting for you" (operator's standing rule, 2026-08-10:
+            # "anywhere the Node Medic moves the screen on by itself, remove
+            # the green button and just let the Node Medic do the work").
+            step.hide_next()
             self._start_card_gone_poll(anim)
+            from kivy.clock import Clock
+            tok = getattr(self, "_nav_token", 0)
+            Clock.schedule_once(
+                lambda _d: (getattr(self, "_nav_token", None) == tok
+                            and self._current is step
+                            and step.show_next()), self.WAIT_PATIENCE_S)
 
 
     # -- identify the pair BEFORE the card is written -----------------------
@@ -2613,11 +2647,14 @@ class BirthGuideScreen(BoxLayout):
         asked for should be the whole interaction — a Next tap afterwards is the
         tool asking to be told what it can already see.
 
-        THE BUTTON STAYS. The connect steps hide theirs, and this step could
-        follow — but a poll that never fires then leaves the operator on a
-        screen with no way forward, which is precisely how they ended up stuck
-        on step 7 of 8 earlier the same day when a Pi's USB id was missing from
-        a table. Sensing is an accelerator here, not the only road.
+        THE BUTTON GOES — but comes back if the sensing fails. It stayed at
+        first, on the grounds that a poll which never fires must not strand
+        anyone (that is how the operator ended up stuck on step 7 of 8 the same
+        day, when a Pi's USB id was missing from a table). But a button that
+        does nothing except repeat what the medic already saw is an invitation
+        to press it, and the operator asked for it gone (2026-08-10). So the
+        caller hides it and schedules it back after WAIT_PATIENCE_S: nothing to
+        press while this works, a way out if it does not.
         """
         from kivy.clock import Clock
         self._stop_board_poll()

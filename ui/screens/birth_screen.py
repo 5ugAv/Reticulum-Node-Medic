@@ -643,6 +643,7 @@ class BirthScreen(BoxLayout):
                 # matter. So proof wins, and the only thing re-checked is that
                 # same address — never a sweep that can disagree about a
                 # different machine.
+                settled = False
                 proved = getattr(self, "_declared_pi_address", "") or ""
                 if proved:
                     if not hasattr(self, "_pi_addr_in"):
@@ -657,17 +658,18 @@ class BirthScreen(BoxLayout):
                         f"Raspberry Pi answering at {proved} — confirmed a "
                         "moment ago. Nothing to enter.",
                         size="13.5sp", color="green", bold=True))
-                    return
+                    settled = True   # nothing to ask; fall through to the Build button
                 # If the Pi is plugged into the medic, there is nothing to ask.
                 # Showing an address box for a device physically in front of the
                 # operator is the thing they objected to in the first place
                 # (2026-08-01) — so say what we found and move on.
                 cable = ""
-                try:
-                    from provisioning.pi_discover import cable_address
-                    cable = cable_address(timeout=3.0)
-                except Exception:
-                    cable = ""
+                if not settled:            # already answered; don't stall 3s again
+                    try:
+                        from provisioning.pi_discover import cable_address
+                        cable = cable_address(timeout=3.0)
+                    except Exception:
+                        cable = ""
                 if cable:
                     self.header.add_widget(_line(
                         "Raspberry Pi connected by cable — nothing to enter.",
@@ -680,45 +682,53 @@ class BirthScreen(BoxLayout):
                         self._pi_user_in = bind_field(TextInput(
                             text="pi", multiline=False, font_size="27sp"))
                     self._pi_addr_in.text = cable
-                    return
-                self.header.add_widget(_line(
-                    # There is no Find button — it was removed on 2026-08-02
-                    # because the medic searches by itself. The copy telling
-                    # the operator to tap it outlived it by a week, pointing at
-                    # a control that is not on the screen (operator, 2026-08-10).
-                    ("Where the Pi is on your network — filled in from the name "
-                     "Node Medic gave it. Type over it if it's wrong."
-                     if suggestion else
-                     "Where the Pi is on your network. Node Medic is looking "
-                     "for it — or type the address in."),
-                    size="12.5sp", color="text_secondary"))
-                row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                height=dp(48), spacing=dp(8))
-                if not hasattr(self, "_pi_addr_in"):
-                    from ui.onscreen_keyboard import bind_field
-                    from kivy.uix.textinput import TextInput
-                    self._pi_addr_in = bind_field(TextInput(
-                        text="", multiline=False, font_size="27sp",
-                        hint_text="found automatically — or tap Find"))
-                    self._pi_user_in = bind_field(TextInput(
-                        text="pi", multiline=False, font_size="27sp",
-                        hint_text="user", size_hint_x=0.22))
-                if suggestion and not self._pi_addr_in.text.strip():
-                    self._pi_addr_in.text = suggestion
-                for w_ in (self._pi_addr_in, self._pi_user_in):
-                    if w_.parent is not None:
-                        w_.parent.remove_widget(w_)
-                row.add_widget(self._pi_addr_in)
-                row.add_widget(self._pi_user_in)
-                # No Find button. The medic looks by itself — over the cable
-                # first, then the name it gave the Pi — so a button asking the
-                # operator to trigger a search is asking them to do the tool's
-                # job (operator, 2026-08-02). It searches on open instead.
-                from kivy.clock import Clock as _Clock
-                _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
-                self.header.add_widget(row)
-                self._pi_find_status = _line("", size="12sp", color="green")
-                self.header.add_widget(self._pi_find_status)
+                    settled = True   # nothing to ask; fall through to the Build button
+                # ONLY WHEN THE ADDRESS IS STILL AN OPEN QUESTION.
+                # Both branches above used to `return` here, which skipped
+                # the end of this method — and the end of this method is
+                # where the Build button is drawn. So the screen that had
+                # just proved it could reach the Pi was the one screen with
+                # nothing to press (operator, 2026-08-10: "this page needs
+                # to direct the user what to do next?").
+                if not settled:
+                    self.header.add_widget(_line(
+                        # There is no Find button — it was removed on 2026-08-02
+                        # because the medic searches by itself. The copy telling
+                        # the operator to tap it outlived it by a week, pointing at
+                        # a control that is not on the screen (operator, 2026-08-10).
+                        ("Where the Pi is on your network — filled in from the name "
+                         "Node Medic gave it. Type over it if it's wrong."
+                         if suggestion else
+                         "Where the Pi is on your network. Node Medic is looking "
+                         "for it — or type the address in."),
+                        size="12.5sp", color="text_secondary"))
+                    row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                    height=dp(48), spacing=dp(8))
+                    if not hasattr(self, "_pi_addr_in"):
+                        from ui.onscreen_keyboard import bind_field
+                        from kivy.uix.textinput import TextInput
+                        self._pi_addr_in = bind_field(TextInput(
+                            text="", multiline=False, font_size="27sp",
+                            hint_text="found automatically — or tap Find"))
+                        self._pi_user_in = bind_field(TextInput(
+                            text="pi", multiline=False, font_size="27sp",
+                            hint_text="user", size_hint_x=0.22))
+                    if suggestion and not self._pi_addr_in.text.strip():
+                        self._pi_addr_in.text = suggestion
+                    for w_ in (self._pi_addr_in, self._pi_user_in):
+                        if w_.parent is not None:
+                            w_.parent.remove_widget(w_)
+                    row.add_widget(self._pi_addr_in)
+                    row.add_widget(self._pi_user_in)
+                    # No Find button. The medic looks by itself — over the cable
+                    # first, then the name it gave the Pi — so a button asking the
+                    # operator to trigger a search is asking them to do the tool's
+                    # job (operator, 2026-08-02). It searches on open instead.
+                    from kivy.clock import Clock as _Clock
+                    _Clock.schedule_once(lambda _dt: self._find_pi(), 0.4)
+                    self.header.add_widget(row)
+                    self._pi_find_status = _line("", size="12sp", color="green")
+                    self.header.add_widget(self._pi_find_status)
 
         # (Mitosis moved out of this chooser — it lives at the start of the
         # flow where the operator picks what they're doing; repeating it here
