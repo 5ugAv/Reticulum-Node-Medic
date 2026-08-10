@@ -137,3 +137,28 @@ def test_the_findings_carry_the_evidence_not_just_prose():
     f = check_gps_fresh(_gps(sats=9, has_fix=True), now=1001.0)
     assert f.data["sats"] == 9 and f.data["has_fix"] is True
     assert f.data["gps_frames"] == 50
+
+
+# --- the other end of the cable ---------------------------------------------
+
+def test_it_notices_networkmanager_eating_the_cable_link():
+    """2026-08-11: NM ran DHCP on usb0, failed after 45 s, tore the link down and
+    wedged the gadget — killing two builds while the blame went to the power
+    supply, the cable, the Pi and two medic USB ports, all of them fine."""
+    from monitor.self_diagnose import check_cable_link_unmanaged, SEV_OK, SEV_CRIT
+    log = "device (usb0): dhcp4 (usb0): activation: beginning transaction"
+    bad = check_cable_link_unmanaged(conf_present=False, nm_log_tail=log)
+    assert bad.severity == SEV_CRIT
+    assert "45 s" in bad.detail and "usb0" in bad.detail
+    assert "99-nodemedic-usb0.conf" in bad.detail, "name the file that fixes it"
+
+    good = check_cable_link_unmanaged(conf_present=True)
+    assert good.severity == SEV_OK
+
+
+def test_missing_config_without_evidence_is_a_warning_not_a_crisis():
+    """No drop-in but no DHCP seen either — worth fixing before the next cable
+    birth, not worth shouting about on a medic that may never do one."""
+    from monitor.self_diagnose import check_cable_link_unmanaged, SEV_WARN
+    f = check_cable_link_unmanaged(conf_present=False, nm_log_tail="")
+    assert f.severity == SEV_WARN

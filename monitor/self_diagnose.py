@@ -211,6 +211,47 @@ def check_service(name: str, is_active: bool, critical: bool = True) -> Finding:
                    fix=f"restart_{name}")
 
 
+#: Where the drop-in that keeps NetworkManager off the cable link belongs.
+NM_USB0_CONF = "/etc/NetworkManager/conf.d/99-nodemedic-usb0.conf"
+
+
+def check_cable_link_unmanaged(conf_present: bool, nm_log_tail: str = "") -> Finding:
+    """Is NetworkManager leaving the cable-birth link alone?
+
+    THE FAULT THIS CATCHES took an evening to find and was blamed on four
+    innocent things first. When a Pi is plugged in for a cable birth it appears
+    on the medic as usb0. NetworkManager invents a "Wired connection N" for it
+    and runs DHCP — but the link is a static /29 the medic configures itself.
+    So NM waits 45 s, fails with ip-config-unavailable, tears the interface
+    down and starts again. That wipes the address the medic just set, and the
+    thrashing wedges the gadget:
+
+        cdc_ether usb0: NETDEV WATCHDOG: transmit queue 0 timed out
+
+    It killed two builds on 2026-08-11 while being blamed on the power supply,
+    the cable, the Pi, and two different medic USB ports — all of which were
+    fine, and one of which was brand new.
+
+    The node side has been immune since the card started marking usb0
+    unmanaged. The MEDIC side never was, because the medic is "the tool" and
+    nobody thinks of it as the other end of the same cable.
+    """
+    if conf_present:
+        return Finding("cable_link_unmanaged", SEV_OK,
+                       "NetworkManager leaves the cable-birth link alone.")
+    saw_dhcp = "dhcp4 (usb0)" in (nm_log_tail or "")
+    return Finding(
+        "cable_link_unmanaged",
+        SEV_CRIT if saw_dhcp else SEV_WARN,
+        ("NetworkManager is running DHCP on usb0 — it will fail after 45 s, "
+         "drop the link mid-build and wedge it."
+         if saw_dhcp else
+         "NetworkManager is not told to leave usb0 alone, so a cable birth can "
+         "be dropped mid-build.")
+        + f" Install {NM_USB0_CONF} (scripts/nodemedic-usb0-unmanaged.conf).",
+        data={"conf": NM_USB0_CONF})
+
+
 def check_cpu_temp(temp_output: str, warn_c: float = 75.0, crit_c: float = 82.0) -> Finding:
     """Pi SoC temperature from ``vcgencmd measure_temp`` ('temp=48.3''C'). The Pi
     throttles around 80-85C; sustained heat drops performance and ages the board."""
