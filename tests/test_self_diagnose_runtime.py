@@ -32,8 +32,10 @@ def test_gather_all_healthy():
         "rnstatus": "Shared Instance[37428]\n  Status  : Up",
         "node_mode": "home",
         "is-active lxmd": "active",
-        # the NetworkManager drop-in that keeps the cable-birth link alive
-        "99-nodemedic-usb0.conf": "yes",
+        # the NetworkManager drop-in that keeps the cable-birth link alive.
+        # Its CONTENT is what is checked — a `test -f` through safe_shell (no
+        # shell, so "&&" becomes an argument) silently reported it missing.
+        "99-nodemedic-usb0.conf": "[keyfile]\nunmanaged-devices=interface-name:usb0",
     })
     findings = rt.gather(run=run, now_fn=lambda: now)
     assert all(f.severity == SEV_OK for f in findings), \
@@ -82,3 +84,16 @@ def test_repair_kind_and_guidance():
     assert rt.repair_kind("nope") == "unknown"
     ok, msg = rt.run_repair("reflash_provision", run=lambda c: "SHOULD NOT RUN")
     assert ok is False and "provision" in msg.lower()      # guidance, not executed
+
+
+def test_the_drop_in_is_read_not_shell_tested():
+    """safe_shell runs without a shell, so `test -f X && echo yes` passes "&&"
+    through as an argument and always comes back empty — the check reported the
+    file missing on a medic that had just installed it. Reading it also proves
+    the CONTENT, so a truncated or hand-edited file is caught."""
+    from tests.srcutil import func_source
+    src = func_source("monitor/self_diagnose_runtime.py", "gather")
+    # comments stripped: the explanation names the broken form it replaced
+    code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert "test -f" not in code, "no shell operators reach safe_shell"
+    assert 'unmanaged-devices" in run' in code

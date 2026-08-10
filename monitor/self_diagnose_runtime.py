@@ -71,8 +71,13 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     # eating the cable-birth link — which it was, killing builds for an evening
     # while the blame went to a power supply, a new cable, two Pis and two USB
     # ports (2026-08-11). The node side had been immune for months.
+    # READ THE FILE, do not test for it. safe_shell runs without a shell, so
+    # `test -f X && echo yes` passes "&&" through as an argument and always
+    # comes back empty — the check reported the drop-in missing on a medic that
+    # had it installed, ten minutes after it was written. Reading it also
+    # verifies the CONTENT, so a truncated or hand-edited file is caught too.
     findings.append(sd.check_cable_link_unmanaged(
-        run(f"test -f {sd.NM_USB0_CONF} && echo yes 2>/dev/null").strip() == "yes",
+        "unmanaged-devices" in run(f"cat {sd.NM_USB0_CONF} 2>/dev/null"),
         run("journalctl -u NetworkManager -n 200 --no-pager 2>/dev/null")))
     return findings
 
