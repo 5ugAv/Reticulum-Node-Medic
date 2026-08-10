@@ -502,13 +502,20 @@ _RNODE_USB_VENDORS = (
 def rnode_udev_rules() -> str:
     """The udev rules that give any attached radio a stable name.
 
-    TAG+="systemd" is what lets systemd see it as dev-rnode.device, so a unit
-    can wait on it. The try-restart is for the HOT-PLUG case — the field order
-    is "unplug the Pi from the medic, put the radio on it, give it power", so
-    the radio usually arrives at boot and udev wins the race anyway; but when it
-    does not, rnsd has already given up on a port that did not exist, and only a
-    restart makes it look again. --no-block because a blocking systemctl inside
-    a udev rule can deadlock the device manager.
+    TAG+="systemd" makes systemd see the radio as dev-rnode.device, and
+    SYSTEMD_WANTS pulls rnsd in when it appears. Together with BindsTo= on the
+    unit itself, that is the whole mechanism: no radio, no rnsd; radio arrives,
+    rnsd starts with the device already there.
+
+    THIS REPLACED A systemctl CALL FROM INSIDE THE RULE, and the reason is worth
+    keeping. The first version ran `systemctl try-restart rnsd` from RUN+=.
+    Calling systemctl from udev is discouraged precisely because udev runs in
+    its own mount namespace, and whether it works is not something to find out
+    in the field. Worse, try-restart only acts on a unit that is ALREADY
+    running — and the failure being fixed is rnsd sitting up holding a dead
+    interface, which is exactly the state where a restart is needed and exactly
+    the state a shrugging daemon is in. Binding the service to the device is
+    deterministic and documented; the previous version was a hope.
     """
     lines = [
         "# Node Medic: give the attached RNode a stable name.",
@@ -519,7 +526,7 @@ def rnode_udev_rules() -> str:
         lines.append(
             f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vid}", '
             f'SYMLINK+="{RNODE_SYMLINK.rsplit("/", 1)[-1]}", TAG+="systemd", '
-            f'RUN+="/bin/systemctl --no-block try-restart rnsd.service"')
+            f'ENV{{SYSTEMD_WANTS}}="rnsd.service"')
     return "\n".join(lines) + "\n"
 
 
@@ -560,18 +567,33 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
     # and starts After rnsd so it joins rnsd's shared Reticulum instance rather
     # than trying to own the radio itself (which rnsd already holds). Monitoring
     # attaches to the same shared instance, so both roles run side by side.
+    # rnsd LIVES AND DIES WITH ITS RADIO. Without this, rnsd starts at boot
+    # whether or not a radio is attached — and on this hardware it never is at
+    # first, because the medic's cable occupies the node's only USB-A socket
+    # until the build is over. It then holds a dead interface for the rest of
+    # the node's life, deaf to the radio arriving five minutes later. Two nodes
+    # were born that way on 2026-08-10.
+    #
+    # BindsTo + After means: no radio, no rnsd; radio appears, udev's
+    # SYSTEMD_WANTS starts it with the device already present; radio removed,
+    # rnsd stops rather than pretending. lxmd is only After= rnsd, never
+    # Requires=, so a propagation node still runs its other duties.
+    bind = {"rnsd": ("dev-rnode.device", True)}
     services: List[str] = []
     for svc, tool, args, after in (
-            ("rnsd", "rnsd", "", "network-online.target"),
+            ("rnsd", "rnsd", "", "network-online.target dev-rnode.device"),
             ("lxmd", "lxmd", " -p --service", "rnsd.service network-online.target")):
         path = wf.tool_path(tool)
         if not path:
             continue
+        binds, _ = bind.get(svc, ("", False))
         unit = (
             "[Unit]\n"
             f"Description={svc} (Reticulum Node Medic)\n"
             f"After={after}\n"
-            "Wants=network-online.target\n\n"
+            "Wants=network-online.target\n"
+            + (f"BindsTo={binds}\n" if binds else "")
+            + "\n"
             "[Service]\n"
             "Type=simple\n"
             f"User={user}\n"

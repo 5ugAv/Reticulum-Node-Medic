@@ -711,16 +711,31 @@ def test_the_udev_rule_covers_every_radio_this_tool_flashes():
     assert 'SYMLINK+="rnode"' in r
 
 
-def test_the_rule_lets_systemd_see_the_device_and_recovers_a_hot_plug():
-    """Two different needs. TAG+="systemd" is what makes dev-rnode.device exist
-    so a unit can wait on it. The try-restart is for the field order — "unplug
-    the Pi, put the radio on it, give it power" — where the radio may arrive
-    after rnsd has already given up on a port that was not there."""
+def test_the_rule_hands_the_device_to_systemd_rather_than_calling_systemctl():
+    """TAG+="systemd" makes dev-rnode.device exist; SYSTEMD_WANTS pulls rnsd in
+    when the radio appears. The first version ran `systemctl try-restart` from
+    RUN+= instead, which is discouraged (udev has its own mount namespace) and,
+    worse, try-restart only acts on a unit already running — the exact state the
+    bug leaves rnsd in is "up, holding a dead interface", where a restart is
+    both needed and refused."""
     from workflows.build import rnode_udev_rules
     r = rnode_udev_rules()
     assert 'TAG+="systemd"' in r
-    assert "try-restart rnsd" in r
-    assert "--no-block" in r, "a blocking systemctl inside udev can deadlock it"
+    assert 'ENV{SYSTEMD_WANTS}="rnsd.service"' in r
+    assert "systemctl" not in r, "do not call systemctl from a udev rule"
+
+
+def test_rnsd_is_bound_to_the_radio_device():
+    """Otherwise rnsd starts at boot with no radio — which on this hardware is
+    ALWAYS, since the medic's cable holds the node's only USB-A until the build
+    ends — and then holds a dead interface for the rest of the node's life."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "configure_services")
+    assert "BindsTo=" in src and "dev-rnode.device" in src
+    assert "lxmd" in src
+    # lxmd must NOT be bound: a propagation node has duties beyond its radio
+    binds = src[src.index("bind = {"):src.index("services: List[str]")]
+    assert "lxmd" not in binds
 
 
 def test_the_rule_is_written_before_the_services_start():
