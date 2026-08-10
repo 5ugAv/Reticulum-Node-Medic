@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "Ketuk peta untuk menaruh pin, atau ",
   "Terrain  off": "Medan  mati",
   "Terrain  on": "Medan  hidup",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Itu tidak tampak seperti kunci pemulihan (32 karakter, dalam delapan kelompok berisi empat).",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "Itu sepertinya bukan alamat Reticulum yang valid (perlu 32 karakter heksa).",
   "That password didn't open it — {n} attempts left.": "Kata sandi itu tidak membukanya — sisa {n} percobaan.",

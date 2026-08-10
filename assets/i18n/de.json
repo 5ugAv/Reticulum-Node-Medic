@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "Tippen Sie auf die Karte, um die Nadel zu setzen, oder ",
   "Terrain  off": "Gelände  aus",
   "Terrain  on": "Gelände  an",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "Dieser Aufbau wurde nicht abgeschlossen. Der fehlgeschlagene Schritt wird im Aufbauprotokoll benannt, mit der Ursache darunter. Behebe das und tippe dann auf Erneut versuchen — hier geht nichts verloren.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Das sieht nicht nach einem Wiederherstellungsschlüssel aus (32 Zeichen in acht Vierergruppen).",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "Das sieht nicht nach einer gültigen Reticulum-Adresse aus (braucht 32 Hex-Zeichen).",
   "That password didn't open it — {n} attempts left.": "Dieses Passwort hat nicht geöffnet — noch {n} Versuche.",

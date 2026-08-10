@@ -1392,6 +1392,7 @@ class ConnectPiAnim(ConnectBoardAnim):
         super().__init__(**kwargs)
         self._pi_png = ""
         self._geo = None
+        self._pi_key = pi_key or ""
         if pi_key:
             try:
                 from ui import board_images
@@ -1562,17 +1563,29 @@ class ConnectPiAnim(ConnectBoardAnim):
 
             Color(1, 1, 1, 1)
             Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+            self._draw_card_seated(self._pi_key, (pxx, pyy, pw, ph))
             if plug is not None:
                 Color(1, 1, 1, 1)
                 Rectangle(texture=plug, pos=(data_x - plug_w / 2.0, plug_bottom),
                           size=(plug_w, plug_h))
 
             # the socket it is aiming at, breathing until it seats
-            if t < 1.0 and geo is not None:
-                pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
-                Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
-                      0.30 + 0.45 * pulse)
-                Line(circle=(data_x, port_y, dp(14)), width=dp(2.0))
+            # THE AIMING RING IS NOT GREEN. Green is this UI's word for "the
+            # medic can see it" — the Connected! burst, the health dots, the
+            # card's seated pulse. Using it for "aim here" made the operator
+            # read a target as an acknowledgement, with nothing plugged in
+            # (2026-08-10, the same fault as the card animation's ripple a day
+            # earlier). It aims in accent blue and only goes green once the
+            # medic has actually seen the Pi.
+            if geo is not None:
+                if self._connected:
+                    Color(self._CABLE[0], self._CABLE[1], self._CABLE[2], 0.95)
+                    Line(circle=(data_x, port_y, dp(16)), width=dp(2.5))
+                elif t < 1.0:
+                    pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
+                    aim = theme.hex_to_rgba(theme.COLORS["accent"])
+                    Color(aim[0], aim[1], aim[2], 0.30 + 0.45 * pulse)
+                    Line(circle=(data_x, port_y, dp(14)), width=dp(2.0))
             # And its identical twin, which carries power only. Drawn as a NO
             # ENTRY sign — ring plus a bar through it — not just a differently
             # coloured ring (operator, 2026-08-04). Two rings side by side say
@@ -1596,6 +1609,37 @@ class ConnectPiAnim(ConnectBoardAnim):
                              color=self._PWR, halign="center")
             pl.size = (dp(64), dp(16))
             pl.pos = (pwr_x - dp(32), port_y + dp(12))
+
+    def _draw_card_seated(self, pi_key, sprite_rect):
+        """Show the microSD ALREADY IN the Pi.
+
+        By this step the card has been written and moved into the board — the
+        step before says so in words — but the picture showed an empty Pi, so
+        the operator has to hold two ideas at once and trust that the tool has
+        not forgotten (their note, 2026-08-10: "clearly show that the SD card is
+        inserted in the pi at this stage").
+
+        Drawn from the same per-board slot geometry the handover animation uses,
+        so it lands in the real slot on whichever board is being shown, and
+        simply does not draw for a board whose slot has never been measured.
+        """
+        try:
+            from ui import pi_sd_geometry as sdgeo
+        except Exception:                                          # noqa: BLE001
+            return
+        geo = sdgeo.geometry_for(pi_key or "")
+        card = _card_texture()
+        if geo is None or card is None:
+            return
+        brect = sdgeo.board_rect(geo, sprite_rect)
+        cl, cw = sdgeo.card_size(geo, brect, card.width / float(card.height))
+        cx, cy = sdgeo.seated_centre(geo, brect, cl)
+        ang = sdgeo.entry_angle(geo)
+        Color(1, 1, 1, 1)
+        PushMatrix()
+        Rotate(angle=ang, origin=(cx, cy))
+        Rectangle(texture=card, pos=(cx - cl / 2.0, cy - cw / 2.0), size=(cl, cw))
+        PopMatrix()
 
     def _draw_side_entry(self, pi):
         """The plug goes in from the SIDE — for boards whose data socket is on
@@ -1674,6 +1718,7 @@ class ConnectPiAnim(ConnectBoardAnim):
                 Rectangle(texture=medic, pos=(mxx, myy), size=(mw, mh))
             Color(1, 1, 1, 1)
             Rectangle(texture=pi, pos=(pxx, pyy), size=(pw, ph))
+            self._draw_card_seated(self._pi_key, (pxx, pyy, pw, ph))
 
             if plug is not None:
                 # the moulding is drawn pointing UP; -90° aims it left
@@ -1685,10 +1730,13 @@ class ConnectPiAnim(ConnectBoardAnim):
                           size=(plug_w, plug_h))
                 PopMatrix()
 
-            if t < 1.0:
+            if self._connected:
+                Color(self._CABLE[0], self._CABLE[1], self._CABLE[2], 0.95)
+                Line(circle=(data_x, data_y, dp(16)), width=dp(2.5))
+            elif t < 1.0:
                 pulse = 0.5 + 0.5 * math.sin(self.phase * 4 * math.pi)
-                Color(self._CABLE[0], self._CABLE[1], self._CABLE[2],
-                      0.30 + 0.45 * pulse)
+                aim = theme.hex_to_rgba(theme.COLORS["accent"])
+                Color(aim[0], aim[1], aim[2], 0.30 + 0.45 * pulse)
                 Line(circle=(data_x, data_y, dp(14)), width=dp(2.0))
             if pwr_x is not None:
                 Color(*self._NO)

@@ -1463,15 +1463,18 @@ class BirthGuideScreen(BoxLayout):
         of the rule as absolute (2026-08-06): every picture must be the
         hardware in their hand.
 
-        ConnectPiAnim is the exception, and it is left alone deliberately: it
-        marks the DATA and PWR-IN sockets using port fractions measured on the
-        Zero sprite, so handing it another model would move the board picture
-        while leaving the rings pointing at nothing. That step needs the same
-        per-model treatment the SD slots just got, and until it has one it must
-        keep the board its own numbers describe.
+        ConnectPiAnim USED to be an exception, because its socket markers were
+        fractions measured on the Zero sprite and handing it another model would
+        have moved the board while leaving the rings pointing at nothing. It got
+        the per-model treatment on 2026-08-09 (ui.pi_connector_geometry): a
+        measured board is marked, an unmeasured one is drawn truthfully with
+        nothing marked.
+        
+        The exception was left in place anyway, so the fix could never reach the
+        case it was built for — a 3 A+ operator still got a Pi Zero, which is
+        what they reported the very next morning. The rule is the same for every
+        animation now: draw the board they chose.
         """
-        if anim_cls is ConnectPiAnim:
-            return getattr(self, "_pi_art_key", "")
         return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
 
     def _pi_key_for_text(self):
@@ -1587,6 +1590,15 @@ class BirthGuideScreen(BoxLayout):
             # this screen says plainly what it is about to do. Consent was given
             # there; asking again here is asking twice (operator, 2026-08-09).
             # The button remains, and now only ever means "try again".
+            # A BUILD THAT JUST FAILED SUSPENDS THE SELF-DRIVING.
+            #
+            # Everything below assumes the gate's answer is the whole story:
+            # node answering -> start the work. It is not, once the work has
+            # been tried and failed. Left alone, the medic would come back to
+            # this step, see the Pi still on the cable, and launch the very
+            # same build again by itself, forever — which is why the step has
+            # to stop steering and let the operator decide (2026-08-10).
+            failed = bool(getattr(self, "_build_failed", False))
             if s["gate"] == "node_online":
                 # The only gate whose answer the medic has to go and FETCH.
                 # Start looking the moment the step appears, so the wait happens
@@ -1600,7 +1612,7 @@ class BirthGuideScreen(BoxLayout):
                 self._gate_warning = why
                 self._render_step()
                 return
-            if not ok and s["gate"] == "node_online":
+            if not ok and s["gate"] == "node_online" and not failed:
                 # NO BUTTON WHILE THE WAIT IS REASONABLE.
                 #
                 # Operator, 2026-08-09: "it looked like I didn't have to press
@@ -1620,7 +1632,7 @@ class BirthGuideScreen(BoxLayout):
                     lambda _d: (getattr(self, "_nav_token", None) == tok
                                 and self._current is step
                                 and step.show_next()), self.WAIT_PATIENCE_S)
-            if ok:
+            if ok and not failed:
                 from kivy.clock import Clock
                 self._advance_token = getattr(self, "_advance_token", 0) + 1
                 tok = self._advance_token
@@ -1628,6 +1640,10 @@ class BirthGuideScreen(BoxLayout):
                     lambda _d: (getattr(self, "_advance_token", None) == tok
                                 and self._current is not None and self._next()),
                     1.6)
+            if failed:
+                # The way out is the operator's to take, so the button is there
+                # from the first moment rather than after the patience timer.
+                step.show_next()
 
         elif isinstance(anim, (DisconnectBoardAnim, RadioToPiAnim)):
             # From here to the end of the walkthrough the radio is DELIBERATELY
@@ -2122,6 +2138,19 @@ class BirthGuideScreen(BoxLayout):
         for key, val in (result or {}).items():
             setattr(self, f"_{key}", val)
         steps = guide_steps(self._path, self._pi_key_for_text())
+        # A FAILED BUILD DOES NOT MOVE THE WALKTHROUGH FORWARD. The hand-off
+        # remembered where to come back to and came back there whatever
+        # happened, so dismissing "Build didn't finish" landed the operator on
+        # "That's the node built" — the tool contradicting itself one screen
+        # apart, and worse, telling them to take an unbuilt node away and power
+        # it up (operator, 2026-08-10). Stay on the step that did the work; its
+        # button already reads "Try again".
+        if (result or {}).get("build_failed"):
+            at = max(0, at - 1)
+            self._gate_warning = tr(
+                "That build didn't finish. The step that failed is named in "
+                "the build log, with the reason under it. Fix that, then tap "
+                "Try again — nothing here is lost.")
         self._i = at
         if self._i >= len(steps):
             self._finish()
@@ -2240,6 +2269,10 @@ class BirthGuideScreen(BoxLayout):
     # -- navigation --------------------------------------------------------
     def _next(self):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
+        # Tapping on IS the retry, so the last failure stops speaking for this
+        # attempt — otherwise a second, successful build would still be held
+        # behind the first one's warning.
+        self._build_failed = False
         steps = guide_steps(self._path, self._pi_key_for_text())
         cur = steps[self._i] if self._i < len(steps) else {}
         # A gated step will not be walked past. See birth_guide_flow for why the

@@ -563,7 +563,10 @@ def test_a_gate_that_has_passed_does_not_stop_you():
     src = func_source(SCREEN, "_render_step")
     assert 'elif s.get("gate"):' in src
     branch = src[src.index('elif s.get("gate"):'):]
-    assert "_gate_state" in branch and "if ok:" in branch
+    # "and not failed" since 2026-08-10: a gate that passes still advances by
+    # itself, EXCEPT straight after a failed build, where advancing would relaunch
+    # the identical build unasked.
+    assert "_gate_state" in branch and "if ok and not failed:" in branch
     assert "_advance_token" in branch, "a manual tap must still win the race"
 
 

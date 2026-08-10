@@ -101,3 +101,44 @@ def test_the_labels_sit_off_the_board():
     side = func_source(ANIM, "_draw_side_entry", cls="ConnectPiAnim")
     assert "pyy + ph + dp(4)" in side, "DATA above the board"
     assert "pyy - dp(20)" in side, "PWR IN below it"
+
+
+# --- the fix has to REACH the case it was built for ------------------------
+
+def test_the_step_draws_the_board_the_operator_chose():
+    """2026-08-09 added per-model geometry so this animation could stop drawing
+    a Pi Zero at everyone. The exception that fed it the DETECTED key was left
+    in place, and the detected key is "" for BCM283x — so a 3 A+ operator got a
+    Zero anyway, and said so the next morning. A fix that cannot reach its own
+    case is not a fix."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_pi_key_for_art")
+    body = src.split('"""')[2]
+    assert "anim_cls is ConnectPiAnim" not in body, \
+        "no animation is exempt from drawing the operator's own board"
+    assert "_pi_key" in body
+
+
+def test_the_card_is_shown_already_in_the_pi():
+    """By this step the card has been written and moved into the board. Showing
+    an empty Pi asks the operator to hold two ideas at once and trust the tool
+    has not forgotten."""
+    from tests.srcutil import func_source
+    for scene in ("_draw", "_draw_side_entry"):
+        src = func_source(ANIM, scene, cls="ConnectPiAnim")
+        assert "_draw_card_seated" in src, f"{scene} draws an empty Pi"
+    seated = func_source(ANIM, "_draw_card_seated", cls="ConnectPiAnim")
+    assert "pi_sd_geometry" in seated, "use the measured slot, not a guess"
+    assert "geo is None" in seated, "and draw nothing for an unmeasured board"
+
+
+def test_green_is_reserved_for_what_the_medic_can_actually_see():
+    """The aiming ring was drawn in the same green this UI uses for Connected!,
+    the health dots and the card's seated pulse — so a target read as an
+    acknowledgement, with nothing plugged in. Same fault as the card
+    animation's ripple a day earlier."""
+    from tests.srcutil import func_source
+    for scene in ("_draw", "_draw_side_entry"):
+        src = func_source(ANIM, scene, cls="ConnectPiAnim")
+        assert "self._connected" in src, f"{scene} must gate the green"
+        assert 'theme.COLORS["accent"]' in src, f"{scene} must aim in blue"

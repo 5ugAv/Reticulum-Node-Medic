@@ -631,6 +631,33 @@ class BirthScreen(BoxLayout):
                     go.bind(on_release=lambda *_: self._go_image_pi())
                     self.header.add_widget(go)
                     return
+                # AN ADDRESS THE WALKTHROUGH JUST PROVED IS NOT A GUESS.
+                # The guided step before this one does not open until the node
+                # answers, so by the time this screen draws, the medic has
+                # already spoken to the Pi. Running the general search again
+                # anyway meant a slower, weaker probe got the last word: it
+                # printed "Couldn't find the Pi yet — is it powered on?" in
+                # amber, directly above a Start button that worked perfectly
+                # (operator, 2026-08-10). A false alarm next to a working
+                # button teaches the operator to distrust the warnings that
+                # matter. So proof wins, and the only thing re-checked is that
+                # same address — never a sweep that can disagree about a
+                # different machine.
+                proved = getattr(self, "_declared_pi_address", "") or ""
+                if proved:
+                    if not hasattr(self, "_pi_addr_in"):
+                        from ui.onscreen_keyboard import bind_field
+                        from kivy.uix.textinput import TextInput
+                        self._pi_addr_in = bind_field(TextInput(
+                            text="", multiline=False, font_size="27sp"))
+                        self._pi_user_in = bind_field(TextInput(
+                            text="pi", multiline=False, font_size="27sp"))
+                    self._pi_addr_in.text = proved
+                    self.header.add_widget(_line(
+                        f"Raspberry Pi answering at {proved} — confirmed a "
+                        "moment ago. Nothing to enter.",
+                        size="13.5sp", color="green", bold=True))
+                    return
                 # If the Pi is plugged into the medic, there is nothing to ask.
                 # Showing an address box for a device physically in front of the
                 # operator is the thing they objected to in the first place
@@ -655,11 +682,15 @@ class BirthScreen(BoxLayout):
                     self._pi_addr_in.text = cable
                     return
                 self.header.add_widget(_line(
+                    # There is no Find button — it was removed on 2026-08-02
+                    # because the medic searches by itself. The copy telling
+                    # the operator to tap it outlived it by a week, pointing at
+                    # a control that is not on the screen (operator, 2026-08-10).
                     ("Where the Pi is on your network — filled in from the name "
-                     "Node Medic gave it. Tap Find if it's blank or wrong."
+                     "Node Medic gave it. Type over it if it's wrong."
                      if suggestion else
-                     "Where the Pi is on your network. Tap Find and Node Medic "
-                     "will look for it."),
+                     "Where the Pi is on your network. Node Medic is looking "
+                     "for it — or type the address in."),
                     size="12.5sp", color="text_secondary"))
                 row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                 height=dp(48), spacing=dp(8))
@@ -2371,8 +2402,17 @@ class BirthScreen(BoxLayout):
             if not getattr(app, "guided_birth_pending", lambda: False)():
                 return
             verified = bool(getattr(self, "_radio_verified", False))
+            # AND WHETHER THE BUILD ITSELF LIVED. Without this the walkthrough
+            # carried on regardless: the operator dismissed "Build didn't
+            # finish", and the very next screen congratulated them — "That's
+            # the node built" over instructions to take the Pi away and power
+            # it up (operator, 2026-08-10: "this is confusing after a warning
+            # saying something didn't work"). A walkthrough that celebrates a
+            # failed build sends a dead node into the field.
+            failed = bool(getattr(self, "_had_failure", False))
             Clock.schedule_once(
-                lambda _dt: app.resume_guided_birth({"radio_verified": verified}),
+                lambda _dt: app.resume_guided_birth({"radio_verified": verified,
+                                                     "build_failed": failed}),
                 2.5)
         except Exception:                                          # noqa: BLE001
             pass            # a failed hand-back must never break the outcome

@@ -655,3 +655,64 @@ def test_a_failed_pi_build_gets_pi_advice_not_board_advice():
     assert "PRG" not in pi_branch and "cable" not in pi_branch.lower() or \
         "brown out" in pi_branch.lower()
     assert "reader" in pi_branch, "point at the card check, which now exists"
+
+
+def test_a_proved_address_is_not_re_litigated_by_a_weaker_search():
+    """Operator, 2026-08-10, photo: "this page still says cant find the pi
+    while the button says ok start. ok start works, so im guessing the
+    statement that the pi cant be found is false?" — it was false. The guided
+    step before this one does not open until the node ANSWERS, so the medic had
+    already spoken to the Pi at 10.55.0.1. The screen then ran the general
+    search again, that slower probe came back empty, and its amber "Couldn't
+    find the Pi yet" got the last word directly above a Start button that
+    worked. A false alarm beside a working button teaches an operator to
+    distrust the warnings that matter."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_build_chooser")
+    proved = src.split('proved = getattr(self, "_declared_pi_address"')[1]
+    head = proved[:900]
+    assert "return" in head, "a proved address must end the question"
+    assert "_pi_addr_in.text = proved" in head
+    # and it must settle BEFORE the search that can contradict it
+    assert src.index("proved = getattr") < src.index("self._find_pi()")
+
+
+def test_no_screen_points_at_a_button_that_was_deleted():
+    """The Find button went on 2026-08-02 — the medic searches by itself. The
+    copy telling the operator to tap it outlived it by a week."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_build_chooser")
+    body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+    assert "Tap Find" not in body
+
+
+def test_a_failed_build_does_not_advance_to_the_node_is_built():
+    """Operator, 2026-08-10: "after I press got it on this warning it takes me
+    to the screen that tells me to unplug pi and connect it to radio and power
+    it up. the button says that's the node built... this is confusing after a
+    warning saying something didn't work."
+
+    The hand-off remembered a return point and returned there whatever
+    happened. A walkthrough that celebrates a failed build sends a dead node
+    into the field."""
+    from tests.srcutil import func_source
+    hand = func_source("ui/screens/birth_screen.py", "_hand_back_to_guide")
+    assert "build_failed" in hand and "_had_failure" in hand, \
+        "the outcome must cross back with the hand-off"
+    res = func_source("ui/screens/birth_guide_screen.py", "resume")
+    assert '"build_failed"' in res and "at - 1" in res, \
+        "a failed build stays on the step that did the work"
+
+
+def test_a_failed_build_stops_the_step_driving_itself():
+    """That step advances itself the moment the Pi answers — which it still
+    does after a failure, so left alone the medic would relaunch the identical
+    build by itself, forever."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_render_step")
+    assert "failed = bool(getattr(self, \"_build_failed\", False))" in src
+    assert "if ok and not failed:" in src, "no self-driving after a failure"
+    assert 'if not ok and s["gate"] == "node_online" and not failed:' in src, \
+        "and the way out must not be hidden behind the patience timer"
+    nxt = func_source("ui/screens/birth_guide_screen.py", "_next")
+    assert "self._build_failed = False" in nxt, "retrying clears the failure"

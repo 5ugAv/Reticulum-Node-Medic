@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "地図をタップしてピンを置く、または ",
   "Terrain  off": "地形  オフ",
   "Terrain  on": "地形  オン",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "復旧キーの形式ではないようです（4 文字を 8 組、計 32 文字）。",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "有効な Reticulum アドレスではないようです（16進32文字が必要）。",
   "That password didn't open it — {n} attempts left.": "そのパスワードでは開きませんでした — 残り {n} 回。",

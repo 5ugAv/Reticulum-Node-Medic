@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "Dotknij mapy, aby postawić pinezkę, lub ",
   "Terrain  off": "Teren  wył.",
   "Terrain  on": "Teren  wł.",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "To nie wygląda na klucz odzyskiwania (32 znaki, w ośmiu grupach po cztery).",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "To nie wygląda na prawidłowy adres Reticulum (wymaga 32 znaków hex).",
   "That password didn't open it — {n} attempts left.": "To hasło nie otworzyło – pozostało prób: {n}.",

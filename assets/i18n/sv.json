@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "Tryck på kartan för att sätta nålen, eller ",
   "Terrain  off": "Terräng  av",
   "Terrain  on": "Terräng  på",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Det ser inte ut som en återställningsnyckel (32 tecken, i åtta grupper om fyra).",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "Det ser inte ut som en giltig Reticulum-adress (kräver 32 hex-tecken).",
   "That password didn't open it — {n} attempts left.": "Det lösenordet öppnade den inte – {n} försök kvar.",

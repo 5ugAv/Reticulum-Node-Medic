@@ -327,6 +327,7 @@
   "Tap the map to drop the pin, or ": "Нажмите на карту, чтобы поставить метку, или ",
   "Terrain  off": "Рельеф  выкл.",
   "Terrain  on": "Рельеф  вкл.",
+  "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.": "That build didn't finish. The step that failed is named in the build log, with the reason under it. Fix that, then tap Try again — nothing here is lost.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Это не похоже на ключ восстановления (32 символа, восемью группами по четыре).",
   "That doesn't look like a valid Reticulum address (needs 32 hex characters).": "Это не похоже на действительный адрес Reticulum (нужно 32 hex-символа).",
   "That password didn't open it — {n} attempts left.": "Этот пароль не открыл — осталось попыток: {n}.",
