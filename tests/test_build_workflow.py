@@ -914,3 +914,44 @@ def test_a_boot_file_full_of_heredoc_terminators_cannot_escape():
     import base64, shlex
     blob = shlex.split(cmd.split("|")[0])[1]
     assert base64.b64decode(blob).decode() == nasty
+
+
+# --- the radio's name must not be claimable by any old USB gadget -----------
+
+def test_udev_rule_pins_to_the_radios_own_serial_when_known():
+    """Vendor-only matching is a wide net: 0403 is every FTDI cable made, 1a86
+    every CH340 clone. On a finished node with spare USB sockets, the first
+    serial gadget anyone plugs in would take /dev/rnode and rnsd would open
+    something that is not a radio. At birth the board is right here, so the
+    rule names that one device."""
+    from workflows.build import rnode_udev_rules
+    r = rnode_udev_rules("A1B2C3D4E5F6")
+    assert 'ATTRS{serial}=="A1B2C3D4E5F6"' in r
+    assert "idVendor" not in r, "the wide net is not also installed"
+    assert 'SYMLINK+="rnode"' in r and 'ENV{SYSTEMD_WANTS}="rnsd.service"' in r
+
+
+def test_udev_rule_falls_back_to_vendors_and_says_so():
+    """A rule that is too broad still beats a node that cannot find its radio
+    at all — but the file has to admit which one it is, or the next person
+    reads a vendor rule as a deliberate choice."""
+    from workflows.build import rnode_udev_rules
+    r = rnode_udev_rules("")
+    assert "FALLBACK" in r and "could not read the radio's serial" in r
+    assert r.count("idVendor") >= 5
+
+
+def test_install_radio_rule_reads_the_serial_from_udev_itself():
+    from workflows.build import attached_radio_serial
+    w = wf(build_conn(rnode=True))
+    w.profile.radio.serial_port = "/dev/ttyACM0"
+    w.connection.rules.insert(0, ("udevadm info -q property", 0,
+                                  "ID_BUS=usb\nID_SERIAL_SHORT=A1B2C3D4E5F6\n"
+                                  "ID_VENDOR_ID=303a\n", ""))
+    assert attached_radio_serial(w) == "A1B2C3D4E5F6"
+
+
+def test_the_radio_rule_is_written_without_a_heredoc():
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "install_radio_rule")
+    assert "RTTEOF" not in src and "_write_remote_file" in src

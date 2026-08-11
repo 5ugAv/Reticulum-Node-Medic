@@ -575,9 +575,12 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
 #: whenever it is plugged in, it is /dev/rnode.
 RNODE_SYMLINK = "/dev/rnode"
 
-#: USB vendor:product of every radio this tool flashes, as udev sees them.
-#: Vendor alone is enough and stays right when a board revision changes its
-#: product id.
+#: USB vendors of the radios this tool flashes, as udev sees them. Used ONLY as
+#: the fallback when the build could not read the attached radio's own serial —
+#: see rnode_udev_rules. Vendor alone is a wide net: 0403 is every FTDI cable in
+#: the world, 1a86 every CH340 Arduino clone. On a node with one USB socket that
+#: is nearly harmless; on a Pi with four it means the first serial gadget anyone
+#: plugs in becomes /dev/rnode and rnsd opens it instead of the radio.
 _RNODE_USB_VENDORS = (
     ("303a", "Espressif native USB (ESP32-S3: Heltec V3/V4, T-Beam Supreme)"),
     ("10c4", "Silicon Labs CP210x (older Heltec, LilyGO)"),
@@ -587,13 +590,22 @@ _RNODE_USB_VENDORS = (
 )
 
 
-def rnode_udev_rules() -> str:
-    """The udev rules that give any attached radio a stable name.
+def rnode_udev_rules(serial: str = "") -> str:
+    """The udev rules that give the node's radio a stable name.
 
     TAG+="systemd" makes systemd see the radio as dev-rnode.device, and
-    SYSTEMD_WANTS pulls rnsd in when it appears. Together with BindsTo= on the
-    unit itself, that is the whole mechanism: no radio, no rnsd; radio arrives,
-    rnsd starts with the device already there.
+    SYSTEMD_WANTS pulls rnsd in when it appears. Together with the unit's own
+    ordering that is the whole mechanism: no radio, no rnsd; radio arrives, rnsd
+    starts with the device already there.
+
+    MATCHES THE RADIO'S OWN SERIAL WHEN WE KNOW IT. At birth the medic has the
+    board in front of it and can read its serial, so the rule can name that one
+    device. Falling back to "any tty from these five vendors" was the original
+    version and it is a wide net: an FTDI cable or a CH340 Arduino plugged into
+    the finished node would take /dev/rnode, and rnsd would open a device that
+    is not a radio. The fallback stays for the case where the serial could not
+    be read — a rule that is too broad still beats a node that cannot find its
+    radio at all — and it says so in the file.
 
     THIS REPLACED A systemctl CALL FROM INSIDE THE RULE, and the reason is worth
     keeping. The first version ran `systemctl try-restart rnsd` from RUN+=.
@@ -605,17 +617,47 @@ def rnode_udev_rules() -> str:
     the state a shrugging daemon is in. Binding the service to the device is
     deterministic and documented; the previous version was a hope.
     """
+    name = RNODE_SYMLINK.rsplit("/", 1)[-1]
+    tail = f'SYMLINK+="{name}", TAG+="systemd", ENV{{SYSTEMD_WANTS}}="rnsd.service"'
     lines = [
-        "# Node Medic: give the attached RNode a stable name.",
+        "# Node Medic: give this node's radio a stable name.",
         "# Written at birth. See workflows/build.py (RNODE_SYMLINK).",
+    ]
+    if serial:
+        lines += [
+            "# Matched by the radio's OWN serial, read from the board at birth:",
+            "# no other USB serial device on this node can take the name.",
+            f'SUBSYSTEM=="tty", ATTRS{{serial}}=="{serial}", {tail}',
+        ]
+        return "\n".join(lines) + "\n"
+    lines += [
+        "# FALLBACK — the build could not read the radio's serial, so this",
+        "# matches by USB VENDOR, which is wide: any tty from these makers wins",
+        "# the name. If this node ever carries a second USB serial device, pin",
+        "# the rule to the radio's serial by hand (udevadm info -a -n /dev/...).",
     ]
     for vid, why in _RNODE_USB_VENDORS:
         lines.append(f"# {why}")
-        lines.append(
-            f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vid}", '
-            f'SYMLINK+="{RNODE_SYMLINK.rsplit("/", 1)[-1]}", TAG+="systemd", '
-            f'ENV{{SYSTEMD_WANTS}}="rnsd.service"')
+        lines.append(f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vid}", {tail}')
     return "\n".join(lines) + "\n"
+
+
+def attached_radio_serial(wf: "BuildWorkflow") -> str:
+    """The serial of the radio attached to the node right now, or "".
+
+    Read from udev's own view (ID_SERIAL_SHORT), which is the same attribute the
+    rule matches on — asking the thing itself rather than deriving it.
+    """
+    port = getattr(getattr(wf.profile, "radio", None), "serial_port", "") or ""
+    if not port:
+        return ""
+    code, out, _ = wf.connection.run(f"udevadm info -q property -n {port}")
+    if code != 0:
+        return ""
+    for line in (out or "").splitlines():
+        if line.startswith("ID_SERIAL_SHORT="):
+            return line.split("=", 1)[1].strip()
+    return ""
 
 
 @build_step
@@ -625,10 +667,10 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     Runs whether or not a radio is attached — the whole point is that it works
     for the radio that is not here yet.
     """
-    rules = rnode_udev_rules()
-    heredoc = (f"{wf.priv('tee /etc/udev/rules.d/60-rnode.rules')} "
-               f">/dev/null <<'RTTEOF'\n{rules}\nRTTEOF")
-    code, out, err = wf.connection.run(heredoc)
+    serial = attached_radio_serial(wf)
+    rules = rnode_udev_rules(serial)
+    code, out, err = wf.connection.run(
+        _write_remote_file(wf, "/etc/udev/rules.d/60-rnode.rules", rules))
     if code != 0:
         return StepResult("install_radio_rule", False,
                           f"Could not write the radio's udev rule: {err or out}")
@@ -637,9 +679,11 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     # the bench does.
     wf.connection.run(wf.priv("udevadm control --reload-rules"))
     wf.connection.run(wf.priv("udevadm trigger --subsystem-match=tty"))
+    how = (f"this radio (serial {serial})" if serial
+           else "a radio from any of the makers this tool flashes")
     return StepResult("install_radio_rule", True,
-                      f"The radio will answer to {RNODE_SYMLINK} whenever it is "
-                      "plugged in, on whichever port it lands.")
+                      f"The node will answer to {RNODE_SYMLINK} for {how}, "
+                      "whenever it is plugged in and on whichever port it lands.")
 
 
 @build_step
@@ -993,6 +1037,22 @@ _RETICULUM_ADDR_CMD = (
     "print(RNS.hexrep(i.hash, delimit=False) if i else '')\" 2>/dev/null")
 
 
+def _pin_this_node(wf: "BuildWorkflow") -> str:
+    """Pin the built node's SSH host key; return the fingerprint or "".
+
+    Only for a real SSH connection to a real host — a serial or local build has
+    no host key, and an emulated one has no node.
+    """
+    host = getattr(wf.connection, "host", "") or ""
+    if not host or type(wf.connection).__name__ != "SSHConnection":
+        return ""
+    try:
+        from provisioning import host_keys
+        return host_keys.pin_host(host) or ""
+    except Exception:
+        return ""
+
+
 @build_step
 def birth_certificate(wf: "BuildWorkflow") -> StepResult:
     """Assemble a photographable birth certificate for the node.
@@ -1047,6 +1107,19 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
     # (the registry key), not just its main rnsd identity.
     if wf.profile.health_dst_hash:
         wf.birth_certificate["health_dst"] = wf.profile.health_dst_hash
+
+    # PIN THE NODE'S SSH HOST KEY (audit C1). This is the one moment the medic
+    # can be sure which machine it is talking to: it just built this one. From
+    # here on a connection to this address VERIFIES the key instead of accepting
+    # whatever answers — and a rebirth deliberately clears the pin, so the
+    # replacement gets a fresh one rather than a refusal.
+    #
+    # Best-effort and never fatal: a node that is built and working must not be
+    # failed over a hardening step, and a node that could not be pinned is
+    # exactly where it already was.
+    pinned = _pin_this_node(wf)
+    if pinned:
+        wf.birth_certificate["host_key_fingerprint"] = pinned
     return StepResult(
         "birth_certificate", True,
         f"Birth certificate ready — {hostname or 'node'} @ "

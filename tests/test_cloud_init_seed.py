@@ -85,12 +85,18 @@ def test_no_wifi_means_no_network_config_at_all():
     assert pi.build_cloud_init_network_config("", "") == ""
 
 
-def test_wifi_network_config_is_valid_netplan():
-    doc = yaml.safe_load(pi.build_cloud_init_network_config("HomeNet", "sec ret"))
-    assert doc["version"] == 2
-    ap = doc["wifis"]["wlan0"]["access-points"]
-    assert "HomeNet" in ap
-    assert ap["HomeNet"]["password"] == "sec ret"
+def test_no_wifi_psk_is_ever_written_to_the_boot_partition():
+    """This used to build a netplan block carrying the PSK in clear text onto
+    the FAT boot partition — the one partition on the card that mounts on any
+    computer. It never worked (the medic's own card diagnosis reported "Wi-Fi
+    details are on the card but were NEVER APPLIED", twice, 2026-08-09) and the
+    Wi-Fi that does work is a 0600 root-owned NetworkManager file on the rootfs.
+
+    So it bought nothing and cost the operator's home PSK to anyone who picked
+    up a node."""
+    assert pi.build_cloud_init_network_config("HomeNet", "sec ret") == ""
+    toml = pi.build_custom_toml("h", "pi", "pw", pw_hasher=lambda p: "x")
+    assert "sec ret" not in toml and "password_encrypted = false" not in toml
 
 
 # --- it actually reaches the card ------------------------------------------
@@ -130,11 +136,10 @@ def test_custom_toml_is_still_written_alongside():
     assert written.get("custom.toml") == "toml=1"
 
 
-def test_flash_puts_a_cloud_init_seed_on_the_card():
+def test_flash_puts_a_cloud_init_seed_on_the_card(monkeypatch):
     """The regression that cost a 9-minute write and an unreachable Pi. The
     seed now travels to the root helper in its config rather than as a tee
     command, but it must still get there."""
-    import base64 as _b, json as _j
     from provisioning import pi_imager
     captured = {}
 
@@ -148,10 +153,10 @@ def test_flash_puts_a_cloud_init_seed_on_the_card():
         return (0, "")
 
     def shell(cmd):
-        if "base64 -d >" in cmd:
-            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
-            captured.update(_j.loads(_b.b64decode(blob).decode()))
         return (0, "")
+
+    monkeypatch.setattr(pi_imager, "write_card_config",
+                        lambda cfg, path="/tmp/x": (captured.update(cfg), path)[1])
 
     ok, _ = pi_imager.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
                             image_path="/tmp/x.img.xz", run=medic_run,

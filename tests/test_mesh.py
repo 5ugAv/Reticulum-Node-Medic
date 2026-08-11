@@ -196,3 +196,21 @@ def test_is_hex_hash():
     assert is_hex_hash("b7c8d9e0") is False              # too short
     assert is_hex_hash("g" * 32) is False                # not hex
     assert is_hex_hash("") is False and is_hex_hash(None) is False
+
+
+def test_a_path_row_carries_when_it_was_learned():
+    """rnpath's `timestamp` is when the path was taught — the moment the node
+    was actually heard. Without it the tool cannot tell a live node from a
+    week-old cached route, which is exactly how an unplugged SolarLove sat
+    green in VITALS (2026-08-11)."""
+    import json as _json
+    rows = _json.dumps([{"hash": "aabbccddeeff00112233445566778899",
+                         "via": "aabbccddeeff00112233445566778899",
+                         "hops": 1, "timestamp": 1786367986.098723,
+                         "expires": 1786972786.098723,
+                         "interface": "RNodeInterface[RNode LoRa Interface]"}])
+    n = parse_rnpath(rows)[0]
+    assert n.heard == 1786367986.098723
+    # seven days between learned and expiring is the point: presence in the
+    # table says nothing about now
+    assert round((n.expires - n.heard) / 86400) == 7

@@ -212,13 +212,25 @@ def medic_public_key(path: str = "~/.ssh/id_ed25519.pub") -> str:
 
 
 def build_custom_toml(hostname: str, username: str, password: str,
-                      wifi_ssid: str = "", wifi_password: str = "",
                       wifi_country: str = "AU", enable_ssh: bool = True,
                       timezone: str = "", pw_hasher: Callable[[str], str] = None,
                       authorized_keys: "Optional[List[str]]" = None) -> str:
     """The Raspberry Pi OS ``custom.toml`` firstboot config (schema config_version=1).
-    The user password is stored SHA-512-crypted; WiFi is included only when an SSID
-    is given. Written to the card's boot partition."""
+    The user password is stored SHA-512-crypted. Written to the card's boot
+    partition.
+
+    NO WI-FI HERE, DELIBERATELY. This file used to carry a ``[wlan]`` block with
+    ``password_encrypted = false`` — the home PSK in clear text on a FAT
+    partition that mounts on any computer, in a card that lives on a roof and
+    may be pulled out by anyone. It bought nothing: the carried image has no
+    ``raspberrypi-sys-mods/firstboot`` hook, so the block was never read (proven
+    twice on the bench, 2026-08-09), and the Wi-Fi that actually works is a
+    NetworkManager connection written straight onto the rootfs by
+    ``provisioning.rootfs_wifi`` — 0600, root-owned, on ext4.
+
+    The country code stays: it is not a secret, and the regulatory domain is
+    what makes a 5 GHz network joinable at all.
+    """
     hashed = (pw_hasher or password_hash)(password) if password else ""
     q = _toml_escape
     lines = ["config_version = 1", "", "[system]", f'hostname = "{q(hostname)}"', ""]
@@ -234,10 +246,8 @@ def build_custom_toml(hostname: str, username: str, password: str,
         joined = ", ".join(f'"{q(k)}"' for k in keys)
         lines.append(f"authorized_keys = [ {joined} ]")
     lines.append("")
-    if wifi_ssid:
-        lines += ["[wlan]", f'ssid = "{q(wifi_ssid)}"',
-                  f'password = "{q(wifi_password)}"', "password_encrypted = false",
-                  f'country = "{q(wifi_country)}"', ""]
+    if wifi_country:
+        lines += ["[wlan]", f'country = "{q(wifi_country)}"', ""]
     if timezone:
         lines += ["[locale]", f'timezone = "{q(timezone)}"', ""]
     return "\n".join(lines).rstrip() + "\n"
@@ -304,24 +314,22 @@ def build_cloud_init_user_data(hostname: str, username: str, password: str,
 
 def build_cloud_init_network_config(wifi_ssid: str = "",
                                     wifi_password: str = "") -> str:
-    """``network-config`` (netplan v2) for a card that should join WiFi.
+    """Always "" — the card gets no Wi-Fi PSK on its boot partition.
 
-    Returns "" when there is no SSID — the cable-birth path deliberately puts
-    no PSK on the card at all.
+    THIS USED TO RETURN A netplan BLOCK with the PSK in clear text, written to
+    ``network-config`` on the FAT boot partition. Two things were wrong with it.
+    It never worked: cloud-init on the carried image reads its seed from
+    /boot/firmware but the medic's own diagnosis reported, twice on 2026-08-09,
+    "Wi-Fi details are on the card but were NEVER APPLIED". And it put the
+    operator's home PSK somewhere any computer can read by inserting the card —
+    the one partition on it that is not ext4 and not root-owned.
+
+    The Wi-Fi that works is written onto the ROOTFS by
+    ``provisioning.rootfs_wifi`` as a 0600 root-owned NetworkManager connection.
+    The signature is kept so callers do not silently change meaning, and so this
+    docstring is what a reader finds when they come looking for the PSK.
     """
-    if not wifi_ssid:
-        return ""
-    return "\n".join([
-        "version: 2",
-        "wifis:",
-        "  wlan0:",
-        "    dhcp4: true",
-        "    optional: true",
-        "    access-points:",
-        f"      {_yaml_str(wifi_ssid)}:",
-        f"        password: {_yaml_str(wifi_password)}",
-        "",
-    ])
+    return ""
 
 
 def apply_config_commands(device_path: str, custom_toml: str,
@@ -457,20 +465,46 @@ def activate_account_commands(device_path: str, username: str,
 PREPARE_CARD = "/usr/local/lib/nodemedic/prepare-card"
 
 
-def prepare_card_commands(device_path: str, config: dict,
+def write_card_config(config: dict,
+                      config_path: str = "/tmp/nm-card-config.json") -> str:
+    """Write the card config to a 0600 file, from PYTHON — never through a shell.
+
+    THE CONFIG CARRIES THE WI-FI PSK AND A PASSWORD HASH. It has always gone to
+    the helper as a file for that reason, because argv is world-readable through
+    /proc. But the file itself was created by a shell command that carried the
+    whole blob in its own argv:
+
+        echo <base64 of the config> | base64 -d > /tmp/nm-card-config.json
+
+    which put the very thing the file was protecting into `ps` output and
+    /proc/<pid>/cmdline for the life of that command — on a medic that other
+    people are meant to be able to hand around. os.open with O_CREAT|O_EXCL and
+    mode 0600 gives no window where the file exists world-readable either.
+    """
+    import json as _json
+    import os as _os
+    data = _json.dumps(config).encode()
+    try:
+        _os.unlink(config_path)
+    except OSError:
+        pass
+    fd = _os.open(config_path, _os.O_WRONLY | _os.O_CREAT | _os.O_EXCL, 0o600)
+    try:
+        _os.write(fd, data)
+    finally:
+        _os.close(fd)
+    return config_path
+
+
+def prepare_card_commands(device_path: str,
                           config_path: str = "/tmp/nm-card-config.json") -> List[str]:
     """Hand the whole card preparation to the root helper.
 
-    The configuration goes via a FILE rather than the command line: it carries a
-    password hash and possibly a WiFi PSK, and argv is world-readable through
-    /proc. Written 0600 and removed afterwards.
+    Takes the PATH of a config already written by ``write_card_config`` — the
+    contents never appear in any command line. Shredded afterwards.
     """
-    import json as _json
-    blob = base64.b64encode(_json.dumps(config).encode()).decode()
     q = shlex.quote(config_path)
     return [
-        f"install -m 600 /dev/null {q}",
-        f"echo {shlex.quote(blob)} | base64 -d > {q}",
         f"sudo -n {PREPARE_CARD} --device {shlex.quote(device_path)} "
         f"--config {q}",
         f"shred -u {q} 2>/dev/null || rm -f {q}",
@@ -508,7 +542,7 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     code, out = run_shell(write_image_command(image, device_path))
     if code != 0:
         return (False, f"Writing the image failed: {out[-200:]}")
-    toml = build_custom_toml(hostname, username, password, wifi_ssid, wifi_password,
+    toml = build_custom_toml(hostname, username, password,
                              wifi_country, enable_ssh, pw_hasher=pw_hasher,
                              authorized_keys=authorized_keys)
     hasher = pw_hasher or password_hash
@@ -547,7 +581,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     # never baked, and a screen that then promises a USB-cable birth that cannot
     # happen. Diagnosing that from the far end costs a bench night (2026-08-06).
     warnings: List[str] = []
-    for cmd in prepare_card_commands(device_path, card_cfg):
+    cfg_path = write_card_config(card_cfg)
+    for cmd in prepare_card_commands(device_path, cfg_path):
         code, out = run_shell(cmd)
         if code != 0:
             return (False, "Image written, but preparing the card failed: "

@@ -195,22 +195,36 @@ def test_flash_hands_the_whole_card_to_the_root_helper():
     assert "sudo -n mount" not in joined, "mounts are the helper's job now"
 
 
-def test_the_card_config_never_travels_on_the_command_line():
+def test_the_card_config_never_travels_on_the_command_line(tmp_path):
     """It carries a password hash and possibly a WiFi PSK, and argv is
-    world-readable through /proc."""
+    world-readable through /proc.
+
+    The first version passed the PATH on the command line but built the file
+    with `echo <base64 of the whole config> | base64 -d > path` — so the blob
+    the file existed to protect sat in that command's own argv, visible in `ps`
+    to anyone with a shell on the medic."""
     from provisioning import pi_imager
-    cmds = pi_imager.prepare_card_commands(
-        "/dev/sdb", {"pwhash": HASH, "user": "pi"})
+    cfg = str(tmp_path / "card.json")
+    pi_imager.write_card_config({"pwhash": HASH, "user": "pi",
+                                 "wifi_psk": "hunter2"}, cfg)
+    cmds = pi_imager.prepare_card_commands("/dev/sdb", cfg)
     joined = " ".join(cmds)
     assert HASH not in joined, "the hash appeared in a command line"
-    assert "--config" in joined and "base64 -d" in joined
+    assert "hunter2" not in joined, "the PSK appeared in a command line"
+    assert "base64" not in joined, "no blob crosses the shell at all"
+    assert "--config" in joined
     assert any("shred" in c or "rm -f" in c for c in cmds), "config left behind"
 
 
-def test_the_config_file_is_written_unreadable_to_others():
+def test_the_config_file_is_written_unreadable_to_others(tmp_path):
+    import os
     from provisioning import pi_imager
-    cmds = pi_imager.prepare_card_commands("/dev/sdb", {})
-    assert any("install -m 600" in c for c in cmds)
+    cfg = str(tmp_path / "card.json")
+    pi_imager.write_card_config({"wifi_psk": "hunter2"}, cfg)
+    assert oct(os.stat(cfg).st_mode & 0o777) == "0o600"
+    # and writing again over an existing file still lands at 0600
+    pi_imager.write_card_config({"wifi_psk": "hunter2"}, cfg)
+    assert oct(os.stat(cfg).st_mode & 0o777) == "0o600"
 
 
 def test_a_failed_preparation_is_reported_as_not_ready():
@@ -235,17 +249,20 @@ def test_the_helper_config_carries_everything_the_card_needs():
     """If a field is dropped here it fails silently on the card, hours later."""
     from provisioning import pi_imager
     captured = {}
+    real_write = pi_imager.write_card_config
 
-    def shell(cmd):
-        if "base64 -d >" in cmd:
-            import base64 as _b, json as _j
-            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
-            captured.update(_j.loads(_b.b64decode(blob).decode()))
-        return (0, "")
+    def spy(cfg, path="/tmp/nm-card-config.json"):
+        captured.update(cfg)
+        return path
 
-    pi_imager.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
-                    image_path="/tmp/x.img.xz", run=_medic_run, run_shell=shell,
-                    pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    pi_imager.write_card_config = spy
+    try:
+        pi_imager.flash("/dev/sdb", "hope", "pi", "Fixture-pw-1?",
+                        image_path="/tmp/x.img.xz", run=_medic_run,
+                        run_shell=lambda cmd: (0, ""),
+                        pw_hasher=lambda p: HASH, authorized_keys=[KEY])
+    finally:
+        pi_imager.write_card_config = real_write
     for field in ("custom_toml", "user_data", "meta_data", "cable_link",
                   "user", "pwhash", "keys"):
         assert field in captured, f"{field} never reached the helper"

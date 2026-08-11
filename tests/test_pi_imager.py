@@ -60,8 +60,11 @@ def test_flash_refuses_absent_device():
     assert not ok
 
 
-def test_flash_happy_path_writes_then_configures():
+def test_flash_happy_path_writes_then_configures(monkeypatch):
     shell = []
+    cfg = {}
+    monkeypatch.setattr(pi, "write_card_config",
+                        lambda c, path="/tmp/x": (cfg.update(c), path)[1])
     ok, msg = pi.flash("/dev/sdb", "faithpi", "pi", "secret",
                        wifi_ssid="Home", wifi_password="wpw", image_path="/img.xz",
                        run=_medic_run(), run_shell=lambda c: shell.append(c) or (0, ""))
@@ -73,25 +76,28 @@ def test_flash_happy_path_writes_then_configures():
     # behind a single narrow sudoers entry.
     assert pi.PREPARE_CARD in joined
     assert "--device /dev/sdb" in joined
-    import base64 as _b, json as _j
-    blob = [c for c in shell if "base64 -d >" in c][0]
-    cfg = _j.loads(_b.b64decode(blob.split("echo ")[1].split(" |")[0].strip("'")).decode())
     assert 'hostname = "faithpi"' in cfg["custom_toml"]             # config applied
+    # and the PSK never crosses a command line on the way there
+    assert "wpw" not in joined
 
 
-def test_build_custom_toml_has_hostname_hashed_pw_ssh_and_wifi():
-    toml = pi.build_custom_toml("faithpi", "pi", "secret", wifi_ssid="Home",
-                                wifi_password="wpw", wifi_country="AU",
+def test_build_custom_toml_has_hostname_hashed_pw_and_ssh():
+    toml = pi.build_custom_toml("faithpi", "pi", "secret", wifi_country="AU",
                                 pw_hasher=lambda p: "$6$HASH")
     assert 'hostname = "faithpi"' in toml
     assert 'password = "$6$HASH"' in toml and "password_encrypted = true" in toml
     assert "[ssh]" in toml and "enabled = true" in toml
-    assert 'ssid = "Home"' in toml and 'country = "AU"' in toml
+    # the regulatory domain is not a secret and 5 GHz is unusable without it
+    assert 'country = "AU"' in toml
 
 
-def test_custom_toml_omits_wifi_when_no_ssid():
+def test_custom_toml_carries_no_wifi_credentials_at_all():
+    """It used to write ssid + password with password_encrypted = false — the
+    home PSK in clear text on a FAT partition, in a card that goes on a roof.
+    The block was never read on the carried image anyway."""
     toml = pi.build_custom_toml("h", "pi", "pw", pw_hasher=lambda p: "x")
-    assert "[wlan]" not in toml
+    assert "ssid" not in toml
+    assert "password_encrypted = false" not in toml
 
 
 def test_carried_image_found_or_none(tmp_path):
@@ -120,21 +126,17 @@ def test_flash_defaults_to_the_medics_key(monkeypatch):
     monkeypatch.setattr(pi, "is_safe_target", lambda *a, **k: True)
     monkeypatch.setattr(pi, "carried_image", lambda *a, **k: "/tmp/os.img.xz")
     seen = []
+    cfg = {}
+    # the config reaches the helper as a 0600 FILE, never through a shell — so
+    # capture what was written rather than grepping command lines for it
+    monkeypatch.setattr(pi, "write_card_config",
+                        lambda c, path="/tmp/x": (cfg.update(c), path)[1])
     ok, msg = pi.flash("/dev/sdz", "h", "u", "p",
                        run_shell=lambda cmd: (seen.append(cmd), (0, ""))[1],
                        pw_hasher=lambda p: "HASH")
     assert ok, msg
-    # the config is base64'd into the shell command, so decode to check
-    import base64, re
-    found = False
-    for c in seen:
-        for blob in re.findall(r"[A-Za-z0-9+/=]{40,}", c):
-            try:
-                if "DEFAULTKEY" in base64.b64decode(blob).decode("utf-8", "ignore"):
-                    found = True
-            except Exception:
-                pass
-    assert found, "medic key never reached the card"
+    assert "DEFAULTKEY" in " ".join(cfg.get("keys", []) + [cfg.get("custom_toml", "")]), \
+        "medic key never reached the card"
 def test_password_pair_must_match():
     ok, msg = pi.validate_new_password("correcthorse", "correcthorse")
     assert ok and msg == ""

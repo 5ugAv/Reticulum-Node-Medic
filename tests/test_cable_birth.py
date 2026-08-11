@@ -184,18 +184,22 @@ def _medic_run(argv, **kw):
     return (0, "")
 
 
-def test_imager_bakes_the_cable_link_into_the_card_it_writes():
+def test_imager_bakes_the_cable_link_into_the_card_it_writes(monkeypatch):
     """Still true, just carried differently: the flag reaches the root helper
     in its config instead of as a pile of mount/tee commands."""
-    import base64 as _b, json as _j
     from provisioning import pi_imager
     captured = {}
 
     def shell(cmd):
-        if "base64 -d >" in cmd:
-            blob = cmd.split("echo ")[1].split(" |")[0].strip("'")
-            captured.update(_j.loads(_b.b64decode(blob).decode()))
         return (0, "")
+
+    def spy(cfg, path="/tmp/nm-card-config.json"):
+        # the config reaches the root helper as a 0600 FILE now; nothing of it
+        # crosses a command line, so capture it where it is written
+        captured.update(cfg)
+        return path
+
+    monkeypatch.setattr(pi_imager, "write_card_config", spy)
 
     ok, msg = pi_imager.flash(
         "/dev/sdb", "faith", "pi", "pw", image_path="/tmp/x.img.xz",

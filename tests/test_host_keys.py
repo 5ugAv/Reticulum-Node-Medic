@@ -216,3 +216,66 @@ def test_it_does_not_clear_the_same_address_twice():
     finally:
         host_keys.forget_host_key = real
     assert cleared.count("10.55.0.1") == 1
+
+
+# --- audit C1: the pin has to be WRITTEN by something, or it is theatre -----
+
+def test_pin_host_captures_and_pins(tmp_path):
+    """Verifying a pinned key is worth nothing if nothing ever pins one. Until
+    this existed the only writer was link.bootstrap_access, which the cable
+    birth never calls (the card already carries the medic's key) — so every
+    node this tool built had an empty pin store and stayed on accept-new."""
+    from provisioning import host_keys as hk
+    store = str(tmp_path / "known_hosts")
+    scanned = ("# skyfinger:22 SSH-2.0-OpenSSH_9.2p1\n"
+               "skyfinger ssh-ed25519 AAAAC3NzaC1lZDI1NTE5S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s=\n")
+    calls = []
+
+    def runner(argv, timeout=15):
+        calls.append(argv)
+        return (0, scanned, "")
+
+    fp = hk.pin_host("skyfinger", runner=runner, path=store)
+    assert fp, "returns the fingerprint it pinned"
+    assert calls and calls[0][0] == "ssh-keyscan"
+    assert hk.is_pinned("skyfinger", path=store)
+
+
+def test_pin_host_is_best_effort(tmp_path):
+    """A node that is otherwise built and working must not be failed over a
+    hardening step — an unreachable keyscan just leaves it where it was."""
+    from provisioning import host_keys as hk
+    store = str(tmp_path / "known_hosts")
+    assert hk.pin_host("nope", runner=lambda a, timeout=15: (255, "", "timed out"),
+                       path=store) is None
+    assert hk.pin_host("nope", runner=lambda a, timeout=15: (0, "garbage", ""),
+                       path=store) is None
+    assert not hk.is_pinned("nope", path=store)
+
+
+def test_every_ssh_connection_consults_the_pin_store(monkeypatch):
+    """The gap C1 actually had: pinning worked only through
+    provisioning.link.connect, which nothing in production calls. The BIRTH
+    screen, PROBE and the imager all build SSHConnection directly, so they
+    never read the store and a swapped key was accepted in silence."""
+    from transport.connection import SSHConnection
+    from provisioning import host_keys as hk
+
+    monkeypatch.setattr(hk, "is_pinned", lambda host, **kw: host == "pinned-node")
+    argv = SSHConnection("pinned-node", user="everywhere")._argv("true")
+    assert "StrictHostKeyChecking=yes" in argv
+    assert any(hk.PINNED_KNOWN_HOSTS in a for a in argv)
+
+    argv = SSHConnection("stranger", user="everywhere")._argv("true")
+    assert "StrictHostKeyChecking=accept-new" in argv
+
+
+def test_a_broken_pin_store_never_blocks_a_connection(monkeypatch):
+    from transport.connection import SSHConnection
+    from provisioning import host_keys as hk
+
+    def boom(host, **kw):
+        raise OSError("store unreadable")
+    monkeypatch.setattr(hk, "is_pinned", boom)
+    argv = SSHConnection("any-node", user="everywhere")._argv("true")
+    assert "StrictHostKeyChecking=accept-new" in argv

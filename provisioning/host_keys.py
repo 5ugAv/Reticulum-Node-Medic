@@ -118,6 +118,45 @@ def scan_argv(host: str, port: int = 22) -> List[str]:
     return ["ssh-keyscan", "-T", "5", "-p", str(port), host]
 
 
+def pin_host(host: str, runner=None, path: str = PINNED_KNOWN_HOSTS,
+             port: int = 22, timeout: int = 15) -> Optional[str]:
+    """Capture *host*'s SSH key and pin it. Returns the fingerprint, or None.
+
+    THE WRITE HALF OF AUDIT C1. Verifying a pinned key is worth nothing if
+    nothing ever pins one, and until now the only caller was
+    ``link.bootstrap_access`` — which the cable birth does not use, because the
+    card already carries the medic's public key. So every node this tool built
+    had an empty pin store and stayed on accept-new for life.
+
+    The moment to pin is when the medic has just finished building the node: it
+    knows which machine that is, because it made it. Later is guesswork.
+
+    Best-effort on purpose. A failed keyscan returns None and the caller carries
+    on — a node that is otherwise built and working must not be failed over a
+    hardening step, and accept-new is exactly where it already was.
+    """
+    if runner is None:
+        import subprocess
+
+        def runner(argv, timeout=timeout):
+            try:
+                pr = subprocess.run(argv, capture_output=True, text=True,
+                                    timeout=timeout)
+                return (pr.returncode, pr.stdout, pr.stderr)
+            except Exception:
+                return (255, "", "keyscan failed")
+    try:
+        rc, out, _ = runner(scan_argv(host, port), timeout=timeout)
+        if rc != 0:
+            return None
+        line = pick_key(out)
+        if not line or not write_known_hosts(host, line, path, port):
+            return None
+        return fingerprint(line)
+    except Exception:
+        return None
+
+
 def is_pinned(host: str, path: str = PINNED_KNOWN_HOSTS, port: int = 22) -> bool:
     """True if *host* already has a pinned entry in the known_hosts *path*."""
     want = _hostpart(host, port)

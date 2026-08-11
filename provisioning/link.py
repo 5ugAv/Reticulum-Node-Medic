@@ -153,15 +153,8 @@ def bootstrap_access(host: str, user: str, password: str,
     # PIN the node's SSH host key so future connects VERIFY it instead of blindly
     # re-accepting a changed key (audit C1). Best-effort: a capture failure doesn't
     # fail the bootstrap — the host just stays accept-new until it's pinned.
-    fingerprint = None
-    try:
-        from provisioning import host_keys
-        rc_scan, scan_out, _ = runner(host_keys.scan_argv(host), timeout=timeout)
-        key_line = host_keys.pick_key(scan_out) if rc_scan == 0 else None
-        if key_line and host_keys.write_known_hosts(host, key_line):
-            fingerprint = host_keys.fingerprint(key_line)
-    except Exception:
-        fingerprint = None
+    from provisioning import host_keys
+    fingerprint = host_keys.pin_host(host, runner=runner, timeout=timeout)
 
     if key_ok and sudo_ok:
         msg = f"Access bootstrapped — {user}@{host} now uses key auth + passwordless sudo."

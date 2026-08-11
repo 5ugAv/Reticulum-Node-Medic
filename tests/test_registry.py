@@ -72,9 +72,12 @@ def test_to_dashboard_signal_falls_back_to_beacon():
 # ---- mesh ingest (rnpath reachability) ----------------------------------
 
 
-def _mesh(dst, hops=1, iface="RNodeInterface[RNode LoRa Interface]"):
+def _mesh(dst, hops=1, iface="RNodeInterface[RNode LoRa Interface]", heard=None):
+    """A path table row. *heard* is when the path was LEARNED — which is when we
+    last actually heard the node; defaults to NOW for the fresh-sighting case."""
     from monitor.mesh import MeshNode
-    return MeshNode(dst_hash=dst, hops=hops, interface=iface)
+    return MeshNode(dst_hash=dst, hops=hops, interface=iface,
+                    heard=NOW if heard is None else heard)
 
 
 def test_ingest_mesh_registers_and_marks_reachable():
@@ -91,6 +94,39 @@ def test_mesh_only_node_goes_alert_when_stale():
     reg = NodeRegistry()
     reg.ingest_mesh(_mesh(HASH), NOW)
     assert reg.get(HASH).status(NOW + (STALE_ALERT_HOURS + 1) * HOUR) == "alert"
+
+
+def test_a_path_still_in_the_table_is_not_a_sighting():
+    """SolarLove, 2026-08-11: unplugged for most of a day and still showing
+    green, SEEN 0.0h, in VITALS. Reticulum keeps a learned path for SEVEN DAYS
+    after the announce that taught it, and every scan was stamping last_seen =
+    now for every row in the table — so a dead node reads as live for a week on
+    the one screen an operator uses to find out whether it is alive."""
+    reg = NodeRegistry()
+    learned = NOW - 19 * HOUR                     # the real last announce
+    reg.ingest_mesh(_mesh(HASH, heard=learned), NOW)
+    rec = reg.get(HASH)
+    assert rec.last_seen == learned
+    assert round(rec.last_seen_hours(NOW)) == 19
+    assert rec.status(NOW) == "alert"             # and it says so
+
+
+def test_a_sighting_never_moves_backwards():
+    """A health beacon or an HTTP poll is fresher evidence than the path that
+    carried it — folding in an older path row must not undo it."""
+    reg = NodeRegistry()
+    reg.ingest_mesh(_mesh(HASH), NOW)
+    reg.ingest_mesh(_mesh(HASH, heard=NOW - 40 * HOUR), NOW)
+    assert reg.get(HASH).last_seen == NOW
+
+
+def test_a_path_row_with_no_timestamp_invents_nothing():
+    """An older rnpath gives no timestamp. Not knowing when we heard a node is
+    not the same as having heard it just now."""
+    reg = NodeRegistry()
+    rec = reg.ingest_mesh(_mesh(HASH, heard=0.0), NOW)
+    assert rec.last_seen is None
+    assert rec.mesh_hops == 1                     # reachability still recorded
 
 
 def test_http_health_still_preferred_over_mesh_reachability():

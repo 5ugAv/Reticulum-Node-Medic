@@ -136,13 +136,38 @@ class SSHConnection(Connection):
         payload = f'export PATH="{self.REMOTE_PATH}"; {command}'
         return f"bash -c {shlex.quote(payload)}"
 
-    def _hostkey_opts(self) -> List[str]:
-        """ssh -o options for host-key checking. With a pinned known_hosts we
-        VERIFY (``StrictHostKeyChecking=yes``) so a swapped key is refused (audit
-        C1); without one we keep ``accept-new`` so existing / not-yet-pinned nodes
-        still connect."""
+    def _pinned_store(self) -> Optional[str]:
+        """The pinned known_hosts file, if THIS host has an entry in it.
+
+        Consulted on every connection, not just the ones built by
+        ``provisioning.link.connect``. Pinning was written for audit C1 and then
+        only ever reached through that one helper, which nothing in production
+        calls — so every real connection the tool made (the BIRTH screen, PROBE,
+        the imager) stayed on accept-new and the pin store was never read. A
+        defence with no callers is not a defence.
+
+        Best-effort by design: no store, no entry, or an unreadable file all
+        mean "not pinned", and the connection falls back to accept-new rather
+        than refusing to talk to a node.
+        """
         if self.known_hosts:
-            return ["-o", f"UserKnownHostsFile={self.known_hosts}",
+            return self.known_hosts
+        try:
+            from provisioning import host_keys
+            if host_keys.is_pinned(self.host, port=self.port):
+                return host_keys.PINNED_KNOWN_HOSTS
+        except Exception:
+            pass
+        return None
+
+    def _hostkey_opts(self) -> List[str]:
+        """ssh -o options for host-key checking. For a host whose key we have
+        PINNED we verify (``StrictHostKeyChecking=yes``), so a swapped key is
+        refused instead of silently accepted (audit C1); an un-pinned host stays
+        on ``accept-new`` so nodes built before pinning existed still connect."""
+        store = self._pinned_store()
+        if store:
+            return ["-o", f"UserKnownHostsFile={store}",
                     "-o", "StrictHostKeyChecking=yes"]
         return ["-o", "StrictHostKeyChecking=accept-new"]
 
