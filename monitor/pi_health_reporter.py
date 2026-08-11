@@ -297,6 +297,29 @@ def serve(power_source: str = "battery",
         announce()
 
     dest.set_packet_callback(on_command)
+
+    # EVERY ANNOUNCE CARRIES A BEACON, not just the ones this loop makes.
+    #
+    # SkyFinger, 2026-08-11: the medic knew the node's health identity — so
+    # announces were plainly arriving — and had never once stored a beacon. It
+    # showed as LoRa-only in VITALS for days, which read as a broken node. The
+    # node was fine.
+    #
+    # A destination announces in TWO ways. This loop calls announce() with the
+    # beacon attached; but RNS ALSO re-announces a destination by itself
+    # whenever someone requests a path to it — and that automatic announce
+    # carries the destination's default app_data, which was nothing. The medic
+    # probes paths constantly, so the announces it actually received were
+    # overwhelmingly the empty ones: identity learned, health never.
+    #
+    # set_default_app_data takes a CALLABLE, evaluated at announce time, so an
+    # automatic re-announce carries readings from that moment rather than a
+    # stale snapshot taken at boot.
+    try:
+        dest.set_default_app_data(current_beacon)
+    except Exception as e:           # older RNS without the callable form
+        RNS.log(f"Pi health: default app_data unavailable: {e}", RNS.LOG_ERROR)
+
     announce()                       # beacon once on startup
     next_at = time.time() + heartbeat_s
     while True:

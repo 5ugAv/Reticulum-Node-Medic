@@ -1,3 +1,5 @@
+import pytest
+
 from monitor.pi_health_reporter import (
     PiHealthInputs,
     collect_pi_health,
@@ -114,3 +116,42 @@ def test_disk_used_percent():
     assert disk_used_percent(41, 100) == 41
     assert disk_used_percent(0, 0) == 0
     assert disk_used_percent(200, 100) == 100
+
+
+# --- every announce must carry a beacon, not just the deliberate ones -------
+
+def test_the_reporter_attaches_a_beacon_to_automatic_announces_too():
+    """SkyFinger, 2026-08-11. The medic KNEW the node's health identity — so
+    announces were plainly arriving — and had never once stored a beacon. It sat
+    in VITALS as LoRa-only for days, reading as a broken node. The node was
+    fine.
+
+    A destination announces two ways. The reporter's own loop attaches the
+    beacon; but RNS ALSO re-announces a destination by itself whenever someone
+    requests a path to it, and that automatic announce carries the destination's
+    DEFAULT app_data — which was nothing. The medic probes paths constantly, so
+    the announces it actually received were overwhelmingly the empty ones.
+
+    set_default_app_data takes a callable, evaluated at announce time, so an
+    automatic re-announce carries readings from that moment rather than a stale
+    snapshot from boot. Verified against the installed RNS: Destination.announce
+    reads default_app_data and calls it when callable.
+    """
+    from tests.srcutil import func_source
+    src = func_source("monitor/pi_health_reporter.py", "serve")
+    assert "set_default_app_data(current_beacon)" in src, \
+        "automatic re-announces would carry no health at all"
+    # the callable, NOT a snapshot: a beacon frozen at boot would report an
+    # uptime of seconds forever, which is worse than silence because it looks live
+    assert "set_default_app_data(current_beacon())" not in src
+
+
+def test_rns_really_honours_a_callable_default_app_data():
+    """The fix rests on a library behaviour, so check the library rather than
+    the documentation — this project has been bitten before by a call that
+    returned rc=0 and did nothing."""
+    RNS = pytest.importorskip("RNS")
+    import inspect
+    src = inspect.getsource(RNS.Destination.announce)
+    assert "default_app_data" in src
+    assert "callable(" in src
