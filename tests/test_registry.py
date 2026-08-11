@@ -111,13 +111,27 @@ def test_a_path_still_in_the_table_is_not_a_sighting():
     assert rec.status(NOW) == "alert"             # and it says so
 
 
-def test_a_sighting_never_moves_backwards():
-    """A health beacon or an HTTP poll is fresher evidence than the path that
-    carried it — folding in an older path row must not undo it."""
+def test_a_route_never_overwrites_having_actually_heard_the_node():
+    """A health beacon or an HTTP poll is the node speaking; a path row is only
+    a route to it. Folding in a stale route must not undo the real thing."""
     reg = NodeRegistry()
-    reg.ingest_mesh(_mesh(HASH), NOW)
+    reg.record_http_status(HASH, http(status="ok"), NOW)
     reg.ingest_mesh(_mesh(HASH, heard=NOW - 40 * HOUR), NOW)
-    assert reg.get(HASH).last_seen == NOW
+    rec = reg.get(HASH)
+    assert rec.last_seen == NOW              # the direct evidence stands
+    assert rec.mesh_heard == NOW - 40 * HOUR  # and the route is recorded as old
+
+
+def test_a_record_poisoned_by_the_old_behaviour_repairs_itself():
+    """Every record already on the medic holds a last_seen of "whenever the last
+    scan ran", because that is what the old code wrote. A max() against the
+    stored value would defend that wrong number forever, so the mesh sighting is
+    RECOMPUTED from the path row each time."""
+    reg = NodeRegistry()
+    poisoned = reg.register(HASH)
+    poisoned.last_seen = NOW                  # what the old scan left behind
+    reg.ingest_mesh(_mesh(HASH, heard=NOW - 19 * HOUR), NOW)
+    assert reg.get(HASH).last_seen == NOW - 19 * HOUR
 
 
 def test_a_path_row_with_no_timestamp_invents_nothing():

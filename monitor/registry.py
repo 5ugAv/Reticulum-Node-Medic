@@ -119,6 +119,15 @@ class NodeRecord:
     mesh_hops: Optional[int] = None            # reachable via the LoRa mesh
     mesh_interface: str = ""
     last_seen: Optional[float] = None       # epoch seconds
+    #: When the node was last heard ON THE MESH, from the path table row's own
+    #: timestamp. Kept apart from last_seen because the two decay differently: a
+    #: path lives seven days after the announce that taught it, so "still in the
+    #: table" is not "still alive". Held separately so a scan can CORRECT a
+    #: record that an earlier version stamped with now — see ingest_mesh.
+    mesh_heard: Optional[float] = None
+    #: When the node last spoke to us directly — a health beacon, an HTTP poll,
+    #: an announce. Stronger evidence than a route, and never overwritten by one.
+    last_direct: Optional[float] = None
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
     identity_hash: Optional[str] = None     # groups aspect-destinations per DEVICE
@@ -329,6 +338,7 @@ class NodeRegistry:
         if interface:
             rec.mesh_interface = interface
         rec.last_seen = now
+        rec.last_direct = now
         self._apply_kin(rec)
         return rec
 
@@ -386,6 +396,7 @@ class NodeRegistry:
             rec = self.register(dst_hash)
         rec.latest_beacon = beacon
         rec.last_seen = now
+        rec.last_direct = now
         from monitor.history import HistoryPoint
         self.history.append(dst_hash, HistoryPoint(
             t=now,
@@ -431,6 +442,7 @@ class NodeRegistry:
         else:
             rec = self.nodes.get(h) or self.register(h)
             rec.last_seen = now
+            rec.last_direct = now
             # Record a bare heard-event point so intermittent / neighbour nodes
             # (which never send a beacon) still accumulate an activity time-series
             # — the raw material for the "when is this node usually up?" profile.
@@ -471,7 +483,14 @@ class NodeRegistry:
         # No timestamp (an older rnpath) leaves the record alone rather than
         # inventing a sighting: not knowing is not the same as just now.
         if heard:
-            rec.last_seen = max(rec.last_seen or 0.0, heard)
+            rec.mesh_heard = heard
+            # RECOMPUTED, not max()-ed against the existing value. Records
+            # written by the earlier version already hold "now" from the last
+            # scan, so a max() would defend that wrong number forever. Direct
+            # evidence still wins — it is just held in its own field now, so a
+            # route can never impersonate it.
+            direct = rec.last_direct or 0.0
+            rec.last_seen = max(direct, heard) or None
         return rec
 
     def record_http_status(self, key: str, status: NodeStatus,
@@ -485,6 +504,7 @@ class NodeRegistry:
         if status.reachable:
             rec.latest_http = status
             rec.last_seen = now
+            rec.last_direct = now
             if status.node_name and not rec.name:
                 rec.name = status.node_name
         return rec
