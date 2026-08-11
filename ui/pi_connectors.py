@@ -59,21 +59,28 @@ class Connectors:
 
 
 PI_CONNECTORS: Dict[str, Connectors] = {
+    # CAVEATS ARE FOR THE TRAP, NOT THE EXPLANATION. Each one used to restate
+    # what the data_port / power_port pair had already said, and the 3A+ one
+    # additionally carried the two-supplies warning — which belongs on the step
+    # where a second supply is actually in question (see _POWER_HINTS), not on
+    # the step where the operator is choosing a socket.
     "pi_zero_2w": Connectors(
         key="pi_zero_2w", can_cable=True,
         data_port=tr("the INNER micro-USB, the one nearer the mini-HDMI"),
         power_port=tr("the OUTER micro-USB, marked PWR IN"),
-        caveat=tr("The two sockets look identical. The outer one cannot carry "
-                  "data at all — it will power the Pi perfectly and never "
-                  "appear here.")),
+        caveat=tr("The two look identical; the outer one cannot carry data at "
+                  "all.")),
     "pi_3a_plus": Connectors(
         key="pi_3a_plus", can_cable=True,
         data_port=tr("the full-size USB-A socket"),
-        power_port=tr("the micro-USB socket, which is power only"),
-        caveat=tr("This one needs an A-to-A cable, and that cable carries 5V at "
-                  "BOTH ends — so do not power the Pi separately unless the "
-                  "cable has its power wire removed, or the two supplies will "
-                  "fight each other.")),
+        power_port=tr("the micro-USB, which is power only"),
+        # THE HAZARD STAYS HERE, shortened but not moved. A second supply is a
+        # natural thing to reach for the moment a Pi is plugged in, so the
+        # warning has to be on the step where the plugging happens — the
+        # provisioning step repeats it later because that is where the long
+        # current draw is, not because this one can drop it.
+        caveat=tr("It needs an A-to-A cable, which carries 5V at BOTH ends — "
+                  "so don't add a separate supply.")),
     # The board that cannot, however willing the operator is.
     "pi_3b_plus": Connectors(
         key="pi_3b_plus", can_cable=False,
@@ -84,14 +91,12 @@ PI_CONNECTORS: Dict[str, Connectors] = {
                    "one up over Wi-Fi instead.")),
     "pi_4b": Connectors(
         key="pi_4b", can_cable=True,
-        data_port=tr("the USB-C socket — the same one you would power it from"),
-        caveat=tr("The USB-C port carries both power and data, so one cable to "
-                  "Node Medic does everything.")),
+        data_port=tr("the USB-C socket"),
+        caveat=tr("It carries power and data, so one cable does everything.")),
     "pi_5": Connectors(
         key="pi_5", can_cable=True,
-        data_port=tr("the USB-C socket — the same one you would power it from"),
-        caveat=tr("The USB-C port carries both power and data, so one cable to "
-                  "Node Medic does everything.")),
+        data_port=tr("the USB-C socket"),
+        caveat=tr("It carries power and data, so one cable does everything.")),
 }
 
 _ALIASES = {"pi_5_full": "pi_5"}
@@ -106,13 +111,17 @@ def get(pi_key: str) -> Optional[Connectors]:
 #: What to say when we do NOT know which board it is. Deliberately generic and
 #: deliberately short: naming a specific socket for a board we have not
 #: identified is the exact bug this module exists to prevent.
-UNKNOWN_HINT = tr("Use the Pi's DATA port and a cable that carries DATA — a "
-                  "charge-only lead will power the Pi perfectly and never show "
-                  "up here.")
+UNKNOWN_HINT = tr("Use the Pi's DATA port and a DATA cable — a charge-only "
+                  "lead powers the Pi and never shows up.")
 
 
 def connect_hint(pi_key: str) -> str:
-    """The connector guidance for this board, or the generic line if unknown."""
+    """The connector guidance for this board, or the generic line if unknown.
+
+    SOCKET FIRST, in one sentence, because that is what the operator is
+    looking for while holding a plug. The DATA-cable line is last and is the
+    same sentence on every board — it is a rule, not a fact about this Pi.
+    """
     c = get(pi_key)
     if c is None:
         return UNKNOWN_HINT
@@ -123,8 +132,8 @@ def connect_hint(pi_key: str) -> str:
         bits.append(tr("Power goes into {port}.").format(port=c.power_port))
     if c.caveat:
         bits.append(c.caveat)
-    bits.append(tr("The cable must carry DATA — a charge-only lead will power "
-                   "the Pi perfectly and never show up here."))
+    bits.append(tr("Use a DATA cable — a charge-only lead powers the Pi and "
+                   "never shows up."))
     return " ".join(bits)
 
 
@@ -144,34 +153,27 @@ _POWER_HINTS = {
     # Separate PWR IN socket, electrically apart from the data port: its own
     # supply is safe AND wanted, and the medic then carries data only.
     "pi_zero_2w": tr("Give the Pi its own power on the OUTER micro-USB marked "
-                     "PWR IN. It is a separate socket from the data one, so "
-                     "the two never fight — and Node Medic is left carrying "
-                     "data alone, which is the safest way through a long "
-                     "install."),
+                     "PWR IN. A separate socket, so nothing fights, and Node "
+                     "Medic is left carrying data alone."),
     # One USB-A, one micro-USB, and an ordinary A-to-A carries 5V at BOTH ends.
     # A second supply back-feeds into the medic. Only safe with the cable's
     # power wire lifted.
-    "pi_3a_plus": tr("The Pi is drawing its power from Node Medic through this "
-                     "cable. Do NOT plug a supply into its micro-USB as well "
-                     "unless your A-to-A cable has its 5V wire removed — an "
-                     "ordinary one carries 5V at both ends and the two "
-                     "supplies will fight. With a power-less cable, do give it "
-                     "its own supply: this is the longest, hungriest part of "
-                     "the build."),
+    # Why the two supplies fight is stated at the CONNECT step, where the
+    # A-to-A cable is first named. Here it only has to be enforced.
+    "pi_3a_plus": tr("Power comes from Node Medic through this cable. Do NOT "
+                     "plug a supply into the micro-USB as well, unless your "
+                     "A-to-A has its 5V wire removed."),
     # Same socket for both; nothing to add.
-    "pi_4b": tr("The Pi is powered through the same USB-C carrying the data, "
-                "so there is no second socket to add a supply to. Keep the run "
-                "short and the cable good."),
-    "pi_5": tr("The Pi is powered through the same USB-C carrying the data, so "
-               "there is no second socket to add a supply to. Keep the run "
-               "short and the cable good."),
+    "pi_4b": tr("Power and data share the one USB-C, so there is no second "
+                "socket to add a supply to. Keep the cable short and good."),
+    "pi_5": tr("Power and data share the one USB-C, so there is no second "
+               "socket to add a supply to. Keep the cable short and good."),
 }
 
 #: Said when the board is unknown: true of every Pi, and claims no socket.
 UNKNOWN_POWER_HINT = tr(
-    "Installing takes several minutes and draws more current than anything "
-    "before it. If this Pi has a power socket separate from its data one, give "
-    "it its own supply.")
+    "Installing takes minutes and draws more current than anything before it. "
+    "If this Pi has a power socket separate from its data one, use it.")
 
 
 def power_hint(pi_key: str) -> str:
@@ -197,24 +199,20 @@ def can_cable(pi_key: str) -> bool:
 #: happen once the medic's cable is gone; the operator is left choosing between
 #: two sentences on the same screen.
 _STANDALONE_HINTS = {
-    "pi_zero_2w": tr("Power on the OUTER micro-USB marked PWR IN. The radio "
-                     "goes on the other one — the inner micro-USB — so it "
-                     "needs a micro-USB OTG adapter."),
+    "pi_zero_2w": tr("Power on the OUTER micro-USB (PWR IN). The radio goes on "
+                     "the inner one — it needs a micro-USB OTG adapter."),
     "pi_3a_plus": tr("Power on the micro-USB. The radio goes in the full-size "
-                     "USB-A — the socket Node Medic was using. Nothing can "
-                     "back-feed now that the medic's cable is off, so the "
-                     "earlier warning about two supplies no longer applies."),
-    "pi_4b": tr("Power on the USB-C. The radio goes in any of the USB-A "
-                "sockets."),
-    "pi_5": tr("Power on the USB-C. The radio goes in any of the USB-A "
-               "sockets."),
+                     "USB-A, the socket Node Medic was using. The earlier "
+                     "two-supplies warning is done with — the medic's cable is "
+                     "off."),
+    "pi_4b": tr("Power on the USB-C. The radio goes in any USB-A socket."),
+    "pi_5": tr("Power on the USB-C. The radio goes in any USB-A socket."),
 }
 
 #: Claims no socket, because we do not know which board it is.
 UNKNOWN_STANDALONE_HINT = tr(
-    "Give the Pi its own power supply, and put the radio on one of its data "
-    "ports. It has to run on its own from here — the radio's transmissions are "
-    "the hungriest thing it does.")
+    "Give the Pi its own power supply and put the radio on a data port. It "
+    "runs on its own from here.")
 
 
 def standalone_power_hint(pi_key: str) -> str:

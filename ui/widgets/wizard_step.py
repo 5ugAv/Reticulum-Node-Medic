@@ -5,6 +5,18 @@ to do: a step counter + progress dots, a big title, a roomy animation area (a
 widget the caller supplies — see ui.widgets.birth_anims), large readable body
 text, and Back / Next. The look here is deliberately plain and legible; a
 design pass polishes the aesthetics once the flow and copy are right.
+
+TYPE SIZES GO THROUGH ``theme.font_sp``. This screen carries the longest prose
+in the app and was the one place that never joined the readability scale — it
+still shipped its literal "14sp" hint while every other screen's 14sp had grown
+to 17.5sp. So the birth walkthrough, read standing at a bench, was the SMALLEST
+text on the medic (operator, 2026-08-11: "the text is so small and there's so
+much text").
+
+Bigger type only fits because the copy was cut in the same edit — see
+``ui.birth_guide_flow``. The stacked height of every step is asserted against
+the panel by ``tests/test_birth_guide.py::test_no_guided_step_overflows_the_panel``:
+this layout has NO ScrollView, so text that does not fit is text nobody reads.
 """
 
 from __future__ import annotations
@@ -63,7 +75,7 @@ class WizardStep(BoxLayout):
                         spacing=dp(8))
         counter = Label(text=tr("Step {n} of {total}").format(n=index + 1, total=total),
                         bold=True,
-                        font_size="15sp", halign="left", valign="middle",
+                        font_size=theme.font_sp("15sp"), halign="left", valign="middle",
                         color=theme.hex_to_rgba(theme.COLORS["accent"]),
                         size_hint_y=None, height=dp(20))
         counter.bind(size=lambda i, v: setattr(i, "text_size", v))
@@ -71,7 +83,7 @@ class WizardStep(BoxLayout):
         top.add_widget(_Dots(total, index))
         self.add_widget(top)
 
-        title_lbl = Label(text=title, bold=True, font_size="27sp",
+        title_lbl = Label(text=title, bold=True, font_size=theme.font_sp("27sp"),
                           halign="left", valign="top", size_hint_y=None,
                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         title_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
@@ -86,7 +98,8 @@ class WizardStep(BoxLayout):
         self.stage = anim if anim is not None else Widget()
         self.add_widget(self.stage)
 
-        body_lbl = Label(text=body, font_size="19sp", halign="left", valign="top",
+        body_lbl = Label(text=body, font_size=theme.font_sp("19sp"), halign="left",
+                         valign="top",
                          size_hint_y=None, line_height=1.25,
                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         body_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
@@ -101,7 +114,8 @@ class WizardStep(BoxLayout):
             # straight through the body text. Two paragraphs on top of each
             # other, on the step that tells you which socket to use (photo,
             # 2026-08-09).
-            hint_lbl = Label(text=hint, font_size="14sp", halign="left", valign="top",
+            hint_lbl = Label(text=hint, font_size=theme.font_sp("14sp"),
+                             halign="left", valign="top",
                              size_hint_y=None, height=dp(40),
                              color=theme.hex_to_rgba(theme.COLORS["warning_yellow"], 0.95))
             hint_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
@@ -112,7 +126,8 @@ class WizardStep(BoxLayout):
         # bold dark text on a solid amber caution strip so it can't be skimmed past.
         if warning:
             from kivy.graphics import Color, RoundedRectangle
-            warn_lbl = Label(text=warning, font_size="15sp", bold=True, halign="left",
+            warn_lbl = Label(text=warning, font_size=theme.font_sp("15sp"), bold=True,
+                             halign="left",
                              valign="middle", size_hint_y=None, padding=(dp(12), dp(10)),
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
             from kivy.graphics import Line
@@ -137,12 +152,14 @@ class WizardStep(BoxLayout):
 
         nav = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
                         spacing=dp(12))
-        self.back_btn = Button(text=back_text, font_size="18sp", bold=True,
+        self.back_btn = Button(text=back_text, font_size=theme.font_sp("18sp"),
+                               bold=True,
                                size_hint_x=0.4, background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self.back_btn.bind(on_release=lambda *_: self._on_back and self._on_back())
-        self.next_btn = Button(text=next_text, font_size="20sp", bold=True,
+        self.next_btn = Button(text=next_text, font_size=theme.font_sp("20sp"),
+                               bold=True,
                                background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))

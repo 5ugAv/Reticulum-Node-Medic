@@ -292,7 +292,7 @@ def test_on_the_pi_path_only_the_plug_in_the_pi_step_is_skippable():
         if s.get("anim") in ("connect_board", "connect_pi")
         and not (s.get("gate") or s.get("screen"))
     ]
-    assert skippable == ["Check the SD card is in the Pi, then connect it to Node Medic"], skippable
+    assert skippable == ["Card in the Pi? Connect it to Node Medic"], skippable
 
 
 def test_the_radio_steps_survive_a_board_being_plugged_in():

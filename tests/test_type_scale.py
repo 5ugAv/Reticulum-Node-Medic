@@ -29,6 +29,7 @@ from tests.srcutil import src
 #: the two container rules below.
 SCALED_MODULES = [
     "ui/screens/about_screen.py",
+    "ui/screens/birth_guide_screen.py",
     "ui/screens/birth_screen.py",
     "ui/screens/cert_view_screen.py",
     "ui/screens/comms_screen.py",
@@ -57,6 +58,7 @@ HELPERS = ("_line", "_lbl", "_label", "_wrap")
 #: Helpers whose height is max(dp(h), texture_height) — h is a floor they grow
 #: past, so their text cannot be clipped however big it gets.
 AUTOGROW_MODULES = {
+    "ui/screens/birth_guide_screen.py",
     "ui/screens/comms_screen.py",
     "ui/screens/birth_screen.py",
     "ui/screens/mitosis_screen.py",
