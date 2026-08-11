@@ -17,9 +17,11 @@ EXPECTED_STEPS = [
     "install_radio_rule",
     "configure_services",
     "install_health_reporter",
+    "install_status_server",
     "apply_system_hardening",
     "set_hostname",
     "final_verification",
+    "prove_the_node_reports",
     "hand_the_usb_port_back",
     "birth_certificate",
 ]

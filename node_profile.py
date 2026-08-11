@@ -89,6 +89,11 @@ class NodeProfile:
     #: captures it here to roster the node under it — matching how an RTNode-2400
     #: is keyed by its firmware health dst — so the beacon shows up NAMED.
     health_dst_hash: Optional[str] = None
+    #: The node answered its own ``/status`` request during the build, so the
+    #: endpoint really is up on it. Recorded because "we installed a unit" and
+    #: "the node serves status" are different claims, and only the second one is
+    #: worth putting near a birth certificate.
+    serves_status: bool = False
     has_solar_controller: bool = False
     has_battery_bank: bool = False
     has_cooling_fan: bool = False
