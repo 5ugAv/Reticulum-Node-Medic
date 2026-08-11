@@ -268,6 +268,20 @@ class NodeDetailScreen(BoxLayout):
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         ping.bind(on_release=lambda *_: self._ping())
         actions.add_widget(ping)
+        # THE WAY TO CHANGE YOUR MIND. A node's map-sharing decision is made at
+        # birth, but the reason to revisit it arrives afterwards — a node moves,
+        # a neighbourhood changes, an operator reads the announce back and
+        # thinks better of it. Requiring a rebirth to withdraw a position would
+        # mean climbing to a roof to stop publishing where that roof is.
+        #
+        # It is also the screen where a node's location is SET: this panel is
+        # the only place a node that is already deployed can be given one.
+        share = Button(text=tr("Location & map"),
+                       font_size=theme.font_sp("18sp"), background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        share.bind(on_release=lambda *_: self._map_sharing())
+        actions.add_widget(share)
         if record.has_location():
             nav_btn = Button(text=tr("Navigate"), font_size=theme.font_sp("18sp"),
                              background_normal="",
@@ -303,6 +317,19 @@ class NodeDetailScreen(BoxLayout):
     def _navigate(self):
         if self._on_navigate:
             self._on_navigate(self.record)
+
+    def _map_sharing(self):
+        """Open the location / map-sharing panel for this node.
+
+        Guarded: a missing widget module must not take down the page an
+        operator opened to read a battery level."""
+        try:
+            from ui.widgets.map_sharing import MapSharingPopup
+            MapSharingPopup(self.record).open()
+        except Exception as exc:                                   # noqa: BLE001
+            self._set_ping_status(
+                tr("Couldn't open location settings: {why}").format(why=exc),
+                False)
 
     def _rebirth(self):
         """Hand off to the existing wipe-and-rebuild flow (a805c43).

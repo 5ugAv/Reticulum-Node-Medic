@@ -20,7 +20,8 @@ from kivy.uix.label import Label
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — guided-birth screen labels/buttons
 from monitor.formatting import format_age
-from ui.birth_guide_flow import ANTENNA_STEP, BIRTH_PATHS, guide_steps
+from ui.birth_guide_flow import (ANTENNA_STEP, BIRTH_PATHS,
+                                 LOCATION_SHARE_STEP, guide_steps)
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
                                     InsertSdAnim, InsertSdIntoPiAnim,
@@ -91,6 +92,16 @@ class BirthGuideScreen(BoxLayout):
         self._pair_checked = False
         self._board_key = ""
         self._pi_key = ""
+        # THE SHARING ANSWER BELONGS TO ONE NODE, and starts unanswered.
+        #
+        # Same rule as the map-stamped position (birth_screen._prefill_location,
+        # which leaked the previous node's coordinates into the next birth until
+        # 2026-08-01) — but worse if it leaked, because this one is a decision
+        # rather than a fact: a second node would start announcing its position
+        # on the strength of a yes given about a different node.
+        from monitor import location_share
+        self._share_location = location_share.HIDDEN
+        self._share_asked = False
         # A new walkthrough owes nothing to the last one. A stale return point
         # would send a screen finishing LATE — a card write that outlived the
         # operator's patience, say — back into a walkthrough that has since
@@ -1160,7 +1171,9 @@ class BirthGuideScreen(BoxLayout):
         from kivy.clock import Clock
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_intro    # name step -> the chooser
-        total = len(guide_steps(self._path, self._pi_key_for_text())) + 1
+        # +2 for the two decision screens folded in ahead of the physical
+        # steps: this one (the name) and the map-sharing question.
+        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                        size_hint_y=None, height=dp(58), font_size="33sp")
@@ -1220,6 +1233,85 @@ class BirthGuideScreen(BoxLayout):
         self._name_warned = None
         self._node_name = name
         self._i = 0
+        # THE MAP QUESTION COMES NEXT, ONCE, before any work starts. It is
+        # asked here rather than at the end because by the end the node has been
+        # flashed and configured, and a decision taken then is a decision taken
+        # under "just finish it" — which is not how anyone should agree to
+        # publish where a thing is.
+        #
+        # NOT ON THE 'host' PATH. That path flashes a radio to plug into
+        # somebody's phone or laptop; it is not a node, it has no Reticulum
+        # config of its own here, and nothing the medic writes would ever
+        # announce a position. Asking anyway would be a question whose answer
+        # goes nowhere — which is precisely the "looks like it is sharing and
+        # isn't" failure this whole feature exists to prevent.
+        if self._path in ("radio", "pi") and not self._share_asked:
+            self._render_location_share()
+            return
+        self._render_step()
+
+    # -- the one question: does this node go on the public map? ---------------
+
+    def _render_location_share(self):
+        """Two named choices, no Next.
+
+        The Next button is deliberately absent. Every other step in this
+        walkthrough advances on a green button in the same place, which is
+        exactly why this one must not: a person moving through a wizard taps
+        Next without reading, and this is the single screen where doing that
+        would publish something about the physical world that cannot be
+        recalled. So the two outcomes are named, and hiding is the plain one.
+        """
+        self._stop_current()
+        from kivy.uix.button import Button
+        from kivy.uix.boxlayout import BoxLayout
+        from monitor import location_share
+        self._back_action = self._render_name          # share step -> the name
+
+        s = LOCATION_SHARE_STEP
+        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
+
+        # Two buttons (52) with a one-line consequence under each (20), three
+        # 8dp gaps. Measured, not guessed — a short box clips the second
+        # button's caption, which is the half of the screen that says what the
+        # choice DOES.
+        choices = BoxLayout(orientation="vertical", size_hint_y=None,
+                            height=dp(52 + 20 + 52 + 20 + 24), spacing=dp(8))
+
+        def choice(label, detail, bg, fg, policy):
+            btn = Button(text=label, font_size=theme.font_sp("20sp"), bold=True,
+                         size_hint_y=None, height=dp(52), background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS[bg]),
+                         color=theme.hex_to_rgba(theme.COLORS[fg]))
+            btn.bind(on_release=lambda *_: self._share_chosen(policy))
+            choices.add_widget(btn)
+            choices.add_widget(_line(detail, "13sp", color="text_secondary",
+                                     h=20))
+
+        # HIDDEN FIRST AND IN THE QUIET COLOUR. Reading order is a default of
+        # its own: the first button is the one a hurried operator presses, and
+        # the green "carry on" styling used everywhere else in this walkthrough
+        # is deliberately not given to either option here — neither of these is
+        # "continue", they are two different answers.
+        choice(s["hide_label"], s["hide_detail"], "surface", "text_primary",
+               location_share.HIDDEN)
+        choice(s["share_label"], s["share_detail"], "accent", "background",
+               location_share.APPROX)
+
+        step = WizardStep(index=1, total=total, title=s["title"],
+                          body=s["body"], hint=s["hint"], warning=s["warning"],
+                          input_widget=choices,
+                          on_next=None, on_back=self._render_name)
+        step.hide_next()
+        self.clear_widgets()
+        self.add_widget(step)
+        self._current = step
+
+    def _share_chosen(self, policy):
+        from monitor import location_share
+        self._share_location = location_share.normalise(policy)
+        self._share_asked = True
+        self._i = 0
         self._render_step()
 
     def _hand_over_name(self, screen_name, job="host"):
@@ -1260,7 +1352,12 @@ class BirthGuideScreen(BoxLayout):
                         job, name=name or None,
                         board_key=getattr(self, "_board_key", None) or None,
                         pi_key=getattr(self, "_pi_key", None) or None,
-                        pi_address=getattr(self, "_node_addr", None) or None)
+                        pi_address=getattr(self, "_node_addr", None) or None,
+                        # The map answer travels WITH the hand-off, for the same
+                        # reason the name does: the walkthrough already asked,
+                        # and a screen that has to ask again is a screen that
+                        # will be answered differently by a tired operator.
+                        share_location=getattr(self, "_share_location", None))
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
@@ -1535,8 +1632,9 @@ class BirthGuideScreen(BoxLayout):
             anim = anim_cls(pi_key=self._pi_key_for_art(anim_cls))
         else:
             anim = anim_cls() if anim_cls else None
-        # +1 on index/total for the name step folded in ahead of these
-        step = WizardStep(index=self._i + 1, total=len(steps) + 1, title=s["title"],
+        # +2 on index/total for the two decision screens folded in ahead of
+        # these: the name, and the map-sharing question.
+        step = WizardStep(index=self._i + 2, total=len(steps) + 2, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
                           # A gate refusal outranks the step's standing warning:
                           # it is the reason THIS tap did nothing, and the
@@ -2377,6 +2475,13 @@ class BirthGuideScreen(BoxLayout):
         if i < 0:
             if getattr(self, "_pair_checked", False):
                 self._render_pick_board()    # the screen actually before these
+            elif getattr(self, "_share_asked", False):
+                # The map question sits between the name and these steps, so
+                # Back has to land ON it — otherwise an operator who wanted to
+                # change that answer would go back to the name, press Next, and
+                # be carried straight past the screen they were going back FOR
+                # (it is only asked once).
+                self._render_location_share()
             else:
                 self._render_name()
             return

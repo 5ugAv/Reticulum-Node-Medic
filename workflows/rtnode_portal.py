@@ -44,7 +44,7 @@ def build_form(
     wifi_enabled: bool = None,
     lat: float = None,
     lon: float = None,
-    advertise: bool = True,
+    advertise: bool = None,
     jitter: bool = True,
 ) -> Dict[str, str]:
     """Build the ``POST /save`` form.
@@ -54,12 +54,23 @@ def build_form(
     WiFi is enabled automatically when credentials are given (``wifi_en``),
     unless *wifi_enabled* is set explicitly.
 
-    If *lat*/*lon* are supplied (the Pi's GPS fix at the node) the node is set
-    to advertise its location — with jitter ON by default, so the firmware
-    publishes a ~800 m privacy-fuzzed pin to the public map while keeping the
-    exact coordinates in its own config. With no coordinates, advertisement is
-    left OFF (never write 0,0).
+    LOCATION IS PUBLISHED ONLY IF SOMEONE SAID SO. *advertise* defaults to
+    ``None``, meaning "read the node's own decision" —
+    ``profile.share_location``, which the operator answers on its own screen
+    during birth and which is HIDDEN until they do. It used to default to True,
+    so any node born within sight of a GPS fix started announcing its position
+    to the public mesh because a fix existed. Nobody was asked. That is the bug
+    this parameter now exists to make impossible; True/False still override
+    explicitly, for a caller that has just been told.
+
+    When it IS on, what goes into the form is the FUZZED point (below), with the
+    firmware's own jitter left on as a second, independent layer. With no
+    coordinates, advertisement is left OFF (never write 0,0).
     """
+    if advertise is None:
+        from monitor import location_share
+        advertise = location_share.is_shared(
+            getattr(profile, "share_location", location_share.HIDDEN))
     r = profile.radio
     if wifi_enabled is None:
         wifi_enabled = bool(wifi_ssid)

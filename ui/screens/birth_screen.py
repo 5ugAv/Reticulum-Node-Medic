@@ -229,6 +229,10 @@ class BirthScreen(BoxLayout):
         self.spacing = dp(8)
         # (lat, lon, source) stamped from the map's "Use this position", or None.
         self._prefill_location = prefill_location
+        # Whether THIS birth publishes a position to the public mesh map. Only
+        # the guided walkthrough's own share screen sets it (begin_guided); a
+        # birth started any other way stays hidden, because nobody was asked.
+        self._share_location = "hidden"
         # on_guide() — open the step-by-step guided birth (for a new operator).
         self._on_guide = on_guide
         # When arriving from the guide with a chosen kind, don't let auto-detect
@@ -1684,7 +1688,7 @@ class BirthScreen(BoxLayout):
         self._build_chooser()
 
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
-                     pi_address=None):
+                     pi_address=None, share_location=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1732,6 +1736,12 @@ class BirthScreen(BoxLayout):
         # birth in the session inherited the previous node's coordinates
         # (2026-08-01 bug hunt — a privacy leak as well as a wrong pin).
         self._prefill_location = None
+        # AND SO DOES THE ANSWER ABOUT PUBLISHING IT. Set unconditionally from
+        # this hand-off, so a lap that carries no answer (None) normalises to
+        # hidden rather than inheriting the last node's yes — the same leak as
+        # the line above, but of a decision instead of a fact.
+        from monitor import location_share
+        self._share_location = location_share.normalise(share_location)
         self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
@@ -2263,7 +2273,29 @@ class BirthScreen(BoxLayout):
             workflow = self._factories[node_type]()
             title = f"Building {self._labels.get(node_type, node_type)}..."
         self._apply_radio(workflow, radio)
+        self._apply_location_sharing(workflow)
         return workflow, title
+
+    def _apply_location_sharing(self, workflow):
+        """Put this birth's map answer (and the position it governs) onto the
+        profile the workflow will build from.
+
+        Both halves are needed and they are different things: the POLICY is the
+        operator's answer on the guided share screen, and the POSITION is the
+        map-confirmed pin. The workflow fuzzes the second before anything is
+        written to the node; the exact value stays here.
+
+        Best-effort by design — a workflow without a profile (a blocked or
+        honest-fail stand-in) must not turn a birth into a crash, and the
+        absence of a policy means hidden, which is the safe direction.
+        """
+        prof = getattr(workflow, "profile", None)
+        if prof is None:
+            return
+        prof.share_location = getattr(self, "_share_location", "hidden")
+        loc = getattr(self, "_prefill_location", None)
+        if loc:
+            prof.location = (loc[0], loc[1])
 
     def _launch(self, workflow, title):
         # Blocked path (no board attached / not wired to real hardware yet): say so

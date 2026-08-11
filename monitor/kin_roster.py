@@ -62,6 +62,7 @@ CAPABLE_OF = {
 def register(rns_hash: str, name: str, node_type: str = "pi",
              lat: Optional[float] = None, lon: Optional[float] = None,
              links: Optional[dict] = None, builder: Optional[str] = None,
+             share_location: Optional[str] = None,
              path: str = KIN_ROSTER_PATH) -> dict:
     """Record one of the medic's own nodes (idempotent — updates in place).
     Returns the updated roster. Called at BIRTH with the node's identity + name +
@@ -80,6 +81,9 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
         entry["lat"] = lat
     if lon is not None:
         entry["lon"] = lon
+    if share_location is not None:
+        from monitor import location_share
+        entry["share_location"] = location_share.normalise(share_location)
     # ONLY WHAT WAS ACTUALLY DECIDED OR MEASURED. This used to fall back to
     # DEFAULT_LINKS — the board type's datasheet — and write that into the
     # roster as though it were fact, where the display then read it back and
@@ -96,11 +100,28 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
 def set_location(rns_hash: str, lat: float, lon: float,
                  path: str = KIN_ROSTER_PATH) -> dict:
     """Set/update where a fleet node is deployed (so it lands on the map at the
-    right spot — the operator does this when they physically place it)."""
+    right spot — the operator does this when they physically place it).
+
+    THESE COORDINATES ARE THE MEDIC'S OWN KNOWLEDGE and stay here. Nothing
+    publishes them: what a shared node announces is the fuzzed pin derived from
+    them (monitor.location_share.public_pin), and only if
+    ``share_location`` says so."""
     roster = load_roster(path)
     if rns_hash in roster:
         roster[rns_hash]["lat"] = lat
         roster[rns_hash]["lon"] = lon
+        _save(roster, path)
+    return roster
+
+
+def set_share_location(rns_hash: str, policy: str,
+                       path: str = KIN_ROSTER_PATH) -> dict:
+    """Record whether this fleet node publishes a position to the public map.
+    Unknown/absent stays hidden — see monitor.location_share.normalise."""
+    from monitor import location_share
+    roster = load_roster(path)
+    if rns_hash in roster:
+        roster[rns_hash]["share_location"] = location_share.normalise(policy)
         _save(roster, path)
     return roster
 

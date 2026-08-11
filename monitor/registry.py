@@ -130,6 +130,18 @@ class NodeRecord:
     last_direct: Optional[float] = None
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
+    #: Whether this node PUBLISHES a position to the public mesh map — the
+    #: operator's answer at birth, changeable later from node detail. "hidden"
+    #: until somebody says otherwise, including for every record that predates
+    #: the field: a node whose setting cannot be read has not consented to
+    #: anything. What is published is always the fuzzed pin, never lat/lon
+    #: above — see monitor.location_share.
+    share_location: str = "hidden"
+    #: When the medic last successfully WROTE this decision into the node's own
+    #: config and read it back — not when the operator made it. The two are
+    #: different, and the difference is a node on a roof still announcing after
+    #: the operator has turned sharing "off" on a screen. None = never applied.
+    share_applied_at: Optional[float] = None
     identity_hash: Optional[str] = None     # groups aspect-destinations per DEVICE
     announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
     links: Optional[dict] = None            # KIN-declared interfaces the node HAS
@@ -147,6 +159,15 @@ class NodeRecord:
 
     def has_location(self) -> bool:
         return self.lat is not None and self.lon is not None
+
+    def public_pin(self) -> Optional[tuple]:
+        """The fuzzed point this node advertises, or ``None`` when it shares
+        nothing / has no location. Never the exact coordinates."""
+        from monitor import location_share
+        if not location_share.is_shared(self.share_location):
+            return None
+        return location_share.public_pin(self.lat, self.lon,
+                                         self.name or self.dst_hash)
 
     def navigation(self) -> Optional[dict]:
         """Turn-by-turn deep links to the node (from its exact birth-cert
@@ -264,6 +285,14 @@ class NodeRecord:
         return "unknown"
 
 
+def _share_policy(value) -> str:
+    """A stored sharing answer, or "hidden" if there isn't one. Module-level so
+    the dataclass rebuild in ``from_dict`` doesn't have to import inside a
+    comprehension."""
+    from monitor import location_share
+    return location_share.normalise(value)
+
+
 def _locked(fn):
     """Hold the registry lock for the whole call. Applied to every method that
     MUTATES nodes/history or WALKS them — the announce thread inserting a key
@@ -321,6 +350,10 @@ class NodeRegistry:
             rec.lat = entry["lat"]
         if entry.get("lon") is not None:
             rec.lon = entry["lon"]
+        if entry.get("share_location") is not None:
+            from monitor import location_share
+            rec.share_location = location_share.normalise(
+                entry["share_location"])
         if entry.get("links"):
             rec.links = entry["links"]
         if entry.get("builder"):
@@ -345,14 +378,22 @@ class NodeRegistry:
     @_locked
     def register(self, dst_hash: str, name: str = "", location: str = "",
                  node_type: str = "rtnode2400", lat: Optional[float] = None,
-                 lon: Optional[float] = None) -> NodeRecord:
+                 lon: Optional[float] = None,
+                 share_location: Optional[str] = None) -> NodeRecord:
         """Create or update a node's static metadata (from the birth cert)."""
+        from monitor import location_share as _ls
         rec = self.nodes.get(dst_hash)
         if rec is None:
             rec = NodeRecord(dst_hash=dst_hash, name=name, location=location,
-                             node_type=node_type, lat=lat, lon=lon)
+                             node_type=node_type, lat=lat, lon=lon,
+                             share_location=_ls.normalise(share_location))
             self.nodes[dst_hash] = rec
         else:
+            # Only an EXPLICIT answer changes it. Passing None (every existing
+            # caller) must never quietly reset a node's sharing decision — nor
+            # quietly turn one on.
+            if share_location is not None:
+                rec.share_location = _ls.normalise(share_location)
             if name:
                 rec.name = name
             if location:
@@ -376,8 +417,12 @@ class NodeRegistry:
         if not dst:
             return None
         loc = cert.get("location") or {}
+        # The birth answer travels WITH the certificate, so a node adopted from
+        # its own paperwork keeps the decision its operator made, instead of
+        # silently reverting to whatever this registry's default happens to be.
         rec = self.register(dst, name=name, node_type="rtnode2400",
-                            lat=loc.get("lat"), lon=loc.get("lon"))
+                            lat=loc.get("lat"), lon=loc.get("lon"),
+                            share_location=loc.get("share_location"))
         self.log_event(
             dst, "build",
             f"Provisioned {cert.get('board', '')} fw {cert.get('firmware', '')}",
@@ -386,6 +431,48 @@ class NodeRegistry:
 
     def get(self, dst_hash: str) -> Optional[NodeRecord]:
         return self.nodes.get(dst_hash)
+
+    @_locked
+    def set_share_location(self, dst_hash: str, policy: str,
+                           now: float = 0.0,
+                           operator: str = "operator") -> Optional[NodeRecord]:
+        """Change a node's map-sharing decision AFTER birth — the operator who
+        put a node on a roof and then thought better of it must not have to
+        rebirth it to change their mind.
+
+        Logged in the commissioning history, because turning a position on is
+        the kind of thing whoever inherits this node deserves to be able to find
+        out about, and turning it off is not the same as never having sent one.
+        """
+        from monitor import location_share
+        rec = self.nodes.get(dst_hash)
+        if rec is None:
+            return None
+        was = rec.share_location
+        rec.share_location = location_share.normalise(policy)
+        if rec.share_location != was:
+            # A NEW DECISION IS UNAPPLIED UNTIL IT IS APPLIED. Leaving the old
+            # timestamp would make a node that has just been switched off read
+            # as "off and written to the node" while it carries on announcing.
+            rec.share_applied_at = None
+            rec.events.append(CommissionEvent(
+                now, "location",
+                ("Map sharing ON — publishes a fuzzed point, not its real "
+                 "position" if location_share.is_shared(rec.share_location)
+                 else "Map sharing OFF — no further position announces"),
+                operator))
+        return rec
+
+    @_locked
+    def mark_share_applied(self, dst_hash: str, now: float
+                           ) -> Optional[NodeRecord]:
+        """Record that the decision is now ON THE NODE — called only after a
+        write was made AND read back (monitor.location_share.push_to_node)."""
+        rec = self.nodes.get(dst_hash)
+        if rec is None:
+            return None
+        rec.share_applied_at = now
+        return rec
 
     @_locked
     def ingest(self, dst_hash: str, beacon: HealthBeacon,
@@ -752,6 +839,8 @@ class NodeRegistry:
                 "mesh_heard": r.mesh_heard,
                 "lat": r.lat,
                 "lon": r.lon,
+                "share_location": r.share_location,
+                "share_applied_at": r.share_applied_at,
                 "identity_hash": r.identity_hash,
                 "announced_name": r.announced_name,
                 "notes": list(r.notes),
@@ -780,6 +869,10 @@ class NodeRegistry:
                 mesh_heard=n.get("mesh_heard"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
+                # A registry file written before this field existed carries no
+                # answer, and no answer is HIDDEN — never "share".
+                share_location=_share_policy(n.get("share_location")),
+                share_applied_at=n.get("share_applied_at"),
                 identity_hash=n.get("identity_hash"),
                 announced_name=n.get("announced_name", ""),
             )

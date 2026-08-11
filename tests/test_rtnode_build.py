@@ -203,8 +203,20 @@ def test_wifi_onboarding_respects_overridden_radio_params():
     assert w.onboarding["bw"] == "250000"
 
 
-def test_onboarding_captures_gps_and_fills_advert():
+def test_onboarding_captures_gps_but_advertises_nothing_by_default():
+    """A GPS fix is knowledge, not consent. The medic records where the node is
+    and publishes none of it until the birth screen's share step says so."""
     w = wf(gps_reader=lambda: (-37.814, 144.963))
+    w.steps[2][1](w)          # wifi_onboarding
+    assert w.gps_fix is not None                 # the medic still knows
+    assert w.onboarding["advert_en"] == "0"      # ...and still says nothing
+    assert "advert_lat" not in w.onboarding
+
+
+def test_onboarding_advertises_a_fuzzed_point_when_sharing_was_chosen():
+    p = NodeProfile()
+    p.share_location = "approx"
+    w = wf(profile=p, gps_reader=lambda: (-37.814, 144.963))
     w.steps[2][1](w)          # wifi_onboarding
     assert w.gps_fix is not None
     assert w.onboarding["advert_en"] == "1"
@@ -229,7 +241,9 @@ def test_birth_certificate_records_exact_location():
     w = wf(gps_reader=lambda: (-37.814, 144.963))
     w.run_all()
     assert w.birth_certificate["location"] == {
-        "lat": -37.814, "lon": 144.963, "source": "pi_gps"}
+        "lat": -37.814, "lon": 144.963, "source": "pi_gps",
+        # the DECISION travels beside the coordinates it governs
+        "share_location": "hidden"}
 
 
 def test_birth_certificate_location_none_without_gps():

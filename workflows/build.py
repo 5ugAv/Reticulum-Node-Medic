@@ -1101,7 +1101,16 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         "tx_power_dbm": r.tx_power_dbm,
         "serial_port": r.serial_port,
         "session_id": wf.profile.session_id,
+        # THE ANSWER TRAVELS WITH THE NODE. Whoever inherits this node — the
+        # whole point of a birth certificate — can see whether it tells the
+        # world roughly where it is, without having to read its config or guess
+        # from a map. And a rebuild from the certificate restores the decision
+        # its operator made rather than the tool's default.
+        "location_sharing": wf.profile.share_location,
     }
+    if wf.location_sharing_notes:
+        wf.birth_certificate["location_sharing_notes"] = list(
+            wf.location_sharing_notes)
     # A propagation node beacons from its own rtnode.health destination; carry it
     # so the node is rostered under the hash its health beacon actually announces
     # (the registry key), not just its main rnsd identity.
@@ -1143,6 +1152,10 @@ class BuildWorkflow:
         #: out of the image's own wheel.
         self.pip_cmd = "pip3"
         self.rendered_config = ""
+        #: Plain-language findings from writing (or refusing to write) the map
+        #: sharing block — surfaced rather than swallowed, so "sharing was
+        #: chosen but this node has nothing to announce on" is visible.
+        self.location_sharing_notes: List[str] = []
         self.birth_certificate: Optional[dict] = None
         self._root: Optional[bool] = None
         self._user: Optional[str] = None
@@ -1208,7 +1221,31 @@ class BuildWorkflow:
         }
         for k, v in subs.items():
             template = template.replace(k, v)
-        return template
+        return self._apply_location_sharing(template)
+
+    def _apply_location_sharing(self, template: str) -> str:
+        """Fold the operator's birth-time map decision into the node's config.
+
+        HIDDEN IS NOT AN ABSENCE OF CODE HERE, IT IS A RESULT. The template
+        carries no discovery keys, so a hidden node is already silent — but this
+        still runs, so that a rebuild of a node whose config once shared strips
+        the block instead of leaving it. "Off" has to be something the tool
+        actively produces, or turning it off only works on paper.
+
+        The coordinates written are FUZZED (monitor.location_share ->
+        monitor.geo.fuzz_location). The exact ones never leave the medic.
+        """
+        from monitor import location_share
+        loc = self.profile.location or (None, None)
+        text, notes = location_share.apply_to_reticulum_config(
+            template,
+            policy=self.profile.share_location,
+            name=self.profile.hostname or "",
+            lat=loc[0], lon=loc[1],
+            node_key=(self.profile.reticulum_identity_hash
+                      or self.profile.hostname or ""))
+        self.location_sharing_notes = list(notes)
+        return text
 
     # -- driving -----------------------------------------------------------
 

@@ -80,6 +80,16 @@ class NodeProfile:
     #: flashed (None = stock firmware, no RGB LED). Recorded on the birth cert so
     #: the field wiring is documented.
     rnode_rgb_pin: Optional[int] = None
+    #: Where this node is being placed, EXACT, as (lat, lon) — the medic's own
+    #: knowledge, for the person who has to go and repair it. It is never
+    #: transmitted: what a sharing node announces is the fuzzed pin derived from
+    #: it (monitor.location_share.public_pin).
+    location: Optional[tuple] = None
+    #: Whether this node publishes a position at all, answered ONCE at birth on
+    #: its own screen and changeable afterwards from node detail. "hidden" until
+    #: somebody says otherwise — a node must never start announcing its
+    #: whereabouts because a default said so. See monitor.location_share.
+    share_location: str = "hidden"
     os_version: Optional[str] = None
     reticulum_version: Optional[str] = None
     lxmf_version: Optional[str] = None

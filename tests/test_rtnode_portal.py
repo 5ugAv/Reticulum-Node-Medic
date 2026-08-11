@@ -86,8 +86,27 @@ def test_operator_values_flow_in_and_enable_wifi():
     assert form["wifi_en"] == "1"        # creds present -> WiFi enabled
 
 
-def test_location_advertisement_fuzzed_by_default():
+def test_nothing_is_advertised_unless_the_operator_chose_to_share():
+    """THE DEFAULT IS SILENCE. This used to advertise whenever a GPS fix
+    existed, so a node published its position because the medic happened to
+    know one — not because anybody agreed to it."""
     form = build_form(NodeProfile(), lat=-37.814, lon=144.963)
+    assert form["advert_en"] == "0"
+    assert "advert_lat" not in form
+
+
+def test_share_decision_on_the_profile_turns_advertising_on():
+    """The birth screen's answer, carried on the profile, is what decides —
+    not the presence of coordinates."""
+    p = NodeProfile()
+    p.share_location = "approx"
+    form = build_form(p, lat=-37.814, lon=144.963)
+    assert form["advert_en"] == "1"
+    assert form["advert_lat"] != "-37.814000"      # and still fuzzed
+
+
+def test_location_advertisement_fuzzed_when_shared():
+    form = build_form(NodeProfile(), lat=-37.814, lon=144.963, advertise=True)
     assert form["advert_en"] == "1"
     # fuzzed on the MEDIC before it crosses the open AP (2026-08-01 audit)
     assert form["advert_lat"] != "-37.814000"
@@ -98,7 +117,8 @@ def test_location_advertisement_fuzzed_by_default():
 
 
 def test_location_advertisement_can_publish_exact():
-    form = build_form(NodeProfile(), lat=-37.814, lon=144.963, jitter=False)
+    form = build_form(NodeProfile(), lat=-37.814, lon=144.963, jitter=False,
+                      advertise=True)
     assert form["advert_jitter"] == "0"
 
 
@@ -122,7 +142,9 @@ def test_onboard_sends_a_FUZZED_location_never_the_exact_fix():
     def good_post(url, body, headers):
         seen["body"] = body
         return (200, "reboot")
-    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+    p = NodeProfile()
+    p.share_location = "approx"          # the operator said yes, on its own screen
+    ok, _ = onboard(p, "TRUTH", "MeshNet", "pw",
                     lat=-37.814, lon=144.963, do_join=False, post=good_post)
     assert ok is True
     body = seen["body"]
@@ -273,7 +295,9 @@ def test_onboard_captures_pi_gps_and_advertises_it():
         body["b"] = b
         return (200, "reboot")
 
-    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+    p = NodeProfile()
+    p.share_location = "approx"          # answered at birth, not assumed
+    ok, _ = onboard(p, "TRUTH", "MeshNet", "pw",
                     gps_reader=lambda: (-37.814, 144.963),   # the Pi's GPS
                     do_join=False, post=cap_post)
     assert ok is True
@@ -290,7 +314,9 @@ def test_onboard_operator_can_edit_coordinates_before_send():
         return (200, "reboot")
 
     # operator overrides a bad fix with corrected coordinates
-    ok, _ = onboard(NodeProfile(), "TRUTH", "MeshNet", "pw",
+    p = NodeProfile()
+    p.share_location = "approx"
+    ok, _ = onboard(p, "TRUTH", "MeshNet", "pw",
                     gps_reader=lambda: (0.0, 0.0),
                     confirm_location=lambda la, lo: (-37.80, 144.90),
                     do_join=False, post=cap_post)

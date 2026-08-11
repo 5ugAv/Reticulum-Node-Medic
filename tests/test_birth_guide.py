@@ -856,3 +856,43 @@ def test_the_cable_address_is_tried_last_among_equals():
         socket.getaddrinfo = real
     assert out[0] == "192.168.1.2", "the network road leads"
     assert "10.55.0.1" in out, "but the cable is still tried"
+
+
+# -- the map-sharing question -----------------------------------------------
+# Its own screen (birth_guide_screen._render_location_share), not a _STEPS
+# entry, because every _STEPS entry advances on the green Next button — and
+# Next is exactly the gesture that must not be able to publish a location.
+
+def test_the_share_question_is_not_a_next_button_step():
+    from ui.birth_guide_flow import LOCATION_SHARE_STEP, _STEPS
+    for path_steps in _STEPS.values():
+        assert LOCATION_SHARE_STEP not in path_steps
+        assert not any(s.get("title") == LOCATION_SHARE_STEP["title"]
+                       for s in path_steps)
+
+
+def test_the_share_screen_offers_two_named_choices_with_hiding_first():
+    from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
+    assert S["hide_label"] and S["share_label"]
+    assert S["hide_detail"] and S["share_detail"]
+    # neither is "Next"/"Continue" — they are two answers, not one road onward
+    for label in (S["hide_label"], S["share_label"]):
+        assert "next" not in label.lower() and "continue" not in label.lower()
+
+
+def test_the_share_screen_says_what_a_stranger_gets():
+    from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
+    text = " ".join((S["body"], S["hint"], S["warning"])).lower()
+    assert "800" in text                       # roughly where, in metres
+    assert "birth certificate" in text         # ...and where the truth stays
+    # the announce is not only a position
+    assert "name" in text and "radio settings" in text
+    # and the one irreversible part, in the heavier style
+    assert "cannot be taken back" in S["warning"].lower()
+
+
+def test_the_share_screen_offers_a_way_back_later():
+    """An operator who is unsure must be told the door stays open, or "hidden"
+    starts to feel like a decision they have to get right now."""
+    from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
+    assert "later" in (S["hint"] + S["no_location"]).lower()

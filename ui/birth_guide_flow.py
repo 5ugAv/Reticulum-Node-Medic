@@ -44,6 +44,55 @@ ANTENNA_STEP = {
     "anim": "connect_antenna",
 }
 
+#: THE ONE QUESTION THE OPERATOR HAS TO ANSWER OUT LOUD.
+#:
+#: Shown after naming, before anything is written to the node — the point being
+#: that a position is published because somebody chose it, never because a
+#: default did. It is NOT in ``_STEPS``: those steps advance on Next, and Next
+#: is exactly the gesture that must not be able to publish a location. The
+#: screen (``birth_guide_screen._render_location_share``) hides Next and offers
+#: two named choices instead, with HIDE as the safe one.
+#:
+#: The copy says what a stranger gets, in the stranger's terms, because "share
+#: location" is not what happens: the announce also carries the node's NAME, its
+#: radio settings and its Reticulum transport identity
+#: (monitor.location_share.stranger_view, from RNS/Discovery.py's own payload).
+LOCATION_SHARE_STEP = {
+    "title": tr("Should this node appear on the public map?"),
+    "body": tr("Reticulum has public maps that show where working nodes are, so "
+               "people nearby can find a network to join. This node can put "
+               "itself on them.\n\nIf you say yes, it announces a point up to "
+               "800 metres away from where it really is — close enough to say "
+               "\"there is a node around here\", not close enough to walk to "
+               "the hardware. The real position stays on Node Medic, on this "
+               "node's birth certificate, for whoever has to repair it."),
+    "hint": tr("The same announce also carries this node's name, its radio "
+               "settings and its Reticulum address. If you are not sure, keep "
+               "it hidden — you can turn this on later from the node's own page "
+               "without rebuilding it."),
+    # THE PART THAT CANNOT BE UNDONE, in the heavier style, because it is the
+    # only part of this decision that is not reversible.
+    "warning": tr("An announce cannot be taken back. Turning this off later "
+                  "stops any further ones; it does not unsay the ones already "
+                  "heard."),
+    "hide_label": tr("Keep it hidden"),
+    "share_label": tr("Show it, roughly"),
+    #: What each choice means, one line, under its button — so the two options
+    #: are told apart by their consequence and not by their verb.
+    "hide_detail": tr("This node tells nobody where it is."),
+    "share_detail": tr("A pin within 800 m of it appears on public maps."),
+    #: Shown INSTEAD of the choice when the medic has no position for this node.
+    #: Offering "share" with nothing to share would produce a node configured to
+    #: announce and announcing nothing — the silent failure this whole feature
+    #: is built to avoid.
+    "no_location": tr("Node Medic doesn't know where this node is yet, so there "
+                      "is nothing it could publish. It stays hidden. You can set "
+                      "a location and turn sharing on later from the node's own "
+                      "page."),
+    "anim": None,
+}
+
+
 #: Ordered guided steps per path. Each step: title, body, optional ``anim`` key
 #: ("connect_board" | "insert_sd" | None) and optional ``hint`` / ``warning`` /
 #: ``next`` label. The last step's Next hands off to the real BIRTH flow. The

@@ -331,9 +331,19 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
 
     wf.onboarding = build_form(wf.profile, node_name=wf.node_name, lat=lat, lon=lon)
     f = wf.onboarding
-    loc_note = (f"GPS captured ({f['advert_lat']}, {f['advert_lon']}) — "
-                f"advertised fuzzed on the public map."
-                if fix else "No GPS fix — enter location manually or leave off.")
+    # SAY WHICH OF THE THREE IT ACTUALLY IS. This line used to read the fuzzed
+    # coordinates straight out of the form on the strength of a GPS fix
+    # existing — which is now only half the condition, because a fix no longer
+    # implies the operator agreed to publish anything. With sharing off the
+    # keys simply are not in the form.
+    if f.get("advert_en") == "1":
+        loc_note = (f"Map sharing ON: it will advertise a fuzzed point "
+                    f"({f['advert_lat']}, {f['advert_lon']}), not where it is.")
+    elif fix:
+        loc_note = ("Map sharing OFF: its position was recorded on the medic "
+                    "only, and the node advertises nothing.")
+    else:
+        loc_note = "No GPS fix — enter location manually or leave off."
     return StepResult(
         "wifi_onboarding", True, skipped=True,
         message=(
@@ -426,7 +436,12 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
     location = None
     if wf.gps_fix is not None:
         location = {"lat": wf.gps_fix.lat, "lon": wf.gps_fix.lon,
-                    "source": wf.gps_fix.source}
+                    "source": wf.gps_fix.source,
+                    # THE DECISION, NEXT TO THE COORDINATES IT GOVERNS. Whoever
+                    # reads this certificate later — possibly not the person who
+                    # built the node — can see whether the node is telling the
+                    # world roughly where it is, without reading its flash.
+                    "share_location": wf.profile.share_location}
     wf.birth_certificate = {
         "board": wf.beacon.board_label if wf.beacon else wf.profile.hardware.value,
         "firmware": wf.beacon.firmware_version if wf.beacon else None,

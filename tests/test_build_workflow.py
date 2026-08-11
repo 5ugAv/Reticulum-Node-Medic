@@ -955,3 +955,41 @@ def test_the_radio_rule_is_written_without_a_heredoc():
     from tests.srcutil import func_source
     src = func_source("workflows/build.py", "install_radio_rule")
     assert "RTTEOF" not in src and "_write_remote_file" in src
+
+
+# -- the map decision reaches the node's own Reticulum config ----------------
+
+def test_a_pi_born_hidden_gets_a_config_that_publishes_nothing():
+    p = NodeProfile()
+    p.location = (-37.512345, 145.523456)      # declared synthetic
+    w = wf(build_conn(rnode=True), profile=p)
+    rendered = w.render_config()
+    assert "discoverable" not in rendered
+    assert "latitude" not in rendered
+
+
+def test_a_pi_born_sharing_publishes_a_FUZZED_point_only():
+    """The exact coordinates are the medic's; only the blurred point is ever
+    written onto hardware that leaves the bench."""
+    lat, lon = -37.512345, 145.523456          # declared synthetic
+    p = NodeProfile()
+    p.hostname = "node"
+    p.location = (lat, lon)
+    p.share_location = "approx"
+    w = wf(build_conn(rnode=True), profile=p)
+    rendered = w.render_config()
+    assert "discoverable = Yes" in rendered
+    assert str(lat) not in rendered and str(lon) not in rendered
+    from monitor.location_share import shared_position_in_config
+    on_file = shared_position_in_config(rendered)
+    assert (on_file["lat"], on_file["lon"]) != (lat, lon)
+    assert abs(on_file["lat"] - lat) < 0.02    # right neighbourhood, wrong spot
+
+
+def test_sharing_without_a_location_is_reported_not_silently_dropped():
+    p = NodeProfile()
+    p.share_location = "approx"                 # yes, but nowhere to point at
+    w = wf(build_conn(rnode=True), profile=p)
+    rendered = w.render_config()
+    assert "discoverable" not in rendered
+    assert w.location_sharing_notes
