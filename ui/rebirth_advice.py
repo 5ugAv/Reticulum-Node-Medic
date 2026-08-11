@@ -9,7 +9,7 @@ node is dead.
 
 THE CONSTRAINT THAT SHAPES ALL OF THIS. A rebirth is an esptool erase over USB.
 It requires the board to be PLUGGED INTO THE MEDIC. A node that has gone quiet
-on a rooftop three streets away cannot be rebirthed from here, however red its
+on a rooftop across town cannot be rebirthed from here, however red its
 dot is.
 
 So this deliberately draws a line between ADVICE and an ACTION:

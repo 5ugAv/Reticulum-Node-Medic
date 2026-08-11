@@ -225,7 +225,7 @@ def test_filter_by_status_and_search():
     r.ingest(HASH2, beacon(fault=True), NOW)
     ok_nodes = r.visible(NOW, status="ok")
     assert [n.name for n in ok_nodes] == ["TRUTH"]
-    found = r.visible(NOW, search="thorn")
+    found = r.visible(NOW, search="iron")
     assert [n.name for n in found] == ["Ironbark"]
 
 
@@ -436,8 +436,8 @@ def test_probe_hash_for_returns_hex_key_directly():
 
 
 def test_probe_hash_for_resolves_non_hex_key_by_name():
-    # The FAITH case: a non-hex HTTP-discovery row 'rtnode:FAITH RTnode' shares a
-    # NAME with the real hex mesh dest — probe must resolve to the hex one.
+    # A non-hex HTTP-discovery row 'rtnode:FAITH RTnode' shares a NAME with the
+    # hex mesh dest — probe must resolve to the hex one.
     reg = NodeRegistry()
     hexh = "b7c8d9e0f1a2b3c4d5e6f70819a2b3c4"
     reg.register(hexh, name="FAITH RTnode")

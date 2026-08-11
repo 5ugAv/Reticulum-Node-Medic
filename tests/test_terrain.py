@@ -125,7 +125,7 @@ def test_a_missing_tile_partway_is_unknown_not_clear(tmp_path):
 
 def test_clear_never_claims_the_link_will_work(tmp_path):
     """SRTM is bare earth. A clear profile through a suburb is still a suburb —
-    the FAITH sub-kilometre failure was houses, not hills."""
+    the first range test failed on houses, not hills."""
     _write_tile(str(tmp_path), "S38E145.hgt", n=1201, height_fn=lambda r, c: 10)
     v = line_of_sight(TileStore(str(tmp_path)),
                       -37.50, 145.50, 8.0, -37.505, 145.50, 8.0)

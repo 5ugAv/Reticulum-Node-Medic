@@ -36,10 +36,11 @@ def test_golden_vector_encode_is_byte_exact():
     assert sample_bytes() == GOLDEN
 
 
-# Second golden vector — a REAL capture from a Light-RTnode-2400 (Heltec V4),
-# supplied by the firmware side. identity 5a210021…, rtnode.health dst
-# 11223344556677889900aabbccddeeff. The dst hash is board-specific; the
-# app_data below is the portable contract artifact.
+# Second golden vector — the app_data BYTES are a real capture from a
+# Light-RTnode-2400 (Heltec V4), supplied by the firmware side. The identity
+# and destination hash that came with it were board-specific addresses on a
+# live mesh, so they are replaced here with patterned synthetics; the
+# app_data is the portable contract artifact and is untouched.
 REAL_HW = bytes.fromhex("010000002400c7cc053b3f000602")
 REAL_HW_DEST_HASH = "11223344556677889900aabbccddeeff"
 

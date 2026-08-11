@@ -5,7 +5,8 @@ import pytest
 from monitor.mesh import (parse_rnpath, discover_mesh, MeshNode,
                           parse_path_probe, attach_with_retry, is_hex_hash)
 
-# Real `rnpath -t --json` shape (captured from a live mesh node).
+# Real `rnpath -t --json` SHAPE, captured from a live mesh node. The
+# destination hashes are synthetic — a real one is a permanent mesh address.
 RNPATH = json.dumps([
     {"hash": "445566778899aabbccddeeff00112233", "via": "445566778899aabbccddeeff00112233",
      "hops": 0, "expires": 1784517558.19, "interface": "LocalInterface[rns/default]"},

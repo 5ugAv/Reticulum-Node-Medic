@@ -62,9 +62,28 @@ def _tool(name: str) -> str:
     return name
 
 
+def onboard_radio_serial(load=None) -> str:
+    """This medic's OWN radio serial, from its roster — "" if not recorded.
+
+    Read, never hardcoded: the serial is a permanent fingerprint of a specific
+    board, and a cloned medic carries different hardware.
+    """
+    if load is None:
+        try:
+            from ui.onboard_roster import load_roster as load
+        except Exception:
+            return ""
+    roster = load() or {}
+    for role, serial in roster.items():
+        if serial and ("lora" in role.lower() or "rnode" in role.lower()):
+            return serial
+    return ""
+
+
 def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     """Run the SAFE checks against the medic's own onboard radio/GPS board."""
-    findings = [sd.check_usb_present(run("ls /dev/serial/by-id/ 2>/dev/null"))]
+    findings = [sd.check_usb_present(run("ls /dev/serial/by-id/ 2>/dev/null"),
+                                     onboard_radio_serial())]
     active = run("systemctl is-active rnode-splitter 2>/dev/null").strip() == "active"
     cpu, up = _splitter_cpu_uptime(run)
     log = run("journalctl -u rnode-splitter -n 12 --no-pager 2>/dev/null")

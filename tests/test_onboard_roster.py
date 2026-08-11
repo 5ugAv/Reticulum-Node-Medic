@@ -2,6 +2,7 @@
 they're never treated as work boards (flash/PROBE/birth targets)."""
 
 import json
+import re
 from unittest.mock import patch
 
 from ui import onboard_roster as roster
@@ -133,3 +134,21 @@ def test_service_device_paths_and_serials_from_unit_config():
     ser = roster.service_bound_serials(device_paths=paths,
                                        serial_fn=lambda _p: "A1:B2:C3:D4:E5:F6")
     assert ser == {"A1:B2:C3:D4:E5:F6"}
+
+
+# --- the splitter unit must not ship one board's fingerprint ----------------
+
+def test_splitter_unit_is_a_template_not_a_serial():
+    """The unit's ExecStart used to carry the medic's own board MAC, in a public
+    repo. Two things wrong with that: the by-id path is a permanent fingerprint
+    of one physical device, and setup_boot.sh copies this file verbatim onto
+    every medic — so a CLONE would have been installed pointing at hardware it
+    does not have. It is a placeholder now, filled in at install time."""
+    unit = open("scripts/rnode-splitter.service").read()
+    setup = open("scripts/setup_boot.sh").read()
+    assert "__RNODE_BY_ID__" in unit, "the unit is a template"
+    assert not re.search(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", unit), \
+        "no MAC in the shipped unit"
+    assert "__RNODE_BY_ID__" in setup and "sed " in setup, "installer fills it in"
+    # and refuses rather than installing a unit that points nowhere
+    assert "refusing to continue" in setup

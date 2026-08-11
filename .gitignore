@@ -40,3 +40,6 @@ assets/fonts/*
 
 # Rendered animation preview frames — regenerate with scripts/preview_*.py
 docs/previews/
+
+# filter-branch / filter-repo scratch
+.git-rewrite/

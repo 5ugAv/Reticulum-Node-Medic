@@ -240,7 +240,7 @@ class NodeDetailScreen(BoxLayout):
             nav_btn.bind(on_release=lambda *_: self._navigate())
             actions.add_widget(nav_btn)
         # Only when the board is REALLY here and there is somewhere to send it.
-        # A rebirth is a USB erase; a button for a node three streets away would
+        # A rebirth is a USB erase; a button for a node across town would
         # be a repair path that looks one tap from working and isn't.
         if (self._advice is not None and self._advice.offer_rebirth
                 and self._on_rebirth is not None):

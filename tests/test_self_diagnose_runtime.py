@@ -1,7 +1,15 @@
 """Self Diagnose runtime — live gather + repairs (injected shell)."""
 
 from monitor import self_diagnose_runtime as rt
-from monitor.self_diagnose import SEV_OK, SEV_CRIT, SEV_WARN, ONBOARD_SERIAL
+from monitor.self_diagnose import SEV_OK, SEV_CRIT, SEV_WARN
+
+#: Synthetic — this medic's real one comes from its roster at runtime.
+MINE = "AA:BB:CC:DD:EE:FF"
+
+
+def commissioned(monkeypatch):
+    """Pretend this medic has recorded its own radio in its roster."""
+    monkeypatch.setattr(rt, "onboard_radio_serial", lambda *a, **k: MINE)
 
 
 def fake_run(responses):
@@ -14,10 +22,11 @@ def fake_run(responses):
     return run
 
 
-def test_gather_all_healthy():
+def test_gather_all_healthy(monkeypatch):
+    commissioned(monkeypatch)
     now = 1_704_070_000.0                            # a real 2024+ time (clock check)
     run = fake_run({
-        "serial/by-id": f"usb-Espressif_..._{ONBOARD_SERIAL}-if00",
+        "serial/by-id": f"usb-Espressif_..._{MINE}-if00",
         "is-active rnode-splitter": "active",
         "MainPID": "1676",
         "cputimes": "5 1560",                       # 5s CPU in 1560s = healthy
@@ -43,9 +52,10 @@ def test_gather_all_healthy():
     assert len(findings) == 12                       # 3 radio/gps + 9 system health
 
 
-def test_gather_catches_the_jonesey_incident():
+def test_gather_catches_the_jonesey_incident(monkeypatch):
+    commissioned(monkeypatch)
     run = fake_run({
-        "serial/by-id": "usb-Espressif_..._A1:B2:C3:D4:E5:F6-if00",  # still on USB
+        "serial/by-id": f"usb-Espressif_..._{MINE}-if00",            # still on USB
         "is-active rnode-splitter": "active",
         "MainPID": "1676",
         "cputimes": "1320 1560",                    # spinning hot (~85%)
@@ -58,7 +68,8 @@ def test_gather_catches_the_jonesey_incident():
     assert any(f.fix == "restart_splitter" for f in findings)
 
 
-def test_gather_usb_dropped():
+def test_gather_usb_dropped(monkeypatch):
+    commissioned(monkeypatch)
     run = fake_run({"serial/by-id": "usb-somethingelse-if00",
                     "is-active rnode-splitter": "inactive",
                     "gps_state.json": ""})

@@ -109,8 +109,8 @@ def name_for_ip(ip: str) -> str:
     """The hostname behind an IP, via mDNS/DNS, or "".
 
     ``getent hosts <ip>`` does the reverse lookup, and nss-mdns answers for
-    ``.local`` names on this LAN (verified on the medic: 192.168.1.42 resolves
-    to "everywhere").
+    ``.local`` names on this LAN — verified on the medic against a node whose
+    name it already knew.
     """
     out = _run(["getent", "hosts", (ip or "").strip()])
     for line in out.splitlines():
@@ -233,8 +233,8 @@ def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
     if nb:
         # Name them. The medic knows what its own nodes are called, so a sweep
         # hit that IS one of them can be called out rather than offered as
-        # something to build over — 192.168.1.42 was EVERYWHERE, the
-        # operator's live propagation node (2026-08-02).
+        # something to build over — on 2026-08-02 the sweep offered an
+        # address that was already one of the medic's own nodes.
         kin = known_kin_names()
         seen = [identify(n["ip"], kin) for n in nb]
         mine = [d for d in seen if d["kin"]]

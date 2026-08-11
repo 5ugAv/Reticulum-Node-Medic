@@ -144,7 +144,8 @@ def test_an_unheard_node_never_claims_verification_on_the_certificate():
 
 # --- reading the interface out of the real path table ------------------------
 # This attribution is what the whole test rests on. rnpath -t --json carries an
-# explicit "interface" per destination — verified against the live medic.
+# explicit "interface" per destination — the shape was verified against the
+# live medic; the hashes below are synthetic.
 
 REAL_JSON = ('[{"hash": "5566778899aabbccddeeff0011223344", "hops": 0, '
              '"interface": "LocalInterface[rns/default]"}, '

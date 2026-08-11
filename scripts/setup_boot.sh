@@ -18,7 +18,25 @@ else
 fi
 
 echo "== splitter service =="
-cp "$TOOL/scripts/rnode-splitter.service" /etc/systemd/system/rnode-splitter.service
+# The unit ships with a placeholder, not a serial: the by-id path carries the
+# board's MAC (a permanent fingerprint of one device), and a cloned medic has
+# different hardware. Resolve THIS medic's radio now, and refuse rather than
+# install a unit pointing at a port that does not exist.
+if [ -z "$RNODE_BY_ID" ]; then
+    RNODE_BY_ID=$(ls /dev/serial/by-id/*Espressif*JTAG*-if00 2>/dev/null | head -1)
+fi
+if [ -z "$RNODE_BY_ID" ] || [ ! -e "$RNODE_BY_ID" ]; then
+    echo "Cannot find the medic's own radio under /dev/serial/by-id."
+    echo "Plug it in, or run with:  RNODE_BY_ID=/dev/serial/by-id/... sudo -E bash $0"
+    exit 1
+fi
+echo "splitter will own: $RNODE_BY_ID"
+sed "s|__RNODE_BY_ID__|$RNODE_BY_ID|" "$TOOL/scripts/rnode-splitter.service" \
+    > /etc/systemd/system/rnode-splitter.service
+if grep -q "__RNODE_BY_ID__" /etc/systemd/system/rnode-splitter.service; then
+    echo "placeholder was not substituted — refusing to continue"
+    exit 1
+fi
 mkdir -p /etc/systemd/system/rnsd.service.d
 cp "$TOOL/scripts/rnsd-splitter-override.conf" /etc/systemd/system/rnsd.service.d/splitter.conf
 systemctl daemon-reload

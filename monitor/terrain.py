@@ -2,7 +2,7 @@
 
 WHY THIS EXISTS. ``monitor.placement`` estimates signal from DISTANCE alone
 (``estimate_rssi_dbm``: log-distance path loss, exponent 2.7). Distance is the
-wrong question. FAITH at Sampleton to the medic at Stonefield was under a kilometre — a
+wrong question. The first range test on this mesh was under a kilometre — a
 distance the model calls comfortable — and the link failed, because the path ran
 through houses with no line of sight ([[first-range-test-faith]]). A suggester
 that cannot see a hill or a building will keep recommending positions that fail

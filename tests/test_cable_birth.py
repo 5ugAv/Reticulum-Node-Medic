@@ -373,8 +373,8 @@ def test_cable_lookup_never_raises(monkeypatch):
 # --- never hand the build a Pi we can't tie to this build -------------------
 
 def test_a_network_sweep_never_yields_an_address_to_auto_fill(monkeypatch):
-    """2026-08-02: the sweep offered 192.168.1.42 — a real but UNRELATED Pi on
-    the operator's LAN — as the build target, while the Pi actually being built
+    """2026-08-02: the sweep offered a real but UNRELATED Pi on the LAN as the
+    build target, while the Pi actually being built
     sat on USB in card-reader mode with no network address at all. Provisioning
     rewrites the target's services and config."""
     from provisioning import pi_discover
@@ -384,10 +384,10 @@ def test_a_network_sweep_never_yields_an_address_to_auto_fill(monkeypatch):
                         lambda: [{"ip": "192.168.1.42", "mac": "02:00:00:0a:00:0a"}])
     # AND the kin roster. Injecting `neighbours` alone looked like enough on a
     # Mac and was not: find_pi also asks known_kin_names(), which on the medic
-    # reads the operator's REAL fleet. 192.168.1.42 is EVERYWHERE, their live
-    # propagation node, so the medic answered "already yours" instead of "can't
+    # reads the medic's REAL fleet — and the swept address was already one of
+    # its own nodes, so the medic answered "already yours" instead of "can't
     # tell" and this test failed for describing a situation that cannot arise
-    # there (2026-08-07, the first full suite run on the device).
+    # there (the first full suite run on the device).
     #
     # A test must not depend on whose network it is running on. The stranger's
     # Pi has to be a STRANGER, so the roster is empty by construction.
@@ -417,10 +417,9 @@ def test_the_screen_refuses_to_autofill_an_unconfirmed_address():
 
 
 # --- recognising our OWN nodes on the network -------------------------------
-# 2026-08-02: the sweep offered 192.168.1.42 as a build target. It was
-# EVERYWHERE, the operator's live propagation node — and the medic knew its
-# name all along (mDNS resolves it) and had it in the kin roster. It simply
-# wasn't looking.
+# 2026-08-02: the sweep offered an address as a build target that was already
+# one of the medic's own nodes — it knew the name all along (mDNS resolves it)
+# and had it in the kin roster. It simply wasn't looking.
 
 def test_a_known_node_is_named_and_marked_as_ours(monkeypatch):
     from provisioning import pi_discover

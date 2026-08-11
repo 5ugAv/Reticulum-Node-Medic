@@ -198,7 +198,7 @@ log-distance path-loss model self-calibrated against this mesh's observed reach.
 Suggestions appear only once `rnpath` returns edges between located nodes.
 
 Distance alone is a poor predictor, and this mesh has the scar to prove it: a
-under a kilometre link failed because the path ran through houses, at a distance the model
+sub-kilometre link failed because the path ran through houses, at a distance the model
 called comfortable. So a suggestion is also checked against the ground
 ([`monitor/terrain.py`](monitor/terrain.py)) — it walks the elevation profile
 between the candidate and each partner, adds the earth's curve at the standard

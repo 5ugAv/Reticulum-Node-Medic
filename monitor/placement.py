@@ -165,9 +165,9 @@ def check_terrain(suggestions: List[Suggestion], topo: Topology,
                   store=None, antenna_m: float = 3.0) -> List[Suggestion]:
     """Ask the ground whether each suggested spot can actually see its partners.
 
-    estimate_rssi_dbm knows only DISTANCE. That is how a sub-kilometre link between
-    FAITH and the medic came out looking comfortable and then failed — the path
-    ran through houses. Terrain cannot see houses either, but it can see hills,
+    estimate_rssi_dbm knows only DISTANCE. That is how a sub-kilometre link
+    came out looking comfortable and then failed — the path ran through
+    houses. Terrain cannot see houses either, but it can see hills,
     and a hill is the failure a distance model is least equipped to notice.
 
     Fail-OPEN by design: no tiles, or tiles that do not cover the path, leave

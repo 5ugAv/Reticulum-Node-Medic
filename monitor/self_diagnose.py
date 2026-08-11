@@ -21,8 +21,16 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-#: Jonesey — the medic's onboard Heltec Wireless Tracker (radio + GPS via splitter).
-ONBOARD_SERIAL = "A1:B2:C3:D4:E5:F6"
+#: NOT a serial — a placeholder, deliberately.
+#:
+#: A chip MAC is a permanent, unchangeable fingerprint of the board the
+#: operator carries around a named city, and this file used to hardcode the
+#: real one — while the anonymity rule elsewhere in this tool says a chip
+#: MAC "identifies a place and a person". Each medic already records its OWN
+#: boards by serial in its roster (ui/onboard_roster.py); the runtime reads
+#: it from there and passes it in, which also makes this check correct on a
+#: cloned medic whose boards are different.
+ONBOARD_SERIAL = ""
 
 SEV_OK = "ok"
 SEV_WARN = "warning"
@@ -44,7 +52,16 @@ class Finding:
 
 def check_usb_present(by_id_listing: str, serial: str = ONBOARD_SERIAL) -> Finding:
     """Is the onboard board enumerating on USB at all? (absent = unplugged, dead,
-    or brown-out drop.) ``by_id_listing`` = the text of ``ls /dev/serial/by-id``."""
+    or brown-out drop.) ``by_id_listing`` = the text of ``ls /dev/serial/by-id``.
+
+    With no *serial* it says so and stops. "I could not check" is its own
+    answer: a medic that has never commissioned its boards must not be told
+    its radio has dropped off the bus."""
+    if not serial:
+        return Finding("usb_present", SEV_WARN,
+                       "This medic has not recorded which board is its own, so "
+                       "I cannot tell whether it is on USB. Commission it from "
+                       "Settings and this check starts working.")
     if serial.lower() in (by_id_listing or "").lower():
         return Finding("usb_present", SEV_OK, f"Onboard radio present on USB ({serial}).")
     return Finding("usb_present", SEV_CRIT,

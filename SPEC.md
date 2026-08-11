@@ -128,7 +128,7 @@ has to be procedural rather than a matter of care:
    address; use the one that answered.
 6. **Prefer the operator's own diagnostic.** The radio's screen reads
    `On @ 1.8kbps` with a filled bar when a host has opened it. That needs no
-   tools, works on a node three streets away, and found a bug the tool had been
+   tools, works on a node across town, and found a bug the tool had been
    misreporting for two days.
 
 When the evidence is missing, say so. A screen that admits it does not know is

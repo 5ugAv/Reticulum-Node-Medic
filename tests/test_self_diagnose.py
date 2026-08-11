@@ -5,12 +5,27 @@ from monitor.self_diagnose import (
     check_splitter, check_rns_link, check_gps_fresh, summarize,
     ONBOARD_SERIAL, SEV_OK, SEV_WARN, SEV_CRIT)
 
+#: Synthetic. The real serial belongs in each medic's own roster, not here —
+#: a chip MAC is a permanent fingerprint of the board the operator carries.
+MINE = "AA:BB:CC:DD:EE:FF"
+
 
 def test_usb_present_detects_drop():
-    ok = check_usb_present(f"usb-Espressif_..._{ONBOARD_SERIAL}-if00")
+    ok = check_usb_present(f"usb-Espressif_..._{MINE}-if00", MINE)
     assert ok.ok and ok.fix is None
-    gone = check_usb_present("usb-something-else-if00")
+    gone = check_usb_present("usb-something-else-if00", MINE)
     assert gone.severity == SEV_CRIT and gone.fix == "usb_recover"
+
+
+def test_usb_present_with_no_recorded_serial_says_it_cannot_tell():
+    """A medic that has never commissioned its own boards does not know which
+    serial is its radio. It must not therefore announce that the radio has
+    dropped off the bus, and must not offer a power-cycle that would not help:
+    "I could not check" is its own answer."""
+    assert ONBOARD_SERIAL == "", "no real serial hardcoded in the source"
+    f = check_usb_present("usb-anything-if00", "")
+    assert f.severity == SEV_WARN and f.fix is None
+    assert "cannot tell" in f.detail
 
 
 def test_chip_alive_from_esptool():
@@ -62,7 +77,7 @@ def test_gps_freshness_is_warning_not_critical():
 
 def test_summarize_orders_fixes_and_flags_worst():
     findings = [
-        check_usb_present("wrong"),                                    # crit usb_recover
+        check_usb_present("wrong", MINE),                              # crit usb_recover
         check_firmware_provisioned("RNode did not respond"),           # crit reflash_provision
         check_splitter(False, 0, 0),                                   # crit restart_splitter
         check_gps_fresh('{"updated":0}', now=99999),                   # warn (no fix)
@@ -74,7 +89,7 @@ def test_summarize_orders_fixes_and_flags_worst():
 
 
 def test_summarize_all_healthy():
-    s = summarize([check_usb_present(f"x{ONBOARD_SERIAL}"),
+    s = summarize([check_usb_present(f"x{MINE}", MINE),
                    check_rns_link("ok"), check_gps_fresh('{"updated":100}', now=110)])
     assert s["healthy"] and s["worst"] == SEV_OK and s["fixes"] == []
 
