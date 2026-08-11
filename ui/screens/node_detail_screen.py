@@ -44,6 +44,43 @@ def _wrap(text, color="text_primary", size="14sp"):
     return lbl
 
 
+def _reading(record, name):
+    """A live reading from a NodeRecord OR from the dashboard dict of one.
+
+    THE MEDIC'S SCREEN WENT BLACK OVER THIS (2026-08-11). This screen was
+    written against the shape ``NodeRecord.to_dashboard()`` produces — flat keys
+    like ``signal_dbm`` and ``battery_pct`` — and then wired to receive the
+    RECORD itself. On a record, ``signal_dbm`` is a METHOD, so
+    ``getattr(record, "signal_dbm", None)`` handed back a bound method, and the
+    next line compared it to a number:
+
+        TypeError: '>' not supported between instances of 'method' and 'int'
+
+    The operator tapped a node in VITALS and the app died. It does not restart
+    itself; the screen simply stays black, with nothing on it to say why.
+
+    The battery reading was the same bug wearing a quieter coat: ``battery_pct``
+    is not on the record at all (it is ``_battery_pct()``), so every node has
+    been reporting "Battery: not reported" since the line was written —
+    including nodes that were sending their charge perfectly well.
+
+    So: dict key, then attribute, then the private accessor — and CALL it if it
+    is callable, because the difference between a number and a method that
+    returns one is the difference between a screen and a black rectangle.
+    """
+    if isinstance(record, dict):
+        return record.get(name)
+    value = getattr(record, name, None)
+    if value is None:
+        value = getattr(record, "_" + name, None)
+    if callable(value):
+        try:
+            value = value()
+        except Exception:
+            return None
+    return value
+
+
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
                  watch_line=None, activity_text=None, by_hour=None,
@@ -82,7 +119,7 @@ class NodeDetailScreen(BoxLayout):
                 else tr("{age} ago").format(age=format_age(seen))),
             color="text_secondary"))
 
-        batt = getattr(record, "battery_pct", None)
+        batt = _reading(record, "battery_pct")
         self.add_widget(_line(
             tr("Battery: {status}").format(
                 status=f"{batt}%" if batt is not None else tr("not reported")),
@@ -93,7 +130,7 @@ class NodeDetailScreen(BoxLayout):
         # trap on a node that has since moved, gone quiet or lost its antenna —
         # it reads as current and is not (operator asked for transmission
         # strength on this screen, 2026-08-10).
-        sig = getattr(record, "signal_dbm", None)
+        sig = _reading(record, "signal_dbm")
         if sig is not None:
             self.add_widget(_line(
                 tr("Signal when last heard: {dbm} dBm").format(dbm=sig),
