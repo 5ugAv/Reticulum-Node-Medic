@@ -31,6 +31,16 @@ from monitor.health_beacon import WIFI_WARN_DBM
 STATUS_PATH = "/status"
 STATUS_PORT = 80
 
+#: What a Pi propagation node puts in ``fork``. It is NOT RTNode firmware and
+#: must not claim to be — it is a Python service (:mod:`monitor.pi_status_server`)
+#: speaking the same JSON so one parser serves both kinds of node.
+PI_FORK = "RNM-Pi"
+
+#: Strings that mark a ``/status`` body as belonging to a node this tool knows.
+#: The LAN sweep (:mod:`monitor.discovery`) greps for these, so a new kind of
+#: node becomes discoverable by adding its fork here and nowhere else.
+DISCOVERY_MARKERS = ("RTNode", PI_FORK)
+
 #: (status_code, body) — an injected HTTP GET so tests need no network.
 Getter = Callable[[str, float], Tuple[int, str]]
 
@@ -53,6 +63,20 @@ class NodeStatus:
     reset_reason: str = ""
     faults: List[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
+    #: Did the node actually SAY anything about each link, or is the False above
+    #: just this dataclass's default?
+    #:
+    #: An RTNode-2400 sends all three keys on every request, so for it these are
+    #: always True and nothing changes. A Pi propagation node OMITS a key it
+    #: could not read (see monitor.pi_status_server), and the difference matters
+    #: at the far end: ``registry._capabilities`` turns a False into "the node
+    #: reports it down", which VITALS draws in amber and an operator reads as
+    #: something to go and fix. A reading nobody could take is not a fault, and
+    #: it must render grey. Default True so every existing construction of this
+    #: dataclass keeps the meaning it had.
+    lora_known: bool = True
+    wifi_known: bool = True
+    backbone_known: bool = True
 
 
 def status_colour(d: dict) -> str:
@@ -97,6 +121,9 @@ def parse_status(d: dict) -> NodeStatus:
         reset_reason=d.get("reset_reason", ""),
         faults=list(d.get("faults", []) or []),
         raw=d,
+        lora_known="lora_online" in d,
+        wifi_known="wifi_connected" in d,
+        backbone_known="tcp_backbone_connected" in d,
     )
 
 

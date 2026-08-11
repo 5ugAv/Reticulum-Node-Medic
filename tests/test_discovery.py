@@ -58,3 +58,33 @@ def test_discover_nodes_resolves_subnet_when_omitted():
 
 def test_discover_nodes_empty_when_no_subnet():
     assert discover_nodes(lambda cmd: "", poll=lambda h: None) == []
+
+
+def test_the_sweep_also_finds_a_pi_that_is_not_rtnode_firmware():
+    """A Pi propagation node serves the same /status but says so in ``fork`` —
+    it is not RTNode firmware and must not pretend to be. Grepping for the
+    literal string walked straight past half the fleet."""
+    from monitor.http_status import DISCOVERY_MARKERS, PI_FORK
+    seen = {}
+
+    def run(cmd):
+        seen["cmd"] = cmd
+        return ""
+    discover_hosts(run, "192.168.1")
+    for marker in DISCOVERY_MARKERS:
+        assert marker in seen["cmd"]
+    assert PI_FORK in seen["cmd"]
+
+
+def test_the_sweeps_grep_pattern_survives_the_nested_quoting():
+    """The alternation lives inside `sh -c '...'`, so it must not be quoted with
+    the single quotes that terminate it."""
+    seen = {}
+
+    def run(cmd):
+        seen["cmd"] = cmd
+        return ""
+    discover_hosts(run, "192.168.1")
+    body = seen["cmd"].split("sh -c ", 1)[1]
+    assert body.startswith("'") and body.rstrip().endswith("'")
+    assert "'" not in body[1:-1], "an inner single quote would end the sh -c body"
