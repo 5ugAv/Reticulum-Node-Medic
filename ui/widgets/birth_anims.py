@@ -9,7 +9,7 @@ and simply gets prettier when the artwork is dropped in (no code change):
     assets/ui/anim/sd_card.png       # the SD card
     assets/ui/anim/radio_board.png   # the radio board
 
-the designer's artwork replaces the placeholders by filename.
+Final artwork replaces the placeholders by filename.
 """
 
 from __future__ import annotations
@@ -794,7 +794,7 @@ class ConnectAntennaAnim(_LoopAnim):
 class ProvisionAnim(_LoopAnim):
     """PLACEHOLDER: Node Medic configuring the node over its setup WiFi — the medic
     (right) and the small node (left) with pulsing WiFi arcs between them. Rough
-    stand-in for the designer's artwork; the geometry + intent are what's set."""
+    stand-in for final artwork; the geometry + intent are what's set."""
 
     def _draw(self):
         medic = _texture(MEDIC_PNG)

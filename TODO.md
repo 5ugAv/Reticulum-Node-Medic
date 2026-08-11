@@ -37,7 +37,7 @@ basemap with pan/pinch + per-node street detail, live node diagnosis proven
       5ugAv/Heltec-Wireless-Tracker-RNode public; also publishes the shared
       signing key (intended). Explicit go-ahead required.
 
-## 4. The designer (the designer) pass — screens land here
+## 4. The designer pass — screens land here
 
 Assets first: 6 mode icons (🫀🧫🥚🩺🩻🧬 as PNGs — no emoji font on the Pi),
 app logo, boot splash, palette (drop-in via `ui/theme.py`).

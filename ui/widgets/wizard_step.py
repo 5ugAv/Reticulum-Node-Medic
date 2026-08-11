@@ -3,8 +3,8 @@
 A new operator shouldn't face a wall of fields. Each WizardStep shows ONE thing
 to do: a step counter + progress dots, a big title, a roomy animation area (a
 widget the caller supplies — see ui.widgets.birth_anims), large readable body
-text, and Back / Next. The look here is deliberately plain and legible; the designer
-polishes the aesthetics once the flow and copy are right.
+text, and Back / Next. The look here is deliberately plain and legible; a
+design pass polishes the aesthetics once the flow and copy are right.
 """
 
 from __future__ import annotations

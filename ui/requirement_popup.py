@@ -8,7 +8,7 @@ cryptic failed-step log — we raise a clear hazard card that says it straight:
 Design: a caution-yellow card with a red outline and a ⚠ glyph — reads as "stop,
 read this" at a glance without being an error. Dark text on yellow for contrast.
 Shared by BIRTH / PROBE / MITOSIS so every requirement looks and behaves the same.
-(Visual language is intentionally simple and themeable — open to the designer's polish.)
+(Visual language is intentionally simple and themeable — open to a design pass.)
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """HOME — the designed front page.
 
-the designer's poster (assets/ui/front_page.png) fills the screen (fit, letterboxed
+The poster (assets/ui/front_page.png) fills the screen (fit, letterboxed
 on the dark ground); taps are converted into image-fraction coordinates and
 resolved by the pure ui.home_zones mapper: the five bottom cards open their
 modes, the red cross opens MITOSIS (the medic itself). Everything visual is

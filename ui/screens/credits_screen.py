@@ -30,7 +30,6 @@ DONATE_QR = os.path.normpath(os.path.join(
     os.pardir, "assets", "ui", "donate_eth_qr.png"))
 
 #: (role, name) — shown in order. Edit to taste.
-#: (Add the designer's design credit when her pages land.)
 #: Ordered as the LINEAGE runs, so the thanks read as a chain rather than a
 #: list: Reticulum, the C++ port that let it fit on a microcontroller, the
 #: firmware forks built on that, then this tool. Everything from Qvist down to
