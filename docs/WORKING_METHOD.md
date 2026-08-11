@@ -307,3 +307,39 @@ someone you do not entirely trust — because under time pressure, that is you.
 *The habit underneath all of this: when the tool and the hardware disagree,
 believe the hardware, and then go and find out why the tool was wrong. It is
 almost never where you first look.*
+
+---
+
+## Appendix — the state at handover, 2026-08-12
+
+**On `main`, tested, deployed to the medic:**
+- `/status` server for Pi nodes, build steps that prove a node reports, one
+  VITALS row per machine (the health reporter keeps a separate identity from
+  rnsd, which is why duplicates could never group).
+- A cached path is no longer a sighting. Verified live: SolarLove read 19.8 h,
+  not 0.0 h.
+- The node-detail crash that killed the whole app on a VITALS tap.
+- The health beacon attached to every announce, including RNS's automatic
+  re-announce — **committed and deployed, never observed landing. Unproven.**
+
+**On `main`, not deployed:** the location-sharing model and screens; the vault
+factor model (maximum strength — passphrase inside every level, recovery key the
+only fallback, pattern drawn twice); the nine-dot pad.
+
+**Behind the airlock, committed and tested, unreviewed — six worktrees:**
+first-use setup wizard · location toggle (ModeToggle generalised to
+TwoStateToggle) · birth wording, reader lens · birth wording, provenance lens.
+The last two touch the same files and must be merged by hand; their findings
+agree, which makes that easier than it sounds.
+
+**Do first, in this order:**
+1. Merge the two wording worktrees. Four birth screens currently OVERFLOW the
+   panel — the animation is being pushed off the glass by the text.
+2. Pass the radio's serial through to the build. The medic holds it at step 0
+   and discards it; that one string is the difference between `/dev/rnode`
+   meaning *this* radio and meaning *any* FTDI device.
+3. Widen `final_verification` so it cannot pass on a mute node.
+4. Then birth — **not** as `skyfinger`; that name is contested on the network.
+
+**Known false on screen right now:** step 1 of the Pi path says the medic
+"remembers which radio it is so the Pi finds it later". It does not.
