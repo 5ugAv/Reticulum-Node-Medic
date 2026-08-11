@@ -744,6 +744,12 @@ class NodeRegistry:
                 "location": r.location,
                 "node_type": r.node_type,
                 "last_seen": r.last_seen,
+                # Kept apart across a restart too. Without these the app comes
+                # back unable to tell a route from having heard the node, and
+                # the next mesh scan can overwrite fresh direct evidence with an
+                # old path timestamp.
+                "last_direct": r.last_direct,
+                "mesh_heard": r.mesh_heard,
                 "lat": r.lat,
                 "lon": r.lon,
                 "identity_hash": r.identity_hash,
@@ -770,6 +776,8 @@ class NodeRegistry:
                 location=n.get("location", ""),
                 node_type=n.get("node_type", "rtnode2400"),
                 last_seen=n.get("last_seen"),
+                last_direct=n.get("last_direct"),
+                mesh_heard=n.get("mesh_heard"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
                 identity_hash=n.get("identity_hash"),

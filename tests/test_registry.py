@@ -573,3 +573,17 @@ def test_consolidated_record_does_not_mutate_stored_records():
 def test_consolidated_record_none_for_unknown_key():
     reg, _ = _faith_registry()
     assert reg.consolidated_record("no-such-key", NOW) is None
+
+
+def test_the_two_kinds_of_evidence_survive_a_restart():
+    """Without persisting them the app comes back unable to tell a route from
+    having heard the node, and the first mesh scan overwrites fresh direct
+    evidence with an old path timestamp."""
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(status="ok"), NOW)
+    reg.ingest_mesh(_mesh(HASH, heard=NOW - 40 * HOUR), NOW)
+    back = NodeRegistry.from_dict(reg.to_dict())
+    rec = back.get(HASH)
+    assert rec.last_direct == NOW and rec.mesh_heard == NOW - 40 * HOUR
+    back.ingest_mesh(_mesh(HASH, heard=NOW - 40 * HOUR), NOW)
+    assert back.get(HASH).last_seen == NOW
