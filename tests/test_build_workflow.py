@@ -851,11 +851,19 @@ def test_the_usb_handback_reads_back_what_it_wrote():
     src = func_source("workflows/build.py", "hand_the_usb_port_back")
     code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
     assert "sed -i" not in code, "no regex crossing three parsers"
-    assert "tee" in code and "RTTEOF" in code, "the same idiom as configure_services"
+    # base64 through a pipe, NOT a heredoc: this payload is the node's own file
+    # read back and re-sent, so a line equal to the heredoc terminator would end
+    # the document and hand the rest to a shell with passwordless sudo.
+    assert "_write_remote_file" in code
+    helper = func_source("workflows/build.py", "_write_remote_file")
+    body = helper.split('"""')[-1]  # past the docstring, which explains RTTEOF
+    assert "base64" in body and "RTTEOF" not in body
+    assert "shlex.quote" in body
     # the read-back, and it must FAIL rather than warn
     # rindex: it reads the file BEFORE too, to transform it. The verify is the
     # read that comes AFTER the write.
-    assert code.index("tee") < code.rindex("cat {boot}"), "write, then verify"
+    assert code.index("_write_remote_file") < code.rindex("cat {boot}"), \
+        "write, then verify"
     assert "still says gadget" in src, "and say what it means for the node"
     fails = code[code.index("check ="):]
     assert "False" in fails, "a card that did not take must fail the step"
@@ -882,3 +890,27 @@ def test_an_undateable_log_claims_nothing():
     from workflows.build import _wedged_recently
     assert _wedged_recently("NETDEV WATCHDOG somewhere", "") is False
     assert _wedged_recently("NETDEV WATCHDOG no timestamp", "150.0 1.0") is False
+
+
+def test_a_boot_file_full_of_heredoc_terminators_cannot_escape():
+    """The payload is the NODE's own /boot/firmware/config.txt, read back and
+    re-sent. Under the heredoc form it replaced, a line equal to the terminator
+    ended the document and handed the rest to a shell the card had given
+    passwordless sudo. Reaching it needs the card or root already — but it was
+    the one heredoc here whose content came from the far end, and the project
+    already had the right idiom and the scar to go with it (task #50)."""
+    from workflows.build import _write_remote_file
+
+    class W:
+        def priv(self, c):
+            return f"sudo -n {c}"
+
+    nasty = "dtoverlay=dwc2,dr_mode=peripheral\nRTTEOF\nrm -rf /\n"
+    cmd = _write_remote_file(W(), "/boot/firmware/config.txt", nasty)
+    assert "RTTEOF" not in cmd, "the terminator must not appear in the command"
+    assert "rm -rf" not in cmd, "content is encoded, never inlined"
+    assert cmd.startswith("echo ") and "base64 -d" in cmd
+    # and it must round-trip exactly
+    import base64, shlex
+    blob = shlex.split(cmd.split("|")[0])[1]
+    assert base64.b64decode(blob).decode() == nasty

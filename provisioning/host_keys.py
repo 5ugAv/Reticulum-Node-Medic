@@ -267,25 +267,34 @@ def addresses_of(name: str) -> List[str]:
 
 
 def forget_reimaged_node(hostname: str = "", paths: Optional[List[str]] = None,
-                         resolver=addresses_of) -> int:
+                         resolver=None) -> int:
     """Forget every identity a freshly written card has just invalidated.
 
     The cable address always, because every node inherits it; the node's own
     name too, since a rebirth reuses that as well.
 
-    AND THE ADDRESSES THAT NAME CURRENTLY RESOLVES TO. ssh stores a host key
-    under the name AND under the address, and clearing one leaves the other.
-    That is not hypothetical: a rebuilt skyfinger cleared cleanly by name and
-    still failed, because the PREVIOUS node's key was sitting under
-    192.168.1.2 — three entries, found only by asking what the name resolved to
-    (2026-08-11). At card-write time the name usually still points at the node
-    being replaced, which is exactly the one whose key must go.
+    NAMES AND THE CABLE ADDRESS ONLY — NOT WHATEVER A RESOLVER SAYS.
+    An earlier version of this also cleared every IP the name resolved to, so
+    that a rebuild would drop a stale key sitting under the node's old LAN
+    address. A security audit killed it the same day, correctly: getaddrinfo on
+    a bare name is plain DNS and on a .local name is mDNS, neither of which is
+    authenticated. Anyone able to answer a name query on the operator's network
+    could therefore choose which host keys the medic forgot — and since
+    accept-new refuses a CHANGED key but silently trusts an UNKNOWN one,
+    deleting an entry converts "this key changed, refuse" into "new host, trust
+    it". That is exactly the alarm C1 exists to raise, switched off for a host
+    an attacker picked.
+
+    The names are safe to clear because they are the medic's OWN input: it just
+    wrote that hostname onto that card. *resolver* is kept as a seam so a future
+    version can pass a TRUSTED source of addresses (the kin roster, or the
+    /29), never a lookup.
     """
     hosts = [CABLE_ADDRESS]
     if hostname:
         hosts += [hostname, f"{hostname}.local"]
         for nm in (hostname, f"{hostname}.local"):
-            for ip in resolver(nm):
+            for ip in (resolver(nm) if resolver else []):
                 if ip not in hosts:
                     hosts.append(ip)
     return sum(forget_host_key(h, paths) for h in hosts)

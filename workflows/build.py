@@ -689,13 +689,13 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
             f"Environment=HOME={home}\n"
             f"ExecStart={path}{args}\n"
             "Restart=always\n"
-            "RestartSec=5\n"
-            # NO RATE LIMIT. Restart=always gives up after systemd's default
-            # burst (5 starts in 10 s) and parks the unit in `failed` — which
-            # is exactly wrong here, because the thing being waited for is a
-            # radio that may not be plugged in for another hour. The node must
-            # keep trying for as long as it takes.
-            "StartLimitIntervalSec=0\n\n"
+            # systemd's DEFAULT start limit is kept on purpose. Removing it was
+            # part of the same disproved change as panic_on_interface_error: the
+            # pair would turn a flapping radio into an unbounded 5-second
+            # restart loop that never parks, on a node whose scarcest shared
+            # resource is airtime. A unit that lands in `failed` is visible;
+            # one that restarts forever is not.
+            "RestartSec=5\n\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n"
         )
@@ -876,6 +876,28 @@ _GADGET_OVERLAY = "dtoverlay=dwc2,dr_mode=peripheral"
 _HOST_OVERLAY = "dtoverlay=dwc2,dr_mode=host"
 
 
+def _write_remote_file(wf: "BuildWorkflow", path: str, content: str) -> str:
+    """Command that puts *content* at *path* on the node, as root.
+
+    BASE64 THROUGH A PIPE, NEVER A HEREDOC. The heredoc form this replaced took
+    content READ BACK FROM THE NODE and re-sent it between <<'RTTEOF' … RTTEOF —
+    so a line of the node's own /boot/firmware/config.txt equal to the
+    terminator would end the document early and hand the rest to the node's
+    shell, which the card gave passwordless sudo. Reaching it needs the card or
+    root already, so it was never the shortest road in; it was simply the one
+    heredoc in this codebase whose payload came from the far end.
+
+    The project already had the right idiom and the scar to go with it — see
+    provisioning/rootfs_wifi._write, written after the card-prepare injection
+    (task #50). This is that idiom, applied where it was missed.
+    """
+    import base64
+    import shlex
+    b64 = base64.b64encode(content.encode()).decode()
+    return (f"echo {shlex.quote(b64)} | base64 -d | "
+            f"{wf.priv(f'tee {shlex.quote(path)}')} >/dev/null")
+
+
 @build_step
 def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     """Stop being a gadget; start being able to host a radio.
@@ -919,11 +941,10 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     # node came up still a gadget, still unable to see its own radio, and the
     # operator had to power-cycle it a second time). A regex full of | and ^
     # crossing shlex.quote, bash -c and the remote shell has three chances to
-    # arrive as something else; the same tee-a-whole-file idiom configure_services
-    # uses has none.
+    # arrive as something else; a whole file sent as base64 through a pipe
+    # (_write_remote_file) has none.
     after = before.replace(_GADGET_OVERLAY, _HOST_OVERLAY)
-    heredoc = (f"{wf.priv(f'tee {boot}')} >/dev/null <<'RTTEOF'\n{after}\nRTTEOF")
-    code, out, err = wf.connection.run(heredoc)
+    code, out, err = wf.connection.run(_write_remote_file(wf, boot, after))
     if code != 0:
         return StepResult("hand_the_usb_port_back", False,
                           f"Could not hand the USB port back: {err or out}")
@@ -946,8 +967,12 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
             cl = wf.connection.run(f"cat {cmd}")[1]
             if "modules-load=dwc2,g_ether" in cl:
                 cl2 = cl.replace("modules-load=dwc2,g_ether", "modules-load=dwc2")
-                wf.connection.run(
-                    f"{wf.priv(f'tee {cmd}')} >/dev/null <<'RTTEOF'\n{cl2}\nRTTEOF")
+                rc = wf.connection.run(_write_remote_file(wf, cmd, cl2))[0]
+                if rc != 0 or "g_ether" in wf.connection.run(f"cat {cmd}")[1]:
+                    return StepResult(
+                        "hand_the_usb_port_back", False,
+                        "Handed the USB port back but could not drop the gadget "
+                        "module from cmdline.txt.")
             break
     return StepResult("hand_the_usb_port_back", True,
                       "USB port handed back and checked on the card — it hosts "
