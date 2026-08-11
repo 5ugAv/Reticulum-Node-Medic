@@ -62,6 +62,7 @@ CAPABLE_OF = {
 def register(rns_hash: str, name: str, node_type: str = "pi",
              lat: Optional[float] = None, lon: Optional[float] = None,
              links: Optional[dict] = None, builder: Optional[str] = None,
+             device: Optional[str] = None,
              path: str = KIN_ROSTER_PATH) -> dict:
     """Record one of the medic's own nodes (idempotent — updates in place).
     Returns the updated roster. Called at BIRTH with the node's identity + name +
@@ -69,13 +70,16 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
     (defaults by node type); the medic can't infer these over the mesh. *builder*
     is the identity hash of the medic UNIT that birthed this node — its trust
     (monitor.trust) decides kin vs neighbour, so revoking that unit demotes the
-    node. Stamp it with this medic's own unit hash at BIRTH."""
+    node. Stamp it with this medic's own unit hash at BIRTH. *device* names the
+    physical MACHINE this hash belongs to (see ``register_device``)."""
     roster = load_roster(path)
     entry = roster.get(rns_hash, {})
     entry["name"] = name
     entry["type"] = node_type
     if builder is not None:
         entry["builder"] = builder
+    if device is not None:
+        entry["device"] = device
     if lat is not None:
         entry["lat"] = lat
     if lon is not None:
@@ -90,6 +94,40 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
         entry["links"] = resolved
     roster[rns_hash] = entry
     _save(roster, path)
+    return roster
+
+
+def register_device(hashes, name: str, node_type: str = "pi",
+                    lat: Optional[float] = None, lon: Optional[float] = None,
+                    links: Optional[dict] = None, builder: Optional[str] = None,
+                    path: str = KIN_ROSTER_PATH) -> dict:
+    """Record ONE machine that answers on SEVERAL Reticulum destinations.
+
+    A Pi propagation node has two, and they are not related by anything the mesh
+    can see: rnsd announces from the node's Reticulum identity, and the health
+    reporter announces from an identity of its own, deliberately kept in a
+    separate file so it survives a rebuilt Reticulum store. Two identities, two
+    announces, two rows in VITALS — SkyFinger showed up twice, and half of what
+    the operator wanted to know was on each row.
+
+    Birth is the one moment anybody knows better: the medic has just built the
+    machine and holds both hashes in the same certificate. Writing them down as
+    one device here is what lets the registry put them back together
+    (``NodeRecord.device_id``). Every hash gets the full entry — name, type,
+    location — so whichever destination is heard first, the node is named and on
+    the map rather than an anonymous neighbour.
+
+    The FIRST hash given is the device's id; pass the health destination first,
+    since that is the one whose beacons carry the readings.
+    """
+    hs = [str(h) for h in (hashes or []) if h]
+    roster = load_roster(path)
+    if not hs:
+        return roster
+    device = hs[0]
+    for h in hs:
+        roster = register(h, name, node_type=node_type, lat=lat, lon=lon,
+                          links=links, builder=builder, device=device, path=path)
     return roster
 
 
