@@ -1937,9 +1937,18 @@ class BirthGuideScreen(BoxLayout):
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
         wrap.add_widget(_line(tr("Which Raspberry Pi is this?"), "24sp", bold=True,
                               h=40))
+        # NOT "a Pi waiting with a blank card only reports its chip family".
+        # That was true on 2026-08-02 (b8c5e37), when the Pi WAS on USB in
+        # boot-ROM mode because it was about to be its own card reader. The
+        # one-route decision four days later (cadaba3) retired rpiboot: by the
+        # time this screen is reached the radio is plugged in and the Pi is
+        # still in the operator's hand, so nothing is reporting anything. The
+        # honest reason is better anyway — it says why a wrong tap costs a
+        # night, which the old sentence never did.
         wrap.add_widget(_line(
-            tr("A Pi waiting with a blank card only reports its chip family, "
-               "which several models share — so this one is down to you."),
+            tr("The Pi isn't plugged in yet, so Node Medic can't read it. "
+               "This answer decides how its card is written — the wrong one "
+               "makes a card that boots and never appears."),
             "15sp", color="text_secondary", h=54))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
@@ -2268,12 +2277,19 @@ class BirthGuideScreen(BoxLayout):
                 "This starts by itself the moment it answers; there is nothing "
                 "to press. Usually under a minute, but a Pi's very first boot "
                 "expands its card and runs its setup, which can take up to five.")
+        # ONE NUMBER FOR ONE WAIT. This said "up to two minutes on its very
+        # first boot" while the waiting message one branch up said five, and
+        # the step's own body said "up to a minute, longer on a first boot" —
+        # three answers to the same question, on the same screen, within one
+        # step. The operator reading the low one gives up while the card is
+        # still expanding; the high one is the honest bound (it is what
+        # WAIT_PATIENCE_S is reasoned from).
         return False, tr(
             "Node Medic can't reach the Pi — not over the cable, and not by "
             "name on your Wi-Fi either. Check it is plugged in with a DATA "
             "cable and that its power light is on. A Pi takes 30–45 seconds "
-            "from power to answering, and up to two minutes on its very first "
-            "boot.")
+            "from power to answering, and up to five minutes on its very "
+            "first boot.")
 
     def _radio_gate(self):
         """Has a radio been flashed and verified for this birth?
@@ -2440,12 +2456,16 @@ class BirthGuideScreen(BoxLayout):
                "Pi provisioned {how}. It lives in VITALS from now on — that is "
                "where its health beacons arrive.").format(how=how),
             "15sp", color="text_secondary", h=72))
-        wrap.add_widget(_line(
-            tr("It is off Node Medic and running on its own power now."),
-            "14.5sp", color="green", h=26))
+        # "It is off Node Medic and running on its own power now" IS GONE. The
+        # medic never checked: the step before this one ASKS for the Pi to be
+        # unplugged and given a supply, and then this screen reported it as
+        # done. On a screen whose whole rule is "no claim the medic did not
+        # measure", it was the only line breaking it — and the one place the
+        # operator would look to find out whether the last instruction took.
+        #
         # GIVE IT TIME TO BOOT BEFORE LOOKING FOR IT.
         #
-        # This screen appears the moment the operator plugs the node in, and
+        # This screen appears the moment the node is unplugged and powered, and
         # "See it in VITALS" is right there — so the natural next action is to
         # press it immediately and find nothing. The node has to boot, start
         # the mesh software and announce itself first; an empty VITALS in that
