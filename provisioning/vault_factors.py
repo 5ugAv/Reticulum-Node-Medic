@@ -343,3 +343,43 @@ def describe(policy: Policy) -> Dict[str, str]:
         "field": ("The medic still boots, rejoins the mesh and relays while "
                   "locked. Only its own records wait for you."),
     }
+
+
+# --------------------------------------------------------------------------- #
+# The levels offered on screen.
+# --------------------------------------------------------------------------- #
+
+#: Ordered weakest-first, because that is the order a person reads and the
+#: honest way to present a choice: the easy option is the one you scroll PAST to
+#: reach the strong ones, not the one hidden at the bottom.
+#:
+#: Not every combination is offered. Passphrase-alone and keyfile-alone are both
+#: constructible (``Policy`` accepts them) and both are reasonable, but a menu
+#: of seven permutations is a menu nobody reads. These four are the ladder; the
+#: model underneath takes any mix, so a different set can be offered later
+#: without touching the derivation.
+LEVELS = (
+    Policy((PATTERN,)),
+    Policy((PASSPHRASE,)),
+    Policy((PATTERN, PASSPHRASE)),
+    Policy((PATTERN, PASSPHRASE, KEYFILE)),
+)
+
+#: Short names for the chooser. The subtitle comes from describe().
+LEVEL_NAMES = {
+    (PATTERN,): "Pattern",
+    (PASSPHRASE,): "Passphrase",
+    (PATTERN, PASSPHRASE): "Pattern + passphrase",
+    (PATTERN, PASSPHRASE, KEYFILE): "Pattern + passphrase + USB key",
+}
+
+
+def level_name(policy: "Policy") -> str:
+    """A short label for a policy, built from its factors if it is not one of
+    the offered levels — so a hand-made policy still shows as something a
+    person can read rather than falling back to "Custom"."""
+    known = LEVEL_NAMES.get(policy.ordered)
+    if known:
+        return known
+    pretty = {PATTERN: "pattern", PASSPHRASE: "passphrase", KEYFILE: "USB key"}
+    return " + ".join(pretty[f] for f in policy.ordered).capitalize()

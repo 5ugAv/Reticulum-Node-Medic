@@ -199,3 +199,30 @@ def test_every_level_promises_the_medic_keeps_relaying():
     for pol in (Policy((PATTERN,)), Policy((PATTERN, PASSPHRASE, KEYFILE))):
         assert "still boots" in describe(pol)["field"]
         assert "relays" in describe(pol)["field"]
+
+
+# --- the ladder shown on screen ---------------------------------------------
+
+def test_the_levels_are_offered_weakest_first():
+    """The order a person reads. Putting the easy one last would make it look
+    like the recommendation."""
+    from provisioning.vault_factors import LEVELS
+    bits = [strength_bits(p) for p in LEVELS]
+    assert bits == sorted(bits), "levels must climb"
+    assert LEVELS[0].ordered == (PATTERN,)
+    assert LEVELS[-1].ordered == (PATTERN, PASSPHRASE, KEYFILE)
+
+
+def test_every_offered_level_has_a_name_and_honest_words():
+    from provisioning.vault_factors import LEVELS, level_name
+    for pol in LEVELS:
+        assert level_name(pol)
+        d = describe(pol)
+        assert d["asks"] and d["strength"] and d["field"]
+
+
+def test_a_hand_made_policy_still_reads_as_something():
+    """The model takes any mix even though only four are offered. A policy
+    built by hand must not show as a blank or as "Custom"."""
+    from provisioning.vault_factors import level_name
+    assert level_name(Policy((PATTERN, KEYFILE))) == "Pattern + usb key"
