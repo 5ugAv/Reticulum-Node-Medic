@@ -45,3 +45,32 @@ def test_a_fresh_build_lap_forgets_the_last_card():
     claimed a card had just been written for the PREVIOUS node."""
     reset = func_source("ui/screens/birth_screen.py", "begin_guided")
     assert "_from_imaging" in reset
+
+
+# --- the mount and dd wildcards were a root escalation (audit, 2026-08-11) ---
+
+def test_no_passwordless_rule_can_touch_a_block_device_by_wildcard():
+    """`mount * /tmp/nm_sd_boot` accepted ANY block device, and the same alias
+    grants tee to that directory's config.txt and cmdline.txt — so mounting the
+    medic's own boot partition and adding init=/bin/sh to its kernel command
+    line was root, with no password, from the app's own shell.
+
+    Verified live on 2026-08-11 with the sudo timestamp dropped: sudo PERMITTED
+    `mount /dev/mmcblk0p1 /tmp/nm_sd_boot`. mount refused it only because that
+    partition already happened to be mounted at /boot/firmware. `dd of=/dev/*`
+    had the same shape, one step more destructive.
+    """
+    policy = src("provisioning/sudoers.d/nodemedic")
+    rules = [ln.strip() for ln in policy.splitlines()
+             if ln.strip() and not ln.strip().startswith("#")]
+    for rule in rules:
+        for wide in ("mount * ", "of=/dev/* ", "partprobe /dev/*",
+                     "--device /dev/* "):
+            assert wide not in rule, f"wildcard block-device rule survives: {rule}"
+    # and the narrow forms are actually there
+    assert "/usr/bin/mount /dev/sd* /tmp/nm_sd_boot" in policy
+    assert "/usr/bin/dd of=/dev/sd* bs=4M conv=fsync status=progress" in policy
+    # never the medic's own disk, which is mmcblk0 on this build (the comments
+    # name it; no RULE may)
+    for rule in rules:
+        assert "/dev/mmcblk0" not in rule, f"the medic's own disk is reachable: {rule}"

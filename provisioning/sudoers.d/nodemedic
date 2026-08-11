@@ -79,10 +79,25 @@ Cmnd_Alias NM_UHUBCTL = \
 # --- Inserted-SD boot editing (bake wired-link reachability) -----------------
 # provisioning/sd_edit.py  bake_reachability_via_sd() mounts a USB SD reader's
 # boot partition at /tmp/nm_sd_boot and edits config.txt / cmdline.txt.
-# The Python guard (medic_root_disk) refuses the medic's own disk; the mount
-# TARGET here is pinned so a rogue call can only touch the scratch mountpoint.
+#
+# THE SOURCE IS PINNED, NOT JUST THE TARGET. `mount * /tmp/nm_sd_boot` allowed
+# ANY block device to be mounted there — and the same alias grants tee to that
+# directory's config.txt and cmdline.txt, so mounting the medic's own boot
+# partition and adding `init=/bin/sh` to its kernel command line was a root
+# escalation from the passwordless set. Verified on the live medic 2026-08-11:
+# with the sudo timestamp dropped, `sudo -n mount /dev/mmcblk0p1
+# /tmp/nm_sd_boot` was PERMITTED by sudo — mount itself refused it, and only
+# because that partition happens to already be mounted at /boot/firmware. An
+# accident is not a control.
+#
+# So: USB card readers (/dev/sd*) and a second MMC controller (/dev/mmcblk1*,
+# a built-in reader) only. The medic's own system disk is mmcblk0 on this
+# build — a clone that boots from something else MUST re-derive this line
+# rather than widen it. The Python guard (medic_root_disk) still refuses the
+# medic's own disk; this is the layer that holds when Python is bypassed.
 Cmnd_Alias NM_SD_EDIT = \
-    /usr/bin/mount * /tmp/nm_sd_boot, \
+    /usr/bin/mount /dev/sd* /tmp/nm_sd_boot, \
+    /usr/bin/mount /dev/mmcblk1* /tmp/nm_sd_boot, \
     /usr/bin/umount /tmp/nm_sd_boot, \
     /usr/bin/tee /tmp/nm_sd_boot/config.txt, \
     /usr/bin/tee /tmp/nm_sd_boot/cmdline.txt
@@ -90,18 +105,24 @@ Cmnd_Alias NM_SD_EDIT = \
 # --- On-medic Pi SD imaging (BIRTH of a fresh node's card) ------------------
 # provisioning/pi_imager.py  flash() writes Pi OS to a USB card reader.
 # is_safe_target() (Python) refuses anything but a present REMOVABLE USB disk;
-# it can never be the medic's system disk. `dd`/`partprobe` are pinned to
-# of=/dev/* but remain inherently powerful — see README "Residual risks".
+# it can never be the medic's system disk.
+#
+# THE DEVICE PATTERNS ARE PINNED TO USB READERS. `dd of=/dev/*` let anyone with
+# the app's shell overwrite the medic's own system disk without a password, and
+# `mount * /tmp/rnm-piboot` had the same hole as NM_SD_EDIT above. /dev/sd* is
+# what a USB card reader enumerates as; the medic's own disk is mmcblk0. A
+# clone that boots from a different device must re-derive these, never widen
+# them.
 Cmnd_Alias NM_IMAGING = \
-    /usr/bin/dd of=/dev/* bs=4M conv=fsync status=progress, \
-    /usr/sbin/partprobe /dev/*, \
+    /usr/bin/dd of=/dev/sd* bs=4M conv=fsync status=progress, \
+    /usr/sbin/partprobe /dev/sd*, \
     /usr/bin/mkdir -p /tmp/rnm-piboot, \
-    /usr/bin/mount * /tmp/rnm-piboot, \
+    /usr/bin/mount /dev/sd* /tmp/rnm-piboot, \
     /usr/bin/umount /tmp/rnm-piboot, \
     /usr/bin/tee /tmp/rnm-piboot/custom.toml, \
     /usr/bin/touch /tmp/rnm-piboot/ssh, \
     /usr/bin/sync, \
-    /usr/local/lib/nodemedic/prepare-card --device /dev/* --config /tmp/*
+    /usr/local/lib/nodemedic/prepare-card --device /dev/sd* --config /tmp/*
 
 # --- Pi-as-card-reader (rpiboot pushes the mass-storage payload to a blank Pi)
 # provisioning/pi_usbboot.py rpiboot_command() -> sudo -n rpiboot [-d <payload>]
