@@ -209,8 +209,17 @@ def test_the_levels_are_offered_weakest_first():
     from provisioning.vault_factors import LEVELS
     bits = [strength_bits(p) for p in LEVELS]
     assert bits == sorted(bits), "levels must climb"
-    assert LEVELS[0].ordered == (PATTERN,)
+    assert LEVELS[0].ordered == (PASSPHRASE,)
     assert LEVELS[-1].ordered == (PATTERN, PASSPHRASE, KEYFILE)
+
+
+def test_a_passphrase_is_in_every_offered_level():
+    """Maximum strength (operator, 2026-08-11): the passphrase carries the
+    strength and the pattern is added TO it, rather than standing beside it as
+    a back door that would cap the whole vault."""
+    from provisioning.vault_factors import LEVELS
+    assert all(PASSPHRASE in pol.ordered for pol in LEVELS)
+    assert not any(pol.ordered == (PATTERN,) for pol in LEVELS)
 
 
 def test_every_offered_level_has_a_name_and_honest_words():
@@ -222,7 +231,7 @@ def test_every_offered_level_has_a_name_and_honest_words():
 
 
 def test_a_hand_made_policy_still_reads_as_something():
-    """The model takes any mix even though only four are offered. A policy
+    """The model takes any mix even though only three are offered. A policy
     built by hand must not show as a blank or as "Custom"."""
     from provisioning.vault_factors import level_name
     assert level_name(Policy((PATTERN, KEYFILE))) == "Pattern + usb key"
@@ -257,72 +266,91 @@ def test_a_reversed_pattern_is_not_the_same_pattern():
 
 # --- there must always be a way back in -------------------------------------
 
-def test_a_pattern_cannot_be_chosen_before_a_passphrase_exists():
-    """Operator's rule: a forgotten pattern with nothing behind it is a medic
-    nobody can open, including the person who owns it."""
+def test_a_pattern_cannot_be_chosen_before_the_passphrase_is_set():
+    """Operator's rule: the passphrase comes first. It is the part of the
+    unlock that carries the strength; the pattern is added to it."""
     from provisioning.vault_factors import Enrolment, can_select
-    bare = Enrolment(passphrase_set=False, recovery_key_set=True)
-    ok, why = can_select(Policy((PATTERN,)), bare)
-    assert not ok and "Set a passphrase first" in why
+    ready_but_bare = Enrolment(passphrase_set=False, recovery_key_set=True,
+                               recovery_key_verified=True)
+    ok, why = can_select(Policy((PATTERN, PASSPHRASE)), ready_but_bare)
+    assert not ok and "Set the passphrase" in why
 
 
-def test_a_usb_key_cannot_be_chosen_before_a_passphrase_either():
-    """A stick is the easiest factor to lose."""
+def test_a_level_without_a_passphrase_is_refused_outright():
+    """Not offered on the ladder, and refused if constructed anyway — with
+    maximum strength there is no level the passphrase is absent from."""
     from provisioning.vault_factors import Enrolment, can_select
-    ok, why = can_select(Policy((PATTERN, PASSPHRASE, KEYFILE)),
-                         Enrolment(passphrase_set=False, recovery_key_set=True))
-    assert not ok and "passphrase" in why
+    e = Enrolment(passphrase_set=True, recovery_key_set=True,
+                  recovery_key_verified=True)
+    ok, why = can_select(Policy((PATTERN,)), e)
+    assert not ok and "Every level includes a passphrase" in why
 
 
-def test_nothing_can_be_chosen_until_the_recovery_key_is_written_down():
+def test_nothing_can_be_turned_on_until_the_key_is_written_AND_typed_back():
+    """Shown-on-a-screen is not written-down. With no back door the recovery
+    key is the only way in, so the medic has to see the operator prove they
+    have it — not merely that it generated one."""
     from provisioning.vault_factors import Enrolment, can_select
-    ok, why = can_select(Policy((PASSPHRASE,)),
-                         Enrolment(passphrase_set=True, recovery_key_set=False))
-    assert not ok and "recovery key" in why
+    generated_only = Enrolment(passphrase_set=True, recovery_key_set=True,
+                               recovery_key_verified=False)
+    ok, why = can_select(Policy((PASSPHRASE,)), generated_only)
+    assert not ok and "type it back" in why
+    assert "ONLY way in" in why
 
 
-def test_with_both_in_place_any_level_may_be_chosen():
+def test_with_everything_in_place_any_offered_level_may_be_chosen():
     from provisioning.vault_factors import LEVELS, Enrolment, can_select
-    ready = Enrolment(passphrase_set=True, recovery_key_set=True)
+    ready = Enrolment(passphrase_set=True, recovery_key_set=True,
+                      recovery_key_verified=True)
     for pol in LEVELS:
         ok, why = can_select(pol, ready)
         assert ok, why
 
 
-# --- and the vault is worth what its WEAKEST door is worth ------------------
+# --- and nothing caps the vault any more ------------------------------------
 
-def test_the_reported_strength_is_the_weakest_way_in_not_the_daily_one():
-    """A fallback passphrase is a door too. Reporting the daily policy's own
-    number would flatter a medic that also opens to four words — an attacker
-    with the card picks the easy door, not the one the operator uses."""
+def test_the_recovery_key_caps_the_top_level_and_that_is_fine():
+    """Written while assuming the recovery key capped nothing. It does cap the
+    top level: a random keyfile makes that policy ~306 bits and the key on
+    paper is 160, so the paper is the weaker door.
+
+    Which is the right answer and worth keeping visible. 160 bits is not a
+    number anyone grinds through — the point is that the tool reports the door
+    an attacker would actually pick, rather than the flattering one, and it
+    does that even when the flattering one is ours."""
     from provisioning.vault_factors import Enrolment, effective_bits, \
-        TYPED_PASSPHRASE_BITS
+        RECOVERY_KEY_BITS
     strong = Policy((PATTERN, PASSPHRASE, KEYFILE))
-    e = Enrolment(passphrase_set=True, recovery_key_set=True, policy=strong)
-    assert strength_bits(strong) > 250          # the daily unlock is very strong
-    assert effective_bits(e) == TYPED_PASSPHRASE_BITS   # the vault is not
+    e = Enrolment(passphrase_set=True, recovery_key_set=True,
+                  recovery_key_verified=True, policy=strong)
+    assert strength_bits(strong) > RECOVERY_KEY_BITS
+    assert effective_bits(e) == RECOVERY_KEY_BITS
 
 
-def test_a_fallback_costs_nothing_against_a_pattern_only_vault():
-    """The pattern was already the weakest door, so enrolling a passphrase
-    beside it does not make anything worse — which is why the rule is
-    acceptable at the level most people will actually use."""
+def test_the_daily_unlock_governs_the_levels_a_person_can_remember():
+    """Below the top level the policy is the weaker door, so the number the
+    operator sees is the one their own choices earned."""
     from provisioning.vault_factors import Enrolment, effective_bits
-    pat = Policy((PATTERN,))
-    with_fallback = Enrolment(passphrase_set=True, recovery_key_set=True,
-                              policy=pat)
-    assert effective_bits(with_fallback) == pytest.approx(strength_bits(pat))
+    mid = Policy((PATTERN, PASSPHRASE))
+    e = Enrolment(passphrase_set=True, recovery_key_set=True,
+                  recovery_key_verified=True, policy=mid)
+    assert effective_bits(e) == pytest.approx(strength_bits(mid))
 
 
-def test_the_strong_levels_admit_the_passphrase_still_opens_them():
-    """Otherwise the screen sells a USB key as protecting the volume, when it
-    only protects the daily unlock."""
-    d = describe(Policy((PATTERN, PASSPHRASE, KEYFILE)))
-    assert "opens this vault on its own" in d["warnings"]
-    assert "inconvenienced, not locked out" in d["fallback"]
+def test_effective_bits_still_takes_the_minimum():
+    """It reads as redundant today — the recovery key is always the stronger
+    slot. It is not redundant the day someone adds a convenience door back,
+    and that is exactly the day this number has to notice."""
+    from provisioning.vault_factors import Enrolment, effective_bits, \
+        RECOVERY_KEY_BITS
+    import provisioning.vault_factors as vf
+    e = Enrolment(recovery_key_set=True, policy=Policy((PASSPHRASE,)))
+    assert effective_bits(e) == min(strength_bits(e.policy), RECOVERY_KEY_BITS)
 
 
-def test_every_level_says_there_is_a_way_back_in():
+def test_the_screens_promise_no_back_door():
     from provisioning.vault_factors import LEVELS
     for pol in LEVELS:
-        assert "recovery key" in describe(pol)["fallback"]
+        d = describe(pol)
+        assert "only way back in" in d["fallback"]
+        assert "no back door" in d["fallback"]

@@ -335,13 +335,9 @@ def describe(policy: Policy) -> Dict[str, str]:
         warnings.append("A forgotten passphrase is not recoverable from the "
                         "device — only the recovery key gets you back in.")
 
-    # THE FALLBACK IS A DOOR TOO, and the strong levels are the ones where
-    # saying so matters: a vault that also opens to a typed passphrase is worth
-    # what that passphrase is worth, however good the daily unlock is.
-    if len(policy.ordered) > 1 or KEYFILE in policy.ordered:
-        warnings.append("Your passphrase still opens this vault on its own, so "
-                        "it can never be a lazy one — it is what the whole "
-                        "thing is worth to someone holding the card.")
+    # No convenience door. The passphrase is IN the unlock, so it cannot cap
+    # the vault the way a standalone fallback slot would — and the only other
+    # way in is a 160-bit key on paper.
 
     return {
         "asks": f"Unlocking asks for {asks}.",
@@ -350,9 +346,9 @@ def describe(policy: Policy) -> Dict[str, str]:
         "warnings": " ".join(warnings),
         "field": ("The medic still boots, rejoins the mesh and relays while "
                   "locked. Only its own records wait for you."),
-        "fallback": ("A passphrase is set before any of this, and the recovery "
-                     "key is written down. Forget the pattern and you are "
-                     "inconvenienced, not locked out."),
+        "fallback": ("The recovery key is the only way back in — there is no "
+                     "back door, which is what makes the level above worth "
+                     "what it says. Keep it away from the medic."),
     }
 
 
@@ -370,7 +366,6 @@ def describe(policy: Policy) -> Dict[str, str]:
 #: model underneath takes any mix, so a different set can be offered later
 #: without touching the derivation.
 LEVELS = (
-    Policy((PATTERN,)),
     Policy((PASSPHRASE,)),
     Policy((PATTERN, PASSPHRASE)),
     Policy((PATTERN, PASSPHRASE, KEYFILE)),
@@ -378,7 +373,6 @@ LEVELS = (
 
 #: Short names for the chooser. The subtitle comes from describe().
 LEVEL_NAMES = {
-    (PATTERN,): "Pattern",
     (PASSPHRASE,): "Passphrase",
     (PATTERN, PASSPHRASE): "Pattern + passphrase",
     (PATTERN, PASSPHRASE, KEYFILE): "Pattern + passphrase + USB key",
@@ -425,45 +419,62 @@ def level_name(policy: "Policy") -> str:
 
 @dataclass(frozen=True)
 class Enrolment:
-    """Which ways into this vault currently exist."""
+    """Which ways into this vault currently exist.
+
+    ``recovery_key_verified`` means the operator typed the key BACK, not merely
+    that the medic generated one. A key that was shown on a screen and never
+    written down is not a fallback, and with maximum strength it is the only
+    one there is.
+    """
 
     passphrase_set: bool = False
     recovery_key_set: bool = False
+    recovery_key_verified: bool = False
     policy: Policy = field(default_factory=Policy)
 
 
 def can_select(policy: Policy, enrolment: Enrolment) -> tuple:
     """(ok, reason) — may this policy be chosen right now?
 
-    A pattern may not be the way in until a passphrase exists to fall back on.
-    A forgotten pattern with no fallback is a medic nobody can open, including
-    its owner, and the recovery key is a slip of paper that gets lost.
+    THE PASSPHRASE IS A FACTOR, NOT A BACK DOOR. The operator chose maximum
+    strength on 2026-08-11, and that decides this: a passphrase that opened the
+    vault BY ITSELF would cap the whole thing at whatever a person can remember,
+    however good the pattern and the USB key were. So a passphrase is required
+    in every level and is required IN the unlock, never beside it.
+
+    Which leaves exactly one way back in — the recovery key. It is generated,
+    160 bits, and written on paper, so it caps nothing. It also has to actually
+    exist before any of this can be turned on, and the operator has to prove
+    they wrote it down, because it is now the only thing standing between a
+    forgotten pattern and losing the records for good.
     """
-    if PATTERN in policy.ordered and not enrolment.passphrase_set:
+    if not enrolment.recovery_key_verified:
         return (False,
-                "Set a passphrase first. A pattern is easy to forget, and "
-                "without a passphrase to fall back on a forgotten pattern "
-                "means the medic's records are gone for good.")
-    if KEYFILE in policy.ordered and not enrolment.passphrase_set:
+                "Write down the recovery key and type it back first. With "
+                "maximum strength it is the ONLY way in if you forget your "
+                "passphrase or your pattern — nothing on the medic can rescue "
+                "you, by design.")
+    if PASSPHRASE not in policy.ordered:
         return (False,
-                "Set a passphrase first. A USB key can be lost, and the "
-                "passphrase is what gets you back in when it is.")
-    if not enrolment.recovery_key_set:
+                "Every level includes a passphrase. It is what the pattern and "
+                "the USB key are added TO.")
+    if not enrolment.passphrase_set:
         return (False,
-                "Write down the recovery key first. It is the only way back "
-                "in if you forget everything else.")
+                "Set the passphrase before adding a pattern or a USB key — it "
+                "is the part of the unlock that carries the strength.")
     return (True, "")
 
 
 def effective_bits(enrolment: Enrolment) -> float:
     """Strength of the WEAKEST way in — which is the strength of the vault.
 
-    Reporting the daily policy's own number would flatter a medic that also
-    accepts a four-word passphrase. An attacker picks the easy door.
+    With the passphrase folded into the unlock instead of standing beside it,
+    the only other door is the recovery key at 160 bits, which is stronger than
+    any of the levels. So this now reports the policy's own strength — but it
+    still computes the minimum rather than assuming, because the day someone
+    adds a convenience door back is the day this number has to notice.
     """
     slots = [strength_bits(enrolment.policy)]
-    if enrolment.passphrase_set:
-        slots.append(TYPED_PASSPHRASE_BITS)
     if enrolment.recovery_key_set:
         slots.append(RECOVERY_KEY_BITS)
     return min(slots)
