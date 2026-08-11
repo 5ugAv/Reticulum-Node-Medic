@@ -772,7 +772,34 @@ _HEALTH_IDENTITY_PATH = "~/.reticulum-node-medic/pi_health_identity"
 
 #: Reporter modules pushed onto a propagation node (self-contained package, run
 #: with PYTHONPATH so ``python3 -m monitor.pi_health_reporter`` resolves).
-_HEALTH_MODULES = ("health_beacon.py", "ups.py", "pi_health_reporter.py")
+#: ``http_status`` and ``pi_status_server`` ride along for the /status endpoint —
+#: the endpoint imports the contract constants from http_status rather than
+#: keeping a second copy of them on the far side of a USB cable.
+_HEALTH_MODULES = ("health_beacon.py", "ups.py", "pi_health_reporter.py",
+                   "http_status.py", "pi_status_server.py")
+
+
+def _push_health_package(wf: "BuildWorkflow") -> "tuple[str, str, str]":
+    """Stage the reporter package on the node; return (user, home, pkg_dir).
+
+    Shared by the two services that run out of it. Pushing is idempotent, so the
+    second caller costs a re-copy and nothing else — which is cheaper than the
+    alternative, where one step's package silently depends on another step
+    having run first and a resumed build installs a service with no code under it.
+    """
+    user = wf.run_user()
+    home = (wf.connection.run("echo $HOME")[1].strip()
+            or ("/root" if user == "root" else f"/home/{user}"))
+    pkg_dir = f"{home}/.rnm-health/monitor"
+    mon_dir = os.path.join(os.path.dirname(__file__), os.pardir, "monitor")
+
+    wf.connection.run(f"mkdir -p {pkg_dir}")
+    wf.connection.run(f"touch {pkg_dir}/__init__.py")
+    for name in _HEALTH_MODULES:
+        local = os.path.join(mon_dir, name)
+        if os.path.isfile(local):
+            wf.connection.push_file(local, f"{pkg_dir}/{name}")
+    return user, home, pkg_dir
 
 
 def _power_source(profile: NodeProfile) -> str:
@@ -812,18 +839,7 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
                           "Not a propagation node — health reporter not needed.",
                           skipped=True)
 
-    user = wf.run_user()
-    home = (wf.connection.run("echo $HOME")[1].strip()
-            or ("/root" if user == "root" else f"/home/{user}"))
-    pkg_dir = f"{home}/.rnm-health/monitor"
-    mon_dir = os.path.join(os.path.dirname(__file__), os.pardir, "monitor")
-
-    wf.connection.run(f"mkdir -p {pkg_dir}")
-    wf.connection.run(f"touch {pkg_dir}/__init__.py")
-    for name in _HEALTH_MODULES:
-        local = os.path.join(mon_dir, name)
-        if os.path.isfile(local):
-            wf.connection.push_file(local, f"{pkg_dir}/{name}")
+    user, home, _pkg_dir = _push_health_package(wf)
 
     src = _power_source(wf.profile)
     code, py, _ = wf.connection.run("command -v python3")
@@ -874,6 +890,99 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
 
 
 @build_step
+def install_status_server(wf: "BuildWorkflow") -> StepResult:
+    """Give the node an HTTP ``/status`` the medic can read, like an RTNode-2400.
+
+    WITHOUT THIS A BIRTHED PI CAN ONLY EVER SHOW A LORA CHIP. VITALS' WIFI and
+    NET states come from an HTTP poll or a decoded health beacon and from nothing
+    else (``registry._capabilities``); the beacon is twenty bytes every six
+    hours; so between births the medic had no evidence about a Pi node at all and
+    drew it grey. Grey was honest. It was also useless, and the answer to it is
+    never to assume — it is to give the medic something to read. See
+    :mod:`monitor.pi_status_server`.
+
+    Runs as its own unit rather than inside the health reporter. The reporter
+    needs RNS and stops when RNS does; the endpoint whose whole job is to answer
+    "what is wrong with you" must survive exactly the moments when the mesh side
+    is unhappy.
+    """
+    if wf.profile.role != NodeRole.PROPAGATION:
+        return StepResult("install_status_server", True,
+                          "Not a propagation node — no /status endpoint needed.",
+                          skipped=True)
+
+    from monitor.http_status import STATUS_PATH, STATUS_PORT
+
+    user, home, _pkg_dir = _push_health_package(wf)
+    py = (wf.connection.run("command -v python3")[1].strip() or "/usr/bin/python3")
+    unit = (
+        "[Unit]\n"
+        "Description=rnm-status (propagation-node /status endpoint)\n"
+        "After=network-online.target\n"
+        "Wants=network-online.target\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        f"User={user}\n"
+        f"Environment=HOME={home}\n"
+        f"Environment=PYTHONPATH={home}/.rnm-health\n"
+        f"WorkingDirectory={home}/.rnm-health\n"
+        f"ExecStart={py} -m monitor.pi_status_server --port {STATUS_PORT}\n"
+        # Port 80 so ONE contract, ONE LAN sweep and ONE parser cover both an
+        # RTNode-2400 and a Pi. Binding it needs a capability, NOT root: this is
+        # a network-facing server answering unauthenticated requests, and there
+        # is no reason for it to be able to do anything else on the machine.
+        "AmbientCapabilities=CAP_NET_BIND_SERVICE\n"
+        "CapabilityBoundingSet=CAP_NET_BIND_SERVICE\n"
+        "NoNewPrivileges=yes\n"
+        "PrivateTmp=yes\n"
+        "Restart=always\n"
+        "RestartSec=15\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+    code, out, err = wf.connection.run(
+        _write_remote_file(wf, "/etc/systemd/system/rnm-status.service", unit))
+    if code != 0:
+        return StepResult("install_status_server", False,
+                          f"Could not write rnm-status.service: {err or out}")
+    wf.connection.run(wf.priv("systemctl daemon-reload"))
+    wf.connection.run(wf.priv("systemctl enable rnm-status"))
+    wf.connection.run(wf.priv("systemctl restart rnm-status"))
+
+    # READ IT BACK, FROM THE NODE'S OWN SIDE. A unit that was written and
+    # enabled is a claim; a unit that answers is a fact. This project has been
+    # bitten four times in two days by writes that were never checked, and this
+    # one fails in a way nobody would notice for weeks — the node is fine, the
+    # medic simply never sees it. Asking over the loopback separates "the
+    # service is not running" from "the medic cannot reach this node", which are
+    # different problems with different fixes.
+    wf.connection.run("sleep 2")
+    probe = wf.connection.run(
+        f"curl -fsS -m5 http://127.0.0.1:{STATUS_PORT}{STATUS_PATH}")
+    if probe[0] == 0 and "fork" in (probe[1] or ""):
+        wf.profile.serves_status = True
+        return StepResult("install_status_server", True,
+                          "The node serves its status on port 80 and answered "
+                          "when asked — Node Medic can read it over the network.")
+
+    # NOT A FAILED STEP, and that is deliberate. A failed step STOPS the build,
+    # and the step that runs last on this path is the one that hands the USB
+    # socket back to the radio — stopping short of it leaves a Pi 3 A+ that
+    # cannot see its own radio at all. Losing the dashboard is a bad evening;
+    # shipping a mute node is a wasted trip. So the birth carries on and this
+    # says plainly what did not work.
+    active = wf.connection.run("systemctl is-active rnm-status")[1].strip()
+    why = wf.connection.run(
+        "journalctl -u rnm-status -n 5 --no-pager 2>/dev/null")[1].strip()[-200:]
+    return StepResult(
+        "install_status_server", True,
+        f"Installed the /status service, but the node did not answer its own "
+        f"request (systemd says '{active or 'unknown'}'). The node is otherwise "
+        f"built; what is lost is Node Medic's live view of its wifi and network."
+        + (f" Last words: {why}" if why else ""))
+
+
+@build_step
 def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
     # Log2Ram installed from a local .deb (no internet in the field). Stage the
     # .deb onto the node first, then install from the remote path.
@@ -912,6 +1021,82 @@ def final_verification(wf: "BuildWorkflow") -> StepResult:
     return StepResult("final_verification", ok,
                       "Node verified and running." if ok
                       else "Verification failed: " + "; ".join(problems))
+
+
+def node_addresses(wf: "BuildWorkflow") -> List[str]:
+    """Addresses the MEDIC could try to reach this node on, best first.
+
+    Ordered by how long they will still be true. A LAN address survives the
+    operator unplugging the cable and walking away, which is when the dashboard
+    starts to matter; the USB-gadget address (10.55.0.x) stops existing minutes
+    from now, and is reused by the NEXT node built after this one. Both are worth
+    trying and it is worth knowing which one answered — reaching a node down the
+    build cable proves the cable, which we already knew.
+    """
+    lan: List[str] = []
+    cable: List[str] = []
+    for addr in wf.cmd_output("hostname -I").split():
+        if ":" in addr or addr.startswith("127."):
+            continue
+        (cable if addr.startswith("10.55.") else lan).append(addr)
+    return lan + cable
+
+
+@build_step
+def prove_the_node_reports(wf: "BuildWorkflow") -> StepResult:
+    """Ask the node to report on itself, and record what actually came back.
+
+    THE CERTIFICATE MUST NOT SAY "WORKING NODE" WHEN THE MEDIC HAS HEARD
+    NOTHING. Birth proves the node is CONFIGURED, and #77 added a proof that it
+    is AUDIBLE. Neither proves it will TELL the medic anything, and that is what
+    VITALS is made of. SkyFinger passed every step and then sat as a grey
+    LoRa-only row for days with the operator quite reasonably assuming it was
+    broken; it was in perfect health and nobody had ever asked it a question.
+
+    Reports the two channels APART — see :mod:`workflows.report_proof` — and is
+    never fatal. "Answered on the network, not yet tested on the radio" is the
+    normal and correct result for a Pi 3 A+, whose radio is attached after the
+    build because the medic's cable is in its only USB socket.
+    """
+    if wf.profile.role != NodeRole.PROPAGATION:
+        return StepResult("prove_the_node_reports", True,
+                          "Not a propagation node — nothing here reports health.",
+                          skipped=True)
+
+    from workflows.report_proof import live_beacon_probe, prove_reporting
+
+    hear = None
+    reason = ""
+    dst = wf.profile.health_dst_hash or ""
+    if not dst:
+        reason = ("Node Medic never captured this node's health address, so "
+                  "there is nothing to call.")
+    elif not wf.profile.has_rnode:
+        # THE PI 3 A+ CASE, AND IT IS THE NORMAL ONE. The radio goes on after
+        # the build, so at this moment there is provably nothing on the air to
+        # hear. Calling that a failed test would print a false negative on a
+        # birth certificate, which reads worse than a false positive: the
+        # operator is told their good node is deaf (Y2K8 and SolarLove,
+        # 2026-08-10, and the same lesson as radio_proof).
+        reason = ("the radio goes onto this node after the build, so there was "
+                  "nothing on the air yet. Once it is attached and powered, "
+                  "tap the node in VITALS and choose Ping node now — that "
+                  "commands a beacon and the readings arrive in seconds.")
+    elif wf.beacon_probe is not None:
+        hear = wf.beacon_probe
+    else:
+        try:
+            from ui.app import _local_run    # LOGIN shell: rnpath is in ~/.local/bin
+            hear = live_beacon_probe(dst, _local_run)
+        except Exception:
+            reason = ("Node Medic could not reach its own mesh tools to run the "
+                      "radio check.")
+
+    proof = prove_reporting(
+        node_addresses(wf), wf.http_poll, hear_beacon=hear,
+        beacon_reason=reason, node_name=wf.profile.hostname or "")
+    wf.report_proof = proof
+    return StepResult("prove_the_node_reports", True, proof.summary)
 
 
 #: What the card bakes so Node Medic can reach the Pi over the cable, and what
@@ -1116,6 +1301,12 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
     # (the registry key), not just its main rnsd identity.
     if wf.profile.health_dst_hash:
         wf.birth_certificate["health_dst"] = wf.profile.health_dst_hash
+    # WHAT THE MEDIC ACTUALLY HEARD BACK, per channel, in the node's own record.
+    # A certificate that states a working node the medic has never heard from is
+    # the failure this project keeps meeting; these fields are the answer to
+    # "and did you check?".
+    if wf.report_proof is not None:
+        wf.birth_certificate.update(wf.report_proof.cert_fields())
 
     # PIN THE NODE'S SSH HOST KEY (audit C1). This is the one moment the medic
     # can be sure which machine it is talking to: it just built this one. From
@@ -1157,6 +1348,18 @@ class BuildWorkflow:
         #: chosen but this node has nothing to announce on" is visible.
         self.location_sharing_notes: List[str] = []
         self.birth_certificate: Optional[dict] = None
+        #: How the medic reads a node's ``/status``. An attribute rather than a
+        #: direct call so ``prove_the_node_reports`` can be driven in tests
+        #: without a LAN — and so a caller that already has a poller (the
+        #: monitor service does) can hand its own in.
+        from monitor.http_status import poll_status
+        self.http_poll = poll_status
+        #: How the medic commands and hears a health beacon. ``None`` means "work
+        #: it out from the live mesh"; tests inject.
+        self.beacon_probe = None
+        #: Filled by ``prove_the_node_reports``: what the node was actually heard
+        #: to say, per channel. Read onto the birth certificate.
+        self.report_proof = None
         self._root: Optional[bool] = None
         self._user: Optional[str] = None
 

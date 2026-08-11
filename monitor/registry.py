@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 
 from monitor.health_beacon import HealthBeacon, beacon_status, decode
 from monitor.health_poll import PollResult
-from monitor.http_status import NodeStatus
+from monitor.http_status import NodeStatus, PI_FORK
 from monitor.geo import navigation_links
 from ui import theme
 
@@ -46,10 +46,21 @@ def _capabilities(members) -> dict:
             internet = True                   # reached via an internet link
         http, beacon = r.latest_http, r.latest_beacon
         if http is not None and http.reachable:
-            if http.lora_online:               # the node self-reports its LoRa —
-                lora = True                     # honest LIVE detection, not a guess
-            wifi = bool(http.wifi_connected)
-            internet = bool(http.tcp_backbone_connected) or (internet is True)
+            # A KEY THE NODE DID NOT SEND IS NOT A KEY THE NODE SET TO FALSE.
+            # An RTNode-2400 sends all three every time, so for it these guards
+            # are always taken and nothing about it changes. A Pi propagation
+            # node omits any link it could not read (monitor.pi_status_server),
+            # and without these guards its silence arrived here as False —
+            # "reported down", drawn in amber, sending an operator to fix a
+            # thing that was never measured. Unknown belongs in the same grey
+            # None as everything else nobody has asked about.
+            if http.lora_known and http.lora_online:
+                lora = True                     # the node self-reports its LoRa:
+                                                # honest LIVE detection, not a guess
+            if http.wifi_known:
+                wifi = bool(http.wifi_connected)
+            if http.backbone_known:
+                internet = bool(http.tcp_backbone_connected) or (internet is True)
         elif beacon is not None:
             if beacon.lora_up:                 # the node self-reports LoRa is up
                 lora = True                     # (beacon flags byte, bit1) — honest live
@@ -75,6 +86,23 @@ def _capabilities(members) -> dict:
     # A board's datasheet is not a node's state. An interface the node has not
     # mentioned stays None and renders as unknown, which is the truth.
     return {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
+
+
+def name_key(name: str) -> str:
+    """A display name reduced to what two records must share to be one node.
+
+    Case was already folded here; punctuation was not, and that was enough.
+    SkyFinger — one Pi, one machine — sat in VITALS as two rows: ``SkyFinger``
+    from its birth certificate and ``skyfinger!`` from what it announced. The
+    operator has one node and the screen showed two, one of them looking half
+    dead because only the other was being heard from.
+
+    Kin names are the operator's own unique labels, so collapsing punctuation
+    and spacing between them is safe; what is NOT safe is inventing a merge
+    where no name exists at all, which is why an empty key never groups anything
+    (see ``_device_groups``).
+    """
+    return "".join(ch for ch in (name or "") if ch.isalnum()).lower()
 
 
 def _printable_name(app_data) -> str:
@@ -143,6 +171,18 @@ class NodeRecord:
     #: the operator has turned sharing "off" on a screen. None = never applied.
     share_applied_at: Optional[float] = None
     identity_hash: Optional[str] = None     # groups aspect-destinations per DEVICE
+    #: Which physical MACHINE this destination belongs to, when the medic knows
+    #: it for a fact rather than by inference. Stamped from the kin roster, which
+    #: learns it at birth — the one moment the medic has the whole node in front
+    #: of it and can see that its rnsd address and its health-beacon address are
+    #: the same Pi.
+    #:
+    #: ``identity_hash`` cannot do this job for a Pi propagation node. The health
+    #: reporter deliberately keeps its OWN identity file, separate from rnsd's,
+    #: so the two destinations announce two genuinely different identities and no
+    #: amount of listening will ever link them. That is why SkyFinger was two rows
+    #: in VITALS for one machine.
+    device_id: Optional[str] = None
     announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
     links: Optional[dict] = None            # KIN-declared interfaces the node HAS
                                             # ({lora,wifi,bluetooth,internet}: True)
@@ -358,6 +398,8 @@ class NodeRegistry:
             rec.links = entry["links"]
         if entry.get("builder"):
             rec.builder_hash = entry["builder"]
+        if entry.get("device"):
+            rec.device_id = entry["device"]
 
     @_locked
     def ingest_relay(self, via_hash: str, interface: str, now: float) -> NodeRecord:
@@ -594,6 +636,16 @@ class NodeRegistry:
             rec.last_direct = now
             if status.node_name and not rec.name:
                 rec.name = status.node_name
+            # THE NODE JUST SAID WHAT IT IS, so stop calling it something else.
+            # register() types an unknown key "rtnode2400", and that default
+            # already labelled the first Pi propagation node ever built as an
+            # RTNode-2400 once (see kin_roster.type_for_cert, 2026-08-10) — this
+            # is the same default coming in through the discovery door. A record
+            # the kin roster owns is left alone: the roster is the operator's own
+            # record and outranks a self-report.
+            fork = (status.raw or {}).get("fork")
+            if fork == PI_FORK and rec.dst_hash not in self.kin_roster:
+                rec.node_type = "pi_propagation"
         return rec
 
     def record_poll(self, dst_hash: str, result: PollResult,
@@ -632,15 +684,17 @@ class NodeRegistry:
             return None
 
         def _name(r) -> str:
-            return (getattr(r, "name", "") or
-                    getattr(r, "announced_name", "") or "").strip().lower()
+            return name_key(getattr(r, "name", "") or
+                            getattr(r, "announced_name", "") or "")
 
         ident = getattr(rec, "identity_hash", None)
+        device = getattr(rec, "device_id", None)
         name = _name(rec)
         for h, r in self.nodes.items():
             if not is_hex_hash(h):
                 continue
             if (ident and getattr(r, "identity_hash", None) == ident) or \
+               (device and getattr(r, "device_id", None) == device) or \
                (name and _name(r) == name):
                 return h                    # a real hex dest for the same device
         return None
@@ -657,24 +711,43 @@ class NodeRegistry:
         stay separate until an announce links them by identity. This is the single
         grouping both ``devices()`` (the dashboard) and ``consolidated_record()``
         (a tapped row's detail) share, so the merge and the display never diverge.
+
+        Three passes, weakest evidence last: announced identity, then the roster's
+        recorded device (what the medic saw with its own hands at birth), then a
+        shared name.
         """
         groups: Dict[str, List[NodeRecord]] = {}
         for rec in self.nodes.values():
             groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
 
+        def _collapse(key_of) -> None:
+            """Merge groups that agree on *key_of*, ignoring groups with no key."""
+            seen: Dict[str, str] = {}
+            for key in list(groups.keys()):
+                if key not in groups:            # already folded into another
+                    continue
+                value = key_of(groups[key])
+                if not value:
+                    continue
+                target = seen.get(value)
+                if target is not None and target != key:
+                    groups[target].extend(groups.pop(key))
+                else:
+                    seen[value] = key
+
+        # A DEVICE THE MEDIC BUILT IS ONE DEVICE, whatever it announces. A Pi
+        # propagation node's health reporter keeps its own identity file, so its
+        # beacon destination and its rnsd destination are two unrelated
+        # identities and the pass above can never join them. The roster carries
+        # what birth knew: these hashes are the same machine.
+        _collapse(lambda members: next(
+            (r.device_id for r in members if r.device_id), ""))
+
         def _grp_name(members) -> str:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
             return (p.name or p.announced_name or "").strip()
 
-        by_name: Dict[str, str] = {}
-        for key in list(groups.keys()):
-            name = _grp_name(groups[key]).lower()
-            if not name:
-                continue
-            if name in by_name:
-                groups[by_name[name]].extend(groups.pop(key))
-            else:
-                by_name[name] = key
+        _collapse(lambda members: name_key(_grp_name(members)))
         return list(groups.values())
 
     @staticmethod

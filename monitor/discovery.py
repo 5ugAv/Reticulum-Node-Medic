@@ -14,7 +14,8 @@ from __future__ import annotations
 import re
 from typing import Callable, List, Optional, Tuple
 
-from monitor.http_status import STATUS_PATH, poll_status, NodeStatus
+from monitor.http_status import (
+    DISCOVERY_MARKERS, STATUS_PATH, poll_status, NodeStatus)
 
 #: run(command) -> stdout. Injected shell executor (local subprocess or SSH).
 Runner = Callable[[str], str]
@@ -34,14 +35,23 @@ def local_subnet(run: Runner) -> Optional[str]:
 
 def discover_hosts(run: Runner, subnet: str, timeout: int = 3,
                    concurrency: int = 24) -> List[str]:
-    """IPs on ``<subnet>.0/24`` whose ``/status`` identifies an RTNode (its JSON
-    contains ``RTNode``). Uses BOUNDED parallelism (``xargs -P``): probing all
-    254 at once swamps the Pi and makes weak-signal nodes time out (verified —
-    a -71 dBm node was missed by an unbounded sweep)."""
+    """IPs on ``<subnet>.0/24`` whose ``/status`` identifies a node this tool
+    knows (its JSON carries one of ``DISCOVERY_MARKERS``). Uses BOUNDED
+    parallelism (``xargs -P``): probing all 254 at once swamps the Pi and makes
+    weak-signal nodes time out (verified — a -71 dBm node was missed by an
+    unbounded sweep).
+
+    THE MARKER WAS ``RTNode`` ALONE, and that quietly excluded half the fleet.
+    A Pi propagation node now serves the same ``/status``, but it is not RTNode
+    firmware and says so in ``fork`` — so a sweep looking only for the literal
+    string walked straight past it. Matching the shared marker list keeps one
+    sweep, one parser and one dashboard for both kinds of node.
+    """
+    pattern = "|".join(DISCOVERY_MARKERS)
     cmd = (
         f"seq 1 254 | xargs -P {concurrency} -I@ sh -c "
         f"'curl -fsS -m{timeout} http://{subnet}.@{STATUS_PATH} 2>/dev/null "
-        f"| grep -q RTNode && echo {subnet}.@'"
+        f'| grep -qE "{pattern}" && echo {subnet}.@\''
     )
     out = run(cmd)
     hosts = {l.strip() for l in out.splitlines()

@@ -88,7 +88,11 @@ _STEP_SECONDS = {
     "birth_cry": 10,   # the ember dawn plays during this bar; popup ~ ignition
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
-    "install_health_reporter": 25, "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
+    "install_health_reporter": 25, "install_status_server": 15,
+    "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
+    # An rnpath wait plus a beacon wait; on the Pi path it is only the HTTP
+    # poll and returns in seconds, but the bar must not stall on the slow case.
+    "prove_the_node_reports": 45,
     "birth_certificate": 3,
 }
 _DEFAULT_STEP_SECONDS = 12
@@ -113,6 +117,8 @@ _PHASE_LABELS = {
                               "fresh Pi).",
     "configure_services": "Starting the node's services…",
     "install_health_reporter": "Installing the health reporter…",
+    "install_status_server": "Giving the node a status page Node Medic can read…",
+    "prove_the_node_reports": "Asking the node to report on itself…",
     "apply_system_hardening": "Hardening the system…",
     "set_hostname": "Setting the hostname…",
     "final_verification": "Verifying the node…",
@@ -2948,6 +2954,11 @@ class BirthScreen(BoxLayout):
             for c in (proof.checks or []):
                 self.list.add_widget(_line("      · " + c, size="12.5sp",
                                            color="text_secondary"))
+        # AND WHETHER IT WILL TELL THE MEDIC ANYTHING. Being audible and being
+        # informative are different, and only the second fills VITALS — a node
+        # that passes every step and then shows as a grey row for days is the
+        # failure the operator has hit repeatedly (SkyFinger, 2026-08-11).
+        self._add_report_verdict()
         self.list.add_widget(_line("Birth certificate:", bold=True, size="16sp"))
         self.list.add_widget(_line("    (saved on this Node Medic)",
                                    size="12sp", color="text_secondary"))
@@ -3049,6 +3060,24 @@ class BirthScreen(BoxLayout):
             # because the radio check could not run.
             self._radio_proof = None
 
+    def _add_report_verdict(self):
+        """Say, in words, what this node has actually been heard to report.
+
+        Green ONLY when something came back. A node that answered on neither
+        channel gets amber and the checks — never a quiet omission, which reads
+        as "fine" to anyone skimming the page on their way out of the door.
+        """
+        proof = getattr(getattr(self, "_workflow", None), "report_proof", None)
+        if proof is None:
+            return
+        mark, colour = (("✓  ", "green") if proof.anything_heard
+                        else ("!  ", "amber"))
+        self.list.add_widget(_line(mark + proof.summary, bold=True,
+                                   size="15sp", color=colour))
+        for c in (proof.checks or []):
+            self.list.add_widget(_line("      · " + c, size="12.5sp",
+                                       color="text_secondary"))
+
     def _register_kin(self, cert):
         """Record the birthed node in the medic's kin roster, stamped with
         builder = THIS medic's own unit hash — so it shows as kin, and drops to
@@ -3056,13 +3085,23 @@ class BirthScreen(BoxLayout):
         try:
             from monitor import kin_roster
             from provisioning import tool_identity
-            # Prefer the rtnode.health destination (the registry key its beacon
-            # announces from) so a propagation node shows up NAMED, not as an
-            # anonymous neighbour; fall back to the main identity for node types
-            # that key on it.
-            h = (cert.get("health_dst") or cert.get("reticulum_address")
-                 or cert.get("identity_hash"))
-            if not h:
+            # EVERY DESTINATION THIS ONE MACHINE ANSWERS ON, recorded as ONE
+            # device. A Pi propagation node has two and they are not related by
+            # anything the mesh can see: rnsd announces from the node's
+            # Reticulum identity, the health reporter from an identity of its
+            # own. So SkyFinger — one Pi — sat in VITALS as two rows, with half
+            # of what the operator wanted to know on each of them.
+            #
+            # Birth is the one moment anybody knows better: both hashes are in
+            # the same certificate, on the machine the medic just built. The
+            # health destination goes FIRST because it is the one whose beacons
+            # carry the readings, and its hash becomes the device's id.
+            hashes = []
+            for key in ("health_dst", "reticulum_address", "identity_hash"):
+                value = cert.get(key)
+                if value and value not in hashes:
+                    hashes.append(value)
+            if not hashes:
                 return
             # Coordinates come from the CERT — which the confirm-location gate
             # owns (moved pin -> corrected; cancelled -> removed). Reading
@@ -3073,8 +3112,8 @@ class BirthScreen(BoxLayout):
             ll = cert_latlon(cert)
             if ll:
                 lat, lon = ll[0], ll[1]
-            kin_roster.register(
-                h, cert.get("node_name") or cert.get("hostname") or "node",
+            kin_roster.register_device(
+                hashes, cert.get("node_name") or cert.get("hostname") or "node",
                 # NOT a default — a lookup. See kin_roster.type_for_cert:
                 # "rtnode2400" as the fallback labelled the first Pi propagation
                 # node ever built as an RTNode-2400 and hid its wifi, bluetooth
