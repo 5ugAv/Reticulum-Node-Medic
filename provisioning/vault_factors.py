@@ -335,6 +335,14 @@ def describe(policy: Policy) -> Dict[str, str]:
         warnings.append("A forgotten passphrase is not recoverable from the "
                         "device — only the recovery key gets you back in.")
 
+    # THE FALLBACK IS A DOOR TOO, and the strong levels are the ones where
+    # saying so matters: a vault that also opens to a typed passphrase is worth
+    # what that passphrase is worth, however good the daily unlock is.
+    if len(policy.ordered) > 1 or KEYFILE in policy.ordered:
+        warnings.append("Your passphrase still opens this vault on its own, so "
+                        "it can never be a lazy one — it is what the whole "
+                        "thing is worth to someone holding the card.")
+
     return {
         "asks": f"Unlocking asks for {asks}.",
         "strength": strength,
@@ -342,6 +350,9 @@ def describe(policy: Policy) -> Dict[str, str]:
         "warnings": " ".join(warnings),
         "field": ("The medic still boots, rejoins the mesh and relays while "
                   "locked. Only its own records wait for you."),
+        "fallback": ("A passphrase is set before any of this, and the recovery "
+                     "key is written down. Forget the pattern and you are "
+                     "inconvenienced, not locked out."),
     }
 
 
@@ -383,3 +394,104 @@ def level_name(policy: "Policy") -> str:
         return known
     pretty = {PATTERN: "pattern", PASSPHRASE: "passphrase", KEYFILE: "USB key"}
     return " + ".join(pretty[f] for f in policy.ordered).capitalize()
+
+
+# --------------------------------------------------------------------------- #
+# Enrolment: the ways in, and the rule that there is always a way back.
+# --------------------------------------------------------------------------- #
+#
+# Operator, 2026-08-11: "they need to set a text password first before turning
+# security to pattern so they can recover the medic if they forget either."
+#
+# So the vault does not have ONE way in. LUKS2 holds several key slots for the
+# same volume, and this medic uses three:
+#
+#   recovery key   32 written-down symbols, 160 bits. Generated, never chosen.
+#   passphrase     typed. MANDATORY, and enrolled BEFORE a pattern is allowed.
+#   daily policy   whatever the operator picked — usually the pattern.
+#
+# WHAT THAT COSTS, STATED PLAINLY, because it is not free. An attacker with the
+# card attacks the WEAKEST slot, not the one you use. Enrolling a passphrase
+# alongside a pattern-only policy costs nothing (the pattern was already the
+# weakest). But choosing pattern + passphrase + USB key and then keeping a
+# passphrase fallback means the vault is worth what that passphrase is worth —
+# the USB key protects your daily unlock, not the volume. If the strong policy
+# is the point, the fallback passphrase has to be a strong one.
+#
+# The operator asked for recoverability over that, knowingly: a medic that
+# cannot be opened by the person who owns it is a brick, and this is a tool
+# people are meant to be able to hand to each other.
+
+
+@dataclass(frozen=True)
+class Enrolment:
+    """Which ways into this vault currently exist."""
+
+    passphrase_set: bool = False
+    recovery_key_set: bool = False
+    policy: Policy = field(default_factory=Policy)
+
+
+def can_select(policy: Policy, enrolment: Enrolment) -> tuple:
+    """(ok, reason) — may this policy be chosen right now?
+
+    A pattern may not be the way in until a passphrase exists to fall back on.
+    A forgotten pattern with no fallback is a medic nobody can open, including
+    its owner, and the recovery key is a slip of paper that gets lost.
+    """
+    if PATTERN in policy.ordered and not enrolment.passphrase_set:
+        return (False,
+                "Set a passphrase first. A pattern is easy to forget, and "
+                "without a passphrase to fall back on a forgotten pattern "
+                "means the medic's records are gone for good.")
+    if KEYFILE in policy.ordered and not enrolment.passphrase_set:
+        return (False,
+                "Set a passphrase first. A USB key can be lost, and the "
+                "passphrase is what gets you back in when it is.")
+    if not enrolment.recovery_key_set:
+        return (False,
+                "Write down the recovery key first. It is the only way back "
+                "in if you forget everything else.")
+    return (True, "")
+
+
+def effective_bits(enrolment: Enrolment) -> float:
+    """Strength of the WEAKEST way in — which is the strength of the vault.
+
+    Reporting the daily policy's own number would flatter a medic that also
+    accepts a four-word passphrase. An attacker picks the easy door.
+    """
+    slots = [strength_bits(enrolment.policy)]
+    if enrolment.passphrase_set:
+        slots.append(TYPED_PASSPHRASE_BITS)
+    if enrolment.recovery_key_set:
+        slots.append(RECOVERY_KEY_BITS)
+    return min(slots)
+
+
+#: The generated recovery key: 32 symbols from a 32-character alphabet.
+#: Not a person's choice, so its entropy is real. See provisioning.recovery_key.
+RECOVERY_KEY_BITS = 160.0
+
+
+# --------------------------------------------------------------------------- #
+# Setting a pattern: twice, and they must match.
+# --------------------------------------------------------------------------- #
+
+def confirm_pattern(first: Sequence[int], second: Sequence[int]) -> str:
+    """The encoded pattern, if both drawings agree. Raises otherwise.
+
+    Operator, 2026-08-11: "make the user repeat to confirm the pattern when they
+    set it."
+
+    A pattern is drawn, not read back — there is nothing on screen afterwards to
+    check it against. A single slip while setting it produces a vault whose key
+    is a gesture nobody has ever made deliberately, and the operator finds out
+    at the worst possible moment. Drawing it twice is the only proof they can
+    make it again.
+    """
+    a = encode_pattern(first)
+    b = encode_pattern(second)
+    if a != b:
+        raise FactorError("The two patterns are different. Draw it again.")
+    return a
