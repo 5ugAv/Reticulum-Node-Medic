@@ -120,6 +120,25 @@ def test_the_pi_walkthrough_does_not_end_on_a_form():
         "the Pi path must return before the intro-path hand-off"
 
 
+def test_every_path_warns_about_the_antenna_where_the_board_is_powered():
+    """The landing is not enough, because the landing can be skipped.
+
+    ``_render_landing`` goes straight to detect when a Raspberry Pi is already
+    on USB and no radio is — reasonable, since "attach the antenna" is not an
+    instruction about a Pi. But from that detect screen "Choose manually"
+    reaches the chooser, and picking a plain RNode or an RTNode then walked the
+    operator to "plug the radio board in" having never seen the one screen that
+    stands between a radio and a dead power amplifier. The Pi path has carried
+    the warning on its own connect step since 2026-08-02; these two had not.
+    """
+    for path in ("host", "radio", "pi"):
+        first = guide_steps(path)[0]
+        assert first.get("anim") == "connect_board", path
+        assert first.get("warning") == ANTENNA_STEP["warning"], (
+            f"{path}: the step that powers the board must carry the antenna "
+            f"warning — the landing that normally carries it can be skipped")
+
+
 def test_antenna_is_the_landing_not_a_guided_step():
     # the antenna step is the first BIRTH screen (a landing), NOT inside guide_steps
     for path in ("radio", "pi", "host"):

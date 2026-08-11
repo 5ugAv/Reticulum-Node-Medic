@@ -56,10 +56,20 @@ ANTENNA_STEP = {
 #: (see ``ANTENNA_STEP`` + ``birth_guide_screen._render_antenna``).
 _STEPS = {
     "radio": [
+        # THE ANTENNA WARNING, CARRIED. The Pi path has had it on the step where
+        # the radio appears since 2026-08-02; these two paths were left relying
+        # on the antenna LANDING alone — and that landing is skipped whenever a
+        # Raspberry Pi is already on USB (_render_landing ->
+        # _pi_present_without_radio). Arrive with a Pi plugged in, take "Choose
+        # manually" to the chooser, pick a plain RNode or an RTNode, and the
+        # only screen guarding against powering a radio with no antenna was
+        # never shown. Same string as the landing, so it costs nothing to say
+        # again on the screen where the board is actually plugged in.
         {"title": tr("Connect your radio board"),
          "body": tr("Plug the radio board into Node Medic with a USB cable. Node Medic "
                     "powers it and will detect it automatically."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
+         "warning": ANTENNA_STEP["warning"],
          "anim": "connect_board"},
         # (The old third page — 'Let's set it up', a narration of what the
         # button was about to do — was removed as unnecessary; operator
@@ -363,6 +373,9 @@ _STEPS = {
          "body": tr("Plug the radio board into Node Medic with a USB cable so it can be "
                     "flashed as an RNode."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
+         # See the radio path above: the antenna landing can be skipped, and
+         # this is the screen where the board gets powered.
+         "warning": ANTENNA_STEP["warning"],
          "anim": "connect_board",
          "next": tr("Start setup  →")},
     ],
