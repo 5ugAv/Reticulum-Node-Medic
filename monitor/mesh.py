@@ -119,6 +119,12 @@ class MeshNode:
     interface: str
     via: str = ""
     expires: float = 0.0
+    #: When this path was learned — i.e. WHEN WE LAST HEARD FROM THE NODE.
+    #: A path table entry is not a sighting: Reticulum keeps a learned path for
+    #: seven days after the announce that taught it, so a node that has been
+    #: unplugged all day is still in the table with hops and an interface. The
+    #: row's own timestamp is the only part of it that is about now.
+    heard: float = 0.0
 
     @property
     def local(self) -> bool:
@@ -149,9 +155,14 @@ def parse_rnpath(json_text: str) -> List[MeshNode]:
             expires = float(p.get("expires", 0) or 0)
         except (TypeError, ValueError):
             expires = 0.0
+        try:
+            heard = float(p.get("timestamp", 0) or 0)
+        except (TypeError, ValueError):
+            heard = 0.0
         out.append(MeshNode(dst_hash=h, hops=hops,
                             interface=p.get("interface", ""),
-                            via=p.get("via", ""), expires=expires))
+                            via=p.get("via", ""), expires=expires,
+                            heard=heard))
     return out
 
 

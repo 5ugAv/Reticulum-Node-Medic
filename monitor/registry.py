@@ -447,13 +447,31 @@ class NodeRegistry:
     def ingest_mesh(self, node, now: float) -> NodeRecord:
         """Fold a mesh path (a monitor.mesh.MeshNode) into the registry, keyed by
         its destination hash — the same key birthed/HTTP nodes use. Records
-        reachability (hops, interface) and refreshes last_seen; auto-registers an
-        unknown destination (its name stays the hash until a birth cert names it).
+        reachability (hops, interface); auto-registers an unknown destination
+        (its name stays the hash until a birth cert names it).
+
+        BEING IN THE PATH TABLE IS NOT BEING SEEN. This used to set
+        ``last_seen = now`` for every row, so a node read "SEEN 0.0h" for as
+        long as its path lived — and Reticulum keeps a learned path for SEVEN
+        DAYS after the announce that taught it. SolarLove sat green and "seen
+        0.0h" in VITALS while unplugged (found by the operator, 2026-08-11; its
+        row had been taught 19 hours earlier and had 148 hours left to run).
+        That is the worst kind of wrong for this screen: it is the one place an
+        operator looks to find out whether a node is still alive.
+
+        The row's own ``timestamp`` is when the path was learned, which IS when
+        we last heard from the node, so that is what a sighting means here. Never
+        moves last_seen backwards — a health beacon or an HTTP poll is fresher
+        evidence than the path that carried it.
         """
         rec = self.nodes.get(node.dst_hash) or self.register(node.dst_hash)
         rec.mesh_hops = node.hops
         rec.mesh_interface = node.interface
-        rec.last_seen = now
+        heard = getattr(node, "heard", 0.0) or 0.0
+        # No timestamp (an older rnpath) leaves the record alone rather than
+        # inventing a sighting: not knowing is not the same as just now.
+        if heard:
+            rec.last_seen = max(rec.last_seen or 0.0, heard)
         return rec
 
     def record_http_status(self, key: str, status: NodeStatus,
