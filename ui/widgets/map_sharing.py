@@ -11,8 +11,8 @@ one question in the operator's head:
   * WHETHER it says so — hidden or roughly-shared, changeable at any time,
     without rebirthing a node that may be on a roof.
 
-WHAT THIS PANEL WILL NOT DO IS LIE ABOUT THE STATE OF THE WORLD. Pressing a
-button here changes Node Medic's records. It does not change the node until the
+WHAT THIS PANEL WILL NOT DO IS LIE ABOUT THE STATE OF THE WORLD. Moving the
+switch here changes Node Medic's records. It does not change the node until the
 medic reaches it and rewrites its Reticulum config, and it can never confirm
 that a public map has drawn the pin. The status line says which of those has
 actually happened (monitor.location_share.status_line), and "Apply to the node"
@@ -82,6 +82,15 @@ class MapSharingPopup(Popup):
 
         body.add_widget(_lbl(tr("The public map"), "16sp", "text_primary",
                              bold=True, h=24))
+        # THE SAME SWITCH AS THE BIRTH STEP, and it means the same thing here:
+        # left is hidden, and where it sits is what this node is doing. An
+        # operator who learned the control while building a node must not meet a
+        # different one when they come back to change their mind — same widget,
+        # same ends, and the same reading order (the switch, then what it means).
+        from ui.widgets.share_toggle import ShareToggle
+        self._toggle = ShareToggle(policy=record.share_location,
+                                   on_toggle=self._choose)
+        body.add_widget(self._toggle)
         body.add_widget(self._status)
         body.add_widget(self._what)
         # THE IRREVERSIBLE PART, stated on the panel and not only at birth. An
@@ -89,14 +98,6 @@ class MapSharingPopup(Popup):
         # the next announce and unsays none of the last ones.
         body.add_widget(_lbl(location_share.cannot_be_recalled(), "13sp",
                              "warning_yellow"))
-
-        choices = BoxLayout(orientation="horizontal", size_hint_y=None,
-                            height=dp(48), spacing=dp(8))
-        choices.add_widget(_btn(tr("Keep it hidden"), "surface", "text_primary",
-                                lambda: self._choose(location_share.HIDDEN)))
-        choices.add_widget(_btn(tr("Show it, roughly"), "accent", "background",
-                                lambda: self._choose(location_share.APPROX)))
-        body.add_widget(choices)
 
         self._apply_btn = _btn(tr("Apply to the node now"), "green",
                                "background", self._apply)
@@ -135,20 +136,21 @@ class MapSharingPopup(Popup):
         self._status.text = location_share.status_line(
             rec.share_location, rec.share_applied_at is not None,
             rec.lat, rec.lon)
-        view = location_share.stranger_view(
+        # THE SWITCH FOLLOWS THE RECORD, not the tap. _choose writes through the
+        # registry, which normalises; re-seating the switch from what came back
+        # means the panel shows the stored answer rather than the asked-for one.
+        self._toggle.set_state(rec.share_location)
+        # One sentence, from the model, shared with the birth step — see
+        # location_share.consequence_line. It was composed here once, in tr()'d
+        # pieces; two screens describing one packet in two hands is exactly the
+        # drift that ends in a promise nobody checked.
+        self._what.text = location_share.consequence_line(
             rec.share_location, rec.name, rec.lat, rec.lon,
             rec.name or rec.dst_hash)
-        if view["shared"] and view["pin"]:
-            flat, flon, radius = view["pin"]
-            self._what.text = tr(
-                "A stranger would see: {items}.\nThe point announced is "
-                "{lat}, {lon} — up to {radius:.0f} m from the truth."
-            ).format(items="; ".join(view["items"]),
-                     lat=format_coord(flat), lon=format_coord(flon),
-                     radius=radius) + "\n" + location_share.reach_note()
-        else:
-            self._what.text = tr("Nothing about this node's whereabouts leaves "
-                                 "Node Medic.")
+        if location_share.is_shared(rec.share_location) and rec.has_location():
+            # The condition nobody thinks about until the pin never appears:
+            # configured to share and visible on a map are two different states.
+            self._what.text += "\n" + location_share.reach_note()
 
     # -- actions ----------------------------------------------------------
 

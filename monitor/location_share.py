@@ -214,6 +214,38 @@ def stranger_view(policy: str, name: str, lat: Optional[float],
     }
 
 
+def consequence_line(policy: str, name: str = "", lat: Optional[float] = None,
+                     lon: Optional[float] = None, node_key: str = "",
+                     transport: bool = True) -> str:
+    """What the setting currently means, in one block of prose, for a screen
+    with a switch on it.
+
+    The birth step and the node's own page both sit a switch above this
+    sentence, and the sentence has to change as the switch moves — that is the
+    only thing on either screen that says what the position DOES. Composed out
+    of :func:`stranger_view` rather than written again next to each control:
+    copy typed in two places is copy that eventually says two different things,
+    and the two things would be a promise about what leaves the device.
+
+    *lat* / *lon* are optional because at birth there may be no position yet.
+    Without one there is no point to quote, and none is invented.
+    """
+    view = stranger_view(policy, name, lat, lon, node_key, transport=transport)
+    if not view["shared"]:
+        return view["headline"] + ". Nothing about where it is leaves Node Medic."
+    text = (view["headline"] + ". A stranger would see: "
+            + "; ".join(view["items"]) + ".")
+    pin = view["pin"]
+    if pin:
+        flat, flon, radius = pin
+        # THE FUZZED POINT, never the real one — this is a sentence shown right
+        # beside the control that publishes it, so printing the truth here would
+        # hand over exactly what the fuzzing is for.
+        text += (" The point announced is {}, {} — up to {:.0f} m from the "
+                 "truth.".format(format_coord(flat), format_coord(flon), radius))
+    return text
+
+
 def cannot_be_recalled() -> str:
     """The sentence the share screen must carry. Kept here so it is written
     once and cannot drift between the birth screen and the node-detail one."""
