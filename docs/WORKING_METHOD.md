@@ -373,7 +373,28 @@ New paid-for facts, same currency as Part 3:
   the daemon. The watchdog is systemd's own RuntimeWatchdogSec now, and
   hardening failures no longer strand a birth five steps short of its
   certificate.
-- **EVERYWHERE (old-build Pi) went mute in a power cut** — OPEN: LoRa-only
-  config, off the LAN, needs a bench PROBE. Every node built before today
-  trusts steps that could not fail; treat their history accordingly.
+- **EVERYWHERE (old-build Pi) went mute in a power cut** — diagnosed from
+  its own card in the medic's reader: it boots, rnsd runs, its radio opens
+  and RECEIVES (blue = RX), but its transmissions do not reach a medic two
+  metres away while ttt's do. TX path suspect (antenna seating first). It
+  has no health reporter, no status server, no Log2Ram, no watchdog — the
+  plan is a REBIRTH with the current build, whose radio-first gate answers
+  the TX question as a side effect.
+- **The installed imaging helper is a copy deploy does not refresh.**
+  /usr/local/lib/nodemedic/prepare-card (root-owned, sudoers-sanctioned) was
+  still the Aug 10 version after the repo fix shipped — the drift bug lived
+  on in the copy that actually runs. Hand-updated 2026-08-13, byte-identical
+  now; OPEN: deploy-medic.sh should sync it (or refuse when it differs).
+- **One machine, one row — regressed.** ttt appears three times in the
+  registry: the build's placeholder row (dst "rtnode:ttt") plus one row per
+  announced destination (health dst + transport dst), both named TTT. The
+  identity-grouping exists; the roster placeholder and the aspect rows never
+  merge. OPEN.
+
+**The first complete birth: node ttt, certificate 5a040004, 2026-08-13
+00:0x.** Radio pinned by its own serial, hardening and Bluetooth-off
+verified on-node, health beacons observed landing over BOTH roads, and
+RNodeInterface Up/Full read from the node itself. The goal the operator set
+on 2026-08-12 — a Pi node that propagates, bridges LoRa/Wi-Fi/internet, and
+reports its health to the medic — exists and is proven.
 
