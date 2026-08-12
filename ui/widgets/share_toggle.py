@@ -116,9 +116,13 @@ class ShareToggle(TwoStateToggle):
             lbl.pos = (x + pad + i * half, y + pad)
             lbl.size = (half, knob_h)
             on_it = (i == 1) == shared
-            # Dark text on the lit half, quiet text on the unlit one — so the
-            # position survives being read on a screen in daylight, where a
-            # colour difference alone may not.
+            # Dark text on the lit half, FULL-STRENGTH text on the unlit one.
+            # It was text_secondary — dim grey on the dark track — and on the
+            # bench the unlit half disappeared entirely: the switch read as
+            # one grey button saying "Keep it hidden", and the operator
+            # reported the toggle missing (2026-08-12). A switch whose other
+            # end cannot be seen is two buttons again, minus one.
             lbl.bold = on_it
             lbl.color = theme.hex_to_rgba(
-                theme.COLORS["background"] if on_it else theme.COLORS["text_secondary"])
+                theme.COLORS["background"] if on_it
+                else theme.COLORS["text_primary"])

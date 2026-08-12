@@ -1975,7 +1975,9 @@ class BirthGuideScreen(BoxLayout):
         # NOT _render_step_zero: that sets _i = 0 and re-renders, which skips
         # the redundant radio step straight to step 1 — so Back moved the
         # operator FORWARD into a two-screen loop (audit, 2026-08-03).
-        self._back_action = self._render_name
+        # Through the prelude: the share screen when it was asked, else the
+        # name — never past the once-only map question.
+        self._back_action = self._back_to_prelude
         from kivy.uix.scrollview import ScrollView
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
@@ -2095,11 +2097,33 @@ class BirthGuideScreen(BoxLayout):
         except Exception:                                          # noqa: BLE001
             pass
 
+    def _back_to_prelude(self):
+        """The screen before the hardware questions that the operator actually
+        SAW: the map answer when this lap asked it, else the name. pick_board's
+        Back pointed straight at the name, which carried an operator going back
+        to change the share answer clean past it — the reasoning already
+        written at the steps' back-walk (it is only asked once)."""
+        if getattr(self, "_share_asked", False):
+            self._render_location_share()
+        else:
+            self._render_name()
+
+    def _back_from_pick_pi(self):
+        """Step over what forward stepped over. With board memory leaving one
+        candidate, _render_pick_board answers its own question and re-renders
+        pick-pi — so Back was a tap that did nothing (operator, 2026-08-12;
+        the 2026-08-03 audit's trap in a new spot). Same skip rule, both
+        directions, one definition — _step_is_redundant's lesson."""
+        if len(self._board_candidates()) == 1:
+            self._back_to_prelude()
+        else:
+            self._render_pick_board()
+
     def _render_pick_pi(self):
         """Which Raspberry Pi is this? Asked because it cannot be read."""
         self._stop_current()
         self.clear_widgets()
-        self._back_action = self._render_pick_board
+        self._back_action = self._back_from_pick_pi
         from kivy.uix.scrollview import ScrollView
         from ui.screens.birth_screen import PI_HOSTS
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))

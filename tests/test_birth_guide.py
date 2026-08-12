@@ -454,7 +454,10 @@ def test_back_from_the_board_pick_reaches_the_name_step():
     from tests.srcutil import func_source
     pick = func_source("ui/screens/birth_guide_screen.py", "_render_pick_board")
     assert "= self._render_step_zero" not in pick, "Back still loops forward"
-    assert "self._back_action = self._render_name" in pick
+    # Since 2026-08-12 the way back goes through the prelude (the share screen
+    # when this lap asked it, else the name) — see
+    # test_back_from_the_choosers_lands_on_the_share_screen_when_it_was_asked.
+    assert "self._back_action = self._back_to_prelude" in pick
 
 
 # --- ONE birth route: the medic's own card reader --------------------------
@@ -1118,3 +1121,35 @@ def test_the_walkthrough_typography_goes_through_the_readability_scale():
            if re.search(r'font_size\s*=\s*["\']', ln)]
     assert not raw, f"font sizes bypassing theme.font_sp(): {raw}"
     assert 'theme.font_sp("14sp")' in text, "the hint is the one that hurt"
+
+
+# --- Back from pick-pi must not bounce off the auto-skipping board chooser --
+
+def test_back_from_pick_pi_steps_over_a_one_candidate_chooser():
+    """_render_pick_board auto-skips itself when board memory leaves one
+    candidate — so Back from pick-pi rendered it, it re-rendered pick-pi, and
+    the button did nothing (operator, 2026-08-12; the same trap as the
+    2026-08-03 audit and the 2026-08-09 gate, in a new spot). Back must step
+    over what forward stepped over."""
+    from tests.srcutil import func_source
+    pick_pi = func_source("ui/screens/birth_guide_screen.py", "_render_pick_pi")
+    assert "_back_from_pick_pi" in pick_pi
+    assert "_back_action = self._render_pick_board" not in pick_pi
+    back = func_source("ui/screens/birth_guide_screen.py", "_back_from_pick_pi")
+    assert "_board_candidates" in back           # the chooser's own skip rule
+    assert "_render_pick_board" in back          # shown when it has a question
+
+
+def test_back_from_the_choosers_lands_on_the_share_screen_when_it_was_asked():
+    """The map question sits between the name and the hardware questions.
+    pick_board's Back pointed at the name, carrying the operator past the
+    share screen they may have been going back FOR — the same reasoning
+    already written at the steps' back-walk. One rule, both places."""
+    from tests.srcutil import func_source
+    pick_board = func_source("ui/screens/birth_guide_screen.py",
+                             "_render_pick_board")
+    assert "_back_to_prelude" in pick_board
+    prelude = func_source("ui/screens/birth_guide_screen.py",
+                          "_back_to_prelude")
+    assert "_share_asked" in prelude and "_render_location_share" in prelude
+    assert "_render_name" in prelude
