@@ -403,3 +403,19 @@ def test_the_default_pin_follows_the_BOARD_not_the_v4():
     src = open("assets/scripts/apply_neopixel_patch.py").read()
     main = src[src.index("def main("):]
     assert "VERIFIED_NP_PIN.get(args.board)" in main
+
+
+def test_detect_port_fingerprints_the_board_for_the_hand_back():
+    """RNodeFlashWorkflow fingerprints the board at detect (_usb_serial) and
+    the guided hand-back carries it to the Pi build, which pins /dev/rnode to
+    it. THIS workflow — the path a real V4 birth actually takes — never set
+    it, so the hand-back carried '' and node 'soon' shipped with the
+    five-vendor net (2026-08-12). Same moment, same fingerprint, both paths."""
+    from transport.connection import EmulatedConnection
+    from workflows.rnode_v4_rgb import HeltecV4RGBWorkflow
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rules.insert(0, ("/dev/serial/by-id", 0,
+                       "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:02:00:02-if00", ""))
+    w = HeltecV4RGBWorkflow(c, port="/dev/ttyACM1")
+    w._detect_port()
+    assert w._usb_serial == "02:00:00:02:00:02"

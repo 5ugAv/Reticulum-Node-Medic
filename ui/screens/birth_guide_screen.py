@@ -1467,14 +1467,7 @@ class BirthGuideScreen(BoxLayout):
             return False
         anim = step.get("anim")
         if anim == "connect_pi":
-            try:
-                import subprocess
-                from provisioning import pi_usbboot
-                out = subprocess.run(["lsusb"], capture_output=True, text=True,
-                                     timeout=8).stdout
-                return pi_usbboot.classify(out).state != pi_usbboot.ABSENT
-            except Exception:
-                return False
+            return self._pi_answering()
         if anim == "connect_board":
             try:
                 from ui.hw_factories import local_board_ports
@@ -2855,6 +2848,34 @@ class BirthGuideScreen(BoxLayout):
             self._gate_warning = ""
             self._render_step()
 
+    def _pi_answering(self):
+        """Is the node's Pi here — on the cable, OR answering by name on Wi-Fi?
+
+        One probe for both the forward skip (_step_is_redundant) and the
+        connect-step watcher (_start_pi_poll). The watcher looked only at
+        lsusb, so a Pi whose card joined Wi-Fi — which the imager bakes in —
+        answered and the screen sat on "this moves on by itself" until the
+        operator pressed Next by hand (operator, 2026-08-12, node 'soon').
+        The node_online gate one step later already walks both roads; this is
+        the same lesson the imager learned on 2026-08-02, inherited at last.
+        """
+        try:
+            import subprocess
+            from provisioning import pi_usbboot
+            out = subprocess.run(["lsusb"], capture_output=True, text=True,
+                                 timeout=8).stdout
+            if pi_usbboot.classify(out).state != pi_usbboot.ABSENT:
+                return True
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:
+            from provisioning.pi_discover import resolve
+            from provisioning.pi_imager import hostnameify
+            host = hostnameify(getattr(self, "_node_name", "") or "")
+            return bool(resolve(host)) if host else False
+        except Exception:                                          # noqa: BLE001
+            return False
+
     # -- board-presence gate ------------------------------------------------
     def _start_pi_poll(self, anim):
         """Poll for a RASPBERRY PI on USB — boot-ROM, card reader or node.
@@ -2871,16 +2892,7 @@ class BirthGuideScreen(BoxLayout):
             import threading
 
             def work():
-                present = False
-                try:
-                    import subprocess
-                    from provisioning import pi_usbboot
-                    out = subprocess.run(["lsusb"], capture_output=True,
-                                         text=True, timeout=8).stdout
-                    present = pi_usbboot.classify(out).state != pi_usbboot.ABSENT
-                except Exception:
-                    present = False
-                if present:
+                if self._pi_answering():
                     Clock.schedule_once(lambda _d: self._on_board_present(anim), 0)
             threading.Thread(target=work, daemon=True).start()
 

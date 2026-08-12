@@ -442,6 +442,14 @@ class HeltecV4RGBWorkflow:
                               "No board found — plug in the Heltec V4 (some "
                               "USB-C cables are charge-only).")
         self.port = port
+        # Fingerprint the board the moment we first see it — same as
+        # RNodeFlashWorkflow, and for the same two readers: the tty number
+        # does not survive a reset, and the guided hand-back carries this
+        # serial to the Pi build so /dev/rnode can be pinned to THIS radio.
+        # This path never set it, so node 'soon' shipped with the five-vendor
+        # net (2026-08-12).
+        from workflows.rnode_flash import by_id_serial, usb_id_for_port
+        self._usb_serial = by_id_serial(usb_id_for_port(self.connection, port))
         return StepResult("detect_port", True, f"Board on {port}.")
 
     def _guard(self) -> "str | None":

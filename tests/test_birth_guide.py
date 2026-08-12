@@ -1153,3 +1153,24 @@ def test_back_from_the_choosers_lands_on_the_share_screen_when_it_was_asked():
                           "_back_to_prelude")
     assert "_share_asked" in prelude and "_render_location_share" in prelude
     assert "_render_name" in prelude
+
+
+# --- the connect-Pi step must hear a Pi that answers over Wi-Fi -------------
+
+def test_the_connect_pi_watcher_knows_both_roads():
+    """The step's body promises 'this moves on by itself when the Pi answers' —
+    but its watcher only looked at lsusb, so a Pi whose card joined Wi-Fi
+    (which the imager bakes in) answered and the screen sat there until the
+    operator pressed Next by hand (operator, 2026-08-12, node 'soon'). The
+    node_online gate one step later already knows both roads; this watcher
+    was written earlier and did not inherit it — the same lesson as the
+    2026-08-02 imager, third telling."""
+    from tests.srcutil import func_source
+    poll = func_source("ui/screens/birth_guide_screen.py", "_start_pi_poll")
+    redundant = func_source("ui/screens/birth_guide_screen.py",
+                            "_step_is_redundant")
+    for src, name in ((poll, "_start_pi_poll"), (redundant, "_step_is_redundant")):
+        assert "_pi_answering" in src, f"{name} does not use the shared probe"
+    probe = func_source("ui/screens/birth_guide_screen.py", "_pi_answering")
+    assert "lsusb" in probe or "pi_usbboot" in probe     # the cable road
+    assert "resolve" in probe and "hostnameify" in probe  # the Wi-Fi road

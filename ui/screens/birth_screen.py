@@ -2389,6 +2389,13 @@ class BirthScreen(BoxLayout):
                             height=dp(28), spacing=dp(12))
             lbl = _line("  " + n, color="text_secondary", size="13.5sp")
             lbl.size_hint_x = 0.5
+            # dp(28) is a FLOOR the row grows past, not a pin. _line already
+            # grows the label with its wrapped text, but the row stayed 28
+            # tall — so "set_firmware_radio_parameters  (skipped)" wrapped to
+            # two lines and drew over its neighbours (operator photo,
+            # 2026-08-12). Same floors-not-pins rule as the walkthrough.
+            lbl.bind(height=lambda _l, h, r=row: setattr(
+                r, "height", max(dp(28), h)))
             bar = _StepBar()
             holder = AnchorLayout(anchor_y="center", size_hint_x=0.5)
             holder.add_widget(bar)

@@ -1076,25 +1076,66 @@ def test_configure_services_verifies_what_it_claims():
     assert "verified" in r.message.lower() or "running" in r.message.lower()
 
 
-def test_hardening_cannot_claim_what_did_not_land():
-    # Neither log2ram nor the watchdog verifies as enabled: the step must not
-    # report the old blanket success — and it never configured log rotation,
-    # so the word must be gone for good.
+def test_hardening_cannot_claim_what_did_not_land_and_does_not_strand():
+    # Nothing lands: the step must not report the old blanket success — and it
+    # must not FAIL either. Failing here stranded a real birth five steps short
+    # of its certificate (node 'soon', 2026-08-12) for a nice-to-have: hostname,
+    # final_verification, the report proof and the USB hand-back never ran.
+    # Same deliberate pattern as install_health_reporter: the message carries
+    # the truth; the build carries on.
     w = wf(build_conn())
     w.connection.rules.insert(0, ("systemctl is-enabled", 0, "disabled", ""))
+    w.connection.rules.insert(0, ("RuntimeWatchdogUSec", 0, "0", ""))
+    w.connection.rules.insert(0, ("cat /etc/systemd/system.conf.d", 1, "", ""))
     r = _run_step(w, "apply_system_hardening")
-    assert r.success is False
+    assert r.success is True
+    assert "did not land" in r.message.lower() or "no hardening" in r.message.lower()
     assert "log rotation" not in r.message.lower()
 
 
 def test_hardening_names_the_half_that_landed():
     w = wf(build_conn())
-    w.connection.rules.insert(0, ("systemctl is-enabled watchdog", 0, "disabled", ""))
     w.connection.rules.insert(0, ("systemctl is-enabled log2ram", 0, "enabled", ""))
+    w.connection.rules.insert(0, ("RuntimeWatchdogUSec", 0, "0", ""))
+    w.connection.rules.insert(0, ("cat /etc/systemd/system.conf.d", 1, "", ""))
     r = _run_step(w, "apply_system_hardening")
     assert r.success is True                # half a hardening is not a dead node
-    assert "watchdog" in r.message          # ...but the gap is named
+    assert "Log2Ram" in r.message
+    assert "watchdog" in r.message.lower()  # ...and the gap is named
     assert "log rotation" not in r.message.lower()
+
+
+def test_hardening_names_a_push_that_did_not_arrive():
+    """The .deb silently not reaching the node is exactly how this step lied
+    for a month — push_file's return value was dropped on the floor. A failed
+    push must be named as the reason, not discovered later by dpkg."""
+    w = wf(build_conn())
+    w.connection.push_file = lambda *_a, **_k: False
+    w.connection.rules.insert(0, ("RuntimeWatchdogUSec", 0, "15s", ""))
+    r = _run_step(w, "apply_system_hardening")
+    assert r.success is True
+    assert "reach the node" in r.message or "did not arrive" in r.message
+    dpkg = [c for c in w.connection.history if "dpkg -i" in c]
+    assert not dpkg, "nothing to install when nothing arrived"
+
+
+def test_hardening_arms_the_watchdog_through_systemd_itself():
+    """`systemctl enable watchdog` needed a daemon no build ever carried, so
+    the watchdog had NEVER landed once. The Pi's bcm2835 watchdog needs no
+    package: systemd's RuntimeWatchdogSec arms it, offline. The step writes
+    the drop-in, reads it back, re-execs, and then believes only what
+    systemd REPORTS."""
+    w = wf(build_conn())
+    w.connection.rules.insert(0, ("systemctl is-enabled log2ram", 0, "enabled", ""))
+    w.connection.rules.insert(0, ("cat /etc/systemd/system.conf.d", 0,
+                                  "[Manager]\nRuntimeWatchdogSec=15\n", ""))
+    w.connection.rules.insert(0, ("RuntimeWatchdogUSec", 0, "15s", ""))
+    r = _run_step(w, "apply_system_hardening")
+    assert r.success is True
+    assert "watchdog" in r.message.lower() and "15s" in r.message
+    assert any("daemon-reexec" in c for c in w.connection.history)
+    # and the armed claim came from systemd, not from our own write
+    assert any("RuntimeWatchdogUSec" in c for c in w.connection.history)
 
 
 def test_health_reporter_reports_when_its_service_did_not_come_up():
@@ -1151,3 +1192,14 @@ def test_final_verification_checks_the_radio_when_one_is_attached():
     r = _run_step(w, "final_verification")
     assert r.success is False
     assert "radio" in r.message.lower() or "rnode" in r.message.lower()
+
+
+def test_progress_checklist_rows_grow_with_their_labels():
+    """The checklist row was pinned at dp(28) while its label (via _line)
+    grows with wrapped text — so 'set_firmware_radio_parameters  (skipped)'
+    wrapped to two lines and drew over its neighbours (operator photo,
+    2026-08-12). The row's height must follow the label's, floor dp(28) —
+    the same floors-not-pins rule the walkthrough's own _line learned."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_launch")
+    assert 'lbl.bind(height=' in src, "row height does not follow the label"

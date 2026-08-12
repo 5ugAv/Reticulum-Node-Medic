@@ -1053,30 +1053,68 @@ def install_status_server(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
-    # Log2Ram installed from a local .deb (no internet in the field). Stage the
-    # .deb onto the node first, then install from the remote path.
-    #
-    # THIS STEP COULD NOT FAIL AND SO PROVED NOTHING: every command wore
-    # `|| true`, and the success message claimed log rotation, which nothing
-    # here has ever touched (2026-08-12 handover). Now systemd is asked what
-    # actually landed. Partial hardening is reported by name and carries on —
-    # a node without the watchdog daemon is a worse node, not a dead one — but
-    # if NOTHING landed the step failed and says so.
+    """Log2Ram from the carried .deb, and the Pi's own hardware watchdog.
+
+    THIS STEP NEVER FAILS THE BUILD, deliberately (2026-08-12, node 'soon'):
+    the first honest version failed when nothing landed and stranded a real
+    birth five steps short of its certificate — hostname, verification, the
+    report proof and the USB hand-back never ran, for a nice-to-have. Same
+    reasoning as install_health_reporter: the message may not claim what did
+    not land, and it names every gap; but the build carries on.
+
+    THE WATCHDOG IS SYSTEMD'S OWN. `systemctl enable watchdog` needed a
+    daemon package no build ever carried, so under the old `|| true` the
+    watchdog had NEVER landed once — the blanket success hid it for a month.
+    The Pi's bcm2835 watchdog needs no package: a RuntimeWatchdogSec drop-in
+    arms it, offline. The step reads its write back and then believes only
+    the value systemd REPORTS.
+    """
+    landed, gaps = [], []
+
+    # -- Log2Ram, staged from the medic's carried packages -------------------
     wf.connection.run(f"mkdir -p {REMOTE_ASSET_DIR}")
-    wf.connection.push_file(
+    pushed = wf.connection.push_file(
         os.path.join(PACKAGE_DIR, "log2ram.deb"),
         f"{REMOTE_ASSET_DIR}/log2ram.deb")
-    wf.connection.run(wf.priv(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb") + " || true")
-    landed, gaps = [], []
-    for unit, what in (("log2ram", "Log2Ram"), ("watchdog", "hardware watchdog")):
-        wf.connection.run(wf.priv(f"systemctl enable {unit}") + " || true")
-        state = wf.connection.run(f"systemctl is-enabled {unit}")[1].strip()
-        (landed if state == "enabled" else gaps).append(
-            what if state == "enabled" else f"{what} ({state or 'unknown'})")
+    if pushed:
+        wf.connection.run(wf.priv(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb") + " || true")
+        wf.connection.run(wf.priv("systemctl enable log2ram") + " || true")
+        state = wf.connection.run("systemctl is-enabled log2ram")[1].strip()
+        if state == "enabled":
+            landed.append("Log2Ram")
+        else:
+            gaps.append(f"Log2Ram ({state or 'unknown'})")
+    else:
+        # A push that fails silently is exactly how this step lied for a
+        # month — push_file's return value used to be dropped on the floor.
+        gaps.append("Log2Ram (the .deb did not reach the node — is "
+                    "assets/packages/log2ram.deb on this medic?)")
+
+    # -- the hardware watchdog, through systemd itself -----------------------
+    wf.connection.run(wf.priv("mkdir -p /etc/systemd/system.conf.d"))
+    wf.connection.run(_write_remote_file(
+        wf, "/etc/systemd/system.conf.d/10-nodemedic-watchdog.conf",
+        "[Manager]\nRuntimeWatchdogSec=15\n"))
+    check = wf.connection.run(
+        "cat /etc/systemd/system.conf.d/10-nodemedic-watchdog.conf")[1] or ""
+    if "RuntimeWatchdogSec=15" in check:
+        wf.connection.run(wf.priv("systemctl daemon-reexec"))
+        usec = wf.connection.run(
+            "systemctl show -p RuntimeWatchdogUSec --value")[1].strip()
+        if usec and usec not in ("0", "infinity"):
+            landed.append(f"hardware watchdog (systemd, {usec})")
+        else:
+            gaps.append("hardware watchdog (drop-in written but systemd "
+                        "reports it unarmed)")
+    else:
+        gaps.append("hardware watchdog (the drop-in did not read back)")
+
     if not landed:
-        return StepResult("apply_system_hardening", False,
-                          "No hardening landed: " + "; ".join(gaps))
-    msg = "Hardening verified enabled: " + ", ".join(landed) + "."
+        return StepResult(
+            "apply_system_hardening", True,
+            "No hardening landed — the node runs without it. Did not land: "
+            + "; ".join(gaps) + ".")
+    msg = "Hardening verified: " + ", ".join(landed) + "."
     if gaps:
         msg += " Did not land: " + "; ".join(gaps) + "."
     return StepResult("apply_system_hardening", True, msg)
