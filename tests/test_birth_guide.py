@@ -121,6 +121,25 @@ def test_the_pi_walkthrough_does_not_end_on_a_form():
         "the Pi path must return before the intro-path hand-off"
 
 
+def test_every_path_warns_about_the_antenna_where_the_board_is_powered():
+    """The landing is not enough, because the landing can be skipped.
+
+    ``_render_landing`` goes straight to detect when a Raspberry Pi is already
+    on USB and no radio is — reasonable, since "attach the antenna" is not an
+    instruction about a Pi. But from that detect screen "Choose manually"
+    reaches the chooser, and picking a plain RNode or an RTNode then walked the
+    operator to "plug the radio board in" having never seen the one screen that
+    stands between a radio and a dead power amplifier. The Pi path has carried
+    the warning on its own connect step since 2026-08-02; these two had not.
+    """
+    for path in ("host", "radio", "pi"):
+        first = guide_steps(path)[0]
+        assert first.get("anim") == "connect_board", path
+        assert first.get("warning") == ANTENNA_STEP["warning"], (
+            f"{path}: the step that powers the board must carry the antenna "
+            f"warning — the landing that normally carries it can be skipped")
+
+
 def test_antenna_is_the_landing_not_a_guided_step():
     # the antenna step is the first BIRTH screen (a landing), NOT inside guide_steps
     for path in ("radio", "pi", "host"):
@@ -219,6 +238,68 @@ def test_no_step_asks_for_a_network_address_or_wifi():
     for phrase in ("ip address", "hostname of the pi", "wi-fi password",
                    "wifi password", "join your wi-fi"):
         assert phrase not in joined, f"still asks for {phrase!r}"
+
+
+# --- the walkthrough may not out-claim the code (audit, 2026-08-11) ---------
+#
+# Three sentences in the Pi walkthrough described mechanisms this tree does not
+# have. None of them was caught by a test, because every test here asks whether
+# the right thing is SAID and none asked whether it is TRUE. These three do.
+
+def test_no_step_claims_the_medic_remembers_the_radio_for_the_pi():
+    """It never did. The medic remembers a chip MAC -> board MODEL so IT stops
+    asking which board this is; nothing about the radio's identity is written
+    onto the card or handed to the Pi. The Pi picks its radio by scanning its
+    own /dev/serial/by-id and taking the first RNode-looking device
+    (workflows.build.detect_rnode_port) — plug a second radio in and nothing
+    the medic "remembered" would choose between them.
+
+    Written on 2026-08-01 for a flow that no longer exists, and read for ten
+    days as a promise the tool was keeping.
+    """
+    joined = " ".join(s["title"] + " " + s["body"] + " " + s.get("hint", "")
+                      for s in guide_steps("pi")).lower()
+    for phrase in ("so the pi finds it", "remembers which radio"):
+        assert phrase not in joined, f"claims a mechanism we don't have: {phrase!r}"
+
+
+def test_the_pi_walkthrough_does_not_promise_a_wifi_free_build():
+    """It promised one on the screen straight AFTER the one that asks for Wi-Fi.
+
+    The imaging step hands off to the imager, which pre-fills the medic's own
+    SSID and PSK and bakes a NetworkManager connection onto the card
+    (ui.screens.pi_imager_screen, provisioning.pi_imager). And the cable is not
+    even the preferred road: when both answer, pi_discover.addresses_for sorts
+    10.55.0.* LAST, because the network one survives the operator walking away.
+
+    SkyFinger was provisioned over Wi-Fi on 2026-08-11 and the operator caught
+    the closing screen saying otherwise — "the text should never mislead the
+    user". The same claim was still standing two screens earlier.
+    """
+    joined = " ".join(s["title"] + " " + s["body"] + " " + s.get("hint", "")
+                      for s in guide_steps("pi")).lower()
+    for phrase in ("no wi-fi and no network setup", "with no wifi at all",
+                   "reaches it over the cable and"):
+        assert phrase not in joined, f"promises what the imager just contradicted: {phrase!r}"
+
+
+def test_one_answer_to_how_long_the_pi_takes():
+    """The same wait was quoted three ways in one step: "up to a minute" in the
+    body, "up to five" while waiting, "up to two minutes" on failure. The
+    operator who reads the low one gives up while the card is still expanding.
+    """
+    import ast
+    import re
+    import textwrap
+    from tests.srcutil import func_source
+    # The STRINGS only. A comment explaining the fix quotes the number it
+    # removed, and a test that reads comments would fail on its own history.
+    tree = ast.parse(textwrap.dedent(
+        func_source("ui/screens/birth_guide_screen.py", "_node_gate")))
+    said = " ".join(n.value for n in ast.walk(tree)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str))
+    bounds = set(re.findall(r"up to (\w+) minutes", said.replace("\n", " ")))
+    assert len(bounds) <= 1, f"the same wait, quoted {len(bounds)} ways: {bounds}"
 
 
 #: Animations the wizard advances itself on, by watching USB. A step using one
