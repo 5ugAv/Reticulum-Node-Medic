@@ -639,3 +639,62 @@ def test_the_detail_screen_offers_delete_behind_the_danger_confirm():
     assert "kin_roster" in forget           # roster entry
     assert "_beacon_targets" in forget      # poll targets
     assert 'switch_mode("vitals")' in forget
+
+
+# --- one machine, one row — the two-agent findings, merged ------------------
+
+def _roster(monkeypatch, entries):
+    r = NodeRegistry()
+    r.kin_roster = entries
+    return r
+
+def test_aspect_row_adopts_the_roster_through_its_identity():
+    """build-lens, 2026-08-13: _apply_kin consulted the roster only by
+    dst_hash, and identity_hash lands AFTER register() — so a destination the
+    roster never listed stayed an anonymous sibling (S3: two rows). The
+    roster must be re-applied once the identity is known."""
+    r = NodeRegistry()
+    r.kin_roster = {"idhash00": {"name": "ttt", "type": "pi_propagation",
+                                 "device": "healthdst0"}}
+    r.ingest_announce(b"\x96" * 16, b"", 1000.0, identity_hash="idhash00")
+    rec = r.nodes[("96" * 16)]
+    assert rec.name == "ttt"
+    assert rec.device_id == "healthdst0"
+
+
+def test_discovery_placeholder_joins_its_machine_by_roster_name():
+    """The rtnode:<name> discovery row was joined by nothing but a case-folded
+    display name. When /status names a rostered node, the row takes the
+    roster's device id — a real join, not a coincidence of spelling."""
+    from monitor.http_status import NodeStatus
+    r = NodeRegistry()
+    r.kin_roster = {"healthdst0": {"name": "ttt", "type": "pi_propagation",
+                                   "device": "healthdst0"}}
+    st = NodeStatus(reachable=True, status="ok", node_name="ttt", raw={})
+    r.record_http_status("rtnode:ttt", st, 1000.0)
+    assert r.nodes["rtnode:ttt"].device_id == "healthdst0"
+
+
+def test_two_machines_sharing_a_name_stay_two_rows():
+    """break-lens, 2026-08-13: the unconditional name-collapse folded a dead
+    machine under a same-named live one — max(last_seen) made the corpse
+    invisible. Two rows with DIFFERENT known identities never merge on
+    spelling; the dead one keeps its own red."""
+    r = NodeRegistry()
+    r.ingest_announce(b"\xaa" * 16, b"", 1000.0, identity_hash="ident-dead")
+    r.ingest_announce(b"\xbb" * 16, b"", 200000.0, identity_hash="ident-live")
+    r.nodes["aa" * 16].name = "Relay"
+    r.nodes["bb" * 16].name = "Relay"
+    groups = r._device_groups()
+    assert len(groups) == 2, "a corpse hid behind a live namesake"
+
+
+def test_a_nameless_placeholder_still_joins_its_named_machine():
+    """The guard must not undo the good merge: a discovery row (no identity)
+    sharing the machine's name still folds in."""
+    r = NodeRegistry()
+    r.ingest_announce(b"\xcc" * 16, b"", 1000.0, identity_hash="ident-one")
+    r.nodes["cc" * 16].name = "HOPE"
+    r.register("rtnode:hope", name="HOPE")
+    groups = r._device_groups()
+    assert len(groups) == 1

@@ -380,6 +380,12 @@ class NodeRegistry:
         """If this record is one of the medic's own nodes, stamp its roster name,
         type, and deployed location — making it kin (named) and map-visible."""
         entry = self.kin_roster.get(rec.dst_hash)
+        if not entry and rec.identity_hash:
+            # THE ROSTER BY IDENTITY TOO (build-lens, 2026-08-13): a machine
+            # announces destinations the roster never listed, but they carry
+            # the identity the roster's entries were announced under. Without
+            # this, an aspect sibling stayed an anonymous second row.
+            entry = self.kin_roster.get(rec.identity_hash)
         if not entry:
             return
         if entry.get("name"):
@@ -578,7 +584,13 @@ class NodeRegistry:
             from monitor.history import HistoryPoint
             self.history.append(h, HistoryPoint(t=now))
         if identity_hash:
+            had_identity = rec.identity_hash == identity_hash
             rec.identity_hash = identity_hash
+            if not had_identity:
+                # identity_hash lands AFTER register() ran _apply_kin — so the
+                # roster must get a second look now that the join key exists
+                # (build-lens, 2026-08-13: the S3 two-row state).
+                self._apply_kin(rec)
         name = _printable_name(app_data)
         if name and not rec.announced_name:
             rec.announced_name = name
@@ -636,6 +648,17 @@ class NodeRegistry:
             rec.last_direct = now
             if status.node_name and not rec.name:
                 rec.name = status.node_name
+            if status.node_name and not rec.device_id:
+                # A REAL JOIN, NOT A COINCIDENCE OF SPELLING (build-lens,
+                # 2026-08-13): when /status names a machine the roster knows,
+                # the discovery row takes that machine's device id — the same
+                # key birth wrote — instead of relying on the name collapse.
+                low = status.node_name.strip().lower()
+                for entry in self.kin_roster.values():
+                    if ((entry.get("name") or "").strip().lower() == low
+                            and entry.get("device")):
+                        rec.device_id = entry["device"]
+                        break
             # THE NODE JUST SAID WHAT IT IS, so stop calling it something else.
             # register() types an unknown key "rtnode2400", and that default
             # already labelled the first Pi propagation node ever built as an
@@ -747,7 +770,28 @@ class NodeRegistry:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
             return (p.name or p.announced_name or "").strip()
 
-        _collapse(lambda members: name_key(_grp_name(members)))
+        # NAME IS THE WEAKEST JOIN, so it is the most guarded (break-lens,
+        # 2026-08-13): two groups that each carry their OWN identity are two
+        # machines whatever they are called — folding them let a dead machine
+        # hide behind a live namesake, max(last_seen) painting the corpse
+        # healthy. A name only pulls in rows that have no identity of their
+        # own (the discovery placeholder, a bare heard-row).
+        seen_names: Dict[str, str] = {}
+        for key in list(groups.keys()):
+            if key not in groups:
+                continue
+            value = name_key(_grp_name(groups[key]))
+            if not value:
+                continue
+            target = seen_names.get(value)
+            if target is not None and target != key and target in groups:
+                a_ident = any(r.identity_hash for r in groups[target])
+                b_ident = any(r.identity_hash for r in groups[key])
+                if a_ident and b_ident:
+                    continue                 # two machines; leave both visible
+                groups[target].extend(groups.pop(key))
+            else:
+                seen_names[value] = key
         return list(groups.values())
 
     @staticmethod

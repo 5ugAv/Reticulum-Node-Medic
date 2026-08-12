@@ -363,10 +363,15 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
         rnode_state = "blank (will flash)"
     else:
         rnode_state = "none"
+    # NO PORT CLAIM WITHOUT A RADIO (build-lens, 2026-08-13): with nothing
+    # attached, the port here is the untouched dataclass default — printed as
+    # if observed, and wrong for every native-USB board. The certificate
+    # reads this line months later.
+    where = (f" on {wf.profile.radio.serial_port}" if wf.profile.rnode_present
+             else "")
     return StepResult("detect_hardware", True,
-                      f"Detected {wf.profile.hardware.value} on "
-                      f"{wf.profile.radio.serial_port}; RNode={rnode_state}"
-                      f"{tooling_note}")
+                      f"Detected {wf.profile.hardware.value}{where}; "
+                      f"RNode={rnode_state}{tooling_note}")
 
 
 @build_step
@@ -855,12 +860,18 @@ def _push_health_package(wf: "BuildWorkflow") -> "tuple[str, str, str]":
 
 
 def _power_source(profile: NodeProfile) -> str:
-    """What BIRTH stamps as the node's power source, from the profile hardware."""
+    """What BIRTH stamps as the node's power source, from the profile hardware.
+
+    "unknown" when nothing was declared — nothing in the flow ASKS yet, and
+    stamping "mains" by default put a false claim in every beacon of every
+    solar node (build-lens, 2026-08-13). Unknown is an honest answer; a
+    power question can join the prelude when the operator wants one.
+    """
     if profile.has_solar_controller:
         return "solar"
     if profile.has_battery_bank:
         return "battery"
-    return "mains"
+    return "unknown"
 
 
 #: Read the health reporter's rtnode.health destination hash off the node (after
@@ -952,7 +963,7 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
         wf.profile.health_dst_hash = dst.lower()
         where = f" health dst {dst.lower()[:8]}…"
     else:
-        where = " (health dst not captured yet — first beacon will register it)"
+        where = " (health dst not captured yet — until it is rostered, its first beacon shows as an unnamed neighbour)"
 
     return StepResult("install_health_reporter", True,
                       f"Health reporter installed and started ({src} power);{where}")
@@ -1485,7 +1496,7 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     return StepResult("hand_the_usb_port_back", True,
                       "USB port handed back and checked on the card — it hosts "
                       "its radio from its next boot, which is the one it gets "
-                      "when you move it onto the radio and power it up.")
+                      "when you move the radio onto it and power it up.")
 
 
 #: RNS reads the node's own identity hash straight off disk (no networking, no

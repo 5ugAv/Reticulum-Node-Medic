@@ -577,7 +577,10 @@ def test_health_reporter_power_source_from_profile():
     from workflows.build import _power_source
     assert _power_source(NodeProfile(has_solar_controller=True)) == "solar"
     assert _power_source(NodeProfile(has_battery_bank=True)) == "battery"
-    assert _power_source(NodeProfile()) == "mains"
+    # "unknown" since 2026-08-13: nothing in the flow ASKS about power yet,
+    # and defaulting to "mains" put a false claim in every solar node's
+    # beacons (build-lens). Unknown is the honest unasked answer.
+    assert _power_source(NodeProfile()) == "unknown"
 
 
 def test_health_dst_flows_onto_birth_certificate():

@@ -2515,7 +2515,8 @@ class BirthGuideScreen(BoxLayout):
             return True, ""
         if getattr(self, "_node_looking", False):
             return False, tr(
-                "Please wait — Node Medic is looking for the Pi over the cable. "
+                "Please wait — Node Medic is looking for the Pi, on the "
+                "cable and by name on your Wi-Fi. "
                 "This starts by itself the moment it answers; there is nothing "
                 "to press. Usually under a minute, but a Pi's very first boot "
                 "expands its card and runs its setup, which can take up to five.")

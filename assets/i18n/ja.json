@@ -259,7 +259,7 @@
   "Pick or find a location first, then load its streets": "まず位置を選ぶか検索し、その後で街路を読み込んでください",
   "Picked from map": "地図から選択",
   "Ping node now": "今すぐノードに ping",
-  "Please wait — Node Medic is looking for the Pi over the cable. This starts by itself the moment it answers; there is nothing to press. Usually under a minute, but a Pi's very first boot expands its card and runs its setup, which can take up to five.": "Please wait — Node Medic is looking for the Pi over the cable. This starts by itself the moment it answers; there is nothing to press. Usually under a minute, but a Pi's very first boot expands its card and runs its setup, which can take up to five.",
+  "Please wait — Node Medic is looking for the Pi, on the cable and by name on your Wi-Fi. This starts by itself the moment it answers; there is nothing to press. Usually under a minute, but a Pi's very first boot expands its card and runs its setup, which can take up to five.": "お待ちください — Node Medic が Pi を探しています。ケーブル経由と、Wi-Fi 上の名前の両方で。応答があれば自動的に進みます。押すものはありません。通常は 1 分以内ですが、カードの初回起動は領域拡張と初期設定を行うため、最大 5 分かかることがあります。",
   "Plug into {port}.": "Plug into {port}.",
   "Plug the Pi into Node Medic with a USB cable and let it start up.\nNothing to press — this moves on by itself when the Pi answers. Up to a minute, longer on a first boot.": "USB ケーブルで Pi を Node Medic につなぎ、起動させてください。\n押すものはありません — Pi が応答すると自動で次へ進みます。最大 1 分、初回起動ではもう少しかかります。",
   "Plug the node into Node Medic with a USB data cable. It will be read and routed from there.": "USB データケーブルでノードを Node Medic につないでください。そこから読み取り、行き先が決まります。",
