@@ -1422,7 +1422,13 @@ class BirthGuideScreen(BoxLayout):
                         # reason the name does: the walkthrough already asked,
                         # and a screen that has to ask again is a screen that
                         # will be answered differently by a tired operator.
-                        share_location=getattr(self, "_share_location", None))
+                        share_location=getattr(self, "_share_location", None),
+                        # So does the radio's serial, captured when the flash
+                        # step handed back (resume() stored it) — the build pins
+                        # /dev/rnode with it, since the radio itself is in the
+                        # operator's pocket by now.
+                        radio_usb_serial=getattr(
+                            self, "_radio_usb_serial", "") or None)
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
@@ -2219,16 +2225,59 @@ class BirthGuideScreen(BoxLayout):
         self.add_widget(wrap)
 
     def _check_pairing(self):
-        """Go on if the pair can work; otherwise say so BEFORE the card write."""
+        """Go on if the pair can work; otherwise say so BEFORE the card write.
+
+        TWO gates, impossibility first. can_cable() has encoded a tested fact
+        since it was written — a Pi 3 B+ has a hub between the SoC and every
+        USB port, so a cable birth is physically impossible — and had no
+        production caller (2026-08-12 handover): a 3 B+ operator got a card
+        baked, eight steps of walkthrough, and a 150-second wait for an
+        enumeration physics forbids. The fact fires here now, before anything
+        is written.
+        """
+        from ui import pi_connectors
+        pi_key = getattr(self, "_pi_key", "")
+        if not pi_connectors.can_cable(pi_key):
+            self._render_cable_verdict(pi_key)
+            return
         try:
             from workflows.power_compat import check as _check
-            v = _check(getattr(self, "_pi_key", ""), getattr(self, "_board_key", ""))
+            v = _check(pi_key, getattr(self, "_board_key", ""))
         except Exception:
             v = None
         if v and v.get("verdict") in ("blocked", "caution"):
             self._render_power_verdict(v)
             return
         self._resume_steps()
+
+    def _render_cable_verdict(self, pi_key):
+        """This Pi cannot be birthed over the cable — full stop, not a risk.
+
+        Unlike the power verdict there is no "you may continue": no cable or
+        hub changes what the board's USB topology is. The board's own reason
+        (pi_connectors.why_not) is shown, and the way onward is a different Pi.
+        """
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = self._render_pick_pi
+        from ui.widgets.callout import Callout
+        from ui import pi_connectors
+        from ui.screens.birth_screen import PI_HOSTS
+        pi_name = next((n for k, n in PI_HOSTS if k == pi_key), "This Pi")
+        c = pi_connectors.get(pi_key)
+        why = (c.why_not if c is not None and not c.can_cable
+               else tr("This board cannot do a cable birth."))
+        wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
+        wrap.add_widget(Callout(
+            tr("{pi} can't be built this way").format(pi=pi_name), why))
+        wrap.add_widget(_line(
+            tr("Nothing was written. Pick a Pi that can take the cable — "
+               "the picture step shows which port it uses."),
+            "15sp", color="text_secondary", h=48))
+        wrap.add_widget(BoxLayout())          # spacer: button row sits low
+        btns = self._back_row(label=tr("←  Pick a different Pi"), height=56)
+        wrap.add_widget(btns)
+        self.add_widget(wrap)
 
     def _resume_steps(self):
         """Carry on with the physical steps, from the TOP of the list.

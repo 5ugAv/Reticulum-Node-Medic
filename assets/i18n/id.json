@@ -248,6 +248,7 @@
   "Not yet — show me the key": "Belum — tunjukkan kuncinya",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Catatan: simpan-dan-teruskan pesan MATI. Beralih ke Rumah ▸ node propagasi penuh agar medic bisa menyimpan pesan untuk ponsel offline.",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "Belum ada yang terdengar — medic belum menerima beacon/announce. Beri waktu sejenak di mesh.",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "Tidak ada yang ditulis. Pilih Pi yang bisa memakai kabel — langkah bergambar menunjukkan port yang dipakai.",
   "Noticed": "Diketahui",
   "Notifications": "Notifikasi",
   "Now Node Medic writes Raspberry Pi OS to the card and sets its name, Wi-Fi and login — a few details, no computer needed.": "Kini Node Medic menulis Raspberry Pi OS ke kartu dan mengatur nama, Wi-Fi, dan login-nya — beberapa detail, tanpa komputer.",
@@ -384,6 +385,7 @@
   "These two won't run together": "Keduanya tidak akan jalan bersama",
   "This ERASES the node completely:": "Ini MENGHAPUS node sepenuhnya:",
   "This board": "Papan ini",
+  "This board cannot do a cable birth.": "Papan ini tidak bisa lahir lewat kabel.",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "Papan ini dulunya {old}. Sekarang kosong — kami menyarankan sebuah nama, dan Anda bebas menggantinya.",
   "This is the only way back in if you forget your password.": "Ini satu-satunya jalan masuk kembali jika Anda lupa kata sandi.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Ini kunci pemulihan Anda — SATU-SATUNYA jalan masuk ke Node Medic ini jika Anda lupa kata sandi. Ia ditampilkan sekali dan tidak pernah lagi.",
@@ -476,6 +478,7 @@
   "{n} faults found": "{n} masalah ditemukan",
   "{n} faults may need individual attention": "{n} masalah mungkin perlu perhatian tersendiri",
   "{n} heard": "{n} terdengar",
+  "{pi} can't be built this way": "{pi} tidak bisa dibangun dengan cara ini",
   "{place} (approximate, from your internet)": "{place} (perkiraan, dari internet Anda)",
   "{who} hasn't been heard from yet.": "{who} hasn't been heard from yet.",
   "{who} is answering, but not happily.": "{who} is answering, but not happily.",
@@ -486,5 +489,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• cabut Pi dari Node Medic — radio membutuhkan soket itu\n• pasang radio yang tadi Anda flash di awal\n• beri Pi catu daya sendiri",
   "←  Back": "←  Kembali",
   "←  Not right — change": "←  Tidak benar — ubah",
+  "←  Pick a different Pi": "←  Pilih Pi lain",
   "⚠  Wipe & rebirth": "⚠  Hapus & lahirkan ulang"
 }

@@ -248,6 +248,7 @@
   "Not yet — show me the key": "Pas encore — montrez-moi la clé",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Note : le stockage-et-retransmission des messages est DÉSACTIVÉ. Passez en Home ▸ nœud de propagation complet pour que le medic conserve les messages des téléphones hors ligne.",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "Rien d'entendu pour l'instant : le medic n'a reçu aucune balise/annonce. Laissez-lui un moment sur le maillage.",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "Rien n'a été écrit. Choisissez un Pi qui accepte le câble — l'étape illustrée montre quel port utiliser.",
   "Noticed": "Remarqué",
   "Notifications": "Notifications",
   "Now Node Medic writes Raspberry Pi OS to the card and sets its name, Wi-Fi and login — a few details, no computer needed.": "Node Medic écrit Raspberry Pi OS sur la carte et règle son nom, son Wi-Fi et son identifiant : quelques détails, sans ordinateur.",
@@ -384,6 +385,7 @@
   "These two won't run together": "Ces deux-là ne fonctionneront pas ensemble",
   "This ERASES the node completely:": "Ceci EFFACE complètement le nœud :",
   "This board": "Cette carte",
+  "This board cannot do a cable birth.": "Cette carte ne peut pas faire une naissance par câble.",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "Cette carte était {old}. Elle est vierge maintenant — nous avons proposé un nom, et vous pouvez le changer.",
   "This is the only way back in if you forget your password.": "C'est le seul moyen de rentrer si vous oubliez votre mot de passe.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Voici votre clé de récupération — le SEUL moyen d'accéder à ce Node Medic si vous oubliez votre mot de passe. Elle s'affiche une fois et jamais plus.",
@@ -476,6 +478,7 @@
   "{n} faults found": "{n} défauts trouvés",
   "{n} faults may need individual attention": "{n} défauts peuvent nécessiter une attention individuelle",
   "{n} heard": "{n} entendus",
+  "{pi} can't be built this way": "{pi} ne peut pas être construit ainsi",
   "{place} (approximate, from your internet)": "{place} (approximatif, d'après votre internet)",
   "{who} hasn't been heard from yet.": "{who} hasn't been heard from yet.",
   "{who} is answering, but not happily.": "{who} is answering, but not happily.",
@@ -486,5 +489,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• débranchez le Pi de Node Medic — la radio a besoin de cette prise\n• branchez la radio flashée au début\n• donnez au Pi sa propre alimentation",
   "←  Back": "←  Retour",
   "←  Not right — change": "←  Ce n'est pas ça — modifier",
+  "←  Pick a different Pi": "←  Choisir un autre Pi",
   "⚠  Wipe & rebirth": "⚠  Effacer et renaître"
 }

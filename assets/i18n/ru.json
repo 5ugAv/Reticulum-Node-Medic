@@ -248,6 +248,7 @@
   "Not yet — show me the key": "Ещё нет — покажите ключ",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Примечание: хранение и пересылка сообщений ВЫКЛ. Переключитесь на Дом ▸ полный узел распространения, чтобы medic хранил сообщения для офлайн-телефонов.",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "Пока ничего не слышно — medic не получил маяк/announce. Дайте ему время в mesh-сети.",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "Ничего не записано. Выберите Pi, который принимает кабель — шаг с картинкой показывает нужный порт.",
   "Noticed": "Замечено",
   "Notifications": "Уведомления",
   "Now Node Medic writes Raspberry Pi OS to the card and sets its name, Wi-Fi and login — a few details, no computer needed.": "Теперь Node Medic записывает Raspberry Pi OS на карту и задаёт имя, Wi-Fi и логин — несколько деталей, компьютер не нужен.",
@@ -384,6 +385,7 @@
   "These two won't run together": "Эти двое вместе не заработают",
   "This ERASES the node completely:": "Это ПОЛНОСТЬЮ стирает узел:",
   "This board": "Эта плата",
+  "This board cannot do a cable birth.": "Эта плата не может пройти рождение по кабелю.",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "Эта плата была {old}. Теперь она пуста — мы предложили имя, и вы можете заменить его любым.",
   "This is the only way back in if you forget your password.": "Это единственный путь обратно, если вы забудете пароль.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Это ваш ключ восстановления — ЕДИНСТВЕННЫЙ путь в этот Node Medic, если вы забудете пароль. Он показывается один раз и больше никогда.",
@@ -476,6 +478,7 @@
   "{n} faults found": "Найдено неисправностей: {n}",
   "{n} faults may need individual attention": "{n} неисправностей могут требовать отдельного внимания",
   "{n} heard": "{n} слышно",
+  "{pi} can't be built this way": "{pi} нельзя собрать таким способом",
   "{place} (approximate, from your internet)": "{place} (приблизительно, по вашему интернету)",
   "{who} hasn't been heard from yet.": "{who} hasn't been heard from yet.",
   "{who} is answering, but not happily.": "{who} is answering, but not happily.",
@@ -486,5 +489,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• отключите Pi от Node Medic — радио нужен этот разъём\n• подключите радио, прошитое в самом начале\n• дайте Pi собственный блок питания",
   "←  Back": "←  Назад",
   "←  Not right — change": "←  Не то — изменить",
+  "←  Pick a different Pi": "←  Выбрать другой Pi",
   "⚠  Wipe & rebirth": "⚠  Стереть и переродить"
 }

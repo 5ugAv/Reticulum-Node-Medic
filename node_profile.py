@@ -51,6 +51,12 @@ class RadioConfig:
     serial_port: str = "/dev/ttyUSB0"
     firmware_version: Optional[str] = None
     firmware_hash_set: bool = False
+    #: The radio's own USB hardware serial, read by the MEDIC when it flashed
+    #: the board. On a Pi birth the radio is never attached to the node during
+    #: the build (it rides in the operator's pocket), so the node-side probe
+    #: finds nothing — this carried value is what lets /dev/rnode be pinned to
+    #: THIS radio instead of any tty from five vendors. "" = never read.
+    usb_serial: str = ""
 
 
 @dataclass

@@ -248,6 +248,7 @@
   "Not yet — show me the key": "まだです — キーを表示",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "注意: メッセージの蓄積転送がオフです。medic がオフラインのスマホのメッセージを保持できるよう、ホーム ▸ 完全な伝播ノードに切り替えてください。",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "まだ何も受信していません — medic はビーコン/announce を受信していません。メッシュ上で少し待ってください。",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "何も書き込まれていません。ケーブルを使えるPiを選んでください — 画像のステップでどのポートを使うか示します。",
   "Noticed": "検知",
   "Notifications": "通知",
   "Now Node Medic writes Raspberry Pi OS to the card and sets its name, Wi-Fi and login — a few details, no computer needed.": "Node Medic がカードに Raspberry Pi OS を書き込み、名前・Wi-Fi・ログインを設定します — いくつかの項目のみ、パソコンは不要です。",
@@ -384,6 +385,7 @@
   "These two won't run together": "この 2 つは一緒には動きません",
   "This ERASES the node completely:": "これはノードを完全に消去します:",
   "This board": "このボード",
+  "This board cannot do a cable birth.": "このボードはケーブルでの誕生ができません。",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "このボードは以前 {old} でした。今は空です — 名前を提案しましたが、好きなものに変えられます。",
   "This is the only way back in if you forget your password.": "パスワードを忘れた場合、これが戻る唯一の方法です。",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "これがあなたの復旧キーです — パスワードを忘れた場合に この Node Medic へ入る唯一の方法です。表示は一度きりで、二度と表示されません。",
@@ -476,6 +478,7 @@
   "{n} faults found": "{n} 件の問題が見つかりました",
   "{n} faults may need individual attention": "{n} 件の問題は個別の対応が必要な場合があります",
   "{n} heard": "{n} 件受信",
+  "{pi} can't be built this way": "{pi} はこの方法では組み立てられません",
   "{place} (approximate, from your internet)": "{place}（おおよそ、あなたのインターネットから）",
   "{who} hasn't been heard from yet.": "{who} hasn't been heard from yet.",
   "{who} is answering, but not happily.": "{who} is answering, but not happily.",
@@ -486,5 +489,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• Pi を Node Medic から外す — そのソケットを無線機が使います\n• 最初に書き込んだ無線機を挿す\n• Pi に専用の電源をつなぐ",
   "←  Back": "←  戻る",
   "←  Not right — change": "←  違う — 変更する",
+  "←  Pick a different Pi": "←  別のPiを選ぶ",
   "⚠  Wipe & rebirth": "⚠  消去して再誕"
 }
