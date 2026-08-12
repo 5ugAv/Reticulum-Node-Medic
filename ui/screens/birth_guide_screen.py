@@ -54,12 +54,30 @@ _PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim,
 
 
 def _line(text, size, color="text_primary", bold=False, h=None):
-    lbl = Label(text=text, font_size=size, bold=bold, halign="left", valign="middle",
+    """A left-aligned line of copy at DESIGN *size*, routed through the type
+    scale (ui/theme.py) like every other screen.
+
+    *h* is a FLOOR, not a lid. These screens pin heights that were measured
+    against the old, smaller font — several of them hold three or four wrapped
+    lines — so enlarging the text inside a fixed row is exactly how the last
+    type-scale attempt clipped its content. The row therefore grows past *h*
+    whenever the wrapped text needs more, and never shrinks below it.
+    """
+    lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                halign="left", valign="middle",
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     if h is not None:
+        floor = dp(max(h, theme.line_dp(size)))
         lbl.size_hint_y = None
-        lbl.height = dp(h)
-    lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        lbl.height = floor
+
+        def _grow(*_a):
+            lbl.text_size = (lbl.width, None)
+            lbl.texture_update()
+            lbl.height = max(floor, lbl.texture_size[1])
+        lbl.bind(width=_grow, text=_grow)
+    else:
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
 
 
@@ -223,8 +241,11 @@ class BirthGuideScreen(BoxLayout):
         anim = ConnectBoardAnim()
         step = WizardStep(
             index=0, total=1, title=tr("Connect your node"),
-            body=tr("Plug the node into Node Medic with a USB data cable. I'll detect "
-                    "it and decide whether to build it or adopt it as kin."),
+            # The medic speaks as "Node Medic" everywhere else; "I'll detect
+            # it" was the one first-person sentence in the birth flow. And
+            # what it detects is this screen's job, not the operator's.
+            body=tr("Plug the node into Node Medic with a USB data cable. It "
+                    "will be read and routed from there."),
             anim=anim,
             hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
             next_text=tr("Choose manually  →"), on_next=self._render_intro,
@@ -867,9 +888,8 @@ class BirthGuideScreen(BoxLayout):
         head.add_widget(_line(tr("What are you building?"), "26sp", bold=True))
         head.add_widget(HelpButton())
         wrap.add_widget(head)
-        wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above. Node Medic "
-                                 "will guide you the rest of the way."),
-                              "16sp", color="text_secondary", h=56))
+        wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above."),
+                              "16sp", color="text_secondary", h=32))
         # Once the board has been READ, drop the builds it cannot do. RTNode-2400
         # needs an ESP32-S3; a classic ESP32 (LoRa32, T-Beam, Heltec V2) can only
         # ever be an RNode. Offering an impossible choice and failing later
@@ -1186,9 +1206,8 @@ class BirthGuideScreen(BoxLayout):
         # offer them "rak3" with nothing marking it as a decision still to make.
         was = getattr(self, "_rebirth_of", "")
         if was:
-            body = tr("This board was {old}. It's blank now, so it needs a name "
-                      "for its new life — we've suggested the next one, and you "
-                      "can change it to anything.").format(old=was)
+            body = tr("This board was {old}. It's blank now — we've suggested "
+                      "a name, and you can change it to anything.").format(old=was)
         # A name already in the family is warned about ONCE, then allowed —
         # see _name_next. Re-rendering with the warning is what puts it on
         # screen, so the button changes with it.
@@ -1962,12 +1981,11 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line(tr("Which radio board is this?"), "24sp", bold=True,
                               h=40))
         wrap.add_widget(_line(
-            tr("Node Medic has narrowed it to these — they share the same chip "
-               "and the same kind of USB connection, so only you can see which "
-               "one you're holding."), "15sp", color="text_secondary", h=64))
+            tr("Same chip, same USB — only you can see which one you're "
+               "holding."), "15sp", color="text_secondary", h=32))
         wrap.add_widget(_line(
-            tr("Answer once and Node Medic remembers this exact board — you "
-               "won't be asked for it again."), "13.5sp", color="green", h=24))
+            tr("Answer once; Node Medic remembers this board."),
+            "13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
@@ -2082,9 +2100,8 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line(tr("Which Raspberry Pi is this?"), "24sp", bold=True,
                               h=40))
         wrap.add_widget(_line(
-            tr("A Pi waiting with a blank card only reports its chip family, "
-               "which several models share — so this one is down to you."),
-            "15sp", color="text_secondary", h=54))
+            tr("Several models share one chip family — only you can tell them "
+               "apart."), "15sp", color="text_secondary", h=32))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
         col.bind(minimum_height=col.setter("height"))
@@ -2141,19 +2158,22 @@ class BirthGuideScreen(BoxLayout):
                         if k == getattr(self, "_pi_key", "")), "this Pi")
 
         wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
-        wrap.add_widget(_line("Is this what you're holding?", bold=True,
+        # WRAPPED FOR TRANSLATION. This screen and the "recognised from a
+        # previous birth" line below were the only user-facing strings in the
+        # birth flow that never went through tr() — added in a hurry on
+        # 2026-08-09 and missed by the catalogs ever since.
+        wrap.add_widget(_line(tr("Is this what you're holding?"), bold=True,
                               size="22sp", h=38))
-        wrap.add_widget(_line("Check both before Node Medic writes anything — "
-                              "the wrong Pi here makes a card that boots and "
-                              "never appears.", size="14.5sp",
-                              color="text_secondary", h=44))
+        wrap.add_widget(_line(tr("The wrong Pi makes a card that boots and "
+                                 "never appears."), size="14.5sp",
+                              color="text_secondary", h=28))
         # When the radio came from memory rather than from a tap this lap, say
         # so — otherwise a board nobody chose just appears, and a confirmation
         # you don't know the origin of is one you can't really give.
         if (getattr(self, "_detected", None) or {}).get("remembered"):
             wrap.add_widget(_line(
-                "Radio recognised from a previous birth — you told Node Medic "
-                "what this board is.", size="13.5sp", color="green", h=24))
+                tr("Radio recognised — you told Node Medic what it is."),
+                size="13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
@@ -2189,7 +2209,7 @@ class BirthGuideScreen(BoxLayout):
         for w in list(btns.children):
             if isinstance(w, BoxLayout):
                 btns.remove_widget(w)
-        yes = Button(text="Yes, that's right  →", bold=True, font_size="17sp",
+        yes = Button(text=tr("Yes, that's right  →"), bold=True, font_size="17sp",
                      background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                      color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -2327,9 +2347,9 @@ class BirthGuideScreen(BoxLayout):
         if (result or {}).get("build_failed"):
             at = max(0, at - 1)
             self._gate_warning = tr(
-                "That build didn't finish. The step that failed is named in "
-                "the build log, with the reason under it. Fix that, then tap "
-                "Try again — nothing here is lost.")
+                "That build didn't finish. The failed step and its reason are "
+                "in the build log. Fix it, then tap Try again — nothing here "
+                "is lost.")
         self._i = at
         if self._i >= len(steps):
             self._finish()
@@ -2408,15 +2428,13 @@ class BirthGuideScreen(BoxLayout):
             return True, ""
         if getattr(self, "_node_looking", False):
             return False, tr(
-                "Please wait — Node Medic is looking for the Pi over the cable. "
-                "This starts by itself the moment it answers; there is nothing "
-                "to press. Usually under a minute, but a Pi's very first boot "
-                "expands its card and runs its setup, which can take up to five.")
+                "Please wait — Node Medic is looking for the Pi over the "
+                "cable. It starts by itself; there is nothing to press. Under "
+                "a minute usually, up to five on a first boot.")
         return False, tr(
             "Node Medic can't reach the Pi — not over the cable, and not by "
-            "name on your Wi-Fi either. Check it is plugged in with a DATA "
-            "cable and that its power light is on. A Pi takes 30–45 seconds "
-            "from power to answering, and up to two minutes on its very first "
+            "name on Wi-Fi. Check the DATA cable, and that its power light is "
+            "on. Allow 30–45 seconds from power, up to two minutes on a first "
             "boot.")
 
     def _radio_gate(self):
@@ -2434,12 +2452,14 @@ class BirthGuideScreen(BoxLayout):
         board = getattr(self, "_board_key", "") or getattr(self, "_board", "")
         if not board:
             return False, tr(
-                "Node Medic can't see a radio board yet. Plug it into Node "
-                "Medic (not into the Pi) and wait for it to be recognised.")
+                "No radio board seen yet. Plug it into Node Medic — not into "
+                "the Pi.")
+        # The reasoning that used to follow ("a radio that can't work costs a
+        # four-minute card write...") is the step's own body, two lines above
+        # this box. A refusal repeats the argument at the worst moment.
         return False, tr(
             "This radio hasn't been flashed and verified yet. Finish it here "
-            "first — a radio that can't work costs a four-minute card write to "
-            "find out later, and the failure turns up blamed on the Pi.")
+            "first.")
 
     def _render_step_zero(self):
         self._i = 0
@@ -2587,10 +2607,9 @@ class BirthGuideScreen(BoxLayout):
         else:
             how = tr("by Node Medic")
         wrap.add_widget(_line(
-            tr("The radio was flashed and verified, the card written, and the "
-               "Pi provisioned {how}. It lives in VITALS from now on — that is "
-               "where its health beacons arrive.").format(how=how),
-            "15sp", color="text_secondary", h=72))
+            tr("Radio flashed and verified, card written, Pi provisioned "
+               "{how}. It lives in VITALS from now on.").format(how=how),
+            "15sp", color="text_secondary", h=52))
         wrap.add_widget(_line(
             tr("It is off Node Medic and running on its own power now."),
             "14.5sp", color="green", h=26))
@@ -2604,9 +2623,8 @@ class BirthGuideScreen(BoxLayout):
         # build the operator has just spent twenty minutes on (operator asked
         # for this warning, 2026-08-10, on the first birth that ever completed).
         wrap.add_widget(_line(
-            tr("Give it about two minutes first. It has to boot, start the "
-               "mesh software and announce itself before Node Medic can hear "
-               "it — until then VITALS will not show it, and nothing is wrong."),
+            tr("Give it two minutes to boot and announce itself. Until then "
+               "VITALS will not show it, and nothing is wrong."),
             "14sp", color="amber", h=54))
         wrap.add_widget(Widget())
         row = BoxLayout(orientation="horizontal", size_hint_y=None,

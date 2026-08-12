@@ -14,33 +14,43 @@ from ui.i18n import tr  # i18n: wrapped — guided-birth titles/bodies/hints/war
 #: key -> (title, subtitle).
 BIRTH_PATHS = [
     ("host", tr("A radio for phone or computer (RNode)"),
-     tr("Just flash a radio (RNode) to plug into a phone or computer you've already set up.")),
+     tr("Plugs into a phone or computer you've already set up.")),
     # NOT "standalone radio" — operators wanting a plain RNode read that as
     # "just the radio" and walked into an RTNode build (2026-07-31).
     ("radio", tr("A mesh transport node (RTNode-2400)"),
-     tr("Runs the mesh by itself — no phone, computer or Pi attached. Reports "
-        "its health back and is remotely repairable.")),
+     tr("Runs the mesh on its own — no phone, computer or Pi. Reports its "
+        "health; repairable remotely.")),
     ("pi", tr("A Raspberry Pi + radio"),
-     tr("A propagation node - reports its health back and is remotely repairable, and "
-        "can hold messages for users who aren't online. It can also mesh LoRa radio to "
-        "Wi-Fi, Bluetooth and the internet. The best node to future-proof the network.")),
+     tr("Holds messages for users who are offline, and bridges LoRa to Wi-Fi, "
+        "Bluetooth and the internet. The best node to future-proof the "
+        "network.")),
 ]
 
 #: The antenna-first step. It is NOT part of the guided lists — it's the very first
 #: BIRTH screen (``birth_guide_screen._render_antenna``), shown BEFORE the detect
 #: landing powers the board over USB, since that's when a missing antenna can fry
 #: the radio. Every birth path reaches detect, so one landing covers them all.
+#: ONE antenna warning, worded once. It used to appear here in one form and on
+#: the Pi path's radio step in another — the same hazard in two shapes is two
+#: things to read and neither becomes familiar. Same string, same amber box,
+#: learned once (the operator meets it twice in a Pi build).
+NO_ANTENNA_WARNING = tr("Never power a radio board with no antenna — "
+                        "transmitting without one can permanently damage it.")
+
 ANTENNA_STEP = {
-    "title": tr("Attach the antenna to the radio board"),
-    "body": tr("Connect the antenna to the radio board through its pigtail cable — you "
-               "need BOTH ends attached. Push the tiny gold U.FL / IPEX plug straight "
-               "down onto the matching socket on the radio board until it clicks, AND "
-               "make sure a 915 MHz antenna (or one rated for your band) is screwed onto "
-               "the SMA connector at the other end of the cable."),
-    "hint": tr("The tiny U.FL / IPEX plug is fragile — connect it once and leave it. "
-               "Repeated unplugging weakens the connector and it can snap off."),
-    "warning": tr("Never power a radio board with no antenna attached — transmitting "
-                  "without one can permanently damage its radio (the power amplifier)."),
+    # "both ends" IS the instruction — a pigtail with only the SMA end done
+    # looks finished and transmits into nothing. Putting it in the title costs
+    # two words and buys back a whole line of body.
+    "title": tr("Attach the antenna — both ends"),
+    # DOT POINTS, and the animation carries the motion. The old body spent 64
+    # words describing a push and a screw that ConnectAntennaAnim already draws;
+    # what words are needed for is the part the picture cannot assert — that
+    # BOTH ends count, and which end is which.
+    "body": tr("• gold U.FL plug onto the radio board, until it clicks\n"
+               "• 915 MHz antenna onto the SMA end of the pigtail"),
+    "hint": tr("The U.FL plug is fragile: connect it once, leave it. Use your "
+               "band's antenna."),
+    "warning": NO_ANTENNA_WARNING,
     "anim": "connect_antenna",
 }
 
@@ -101,19 +111,25 @@ LOCATION_SHARE_STEP = {
 #: (see ``ANTENNA_STEP`` + ``birth_guide_screen._render_antenna``).
 _STEPS = {
     "radio": [
-        {"title": tr("Connect your radio board"),
-         "body": tr("Plug the radio board into Node Medic with a USB cable. Node Medic "
-                    "powers it and will detect it automatically."),
+        # SAME WORDS AS THE host STEP. Both are "plug the radio into the medic",
+        # and they were written twice, differently ("Connect your radio board" /
+        # "Connect the radio board"). One sentence for one action: the operator
+        # who builds both kinds reads it once, and there is one string to
+        # translate instead of two near-identical ones.
+        {"title": tr("Connect the radio board"),
+         "body": tr("Plug the radio board into Node Medic with a USB cable."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
          "anim": "connect_board"},
         # (The old third page — 'Let's set it up', a narration of what the
         # button was about to do — was removed as unnecessary; operator
         # decision 2026-07-31. This page now carries the Start-setup handoff.)
         {"title": tr("What happens next"),
-         "body": tr("Nothing is running yet — this page just explains what's coming. "
-                    "After flashing, Node Medic joins your node's own setup Wi-Fi, sets "
-                    "its name and radio settings, and puts it on your network — no manual "
-                    "web portal needed."),
+         # "Nothing is running yet" went: the title says so, and no button has
+         # been pressed. "No manual web portal needed" went too — a promise
+         # about a thing the operator has never seen and now never will.
+         "body": tr("After flashing, Node Medic joins the node's own setup "
+                    "Wi-Fi, names it, sets its radio, and puts it on your "
+                    "network."),
          "hint": tr("The medic briefly leaves your Wi-Fi to talk to the node, then rejoins."),
          "anim": "provision",             # ANIMATION PLACEHOLDER — refine with the designer
          "next": tr("Start setup  →")},
@@ -145,19 +161,21 @@ _STEPS = {
         # pairing that can't work is caught before the four-minute write instead
         # of after it. It also puts the antenna warning where the operator is
         # actually holding the radio.
-        {"title": tr("Connect the radio board to Node Medic"),
-         "body": tr("Start with the radio. Plug it into Node Medic — NOT into "
-                    "the Pi. Node Medic powers and flashes it here, where "
-                    "there's plenty of power, and remembers which radio it is "
-                    "so the Pi finds it later."),
+        {"title": tr("Connect the radio to Node Medic"),
+         # THE ACTION, THEN THE ONE SURPRISE. Everything a Pi-path operator
+         # expects is that the radio goes on the Pi, so "not into the Pi" is
+         # the only part of this that has to be read. What went: "Start with
+         # the radio" (the step counter says so), and "remembers which radio it
+         # is so the Pi finds it later" — the medic remembers which BOARD MODEL
+         # this chip is, which is not the same claim.
+         "body": tr("Plug the radio into Node Medic — not into the Pi. It is "
+                    "flashed here, where there is power to spare."),
          # NO HINT HERE. The antenna caution used to appear twice on this one
          # screen — as the amber warning box below, and again as a yellow hint
          # in almost the same words. Two identical alarms side by side teach the
          # operator to skim both, which is the opposite of what a warning is
          # for. One warning, once, in the heavier style.
-         "warning": tr("Never power a radio board with no antenna attached — "
-                       "transmitting without one can permanently damage its "
-                       "radio."),
+         "warning": NO_ANTENNA_WARNING,
          "anim": "connect_board",
          # THE GATE. Finish the radio before anything else starts.
          #
@@ -189,11 +207,14 @@ _STEPS = {
         # instructions on every refusal, burying the reason in text the operator
         # has already read.
         {"title": tr("The radio has to work first"),
-         "body": tr("Node Medic flashes the radio and asks it to report back "
-                    "before anything else begins. A radio that can't answer "
-                    "isn't a radio yet, and the rest of this build assumes one."),
-         "hint": tr("If it failed, go back and try again — a different USB port "
-                    "or a fresh cable is worth trying before a different board."),
+         # A VERDICT SCREEN, so the words are the verdict. The old third
+         # sentence ("a radio that can't answer isn't a radio yet, and the rest
+         # of this build assumes one") argued the case the title has already
+         # made.
+         "body": tr("Node Medic flashes the radio, then asks it to answer "
+                    "back. Nothing else starts until it does."),
+         "hint": tr("If it failed: another USB port, or a fresh cable, before "
+                    "another board."),
          # NO ANIMATION. This step is a VERDICT, not an action — there is nothing
          # for the operator to do with their hands. It used to loop
          # connect_board, a picture of a board descending onto Node Medic, while
@@ -212,9 +233,12 @@ _STEPS = {
         # boot-looping V4 added 97 USB events to exactly that window. Its next
         # appearance should be on the PI, at the end.
         {"title": tr("Take the radio out of Node Medic"),
-         "body": tr("The radio is done. Unplug it from Node Medic and set it "
-                    "aside — it goes onto the Raspberry Pi at the very end. "
-                    "Leaving it here draws power the Pi is about to need."),
+         # ACTION IN THE BODY, REASON IN THE HINT — the operator's own rule for
+         # walkthrough steps ("bare action, nothing else"). The reason is worth
+         # keeping, just not in the way of the instruction.
+         "body": tr("Unplug the radio and set it aside. It goes onto the Pi at "
+                    "the very end."),
+         "hint": tr("Left plugged in, it draws power the Pi is about to need."),
          "anim": "disconnect_board"},
         # ONE ROUTE FOR EVERY BOARD — the medic's own card reader (operator
         # decision, 2026-08-06). This replaced "card into the Pi, Pi becomes its
@@ -229,14 +253,16 @@ _STEPS = {
         # which is the worst possible failure for a field tool. One uniform
         # route is teachable, demonstrable, and behaves the same everywhere.
         {"title": tr("Put the SD card into Node Medic"),
+         # The second sentence explained why the medic writes it rather than
+         # the Pi. That was an argument against a route this flow no longer
+         # offers, made to an operator who is holding a card over a slot.
          "body": tr("Slide the blank microSD card into the card reader on Node "
-                    "Medic. Node Medic writes the whole system onto it here, "
-                    "where it can check its own work before you carry it away."),
+                    "Medic."),
          "anim": "insert_sd",
          "next": tr("Write the card  \u2192"), "screen": "pi_imager"},
         {"title": tr("Move the card to the Raspberry Pi"),
-         "body": tr("The card is ready. Take it out of the reader and slide it "
-                    "into the Pi's own card slot."),
+         "body": tr("The card is written. Move it into the Pi's own card "
+                    "slot."),
          # BOARD-AWARE, and it earns the change. The card leaves the medic's
          # reader, crosses, and enters the slot WHERE THAT MODEL'S SLOT ACTUALLY
          # IS — measured per board, not assumed from one of them.
@@ -255,31 +281,37 @@ _STEPS = {
         # which is the same symptom as a charge-only cable and a dead gadget:
         # three suspects, one of them free to rule out (operator, 2026-08-10,
         # asked for it in the title).
-        {"title": tr("Check the SD card is in the Pi, then connect it to "
-                     "Node Medic"),
+        {"title": tr("Card in the Pi? Connect it to Node Medic"),
          # AND SAY HOW LONG IT TAKES. The step advances itself, so there is
          # nothing to press — which from the operator's side is indistinguishable
          # from a screen that has hung (asked for outright, 2026-08-10: "user
          # should also be told at this stage that medic will take up to 60
          # seconds to recognise attached pi, please wait"). A Pi answers in
          # 30-45 s from power; a first boot expands the card and takes longer.
+         # 69 words down to 30. What went: "It boots straight from the card you
+         # just wrote \u2014 no Wi-Fi and no network setup anywhere in this build."
+         # That is the architecture of the flow, told to someone holding a
+         # cable; it changes nothing they do here. What stayed is the wait,
+         # word for word in substance, because a self-advancing screen with no
+         # button is indistinguishable from a hung one.
          "body": tr("Plug the Pi into Node Medic with a USB cable and let it "
-                    "start up. It boots straight from the card you just wrote "
-                    "\u2014 no Wi-Fi and no network setup anywhere in this "
-                    "build.\n\nNode Medic can take up to a minute to see it, "
-                    "and longer on a card's first boot. There is nothing to "
-                    "press \u2014 this moves on by itself the moment the Pi "
-                    "answers."),
+                    "start up.\nNothing to press \u2014 this moves on by itself "
+                    "when the Pi answers. Up to a minute, longer on a first "
+                    "boot."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.
-         "hint": tr("Use the Pi's DATA port, and a cable that carries DATA \u2014 a "
-                    "charge-only lead will power the Pi perfectly and never "
-                    "show up here. On a Pi Zero it's the inner micro-USB, "
-                    "nearer the mini-HDMI; the outer one is PWR IN and cannot "
-                    "carry data. On a Pi 3A+ it's the full-size USB-A socket "
-                    "\u2014 its micro-USB is power only. Use a short, thick cable "
-                    "\u2014 a thin or coiled one drops the link."),
+         # THE FALLBACK ONLY. When the Pi model is known, guide_steps() swaps
+         # in pi_connectors.connect_hint() and this never renders \u2014 so it has
+         # to cover two boards at once, which is why it is the longest hint in
+         # the flow. Dot-pointed rather than run together: the operator is
+         # looking for their own board's line, not reading a paragraph.
+         "hint": tr("A short, thick DATA cable into the Pi's DATA port. A "
+                    "charge-only lead never shows up; a thin or coiled one "
+                    "drops the link.\n"
+                    "\u2022 Pi Zero: inner micro-USB, nearer the mini-HDMI (outer "
+                    "is PWR IN)\n"
+                    "\u2022 Pi 3A+: the full-size USB-A"),
          "anim": "connect_pi"},
         # THE HAND-OFF, AND THE ONLY STEP THAT MAKES THIS A NODE.
         #
@@ -327,12 +359,15 @@ _STEPS = {
         # The gate is what makes it safe: provisioning cannot start until the
         # medic has actually reached the node at the other end of the cable.
         {"title": tr("Bring the node to life"),
-         "body": tr("The two halves are joined, but the Pi is still just a "
-                    "Raspberry Pi. Node Medic reaches it over the cable and "
-                    "installs the mesh software, then issues its birth "
+         # "The two halves are joined" was NOT TRUE HERE and had to go. At this
+         # step the radio was taken off the medic four screens ago and is lying
+         # on the bench; it joins the Pi on the step AFTER this one. Only the
+         # Pi is on the cable.
+         "body": tr("The Pi is still just a Raspberry Pi. Node Medic installs "
+                    "the mesh software over the cable, then issues its birth "
                     "certificate."),
-         "hint": tr("Nothing to unplug. Leave the Pi on Node Medic until this "
-                    "finishes — it is being worked on through that cable."),
+         "hint": tr("Leave the Pi on Node Medic — it is being worked on "
+                    "through that cable."),
          "gate": "node_online",
          "screen": "birth",
          "job": "pi",
@@ -350,14 +385,15 @@ _STEPS = {
          # (operator, reading it off the screen, 2026-08-09).
          "anim": "provision_cable"},
         {"title": tr("Unplug the Pi, put the radio on it, give it power"),
-         "body": tr("The software is on. Unplug the Pi from Node Medic \u2014 that "
-                    "socket is the one the radio needs \u2014 plug in the radio you "
-                    "flashed at the start, and give the Pi its own power "
-                    "supply. That's the node built: from now on it talks to "
-                    "the mesh through this radio, on its own."),
-         "hint": tr("A DATA cable to the radio, same rule as everywhere else, "
-                    "and keep it short \u2014 the Pi powers the radio now, so its "
-                    "supply has to carry both."),
+         # THREE ACTIONS, SO THREE DOT POINTS. It was one 55-word paragraph
+         # with the three buried in it, ending in a sentence ("That's the node
+         # built...") that the green button underneath already says.
+         "body": tr("\u2022 unplug the Pi from Node Medic \u2014 the radio needs that "
+                    "socket\n"
+                    "\u2022 plug in the radio you flashed at the start\n"
+                    "\u2022 give the Pi its own power supply"),
+         "hint": tr("A short DATA cable to the radio \u2014 the Pi's supply now "
+                    "carries both."),
          # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
          # the medic senses the board itself. It cannot sense this one: the radio
          # is on the PI now, on the Pi's USB, not the medic's. Hiding Next here
@@ -369,8 +405,9 @@ _STEPS = {
         # (The old second page — "Let's flash it", narrating its own button —
         # was removed like its radio/pi siblings; operator decision 2026-07-31.)
         {"title": tr("Connect the radio board"),
-         "body": tr("Plug the radio board into Node Medic with a USB cable so it can be "
-                    "flashed as an RNode."),
+         # "so it can be flashed as an RNode" went: the card they just tapped
+         # said RNode, and this screen's job is the plugging in.
+         "body": tr("Plug the radio board into Node Medic with a USB cable."),
          "hint": tr("Use a DATA USB cable — a charge-only cable won't be seen."),
          "anim": "connect_board",
          "next": tr("Start setup  →")},

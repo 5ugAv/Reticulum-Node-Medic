@@ -20,12 +20,12 @@ def test_step_counts_per_path():
     # FINISHED first and must pass before anything else starts, then it comes
     # off the medic, and it goes onto the Pi at the very end.
     assert [s["title"] for s in guide_steps("pi")] == [
-        "Connect the radio board to Node Medic",   # -> BIRTH, flashes + verifies
+        "Connect the radio to Node Medic",         # -> BIRTH, flashes + verifies
         "The radio has to work first",             # GATE: radio_ready
         "Take the radio out of Node Medic",
         "Put the SD card into Node Medic",         # -> pi_imager
         "Move the card to the Raspberry Pi",
-        "Check the SD card is in the Pi, then connect it to Node Medic",
+        "Card in the Pi? Connect it to Node Medic",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
         "Unplug the Pi, put the radio on it, give it power",
     ]
@@ -40,11 +40,13 @@ def test_the_radio_is_finished_before_anything_else_begins():
     written, and an evening went on diagnosing a Pi while the dead radio
     re-enumerated 97 times on the same bus.
     """
+    # KEYED ON WHAT EACH STEP *DOES*, not on its wording. Titles get reworded
+    # (they were shortened wholesale on 2026-08-11); the order they run in is
+    # the thing this test exists to hold still.
     steps = guide_steps("pi")
-    titles = [s["title"] for s in steps]
-    radio = titles.index("Connect the radio board to Node Medic")
+    radio = next(i for i, s in enumerate(steps) if s.get("job") == "host")
     gate = next(i for i, s in enumerate(steps) if s.get("gate") == "radio_ready")
-    card = titles.index("Put the SD card into Node Medic")
+    card = next(i for i, s in enumerate(steps) if s.get("screen") == "pi_imager")
     assert radio < gate < card, "the gate must stand between the radio and the card"
     assert steps[radio].get("screen") == "birth", \
         "the radio step must actually hand off to the flash, not just say 'plug it in'"
@@ -56,10 +58,9 @@ def test_the_operator_is_told_to_take_the_radio_back_off():
     current the Pi is about to want, and a board left on the bus keeps
     re-enumerating in the window the medic is watching for the Pi."""
     steps = guide_steps("pi")
-    titles = [s["title"] for s in steps]
-    out = titles.index("Take the radio out of Node Medic")
-    assert out < titles.index("Put the SD card into Node Medic")
-    assert out < titles.index("Check the SD card is in the Pi, then connect it to Node Medic")
+    out = next(i for i, s in enumerate(steps) if s.get("anim") == "disconnect_board")
+    assert out < next(i for i, s in enumerate(steps) if s.get("anim") == "insert_sd")
+    assert out < next(i for i, s in enumerate(steps) if s.get("anim") == "connect_pi")
 
 
 def test_the_walkthrough_ends_by_joining_the_two_halves():
@@ -151,7 +152,7 @@ def test_pi_path_does_the_RADIO_before_the_card():
     still costs nothing to change.
     """
     titles = [s["title"] for s in guide_steps("pi")]
-    i_radio = [i for i, t in enumerate(titles) if "radio board" in t.lower()][0]
+    i_radio = [i for i, t in enumerate(titles) if "radio" in t.lower()][0]
     i_card = [i for i, t in enumerate(titles) if "SD card" in t][0]
     assert i_radio < i_card, titles
 
@@ -189,12 +190,12 @@ def test_no_replug_is_needed_because_the_card_is_written_first():
     itself (uhubctl on the Pi 5 root hub does not cut VBUS; measured). Writing
     the card before it goes near the Pi removes the step, and with it the
     commonest place for the flow to silently stall."""
-    titles = [s["title"] for s in guide_steps("pi")]
-    assert not any("Restart" in t for t in titles), titles
-    idx = {t: i for i, t in enumerate(titles)}
-    i_write = [i for i, st in enumerate(guide_steps("pi"))
-               if st.get("screen") == "pi_imager"][0]
-    assert i_write < idx["Move the card to the Raspberry Pi"] < idx["Check the SD card is in the Pi, then connect it to Node Medic"]
+    steps = guide_steps("pi")
+    assert not any("Restart" in s["title"] for s in steps), steps
+    i_write = next(i for i, s in enumerate(steps) if s.get("screen") == "pi_imager")
+    i_hand = next(i for i, s in enumerate(steps) if s.get("anim") == "sd_handover")
+    i_connect = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_pi")
+    assert i_write < i_hand < i_connect
 
 
 def test_the_data_port_trap_is_called_out_where_it_happens():
@@ -400,10 +401,9 @@ def test_the_card_is_written_before_it_reaches_the_pi():
     """Order matters: write, THEN move it. The old flow put the card in the Pi
     first and imaged through it."""
     steps = guide_steps("pi")
-    idx = {s["title"]: i for i, s in enumerate(steps)}
-    write = idx["Put the SD card into Node Medic"]
-    move = idx["Move the card to the Raspberry Pi"]
-    connect = idx["Check the SD card is in the Pi, then connect it to Node Medic"]
+    write = next(i for i, s in enumerate(steps) if s.get("anim") == "insert_sd")
+    move = next(i for i, s in enumerate(steps) if s.get("anim") == "sd_handover")
+    connect = next(i for i, s in enumerate(steps) if s.get("anim") == "connect_pi")
     assert write < move < connect, "must write, then move, then connect"
     # the imager is opened from the WRITE step, not from a Pi-connected step
     assert steps[write].get("screen") == "pi_imager"
@@ -901,3 +901,139 @@ def test_the_share_screen_offers_a_way_back_later():
     starts to feel like a decision they have to get right now."""
     from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
     assert "later" in (S["hint"] + S["no_location"]).lower()
+
+
+# --- the words have to FIT, or nobody reads them ---------------------------
+#
+# Operator, walking the flow on 2026-08-11: "the text is so small and there's
+# so much text, and it's quite dense... can we make it more concise? ...and
+# hopefully we can make the font a bit bigger as well."
+#
+# The two are one change. A WizardStep is a plain vertical BoxLayout with NO
+# ScrollView: the counter, title, body, hint, warning and nav row all take
+# their own height and the ANIMATION gets what is left. Overrun it and the
+# animation is squeezed to nothing and the text runs off the glass — which is
+# what was already happening before the cut. Measured against the copy as it
+# stood on 2026-08-11, four screens overflowed the 480 dp panel outright: the
+# antenna landing (-79 dp), "Check the SD card is in the Pi..." (-175), "Bring
+# the node to life" (-23) and the final radio-onto-the-Pi step (-10). The
+# picture the flow relies on to SHOW a physical action had been crowded off
+# the screen by the words describing it.
+#
+# Nobody can screenshot the device (it renders through KMS/DRM), so this is an
+# ESTIMATE and deliberately a pessimistic one: average glyph advance is taken
+# at 0.52 em (0.58 bold), which is above Roboto's real mixed-case average, and
+# every wrapped line is charged the full line box. It cannot prove a step fits;
+# it does catch a step growing back past the budget, which is the failure this
+# guards.
+
+import math
+
+from ui import theme
+from ui.birth_guide_flow import ANTENNA_STEP, guide_steps
+from ui.pi_connectors import PI_CONNECTORS
+
+_PAD = 20.0            # WizardStep.padding
+_SPACING = 14.0        # WizardStep.spacing
+_TEXT_W = theme.PANEL_W_DP - 2 * _PAD
+_ADVANCE, _ADVANCE_BOLD = 0.52, 0.58
+_TOP_H, _NAV_H = 46.0, 62.0      # step counter + dots; the Back/Next row
+
+
+def _wrapped_lines(text, shipped_sp, bold=False, width=None):
+    """How many lines *text* takes at *shipped_sp*, wrapping on words."""
+    if not text:
+        return 0
+    per_line = (width or _TEXT_W) / (shipped_sp * (_ADVANCE_BOLD if bold
+                                                   else _ADVANCE))
+    total = 0
+    for para in text.split("\n"):
+        total += 1
+        if not para.strip():
+            continue
+        used = 0
+        for word in para.split():
+            step = len(word) + (1 if used else 0)
+            if used + step > per_line:
+                total += 1
+                used = len(word)
+            else:
+                used += step
+    return total
+
+
+def _block_h(text, design_sp, bold=False, line_height=1.0, extra=0.0, width=None):
+    sp = theme.type_scale(design_sp)
+    n = _wrapped_lines(text, sp, bold, width)
+    return n * math.ceil(sp * theme.LINE_HEIGHT_RATIO * line_height) + (extra if n else 0)
+
+
+def wizard_step_height(step):
+    """dp the fixed parts of a rendered WizardStep stack up to. Mirrors
+    ui/widgets/wizard_step.py — keep the two in step."""
+    h = 2 * _PAD + _TOP_H + _NAV_H
+    parts = 3                                   # top block, nav, animation stage
+    h += _block_h(step["title"], "27sp", bold=True)
+    parts += 1
+    h += _block_h(step["body"], "19sp", line_height=1.25)
+    parts += 1
+    if step.get("hint"):
+        h += _block_h(step["hint"], "14sp")
+        parts += 1
+    if step.get("warning"):
+        # the amber strip carries dp(10) of padding top and bottom
+        h += _block_h(step["warning"], "15sp", bold=True, extra=20.0,
+                      width=_TEXT_W - 24)
+        parts += 1
+    return h + _SPACING * (parts - 1)
+
+
+def _every_guided_step():
+    yield "antenna landing", ANTENNA_STEP
+    for path in ("host", "radio", "pi"):
+        for i, s in enumerate(guide_steps(path)):
+            yield f"{path} step {i + 1} (model unknown)", s
+    for key in PI_CONNECTORS:
+        for i, s in enumerate(guide_steps("pi", key)):
+            yield f"pi/{key} step {i + 1}", s
+
+
+def test_no_guided_step_overflows_the_panel():
+    """Nothing may need more than the glass has. This is the hard rule: the
+    step has no ScrollView, so anything past PANEL_H_DP is text nobody reads
+    and an animation nobody sees."""
+    over = [(name, wizard_step_height(s)) for name, s in _every_guided_step()
+            if wizard_step_height(s) > theme.PANEL_H_DP]
+    assert not over, (
+        f"steps taller than the {theme.PANEL_H_DP:.0f} dp panel: "
+        + ", ".join(f"{n} needs {h:.0f} dp" for n, h in over))
+
+
+def test_every_step_keeps_room_for_its_animation():
+    """SHOW DON'T TELL only works if the picture has somewhere to be. A step
+    whose words fill the screen has silently traded its animation away — and
+    the animation is the part that survives not reading English."""
+    tight = [(name, theme.PANEL_H_DP - wizard_step_height(s))
+             for name, s in _every_guided_step()
+             # the model-unknown wording has to cover two boards at once and is
+             # a fallback: _render_pick_pi runs before these steps, so a real
+             # walkthrough always has a model. It still has to FIT (above).
+             if "unknown" not in name
+             and theme.PANEL_H_DP - wizard_step_height(s) < 40]
+    assert not tight, (
+        "animation stage squeezed under 40 dp: "
+        + ", ".join(f"{n} leaves {h:.0f} dp" for n, h in tight))
+
+
+def test_the_walkthrough_typography_goes_through_the_readability_scale():
+    """The birth flow was the LAST place still setting literal font sizes, so
+    its 14sp hint stayed 14sp while every other screen's 14sp had grown to
+    17.5sp — the densest prose on the medic rendered at the smallest size it
+    has (operator, 2026-08-11). One raw "Nsp" back in here undoes that."""
+    from tests.srcutil import src
+    import re
+    text = src("ui/widgets/wizard_step.py")
+    raw = [ln.strip() for ln in text.splitlines()
+           if re.search(r'font_size\s*=\s*["\']', ln)]
+    assert not raw, f"font sizes bypassing theme.font_sp(): {raw}"
+    assert 'theme.font_sp("14sp")' in text, "the hint is the one that hurt"
