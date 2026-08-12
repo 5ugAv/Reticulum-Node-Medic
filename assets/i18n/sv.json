@@ -232,6 +232,7 @@
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Obs: lagra-och-vidarebefordra av meddelanden är AV. Byt till Hem ▸ fullständig propageringsnod så att medicen kan lagra meddelanden för offline-telefoner.",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "Inget hört ännu – medicen har inte tagit emot någon bakon/announce. Ge den en stund i mesh-nätet.",
   "Nothing to unplug. Leave the Pi on Node Medic until this finishes.": "Nothing to unplug. Leave the Pi on Node Medic until this finishes.",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "Inget skrevs. Välj en Pi som kan ta kabeln — bildsteget visar vilken port den använder.",
   "Noticed": "Uppmärksammat",
   "Notifications": "Aviseringar",
   "OFF": "AV",
@@ -345,6 +346,7 @@
   "These two won't run together": "De här två fungerar inte ihop",
   "This ERASES the node completely:": "Detta RADERAR noden fullständigt:",
   "This board": "Det här kortet",
+  "This board cannot do a cable birth.": "Det här kortet kan inte födas via kabel.",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "Det här kortet var {old}. Nu är det tomt – vi har föreslagit ett namn, och du kan ändra det till vad som helst.",
   "This is the only way back in if you forget your password.": "Det här är enda vägen in igen om du glömmer ditt lösenord.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Det här är din återställningsnyckel – ENDA vägen in i denna Node Medic om du glömmer ditt lösenord. Den visas en gång och aldrig mer.",
@@ -435,6 +437,7 @@
   "{n} faults found": "{n} fel hittade",
   "{n} faults may need individual attention": "{n} fel kan behöva individuell åtgärd",
   "{n} heard": "{n} hörda",
+  "{pi} can't be built this way": "{pi} kan inte byggas på det här sättet",
   "{place} (approximate, from your internet)": "{place} (ungefärlig, från ditt internet)",
   "{who} hasn't been heard from yet.": "{who} hasn't been heard from yet.",
   "{who} is answering, but not happily.": "{who} is answering, but not happily.",
@@ -444,5 +447,6 @@
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• dess identitet rensas – den blir en helt ny nod (gammal historik kopplas loss)\n• dess namn, WiFi- och radioinställningar rensas\n• sedan körs den normala födelsen: flasha, namnge, automatisk inställning",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• koppla ur Pi:n från Node Medic – radion behöver det uttaget\n• sätt i radion du flashade i början\n• ge Pi:n en egen strömkälla",
   "←  Back": "←  Tillbaka",
+  "←  Pick a different Pi": "←  Välj en annan Pi",
   "⚠  Wipe & rebirth": "⚠  Rensa och återföd"
 }

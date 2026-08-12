@@ -75,6 +75,13 @@ def _demo_pi_build():
     conn = EmulatedConnection(default_code=0, default_stdout="ok")
     conn.rules.insert(0, ("/proc/cpuinfo", 0, "Model : Raspberry Pi 5 Model B", ""))
     conn.rules.insert(0, ("--info", 0, "[Device] RNode\nFirmware version: 1.80", ""))
+    # The build now reads its own writes back and asks systemd what is really
+    # running — a demo node answers like a healthy one.
+    conn.rules.insert(0, ("systemctl is-active", 0, "active", ""))
+    conn.rules.insert(0, ("systemctl is-enabled", 0, "enabled", ""))
+    conn.rules.insert(0, ("cat ~/.reticulum/config", 0, "[reticulum]\n", ""))
+    conn.rules.insert(0, ("cat /etc/udev/rules.d/60-rnode.rules", 0,
+                          'ATTRS{idVendor}=="303a", SYMLINK+="rnode"', ""))
     return BuildWorkflow(conn, NodeProfile())
 
 

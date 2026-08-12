@@ -715,3 +715,21 @@ def test_the_board_keys_are_ones_the_ui_can_actually_produce():
     known = set(PI_SLOTS) | set(ALIASES)
     unknown = set(DR_MODE_BY_BOARD) - known
     assert not unknown, f"dr_mode keyed on boards that do not exist: {unknown}"
+
+
+# -- the impossibility facts finally have a production caller ----------------
+# (2026-08-12 handover: can_cable() encoded a tested fact — a Pi 3 B+ cannot
+# do a cable birth, a hub sits between the SoC and every port — and nothing
+# called it. A 3 B+ operator got a card baked and a 150 s wait for an
+# enumeration that physics forbids.)
+
+def test_the_guide_consults_can_cable_before_anything_is_written():
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_check_pairing")
+    assert "can_cable" in src
+
+
+def test_the_cable_verdict_screen_gives_the_boards_own_reason():
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_guide_screen.py", "_render_cable_verdict")
+    assert "why_not" in src

@@ -499,10 +499,21 @@ def write_reticulum_config(wf: "BuildWorkflow") -> StepResult:
     wf.connection.run("mkdir -p ~/.reticulum")
     heredoc = f"cat > ~/.reticulum/config <<'RTTEOF'\n{rendered}\nRTTEOF"
     code, out, err = wf.connection.run(heredoc)
-    ok = code == 0
-    return StepResult("write_reticulum_config", ok,
-                      "Wrote Reticulum config." if ok
-                      else f"Could not write config: {err or out}")
+    if code != 0:
+        return StepResult("write_reticulum_config", False,
+                          f"Could not write config: {err or out}")
+    # READ IT BACK. rc=0 from a heredoc through a remote shell says the shell
+    # lived, not that the file holds our config (2026-08-12 handover: this was
+    # one of the writes never checked). The section header is the marker every
+    # rendered template carries.
+    check = wf.connection.run("cat ~/.reticulum/config")[1] or ""
+    if "[reticulum]" not in check:
+        return StepResult(
+            "write_reticulum_config", False,
+            "Wrote the Reticulum config but reading it back did not find it — "
+            "the write did not take.")
+    return StepResult("write_reticulum_config", True,
+                      "Wrote Reticulum config and read it back.")
 
 
 @build_step
@@ -668,22 +679,46 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     for the radio that is not here yet.
     """
     serial = attached_radio_serial(wf)
+    came_from = "read from the radio on this node" if serial else ""
+    if not serial:
+        # THE SERIAL THE MEDIC ALREADY HOLDS. On every Pi birth the radio is
+        # attached AFTER the build — flashed on the medic at step 0, carried in
+        # the operator's pocket while the card bakes — so the probe above finds
+        # nothing, every time. The "exception" fallback below was the rule
+        # (2026-08-12 handover). The flash captured the board's USB serial; the
+        # profile carries it here so the rule can still name that one device.
+        serial = (getattr(wf.profile.radio, "usb_serial", "") or "").strip()
+        came_from = "read by the medic when it flashed the board" if serial else ""
     rules = rnode_udev_rules(serial)
     code, out, err = wf.connection.run(
         _write_remote_file(wf, "/etc/udev/rules.d/60-rnode.rules", rules))
     if code != 0:
         return StepResult("install_radio_rule", False,
                           f"Could not write the radio's udev rule: {err or out}")
+    # AND READ IT BACK. A write that is not read back is a claim, not a fact —
+    # and this file failing to land is the mute-node class of failure: nothing
+    # complains until the assembled node cannot find its radio.
+    check = wf.connection.run("cat /etc/udev/rules.d/60-rnode.rules")[1] or ""
+    want = (f'ATTRS{{serial}}=="{serial}"' if serial else 'ATTRS{idVendor}')
+    name = RNODE_SYMLINK.rsplit("/", 1)[-1]
+    if want not in check or f'SYMLINK+="{name}"' not in check:
+        return StepResult(
+            "install_radio_rule", False,
+            "Wrote the radio's udev rule but reading it back found something "
+            "else — the node would not name its radio. Nothing else is wrong; "
+            "this is the one write that did not take.")
     # Reload so a radio plugged in later is named without a reboot. A node that
     # boots with its radio attached does not need this; one being assembled on
     # the bench does.
     wf.connection.run(wf.priv("udevadm control --reload-rules"))
     wf.connection.run(wf.priv("udevadm trigger --subsystem-match=tty"))
-    how = (f"this radio (serial {serial})" if serial
-           else "a radio from any of the makers this tool flashes")
+    how = (f"this radio only (serial {serial}, {came_from})" if serial
+           else "a radio from any of the makers this tool flashes — no serial "
+                "was available to pin it tighter")
     return StepResult("install_radio_rule", True,
                       f"The node will answer to {RNODE_SYMLINK} for {how}, "
-                      "whenever it is plugged in and on whichever port it lands.")
+                      "whenever it is plugged in and on whichever port it "
+                      "lands, checked on the card.")
 
 
 @build_step
@@ -762,8 +797,25 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
     for svc in services:
         wf.connection.run(wf.priv(f"systemctl enable {svc}"))
         wf.connection.run(wf.priv(f"systemctl start {svc}"))
+    # AND ASK SYSTEMD WHETHER THEY ARE RUNNING. The enable/start results were
+    # discarded, so lxmd — the thing that makes this a propagation node — was
+    # never verified (2026-08-12 handover). A beat first: Type=simple units
+    # report active immediately, but the shell round-trip is not free.
+    wf.connection.run("sleep 2")
+    dead = []
+    for svc in services:
+        state = wf.connection.run(f"systemctl is-active {svc}")[1].strip()
+        if state != "active":
+            why = wf.connection.run(
+                f"journalctl -u {svc} -n 3 --no-pager 2>/dev/null")[1].strip()[-160:]
+            dead.append(f"{svc} is {state or 'unknown'}"
+                        + (f" ({why})" if why and why != "ok" else ""))
+    if dead:
+        return StepResult("configure_services", False,
+                          "Installed but not running: " + "; ".join(dead))
     return StepResult("configure_services", True,
-                      f"Installed and started: {', '.join(services)}.")
+                      f"Installed, started and verified running: "
+                      f"{', '.join(services)}.")
 
 
 #: The node's own health identity — a stable file the reporter reuses across
@@ -872,6 +924,23 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
     wf.connection.run(wf.priv("systemctl daemon-reload"))
     wf.connection.run(wf.priv("systemctl enable rnm-health"))
     wf.connection.run(wf.priv("systemctl start rnm-health"))
+
+    # ASK WHETHER IT IS ACTUALLY RUNNING (it never was asked — 2026-08-12
+    # handover). Not a failed step when it isn't: a failed step strands the
+    # USB hand-back, the same deliberate reasoning as install_status_server.
+    # But the message may not claim a heartbeat nobody checked, and
+    # final_verification will hold this unit to "active" as well.
+    wf.connection.run("sleep 2")
+    state = wf.connection.run("systemctl is-active rnm-health")[1].strip()
+    if state != "active":
+        why = wf.connection.run(
+            "journalctl -u rnm-health -n 5 --no-pager 2>/dev/null")[1].strip()[-200:]
+        return StepResult(
+            "install_health_reporter", True,
+            f"Installed the health reporter but it is NOT running "
+            f"(systemd says '{state or 'unknown'}'). The node will not beacon "
+            f"its health until this is fixed."
+            + (f" Last words: {why}" if why and why != "ok" else ""))
 
     # Give the service a moment to create its identity + first announce, then
     # capture the health destination hash so BIRTH can roster the node under it
@@ -986,15 +1055,31 @@ def install_status_server(wf: "BuildWorkflow") -> StepResult:
 def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
     # Log2Ram installed from a local .deb (no internet in the field). Stage the
     # .deb onto the node first, then install from the remote path.
+    #
+    # THIS STEP COULD NOT FAIL AND SO PROVED NOTHING: every command wore
+    # `|| true`, and the success message claimed log rotation, which nothing
+    # here has ever touched (2026-08-12 handover). Now systemd is asked what
+    # actually landed. Partial hardening is reported by name and carries on —
+    # a node without the watchdog daemon is a worse node, not a dead one — but
+    # if NOTHING landed the step failed and says so.
     wf.connection.run(f"mkdir -p {REMOTE_ASSET_DIR}")
     wf.connection.push_file(
         os.path.join(PACKAGE_DIR, "log2ram.deb"),
         f"{REMOTE_ASSET_DIR}/log2ram.deb")
     wf.connection.run(wf.priv(f"dpkg -i {REMOTE_ASSET_DIR}/log2ram.deb") + " || true")
-    wf.connection.run(wf.priv("systemctl enable log2ram") + " || true")
-    wf.connection.run(wf.priv("systemctl enable watchdog") + " || true")
-    return StepResult("apply_system_hardening", True,
-                      "Applied Log2Ram, log rotation and hardware watchdog.")
+    landed, gaps = [], []
+    for unit, what in (("log2ram", "Log2Ram"), ("watchdog", "hardware watchdog")):
+        wf.connection.run(wf.priv(f"systemctl enable {unit}") + " || true")
+        state = wf.connection.run(f"systemctl is-enabled {unit}")[1].strip()
+        (landed if state == "enabled" else gaps).append(
+            what if state == "enabled" else f"{what} ({state or 'unknown'})")
+    if not landed:
+        return StepResult("apply_system_hardening", False,
+                          "No hardening landed: " + "; ".join(gaps))
+    msg = "Hardening verified enabled: " + ", ".join(landed) + "."
+    if gaps:
+        msg += " Did not land: " + "; ".join(gaps) + "."
+    return StepResult("apply_system_hardening", True, msg)
 
 
 @build_step
@@ -1012,15 +1097,77 @@ def set_hostname(wf: "BuildWorkflow") -> StepResult:
 
 @build_step
 def final_verification(wf: "BuildWorkflow") -> StepResult:
-    problems = []
+    """The check-over that must not be passable by a mute node.
+
+    Until 2026-08-12 this asked two questions — "is rnsd active?" and "does the
+    config exist?" — and rnsd stays active holding a dead interface
+    (panic_on_interface_error = No), which is exactly how two nodes shipped
+    mute on 10 August. Now every service this build installed must report
+    active, the config must read back as ours, and the radio is checked when
+    one is attached — and when one is NOT attached (every Pi birth: the radio
+    is fitted after the build), that is said in so many words. "Could not
+    check" is its own answer; it is never promoted to "working".
+    """
+    problems, verified, unchecked = [], [], []
+
     if wf.connection.run("systemctl is-active rnsd")[0] != 0:
         problems.append("rnsd not active")
+    else:
+        verified.append("rnsd running")
+
     if wf.connection.run("test -f ~/.reticulum/config")[0] != 0:
         problems.append("config missing")
-    ok = not problems
-    return StepResult("final_verification", ok,
-                      "Node verified and running." if ok
-                      else "Verification failed: " + "; ".join(problems))
+    else:
+        body = wf.connection.run("cat ~/.reticulum/config")[1] or ""
+        if "[reticulum]" in body:
+            verified.append("config in place")
+        else:
+            problems.append("config file present but does not read back as a "
+                            "Reticulum config")
+
+    # Every unit this build writes must be RUNNING, not merely written. Asking
+    # the node which exist (rather than trusting our own memory of the run)
+    # keeps a resumed build honest.
+    for svc in ("lxmd", "rnm-health", "rnm-status"):
+        if wf.connection.run(f"test -f /etc/systemd/system/{svc}.service")[0] != 0:
+            continue
+        state = wf.connection.run(f"systemctl is-active {svc}")[1].strip()
+        if state == "active":
+            verified.append(f"{svc} running")
+        else:
+            problems.append(f"{svc} installed but {state or 'not running'}")
+
+    # THE RADIO. Only a radio that is here can be checked; on the Pi paths it
+    # is fitted after the build, and claiming anything about it here would be
+    # the exact lie this tool exists not to tell.
+    if wf.profile.rnode_present:
+        raw = wf.connection.run("rnstatus --json")[1] or ""
+        try:
+            import json as _json
+            ifaces = _json.loads(raw).get("interfaces", [])
+            rnodes = [i for i in ifaces if i.get("type") == "RNodeInterface"]
+            if rnodes and all(i.get("status") is True for i in rnodes):
+                verified.append("radio interface up")
+            elif rnodes:
+                problems.append("the RNode interface is DOWN — rnsd is up but "
+                                "holding a dead radio (the mute-node failure)")
+            else:
+                unchecked.append("no RNode interface in rnstatus yet")
+        except (ValueError, AttributeError):
+            unchecked.append("radio attached but rnstatus gave no readable "
+                             "answer")
+    else:
+        unchecked.append("the radio was NOT checked — it is not attached "
+                         "during a Pi build; its link is proven when the "
+                         "assembled node first boots")
+
+    tail = ("  Not checked: " + "; ".join(unchecked) + "." if unchecked else "")
+    if problems:
+        return StepResult("final_verification", False,
+                          "Verification failed: " + "; ".join(problems) + "."
+                          + tail)
+    return StepResult("final_verification", True,
+                      "Verified: " + "; ".join(verified) + "." + tail)
 
 
 def node_addresses(wf: "BuildWorkflow") -> List[str]:

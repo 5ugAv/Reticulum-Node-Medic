@@ -32,6 +32,18 @@ PI5_CPUINFO = "processor : 0\nModel : Raspberry Pi 5 Model B Rev 1.0\n"
 def build_conn(cpuinfo=PI5_CPUINFO, rnode=False):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("/proc/cpuinfo", 0, cpuinfo, ""))
+    # A healthy node answers the read-backs the build now performs: services
+    # report active/enabled, and the two files the build writes read back with
+    # their markers. Failure tests insert overriding rules above these.
+    c.rules.insert(0, ("systemctl is-active", 0, "active", ""))
+    c.rules.insert(0, ("systemctl is-enabled", 0, "enabled", ""))
+    c.rules.insert(0, ("cat ~/.reticulum/config", 0,
+                       "[reticulum]\nenable_transport = Yes\n", ""))
+    c.rules.insert(0, ("cat /etc/udev/rules.d/60-rnode.rules", 0,
+                       'SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", '
+                       'ATTRS{serial}=="4631000000000002", '
+                       'ATTRS{serial}=="ATTACHED11111111", '
+                       'SYMLINK+="rnode"', ""))
     if rnode:
         # real rnodeconf --info shape: no literal "RNode", but "Firmware version"
         c.rules.insert(0, ("--info", 0,
@@ -377,6 +389,8 @@ def nonroot_conn(**extra):
     c.rules.insert(0, ("echo $HOME", 0, "/home/nodemedic", ""))
     c.rules.insert(0, ("command -v rnsd", 0, "/home/nodemedic/.local/bin/rnsd", ""))
     c.rules.insert(0, ("command -v lxmd", 0, "/home/nodemedic/.local/bin/lxmd", ""))
+    # a healthy node's services answer the is-active read-back
+    c.rules.insert(0, ("systemctl is-active", 0, "active", ""))
     for pattern, code, out in extra.get("rules", []):
         c.rules.insert(0, (pattern, code, out, ""))
     return c
@@ -995,3 +1009,145 @@ def test_sharing_without_a_location_is_reported_not_silently_dropped():
     rendered = w.render_config()
     assert "discoverable" not in rendered
     assert w.location_sharing_notes
+
+
+# -- the serial the medic carried, and steps that can actually fail ----------
+# (2026-08-12 handover: on every Pi birth the radio is attached AFTER the
+# build, so attached_radio_serial() returns "" and the wide five-vendor
+# fallback rule shipped every time — while the medic had read the radio's
+# serial at flash time and thrown it away. And five steps reported success
+# having verified nothing.)
+
+def test_radio_rule_uses_the_serial_the_medic_carried_when_none_attached():
+    # No radio on the node (the Pi build's normal state) — but the flash step
+    # on the medic captured the board's USB serial and the profile carries it.
+    w = wf(build_conn())
+    w.profile.radio.usb_serial = "4631000000000002"
+    r = _run_step(w, "install_radio_rule")
+    assert r.success is True
+    assert "4631000000000002" in r.message          # pinned to THIS radio
+    assert "any of the makers" not in r.message     # not the vendor net
+
+
+def test_radio_rule_prefers_the_serial_read_from_the_node_itself():
+    # A radio IS attached: what the node reports outranks what was carried.
+    w = wf(build_conn(rnode=True))
+    w.profile.radio.serial_port = "/dev/ttyACM0"
+    w.profile.radio.usb_serial = "CARRIED000000000"
+    w.connection.rules.insert(0, ("udevadm info -q property", 0,
+                                  "ID_SERIAL_SHORT=ATTACHED11111111\n", ""))
+    r = _run_step(w, "install_radio_rule")
+    assert r.success is True
+    assert "ATTACHED11111111" in r.message
+    assert "CARRIED000000000" not in r.message
+
+
+def test_radio_rule_read_back_failure_is_a_failed_step():
+    w = wf(build_conn())
+    w.profile.radio.usb_serial = "4631000000000002"
+    w.connection.rules.insert(0, ("cat /etc/udev/rules.d/60-rnode.rules", 0,
+                                  "not the rule we wrote", ""))
+    r = _run_step(w, "install_radio_rule")
+    assert r.success is False
+
+
+def test_write_reticulum_config_reads_itself_back():
+    w = wf(build_conn())
+    w.connection.rules.insert(0, ("cat ~/.reticulum/config", 0, "ok", ""))
+    r = _run_step(w, "write_reticulum_config")
+    assert r.success is False                        # write landed as mush
+    assert "read back" in r.message.lower() or "did not" in r.message.lower()
+
+
+def test_configure_services_fails_when_a_service_it_started_is_not_running():
+    c = nonroot_conn()
+    c.rules.insert(0, ("systemctl is-active lxmd", 3, "failed", ""))
+    from node_profile import NodeRole
+    p = NodeProfile(role=NodeRole.PROPAGATION)
+    w = wf(c, profile=p)
+    r = _run_step(w, "configure_services")
+    assert r.success is False
+    assert "lxmd" in r.message
+
+
+def test_configure_services_verifies_what_it_claims():
+    r = _run_step(wf(nonroot_conn()), "configure_services")
+    assert r.success is True
+    assert "verified" in r.message.lower() or "running" in r.message.lower()
+
+
+def test_hardening_cannot_claim_what_did_not_land():
+    # Neither log2ram nor the watchdog verifies as enabled: the step must not
+    # report the old blanket success — and it never configured log rotation,
+    # so the word must be gone for good.
+    w = wf(build_conn())
+    w.connection.rules.insert(0, ("systemctl is-enabled", 0, "disabled", ""))
+    r = _run_step(w, "apply_system_hardening")
+    assert r.success is False
+    assert "log rotation" not in r.message.lower()
+
+
+def test_hardening_names_the_half_that_landed():
+    w = wf(build_conn())
+    w.connection.rules.insert(0, ("systemctl is-enabled watchdog", 0, "disabled", ""))
+    w.connection.rules.insert(0, ("systemctl is-enabled log2ram", 0, "enabled", ""))
+    r = _run_step(w, "apply_system_hardening")
+    assert r.success is True                # half a hardening is not a dead node
+    assert "watchdog" in r.message          # ...but the gap is named
+    assert "log rotation" not in r.message.lower()
+
+
+def test_health_reporter_reports_when_its_service_did_not_come_up():
+    from node_profile import NodeRole
+    c = build_conn()
+    c.rules.insert(0, ("systemctl is-active rnm-health", 3, "activating", ""))
+    p = NodeProfile(role=NodeRole.PROPAGATION)
+    w = wf(c, profile=p)
+    r = _run_step(w, "install_health_reporter")
+    # deliberately not a failed step (a failed step strands the USB hand-back,
+    # same reasoning as install_status_server) — but it may not claim health.
+    assert "not" in r.message.lower() or "activating" in r.message.lower()
+    assert "installed and started" not in r.message.lower()
+
+
+# -- final_verification can no longer pass on a mute node --------------------
+
+def test_final_verification_fails_when_an_installed_service_is_dead():
+    c = build_conn(rnode=True)
+    c.rules.insert(0, ("systemctl is-active lxmd", 3, "failed", ""))
+    w = wf(c)
+    r = _run_step(w, "final_verification")
+    assert r.success is False
+    assert "lxmd" in r.message
+
+
+def test_final_verification_fails_when_the_config_is_not_ours():
+    c = build_conn(rnode=True)
+    c.rules.insert(0, ("cat ~/.reticulum/config", 0, "garbage", ""))
+    w = wf(c)
+    r = _run_step(w, "final_verification")
+    assert r.success is False
+
+
+def test_final_verification_says_the_radio_was_not_checked_not_that_it_works():
+    # A Pi build's radio is attached AFTER the build — the step must say "not
+    # checked", never claim a link it could not see. (Two nodes shipped mute
+    # on 2026-08-10 behind a final_verification that asked only 'is rnsd up'.)
+    w = wf(build_conn())          # no radio attached
+    r = _run_step(w, "final_verification")
+    assert r.success is True
+    low = r.message.lower()
+    assert "not checked" in low or "could not check" in low
+    assert "radio" in low
+
+
+def test_final_verification_checks_the_radio_when_one_is_attached():
+    c = build_conn(rnode=True)
+    c.rules.insert(0, ("rnstatus --json", 0,
+                       '{"interfaces": [{"type": "RNodeInterface", '
+                       '"status": false}]}', ""))
+    w = wf(c)
+    w.steps[0][1](w)                                 # detect: board present
+    r = _run_step(w, "final_verification")
+    assert r.success is False
+    assert "radio" in r.message.lower() or "rnode" in r.message.lower()

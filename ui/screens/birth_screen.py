@@ -1670,6 +1670,9 @@ class BirthScreen(BoxLayout):
         self._declared_board_key = None
         self._declared_mismatch = ""
         self._declared_pi_address = ""
+        # One node's radio serial must never become the next node's udev rule —
+        # begin_guided re-sets it from its own hand-off after this reset.
+        self._guided_radio_usb_serial = ""
         # The previous build's page is over; whoever calls _build_chooser next
         # puts the chooser back, so the flag has to agree or it describes a
         # header that is no longer on screen.
@@ -1694,7 +1697,8 @@ class BirthScreen(BoxLayout):
         self._build_chooser()
 
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
-                     pi_address=None, share_location=None):
+                     pi_address=None, share_location=None,
+                     radio_usb_serial=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1748,6 +1752,11 @@ class BirthScreen(BoxLayout):
         # the line above, but of a decision instead of a fact.
         from monitor import location_share
         self._share_location = location_share.normalise(share_location)
+        # The serial the medic read when IT flashed this node's radio. Set
+        # unconditionally from the hand-off (same hygiene as the location and
+        # the share answer above): a lap that carries none must not inherit
+        # the previous node's radio.
+        self._guided_radio_usb_serial = (radio_usb_serial or "").strip()
         self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
@@ -2270,6 +2279,12 @@ class BirthScreen(BoxLayout):
             prof = getattr(workflow, "profile", None)
             if prof is not None and board is not None:
                 prof.rnode_board_key = board.key
+            if prof is not None:
+                # The serial the medic read at flash time rides the profile so
+                # install_radio_rule can pin /dev/rnode to THIS radio even
+                # though the radio is in the operator's pocket during the build.
+                prof.radio.usb_serial = getattr(
+                    self, "_guided_radio_usb_serial", "") or ""
             title = (f"Building Pi + {board.display_name}..." if board
                      else "Building Pi + RNode...")
         elif board is not None:                  # standalone RNode flash (no Pi)
@@ -2557,10 +2572,17 @@ class BirthScreen(BoxLayout):
                 reached = (self._pi_addr_in.text or "").strip()
             except Exception:                                  # noqa: BLE001
                 reached = ""
+            # AND THE RADIO'S OWN SERIAL. The flash captured it (the one thing
+            # that survives re-enumeration) and this hand-back used to throw it
+            # away — so every Pi shipped with the five-vendor udev net instead
+            # of a rule naming ITS radio (2026-08-12 handover). Carrying this
+            # one string is what lets /dev/rnode mean "this radio".
+            serial = (getattr(self._workflow, "_usb_serial", "") or "")
             Clock.schedule_once(
                 lambda _dt: app.resume_guided_birth({"radio_verified": verified,
                                                      "build_failed": failed,
-                                                     "reached_at": reached}),
+                                                     "reached_at": reached,
+                                                     "radio_usb_serial": serial}),
                 2.5)
         except Exception:                                          # noqa: BLE001
             pass            # a failed hand-back must never break the outcome

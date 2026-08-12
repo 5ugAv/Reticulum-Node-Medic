@@ -232,6 +232,7 @@
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.": "Nota: el almacenar y reenviar mensajes está DESACTIVADO. Cambia a Home ▸ nodo de propagación completo para que el medic guarde mensajes de teléfonos sin conexión.",
   "Nothing heard yet — the medic hasn't received a beacon/announce. Give it a moment on the mesh.": "Nada oído aún: el medic no ha recibido baliza/anuncio. Dale un momento en la malla.",
   "Nothing to unplug. Leave the Pi on Node Medic until this finishes.": "No hay que desconectar nada. Deja la Pi en Node Medic hasta que termine.",
+  "Nothing was written. Pick a Pi that can take the cable — the picture step shows which port it uses.": "No se escribió nada. Elige una Pi que acepte el cable — el paso con la imagen muestra qué puerto usa.",
   "Noticed": "Detectado",
   "Notifications": "Notificaciones",
   "OFF": "APAGAR",
@@ -345,6 +346,7 @@
   "These two won't run together": "Estos dos no funcionarán juntos",
   "This ERASES the node completely:": "Esto BORRA el nodo por completo:",
   "This board": "Esta placa",
+  "This board cannot do a cable birth.": "Esta placa no puede hacer un nacimiento por cable.",
   "This board was {old}. It's blank now — we've suggested a name, and you can change it to anything.": "Esta placa era {old}. Ahora está en blanco: hemos sugerido un nombre y puedes cambiarlo por el que quieras.",
   "This is the only way back in if you forget your password.": "Es la única forma de volver a entrar si olvidas tu contraseña.",
   "This is your recovery key — the ONLY way into this Node Medic if you forget your password. It is shown once and never again.": "Esta es tu clave de recuperación: la ÚNICA forma de entrar en este Node Medic si olvidas tu contraseña. Se muestra una vez y nunca más.",
@@ -435,6 +437,7 @@
   "{n} faults found": "{n} fallos encontrados",
   "{n} faults may need individual attention": "{n} fallos pueden necesitar atención individual",
   "{n} heard": "{n} oídos",
+  "{pi} can't be built this way": "{pi} no puede construirse así",
   "{place} (approximate, from your internet)": "{place} (aproximado, según tu internet)",
   "{who} hasn't been heard from yet.": "Todavía no se ha oído a {who}.",
   "{who} is answering, but not happily.": "{who} responde, pero no está bien.",
@@ -444,5 +447,6 @@
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• su identidad se borra — se convierte en un nodo nuevo (el historial anterior se separa)\n• su nombre, WiFi y ajustes de radio se borran\n• luego se ejecuta el nacimiento normal: flashear, nombrar, configuración automática",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply": "• desconecta la Pi de Node Medic: la radio necesita ese conector\n• conecta la radio que grabaste al principio\n• dale a la Pi su propia fuente de alimentación",
   "←  Back": "←  Atrás",
+  "←  Pick a different Pi": "←  Elegir otra Pi",
   "⚠  Wipe & rebirth": "⚠  Borrar y renacer"
 }
