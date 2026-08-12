@@ -343,3 +343,37 @@ agree, which makes that easier than it sounds.
 
 **Known false on screen right now:** step 1 of the Pi path says the medic
 "remembers which radio it is so the Pi finds it later". It does not.
+
+---
+
+## Update — 2026-08-12, end of the second day
+
+Written after the first complete, honest birth (node **ttt**, certificate
+5a040004). Of the morning's "do first" list: all four done. The wording
+worktrees are merged, the radio's serial now travels flash → hand-back →
+udev rule (verified on the glass: "this radio only, serial 02:00:00:05:00:05"),
+final_verification cannot pass on a mute node, and the false sentence is off
+the screen. The health-beacon path was **observed landing** — ttt's beacon
+arrived over the LAN and made its VITALS row. Unproven no longer.
+
+New paid-for facts, same currency as Part 3:
+
+- **A fresh card's first boot reboots itself once.** Any gate that fires on
+  "TCP answered" can catch the doomed first boot; the build then dies
+  mid-step. The gate now requires the node's own uptime, read twice, rising.
+- **A re-imaged node is a new identity.** Its host key rotates, and the old
+  key stranded two walkthroughs in one evening. record_imaged_pi forgets the
+  old keys; the liveness probe is host-key-blind (the build still pins).
+- **The node's 10.55.0.1 cable address does not survive its first-boot
+  reboot** — OPEN, bake-side. The Wi-Fi road covers provisioning meanwhile.
+- **The medic needed LAN ears.** Its own RNS config had no AutoInterface, so
+  it was deaf to the road its newly-built nodes speak first. Added by hand on
+  the device 2026-08-12 (~/.reticulum/config); MITOSIS should carry it.
+- **`systemctl enable watchdog` never landed once** — no build ever carried
+  the daemon. The watchdog is systemd's own RuntimeWatchdogSec now, and
+  hardening failures no longer strand a birth five steps short of its
+  certificate.
+- **EVERYWHERE (old-build Pi) went mute in a power cut** — OPEN: LoRa-only
+  config, off the LAN, needs a bench PROBE. Every node built before today
+  trusts steps that could not fail; treat their history accordingly.
+
