@@ -167,6 +167,27 @@ class Walk(App):
             g._share_moved(location_share.APPROX)   # sentence + button follow
         Clock.schedule_once(flip, 1.0)
         Clock.schedule_once(lambda _d: self._save("92_share_shown"), 1.6)
+        Clock.schedule_once(lambda _d: self._bt_step(), 2.4)
+
+    def _bt_step(self):
+        """The Bluetooth switch, photographed at both ends — the same claim as
+        the map switch (a position readable at a glance), the same reason
+        source tests cannot answer it."""
+        g = self.guide
+        g._path = "pi"                      # the only path that asks
+        try:
+            g._render_bluetooth()
+        except Exception as e:                                     # noqa: BLE001
+            print(f"!! _render_bluetooth RAISED {type(e).__name__}: {e}")
+            Clock.schedule_once(lambda _d: self._done_screen(), 0.2)
+            return
+        Clock.schedule_once(lambda _d: self._save("93_bluetooth_off"), 0.5)
+
+        def flip(_d):
+            g._bt_toggle.set_state("on")
+            g._bt_moved("on")               # the commit button follows
+        Clock.schedule_once(flip, 1.0)
+        Clock.schedule_once(lambda _d: self._save("94_bluetooth_on"), 1.6)
         Clock.schedule_once(lambda _d: self._done_screen(), 2.4)
 
     def _done_screen(self):
