@@ -50,8 +50,8 @@ ANTENNA_STEP = {
 #: that a position is published because somebody chose it, never because a
 #: default did. It is NOT in ``_STEPS``: those steps advance on Next, and Next
 #: is exactly the gesture that must not be able to publish a location. The
-#: screen (``birth_guide_screen._render_location_share``) hides Next and offers
-#: two named choices instead, with HIDE as the safe one.
+#: screen (``birth_guide_screen._render_location_share``) hides Next and shows a
+#: switch instead — left is hidden, and left is where it rests.
 #:
 #: The copy says what a stranger gets, in the stranger's terms, because "share
 #: location" is not what happens: the announce also carries the node's NAME, its
@@ -75,12 +75,13 @@ LOCATION_SHARE_STEP = {
     "warning": tr("An announce cannot be taken back. Turning this off later "
                   "stops any further ones; it does not unsay the ones already "
                   "heard."),
+    #: The two ends of the switch, left then right — and the words the commit
+    #: button underneath borrows, so that button always names the end it is
+    #: about to take. What each end MEANS is not written here: it comes from
+    #: ``monitor.location_share.consequence_line``, the same sentence the node's
+    #: own page shows, because one packet described in two places drifts.
     "hide_label": tr("Keep it hidden"),
     "share_label": tr("Show it, roughly"),
-    #: What each choice means, one line, under its button — so the two options
-    #: are told apart by their consequence and not by their verb.
-    "hide_detail": tr("This node tells nobody where it is."),
-    "share_detail": tr("A pin within 800 m of it appears on public maps."),
     #: Shown INSTEAD of the choice when the medic has no position for this node.
     #: Offering "share" with nothing to share would produce a node configured to
     #: announce and announcing nothing — the silent failure this whole feature

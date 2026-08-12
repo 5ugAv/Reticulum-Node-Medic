@@ -141,7 +141,33 @@ class Walk(App):
             g._resume_at = life + 1
             g.resume({"radio_verified": True, "build_failed": True})
             Clock.schedule_once(lambda _d: self._save("90_after_failed_build"), 0.6)
-        Clock.schedule_once(lambda _d: self._done_screen(), 1.4)
+        Clock.schedule_once(lambda _d: self._share_step(), 1.4)
+
+    def _share_step(self):
+        """The map-sharing switch, photographed at BOTH ends.
+
+        It is not in the step list (it is asked between naming and step one), and
+        it is the screen on this walk that most needs looking at: the operator
+        asked for a switch precisely so its position could be read at a glance,
+        and whether that worked is not a thing source tests can answer. Two
+        shots, because the whole claim is about the difference between them.
+        """
+        g = self.guide
+        try:
+            g._render_location_share()
+        except Exception as e:                                     # noqa: BLE001
+            print(f"!! _render_location_share RAISED {type(e).__name__}: {e}")
+            Clock.schedule_once(lambda _d: self._done_screen(), 0.2)
+            return
+        Clock.schedule_once(lambda _d: self._save("91_share_hidden"), 0.5)
+
+        def flip(_d):
+            from monitor import location_share
+            g._share_toggle.set_state(location_share.APPROX)
+            g._share_moved(location_share.APPROX)   # sentence + button follow
+        Clock.schedule_once(flip, 1.0)
+        Clock.schedule_once(lambda _d: self._save("92_share_shown"), 1.6)
+        Clock.schedule_once(lambda _d: self._done_screen(), 2.4)
 
     def _done_screen(self):
         try:

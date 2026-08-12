@@ -1253,50 +1253,65 @@ class BirthGuideScreen(BoxLayout):
     # -- the one question: does this node go on the public map? ---------------
 
     def _render_location_share(self):
-        """Two named choices, no Next.
+        """One switch, a sentence that follows it, and a button that says the
+        outcome out loud. Still no Next.
 
-        The Next button is deliberately absent. Every other step in this
-        walkthrough advances on a green button in the same place, which is
-        exactly why this one must not: a person moving through a wizard taps
-        Next without reading, and this is the single screen where doing that
-        would publish something about the physical world that cannot be
-        recalled. So the two outcomes are named, and hiding is the plain one.
+        THE SWITCH (operator, 2026-08-11): "the keep it hidden or show it
+        roughly options should be a toggle switch instead of two separate
+        buttons. That way it's clear for the user to know where it sits." Two
+        buttons could say what you may press but never where the answer stood.
+
+        THE GREEN NEXT STAYS GONE, for the reason it always was: every other
+        step in this walkthrough advances on a green button in the same place,
+        and a person moving through a wizard taps that button without reading.
+        What replaces it is not a Next — it is the outcome in the operator's own
+        words ("Keep it hidden →" / "Show it, roughly →"), in the colour of the
+        end the switch is on, and it changes as the switch moves. A hurried tap
+        on it therefore commits the position that was already showing, and the
+        position it rests on is hidden.
+
+        The switch moves nothing on its own: ``_share_pending`` is where it sits,
+        ``_share_location`` is what was decided, and only the button below joins
+        them. So a screen backed out of, or left, carries the answer it arrived
+        with.
         """
         self._stop_current()
-        from kivy.uix.button import Button
-        from kivy.uix.boxlayout import BoxLayout
-        from monitor import location_share
+        from ui.widgets.share_toggle import ShareToggle
         self._back_action = self._render_name          # share step -> the name
 
         s = LOCATION_SHARE_STEP
         total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
+        self._share_pending = self._share_location     # never the last node's
 
-        # Two buttons (52) with a one-line consequence under each (20), three
-        # 8dp gaps. Measured, not guessed — a short box clips the second
-        # button's caption, which is the half of the screen that says what the
-        # choice DOES.
+        # Switch (60), the consequence sentence under it, the commit button
+        # (52). The BOX follows its children rather than carrying a measured
+        # height, because the sentence is the one thing here whose length
+        # changes with the answer: hidden is one line, shared names everything
+        # in the packet and runs to four. A fixed box would clip precisely the
+        # half of the screen that says what the position DOES — and it would
+        # clip it only on the sharing side, which is the side that matters.
         choices = BoxLayout(orientation="vertical", size_hint_y=None,
-                            height=dp(52 + 20 + 52 + 20 + 24), spacing=dp(8))
-
-        def choice(label, detail, bg, fg, policy):
-            btn = Button(text=label, font_size=theme.font_sp("20sp"), bold=True,
-                         size_hint_y=None, height=dp(52), background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS[bg]),
-                         color=theme.hex_to_rgba(theme.COLORS[fg]))
-            btn.bind(on_release=lambda *_: self._share_chosen(policy))
-            choices.add_widget(btn)
-            choices.add_widget(_line(detail, "13sp", color="text_secondary",
-                                     h=20))
-
-        # HIDDEN FIRST AND IN THE QUIET COLOUR. Reading order is a default of
-        # its own: the first button is the one a hurried operator presses, and
-        # the green "carry on" styling used everywhere else in this walkthrough
-        # is deliberately not given to either option here — neither of these is
-        # "continue", they are two different answers.
-        choice(s["hide_label"], s["hide_detail"], "surface", "text_primary",
-               location_share.HIDDEN)
-        choice(s["share_label"], s["share_detail"], "accent", "background",
-               location_share.APPROX)
+                            spacing=dp(8))
+        choices.bind(minimum_height=choices.setter("height"))
+        self._share_toggle = ShareToggle(
+            policy=self._share_pending, on_toggle=self._share_moved,
+            hide_label=s["hide_label"], share_label=s["share_label"])
+        choices.add_widget(self._share_toggle)
+        self._share_consequence = Label(
+            text="", font_size=theme.font_sp("13sp"), halign="left",
+            valign="top", size_hint_y=None, line_height=1.2,
+            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        self._share_consequence.bind(
+            width=lambda i, w: setattr(i, "text_size", (w, None)),
+            texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+        choices.add_widget(self._share_consequence)
+        self._share_commit = Button(
+            text="", font_size=theme.font_sp("20sp"), bold=True,
+            size_hint_y=None, height=dp(52), background_normal="")
+        self._share_commit.bind(
+            on_release=lambda *_: self._share_chosen(self._share_pending))
+        choices.add_widget(self._share_commit)
+        self._share_show()                   # paint the resting position
 
         step = WizardStep(index=1, total=total, title=s["title"],
                           body=s["body"], hint=s["hint"], warning=s["warning"],
@@ -1306,6 +1321,37 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
+
+    def _share_moved(self, policy):
+        """The switch moved. Nothing is decided — see ``_render_location_share``."""
+        from monitor import location_share
+        self._share_pending = location_share.normalise(policy)
+        self._share_show()
+
+    def _share_show(self):
+        """Say what the switch's current position would do, and what the button
+        under it will commit.
+
+        The sentence is the model's (``location_share.consequence_line``), which
+        is also what the node's own page shows. Written again here it would be
+        two descriptions of one packet, free to drift apart — and the drift
+        would be a promise about what leaves the device.
+        """
+        from monitor import location_share
+        s = LOCATION_SHARE_STEP
+        policy = getattr(self, "_share_pending", location_share.HIDDEN)
+        shared = location_share.is_shared(policy)
+        self._share_consequence.text = location_share.consequence_line(
+            policy, self._node_name)
+        self._share_commit.text = (
+            s["share_label"] if shared else s["hide_label"]) + "  →"
+        # NEVER GREEN. Green is "carry on" everywhere else in this walkthrough;
+        # this button is an answer, and it wears the colour of the end it is
+        # about to commit — the same grey/accent pair as the switch.
+        self._share_commit.background_color = theme.hex_to_rgba(
+            theme.COLORS["accent" if shared else "surface"])
+        self._share_commit.color = theme.hex_to_rgba(
+            theme.COLORS["background" if shared else "text_primary"])
 
     def _share_chosen(self, policy):
         from monitor import location_share

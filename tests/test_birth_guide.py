@@ -871,11 +871,16 @@ def test_the_share_question_is_not_a_next_button_step():
                        for s in path_steps)
 
 
-def test_the_share_screen_offers_two_named_choices_with_hiding_first():
+def test_the_share_screen_names_both_ends_of_the_switch():
+    """Since 2026-08-11 these are the two ends of one switch (left hidden, right
+    shown) rather than two buttons — the operator asked for a control whose
+    POSITION says what the node will do. The labels stay outcomes, never
+    "Next"/"Continue": the commit button below borrows these same words, so it
+    names the end it is about to take instead of just pointing onward. What each
+    end means comes from location_share.consequence_line, not from step data —
+    see tests/test_share_toggle.py."""
     from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
     assert S["hide_label"] and S["share_label"]
-    assert S["hide_detail"] and S["share_detail"]
-    # neither is "Next"/"Continue" — they are two answers, not one road onward
     for label in (S["hide_label"], S["share_label"]):
         assert "next" not in label.lower() and "continue" not in label.lower()
 
