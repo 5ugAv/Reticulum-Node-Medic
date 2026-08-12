@@ -142,3 +142,35 @@ def test_the_address_is_set_with_replace_not_add():
     assert "addr replace" in gadget.GADGET_USB0_SERVICE
     assert "addr add" not in gadget.GADGET_USB0_SERVICE
     assert "addr replace" in open("assets/scripts/prepare_card.py").read()
+
+
+# --- the card-side copy must not drift from the repo-side rule --------------
+
+def test_prepare_card_upgrades_a_dwc2_line_in_place_never_duplicates():
+    """prepare_card.py duplicates the gadget logic on purpose (it must import
+    nothing from the user-writable repo) — and the duplicate DRIFTED: the
+    repo's config_txt_with_gadget learned 'upgrade in place, never duplicate'
+    on 2026-08-08, the card-side copy never did. On node ttt (2026-08-12) the
+    card ended up with dr_mode=host mid-file AND a fresh dr_mode=peripheral
+    block appended below it — last entry wins, the Pi booted as a gadget, and
+    a THIRD node assembled mute, straight through the honest hand-back."""
+    import importlib.util, os
+    spec = importlib.util.spec_from_file_location(
+        "prepare_card", os.path.join("assets", "scripts", "prepare_card.py"))
+    pc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pc)
+    base = "arm_64bit=1\n[all]\ndtoverlay=dwc2,dr_mode=host\n"
+    out = pc.config_txt_with_gadget(base, "pi_3a_plus")
+    assert out.count("dtoverlay=dwc2") == 1, "duplicated instead of upgrading"
+    assert "dtoverlay=dwc2,dr_mode=peripheral" in out
+    assert "dr_mode=host" not in out
+
+
+def test_hand_back_verifies_the_mode_in_force_not_a_substring():
+    """The hand-back's read-back checked for the peripheral STRING — but
+    config.txt is sectioned and last-entry-wins, so 'host somewhere in the
+    file' proves nothing. The check must parse what is actually IN FORCE and
+    refuse when any peripheral line survives anywhere in force."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/build.py", "hand_the_usb_port_back")
+    assert "config_txt_applies_to_all" in src or "in_force" in src

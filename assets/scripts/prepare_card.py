@@ -271,10 +271,38 @@ def config_txt_has_gadget(text: str, pi_key: str = "") -> bool:
     return want in config_txt_applies_to_all(text)
 
 
+def _applicable_dwc2_line(text, base):
+    """Index of a dwc2 overlay line IN FORCE for every board, or None.
+    Only lines outside board-filtered sections count — a [cm5] line is not in
+    force on a 3A+ and must never be treated as ours. (Kept in step with
+    provisioning.gadget — a test pins the two copies together.)"""
+    section = "all"
+    for i, line in enumerate(text.splitlines()):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if section == "all" and (s == base or s.startswith(base + ",")):
+            return i
+    return None
+
+
 def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
     overlay = dwc2_overlay_for(pi_key)
     if config_txt_has_gadget(text, pi_key):
         return text
+    # UPGRADE IN PLACE, NEVER DUPLICATE — the 2026-08-08 rule the repo-side
+    # copy learned and this one did not, until node ttt (2026-08-12) shipped
+    # with dr_mode=host mid-file and a fresh peripheral block appended below
+    # it: config.txt is last-entry-wins, so the append UNDID the build's
+    # hand-back and a third node assembled mute.
+    at = _applicable_dwc2_line(text, DWC2_OVERLAY)
+    if at is not None:
+        lines = text.splitlines(keepends=True)
+        pad = lines[at][:len(lines[at]) - len(lines[at].lstrip())]
+        nl = "\n" if lines[at].endswith("\n") else ""
+        lines[at] = f"{pad}{overlay}{nl}"
+        return "".join(lines)
     sep = "" if text.endswith("\n") or text == "" else "\n"
     # [all] re-opened deliberately: config.txt is sectioned, and an append that
     # lands under [cm5]/[pi5] silently applies to nothing on other boards.

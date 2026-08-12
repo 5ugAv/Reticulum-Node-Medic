@@ -1416,7 +1416,16 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     # and this). The whole point of the step is that the operator will not find
     # out until the node is assembled and mute.
     check = wf.connection.run(f"cat {boot}")[1]
-    if _GADGET_OVERLAY in check or _HOST_OVERLAY not in check:
+    # VERIFY WHAT IS IN FORCE, not a substring. config.txt is sectioned and
+    # last-entry-wins: node ttt's card carried dr_mode=host mid-file and a
+    # peripheral block appended below it, so "host present, peripheral
+    # absent"-style checks can pass on a card that still boots as a gadget.
+    from provisioning.gadget import config_txt_applies_to_all
+    in_force = config_txt_applies_to_all(check)
+    peripheral_alive = any("dtoverlay=dwc2" in l and "peripheral" in l
+                           for l in in_force)
+    host_in_force = _HOST_OVERLAY in in_force
+    if peripheral_alive or not host_in_force:
         return StepResult(
             "hand_the_usb_port_back", False,
             "Wrote the USB mode back but the card still says gadget — the node "
