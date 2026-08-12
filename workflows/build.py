@@ -1359,6 +1359,25 @@ def _write_remote_file(wf: "BuildWorkflow", path: str, content: str) -> str:
             f"{wf.priv(f'tee {shlex.quote(path)}')} >/dev/null")
 
 
+def _clean_gadget_cmdline(wf: "BuildWorkflow") -> str:
+    """Drop the g_ether module load from the node's cmdline.txt; read back.
+    Returns "" when clean (or nothing to do), else the failure sentence.
+    Shared by the hand-back's main path AND its already-host skip path, so a
+    retry after a partial first run still finishes the dirty half."""
+    for cmd in ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt"):
+        if wf.connection.run(f"test -f {cmd}")[0] != 0:
+            continue
+        cl = wf.connection.run(f"cat {cmd}")[1]
+        if "modules-load=dwc2,g_ether" in cl:
+            cl2 = cl.replace("modules-load=dwc2,g_ether", "modules-load=dwc2")
+            rc = wf.connection.run(_write_remote_file(wf, cmd, cl2))[0]
+            if rc != 0 or "g_ether" in wf.connection.run(f"cat {cmd}")[1]:
+                return ("Handed the USB port back but could not drop the "
+                        "gadget module from cmdline.txt.")
+        return ""
+    return ""
+
+
 @build_step
 def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     """Stop being a gadget; start being able to host a radio.
@@ -1392,7 +1411,25 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
         return StepResult("hand_the_usb_port_back", True,
                           "No Pi boot config here — nothing to hand back.",
                           skipped=True)
-    if _GADGET_OVERLAY not in before:
+    from provisioning.gadget import config_txt_applies_to_all as _in_force
+
+    def _rogue_dwc2(text):
+        """Every in-force dwc2 line that is not exactly our host overlay: the
+        peripheral one, and a BARE "dtoverlay=dwc2" — bare means dr_mode=otg,
+        the USB-A socket has no ID pin, and config.txt is last-entry-wins
+        (break-lens, 2026-08-13)."""
+        return [l for l in _in_force(text)
+                if l.strip().startswith("dtoverlay=dwc2")
+                and l.strip() != _HOST_OVERLAY]
+
+    if not _rogue_dwc2(before):
+        # Config already clean — but NOT a pure skip: a mid-step death on a
+        # previous run can leave config.txt at host with cmdline.txt still
+        # loading g_ether, and this branch used to declare victory over the
+        # clean half while the dirty half survived (break-lens, 2026-08-13).
+        leftover = _clean_gadget_cmdline(wf)
+        if leftover:
+            return StepResult("hand_the_usb_port_back", False, leftover)
         return StepResult("hand_the_usb_port_back", True,
                           "This node was never put in gadget mode.", skipped=True)
 
@@ -1404,7 +1441,20 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     # crossing shlex.quote, bash -c and the remote shell has three chances to
     # arrive as something else; a whole file sent as base64 through a pipe
     # (_write_remote_file) has none.
-    after = before.replace(_GADGET_OVERLAY, _HOST_OVERLAY)
+    # Rewrite EVERY in-force rogue line, section-aware — a plain replace of
+    # the peripheral literal missed bare lines and anything a section hid.
+    section, out_lines = "all", []
+    for line in before.splitlines(keepends=True):
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+        elif (section == "all" and s.startswith("dtoverlay=dwc2")
+                and s != _HOST_OVERLAY):
+            pad = line[:len(line) - len(line.lstrip())]
+            nl = "\n" if line.endswith("\n") else ""
+            line = f"{pad}{_HOST_OVERLAY}{nl}"
+        out_lines.append(line)
+    after = "".join(out_lines)
     code, out, err = wf.connection.run(_write_remote_file(wf, boot, after))
     if code != 0:
         return StepResult("hand_the_usb_port_back", False,
@@ -1421,29 +1471,17 @@ def hand_the_usb_port_back(wf: "BuildWorkflow") -> StepResult:
     # peripheral block appended below it, so "host present, peripheral
     # absent"-style checks can pass on a card that still boots as a gadget.
     from provisioning.gadget import config_txt_applies_to_all
-    in_force = config_txt_applies_to_all(check)
-    peripheral_alive = any("dtoverlay=dwc2" in l and "peripheral" in l
-                           for l in in_force)
-    host_in_force = _HOST_OVERLAY in in_force
-    if peripheral_alive or not host_in_force:
+    host_in_force = _HOST_OVERLAY in _in_force(check)
+    if _rogue_dwc2(check) or not host_in_force:
         return StepResult(
             "hand_the_usb_port_back", False,
             "Wrote the USB mode back but the card still says gadget — the node "
             "would come up unable to see its own radio. Nothing else is wrong "
             "with it; this is the one edit that did not take.")
 
-    for cmd in ("/boot/firmware/cmdline.txt", "/boot/cmdline.txt"):
-        if wf.connection.run(f"test -f {cmd}")[0] == 0:
-            cl = wf.connection.run(f"cat {cmd}")[1]
-            if "modules-load=dwc2,g_ether" in cl:
-                cl2 = cl.replace("modules-load=dwc2,g_ether", "modules-load=dwc2")
-                rc = wf.connection.run(_write_remote_file(wf, cmd, cl2))[0]
-                if rc != 0 or "g_ether" in wf.connection.run(f"cat {cmd}")[1]:
-                    return StepResult(
-                        "hand_the_usb_port_back", False,
-                        "Handed the USB port back but could not drop the gadget "
-                        "module from cmdline.txt.")
-            break
+    leftover = _clean_gadget_cmdline(wf)
+    if leftover:
+        return StepResult("hand_the_usb_port_back", False, leftover)
     return StepResult("hand_the_usb_port_back", True,
                       "USB port handed back and checked on the card — it hosts "
                       "its radio from its next boot, which is the one it gets "

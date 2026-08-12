@@ -297,6 +297,15 @@ def decode(app_data: bytes) -> HealthBeacon:
     if len(app_data) < PAYLOAD_LEN:
         raise ValueError(
             f"health beacon too short: {len(app_data)} < {PAYLOAD_LEN} bytes")
+    # THE FIRST BYTE IS A FORMAT VERSION, AND IT IS ENFORCED. Without this,
+    # anything >= 14 bytes decoded — so every LXMF phone announce on the mesh
+    # (msgpack, first byte 0x9x) landed on VITALS as a red-alerting phantom
+    # node (seen live on the operator's screen, 2026-08-13). The ceiling of
+    # 0x0F rejects text and msgpack while leaving room for future versions,
+    # whose shared prefix still decodes below.
+    if not (0x01 <= app_data[0] <= 0x0F):
+        raise ValueError(
+            f"not a health beacon: format byte 0x{app_data[0]:02x}")
     (version, uptime, heap, rssi, reset, flags, board,
      fw_major, fw_minor, fw_patch) = struct.unpack_from(">BIHbBBBBBB", app_data, 0)
     b = HealthBeacon(

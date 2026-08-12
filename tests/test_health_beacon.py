@@ -376,3 +376,38 @@ def test_marginal_lora_link_is_warn():
 def test_good_lora_link_does_not_flag():
     b = decode(sample_v2(lora_snr_db=7))
     assert link_reason(b) is None
+
+
+# --- decode must refuse payloads that are not beacons -----------------------
+
+def test_decode_rejects_an_lxmf_announce_masquerading_as_a_beacon():
+    """The VITALS listener hears EVERY announce on the mesh, and decode()
+    accepted anything >= 14 bytes — so an ordinary phone's LXMF announce
+    (msgpack: [display_name, stamp_cost]) parsed as a health beacon and
+    landed on VITALS as a red-alerting phantom node (break-lens agent,
+    2026-08-13; the operator's screen showed the (unnamed) red rows live).
+    The codec's OWN first byte is a format version; unknown versions are not
+    beacons."""
+    import pytest
+    # msgpack fixarray ["Alice's Phone", 8] — first byte 0x92, not a version
+    lxmf = bytes([0x92, 0xAD]) + b"Alice's Phone" + bytes([0x08])
+    assert len(lxmf) >= 14
+    with pytest.raises(ValueError):
+        decode(lxmf)
+
+
+def test_decode_rejects_a_plain_text_name():
+    import pytest
+    with pytest.raises(ValueError):
+        decode(b"PropagationNode-42")        # 'P' = 0x50: not a version byte
+
+
+def test_decode_still_accepts_future_prefix_compatible_versions():
+    """Forward-compat stays: a v3 beacon (version byte 3) must still decode
+    its v1/v2 prefix — the ceiling exists to reject text and msgpack, not
+    the future."""
+    v2 = bytes.fromhex("010000002400c7cc053b3f000602")  # golden v1 vector
+    b = decode(v2)
+    assert b.format_version == 1
+    v3ish = bytes([0x03]) + v2[1:] + b"\x00\x00\x00\x00\x00\x00\x00extra"
+    assert decode(v3ish).format_version == 3

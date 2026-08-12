@@ -790,8 +790,11 @@ def test_it_swaps_peripheral_for_host_and_not_the_other_way():
     from workflows.build import _GADGET_OVERLAY, _HOST_OVERLAY
     assert "peripheral" in _GADGET_OVERLAY and "host" in _HOST_OVERLAY
     src = func_source("workflows/build.py", "hand_the_usb_port_back")
-    assert f"s|^{{_GADGET_OVERLAY}}|{{_HOST_OVERLAY}}|" in src or \
-        ("_GADGET_OVERLAY" in src and "_HOST_OVERLAY" in src)
+    # Since 2026-08-13 the transform is section-aware: EVERY in-force dwc2
+    # line that is not the host overlay is rewritten to it (peripheral AND
+    # bare) — the direction is host-ward only.
+    assert "_rogue_dwc2" in src and "_HOST_OVERLAY" in src
+    assert "_HOST_OVERLAY}{nl}" in src or "_HOST_OVERLAY" in src
     assert "skipped=True" in src, "a node never put in gadget mode is left alone"
 
 
@@ -1285,3 +1288,45 @@ def test_unplanned_skips_stay_silent_on_the_checklist():
     assert "result.skipped" in step
     # the unplanned-row branch must not add a row for a skip
     assert "return" in step.split("else:")[-1] or "not result.skipped" in step
+
+
+def test_hand_back_retry_still_cleans_cmdline_after_a_partial_first_run():
+    """A mid-step death between the two writes left config.txt at host but
+    cmdline.txt still loading g_ether; the retry then hit 'never put in
+    gadget mode' and skipped — the stale module survived (break-lens,
+    2026-08-13). The skip path must still finish cmdline."""
+    c = build_conn(rnode=True)
+    c.rules.insert(0, ("cat /boot/firmware/config.txt", 0,
+                       "[all]\ndtoverlay=dwc2,dr_mode=host\n", ""))
+    c.rules.insert(0, ("test -f /boot/firmware/config.txt", 0, "", ""))
+    c.rules.insert(0, ("cat /boot/firmware/cmdline.txt", 0,
+                       "console=tty1 root=PARTUUID=x rootwait "
+                       "modules-load=dwc2,g_ether\n", ""))
+    c.rules.insert(0, ("test -f /boot/firmware/cmdline.txt", 0, "", ""))
+    w = wf(c)
+    r = _run_step(w, "hand_the_usb_port_back")
+    # The emulator's cat returns the dirty cmdline before AND after the
+    # write, so the honest read-back verdict here is failure — what this
+    # test pins is that the already-host path now ATTEMPTS the dirty half
+    # instead of skipping past it.
+    wrote_cmdline = any("cmdline.txt" in cmd for cmd in c.history
+                        if "cat " not in cmd and "test " not in cmd)
+    assert wrote_cmdline, "retry skipped the half that was still dirty"
+    assert r.success is False and "cmdline" in r.message
+
+
+def test_hand_back_refuses_a_bare_dwc2_overlay_in_force():
+    """A bare 'dtoverlay=dwc2' means dr_mode=otg — and a USB-A socket has no
+    ID pin, so the node still boots a gadget. The in-force check must treat
+    a bare line as gadget-alive, not as clean (break-lens, 2026-08-13)."""
+    c = build_conn(rnode=True)
+    # after the write, the card reads back with our host line AND a bare
+    # dwc2 line BELOW it — last entry wins, the node boots OTG => gadget.
+    c.rules.insert(0, ("cat /boot/firmware/config.txt", 0,
+                       "[all]\ndtoverlay=dwc2,dr_mode=host\n"
+                       "dtoverlay=dwc2\n", ""))
+    c.rules.insert(0, ("test -f /boot/firmware/config.txt", 0, "", ""))
+    w = wf(c)
+    r = _run_step(w, "hand_the_usb_port_back")
+    assert r.success is False
+    assert "gadget" in r.message.lower()
