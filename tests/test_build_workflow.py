@@ -1259,3 +1259,29 @@ def test_bluetooth_off_names_a_write_that_did_not_take():
     r = _run_step(w, "configure_bluetooth")
     assert r.success is True        # a power tweak must not strand a birth
     assert "read back" in r.message.lower() or "could not" in r.message.lower()
+
+
+def test_the_plan_omits_steps_that_cannot_act_on_this_path():
+    """flash_rnode_firmware and set_firmware_radio_parameters exist for a Pi
+    that carries its radio DURING the build. On the built path the radio is
+    flashed on the medic and fitted last, so both always reported (skipped) —
+    and the operator read grey rows as something wrong (2026-08-12: 'the
+    user's gonna think something is wrong'). The workflow still HAS the
+    steps — a self-built Pi with its radio attached gets them as unplanned
+    rows the moment they do real work — but the promised checklist lists
+    only work that can happen."""
+    w = wf(build_conn())
+    names = w.planned_step_names()
+    assert "flash_rnode_firmware" not in names
+    assert "set_firmware_radio_parameters" not in names
+    assert "detect_hardware" in names and "configure_bluetooth" in names
+    # the workflow itself still carries them, in order
+    assert [n for n, _f in w.steps].count("flash_rnode_firmware") == 1
+
+
+def test_unplanned_skips_stay_silent_on_the_checklist():
+    from tests.srcutil import func_source
+    step = func_source("ui/screens/birth_screen.py", "_step")
+    assert "result.skipped" in step
+    # the unplanned-row branch must not add a row for a skip
+    assert "return" in step.split("else:")[-1] or "not result.skipped" in step

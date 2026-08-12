@@ -2633,7 +2633,11 @@ class BirthScreen(BoxLayout):
                 lbl.text = f"  {result.name}  (skipped)"
             bar.set(1.0, color=("green" if result.success or result.skipped
                                 else "red"))
-        else:                                    # unplanned step -> old style
+        elif not result.skipped:                 # unplanned step -> old style
+            # An unplanned SKIP is silence by design: the plan omitted it
+            # because it could do nothing here (see planned_step_names).
+            # Announcing "[skip]" for it would put the alarming grey row
+            # right back. Real unplanned work (ok or FAIL) still surfaces.
             self.list.add_widget(_line(f"  [{mark}] {result.name}", color=color,
                                        size="14sp"))
         # advance the progress ring past the step that just finished

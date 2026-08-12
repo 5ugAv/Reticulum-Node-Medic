@@ -1595,6 +1595,20 @@ class BuildWorkflow:
         self._root: Optional[bool] = None
         self._user: Optional[str] = None
 
+    #: Steps that only act on a Pi carrying its radio DURING the build. On
+    #: the built path the radio is flashed on the medic and fitted last, so
+    #: these always reported "(skipped)" — and grey rows read as something
+    #: wrong (operator, 2026-08-12). They stay in ``steps`` — a self-built Pi
+    #: with its radio attached still gets them, surfacing as unplanned rows
+    #: the moment they do real work — but the promised checklist omits them.
+    UNPLANNED_ON_BUILT_PATH = ("flash_rnode_firmware",
+                               "set_firmware_radio_parameters")
+
+    def planned_step_names(self):
+        """What the progress checklist should PROMISE for this run."""
+        return [n for n, _f in self.steps
+                if n not in self.UNPLANNED_ON_BUILT_PATH]
+
     # -- helpers -----------------------------------------------------------
 
     def cmd_output(self, command: str) -> str:

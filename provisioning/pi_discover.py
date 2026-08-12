@@ -59,6 +59,13 @@ def record_imaged_pi(hostname: str, username: str = "pi",
     address instead of asking. Best-effort."""
     if not hostname:
         return False
+    # The card just written IS a new identity — forget the old one's host
+    # keys now, at the choke point, or the next gate probe fails
+    # verification against a node that is behaving perfectly.
+    try:
+        forget_node_keys(hostname)
+    except Exception:                      # noqa: BLE001
+        pass
     try:
         from monitor.atomic_json import write_json
         return write_json(path, {"hostname": hostname, "username": username,
@@ -292,20 +299,64 @@ def addresses_for(addr: str) -> list:
     return out
 
 
+def _probe_argv(addr: str, user: str = "pi") -> List[str]:
+    """The liveness probe's exact ssh command — HOST-KEY-BLIND, deliberately.
+
+    This asks "are you up?", never "are you who you were?". A re-imaged card
+    legitimately rotates its host key, and the stale entry blocked the gate
+    twice in one evening (nodes 'soon' and 'ttt', 2026-08-12) — the
+    walkthrough sat at "looking for the Pi" until the keys were cleared by
+    hand over SSH. The build's own connection still verifies and pins; a
+    probe that reads one number from /proc makes no trust decision worth
+    failing the walkthrough over.
+    """
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "LogLevel=ERROR",
+            f"{user}@{addr}", "cat /proc/uptime"]
+
+
 def uptime_seconds(addr: str, user: str = "pi", _conn=None) -> "Optional[float]":
-    """The node's own /proc/uptime via SSH, or None when it cannot be read.
+    """The node's own /proc/uptime, or None when it cannot be read.
 
     The node's clock of record for "has it finished rebooting itself": a
     fresh card's first boot applies its baked config and reboots once, and
     any TCP-level probe can catch the doomed first boot (2026-08-12, node
     'soon' — three builds died mid-detect against it). *_conn* is injectable
-    for tests; the default is a real SSH session.
+    for tests; the default is the host-key-blind probe above.
     """
     try:
-        if _conn is None:
-            from transport.connection import SSHConnection
-            _conn = SSHConnection(addr, user=user)
-        out = _conn.run("cat /proc/uptime", timeout=8)[1] or ""
+        if _conn is not None:
+            out = _conn.run("cat /proc/uptime", timeout=8)[1] or ""
+        else:
+            out = _run(_probe_argv(addr, user), timeout=12)
         return float(out.split()[0])
     except Exception:                                              # noqa: BLE001
         return None
+
+
+def forget_node_keys(hostname: str, _run=None) -> None:
+    """Drop every stored host key for a node that has just been RE-IMAGED.
+
+    Writing a card MAKES a new identity — keeping the old key only schedules
+    a verification failure for later (it stranded two walkthroughs on
+    2026-08-12). Same shape as cert_store.save_cert retiring the old
+    certificate: one choke point every imaging goes through, so the rule
+    holds wherever a card comes from. Clears both stores: the user's
+    known_hosts and the medic's pinned file.
+    """
+    if not hostname:
+        return
+    import os as _os
+    runner = _run or (lambda argv, timeout=8: _run_keygen(argv, timeout))
+    hosts = [hostname, f"{hostname}.local", "10.55.0.1"]
+    pinned = _os.path.expanduser("~/.reticulum-node-medic/known_hosts")
+    for h in hosts:
+        runner(["ssh-keygen", "-R", h], timeout=8)
+        if _os.path.exists(pinned) or _run is not None:
+            runner(["ssh-keygen", "-R", h, "-f", pinned], timeout=8)
+
+
+def _run_keygen(argv, timeout=8):
+    return _run(argv, timeout=timeout)
