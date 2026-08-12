@@ -1257,3 +1257,59 @@ def test_hand_back_omits_an_empty_radio_serial():
     from tests.srcutil import func_source
     hand = func_source("ui/screens/birth_screen.py", "_hand_back_to_guide")
     assert "if serial" in hand or "serial and" in hand
+
+
+def test_the_prelude_screen_actually_renders():
+    """A NameError crashed the whole app the moment the operator pressed Next
+    on the name step (2026-08-12, 22:56): the combined screen's spacer used a
+    Widget that was never imported, and no compile check or source test can
+    see a runtime name. Import every name _render_location_share touches, in
+    the same scope it touches them."""
+    import ast
+    from tests.srcutil import func_source
+    src_text = func_source("ui/screens/birth_guide_screen.py",
+                           "_render_location_share")
+    # every bare Name loaded in the function must be a builtin, a parameter,
+    # a local, or imported/defined at module level of the screen
+    module = ast.parse(open("ui/screens/birth_guide_screen.py").read())
+    module_names = set()
+    for node in ast.walk(module):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                module_names.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            module_names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    module_names.add(t.id)
+    fn = ast.parse("class _C:\n" + "\n".join(
+        "    " + l for l in ("def f(self):\n" + src_text).splitlines()
+        )).body[0].body[0] if False else None
+    import textwrap
+    tree = ast.parse(textwrap.dedent(src_text))
+    fdef = tree.body[0]
+    local = {a.arg for a in fdef.args.args}
+    import builtins
+    missing = []
+    for node in ast.walk(fdef):
+        if isinstance(node, ast.Lambda):
+            for a in node.args.args:
+                local.add(a.arg)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                local.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    local.add(t.id)
+        elif isinstance(node, (ast.For, ast.comprehension)):
+            tgt = node.target if not isinstance(node, ast.comprehension) else node.target
+            if isinstance(tgt, ast.Name):
+                local.add(tgt.id)
+    for node in ast.walk(fdef):
+        if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                and node.id not in local and node.id not in module_names
+                and not hasattr(builtins, node.id)):
+            missing.append(node.id)
+    assert not missing, f"names used but never bound: {sorted(set(missing))}"

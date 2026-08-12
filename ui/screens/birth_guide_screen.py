@@ -1317,7 +1317,8 @@ class BirthGuideScreen(BoxLayout):
         if getattr(self, "_path", "") == "pi":
             # Bluetooth belongs to the Pi build only — the node whose strength
             # is to bridge, and the only build that applies the answer.
-            choices.add_widget(Widget(size_hint_y=None, height=dp(6)))
+            from kivy.uix.widget import Widget as _Spacer
+            choices.add_widget(_Spacer(size_hint_y=None, height=dp(6)))
             self._bt_toggle = OnOffToggle(
                 state=self._bt_pending, on_toggle=self._bt_moved,
                 off_label=b["off_label"], on_label=b["on_label"])
