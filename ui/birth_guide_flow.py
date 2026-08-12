@@ -79,10 +79,11 @@ LOCATION_SHARE_STEP = {
                "\"there is a node around here\", not close enough to walk to "
                "the hardware. The real position stays on Node Medic, on this "
                "node's birth certificate, for whoever has to repair it."),
-    "hint": tr("The same announce also carries this node's name, its radio "
-               "settings and its Reticulum address. If you are not sure, keep "
-               "it hidden — you can turn this on later from the node's own page "
-               "without rebuilding it."),
+    "hint": tr("Show on map announces a point up to 800 m from the truth "
+               "— never the real spot, which stays on this node's birth "
+               "certificate. The announce also carries the node's name, radio "
+               "settings and Reticulum address. Unsure? Keep it hidden — you "
+               "can turn it on later from the node's own page."),
     # THE PART THAT CANNOT BE UNDONE, in the heavier style, because it is the
     # only part of this decision that is not reversible.
     "warning": tr("An announce cannot be taken back. Turning this off later "
@@ -93,8 +94,11 @@ LOCATION_SHARE_STEP = {
     #: about to take. What each end MEANS is not written here: it comes from
     #: ``monitor.location_share.consequence_line``, the same sentence the node's
     #: own page shows, because one packet described in two places drifts.
-    "hide_label": tr("Keep it hidden"),
-    "share_label": tr("Show it, roughly"),
+    #: The two ends of the switch — POSITIONS, not verbs, since the redesign
+    #: of 2026-08-12: the commit-button that borrowed these words read as a
+    #: label and acted as a button, and the operator called it confusing.
+    "hide_label": tr("Hidden"),
+    "share_label": tr("Show on map"),
     #: Shown INSTEAD of the choice when the medic has no position for this node.
     #: Offering "share" with nothing to share would produce a node configured to
     #: announce and announcing nothing — the silent failure this whole feature

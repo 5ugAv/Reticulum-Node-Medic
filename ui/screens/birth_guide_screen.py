@@ -1276,43 +1276,29 @@ class BirthGuideScreen(BoxLayout):
     # -- the one question: does this node go on the public map? ---------------
 
     def _render_location_share(self):
-        """One switch, a sentence that follows it, and a button that says the
-        outcome out loud. Still no Next.
+        """The two birth answers as two sliders, and a Next that commits what
+        they show — nothing else on the screen advances it.
 
-        THE SWITCH (operator, 2026-08-11): "the keep it hidden or show it
-        roughly options should be a toggle switch instead of two separate
-        buttons. That way it's clear for the user to know where it sits." Two
-        buttons could say what you may press but never where the answer stood.
-
-        THE GREEN NEXT STAYS GONE, for the reason it always was: every other
-        step in this walkthrough advances on a green button in the same place,
-        and a person moving through a wizard taps that button without reading.
-        What replaces it is not a Next — it is the outcome in the operator's own
-        words ("Keep it hidden →" / "Show it, roughly →"), in the colour of the
-        end the switch is on, and it changes as the switch moves. A hurried tap
-        on it therefore commits the position that was already showing, and the
-        position it rests on is hidden.
-
-        The switch moves nothing on its own: ``_share_pending`` is where it sits,
-        ``_share_location`` is what was decided, and only the button below joins
-        them. So a screen backed out of, or left, carries the answer it arrived
-        with.
+        REDESIGNED 2026-08-12 (operator, with the first version on the glass):
+        "the first screen should just have two sliders on it — pressing 'keep
+        it hidden' takes you to the next build step, this is a confusing UI."
+        The commit-button-that-named-an-end read as a label and acted as a
+        button. Now the answers are POSITIONS — map: Hidden / Show on map,
+        Bluetooth: off / on (Pi path only, with the power cost under it) —
+        and the ordinary green Next commits exactly what is showing. The
+        switches still select the half you touch, never flip, so a stray tap
+        cannot move an answer; and both rest on their quiet ends.
         """
         self._stop_current()
-        from ui.widgets.share_toggle import ShareToggle
-        self._back_action = self._render_name          # share step -> the name
+        from ui.widgets.share_toggle import OnOffToggle, ShareToggle
+        self._back_action = self._render_name          # prelude -> the name
 
         s = LOCATION_SHARE_STEP
+        b = BLUETOOTH_STEP
         total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
         self._share_pending = self._share_location     # never the last node's
+        self._bt_pending = "on" if self._bluetooth_on else "off"
 
-        # Switch (60), the consequence sentence under it, the commit button
-        # (52). The BOX follows its children rather than carrying a measured
-        # height, because the sentence is the one thing here whose length
-        # changes with the answer: hidden is one line, shared names everything
-        # in the packet and runs to four. A fixed box would clip precisely the
-        # half of the screen that says what the position DOES — and it would
-        # clip it only on the sharing side, which is the side that matters.
         choices = BoxLayout(orientation="vertical", size_hint_y=None,
                             spacing=dp(8))
         choices.bind(minimum_height=choices.setter("height"))
@@ -1328,126 +1314,65 @@ class BirthGuideScreen(BoxLayout):
             width=lambda i, w: setattr(i, "text_size", (w, None)),
             texture_size=lambda i, ts: setattr(i, "height", ts[1]))
         choices.add_widget(self._share_consequence)
-        self._share_commit = Button(
-            text="", font_size=theme.font_sp("20sp"), bold=True,
-            size_hint_y=None, height=dp(52), background_normal="")
-        self._share_commit.bind(
-            on_release=lambda *_: self._share_chosen(self._share_pending))
-        choices.add_widget(self._share_commit)
+        if getattr(self, "_path", "") == "pi":
+            # Bluetooth belongs to the Pi build only — the node whose strength
+            # is to bridge, and the only build that applies the answer.
+            choices.add_widget(Widget(size_hint_y=None, height=dp(6)))
+            self._bt_toggle = OnOffToggle(
+                state=self._bt_pending, on_toggle=self._bt_moved,
+                off_label=b["off_label"], on_label=b["on_label"])
+            choices.add_widget(self._bt_toggle)
+            bt_line = Label(
+                text=b["hint"], font_size=theme.font_sp("13sp"), halign="left",
+                valign="top", size_hint_y=None, line_height=1.2,
+                color=theme.hex_to_rgba(theme.COLORS["amber"]))
+            bt_line.bind(
+                width=lambda i, w: setattr(i, "text_size", (w, None)),
+                texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+            choices.add_widget(bt_line)
         self._share_show()                   # paint the resting position
 
         step = WizardStep(index=1, total=total, title=s["title"],
-                          body=s["body"], hint=s["hint"], warning=s["warning"],
+                          body="", hint=s["hint"], warning=s["warning"],
                           input_widget=choices,
-                          on_next=None, on_back=self._render_name)
-        step.hide_next()
+                          on_next=self._prelude_next,
+                          on_back=self._render_name)
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
 
     def _share_moved(self, policy):
-        """The switch moved. Nothing is decided — see ``_render_location_share``."""
+        """The switch moved. Nothing is decided until Next."""
         from monitor import location_share
         self._share_pending = location_share.normalise(policy)
         self._share_show()
 
-    def _share_show(self):
-        """Say what the switch's current position would do, and what the button
-        under it will commit.
+    def _bt_moved(self, state):
+        """The Bluetooth switch moved. Nothing is decided until Next."""
+        self._bt_pending = "off" if state != "on" else "on"
 
-        The sentence is the model's (``location_share.consequence_line``), which
-        is also what the node's own page shows. Written again here it would be
-        two descriptions of one packet, free to drift apart — and the drift
-        would be a promise about what leaves the device.
+    def _share_show(self):
+        """Say what the map switch's current position would do.
+
+        The sentence is the model's (``location_share.consequence_line``),
+        which is also what the node's own page shows. Written again here it
+        would be two descriptions of one packet, free to drift apart — and
+        the drift would be a promise about what leaves the device.
         """
         from monitor import location_share
-        s = LOCATION_SHARE_STEP
         policy = getattr(self, "_share_pending", location_share.HIDDEN)
-        shared = location_share.is_shared(policy)
         self._share_consequence.text = location_share.consequence_line(
             policy, self._node_name)
-        self._share_commit.text = (
-            s["share_label"] if shared else s["hide_label"]) + "  →"
-        # NEVER GREEN. Green is "carry on" everywhere else in this walkthrough;
-        # this button is an answer, and it wears the colour of the end it is
-        # about to commit — the same grey/accent pair as the switch.
-        self._share_commit.background_color = theme.hex_to_rgba(
-            theme.COLORS["accent" if shared else "surface"])
-        self._share_commit.color = theme.hex_to_rgba(
-            theme.COLORS["background" if shared else "text_primary"])
+
+    def _prelude_next(self):
+        """Next commits BOTH positions exactly as shown, then the steps begin."""
+        self._share_chosen(getattr(self, "_share_pending", None))
 
     def _share_chosen(self, policy):
         from monitor import location_share
         self._share_location = location_share.normalise(policy)
         self._share_asked = True
-        # THE BLUETOOTH QUESTION FOLLOWS, on the Pi path only: that is the
-        # node whose strength is to bridge, and the only build that applies
-        # the answer (workflows.build.configure_bluetooth). Asking on the
-        # radio path would be a question whose answer goes nowhere — the same
-        # rule that keeps the map question off the 'host' path.
-        if (getattr(self, "_path", "") == "pi"
-                and not getattr(self, "_bt_asked", False)):
-            self._render_bluetooth()
-            return
-        self._i = 0
-        self._render_step()
-
-    # -- the second question: does this node offer Bluetooth? -----------------
-
-    def _render_bluetooth(self):
-        """One switch resting on off, and a button that names the end it
-        commits — the map question's shape, for the map question's reasons.
-        Off is the quiet end: it emits nothing and drains nothing, which is
-        what a mis-tap must land on."""
-        self._stop_current()
-        from ui.widgets.share_toggle import OnOffToggle
-        self._back_action = self._render_location_share   # bluetooth -> map answer
-
-        s = BLUETOOTH_STEP
-        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
-        self._bt_pending = "on" if self._bluetooth_on else "off"
-
-        choices = BoxLayout(orientation="vertical", size_hint_y=None,
-                            spacing=dp(8))
-        choices.bind(minimum_height=choices.setter("height"))
-        self._bt_toggle = OnOffToggle(
-            state=self._bt_pending, on_toggle=self._bt_moved,
-            off_label=s["off_label"], on_label=s["on_label"])
-        choices.add_widget(self._bt_toggle)
-        self._bt_commit = Button(
-            text="", font_size=theme.font_sp("20sp"), bold=True,
-            size_hint_y=None, height=dp(52), background_normal="")
-        self._bt_commit.bind(
-            on_release=lambda *_: self._bluetooth_chosen(self._bt_pending))
-        choices.add_widget(self._bt_commit)
-        self._bt_show()
-
-        step = WizardStep(index=1, total=total, title=s["title"],
-                          body=s["body"], hint=s["hint"],
-                          input_widget=choices,
-                          on_next=None, on_back=self._render_location_share)
-        step.hide_next()
-        self.clear_widgets()
-        self.add_widget(step)
-        self._current = step
-
-    def _bt_moved(self, state):
-        self._bt_pending = "off" if state != "on" else "on"
-        self._bt_show()
-
-    def _bt_show(self):
-        """The commit button names the end the switch is on, in that end's
-        colour — never green, for the walkthrough's standing reason."""
-        s = BLUETOOTH_STEP
-        on = getattr(self, "_bt_pending", "off") == "on"
-        self._bt_commit.text = (s["on_label"] if on else s["off_label"]) + "  →"
-        self._bt_commit.background_color = theme.hex_to_rgba(
-            theme.COLORS["accent" if on else "surface"])
-        self._bt_commit.color = theme.hex_to_rgba(
-            theme.COLORS["background" if on else "text_primary"])
-
-    def _bluetooth_chosen(self, state):
-        self._bluetooth_on = (state == "on")
+        self._bluetooth_on = (getattr(self, "_bt_pending", "off") == "on")
         self._bt_asked = True
         self._i = 0
         self._render_step()
@@ -2173,9 +2098,7 @@ class BirthGuideScreen(BoxLayout):
         Back pointed straight at the name, which carried an operator going back
         to change the share answer clean past it — the reasoning already
         written at the steps' back-walk (it is only asked once)."""
-        if getattr(self, "_bt_asked", False):
-            self._render_bluetooth()
-        elif getattr(self, "_share_asked", False):
+        if getattr(self, "_share_asked", False):
             self._render_location_share()
         else:
             self._render_name()
@@ -2501,6 +2424,14 @@ class BirthGuideScreen(BoxLayout):
         # button already reads "Try again".
         if (result or {}).get("build_failed"):
             at = max(0, at - 1)
+            # A CACHED PATH IS NOT A SIGHTING — the project's oldest lesson,
+            # found again here on 2026-08-12: the gate kept "passing" on the
+            # address that answered before the build, while the node had
+            # dropped that road (its cable address did not survive its own
+            # first-boot reboot). Forget the sighting; the watcher probes
+            # both roads fresh, and the retry goes to one that answers NOW.
+            self._node_addr = ""
+            self._node_probe = None
             self._gate_warning = tr(
                 "That build didn't finish. The failed step and its reason are "
                 "in the build log. Fix it, then tap Try again — nothing here "
@@ -2705,10 +2636,6 @@ class BirthGuideScreen(BoxLayout):
         if i < 0:
             if getattr(self, "_pair_checked", False):
                 self._render_pick_board()    # the screen actually before these
-            elif getattr(self, "_bt_asked", False):
-                # The nearest asked-once question wins: name -> map -> bluetooth
-                # -> these steps, so Back walks the same chain in reverse.
-                self._render_bluetooth()
             elif getattr(self, "_share_asked", False):
                 # The map question sits between the name and these steps, so
                 # Back has to land ON it — otherwise an operator who wanted to
@@ -2872,6 +2799,15 @@ class BirthGuideScreen(BoxLayout):
         if getattr(self, "_node_addr", ""):
             return                       # already answered; don't go asking again
         self._node_looking = True
+        self._node_probe = None          # (addr, its uptime) from the last tick
+
+        #: A fresh card's first boot applies its baked config and REBOOTS
+        #: ITSELF once — so "TCP answered" can be the doomed first boot, and
+        #: the build's SSH session dies mid-step when the scheduled reboot
+        #: lands (three times on 2026-08-12, node 'soon'). Online means: the
+        #: node's own uptime read on two consecutive ticks, rising, and past
+        #: the window in which it reboots itself.
+        NODE_SETTLED_S = 90.0
 
         def tick(_dt):
             import threading
@@ -2904,7 +2840,17 @@ class BirthGuideScreen(BoxLayout):
                         addr = (resolve(host) or "") if host else ""
                     except Exception:                              # noqa: BLE001
                         addr = ""
-                if addr:
+                if not addr:
+                    self._node_probe = None
+                    return
+                from provisioning.pi_discover import uptime_seconds
+                up = uptime_seconds(addr)
+                prev = getattr(self, "_node_probe", None)
+                self._node_probe = (addr, up)
+                if up is None or up < NODE_SETTLED_S:
+                    return               # booting, or still inside the window
+                if (prev and prev[0] == addr and prev[1] is not None
+                        and up > prev[1]):
                     Clock.schedule_once(lambda _d: self._on_node_online(addr), 0)
             threading.Thread(target=work, daemon=True).start()
 

@@ -211,15 +211,21 @@ def test_moving_the_switch_rewrites_the_consequence_underneath_it():
     assert screen._share_consequence.text == ls.consequence_line(ls.HIDDEN, "NODE")
 
 
-def test_the_button_underneath_says_which_end_the_switch_is_on():
+def test_the_sentence_underneath_follows_the_switch():
+    """Since the 2026-08-12 redesign there is no commit button — the operator
+    found a button that named an end and also advanced 'confusing UI'. The
+    switch's position is the answer, the model's sentence under it says what
+    that position does, and the ordinary Next commits. The sentence must
+    follow the switch as it moves."""
     pytest.importorskip("ui.theme", reason="Kivy not installed")
-    from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
     moved = _guide_method("_share_moved", _guide_globals())
     screen = _share_screen_stub()
     moved(screen, ls.APPROX)
-    assert S["share_label"] in screen._share_commit.text
+    assert screen._share_pending == ls.APPROX
+    shown_when_on = screen._share_consequence.text
     moved(screen, ls.HIDDEN)
-    assert S["hide_label"] in screen._share_commit.text
+    assert screen._share_pending == ls.HIDDEN
+    assert screen._share_consequence.text != shown_when_on
 
 
 def test_moving_the_switch_decides_nothing_on_its_own():
@@ -253,13 +259,21 @@ def test_a_fresh_walkthrough_starts_the_switch_on_hidden():
     assert "policy=self._share_pending" in render
 
 
-def test_the_birth_step_still_has_no_green_next():
-    """Unchanged from the two-button version and for the same reason: Next is
-    the gesture a person makes without reading, and this is the one screen where
-    that would publish something that cannot be recalled."""
+def test_next_commits_exactly_what_the_switches_show():
+    """DECISION REVERSED by the operator, 2026-08-12, with the first version
+    on the glass: "pressing 'keep it hidden' takes you to the next build
+    step, this is a confusing UI. replace it with a toggle... below that a
+    toggle that is Bluetooth". The screen now has the ordinary green Next,
+    and the protections moved into the switches themselves: they select the
+    half you touch (never flip), they rest on their quiet ends, and Next
+    commits only the positions actually showing."""
     render = func_source(GUIDE, "_render_location_share")
-    assert "hide_next()" in render
-    assert "on_next=None" in render
+    assert "hide_next" not in render
+    assert "on_next=self._prelude_next" in render
+    nxt = func_source(GUIDE, "_prelude_next")
+    assert "_share_pending" in nxt
+    chosen = func_source(GUIDE, "_share_chosen")
+    assert "_bt_pending" in chosen and "_bluetooth_on" in chosen
 
 
 # --- both places, one control ------------------------------------------------

@@ -137,8 +137,8 @@ class ShareToggle(SlotToggle):
         # and therefore testable in CI). Defaults are here so the node-detail
         # panel needs no step data to say the same thing.
         super().__init__(state=policy, on_toggle=on_toggle,
-                         captions=(hide_label or tr("Keep it hidden"),
-                                   share_label or tr("Show it, roughly")),
+                         captions=(hide_label or tr("Hidden"),
+                                   share_label or tr("Show on map")),
                          **kwargs)
 
     # -- state --------------------------------------------------------------

@@ -2594,12 +2594,17 @@ class BirthScreen(BoxLayout):
             # of a rule naming ITS radio (2026-08-12 handover). Carrying this
             # one string is what lets /dev/rnode mean "this radio".
             serial = (getattr(self._workflow, "_usb_serial", "") or "")
+            payload = {"radio_verified": verified, "build_failed": failed,
+                       "reached_at": reached}
+            # OMIT the key when there is nothing to say. resume() setattrs
+            # every key it is given, so the Pi build's hand-back (whose
+            # workflow never sees the radio) was overwriting the serial the
+            # FLASH had captured with '' — and every retry after a failed
+            # build lost the pinned udev rule (live log, 2026-08-12).
+            if serial:
+                payload["radio_usb_serial"] = serial
             Clock.schedule_once(
-                lambda _dt: app.resume_guided_birth({"radio_verified": verified,
-                                                     "build_failed": failed,
-                                                     "reached_at": reached,
-                                                     "radio_usb_serial": serial}),
-                2.5)
+                lambda _dt: app.resume_guided_birth(payload), 2.5)
         except Exception:                                          # noqa: BLE001
             pass            # a failed hand-back must never break the outcome
 

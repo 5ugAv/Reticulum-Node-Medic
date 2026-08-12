@@ -1187,17 +1187,17 @@ def test_bluetooth_step_asks_with_the_power_cost_stated():
         assert "next" not in label.lower() and "continue" not in label.lower()
 
 
-def test_bluetooth_is_asked_on_the_pi_path_after_the_map_answer():
-    """Pi only — that is the node whose strength is to bridge, and the only
-    build that applies the answer. Asking on the radio path would be a
-    question whose answer goes nowhere: the map question's own rule."""
+def test_bluetooth_shares_the_prelude_screen_on_the_pi_path():
+    """One screen, two sliders (operator, 2026-08-12) — and the Bluetooth
+    slider only on the Pi path: that is the node whose strength is to bridge,
+    and the only build that applies the answer. Its power cost sits right
+    under it."""
     from tests.srcutil import func_source
-    chosen = func_source("ui/screens/birth_guide_screen.py", "_share_chosen")
-    assert "_render_bluetooth" in chosen and '"pi"' in chosen
-    render = func_source("ui/screens/birth_guide_screen.py", "_render_bluetooth")
-    assert "OnOffToggle" in render
-    assert "hide_next" in render               # committed by a named end, not Next
-    assert "_render_location_share" in render  # Back lands on the map answer
+    render = func_source("ui/screens/birth_guide_screen.py",
+                         "_render_location_share")
+    assert "OnOffToggle" in render and "ShareToggle" in render
+    assert '"pi"' in render                    # the gate for the second slider
+    assert 'b["hint"]' in render               # the power warning under it
 
 
 def test_bluetooth_answer_rides_the_hand_off_to_the_build():
@@ -1215,3 +1215,45 @@ def test_a_fresh_walkthrough_rests_bluetooth_on_off():
     reset = func_source("ui/screens/birth_guide_screen.py", "reset")
     assert "self._bluetooth_on = False" in reset
     assert "self._bt_asked = False" in reset
+
+
+# --- the gate must ride out a fresh card's first-boot reboot ----------------
+
+def test_node_online_waits_for_a_settled_uptime():
+    """A fresh card's first boot applies its baked config and then REBOOTS
+    ITSELF once. The gate fired the moment TCP answered — during the first
+    boot — so the build's SSH session died mid-detect_hardware when the
+    scheduled reboot hit ('The Pi stopped answering part-way through', three
+    times on 2026-08-12, node 'soon'; medic dmesg showed the gadget disconnect
+    at t=768 and the second boot at t=838). Online now means: the node's own
+    uptime read twice, rising, and past the self-reboot window."""
+    from tests.srcutil import func_source
+    poll = func_source("ui/screens/birth_guide_screen.py", "_start_node_poll")
+    assert "uptime_seconds" in poll or "_node_probe" in poll
+    src_text = func_source("ui/screens/birth_guide_screen.py", "_start_node_poll")
+    assert "NODE_SETTLED_S" in src_text
+
+
+def test_uptime_seconds_reads_the_nodes_own_clock():
+    from provisioning.pi_discover import uptime_seconds
+    class FakeConn:
+        def __init__(self, out): self._out = out
+        def run(self, cmd, timeout=None): return (0, self._out, "")
+    assert uptime_seconds("10.55.0.1", _conn=FakeConn("123.45 300.0\n")) == 123.45
+    assert uptime_seconds("10.55.0.1", _conn=FakeConn("")) is None
+    class Boom:
+        def run(self, cmd, timeout=None): raise OSError("down")
+    assert uptime_seconds("10.55.0.1", _conn=Boom()) is None
+
+
+# --- a failed hand-back must not erase what the guide rightly holds ---------
+
+def test_hand_back_omits_an_empty_radio_serial():
+    """resume() setattrs every key in the payload — so the Pi build's
+    hand-back (whose workflow has no _usb_serial) overwrote the serial the
+    flash had captured with '' (live log, 2026-08-12: line one carried
+    F8:5B:…, the failed build's resume wiped it). Omit the key when there is
+    nothing to say; the guide keeps what it knows."""
+    from tests.srcutil import func_source
+    hand = func_source("ui/screens/birth_screen.py", "_hand_back_to_guide")
+    assert "if serial" in hand or "serial and" in hand

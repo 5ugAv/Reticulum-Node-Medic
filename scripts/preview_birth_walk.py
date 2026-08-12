@@ -153,6 +153,7 @@ class Walk(App):
         shots, because the whole claim is about the difference between them.
         """
         g = self.guide
+        g._path = "pi"           # the Pi path shows BOTH sliders (map + BT)
         try:
             g._render_location_share()
         except Exception as e:                                     # noqa: BLE001
@@ -170,25 +171,19 @@ class Walk(App):
         Clock.schedule_once(lambda _d: self._bt_step(), 2.4)
 
     def _bt_step(self):
-        """The Bluetooth switch, photographed at both ends — the same claim as
-        the map switch (a position readable at a glance), the same reason
-        source tests cannot answer it."""
+        """The Bluetooth slider flipped on, on the SAME screen — since the
+        2026-08-12 redesign the two answers share the prelude."""
         g = self.guide
-        g._path = "pi"                      # the only path that asks
-        try:
-            g._render_bluetooth()
-        except Exception as e:                                     # noqa: BLE001
-            print(f"!! _render_bluetooth RAISED {type(e).__name__}: {e}")
-            Clock.schedule_once(lambda _d: self._done_screen(), 0.2)
-            return
-        Clock.schedule_once(lambda _d: self._save("93_bluetooth_off"), 0.5)
 
         def flip(_d):
-            g._bt_toggle.set_state("on")
-            g._bt_moved("on")               # the commit button follows
-        Clock.schedule_once(flip, 1.0)
-        Clock.schedule_once(lambda _d: self._save("94_bluetooth_on"), 1.6)
-        Clock.schedule_once(lambda _d: self._done_screen(), 2.4)
+            try:
+                g._bt_toggle.set_state("on")
+                g._bt_moved("on")
+            except Exception as e:                                 # noqa: BLE001
+                print(f"!! bluetooth flip RAISED {type(e).__name__}: {e}")
+        Clock.schedule_once(flip, 0.2)
+        Clock.schedule_once(lambda _d: self._save("93_bluetooth_on"), 0.8)
+        Clock.schedule_once(lambda _d: self._done_screen(), 1.6)
 
     def _done_screen(self):
         try:

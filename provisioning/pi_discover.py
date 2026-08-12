@@ -290,3 +290,22 @@ def addresses_for(addr: str) -> list:
     if addr not in out:
         out.append(addr)
     return out
+
+
+def uptime_seconds(addr: str, user: str = "pi", _conn=None) -> "Optional[float]":
+    """The node's own /proc/uptime via SSH, or None when it cannot be read.
+
+    The node's clock of record for "has it finished rebooting itself": a
+    fresh card's first boot applies its baked config and reboots once, and
+    any TCP-level probe can catch the doomed first boot (2026-08-12, node
+    'soon' — three builds died mid-detect against it). *_conn* is injectable
+    for tests; the default is a real SSH session.
+    """
+    try:
+        if _conn is None:
+            from transport.connection import SSHConnection
+            _conn = SSHConnection(addr, user=user)
+        out = _conn.run("cat /proc/uptime", timeout=8)[1] or ""
+        return float(out.split()[0])
+    except Exception:                                              # noqa: BLE001
+        return None
