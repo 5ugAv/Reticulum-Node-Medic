@@ -1121,6 +1121,53 @@ def apply_system_hardening(wf: "BuildWorkflow") -> StepResult:
 
 
 @build_step
+def configure_bluetooth(wf: "BuildWorkflow") -> StepResult:
+    """Apply the birth answer about the node's Bluetooth radio.
+
+    ON means the stock OS is left alone — nothing to do, and the message says
+    only that. OFF is real work, done in both tenses: dtoverlay=disable-bt in
+    the boot config so the radio is never powered again from the next boot
+    (the whole power saving), plus an immediate rfkill block and the services
+    off so the choice means something before that reboot. The boot config is
+    transformed in Python and written back whole, then read back — the house
+    rule for privileged writes. A gap is named and the build carries on: a
+    power tweak must never strand a birth (apply_system_hardening's lesson,
+    same day).
+    """
+    if wf.profile.bluetooth_enabled:
+        return StepResult("configure_bluetooth", True,
+                          "Bluetooth left on, as chosen at birth.")
+    gaps = []
+    conf = "/boot/firmware/config.txt"
+    code, body, _ = wf.connection.run(f"cat {conf}")
+    if code != 0:                     # pre-bookworm images keep it in /boot
+        conf = "/boot/config.txt"
+        code, body, _ = wf.connection.run(f"cat {conf}")
+    if code != 0:
+        gaps.append("could not read the boot config, so Bluetooth is only "
+                    "blocked, not unpowered")
+    elif "dtoverlay=disable-bt" not in (body or ""):
+        new_body = (body or "").rstrip("\n") + (
+            "\n\n# Node Medic: Bluetooth off, chosen at birth (power).\n"
+            "dtoverlay=disable-bt\n")
+        wf.connection.run(_write_remote_file(wf, conf, new_body))
+        check = wf.connection.run(f"cat {conf}")[1] or ""
+        if "dtoverlay=disable-bt" not in check:
+            gaps.append("the boot-config write did not read back")
+    wf.connection.run(wf.priv("rfkill block bluetooth") + " || true")
+    wf.connection.run(
+        wf.priv("systemctl disable --now bluetooth hciuart") + " || true")
+    if gaps:
+        return StepResult("configure_bluetooth", True,
+                          "Bluetooth off was chosen, but: " + "; ".join(gaps)
+                          + ". It is rfkill-blocked for now.")
+    return StepResult("configure_bluetooth", True,
+                      "Bluetooth off, as chosen at birth: blocked now, and "
+                      "never powered from the next boot (dtoverlay=disable-bt, "
+                      "read back).")
+
+
+@build_step
 def set_hostname(wf: "BuildWorkflow") -> StepResult:
     if not wf.profile.hostname:
         suffix = wf.profile.session_id[-6:]

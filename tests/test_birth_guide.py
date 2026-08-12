@@ -1174,3 +1174,44 @@ def test_the_connect_pi_watcher_knows_both_roads():
     probe = func_source("ui/screens/birth_guide_screen.py", "_pi_answering")
     assert "lsusb" in probe or "pi_usbboot" in probe     # the cable road
     assert "resolve" in probe and "hostnameify" in probe  # the Wi-Fi road
+
+
+# --- the Bluetooth question (operator, 2026-08-12) --------------------------
+
+def test_bluetooth_step_asks_with_the_power_cost_stated():
+    from ui.birth_guide_flow import BLUETOOTH_STEP as S
+    text = (S["body"] + " " + S["hint"]).lower()
+    assert "power" in text
+    assert "solar" in S["hint"].lower()        # the operator's own advice
+    for label in (S["off_label"], S["on_label"]):
+        assert "next" not in label.lower() and "continue" not in label.lower()
+
+
+def test_bluetooth_is_asked_on_the_pi_path_after_the_map_answer():
+    """Pi only — that is the node whose strength is to bridge, and the only
+    build that applies the answer. Asking on the radio path would be a
+    question whose answer goes nowhere: the map question's own rule."""
+    from tests.srcutil import func_source
+    chosen = func_source("ui/screens/birth_guide_screen.py", "_share_chosen")
+    assert "_render_bluetooth" in chosen and '"pi"' in chosen
+    render = func_source("ui/screens/birth_guide_screen.py", "_render_bluetooth")
+    assert "OnOffToggle" in render
+    assert "hide_next" in render               # committed by a named end, not Next
+    assert "_render_location_share" in render  # Back lands on the map answer
+
+
+def test_bluetooth_answer_rides_the_hand_off_to_the_build():
+    from tests.srcutil import func_source
+    hand = func_source("ui/screens/birth_guide_screen.py", "_hand_over_name")
+    assert "bluetooth=" in hand
+    make = func_source("ui/screens/birth_screen.py", "_make_workflow")
+    assert "bluetooth_enabled" in make
+    reset = func_source("ui/screens/birth_screen.py", "_fresh_lap")
+    assert "_guided_bluetooth" in reset, "one node's yes must not leak to the next"
+
+
+def test_a_fresh_walkthrough_rests_bluetooth_on_off():
+    from tests.srcutil import func_source
+    reset = func_source("ui/screens/birth_guide_screen.py", "reset")
+    assert "self._bluetooth_on = False" in reset
+    assert "self._bt_asked = False" in reset

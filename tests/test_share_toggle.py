@@ -290,3 +290,34 @@ def test_the_panel_reads_the_switch_back_off_the_record():
 def test_the_panel_sentence_comes_from_the_model_too():
     refresh = func_source(PANEL, "_refresh", cls="MapSharingPopup")
     assert "consequence_line" in refresh
+
+
+# --- the on/off slot switch (Bluetooth at birth) ----------------------------
+
+def test_onoff_rests_on_off_whatever_was_stored():
+    """An unreadable stored value must land on the end that emits and drains
+    nothing — the same direction-of-failure rule as the share switch."""
+    from ui.widgets import share_toggle as st_mod
+    onoff = st_mod.OnOffToggle
+    assert onoff.STATES[0] == "off"
+    for junk in (None, "", "maybe", 3, False):
+        assert onoff.normalise(junk) == "off", junk
+    assert onoff.normalise(True) == "on"        # a stored boolean is honoured
+    assert onoff.normalise("on") == "on"
+
+
+def test_a_tap_on_the_off_half_can_never_turn_bluetooth_on():
+    from ui.widgets import share_toggle as st_mod
+    stub = types.SimpleNamespace(x=0.0, width=200.0, state="on")
+    touch = types.SimpleNamespace(x=20.0, y=5.0)
+    assert st_mod.OnOffToggle.target_state(stub, touch) == "off"
+    touch_right = types.SimpleNamespace(x=180.0, y=5.0)
+    assert st_mod.OnOffToggle.target_state(stub, touch_right) == "on"
+
+
+def test_the_two_slot_switches_share_one_drawing():
+    """Two switches drawn twice is two spines: the slot geometry, colours and
+    caption contrast must come from SlotToggle alone."""
+    text = src("ui/widgets/share_toggle.py")
+    import re
+    assert len(re.findall(r"def _redraw", text)) == 1

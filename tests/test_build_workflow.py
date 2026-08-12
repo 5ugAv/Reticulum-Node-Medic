@@ -19,6 +19,7 @@ EXPECTED_STEPS = [
     "install_health_reporter",
     "install_status_server",
     "apply_system_hardening",
+    "configure_bluetooth",
     "set_hostname",
     "final_verification",
     "prove_the_node_reports",
@@ -1203,3 +1204,58 @@ def test_progress_checklist_rows_grow_with_their_labels():
     from tests.srcutil import func_source
     src = func_source("ui/screens/birth_screen.py", "_launch")
     assert 'lbl.bind(height=' in src, "row height does not follow the label"
+
+
+def test_every_pi_template_bridges_lora_to_the_lan():
+    """The Pi's strength over an RTNode is that it BRIDGES: LoRa on one side,
+    the local network (and through it, the internet) on the other — and its
+    health beacons reach the medic over Wi-Fi even before the radio is
+    fitted. (Operator, 2026-08-12.) A Pi config without the LAN interface is
+    a node that can only ever whisper over one radio."""
+    import glob, os
+    from workflows.build import CONFIG_DIR
+    for path in sorted(glob.glob(os.path.join(CONFIG_DIR, "reticulum_transport_*.conf"))):
+        text = open(path).read()
+        assert "AutoInterface" in text, os.path.basename(path)
+        block = text[text.index("AutoInterface"):]
+        assert "enabled = Yes" in block[:200], os.path.basename(path)
+
+
+
+# --- Bluetooth is a birth answer, applied honestly --------------------------
+
+def test_bluetooth_left_on_touches_nothing():
+    from node_profile import NodeProfile
+    p = NodeProfile()
+    p.bluetooth_enabled = True
+    w = wf(build_conn(), profile=p)
+    r = _run_step(w, "configure_bluetooth")
+    assert r.success is True and "left on" in r.message.lower()
+    assert not any("disable-bt" in c for c in w.connection.history)
+    assert not any("rfkill" in c for c in w.connection.history)
+
+
+def test_bluetooth_off_lands_in_the_boot_config_and_reads_back():
+    """OFF is real work: dtoverlay=disable-bt (never powered from next boot),
+    an immediate rfkill block, and the services off. The boot-config write is
+    transformed in Python and read back whole — the house rule for privileged
+    writes."""
+    w = wf(build_conn())            # profile default: bluetooth_enabled False
+    w.connection.rules.insert(0, ("cat /boot/firmware/config.txt", 0,
+                                  "arm_64bit=1\ndtoverlay=disable-bt\n", ""))
+    w.connection.rules.insert(0, ("rfkill list", 0, "SOFT yes", ""))
+    r = _run_step(w, "configure_bluetooth")
+    assert r.success is True
+    assert "next boot" in r.message.lower()
+    assert any("rfkill block bluetooth" in c for c in w.connection.history)
+    assert any("systemctl disable" in c and "bluetooth" in c
+               for c in w.connection.history)
+
+
+def test_bluetooth_off_names_a_write_that_did_not_take():
+    w = wf(build_conn())
+    w.connection.rules.insert(0, ("cat /boot/firmware/config.txt", 0,
+                                  "arm_64bit=1\n", ""))   # never gains the line
+    r = _run_step(w, "configure_bluetooth")
+    assert r.success is True        # a power tweak must not strand a birth
+    assert "read back" in r.message.lower() or "could not" in r.message.lower()

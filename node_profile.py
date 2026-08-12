@@ -75,6 +75,12 @@ class NodeProfile:
     #: whether it has been flashed yet — a BLANK board is present but not
     #: provisioned. Distinct from ``has_rnode`` so the build can flash a blank
     #: board instead of skipping it.
+    #: Whether the node keeps its Bluetooth radio. Asked at BIRTH, resting on
+    #: OFF: a solar node positioned at height is better with Bluetooth off —
+    #: it draws power all day whether used or not (operator, 2026-08-12).
+    #: Applied by workflows.build.configure_bluetooth; True leaves the stock
+    #: OS untouched.
+    bluetooth_enabled: bool = False
     rnode_present: bool = False
     #: The board carries valid RNode firmware (``--info`` reports it).
     has_rnode: bool = False

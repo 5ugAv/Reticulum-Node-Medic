@@ -20,7 +20,7 @@ from kivy.uix.label import Label
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — guided-birth screen labels/buttons
 from monitor.formatting import format_age
-from ui.birth_guide_flow import (ANTENNA_STEP, BIRTH_PATHS,
+from ui.birth_guide_flow import (ANTENNA_STEP, BIRTH_PATHS, BLUETOOTH_STEP,
                                  LOCATION_SHARE_STEP, guide_steps)
 from ui.widgets.wizard_step import WizardStep
 from ui.widgets.birth_anims import (ConnectAntennaAnim, ConnectBoardAnim,
@@ -120,6 +120,10 @@ class BirthGuideScreen(BoxLayout):
         from monitor import location_share
         self._share_location = location_share.HIDDEN
         self._share_asked = False
+        # And the Bluetooth answer, for the same reason: OFF is the resting
+        # end, and one node's yes must never become the next node's radio.
+        self._bluetooth_on = False
+        self._bt_asked = False
         # A new walkthrough owes nothing to the last one. A stale return point
         # would send a screen finishing LATE — a card write that outlived the
         # operator's patience, say — back into a walkthrough that has since
@@ -1376,6 +1380,75 @@ class BirthGuideScreen(BoxLayout):
         from monitor import location_share
         self._share_location = location_share.normalise(policy)
         self._share_asked = True
+        # THE BLUETOOTH QUESTION FOLLOWS, on the Pi path only: that is the
+        # node whose strength is to bridge, and the only build that applies
+        # the answer (workflows.build.configure_bluetooth). Asking on the
+        # radio path would be a question whose answer goes nowhere — the same
+        # rule that keeps the map question off the 'host' path.
+        if (getattr(self, "_path", "") == "pi"
+                and not getattr(self, "_bt_asked", False)):
+            self._render_bluetooth()
+            return
+        self._i = 0
+        self._render_step()
+
+    # -- the second question: does this node offer Bluetooth? -----------------
+
+    def _render_bluetooth(self):
+        """One switch resting on off, and a button that names the end it
+        commits — the map question's shape, for the map question's reasons.
+        Off is the quiet end: it emits nothing and drains nothing, which is
+        what a mis-tap must land on."""
+        self._stop_current()
+        from ui.widgets.share_toggle import OnOffToggle
+        self._back_action = self._render_location_share   # bluetooth -> map answer
+
+        s = BLUETOOTH_STEP
+        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
+        self._bt_pending = "on" if self._bluetooth_on else "off"
+
+        choices = BoxLayout(orientation="vertical", size_hint_y=None,
+                            spacing=dp(8))
+        choices.bind(minimum_height=choices.setter("height"))
+        self._bt_toggle = OnOffToggle(
+            state=self._bt_pending, on_toggle=self._bt_moved,
+            off_label=s["off_label"], on_label=s["on_label"])
+        choices.add_widget(self._bt_toggle)
+        self._bt_commit = Button(
+            text="", font_size=theme.font_sp("20sp"), bold=True,
+            size_hint_y=None, height=dp(52), background_normal="")
+        self._bt_commit.bind(
+            on_release=lambda *_: self._bluetooth_chosen(self._bt_pending))
+        choices.add_widget(self._bt_commit)
+        self._bt_show()
+
+        step = WizardStep(index=1, total=total, title=s["title"],
+                          body=s["body"], hint=s["hint"],
+                          input_widget=choices,
+                          on_next=None, on_back=self._render_location_share)
+        step.hide_next()
+        self.clear_widgets()
+        self.add_widget(step)
+        self._current = step
+
+    def _bt_moved(self, state):
+        self._bt_pending = "off" if state != "on" else "on"
+        self._bt_show()
+
+    def _bt_show(self):
+        """The commit button names the end the switch is on, in that end's
+        colour — never green, for the walkthrough's standing reason."""
+        s = BLUETOOTH_STEP
+        on = getattr(self, "_bt_pending", "off") == "on"
+        self._bt_commit.text = (s["on_label"] if on else s["off_label"]) + "  →"
+        self._bt_commit.background_color = theme.hex_to_rgba(
+            theme.COLORS["accent" if on else "surface"])
+        self._bt_commit.color = theme.hex_to_rgba(
+            theme.COLORS["background" if on else "text_primary"])
+
+    def _bluetooth_chosen(self, state):
+        self._bluetooth_on = (state == "on")
+        self._bt_asked = True
         self._i = 0
         self._render_step()
 
@@ -1428,7 +1501,11 @@ class BirthGuideScreen(BoxLayout):
                         # /dev/rnode with it, since the radio itself is in the
                         # operator's pocket by now.
                         radio_usb_serial=getattr(
-                            self, "_radio_usb_serial", "") or None)
+                            self, "_radio_usb_serial", "") or None,
+                        # And the Bluetooth answer, taken two screens after
+                        # the name — the build applies it, so it rides the
+                        # same hand-off as everything else already asked.
+                        bluetooth=getattr(self, "_bluetooth_on", False))
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
@@ -2096,7 +2173,9 @@ class BirthGuideScreen(BoxLayout):
         Back pointed straight at the name, which carried an operator going back
         to change the share answer clean past it — the reasoning already
         written at the steps' back-walk (it is only asked once)."""
-        if getattr(self, "_share_asked", False):
+        if getattr(self, "_bt_asked", False):
+            self._render_bluetooth()
+        elif getattr(self, "_share_asked", False):
             self._render_location_share()
         else:
             self._render_name()
@@ -2626,6 +2705,10 @@ class BirthGuideScreen(BoxLayout):
         if i < 0:
             if getattr(self, "_pair_checked", False):
                 self._render_pick_board()    # the screen actually before these
+            elif getattr(self, "_bt_asked", False):
+                # The nearest asked-once question wins: name -> map -> bluetooth
+                # -> these steps, so Back walks the same chain in reverse.
+                self._render_bluetooth()
             elif getattr(self, "_share_asked", False):
                 # The map question sits between the name and these steps, so
                 # Back has to land ON it — otherwise an operator who wanted to

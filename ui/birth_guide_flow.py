@@ -107,6 +107,29 @@ LOCATION_SHARE_STEP = {
 }
 
 
+#: THE SECOND BIRTH QUESTION — Pi path only. Bluetooth is part of what a Pi
+#: node can offer (a phone beside it connects to it directly) and part of
+#: what drains it, so the answer is the operator's, taken at birth with the
+#: power cost stated — never a default's. Asked on the Pi path because that
+#: is the node whose strength is to BRIDGE (operator, 2026-08-12: "the node
+#: with pi's strength over rtnode is that it can propagate messages and also
+#: bridge lora wifi Internet and (optional in the build) Bluetooth").
+#: Like the map question it is a custom screen, not a _STEPS entry — one
+#: switch, left is off, left is where it rests.
+BLUETOOTH_STEP = {
+    "title": tr("Should this node offer Bluetooth?"),
+    "body": tr("Bluetooth lets phones right next to the node connect to it "
+               "directly. It also draws power all day, whether anyone uses "
+               "it or not."),
+    #: The operator's own advice, nearly verbatim (2026-08-12).
+    "hint": tr("A solar node positioned at height is better with Bluetooth "
+               "off — it will use more power."),
+    "off_label": tr("Bluetooth off"),
+    "on_label": tr("Bluetooth on"),
+    "anim": None,
+}
+
+
 #: Ordered guided steps per path. Each step: title, body, optional ``anim`` key
 #: ("connect_board" | "insert_sd" | None) and optional ``hint`` / ``warning`` /
 #: ``next`` label. The last step's Next hands off to the real BIRTH flow. The

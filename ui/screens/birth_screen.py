@@ -1673,6 +1673,8 @@ class BirthScreen(BoxLayout):
         # One node's radio serial must never become the next node's udev rule —
         # begin_guided re-sets it from its own hand-off after this reset.
         self._guided_radio_usb_serial = ""
+        # And one node's Bluetooth yes must never become the next node's radio.
+        self._guided_bluetooth = False
         # The previous build's page is over; whoever calls _build_chooser next
         # puts the chooser back, so the flag has to agree or it describes a
         # header that is no longer on screen.
@@ -1698,7 +1700,7 @@ class BirthScreen(BoxLayout):
 
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
                      pi_address=None, share_location=None,
-                     radio_usb_serial=None):
+                     radio_usb_serial=None, bluetooth=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1757,6 +1759,10 @@ class BirthScreen(BoxLayout):
         # the share answer above): a lap that carries none must not inherit
         # the previous node's radio.
         self._guided_radio_usb_serial = (radio_usb_serial or "").strip()
+        # The Bluetooth answer, same hygiene: set unconditionally from this
+        # hand-off, so a lap that carries none normalises to OFF (the quiet
+        # end) rather than inheriting the last node's yes.
+        self._guided_bluetooth = bool(bluetooth)
         self._forced_firmware = {"radio": "rtnode2400", "host": "rnode",
                                  "pi": "pi_rnode"}.get(path)
         if self._forced_firmware:
@@ -2285,6 +2291,9 @@ class BirthScreen(BoxLayout):
                 # though the radio is in the operator's pocket during the build.
                 prof.radio.usb_serial = getattr(
                     self, "_guided_radio_usb_serial", "") or ""
+                # The birth answer configure_bluetooth applies on the node.
+                prof.bluetooth_enabled = bool(getattr(
+                    self, "_guided_bluetooth", False))
             title = (f"Building Pi + {board.display_name}..." if board
                      else "Building Pi + RNode...")
         elif board is not None:                  # standalone RNode flash (no Pi)
