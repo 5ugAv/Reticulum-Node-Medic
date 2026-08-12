@@ -83,6 +83,7 @@ def _reading(record, name):
 
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
+                 on_forget=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
                  capabilities=None, **kwargs):
@@ -92,6 +93,7 @@ class NodeDetailScreen(BoxLayout):
         self.spacing = dp(8)
         self.record = record
         self._on_poll = on_poll
+        self._on_forget = on_forget
         self._on_navigate = on_navigate
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
@@ -290,6 +292,19 @@ class NodeDetailScreen(BoxLayout):
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
             nav_btn.bind(on_release=lambda *_: self._navigate())
             actions.add_widget(nav_btn)
+        if self._on_forget is not None:
+            # DELETE, behind the danger confirm (operator request, 2026-08-13:
+            # "delete all data about said node so the name can be reused in a
+            # new birth"). Red, and worded as what it destroys — the medic's
+            # whole memory of the node, not the node itself.
+            forget = Button(text=tr("Delete this node…"),
+                            font_size=theme.font_sp("18sp"),
+                            background_normal="",
+                            background_color=theme.hex_to_rgba(
+                                theme.COLORS["red"]),
+                            color=theme.hex_to_rgba(theme.COLORS["background"]))
+            forget.bind(on_release=lambda *_: self._confirm_forget())
+            actions.add_widget(forget)
         # Only when the board is REALLY here and there is somewhere to send it.
         # A rebirth is a USB erase; a button for a node across town would
         # be a repair path that looks one tap from working and isn't.
@@ -317,6 +332,23 @@ class NodeDetailScreen(BoxLayout):
     def _navigate(self):
         if self._on_navigate:
             self._on_navigate(self.record)
+
+    def _confirm_forget(self):
+        """The medic forgets a node only past the red confirm. What is deleted
+        is the MEDIC'S record — rows, history, certificates, roster — never
+        anything on the node itself; the name becomes free for a new birth."""
+        from ui.confirm import confirm_danger
+        name = self.record.name or self.record.dst_hash[:8]
+        confirm_danger(
+            tr("Delete everything Node Medic knows about {name}?\n\n"
+               "Its rows, history, certificates and roster entry all go — "
+               "this cannot be undone, and the name becomes free for a new "
+               "birth. The node itself is not touched; if it is still alive "
+               "and announcing, it will reappear as a neighbour.").format(
+                   name=name),
+            tr("Delete {name}").format(name=name),
+            lambda: self._on_forget(self.record),
+            proceed_text=tr("Delete it all"))
 
     def _map_sharing(self):
         """Open the location / map-sharing panel for this node.

@@ -59,3 +59,18 @@ def test_cert_id_stable_and_slugged():
 
 def test_load_missing_dir_is_empty(tmp_path):
     assert load_certs(str(tmp_path / "nope")) == []
+
+
+def test_delete_by_name_frees_the_name_for_a_new_birth(tmp_path):
+    """The operator's delete-node action (2026-08-13): every record of the
+    name goes, so a new birth under it starts clean. Case-insensitive — the
+    registry shows TTT for a node born ttt."""
+    from ui.cert_store import delete_by_name
+    d = str(tmp_path)
+    save_cert({"node_type": "pi", "node_name": "ttt", "session_id": "a"}, d, now=1)
+    save_cert({"node_type": "rnode", "node_name": "TTT", "session_id": "b"}, d, now=2)
+    save_cert({"node_type": "pi", "node_name": "HOPE", "session_id": "c"}, d, now=3)
+    assert delete_by_name("ttt", d) == 2
+    left = load_certs(d)
+    assert len(left) == 1 and left[0]["node_name"] == "HOPE"
+    assert delete_by_name("nonesuch", d) == 0

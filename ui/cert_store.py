@@ -235,3 +235,25 @@ def update_notes(cid: str, notes: str, cert_dir: str = CERT_DIR) -> bool:
     from monitor.atomic_json import write_json
     write_json(path, cert, indent=2)
     return True
+
+
+def delete_by_name(name: str, cert_dir: str = CERT_DIR) -> int:
+    """Remove every stored certificate carrying *name* (case-insensitive).
+
+    The delete-node action (operator, 2026-08-13): a name is only truly free
+    for a new birth when nothing on the medic still answers to it. Returns
+    how many were removed; 0 for an unknown name is an answer, not an error.
+    """
+    low = (name or "").strip().lower()
+    if not low:
+        return 0
+    removed = 0
+    for c in load_certs(cert_dir):
+        if (c.get("node_name") or "").strip().lower() == low:
+            path = os.path.join(cert_dir, f"{c['_id']}.json")
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+    return removed

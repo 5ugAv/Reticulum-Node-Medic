@@ -587,3 +587,55 @@ def test_the_two_kinds_of_evidence_survive_a_restart():
     assert rec.last_direct == NOW and rec.mesh_heard == NOW - 40 * HOUR
     back.ingest_mesh(_mesh(HASH, heard=NOW - 40 * HOUR), NOW)
     assert back.get(HASH).last_seen == NOW
+
+
+# --- forget a node completely, so its name can be reborn --------------------
+
+def test_forget_node_removes_every_row_of_the_machine():
+    """One machine leaves several rows (the build's placeholder, plus one per
+    announced destination, grouped by identity). Deleting a node from its
+    detail page must take ALL of them and their history, or the reborn name
+    inherits a stranger's past (operator request, 2026-08-13)."""
+    r = NodeRegistry()
+    r.register("rtnode:ttt", name="ttt", node_type="pi_propagation")
+    r.ingest_announce(bytes.fromhex("72" * 16), b"", 1000.0,
+                      identity_hash="aa" * 16)
+    r.ingest_announce(bytes.fromhex("96" * 16), b"", 1001.0,
+                      identity_hash="aa" * 16)
+    r.nodes[bytes.fromhex("72" * 16).hex()].name = "TTT"
+    removed = r.forget_node("ttt")
+    assert removed == 3
+    assert not any((v.name or "").lower() == "ttt" for v in r.nodes.values())
+    assert bytes.fromhex("96" * 16).hex() not in r.nodes   # identity sibling went too
+    assert bytes.fromhex("72" * 16).hex() not in r.history._series if hasattr(r.history, "_series") else True
+
+
+def test_forget_node_leaves_strangers_alone():
+    r = NodeRegistry()
+    r.register("rtnode:ttt", name="ttt")
+    r.register("rtnode:hope", name="HOPE")
+    r.forget_node("ttt")
+    assert any((v.name or "") == "HOPE" for v in r.nodes.values())
+
+
+def test_forget_node_unknown_name_is_zero_not_error():
+    r = NodeRegistry()
+    assert r.forget_node("nonesuch") == 0
+
+
+def test_the_detail_screen_offers_delete_behind_the_danger_confirm():
+    """Operator request, 2026-08-13: a delete button on the node detail page
+    that removes ALL data about the node so the name can be reused. It must
+    sit behind confirm_danger (destructive), say it deletes the MEDIC'S
+    record not the node, and the app hook must clear registry rows, certs,
+    roster and beacon targets."""
+    from tests.srcutil import func_source, src as read_src
+    detail = read_src("ui/screens/node_detail_screen.py")
+    assert "Delete this node" in detail
+    assert "confirm_danger" in detail
+    forget = func_source("ui/app.py", "_forget_node")
+    assert "forget_node" in forget          # registry, all sibling rows
+    assert "delete_by_name" in forget       # certificates
+    assert "kin_roster" in forget           # roster entry
+    assert "_beacon_targets" in forget      # poll targets
+    assert 'switch_mode("vitals")' in forget

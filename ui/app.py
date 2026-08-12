@@ -1306,6 +1306,61 @@ class ReticulumNodeMedicApp(App):
         from kivy.clock import Clock
         Clock.schedule_once(lambda *_: g._render_over_air_confirm(cand), 0)
 
+    def _forget_node(self, rec):
+        """Delete the medic's whole memory of one node (operator, 2026-08-13).
+
+        All of the machine's registry rows and history (placeholder and
+        aspect siblings included), its certificates, its kin-roster entry,
+        its beacon target. Then back to VITALS, where the row is gone. The
+        node itself is never touched — if it is alive and announcing it will
+        reappear as an anonymous neighbour, which is the truth.
+        """
+        name = rec.name or ""
+        try:
+            reg = self.monitor_service.registry
+            hashes = [h for h, v in reg.nodes.items()
+                      if (v.name or "").lower() == (name or "").lower()
+                      or h == rec.dst_hash]
+        except Exception:                                          # noqa: BLE001
+            reg, hashes = None, [rec.dst_hash]
+        removed = 0
+        if reg is not None:
+            try:
+                removed = reg.forget_node(name or rec.dst_hash)
+                self.monitor_service.registry.save(self._REGISTRY_FILE)
+            except Exception:                                      # noqa: BLE001
+                pass
+        try:
+            from ui.cert_store import delete_by_name
+            removed += delete_by_name(name)
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:                              # kin roster: by hash and by name
+            from monitor import kin_roster
+            ro = kin_roster.load_roster()
+            doomed = [k for k, v in ro.items()
+                      if k in hashes or (isinstance(v, dict) and
+                                         (v.get("name") or "").lower()
+                                         == name.lower())]
+            for k in doomed:
+                del ro[k]
+            if doomed:
+                kin_roster._save(ro, kin_roster.KIN_ROSTER_PATH)
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:                              # beacon targets, memory + file
+            import json as _json
+            for h in hashes:
+                self._beacon_targets.pop(h, None)
+            if os.path.exists(self._BEACON_FILE):
+                stored = _json.load(open(self._BEACON_FILE))
+                kept = [h for h in stored if h not in hashes]
+                _json.dump(kept, open(self._BEACON_FILE, "w"))
+        except Exception:                                          # noqa: BLE001
+            pass
+        self.switch_mode("vitals")
+        print("[vitals] forgot node %r: %d records removed" % (name, removed))
+
     def _open_node_detail(self, node):
         """Tap a VITALS node -> its live detail (health, battery, outage-watch)
         with Probe + Certificate. Falls back to the cert/adopt flow when we have no
@@ -1363,6 +1418,7 @@ class ReticulumNodeMedicApp(App):
         scr.clear_widgets()
         scr.add_widget(self._with_back(NodeDetailScreen(
             rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
+            on_forget=self._forget_node,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps)))
         self.switch_mode("node_detail")

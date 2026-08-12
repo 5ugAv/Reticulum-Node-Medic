@@ -962,6 +962,43 @@ class NodeRegistry:
     # -- disk persistence (so history/activity survives an app restart) --------
 
     @_locked
+    def forget_node(self, name_or_hash: str) -> int:
+        """Remove EVERYTHING this registry knows about one machine, so its
+        name can be reused by a new birth (operator request, 2026-08-13).
+
+        One machine leaves several rows: the build's roster placeholder
+        ("rtnode:<name>"), plus one row per announced destination, tied
+        together by identity_hash. Deleting only the row the operator tapped
+        would leave siblings holding the name — and the reborn node would
+        inherit a stranger's history, which is exactly the class of stale
+        claim this tool exists not to make. So the match spreads: by name
+        (case-insensitive), by the placeholder key, then across every row
+        sharing an identity with anything already matched. History goes with
+        the rows. Returns how many rows were removed; 0 is an honest answer
+        for an unknown name, never an error.
+        """
+        want = (name_or_hash or "").strip()
+        if not want:
+            return 0
+        low = want.lower()
+        doomed = set()
+        for h, rec in self.nodes.items():
+            if ((rec.name or "").lower() == low or h == want
+                    or h == f"rtnode:{low}"):
+                doomed.add(h)
+        idents = {self.nodes[h].identity_hash
+                  for h in doomed if self.nodes[h].identity_hash}
+        for h, rec in self.nodes.items():
+            if rec.identity_hash and rec.identity_hash in idents:
+                doomed.add(h)
+        for h in doomed:
+            self.nodes.pop(h, None)
+            try:
+                self.history._series.pop(h, None)
+            except AttributeError:
+                pass
+        return len(doomed)
+
     def save(self, path: str) -> bool:
         """Atomically persist the registry (nodes + history) to *path* as JSON, so
         the heard-event / activity series accumulates ACROSS sessions instead of
