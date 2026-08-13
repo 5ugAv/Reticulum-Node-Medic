@@ -398,3 +398,34 @@ RNodeInterface Up/Full read from the node itself. The goal the operator set
 on 2026-08-12 — a Pi node that propagates, bridges LoRa/Wi-Fi/internet, and
 reports its health to the medic — exists and is proven.
 
+
+## Update — 2026-08-14, the overnight run
+
+EVERYWHERE reborn headlessly on the bench: 16/16 steps green, certificate
+5a050005, health beacon observed landing over the LAN (announce 5a060006
+len=20 beacon=yes). One operator action remains: the radio onto the Pi.
+
+Paid-for facts, new tonight:
+
+- **The honest pipeline caught its first real field bug end to end**: BIRTH
+  stamps power 'unknown' since 2026-08-13; the reporter's argparse rejected
+  it (exit 2, crash loop); install_health_reporter said NOT RUNNING with
+  systemd's own words and final_verification refused the build. Fixed
+  (choices += unknown), reran, green. This is the pipeline working.
+- **"The cable address does not survive first boot" was a WRONG diagnosis.**
+  Both ends sit correctly addressed; the link WEDGES (NETDEV WATCHDOG on
+  the medic's usb0). Recovery needs no hands: reload g_ether on the NODE
+  (a software replug), re-address both ends. OPEN: teach the gate/build to
+  self-heal this when both-ends-addressed-but-dead.
+- **AutoInterface peering goes silently stale after network churn**: both
+  ends Up, 0 peers, 0 bytes transmitted. An rnsd restart on both sides
+  heals it instantly. OPEN: the medic should notice 0-peers-0-TX on its own
+  LAN interface and restart its rnsd (it already may via Self Diagnose?).
+- A start announce fired before peering exists is simply lost — beacons
+  arrive on the next announce; a service restart forces one.
+- The registry autosaves ~5 minutes apart: judge beacon arrival by the
+  listener's ui.log line, never by registry.json inside that window.
+
+Open from the operator's four-point critique: point 4 (retry layer must
+distinguish no-answer from answered-then-stopped). Plus: the Pi build's
+busy label says 'firmware compile' (RTNode copy); mislabel only.
