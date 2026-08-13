@@ -105,23 +105,24 @@ def build_topology(registry, paths: List[dict], now: float,
     seen_edges: Dict[Tuple[str, str], TopoEdge] = {}
 
     def add_edge(e: TopoEdge) -> None:
-        k = e.key()
+        # ONE PAIR MAY CARRY SEVERAL TRANSPORTS, and each is its own edge —
+        # a wifi measurement must never evict the mesh link on the same pair
+        # (phase-3 finding, 2026-08-13: the preference version dropped a
+        # path-implied link out of placement adjacency because the pair also
+        # had a wifi reading). Within one transport, a measured edge still
+        # beats an implied one. One refinement: an "unknown" edge and a LORA
+        # edge on the same pair are one fact at two certainty levels, so the
+        # typed one absorbs it.
+        k = e.key() + (e.transport,)
+        ku = e.key() + ("unknown",)
+        if e.transport == "lora" and ku in seen_edges:
+            seen_edges.pop(ku)
+        if e.transport == "unknown" and (e.key() + ("lora",)) in seen_edges:
+            return
         existing = seen_edges.get(k)
         if existing is None:
             seen_edges[k] = e
-            return
-        # One pair, two evidences: keep BOTH transports visible by preferring
-        # the LoRa-typed edge as the primary (LoRa is the standard view) and
-        # folding a wifi measurement onto its own transport only. A measured
-        # edge still beats an implied one within the same transport.
-        if existing.transport == "unknown" and e.transport != "unknown":
-            e2 = e
-            if e2.rssi is None and existing.rssi is not None                     and e2.transport == existing.transport:
-                e2.rssi = existing.rssi
-            seen_edges[k] = e2
-        elif (existing.transport == "wifi" and e.transport == "lora"):
-            seen_edges[k] = e            # LoRa is the standard view
-        elif existing.rssi is None and e.rssi is not None                 and existing.transport in (e.transport, "unknown"):
+        elif existing.rssi is None and e.rssi is not None:
             seen_edges[k] = e
 
     known = set()
