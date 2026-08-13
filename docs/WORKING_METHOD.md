@@ -429,3 +429,28 @@ Paid-for facts, new tonight:
 Open from the operator's four-point critique: point 4 (retry layer must
 distinguish no-answer from answered-then-stopped). Plus: the Pi build's
 busy label says 'firmware compile' (RTNode copy); mislabel only.
+
+## Update — 2026-08-14, the combination matrix
+
+The operator asked for every Pi x board combination run through the emulator
+before it ever meets a bench. `tests/test_birth_matrix.py` now holds that
+sweep: 5 Pi model strings x 15 boards x Bluetooth on/off through the full
+17-step build, the blank-board flash path per board, the 915 MHz answer
+sheet, and a power verdict per pairing — 279 tests, milliseconds, no bench.
+
+What it caught on its first run (the reason it exists):
+
+- **Heltec V2 had no band map.** A 915 birth would have died at the bench
+  exactly like the RAK4631 did on 2026-08-05. Menu transcribed from the
+  rnodeconf 2.5.0 source on the medic — never guessed.
+- **T-Beam and T3S3 cannot be answered from here at all**: rnodeconf picks
+  their band menu BY RADIO CHIP (SX1276 vs SX1262 variants sold under one
+  name), and nothing this side of the USB cable can see which chip a board
+  carries. They now refuse with that fact (`RNodeBoard.band_ambiguity`)
+  instead of "not yet verified" — which read as a to-do when it is actually
+  a permanent property needing the operator's eyes on the silkscreen.
+
+The law the matrix reaffirmed: an ambiguous menu is refused, not guessed —
+a wrong band choice writes a wrong model byte into a board's EEPROM.
+
+Suite: 3237 passed, 11 skipped. Deployed f36742c; UI restarted while idle.
