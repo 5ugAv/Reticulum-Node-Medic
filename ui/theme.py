@@ -19,6 +19,13 @@ COLORS = {
     "amber": "#ff6d00",
     "red": "#d50000",
     "accent": "#4fc3f7",   # steel blue
+    # Link-overlay lanes on SCAN (2026-08-13): a line's hue says what carried
+    # it. Distinct from the status colours on purpose — a green STATUS means
+    # healthy, so the Wi-Fi lane is a leafier green; amber means warning, so
+    # internet is a softer gold; violet is new to the vocabulary for BT.
+    "link_wifi": "#9ccc65",
+    "link_internet": "#ffd54f",
+    "link_bt": "#b388ff",
     "text_primary": "#f0f0f0",
     "text_secondary": "#9e9e9e",
     "warning_yellow": "#ffd21e",   # requirement/hazard popups (dark text on this)

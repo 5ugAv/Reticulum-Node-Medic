@@ -36,11 +36,34 @@ class TopoNode:
     is_medic: bool = False
 
 
+def transport_of(interface_name) -> str:
+    """The transport an rnpath interface name implies — the one honest
+    source of edge type. The SCAN screen used to draw the node's WI-FI RSSI
+    as the strength of every direct edge (operator, 2026-08-13: 'bad news
+    for placing nodes'); typing edges is what makes LoRa the standard view
+    and everything else an overlay."""
+    n = (interface_name or "")
+    if n.startswith("RNodeInterface"):
+        return "lora"
+    if n.startswith("AutoInterface"):
+        return "wifi"
+    if n.startswith(("TCPClientInterface", "TCPServerInterface",
+                     "I2PInterface")):
+        return "internet"
+    if n.startswith(("LocalServerInterface", "LocalClientInterface")):
+        return "local"
+    return "unknown"
+
+
 @dataclass
 class TopoEdge:
     a: str
     b: str
     rssi: Optional[int] = None       # dBm as heard (None for path-implied links)
+    #: "lora" | "wifi" | "internet" | "bluetooth" | "local" | "unknown".
+    #: The rssi above may only ever be a measurement OF this transport —
+    #: a Wi-Fi number on a LoRa edge is assumption dressed as data.
+    transport: str = "unknown"
     kind: str = "direct"             # "direct" (medic heard) | "relayed" (path-implied)
 
     def key(self) -> Tuple[str, str]:
@@ -76,8 +99,20 @@ def build_topology(registry, paths: List[dict], now: float) -> Topology:
         existing = seen_edges.get(k)
         if existing is None:
             seen_edges[k] = e
-        elif existing.rssi is None and e.rssi is not None:
-            seen_edges[k] = e            # a measured edge beats an implied one
+            return
+        # One pair, two evidences: keep BOTH transports visible by preferring
+        # the LoRa-typed edge as the primary (LoRa is the standard view) and
+        # folding a wifi measurement onto its own transport only. A measured
+        # edge still beats an implied one within the same transport.
+        if existing.transport == "unknown" and e.transport != "unknown":
+            e2 = e
+            if e2.rssi is None and existing.rssi is not None                     and e2.transport == existing.transport:
+                e2.rssi = existing.rssi
+            seen_edges[k] = e2
+        elif (existing.transport == "wifi" and e.transport == "lora"):
+            seen_edges[k] = e            # LoRa is the standard view
+        elif existing.rssi is None and e.rssi is not None                 and existing.transport in (e.transport, "unknown"):
+            seen_edges[k] = e
 
     known = set()
     for dst, rec in registry.nodes.items():
@@ -87,7 +122,11 @@ def build_topology(registry, paths: List[dict], now: float) -> Topology:
             lat=rec.lat, lon=rec.lon))
         rssi = rec.signal_dbm()
         if rssi is not None or rec.mesh_hops == 1:
-            add_edge(TopoEdge(MEDIC_ID, dst, rssi=rssi, kind="direct"))
+            # signal_dbm() is the node's WI-FI RSSI — so the edge it evidences
+            # is a wifi edge, and the number stays with its own transport.
+            add_edge(TopoEdge(MEDIC_ID, dst, rssi=rssi, kind="direct",
+                              transport="wifi" if rssi is not None
+                              else "unknown"))
 
     for p in paths or []:
         dst, via = p.get("hash"), p.get("via")
@@ -99,9 +138,14 @@ def build_topology(registry, paths: List[dict], now: float) -> Topology:
                 known.add(h)
                 topo.nodes.append(TopoNode(id=h, name=h[:8], status="unknown"))
         if hops == 1:
-            add_edge(TopoEdge(MEDIC_ID, dst, kind="direct"))
+            # The path row's interface names how the MEDIC reaches dst —
+            # honest transport for this one edge.
+            add_edge(TopoEdge(MEDIC_ID, dst, kind="direct",
+                              transport=transport_of(p.get("interface"))))
         elif via:                        # reached via X -> the X<->dst link exists
-            add_edge(TopoEdge(via, dst, kind="relayed"))
+            # The far segment's transport is NOT observable from here; the
+            # interface field only names the medic's own first hop.
+            add_edge(TopoEdge(via, dst, kind="relayed", transport="unknown"))
 
     topo.edges = list(seen_edges.values())
     return topo

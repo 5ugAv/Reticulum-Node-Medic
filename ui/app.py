@@ -648,7 +648,10 @@ class ReticulumNodeMedicApp(App):
             on_place=self._on_gps_confirmed,      # "Use this position" -> BIRTH
             on_node_pick=self._open_node_cert,    # tap a node dot -> its certificate
             # mesh-lines toggle + "add a node here" gap markers (empty until topology)
-            links_provider=lambda: link_segments(self._scan_topo) if self._scan_topo else [],
+            links_provider=lambda: (link_segments(
+                self._scan_topo,
+                transports=self.scan_screen.visible_transports())
+                if self._scan_topo else []),
             suggestions_provider=lambda: (suggestion_markers(suggest(self._scan_topo))
                                           if self._scan_topo else []))
         scan.add_widget(self._with_back(self.scan_screen))

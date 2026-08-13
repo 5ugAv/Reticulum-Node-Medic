@@ -80,27 +80,32 @@ def _record_map_error(where):
 
 # ---- pure helpers (unit-tested; no Kivy) -------------------------------------
 
-def link_segments(topo):
+def link_segments(topo, transports=None):
     """Flatten a ``monitor.topology.Topology`` into who-hears-whom LINE SEGMENTS
-    between LOCATED nodes: ``[(lat1, lon1, lat2, lon2), ...]``. Only edges whose
-    BOTH endpoints have coordinates draw a line (a link to an unplaced node has
-    nowhere to go); endpoint order is normalised so an A-B / B-A pair collapses to
-    one segment. Pure — the app wraps this in a ``links_provider`` and MapPlot just
-    strokes what it returns, so the topology stays untouched by the widget."""
+    between LOCATED nodes: ``[(lat1, lon1, lat2, lon2, transport), ...]``. Only
+    edges whose BOTH endpoints have coordinates draw a line; endpoint order is
+    normalised so an A-B / B-A pair collapses to one segment. *transports*
+    filters (None = all): LoRa is the map's standard view, everything else an
+    overlay the operator can switch off (2026-08-13 — the old screen drew
+    Wi-Fi RSSI as if it were LoRa strength, which is exactly the wrong signal
+    for placing nodes). Pure — the app wraps this in a ``links_provider``."""
     by_id = {n.id: n for n in getattr(topo, "nodes", [])}
     seen = set()
     out = []
     for e in getattr(topo, "edges", []):
+        t = getattr(e, "transport", "unknown")
+        if transports is not None and t not in transports:
+            continue
         a, b = by_id.get(e.a), by_id.get(e.b)
         if a is None or b is None:
             continue
         if None in (a.lat, a.lon, b.lat, b.lon):
             continue
-        key = tuple(sorted(((a.lat, a.lon), (b.lat, b.lon))))
+        key = tuple(sorted(((a.lat, a.lon), (b.lat, b.lon)))) + (t,)
         if key in seen:
             continue
         seen.add(key)
-        out.append((a.lat, a.lon, b.lat, b.lon))
+        out.append((a.lat, a.lon, b.lat, b.lon, t))
     return out
 
 
@@ -398,18 +403,27 @@ class MapPlot(Widget):
         except Exception:
             return []
 
+    #: One colour per transport, so a line's hue says what carried it. LoRa
+    #: keeps the accent (the standard view); the overlays each get their own
+    #: lane; "unknown"/"local" draw with LoRa (path-implied mesh links).
+    LINK_COLOURS = {"lora": "accent", "unknown": "accent", "local": "accent",
+                    "wifi": "link_wifi", "internet": "link_internet",
+                    "bluetooth": "link_bt"}
+
     def _draw_links(self, view):
-        """Faint accent connection lines UNDER the node dots — drawn inside an
-        open canvas context by _draw_tiled."""
+        """Connection lines UNDER the node dots, coloured by transport —
+        drawn inside an open canvas context by _draw_tiled."""
         segs = self._fetch_links()
         if not segs:
             return
-        Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.35))
         for seg in segs:
             try:
-                lat1, lon1, lat2, lon2 = seg
-            except (TypeError, ValueError):
+                lat1, lon1, lat2, lon2 = seg[0], seg[1], seg[2], seg[3]
+                t = seg[4] if len(seg) > 4 else "unknown"
+            except (TypeError, ValueError, IndexError):
                 continue
+            Color(*theme.hex_to_rgba(
+                theme.COLORS[self.LINK_COLOURS.get(t, "accent")], 0.35))
             x1, y1 = view.to_screen(lat1, lon1)
             x2, y2 = view.to_screen(lat2, lon2)
             Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],
@@ -949,6 +963,37 @@ class ScanScreen(BoxLayout):
             zb.bind(on_release=lambda _b, dd=d: self.plot.zoom_by(dd))
             zbox.add_widget(zb)
         map_wrap.add_widget(zbox)
+
+        # --- link-view overlays (operator, 2026-08-13) --------------------
+        # LoRa is the STANDARD view — always drawn, no off switch: it is the
+        # signal that places nodes. Wi-Fi / Bluetooth / Internet lines are
+        # context, not placement signal (Wi-Fi means "same building";
+        # internet reach negates infill), so each gets a slot switch and its
+        # own colour lane. Default ON: context is shown until hidden.
+        from ui.widgets.share_toggle import OnOffToggle
+        self._overlay_on = {"wifi": True, "internet": True, "bluetooth": True}
+        panel = BoxLayout(orientation="vertical", size_hint=(None, None),
+                          size=(dp(150), dp(3 * 34 + 2 * 6)), spacing=dp(6),
+                          pos_hint={"x": 0.02, "y": 0.03})
+        for t, label in (("wifi", tr("Wi-Fi")),
+                         ("bluetooth", tr("Bluetooth")),
+                         ("internet", tr("Internet"))):
+            row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                            height=dp(34), spacing=dp(6))
+            sw = OnOffToggle(state="on", height=dp(30), size_hint=(None, None),
+                             width=dp(74), off_label=tr("Off"),
+                             on_label=tr("On"),
+                             on_toggle=lambda s, tt=t: self._set_overlay(tt, s))
+            lbl = Label(text=label, font_size=theme.font_sp("13sp"),
+                        halign="left", valign="middle",
+                        color=theme.hex_to_rgba(
+                            theme.COLORS[MapPlot.LINK_COLOURS.get(
+                                t, "text_primary")]))
+            lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+            row.add_widget(sw)
+            row.add_widget(lbl)
+            panel.add_widget(row)
+        map_wrap.add_widget(panel)
         self.add_widget(map_wrap)
 
         # --- placement bar (only when this screen can start a birth) ----------
@@ -1194,6 +1239,24 @@ class ScanScreen(BoxLayout):
         else:
             self.coords.text = hint
             self.confirm_btn.disabled = True
+
+    def _set_overlay(self, transport, state):
+        """Flip one overlay lane and redraw. The switch's position IS the
+        answer; nothing else changes."""
+        self._overlay_on[transport] = (state == "on")
+        try:
+            self.plot.refresh()
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def visible_transports(self):
+        """What the map should draw right now: LoRa (+ path-implied unknown/
+        local) always; each overlay only while its switch says on."""
+        vis = {"lora", "unknown", "local"}
+        for t, on in self._overlay_on.items():
+            if on:
+                vis.add(t)
+        return vis
 
     def _on_map_pick(self, latlon):
         """Operator tapped the map to set the location (no GPS/internet needed).
