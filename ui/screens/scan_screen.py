@@ -844,8 +844,18 @@ class _FixBadge(BoxLayout):
             self._pill_fill = Color(*theme.hex_to_rgba(theme.COLORS["red"]))
             self._pill_rect = RoundedRectangle(radius=[dp(14)] * 4)
         self._pill.bind(pos=self._sync, size=self._sync)
-        self._sat_icon = Widget(size_hint=(None, 1), width=dp(24))
-        self._sat_icon.bind(pos=self._draw_sat, size=self._draw_sat)
+        # The operator's own satellite art when the asset is carried;
+        # the drawn glyph stands in on any medic without it.
+        import os as _os
+        _icon = _os.path.join(_os.path.dirname(__file__), _os.pardir,
+                              _os.pardir, "assets", "ui", "satellite_pill.png")
+        if _os.path.exists(_icon):
+            from kivy.uix.image import Image as _KivyImage
+            self._sat_icon = _KivyImage(source=_icon, size_hint=(None, 1),
+                                        width=dp(24), fit_mode="contain")
+        else:
+            self._sat_icon = Widget(size_hint=(None, 1), width=dp(24))
+            self._sat_icon.bind(pos=self._draw_sat, size=self._draw_sat)
         self._pill.add_widget(self._sat_icon)
         self.count = Label(font_size="16sp", bold=True, halign="left",
                            valign="middle",

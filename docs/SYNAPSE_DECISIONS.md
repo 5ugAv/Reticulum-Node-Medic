@@ -52,3 +52,12 @@ can never know where their node actually stands, so advising work on it is
 a claim the medic cannot stand behind. Between two strangers the relay fix
 stands alone. A satellite ICON (operator-supplied art) replaces the drawn
 glyph in the GPS pill when the asset lands in assets/ui/.
+
+## 2026-08-14 — the recommender folds into SCAN (operator)
+
+No seventh mode. The placement recommender lives in the MAP VIEW: the
+suggestion pins learn to explain themselves on tap (the §3.5 rationale),
+and a "what should I build next" panel joins SCAN. "SYNAPSE" as a mode
+name is retired; the engine modules keep the name internally. The GPS pill
+carries the operator's satellite artwork (assets/ui/satellite_pill.png,
+background stripped 2026-08-14).
