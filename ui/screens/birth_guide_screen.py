@@ -1343,14 +1343,31 @@ class BirthGuideScreen(BoxLayout):
         self._current = step
 
     def _share_moved(self, policy):
-        """The switch moved. Nothing is decided until Next."""
+        """The switch moved. Nothing is decided until Next.
+
+        RE-SEAT THE KNOB (2026-08-14, EVERYWHERE's rebirth): the toggle fires
+        its callback but deliberately does not set its own state — the
+        node-detail panel re-seats from the stored record instead. Here the
+        pending answer IS the record, so the handler must tell the knob, or
+        the tap changes the sentence while the switch sits still and reads
+        as dead on the glass.
+        """
         from monitor import location_share
         self._share_pending = location_share.normalise(policy)
+        try:
+            self._share_toggle.set_state(self._share_pending)
+        except Exception:                                          # noqa: BLE001
+            pass
         self._share_show()
 
     def _bt_moved(self, state):
-        """The Bluetooth switch moved. Nothing is decided until Next."""
+        """The Bluetooth switch moved. Nothing is decided until Next.
+        Same re-seat as _share_moved — the knob must follow the answer."""
         self._bt_pending = "off" if state != "on" else "on"
+        try:
+            self._bt_toggle.set_state(self._bt_pending)
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _share_show(self):
         """Say what the map switch's current position would do.

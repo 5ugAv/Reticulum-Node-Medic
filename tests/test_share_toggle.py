@@ -335,3 +335,21 @@ def test_the_two_slot_switches_share_one_drawing():
     text = src("ui/widgets/share_toggle.py")
     import re
     assert len(re.findall(r"def _redraw", text)) == 1
+
+
+def test_the_prelude_knob_moves_when_the_answer_does():
+    """On the glass the sliders looked DEAD (operator, rebirth of EVERYWHERE,
+    2026-08-14): the tap fired, the pending answer and the sentence flipped —
+    but nothing ever told the KNOB, so it sat on the resting end while the
+    sentence said Shared. The prelude handlers must re-seat their switches;
+    the node-detail panel keeps its deliberate stored-answer re-seat."""
+    moved = _guide_method("_share_moved", _guide_globals())
+    screen = _share_screen_stub()
+    calls = []
+    screen._share_toggle = types.SimpleNamespace(
+        set_state=lambda s: calls.append(s))
+    moved(screen, ls.APPROX)
+    assert calls == [ls.APPROX], "the knob was never told"
+    from tests.srcutil import func_source
+    bt = func_source(GUIDE, "_bt_moved")
+    assert "set_state" in bt, "the Bluetooth knob was never told either"
