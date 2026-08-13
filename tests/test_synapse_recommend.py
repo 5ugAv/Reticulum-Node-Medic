@@ -362,3 +362,29 @@ def test_scan_suggest_keeps_its_public_signature():
     topo = Topology(nodes=[], edges=[], generated_at=NOW)
     assert suggest(topo) == []
     assert suggest(topo, None, None) == []     # positional, as callers use it
+
+
+# --- never advise modifying a stranger's node (operator, 2026-08-13) --------
+
+def test_mast_raises_name_kin_and_kindred_only():
+    """A neighbour's position is fuzzed by design — we can never know where
+    their node actually is, so 'raise the antenna at X' about a stranger is
+    a claim the medic cannot stand behind. Kin and kindred only."""
+    g = _marginal_graph()                       # helper from the suite above
+    g.nodes[list(g.nodes)[0]].provenance = "kin"
+    g.nodes[list(g.nodes)[1]].provenance = "neighbour"
+    recs = recommend(g)
+    raises_ = [r for r in recs if r.action == "raise_antenna"]
+    assert raises_, "the kin end should still be raisable"
+    named = {r.node for r in raises_}
+    assert named == {list(g.nodes)[0]}, "a neighbour's node was named"
+
+
+def test_no_raise_recommendation_between_two_strangers():
+    g = _marginal_graph()
+    for n in g.nodes.values():
+        n.provenance = "neighbour"
+    recs = recommend(g)
+    assert not [r for r in recs if r.action == "raise_antenna"]
+    # the relay fix must still exist — the link problem is real
+    assert [r for r in recs if r.action == "new_node"]

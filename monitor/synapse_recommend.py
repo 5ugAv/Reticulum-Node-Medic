@@ -533,6 +533,12 @@ def recommend(graph: AnalysisGraph, *,
         a, b = pair
         alts = []
         for node, other in ((a, b), (b, a)):
+            # KIN AND KINDRED ONLY (operator, 2026-08-13): a neighbour's
+            # position is fuzzed by design — where their antenna stands is
+            # not the medic's to know, so it is not the medic's to advise.
+            if getattr(graph.nodes[node], "provenance",
+                       "unknown") not in ("kin", "kindred"):
+                continue
             name = graph.nodes[node].name
             alts.append(AlternativeAction(
                 node=node, height_m=MAST_RAISE_M,
@@ -541,6 +547,8 @@ def recommend(graph: AnalysisGraph, *,
                          f"{MAST_RAISE_M:g} m - predicted gain about "
                          f"{MAST_RAISE_GAIN_DB:g} dB on the link to "
                          f"{graph.nodes[other].name}.")))
+        if not alts:
+            continue          # two strangers: the relay fix stands alone
         raises_by_pair[pair] = alts
         first = alts[0]
         parts = _score(_points([d]), [], 0, 0, None)

@@ -43,3 +43,12 @@ building" and internet reach negates the need for infill nodes — they are
 not placement signal. Non-LoRa links draw in a different colour per
 transport; an edge's strength is only ever drawn from a measurement OF THAT
 transport, or by existence alone when there is none.
+
+## 2026-08-13 — modify advice names kin and kindred only (operator)
+
+Mast-raise (and any modify-an-existing-node) recommendations name KIN and
+KINDRED nodes only. A neighbour's position is fuzzed by design — the medic
+can never know where their node actually stands, so advising work on it is
+a claim the medic cannot stand behind. Between two strangers the relay fix
+stands alone. A satellite ICON (operator-supplied art) replaces the drawn
+glyph in the GPS pill when the asset lands in assets/ui/.

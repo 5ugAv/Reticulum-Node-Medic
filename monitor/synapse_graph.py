@@ -133,6 +133,11 @@ class MeshNode:
     lat: Optional[float] = None
     lon: Optional[float] = None
     is_medic: bool = False
+    #: kin | kindred | neighbour | unknown — who this node belongs to. Modify
+    #: advice (mast raises) names kin and kindred ONLY: a neighbour's
+    #: position is fuzzed by design, so where their antenna actually stands
+    #: is not the medic's to claim (operator, 2026-08-13).
+    provenance: str = "unknown"
 
 
 @dataclass
@@ -163,9 +168,19 @@ def build_analysis_graph(topo: Topology, registry=None,
         else:
             tier, checked, basis = tier_of(tn.id, registry=registry,
                                            roster=roster)
+        prov = "unknown"
+        rec = registry.nodes.get(tn.id) if registry is not None else None
+        if rec is not None:
+            try:
+                prov = rec.provenance
+            except Exception:                                      # noqa: BLE001
+                prov = "unknown"
+        if prov == "unknown" and roster and tn.id in roster:
+            prov = "kin"                 # the roster IS the list of own nodes
         graph.nodes[tn.id] = MeshNode(
             id=tn.id, name=tn.name, tier=tier, tier_checked=checked,
-            tier_basis=basis, lat=tn.lat, lon=tn.lon, is_medic=tn.is_medic)
+            tier_basis=basis, lat=tn.lat, lon=tn.lon, is_medic=tn.is_medic,
+            provenance=prov)
         graph.adj[tn.id] = set()
     for e in topo.edges:
         if e.a not in graph.nodes or e.b not in graph.nodes:
