@@ -181,3 +181,34 @@ def test_scan_screen_offers_the_overlay_toggles():
         assert f'"{t}"' in text
     # LoRa must not be toggleable
     assert "lora_toggle" not in text.lower().replace("_", "")
+
+
+# --- a deleted node must not be resurrected by the path table ---------------
+
+def test_forgotten_hashes_do_not_rise_from_the_path_table():
+    """RNS's path table outlives a node by SEVEN DAYS — the project's oldest
+    scar. Delete a node in VITALS and the map would re-create it as an
+    anonymous ghost from rnpath rows (operator, 2026-08-13: 'make sure the
+    maps dont keep old stale nodes'). A cached path is not a sighting."""
+    from monitor.registry import NodeRegistry
+    from monitor.topology import build_topology
+    r = NodeRegistry()
+    paths = [{"hash": "dd" * 16, "via": "ee" * 16, "hops": 2,
+              "interface": "RNodeInterface[x]"}]
+    topo = build_topology(r, paths, now=1000.0, exclude={"dd" * 16})
+    ids = {n.id for n in topo.nodes}
+    assert ("dd" * 16) not in ids, "the ghost came back from the path table"
+    assert not any(("dd" * 16) in (e.a, e.b) for e in topo.edges)
+
+
+def test_a_reborn_node_returns_because_it_was_heard_not_remembered():
+    """Exclusion suppresses path-table memory only. A node the registry has
+    heard ANEW (a real announce after the delete) is alive — it returns,
+    tombstone or not."""
+    from monitor.registry import NodeRegistry
+    from monitor.topology import build_topology
+    r = NodeRegistry()
+    r.register("dd" * 16, name="EVERYWHERE")
+    paths = [{"hash": "dd" * 16, "hops": 1, "interface": "RNodeInterface[x]"}]
+    topo = build_topology(r, paths, now=1000.0, exclude={"dd" * 16})
+    assert ("dd" * 16) in {n.id for n in topo.nodes}

@@ -878,7 +878,8 @@ class ReticulumNodeMedicApp(App):
             paths = json.loads(raw)
             if not isinstance(paths, list):
                 paths = []
-            return build_topology(self.monitor_service.registry, paths, time.time())
+            return build_topology(self.monitor_service.registry, paths,
+                                  time.time(), exclude=self._forgotten_hashes())
         except Exception:
             return None
 
@@ -1309,6 +1310,20 @@ class ReticulumNodeMedicApp(App):
         from kivy.clock import Clock
         Clock.schedule_once(lambda *_: g._render_over_air_confirm(cand), 0)
 
+    def _forgotten_hashes(self):
+        """Hashes of deleted nodes still inside the path table's 7-day memory
+        — the map must not resurrect them from stale rnpath rows."""
+        try:
+            import json as _json, time as _t
+            p = os.path.expanduser("~/.reticulum-node-medic/forgotten.json")
+            if not os.path.exists(p):
+                return set()
+            tombs = _json.load(open(p))
+            now_t = _t.time()
+            return {h for h, t in tombs.items() if now_t - t < 7 * 86400}
+        except Exception:                                          # noqa: BLE001
+            return set()
+
     def _forget_node(self, rec):
         """Delete the medic's whole memory of one node (operator, 2026-08-13).
 
@@ -1359,6 +1374,26 @@ class ReticulumNodeMedicApp(App):
                 stored = _json.load(open(self._BEACON_FILE))
                 kept = [h for h in stored if h not in hashes]
                 _json.dump(kept, open(self._BEACON_FILE, "w"))
+        except Exception:                                          # noqa: BLE001
+            pass
+        # TOMBSTONE for the map: RNS's path table remembers this node for up
+        # to seven days, and the SCAN topology would resurrect it from stale
+        # rnpath rows as an anonymous ghost. The tombstone suppresses exactly
+        # that memory — a real announce heard AFTER the delete still returns
+        # the node, because being heard is a sighting and a cached path is not.
+        try:
+            import json as _json, time as _t
+            tomb_path = os.path.expanduser(
+                "~/.reticulum-node-medic/forgotten.json")
+            tombs = {}
+            if os.path.exists(tomb_path):
+                tombs = _json.load(open(tomb_path))
+            now_t = _t.time()
+            for h in hashes:
+                tombs[h] = now_t
+            tombs = {h: t for h, t in tombs.items()
+                     if now_t - t < 7 * 86400}    # the path table's own lifetime
+            _json.dump(tombs, open(tomb_path, "w"))
         except Exception:                                          # noqa: BLE001
             pass
         self.switch_mode("vitals")

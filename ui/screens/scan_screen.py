@@ -822,55 +822,74 @@ _LEVEL_FILL = {"live": "green", "held": "warning_yellow", "none": "red",
 
 
 class _FixBadge(BoxLayout):
-    """A rounded, FILLED status bubble: green (live) / yellow (held) / red (none) /
-    accent (info). Draws a warning triangle for held/none — the ⚠ glyph renders as
-    tofu in the default font, so we draw it. Ported from the old GPS-confirm page
-    when the two map screens merged into one."""
+    """Left: transient placement guidance text. Right: the compact satellite
+    pill — a DRAWN satellite (no emoji fonts on the Pi) beside the
+    used-satellite count, on green unless the count is 0, then red
+    (operator, 2026-08-13: the full-width 'Live GPS' bar gave the map its
+    space back). The old full-row fill and warning triangle are gone; the
+    pill and the words carry the state."""
 
     def __init__(self, **kwargs):
-        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(48),
-                         padding=[dp(14), dp(4)], spacing=dp(6), **kwargs)
-        with self.canvas.before:
-            self._fill = Color(0, 0, 0, 0)
-            self._rect = RoundedRectangle(radius=[dp(16)] * 4)
-        self.bind(pos=self._sync, size=self._sync)
-        self._tri = Widget(size_hint=(None, 1), width=dp(0))
-        self._tri.bind(pos=self._draw_tri, size=self._draw_tri)
-        self.add_widget(self._tri)
-        self.label = Label(font_size="17sp", bold=True, halign="left", valign="middle")
+        super().__init__(orientation="horizontal", size_hint_y=None,
+                         height=dp(34), padding=[dp(6), dp(2)], spacing=dp(6),
+                         **kwargs)
+        self._fill = None                 # legacy no-op target for set()
+        self.label = Label(font_size="14sp", halign="left", valign="middle")
         self.label.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self.label)
-        self._tri_color = None
+        self._pill = BoxLayout(orientation="horizontal", size_hint=(None, 1),
+                               width=dp(92), padding=[dp(8), dp(2)],
+                               spacing=dp(4))
+        with self._pill.canvas.before:
+            self._pill_fill = Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+            self._pill_rect = RoundedRectangle(radius=[dp(14)] * 4)
+        self._pill.bind(pos=self._sync, size=self._sync)
+        self._sat_icon = Widget(size_hint=(None, 1), width=dp(24))
+        self._sat_icon.bind(pos=self._draw_sat, size=self._draw_sat)
+        self._pill.add_widget(self._sat_icon)
+        self.count = Label(font_size="16sp", bold=True, halign="left",
+                           valign="middle",
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self.count.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self._pill.add_widget(self.count)
+        self.add_widget(self._pill)
+        self.set_sats(None)
+
+    def _draw_sat(self, *_):
+        """A minimal drawn satellite: body, two solar panels, an up-beam.
+        Drawn because emoji fonts don't exist on the Pi (standing constraint)."""
+        w = self._sat_icon
+        w.canvas.after.clear()
+        cx, cy = w.center_x, w.center_y
+        s = dp(5)
+        with w.canvas.after:
+            Color(*theme.hex_to_rgba(theme.COLORS["background"]))
+            Line(rectangle=(cx - s * 0.7, cy - s * 0.7, s * 1.4, s * 1.4),
+                 width=dp(1.4))                                   # body
+            Line(points=[cx - s * 2.0, cy, cx - s * 0.8, cy], width=dp(1.4))
+            Line(points=[cx + s * 0.8, cy, cx + s * 2.0, cy], width=dp(1.4))
+            Line(points=[cx, cy + s * 0.8, cx, cy + s * 1.6], width=dp(1.2))
+
+    def set_sats(self, n):
+        """The pill: count + colour. Green needs at least one satellite; 0 or
+        unknown is red — the operator's rule, and the honest one."""
+        alive = isinstance(n, int) and n > 0
+        self.count.text = str(n) if isinstance(n, int) else "–"
+        self._pill_fill.rgba = theme.hex_to_rgba(
+            theme.COLORS["green" if alive else "red"])
 
     def _sync(self, *_):
-        self._rect.pos, self._rect.size = self.pos, self.size
-
-    def _draw_tri(self, *_):
-        self._tri.canvas.after.clear()
-        if self._tri_color is None or self._tri.width < dp(6):
-            return
-        w = self._tri
-        cx, cy, half, h = w.center_x, w.center_y, dp(10), dp(9)
-        with w.canvas.after:
-            Color(*self._tri_color)
-            Line(points=[cx - half, cy - h, cx + half, cy - h, cx, cy + h],
-                 width=dp(1.8), close=True, joint="round", cap="round")
-            Line(points=[cx, cy - h + dp(4), cx, cy + dp(1)], width=dp(1.6), cap="round")
-            Line(points=[cx, cy + dp(3), cx, cy + dp(4)], width=dp(1.8), cap="round")
+        self._pill_rect.pos, self._pill_rect.size = (self._pill.pos,
+                                                     self._pill.size)
 
     def set(self, text, level):
-        self._fill.rgba = theme.hex_to_rgba(theme.COLORS[_LEVEL_FILL.get(level, "surface")])
-        dark = level in ("live", "held", "info")           # dark text on light fills
-        self.label.color = theme.hex_to_rgba(
-            theme.COLORS["background" if dark else "text_primary"])
+        """Transient guidance on the LEFT; the pill is untouched — GPS state
+        travels only through set_sats. Colour by level: info = accent,
+        none = amber (something to do), else quiet."""
+        self.label.color = theme.hex_to_rgba(theme.COLORS[
+            "accent" if level == "info"
+            else "amber" if level == "none" else "text_secondary"])
         self.label.text = text
-        if level in ("held", "none"):
-            self._tri.width = dp(26)
-            self._tri_color = theme.hex_to_rgba(theme.COLORS[
-                "background" if level == "held" else "text_primary"])
-        else:
-            self._tri.width, self._tri_color = dp(0), None
-        self._draw_tri()
 
 
 def _btn(text, color, on_tap):
@@ -1226,7 +1245,11 @@ class ScanScreen(BoxLayout):
         hijacking the operator's pan/zoom (unlike the old confirm page, which
         re-centred on every poll)."""
         t = fix_trust(self._fix)
-        self.badge.set(t["title"], t["level"])
+        self.badge.set_sats(getattr(self._fix, "sats", None)
+                            if self._fix is not None else None)
+        # Live needs no words — the pill says it. Held/none keep their
+        # honest sentence (coasting on memory is worth a sentence).
+        self.badge.set("" if t["level"] == "live" else t["title"], t["level"])
         hint = t["detail"]
         if t["level"] != "live":
             hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]

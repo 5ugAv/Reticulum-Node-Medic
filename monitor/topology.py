@@ -86,9 +86,19 @@ class Topology:
         return [e for e in self.edges if node_id in (e.a, e.b)]
 
 
-def build_topology(registry, paths: List[dict], now: float) -> Topology:
+def build_topology(registry, paths: List[dict], now: float,
+                   exclude=None) -> Topology:
     """Assemble the graph from the registry + a parsed ``rnpath -t --json``
-    table (``[{hash, via, hops, ...}]``)."""
+    table (``[{hash, via, hops, ...}]``).
+
+    *exclude* — hashes of DELETED nodes. RNS's path table outlives a node by
+    seven days (the project's oldest scar: a cached path is not a sighting),
+    so without this a node wiped in VITALS rose again on the map as an
+    anonymous ghost built from stale rnpath rows (operator, 2026-08-13).
+    Exclusion suppresses path-table memory ONLY: a hash the registry has
+    heard anew is alive and returns regardless.
+    """
+    exclude = exclude or set()
     topo = Topology(generated_at=now)
     topo.nodes.append(TopoNode(id=MEDIC_ID, name="Node Medic", status="ok",
                                is_medic=True))
@@ -128,11 +138,16 @@ def build_topology(registry, paths: List[dict], now: float) -> Topology:
                               transport="wifi" if rssi is not None
                               else "unknown"))
 
+    def _ghost(h):
+        return h in exclude and h not in registry.nodes
+
     for p in paths or []:
         dst, via = p.get("hash"), p.get("via")
         hops = p.get("hops")
         if not dst:
             continue
+        if _ghost(dst) or (via and _ghost(via)):
+            continue                     # remembered by the path table only
         for h in (dst, via):
             if h and h not in known and h != MEDIC_ID:
                 known.add(h)
