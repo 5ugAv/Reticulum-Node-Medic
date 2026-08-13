@@ -207,7 +207,16 @@ def suggest(topo: Topology, interference_log=None, terrain_store=None
             ) -> List[Suggestion]:
     """The 'Suggest next node' button: fill gaps when there are any, otherwise
     extend the network's reach. *terrain_store* (a monitor.terrain.TileStore)
-    adds a line-of-sight check when tiles are available."""
-    gaps = suggest_fill_gaps(topo, interference_log)
-    out = gaps if gaps else suggest_extend_reach(topo, interference_log)
+    adds a line-of-sight check when tiles are available.
+
+    Now an ADAPTER over the SYNAPSE engine (same signature, same Suggestion
+    shape for SCAN): gaps are found on the LoRa-first view — a wifi edge
+    means "same building", not "no relay needed", so it no longer hides a
+    LoRa gap — and the qualifying distance comes from the ONE range spine
+    (monitor.synapse_range) instead of this module's private fallbacks."""
+    from monitor.synapse_recommend import scan_view, scan_gap_window_km
+    view = scan_view(topo)
+    gaps = suggest_fill_gaps(view, interference_log,
+                             max_km=scan_gap_window_km(view))
+    out = gaps if gaps else suggest_extend_reach(view, interference_log)
     return check_terrain(out, topo, terrain_store)
