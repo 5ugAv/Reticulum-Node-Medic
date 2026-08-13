@@ -937,6 +937,34 @@ class ScanScreen(BoxLayout):
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
+        # --- connections row (operator layout, 2026-08-13): a second header
+        # line — "Connections" under the title, then Wi-Fi / Bluetooth /
+        # Internet aligned under Links / Terrain / Recenter. Tap to toggle;
+        # GREY text = that overlay is off, its lane colour = on. LoRa is the
+        # standard view and has no switch anywhere.
+        self._overlay_on = {"wifi": True, "bluetooth": True, "internet": True}
+        conn_row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                             height=dp(30), spacing=dp(6))
+        conn_lbl = Label(text=tr("Connections"), halign="left",
+                         valign="middle",
+                         color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        conn_lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self._overlay_btns = {}
+        specs = (("wifi", tr("Wi-Fi"), dp(92)),
+                 ("bluetooth", tr("Bluetooth"), dp(104)),
+                 ("internet", tr("Internet"), dp(100)))
+        conn_row.add_widget(conn_lbl)
+        for t, label, w in specs:
+            b = Button(text=label, size_hint=(None, 1), width=w,
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(
+                           theme.COLORS["surface"]))
+            b.bind(on_release=lambda _b, tt=t: self._toggle_overlay(tt))
+            self._overlay_btns[t] = b
+            conn_row.add_widget(b)
+        self._paint_overlay_btns()
+        self.add_widget(conn_row)
+
         # Interactive map: pan/pinch/double-tap to zoom, and a stationary TAP drops
         # the placement pin. Explicit +/- overlay so zoom never depends on the
         # panel's (unreliable) pinch.
@@ -963,39 +991,6 @@ class ScanScreen(BoxLayout):
             zb.bind(on_release=lambda _b, dd=d: self.plot.zoom_by(dd))
             zbox.add_widget(zb)
         map_wrap.add_widget(zbox)
-
-        # --- link-view overlays (operator, 2026-08-13) --------------------
-        # LoRa is the STANDARD view — always drawn, no off switch: it is the
-        # signal that places nodes. Wi-Fi / Bluetooth / Internet lines are
-        # context, not placement signal (Wi-Fi means "same building";
-        # internet reach negates infill), so each gets a slot switch and its
-        # own colour lane. Default ON: context is shown until hidden.
-        from ui.widgets.share_toggle import OnOffToggle
-        self._overlay_on = {"wifi": True, "internet": True, "bluetooth": True}
-        panel = BoxLayout(orientation="vertical", size_hint=(None, None),
-                          # Wide enough that "Bluetooth" keeps to one line at
-                          # the panel density (wrapped on the glass, 2026-08-13)
-                          size=(dp(185), dp(3 * 34 + 2 * 6)), spacing=dp(6),
-                          pos_hint={"x": 0.02, "y": 0.03})
-        for t, label in (("wifi", tr("Wi-Fi")),
-                         ("bluetooth", tr("Bluetooth")),
-                         ("internet", tr("Internet"))):
-            row = BoxLayout(orientation="horizontal", size_hint=(1, None),
-                            height=dp(34), spacing=dp(6))
-            sw = OnOffToggle(state="on", height=dp(30), size_hint=(None, None),
-                             width=dp(74), off_label=tr("Off"),
-                             on_label=tr("On"),
-                             on_toggle=lambda s, tt=t: self._set_overlay(tt, s))
-            lbl = Label(text=label, font_size=theme.font_sp("13sp"),
-                        halign="left", valign="middle",
-                        color=theme.hex_to_rgba(
-                            theme.COLORS[MapPlot.LINK_COLOURS.get(
-                                t, "text_primary")]))
-            lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
-            row.add_widget(sw)
-            row.add_widget(lbl)
-            panel.add_widget(row)
-        map_wrap.add_widget(panel)
         self.add_widget(map_wrap)
 
         # --- placement bar (only when this screen can start a birth) ----------
@@ -1242,14 +1237,22 @@ class ScanScreen(BoxLayout):
             self.coords.text = hint
             self.confirm_btn.disabled = True
 
-    def _set_overlay(self, transport, state):
-        """Flip one overlay lane and redraw. The switch's position IS the
-        answer; nothing else changes."""
-        self._overlay_on[transport] = (state == "on")
+    def _toggle_overlay(self, transport):
+        """Flip one overlay lane, repaint the button, redraw the map. Grey
+        text = off; the lane's own colour = on (operator, 2026-08-13)."""
+        self._overlay_on[transport] = not self._overlay_on.get(transport, True)
+        self._paint_overlay_btns()
         try:
             self.plot.refresh()
         except Exception:                                          # noqa: BLE001
             pass
+
+    def _paint_overlay_btns(self):
+        for t, b in getattr(self, "_overlay_btns", {}).items():
+            on = self._overlay_on.get(t, True)
+            b.color = theme.hex_to_rgba(
+                theme.COLORS[MapPlot.LINK_COLOURS.get(t, "accent")] if on
+                else theme.COLORS["text_secondary"])
 
     def visible_transports(self):
         """What the map should draw right now: LoRa (+ path-implied unknown/

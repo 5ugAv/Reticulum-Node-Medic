@@ -172,7 +172,10 @@ def test_scan_screen_offers_the_overlay_toggles():
     transport."""
     from tests.srcutil import src
     text = src("ui/screens/scan_screen.py")
-    assert "OnOffToggle" in text
+    # Since the operator's layout note (2026-08-13, on the glass): the three
+    # overlays are BUTTONS on a second header row aligned under Links /
+    # Terrain / Recenter — grey text off, lane colour on.
+    assert "_toggle_overlay" in text and "_paint_overlay_btns" in text
     assert "LINK_COLOURS" in text
     for t in ("wifi", "internet", "bluetooth"):
         assert f'"{t}"' in text
