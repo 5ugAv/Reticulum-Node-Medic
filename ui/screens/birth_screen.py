@@ -2296,12 +2296,22 @@ class BirthScreen(BoxLayout):
                     self, "_guided_bluetooth", False))
             title = (f"Building Pi + {board.display_name}..." if board
                      else "Building Pi + RNode...")
+            busy_kind = "pi_rnode"
         elif board is not None:                  # standalone RNode flash (no Pi)
             workflow = self._rnode_flash_factory(board)
             title = f"Flashing {board.display_name}..."
+            busy_kind = "rnode_flash"
         else:                                    # RTNode-2400
             workflow = self._factories[node_type]()
             title = f"Building {self._labels.get(node_type, node_type)}..."
+            busy_kind = node_type
+        # The busy view's words are chosen HERE, the one place that knows what
+        # kind of work is coming — a Pi build must not promise a firmware
+        # compile, an autoinstall flash writes prebuilt firmware, and only the
+        # paths that really compile may say so (ui.busy_truth).
+        from ui.busy_truth import busy_truth
+        self._busy_banner, self._busy_paragraph = busy_truth(
+            busy_kind, board, self._name_in.text.strip())
         self._apply_radio(workflow, radio)
         self._apply_location_sharing(workflow)
         return workflow, title
@@ -2379,9 +2389,9 @@ class BirthScreen(BoxLayout):
             minimum_height=self._build_busy.setter("height"))
         self._build_busy.add_widget(ring_anchor)
         self._busy_label = _line(
-            "Working… the firmware compile is the slow part (a first build also "
-            "downloads the toolchain). Keep the board plugged in and WAIT for "
-            "the green 'Build finished' confirmation before touching anything.",
+            getattr(self, "_busy_paragraph", None)
+            or "Working… keep everything plugged in and WAIT for the green "
+               "'Build finished' confirmation before touching anything.",
             size="13sp", color="accent")
         self._busy_label.halign = "center"
         self._build_busy.add_widget(self._busy_label)
@@ -2431,9 +2441,10 @@ class BirthScreen(BoxLayout):
             from kivy.app import App
             app = App.get_running_app()
             if on:
-                nm = self._name_in.text.strip() or "the board"
-                app.begin_activity(
-                    f"Flashing {nm} — keep it plugged in, don't power off")
+                banner = (getattr(self, "_busy_banner", None)
+                          or "Working — keep everything plugged in, "
+                             "don't power off")
+                app.begin_activity(banner)
             else:
                 app.end_activity()
         except Exception:
