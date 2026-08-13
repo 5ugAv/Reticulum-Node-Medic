@@ -130,7 +130,122 @@ def suggestion_markers(suggestions):
         if key in seen:
             continue
         seen.add(key)
-        out.append({"lat": lat, "lon": lon, "reason": reason, "kind": kind})
+        marker = {"lat": lat, "lon": lon, "reason": reason, "kind": kind}
+        if isinstance(s, dict):
+            # A recommendation marker arrives already carrying its §3.5
+            # rationale (tier/links/cost/...). Re-normalising must not strip
+            # it back to four keys — the tap popup reads these fields.
+            for k, v in s.items():
+                marker.setdefault(k, v)
+        out.append(marker)
+    return out
+
+
+def recommendation_markers(recs, positions=None):
+    """Normalise ``monitor.synapse_recommend.Recommendation`` objects into the
+    pin-marker dicts MapPlot already draws and hit-tests — the same plumbing,
+    now carrying the full rationale. A mast raise has no coordinates of its
+    own; *positions* (``{node_id: (lat, lon)}``) places it AT the kin node it
+    names, and a raise whose node is unlocated stays off the map (it still
+    appears in the Build next panel). Pure."""
+    out, seen = [], set()
+    for r in recs or []:
+        action = getattr(r, "action", "new_node")
+        lat, lon = getattr(r, "lat", None), getattr(r, "lon", None)
+        if action == "raise_antenna" and (lat is None or lon is None):
+            pos = (positions or {}).get(getattr(r, "node", None))
+            if not pos or pos[0] is None or pos[1] is None:
+                continue
+            lat, lon = pos
+        if lat is None or lon is None:
+            continue
+        key = (round(float(lat), 6), round(float(lon), 6), action)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "lat": lat, "lon": lon, "kind": action, "action": action,
+            "reason": getattr(r, "summary", "") or "",
+            "node": getattr(r, "node", None),
+            "height_m": getattr(r, "height_m", None),
+            "predicted_gain_db": getattr(r, "predicted_gain_db", None),
+            "tier": getattr(r, "tier", None),
+            "tier_why": getattr(r, "tier_why", ""),
+            "tier_checked": getattr(r, "tier_checked", True),
+            "resolves": list(getattr(r, "resolves", []) or []),
+            "links": [{"name": l.name, "km": l.km, "margin_km": l.margin_km,
+                       "source": l.source, "confidence": l.confidence,
+                       "viable": l.viable}
+                      for l in getattr(r, "predicted_links", []) or []],
+            "cost_note": getattr(r, "cost_note", ""),
+            "alternatives": [a.summary for a in
+                             getattr(r, "alternative_actions", []) or []],
+            "cautions": list(getattr(r, "cautions", []) or []),
+        })
+    return out
+
+
+def rationale_text(marker):
+    """The tap popup's body: the engine's rationale as plain lines — tier and
+    why (with "could not check" kept visible), what it fixes, each predicted
+    link with its distance, margin and SOURCE, the cost note, cheaper
+    alternatives, cautions. Pure text; the popup just shows it."""
+    m = marker or {}
+    lines = []
+    if m.get("action") == "raise_antenna":
+        if m.get("reason"):
+            lines.append(m["reason"])
+        h, g = m.get("height_m"), m.get("predicted_gain_db")
+        if h is not None and g is not None:
+            # metres and decibels on one labelled line each side — a 10 and
+            # a 10 must never read as the same number
+            lines.append(f"Mast: +{h:g} m.  Predicted gain: {g:g} dB.")
+    else:
+        if m.get("tier"):
+            suffix = "" if m.get("tier_checked", True) \
+                else "  (could not check)"
+            lines.append(f"Tier: {m['tier']}{suffix}")
+        if m.get("tier_why"):
+            lines.append(m["tier_why"])
+    if m.get("resolves"):
+        lines.append(tr("Fixes:"))
+        lines.extend(f"- {x}" for x in m["resolves"])
+    if m.get("links"):
+        lines.append(tr("Predicted links:"))
+        for l in m["links"]:
+            lines.append(f"- {l.get('name')}: {l.get('km'):g} km, margin "
+                         f"{l.get('margin_km'):+g} km ({l.get('source')}, "
+                         f"{l.get('confidence')})")
+    if m.get("cost_note"):
+        lines.append(m["cost_note"])
+    if m.get("alternatives"):
+        lines.append(tr("Cheaper first:"))
+        lines.extend(f"- {x}" for x in m["alternatives"])
+    lines.extend(m.get("cautions") or [])
+    return "\n".join(lines)
+
+
+def build_next_lines(markers, limit=3):
+    """The Build next panel's rows: at most *limit* recommendations, one line
+    each — action + place/node + the most important reason. The markers
+    arrive ranked (severity first, cost second), so the top three are simply
+    the first three. Pure."""
+    out = []
+    for m in (markers or [])[:limit]:
+        if m.get("action") == "raise_antenna":
+            out.append((m.get("reason")
+                        or tr("Raise an antenna")).split("\n")[0])
+            continue
+        links = m.get("links") or []
+        if links:
+            place = f"near {links[0].get('name')}"
+        elif m.get("lat") is not None:
+            place = f"at ({m['lat']:.3f}, {m['lon']:.3f})"
+        else:
+            place = tr("(no located spot)")
+        why = (m.get("resolves") or [m.get("reason") or ""])[0]
+        tier = m.get("tier") or "transport"
+        out.append(f"New {tier} node {place} - {why}".split("\n")[0])
     return out
 
 
@@ -438,6 +553,15 @@ class MapPlot(Widget):
             sx, sy = view.to_screen(s["lat"], s["lon"])
             cx, cy = self.x + sx, self.y + sy
             Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.95))
+            if s.get("action") == "raise_antenna":
+                # A small up-arrow AT the kin node: raise what already
+                # stands here. Distinct from the new-node ring — same accent
+                # (both are the engine's suggestions), different shape.
+                Line(points=[cx, cy - r * 0.7, cx, cy + r * 0.7], width=1.6)
+                Line(points=[cx - r * 0.45, cy + r * 0.1,
+                             cx, cy + r * 0.7,
+                             cx + r * 0.45, cy + r * 0.1], width=1.6)
+                continue
             Line(circle=(cx, cy, r), width=1.6)
             Line(points=[cx - r * 0.5, cy, cx + r * 0.5, cy], width=1.6)
             Line(points=[cx, cy - r * 0.5, cx, cy + r * 0.5], width=1.6)
@@ -458,9 +582,22 @@ class MapPlot(Widget):
         return best
 
     def _show_suggestion(self, sugg):
-        """Pop a small label with the suggestion's reason when its marker is
-        tapped — why the engine thinks a node belongs here."""
+        """Pop the suggestion's story when its marker is tapped. A
+        recommender pin (it carries a tier or is a mast raise) opens the full
+        rationale — tier and why, fixes, predicted links with their sources,
+        cost, alternatives, cautions (rationale_text). A plain placement
+        suggestion keeps the old one-line reason."""
         from kivy.uix.popup import Popup
+        if sugg.get("tier") is not None or sugg.get("action") == "raise_antenna":
+            title = (tr("Raise this antenna")
+                     if sugg.get("action") == "raise_antenna"
+                     else tr("Add a node here"))
+            text = rationale_text(sugg) or tr("Suggested node location")
+            body = Label(text=text, halign="left", valign="top",
+                         padding=(dp(12), dp(12)))
+            body.bind(size=lambda i, v: setattr(i, "text_size", v))
+            Popup(title=title, content=body, size_hint=(0.9, 0.7)).open()
+            return
         reason = sugg.get("reason") or "Suggested node location"
         kind = (sugg.get("kind") or "").replace("_", " ")
         title = "Add a node here" + (f"  ·  {kind}" if kind else "")
@@ -922,6 +1059,7 @@ class ScanScreen(BoxLayout):
     def __init__(self, nodes=None, tiles=None, gps_reader=None, fix_reader=None,
                  radius_km=DEFAULT_RADIUS_KM, on_place=None, on_node_pick=None,
                  links_provider=None, suggestions_provider=None,
+                 recommendations_provider=None,
                  poll=True, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
@@ -993,6 +1131,26 @@ class ScanScreen(BoxLayout):
             conn_row.add_widget(b)
         self._paint_overlay_btns()
         self.add_widget(conn_row)
+
+        # --- Build next (operator: NO seventh mode — the recommender folds
+        # into SCAN). One collapsed header line in the Connections row's
+        # taste; tap to expand into the top three recommendations, one line
+        # each. The map stays the hero: collapsed is the default and the
+        # expanded panel is three thin rows, nothing more.
+        self._recs_provider = recommendations_provider
+        self._bn_expanded = False
+        if recommendations_provider is not None:
+            self._bn_btn = Button(
+                text=tr("Build next"), size_hint=(1, None), height=dp(30),
+                halign="left", background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            self._bn_btn.bind(on_release=lambda *_: self._toggle_build_next())
+            self.add_widget(self._bn_btn)
+            self._bn_box = BoxLayout(orientation="vertical",
+                                     size_hint=(1, None), height=0,
+                                     spacing=dp(2))
+            self.add_widget(self._bn_box)
 
         # Interactive map: pan/pinch/double-tap to zoom, and a stationary TAP drops
         # the placement pin. Explicit +/- overlay so zoom never depends on the
@@ -1269,6 +1427,34 @@ class ScanScreen(BoxLayout):
         else:
             self.coords.text = hint
             self.confirm_btn.disabled = True
+
+    def _toggle_build_next(self):
+        """Expand/collapse the Build next panel. Collapsed leaves only the
+        header line — the map keeps its room."""
+        self._bn_expanded = not self._bn_expanded
+        self._refresh_build_next()
+
+    def _refresh_build_next(self):
+        self._bn_box.clear_widgets()
+        if not self._bn_expanded:
+            self._bn_box.height = 0
+            self._bn_btn.text = tr("Build next")
+            return
+        try:
+            markers = list(self._recs_provider() or [])
+        except Exception:
+            markers = []
+        lines = build_next_lines(markers) or [
+            tr("Nothing to build yet - no located gaps or weak links.")]
+        for ln in lines:
+            lbl = Label(text=ln, halign="left", valign="middle",
+                        shorten=True, shorten_from="right",
+                        font_size="14sp", size_hint=(1, None), height=dp(24),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+            self._bn_box.add_widget(lbl)
+        self._bn_box.height = dp(24) * len(lines)
+        self._bn_btn.text = tr("Build next  (hide)")
 
     def _toggle_overlay(self, transport):
         """Flip one overlay lane, repaint the button, redraw the map. Grey

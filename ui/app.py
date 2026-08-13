@@ -638,22 +638,42 @@ class ReticulumNodeMedicApp(App):
         # old separate gps_confirm page used to do.
         scan = Screen(name="scan")
         from monitor.geo import splitter_gps_reader, read_splitter_fix
-        from ui.screens.scan_screen import link_segments, suggestion_markers
-        from monitor.placement import suggest
+        from ui.screens.scan_screen import link_segments, recommendation_markers
+        from monitor.synapse_recommend import scan_recommendations
         self._scan_topo = None                    # rebuilt each poll cycle (rnpath)
+        # ONE spine end to end: the map pins and the Build next panel read the
+        # SAME recommender feed (SYNAPSE, LoRa-first), so they cannot disagree.
+        # Cached per topology object — the topo rebuilds each poll cycle, but
+        # the map redraws ~20x/s while panning and must not re-run the engine.
+        self._scan_recs_cache = (None, [])
+
+        def _scan_markers():
+            topo = self._scan_topo
+            if not topo:
+                return []
+            if self._scan_recs_cache[0] is topo:
+                return self._scan_recs_cache[1]
+            recs = scan_recommendations(topo,
+                                        registry=self.monitor_service.registry)
+            positions = {n.id: (n.lat, n.lon) for n in topo.nodes
+                         if n.lat is not None and n.lon is not None}
+            markers = recommendation_markers(recs, positions)
+            self._scan_recs_cache = (topo, markers)
+            return markers
+
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),
             gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
             fix_reader=read_splitter_fix,         # full fix -> live/held/none badge
             on_place=self._on_gps_confirmed,      # "Use this position" -> BIRTH
             on_node_pick=self._open_node_cert,    # tap a node dot -> its certificate
-            # mesh-lines toggle + "add a node here" gap markers (empty until topology)
+            # mesh-lines toggle + recommender pins (empty until topology)
             links_provider=lambda: (link_segments(
                 self._scan_topo,
                 transports=self.scan_screen.visible_transports())
                 if self._scan_topo else []),
-            suggestions_provider=lambda: (suggestion_markers(suggest(self._scan_topo))
-                                          if self._scan_topo else []))
+            suggestions_provider=_scan_markers,
+            recommendations_provider=_scan_markers)
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
 

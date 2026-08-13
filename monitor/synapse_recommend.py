@@ -44,6 +44,7 @@ from monitor.synapse_graph import (
     TIER_TRANSPORT,
     analyze,
     articulation_points,
+    build_analysis_graph,
     hops_to_propagation,
 )
 from monitor.synapse_links import (
@@ -59,7 +60,7 @@ __all__ = [
     "AUTOPEER_MAXDEPTH", "MAST_RAISE_M", "MAST_RAISE_GAIN_DB",
     "PredictedLink", "AlternativeAction", "Recommendation",
     "predicted_links", "tier_for", "recommend",
-    "scan_view", "scan_gap_window_km",
+    "scan_view", "scan_gap_window_km", "scan_recommendations",
 ]
 
 #: How many transport hops apart two propagation nodes can sit and still
@@ -630,3 +631,19 @@ def scan_gap_window_km(view: Topology) -> float:
                 observed_at=view.generated_at, distance_km=km,
                 source="topology"))
     return 2.0 * estimate_range(store).range_km
+
+
+def scan_recommendations(topo: Topology, registry=None,
+                         roster: Optional[dict] = None,
+                         **engine_kwargs) -> List[Recommendation]:
+    """SCAN's live feed: the full recommender, run on the LoRa-first view —
+    the same spine the suggest() adapter stands on, so the map pins and the
+    Build next panel can never disagree. *roster* defaults to the registry's
+    own kin roster (the operator's record of their fleet); *engine_kwargs*
+    pass straight through to :func:`recommend` (store, terrain_store,
+    traffic, occupancy...)."""
+    if roster is None and registry is not None:
+        roster = getattr(registry, "kin_roster", None)
+    graph = build_analysis_graph(scan_view(topo), registry=registry,
+                                 roster=roster)
+    return recommend(graph, **engine_kwargs)
