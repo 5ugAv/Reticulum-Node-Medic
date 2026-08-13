@@ -155,3 +155,18 @@ def test_rns_really_honours_a_callable_default_app_data():
     src = inspect.getsource(RNS.Destination.announce)
     assert "default_app_data" in src
     assert "callable(" in src
+
+
+def test_power_source_unknown_is_a_legal_birth_answer():
+    """BIRTH stamps 'unknown' when nobody has been asked (the honest default
+    since 2026-08-13) — and the reporter's argparse rejected it with exit 2,
+    crash-looping rnm-health on the first node built after the change
+    (EVERYWHERE, caught by final_verification, 2026-08-14). The CLI and the
+    reader both accept what birth is allowed to say."""
+    inputs = healthy_solar(on_solar=False)
+    payload = build_beacon_bytes(inputs)
+    assert len(payload) >= 14
+    # the CLI must list "unknown" among its accepted power sources
+    import monitor.pi_health_reporter as phr
+    src_text = open(phr.__file__).read()
+    assert '"unknown"' in src_text.split('--power-source')[1].split(")")[0]

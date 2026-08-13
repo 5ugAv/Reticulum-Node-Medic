@@ -333,7 +333,12 @@ if __name__ == "__main__":          # pragma: no cover
     import argparse
     ap = argparse.ArgumentParser(description="Pi propagation-node health reporter")
     ap.add_argument("--power-source", default="battery",
-                    choices=["battery", "solar", "mains"])
+                    # "unknown" is what BIRTH stamps when nobody has been
+                    # asked (honest default, 2026-08-13) — rejecting it
+                    # crash-looped rnm-health on the first node built after
+                    # that change (EVERYWHERE, 2026-08-14, exit 2). The
+                    # reporter accepts what birth is allowed to say.
+                    choices=["battery", "solar", "mains", "unknown"])
     ap.add_argument("--firmware-version", default="1.0.0")
     ap.add_argument("--heartbeat", type=int, default=HEARTBEAT_S)
     ap.add_argument("--identity", default=DEFAULT_IDENTITY_PATH)
