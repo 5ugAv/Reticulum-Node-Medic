@@ -24,3 +24,22 @@ its 90th; the two answer different questions and are labelled.
 
 Open (not yet decided): the ranked telemetry collection additions; the
 three-defaults spine; antenna/height question at birth.
+
+## 2026-08-13 — the range-probe companion, and honest map edges (operator)
+
+**A dedicated range-finding node joins the medic kit**: like Jonesy —
+known hardware, always with the medic — but DETACHABLE, carried out for the
+boundary walk / on-site test mode. Candidate board: the Seeed XIAO ESP32S3 +
+Wio-SX1262 (verified flash-ready 2026-08-13, model 0xDD covers 915.125).
+A known-hardware probe makes every walk sample calibrated data. (ttt is off
+power for now; the probe replaces ad-hoc test nodes.)
+
+**SCAN edges are typed by transport, and LoRa is the standard view.**
+The current screen drew Wi-Fi RSSI as edge strength — assumption dressed as
+data, now to be fixed. Rules: LoRa edges are the default view, always on,
+no off switch. Wi-Fi, Bluetooth and Internet connections are toggleable
+overlays (slot switches), OFF-able because Wi-Fi range means "same
+building" and internet reach negates the need for infill nodes — they are
+not placement signal. Non-LoRa links draw in a different colour per
+transport; an edge's strength is only ever drawn from a measurement OF THAT
+transport, or by existence alone when there is none.
