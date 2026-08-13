@@ -315,6 +315,12 @@ def write_boot(mnt: str, cfg: dict) -> None:
         if not os.path.isfile(os.path.join(mnt, name)):
             fail(f"{mnt} has no {name} — not a Pi boot partition")
 
+    if cfg.get("birth_token"):
+        # One-time identity proof: first contact reads this back and refuses
+        # to provision a machine carrying a different card's token
+        # (operator, 2026-08-14 — identity is proven, not assumed).
+        _write(os.path.join(mnt, "nodemedic-birth-token"),
+               cfg["birth_token"].strip() + "\n")
     if cfg.get("custom_toml"):
         _write(os.path.join(mnt, "custom.toml"), cfg["custom_toml"])
     if cfg.get("user_data"):

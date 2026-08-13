@@ -336,6 +336,7 @@
   "Signal when last heard: {dbm} dBm": "Signal when last heard: {dbm} dBm",
   "Signal: not measured": "Signal: not measured",
   "Slide the blank microSD card into the card reader on Node Medic.": "Masukkan kartu microSD kosong ke pembaca kartu di Node Medic.",
+  "Something on your network already answers to this name (at {addr}). If that is the node you are re-imaging, carry on — otherwise a different name avoids the two machines being mistaken for each other.": "Sesuatu di jaringan Anda sudah menjawab nama ini (di {addr}). Jika itu node yang sedang Anda tulis ulang, lanjutkan — jika tidak, nama lain menghindari kedua mesin tertukar.",
   "Standard:": "Standar:",
   "Start setup  →": "Mulai penyiapan  →",
   "Step {n} of {total}": "Langkah {n} dari {total}",

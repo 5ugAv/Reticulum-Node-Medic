@@ -1313,3 +1313,13 @@ def test_the_prelude_screen_actually_renders():
                 and not hasattr(builtins, node.id)):
             missing.append(node.id)
     assert not missing, f"names used but never bound: {sorted(set(missing))}"
+
+
+def test_a_name_something_already_answers_to_is_contested_at_entry():
+    """'A contested name should be refused at entry' (operator, 2026-08-14):
+    if <name>.local already resolves to a live host, the name screen says so
+    THEN — not four minutes later as a detect_hardware mystery. The probe
+    machinery existed; nothing called it at naming time."""
+    from tests.srcutil import func_source
+    src_text = func_source("ui/screens/birth_guide_screen.py", "_name_next")
+    assert "resolve" in src_text and "already answers" in src_text

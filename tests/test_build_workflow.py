@@ -1333,3 +1333,81 @@ def test_hand_back_refuses_a_bare_dwc2_overlay_in_force():
     r = _run_step(w, "hand_the_usb_port_back")
     assert r.success is False
     assert "gadget" in r.message.lower()
+
+
+def test_first_contact_clears_a_stale_unpinned_key_and_retries_once():
+    """EVERYWHERE's rebirth came back on a NEW DHCP address, and the medic's
+    known_hosts held a stale key under that address from an earlier tenant —
+    imaging-time key clearing cannot foresee a future lease (2026-08-14).
+    A changed key on an UNPINNED host during a build of a node we just
+    imaged is the expected result of re-imaging: clear that one entry, say
+    so, retry once. The pinned tamper store is never touched."""
+    calls = []
+    c = build_conn()
+    real_run = c.run
+    state = {"cleared": False}
+    def run(cmd, timeout=None):
+        if cmd == "cat /proc/cpuinfo" and not state["cleared"]:
+            return (255, "", "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!")
+        return real_run(cmd, timeout=timeout) if timeout else real_run(cmd)
+    c.run = run
+    c.host = "192.168.1.42"          # EmulatedConnection has no host of its own
+    w = wf(c)
+    import workflows.build as b
+    old = b._clear_stale_host_key
+    old_tok = b._expected_birth_token
+    b._clear_stale_host_key = lambda host: (calls.append(host), state.update(cleared=True), True)[-1]
+    b._expected_birth_token = lambda _wf=None: ""  # about the key, not the token
+    try:
+        r = _run_step(w, "detect_hardware")
+    finally:
+        b._clear_stale_host_key = old
+        b._expected_birth_token = old_tok
+    assert calls, "the stale key was never cleared"
+    assert r.success, "the retry after clearing did not happen"
+    assert "identity" in r.message.lower() or "cleared" in r.message.lower() \
+        or "Detected" in r.message
+
+
+def test_first_contact_failure_names_the_machine_and_the_road():
+    """'A failure that can't name the machine can't be diagnosed' (operator,
+    2026-08-14). The message carries the address it tried and how that road
+    was chosen — cable or the network."""
+    c = build_conn()
+    c.rules.insert(0, ("cat /proc/cpuinfo", 255, "", "connection timed out"))
+    c.host = "192.168.1.42"
+    w = wf(c)
+    r = _run_step(w, "detect_hardware")
+    assert r.success is False
+    assert "192.168.1.42" in r.message
+    assert "network" in r.message.lower() or "wi-fi" in r.message.lower()
+
+
+def test_first_contact_verifies_the_birth_token_when_one_was_baked():
+    """The build never proved it was talking to the Pi it just imaged —
+    everything downstream assumed identity and nothing established it
+    (operator, 2026-08-14). The imager bakes a one-time token; first
+    contact reads it back. Mismatch = wrong machine, said plainly. No token
+    recorded (old cards) = could not check, not a failure."""
+    from provisioning import pi_discover
+    c = build_conn(rnode=True)
+    c.rules.insert(0, ("cat /boot/firmware/nodemedic-birth-token", 0,
+                       "tok-abc123\n", ""))
+    w = wf(c)
+    import workflows.build as b
+    old = b._expected_birth_token
+    b._expected_birth_token = lambda _wf=None: "tok-abc123"
+    try:
+        r = _run_step(w, "detect_hardware")
+        assert r.success, r.message
+        # and the wrong machine is refused by name
+        c2 = build_conn(rnode=True)
+        c2.rules.insert(0, ("cat /boot/firmware/nodemedic-birth-token", 0,
+                            "tok-SOMEONE-ELSE\n", ""))
+        c2.host = "192.168.1.42"
+        w2 = wf(c2)
+        r2 = _run_step(w2, "detect_hardware")
+        assert r2.success is False
+        assert "not the Pi" in r2.message or "different card" in r2.message
+    finally:
+        b._expected_birth_token = old

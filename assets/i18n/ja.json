@@ -336,6 +336,7 @@
   "Signal when last heard: {dbm} dBm": "Signal when last heard: {dbm} dBm",
   "Signal: not measured": "Signal: not measured",
   "Slide the blank microSD card into the card reader on Node Medic.": "空の microSD カードを Node Medic のカードリーダーに差し込みます。",
+  "Something on your network already answers to this name (at {addr}). If that is the node you are re-imaging, carry on — otherwise a different name avoids the two machines being mistaken for each other.": "この名前には既にネットワーク上の何かが応答しています({addr})。それが再イメージ中のノードなら続行してください — そうでなければ、別の名前にすると 2 台が混同されずに済みます。",
   "Standard:": "標準:",
   "Start setup  →": "設定を開始  →",
   "Step {n} of {total}": "ステップ {n}/{total}",

@@ -54,7 +54,8 @@ def _run(argv: List[str], timeout: int = 8) -> str:
 # --------------------------------------------------------------------------- #
 
 def record_imaged_pi(hostname: str, username: str = "pi",
-                     model: str = "", path: str = STATE_PATH) -> bool:
+                     model: str = "", path: str = STATE_PATH,
+                     birth_token: str = "") -> bool:
     """Remember the card we just wrote, so the birth screen can offer its
     address instead of asking. Best-effort."""
     if not hostname:
@@ -68,8 +69,15 @@ def record_imaged_pi(hostname: str, username: str = "pi",
         pass
     try:
         from monitor.atomic_json import write_json
+        if not birth_token:
+            # A later caller (the imager screen re-records for the address
+            # book) must not wipe the token the imaging run just recorded.
+            birth_token = (last_imaged_pi(path).get("birth_token") or ""
+                           if last_imaged_pi(path).get("hostname") == hostname
+                           else "")
         return write_json(path, {"hostname": hostname, "username": username,
-                                 "model": model}, indent=2)
+                                 "model": model,
+                                 "birth_token": birth_token}, indent=2)
     except Exception:                      # noqa: BLE001
         return False
 

@@ -1246,6 +1246,26 @@ class BirthGuideScreen(BoxLayout):
                 msg = clash(name)
             except Exception:
                 msg = ""                     # advice must never block a birth
+            if not msg:
+                # A CONTESTED NAME IS REFUSED AT ENTRY (operator, 2026-08-14):
+                # if <name>.local already resolves to a live host, say so NOW
+                # — not four minutes later as a detect_hardware mystery when
+                # the build reaches the wrong machine. Advice, not a block:
+                # the operator may be deliberately re-imaging that very node.
+                try:
+                    from provisioning.pi_discover import resolve
+                    from provisioning.pi_imager import hostnameify
+                    host = hostnameify(name)
+                    addr = resolve(f"{host}.local") if host else None
+                    if addr:
+                        msg = tr("Something on your network already answers "
+                                 "to this name (at {addr}). If that is the "
+                                 "node you are re-imaging, carry on — "
+                                 "otherwise a different name avoids the two "
+                                 "machines being mistaken for each other."
+                                 ).format(addr=addr)
+                except Exception:                                  # noqa: BLE001
+                    pass
             if msg:
                 self._name_warned = name
                 self._name_warning = msg

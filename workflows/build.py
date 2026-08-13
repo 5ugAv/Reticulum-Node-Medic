@@ -316,15 +316,87 @@ def first_contact_reason(code: int, err: str) -> str:
                f" (ssh exit {code}) — is it reachable?"))
 
 
+def _expected_birth_token(wf: "BuildWorkflow") -> str:
+    """The one-time token the imager recorded — but only when THIS build is
+    for the node that card was written for (hostname match). Identity is
+    PROVEN at first contact, not assumed (operator, 2026-08-14); a token
+    recorded for some other card proves nothing about this node and must
+    not fail it."""
+    try:
+        from provisioning.pi_discover import last_imaged_pi
+        rec = last_imaged_pi()
+        want = (getattr(wf.profile, "hostname", "") or "").strip().lower()
+        if want and (rec.get("hostname") or "").strip().lower() == want:
+            return (rec.get("birth_token") or "").strip()
+        return ""
+    except Exception:                                              # noqa: BLE001
+        return ""
+
+
+def _road_of(host: str) -> str:
+    """How the medic reached *host*, for failure messages that can be
+    diagnosed: the cable /29 is the cable; anything else came off the
+    operator's network (mDNS name or DHCP address)."""
+    return "over the cable" if (host or "").startswith("10.55.0.")         else "on your network"
+
+
+def _clear_stale_host_key(host: str) -> bool:
+    """Drop the medic's stored (unpinned) SSH key for *host*. Rebirth makes a
+    new identity, and DHCP can hand the reborn node an address whose old key
+    belongs to an earlier tenant — imaging-time clearing cannot foresee a
+    future lease (EVERYWHERE, 2026-08-14). The PINNED tamper store is never
+    touched here; this is the user known_hosts only."""
+    try:
+        import subprocess
+        subprocess.run(["ssh-keygen", "-R", host], capture_output=True,
+                       timeout=10)
+        return True
+    except Exception:                                              # noqa: BLE001
+        return False
+
+
 @build_step
 def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     # NOT cmd_output: it returns "" for every kind of failure alike, and this is
     # the FIRST thing the build says to the node — the one place where knowing
     # which failure it was is worth most.
     code, cpuinfo, err = wf.connection.run("cat /proc/cpuinfo")
+    e = (err or "").lower()
+    if (code != 0 or not cpuinfo) and (
+            "host key verification failed" in e
+            or "remote host identification" in e):
+        # A changed key on this UNPINNED host is the expected result of the
+        # re-imaging that this very build follows. Clear that one stale
+        # entry and try once more — and say so, because a silent second
+        # attempt is how mysteries are made.
+        host = getattr(wf.connection, "host", "") or ""
+        if host and _clear_stale_host_key(host):
+            code, cpuinfo, err = wf.connection.run("cat /proc/cpuinfo")
     if code != 0 or not cpuinfo:
-        return StepResult("detect_hardware", False,
-                          first_contact_reason(code, err))
+        host = getattr(wf.connection, "host", "") or "the node"
+        return StepResult(
+            "detect_hardware", False,
+            f"At {host} ({_road_of(host)}): "
+            + first_contact_reason(code, err))
+
+    # THE BIRTH TOKEN: prove this is the Pi the card was written for BEFORE
+    # provisioning anything (operator, 2026-08-14). The imager bakes a
+    # one-time token onto the boot partition and records it; a mismatch is a
+    # WRONG MACHINE — likely a name collision or a stale address — and the
+    # honest move is to stop, not to provision a stranger. No recorded
+    # token, or an old card without the file, is "could not check".
+    expected = _expected_birth_token(wf)
+    if expected:
+        tok = (wf.connection.run(
+            "cat /boot/firmware/nodemedic-birth-token")[1] or "").strip()
+        if tok and tok != expected:
+            host = getattr(wf.connection, "host", "") or "the node"
+            return StepResult(
+                "detect_hardware", False,
+                f"At {host} ({_road_of(host)}): this is not the Pi this "
+                f"card was written for — it answers with a different card's "
+                f"birth token. Another machine may hold this name or "
+                f"address; check what else on the network answers to it.")
 
     # rnodeconf must be present before we probe/flash the radio (a fresh Pi has
     # none until the later install step) — ensure it up front.

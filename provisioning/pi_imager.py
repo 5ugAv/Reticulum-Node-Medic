@@ -570,6 +570,9 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         "wifi_psk": wifi_password or "",
         "wifi_country": wifi_country or "",
         "user": username,
+        # The card's one-time birth token — recorded by record_imaged_pi so
+        # first contact can PROVE it reached the machine this card made.
+        "birth_token": __import__("uuid").uuid4().hex,
         "pwhash": pw_hash,
         "keys": list(authorized_keys or []),
     }
@@ -581,6 +584,15 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     # never baked, and a screen that then promises a USB-cable birth that cannot
     # happen. Diagnosing that from the far end costs a bench night (2026-08-06).
     warnings: List[str] = []
+    # Record hostname AND the card's birth token HERE, where both are in
+    # scope — the imaging choke point. First contact proves identity against
+    # this record (operator, 2026-08-14).
+    try:
+        from provisioning.pi_discover import record_imaged_pi
+        record_imaged_pi(hostname, username,
+                         birth_token=card_cfg.get("birth_token", ""))
+    except Exception:                                              # noqa: BLE001
+        pass
     cfg_path = write_card_config(card_cfg)
     for cmd in prepare_card_commands(device_path, cfg_path):
         code, out = run_shell(cmd)

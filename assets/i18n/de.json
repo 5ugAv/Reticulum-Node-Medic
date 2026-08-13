@@ -336,6 +336,7 @@
   "Signal when last heard: {dbm} dBm": "Signal beim letzten Empfang: {dbm} dBm",
   "Signal: not measured": "Signal: nicht gemessen",
   "Slide the blank microSD card into the card reader on Node Medic.": "Schieben Sie die leere microSD-Karte in den Kartenleser von Node Medic.",
+  "Something on your network already answers to this name (at {addr}). If that is the node you are re-imaging, carry on — otherwise a different name avoids the two machines being mistaken for each other.": "Etwas in deinem Netzwerk antwortet bereits auf diesen Namen (unter {addr}). Wenn das der Knoten ist, den du gerade neu bespielst, mach weiter — andernfalls vermeidet ein anderer Name, dass die beiden Maschinen verwechselt werden.",
   "Standard:": "Standard:",
   "Start setup  →": "Einrichtung starten  →",
   "Step {n} of {total}": "Schritt {n} von {total}",
