@@ -61,6 +61,12 @@ class RNodeBoard:
     #: Only set for boards whose sequence is transcribed + intended for use; an
     #: empty map means "flash sequence not yet verified for this board".
     autoinstall_bands: Dict[int, int] = field(default_factory=dict)
+    #: Why the band menu CANNOT be answered from here, when that is the truth:
+    #: rnodeconf selects some products by RADIO CHIP (SX1276 vs SX1262 variants
+    #: of one board), which nothing on this side of the USB cable can see.
+    #: Set -> autoinstall_answers refuses with this reason instead of the
+    #: generic "not yet verified" (which reads as a to-do, not a fact).
+    band_ambiguity: str = ""
     experimental: bool = True                # upstream marks dev-board installs so
     recovery_key: str = ""                   # key into ui.safety.recovery_text
     bootloader_instructions: str = ""
@@ -106,6 +112,10 @@ class RNodeBoard:
         if self.flash_method != "autoinstall":
             raise ValueError(f"{self.key} is not an autoinstall board.")
         if band_mhz not in self.autoinstall_bands:
+            if self.band_ambiguity:
+                raise ValueError(
+                    f"Cannot pick the {band_mhz} MHz menu answer for "
+                    f"{self.key}: {self.band_ambiguity}")
             raise ValueError(
                 f"Autoinstall band {band_mhz} MHz not yet verified for "
                 f"{self.key}.")
@@ -138,14 +148,15 @@ class RNodeBoard:
 
 
 def _official(key, name, index, platform, modem, bands, recovery_key="",
-              notes="", bootloader=None, band_map=None):
+              notes="", bootloader=None, band_map=None, band_ambiguity=""):
     if bootloader is None:
         bootloader = _NRF52_BOOTLOADER if platform == "nRF52" else _ESP32_BOOTLOADER
     return RNodeBoard(
         key=key, display_name=name, flash_method="autoinstall",
         platform=platform, modem=modem, bands=bands, autoinstall_index=index,
         autoinstall_bands=band_map or {}, recovery_key=recovery_key,
-        bootloader_instructions=bootloader, notes=notes)
+        bootloader_instructions=bootloader, notes=notes,
+        band_ambiguity=band_ambiguity)
 
 
 # Official RNode targets — index = rnodeconf's "What kind of device is this?"
@@ -183,10 +194,25 @@ _OFFICIAL = [
               "410-525 / 850-950 MHz",
               band_map={433: 1, 868: 2, 915: 3, 923: 4},
               notes="Known faulty battery-charging circuit — avoid if possible."),
+    # rnodeconf 2.5.0 (read on the medic 2026-08-14) asks the T-Beam band
+    # question BY CHIP: 868/915/923 is menu 2 on an SX1276 board but menu 4 on
+    # an SX1262 board, and the two ship under the same product name. Wrong
+    # choice = wrong model byte in the EEPROM. Until the flow can ask the
+    # operator which chip their board carries, refusing is the honest answer.
     _official("tbeam", "LilyGO T-Beam", 6, "ESP32", "SX1276/78/62/68",
-              "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1"),
+              "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1",
+              band_ambiguity=(
+                  "the T-Beam ships with either an SX1276 or an SX1262 radio "
+                  "chip under the same name, and rnodeconf's band menu answer "
+                  "differs by chip — the tool cannot see which chip this board "
+                  "carries. Check the silkscreen near the radio can, then "
+                  "flash with rnodeconf by hand.")),
+    # Band menu transcribed from the rnodeconf 2.5.0 source on the medic
+    # (RNS/Utilities/rnodeconf.py, PRODUCT_H32_V2, read 2026-08-14): plain
+    # "[1] 433 [2] 868 [3] 915 [4] 923", single chip, no variant question.
     _official("heltec32_v2", "Heltec LoRa32 v2", 7, "ESP32", "SX1276/78",
-              "410-525 / 850-950 MHz", recovery_key="Heltec V2"),
+              "410-525 / 850-950 MHz", recovery_key="Heltec V2",
+              band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     # V3 vs V4 is the other trap on this list — mixing their images BOOT-LOOPS
     # the board — but it is NOT a naming problem: the two are told apart by a
     # photo the operator can hold the board against (assets/boards/heltec_v3.png
@@ -203,8 +229,17 @@ _OFFICIAL = [
     _official("heltec32_v4", "Heltec LoRa32 v4", 9, "ESP32-S3", "SX1262",
               "850-950 MHz", recovery_key="Heltec V4",
               band_map={868: 1, 915: 2, 923: 3}),          # verified on hardware
+    # Same chip-variant trap as the T-Beam (rnodeconf 2.5.0, read 2026-08-14):
+    # the T3S3 menu spans SX1278/SX1276/SX1268/SX1262/SX1280 variants of one
+    # product; 868/915/923 is choice 2 or 4 depending on the chip.
     _official("t3s3", "LilyGO LoRa T3S3", 10, "ESP32-S3", "SX1262/68, SX127x, SX1280",
-              "410-525 / 850-950 MHz / 2.4 GHz", recovery_key="T3S3"),
+              "410-525 / 850-950 MHz / 2.4 GHz", recovery_key="T3S3",
+              band_ambiguity=(
+                  "the T3S3 ships with SX1276, SX1262 or SX1280 radio chips "
+                  "under the same name, and rnodeconf's band menu answer "
+                  "differs by chip — the tool cannot see which chip this "
+                  "board carries. Check the silkscreen near the radio can, "
+                  "then flash with rnodeconf by hand.")),
     # The three nRF52 boards share one band menu, transcribed from the
     # rnodeconf 2.5.0 source on the medic (RNS/Utilities/rnodeconf.py) rather
     # than guessed: "[1] 433  [2] 868  [3] 915  [4] 923".

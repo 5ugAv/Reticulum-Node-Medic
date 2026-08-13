@@ -158,18 +158,20 @@ def test_boards_with_no_transcribed_flash_sequence_still_refuse_to_guess():
     sits beside it: an EMPTY band_map means nobody has read that board's
     autoinstall menu, so autoinstall_answers() must raise rather than type a
     band choice into rnodeconf and hope."""
-    # rak4631 and techo were on this list until 2026-08-05, when their menus
-    # were transcribed from rnodeconf and the RAK was then flashed four times
-    # end-to-end on real hardware. They belong on the OTHER side of this line
-    # now — leaving them here would have asserted that a proven board still
-    # refuses to flash.
-    for key in ("tbeam", "heltec32_v2", "t3s3"):
+    # rak4631 and techo were on this list until 2026-08-05, and heltec32_v2
+    # until 2026-08-14 — each left when its menu was transcribed from the
+    # rnodeconf source on the medic. tbeam and t3s3 are different: their menus
+    # were READ the same day and turned out to be unanswerable from here
+    # (the band choice differs by which radio chip variant the board carries),
+    # so they stay refusing — and the refusal must say that WHY, because
+    # "not yet verified" reads as a to-do when it is actually a fact.
+    for key in ("tbeam", "t3s3"):
         b = get_board(key)
         assert b.autoinstall_bands == {}
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="chip"):
             b.autoinstall_answers(915)
     # ...and the transcribed ones must NOT refuse.
-    for key in ("rak4631", "techo"):
+    for key in ("rak4631", "techo", "heltec32_v2"):
         assert get_board(key).autoinstall_answers(915)
 
 
