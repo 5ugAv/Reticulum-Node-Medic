@@ -973,7 +973,9 @@ class ScanScreen(BoxLayout):
         from ui.widgets.share_toggle import OnOffToggle
         self._overlay_on = {"wifi": True, "internet": True, "bluetooth": True}
         panel = BoxLayout(orientation="vertical", size_hint=(None, None),
-                          size=(dp(150), dp(3 * 34 + 2 * 6)), spacing=dp(6),
+                          # Wide enough that "Bluetooth" keeps to one line at
+                          # the panel density (wrapped on the glass, 2026-08-13)
+                          size=(dp(185), dp(3 * 34 + 2 * 6)), spacing=dp(6),
                           pos_hint={"x": 0.02, "y": 0.03})
         for t, label in (("wifi", tr("Wi-Fi")),
                          ("bluetooth", tr("Bluetooth")),
