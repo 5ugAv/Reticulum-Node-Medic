@@ -112,7 +112,12 @@ class ConfirmLocationPopup(Popup):
         body.add_widget(addr_row)
         # search status / address feedback lives HERE (top) so it's visible above
         # the on-screen keyboard — a failed lookup must never look like nothing.
-        self._addr = _lbl("Tap 'Show address' to look it up online (optional).",
+        # Name the button that is actually NEXT TO the field (operator,
+        # 2026-08-14: the caption said 'Show address', which lives below the
+        # map and is off-view with the keyboard up — a caption must not point
+        # at a control the eye cannot find).
+        self._addr = _lbl("Type an address and tap Find to look up the spot "
+                          "online (optional).",
                           "12.5sp", color="text_secondary", h=30)
         body.add_widget(self._addr)
         body.add_widget(_lbl("or tap the map / Use GPS to place the pin", "12.5sp",
@@ -199,7 +204,9 @@ class ConfirmLocationPopup(Popup):
         self._coords.text = self._coord_text()
         self.plot._me = (self._lat, self._lon)     # move the pin, keep the view
         self.plot._trigger()
-        self._addr.text = "Tap 'Show address' to look up this spot online."
+        self._addr.text = ("Pin placed — coordinates are below the map. "
+                           "'Show address (online)' looks up its street "
+                           "address.")
 
     def _find_address(self, *a):
         q = (self._addr_in.text or "").strip()

@@ -166,3 +166,41 @@ def test_the_pin_belongs_to_one_node():
     at = reset.index("self._share_location = location_share.HIDDEN")
     window = reset[at - 600:at + 200]
     assert "_node_location = None" in window
+
+
+# -- the prelude map can zoom to a suburb (operator, 2026-08-14, note 11) --
+# "that's as close as it seems to zoom in, which is not even a suburb view —
+#  we need to zoom much closer for the user to pick their location."
+# The tile drawer has always been able to OVERZOOM (scale the nearest cached
+# ancestor — "blurry beats black"); it was the zoom STEPPER and the draw-path
+# snap that refused to go past the cached edge, so a world basemap capped the
+# whole map at state level. Interactive zoom now steps past the edge up to
+# OVERZOOM_MAX; the drawer blurs gracefully where detail tiles are absent.
+
+def test_interactive_zoom_steps_past_the_cached_edge():
+    import sys
+    sys.modules.pop("ui.screens.scan_screen", None)
+    from tests.srcutil import func_source
+    step = func_source("ui/screens/scan_screen.py", "_step_to_next_zoom",
+                       cls="MapPlot")
+    assert "OVERZOOM_MAX" in step
+    draw = func_source("ui/screens/scan_screen.py", "_draw_tiled", cls="MapPlot")
+    assert "OVERZOOM_MAX" in draw, (
+        "the draw path snapped the zoom back to the cached edge, undoing the "
+        "step past it")
+
+
+def test_overzoom_is_pure_and_capped():
+    from ui.map_tiles import step_zoom
+    # the pure helper keeps its documented stay-put behaviour at the edge;
+    # the widget layers the overzoom on top — so nothing else changes.
+    assert step_zoom([4, 8], 8, +1) == 8
+
+
+def test_the_address_caption_points_at_the_visible_button():
+    """Operator, 2026-08-14: the caption said tap 'Show address' — a button
+    below the map, off-view under the keyboard — while the button beside the
+    field says Find. A caption must name the control the eye can find."""
+    popup = src("ui/widgets/confirm_location.py")
+    assert "tap Find to look up the spot" in popup
+    assert "Tap 'Show address' to look up this spot online (optional)" not in popup

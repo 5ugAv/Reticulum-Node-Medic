@@ -656,11 +656,21 @@ class MapPlot(Widget):
         from ui.map_tiles import snap_zoom
         return snap_zoom(self._zooms, z)
 
+    #: How far interactive zoom may pass the cached edge. The drawer
+    #: overzooms from the nearest cached ancestor ("blurry beats black"),
+    #: so these levels render soft where detail tiles are absent — but a
+    #: pin cannot be placed on a suburb from a state view (operator,
+    #: 2026-08-14, on the prelude map with only the world basemap cached).
+    OVERZOOM_MAX = 16
+
     def _step_to_next_zoom(self, current, direction):
         from ui.map_tiles import step_zoom
         # with no cache, fall back to the full interactive range
         zs = self._zooms or list(range(2, DETAIL_MAX_ZOOM + 1))
-        return step_zoom(zs, current, direction)
+        nxt = step_zoom(zs, current, direction)
+        if direction > 0 and nxt == current and current < self.OVERZOOM_MAX:
+            return current + 1        # past the cached edge: overzoom renders it
+        return nxt
 
     def _zoom_at(self, pos, direction):
         """Zoom one level toward the tapped screen point, recentring on the geo
@@ -870,8 +880,16 @@ class MapPlot(Widget):
     def _draw_tiled(self, pts, bbox, fill=None):
         from ui.map_tiles import view_at
         if self._center is not None and self._zoom is not None:
-            # snap the manual zoom to a level the cache actually has (no blank)
-            z = self._snap_zoom(self._zoom)
+            # A manual zoom BELOW the cached edge snaps to a level the cache
+            # has (no mid-range gaps); ABOVE it, it stands — the per-tile
+            # drawer overzooms from the nearest ancestor, so the pane blurs
+            # instead of blanking (and instead of snapping the operator back
+            # to state level the moment they zoomed past the basemap).
+            z = self._zoom
+            if not self._zooms or z <= self._zooms[-1]:
+                z = self._snap_zoom(z)
+            else:
+                z = min(z, self.OVERZOOM_MAX)
             view = view_at(self._center[0], self._center[1], z,
                            self.width, self.height)      # user-driven pan/zoom
         elif fill is not None:
