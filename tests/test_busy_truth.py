@@ -33,7 +33,10 @@ def test_autoinstall_flash_is_a_write_not_a_compile():
     assert "compile is the slow part" not in para.lower(), (
         "autoinstall writes PREBUILT firmware — claiming a compile is a lie")
     assert "prebuilt" in para.lower()
-    assert banner.startswith(f"Flashing {board.display_name}")
+    # Two lines since 2026-08-14 (briefing Task 7): the act first and large,
+    # the board name on its own smaller line where it can never shrink it.
+    assert banner.startswith("Flashing RNode\n")
+    assert board.display_name in banner
 
 
 def test_tracker_flash_really_does_compile_and_may_say_so():

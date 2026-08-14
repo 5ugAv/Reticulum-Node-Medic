@@ -36,12 +36,14 @@ def busy_truth(node_type: str, board, display_name: str):
     if node_type == "rnode_flash" and board is not None:
         if board.flash_method == "arduino_cli":
             # This path REALLY compiles — the old sentence is true here.
-            return (f"Flashing {board.display_name} — keep it plugged in, "
-                    "don't power off",
+            # Two lines: the ACT reads at a glance, the board name cannot
+            # shrink it (briefing Task 7).
+            return (f"Flashing RNode\n{board.display_name} — keep it "
+                    "plugged in, don't power off",
                     "Working… the firmware compile is the slow part (a first "
                     f"build also downloads the toolchain). {wait}")
-        return (f"Flashing {board.display_name} — keep it plugged in, "
-                "don't power off",
+        return (f"Flashing RNode\n{board.display_name} — keep it plugged "
+                "in, don't power off",
                 "Working… writing the firmware onto the board is the slow "
                 f"part. It is prebuilt — nothing is compiled here. {wait}")
     # RTNode-2400 and kin: arduino-cli builds firmware from source.

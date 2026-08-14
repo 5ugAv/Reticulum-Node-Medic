@@ -12,6 +12,7 @@ from datetime import datetime
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
@@ -120,6 +121,18 @@ class NodeDetailScreen(BoxLayout):
                 when=tr("never") if seen is None
                 else tr("{age} ago").format(age=format_age(seen))),
             color="text_secondary"))
+        # THE SNAPSHOT IS STAMPED (briefing Task 10): a powered-off node
+        # showed uptime 28s and WiFi up as if live — these figures are the
+        # node's LAST REPORT, rendered at a moment in time, and the card says
+        # both. Amber when the node is not currently answering, so stale
+        # cannot dress as live.
+        import time as _t
+        answering = record.status(now) == "ok"
+        self.add_widget(_line(
+            tr("Figures below are the node's last report — card drawn "
+               "{clock}.").format(clock=_t.strftime("%H:%M")) +
+            ("" if answering else tr(" The node is NOT answering right now.")),
+            color=("text_secondary" if answering else "amber"), size="12.5sp"))
 
         batt = _reading(record, "battery_pct")
         self.add_widget(_line(
@@ -293,10 +306,15 @@ class NodeDetailScreen(BoxLayout):
             nav_btn.bind(on_release=lambda *_: self._navigate())
             actions.add_widget(nav_btn)
         if self._on_forget is not None:
-            # DELETE, behind the danger confirm (operator request, 2026-08-13:
-            # "delete all data about said node so the name can be reused in a
-            # new birth"). Red, and worded as what it destroys — the medic's
-            # whole memory of the node, not the node itself.
+            # DELETE, behind the danger confirm (operator request, 2026-08-13)
+            # — and on its OWN ROW since 2026-08-14 (briefing Task 11): packed
+            # beside "Location & map" at 1280x720 the two overlapped into
+            # "mapelete", and a destructive button flush against a routine one
+            # is a mis-tap waiting for a big finger. Red, worded as what it
+            # destroys — the medic's whole memory of the node, not the node.
+            danger_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                   height=dp(52), spacing=dp(8),
+                                   padding=[0, dp(10), 0, 0])
             forget = Button(text=tr("Delete this node…"),
                             font_size=theme.font_sp("18sp"),
                             background_normal="",
@@ -304,7 +322,9 @@ class NodeDetailScreen(BoxLayout):
                                 theme.COLORS["red"]),
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
             forget.bind(on_release=lambda *_: self._confirm_forget())
-            actions.add_widget(forget)
+            danger_row.add_widget(Widget())          # pushed right, half-width
+            danger_row.add_widget(forget)
+            self._danger_row = danger_row
         # Only when the board is REALLY here and there is somewhere to send it.
         # A rebirth is a USB erase; a button for a node across town would
         # be a repair path that looks one tap from working and isn't.
@@ -317,6 +337,9 @@ class NodeDetailScreen(BoxLayout):
             rb.bind(on_release=lambda *_: self._rebirth())
             actions.add_widget(rb)
         self.add_widget(actions)
+        if getattr(self, "_danger_row", None) is not None:
+            self.add_widget(self._danger_row)
+            self._danger_row = None
 
     def _ping(self):
         if self._on_poll:

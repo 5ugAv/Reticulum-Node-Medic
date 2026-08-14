@@ -410,14 +410,27 @@ class ReticulumNodeMedicApp(App):
             from kivy.metrics import dp
             from kivy.uix.label import Label
             from kivy.graphics import Color, Rectangle
+            def _mk(text):
+                # Two-line labels render as hierarchy: first line large and
+                # bold, the rest smaller (briefing Task 7) — so "Flashing
+                # RNode" reads at a glance and a long board name can never
+                # shrink it.
+                if "\n" in text:
+                    from kivy.metrics import sp as _sp
+                    first, rest = text.split("\n", 1)
+                    return (f"[b][size={int(_sp(19))}]{first}[/size][/b]\n"
+                            f"[size={int(_sp(14))}]{rest}[/size]")
+                return text
             bar = getattr(self, "_activity_banner", None)
             if bar is not None:
-                bar.text = label
+                bar.markup = True
+                bar.text = _mk(label)
                 return
             # Operator-spec (2026-07-30): LARGER, YELLOW with a RED outline —
             # the thin red strip was too easy to miss while a flash ran.
             from kivy.graphics import Line
-            bar = Label(text=label, bold=True, font_size="16sp",
+            bar = Label(text=_mk(label), markup=True, bold=True,
+                        font_size="16sp",
                         color=theme.hex_to_rgba(theme.COLORS["red"]),
                         halign="center", valign="middle", size_hint=(None, None),
                         height=dp(52))

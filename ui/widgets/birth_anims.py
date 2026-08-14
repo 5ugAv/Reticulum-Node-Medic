@@ -463,7 +463,9 @@ class ConnectBoardAnim(_LoopAnim):
                 # big "Connected!" banner rising from the bottom of the panel
                 if self._conn_tex is not None:
                     tw, th = self._conn_tex.size
-                    start_y, target_y = y - dp(56), y + h * 0.24
+                    # Bottom strip, not centre stage: at h*0.24 it painted
+                    # straight over the cable art (operator, 2026-08-14).
+                    start_y, target_y = y - dp(56), y + dp(6)
                     by = start_y + (target_y - start_y) * self.rise
                     g = theme.hex_to_rgba(theme.COLORS["green"])
                     Color(g[0], g[1], g[2], self.rise)

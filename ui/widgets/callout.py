@@ -62,7 +62,8 @@ class Callout(BoxLayout):
         # Big. This is the line that has to stop someone mid-flow — on the 5"
         # panel at 15.5sp it read as just another bold line and the operator
         # watched it float past (2026-08-02).
-        self._head = Label(text=heading, bold=True, font_size="23sp",
+        self._head = Label(text=heading, bold=True,
+                           font_size="27sp" if pulse else "23sp",
                            color=ink, size_hint_y=None, halign="left",
                            valign="middle", markup=False)
         self._body = Label(text=body, font_size="15sp", color=ink,
