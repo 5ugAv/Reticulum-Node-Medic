@@ -169,6 +169,25 @@ class WizardStep(BoxLayout):
         self.add_widget(nav)
         self._nav = nav
 
+    def set_status(self, text: str):
+        """A live one-line narration under the body: what the medic is seeing
+        RIGHT NOW on a self-advancing step. A watcher that refuses silently
+        reads as a hang (skyfinger, 2026-08-14 — the medic had FOUND the Pi
+        and was rightly refusing an unprovable card, and the operator watched
+        a still screen for minutes). Created on first use; the flexible
+        animation stage absorbs its height, so nothing overflows."""
+        if not getattr(self, "_status_lbl", None):
+            lbl = Label(text="", font_size=theme.font_sp("14sp"),
+                        halign="left", valign="top", size_hint_y=None,
+                        color=theme.hex_to_rgba(theme.COLORS["accent"]))
+            lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                     texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+            self._status_lbl = lbl
+            # children[0] is the nav row (last added); index=1 sits just above
+            self.add_widget(lbl, index=1)
+        if self._status_lbl.text != text:
+            self._status_lbl.text = text
+
     def hide_next(self):
         """Drop the Next button entirely — for steps the medic advances itself.
 

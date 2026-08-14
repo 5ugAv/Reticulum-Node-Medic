@@ -25,38 +25,39 @@ def _record(tmp_path, hostname="everywhere", token="tok-1234"):
 
 def test_proven_when_the_imaged_card_answers_with_its_token(tmp_path):
     path = _record(tmp_path)
-    proven, imposter = imaged_pi_answers(
+    proven, imposter, why = imaged_pi_answers(
         "everywhere", path=path,
         _token_at=lambda addr: "tok-1234",
         _cable=lambda: "10.55.0.1", _resolve=lambda h: None)
-    assert proven is True and imposter == ""
+    assert (proven, imposter, why) == (True, "", "")
 
 
 def test_an_answering_machine_with_the_wrong_token_is_an_imposter(tmp_path):
     """The 2026-08-14 morning, replayed: the OLD node answers the name."""
     path = _record(tmp_path)
-    proven, imposter = imaged_pi_answers(
+    proven, imposter, why = imaged_pi_answers(
         "everywhere", path=path,
         _token_at=lambda addr: "someone-elses-token",
         _cable=lambda: "", _resolve=lambda h: "192.168.1.42")
     assert proven is False
     assert imposter == "192.168.1.42"
+    assert why == "wrong-token"
 
 
 def test_silence_is_neither_proof_nor_imposter(tmp_path):
     path = _record(tmp_path)
-    proven, imposter = imaged_pi_answers(
+    proven, imposter, why = imaged_pi_answers(
         "everywhere", path=path,
         _token_at=lambda addr: None,          # nobody answers ssh
         _cable=lambda: "", _resolve=lambda h: None)
-    assert (proven, imposter) == (False, "")
+    assert (proven, imposter, why) == (False, "", "")
 
 
 def test_a_token_for_a_DIFFERENT_card_proves_nothing(tmp_path):
     """The record is scoped to the hostname it was written for — a stray
     record from another node's imaging must not gate THIS birth."""
     path = _record(tmp_path, hostname="hope", token="hopes-token")
-    proven, imposter = imaged_pi_answers(
+    proven, imposter, why = imaged_pi_answers(
         "everywhere", path=path,
         _token_at=lambda addr: "hopes-token",
         _cable=lambda: "10.55.0.1", _resolve=lambda h: None)
@@ -69,7 +70,7 @@ def test_the_cable_road_wins_but_both_roads_are_walked(tmp_path):
     def token_at(addr):
         asked.append(addr)
         return "tok-1234" if addr == "192.168.1.50" else "wrong"
-    proven, _ = imaged_pi_answers(
+    proven, _imp, _why = imaged_pi_answers(
         "everywhere", path=path, _token_at=token_at,
         _cable=lambda: "10.55.0.1", _resolve=lambda h: "192.168.1.50")
     assert proven is True
@@ -88,7 +89,7 @@ def test_the_skip_and_the_watcher_require_proof():
         "skipped-instruction bug of 2026-08-14")
     watcher = func_source("ui/screens/birth_guide_screen.py",
                           "_start_pi_poll", cls="BirthGuideScreen")
-    assert "_pi_proven" in watcher and "_pi_answering()" not in watcher
+    assert "_pi_proof" in watcher and "_pi_answering()" not in watcher
 
 
 def test_the_connect_step_tells_the_truth_about_both_roads():
@@ -143,3 +144,23 @@ def test_the_imager_screen_refuses_on_a_stale_helper():
     confirm = func_source("ui/screens/pi_imager_screen.py", "_confirm",
                           cls="PiImagerScreen")
     assert "helper_out_of_date" in confirm
+
+
+# -- the watcher narrates what it sees (operator, 2026-08-14: "Do that now") --
+
+def test_a_no_token_machine_is_reported_on_the_glass():
+    from tests.srcutil import func_source
+    watcher = func_source("ui/screens/birth_guide_screen.py",
+                          "_start_pi_poll", cls="BirthGuideScreen")
+    assert "no birth token" in watcher, "the skyfinger stall, named on screen"
+    assert "wrong birth token" in watcher
+    assert "set_status" in watcher
+
+
+def test_the_empty_and_wrong_token_cases_are_told_apart(tmp_path):
+    from provisioning.pi_discover import imaged_pi_answers
+    path = _record(tmp_path)
+    _p, _i, why_empty = imaged_pi_answers(
+        "everywhere", path=path, _token_at=lambda a: "",
+        _cable=lambda: "10.55.0.1", _resolve=lambda h: None)
+    assert why_empty == "no-token"

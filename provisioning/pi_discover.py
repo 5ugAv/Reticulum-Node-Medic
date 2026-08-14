@@ -403,8 +403,15 @@ def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
     Presence is not proof: any Pi on the cable or any machine holding the
     name would pass a ping. Only the machine booted from THIS card can quote
     the token, because the imager baked it there and recorded it nowhere
-    else. No recorded token for this hostname -> (False, "") — the
+    else. No recorded token for this hostname -> (False, "", "") — the
     walkthrough then simply waits for the operator instead of guessing.
+
+    Returns ``(proven, imposter_addr, why)`` — *why* is "" or, when an
+    answering machine failed the proof, "no-token" (its card carries none:
+    an old card, or one written by a stale card-writer — the skyfinger
+    stall) or "wrong-token" (a different card entirely: usually the node
+    being replaced, still powered). The screen narrates it; a silent
+    refusal reads as a hang (operator, 2026-08-14).
     """
     rec = last_imaged_pi(path)
     want = (hostname or "").strip().lower()
@@ -412,7 +419,7 @@ def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
     if want and (rec.get("hostname") or "").strip().lower() == want:
         expected = (rec.get("birth_token") or "").strip()
     if not expected:
-        return (False, "")
+        return (False, "", "")
     token_at = _token_at or read_birth_token
     addrs = []
     cable = (_cable or cable_address)(timeout=2.0) if _cable is None else _cable()
@@ -421,12 +428,13 @@ def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
     lan = (_resolve or resolve)(hostname)
     if lan and lan not in addrs:
         addrs.append(lan)
-    imposter = ""
+    imposter, why = "", ""
     for addr in addrs:
         tok = token_at(addr)
         if tok is None:
             continue                       # silence: not proof, not imposter
         if tok == expected:
-            return (True, "")
-        imposter = imposter or addr
-    return (False, imposter)
+            return (True, "", "")
+        if not imposter:
+            imposter, why = addr, ("no-token" if not tok else "wrong-token")
+    return (False, imposter, why)

@@ -3008,16 +3008,19 @@ class BirthGuideScreen(BoxLayout):
         advancing the walkthrough is not one of them (2026-08-14: the node
         being REPLACED answered, and the connect instructions were skipped).
         """
+        return self._pi_proof()[0]
+
+    def _pi_proof(self):
+        """The full proof verdict: ``(proven, imposter_addr, why)``."""
         try:
             from provisioning.pi_discover import imaged_pi_answers
             from provisioning.pi_imager import hostnameify
             host = hostnameify(getattr(self, "_node_name", "") or "")
             if not host:
-                return False
-            proven, _imposter = imaged_pi_answers(host)
-            return proven
+                return (False, "", "")
+            return imaged_pi_answers(host)
         except Exception:                                          # noqa: BLE001
-            return False
+            return (False, "", "")
 
     def _start_pi_poll(self, anim):
         """Poll for a RASPBERRY PI on USB — boot-ROM, card reader or node.
@@ -3036,14 +3039,36 @@ class BirthGuideScreen(BoxLayout):
             def work():
                 # Proof, not presence — same law as _step_is_redundant. An
                 # answering machine with the WRONG token (the node being
-                # replaced, usually) must never advance this screen.
+                # replaced, usually) must never advance this screen — and
+                # whatever the watcher sees, the screen SAYS (a silent
+                # refusal reads as a hang; skyfinger, 2026-08-14).
                 if getattr(self, "_proof_inflight", False):
                     return                 # ssh probes outlive the 1.5 s tick
                 self._proof_inflight = True
                 try:
-                    if self._pi_proven():
+                    proven, imposter, why = self._pi_proof()
+                    if proven:
                         Clock.schedule_once(
                             lambda _d: self._on_board_present(anim), 0)
+                        return
+                    step = self._current
+                    if step is None or not hasattr(step, "set_status"):
+                        return
+                    if why == "no-token":
+                        msg = tr("Found a machine answering at {addr} — but "
+                                 "its card carries no birth token, so it "
+                                 "can't be proven yours. Re-image the card; "
+                                 "or if an old node is still powered, unplug "
+                                 "it.").format(addr=imposter)
+                    elif why == "wrong-token":
+                        msg = tr("A different machine is answering at {addr} "
+                                 "— wrong birth token. Unplug or power off "
+                                 "the old node.").format(addr=imposter)
+                    else:
+                        msg = tr("Watching the cable and this Wi-Fi…")
+                    Clock.schedule_once(
+                        lambda _d, m=msg: (self._current is step
+                                           and step.set_status(m)), 0)
                 finally:
                     self._proof_inflight = False
             threading.Thread(target=work, daemon=True).start()

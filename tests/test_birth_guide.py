@@ -1182,9 +1182,13 @@ def test_the_connect_pi_watcher_knows_both_roads():
     # cabled overnight), so watcher + skip now demand the birth token back
     # (_pi_proven -> pi_discover.imaged_pi_answers, which walks cable then
     # Wi-Fi). test_pi_proof.py pins the proof itself.
-    for src, name in ((poll, "_start_pi_poll"), (redundant, "_step_is_redundant")):
-        assert "_pi_proven" in src, f"{name} does not demand proof"
-    probe = func_source("ui/screens/birth_guide_screen.py", "_pi_proven")
+    # the watcher takes the FULL verdict (_pi_proof) so it can narrate what
+    # it sees; the skip needs only the boolean (_pi_proven wraps the same walk)
+    for src, name in ((poll, "_pi_proof"), (redundant, "_pi_proven")):
+        assert name in src or True
+    assert "_pi_proof" in poll, "_start_pi_poll does not demand proof"
+    assert "_pi_proven" in redundant, "_step_is_redundant does not demand proof"
+    probe = func_source("ui/screens/birth_guide_screen.py", "_pi_proof")
     assert "imaged_pi_answers" in probe and "hostnameify" in probe
 
 
