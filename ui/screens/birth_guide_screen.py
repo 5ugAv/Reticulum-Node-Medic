@@ -1476,8 +1476,7 @@ class BirthGuideScreen(BoxLayout):
             self._pick_node_location()
             return
         self._node_location = None       # hidden: no pin, and no map detour
-        self._i = 0
-        self._render_step()
+        self._begin_steps()
 
     def _pick_node_location(self):
         """The prelude's map: seed from GPS (else the last pin, else the map's
@@ -1498,8 +1497,7 @@ class BirthGuideScreen(BoxLayout):
 
             def _ok(lat, lon):
                 self._node_location = (lat, lon)
-                self._i = 0
-                self._render_step()
+                self._begin_steps()
 
             ConfirmLocationPopup(
                 seed[0], seed[1], node_name=self._node_name or "",
@@ -1507,8 +1505,43 @@ class BirthGuideScreen(BoxLayout):
                 gps_reader=reader).open()
         except Exception:                                          # noqa: BLE001
             self._node_location = None
-            self._i = 0
-            self._render_step()
+            self._begin_steps()
+
+    def _begin_steps(self):
+        """Enter the physical steps from the prelude — through the connect-
+        radio screen only when it has something to say.
+
+        The operator plugged the radio in at the very start (that is how the
+        chooser knew the board), so being told to connect it again right
+        after the map is the tool forgetting what it is looking at
+        (operator, 2026-08-14). The 2026-08-09 law holds untouched: the WORK
+        is never skipped — a board present on USB auto-fires the SAME
+        hand-off the green button carried ("Flash this radio" -> BIRTH), an
+        already-verified radio (keep-and-continue) lands past the gate that
+        agrees with it, and an absent board still gets the instructions.
+        """
+        self._i = 0
+        steps = guide_steps(self._path, self._pi_key_for_text())
+        first = steps[0] if steps else {}
+        if first.get("screen") and first.get("anim") == "connect_board":
+            if getattr(self, "_radio_verified", False):
+                # Flashed and verified already — nothing for the hand-off to
+                # do. Land on the gate; a passed gate advances itself.
+                self._i = 1
+                self._render_step()
+                return
+            present = False
+            try:
+                from ui.hw_factories import local_board_ports
+                present = bool(local_board_ports())
+            except Exception:                                      # noqa: BLE001
+                present = False
+            if present:
+                self._trace("radio already on USB — firing the flash "
+                            "hand-off, skipping the connect instructions")
+                self._next()             # the button press, automated
+                return
+        self._render_step()
 
     def _hand_over_name(self, screen_name, job="host"):
         """Hand the destination the name AND the job it has been sent to do.

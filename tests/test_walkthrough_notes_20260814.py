@@ -204,3 +204,30 @@ def test_the_address_caption_points_at_the_visible_button():
     popup = src("ui/widgets/confirm_location.py")
     assert "tap Find to look up the spot" in popup
     assert "Tap 'Show address' to look up this spot online (optional)" not in popup
+
+
+# -- no connect-radio screen after the prelude (operator, note 12) ---------
+# "we've already done this step at the very beginning — the user still has
+#  the radio connected. Skip this screen; go directly to the Birth a new
+#  node page."
+# The 2026-08-09 law survives untouched: the WORK is not skipped — the
+# button press is. A board present on USB auto-fires the same hand-off the
+# green button carried; an already-verified radio (keep-and-continue) lands
+# past the gate that agrees; an absent board still shows the instructions.
+
+def test_the_prelude_starts_the_steps_through_one_door():
+    for fn in ("_share_chosen", "_pick_node_location"):
+        body = func_source("ui/screens/birth_guide_screen.py", fn,
+                           cls="BirthGuideScreen")
+        assert "_begin_steps" in body, f"{fn} bypasses the connect-radio skip"
+
+
+def test_begin_steps_fires_the_handoff_not_the_instructions():
+    begin = func_source("ui/screens/birth_guide_screen.py", "_begin_steps",
+                        cls="BirthGuideScreen")
+    assert "local_board_ports" in begin, "presence is checked, not assumed"
+    assert "_next()" in begin, (
+        "the hand-off is FIRED (the work still runs) — the 2026-08-09 "
+        "skipped-flash lesson holds")
+    assert "_radio_verified" in begin, (
+        "an already-verified radio must not be offered a reflash")

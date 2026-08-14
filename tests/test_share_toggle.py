@@ -187,6 +187,7 @@ def _share_screen_stub(policy=ls.HIDDEN, name="NODE"):
     screen = types.SimpleNamespace(
         _share_pending=policy, _share_location=ls.HIDDEN, _share_asked=False,
         _node_name=name, _i=99, _render_step=lambda: None,
+        _begin_steps=lambda: None,
         _share_consequence=types.SimpleNamespace(text=""),
         _share_commit=types.SimpleNamespace(text="", background_color=None,
                                             color=None))
