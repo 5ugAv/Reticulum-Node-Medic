@@ -42,10 +42,16 @@ class Callout(BoxLayout):
     """
 
     def __init__(self, heading: str, body: str = "", act: bool = False,
-                 **kwargs):
+                 pulse: bool = False, **kwargs):
         """*act* switches to the green DO-THIS-NOW fill. Use it for the step the
         operator must perform, and keep yellow for the thing they must NOT do —
-        the two must never be the same colour on the same screen."""
+        the two must never be the same colour on the same screen.
+
+        *pulse* breathes the HEADING (opacity, ~1.4 s cycle) to catch the eye
+        mid-flow — asked for on the imager's write-these-down box (operator,
+        2026-08-14). The body stays still: the pulse is a wave, not a strobe,
+        and the words being read must not move.
+        """
         fill, ink = (FILL_ACT, INK_ACT) if act else (FILL, INK)
         super().__init__(**kwargs)
         self.orientation = "vertical"
@@ -69,6 +75,17 @@ class Callout(BoxLayout):
             self.add_widget(lbl)
         if not body:
             self.remove_widget(self._body)
+        if pulse:
+            from kivy.animation import Animation
+            anim = (Animation(opacity=0.35, duration=0.7)
+                    + Animation(opacity=1.0, duration=0.7))
+            anim.repeat = True
+            anim.start(self._head)
+            # A repeating animation holds its widget forever; let it go the
+            # moment this box leaves the tree (screens rebuild their widgets
+            # on every render, so a detached box never comes back).
+            self.bind(parent=lambda _w, par: par is None
+                      and anim.cancel(self._head))
 
         with self.canvas.before:
             Color(*fill)

@@ -513,8 +513,10 @@ class PiImagerScreen(BoxLayout):
         # operator has to DO before pressing Write, and an amber heading in a
         # column of coloured headings did not read as different in kind
         # (operator, 2026-08-02).
+        # PULSING (operator, 2026-08-14): the one heading on this screen that
+        # must stop a moving eye — the password below it cannot be recovered.
         self.col.add_widget(Callout(
-            "Write these down now!",
+            "Write these down now!", pulse=True,
             "The node name and this password are how you reach this Pi over SSH "
             "later. Node Medic does NOT store the password — it goes onto the "
             "card as a one-way hash and can't be read back. Lose it and the only "

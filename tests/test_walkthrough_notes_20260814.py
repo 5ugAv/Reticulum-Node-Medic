@@ -106,3 +106,15 @@ def test_the_led_line_matches_the_firmware_not_the_guess():
     body = s["body"].lower()
     assert "breathe" in body or "breathing" in body
     assert "stops pulsing" not in body
+
+
+# 2026-08-14, later the same bench: the write-these-down heading pulses
+def test_the_write_these_down_heading_pulses():
+    """Operator: 'animate that to make it pulse and catch the user's
+    attention' — the imager's yellow box heading breathes; the body text
+    holds still so it can be read."""
+    callout = src("ui/widgets/callout.py")
+    assert "pulse" in callout and "Animation" in callout
+    assert "anim.repeat = True" in callout
+    imager = src("ui/screens/pi_imager_screen.py")
+    assert '"Write these down now!", pulse=True' in imager
