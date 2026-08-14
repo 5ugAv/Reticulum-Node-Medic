@@ -101,5 +101,5 @@ def test_the_connect_step_tells_the_truth_about_both_roads():
     body = (step["title"] + " " + step.get("body", "")).lower()
     assert "wi-fi" in body or "wifi" in body
     assert "cable" in body
-    assert "birth token" in body or "proves itself" in body, (
-        "the step should say WHY the screen moves for the right Pi only")
+    # (the WHY — the birth-token proof — moved to the machinery itself;
+    # the screen keeps its words short enough for the 5-inch panel)

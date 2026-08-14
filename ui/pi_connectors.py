@@ -54,6 +54,10 @@ class Connectors:
     power_port: str = ""
     #: The extra thing this board needs, if any.
     caveat: str = ""
+    #: A complete replacement hint, when the composed form runs too long for
+    #: the step it lands on (the 3 A+ connect step carries a warning box too,
+    #: and the panel-height budget is real — test_birth_guide holds it).
+    one_liner: str = ""
     #: Why the cable route is impossible. Only meaningful when can_cable is False.
     why_not: str = ""
 
@@ -73,14 +77,17 @@ PI_CONNECTORS: Dict[str, Connectors] = {
     "pi_3a_plus": Connectors(
         key="pi_3a_plus", can_cable=True,
         data_port=tr("the full-size USB-A socket"),
-        power_port=tr("the micro-USB, which is power only"),
-        # THE HAZARD STAYS HERE, shortened but not moved. A second supply is a
-        # natural thing to reach for the moment a Pi is plugged in, so the
-        # warning has to be on the step where the plugging happens — the
-        # provisioning step repeats it later because that is where the long
-        # current draw is, not because this one can drop it.
-        caveat=tr("It needs an A-to-A cable, which carries 5V at BOTH ends — "
-                  "so don't add a separate supply.")),
+        # No power_port sentence: on this board the medic's cable IS the
+        # power, and naming the micro-USB here invited exactly the two-supply
+        # mistake the warning box below the step now forbids (2026-08-14).
+        power_port="",
+        # The dual-supply HAZARD moved to connect_warning() — a proper
+        # warning box on the step — because folded into this sentence it
+        # "read like plug both in at the same time" (operator, 2026-08-14).
+        caveat=tr("Use an A-to-A DATA cable — a charge-only lead won't "
+                  "be seen."),
+        one_liner=tr("A-to-A DATA cable into the USB-A socket — a "
+                     "charge-only lead won't be seen.")),
     # The board that cannot, however willing the operator is.
     "pi_3b_plus": Connectors(
         key="pi_3b_plus", can_cable=False,
@@ -127,14 +134,34 @@ def connect_hint(pi_key: str) -> str:
         return UNKNOWN_HINT
     if not c.can_cable:
         return c.why_not
+    if c.one_liner:
+        return c.one_liner
     bits = [tr("Plug into {port}.").format(port=c.data_port)]
     if c.power_port:
         bits.append(tr("Power goes into {port}.").format(port=c.power_port))
     if c.caveat:
         bits.append(c.caveat)
-    bits.append(tr("Use a DATA cable — a charge-only lead powers the Pi and "
-                   "never shows up."))
+    if "DATA" not in (c.caveat or ""):
+        bits.append(tr("Use a DATA cable — a charge-only lead powers the Pi "
+                       "and never shows up."))
     return " ".join(bits)
+
+
+def connect_warning(pi_key: str) -> str:
+    """The one DANGEROUS thing about cabling this board, for the step's
+    warning box — or "" when the board has none (a warning box with nothing
+    dangerous in it teaches people to skip warning boxes).
+
+    Only the 3 A+ carries one: its A-to-A cable feeds 5 V from the medic, so
+    adding a wall supply puts two sources against each other (back-feed).
+    The Zero 2 W's identical-sockets trap is a mix-up, not a hazard, and the
+    USB-C boards carry power and data in the one plug.
+    """
+    if pi_key == "pi_3a_plus":
+        return tr("Do NOT add micro-USB power while this cable is in — "
+                  "two 5V supplies can damage the Pi or Node Medic (safe "
+                  "only with the power wire removed).")
+    return ""
 
 
 #: Where a node's power comes from during the provisioning run, per board. The

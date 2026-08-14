@@ -24,10 +24,11 @@ def test_step_counts_per_path():
         "The radio has to work first",             # GATE: radio_ready
         "Take the radio out of Node Medic",
         "Put the SD card into Node Medic",         # -> pi_imager
-        "Move the card to the Raspberry Pi",
+        "Remove the SD card from Node Medic and insert it into the "
+        "Raspberry Pi",
         "Card in the Pi? Give it power",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
-        "Unplug the Pi, put the radio on it, give it power",
+        "",     # the finale: bullets replaced the title (operator, 2026-08-14)
     ]
 
 
@@ -68,8 +69,8 @@ def test_the_walkthrough_ends_by_joining_the_two_halves():
     the Pi". Every birth ended with two working halves and nothing joining
     them, because a hand-off could not return so nothing could come after one."""
     steps = guide_steps("pi")
-    titles = [s["title"] for s in steps]
-    assert any("put the radio on it" in t for t in titles)
+    texts = [s["title"] + " " + s.get("body", "") for s in steps]
+    assert any("plug in the radio" in t for t in texts)
 
 
 def test_joining_the_halves_is_not_the_end_of_it():
@@ -93,11 +94,15 @@ def test_the_radio_goes_on_the_pi_only_after_the_cable_is_finished_with():
     steps = guide_steps("pi")
     titles = [s["title"] for s in steps]
     life = titles.index("Bring the node to life")
-    radio = next(i for i, t in enumerate(titles) if "put the radio on it" in t)
+    radio = next(i for i, s in enumerate(steps)
+                 if s.get("anim") == "radio_to_pi")
     assert life < radio, "provision over the cable BEFORE the socket is taken"
     assert radio == len(steps) - 1, "the radio going on is the last act"
-    assert "Unplug the Pi" in titles[radio], "say the socket is being freed"
-    assert "power" in steps[radio]["body"].lower(), \
+    # Since 2026-08-14 the finale is bullets with no title — the words moved,
+    # the order-of-operations law did not.
+    body = steps[radio]["body"]
+    assert "unplug the Pi from Node Medic" in body, "say the socket is being freed"
+    assert "power" in body.lower(), \
         "off the medic means it needs its own supply — say so here"
 
 
@@ -157,8 +162,11 @@ def test_unknown_path_is_empty():
 def test_every_step_has_title_and_body():
     for steps in _STEPS.values():
         for s in steps:
-            assert s["title"].strip()
-            assert s["body"].strip()
+            # Title OR body — a step must say something, but since 2026-08-14
+            # the pi finale is all bullets with no title (the title only
+            # repeated them) and the card handover is all title with no body
+            # (the body only repeated IT). Both operator calls, on the glass.
+            assert (s["title"].strip() or s.get("body", "").strip())
 
 
 def test_pi_path_does_the_RADIO_before_the_card():

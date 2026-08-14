@@ -302,13 +302,17 @@ _STEPS = {
          # The second sentence explained why the medic writes it rather than
          # the Pi. That was an argument against a route this flow no longer
          # offers, made to an operator who is holding a card over a slot.
-         "body": tr("Slide the blank microSD card into the card reader on Node "
-                    "Medic."),
+         # NOT "blank" (operator, 2026-08-14): rebirths reuse written cards,
+         # and the imager wipes whatever it finds anyway. Calling it blank
+         # made an operator holding a used card stop and wonder.
+         "body": tr("Insert the SD card into the card reader on Node Medic."),
          "anim": "insert_sd",
          "next": tr("Write the card  \u2192"), "screen": "pi_imager"},
-        {"title": tr("Move the card to the Raspberry Pi"),
-         "body": tr("The card is written. Move it into the Pi's own card "
-                    "slot."),
+        # ONE INSTRUCTION, ONCE (operator, 2026-08-14): the old body repeated
+        # the title in different words. The title now carries the whole act.
+        {"title": tr("Remove the SD card from Node Medic and insert it "
+                     "into the Raspberry Pi"),
+         "body": "",
          # BOARD-AWARE, and it earns the change. The card leaves the medic's
          # reader, crosses, and enters the slot WHERE THAT MODEL'S SLOT ACTUALLY
          # IS — measured per board, not assumed from one of them.
@@ -345,10 +349,12 @@ _STEPS = {
          # cable; it changes nothing they do here. What stayed is the wait,
          # word for word in substance, because a self-advancing screen with no
          # button is indistinguishable from a hung one.
-         "body": tr("Cable into Node Medic, or just give it power \u2014 the "
-                    "card knows this Wi-Fi.\nNothing to press \u2014 this "
-                    "moves on when YOUR Pi answers, proved by its card's "
-                    "birth token. Up to a minute, longer on a first boot."),
+         # No "nothing to press" sentence any more: there IS no button on
+         # this step now, and the wait promise (2026-08-10 ask) survives in
+         # the parenthesis.
+         "body": tr("Cable into Node Medic, or just power it \u2014 the card "
+                    "knows this Wi-Fi. It moves on when YOUR Pi answers "
+                    "(up to a minute; a first boot takes longer)."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.
@@ -446,14 +452,19 @@ _STEPS = {
          # draws radio waves, which is exactly what this step is not
          # (operator, reading it off the screen, 2026-08-09).
          "anim": "provision_cable"},
-        {"title": tr("Unplug the Pi, put the radio on it, give it power"),
-         # THREE ACTIONS, SO THREE DOT POINTS. It was one 55-word paragraph
-         # with the three buried in it, ending in a sentence ("That's the node
-         # built...") that the green button underneath already says.
+        # NO TITLE (operator, 2026-08-14): it repeated the bullets in
+        # different words, so the instructions ran twice. The bullets sit at
+        # the very top and say it once. The LED line states the FIRMWARE's
+        # own state chart (rnode_v4_rgb: slow white breathe = radio alive
+        # and idle; solid white = boot error) — not "stops pulsing = ready",
+        # which would be the opposite of what the board actually shows.
+        {"title": "",
          "body": tr("\u2022 unplug the Pi from Node Medic \u2014 the radio needs that "
                     "socket\n"
                     "\u2022 plug in the radio you flashed at the start\n"
-                    "\u2022 give the Pi its own power supply"),
+                    "\u2022 give the Pi its own power supply\n"
+                    "\u2022 optional RGB LED? Slow white breathe = radio "
+                    "alive \u2014 check VITALS"),
          "hint": tr("A short DATA cable to the radio \u2014 the Pi's supply now "
                     "carries both."),
          # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
@@ -495,13 +506,17 @@ def guide_steps(path, pi_key=""):
     Empty pi_key keeps the generic line. Naming a specific socket on a board we
     have not identified is precisely the failure being fixed.
     """
-    from ui.pi_connectors import (connect_hint, power_hint,
+    from ui.pi_connectors import (connect_hint, connect_warning, power_hint,
                                   standalone_power_hint)
     steps = [dict(s) for s in _STEPS.get(path, [])]
     if pi_key:
         for s in steps:
             if s.get("anim") == "connect_pi":
                 s["hint"] = connect_hint(pi_key)
+                # The dual-supply hazard is a WARNING BOX, not a clause buried
+                # mid-hint — the old prose "read like plug both in at the same
+                # time" (operator, 2026-08-14, with the screen in hand).
+                s["warning"] = connect_warning(pi_key)
             # POWER, on the step that spends it. Provisioning is the longest and
             # hungriest thing a node does on the cable, and the medic has
             # already recorded undervoltage on this bench. Where a board CAN

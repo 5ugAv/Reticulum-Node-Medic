@@ -87,8 +87,13 @@ def requirement_popup(message: str, title: str = "Heads up",
     heading.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
     card.add_widget(heading)
 
-    body = Label(text=message, font_size="16.5sp", color=_DARK,
-                 halign="center", valign="top")
+    # Success cards are read at arm's length from a bench, and they have the
+    # room the warning triangle would have used — so the instructions inside
+    # get the bigger type (operator, 2026-08-14: "the text inside the green
+    # box... there's plenty of space here").
+    body = Label(text=message,
+                 font_size="21sp" if tone == "success" else "16.5sp",
+                 color=_DARK, halign="center", valign="top")
     body.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
     card.add_widget(body)
 

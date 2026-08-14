@@ -647,17 +647,19 @@ def test_the_refusal_names_both_roads():
     assert "not over the cable" in src and "Wi-Fi" in src
 
 
-def test_the_connect_pi_step_is_not_a_dead_end_for_a_self_powered_pi():
-    """Hiding Next is right while the medic watches its own USB — but that is
-    not the only road any more. A Pi on its OWN supply (what a marginal rail
-    forces, and what a first boot really wants) never appears there at all: it
-    comes back on Wi-Fi, which the next step looks for. Without a way past this
-    screen the operator is stranded holding a working node."""
+def test_the_connect_pi_step_has_no_button_at_all():
+    """This test used to demand a patience-timer Next as the way out for a
+    self-powered Pi that only ever comes back on Wi-Fi — a road the step's
+    old USB-only watcher could not see. The proof watcher walks both roads
+    now (cable, then Wi-Fi, demanding the birth token on either), so the
+    case that button served is gone, and the operator ordered it off
+    (2026-08-14: "remove that next and let the Node Medic move on by
+    itself"). Back remains as the escape for a dead card."""
     src = func_source(SCREEN, "_render_step")
     branch = src[src.index("isinstance(anim, ConnectPiAnim)"):]
     branch = branch[:branch.index("elif")]
-    assert "hide_next()" in branch and "show_next()" in branch
-    assert "WAIT_PATIENCE_S" in branch
+    assert "hide_next()" in branch
+    assert "show_next()" not in branch
 
 
 # --- THE STANDING RULE: if the medic drives, there is nothing to press -----
@@ -686,13 +688,15 @@ def test_no_self_advancing_step_offers_a_button_to_press():
         branch = src[head:nxt if nxt > 0 else len(src)]
         assert "hide_next" in branch, \
             f"{call} drives the flow but its step still offers a button"
-        if call == "_start_card_poll":
-            # THE ONE DELIBERATE EXCEPTION, and it predates the rule. "Put the
-            # SD card into Node Medic" has no patience button because the step
-            # after it WRITES the card: a way to walk past a card the medic
-            # cannot see leads straight to a destructive write against an
-            # unknown device. Back is the escape here, and the write keeps its
-            # own confirmation naming the device and its size.
+        if call in ("_start_card_poll", "_start_pi_poll"):
+            # TWO DELIBERATE EXCEPTIONS. "Put the SD card into Node Medic"
+            # has no patience button because the step after it WRITES the
+            # card: walking past a card the medic cannot see leads straight
+            # to a destructive write against an unknown device. And the
+            # connect-Pi step lost its patience button on 2026-08-14: its
+            # proof watcher walks both roads (cable and Wi-Fi), so the
+            # Wi-Fi-only Pi the button once rescued advances the step by
+            # itself now. Back is the escape on both.
             continue
         assert "show_next" in branch and "WAIT_PATIENCE_S" in branch, \
             f"{call} must still offer a way out if the sensing never fires"

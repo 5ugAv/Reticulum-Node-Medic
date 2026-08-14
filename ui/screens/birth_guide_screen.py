@@ -248,8 +248,10 @@ class BirthGuideScreen(BoxLayout):
             # The medic speaks as "Node Medic" everywhere else; "I'll detect
             # it" was the one first-person sentence in the birth flow. And
             # what it detects is this screen's job, not the operator's.
-            body=tr("Plug the node into Node Medic with a USB data cable. It "
-                    "will be read and routed from there."),
+            # The old body said "plug the node in" and promised routing —
+            # naming nothing (operator, 2026-08-14): say WHAT gets plugged.
+            body=tr("Plug the radio node (LoRa32) into Node Medic with a "
+                    "USB data cable."),
             anim=anim,
             hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
             next_text=tr("Choose manually  →"), on_next=self._render_intro,
@@ -557,6 +559,20 @@ class BirthGuideScreen(BoxLayout):
         done.bind(on_release=lambda *_: self._on_navigate and self._on_navigate("home"))
         row.add_widget(done)
         wrap.add_widget(row)
+        if rnode_like:
+            # THE THIRD ROAD (operator, 2026-08-14, holding exactly this
+            # board): it is already a healthy RNode and the operator wants a
+            # Pi built TO MATCH it — no reflash, no dead end. Enters the Pi
+            # walkthrough with the radio's proof carried in, so the radio
+            # steps clear themselves and /dev/rnode still gets pinned to
+            # THIS radio.
+            cont = Button(text=tr("Keep it — and build its Pi  →"),
+                          size_hint_y=None, height=dp(52), bold=True,
+                          font_size="16sp", background_normal="",
+                          background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+            cont.bind(on_release=lambda *_: self._keep_and_continue(c))
+            wrap.add_widget(cont)
         # REBIRTH (operator request 2026-07-31): wipe + flash fresh — the
         # deliberate path for a RENAME or a hard reset of a misbehaving node.
         reb = Button(text=tr("Rebirth — wipe this node & build it fresh"),
@@ -571,6 +587,44 @@ class BirthGuideScreen(BoxLayout):
         if _bk is not None:
             wrap.add_widget(_bk)
         self.add_widget(wrap)
+
+    def _keep_and_continue(self, c):
+        """Already-an-RNode -> straight into the Pi walkthrough, radio proven.
+
+        Carries the two things the Pi build needs from the radio it will
+        never see again (it rides in the operator's pocket): that it VERIFIED
+        alive just now (arms the radio gate), and its USB hardware serial
+        (pins /dev/rnode to this exact radio, not any tty from five vendors).
+        """
+        port = c.get("port") or ""
+        serial = ""
+        try:
+            from ui.hw_factories import LocalConnection
+            from workflows.rnode_flash import by_id_serial, usb_id_for_port
+            serial = by_id_serial(usb_id_for_port(LocalConnection(), port)) or ""
+        except Exception:                                          # noqa: BLE001
+            serial = ""
+        self._radio_usb_serial = serial
+        self._radio_verified = bool(c.get("_probed_alive"))
+        self._board_key = self._board_key_of(c)
+        self._path = "pi"
+        self._i = 0
+        self._render_pick_pi()
+
+    def _board_key_of(self, c):
+        """The rnode_boards key for a recognised board — the candidate may
+        carry either the key itself or the display name off a certificate."""
+        try:
+            from workflows.rnode_boards import RNODE_BOARDS
+            raw = (c.get("board") or "").strip()
+            if raw in RNODE_BOARDS:
+                return raw
+            for key, b in RNODE_BOARDS.items():
+                if b.display_name == raw:
+                    return key
+        except Exception:                                          # noqa: BLE001
+            pass
+        return ""
 
     def _confirm_rebirth(self, c):
         """Destructive-action gate: rebirth erases the board completely — new
@@ -1764,19 +1818,12 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
-            # ...BUT NOT FOREVER. Hiding Next is right while the medic is
-            # genuinely watching for a Pi on its own USB — but it is not the
-            # only road to a node any more. A Pi given its OWN supply (which is
-            # what a marginal medic rail forces, and what its first boot really
-            # wants) never appears here at all: it comes back on Wi-Fi, which
-            # the next step now looks for. Without a way past this screen that
-            # operator is stranded, holding a working node (2026-08-09).
-            from kivy.clock import Clock
-            tok = getattr(self, "_nav_token", 0)
-            Clock.schedule_once(
-                lambda _d: (getattr(self, "_nav_token", None) == tok
-                            and self._current is step
-                            and step.show_next()), self.WAIT_PATIENCE_S)
+            # No patience-timer Next either (operator, 2026-08-14: "remove
+            # that next and let the Node Medic move on by itself"). The
+            # escape hatch existed for a Pi that came back on Wi-Fi, which
+            # this step's old USB-only watcher could not see — but the proof
+            # watcher now walks both roads, so the case the button served is
+            # gone. Back remains for a dead card.
         elif s.get("gate"):
             # A GATE THAT HAS PASSED HAS NOTHING TO ASK.
             #
@@ -2180,7 +2227,10 @@ class BirthGuideScreen(BoxLayout):
                "makes a card that boots and never appears."),
             "15sp", color="text_secondary", h=54))
         body = ScrollView()
-        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
+        # dp(16), not dp(8): packed rows invited fat-finger picks of the
+        # neighbouring model (operator, 2026-08-14), and a wrong Pi here
+        # writes a card that boots and never appears.
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(16))
         col.bind(minimum_height=col.setter("height"))
         for key, name in PI_HOSTS:
             if key == "none":

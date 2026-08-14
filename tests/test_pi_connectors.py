@@ -32,10 +32,14 @@ def test_a_zero_is_told_which_of_its_two_identical_sockets_to_use():
 
 def test_the_3a_plus_a_to_a_power_hazard_is_stated():
     """An A-to-A cable carries 5V at both ends. Powering the Pi separately over
-    one makes two supplies fight. That is a hardware hazard, not a nicety."""
-    hint = pc.connect_hint("pi_3a_plus")
-    assert "A-to-A" in hint
-    assert "BOTH ends" in hint
+    one makes two supplies fight. That is a hardware hazard, not a nicety —
+    and since 2026-08-14 it is a WARNING BOX (connect_warning), because folded
+    into the hint's prose it read like an instruction to plug both in."""
+    warn = pc.connect_warning("pi_3a_plus")
+    assert "damage" in warn and "power wire removed" in warn
+    assert "A-to-A" in pc.connect_hint("pi_3a_plus")
+    # boards without the hazard must NOT get a scare box
+    assert pc.connect_warning("pi_5") == ""
 
 
 # --- the board that CANNOT, however willing the operator is ------------------
