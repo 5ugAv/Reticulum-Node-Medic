@@ -723,8 +723,12 @@ def test_a_failed_build_stops_the_step_driving_itself():
     from tests.srcutil import func_source
     src = func_source("ui/screens/birth_guide_screen.py", "_render_step")
     assert "failed = bool(getattr(self, \"_build_failed\", False))" in src
-    assert "if ok and not failed:" in src, "no self-driving after a failure"
-    assert 'if not ok and s["gate"] == "node_online" and not failed:' in src, \
+    # "and not back_arrival" since 2026-08-14: the same self-drive, re-armed on
+    # a BACK arrival, bounced the operator off the passed radio gate eleven
+    # times — see test_guide_exit_and_back_20260814.
+    assert "if ok and not failed and not back_arrival:" in src, \
+        "no self-driving after a failure"
+    assert 'if not ok and s["gate"] == "node_online" and not failed' in src, \
         "and the way out must not be hidden behind the patience timer"
     nxt = func_source("ui/screens/birth_guide_screen.py", "_next")
     assert "self._build_failed = False" in nxt, "retrying clears the failure"

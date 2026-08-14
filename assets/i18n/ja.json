@@ -487,5 +487,10 @@
   "{who} isn't answering.{quiet}": "{who} isn't answering.{quiet}",
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• 識別情報が消去され — まったく新しいノードになります（古い履歴は切り離されます）\n• 名前、WiFi、無線の設定が消去されます\n• その後、通常の誕生が実行されます: 書き込み、命名、自動設定",
   "←  Back": "←  戻る",
-  "⚠  Wipe & rebirth": "⚠  消去して再誕"
+  "⚠  Wipe & rebirth": "⚠  消去して再誕",
+  "Exit": "終了",
+  "Leave this build?": "このビルドから離れますか？",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "ビルドはバックグラウンドで動き続けます — 上部の警告バーは完了まで表示されたままです。ここを離れるとこのガイドは閉じられ、ビルド完了時にここへ戻ることはありません。",
+  "Cancel — stay": "キャンセル — とどまる",
+  "OK — go home": "OK — ホームへ"
 }

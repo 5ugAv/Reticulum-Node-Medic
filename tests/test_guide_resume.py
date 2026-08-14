@@ -577,8 +577,12 @@ def test_a_gate_that_has_passed_does_not_stop_you():
     branch = src[src.index('elif s.get("gate"):'):]
     # "and not failed" since 2026-08-10: a gate that passes still advances by
     # itself, EXCEPT straight after a failed build, where advancing would relaunch
-    # the identical build unasked.
-    assert "_gate_state" in branch and "if ok and not failed:" in branch
+    # the identical build unasked. "and not back_arrival" since 2026-08-14:
+    # EXCEPT against someone walking backward, too — re-arming the advance on a
+    # BACK arrival bounced the operator off this very gate eleven times (see
+    # test_guide_exit_and_back_20260814).
+    assert "_gate_state" in branch
+    assert "if ok and not failed and not back_arrival:" in branch
     assert "_advance_token" in branch, "a manual tap must still win the race"
 
 
@@ -703,5 +707,6 @@ def test_a_gate_that_has_passed_offers_nothing_to_press_either():
     a beat, so its button is an invitation to race the tool. It stays only while
     the gate is BLOCKED, where it means "try again"."""
     src = func_source(SCREEN, "_render_step")
-    branch = src[src.index("if ok and not failed:"):]
-    assert "hide_next" in branch[:400]
+    # the full condition carries the 2026-08-14 direction guard as well
+    branch = src[src.index("if ok and not failed and not back_arrival:"):]
+    assert "hide_next" in branch[:900]

@@ -487,5 +487,10 @@
   "{who} isn't answering.{quiet}": "{who} isn't answering.{quiet}",
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• его личность стирается — он становится совершенно новым узлом (старая история отсоединяется)\n• его имя, настройки WiFi и радио стираются\n• затем идёт обычное рождение: прошивка, имя, автонастройка",
   "←  Back": "←  Назад",
-  "⚠  Wipe & rebirth": "⚠  Стереть и переродить"
+  "⚠  Wipe & rebirth": "⚠  Стереть и переродить",
+  "Exit": "Выйти",
+  "Leave this build?": "Покинуть эту сборку?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Сборка продолжает работать в фоне — предупреждающая полоса сверху останется, пока она не завершится. Выход закрывает это пошаговое руководство, поэтому оно не вернёт вас сюда, когда сборка закончится.",
+  "Cancel — stay": "Отмена — остаться",
+  "OK — go home": "OK — на главный экран"
 }

@@ -487,5 +487,10 @@
   "{who} isn't answering.{quiet}": "{who} isn't answering.{quiet}",
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• son identité est effacée — il devient un nœud tout neuf (l'ancien historique se détache)\n• son nom, son WiFi et ses réglages radio sont effacés\n• puis la naissance normale s'exécute : flashage, nom, configuration auto",
   "←  Back": "←  Retour",
-  "⚠  Wipe & rebirth": "⚠  Effacer et renaître"
+  "⚠  Wipe & rebirth": "⚠  Effacer et renaître",
+  "Exit": "Quitter",
+  "Leave this build?": "Quitter cette construction ?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "La construction continue en arrière-plan — le bandeau d'avertissement en haut reste affiché jusqu'à la fin. Quitter ferme ce guide pas à pas, il ne vous ramènera donc pas ici une fois la construction terminée.",
+  "Cancel — stay": "Annuler — rester",
+  "OK — go home": "OK — retour à l'accueil"
 }

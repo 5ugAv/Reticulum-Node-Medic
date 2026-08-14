@@ -487,5 +487,10 @@
   "{who} isn't answering.{quiet}": "{who} isn't answering.{quiet}",
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• dess identitet rensas – den blir en helt ny nod (gammal historik kopplas loss)\n• dess namn, WiFi- och radioinställningar rensas\n• sedan körs den normala födelsen: flasha, namnge, automatisk inställning",
   "←  Back": "←  Tillbaka",
-  "⚠  Wipe & rebirth": "⚠  Rensa och återföd"
+  "⚠  Wipe & rebirth": "⚠  Rensa och återföd",
+  "Exit": "Avsluta",
+  "Leave this build?": "Lämna det här bygget?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Bygget fortsätter i bakgrunden — varningsremsan högst upp står kvar tills det är klart. Att lämna stänger den här guiden, så den tar dig inte tillbaka hit när bygget är färdigt.",
+  "Cancel — stay": "Avbryt — stanna",
+  "OK — go home": "OK — gå hem"
 }

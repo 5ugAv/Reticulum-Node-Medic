@@ -487,5 +487,10 @@
   "{who} isn't answering.{quiet}": "{who} isn't answering.{quiet}",
   "• its identity is wiped — it becomes a brand-new node (old history detaches)\n• its name, WiFi and radio settings are wiped\n• then the normal birth runs: flash, name it, auto-setup": "• identitasnya dihapus — ia menjadi node yang benar-benar baru (riwayat lama terlepas)\n• nama, WiFi, dan pengaturan radionya dihapus\n• lalu kelahiran normal berjalan: flash, beri nama, penyiapan otomatis",
   "←  Back": "←  Kembali",
-  "⚠  Wipe & rebirth": "⚠  Hapus & lahirkan ulang"
+  "⚠  Wipe & rebirth": "⚠  Hapus & lahirkan ulang",
+  "Exit": "Keluar",
+  "Leave this build?": "Tinggalkan pembangunan ini?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Pembangunan terus berjalan di latar belakang — strip peringatan di bagian atas tetap ada sampai selesai. Keluar menutup panduan ini, jadi Anda tidak akan dibawa kembali ke sini saat pembangunan selesai.",
+  "Cancel — stay": "Batal — tetap di sini",
+  "OK — go home": "OK — ke beranda"
 }
