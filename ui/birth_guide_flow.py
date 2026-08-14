@@ -71,7 +71,13 @@ ANTENNA_STEP = {
 #: radio settings and its Reticulum transport identity
 #: (monitor.location_share.stranger_view, from RNS/Discovery.py's own payload).
 LOCATION_SHARE_STEP = {
-    "title": tr("Should this node appear on the public map?"),
+    # The bracket is load-bearing (operator, 2026-08-14): new users read
+    # "map" as ALL maps, and the honest answer is that this switch touches
+    # only what strangers see — the node is on the operator's own map either
+    # way (registry.located_nodes plots by birth-cert coordinates and never
+    # reads the share answer; pinned by test_share_toggle).
+    "title": tr("Should this node appear on the public map? (it appears on "
+                "your own Node Medic map regardless)"),
     "body": tr("Reticulum has public maps that show where working nodes are, so "
                "people nearby can find a network to join. This node can put "
                "itself on them.\n\nIf you say yes, it announces a point up to "
@@ -321,7 +327,12 @@ _STEPS = {
         # which is the same symptom as a charge-only cable and a dead gadget:
         # three suspects, one of them free to rule out (operator, 2026-08-10,
         # asked for it in the title).
-        {"title": tr("Card in the Pi? Connect it to Node Medic"),
+        # TWO ROADS, BOTH TRUE (operator, 2026-08-14, mid-walkthrough: "maybe
+        # it doesn't need to be connected by Wi-Fi... let me know which is
+        # correct"): the cable needs no network, and the card is baked with
+        # the Wi-Fi credentials, so power alone reaches the medic too. The
+        # old body commanded the cable as if it were the only way.
+        {"title": tr("Card in the Pi? Give it power"),
          # AND SAY HOW LONG IT TAKES. The step advances itself, so there is
          # nothing to press — which from the operator's side is indistinguishable
          # from a screen that has hung (asked for outright, 2026-08-10: "user
@@ -334,10 +345,10 @@ _STEPS = {
          # cable; it changes nothing they do here. What stayed is the wait,
          # word for word in substance, because a self-advancing screen with no
          # button is indistinguishable from a hung one.
-         "body": tr("Plug the Pi into Node Medic with a USB cable and let it "
-                    "start up.\nNothing to press \u2014 this moves on by itself "
-                    "when the Pi answers. Up to a minute, longer on a first "
-                    "boot."),
+         "body": tr("Cable into Node Medic, or just give it power \u2014 the "
+                    "card knows this Wi-Fi.\nNothing to press \u2014 this "
+                    "moves on when YOUR Pi answers, proved by its card's "
+                    "birth token. Up to a minute, longer on a first boot."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.

@@ -232,7 +232,11 @@ def consequence_line(policy: str, name: str = "", lat: Optional[float] = None,
     """
     view = stranger_view(policy, name, lat, lon, node_key, transport=transport)
     if not view["shared"]:
-        return view["headline"] + ". Nothing about where it is leaves Node Medic."
+        # "Hidden" must not read as "vanishes everywhere": the node stays on
+        # THIS medic's own map (plotted from birth-cert coordinates, which
+        # never leave the device) — hiding is about strangers, not about you.
+        return (view["headline"] + ". Nothing about where it is leaves Node "
+                "Medic — it still shows on this medic's own map.")
     text = (view["headline"] + ". A stranger would see: "
             + "; ".join(view["items"]) + ".")
     pin = view["pin"]

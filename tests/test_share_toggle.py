@@ -353,3 +353,41 @@ def test_the_prelude_knob_moves_when_the_answer_does():
     from tests.srcutil import func_source
     bt = func_source(GUIDE, "_bt_moved")
     assert "set_state" in bt, "the Bluetooth knob was never told either"
+
+
+# -- the private map is not the public map (operator, 2026-08-14) ----------
+# "whether they have this toggle on or off the node is still gonna appear on
+#  the node medic map ... this toggle is specifically for the public map ...
+#  it needs to be in brackets after it says for the public map: they will
+#  appear on your private map regardless"
+# Verified behaviour first: registry.located_nodes() plots every node with
+# birth-cert coordinates and never reads share_location — hidden nodes DO
+# stay on the medic's own SCAN map. These pin the words to that truth.
+
+def test_the_question_says_the_private_map_keeps_the_node():
+    from ui.birth_guide_flow import LOCATION_SHARE_STEP
+    title = LOCATION_SHARE_STEP["title"].lower()
+    assert "public map" in title
+    assert "(" in title and "regardless" in title, (
+        "the title must say, in brackets, that the node stays on the "
+        "operator's own map either way — new users read 'map' as ALL maps")
+
+
+def test_hidden_consequence_says_it_still_shows_here():
+    import monitor.location_share as ls
+    line = ls.consequence_line(ls.HIDDEN, "NODE", LAT, LON, "NODE")
+    assert "own map" in line.lower(), (
+        "Hidden must not read as 'vanishes everywhere' — the node stays on "
+        "this medic's own map, and the sentence should say so")
+
+
+def test_the_medics_own_map_really_ignores_the_share_answer():
+    """The words above promise it; this holds the registry to it."""
+    from monitor.registry import NodeRegistry
+    r = NodeRegistry()
+    r.register("aa" * 16, name="shy", lat=-34.9, lon=138.6,
+               share_location="hidden")
+    names = [n["name"] for n in r.located_nodes(0.0)]
+    assert "shy" in names, (
+        "a hidden node vanished from the medic's OWN map — the birth screen "
+        "now promises the opposite")

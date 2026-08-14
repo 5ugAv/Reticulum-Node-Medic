@@ -368,3 +368,65 @@ def forget_node_keys(hostname: str, _run=None) -> None:
 
 def _run_keygen(argv, timeout=8):
     return _run(argv, timeout=timeout)
+
+def read_birth_token(addr: str, user: str = "pi",
+                     _run_probe=None) -> "Optional[str]":
+    """The birth token baked on the card at *addr* — "" when the machine
+    answers but has no token file (an old card), None when it does not
+    answer at all. Host-key-blind like the uptime probe, and for the same
+    reason: this asks "which card are you?", and the answer is verified
+    against the medic's own record, not against a host key."""
+    argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "LogLevel=ERROR",
+            f"{user}@{addr}",
+            "cat /boot/firmware/nodemedic-birth-token 2>/dev/null || echo"]
+    try:
+        out = (_run_probe or _run)(argv, timeout=12)
+        if out is None:
+            return None
+        return out.strip()
+    except Exception:                                              # noqa: BLE001
+        return None
+
+
+def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
+                      _token_at=None, _cable=None, _resolve=None):
+    """Walk both roads to *hostname*'s Pi and ask each answering machine for
+    the birth token of the card the medic just wrote. ``(proven, imposter)``:
+    *proven* only when a machine quotes the recorded token back; *imposter*
+    is the address of a machine that ANSWERED with the wrong token (or none)
+    — during a rebirth that is usually the very node being replaced, still
+    plugged in (EVERYWHERE, 2026-08-14, the skipped-instruction morning).
+
+    Presence is not proof: any Pi on the cable or any machine holding the
+    name would pass a ping. Only the machine booted from THIS card can quote
+    the token, because the imager baked it there and recorded it nowhere
+    else. No recorded token for this hostname -> (False, "") — the
+    walkthrough then simply waits for the operator instead of guessing.
+    """
+    rec = last_imaged_pi(path)
+    want = (hostname or "").strip().lower()
+    expected = ""
+    if want and (rec.get("hostname") or "").strip().lower() == want:
+        expected = (rec.get("birth_token") or "").strip()
+    if not expected:
+        return (False, "")
+    token_at = _token_at or read_birth_token
+    addrs = []
+    cable = (_cable or cable_address)(timeout=2.0) if _cable is None else _cable()
+    if cable:
+        addrs.append(cable)
+    lan = (_resolve or resolve)(hostname)
+    if lan and lan not in addrs:
+        addrs.append(lan)
+    imposter = ""
+    for addr in addrs:
+        tok = token_at(addr)
+        if tok is None:
+            continue                       # silence: not proof, not imposter
+        if tok == expected:
+            return (True, "")
+        imposter = imposter or addr
+    return (False, imposter)

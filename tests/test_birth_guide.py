@@ -25,7 +25,7 @@ def test_step_counts_per_path():
         "Take the radio out of Node Medic",
         "Put the SD card into Node Medic",         # -> pi_imager
         "Move the card to the Raspberry Pi",
-        "Card in the Pi? Connect it to Node Medic",
+        "Card in the Pi? Give it power",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
         "Unplug the Pi, put the radio on it, give it power",
     ]
@@ -1169,11 +1169,15 @@ def test_the_connect_pi_watcher_knows_both_roads():
     poll = func_source("ui/screens/birth_guide_screen.py", "_start_pi_poll")
     redundant = func_source("ui/screens/birth_guide_screen.py",
                             "_step_is_redundant")
+    # The law grew on 2026-08-14: both roads AND proof. The presence probe
+    # advanced the screen for the node being REPLACED (old EVERYWHERE, still
+    # cabled overnight), so watcher + skip now demand the birth token back
+    # (_pi_proven -> pi_discover.imaged_pi_answers, which walks cable then
+    # Wi-Fi). test_pi_proof.py pins the proof itself.
     for src, name in ((poll, "_start_pi_poll"), (redundant, "_step_is_redundant")):
-        assert "_pi_answering" in src, f"{name} does not use the shared probe"
-    probe = func_source("ui/screens/birth_guide_screen.py", "_pi_answering")
-    assert "lsusb" in probe or "pi_usbboot" in probe     # the cable road
-    assert "resolve" in probe and "hostnameify" in probe  # the Wi-Fi road
+        assert "_pi_proven" in src, f"{name} does not demand proof"
+    probe = func_source("ui/screens/birth_guide_screen.py", "_pi_proven")
+    assert "imaged_pi_answers" in probe and "hostnameify" in probe
 
 
 # --- the Bluetooth question (operator, 2026-08-12) --------------------------

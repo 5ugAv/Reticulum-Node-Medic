@@ -1507,7 +1507,11 @@ class BirthGuideScreen(BoxLayout):
             return False
         anim = step.get("anim")
         if anim == "connect_pi":
-            return self._pi_answering()
+            # PROOF, NOT PRESENCE (2026-08-14): the old EVERYWHERE, still
+            # cabled from the night before, answered the presence probe and
+            # this skip ate the connect-instruction screen. Only the Pi that
+            # can quote the just-imaged card's birth token is THE Pi.
+            return self._pi_proven()
         if anim == "connect_board":
             try:
                 from ui.hw_factories import local_board_ports
@@ -2945,6 +2949,26 @@ class BirthGuideScreen(BoxLayout):
             return False
 
     # -- board-presence gate ------------------------------------------------
+    def _pi_proven(self):
+        """Is THE Pi here — the one whose card the medic just wrote?
+
+        Walks the same two roads as _pi_answering but demands the card's
+        birth token back (provisioning.pi_discover.imaged_pi_answers).
+        _pi_answering stays for the questions where presence IS the answer;
+        advancing the walkthrough is not one of them (2026-08-14: the node
+        being REPLACED answered, and the connect instructions were skipped).
+        """
+        try:
+            from provisioning.pi_discover import imaged_pi_answers
+            from provisioning.pi_imager import hostnameify
+            host = hostnameify(getattr(self, "_node_name", "") or "")
+            if not host:
+                return False
+            proven, _imposter = imaged_pi_answers(host)
+            return proven
+        except Exception:                                          # noqa: BLE001
+            return False
+
     def _start_pi_poll(self, anim):
         """Poll for a RASPBERRY PI on USB — boot-ROM, card reader or node.
 
@@ -2960,8 +2984,18 @@ class BirthGuideScreen(BoxLayout):
             import threading
 
             def work():
-                if self._pi_answering():
-                    Clock.schedule_once(lambda _d: self._on_board_present(anim), 0)
+                # Proof, not presence — same law as _step_is_redundant. An
+                # answering machine with the WRONG token (the node being
+                # replaced, usually) must never advance this screen.
+                if getattr(self, "_proof_inflight", False):
+                    return                 # ssh probes outlive the 1.5 s tick
+                self._proof_inflight = True
+                try:
+                    if self._pi_proven():
+                        Clock.schedule_once(
+                            lambda _d: self._on_board_present(anim), 0)
+                finally:
+                    self._proof_inflight = False
             threading.Thread(target=work, daemon=True).start()
 
         self._board_poll = Clock.schedule_interval(tick, 1.5)
