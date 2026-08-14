@@ -1700,7 +1700,7 @@ class BirthScreen(BoxLayout):
 
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
                      pi_address=None, share_location=None,
-                     radio_usb_serial=None, bluetooth=None):
+                     radio_usb_serial=None, bluetooth=None, location=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1747,7 +1747,12 @@ class BirthScreen(BoxLayout):
         # A map-stamped position belongs to ONE node: left set, every later
         # birth in the session inherited the previous node's coordinates
         # (2026-08-01 bug hunt — a privacy leak as well as a wrong pin).
-        self._prefill_location = None
+        # Set unconditionally from THIS hand-off: the guide's prelude map is
+        # the one place the pin is placed (operator, 2026-08-14), and a lap
+        # that carries none must not inherit the last node's.
+        self._prefill_location = ((float(location[0]), float(location[1]),
+                                   "map-confirmed")
+                                  if location else None)
         # AND SO DOES THE ANSWER ABOUT PUBLISHING IT. Set unconditionally from
         # this hand-off, so a lap that carries no answer (None) normalises to
         # hidden rather than inheriting the last node's yes — the same leak as
@@ -2925,7 +2930,12 @@ class BirthScreen(BoxLayout):
         location -> commit straight away; popup unavailable -> commit as-is."""
         from ui.screens.cert_view_screen import cert_latlon
         ll = cert_latlon(cert)
-        if ll is None:
+        already_confirmed = "map-confirmed" in (cert.get("location") or "")
+        if ll is None or already_confirmed:
+            # No location, nothing to confirm — or the operator PLACED this
+            # pin on the prelude map themselves (2026-08-14): it has been
+            # seen by definition, and asking again at the end of a long
+            # build is asking twice.
             self._commit_cert(cert)
             return
         try:

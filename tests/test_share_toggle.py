@@ -243,9 +243,24 @@ def test_moving_the_switch_decides_nothing_on_its_own():
 def test_the_button_commits_what_the_switch_shows():
     chosen = _guide_method("_share_chosen")
     screen = _share_screen_stub(policy=ls.APPROX)
+    # Since 2026-08-14 a YES routes through the prelude map to place the pin
+    # (operator's note 10) — the stub records the detour instead of opening it.
+    opened = []
+    screen._pick_node_location = lambda: opened.append(True)
     chosen(screen, screen._share_pending)
     assert screen._share_location == ls.APPROX
     assert screen._share_asked is True
+    assert opened, "Show-on-map must take the operator to the map"
+
+
+def test_hidden_never_detours_through_the_map():
+    chosen = _guide_method("_share_chosen")
+    screen = _share_screen_stub(policy=ls.HIDDEN)
+    screen._pick_node_location = lambda: (_ for _ in ()).throw(
+        AssertionError("hidden opened a map for a position it will never use"))
+    chosen(screen, screen._share_pending)
+    assert screen._share_location == ls.HIDDEN
+    assert screen._node_location is None
 
 
 def test_a_fresh_walkthrough_starts_the_switch_on_hidden():

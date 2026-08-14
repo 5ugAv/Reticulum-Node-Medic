@@ -120,6 +120,8 @@ class BirthGuideScreen(BoxLayout):
         from monitor import location_share
         self._share_location = location_share.HIDDEN
         self._share_asked = False
+        # The PIN follows the same rule: one node, never inherited.
+        self._node_location = None
         # And the Bluetooth answer, for the same reason: OFF is the resting
         # end, and one node's yes must never become the next node's radio.
         self._bluetooth_on = False
@@ -1466,8 +1468,47 @@ class BirthGuideScreen(BoxLayout):
         self._share_asked = True
         self._bluetooth_on = (getattr(self, "_bt_pending", "off") == "on")
         self._bt_asked = True
+        if self._share_location == location_share.APPROX:
+            # Show-on-map means a map, NOW (operator, 2026-08-14): place the
+            # pin while the node is in hand — GPS seeds it when there is a
+            # fix, a typed address or a tap overrides it. The steps begin
+            # when the pin commits; cancel stays here with nothing decided.
+            self._pick_node_location()
+            return
+        self._node_location = None       # hidden: no pin, and no map detour
         self._i = 0
         self._render_step()
+
+    def _pick_node_location(self):
+        """The prelude's map: seed from GPS (else the last pin, else the map's
+        Sampleton fallback — same as adopt), let the operator move it by tap
+        or typed address, and carry the committed pin into the hand-off. A
+        broken map must not strand a birth: any failure just carries on
+        without a pin, which is the pre-2026-08-14 behaviour."""
+        try:
+            from ui.widgets.confirm_location import ConfirmLocationPopup
+            from monitor.geo import splitter_gps_reader
+            reader = splitter_gps_reader()
+            try:
+                fix = reader()
+            except Exception:                                      # noqa: BLE001
+                fix = None
+            seed = (fix or getattr(self, "_node_location", None)
+                    or (-37.8136, 144.9631))
+
+            def _ok(lat, lon):
+                self._node_location = (lat, lon)
+                self._i = 0
+                self._render_step()
+
+            ConfirmLocationPopup(
+                seed[0], seed[1], node_name=self._node_name or "",
+                on_confirm=_ok, on_cancel=lambda: None,
+                gps_reader=reader).open()
+        except Exception:                                          # noqa: BLE001
+            self._node_location = None
+            self._i = 0
+            self._render_step()
 
     def _hand_over_name(self, screen_name, job="host"):
         """Hand the destination the name AND the job it has been sent to do.
@@ -1513,6 +1554,9 @@ class BirthGuideScreen(BoxLayout):
                         # and a screen that has to ask again is a screen that
                         # will be answered differently by a tired operator.
                         share_location=getattr(self, "_share_location", None),
+                        # The pin the operator placed on the prelude map —
+                        # EXACT; the workflow fuzzes what leaves the device.
+                        location=getattr(self, "_node_location", None),
                         # So does the radio's serial, captured when the flash
                         # step handed back (resume() stored it) — the build pins
                         # /dev/rnode with it, since the radio itself is in the

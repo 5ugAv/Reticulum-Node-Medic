@@ -118,3 +118,51 @@ def test_the_write_these_down_heading_pulses():
     assert "anim.repeat = True" in callout
     imager = src("ui/screens/pi_imager_screen.py")
     assert '"Write these down now!"' in imager and 'pulse=True' in imager
+
+
+# -- the map step at the prelude (operator, 2026-08-14, note 10) -----------
+# "If they click yes, it takes them to the map — populated by GPS if there
+#  is a signal. If there isn't, they can type an address in. And if there is
+#  a GPS signal, they can override it by typing an address."
+# ConfirmLocationPopup already does all three (pin from seed, tap to move,
+# address search, pull-GPS button); the step is WHERE it opens: at the
+# prelude when Show-on-map is chosen — not at certificate time, when the
+# operator has mentally finished.
+
+def test_choosing_show_on_map_opens_the_map():
+    pick = func_source("ui/screens/birth_guide_screen.py",
+                       "_pick_node_location", cls="BirthGuideScreen")
+    assert "ConfirmLocationPopup" in pick
+    assert "splitter_gps_reader" in pick, "GPS seeds the pin when there is a fix"
+    chosen = func_source("ui/screens/birth_guide_screen.py",
+                         "_share_chosen", cls="BirthGuideScreen")
+    assert "_pick_node_location" in chosen
+    # Hidden must NOT detour through a map for a position it will never use
+    assert "APPROX" in chosen or "approx" in chosen
+
+
+def test_the_confirmed_pin_rides_the_handoff():
+    hand = func_source("ui/screens/birth_guide_screen.py",
+                       "_hand_over_name", cls="BirthGuideScreen")
+    assert "_node_location" in hand
+    guided = func_source("ui/screens/birth_screen.py",
+                         "begin_guided", cls="BirthScreen")
+    assert "map-confirmed" in guided
+
+
+def test_a_prelude_confirmed_pin_is_not_asked_twice():
+    """The cert-time map confirm exists to catch an UNSEEN location. A pin
+    the operator placed on the prelude map has been seen by definition —
+    asking again at the end of a twenty-minute build is asking twice."""
+    commit = func_source("ui/screens/birth_screen.py",
+                         "_confirm_location_then_commit", cls="BirthScreen")
+    assert "map-confirmed" in commit
+
+
+def test_the_pin_belongs_to_one_node():
+    """Same hygiene as the share answer beside it: a fresh walkthrough must
+    not inherit the previous node's coordinates."""
+    reset = src("ui/screens/birth_guide_screen.py")
+    at = reset.index("self._share_location = location_share.HIDDEN")
+    window = reset[at - 600:at + 200]
+    assert "_node_location = None" in window
