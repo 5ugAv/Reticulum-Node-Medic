@@ -501,12 +501,17 @@ class BirthScreen(BoxLayout):
                     from ui import board_images
                     from ui.widgets.board_card import BoardCard
                     if board_images.image_for(self._sel_board.key):
+                        # THE NODE'S name on the OLED, not the board's, and
+                        # LIVE (briefing Task 8): the preview shows what the
+                        # firmware will actually draw, as it is typed.
                         card = BoardCard(self._sel_board.key,
-                                         name=self._sel_board.display_name,
+                                         name=(self._name_in.text or "").strip().upper(),
                                          on_select=lambda *_a: self._choose_board(),
                                          selected=True,
                                          size_hint_y=None, height=dp(150))
                         self.header.add_widget(card)
+                        self._name_in.bind(text=lambda _i, t, c=card:
+                                           c.set_name(t))
                 except Exception:
                     pass
                 self.header.add_widget(self._labelled_row(

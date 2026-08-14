@@ -241,3 +241,11 @@ def test_the_connect_skip_runs_downstream_of_the_pair_check():
         "skipped-flash lesson holds")
     assert "cert_for_usb_serial" in render, (
         "a certified radio is skipped, not re-flashed (briefing Task 1)")
+
+
+# briefing Task 8 — the OLED preview shows the NODE's name, live
+def test_the_oled_preview_is_the_nodes_name_live():
+    from tests.srcutil import src
+    b = src("ui/screens/birth_screen.py")
+    assert "c.set_name(t)" in b, "the name field must live-drive the OLED"
+    assert 'name=(self._name_in.text or "").strip().upper()' in b
