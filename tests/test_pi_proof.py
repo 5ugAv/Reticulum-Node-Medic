@@ -103,3 +103,43 @@ def test_the_connect_step_tells_the_truth_about_both_roads():
     assert "cable" in body
     # (the WHY — the birth-token proof — moved to the machinery itself;
     # the screen keeps its words short enough for the 5-inch panel)
+
+
+# -- the card writer must be THE card writer (2026-08-14, skyfinger) -------
+# The installed root helper (/usr/local/lib/nodemedic/prepare-card) predated
+# the birth-token bake, so every card it wrote carried no token — and the
+# connect-Pi step then correctly refused to advance on an unprovable machine.
+# The stall was honest; the card was wrong. Sudoers only lets the helper be
+# updated with the real password, so the imager REFUSES to write while the
+# installed copy differs from the repo's — a stale root helper is a mute-node
+# factory, and refusing loudly beats writing quietly.
+
+def test_matching_helper_is_silent(tmp_path):
+    from provisioning.pi_imager import helper_out_of_date
+    a = tmp_path / "installed"; b = tmp_path / "repo"
+    a.write_text("same bytes"); b.write_text("same bytes")
+    assert helper_out_of_date(installed=str(a), repo_copy=str(b)) == ""
+
+
+def test_stale_helper_is_named_with_the_fix(tmp_path):
+    from provisioning.pi_imager import helper_out_of_date
+    a = tmp_path / "installed"; b = tmp_path / "repo"
+    a.write_text("old"); b.write_text("new")
+    why = helper_out_of_date(installed=str(a), repo_copy=str(b))
+    assert "out of date" in why.lower()
+    assert "sudo install" in why, "say the fix, not just the fault"
+
+
+def test_unreadable_helper_is_could_not_check_not_a_pass(tmp_path):
+    from provisioning.pi_imager import helper_out_of_date
+    b = tmp_path / "repo"; b.write_text("new")
+    why = helper_out_of_date(installed=str(tmp_path / "missing"),
+                             repo_copy=str(b))
+    assert why, "an unreadable root helper must not pass silently"
+
+
+def test_the_imager_screen_refuses_on_a_stale_helper():
+    from tests.srcutil import func_source
+    confirm = func_source("ui/screens/pi_imager_screen.py", "_confirm",
+                          cls="PiImagerScreen")
+    assert "helper_out_of_date" in confirm

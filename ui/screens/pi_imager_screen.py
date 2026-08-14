@@ -537,6 +537,19 @@ class PiImagerScreen(BoxLayout):
     def _confirm(self):
         if self._busy or not self._target:
             return
+        # THE WRITER ITSELF IS CHECKED FIRST (2026-08-14, skyfinger): a stale
+        # installed root helper writes cards with pieces missing — the last
+        # miss cost a birth token and stalled a walkthrough on an honest
+        # refusal two screens later. Refuse HERE, where the fix can be named.
+        try:
+            from provisioning.pi_imager import helper_out_of_date
+            why = helper_out_of_date()
+        except Exception:                                          # noqa: BLE001
+            why = ""
+        if why:
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(why, "Card writer out of date", False)
+            return
         v = self._vals()
         if not v.get("hostname"):
             self._status.text = "Enter at least a hostname and a login password."

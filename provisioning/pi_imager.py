@@ -464,6 +464,44 @@ def activate_account_commands(device_path: str, username: str,
 #: a hat, and would have gutted the medic's scoped allow-list).
 PREPARE_CARD = "/usr/local/lib/nodemedic/prepare-card"
 
+#: The repo's own copy of the helper — the source the installed one is built
+#: from. Compared byte-for-byte before every card write (helper_out_of_date).
+PREPARE_CARD_SOURCE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "assets", "scripts", "prepare_card.py")
+
+
+def helper_out_of_date(installed: str = PREPARE_CARD,
+                       repo_copy: str = PREPARE_CARD_SOURCE) -> str:
+    """"" when the installed root helper matches the repo's copy, else WHY the
+    imager must refuse to write.
+
+    Found live 2026-08-14 (skyfinger): the installed helper predated the
+    birth-token bake, so every card it wrote carried no token, and the
+    connect-Pi step then rightly refused to advance for a machine that could
+    not prove itself. Deploys cannot refresh the installed copy — sudoers
+    grants it one narrow NOPASSWD entry and updating it takes the real
+    password — so drift is possible, and a stale ROOT helper writing cards
+    is a mute-node factory. Refusing loudly beats writing quietly; an
+    unreadable copy is "could not check", which also refuses.
+    """
+    import hashlib
+    try:
+        with open(installed, "rb") as fh:
+            have = hashlib.sha256(fh.read()).hexdigest()
+        with open(repo_copy, "rb") as fh:
+            want = hashlib.sha256(fh.read()).hexdigest()
+    except OSError as e:
+        return (f"Could not check the card writer against this build: {e}. "
+                f"Not writing a card on an unverified root helper.")
+    if have != want:
+        return ("The card writer installed on this medic is out of date — "
+                "cards it writes would be missing pieces of the birth "
+                "(the last miss was the birth token, which stalls the "
+                "walkthrough at the connect step). Update it, then retry:"
+                f"\nsudo install -m 755 {repo_copy} {installed}")
+    return ""
+
 
 def write_card_config(config: dict,
                       config_path: str = "/tmp/nm-card-config.json") -> str:
