@@ -285,6 +285,7 @@
   "Power and data share the one USB-C, so there is no second socket to add a supply to. Keep the cable short and good.": "電源とデータが同じ USB-C を共有するため、電源を足す 2 つ目のソケットはありません。ケーブルは短く良質なものを。",
   "Power comes from Node Medic through this cable. Do NOT plug a supply into the micro-USB as well, unless your A-to-A has its 5V wire removed.": "電源はこのケーブル経由で Node Medic から供給されます。A-to-A ケーブルの 5V 線を外していない限り、micro-USB に電源を追加してはいけません。",
   "Power goes into {port}.": "Power goes into {port}.",
+  "Power into the micro-USB; radio into the USB-A with a short DATA cable.": "電源はmicro-USBへ、無線機は短いDATAケーブルでUSB-Aへ。",
   "Power on the OUTER micro-USB (PWR IN). The radio goes on the inner one — it needs a micro-USB OTG adapter.": "電源は外側の micro-USB（PWR IN）へ。無線機は内側に挿すので、micro-USB の OTG アダプターが必要です。",
   "Power on the USB-C. The radio goes in any USB-A socket.": "電源は USB-C へ。無線機はどの USB-A ポートでも構いません。",
   "Power on the micro-USB. The radio goes in the full-size USB-A, the socket Node Medic was using. The earlier two-supplies warning is done with — the medic's cable is off.": "電源は micro-USB へ。無線機は、これまで Node Medic が使っていたフルサイズの USB-A に挿します。medic のケーブルは外れているので、先ほどの「電源 2 つ」の注意はもう当てはまりません。",

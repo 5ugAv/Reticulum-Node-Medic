@@ -285,6 +285,7 @@
   "Power and data share the one USB-C, so there is no second socket to add a supply to. Keep the cable short and good.": "Zasilanie i dane dzielą to samo USB-C, więc nie ma drugiego gniazda na zasilacz. Kabel niech będzie krótki i dobry.",
   "Power comes from Node Medic through this cable. Do NOT plug a supply into the micro-USB as well, unless your A-to-A has its 5V wire removed.": "Zasilanie płynie z Node Medic przez ten kabel. NIE podłączaj dodatkowo zasilacza do micro-USB, chyba że w Twoim kablu A-A usunięto żyłę 5V.",
   "Power goes into {port}.": "Power goes into {port}.",
+  "Power into the micro-USB; radio into the USB-A with a short DATA cable.": "Zasilanie przez micro-USB; radio do USB-A krótkim kablem DATA.",
   "Power on the OUTER micro-USB (PWR IN). The radio goes on the inner one — it needs a micro-USB OTG adapter.": "Zasilanie na ZEWNĘTRZNYM micro-USB (PWR IN). Radio idzie do wewnętrznego — potrzebny jest adapter micro-USB OTG.",
   "Power on the USB-C. The radio goes in any USB-A socket.": "Zasilanie na USB-C. Radio idzie do dowolnego gniazda USB-A.",
   "Power on the micro-USB. The radio goes in the full-size USB-A, the socket Node Medic was using. The earlier two-supplies warning is done with — the medic's cable is off.": "Zasilanie na micro-USB. Radio idzie do pełnowymiarowego USB-A, gniazda używanego wcześniej przez Node Medic. Wcześniejsze ostrzeżenie o dwóch zasilaczach już nie obowiązuje — kabel medica jest odłączony.",

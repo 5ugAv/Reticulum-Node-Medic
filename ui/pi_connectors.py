@@ -228,10 +228,12 @@ def can_cable(pi_key: str) -> bool:
 _STANDALONE_HINTS = {
     "pi_zero_2w": tr("Power on the OUTER micro-USB (PWR IN). The radio goes on "
                      "the inner one — it needs a micro-USB OTG adapter."),
-    "pi_3a_plus": tr("Power on the micro-USB. The radio goes in the full-size "
-                     "USB-A, the socket Node Medic was using. The earlier "
-                     "two-supplies warning is done with — the medic's cable is "
-                     "off."),
+    # Socket facts ONLY (operator, 2026-08-14): the bullets above this hint
+    # already say unplug / radio on / own power — repeating the story here
+    # was the 'instructions run twice' complaint. What survives is the one
+    # thing the bullets cannot know: WHICH socket is which on this board.
+    "pi_3a_plus": tr("Power into the micro-USB; radio into the USB-A with a "
+                     "short DATA cable."),
     "pi_4b": tr("Power on the USB-C. The radio goes in any USB-A socket."),
     "pi_5": tr("Power on the USB-C. The radio goes in any USB-A socket."),
 }

@@ -285,6 +285,7 @@
   "Power and data share the one USB-C, so there is no second socket to add a supply to. Keep the cable short and good.": "Daya dan data berbagi satu USB-C, jadi tidak ada soket kedua untuk menambah catu daya. Pakai kabel yang pendek dan bagus.",
   "Power comes from Node Medic through this cable. Do NOT plug a supply into the micro-USB as well, unless your A-to-A has its 5V wire removed.": "Daya datang dari Node Medic lewat kabel ini. JANGAN colokkan catu daya ke micro-USB juga, kecuali kabel A-ke-A Anda sudah dilepas kabel 5V-nya.",
   "Power goes into {port}.": "Power goes into {port}.",
+  "Power into the micro-USB; radio into the USB-A with a short DATA cable.": "Daya lewat micro-USB; radio ke USB-A dengan kabel DATA pendek.",
   "Power on the OUTER micro-USB (PWR IN). The radio goes on the inner one — it needs a micro-USB OTG adapter.": "Daya di micro-USB LUAR (PWR IN). Radio masuk ke yang dalam — perlu adaptor micro-USB OTG.",
   "Power on the USB-C. The radio goes in any USB-A socket.": "Daya di USB-C. Radio masuk ke soket USB-A mana saja.",
   "Power on the micro-USB. The radio goes in the full-size USB-A, the socket Node Medic was using. The earlier two-supplies warning is done with — the medic's cable is off.": "Daya di micro-USB. Radio masuk ke USB-A ukuran penuh, soket yang tadi dipakai Node Medic. Peringatan dua catu daya sebelumnya sudah tidak berlaku — kabel medic sudah dilepas.",

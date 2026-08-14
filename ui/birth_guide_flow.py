@@ -538,7 +538,9 @@ def guide_steps(path, pi_key=""):
             # instruction directly above it. The back-feed it guards against
             # cannot happen with the medic's cable gone.
             elif s.get("anim") == "radio_to_pi":
-                s["hint"] = standalone_power_hint(pi_key) + " " + s.get("hint", "")
+                # The per-board line REPLACES the generic hint (2026-08-14):
+                # appending them repeated the cable sentence twice over.
+                s["hint"] = standalone_power_hint(pi_key)
     return steps
 
 

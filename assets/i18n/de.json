@@ -285,6 +285,7 @@
   "Power and data share the one USB-C, so there is no second socket to add a supply to. Keep the cable short and good.": "Strom und Daten teilen sich denselben USB-C, es gibt also keine zweite Buchse für ein Netzteil. Halten Sie das Kabel kurz und gut.",
   "Power comes from Node Medic through this cable. Do NOT plug a supply into the micro-USB as well, unless your A-to-A has its 5V wire removed.": "Der Strom kommt über dieses Kabel von Node Medic. Stecken Sie NICHT zusätzlich ein Netzteil an den Micro-USB, es sei denn, bei Ihrem A-auf-A-Kabel ist die 5V-Ader entfernt.",
   "Power goes into {port}.": "Der Strom geht an {port}.",
+  "Power into the micro-USB; radio into the USB-A with a short DATA cable.": "Strom über die Micro-USB-Buchse; das Funkmodul in die USB-A-Buchse mit einem kurzen DATENkabel.",
   "Power on the OUTER micro-USB (PWR IN). The radio goes on the inner one — it needs a micro-USB OTG adapter.": "Strom am ÄUSSEREN Micro-USB (PWR IN). Das Funkmodul kommt an den inneren — dafür braucht es einen Micro-USB-OTG-Adapter.",
   "Power on the USB-C. The radio goes in any USB-A socket.": "Strom am USB-C. Das Funkmodul kommt in eine beliebige USB-A-Buchse.",
   "Power on the micro-USB. The radio goes in the full-size USB-A, the socket Node Medic was using. The earlier two-supplies warning is done with — the medic's cable is off.": "Strom am Micro-USB. Das Funkmodul kommt in den USB-A in voller Größe, die Buchse, die Node Medic benutzt hat. Die frühere Warnung vor zwei Netzteilen ist erledigt — das Kabel des Medic ist ab.",

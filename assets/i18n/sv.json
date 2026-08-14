@@ -285,6 +285,7 @@
   "Power and data share the one USB-C, so there is no second socket to add a supply to. Keep the cable short and good.": "Ström och data delar samma USB-C, så det finns inget andra uttag att koppla en strömkälla till. Håll kabeln kort och bra.",
   "Power comes from Node Medic through this cable. Do NOT plug a supply into the micro-USB as well, unless your A-to-A has its 5V wire removed.": "Strömmen kommer från Node Medic genom den här kabeln. Koppla INTE dessutom in en strömkälla i micro-USB, om inte 5V-ledaren i din A-till-A-kabel är borttagen.",
   "Power goes into {port}.": "Power goes into {port}.",
+  "Power into the micro-USB; radio into the USB-A with a short DATA cable.": "Ström via micro-USB; radion i USB-A med en kort DATA-kabel.",
   "Power on the OUTER micro-USB (PWR IN). The radio goes on the inner one — it needs a micro-USB OTG adapter.": "Ström på den YTTRE micro-USB (PWR IN). Radion sitter på den inre – den kräver en micro-USB OTG-adapter.",
   "Power on the USB-C. The radio goes in any USB-A socket.": "Ström på USB-C. Radion sitter i valfri USB-A-port.",
   "Power on the micro-USB. The radio goes in the full-size USB-A, the socket Node Medic was using. The earlier two-supplies warning is done with — the medic's cable is off.": "Ström på micro-USB. Radion sitter i den fullstora USB-A, uttaget som Node Medic använde. Den tidigare varningen om två strömkällor gäller inte längre – medic-kabeln är borta.",
