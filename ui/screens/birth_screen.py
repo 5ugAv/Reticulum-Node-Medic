@@ -2612,6 +2612,16 @@ class BirthScreen(BoxLayout):
             serial = (getattr(self._workflow, "_usb_serial", "") or "")
             payload = {"radio_verified": verified, "build_failed": failed,
                        "reached_at": reached}
+            # The [FAIL] line travels WITH the failure (briefing Task 2): the
+            # step the operator lands back on shows the reason, not a
+            # treasure map to a log pane.
+            if failed:
+                fl = next(((r.name, r.message) for r in
+                           getattr(self._workflow, "results", [])
+                           if not r.success
+                           and not getattr(r, "skipped", False)), None)
+                if fl:
+                    payload["fail_line"] = f"[FAIL] {fl[0]} — {fl[1]}"
             # OMIT the key when there is nothing to say. resume() setattrs
             # every key it is given, so the Pi build's hand-back (whose
             # workflow never sees the radio) was overwriting the serial the
@@ -2696,9 +2706,21 @@ class BirthScreen(BoxLayout):
                 # problem (operator, live, 2026-08-09 — the node had wedged on
                 # a browning-out supply). Advice for the wrong failure is worse
                 # than none: it spends the one thing they have least of.
-                head = ("A build step failed — the [FAIL] line in the build log "
-                        "names it, with the reason under it. Fix that and run "
-                        "the build again.")
+                # THE FAIL LINE ITSELF, in the dialog (briefing Task 2,
+                # 2026-08-14: the dialog pointed at a log the UI never
+                # showed — two bench runs died without the reason ever
+                # reaching the glass).
+                fail = next(((r.name, r.message) for r in
+                             getattr(self._workflow, "results", [])
+                             if not r.success
+                             and not getattr(r, "skipped", False)), None)
+                fail_line = (f"[FAIL] {fail[0]} — {fail[1]}" if fail
+                             else "")
+                head = (fail_line + "\n\nFix that and run the build again."
+                        if fail_line else
+                        "A build step failed — the [FAIL] line in the build "
+                        "log names it, with the reason under it. Fix that "
+                        "and run the build again.")
                 if getattr(self, "_last_type", "") == "pi_rnode":
                     body = (f"{head}\n\nIf it failed at the first step, the Pi "
                             "stopped answering. Check its power light, and that "

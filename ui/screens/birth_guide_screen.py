@@ -122,6 +122,16 @@ class BirthGuideScreen(BoxLayout):
         self._share_asked = False
         # The PIN follows the same rule: one node, never inherited.
         self._node_location = None
+        # And EVERY transient of the last run (briefing Task 4: a wrong-token
+        # line from run 1 survived into run 2's screen): sightings, warnings,
+        # probes, in-flight flags — a fresh run starts with fresh eyes.
+        self._node_addr = ""
+        self._node_probe = None
+        self._gate_warning = ""
+        self._build_failed = False
+        self._proof_inflight = False
+        self._radio_verified = False
+        self._radio_usb_serial = ""
         # And the Bluetooth answer, for the same reason: OFF is the resting
         # end, and one node's yes must never become the next node's radio.
         self._bluetooth_on = False
@@ -1520,27 +1530,12 @@ class BirthGuideScreen(BoxLayout):
         already-verified radio (keep-and-continue) lands past the gate that
         agrees with it, and an absent board still gets the instructions.
         """
+        # The auto-skip itself lives in _render_step, DOWNSTREAM of the
+        # pairing check — this door fired it directly once (2026-08-14
+        # night) and the bypassed check then detonated at RESUME time,
+        # rewinding a finished flash to "Flash this radio" (both SKYFINGER
+        # runs; the operator was marched into re-flashing a green board).
         self._i = 0
-        steps = guide_steps(self._path, self._pi_key_for_text())
-        first = steps[0] if steps else {}
-        if first.get("screen") and first.get("anim") == "connect_board":
-            if getattr(self, "_radio_verified", False):
-                # Flashed and verified already — nothing for the hand-off to
-                # do. Land on the gate; a passed gate advances itself.
-                self._i = 1
-                self._render_step()
-                return
-            present = False
-            try:
-                from ui.hw_factories import local_board_ports
-                present = bool(local_board_ports())
-            except Exception:                                      # noqa: BLE001
-                present = False
-            if present:
-                self._trace("radio already on USB — firing the flash "
-                            "hand-off, skipping the connect instructions")
-                self._next()             # the button press, automated
-                return
         self._render_step()
 
     def _hand_over_name(self, screen_name, job="host"):
@@ -1849,6 +1844,50 @@ class BirthGuideScreen(BoxLayout):
             self._pair_checked = True
             self._render_pick_board()
             return
+        # THE CONNECT-RADIO STEP HAS NOTHING TO SAY TO A RADIO IT CAN SEE
+        # (operator, 2026-08-14): the operator plugged it in at the very
+        # start — that is how the chooser knew the board. Runs HERE, after
+        # the pairing check, in every route into the steps. The work is
+        # never skipped, only the redundant button press: a certified or
+        # session-verified radio skips the flash; a present-but-unproven
+        # board gets the SAME hand-off the green button carried; an absent
+        # board still gets the instructions.
+        cur = steps[self._i]
+        if (self._i == 0 and cur.get("screen")
+                and cur.get("anim") == "connect_board"
+                and self._path == "pi"):
+            ports = []
+            try:
+                from ui.hw_factories import local_board_ports
+                ports = local_board_ports()
+            except Exception:                                      # noqa: BLE001
+                ports = []
+            if not getattr(self, "_radio_verified", False) and ports:
+                # A board this medic has already flashed AND verified holds
+                # its certificate, keyed by the radio's USB serial. Finding
+                # one means a re-flash is pure waste (five in one night,
+                # 2026-08-14) — arm the gate with the recorded proof.
+                try:
+                    from ui.hw_factories import LocalConnection
+                    from workflows.rnode_flash import (by_id_serial,
+                                                       usb_id_for_port)
+                    from ui.cert_store import cert_for_usb_serial
+                    serial = by_id_serial(
+                        usb_id_for_port(LocalConnection(), ports[0])) or ""
+                    if serial and cert_for_usb_serial(serial):
+                        self._radio_verified = True
+                        self._radio_usb_serial = serial
+                        self._trace("attached radio holds this medic's "
+                                    "certificate — skipping the flash")
+                except Exception:                                  # noqa: BLE001
+                    pass
+            if getattr(self, "_radio_verified", False):
+                self._i = 1              # the gate agrees and advances itself
+            elif ports:
+                self._trace("radio already on USB — firing the flash "
+                            "hand-off, skipping the connect instructions")
+                self._next()             # the button press, automated
+                return
         # A 'connect your board' step is REDUNDANT when the board is already
         # plugged in (operator feedback 2026-07-31: being told to connect a
         # connected board reads as a bug) — skip it silently.
@@ -2601,10 +2640,10 @@ class BirthGuideScreen(BoxLayout):
             # both roads fresh, and the retry goes to one that answers NOW.
             self._node_addr = ""
             self._node_probe = None
-            self._gate_warning = tr(
-                "That build didn't finish. The failed step and its reason are "
-                "in the build log. Fix it, then tap Try again — nothing here "
-                "is lost.")
+            fail_line = (result or {}).get("fail_line", "")
+            self._gate_warning = ((fail_line + "\n" if fail_line else "") + tr(
+                "That build didn't finish. Fix the step above, then tap "
+                "Try again — nothing here is lost."))
         self._i = at
         if self._i >= len(steps):
             self._finish()
@@ -3131,18 +3170,25 @@ class BirthGuideScreen(BoxLayout):
                     step = self._current
                     if step is None or not hasattr(step, "set_status"):
                         return
+                    # CALM AND SELF-RESOLVING (briefing Task 3): other
+                    # live nodes on a network are field reality, not a
+                    # user chore. A wrong-token machine is ignored and the
+                    # watch simply continues; only a token-less answer gets
+                    # one actionable sentence, because that one can be the
+                    # CARD's fault (the stale-writer night, 2026-08-14).
                     if why == "no-token":
-                        msg = tr("Found a machine answering at {addr} — but "
-                                 "its card carries no birth token, so it "
-                                 "can't be proven yours. Re-image the card; "
-                                 "or if an old node is still powered, unplug "
-                                 "it.").format(addr=imposter)
+                        msg = tr("A machine at {addr} answered without a "
+                                 "birth token — ignoring it and still "
+                                 "watching. If nothing arrives, re-image "
+                                 "the card.").format(addr=imposter)
                     elif why == "wrong-token":
-                        msg = tr("A different machine is answering at {addr} "
-                                 "— wrong birth token. Unplug or power off "
-                                 "the old node.").format(addr=imposter)
+                        msg = tr("Ignoring another node at {addr} — still "
+                                 "watching for YOUR Pi.").format(
+                                     addr=imposter)
                     else:
-                        msg = tr("Watching the cable and this Wi-Fi…")
+                        msg = tr("Watching for your Pi — nothing to "
+                                 "press. It moves on when YOUR Pi answers; "
+                                 "a first boot takes longest.")
                     Clock.schedule_once(
                         lambda _d, m=msg: (self._current is step
                                            and step.set_status(m)), 0)

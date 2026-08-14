@@ -222,12 +222,22 @@ def test_the_prelude_starts_the_steps_through_one_door():
         assert "_begin_steps" in body, f"{fn} bypasses the connect-radio skip"
 
 
-def test_begin_steps_fires_the_handoff_not_the_instructions():
+def test_the_connect_skip_runs_downstream_of_the_pair_check():
+    """2026-08-14 night, both SKYFINGER runs: the skip fired from
+    _begin_steps, BYPASSING the pairing check that lives in _render_step —
+    the check then fired at resume time, whose success path rewinds to step
+    0, marching the operator into re-flashing a green board (five flashes
+    in one night). The skip now lives in _render_step, after that check."""
     begin = func_source("ui/screens/birth_guide_screen.py", "_begin_steps",
                         cls="BirthGuideScreen")
-    assert "local_board_ports" in begin, "presence is checked, not assumed"
-    assert "_next()" in begin, (
+    assert "_next()" not in begin, "the door must not bypass _render_step"
+    render = func_source("ui/screens/birth_guide_screen.py", "_render_step",
+                         cls="BirthGuideScreen")
+    at_check = render.index("_pair_checked")
+    at_skip = render.index("local_board_ports")
+    assert at_check < at_skip, "the skip must come AFTER the pairing check"
+    assert "_next()" in render, (
         "the hand-off is FIRED (the work still runs) — the 2026-08-09 "
         "skipped-flash lesson holds")
-    assert "_radio_verified" in begin, (
-        "an already-verified radio must not be offered a reflash")
+    assert "cert_for_usb_serial" in render, (
+        "a certified radio is skipped, not re-flashed (briefing Task 1)")

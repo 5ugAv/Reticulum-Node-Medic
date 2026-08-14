@@ -152,8 +152,9 @@ def test_a_no_token_machine_is_reported_on_the_glass():
     from tests.srcutil import func_source
     watcher = func_source("ui/screens/birth_guide_screen.py",
                           "_start_pi_poll", cls="BirthGuideScreen")
-    assert "no birth token" in watcher, "the skyfinger stall, named on screen"
-    assert "wrong birth token" in watcher
+    assert "answered without a" in watcher and "re-image" in watcher, (
+        "the skyfinger stall, named on screen — calmly (briefing Task 3)")
+    assert "Ignoring another node" in watcher
     assert "set_status" in watcher
 
 
@@ -164,3 +165,53 @@ def test_the_empty_and_wrong_token_cases_are_told_apart(tmp_path):
         "everywhere", path=path, _token_at=lambda a: "",
         _cable=lambda: "10.55.0.1", _resolve=lambda h: None)
     assert why_empty == "no-token"
+
+
+# -- token-authenticated key rotation (Task 0, 2026-08-14 night) -----------
+# Both SKYFINGER runs died at detect_hardware: the PINNED store held
+# 192.168.1.2 from ELSEWHERE's build, DHCP gave skyfinger that address, and
+# the honest changed-key refusal blocked a legitimate rebirth. The rule
+# stands — never drop pinned trust on name resolution — but the birth token
+# is not name resolution: the medic minted it, baked it onto this card, and
+# recorded it once. A machine that quotes it back IS the card the medic
+# wrote, and that proof outranks a stale address pin.
+
+def test_changed_key_with_matching_token_rotates_the_pin(tmp_path):
+    from workflows.build import _rotate_pin_on_token_proof
+    calls = []
+    ok = _rotate_pin_on_token_proof(
+        "192.168.1.2", "tok-99",
+        _read_token=lambda addr: "tok-99",
+        _unpin=lambda h: calls.append(("unpin", h)) or True,
+        _clear_user=lambda h: calls.append(("clear", h)) or True)
+    assert ok is True
+    assert ("unpin", "192.168.1.2") in calls
+    assert ("clear", "192.168.1.2") in calls
+
+
+def test_wrong_or_absent_token_leaves_the_pin(tmp_path):
+    from workflows.build import _rotate_pin_on_token_proof
+    for answer in ("different-token", "", None):
+        calls = []
+        ok = _rotate_pin_on_token_proof(
+            "192.168.1.2", "tok-99",
+            _read_token=lambda addr, a=answer: a,
+            _unpin=lambda h: calls.append("unpin") or True,
+            _clear_user=lambda h: calls.append("clear") or True)
+        assert ok is False, f"rotated on token answer {answer!r}"
+        assert "unpin" not in calls, "the pin fell without proof"
+
+
+def test_no_expected_token_never_rotates():
+    from workflows.build import _rotate_pin_on_token_proof
+    ok = _rotate_pin_on_token_proof(
+        "192.168.1.2", "",
+        _read_token=lambda addr: "anything",
+        _unpin=lambda h: True, _clear_user=lambda h: True)
+    assert ok is False
+
+
+def test_detect_hardware_tries_the_rotation_on_changed_key():
+    from tests.srcutil import func_source
+    detect = func_source("workflows/build.py", "detect_hardware")
+    assert "_rotate_pin_on_token_proof" in detect

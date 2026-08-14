@@ -26,7 +26,7 @@ def test_step_counts_per_path():
         "Put the SD card into Node Medic",         # -> pi_imager
         "Remove the SD card from Node Medic and insert it into the "
         "Raspberry Pi",
-        "Card in the Pi? Give it power",
+        "Card in the Pi? Choose ONE way to power it",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
         "",     # the finale: bullets replaced the title (operator, 2026-08-14)
     ]
@@ -662,31 +662,23 @@ def test_the_provisioning_step_says_where_power_comes_from():
     assert "power" in life["hint"].lower()
 
 
-def test_the_power_line_differs_by_board():
+def test_the_install_step_power_line_is_neutral():
+    """REVERSED 2026-08-14 (briefing Task 6): since the connect step became
+    an explicit cable-OR-wall choice, any per-board cable claim here is
+    WRONG for the operator who chose wall power — the step asserted "power
+    comes from Node Medic through this cable" at a Pi on its own supply.
+    The dual-supply hazard still guards the step where the choice is made
+    (the connect step's warning box); this one goes neutral: guidance that
+    fits both roads is guidance that fits."""
     from ui.birth_guide_flow import guide_steps
     hints = {k: next(s for s in guide_steps("pi", k)
                      if s.get("gate") == "node_online")["hint"]
              for k in ("pi_zero_2w", "pi_3a_plus", "pi_4b")}
-    assert len(set(hints.values())) == 3, "one sentence for all boards is the bug"
-
-
-def test_it_never_contradicts_the_connector_warning():
-    """The 3A+ hint at step 6 says a second supply will fight the medic's over
-    an ordinary A-to-A. The power line must not then tell them to add one."""
-    from ui.birth_guide_flow import guide_steps
-    power = next(s for s in guide_steps("pi", "pi_3a_plus")
-                 if s.get("gate") == "node_online")["hint"]
-    assert "do NOT plug a supply" in power or "Do NOT plug a supply" in power
-    assert "5V wire removed" in power, "name the one case where it IS safe"
-
-
-def test_the_zero_is_told_to_use_its_own_supply():
-    """PWR IN is a separate socket, so there is nothing to fight — and it takes
-    the long install off Node Medic's rail, which has browned out before."""
-    from ui.birth_guide_flow import guide_steps
-    power = next(s for s in guide_steps("pi", "pi_zero_2w")
-                 if s.get("gate") == "node_online")["hint"]
-    assert "PWR IN" in power and "own power" in power
+    assert len(set(hints.values())) == 1, "one NEUTRAL sentence, all boards"
+    only = next(iter(hints.values()))
+    assert "powered and connected" in only
+    for wrong in ("through this cable", "Do NOT plug a supply", "PWR IN"):
+        assert wrong not in only, f"cable-road claim survived: {wrong!r}"
 
 
 def test_an_unknown_board_claims_no_socket():
@@ -858,10 +850,11 @@ def test_the_last_step_does_not_argue_with_itself_about_power():
     # and it still answers the question the step actually raises
     assert "micro-USB" in last["hint"] and "USB-A" in last["hint"]
 
-    # the INSTALL step keeps the warning — there the cable really is carrying it
+    # the INSTALL step is neutral since 2026-08-14 (briefing Task 6) — the
+    # dual-supply hazard guards the step where the power CHOICE is made.
     life = next(s for s in guide_steps("pi", "pi_3a_plus")
                 if s.get("gate") == "node_online")
-    assert "Do NOT plug a supply" in life["hint"]
+    assert "Do NOT plug a supply" not in life["hint"]
 
 
 def test_the_standalone_hint_names_no_socket_on_an_unknown_board():

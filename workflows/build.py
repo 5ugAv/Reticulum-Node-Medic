@@ -355,6 +355,44 @@ def _clear_stale_host_key(host: str) -> bool:
         return False
 
 
+def _rotate_pin_on_token_proof(host: str, expected_token: str,
+                               _read_token=None, _unpin=None,
+                               _clear_user=None) -> bool:
+    """Rotate a stale PINNED host key — on birth-token proof, never on less.
+
+    Both SKYFINGER runs (2026-08-14 night) died at first contact: the pinned
+    store remembered 192.168.1.2 from ELSEWHERE's build, DHCP handed
+    skyfinger that address, and the changed-key refusal blocked a legitimate
+    rebirth twice. The standing rule — never drop pinned trust on
+    unauthenticated name resolution — HOLDS: the token is not name
+    resolution. The medic minted it, baked it onto this build's card, and
+    recorded it exactly once; a machine that quotes it back over a
+    host-key-blind read IS the card the medic wrote. That proof outranks a
+    pin describing a DHCP tenancy that no longer exists. No token, wrong
+    token, or no recorded expectation -> the pin stays and the build fails
+    with the honest message.
+    """
+    if not (host and (expected_token or "").strip()):
+        return False
+    try:
+        if _read_token is None:
+            from provisioning.pi_discover import read_birth_token
+            _read_token = read_birth_token
+        tok = _read_token(host)
+        if (tok or "").strip() != expected_token.strip():
+            return False
+        if _unpin is None:
+            from provisioning.host_keys import forget_host_key
+            _unpin = forget_host_key
+        if _clear_user is None:
+            _clear_user = _clear_stale_host_key
+        _unpin(host)
+        _clear_user(host)
+        return True
+    except Exception:                                              # noqa: BLE001
+        return False
+
+
 @build_step
 def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     # NOT cmd_output: it returns "" for every kind of failure alike, and this is
@@ -365,12 +403,17 @@ def detect_hardware(wf: "BuildWorkflow") -> StepResult:
     if (code != 0 or not cpuinfo) and (
             "host key verification failed" in e
             or "remote host identification" in e):
-        # A changed key on this UNPINNED host is the expected result of the
-        # re-imaging that this very build follows. Clear that one stale
-        # entry and try once more — and say so, because a silent second
-        # attempt is how mysteries are made.
+        # A changed key here is the expected result of the re-imaging this
+        # very build follows — or of DHCP handing this node an address whose
+        # PIN belongs to an earlier tenant (both SKYFINGER runs, 2026-08-14).
+        # Clear the unpinned entry freely; rotate the PINNED one only when
+        # the machine proves itself with this build's birth token. Then try
+        # once more — and say so, because a silent second attempt is how
+        # mysteries are made.
         host = getattr(wf.connection, "host", "") or ""
-        if host and _clear_stale_host_key(host):
+        if host:
+            _clear_stale_host_key(host)
+            _rotate_pin_on_token_proof(host, _expected_birth_token(wf))
             code, cpuinfo, err = wf.connection.run("cat /proc/cpuinfo")
     if code != 0 or not cpuinfo:
         host = getattr(wf.connection, "host", "") or "the node"

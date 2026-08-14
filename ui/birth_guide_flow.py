@@ -336,7 +336,7 @@ _STEPS = {
         # correct"): the cable needs no network, and the card is baked with
         # the Wi-Fi credentials, so power alone reaches the medic too. The
         # old body commanded the cable as if it were the only way.
-        {"title": tr("Card in the Pi? Give it power"),
+        {"title": tr("Card in the Pi? Choose ONE way to power it"),
          # AND SAY HOW LONG IT TAKES. The step advances itself, so there is
          # nothing to press — which from the operator's side is indistinguishable
          # from a screen that has hung (asked for outright, 2026-08-10: "user
@@ -352,9 +352,12 @@ _STEPS = {
          # No "nothing to press" sentence any more: there IS no button on
          # this step now, and the wait promise (2026-08-10 ask) survives in
          # the parenthesis.
-         "body": tr("Cable into Node Medic, or just power it \u2014 the card "
-                    "knows this Wi-Fi. It moves on when YOUR Pi answers "
-                    "(up to a minute; a first boot takes longer)."),
+         # EITHER/OR, spelled as options (briefing Task 5). The live
+         # status line under the body carries the calm "watching…" words.
+         # Two lines; the moves-on-by-itself promise and the wait estimate
+         # live on the LIVE status line under this (panel dp budget).
+         "body": tr("A \u2014 Node Medic's cable powers the Pi.\nB \u2014 its "
+                    "own supply; the card knows this Wi-Fi."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.
@@ -434,8 +437,10 @@ _STEPS = {
          "body": tr("The Pi is still just a Raspberry Pi. Node Medic reaches "
                     "it — over the cable, or by name on your Wi-Fi — installs "
                     "the mesh software and issues its birth certificate."),
-         "hint": tr("Nothing to unplug. Leave the Pi on Node Medic until this "
-                    "finishes."),
+         # NEUTRAL by design (briefing Task 6): the operator chose cable OR
+         # wall power one step ago, and this text used to assert the cable
+         # unconditionally. Guidance that fits both is guidance that fits.
+         "hint": tr("Leave the Pi powered and connected until this finishes."),
          "gate": "node_online",
          "screen": "birth",
          "job": "pi",
@@ -529,8 +534,9 @@ def guide_steps(path, pi_key=""):
             # that spends minutes installing. Operator asked for it on both
             # (2026-08-09) — and on a 3 A+ the honest answer at both is the
             # same warning about a second supply, not an instruction to add one.
-            if s.get("gate") == "node_online":
-                s["hint"] = power_hint(pi_key) + " " + s.get("hint", "")
+            # power_hint was prepended here once — an unconditional cable
+            # claim after the operator may have chosen wall power (briefing
+            # Task 6). The neutral hint on the step already fits both roads.
             # THE LAST STEP ASKS THE OPPOSITE QUESTION. Both steps are about
             # power, so both got the same sentence — but by this one the Pi has
             # been unplugged from Node Medic, and power_hint's 3 A+ line ("do
