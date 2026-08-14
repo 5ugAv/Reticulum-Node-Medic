@@ -454,3 +454,16 @@ The law the matrix reaffirmed: an ambiguous menu is refused, not guessed —
 a wrong band choice writes a wrong model byte into a board's EEPROM.
 
 Suite: 3237 passed, 11 skipped. Deployed f36742c; UI restarted while idle.
+
+## Update — 2026-08-14 evening: SKYFINGER, the acceptance birth
+
+One clean end-to-end walkthrough birth, operator at the glass, log watched
+live: one flash (no rewind), pairing check in its right place, stale pin
+rotated on birth-token proof at first contact, all 17 build steps green,
+certificate skyfinger @ 5a070007, and the health beacon (dst 5a080008)
+landed on VITALS ~a minute after the radio went on. The operator's twelve
+task briefing (tasks 0-7, 9-12) shipped the same evening; Task 8 (OLED
+name preview on the board photo) remains open by choice — it needs
+per-board coordinates verified against renders. The five-flash night and
+the two detect_hardware failures that preceded this are documented above;
+their fixes are what this birth proved.
