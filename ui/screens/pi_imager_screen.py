@@ -516,11 +516,11 @@ class PiImagerScreen(BoxLayout):
         # PULSING (operator, 2026-08-14): the one heading on this screen that
         # must stop a moving eye — the password below it cannot be recovered.
         self.col.add_widget(Callout(
-            "Write these down now!", pulse=True,
+            "Write these down now!",
             "The node name and this password are how you reach this Pi over SSH "
             "later. Node Medic does NOT store the password — it goes onto the "
             "card as a one-way hash and can't be read back. Lose it and the only "
-            "way in is to image the card again."))
+            "way in is to image the card again.", pulse=True))
 
         write = Button(text="Write SD card", size_hint_y=None, height=dp(56), bold=True,
                        font_size="18sp", background_normal="",

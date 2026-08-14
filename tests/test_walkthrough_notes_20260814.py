@@ -117,4 +117,4 @@ def test_the_write_these_down_heading_pulses():
     assert "pulse" in callout and "Animation" in callout
     assert "anim.repeat = True" in callout
     imager = src("ui/screens/pi_imager_screen.py")
-    assert '"Write these down now!", pulse=True' in imager
+    assert '"Write these down now!"' in imager and 'pulse=True' in imager
