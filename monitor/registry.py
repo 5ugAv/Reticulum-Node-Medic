@@ -105,17 +105,55 @@ def name_key(name: str) -> str:
     return "".join(ch for ch in (name or "") if ch.isalnum()).lower()
 
 
+def _valid_display_name(text) -> bool:
+    """Could *text* have been MEANT as a name? Printable throughout, sane
+    length, and an alphanumeric residue of at least two characters — because
+    ``name_key`` reduces a name to that residue before deciding whether two
+    records are one node, a one-character residue is also a merge hazard, not
+    just an ugly label. String-level so a name that survived to disk can be
+    re-judged on load (the original bytes are gone by then)."""
+    t = (text or "").strip()
+    if not (2 <= len(t) <= 32):
+        return False
+    if any(not c.isprintable() for c in t):
+        return False
+    return len(name_key(t)) >= 2
+
+
 def _printable_name(app_data) -> str:
-    """A human display name from announce app_data, if one is legible (LXMF
-    prefixes a length byte before a UTF-8 name). Empty string otherwise."""
+    """A human display name from announce app_data, ONLY when the bytes are a
+    clean UTF-8 name (LXMF prefixes a length byte before a UTF-8 name).
+
+    THIS USED TO DECODE WITH errors="ignore" AND KEEP WHATEVER PRINTABLE
+    CHARACTERS SURVIVED. Binary app_data — msgpack LXMF announces — shed its
+    unprintable bytes and the residue was shown as a node's NAME: the
+    operator's VITALS carried grey rows called "j(" and "j-(" on the night of
+    2026-08-14. A name is a claim about what somebody called a thing; residue
+    of a lossy decode is not that, and two different nodes' residues can even
+    collide (name_key("j(") == name_key("j-(")), which is a merge-by-name of
+    strangers waiting to happen. So: strict UTF-8 — a decode error is a
+    refusal, not a cleanup job — and nothing unprintable survives. The only
+    concession to the wire format is stripping ONE leading length/control byte
+    (<= 0x20), which is the LXMF prefix convention, never arbitrary garbage
+    ahead of a readable tail. Refused names fall back to "Neighbour <hash8>"
+    downstream, which is the honest label.
+    """
     if not app_data:
         return ""
-    try:
-        text = bytes(app_data).decode("utf-8", "ignore")
-    except Exception:
-        return ""
-    clean = "".join(c for c in text if c.isprintable()).strip()
-    return clean if 2 <= len(clean) <= 32 else ""
+    raw = bytes(app_data)
+    candidates = [raw]
+    if len(raw) >= 2 and raw[0] <= 0x20:      # LXMF length byte / control char
+        candidates.append(raw[1:])
+    for candidate in candidates:
+        try:
+            text = candidate.decode("utf-8").strip()
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if any(not c.isprintable() for c in text):
+            continue
+        if _valid_display_name(text):
+            return text
+    return ""
 
 
 def version_tuple(v: str):
@@ -373,13 +411,35 @@ class NodeRegistry:
         already present."""
         self.kin_roster = dict(roster or {})
         for h in self.kin_roster:
-            rec = self.nodes.get(h) or self.register(h)
+            if h not in self.nodes:
+                self.register(h)                 # register() applies kin itself
+        # EVERY record, not only the ones the roster keys directly. A record
+        # heard before the birth was written down (the medic hears the bench
+        # announce while the certificate is still being assembled) is linked to
+        # its roster entry only by its announced IDENTITY — reloading the
+        # roster must fold those too, or they stay grey until the next announce
+        # (2026-08-14, the night three births sat in VITALS as strangers).
+        for rec in self.nodes.values():
             self._apply_kin(rec)
 
     def _apply_kin(self, rec: NodeRecord) -> None:
         """If this record is one of the medic's own nodes, stamp its roster name,
-        type, and deployed location — making it kin (named) and map-visible."""
+        type, and deployed location — making it kin (named) and map-visible.
+
+        Matched by destination hash, or — failing that — by the record's
+        ANNOUNCED IDENTITY. A birth writes down the hashes the CERTIFICATE
+        carries, but a node announces destinations the certificate never saw:
+        a Pi's lxmf aspect, any destination minted after the paperwork. Every
+        announce carries the identity RNS itself verified, and the roster's
+        keys include identities (a Pi cert's ``reticulum_address``, an adopted
+        node's key) — so folding by identity is identity evidence, the same
+        strength as the dst match, and NOT a name merge. On 2026-08-14 the
+        missing identity path left the operator's own newborn nodes' announce
+        destinations sitting in VITALS as bare grey "Neighbour" rows.
+        """
         entry = self.kin_roster.get(rec.dst_hash)
+        if entry is None and rec.identity_hash:
+            entry = self.kin_roster.get(rec.identity_hash)
         if not entry:
             return
         if entry.get("name"):
@@ -579,6 +639,13 @@ class NodeRegistry:
             self.history.append(h, HistoryPoint(t=now))
         if identity_hash:
             rec.identity_hash = identity_hash
+            # Consult the roster NOW, not at the next poll. The identity was
+            # only known after register() ran above, and it is the key that
+            # folds a certified node's announce destinations under its name
+            # from the FIRST announce (2026-08-14 — see _apply_kin).
+            self._apply_kin(rec)
+        if rec.announced_name and not _valid_display_name(rec.announced_name):
+            rec.announced_name = ""     # residue the old decoder let through
         name = _printable_name(app_data)
         if name and not rec.announced_name:
             rec.announced_name = name
@@ -947,7 +1014,13 @@ class NodeRegistry:
                 share_location=_share_policy(n.get("share_location")),
                 share_applied_at=n.get("share_applied_at"),
                 identity_hash=n.get("identity_hash"),
-                announced_name=n.get("announced_name", ""),
+                # A registry saved before 2026-08-14 can carry decode residue
+                # ("j(") as an announced name; the raw bytes are long gone, so
+                # judge the string itself and drop what could never have been
+                # meant as a name — the row heals to "Neighbour <hash8>".
+                announced_name=(n.get("announced_name", "")
+                                if _valid_display_name(
+                                    n.get("announced_name", "")) else ""),
             )
             rec.notes = list(n.get("notes", []))
             rec.events = [CommissionEvent(**e) for e in n.get("events", [])]
