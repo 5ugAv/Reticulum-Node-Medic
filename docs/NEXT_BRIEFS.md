@@ -123,3 +123,60 @@ rail**, which "presents exactly like a bad cable". `monitor/self_diagnose.check_
 already exists. Wiring it into the radio/node gates would stop an operator
 chasing a third cable when the rail is sagging. Less urgent since the 5 A supply
 landed, but the diagnosis is still missing.
+
+---
+
+## F. Location sharing: stop mentioning the fuzz, ask for a real offset
+
+**Operator decision, 2026-08-15**, after the fuzz was found to be invertible:
+
+> "If the fuzz is unreliable and unsafe, let's not even mention it. Let's just
+> say, do you want to use this location for your node — and recommend they place
+> the location of your node at least five hundred metres away from where you've
+> actually placed it, for privacy reasons."
+
+**Why this is right.** The 800 m fuzz is seeded on values the same announce
+publishes (the destination hash in firmware, the node name on the medic), so
+anyone who has read either public repo recovers the true point exactly. A
+protection that cannot be relied on must not be described on screen: it buys
+false confidence, which is worse than silence. See the audit findings in this
+session — treat real protection from the fuzz as **0 m** against an informed
+observer.
+
+**What replaces it.** An operator-chosen offset. It cannot be reversed by
+reading source, the operator can see it on the map, and it is the only thing in
+this design that actually works today.
+
+### Build
+
+- **Remove every user-facing mention of the fuzz radius.** `stranger_view()`,
+  `status_line()`, the birth step copy in `ui/birth_guide_flow.py`, the
+  node-detail panel, and the same strings in all 8 i18n catalogs. No "up to
+  800 m", no "never the real one", no "not close enough to walk to the
+  hardware". They are unsupportable.
+- **Ask instead:** *"Use this location for your node?"* with the recommendation
+  to place it **at least 500 m from where the node actually is**, and say plainly
+  that whatever is chosen is what appears on public maps.
+- **DO NOT then fuzz the chosen point.** *(Recommendation, needs the operator's
+  sign-off before building.)* Fuzzing a deliberate decoy can displace the pin up
+  to 800 m onto **a private address that is not theirs** — publishing a
+  stranger's home as a node location. A public landmark chosen on purpose is a
+  better published point than the same landmark randomly displaced. What the
+  operator picks is what is announced.
+- **Keep everything else.** The choke point, hidden-by-default,
+  `normalise()` failing closed, `cannot_be_recalled()` — all sound, all stay.
+
+### Do not delete the fuzz code
+
+`fuzz_location` is still correct for anything where the tool holds a position
+the operator did not choose, and a **secret-salt** version (per-node salt kept
+beside the exact coordinates, never announced) would restore it as real
+protection. Leave the machinery; remove the claims.
+
+### Test
+
+- No user-facing string anywhere quotes a fuzz radius or promises the published
+  point is not the real one. Assert it over the catalogs, not just the source.
+- The recommendation text names a distance and says the chosen point is what
+  gets published.
+- What is announced equals what the operator confirmed.
