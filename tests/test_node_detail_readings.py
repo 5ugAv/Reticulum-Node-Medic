@@ -8,7 +8,23 @@ import pytest
 
 from monitor.health_beacon import decode
 from monitor.registry import NodeRegistry
-from ui.screens.node_detail_screen import _reading
+
+
+def _reading(*a, **kw):
+    """Imported INSIDE the call, not at module scope.
+
+    CI has no Kivy. `ui.screens.node_detail_screen` pulls it in, so a
+    module-level import made this file fail at COLLECTION — taking the whole
+    suite down with `Interrupted: 1 error during collection`, on both Python
+    versions, in 16 seconds. It passed here because this Mac has Kivy
+    installed: the exact `green locally, red in CI` split this repo has been
+    bitten by before.
+
+    The suite's stubs cover what is already imported; a new import path is
+    not among them. Deferring keeps collection Kivy-free.
+    """
+    from ui.screens.node_detail_screen import _reading as impl
+    return impl(*a, **kw)
 
 HASH = "11223344556677889900aabbccddeeff"
 NOW = 1_780_000_000.0
