@@ -1,360 +1,708 @@
-# Reticulum-Node-Medic — Project Handover
+# Node Medic — project reference
 
-*A portable Raspberry Pi 5 field tool for provisioning, diagnosing, repairing
-and monitoring Reticulum mesh nodes. This document is the running context so any
-collaborator or future session can continue without the original chat.*
+**This is the durable document.** What the tool is, how it is put together, the
+contracts it must honour, and how to run and test it. Nothing here should go
+stale in a week; if it does, it was written wrong.
 
-Repo: `github.com/5ugAv/Reticulum-Node-Medic` · `main` · public · MIT · CI green.
+Session state — what shipped last night, what is half-done, what to do next —
+lives in the siblings below and is deliberately **not** repeated here.
 
----
+| Read | For |
+|---|---|
+| `docs/HANDOVER_NEXT_SESSION.md` | Read this **first**. The goal, the operator, the offline roadblocks, current state, how instructions must be given. |
+| `docs/WORKING_METHOD.md` | The rules that were paid for, each with the evening it cost. Part 5 is the previous assistant's own failures. Read before writing code. |
+| `docs/NEXT_BRIEFS.md` | Six specified open jobs, A–F, ordered because they conflict. |
+| **this file** | Architecture, the firmware contracts, the testing model, the reasons behind the design. |
+| `README.md` | The feature tour — modes, screens, board catalogue, languages, current known gaps. Counts live there, not here. |
+| `SPEC.md` | The original specification and the "say only what you have checked" build rule. |
+| `docs/RTNODE2400_INTEGRATION.md` | The firmware author's own answers, with `file:line` refs. The **source** for §4. |
 
-## TL;DR
-Built from an empty repo to a full, tested codebase: **382 passing tests**, all
-five operating modes represented, both RTNode-2400 firmware contracts negotiated
-and locked in code, a real board flashed, and a bug-hunt pass done.
-
-## Environment / how to run
-- Working dir: `~/reticulum-tool` (== the repo). Python 3.14.6, pytest 9.1.1,
-  kivy 2.3.1.
-- **Run the suite:** `python3 -m pytest` → 382 passing. The tested core imports
-  **no third-party deps** (Kivy is UI-only and not imported by the suite); CI
-  runs it on 3.11/3.12.
-- **Headless-testable by design:** everything goes through a `Connection`
-  abstraction with an `EmulatedConnection` (rule list, substring / `^`-prefix
-  matching, first-match-wins). Every I/O seam is injected (GPS reader, HTTP
-  POST, AP-join, SSH runner) so the backend is fully unit-tested without
-  hardware or a display.
-- **UI** (`ui/`) is Kivy and cannot run in the dev sandbox (no display / PIL
-  text provider) — screens are compile-verified; their logic lives in the
-  tested core.
-- **UI deps (medic only):** `kivy`, plus `segno` for the birth-certificate QR
-  code (pure-Python, no transitive deps). Both are UI-layer only — the tested
-  core never imports them, so CI stays third-party-free. `ui/qr.py` imports
-  segno lazily and falls back to a hint if it's absent; install with
-  `pip3 install --user segno`.
-
-## What's built (by area)
-- `node_profile.py` — dataclasses / enums (foundation).
-- `transport/connection.py` — `Connection` base, `SSHConnection` (retries
-  transient 255s), `SerialConnection` (sentinel framing via `rfind`; base64
-  file-push), `EmulatedConnection`, `auto_detect_connection`.
-- `diagnostics/` — `base.py` (+ `_priv()` sudo-escalation, `_check`) and **7
-  modules, 91 checks**, each with plain-English text, a severity, and an auto-fix
-  where possible. Six **Pi** modules (Power / Reticulum-software / Radio /
-  System-health / Network-mesh / Client); `rtnode_2400.py` is **beacon-driven**
-  (Type-B boards have no text console — it parses the serial `[HealthBeacon]`
-  line).
-- `workflows/` — `build.py` (Pi, 10 steps), `rtnode_build.py` (Type-B, 5 steps +
-  GPS capture), `repair.py` (chains the 6 Pi modules; progress events; fix-all),
-  `clone.py` (Clone Tool — copies OS/assets/monitoring-DB, generates a *fresh*
-  identity), `rtnode_portal.py` (captive-portal client + `onboard()`),
-  `build_warnings.py`. Each workflow has its **own** step registry.
-- `monitor/` — `health_beacon.py` (14-byte codec; `encode`/`decode`/`to_bytes`;
-  two golden vectors), `health_poll.py` (on-demand poll with retries),
-  `registry.py` (**Monitor backend**: node registry keyed by dst hash; ingest;
-  status + 6 h-staleness→red; poll folding; JSON persistence = the monitoring
-  DB; commissioning log; field notes; firmware tracking; location + navigation),
-  `geo.py` (injectable GPS + nav links), `formatting.py`.
-- `ui/` — `theme`, `safety` (board-specific abort recovery), widgets
-  (`hex_status` hexagon, `stat_bar`, `sidebar`), screens (`monitor`, `repair`,
-  `node_detail`, `build`), `app`.
-- `assets/` — 4 Reticulum config templates; `scripts/flash_rtnode2400.sh`
-  (carried, hardened) + `apply_neopixel_patch.py`.
-- `docs/RTNODE2400_INTEGRATION.md` — firmware-authored contract answers (portal,
-  beacon/KISS, build, fault semantics, Section E location). `.github/workflows/`.
+Repo: `github.com/5ugAv/Reticulum-Node-Medic` · `main` · public · MIT.
 
 ---
 
-## Cross-project contracts with `5ugAv/RTNode-2400` firmware — LOCKED
-1. **Health beacon.** Type-B can't do LXMF (embedded C++ RNS is core-only).
-   Health rides in the `app_data` of an RNS **announce** on aspect
-   `rtnode.health` (SINGLE destination). Payload = **14 bytes, big-endian**,
-   decoded by `monitor/health_beacon.py`. Two golden vectors are pinned as
-   regression tests (spec + a real Heltec V4 capture
-   `010000002400c7cc053b3f000602`). Cross-impl hash match verified on hardware.
-2. **On-demand poll.** 1-byte opcode `0x01` to the same destination → immediate
-   beacon; a clean reply clears a node's warning to green. Unknown opcodes are
-   no-ops (forward-compatible).
-3. **Captive-portal onboarding.** `POST /save` (form-urlencoded) at
-   `http://10.0.0.1` (AP `RTNode-Setup`, open). Real field names/units wired:
-   `freq` (MHz decimal string), `bw` (Hz int), `sf`/`cr`/`txp`, `ssid`/`psk`/
-   `node_name`.
-4. **Location (Section E).** One GPS read at flash time: the node advertises a
-   firmware-**fuzzed ~800 m** public pin (`advert_en/lat/lon/jitter`, jitter ON
-   by default) while the **exact** coords go on the birth certificate for repair
-   visits; the registry stores them and `navigation()` yields Google/Apple
-   directions links.
+## 1. What it is
 
-## RTNode-2400 firmware open issues (tracked in the `5ugAv/RTNode-2400` session)
-These are **firmware-side**, not tool bugs, but they shape what the tool should
-watch for:
-- **Heap leak under persistent TCP connections** — not yet root-caused; heap
-  telemetry exists in the firmware logs (and in the beacon: `free_heap_kb` +
-  the `fault` bit, which trips at <40 KB internal SRAM sustained ~90 s). The
-  tool surfaces this via `heap_low` / `heap_fault` / the beacon fault flag.
-- **WiFi lockup under weak signal** — multi-subsystem stall (WiFi+BT+LoRa),
-  root cause unknown; a hardware-watchdog fix is in progress. The tool watches
-  `wifi_link` + `wifi_rssi` (warn ≤ −75, alert ≤ −85 dBm) and the beacon
-  `wdt_armed` flag.
-- **Hardware watchdog armed confirmation** — being investigated firmware-side.
-  Until confirmed, the tool's `watchdog_armed` check (beacon bit b4) may report
-  "not armed"; treat as informational until the firmware confirms.
+A Raspberry Pi 5 touchscreen field tool that **builds, monitors, diagnoses and
+clones** Reticulum LoRa mesh nodes. It is carried, not installed. The founding
+principle, in the operator's words:
 
-## Hardware milestone
-A physical Heltec V4 named **"TRUTH"** was flashed this session from the firmware
-working tree (`pio run -e heltec_V4_boundary-local -t upload`), hash-verified.
-Its USB serial was silent — **expected**: a fresh, un-onboarded board blocks in
-the captive portal and does not beacon until configured (hence `verify_beacon`
-runs *after* onboarding), plus an ESP32-S3 USB-CDC quirk. Not a fault.
+> Nodes stay useful and repairable when their keeper moves away or dies.
 
-## Key facts / decisions
-- RTNode-2400 identity persists in **LittleFS** — survives `pio run -t upload`,
-  rotates only on a full chip erase (the sole trigger for the tool's "re-bind
-  hash to existing node").
-- Board-id byte == RNode `BOARD_MODEL` (0x3F Heltec V4); the tool mirrors the
-  full enum.
-- Fault bit (b6) = internal free heap < 40 KB sustained ~90 s (3 strikes).
-- The same diagnostic code runs in all three self-healing tiers; only the
-  `Connection` differs.
+Everything follows from that. A node must be adoptable by someone who was not
+there when it was built; the medic must be handable to someone else; a node in
+the wild must not be traceable to a person or a place.
+
+**And it must work with no internet.** Not "degrade gracefully" — *work*. The
+mesh exists for places where infrastructure is absent. A tool that needs a
+connection to build a node for a network whose purpose is not needing a
+connection has missed its own point. Firmware, Python wheels, config templates,
+board images and map tiles are all carried on disk.
+
+### Node types
+
+- **Type A — Raspberry Pi transport/propagation node.** `rnsd` + `lxmd`, with an
+  attached RNode board as its radio.
+- **Type B — standalone RTNode-2400.** ESP32 (Heltec V3/V4, T-Beam Supreme)
+  running the 5ugAv microReticulum fork. No Pi. This is the firmware the
+  contracts in §4 are with.
+- **Type C — RNode only.** A LoRa32 board flashed with stock RNode firmware,
+  acting as a Type A node's radio.
+
+`node_profile.py` is the foundation module for all three: pure dataclasses and
+enums, no I/O, no side effects. Everything else takes a `NodeProfile`.
+
+### The radio invariant
+
+| Frequency | Bandwidth | SF | Coding rate | TX power |
+|---|---|---|---|---|
+| 915.125 MHz | 125 kHz | 9 | 5 (4/5) | 17 dBm |
+
+Regulatory basis: Australian LIPD Class Licence, 915 MHz band. These are the
+defaults in `RadioConfig` (`node_profile.py`) and they are a **mesh-wide
+invariant, not a preference** — nodes can only hear nodes on the same settings.
+They are baked in at birth, not adjusted afterwards. Change the tool's defaults
+and the home screen carries a badge until they are reverted.
 
 ---
 
-## ⚠️ HIGHEST-RISK OPEN ITEM — validate Pi-module parsers against real output
+## 2. Running it, testing it, and what this box cannot do
 
-Several **Pi** diagnostic checks parse command output whose format was authored
-for the emulator, **not** verified against real tools. A parser that passes in
-emulation but misreads real output is **worse than no check** — it gives false
-confidence.
+Verified 2026-08-15 in this worktree.
 
-### PROGRESS (validated against real hardware / RNS 1.3.7)
-- ✅ **PINNED & FIXED** (commit `113b098`): `radio_interface_up`, `path_table_populated`,
-  `channel_congestion` — real `rnstatus`/`rnpath -t` output exposed three real
-  bugs (radio "Up" matched anywhere while the RNode was Down; no "paths known"
-  line exists — use `rnpath -t` "is N hop" entries; real label is `Ch. Load : X%`).
-  `peers_heard` already matched.
-- ✅ **COMMAND NAMES CONFIRMED** against real `--help`: `rnodeconf -i` == `--info`
-  (both valid); `rnpath -t`, `rnstatus` correct.
+```bash
+python3 -m pytest              # the whole suite, headless, no hardware
+python3 main.py                # the touchscreen app (needs Kivy + a display)
+python3 main.py --version
+```
 
-### ⚠️ COMMAND-LEVEL BUGS FOUND (real RNS 1.3.7 help) — fix with hardware in the morning
-These checks call commands/flags that **do not exist**, so they don't just
-misparse — they error / silently pass on every real node:
-- **`rnping` DOES NOT EXIST** in RNS 1.3.7 → `mesh_ping_l2` (41) fails
-  "command not found". The real probe tool is **`rnprobe`** (`rnprobe [full_name]
-  [destination_hash]`).
-- **`rnodeconf` has NO `--loop` flag** → `radio_loopback` (21) and `loopback_l1`
-  (40) error. Redefine L1 as "`rnodeconf <port> -i` responds" (real serial
-  round-trip).
-- **`rnodeconf --version` prints the PROGRAM version, not the device** →
-  `serial_data_capable` (86) always passes (defeated). Use `-i` device response.
-- **`rnprobe` needs a REAL destination** (name or hex hash) — the placeholder
-  `"mesh-test"` won't resolve, so L2/L3 need a target strategy (e.g. a known peer
-  from `rnpath -t`, or a profile-configured test destination).
-- **Redundancy to resolve:** `serial_responsive` (12) ≈ `serial_data_capable`
-  (86) ≈ `radio_loopback` (21) all really test "board responds to `-i`". Consider
-  consolidating.
-- **`rnodeconf --info` output format** is still UNVERIFIED (faith, the connected
-  RTNode-2400, doesn't expose the RNode host protocol over USB in the boundary
-  build — "RNode did not respond"; the `radio_firmware` frequency/bandwidth/etc.
-  parsers need a capture from a board flashed with stock **RNode** firmware).
-
-### ✅ FIXED since (from a live Raspberry Pi + audit)
-- `clock_drift` (30): a default Pi has **no chrony** (uses systemd-timesyncd) —
-  `chronyc tracking` was command-not-found. Now falls back to
-  `timedatectl -p NTPSynchronized`. (commit `973a3e0`)
-- `serial_acl` (51): `getfacl` needs the `acl` package (absent on a stock Pi) —
-  it was false-positiving. A missing getfacl is now treated as unverifiable.
-- **RNode serial port**: the default `/dev/ttyUSB0` is wrong for ESP32-S3
-  native-USB RNodes, which are **`/dev/ttyACM0`** (verified on the Pi).
-  `detect_rnode_port()` now finds it via `/dev/serial/by-id/`. (commit `4885a99`)
-
-### ⚠️⚠️ ARCHITECTURAL — radio_firmware can't rnodeconf a live node's RNode
-The whole `radio_firmware` module (checks 12-21, 57-60, 86-88) queries
-`rnodeconf <port> --info`. **But on a live transport node, `rnsd` holds the
-RNode serial port**, so `rnodeconf` can't open it ("device busy") → the module
-would **false-positive the RNode as dead on every running node**. rnodeconf
-`--info` is only usable at **build time** (before rnsd starts) or with rnsd
-stopped. On a live node the radio state must come from **`rnstatus --json`**,
-whose `RNodeInterface` object exposes exactly what's needed: `status`,
-`channel_load_short/long`, `airtime_short/long`, `noise_floor`, `cpu_temp`,
-`battery_percent`, `interference`. Redesign radio_firmware to read those on a
-live node. **Needs an UP-RNode `rnstatus --json` capture** (the fields were all
-0.0/None when the RNode was Down) — the same live-node session that yields the
-build-time `rnodeconf --info` format.
-
-### STILL NEED real captures (need a reachable Pi node)
-`chronyc tracking` (regex looks standard-correct but unverified), `journalctl -u
-rnsd` (does rnsd log the word "announce"? what does a param-mismatch line say?),
-and `rnodeconf <port> --info` from a stock-RNode board.
-
-### ★ STRONGLY RECOMMENDED: switch rnstatus/rnpath checks to `--json`
-`rnstatus` and `rnpath` both support `--json`, which is **far more robust than
-scraping human text** (immune to spacing/wording changes across RNS versions).
-Real schemas captured from RNS 1.3.7:
-
-- `rnstatus --json` → `{"interfaces": [ {…}, … ]}`, each interface has:
-  `name` ("RNodeInterface[RNode Interface]"), `type` ("RNodeInterface" /
-  "AutoInterface" / "TCPClientInterface" / "LocalServerInterface"),
-  **`status` (bool — Up=true/Down=false)**, `channel_load_short`,
-  `channel_load_long`, `airtime_short`, `airtime_long`, `noise_floor`,
-  `battery_percent`, `cpu_temp`, `interference`, `peers`, `mode`, `hash`, …
-- `rnpath -t --json` → a **list** of `{"hash","via","hops","expires","interface"}`.
-
-Recommended rewrites (all four network/radio-interface checks):
-- `radio_interface_up`: interface with `type=="RNodeInterface"` and
-  `status==true`. (Unambiguous — safe to switch now.)
-- `peers_heard` / `path_table_populated`: `len(rnpath -t --json) > 0`.
-  (Unambiguous — safe.)
-- `channel_congestion`: use `channel_load_short`. **⚠ OPEN: confirm the scale** —
-  is it a 0.0–1.0 fraction (then threshold `< 0.70`) or 0–100 (`< 70`)? My read
-  of RNS is it's a **fraction** that rnstatus displays ×100 (the text showed
-  "Ch. Load : 0.0%"), but the RNode was Down (load 0.0) so I couldn't confirm.
-  Verify with an **Up** RNode under load before switching this one.
-
-Bonus: the JSON also exposes `battery_percent`, `cpu_temp`, `noise_floor`,
-`interference` per radio — these could feed real power/antenna checks instead of
-the current sysfs/`vcgencmd` reads.
-
-Caveat: `--json` needs the node's RNS to support it (1.x does; the mesh here
-runs current tooling). The current **text** parsers are validated-correct
-(commit `113b098`) and remain the safe default until the JSON switch is
-confirmed.
+- **Python 3.14.6, pytest 9.1.1** on the dev machine; CI runs the matrix on
+  **3.11 and 3.12** (`.github/workflows/`).
+- **Suite: 3295 collected — 3284 passed, 11 skipped, ~2 min** (run in this
+  worktree, 2026-08-15). Skips are toolchain/hardware gates. Counting rule
+  inherited from day one: the number only goes up.
+- **`pytest.ini` already sets `addopts = -q`.** Adding your own `-q` makes it
+  `-qq`, which **eats the summary line** — you get progress dots, no
+  "N passed". Use `-o addopts= -q` when you want the count.
+- **The tested core imports no third-party runtime dependency.** Kivy is
+  UI-only and the suite never imports it. CI installs `pytest`, plus **PyYAML
+  and Pillow as test-only deps** — `test_cloud_init_seed` parses the imager's
+  cloud-init independently instead of trusting the string it just built, and
+  `test_terrain` builds real elevation tiles and reads a height back out, which
+  is how the MBTiles row-flip got caught. Both were added after CI failed on
+  import for every commit while passing locally, because dev machines had them
+  and the runner did not.
+- **The UI cannot run on a dev box** (no display, no PIL text provider). Screens
+  are compile-verified; their logic lives in the tested core, which is the whole
+  point of §3.
+- **Emulated demos are opt-in.** On Linux — the deployed medic — flash, build,
+  PROBE and MITOSIS either do real work or fail with a stated reason. They never
+  report a fake success. `RNM_DEMO=1` opts into emulated hardware and seeded demo
+  nodes (`ui/hw_factories.py`, `ui/app.py`). SD imaging and both adoption paths
+  are never emulated.
+- **The medic's own runtime set** is pinned in `assets/requirements.txt` —
+  `rns`, `lxmf`, `segno`, `kivy`, `adafruit-nrfutil` — and cached as wheels into
+  `assets/packages/` by `workflows.wheelhouse`, so a clone installs the whole
+  stack `--no-index`, offline. Each is imported lazily and behind a fallback:
+  `ui/qr.py` returns `None` without segno so the caller prints a hint, the
+  announce listener returns quietly with no RNS. **`pexpect` is used by
+  `transport/connection.py` but is not in that file** — worth reconciling before
+  a field clone needs the PTY flash path.
+- **Deploy is rsync**, so `git log` on the medic reports the last commit and not
+  what is running — use `git status --porcelain` there. `.git/hooks/` holds the
+  airlock (`pre-commit`, `airlock-check.sh`, `deploy-medic.sh`). See
+  `WORKING_METHOD.md`; do not route around it.
 
 ---
 
-The tables below are the remaining format assumptions to verify. For each: the
-**exact command the tool runs**, and the **exact string / regex** each check
-looks for.
+## 3. How the code is arranged, and why
 
-For each command: the **exact command the tool runs**, and the **exact string /
-regex** each check looks for. First thing to verify is the **command name/flags**
-— if the command itself is wrong, the check silently gets empty output.
+```
+node_profile.py   dataclasses / enums — node roles, hardware, radio, connection
+transport/        how a command reaches a target: SSH, Local, Serial, Emulated
+diagnostics/      the check library: base classes + 8 category modules
+workflows/        operations performed ON a node: build, flash, repair, adopt,
+                  RTNode-2400 build, offline firmware/wheel caches, boards
+monitor/          the observation layer behind VITALS/SCAN: beacon codec, poll,
+                  registry, history, alerts, topology, placement, terrain,
+                  location sharing, the medic's own self-diagnosis
+provisioning/     the medic's OWN configuration and the link it uses to reach a
+                  node: display, power, storage, clock, identity, vault, SSH
+                  pinning, SD imaging, USB gadget, UART
+ui/               the Kivy app — shell, theme, widgets, screens, plus non-Kivy
+                  helpers (board detection, QR, i18n, geometry)
+firmware/         vendored RTNode-2400 C++ headers, contract-tested against the
+                  Python codec (§4.2)
+sandbox/          a Lima VM mirroring the medic's software surface, so sudo
+                  scoping, SSH hardening and the vault can be broken safely
+scripts/          systemd units, boot/autostart installer, vault operator scripts
+tests/            the suite, headless
+assets/           Reticulum config templates, translation catalogues, board
+                  photographs, UI artwork, carried firmware/wheels (gitignored)
+```
 
-### 1. `rnstatus`  (tool runs: `rnstatus`, no args)
-| Check | Module | Looks for |
+### The `Connection` abstraction — the load-bearing decision
+
+`transport/connection.py` defines one interface: `run(command) ->
+(code, stdout, stderr)`, plus `push_file` / `push_tree`. Four implementations:
+
+- **`SSHConnection`** — remote nodes. Retries transient 255s, pins host keys
+  through `provisioning/host_keys`, prepends `~/.local/bin` to PATH so bare RNS
+  console scripts resolve in a non-login shell.
+- **`LocalConnection`** — the medic acting on a board on its own USB. Same PATH
+  prepend. Also carries `run_interactive()`, a **pexpect PTY runner**, because
+  `rnodeconf --autoinstall` reads its confirm prompts from a *terminal* and a
+  piped run simply hangs. That runner sets `TERM=xterm` outright: it was
+  inherited by luck before, so the same board flashed at 21:38 and failed at
+  22:20 depending on how the UI had been launched (live, 2026-08-05).
+- **`SerialConnection`** — a serial console has no clean framing, so each command
+  is wrapped to echo a sentinel plus its exit code. It matches on the **last**
+  occurrence (`rfind`): a console that echoes the command replays the wrapped
+  line, sentinel and all, so the real completion marker is always the final one.
+  A sentinel that never arrives returns `(-1, raw, "Sentinel not found …")`
+  rather than hanging. Files go over base64.
+- **`EmulatedConnection`** — an ordered rule list. **First match wins**; a
+  pattern starting with `^` matches the start of the command, otherwise it
+  matches anywhere, so register prefix rules before broader substring rules. An
+  unmatched command returns **code 127 with "no emulator rule matched"** — a
+  path nobody wrote a rule for fails as loudly as a missing binary rather than
+  silently passing.
+
+`auto_detect_connection(target)` picks Serial for anything under `/dev/`, SSH
+otherwise.
+
+**Why this shape.** The same diagnostic code has to run in all three
+self-healing tiers — Tier 1 on the node under a systemd timer, Tier 2 remotely
+from the medic, Tier 3 over a physical serial link with the stack down. Only the
+`Connection` differs. The testability falls out of that for free: every I/O seam
+(GPS reader, HTTP POST, AP-join, SSH runner, `nmcli`) is injected, so the entire
+backend is unit-tested with no hardware and no display.
+
+### How the medic learns anything (the monitor path)
+
+`ui/app.py` starts two things at launch: a 30-second poll cycle (LAN `/status`
+discovery, `rnpath` mesh discovery) and an **RNS announce listener** registered
+against the shared `rnsd`. One handler ingests every announce into the persisted
+registry; a second collects `rtnode.health` nodes as poll targets. With no RNS
+library present — a dev box — the listener returns quietly and the rest of the
+app runs.
+
+Three properties of that path are load-bearing:
+
+- **One machine, one row.** A device announces on several aspect destinations;
+  the registry collapses them by announced *identity*, or VITALS shows the same
+  node three times.
+- **Every announce heard is logged, one line.** LoRa is quiet — a few an hour —
+  so the log is affordable, and it is the ground truth for "is the app deaf?", a
+  question that once took hours to answer. The registry only persists every 10th
+  poll cycle (≈ 5 min — the SD card is not hammered every 30 s), so judge beacon
+  arrival by the listener's log line, **never** by `registry.json` inside that
+  window.
+- **A cached Reticulum path is not a sighting.** Paths outlive the node by seven
+  days. Presence in the path table proves nothing about now.
+
+### Other structural rules
+
+- **Checks never short-circuit.** `DiagnosticCheck.run()` executes every check
+  in its category and returns one `Issue` per failure, so one fault cannot hide
+  a later one. Fixes dispatch by check name through `_fix_handlers()`.
+- **A fix is only "fixed" once the original check has been re-run and passes.**
+  Not when the fix command returned 0.
+- **Every workflow owns its step registry** (`_BUILD_STEPS` and the
+  `@build_step` decorator in `workflows/build.py`; the same pattern in
+  `rtnode_build.py`, `repair.py`). Steps are appended in definition order.
+- **Time is passed in, never read.** `monitor/registry.py` takes epoch seconds
+  as an argument so the backend is deterministic and testable.
+- **A step that cannot fail is not a check.** Ask of every step: what would have
+  to be true for this to report failure? If the answer is "nothing", it is
+  decoration. This has bitten repeatedly — see `NEXT_BRIEFS.md` C.
+
+---
+
+## 4. The contracts with `5ugAv/RTNode-2400` — LOCKED
+
+**This section is the most expensive knowledge in the repo.** It was negotiated
+across two projects. Restructure it if you must; do not lose a field name or a
+unit.
+
+Provenance: the firmware-side answers were verified by the firmware author
+against branch `feature/neopixel-status-led` with `file:line` refs, recorded in
+`docs/RTNODE2400_INTEGRATION.md`. The tool-side values below were re-read from
+this repo's source on 2026-08-15. Where the two are pinned to each other by a
+test, that is said explicitly.
+
+### 4.1 The health beacon
+
+Type B boards **cannot run LXMF** — their embedded C++ Reticulum is core RNS
+only. Health therefore rides in the `app_data` of a periodic RNS **announce** on
+the aspect **`rtnode.health`** (a SINGLE destination). Both sides must build the
+Destination with exactly that app_name + aspects or the hashes will not match.
+
+The node's identity **is** the announce source hash. No node id is in the
+payload; the medic maps the destination hash to a profile in its registry.
+
+Payload, **big-endian**, decoded by `monitor/health_beacon.py`:
+
+```
+[0]      format version           0x01 = v1, 0x02 = v2
+[1..4]   uptime seconds           uint32
+[5..6]   free heap KB             uint16   (low-water mark preferred)
+[7]      WiFi RSSI dBm            int8     (0 when WiFi is down)
+[8]      reset reason             enum: 0 poweron, 1 panic, 2 brownout,
+                                        3 task_wdt, 4 sw, 5 other
+[9]      flags                    b0 wifi_up · b1 lora_up · b2 tcp_backbone_up
+                                  b3 local_tcp_server_up · b4 wdt_armed
+                                  b5 psram · b6 fault/breach · b7 airtime_lock
+[10]     board id                 == RNode BOARD_MODEL (§4.6)
+[11..13] firmware version         major, minor, patch
+--- v2 tail, present only when [0] >= 0x02 ---------------------------------
+[14..15] battery millivolts       uint16   (0 = not reported)
+[16]     battery percent          uint8    (0xFF = unknown)
+[17]     power flags              b0 on_battery · b1 charging · b2 on_solar
+                                  b3 on_mains
+[18]     LoRa link SNR dB         int8     (-128 = unknown) — the node's view
+[19]     LoRa link RSSI dBm       int8     (-128 = unknown) — the node's view
+```
+
+`PAYLOAD_LEN = 14` (v1 / shared prefix), `PAYLOAD_LEN_V2 = 20`.
+
+**Forward compatibility is by design.** `decode()` reads only the prefix a given
+version defines and ignores trailing bytes, so a v1 tool reads a v2 beacon's
+shared prefix and a v2 tool leaves the tail `None` on a v1 beacon. A future v3
+can append again without a lockstep release. The v2 tail is gated on **length**,
+not on the version byte, so a truncated payload can never over-read.
+
+**The format byte is enforced, `0x01 <= b[0] <= 0x0F`.** Without that, anything
+≥ 14 bytes decoded — so every LXMF phone announce on the mesh (msgpack, first
+byte `0x9x`) landed on VITALS as a red-alerting phantom node. Seen live on the
+operator's screen, 2026-08-13. The ceiling rejects text and msgpack while
+leaving room for future versions.
+
+Interpretation thresholds (`monitor/health_beacon.py`, all tool-side):
+
+| Constant | Value | Meaning |
 |---|---|---|
-| `radio_interface_up` | reticulum_software | substring `"Up"` in the output |
-| `path_table_populated` | network_mesh | regex `(\d+)\s+paths known` |
-| `channel_congestion` | network_mesh | regex `Channel load:\s*(\d+)%` |
+| `WIFI_WARN_DBM` | −75 | weak WiFi — **warn only, never alert** |
+| `WIFI_ALERT_DBM` | −85 | retained as the "very weak" boundary; no longer escalates on its own |
+| `BATTERY_WARN_PCT` | 30 | only when reported **and discharging** |
+| `BATTERY_ALERT_PCT` | 12 | ditto |
+| `LORA_SNR_WARN_DB` | −9 | marginal link — warn only |
 
-⚠ Real `rnstatus` may not print the literal phrases "paths known" or
-"Channel load: N%". Capture a live `rnsd` `rnstatus` and confirm/rewrite.
+Red is reserved for real problems: the fault flag, LoRa down, or a battery
+critically low *and discharging*. A charging or mains node low on charge is
+recovering, and a solar node dipping overnight is normal — the outage watch, not
+the instant colour, decides whether it died. A healthy node that merely
+associates at a weak RSSI must not go red; a false alarm next to a working
+button teaches the operator to distrust the warnings that matter.
 
-### 2. `rnodeconf <port> --info`  (tool runs `--info`; **you referenced `-i` — confirm the flag**)
-Assumes an `--info` block containing these labelled lines:
-| Check | Looks for |
-|---|---|
-| `firmware_present` | `"Firmware version"` |
-| `firmware_hash_set` | `"Firmware hash"` |
-| `firmware_version_current` | `"Firmware version: 1.80"` (⚠ `LATEST_FIRMWARE` = `1.80` — confirm the real current version) |
-| `frequency` | `"915.125 MHz"` (`"{freq} MHz"`) |
-| `bandwidth` | `"125.0 KHz"` (`"{bw} KHz"`) |
-| `spreading_factor` | `"Spreading factor: 9"` |
-| `coding_rate` | `"Coding rate: 5"` |
-| `tx_power` | `"TX power: 17 dBm"` |
-| `heltec_baud` | `"Serial baud rate: 115200"` |
-| `antenna_rssi` | regex `Noise floor:\s*(-?\d+)` |
-| `heltec_hw_revision` | `"Hardware revision"` |
-| `flow_control_atmega` | `"ATmega"`, `"Flow control: enabled"` |
+### 4.2 Golden vectors and the anti-drift test
 
-⚠ Real `rnodeconf --info` reports frequency/bandwidth differently (often Hz, and
-different labels). This module is the **most format-sensitive** — capture a
-provisioned Heltec V4's `rnodeconf <port> --info`.
+`firmware/rtnode-2400/` vendors the firmware's own health-beacon headers —
+`HealthBeaconPack.h` (pure `stdint`, no Arduino/RNS deps),
+`HealthStatus.h`, `HealthBeacon.h`, `BirthCry.h` — so the wire format lives
+beside its Python counterpart.
 
-### 3. `rnpath`  (tool runs: `rnpath -t`)
-| Check | Looks for |
-|---|---|
-| `peers_heard` | non-empty output = at least one path/peer heard |
+`tests/test_firmware_beacon_contract.py` **compiles `HealthBeaconPack.h` with
+g++** and asserts its bytes equal `monitor.health_beacon.encode(...)` for both
+v1 and v2. It skips cleanly where g++ is absent. This is the mechanism that
+makes drift impossible rather than merely unlikely.
 
-⚠ Confirm the flag (`-t` vs a table subcommand) and that a populated table is
-non-empty text. Capture `rnpath` with real paths.
+Two golden vectors are additionally pinned in `tests/test_health_beacon.py`:
 
-### 4. `chronyc tracking`  (tool runs: `chronyc tracking`)
-| Check | Looks for |
-|---|---|
-| `clock_drift` | regex `System time\s*:\s*([\d.]+)\s*seconds` (drift ≥ 300 s → warn) |
+- the **spec vector** `0100001C20008CC2003F3F000602` — uptime 7200 s, heap 140 KB,
+  RSSI −62, reset poweron, flags b0–b5 set, board 0x3F, fw 0.6.2;
+- a **real Heltec V4 capture** supplied by the firmware side,
+  `010000002400c7cc053b3f000602` — uptime 36 s, heap 199 KB, RSSI −52, reset
+  "other", fw 0.6.2. The `app_data` is the portable contract artifact and is
+  untouched; the identity and destination hash that came with it were live-mesh
+  addresses and were replaced with patterned synthetics.
 
-⚠ chrony prints "System time : 0.000123 seconds slow of NTP time" — confirm the
-exact spacing/wording. (`ntp_sync` separately uses
-`timedatectl show -p NTPSynchronized --value` == `yes`.)
+Battery comes from the **firmware's own PMU path** — the existing
+`battery_installed` / `battery_voltage` / `battery_percent` / `battery_state`
+globals that `Power.h`'s `measure_battery()` maintains with vendor-verified
+per-board pins (Heltec V4 and V3: `pin_vbat=1`, `pin_ctrl=37`). A board with no
+battery honestly packs the "not reported" sentinels. **Never guess the pin** —
+the ADC fallback stays inert until `RTNODE_VBAT_ADC_PIN` /
+`RTNODE_VBAT_CTRL_PIN` / `RTNODE_VBAT_DIVIDER` are defined after bench
+verification.
 
-### 5. `journalctl -u rnsd`  (tool runs: `-n 200` and `-n 300`)
-| Check | Module | Looks for |
+### 4.3 On-demand poll
+
+A **1-byte opcode `0x01`** (`OPCODE_FULL_HEALTH`, `monitor/health_poll.py`) sent
+to the same `rtnode.health` destination makes the node announce immediately. A
+clean reply clears that node's warning back to green. **Unknown opcodes are
+no-ops** on the firmware side, which is what makes the byte forward-compatible.
+
+There is **no serial "dump health now"** trigger — the poll is LoRa-only, by
+decision, because a serial trigger would collide with KISS FEND framing.
+
+### 4.4 Captive-portal onboarding
+
+- AP **`RTNode-Setup`**, **open, no password**. Gateway/AP IP **10.0.0.1**, mask
+  255.255.255.0, DHCP pool from 10.0.0.2 up. Config server on **TCP 80**.
+- The form is served at `GET /` and submits **`POST /save`** as
+  **`application/x-www-form-urlencoded`**. There is **no JSON endpoint**.
+- Success is **HTTP 200 with an HTML page** containing *"Device will reboot in 3
+  seconds and connect to your WiFi network."* — not JSON, not a redirect —
+  followed by `ESP.restart()` about 3 s later.
+
+**Every accepted field:**
+
+```
+node_name  mdns_en  mdns_name  ssid  psk  wifi_en
+tcp_mode  tcp_port  bb_host  bb_port  ap_tcp_en  ap_tcp_port
+freq  bw  sf  cr  txp
+ifac_en  ifac_name  ifac_pass
+advert_en  advert_lat  advert_lon  advert_jitter
+disp_blank  disp_rot  stal  ltal
+```
+
+**Units and ranges** — these are the part that silently breaks things:
+
+| Field | Unit | Notes |
 |---|---|---|
-| `announces_sending` | network_mesh | substring `"announce"` (lowercased) |
-| `warm_boot_param_mismatch` | reticulum_software | substring `"mismatch"` (absence = healthy) |
+| `freq` | **MHz, decimal string** | e.g. `915.125`; multiplied by 1e6 in firmware |
+| `bw` | **Hz, integer** | e.g. `125000` for 125 kHz. Not kHz. |
+| `sf` | int 5–12 | |
+| `cr` | int 5–8 | |
+| `txp` | int dBm 2–30 | |
 
-⚠ Confirm rnsd actually logs the word "announce" in normal operation, and what a
-real radio-param mismatch line says.
+`ssid`/`psk` are needed only when `wifi_en=1`. LoRa fields are range-checked and
+applied **only if valid** — out-of-range or empty keeps the existing value, so a
+partial POST is safe. A blank `mdns_name` auto-generates `rtnodeXXXX`.
 
-**Also worth a real check** (same class, lower risk): `rnping` (`"reply"`),
-`rnprobe` (exit 0), `rnodeconf --loop` / `--version`,
-`vcgencmd get_throttled` (`throttled=0x…`), `df --output=pcent`, `ss -tlnp`,
-`getfacl`, `systemctl cat`. These are more standard but still assumed.
+**There is no runtime boundary/role field.** The LAN↔WAN boundary is a
+*compile-time* flag (`-DFIREWALL_MODE`, `-DFIREWALL_TCP_MODE=0`) baked into the
+`heltec_V4_boundary-local` build. The nearest runtime controls are `tcp_mode`
+(0 = backbone disabled, 1 = client) plus `bb_host`/`bb_port`.
 
-The RTNode-2400 module was already corrected this way once — its parsers were
-pinned against the real `[HealthBeacon]` line and `[WATCHDOG] CRITICAL … REBOOTING`
-format from a live board. Do the same for the five above and the Pi diagnostics
-are trustworthy on real hardware.
+What the medic actually posts (`workflows/rtnode_portal.build_form`) — the
+project-standard shape, so every node comes out the same: `ap_tcp_en=1` and
+`ap_tcp_port=4242` (this is how the monitor polls it and how another `rnsd`
+connects to it), `mdns_en=1` with `mdns_name` unset so the firmware picks its
+own, `tcp_mode=0` and `ifac_en=0` (standalone by design), and the five radio
+fields from `RadioConfig`.
+
+**First-beacon timing — the trap.** A fresh, un-onboarded board is **silent on
+USB**. With no saved config the firmware starts the captive portal and *blocks*
+in it, never reaching `health_beacon_init()` or `loop()`. Only after onboarding
+(config saved → reboot → portal skipped) does the first beacon fire, **~30 s
+after that configured boot**. So `verify_beacon` runs **after** `wifi_onboarding`,
+never straight after flash, with a capture window of about 45–60 s. This was
+corrected from real hardware; it was originally written the other way round and
+read as a fault.
+
+### 4.5 Location — the Section E contract
+
+One GPS read at flash time. The node advertises a **fuzzed** public pin while the
+**exact** coordinates stay on the medic's birth certificate for whoever has to
+go and repair it.
+
+| Field | Value | Notes |
+|---|---|---|
+| `advert_en` | `1` / `0` | enable device advertisement |
+| `advert_lat` | signed decimal degrees | e.g. `-37.814000` — N/E positive, S/W negative. Blank = omit. |
+| `advert_lon` | signed decimal degrees | e.g. `144.963000` |
+| `advert_jitter` | `1` / `0` | firmware privacy offset on/off |
+
+- **Firmware jitter** is a deterministic offset up to **~800 m**
+  (`ADV_JITTER_RADIUS_METERS`), seeded by the node's own hash so the fuzzed pin
+  sits in one stable spot rather than wandering between announces. It is a
+  firmware constant, **not** a per-node field.
+- **The medic fuzzes first, independently** (`monitor.geo.fuzz_location`,
+  `FUZZ_RADIUS_M = 800.0`, seeded on the node name or identity hash). The
+  `/save` POST crosses an **open WiFi AP as cleartext HTTP** and the node stores
+  what it receives in flash, so the exact fix must never be sent. Before the
+  2026-08-01 stranger's-eye audit the tool shipped 6-decimal (~0.1 m)
+  coordinates and delegated all privacy to an unverified firmware constant.
+- Both offsets are **deterministic on purpose**. An offset re-rolled per announce
+  could be averaged back to the truth by a patient observer.
+- The seed must stay stable for a second reason: upstream seals the discovery
+  announce with an **LXMF proof-of-work stamp, cost 14** (matching
+  `RNS/Discovery.py`'s `DEFAULT_STAMP_VALUE`) and caches it, redoing the work
+  only when advertised parameters change. Renaming a node therefore genuinely
+  moves its public pin and costs a fresh stamp — a real consequence, not an
+  accident.
+- With no fix or no confirmation, advertisement is left **off** — never `0,0`.
+- **Default is silence.** `NodeProfile.share_location` rests at `"hidden"`, and
+  `location_share.normalise()` maps anything unrecognised back to hidden: an
+  unreadable setting must never be read as consent to publish.
+
+**The announce mechanism, for both node classes.** There is exactly one way a
+Reticulum node's position reaches a public map, and it is neither LXMF telemetry
+nor ordinary announce app_data: **RNS interface discovery**, on the destination
+aspects `rnstransport.discovery.interface`. On a Pi node that is a handful of
+config keys inside the interface's own stanza (`discoverable`, `discovery_name`,
+`announce_interval` in **minutes**, `latitude`, `longitude`, `height`); on an
+RTNode-2400 the firmware emits the same announce from the four `advert_*` fields.
+Two node classes, one wire format. Cadence: one announce on enable/boot, then
+about every 6 h for LoRa airtime. Map pins reading "stale" between announces is
+expected, not a fault.
+
+The payload is `bytes([flags]) || umsgpack(info) || stamp`, where *info* is an
+integer-keyed map. Read out of the RNS the medic itself runs (1.3.7,
+`RNS/Discovery.py`, 2026-08-11): `LATITUDE = 0x03`, `LONGITUDE = 0x04`,
+`HEIGHT = 0x05`, `TRANSPORT_ID = 0xFE`, `NAME = 0xFF`, `APP_NAME =
+"rnstransport"`; `DISCOVERABLE_INTERFACE_TYPES` includes `RNodeInterface`.
+`announce_interval` is in **minutes** (×60, floor 5 min, default 6 h).
+
+**UNVERIFIED, and it must stay that way on screen:** rmap.world's v4 map listens
+for exactly this aspect and drops a node after 7 days without a fresh announce
+(its own instructions, read 2026-08-11), but **this tool has never observed one
+of our announces arrive there**, and RMAP v4 is beta by its authors' own
+description. Nothing in the UI may tell an operator their node *is* on a map —
+only what was configured, and when the node last announced. A LoRa-only node's
+announce does not leave the mesh at all; reaching a public map needs an uplink,
+which hands the node's public IP to a third party, which is why it lives behind
+`rmap_uplink_block()` and is never implied by choosing to share a position.
+
+**The trap that makes this more than a config write:** setting `discoverable` on
+an interface that is not already gateway or access-point mode makes RNS silently
+reassign it, and for an RNodeInterface it picks **ACCESS POINT** — which stops
+it rebroadcasting other destinations' announces. On the relay this mesh routes
+through, that trades the network for a dot on a website, quietly. The managed
+block therefore writes **`mode = gateway`** explicitly.
+
+**⚠ The fuzz is invertible, and this is the most urgent open item in the
+project.** Both offsets are seeded on values the same announce publishes — the
+destination hash in firmware, the node name on the medic — so anyone who has
+read either public repo recovers the true point exactly. Treat real protection
+as **0 m against an informed observer**. The operator's decision (2026-08-15) is
+to stop describing the fuzz on screen and ask for a deliberate operator-chosen
+offset instead. **Do not delete the fuzz machinery** — it is still correct
+wherever the tool holds a position the operator did not choose, and a
+secret-salt version would restore it as real protection. Full brief: `NEXT_BRIEFS.md` F.
+
+### 4.6 Board id byte == RNode `BOARD_MODEL`
+
+RTNode-2400 is a 5ugAv RNode fork, so tool and firmware share one enum. The tool
+mirrors it in full (`monitor/health_beacon.BOARD_IDS`):
+
+```
+0x31 RNode v1      0x38 Heltec32 V2   0x3E XIAO S3        0x4B T-Watch S3 Plus
+0x32 HMBRW         0x39 LoRa32 v1.0   0x3F Heltec32 V4    0x50 Generic nRF52
+0x33 T-Beam        0x3A Heltec32 V3   0x40 RNode NG 2.0   0x51 RAK4631
+0x34 Huzzah32      0x3B T-Deck        0x41 RNode NG 2.1   0x52 XIAO nRF
+0x35 Generic ESP32 0x3C Heltec T114   0x42 T3S3
+0x36 LoRa32 v2.0   0x3D T-Beam S v1   0x44 T-Echo
+0x37 LoRa32 v2.1
+```
+
+Plus one **synthetic** id kept deliberately above the real RNode range so it can
+never collide: **`0xA0` = RPi propagation**. A Pi+RNode node is not an RNode
+board but still emits a health beacon — it runs full RNS in Python, not the C++
+firmware — so it needs an id of its own.
+
+### 4.7 Firmware-side facts worth not rediscovering
+
+- **Identity persists in LittleFS.** It survives `pio run -t upload` and rotates
+  **only on a full chip erase** — which is the sole trigger for the tool's
+  "re-bind hash to existing node" path. The firmware self-generates it on the
+  first *configured* boot; a first-ever flash of just the app image is enough,
+  no separate `uploadfs`.
+- **Fault bit (b6)** = internal free heap below **40 KB** (`MALLOC_CAP_INTERNAL`,
+  `HEALTH_FAULT_HEAP_KB`), checked every **30 s**, confirmed after **3
+  consecutive** strikes (≈ 90 s sustained), with an immediate beacon on the
+  false→true edge. Clears at the first check where heap recovers to ≥ 40 KB.
+  `heap_low` messaging must mirror the same 40 KB floor.
+- **PlatformIO env: `heltec_V4_boundary-local`.** `heltec_V4_boundary` exists but
+  is missing the NeoPixel `lib_dep` — do not use it. `lib_deps`:
+  `XPowersLib@^0.2.1`, `adafruit/Adafruit NeoPixel@^1.12.0`; microReticulum is
+  vendored in-tree. Filesystem `littlefs`, partitions `default_16MB.csv`.
+- **Serial is native USB CDC at 115200**, and the stream carries **both** human
+  log lines **and** KISS frames — a reader must frame on **FEND (0xC0)** and
+  ignore unframed text.
+- **Passive log lines worth parsing, exactly:**
+  `[HealthBeacon] announce dst=<32 lowercase hex> data=<28 lowercase hex>` (bare,
+  no timestamp or level prefix), `[WATCHDOG] CRITICAL: Free heap <u> < <u> —
+  REBOOTING`, `[WATCHDOG] WiFi.status()=<d> heap=<u> min_heap=<u>` (there is **no**
+  separate `mem_free:` line — key heap checks off the WATCHDOG periodic),
+  `[TcpIF] Client <d> <up/down> (heap: …)`, `[Health] Status endpoint up:
+  http://<ip>/status`.
+- **Bootloader entry** when auto-reset fails on native-USB S3: hold PRG (BOOT),
+  tap RST, release RST, then release PRG → download mode; flash; tap RST to run.
+- **A rich `GET /status` JSON exists on port 80** (`faults[]`, `lora_online`,
+  `wifi_rssi`, `tcp_backbone_connected`, `board_model`, watchdog/heap), consumed
+  by `monitor/http_status.py`. Discovery markers are `"RTNode"` and `"RNM-Pi"`
+  (`PI_FORK`) — the Pi health reporter serves the same shape.
+- **A key the node did not send is not a key it set to false.** An RTNode-2400
+  sends all its link fields every time; a Pi propagation node omits any link it
+  could not read. Without guarding on "known", that silence arrived as `False` —
+  drawn amber, sending an operator to fix something never measured. Unknown
+  belongs in the same grey as everything else nobody asked about.
+
+### 4.8 Firmware-side open issues (tracked in the RTNode-2400 project)
+
+Not tool bugs, but they shape what the tool watches for. **UNVERIFIED as of this
+document — none re-checked here:**
+
+- **Heap leak under persistent TCP connections**, not root-caused. Surfaced via
+  `heap_low` / `heap_fault` and the beacon fault flag.
+- **WiFi lockup under weak signal** — a multi-subsystem stall (WiFi+BT+LoRa),
+  cause unknown, hardware-watchdog fix in progress. The tool watches `wifi_link`,
+  `wifi_rssi` and the beacon `wdt_armed` flag.
+- **Watchdog-armed confirmation** still being investigated firmware-side. Until
+  it is confirmed, treat a `watchdog_armed` "not armed" as informational.
 
 ---
 
-## Backlog (not done)
-- **Live `rnsd` wiring** — receiver logic done + tested (`registry.ingest_announce`);
-  only `RNS.Transport.register_announce_handler(...)` in a running Reticulum
-  instance remains (needs a live RNS + the tool's own radio).
-- **Pi-module parser validation** — the highest-risk item above.
-- **Map mode UI** — placeholder (needs carried offline map tiles).
-- **Offline PlatformIO cache** — Type-B field builds need `~/.platformio` carried;
-  firmware side to provide a pinned version manifest.
-- `nmcli` AP-join tested on a real Pi; OTA push; commissioning-log UI polish;
-  bundle an emoji font (currently short text labels instead).
-- **Placeholder repo deletion** (firmware side) — needs a `delete_repo` token.
+## 5. Diagnostics, and what real hardware taught the parsers
 
-## Real-hardware parser fixes (2026-07, verified against live nodes)
-Captured real command output and pinned parsers that passed in emulation but
-misread reality ("worse than no check"). Suite now **401 passing**.
+`diagnostics/` holds 8 modules. Seven run against Pi nodes in
+operator-visible repair order (`workflows/repair.MODULE_ORDER`):
 
-- **`rnodeconf --info` (real capture, Heltec LoRa32 fw 1.86)** — labels are
-  column-aligned with a **space before the colon** (`Spreading factor : 11`);
-  the old `Spreading factor: N` checks false-positived on every real device.
-  There is **no "Firmware hash"** field — the real one is
-  `Device signature : Verified/Unverified`. rnodeconf has **no `--loop` or
-  `--version`** flags. Decoy lines `Frequency range : ...` and
-  `Max TX power : ...` must be skipped. All fixed in
-  `diagnostics/radio_firmware.py` (regex + value compare, `(?<!Max )`
-  lookbehind, `has_info` gating) with regression tests. `LATEST_FIRMWARE` →
-  `1.86`. Architectural note: `rnodeconf --info` only works when `rnsd` is NOT
-  holding the port (build/maintenance); live radio state comes from
-  `rnstatus --json`.
-- **journalctl is the wrong source for rnsd log content** — the rnsd systemd
-  unit only journals its "Started" line; rnsd writes operational logs to
-  `~/.reticulum/logfile`. `announces_sending` (37) now keys off the real
-  `rnstatus --json` field `outgoing_announce_frequency > 0` (falling back to the
-  logfile), and `warm_boot_param_mismatch` (50) reads the logfile.
-  lxmd-sourced checks (63, client 76) left on journalctl pending confirmation of
-  lxmd's real log destination on a live node.
-- **`rnstatus --json` shape confirmed** on a live TCP link to FAITH:
-  `{"interfaces":[{...,"status":true,"mode":1,...}], "rxb":..,"txb":..}`;
-  RNodeInterface-only fields (`channel_load_short`, `noise_floor`,
-  `outgoing_announce_frequency`) are correctly absent on non-radio interfaces.
-  `rnpath -t --json` returns a JSON list, `[]` when empty.
-- **RTNode-2400 firmware HTTP `/status`** (FAITH, fork 0.6.2) — rich JSON health
-  endpoint on port 80 (`faults[]`, `lora_online`, `wifi_rssi`,
-  `tcp_backbone_connected`, `board_model:63`, watchdog/heap). Currently unused by
-  the mesh-only monitor; see memory `rtnode-2400-http-status`. A candidate
-  richer poll path for LAN-reachable Type-B nodes.
+**Power & hardware → Reticulum software → Radio & firmware → System health →
+Network & mesh → Client connectivity → GNSS**
 
-## Operating conventions (keep these)
-- **Strict TDD**, suite green at every step; test count only rises (11 → 401).
-- Every I/O seam injected for testability; each new workflow gets its own step
-  registry.
-- Commits are logical batches with clear messages; push via a transient git
-  credential helper (never store the token in `.git/config`); revoke tokens
-  after use.
-- Reviews find bugs **and** fix them with regression tests.
+The eighth, `rtnode_2400.py`, covers Type B boards and is **beacon-driven**:
+those boards have no text console, so on a physical visit the tool captures the
+passive `[HealthBeacon]` serial line, decodes it with the shared codec and
+derives its checks from the decoded fields plus a boot-log FATAL scan. Same wire
+contract as over the mesh. Check counts per module are visible as
+`self._check(...)` call sites; the README carries the current totals.
 
-## Suggested next move
-Capture the five real command outputs (above), paste them in, and pin the Pi
-parsers — that closes the biggest latent-correctness gap. Then wire the live
-`rnsd` announce handler + Monitor dashboard on an actual Pi with a radio. Map
-mode and the offline PlatformIO cache follow.
+Each check has a plain-English description, a severity
+(`critical` / `warning` / `info`) and an auto-fix where one exists. Source
+comments number the checks (`# 41 L2 …`) — those numbers are the stable way to
+refer to a check in a conversation.
+
+### The parser incidents — why these are written in the code
+
+A parser that passes in emulation but misreads real output is **worse than no
+check**: it gives false confidence. Every item below was found by capturing real
+command output and is now pinned with a regression test. They are recorded here
+because the same class of mistake keeps being available.
+
+- **`rnodeconf --info` labels are column-aligned with a space before the colon**
+  (`Spreading factor : 11`). The original `Spreading factor: N` patterns
+  false-positived on **every real device**. Patterns must allow `\s*:`.
+- **There is no "Firmware hash" field.** The real one is
+  `Device signature : Verified/Unverified`.
+- **`rnodeconf` has no `--loop` and no `--version` device flag.** L1 loopback is
+  redefined as "the board responded to `--info` with a populated block".
+- **`rnodeconf` exits 0 even on "Could not open port"** — so exit status is not
+  evidence. `_device_read()` gates on the info block actually being present;
+  `bool(info)` is not enough, because error text is also truthy.
+- **Decoy lines must be skipped**: `Frequency range : …` and `Max TX power : …`
+  sit near the real values. Hence the `(?<!Max )` lookbehind.
+- **Architectural: on a live node, `rnsd` holds the RNode serial port**, so
+  `rnodeconf --info` cannot open it and would false-positive the radio as dead on
+  every running node. `--info` is a **build-time / maintenance-mode** tool. Live
+  radio state comes from `rnstatus --json`.
+- **`rnstatus --json`** → `{"interfaces": [...], "rxb":…, "txb":…}`; each
+  interface carries `name`, `type` (`RNodeInterface` / `AutoInterface` /
+  `TCPClientInterface` / …), **`status` as a bool**, plus RNodeInterface-only
+  fields (`channel_load_short/long`, `airtime_short/long`, `noise_floor`,
+  `battery_percent`, `cpu_temp`, `interference`,
+  `outgoing_announce_frequency`, `incoming_announce_frequency`) which are
+  correctly absent on non-radio interfaces. `rnpath -t --json` returns a JSON
+  list, `[]` when empty. JSON is used throughout in preference to scraping human
+  text, which changes wording between RNS versions.
+- **`channel_load_short` is a PERCENT (0–100), not a 0.0–1.0 fraction.** Verified
+  live: human `rnstatus` prints `Ch. Load : 0.14%` while the JSON value is
+  `0.14`, and a busy node read `18.66`. The old `load < 0.70` plus a `×100`
+  display read a healthy node as **"675%"**.
+- **`rnping` needs a real destination hash.** The old `mesh-test` placeholder
+  never resolved, so L2 always false-failed. It now pings a peer taken from the
+  path table, and only when the radio is up — a down radio is already reported by
+  L1, and double-reporting one fault as three is its own kind of lie.
+- **`LATEST_FIRMWARE = "1.86"`**, from a real capture (Heltec LoRa32).
+- **`clock_drift`**: a stock Pi has no chrony (it uses systemd-timesyncd), so
+  `chronyc tracking` was command-not-found. Falls back to
+  `timedatectl -p NTPSynchronized`.
+- **`serial_acl`**: `getfacl` needs the `acl` package, absent on a stock Pi. A
+  missing `getfacl` is now treated as **unverifiable**, not as "no access" —
+  "I could not check" is its own answer.
+- **RNode serial port**: `/dev/ttyUSB0` is wrong for ESP32-S3 native-USB RNodes,
+  which appear as **`/dev/ttyACM*`**. `workflows.build.detect_rnode_port()`
+  prefers the stable `/dev/serial/by-id/` mapping and falls back to the first
+  `ttyACM`/`ttyUSB`. It also filters out the medic's **own** board at every step:
+  its USB id hints match Jonesey exactly, so an unfiltered first-match handed out
+  the medic's own radio (verified live, 2026-08-01 — the PROBE mis-target).
+
+**⚠ One live contradiction, unresolved.** `diagnostics/network_mesh.py` (check 37)
+states, citing a live Pi, that *rnsd under systemd writes no `~/.reticulum/logfile`
+at all* and logs to the journal — while `diagnostics/reticulum_software.py`
+(check 50, `warm_boot_param_mismatch`) still reads `tail -n 300
+~/.reticulum/logfile` on the strength of the opposite claim. If network_mesh is
+right, check 50 reads an empty string on every real node and therefore **can
+never fail**. Both comments cite hardware; they cannot both be current. Resolve
+it against a live node before trusting either. **UNVERIFIED here** — neither was
+re-checked in this session.
+
+---
+
+## 6. Invariants — things that must not quietly change
+
+- **Say only what you have checked.** Nothing is stated unless it is true, and
+  true means what the thing in front of you reported *now*. Full treatment in
+  `SPEC.md` and `WORKING_METHOD.md` Part 1; it is a build rule, not a sentiment.
+- **The honesty gate.** On the medic, real work or an honest failure. Never an
+  emulated success dressed as a real one.
+- **Location default is silence**, and an unreadable setting is not consent.
+- **An ambiguous flash menu is refused, not guessed.** `rnodeconf` picks some
+  boards' band menu by radio *chip* (SX1276 vs SX1262 variants sold under one
+  name), which nothing on this side of the USB cable can see. Those boards
+  refuse with that fact (`RNodeBoard.band_ambiguity`) rather than "not yet
+  verified", because a wrong band choice writes a wrong model byte into a
+  board's EEPROM. `tests/test_birth_matrix.py` sweeps every Pi × board pairing
+  through the full build in the emulator — that sweep is what found a missing
+  band map before it reached a bench.
+- **The medic can never flash its own radio.** `ui/onboard_roster.assert_flashable()`
+  is wired at the write boundaries; the medic carries a permanent RNode of its own
+  and must not confuse it with a work board.
+- **Read back every privileged or remote write.** A write that is not read back
+  is a claim, not a fact.
+- **When the tool and the hardware disagree, believe the hardware** — then find
+  out why the tool was wrong. It is almost never where you first look.
+
+---
+
+## 7. Open work
+
+The specified jobs are **A–F in `docs/NEXT_BRIEFS.md`**, ordered because they
+touch the same files. F (the location fuzz, §4.5) is the most urgent: it is the
+only place the tool currently tells an operator something false about their own
+safety.
+
+Current state, offline roadblocks and what is deployed-versus-committed are in
+`docs/HANDOVER_NEXT_SESSION.md`. Known feature gaps — MITOSIS, pre-staged tiles
+and OS image, partial translations, uneven board coverage — are listed in
+`README.md` under Status.
+
+Carried forward as **UNVERIFIED** in this document: §4.8 (the three firmware-side
+issues) and the log-source contradiction at the end of §5.
+
+**README counts are behind the code** — checked in this worktree on 2026-08-15,
+and this is exactly how a document rots, so it is written down rather than
+quietly fixed in one place:
+
+| README says | Actually |
+|---|---|
+| 1776 tests | 3295 collected, 3284 passed |
+| 4 languages | 8 catalogues in `assets/i18n/` + English |
+| 9 of 15 boards have a band map | 12 of 15 |
+| 10 of 15 boards have a photograph | 15 |
+
+The check totals (94 across 8 modules; 83 in the Pi chain, 11 for RTNode-2400)
+and the board catalogue size (15, 14 by autoinstall) **did** match. Counts belong
+in the README, so fix them there — not by copying a second set into this file.
+
+---
+
+## 8. Conventions
+
+- **Test-first, always.** Write the test, watch it fail for the right reason,
+  implement, run the **whole** suite. The count only goes up. A test that a step
+  reports success is not a test that it did anything — test that each step **can
+  fail**.
+- **Comments carry the incident.** Prose in this repo explains *why*, and names
+  the date and the symptom where there was one. That is what makes a comment
+  survive a rewrite by someone who was not there.
+- **Commits**: lowercase area prefix, blank line, then prose explaining why —
+  `diagnostics: …`, `monitor: …`, `docs: …`. Logical batches, not dumps.
+- **Never store a token in `.git/config`**; push through a transient credential
+  helper and revoke afterwards. Check commit **metadata** (author/committer), not
+  just diffs, before anything leaves the machine.
+- **Never restart the medic's UI while it is working.** `scripts/restart_ui.sh`
+  refuses during a flash or an SD write; a manual `pkill` does not.
