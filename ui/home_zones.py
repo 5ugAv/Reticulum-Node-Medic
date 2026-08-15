@@ -89,3 +89,30 @@ def screen_for(zone: str) -> str:
     """The screen a tapped zone should open. Identity unless ZONE_SCREEN says
     otherwise."""
     return ZONE_SCREEN.get(zone, zone)
+
+
+def card_rect(zone: str):
+    """``(left, top, width, height)`` of a poster card, in image fractions with
+    *top* measured DOWNWARD — or None for a zone that has no painted card.
+
+    Added for the first-use tour ([[show-dont-tell-ux]]): the screen that
+    explains BIRTH shows the operator the actual painted BIRTH card, cropped out
+    of the front page, rather than a sentence describing where to find it. They
+    then look for a picture they have already seen instead of a word they have
+    to match.
+
+    It reads the SAME constants ``zone_at`` divides the row by, so a card that
+    moves in the artwork moves in the tour with it. Computing the crop from its
+    own copy of the numbers is how a tour ends up pointing confidently at the
+    card next door.
+
+    Returns None — never a guess — for PROBE, MITOSIS and Settings, which have
+    no card on the poster. A tour screen showing a neighbouring card because
+    something had to be shown is the wrong-picture failure this rule exists to
+    stop.
+    """
+    if zone not in CARD_ORDER:
+        return None
+    span = (CARDS_RIGHT - CARDS_LEFT) / len(CARD_ORDER)
+    left = CARDS_LEFT + span * CARD_ORDER.index(zone)
+    return (left, CARDS_TOP, span, 1.0 - CARDS_TOP)

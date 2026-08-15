@@ -809,6 +809,31 @@ class ReticulumNodeMedicApp(App):
         birth_guide.add_widget(self._with_back(self.birth_guide_screen))
         self.sm.add_widget(birth_guide)
 
+        # First-use setup — the security ceremony, then a screen per mode.
+        # Registered like any other screen so Settings can re-open it (a medic
+        # handed to somebody else has to be able to start over) and so the
+        # boot-time route below is a plain switch_mode rather than a special
+        # case in the screen manager.
+        #
+        # NO _with_back WRAPPER, deliberately. That chrome's Back goes HOME, and
+        # home is the one place this walkthrough must not offer as an escape
+        # from its first screen — the whole point is that the operator has not
+        # seen the front page yet and would not know what they were skipping.
+        # The wizard carries its own Back on every step and hands home the way
+        # out from its own end (on_finish).
+        setup = Screen(name="setup")
+        from ui.screens.setup_wizard_screen import SetupWizardScreen
+        self.setup_screen = SetupWizardScreen(
+            on_finish=lambda: self.switch_mode("home"),
+            on_navigate=self.switch_mode,
+            # enrol_fn is NOT supplied: the encrypt-at-rest container has never
+            # been created on a real medic, and the summary says so out loud
+            # rather than claiming records are protected. Wiring the real one is
+            # task #34, gated on the boot-unlock decision.
+            vault_exists_fn=self._vault_exists)
+        setup.add_widget(self.setup_screen)
+        self.sm.add_widget(setup)
+
         pi_imager_scr = Screen(name="pi_imager")
         from ui.screens.pi_imager_screen import PiImagerScreen
         from workflows.rtnode_portal import medic_wifi_credentials
@@ -850,7 +875,7 @@ class ReticulumNodeMedicApp(App):
         mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_mitosis_factory)))
         self.sm.add_widget(mitosis)
 
-        self.sm.current = os.environ.get("RNM_START", "home")
+        self.sm.current = self._opening_screen()
         self._install_screensaver()
 
         # The on-screen keyboard floats above every screen (the touchscreen has
@@ -862,6 +887,44 @@ class ReticulumNodeMedicApp(App):
                                          pos_hint={"x": 0, "y": 0})
         root.add_widget(self.keyboard)
         return root
+
+    def _opening_screen(self):
+        """Where a boot lands: the setup walkthrough on a medic that has never
+        finished it, otherwise the front page.
+
+        RNM_START STILL WINS. It is how every bench session, screenshot and
+        preview reaches a screen directly, and a first-use check that overrode
+        it would silently swallow `RNM_START=vitals` on any developer machine
+        whose home directory has no marker — which is all of them.
+
+        Best-effort: a medic that cannot read its own config directory boots to
+        the front page. Refusing to start because a marker file is unreadable
+        would be a field tool bricking itself over a settings file.
+        """
+        forced = os.environ.get("RNM_START")
+        if forced:
+            return forced
+        try:
+            from provisioning.first_use import is_first_use
+            return "setup" if is_first_use() else "home"
+        except Exception:
+            return "home"
+
+    def _vault_exists(self) -> bool:
+        """Is there an encrypt-at-rest container on this card, right now?
+
+        Asked of the disk, never inferred. The setup wizard's summary prints
+        what this returns, and the standing rule is that nothing is stated
+        unless it is what the thing reported NOW — so a failure to look is
+        reported as "no", which is also the true answer today: the container has
+        been built and reviewed and has never been created on a real medic
+        ([[encrypt-at-rest]]).
+        """
+        try:
+            from provisioning.vault import CONTAINER_PATH
+            return os.path.exists(os.path.expanduser(CONTAINER_PATH))
+        except Exception:
+            return False
 
     def _start_monitor_polling(self, interval: float = 30.0):
         """Poll the LAN on a background thread; push live nodes to the screen
@@ -2056,6 +2119,16 @@ class ReticulumNodeMedicApp(App):
                 scr = getattr(self, "birth_screen", None)
                 if scr is not None and hasattr(scr, "enter_birth"):
                     scr.enter_birth()
+            if mode_name == "setup":
+                # A fresh walkthrough every time it is opened. The re-run entry
+                # in Settings exists for a medic being handed to somebody else,
+                # and showing THEM a summary of the previous operator's choices
+                # is the one thing that entry must never do. Reset before the
+                # transition, like the imager, so the old screen is never on
+                # screen for a beat mid-slide.
+                scr = getattr(self, "setup_screen", None)
+                if scr is not None and hasattr(scr, "reset"):
+                    scr.reset()
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest
