@@ -360,11 +360,16 @@ def describe(policy: Policy) -> Dict[str, str]:
 #: honest way to present a choice: the easy option is the one you scroll PAST to
 #: reach the strong ones, not the one hidden at the bottom.
 #:
-#: Not every combination is offered. Passphrase-alone and keyfile-alone are both
-#: constructible (``Policy`` accepts them) and both are reasonable, but a menu
-#: of seven permutations is a menu nobody reads. These four are the ladder; the
-#: model underneath takes any mix, so a different set can be offered later
-#: without touching the derivation.
+#: Not every combination is offered. ``Policy`` still accepts any mix — a menu
+#: of seven permutations is a menu nobody reads. These THREE are the ladder, and
+#: a passphrase is in every one of them: it carries the strength, and the
+#: pattern and the USB key are added TO it rather than standing beside it as a
+#: back door that would cap the whole vault. The model underneath is unchanged,
+#: so a different set can be offered later without touching the derivation.
+#:
+#: (Said "four" until 2026-08-15 — left behind when the pattern-only rung was
+#: dropped for maximum strength. A comment that outlives its code is how the
+#: next reader learns something false.)
 LEVELS = (
     Policy((PASSPHRASE,)),
     Policy((PATTERN, PASSPHRASE)),
