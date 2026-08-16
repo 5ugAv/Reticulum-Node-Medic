@@ -156,3 +156,51 @@ def test_pick_apk_ignores_play_store_bundles():
 def test_pick_apk_takes_the_largest_of_equals():
     picked = _pick_apk([_asset("a-arm64.apk", 10), _asset("b-x86_64.apk", 99)])
     assert picked["name"] == "b-x86_64.apk"
+
+
+# --- disk-space guard --------------------------------------------------------
+# These APKs are 100 MB and up. A download that fills the card fails late, having
+# already written most of the file, and leaves the medic worse off than before.
+
+class _SpaceConn(EmulatedConnection):
+    """Online, with a controllable amount of free space and a download counter."""
+
+    def __init__(self, free_kb, release_json):
+        super().__init__()
+        self.free_kb = free_kb
+        self.release_json = release_json
+        self.downloads = 0
+
+    def run(self, cmd, *a, **k):
+        if cmd.startswith("curl -fsI"):          # connectivity probe
+            return 0, "", ""
+        if "api.github.com" in cmd:
+            return 0, self.release_json, ""
+        if cmd.startswith("df -Pk"):
+            return 0, f"{self.free_kb}\n", ""
+        if cmd.startswith("stat -c"):            # nothing cached yet
+            return 1, "", ""
+        if cmd.startswith("curl -fsSL"):
+            self.downloads += 1
+            return 0, "", ""
+        return 0, "", ""
+
+
+def test_sync_app_refuses_when_the_card_would_fill():
+    rel = json.dumps({"tag_name": "v1", "assets": [
+        {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
+         "browser_download_url": "https://x/c.apk"}]})
+    c = _SpaceConn(free_kb=120 * 1024, release_json=rel)   # 120 MB free, needs 100 MB
+    res = sync_app("columba", c)
+    assert res.failed, "a 100 MB download with 120 MB free must be refused"
+    assert c.downloads == 0, "must refuse BEFORE downloading, not after"
+    assert "free" in res.message.lower()
+
+
+def test_sync_app_proceeds_when_there_is_room():
+    rel = json.dumps({"tag_name": "v1", "assets": [
+        {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
+         "browser_download_url": "https://x/c.apk"}]})
+    c = _SpaceConn(free_kb=2 * 1024 * 1024, release_json=rel)   # 2 GB free
+    sync_app("columba", c)
+    assert c.downloads == 1

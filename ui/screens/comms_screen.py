@@ -47,6 +47,7 @@ class CommsScreen(BoxLayout):
         from workflows.phone_apps import APPS_CACHE_DIR
         self._cache_dir = cache_dir or APPS_CACHE_DIR
         self._server = None
+        self._banner = None   # one-shot download outcome, consumed by _render
 
         self.add_widget(_line(tr("Communication apps"), bold=True, size="24sp", h=42))
         self.add_widget(_line(tr(
@@ -83,6 +84,15 @@ class CommsScreen(BoxLayout):
         threading.Thread(target=work, daemon=True).start()
 
     def _render(self, apps, store_on):
+        banner = getattr(self, "_banner", None)
+        self._banner = None
+        if banner:
+            self.status.text, colour = banner
+            self.status.color = theme.hex_to_rgba(theme.COLORS[colour])
+            self.list.clear_widgets()
+            for app in apps:
+                self.list.add_widget(self._card(app))
+            return
         self.status.text = (
             tr("Store-and-forward is ON — the medic holds messages for phones that are "
                "offline.") if store_on else
@@ -121,10 +131,71 @@ class CommsScreen(BoxLayout):
             btn.bind(on_release=lambda *_: self._send(app, card))
             card.add_widget(btn)
         else:
-            card.add_widget(_line(tr("Not carried yet — refresh it while the medic is "
-                                     "online (Settings ▸ Storage)."), size="12.5sp",
-                                  color="warning_yellow", h=34))
+            # THE SENTENCE THAT WAS HERE POINTED AT A BUTTON THAT DID NOT EXIST.
+            # It read "refresh it while the medic is online (Settings ▸ Storage)" —
+            # but Settings ▸ Storage has never synced phone apps, and nothing in
+            # the app called workflows.phone_apps.sync_all at all. The downloader
+            # was complete, tested, and unreachable. Found live on the medic
+            # 2026-08-16 with assets/apps holding nothing but .gitkeep, dated the
+            # day the directory was created.
+            #
+            # The refresh belongs HERE, next to the app that is missing, because
+            # this screen is where anyone discovers it is missing.
+            card.add_widget(_line(tr("Not carried yet."), size="12.5sp",
+                                  color="warning_yellow", h=22))
+            btn = Button(text=tr("Download it now"), size_hint_y=None, height=dp(50),
+                         bold=True, font_size="16sp", background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]))
+            note = _line(tr("Needs the internet. It is a large download — do it "
+                            "before you leave."), size="11.5sp",
+                         color="text_secondary", h=32)
+            btn.bind(on_release=lambda *_: self._fetch(app, card, btn, note))
+            card.add_widget(btn)
+            card.add_widget(note)
         return card
+
+    def _fetch(self, app, card, btn, note):
+        """Download one app's APK off-thread, then re-render the screen.
+
+        Deliberately per-app rather than a single "refresh everything": the two
+        catalogue apps are ~224 MB together at current picks, and an operator who
+        wants one messenger should not be made to carry both.
+        """
+        if getattr(card, "_fetching", False):
+            return
+        card._fetching = True
+        btn.disabled = True
+        btn.text = tr("Downloading {name}…").format(name=app["name"])
+        note.text = tr("This can take several minutes. Leave the screen open.")
+
+        def work():
+            try:
+                from transport.connection import LocalConnection
+                from workflows.phone_apps import sync_app
+                res = sync_app(app["key"], LocalConnection(), self._cache_dir)
+                ok, msg = (not res.failed), res.message
+                if not res.online and not msg:
+                    msg = tr("The medic is offline — connect it to the internet, "
+                             "then try again.")
+            except Exception as exc:                              # noqa: BLE001
+                ok, msg = False, tr("Download failed: {err}").format(err=exc)
+            Clock.schedule_once(lambda dt: self._fetched(ok, msg), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fetched(self, ok, message):
+        """Report the outcome, then re-read what is actually on disk.
+
+        The outcome is handed to the next _render rather than written to the label
+        here: enter() reloads off-thread and _render would otherwise overwrite it a
+        moment later, which reads as the message flashing and vanishing.
+
+        The banner says what the download reported; the cards below it are rebuilt
+        from `ls`, so a card that flips to "Send to my phone" is evidence the file
+        landed, not a claim that it did."""
+        self._banner = (message or (tr("Done.") if ok else tr("Nothing downloaded.")),
+                        "green" if ok else "warning_yellow")
+        self.enter()
 
     def _send(self, app, card):
         """Start the local server and show a QR of the download URL under the card."""

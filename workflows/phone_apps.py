@@ -135,6 +135,21 @@ def _written_size(connection: Connection, path: str) -> Optional[int]:
     return int(s) if code == 0 and s.isdigit() else None
 
 
+#: Never fill the card. These APKs are 100 MB and up, and the medic writing its own
+#: root filesystem full is a brick in the field, not an inconvenience — SD corruption
+#: on this hardware is already a known failure (see docs on overlayfs). Leave room.
+_DISK_HEADROOM = 256 * 1024 * 1024
+
+
+def _free_bytes(connection: Connection, path: str) -> Optional[int]:
+    """Free bytes on the filesystem holding *path*, or None if it cannot be read.
+    Asked over the connection, not with shutil, because the caller may be remote."""
+    code, out, _ = connection.run(
+        f"df -Pk {path} 2>/dev/null | tail -1 | awk '{{print $4}}'")
+    s = out.strip()
+    return int(s) * 1024 if code == 0 and s.isdigit() else None
+
+
 def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_DIR,
              force: bool = False) -> SyncResult:
     """Refresh one app's cached APK from its latest GitHub release when online.
@@ -167,6 +182,17 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
     if not force and have is not None and (size is None or have == size):
         res.up_to_date.append(name)
     else:
+        # Check BEFORE starting, not after. A download that runs the card out of
+        # space fails late, having already written most of a 100 MB file, and
+        # leaves the medic worse off than when it started.
+        free = _free_bytes(connection, cache_dir)
+        if size and free is not None and free < size + _DISK_HEADROOM:
+            res.failed.append(name)
+            res.message = (
+                f"{app['name']} {rel['tag']} needs {size // (1024 * 1024)} MB and "
+                f"only {free // (1024 * 1024)} MB is free. Nothing downloaded — "
+                "clear some space first.")
+            return res
         if connection.run(f"curl -fsSL -m 300 -o {path} {url}")[0] != 0:
             res.failed.append(name)
             res.message = f"{app['name']} {rel['tag']}: download failed."
