@@ -35,7 +35,7 @@ def test_audit_reports_every_item_even_when_all_are_missing():
     st = audit(_Disk(present=[]))
     keys = {s.key for s in st}
     assert keys == {"rnode_firmware", "phone_apps", "map_tiles", "wheels",
-                    "build_toolchain"}
+                    "build_toolchain", "os_image"}
     assert all(not s.carried for s in st)
     # Every gap must explain what it costs in the field, or the report is a
     # checklist nobody can act on.
@@ -86,3 +86,12 @@ def test_untoppable_items_are_flagged_so_nobody_waits_for_them():
     assert st["wheels"].toppable is False
     assert st["rnode_firmware"].toppable is True
     assert st["phone_apps"].toppable is True
+
+
+def test_a_medic_with_no_os_image_is_never_called_ready():
+    """The audit once checked five things and not the one without which no node
+    can be built. A missing OS image must fail readiness, not pass silently."""
+    st = {s.key: s for s in audit(_Disk(present=["arduino15", "mbtiles", "packages",
+                                                 "firmware_marker", "apps"]))}
+    assert st["os_image"].carried is False
+    assert st["os_image"].toppable is False, "500MB — never fetched by accident"

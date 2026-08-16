@@ -118,6 +118,27 @@ def audit(connection: Connection) -> List[CarryStatus]:
         detail=f"{nwhl} wheel(s)" if nwhl else "none",
         nbytes=_bytes(connection, "~/reticulum-tool/assets/packages")))
 
+    # --- The Pi OS image -----------------------------------------------------
+    # THE MODULE'S OWN BLIND SPOT, found by an adversarial review 2026-08-16: this
+    # audit checked five things and not the one without which no node can be built
+    # at all. A medic missing the OS image was reported "Ready to go" — exactly the
+    # failure this file's docstring warns about, applied to itself.
+    #
+    # Not toppable: which image variant to carry is a human decision, and it is a
+    # ~500 MB download nobody should trigger by accident.
+    from provisioning.pi_imager import IMAGE_CANDIDATES
+    img = ""
+    for cand in IMAGE_CANDIDATES:
+        if _first_line(connection, f"ls -1 {cand} 2>/dev/null"):
+            img = cand
+            break
+    out.append(CarryStatus(
+        "os_image", "Raspberry Pi OS image",
+        "Without it no SD card can be written — no node can be built at all.",
+        carried=bool(img), toppable=False,
+        detail=(img.rsplit("/", 1)[-1] if img else "no image carried"),
+        nbytes=_bytes(connection, img) if img else 0))
+
     # --- Firmware build toolchain -------------------------------------------
     # RTNode firmware is COMPILED on the medic, so the toolchain must be aboard.
     esp = _count(connection, "~/.arduino15/packages/esp32")

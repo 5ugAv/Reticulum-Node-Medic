@@ -22,6 +22,8 @@ def _online(cached_size=None, written=SIZE, release=None):
     c.rule("curl -fsI", 0, "HTTP/2 200")
     c.rule("curl -fsSL -m 20", 0, release or _release())
     c.rule("curl -fsSL -m 300 -o", 0, "")
+    c.rule("df -Pk", 0, "52428800")          # 50 GB free — the guard is not under test here
+    c.rule("mv -f", 0, "")
     c.rule("stat -c %s", 1 if cached_size is None else 0,
            "" if cached_size is None else str(cached_size))
     c.rule("wc -c <", 0, str(written))
@@ -204,3 +206,98 @@ def test_sync_app_proceeds_when_there_is_room():
     c = _SpaceConn(free_kb=2 * 1024 * 1024, release_json=rel)   # 2 GB free
     sync_app("columba", c)
     assert c.downloads == 1
+
+
+# --- the field-failure pair (found adversarially, 2026-08-16) -----------------
+# A download killed at 30s that leaves a fragment reported as "carried" is worse
+# than no download at all: the phone gets a truncated APK with no internet to
+# recover. These pin both halves.
+
+class _CurlConn(EmulatedConnection):
+    """Records the timeout actually passed, and can fail the download."""
+
+    def __init__(self, release_json, fail_download=False, written=None):
+        super().__init__()
+        self.release_json = release_json
+        self.fail_download = fail_download
+        self.written = written              # bytes _written_size should report
+        self.cmds = []
+        self.download_timeout = None
+
+    def run(self, cmd, *a, **k):
+        self.cmds.append(cmd)
+        if cmd.startswith("curl -fsI"):
+            return 0, "", ""
+        if "api.github.com" in cmd:
+            return 0, self.release_json, ""
+        if cmd.startswith("df -Pk"):
+            return 0, f"{50 * 1024 * 1024}\n", ""      # 50 GB free
+        if cmd.startswith("stat -c"):
+            return 1, "", ""
+        if cmd.startswith("curl -fsSL"):
+            self.download_timeout = k.get("timeout", a[0] if a else None)
+            return (1 if self.fail_download else 0), "", ""
+        if cmd.startswith("wc -c"):
+            return (0, f"{self.written}\n", "") if self.written is not None else (1, "", "")
+        return 0, "", ""
+
+
+_REL = json.dumps({"tag_name": "v1", "assets": [
+    {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
+     "browser_download_url": "https://x/c.apk"}]})
+
+
+def test_download_is_given_longer_than_the_default_30s():
+    # curl's own -m 300 is useless if Connection.run kills it at its 30s default.
+    c = _CurlConn(_REL, written=100 * 1024 * 1024)
+    sync_app("columba", c)
+    assert c.download_timeout is not None, "no timeout passed — falls back to 30s"
+    assert c.download_timeout > 300, f"timeout {c.download_timeout} is too short for a 100MB APK"
+
+
+def test_a_failed_download_leaves_no_apk_behind():
+    c = _CurlConn(_REL, fail_download=True)
+    res = sync_app("columba", c)
+    assert res.failed
+    # It must download to a staging name, and remove it on failure.
+    assert any(".part" in x for x in c.cmds), "must not write straight to the final name"
+    assert any(x.startswith("rm -f") and ".part" in x for x in c.cmds), \
+        "a failed download must delete its fragment"
+    assert not any(x.startswith("mv ") for x in c.cmds), "must not publish a failed file"
+
+
+def test_a_good_download_is_renamed_into_place_only_at_the_end():
+    c = _CurlConn(_REL, written=100 * 1024 * 1024)
+    res = sync_app("columba", c)
+    assert not res.failed
+    assert any(x.startswith("mv -f") and ".part" in x for x in c.cmds)
+
+
+def test_space_guard_fails_CLOSED_when_free_space_cannot_be_read():
+    # Previously `free is not None` meant an unreadable df skipped the check.
+    class _NoDf(_CurlConn):
+        def run(self, cmd, *a, **k):
+            if cmd.startswith("df -Pk"):
+                return 0, "not-a-number\n", ""
+            return super().run(cmd, *a, **k)
+    c = _NoDf(_REL)
+    res = sync_app("columba", c)
+    assert res.failed, "unmeasurable space must stop the download, not wave it through"
+    # -o distinguishes the DOWNLOAD from the release-API fetch, which also uses curl -fsSL.
+    assert not any("-o " in x for x in c.cmds if x.startswith("curl -fsSL"))
+
+
+def test_cached_app_prefers_the_version_the_marker_names():
+    # ls sorts lexicographically: '0.10' sorts BEFORE '0.9', so files[-1] picked
+    # the stale build while the marker correctly said 0.10.
+    class _TwoVersions(EmulatedConnection):
+        def run(self, cmd, *a, **k):
+            if cmd.startswith("ls -1"):
+                return 0, ("/c/columba-0.10-universal.apk\n"
+                           "/c/columba-0.9-universal.apk\n"), ""
+            if "_version" in cmd:
+                return 0, "v0.10\n", ""
+            return 0, "", ""
+    got = cached_app("columba", _TwoVersions(), cache_dir="/c")
+    assert got["version"] == "v0.10"
+    assert "0.10" in got["file"], f"picked the stale build: {got['file']}"

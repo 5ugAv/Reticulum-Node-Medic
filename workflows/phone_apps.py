@@ -185,23 +185,55 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
         # Check BEFORE starting, not after. A download that runs the card out of
         # space fails late, having already written most of a 100 MB file, and
         # leaves the medic worse off than when it started.
+        # FAIL CLOSED. This previously read `free is not None`, so an unreadable
+        # df (busybox, an odd mount, a stat error) skipped the check entirely —
+        # backwards for a guard whose whole purpose is not bricking the card.
+        # "I could not measure the space" is a reason to stop, not to proceed.
         free = _free_bytes(connection, cache_dir)
-        if size and free is not None and free < size + _DISK_HEADROOM:
+        if size and free is None:
+            res.failed.append(name)
+            res.message = (f"{app['name']}: could not read free space on the card, "
+                           "so nothing was downloaded. Check the medic's storage.")
+            return res
+        if size and free < size + _DISK_HEADROOM:
             res.failed.append(name)
             res.message = (
                 f"{app['name']} {rel['tag']} needs {size // (1024 * 1024)} MB and "
                 f"only {free // (1024 * 1024)} MB is free. Nothing downloaded — "
                 "clear some space first.")
             return res
-        if connection.run(f"curl -fsSL -m 300 -o {path} {url}")[0] != 0:
+        # DOWNLOAD TO A TEMP NAME, RENAME ONLY ONCE VERIFIED.
+        #
+        # Two faults found together on 2026-08-16, and they compounded into the
+        # worst possible field behaviour:
+        #
+        #  1. `curl -m 300` set curl's own limit, but Connection.run() defaults to
+        #     timeout=30 (transport/connection.py:25) and the caller never passed
+        #     one — so Python killed curl at 30s. A 100 MB APK cannot arrive in
+        #     30s on any realistic connection, making a killed download the
+        #     COMMON case, not the rare one.
+        #  2. This branch returned without deleting the partial file, while the
+        #     wrong-size branch below did delete. cached_app() only asks whether a
+        #     filename matches — not whether the bytes are whole — so the fragment
+        #     was reported as carried and the card offered "Send to my phone".
+        #
+        # A phone in the field would have been handed a truncated APK, with no
+        # internet to recover. Writing to `.part` means an interrupted download
+        # can never be mistaken for a finished one, whatever kills it.
+        part = f"{path}.part"
+        connection.run(f"rm -f {part}")
+        if connection.run(f"curl -fsSL -m 300 -o {part} {url}", timeout=330)[0] != 0:
+            connection.run(f"rm -f {part}")
             res.failed.append(name)
-            res.message = f"{app['name']} {rel['tag']}: download failed."
+            res.message = (f"{app['name']} {rel['tag']}: download failed — nothing "
+                           "was kept. Check the connection and try again.")
             return res
-        if size is not None and _written_size(connection, path) != size:
-            connection.run(f"rm -f {path}")
+        if size is not None and _written_size(connection, part) != size:
+            connection.run(f"rm -f {part}")
             res.failed.append(name)
             res.message = f"{app['name']} {rel['tag']}: download corrupt, discarded."
             return res
+        connection.run(f"mv -f {part} {path}")
         res.changed.append(name)
 
     meta = {"app": app["name"], "key": app_key, "version": rel["tag"], "file": name,
@@ -232,10 +264,19 @@ def cached_app(app_key: str, connection: Connection,
     files = [f for f in out.strip().splitlines() if app_key in f.rsplit("/", 1)[-1].lower()]
     if not files:
         return None
-    path = files[-1]
+    # `ls` sorts lexicographically, so files[-1] is NOT the newest: with
+    # columba-0.9 and columba-0.10 present, '1' < '9' puts 0.10 FIRST and the
+    # stale 0.9 build wins. Trust the version marker the download wrote, and only
+    # fall back to sort order when no marker names a file that is actually here.
     vcode, vout, _ = connection.run(f"cat {cache_dir}/.{app_key}_version 2>/dev/null")
+    version = vout.strip() if vcode == 0 and vout.strip() else None
+    path = files[-1]
+    if version:
+        tagged = [f for f in files if version.lstrip("v") in f]
+        if tagged:
+            path = tagged[-1]
     return {"key": app_key, "name": app["name"], "file": path.rsplit("/", 1)[-1],
-            "path": path, "version": vout.strip() if vcode == 0 and vout.strip() else None,
+            "path": path, "version": version,
             "license": app["license"], "blurb": app["blurb"]}
 
 
