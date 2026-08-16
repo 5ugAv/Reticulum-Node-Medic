@@ -103,3 +103,56 @@ def test_cached_apps_lists_carried_and_missing():
     assert rows["columba"]["carried"] is True
     assert rows["sideband"]["carried"] is False      # not on disk
     assert rows["sideband"]["name"] == "Sideband"    # still catalogued
+
+
+# --- APK variant selection ---------------------------------------------------
+# Columba v2.0.9 shipped 28 assets in one release. The old rule took the first
+# name containing "universal", which was an EXPERIMENTAL build — chosen by
+# alphabetical order rather than by anyone. These pin the order of preference.
+
+def _asset(name, size=1000):
+    return {"name": name, "browser_download_url": f"https://x/{name}", "size": size}
+
+
+def test_pick_apk_rejects_experimental_even_when_it_sorts_first():
+    picked = _pick_apk([
+        _asset("columba-2.0.9-EXPERIMENTAL-reticulum-kt-universal.apk", 56_857_930),
+        _asset("columba-2.0.9-official-rns-py-universal.apk", 105_321_979),
+    ])
+    assert "official" in picked["name"]
+    assert "EXPERIMENTAL" not in picked["name"]
+
+
+def test_pick_apk_prefers_universal_over_arch_split():
+    picked = _pick_apk([
+        _asset("app-arm64-v8a.apk", 99_000_000),      # bigger, but installs on fewer phones
+        _asset("app-universal.apk", 50_000_000),
+    ])
+    assert picked["name"] == "app-universal.apk"
+
+
+def test_pick_apk_prefers_the_build_without_crash_telemetry():
+    picked = _pick_apk([
+        _asset("app-universal.apk", 105_321_979),
+        _asset("app-universal-no-sentry.apk", 102_994_600),
+    ])
+    assert picked["name"] == "app-universal-no-sentry.apk"
+
+
+def test_pick_apk_falls_back_rather_than_returning_nothing():
+    # A release offering ONLY a pre-release build still yields it: narrowing must
+    # never empty the list, or the medic carries nothing at all.
+    picked = _pick_apk([_asset("app-beta-arm64.apk", 5)])
+    assert picked is not None and "beta" in picked["name"]
+
+
+def test_pick_apk_ignores_play_store_bundles():
+    # .aab is a Play Store bundle. It cannot be sideloaded, so it must never win.
+    picked = _pick_apk([_asset("app-universal.aab", 99_000_000),
+                        _asset("app-arm64.apk", 10)])
+    assert picked["name"].endswith(".apk")
+
+
+def test_pick_apk_takes_the_largest_of_equals():
+    picked = _pick_apk([_asset("a-arm64.apk", 10), _asset("b-x86_64.apk", 99)])
+    assert picked["name"] == "b-x86_64.apk"

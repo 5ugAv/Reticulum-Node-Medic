@@ -60,16 +60,46 @@ def _shq(s: str) -> str:
     return "'" + s.replace("'", "'\\''") + "'"
 
 
+#: Build lines we must never hand a stranger. Columba v2.0.9 shipped 28 assets in
+#: one release — an ``EXPERIMENTAL-reticulum-kt`` line beside an ``official-rns-py``
+#: line — and the old "first name containing 'universal'" rule picked EXPERIMENTAL,
+#: because that is what sorts first. Nobody chose that; alphabetical order did.
+_APK_REJECT = ("experimental", "alpha", "beta", "nightly", "debug", "unsigned", "-rc")
+
+#: Any-CPU build. An arch-split APK installs on some phones and not others, and the
+#: medic cannot know which phone is about to walk up to it.
+_APK_PREFER_ANY_CPU = "universal"
+
+#: Crash reporting phones home to a remote service. A tool whose whole point is
+#: working where there is no infrastructure, handed out by an operator who is not
+#: traceable to the node, should not ship telemetry by default. Where a publisher
+#: offers the choice, take the quiet build.
+_APK_PREFER_QUIET = "no-sentry"
+
+
 def _pick_apk(assets: list) -> Optional[dict]:
-    """Choose the APK to carry: a 'universal' build if present (any CPU), else the
-    largest ``.apk`` (arch-split releases list several; the fat one is biggest)."""
+    """Choose the APK to carry, in this order of preference:
+
+    1. a real ``.apk`` (``.aab`` is a Play Store bundle and will not install),
+    2. a release build over a pre-release one (see ``_APK_REJECT``),
+    3. an any-CPU ``universal`` build over an arch-split one,
+    4. a build without bundled crash telemetry,
+    5. the largest of whatever survives — arch-split releases list several and the
+       fat one covers the most hardware.
+
+    Each step only narrows when something survives it, so a release that offers no
+    choice at all still yields its single APK."""
+    def _narrow(cands, keep):
+        kept = [a for a in cands if keep(str(a.get("name", "")).lower())]
+        return kept or cands
+
     apks = [a for a in assets
             if isinstance(a, dict) and str(a.get("name", "")).lower().endswith(".apk")]
     if not apks:
         return None
-    for a in apks:
-        if "universal" in str(a.get("name", "")).lower():
-            return a
+    apks = _narrow(apks, lambda n: not any(t in n for t in _APK_REJECT))
+    apks = _narrow(apks, lambda n: _APK_PREFER_ANY_CPU in n)
+    apks = _narrow(apks, lambda n: _APK_PREFER_QUIET in n)
     return max(apks, key=lambda a: a.get("size") or 0)
 
 
