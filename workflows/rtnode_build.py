@@ -61,8 +61,11 @@ RTNODE_TARGETS = {
     "heltec_v4": RTNodeTarget(
         "heltec_v4", "Heltec V4", RTNODE_BUILD_ENV,
         NodeHardware.HELTEC_V4, verify="beacon"),
-    # V3 and V4 are BOTH ESP32-S3 native-USB — the medic can't tell them apart, so
-    # the operator confirms. V3 has its own PlatformIO env (heltec_V3_boundary:
+    # V3 and V4 are both ESP32-S3, but they are NOT indistinguishable: the V3
+    # goes through a CP2102 bridge (ttyUSB*) and the V4 is native USB (ttyACM*),
+    # so ui.board_detect narrows an S3-on-a-bridge to the V3 alone. Proven on the
+    # bench 2026-08-18 with both boards. V3 has its own PlatformIO env
+    # (heltec_V3_boundary:
     # heltec_wifi_lora_32_V3 board, 8MB, no NeoPixel — V3 has no onboard RGB).
     "heltec_v3": RTNodeTarget(
         "heltec_v3", "Heltec V3", "heltec_V3_boundary",
@@ -73,6 +76,30 @@ RTNODE_TARGETS = {
         verify="sd_status"),
 }
 DEFAULT_TARGET = "heltec_v4"
+
+
+#: Detector/catalogue board keys (``workflows.rnode_boards``, ``ui.board_detect``)
+#: -> RTNODE_TARGETS keys. The two namespaces disagree by history, not by
+#: hardware: "heltec32_v3" and "heltec_v3" are the same physical board. Keep the
+#: crossing HERE — comparing the two vocabularies by display name is what made
+#: every finished RTNode build pop "Not available for this board" (2026-08-18).
+_DETECT_KEY_TO_TARGET = {
+    "heltec32_v3": "heltec_v3",
+    "heltec32_v4": "heltec_v4",
+}
+
+
+def target_for_board_key(key):
+    """The RTNODE_TARGETS key for a detector/catalogue board key.
+
+    ``None`` when the board has no RTNode-2400 build, and also when ``key`` is
+    falsy — an unidentified board is not a board we know cannot be built, and
+    callers must not treat "don't know" as "no".
+    """
+    if not key:
+        return None
+    k = _DETECT_KEY_TO_TARGET.get(key, key)
+    return k if k in RTNODE_TARGETS else None
 
 
 def check_sd_overflow(status_json: str) -> Tuple[bool, str]:

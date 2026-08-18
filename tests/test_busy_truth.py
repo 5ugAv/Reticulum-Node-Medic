@@ -76,5 +76,37 @@ def test_the_screen_uses_the_truth_not_the_old_hardcoded_string():
     assert "_busy_paragraph" in launch_src
     mark_src = func_source("ui/screens/birth_screen.py", "_mark_activity",
                            cls="BirthScreen")
-    assert "_busy_banner" in mark_src
+    assert "_run_banner" in mark_src
     assert "Flashing {nm}" not in mark_src
+
+
+def test_no_build_can_inherit_the_previous_build_s_words():
+    """A V3 RTNode build ran its whole length under "Flashing RNode / Heltec
+    LoRa32 v4" — the PREVIOUS run's banner, on the one line telling the operator
+    not to power off (bench, 2026-08-18). _launch must take the words for THIS
+    run and clear them, so a launch that sets none gets the honest generic line
+    rather than the last board's name."""
+    from tests.srcutil import func_source
+    launch = func_source("ui/screens/birth_screen.py", "_launch",
+                         cls="BirthScreen")
+    assert "self._busy_banner = self._busy_paragraph = None" in launch, (
+        "_launch must clear the busy words after consuming them")
+    assert "_run_banner" in launch and "_run_paragraph" in launch
+
+
+def test_the_rtnode_build_chooses_its_own_words():
+    """It builds its workflow directly, so it never reaches the busy_truth call
+    in _build_workflow — it must make the call itself or it says nothing and
+    inherits whatever ran last."""
+    from tests.srcutil import func_source
+    run = func_source("ui/screens/birth_screen.py", "_run_rtnode",
+                      cls="BirthScreen")
+    assert "busy_truth" in run, (
+        "the RTNode launch must set the busy words for its own build")
+
+
+def test_an_rtnode_build_is_never_announced_as_flashing_an_rnode():
+    banner, para = busy_truth("rtnode2400", None, "3333v")
+    assert "RNode" not in banner
+    assert "3333v" in banner
+    assert "compile" in para

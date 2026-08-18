@@ -1125,6 +1125,10 @@ class BirthScreen(BoxLayout):
     def _detected_done(self, res):
         self._detecting = False
         self._detected = res
+        # A new reading is a new decision: forget that the operator once
+        # overrode the identification of whatever was plugged in before.
+        self._rtnode_manual = False
+        self._rtnode_auto_gate = None
         if res.get("found"):
             if not self._forced_firmware:                 # guide-chosen kind wins
                 opts = res.get("firmware") or ["rnode"]
@@ -1184,24 +1188,31 @@ class BirthScreen(BoxLayout):
         self._build_chooser()
 
     def _rtnode_blocked_board(self):
-        """The plugged board's recorded name when it's hardware RTNode-2400
-        has no build for (fingerprint-recognised); None when unknown or OK."""
+        """Display name of a positively-identified board with no RTNode-2400
+        build; None otherwise. Logic (and the reasoning) in ui.rtnode_choice."""
         try:
-            port = (self._detected or {}).get("port")
-            if not port:
-                return None
-            from ui.hw_factories import LocalConnection
-            from workflows.rnode_flash import usb_id_for_port
-            from ui.cert_store import load_certs
-            usb = usb_id_for_port(LocalConnection(), port)
-            known = next((c for c in load_certs()
-                          if usb and c.get("usb_serial") == usb), None)
-            supported = ("Heltec LoRa32 v3", "Heltec LoRa32 v4")
-            if known and known.get("board") not in supported:
-                return known.get("board")
+            from ui.rtnode_choice import blocked_board
+            return blocked_board(self._detected)
         except Exception:
-            pass
-        return None
+            return None                           # never block on an error
+
+    def _rtnode_target_options(self):
+        """The board cards to show — see ui.rtnode_choice.target_options."""
+        try:
+            from ui.rtnode_choice import target_options
+            return target_options(self._detected)
+        except Exception:
+            from ui.rtnode_choice import HELTEC_PAIR
+            return list(HELTEC_PAIR)
+
+    def _rtnode_identified(self):
+        """The target when detection identified the board outright, else None
+        — the only case in which the chooser screen is skipped."""
+        try:
+            from ui.rtnode_choice import identified_target
+            return identified_target(self._detected)
+        except Exception:
+            return None
 
     def _block_rtnode_deadend(self):
         """The popup dead-end: no choices, confirm goes home."""
@@ -1285,14 +1296,35 @@ class BirthScreen(BoxLayout):
         if self._rtnode_blocked_board():
             self._block_rtnode_deadend()
             return
-        """V3/V4 board-photo chooser: the two Heltec boards look identical to Node
-        Medic over USB, so the operator taps the one in front of them. The typed
-        node name renders live on each board's little screen."""
+        """Board-photo chooser: which Heltec is in front of the operator.
+
+        SKIPPED when the medic already knows. The V3 speaks through a CP2102
+        bridge and the V4 is native USB, so detection separates them outright;
+        asking a question the tool has already answered is a step the operator
+        can only get wrong (operator, 2026-08-18: "if the medic can tell these
+        boards apart we need to remove this screen and just move on to the next
+        one"). The confirmation gate still stands — it is the brick guard.
+        """
         from ui.widgets.board_card import BoardCard
         from ui import board_images
+        opts = self._rtnode_target_options()
+        ident = self._rtnode_identified()
+        if ident and not getattr(self, "_rtnode_manual", False):
+            key = ident
+            self._rtnode_target = key
+            self.header.add_widget(_line(
+                f"Board identified: {board_images.label(key)} — read from the "
+                "USB connection, not guessed. Confirm it on the next screen.",
+                size="13.5sp", color="accent"))
+            token = (self._detected or {}).get("board_key")
+            if getattr(self, "_rtnode_auto_gate", None) != token:
+                self._rtnode_auto_gate = token
+                Clock.schedule_once(
+                    lambda dt, k=key: self._confirm_board_gate(k), 0)
+            return
         self.header.add_widget(_line(
-            "Which board is it?  V3 and V4 look identical to Node Medic — tap the one "
-            "in front of you (the silkscreen says V3 or V4).", size="13.5sp",
+            "Which board is it?  Tap the one in front of you (the silkscreen "
+            "says V3 or V4).", size="13.5sp",
             color="accent"))
         self.header.add_widget(self._warning_box(
             "WARNING:  Selecting the wrong board can brick the hardware. Check your "
@@ -1301,7 +1333,7 @@ class BirthScreen(BoxLayout):
                         spacing=dp(10))
         self._rtnode_cards = {}
         nm = self._name_in.text.strip()
-        for key in ("heltec_v3", "heltec_v4"):
+        for key in opts:
             col = BoxLayout(orientation="vertical", spacing=dp(4))
             sel = (self._rtnode_target == key)
             # the name only shows on the board you've PICKED — not both.
@@ -1861,7 +1893,14 @@ class BirthScreen(BoxLayout):
                     auto_dismiss=False)
         self._gate_pop = pop
         pop.bind(on_dismiss=lambda *_: setattr(self, "_gate_pop", None))
-        back.bind(on_release=lambda *_: pop.dismiss())
+        def _back(*_a):
+            # "Wrong board" after an auto-identified board must hand the choice
+            # BACK, or the operator is trapped facing a gate they disagree with
+            # and a screen with nothing on it to change.
+            self._rtnode_manual = True
+            pop.dismiss()
+            self._build_chooser()
+        back.bind(on_release=_back)
 
         def _go(btn, *_a):
             btn.disabled = True
@@ -1965,6 +2004,16 @@ class BirthScreen(BoxLayout):
                               getattr(workflow, "title", "Heads up"),
                               getattr(workflow, "under_construction", False))
             return
+        # This path builds its workflow directly, so it must also choose the
+        # busy words directly — it never passes through _build_workflow, where
+        # busy_truth() is called. Without this the safety banner kept the LAST
+        # run's text: a V3 RTNode build ran for its whole length under "Flashing
+        # RNode / Heltec LoRa32 v4", naming the wrong board and the wrong
+        # firmware on the one line telling the operator not to power off
+        # (bench, 2026-08-18).
+        from ui.busy_truth import busy_truth
+        self._busy_banner, self._busy_paragraph = busy_truth(
+            "rtnode2400", None, self._name_in.text.strip())
         self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed):
@@ -2378,6 +2427,12 @@ class BirthScreen(BoxLayout):
                 return
         except Exception:
             pass
+        # Consume the words chosen for THIS run and clear them, so a launch
+        # that forgets to set them gets the honest generic line rather than the
+        # previous build's board name.
+        self._run_banner = getattr(self, "_busy_banner", None)
+        self._run_paragraph = getattr(self, "_busy_paragraph", None)
+        self._busy_banner = self._busy_paragraph = None
         self._enter_flash_view(title)          # the build gets its OWN page
         self.list.clear_widgets()
         # A progress RING that FILLS with a % as the build advances — determinate,
@@ -2399,7 +2454,7 @@ class BirthScreen(BoxLayout):
             minimum_height=self._build_busy.setter("height"))
         self._build_busy.add_widget(ring_anchor)
         self._busy_label = _line(
-            getattr(self, "_busy_paragraph", None)
+            getattr(self, "_run_paragraph", None)
             or "Working… keep everything plugged in and WAIT for the green "
                "'Build finished' confirmation before touching anything.",
             size="13sp", color="accent")
@@ -2451,7 +2506,7 @@ class BirthScreen(BoxLayout):
             from kivy.app import App
             app = App.get_running_app()
             if on:
-                banner = (getattr(self, "_busy_banner", None)
+                banner = (getattr(self, "_run_banner", None)
                           or "Working — keep everything plugged in, "
                              "don't power off")
                 app.begin_activity(banner)
