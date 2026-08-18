@@ -136,3 +136,40 @@ def test_a_board_with_no_heltec_target_never_auto_picks_a_heltec():
     det = _det("techo", ["techo"])
     assert identified_target(det) is None
     assert target_options(det) == list(HELTEC_PAIR)
+
+
+# --- port -> no question: the whole chain, the way the bench ran it -----------
+
+def _detect(port):
+    """A real detect_board run against a simulated ESP32-S3 on ``port``."""
+    from ui.birth import rnode_board_choices
+    from ui.board_detect import detect_board
+    return detect_board(rnode_board_choices(),
+                        ports_fn=lambda: [port],
+                        reader=lambda p: "Chip is ESP32-S3",
+                        use_memory=False)
+
+
+def test_a_v3_on_a_bridge_is_never_asked_which_board_it_is():
+    """The bench sequence: plug in a V3, the medic prints "Detected ESP32-S3 on
+    /dev/ttyUSB0" — and used to ask which board it was anyway.
+
+    detect_board has resolved this since 2026-08-01 (see
+    test_port_type_refines_s3_shortlist_to_the_v3, which has passed the whole
+    time). What was missing was anybody asking it. This is that link.
+    """
+    det = _detect("/dev/ttyUSB0")
+    assert det["board_key"] == "heltec32_v3"
+    assert identified_target(det) == "heltec_v3"
+    assert target_options(det) == ["heltec_v3"]
+    assert blocked_board(det) is None
+
+
+def test_a_native_s3_is_still_asked():
+    """Same chain, opposite answer — and it must stay that way while a native
+    port cannot separate a V4 from a Tracker or a Supreme."""
+    det = _detect("/dev/ttyACM1")
+    assert det["board_key"] is None
+    assert identified_target(det) is None
+    assert target_options(det) == list(HELTEC_PAIR)
+    assert blocked_board(det) is None
