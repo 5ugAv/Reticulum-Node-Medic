@@ -3253,6 +3253,30 @@ class BirthScreen(BoxLayout):
                     hashes.append(value)
             if not hashes:
                 return
+            # THE IDENTITY THE NODE ANNOUNCES UNDER, harvested from what the
+            # medic has already HEARD (2026-08-14). An RTNode certificate
+            # carries the health DESTINATION off the serial log, never the
+            # identity behind it — yet every destination this node will ever
+            # announce, including ones minted after this paperwork, carries
+            # that identity, RNS-verified. If the live registry heard a cert
+            # hash announce during the build, its record holds the identity;
+            # writing it into the same roster device is what lets the
+            # registry fold the node's OTHER destinations under this name
+            # from their first announce. Best-effort: no running app or
+            # nothing heard yet simply leaves the cert hashes as they were.
+            try:
+                from kivy.app import App
+                _app = App.get_running_app()
+                _reg = getattr(getattr(_app, "monitor_service", None),
+                               "registry", None)
+                if _reg is not None:
+                    for h in list(hashes):
+                        r = _reg.get(h)
+                        ih = getattr(r, "identity_hash", None) if r else None
+                        if ih and ih not in hashes:
+                            hashes.append(ih)
+            except Exception:
+                pass
             # Coordinates come from the CERT — which the confirm-location gate
             # owns (moved pin -> corrected; cancelled -> removed). Reading
             # _prefill_location here bypassed that gate entirely: a rejected
@@ -3271,6 +3295,20 @@ class BirthScreen(BoxLayout):
                 node_type=kin_roster.type_for_cert(cert) or "rtnode2400",
                 lat=lat, lon=lon,
                 builder=tool_identity.identity_hash())
+            # INTO THE LIVE REGISTRY NOW, not at the next rediscover.
+            # register_device writes DISK; the running registry re-reads it
+            # every ~5 minutes, and a newborn node's first announce lands well
+            # inside that window — on 2026-08-14 that window showed the
+            # operator their own fresh nodes as grey strangers. The over-air
+            # adopt path already does exactly this push.
+            try:
+                from kivy.app import App
+                _app = App.get_running_app()
+                if _app is not None:
+                    _app.monitor_service.registry.set_kin_roster(
+                        kin_roster.load_roster())
+            except Exception:
+                pass
         except Exception as e:
             print(f"[kin] register skipped: {e}")
 
