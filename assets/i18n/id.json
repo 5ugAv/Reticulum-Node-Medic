@@ -501,5 +501,10 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• cabut Pi dari Node Medic — radio membutuhkan soket itu\n• pasang radio yang di-flash di awal\n• beri Pi catu daya sendiri\n• LED RGB opsional? Napas putih lambat = radio hidup — cek VITALS",
   "←  Back": "←  Kembali",
   "←  Pick a different Pi": "←  Pilih Pi lain",
-  "⚠  Wipe & rebirth": "⚠  Hapus & lahirkan ulang"
+  "⚠  Wipe & rebirth": "⚠  Hapus & lahirkan ulang",
+  "Exit": "Keluar",
+  "Leave this build?": "Tinggalkan pembangunan ini?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Pembangunan terus berjalan di latar belakang — strip peringatan di bagian atas tetap ada sampai selesai. Keluar menutup panduan ini, jadi Anda tidak akan dibawa kembali ke sini saat pembangunan selesai.",
+  "Cancel — stay": "Batal — tetap di sini",
+  "OK — go home": "OK — ke beranda"
 }

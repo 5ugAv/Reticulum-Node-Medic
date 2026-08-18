@@ -501,5 +501,10 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• PiをNode Medicから外す — その差込口に無線機を挿します\n• 最初にフラッシュした無線機を挿す\n• Piに専用電源を与える\n• オプションのRGB LED？ゆっくり白く明滅＝無線機は生きています — VITALSで確認",
   "←  Back": "←  戻る",
   "←  Pick a different Pi": "←  別のPiを選ぶ",
-  "⚠  Wipe & rebirth": "⚠  消去して再誕"
+  "⚠  Wipe & rebirth": "⚠  消去して再誕",
+  "Exit": "終了",
+  "Leave this build?": "このビルドから離れますか？",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "ビルドはバックグラウンドで動き続けます — 上部の警告バーは完了まで表示されたままです。ここを離れるとこのガイドは閉じられ、ビルド完了時にここへ戻ることはありません。",
+  "Cancel — stay": "キャンセル — とどまる",
+  "OK — go home": "OK — ホームへ"
 }

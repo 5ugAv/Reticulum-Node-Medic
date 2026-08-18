@@ -143,6 +143,23 @@ class BirthGuideScreen(BoxLayout):
         self._resume_at = None
         self._radio_verified = False
         self._gate_warning = ""
+        # WHICH WAY THE OPERATOR IS MOVING. "forward" is the default — every
+        # road into a step except the Back button moves forward — and _back()
+        # flips it. The guide's self-driving (a passed gate's auto-advance,
+        # every poll that ends in _next) is FORWARD work only: without this
+        # flag the radio_ready gate, already passed, re-armed its 1.6 s advance
+        # on every arrival and bounced Back straight forward again — eleven
+        # times in ui.log between "The radio has to work first" and "Take the
+        # radio out" before the operator gave up and restarted the UI
+        # (2026-08-14, hit twice in one night).
+        self._nav_dir = "forward"
+        # Which step indices the forward pass skipped as redundant. Back steps
+        # over exactly these WITHOUT re-probing the hardware (each probe is an
+        # lsusb or a serial enumeration — one per step made Back pay for
+        # answers the forward pass already had). Stale skips from the last
+        # build would make Back jump over live steps of the next one, so the
+        # record dies here with everything else.
+        self._skipped_fwd = set()
         # The cable link belongs to ONE node. Carried over, the next
         # walkthrough's gate would open on the PREVIOUS node still answering,
         # and the medic would provision the wrong Pi.
@@ -245,6 +262,151 @@ class BirthGuideScreen(BoxLayout):
             action()
             return True
         return False
+
+    # -- the door that cannot be trapped shut (operator order, 2026-08-14) --
+    #
+    # Back walks one screen at a time, and the night it looped on a passed
+    # gate the operator had NO other way out — the walkthrough had to be
+    # killed over SSH, which a field operator cannot do. Exit is the standing
+    # answer: small, constant, on every screen this class renders, and it
+    # goes straight home.
+
+    def clear_widgets(self, *args, **kwargs):
+        """Clear the screen — and re-seed the Exit rail on top of it.
+
+        Every _render_* here begins with clear_widgets(), so this override is
+        the one seam that reaches ALL of them — steps, pickers and preludes
+        alike — instead of twenty call sites of which one would eventually be
+        forgotten. First-added sits at the TOP of this vertical box, so the
+        rail lands above whatever the render adds next.
+        """
+        super().clear_widgets(*args, **kwargs)
+        try:
+            super().add_widget(self._exit_row())
+        except Exception:                                          # noqa: BLE001
+            pass       # the rail is decoration on the render — a render must
+                       # never die for it (same rule as _expect_board_absence)
+
+    def _exit_row(self):
+        """A small, constant Exit in the same corner of every screen.
+
+        Right-aligned and muted: Back lives on the LEFT of every step, and
+        the two must never be confusable — Back is one careful step, Exit is
+        the whole way out.
+        """
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(34), padding=(dp(6), 0))
+        row.add_widget(BoxLayout())            # spacer: push Exit to the right
+        b = Button(text=tr("Exit"), size_hint=(None, None),
+                   size=(dp(92), dp(28)), pos_hint={"center_y": 0.5},
+                   font_size="14sp", background_normal="",
+                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                   color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        b.bind(on_release=lambda *_: self._exit_tapped())
+        row.add_widget(b)
+        return row
+
+    def _exit_tapped(self):
+        """Home — after a warning when a build is mid-flight.
+
+        The warning is not a block: the build genuinely survives leaving (it
+        runs in the app's own threads, and the activity strip stays over every
+        screen until it ends). But leaving also forgets the walkthrough's
+        return point, and that trade deserves one deliberate tap."""
+        if self._build_running():
+            self._confirm_exit_popup()
+        else:
+            self._exit_to_home()
+
+    def _build_running(self):
+        """Is a flash / card write running right now? The app's activity
+        counter is the one source of truth for that (see App.flash_in_progress
+        — power-off is gated on the same answer). Best-effort: with no app to
+        ask, nothing is running that this screen could orphan."""
+        try:
+            from kivy.app import App
+            fn = getattr(App.get_running_app(), "flash_in_progress", None)
+            return bool(callable(fn) and fn())
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    def _exit_to_home(self):
+        """Leave for home with nothing left armed behind.
+
+        cancel_resume FIRST: a hand-off screen finishing late (a card write
+        outliving the operator's patience) would otherwise drag them back into
+        a walkthrough they deliberately left. Then _stop_current, which is the
+        same sweep reset() opens with — every poll dies and the nav token
+        bumps, so nothing scheduled can render over the home screen."""
+        self.cancel_resume()
+        self._stop_current()
+        if self._on_navigate:
+            self._on_navigate("home")
+        else:
+            self._go("home")               # same fallback the done screen uses
+
+    def _confirm_exit_popup(self):
+        """'Leave this build?' — the requirement_popup card, with two roads.
+
+        Same caution-yellow card and red outline as ui.requirement_popup so
+        every warning in the tool reads the same; two buttons instead of its
+        one, the safe choice first (same rule as the power verdict's row).
+        """
+        from kivy.graphics import Color, Line, RoundedRectangle
+        from kivy.uix.modalview import ModalView
+        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+        red = theme.hex_to_rgba(theme.COLORS["red"])
+        green = theme.hex_to_rgba(theme.COLORS["green"])
+        dark = theme.hex_to_rgba(theme.COLORS["background"])
+        view = ModalView(size_hint=(0.9, 0.5), background="",
+                         background_color=(0, 0, 0, 0.55), auto_dismiss=True)
+        card = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(12))
+        radius = dp(20)
+
+        def _redraw(*_):
+            card.canvas.before.clear()
+            with card.canvas.before:
+                Color(*yellow)
+                RoundedRectangle(pos=card.pos, size=card.size,
+                                 radius=[radius] * 4)
+                Color(*red)
+                Line(width=dp(2.5), rounded_rectangle=(
+                    card.x + dp(1), card.y + dp(1),
+                    card.width - dp(2), card.height - dp(2), radius))
+        card.bind(pos=_redraw, size=_redraw)
+        head = Label(text=tr("Leave this build?"), font_size="23sp", bold=True,
+                     size_hint_y=None, height=dp(36), color=dark,
+                     halign="center", valign="middle")
+        head.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        card.add_widget(head)
+        # Say what is true and what it costs. The build DOES keep running —
+        # it is the app's activity, not this screen's, and its warning strip
+        # stays over every screen until it finishes. What leaving spends is
+        # the return point: cancel_resume means the walkthrough will not pull
+        # you back in when the build lands.
+        body = Label(text=tr(
+            "The build keeps running in the background — the warning strip at "
+            "the top stays up until it finishes. Leaving closes this "
+            "walkthrough, so it won't bring you back here when the build is "
+            "done."), font_size="16.5sp", color=dark, halign="center",
+            valign="top")
+        body.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        card.add_widget(body)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(56), spacing=dp(10))
+        stay = Button(text=tr("Cancel — stay"), bold=True, font_size="17sp",
+                      background_normal="", background_color=green, color=dark)
+        stay.bind(on_release=lambda *_: view.dismiss())
+        go = Button(text=tr("OK — go home"), bold=True, font_size="17sp",
+                    background_normal="", background_color=red,
+                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        go.bind(on_release=lambda *_: (view.dismiss(), self._exit_to_home()))
+        row.add_widget(stay)                   # the safe choice reads first
+        row.add_widget(go)
+        card.add_widget(row)
+        view.add_widget(card)
+        view.open()
+        return view
 
     # -- detect-first landing ---------------------------------------------
     def _render_detect(self):
@@ -1298,6 +1460,7 @@ class BirthGuideScreen(BoxLayout):
         # the field when they're ready to type, and DONE puts it away.
 
     def _name_next(self):
+        self._nav_dir = "forward"       # leaving the name for the steps is forward
         name = (self._name_input.text or "").strip()
         if not name:                         # a name is required to continue
             self._name_input.focus = True
@@ -1538,6 +1701,7 @@ class BirthGuideScreen(BoxLayout):
         # rewinding a finished flash to "Flash this radio" (both SKYFINGER
         # runs; the operator was marched into re-flashing a green board).
         self._i = 0
+        self._nav_dir = "forward"       # answered — on into the physical steps
         self._render_step()
 
     def _hand_over_name(self, screen_name, job="host"):
@@ -1605,7 +1769,7 @@ class BirthGuideScreen(BoxLayout):
         except Exception:                                          # noqa: BLE001
             pass
 
-    def _step_is_redundant(self, step):
+    def _step_is_redundant(self, step, probe=True):
         """True when the medic can SEE this step is already done.
 
         Used going FORWARD to skip it, and going BACK to step over it. Sharing
@@ -1613,6 +1777,12 @@ class BirthGuideScreen(BoxLayout):
         decremented onto a step that immediately re-skipped forward, so the
         button did nothing at all while the board stayed plugged in (operator,
         2026-08-02).
+
+        *probe=False* answers from structure alone — the gate/hand-off rule
+        below — and never touches the hardware. Back uses it (2026-08-14):
+        each probe here is an lsusb or a serial enumeration, and paying one
+        per step made walking backward slow. What the probes learned on the
+        way forward travels in ``_skipped_fwd`` instead.
         """
         # A STEP THAT DOES WORK, OR GUARDS IT, IS NEVER REDUNDANT.
         #
@@ -1633,6 +1803,8 @@ class BirthGuideScreen(BoxLayout):
         # step carrying a `screen` hand-off or a `gate` is asking one of those.
         if step.get("gate") or step.get("screen"):
             return False
+        if not probe:
+            return False               # structure only — hardware not consulted
         anim = step.get("anim")
         if anim == "connect_pi":
             # PROOF, NOT PRESENCE (2026-08-14): the old EVERYWHERE, still
@@ -1722,6 +1894,9 @@ class BirthGuideScreen(BoxLayout):
         self._stop_card_poll()
         if hasattr(anim, "mark_moved"):
             anim.mark_moved()
+        if getattr(self, "_nav_dir", "forward") == "back":
+            return       # backward walker: the card already left, long ago —
+                         # advancing on it re-plays the 2026-08-14 bounce here
         from kivy.clock import Clock
         self._advance_token = getattr(self, "_advance_token", 0) + 1
         tok = self._advance_token
@@ -1778,6 +1953,9 @@ class BirthGuideScreen(BoxLayout):
         try:
             if token != getattr(self, "_advance_token", 0):
                 return                      # they moved first
+            if getattr(self, "_nav_dir", "forward") == "back":
+                return                      # walking backward — never re-fire
+                                            # a forward drive at them (2026-08-14)
             steps = guide_steps(self._path, self._pi_key_for_text())
             cur = steps[self._i] if 0 <= self._i < len(steps) else {}
             if cur.get("anim") != "insert_sd":
@@ -1846,6 +2024,12 @@ class BirthGuideScreen(BoxLayout):
             self._pair_checked = True
             self._render_pick_board()
             return
+        # HOW WAS THIS RENDER ARRIVED AT? _back says "back"; everything else
+        # moves forward (see reset()). Consulted below wherever the step would
+        # drive itself: the self-driving is what turned Back into a trap on
+        # 2026-08-14 — the passed radio gate re-armed its auto-advance on every
+        # arrival and bounced the operator forward eleven times.
+        back_arrival = getattr(self, "_nav_dir", "forward") == "back"
         # THE CONNECT-RADIO STEP HAS NOTHING TO SAY TO A RADIO IT CAN SEE
         # (operator, 2026-08-14): the operator plugged it in at the very
         # start — that is how the chooser knew the board. Runs HERE, after
@@ -1854,10 +2038,13 @@ class BirthGuideScreen(BoxLayout):
         # session-verified radio skips the flash; a present-but-unproven
         # board gets the SAME hand-off the green button carried; an absent
         # board still gets the instructions.
+        # ...and never on a BACK arrival: this advance is self-driving, and
+        # self-driving is what turned Back into a trap (merge of the two
+        # 2026-08-14 fixes, which were written against each other's absence).
         cur = steps[self._i]
         if (self._i == 0 and cur.get("screen")
                 and cur.get("anim") == "connect_board"
-                and self._path == "pi"):
+                and self._path == "pi" and not back_arrival):
             ports = []
             try:
                 from ui.hw_factories import local_board_ports
@@ -1896,8 +2083,21 @@ class BirthGuideScreen(BoxLayout):
         # A 'connect this' step is redundant when it is already connected. (A Pi
         # in boot-ROM mode is NOT a serial device, so the work-board check can
         # never see one — _step_is_redundant asks the USB classifier instead.)
-        while self._i < len(steps) and self._step_is_redundant(steps[self._i]):
-            self._i += 1
+        #
+        # FORWARD ONLY. Running this against a backward arrival un-does the
+        # Back press the moment it lands — _back already chose the landing
+        # step, and it is not second-guessed. What gets skipped is RECORDED so
+        # Back can step over the same ground without re-probing the hardware.
+        if not back_arrival:
+            skipped = getattr(self, "_skipped_fwd", None)
+            if skipped is None:
+                skipped = self._skipped_fwd = set()
+            while self._i < len(steps) and self._step_is_redundant(steps[self._i]):
+                skipped.add(self._i)
+                self._i += 1
+            # A step landed on is live, whatever an earlier lap thought — the
+            # board may have been unplugged since. Keep the record honest.
+            skipped.discard(self._i)
         if self._i >= len(steps):
             self._finish()
             return
@@ -1984,7 +2184,8 @@ class BirthGuideScreen(BoxLayout):
                 self._gate_warning = why
                 self._render_step()
                 return
-            if not ok and s["gate"] == "node_online" and not failed:
+            if not ok and s["gate"] == "node_online" and not failed \
+                    and not back_arrival:
                 # NO BUTTON WHILE THE WAIT IS REASONABLE.
                 #
                 # Operator, 2026-08-09: "it looked like I didn't have to press
@@ -2004,11 +2205,17 @@ class BirthGuideScreen(BoxLayout):
                     lambda _d: (getattr(self, "_nav_token", None) == tok
                                 and self._current is step
                                 and step.show_next()), self.WAIT_PATIENCE_S)
-            if ok and not failed:
+            if ok and not failed and not back_arrival:
                 # Driving itself -> nothing to press. The button is the retry
                 # for a gate that is BLOCKED; on one that has passed it is an
                 # invitation to race the tool (same rule as the unplug and
                 # card-handover steps, operator 2026-08-10).
+                #
+                # ...AND ONLY FOR FORWARD ARRIVALS. A gate that has passed has
+                # nothing to ask — but someone walking BACKWARD has not asked
+                # it anything: re-arming this advance on their arrival bounced
+                # every Back press straight forward again, eleven times in
+                # ui.log, until the UI had to be restarted (2026-08-14).
                 step.hide_next()
                 from kivy.clock import Clock
                 self._advance_token = getattr(self, "_advance_token", 0) + 1
@@ -2131,6 +2338,15 @@ class BirthGuideScreen(BoxLayout):
                 lambda _d: (getattr(self, "_nav_token", None) == tok
                             and self._current is step
                             and step.show_next()), self.WAIT_PATIENCE_S)
+        if back_arrival and self._current is step:
+            # ARRIVED WALKING BACKWARD. The hides above exist because the
+            # medic normally advances these steps itself — but none of that
+            # self-driving runs against a backward walker (the gate advance
+            # and every poll handler check the direction), so the button is
+            # the one road forward left. Show it, whatever the branch above
+            # decided, or Back would strand the operator on a step with no
+            # way to change their mind (2026-08-14).
+            step.show_next()
 
 
     # -- identify the pair BEFORE the card is written -----------------------
@@ -2534,6 +2750,7 @@ class BirthGuideScreen(BoxLayout):
         safely: a step carrying a gate or a hand-off is never judged redundant.
         """
         self._i = 0
+        self._nav_dir = "forward"          # re-entering the steps moves forward
         self._render_step()
 
     def _render_power_verdict(self, verdict):
@@ -2621,6 +2838,7 @@ class BirthGuideScreen(BoxLayout):
         if at is None:
             return False
         self._resume_at = None
+        self._nav_dir = "forward"          # a hand-off coming back moves forward
         self._trace(f"resumed at step {at + 1} with {result or {}}")
         for key, val in (result or {}).items():
             setattr(self, f"_{key}", val)
@@ -2769,11 +2987,13 @@ class BirthGuideScreen(BoxLayout):
 
     def _render_step_zero(self):
         self._i = 0
+        self._nav_dir = "forward"
         self._render_step()
 
     # -- navigation --------------------------------------------------------
     def _next(self):
         self._advance_token = getattr(self, "_advance_token", 0) + 1   # cancel auto-advance
+        self._nav_dir = "forward"          # see reset(): self-driving is forward work
         # Tapping on IS the retry, so the last failure stops speaking for this
         # attempt — otherwise a second, successful build would still be held
         # behind the first one's warning.
@@ -2840,9 +3060,20 @@ class BirthGuideScreen(BoxLayout):
         pairing questions (or the name) when it runs out.
         """
         self._advance_token = getattr(self, "_advance_token", 0) + 1
+        # Declare the direction BEFORE rendering: _render_step and every poll
+        # handler consult it, and none of the guide's self-driving may fire
+        # against someone walking backward (the eleven-bounce trap, 2026-08-14
+        # — see reset()).
+        self._nav_dir = "back"
         steps = guide_steps(self._path, self._pi_key_for_text())
         i = self._i - 1
-        while i >= 0 and self._step_is_redundant(steps[i]):
+        # Step over what the FORWARD pass skipped, from its record rather than
+        # by re-probing (probe=False keeps the structural half of the shared
+        # rule — a gate or hand-off is never redundant — without the lsusb /
+        # serial-enumeration cost that made every Back press slow).
+        skipped = getattr(self, "_skipped_fwd", set())
+        while i >= 0 and (i in skipped
+                          or self._step_is_redundant(steps[i], probe=False)):
             i -= 1
         if i < 0:
             if getattr(self, "_pair_checked", False):
@@ -3236,6 +3467,12 @@ class BirthGuideScreen(BoxLayout):
         # Let the "Connected!" celebration play, then carry the flow forward on its
         # own — detection drives the wizard, no tap needed. A manual Next/Back
         # bumps the token and cancels this pending auto-advance.
+        if getattr(self, "_nav_dir", "forward") == "back":
+            # Walking BACKWARD, the board's presence is history, not an
+            # instruction — advancing on it is the bounce that trapped the
+            # operator on 2026-08-14. Celebrate ("I can see your board") and
+            # leave the buttons theirs.
+            return
         from kivy.clock import Clock
         self._advance_token = getattr(self, "_advance_token", 0) + 1
         tok = self._advance_token
@@ -3295,6 +3532,8 @@ class BirthGuideScreen(BoxLayout):
         self._stop_board_poll()
         if hasattr(anim, "mark_removed"):
             anim.mark_removed()
+        if getattr(self, "_nav_dir", "forward") == "back":
+            return       # backward walker: the absence is history, not a cue
         from kivy.clock import Clock
         self._advance_token = getattr(self, "_advance_token", 0) + 1
         tok = self._advance_token

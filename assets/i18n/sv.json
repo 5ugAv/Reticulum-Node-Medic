@@ -501,5 +501,10 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• koppla ur Pi:n från Node Medic — radion behöver det uttaget\n• sätt i radion du flashade i början\n• ge Pi:n en egen strömförsörjning\n• RGB-LED (tillval)? Långsam vit andning = radion lever — kolla VITALS",
   "←  Back": "←  Tillbaka",
   "←  Pick a different Pi": "←  Välj en annan Pi",
-  "⚠  Wipe & rebirth": "⚠  Rensa och återföd"
+  "⚠  Wipe & rebirth": "⚠  Rensa och återföd",
+  "Exit": "Avsluta",
+  "Leave this build?": "Lämna det här bygget?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Bygget fortsätter i bakgrunden — varningsremsan högst upp står kvar tills det är klart. Att lämna stänger den här guiden, så den tar dig inte tillbaka hit när bygget är färdigt.",
+  "Cancel — stay": "Avbryt — stanna",
+  "OK — go home": "OK — gå hem"
 }

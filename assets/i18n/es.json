@@ -501,5 +501,10 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• desconecta la Pi de Node Medic — la radio necesita ese puerto\n• conecta la radio que flasheaste al principio\n• dale a la Pi su propia fuente de alimentación\n• ¿LED RGB opcional? Respiración blanca lenta = radio viva — mira VITALS",
   "←  Back": "←  Atrás",
   "←  Pick a different Pi": "←  Elegir otra Pi",
-  "⚠  Wipe & rebirth": "⚠  Borrar y renacer"
+  "⚠  Wipe & rebirth": "⚠  Borrar y renacer",
+  "Exit": "Salir",
+  "Leave this build?": "¿Salir de esta construcción?",
+  "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "La construcción sigue ejecutándose en segundo plano — la franja de aviso en la parte superior permanece hasta que termine. Al salir se cierra este recorrido guiado, así que no te traerá de vuelta aquí cuando la construcción termine.",
+  "Cancel — stay": "Cancelar — quedarme",
+  "OK — go home": "OK — ir al inicio"
 }
