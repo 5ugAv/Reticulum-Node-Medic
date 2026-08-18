@@ -74,11 +74,6 @@ UNIMPORTED_WITH_REASON = {
     "provisioning.rootfs_wifi":
         "DORMANT. Superseded on the birth path by direct rootfs writes; kept "
         "because the card's WiFi story is still being settled.",
-    "provisioning.vault":
-        "DORMANT. LUKS2-on-a-file encrypt-at-rest. Built and reviewed, NOT "
-        "enabled — gated on boot-unlock UX and key management.",
-    "provisioning.vault_factors":
-        "DORMANT. Unlock-factor model for the vault above. Same gate.",
     "monitor.battery":
         "DORMANT. Battery runtime estimator; no screen reads it yet.",
     "monitor.first_link":
