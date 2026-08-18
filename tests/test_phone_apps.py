@@ -342,3 +342,35 @@ def test_cached_app_prefers_the_version_the_marker_names():
     got = cached_app("columba", _TwoVersions(), cache_dir="/c")
     assert got["version"] == "v0.10"
     assert "0.10" in got["file"], f"picked the stale build: {got['file']}"
+
+
+def test_sideband_warns_that_a_phone_may_refuse_it():
+    """Seen on a real phone, 2026-08-19: Play Protect blocked the CURRENT
+    official Sideband release with "built for an older version of Android".
+
+    The medic exists to hand someone a working messenger where there is no
+    internet to go and check with, so an operator who is given a file their
+    phone then refuses, with no warning, reasonably concludes the medic handed
+    them something broken. The note has to name the alternative too, because on
+    a new enough Android the refusal is the OS's and cannot be waved through.
+    """
+    from workflows.phone_apps import APPS
+    note = APPS["sideband"].get("install_note", "")
+    assert note, "Sideband must carry the warning"
+    assert "older version of Android" in note, "name what the phone will say"
+    assert "Columba" in note, "an operator who cannot install it needs the way out"
+    assert "current official release" in note, (
+        "say it is not a bad download — that is the wrong conclusion to leave")
+
+
+def test_columba_carries_no_such_warning():
+    """The note must be a fact about a specific app, not decoration on every
+    card — Columba installed without complaint on the same phone."""
+    from workflows.phone_apps import APPS
+    assert not APPS["columba"].get("install_note")
+
+
+def test_the_card_shows_an_install_note_when_there_is_one():
+    from tests.srcutil import func_source, src
+    screen = src("ui/screens/comms_screen.py")
+    assert 'install_note' in screen, "the card must render the note it is given"

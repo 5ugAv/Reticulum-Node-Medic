@@ -47,6 +47,25 @@ APPS = {
         "free_redistribution": True,
         "blurb": "The original Reticulum LXMF client — messaging, voice calls, maps "
                  "and telemetry. More features; by Reticulum's author.",
+        # SEEN ON A REAL PHONE, 2026-08-19: Google Play Protect refused this APK
+        # with "Unsafe app blocked — this app was built for an older version of
+        # Android and doesn't include the latest privacy protections". The APK
+        # was the CURRENT official release, fetched from markqvist/Sideband
+        # minutes earlier, so nothing the medic carries can avoid it: the
+        # objection is to the targetSdkVersion upstream built with.
+        #
+        # It is said here because an operator handed a blocked install with no
+        # warning reasonably concludes the medic gave them a broken file, and the
+        # medic's whole promise is a working messenger with no internet to go and
+        # check with. What is NOT claimed: the exact API level (the manifest
+        # declares one; it was not read), or that Install anyway always appears —
+        # on a new enough Android the refusal is the OS's and cannot be waved
+        # through, which is why the alternative is named.
+        "install_note": (
+            "Android may refuse this one: \"built for an older version of "
+            "Android\". That is how it was built upstream, not a bad download — "
+            "this is the current official release. Tap More details for Install "
+            "anyway; if that is not offered, use Columba instead."),
     },
 }
 

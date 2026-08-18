@@ -122,6 +122,11 @@ class CommsScreen(BoxLayout):
         card.add_widget(_line(app["blurb"], size="13.5sp", color="text_secondary", h=44))
         card.add_widget(_line(tr("Licence: {lic}").format(lic=app['license']),
                               size="11.5sp", color="text_secondary", h=20))
+        # An app that a modern phone will refuse says so BEFORE the operator
+        # walks it across to their phone and finds out (2026-08-19).
+        if app.get("install_note"):
+            card.add_widget(_line(tr(app["install_note"]), size="12.5sp",
+                                  color="amber", h=56))
 
         if app.get("carried"):
             btn = Button(text=tr("Send to my phone"), size_hint_y=None, height=dp(50),
