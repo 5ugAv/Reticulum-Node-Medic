@@ -46,10 +46,6 @@ UNIMPORTED_WITH_REASON = {
         "workflows.build.install_status_server and run there, not on the medic.",
 
     # --- dormant: built, not yet wired to anything an operator can reach -------
-    "workflows.carry":
-        "DORMANT. Field-readiness audit. Has no screen yet; wiring it into "
-        "Settings > Storage is specified and not built. THIS IS THE BUG THIS "
-        "FILE EXISTS TO CATCH — it stays listed only until the screen lands.",
     "workflows.wheelhouse":
         "DORMANT. cache_wheels() refreshes the carried Python wheels but is "
         "reachable from no screen, so 'top up before you leave' cannot be done "

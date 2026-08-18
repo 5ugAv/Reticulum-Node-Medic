@@ -509,5 +509,13 @@
   "Leave this build?": "Покинуть эту сборку?",
   "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Сборка продолжает работать в фоне — предупреждающая полоса сверху останется, пока она не завершится. Выход закрывает это пошаговое руководство, поэтому оно не вернёт вас сюда, когда сборка закончится.",
   "Cancel — stay": "Отмена — остаться",
-  "OK — go home": "OK — на главный экран"
+  "OK — go home": "OK — на главный экран",
+  "Checking connectivity and topping up what it can…": "Проверка соединения и пополнение того, что возможно…",
+  "Field readiness": "Готовность к выезду",
+  "Prepare for the field": "Подготовить к выезду",
+  "Preparing…": "Подготовка…",
+  "Ready to go — everything is aboard.": "Готово к выезду — всё на борту.",
+  "STILL MISSING: {gaps}": "ВСЁ ЕЩЁ НЕ ХВАТАЕТ: {gaps}",
+  "This needs a decision from you — it will not fill itself.": "Здесь нужно ваше решение — само не заполнится.",
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Что этот medic должен нести с собой, чтобы работать без сигнала. Проверено по диску прямо сейчас, а не по тому, что должно было там быть."
 }

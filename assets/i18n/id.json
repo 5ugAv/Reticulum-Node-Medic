@@ -509,5 +509,13 @@
   "Leave this build?": "Tinggalkan pembangunan ini?",
   "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "Pembangunan terus berjalan di latar belakang — strip peringatan di bagian atas tetap ada sampai selesai. Keluar menutup panduan ini, jadi Anda tidak akan dibawa kembali ke sini saat pembangunan selesai.",
   "Cancel — stay": "Batal — tetap di sini",
-  "OK — go home": "OK — ke beranda"
+  "OK — go home": "OK — ke beranda",
+  "Checking connectivity and topping up what it can…": "Memeriksa konektivitas dan melengkapi yang bisa…",
+  "Field readiness": "Kesiapan lapangan",
+  "Prepare for the field": "Siapkan untuk lapangan",
+  "Preparing…": "Menyiapkan…",
+  "Ready to go — everything is aboard.": "Siap berangkat — semuanya sudah lengkap.",
+  "STILL MISSING: {gaps}": "MASIH KURANG: {gaps}",
+  "This needs a decision from you — it will not fill itself.": "Ini butuh keputusan dari Anda — tidak akan terisi sendiri.",
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Apa yang harus dibawa medic ini agar bisa bekerja tanpa sinyal. Diperiksa langsung dari disk saat ini, bukan dari apa yang seharusnya ada."
 }

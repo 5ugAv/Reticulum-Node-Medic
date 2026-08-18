@@ -735,6 +735,18 @@ class ReticulumNodeMedicApp(App):
         comms_scr.bind(on_enter=lambda *_: self.comms_screen.enter())
         self.sm.add_widget(comms_scr)
 
+        # Field readiness — the caller workflows.carry has never had. It shipped
+        # complete and tested (d9b29ca) and reachable by nobody, which is the
+        # same shape of bug as the phone-app downloader before it. enter() runs
+        # audit() ONLY: local reads, no network, safe on every open. The
+        # downloads happen behind an explicit tap and nowhere else.
+        carry_scr = Screen(name="carry")
+        from ui.screens.carry_screen import CarryScreen
+        self.carry_screen = CarryScreen()
+        carry_scr.add_widget(self._with_back(self.carry_screen))
+        carry_scr.bind(on_enter=lambda *_: self.carry_screen.enter())
+        self.sm.add_widget(carry_scr)
+
         # WiFi connect — join a hotspot / venue AP so online features work afield.
         wifi_scr = Screen(name="wifi")
         from ui.screens.wifi_screen import WifiScreen

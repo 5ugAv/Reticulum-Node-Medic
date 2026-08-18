@@ -509,5 +509,13 @@
   "Leave this build?": "このビルドから離れますか？",
   "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "ビルドはバックグラウンドで動き続けます — 上部の警告バーは完了まで表示されたままです。ここを離れるとこのガイドは閉じられ、ビルド完了時にここへ戻ることはありません。",
   "Cancel — stay": "キャンセル — とどまる",
-  "OK — go home": "OK — ホームへ"
+  "OK — go home": "OK — ホームへ",
+  "Checking connectivity and topping up what it can…": "接続を確認し、可能なものを補充しています…",
+  "Field readiness": "現場準備状況",
+  "Prepare for the field": "現場に出る準備をする",
+  "Preparing…": "準備中…",
+  "Ready to go — everything is aboard.": "出発準備完了 — すべて揃っています。",
+  "STILL MISSING: {gaps}": "まだ不足: {gaps}",
+  "This needs a decision from you — it will not fill itself.": "これはあなたの判断が必要です — 自動では埋まりません。",
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "この medic が信号なしで動作するために携行すべきもの。今この瞬間のディスクの状態を確認しています。予定されていた内容ではありません。"
 }

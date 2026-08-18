@@ -84,6 +84,10 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._entry(tr("Communication apps"),
                                     "Hand Columba or Sideband to a phone over WiFi — "
                                     "the mesh messenger for your pocket", "comms"))
+        body.add_widget(self._entry(tr("Field readiness"),
+                                    "Is this medic ready to be taken somewhere with "
+                                    "no signal — firmware, apps, maps, wheels, "
+                                    "toolchain", "carry"))
         body.add_widget(self._home_mode_section())
         body.add_widget(self._brightness_section())
         body.add_widget(self._screensaver_section())

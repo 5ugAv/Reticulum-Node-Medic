@@ -509,5 +509,13 @@
   "Leave this build?": "¿Salir de esta construcción?",
   "The build keeps running in the background — the warning strip at the top stays up until it finishes. Leaving closes this walkthrough, so it won't bring you back here when the build is done.": "La construcción sigue ejecutándose en segundo plano — la franja de aviso en la parte superior permanece hasta que termine. Al salir se cierra este recorrido guiado, así que no te traerá de vuelta aquí cuando la construcción termine.",
   "Cancel — stay": "Cancelar — quedarme",
-  "OK — go home": "OK — ir al inicio"
+  "OK — go home": "OK — ir al inicio",
+  "Checking connectivity and topping up what it can…": "Comprobando la conectividad y completando lo que se pueda…",
+  "Field readiness": "Preparación para el terreno",
+  "Prepare for the field": "Preparar para el terreno",
+  "Preparing…": "Preparando…",
+  "Ready to go — everything is aboard.": "Listo para partir — todo está a bordo.",
+  "STILL MISSING: {gaps}": "AÚN FALTA: {gaps}",
+  "This needs a decision from you — it will not fill itself.": "Esto necesita una decisión tuya — no se completará solo.",
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Lo que este medic debe llevar para funcionar sin señal. Comprobado contra el disco ahora mismo, no contra lo que se pretendía tener."
 }

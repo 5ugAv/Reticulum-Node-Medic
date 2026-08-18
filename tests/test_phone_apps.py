@@ -287,6 +287,47 @@ def test_space_guard_fails_CLOSED_when_free_space_cannot_be_read():
     assert not any("-o " in x for x in c.cmds if x.startswith("curl -fsSL"))
 
 
+def test_the_download_outlives_curls_own_timeout():
+    """The outer run() timeout must exceed curl's -m, or curl never reaches it.
+
+    Salvaged from a break-lens agent's findings, 2026-08-14: Connection.run()
+    defaults to timeout=30, so a curl told to allow 300s was being killed at 30
+    — on the one operation that is slow by nature (a 60 MB APK over whatever
+    connection a field medic found). The fix is pinned here because the two
+    numbers live on the same line and nothing else makes their ORDER matter.
+    """
+    import re
+    src = open("workflows/phone_apps.py").read()
+    line = next(l for l in src.splitlines()
+                if "curl -fsSL -m" in l and "-o " in l)
+    curl_m = int(re.search(r"-m (\d+)", line).group(1))
+    outer = int(re.search(r"timeout=(\d+)", line).group(1))
+    assert outer > curl_m, (
+        f"run() would kill curl at {outer}s before its own -m {curl_m}s applies")
+
+
+def test_a_failed_download_never_leaves_a_file_at_the_real_path():
+    """An interrupted download must not be mistakable for a finished one.
+
+    It downloads to `.part` and only moves into place once the size checks out,
+    so a killed curl leaves nothing the cache will later offer to a phone.
+    """
+    class _CurlFails(_CurlConn):
+        def run(self, cmd, *a, **k):
+            if cmd.startswith("curl -fsSL") and "-o " in cmd:
+                self.cmds.append(cmd)          # record it, THEN fail it
+                return 1, "", "connection reset"
+            return super().run(cmd, *a, **k)
+    c = _CurlFails(_REL)
+    res = sync_app("columba", c)
+    assert res.failed
+    written = [x for x in c.cmds if x.startswith("curl -fsSL") and "-o " in x]
+    assert written and all(".part" in x for x in written), (
+        "the download must land on .part, never straight on the real filename")
+    assert not any(x.startswith("mv -f") for x in c.cmds), (
+        "nothing may be moved into place after a failed download")
+
+
 def test_cached_app_prefers_the_version_the_marker_names():
     # ls sorts lexicographically: '0.10' sorts BEFORE '0.9', so files[-1] picked
     # the stale build while the marker correctly said 0.10.
