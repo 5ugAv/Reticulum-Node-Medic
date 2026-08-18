@@ -1638,6 +1638,10 @@ class BirthGuideScreen(BoxLayout):
         self._share_chosen(getattr(self, "_share_pending", None))
 
     def _share_chosen(self, policy):
+        # FORWARD (2026-08-14): answering the map question moves on. Main
+        # rewrote this after the Back fix was written, so it arrived
+        # without the flag every other forward mover sets.
+        self._nav_dir = "forward"
         from monitor import location_share
         self._share_location = location_share.normalise(policy)
         self._share_asked = True

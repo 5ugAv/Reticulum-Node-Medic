@@ -145,7 +145,17 @@ def test_the_probe_switch_sits_behind_the_structural_rules():
         "the gate/hand-off guard must hold in BOTH modes"
     # against the probe CALLS, not the docstring's naming of them
     assert red.index("if not probe") < red.index("local_board_ports()")
-    assert red.index("if not probe") < red.index('["lsusb"]')
+    # Was `red.index('["lsusb"]')`. main replaced that probe with a different
+    # mechanism (2026-08-14, "proof not presence"), so asserting on one named
+    # call pinned an implementation rather than the rule. Assert the RULE: no
+    # hardware call in the body, whichever it is, precedes the guard.
+    import re
+    body = red[red.index('"""', red.index('"""') + 3) + 3:]
+    guard = body.index("if not probe")
+    calls = list(re.finditer(r"(lsusb|local_board_ports|subprocess)", body))
+    assert calls, "no hardware call found — has the probe moved out entirely?"
+    assert all(m.start() > guard for m in calls), \
+        "a hardware call runs before the probe guard"
 
 
 def test_probe_false_answers_without_touching_hardware(monkeypatch):
