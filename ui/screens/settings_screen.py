@@ -101,6 +101,13 @@ class SettingsScreen(BoxLayout):
                                     "Check & heal this medic's OWN onboard radio + GPS "
                                     "board (11 live checks + auto-repairs)",
                                     "self_diagnose"))
+        # THE WAY BACK TO THE FIRST-USE WALKTHROUGH, and the way to hand this
+        # medic on. It sits directly above the security preview because that is
+        # what it mostly leads to, and its subtitle CHANGES when the security
+        # half has not been done — an operator who tapped "not now" in a field
+        # needs the medic to still be saying so when they get home, and one
+        # more grey row in a list of twenty says nothing.
+        body.add_widget(self._setup_entry())
         body.add_widget(self._entry(tr("Security preview  (encrypt-at-rest)"),
                                     "Walk the lock screen, recovery key and "
                                     "reset — nothing real behind it yet",
@@ -368,6 +375,42 @@ class SettingsScreen(BoxLayout):
         est = retention.estimate_bytes(self._ret_days, max(n, 1))
         self._ret_impact.text = (f"Storage impact: ≈ {retention.format_size(est)} "
                                  f"for {n} node{'s' if n != 1 else ''} (estimate)")
+
+    def _setup_entry(self):
+        """The first-use walkthrough, re-runnable — with a line under it while
+        it is still owed.
+
+        Two separate people need this row. The operator who skipped the security
+        part to get on with a repair, who has to be able to come back to it; and
+        whoever is handed this medic next, who needs it to introduce itself from
+        nothing ([[networks-outlast-builders]] — a tool is only as durable as
+        the next person's ability to pick it up).
+
+        The subtitle argument every other row passes is not rendered by
+        ``_entry`` and never has been, so this row states its outstanding status
+        in a line of its own underneath, the way the sections in this file
+        already do. Colour alone would not have said it: one amber row in a list
+        of twenty reads as styling.
+
+        Best-effort. A Settings row must not be the thing that fails to draw
+        because a marker file could not be read.
+        """
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(self._entry(
+            tr("Set up this Node Medic"),
+            "The security setup, and what each mode is for", "setup"))
+        try:
+            from provisioning.first_use import security_outstanding
+            outstanding = security_outstanding()
+        except Exception:
+            outstanding = False
+        if outstanding:
+            box.add_widget(_line(
+                "Nobody has chosen how this medic locks its own records yet.",
+                size="12.5sp", color="warning_yellow",
+                h=theme.line_dp("12.5sp")))
+        return box
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
