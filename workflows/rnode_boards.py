@@ -339,5 +339,44 @@ def custom_boards() -> List[RNodeBoard]:
                   key=lambda b: b.display_name)
 
 
+def key_for_board_name(name) -> str:
+    """The catalogue key for a board, however the caller happens to spell it.
+
+    The same physical board carries at least four names in this codebase, and
+    they were never meant to be compared as strings:
+
+    ==========================  ==================  ==================
+    source                      V3                  V4
+    ==========================  ==================  ==================
+    catalogue key               heltec32_v3         heltec32_v4
+    catalogue ``display_name``  Heltec LoRa32 v3    Heltec LoRa32 v4
+    health beacon / birth cert  Heltec32 V3         Heltec32 V4
+    ``node_profile`` value      Heltec LoRa32 V3    Heltec LoRa32 V4
+    ==========================  ==================  ==================
+
+    Note the last two differ from the second by vocabulary and by CASE. Builds
+    write the BEACON spelling onto birth certificates (verified on the medic,
+    2026-08-18: ``board = 'Heltec32 V3'``), so any caller matching a certificate
+    against keys or display names alone finds nothing — which is how the guided
+    flow lost the board photo and started calling a known board "this radio".
+
+    Returns "" when the name matches no board we stock.
+    """
+    raw = (name or "").strip()
+    if not raw:
+        return ""
+    if raw in RNODE_BOARDS:
+        return raw
+    low = raw.lower()
+    for key, b in RNODE_BOARDS.items():
+        if key.lower() == low or (b.display_name or "").lower() == low:
+            return key
+    # Beacon / profile spellings: "Heltec32 V3" -> heltec32_v3.
+    squashed = low.replace(" ", "_")
+    if squashed in RNODE_BOARDS:
+        return squashed
+    return ""
+
+
 def get_board(key: str) -> Optional[RNodeBoard]:
     return RNODE_BOARDS.get(key)

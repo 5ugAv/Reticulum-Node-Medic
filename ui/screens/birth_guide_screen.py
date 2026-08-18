@@ -624,19 +624,21 @@ class BirthGuideScreen(BoxLayout):
         self._render_pick_pi()
 
     def _board_key_of(self, c):
-        """The rnode_boards key for a recognised board — the candidate may
-        carry either the key itself or the display name off a certificate."""
+        """The rnode_boards key for a recognised board, however the candidate
+        spells it — key, catalogue display name, or the BEACON name a build
+        writes onto the birth certificate.
+
+        This used to accept only the first two. Builds write the third
+        ("Heltec32 V3" — verified on the medic 2026-08-18), so a board this
+        medic had itself built came back unrecognised: no board photo on the
+        Pi-build screens, "this radio" instead of its name, and the power
+        compatibility check run with an empty board key.
+        """
         try:
-            from workflows.rnode_boards import RNODE_BOARDS
-            raw = (c.get("board") or "").strip()
-            if raw in RNODE_BOARDS:
-                return raw
-            for key, b in RNODE_BOARDS.items():
-                if b.display_name == raw:
-                    return key
+            from workflows.rnode_boards import key_for_board_name
+            return key_for_board_name(c.get("board"))
         except Exception:                                          # noqa: BLE001
-            pass
-        return ""
+            return ""
 
     def _confirm_rebirth(self, c):
         """Destructive-action gate: rebirth erases the board completely — new
