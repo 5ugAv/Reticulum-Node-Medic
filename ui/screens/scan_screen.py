@@ -1388,6 +1388,13 @@ class ScanScreen(BoxLayout):
         """
         want = not getattr(self, "_terrain_on", False)
         if want and not self._terrain_store():
+            # This refusal spoke into a hidden widget for ten days: dl_status
+            # lives INSIDE the offline-maps panel, which starts collapsed, so
+            # on a device with no terrain file every tap "did nothing"
+            # (operator, 2026-08-14). Open the panel first — the explanation
+            # then sits right next to the download button that cures it.
+            if not self._offline_open:
+                self._toggle_offline()
             self._set_status(tr("No terrain cached for this area yet — it "
                                 "downloads with the offline map."), "alert")
             return
@@ -1858,6 +1865,20 @@ class ScanScreen(BoxLayout):
         self.dl_button.disabled = False
         self._tiles = find_mbtiles()
         self.plot.set_tiles(self._tiles)
+        # _terrain_store memoises its answer — None included — and this
+        # download may have just created the terrain file (or moved which
+        # basemap it sits beside). Forget the memo, or a pre-download tap's
+        # cached None keeps refusing until an app restart (2026-08-14).
+        self._terrain_cache = "unset"
+        if getattr(self, "_terrain_on", False):
+            # The overlay is up: re-point it at the fresh file. If the new
+            # basemap has no terrain beside it, "Terrain  on" would be the
+            # button lying — turn it off visibly instead.
+            store = self._terrain_store()
+            self.plot.set_terrain(store)
+            if store is None:
+                self._terrain_on = False
+                self.terrain_btn.text = tr("Terrain  off")
         self._refresh_header()
         got, failed = summary["fetched"] + summary["skipped"], summary["failed"]
         if summary.get("blocked"):
