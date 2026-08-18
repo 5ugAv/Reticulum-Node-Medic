@@ -467,3 +467,100 @@ name preview on the board photo) remains open by choice — it needs
 per-board coordinates verified against renders. The five-flash night and
 the two detect_hardware failures that preceded this are documented above;
 their fixes are what this birth proved.
+
+---
+
+## Update — 2026-08-18, protocols against the mess
+
+A day of firmware work on a new board produced good results and a bad workspace.
+These are the rules that would have prevented the second thing. Each one is here
+because it actually went wrong on 2026-08-18, not because it sounds prudent.
+
+### Work that is not in git did not happen — and scratch is not git
+
+The whole day's T-Echo firmware work — a new build target, a 26KB RAM fix, a
+status-glyph system with 68 tests, a new LED behaviour — lived for hours in
+**three separate 166MB scratch directories, none of them a git repository**. The
+real content was 1,560 lines across 8 files. Everything else was build output.
+
+This is the same failure as `overlay_test`, the Tracker's custom firmware, which
+survives only because somebody rescued it from an ungitted directory by hand.
+The project's founding principle is that knowledge outlasts its keeper. A
+scratch directory is the opposite of that.
+
+**Protocol.** The moment a piece of work is worth building twice, it goes on a
+branch in a real repository. Not at the end of the day — at the point it first
+compiles. `git checkout -b`, apply, commit, keep working. Pushing is a separate
+decision; committing is not.
+
+### One canonical tree per job, and say which it is
+
+Two workers edited two different copies of the same firmware and neither was the
+finished article: the glyph work was in one, the RAM tuning and the LED in
+another. "The completed build" had to be *constructed* before it could be tested,
+and if it had gone to review unmerged, the review would have been of something
+nobody was going to flash.
+
+**Protocol.** Before handing work to anyone — an agent, a reviewer, a flash — say
+out loud which directory is canonical, and verify the pieces are all in it. If
+two trees exist, merge or delete one. Never hand over "the build" when two builds
+exist.
+
+### Diff the source, never the directory
+
+A patch generated with `diff -ruN` swept in `.pio/libdeps/` and came out at
+**682,585 lines and 55MB** of downloaded third-party libraries. The actual change
+was 1,560 lines. The same trap catches `build/`, `.git`, and `*.o`.
+
+**Protocol.** Always exclude generated directories explicitly, then READ THE FILE
+LIST the patch touches before doing anything with it. If the list has files
+nobody edited, the patch is wrong.
+
+### Never nest a heredoc inside an ssh command
+
+A commit message sent as a heredoc inside a single-quoted `ssh '...'` was
+silently truncated at the first apostrophe — "the panel's own driver" ended the
+quoting. The commit succeeded with half a message and no error that said so.
+
+**Protocol.** Write the text to a file locally, `scp` it, and use `-F file`.
+This applies to commit messages, config files, and anything with quotes or
+apostrophes in it. The failure is silent, which is what makes it dangerous.
+
+### Check the identity of the repository you are committing to
+
+`reticulum-tool` commits as `285661567+5ugAv@users.noreply.github.com`. The
+other repository on the same machine once committed under a personal address. Same
+operator, same day, two different exposure levels — and nothing warns you.
+
+**Protocol.** `git log -1 --format='%an <%ae>'` in the target repository before
+the first commit of a session. Per-repo, not per-machine: a global default is
+what produces this. See also the standing rule about checking commit metadata
+before anything leaves the machine.
+
+### A hardcoded device path is a loaded weapon on a tool that holds its own radio
+
+The firmware Makefile had **31 hardcoded `/dev/ttyACM0`** upload targets. On a
+Node Medic, `ttyACM0` is the medic's own permanently-attached radio. One of them
+was a `rnodeconf --firmware-hash` line, which WRITES. Converting the upload line
+alone was not enough — the verification two lines below it still pointed at the
+wrong device, and I missed it until an agent read the whole target.
+
+**Protocol.** When fixing a port, fix every line in the target, not the one that
+caught your eye. Address boards by `/dev/serial/by-id/` paths, which are stable
+across reboots where `ttyACM*` ordering is not. And when a fix is partial, say
+so in the file — there is now a banner naming the 30 targets still unconverted.
+
+### The recurring one: existing is not running
+
+`firmware-techo` existed for months and had never been executed. `sync_all` was
+complete, tested and uncalled. `carry.py` was committed dead. `epd_update_fps`
+was declared and never wired — and that one would have driven an e-paper panel at
+~605,000 refreshes a day, on a part rated for about a million.
+
+Every one of these passed review by existing. None of them ran.
+
+**Protocol.** `tests/test_wiring.py` now fails the suite when a module in an
+action package is imported by nothing outside `tests/`. For firmware, the
+equivalent question has to be asked by a person: *has this target ever been
+executed, by anyone?* If the answer is no, treat the code as unverified
+regardless of how finished it looks — and say so in the commit.
