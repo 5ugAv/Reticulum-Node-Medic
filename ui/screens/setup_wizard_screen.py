@@ -394,22 +394,95 @@ class SetupWizardScreen(BoxLayout):
         note = self._notice_widget()
         if note is not None:
             stage.add_widget(note)
-        field = TextInput(
-            hint_text="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX",
-            multiline=False, size_hint_y=None, height=dp(56),
-            # 24sp for the same reason the unlock screen uses it: a real key is
-            # 39 characters with its hyphens, and if it scrolls under the cursor
-            # the operator cannot check what they typed against what they wrote.
-            font_size="24sp", halign="center")
-        self._bind_keyboard(field)
-        self._key_field = field
+        # EIGHT BOXES, LAID OUT THE WAY THE KEY WAS SHOWN — two rows of four
+        # (operator, 2026-08-18). One long box asked the operator to reproduce
+        # the grouping themselves: where the spaces go, whether hyphens count,
+        # and whether what scrolled off the left was right. None of that is the
+        # thing being checked. A box per group makes the shape of the answer the
+        # same shape as the paper they are reading from, and each box holds
+        # exactly one group, so four characters is visibly "this box is done".
+        from kivy.uix.gridlayout import GridLayout
+        grid = GridLayout(cols=recovery_key.GROUPS // 2, rows=2,
+                          spacing=dp(8), size_hint_y=None, height=dp(124))
+        self._key_boxes = []
+        for i in range(recovery_key.GROUPS):
+            box = TextInput(
+                multiline=False, size_hint_y=None, height=dp(58),
+                # Big enough that four characters read cleanly at arm's length
+                # on the panel; the group can never scroll, so what is on screen
+                # is always the whole of what was typed there.
+                font_size="30sp", halign="center", write_tab=False)
+            self._bind_keyboard(box)
+            box.bind(text=lambda inst, val, n=i: self._key_box_typed(n, val))
+            box.bind(on_text_validate=lambda inst, n=i: self._focus_key_box(n + 1))
+            self._key_boxes.append(box)
+            grid.add_widget(box)
         self._key_status = _grow("", "14sp", color="amber")
-        field.bind(text=lambda *_: self._check_typed_key())
-        field.bind(on_text_validate=lambda *_: self._check_typed_key())
-        stage.add_widget(field)
+        stage.add_widget(grid)
         stage.add_widget(self._key_status)
         stage.add_widget(Widget())
         self._wizard(step, anim=stage)
+        Clock.schedule_once(lambda _dt: self._focus_key_box(0), 0.3)
+
+    def _typed_key(self) -> str:
+        """The eight boxes read back as one key."""
+        return "-".join((b.text or "").strip()
+                        for b in getattr(self, "_key_boxes", []))
+
+    def _focus_key_box(self, index):
+        boxes = getattr(self, "_key_boxes", [])
+        if 0 <= index < len(boxes):
+            boxes[index].focus = True
+
+    def _key_box_typed(self, index, value):
+        """Keep a box to its own group, and move on when it is full.
+
+        A group is four characters and the operator is copying from paper, so
+        the moment the fourth lands the next box is where they are going. Any
+        overflow — a fast typist, or a paste — is carried FORWARD rather than
+        dropped, because silently eating a character the operator watched
+        themselves type is the one behaviour this screen must not have.
+        """
+        boxes = getattr(self, "_key_boxes", [])
+        if not boxes:
+            return
+        n = recovery_key.GROUP_LEN
+        # Separators belong to the layout now, not the typing.
+        cleaned = "".join(c for c in (value or "") if c not in "- _\t")
+        if cleaned != value:
+            boxes[index].text = cleaned
+            return                                    # re-enters with the clean text
+        if len(cleaned) > n:
+            boxes[index].text = cleaned[:n]
+            spill = cleaned[n:]
+            if index + 1 < len(boxes):
+                boxes[index + 1].text = (spill + boxes[index + 1].text)[:n * 2]
+                self._focus_key_box(index + 1)
+            return
+        if len(cleaned) == n and index + 1 < len(boxes):
+            self._focus_key_box(index + 1)
+        self._check_typed_key()
+
+    def _mark_wrong_groups(self, clear=False):
+        """Tint the boxes whose group differs; return their 1-based numbers.
+
+        Compared group-by-group on NORMALISED text, so the same handwriting
+        folds that forgive the whole key forgive it here — a group must not be
+        called wrong for a letter shape the check itself accepts.
+        """
+        boxes = getattr(self, "_key_boxes", [])
+        want = recovery_key.groups(self._recovery)
+        plain = theme.hex_to_rgba(theme.COLORS["text_primary"])
+        bad = theme.hex_to_rgba(theme.COLORS["amber"])
+        wrong = []
+        for i, box in enumerate(boxes):
+            got = recovery_key.normalize(box.text or "")
+            expect = want[i] if i < len(want) else ""
+            ok = clear or (got == expect)
+            box.foreground_color = plain if ok else bad
+            if not ok:
+                wrong.append(i + 1)
+        return wrong
 
     def _check_typed_key(self):
         """Compare what was typed against what was shown — normalised.
@@ -420,19 +493,43 @@ class SetupWizardScreen(BoxLayout):
         their paper copy is wrong, which is the single most expensive wrong
         lesson this screen could teach.
         """
-        typed = (self._key_field.text or "").strip()
-        if not typed:
+        typed = self._typed_key()
+        if not recovery_key.normalize(typed):
             self._key_status.text = ""
             return
         if not recovery_key.is_wellformed(typed):
             self._key_status.text = (
                 "Keep going — 32 characters, in eight groups of four.")
             return
-        if recovery_key.normalize(typed) != recovery_key.normalize(self._recovery):
-            self._key_status.text = (
-                "That is not the key that was shown. Check it against your "
-                "paper — this is exactly the slip this step exists to catch.")
+        wrong = self._mark_wrong_groups()
+        if wrong:
+            # NAME THE GROUPS, don't just refuse (operator, 2026-08-19, stuck on
+            # this screen with a correct-looking key). "That is not the key"
+            # against 32 characters in one box is a puzzle with no method: the
+            # operator re-reads all eight groups, finds nothing, and concludes
+            # the medic is broken. Two characters were wrong on a page of 32.
+            #
+            # This does not leak a secret. The key was on the screen before this
+            # one and is on the paper in their hand; pressing Back shows a key
+            # again. This screen has never been the thing standing between an
+            # intruder and the vault — the passphrase and the vault itself are.
+            # What it IS, is the last chance to catch a bad transcription before
+            # the only copy of the key is a page with a wrong letter on it.
+            if len(wrong) == recovery_key.GROUPS:
+                # Nothing lines up: naming all eight groups is noise, and this
+                # is not a transcription slip — it is a different key.
+                self._key_status.text = (
+                    "That is not the key that was shown. Check it against your "
+                    "paper — this is exactly the slip this step exists to catch.")
+            elif len(wrong) == 1:
+                self._key_status.text = (
+                    f"Close — group {wrong[0]} does not match what was shown.")
+            else:
+                where = ", ".join(str(n) for n in wrong)
+                self._key_status.text = (
+                    f"Close — groups {where} do not match what was shown.")
             return
+        self._mark_wrong_groups(clear=True)
         self._key_status.text = "That matches."
         self._state = sf.advance(self._state, recovery_key_verified=True)
         Clock.schedule_once(lambda _dt: self._goto(self._i + 1), 0.6)

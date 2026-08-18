@@ -35,7 +35,8 @@ _CLOCK = types.SimpleNamespace(schedule_once=lambda *a, **k: None,
 
 #: theme is only ever asked for a colour here.
 _THEME = types.SimpleNamespace(COLORS={"amber": "#ffbf00", "green": "#00ff00",
-                                       "warning_yellow": "#ffd700"},
+                                       "warning_yellow": "#ffd700",
+                                       "text_primary": "#ffffff"},
                                hex_to_rgba=lambda h, a=1: (0, 0, 0, a))
 
 
@@ -54,6 +55,7 @@ class _Field:
     def __init__(self, text=""):
         self.text = text
         self.password = True
+        self.foreground_color = None
 
 
 class _Label:
@@ -75,8 +77,98 @@ def _self(**attrs):
 # --------------------------------------------------------------------------- #
 
 def _typing_self(shown_key, typed):
-    return _self(_recovery=shown_key, _key_field=_Field(typed),
-                 _key_status=_Label())
+    """A stand-in for the eight group boxes, filled the way typing fills them.
+
+    The screen stopped being one long field on 2026-08-18: the key is SHOWN as
+    two rows of four groups, and asking the operator to reproduce that grouping
+    inside a single box made them responsible for spacing that was never the
+    thing being checked. ``typed`` is still written here the way a person would
+    say it, and split on its separators into the boxes it would have landed in.
+    """
+    import re
+    boxes = [_Field(g) for g in re.split(r"[-\s_]+", typed) if g]
+    obj = _self(_recovery=shown_key, _key_boxes=boxes, _key_status=_Label())
+    obj._typed_key = types.MethodType(_load("_typed_key"), obj)
+    obj._mark_wrong_groups = types.MethodType(_load("_mark_wrong_groups"), obj)
+    return obj
+
+
+def _boxes_self(shown_key="ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789"):
+    """Eight empty boxes plus the focus/validation wiring they call."""
+    obj = _self(_recovery=shown_key, _key_status=_Label(),
+                _key_boxes=[_Field("") for _ in range(recovery_key.GROUPS)])
+    obj.focused = []
+    obj._focus_key_box = lambda i: obj.focused.append(i)
+    obj._typed_key = types.MethodType(_load("_typed_key"), obj)
+    obj._check_typed_key = lambda: None
+    return obj
+
+
+def test_a_full_group_moves_to_the_next_box():
+    """Four characters IS the group — the operator's eyes are already on the
+    next one, so the cursor should be too."""
+    typed = _load("_key_box_typed")
+    s = _boxes_self()
+    s._key_boxes[0].text = "ABCD"
+    typed(s, 0, "ABCD")
+    assert s.focused == [1]
+
+
+def test_a_part_typed_group_does_not_jump_away():
+    typed = _load("_key_box_typed")
+    s = _boxes_self()
+    s._key_boxes[0].text = "AB"
+    typed(s, 0, "AB")
+    assert s.focused == []
+
+
+def test_the_last_group_has_nowhere_to_advance_to():
+    typed = _load("_key_box_typed")
+    s = _boxes_self()
+    last = recovery_key.GROUPS - 1
+    s._key_boxes[last].text = "6789"
+    typed(s, last, "6789")
+    assert s.focused == []
+
+
+def test_overflow_is_carried_forward_never_dropped():
+    """A fast typist or a paste puts more than four in a box. Silently eating a
+    character the operator watched themselves type is the one behaviour this
+    screen must not have."""
+    typed = _load("_key_box_typed")
+    s = _boxes_self()
+    s._key_boxes[0].text = "ABCDEF"
+    typed(s, 0, "ABCDEF")
+    assert s._key_boxes[0].text == "ABCD"
+    assert s._key_boxes[1].text == "EF", "the spill must land in the next box"
+    assert s.focused == [1]
+
+
+def test_separators_belong_to_the_layout_not_the_typing():
+    """The boxes ARE the grouping now, so a hyphen or a space typed out of habit
+    is noise — it must not eat one of the four places."""
+    typed = _load("_key_box_typed")
+    s = _boxes_self()
+    s._key_boxes[0].text = "AB-C"
+    typed(s, 0, "AB-C")
+    assert s._key_boxes[0].text == "ABC"
+
+
+def test_the_boxes_read_back_as_the_key_that_was_shown():
+    shown = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789"
+    s = _boxes_self(shown)
+    for box, group in zip(s._key_boxes, recovery_key.groups(shown)):
+        box.text = group
+    assert recovery_key.normalize(s._typed_key()) == recovery_key.normalize(shown)
+
+
+def test_there_is_one_box_per_group_of_the_shown_key():
+    """The formation has to match what the operator is copying from: the key is
+    displayed as two rows of four groups (ui/screens/recovery_key_screen.py)."""
+    from tests.srcutil import func_source
+    src = func_source(SCREEN, "_render_type_it_back")
+    assert "recovery_key.GROUPS" in src, "box count must follow the key, not a literal"
+    assert "GROUPS // 2" in src, "two rows of four, as the key is shown"
 
 
 def test_a_wrong_key_does_not_verify_anything():
@@ -86,6 +178,41 @@ def test_a_wrong_key_does_not_verify_anything():
     check(s)
     assert not s._state.recovery_key_verified
     assert "not the key that was shown" in s._key_status.text
+
+
+def test_a_near_miss_says_WHICH_group_is_wrong():
+    """One wrong character in 32 used to produce "that is not the key", which
+    gives the operator no method: they re-read all eight groups, find nothing,
+    and conclude the medic is broken (bench, 2026-08-19 — two characters were
+    wrong on a page of 32 and the screen would not say where)."""
+    shown = "H4AH-ZHEC-2GMX-9Q3T-7XRG-JF3C-JA90-GV0W"
+    check = _load("_check_typed_key")
+    s = _typing_self(shown, "H4AM-ZHEC-2GMX-9Q3T-7XRG-5F3C-JA90-GV0W")
+    check(s)
+    assert not s._state.recovery_key_verified
+    assert "groups 1, 6" in s._key_status.text, s._key_status.text
+
+
+def test_a_single_wrong_group_is_named_in_the_singular():
+    shown = "H4AH-ZHEC-2GMX-9Q3T-7XRG-JF3C-JA90-GV0W"
+    check = _load("_check_typed_key")
+    s = _typing_self(shown, "H4AH-ZHEC-2GMX-9Q3T-7XRG-JF3C-JA90-GV0X")
+    check(s)
+    assert "group 8 does not match" in s._key_status.text, s._key_status.text
+
+
+def test_the_wrong_groups_are_the_ones_tinted():
+    shown = "H4AH-ZHEC-2GMX-9Q3T-7XRG-JF3C-JA90-GV0W"
+    s = _typing_self(shown, "H4AM-ZHEC-2GMX-9Q3T-7XRG-5F3C-JA90-GV0W")
+    assert s._mark_wrong_groups() == [1, 6]
+
+
+def test_a_handwriting_fold_is_never_called_a_wrong_group():
+    """normalize forgives O for 0 across the whole key; the per-group marker
+    must forgive it too, or it would point at a group that is actually right."""
+    shown = "H4AH-ZHEC-2GMX-9Q3T-7XRG-JF3C-JA90-GV0W"
+    s = _typing_self(shown, "H4AH ZHEC 2GMX 9Q3T 7XRG JF3C JA9O GVOW")
+    assert s._mark_wrong_groups() == []
 
 
 def test_a_handwritten_key_still_gets_the_operator_in():
