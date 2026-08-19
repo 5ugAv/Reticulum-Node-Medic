@@ -465,6 +465,35 @@ def _onboard_techo(wf) -> StepResult:
                           "the cable, then run the build again (its identity "
                           "is already saved; the retry is safe).")
     raw = _techo_raw_port(wf) or raw
+    # THE FIRMWARE HASH, WITHOUT WHICH EVERYTHING ELSE QUIETLY DIES. The
+    # firmware compares its stored expected-hash against the running image at
+    # boot; unset, the check fails, hw_ready stays false, RNS refuses to
+    # start, the LEDs sit red, the e-paper says FIRMWARE CORRUPT — and
+    # eeprom_conf_save() silently refuses too, so the TNC params set below
+    # LOOK saved (rnodeconf prints its success from the host side) and are
+    # not. The first real birth shipped exactly that board (2026-08-20,
+    # diagnosed from its own boot log: "RNS is inoperable because hardware is
+    # not ready"). The device computes its own running-image hash; we write
+    # it back as the expectation — the same step upload-techo always had.
+    hcmd = wf.connection.run(
+        f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
+        f"export PATH=$HOME/.local/bin:$PATH && "
+        f"./partition_hashes from_device {raw} 2>/dev/null | tail -1",
+        timeout=90)
+    fw_hash = (hcmd[1] or "").strip().splitlines()[-1].strip() if (hcmd[1] or "").strip() else ""
+    if len(fw_hash) != 64 or not all(c in "0123456789abcdef" for c in fw_hash):
+        return StepResult("wifi_onboarding", False,
+                          "Could not read the running firmware's hash off the "
+                          f"board: {(hcmd[1] or '').strip()[-200:] or 'no output'}")
+    seth = wf.connection.run(
+        f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 60 rnodeconf {raw} --firmware-hash {fw_hash} 2>&1 | tail -3",
+        timeout=90)
+    if "Firmware hash set" not in (seth[1] or ""):
+        return StepResult("wifi_onboarding", False,
+                          f"Setting the firmware hash failed: "
+                          f"{(seth[1] or '').strip()[-200:]}")
+    raw = _techo_raw_port(wf) or raw
     freq_hz = int(round(r.frequency_mhz * 1_000_000))
     bw_hz = int(r.bandwidth_khz * 1000)
     # -T (TNC mode) is the branch that CONSUMES the five flags and leaves the
@@ -497,9 +526,10 @@ def _onboard_techo(wf) -> StepResult:
         wf.gps_fix = None
     return StepResult("wifi_onboarding", True,
                       f"Configured over USB (no WiFi on this board): identity "
-                      f"provisioned, radio set to {r.frequency_mhz} MHz "
-                      f"SF{r.spreading_factor} CR{r.coding_rate} "
-                      f"{r.tx_power_dbm} dBm — running standalone (TNC mode).")
+                      f"provisioned, firmware hash set, radio set to "
+                      f"{r.frequency_mhz} MHz SF{r.spreading_factor} "
+                      f"CR{r.coding_rate} {r.tx_power_dbm} dBm — running "
+                      f"standalone (TNC mode).")
 
 
 def _verify_techo(wf) -> StepResult:

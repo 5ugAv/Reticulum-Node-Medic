@@ -662,6 +662,12 @@ class _TechoMedic(EmulatedConnection):
         if "make flash-techo" in cmd:
             self.in_bootloader = False                # DFU ends in the app
             return 0, "Device programmed.", ""
+        if "partition_hashes from_device" in cmd:
+            return 0, ("b9a932741fd128ac7dc137bc733b1b9a"
+                       "9189a71eca95fd4ce55d4836de8196bc"), ""
+        if "--firmware-hash" in cmd:
+            return 0, ("EEPROM checksum correct\nDevice signature validated\n"
+                       "Firmware hash set"), ""
         if "rnodeconf" in cmd and " -r " in cmd:
             return 0, "EEPROM Bootstrapping successful!", ""
         if "rnodeconf" in cmd and " -T " in cmd:
@@ -879,3 +885,39 @@ def test_the_identity_regex_matches_the_firmware_print():
             "dst=fedcba9876543210fedcba9876543210")
     m = _TECHO_ID_RE.search("noise before\n" + line + "\nnoise after")
     assert m and m.group(1).startswith("0123") and m.group(2).startswith("fedc")
+
+
+def test_onboard_techo_sets_the_firmware_hash():
+    """Without it, everything downstream quietly dies: hw_ready stays false,
+    RNS refuses to start, and eeprom_conf_save silently drops the TNC params
+    while rnodeconf reports success from the host side. The first real birth
+    shipped exactly that board (2026-08-20); its own boot log named the cause."""
+    from workflows.rtnode_build import _onboard_techo
+    c = _TechoMedic()
+    res = _onboard_techo(_techo_wf(c))
+    assert res.success, res.message
+    assert "firmware hash set" in res.message
+    hashes = [x for x in c.history if "--firmware-hash" in x]
+    assert hashes, "the hash write must happen"
+    assert "b9a932741fd128ac" in hashes[0], (
+        "the hash written must be the one the DEVICE computed")
+    order = [i for i, x in enumerate(c.history)
+             if "--firmware-hash" in x or (" -T " in x and "rnodeconf" in x)]
+    assert len(order) == 2 and "--firmware-hash" in c.history[order[0]], (
+        "hash BEFORE params — conf_save silently refuses while hw_ready is "
+        "false, which is exactly the shipped failure")
+
+
+def test_onboard_techo_fails_honestly_on_an_unreadable_hash():
+    from workflows.rtnode_build import _onboard_techo
+
+    class _NoHash(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "partition_hashes from_device" in cmd:
+                self.history.append(cmd)
+                return 1, "", ""
+            return super().run(cmd, *a, **k)
+
+    res = _onboard_techo(_techo_wf(_NoHash()))
+    assert not res.success
+    assert "hash" in res.message.lower()
