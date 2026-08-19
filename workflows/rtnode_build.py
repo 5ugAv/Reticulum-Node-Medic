@@ -82,7 +82,7 @@ RTNODE_TARGETS = {
     # fixed properly. build_env here names the MAKE target in TECHO_PROJECT_DIR,
     # not a PlatformIO env; mechanism selects the whole different pipeline.
     "techo": RTNodeTarget(
-        "techo", "LilyGO T-Echo Plus", "firmware-techo-noalloc",
+        "techo", "LilyGO T-Echo", "firmware-techo-noalloc",
         NodeHardware.TECHO, verify="eeprom", mechanism="techo_dfu"),
 }
 DEFAULT_TARGET = "heltec_v4"
@@ -322,20 +322,46 @@ def _techo_raw_port(wf) -> str:
     the host's serial port while reporting success (proven with a wire spy,
     2026-08-19). ESP32 paths never hit this; nRF52 paths always must resolve.
     """
+    # An UNMATCHED glob passes through bash as a literal, and GNU readlink -f
+    # happily prints the literal and exits 0 — so a naive readlink-over-globs
+    # returns the string "/dev/serial/by-id/*Nordic*" as a "port" whenever
+    # other by-id devices exist but the T-Echo doesn't (adversarial review,
+    # 2026-08-19). Existence-check every candidate; take only real nodes.
     out = wf.connection.run(
-        "readlink -f /dev/serial/by-id/*Nordic* /dev/serial/by-id/*T-Echo* "
-        "2>/dev/null | head -1")[1].strip()
-    return out
+        "for f in /dev/serial/by-id/*T-Echo* /dev/serial/by-id/*RTNode* "
+        "/dev/serial/by-id/*Nordic*; do "
+        "[ -e \"$f\" ] && readlink -f \"$f\"; done 2>/dev/null | sort -u")[1]
+    ports = [l.strip() for l in out.splitlines() if l.strip().startswith("/dev/")]
+    if len(ports) > 1:
+        # Two nRF-identity devices at once: refusing beats provisioning the
+        # wrong one — the guard checked the PINNED port, not whatever a glob
+        # happens to list first.
+        return ""
+    return ports[0] if ports else ""
 
 
 def _techo_wait(wf, pattern: str, tries: int = 30) -> bool:
     """Wait for a USB identity to (re)appear — the board re-enumerates on every
-    DFU entry, flash, and rnodeconf reset, and its ttyACM number can move."""
+    DFU entry, flash, and rnodeconf reset, and its ttyACM number can move.
+
+    CASE-SENSITIVE on purpose. The bootloader is "LilyGo_T-Echo_v1" and the
+    running app is "LilyGO_T-Echo_RTNode-2400" — one capital letter apart. A
+    -qi grep read a running board as already-in-the-bootloader, skipped the
+    touch, and the flash then refused with the board plugged in (review,
+    2026-08-19)."""
     for _ in range(tries):
-        if wf.connection.run(f"ls /dev/serial/by-id/ 2>/dev/null | grep -qi '{pattern}'")[0] == 0:
+        if wf.connection.run(f"ls /dev/serial/by-id/ 2>/dev/null | grep -q '{pattern}'")[0] == 0:
             return True
         _sleep(2)
     return False
+
+
+#: The two USB identities, one capital apart. The app identity is set by the
+#: Makefile's USB_ID overrides (manufacturer LilyGO, product "T-Echo
+#: RTNode-2400"); the bootloader's is burned into it and unaffected by any app
+#: flash. Distinguishing them is what makes the touch decision correct.
+TECHO_BOOTLOADER_ID = "LilyGo_T-Echo"
+TECHO_APP_ID = "T-Echo_RTNode-2400"
 
 
 def _flash_techo(wf, port: str) -> StepResult:
@@ -343,39 +369,51 @@ def _flash_techo(wf, port: str) -> StepResult:
     into the bootloader (no hands — proven on this board), then the Makefile's
     guarded flash-techo target, which finds the board by its LilyGo identity
     and refuses if that ever resolves to the medic's own radio."""
+    # set -o pipefail everywhere a pipe feeds the exit-code check: bash -c
+    # without it returns TAIL's status, which is always 0, and every failure
+    # check downstream of a pipe was dead (adversarial review, 2026-08-19).
     build = wf.connection.run(
-        f"cd {TECHO_PROJECT_DIR} && export PATH=$HOME/.local/bin:$PATH && "
+        f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
+        f"export PATH=$HOME/.local/bin:$PATH && "
         f"nice -n 15 make {wf.target.build_env} 2>&1 | tail -3", timeout=1200)
-    if build[0] != 0 or "error" in (build[1] or "").lower():
+    if build[0] != 0:
         return StepResult("flash_firmware", False,
-                          f"T-Echo firmware build failed: {(build[1] or '')[-300:]}")
-    # Already in the bootloader (double-tapped by hand)? Skip the touch.
+                          "T-Echo firmware build failed: "
+                          f"{(build[1] or '').strip()[-300:] or 'build timed out'}")
+    # Already in the bootloader (double-tapped by hand)? Then skip the touch.
+    # EXACT case: the RUNNING app is one capital away (see TECHO_APP_ID).
     if wf.connection.run(
-            "ls /dev/serial/by-id/ 2>/dev/null | grep -qi 'LilyGo_T-Echo'")[0] != 0:
+            f"ls /dev/serial/by-id/ 2>/dev/null | grep -q '{TECHO_BOOTLOADER_ID}'")[0] != 0:
         raw = _techo_raw_port(wf)
         if not raw:
             return StepResult("flash_firmware", False,
-                              "No T-Echo on USB — plug it in with a data cable "
-                              "and build again.")
+                              "No T-Echo on USB (or more than one nRF board "
+                              "attached — unplug the others). Plug it in with "
+                              "a data cable and build again.")
         wf.connection.run(
             f"python3 ~/reticulum-tool/scripts/techo_touch.py {raw}",
             timeout=30)
-        if not _techo_wait(wf, "LilyGo_T-Echo", tries=15):
+        if not _techo_wait(wf, TECHO_BOOTLOADER_ID, tries=15):
             return StepResult("flash_firmware", False,
                               "The 1200-baud touch didn't reach the bootloader "
                               "— double-tap the side RESET button (two quick "
                               "presses) and build again.")
     variant = "noalloc" if "noalloc" in wf.target.build_env else "release"
     flash = wf.connection.run(
-        f"cd {TECHO_PROJECT_DIR} && export PATH=$HOME/.local/bin:$PATH && "
+        f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
+        f"export PATH=$HOME/.local/bin:$PATH && "
         f"make flash-techo VARIANT={variant} 2>&1 | tail -4", timeout=300)
     if flash[0] != 0 or "programmed" not in (flash[1] or "").lower():
         return StepResult("flash_firmware", False,
-                          f"DFU flash failed: {(flash[1] or '')[-300:]}")
-    if not _techo_wait(wf, "Nordic", tries=15):
+                          f"DFU flash failed: {(flash[1] or '').strip()[-300:]}")
+    # The image this pipeline builds RENAMES the board (Makefile USB_ID):
+    # it comes back as "T-Echo RTNode-2400", never as Nordic's default. The
+    # first version of this wait grepped for "Nordic" and would have failed
+    # every successful first flash (both reviews, independently, 2026-08-19).
+    if not _techo_wait(wf, "T-Echo", tries=15):
         return StepResult("flash_firmware", False,
                           "Flashed, but the board did not come back on USB — "
-                          "double-tap RESET to reach the bootloader and retry.")
+                          "check the cable, then double-tap RESET and retry.")
     wf.profile.connection_port = _techo_raw_port(wf) or port
     wf.profile.radio.serial_port = wf.profile.connection_port
     return StepResult("flash_firmware", True,
@@ -394,13 +432,15 @@ def _onboard_techo(wf) -> StepResult:
                           "Board vanished from USB before provisioning.")
     r = wf.profile.radio
     prov = wf.connection.run(
-        f"export PATH=$HOME/.local/bin:$PATH && "
+        f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
         f"timeout 150 rnodeconf {raw} -r {TECHO_PROVISION_ARGS} 2>&1 | tail -4",
         timeout=180)
     text = prov[1] or ""
-    if "Bootstrapping successful" not in text and "successful" not in text:
-        # A previously provisioned board refuses a re-bootstrap — that is fine,
-        # its identity is meant to survive. Read it back to be sure.
+    if "Bootstrapping successful" not in text:
+        # (The old check also accepted any line containing "successful" —
+        # which matches "unsuccessful" too. One exact sentence, or the
+        # read-back decides.) A previously provisioned board REFUSES a
+        # re-bootstrap and that is fine — its identity is meant to survive.
         chk = wf.connection.run(
             f"export PATH=$HOME/.local/bin:$PATH && "
             f"timeout 40 rnodeconf {_techo_raw_port(wf) or raw} -i 2>&1",
@@ -408,19 +448,44 @@ def _onboard_techo(wf) -> StepResult:
         if "signature validated" not in chk.lower():
             return StepResult("wifi_onboarding", False,
                               f"EEPROM bootstrap failed: {text.strip()[-300:]}")
-    _sleep(4)
+    # rnodeconf -r ends in a hard reset on nRF52 — the board re-enumerates and
+    # its ttyACM number can move. WAIT for it, don't just sleep.
+    if not _techo_wait(wf, "T-Echo", tries=15):
+        return StepResult("wifi_onboarding", False,
+                          "Board did not return after provisioning — check "
+                          "the cable, then run the build again (its identity "
+                          "is already saved; the retry is safe).")
     raw = _techo_raw_port(wf) or raw
     freq_hz = int(round(r.frequency_mhz * 1_000_000))
     bw_hz = int(r.bandwidth_khz * 1000)
+    # -T (TNC mode) is the branch that CONSUMES the five flags and leaves the
+    # node running them standalone. -N is normal/host-controlled mode and
+    # SILENTLY IGNORES all five — the first version of this step used -N and
+    # would have shipped an unconfigured node under a green success message
+    # (adversarial review, 2026-08-19, verified in rnodeconf's source). With
+    # all five flags present -T asks nothing; missing flags would prompt on a
+    # terminal and hang a scripted run, so keep them all explicit.
     params = wf.connection.run(
-        f"export PATH=$HOME/.local/bin:$PATH && "
-        f"timeout 60 rnodeconf {raw} -N --freq {freq_hz} --bw {bw_hz} "
+        f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 60 rnodeconf {raw} -T --freq {freq_hz} --bw {bw_hz} "
         f"--sf {r.spreading_factor} --cr {r.coding_rate} "
         f"--txp {r.tx_power_dbm} 2>&1 | tail -3", timeout=90)
-    if params[0] != 0:
+    ptext = (params[1] or "")
+    if params[0] != 0 or "TNC" not in ptext:
         return StepResult("wifi_onboarding", False,
                           f"Radio parameters failed to save: "
-                          f"{(params[1] or '').strip()[-250:]}")
+                          f"{ptext.strip()[-250:] or 'no response'}")
+    # The GPS fix every other birth captures — the medic is physically at the
+    # node right now, so its fix IS the node's location. SAME contract as the
+    # portal path: wf.gps_fix, which birth_certificate reads; no fix is a
+    # recorded absence, never a fake position. (JONESEY carries the GPS, so
+    # while it is away every fix is honestly None.)
+    try:
+        fix = (read_gps(wf.gps_reader) if wf.gps_reader is not None
+               else read_gps())
+        wf.gps_fix = fix
+    except Exception:
+        wf.gps_fix = None
     return StepResult("wifi_onboarding", True,
                       f"Configured over USB (no WiFi on this board): identity "
                       f"provisioned, radio set to {r.frequency_mhz} MHz "
@@ -441,6 +506,12 @@ def _verify_techo(wf) -> StepResult:
         f"timeout 40 rnodeconf {raw} -i 2>&1", timeout=60)[1] or ""
     low = out.lower()
     if "signature validated" in low and "checksum correct" in low:
+        # The certificate's firmware field comes from the beacon on other
+        # targets; here the same fact is in the -i output. Read it rather
+        # than printing "firmware: None" about an image we just flashed.
+        m = re.search(r"Firmware version\s*:\s*([\w.\-]+)", out)
+        if m:
+            wf.techo_fw_version = m.group(1)
         return StepResult("verify_beacon", True,
                           "Provisioning verified over USB: EEPROM checksum "
                           "correct, device signature validated. (No over-the-"
@@ -637,7 +708,8 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
                     "share_location": wf.profile.share_location}
     wf.birth_certificate = {
         "board": wf.beacon.board_label if wf.beacon else wf.profile.hardware.value,
-        "firmware": wf.beacon.firmware_version if wf.beacon else None,
+        "firmware": (wf.beacon.firmware_version if wf.beacon
+                     else getattr(wf, "techo_fw_version", None)),
         "identity_hash": wf.profile.reticulum_identity_hash,
         "serial_port": wf.profile.connection_port,
         "build_env": wf.target.build_env,
@@ -693,6 +765,33 @@ class RTNodeBuildWorkflow:
         self.gps_fix: Optional[GpsFix] = None
         self.onboarding: Optional[dict] = None
         self.birth_certificate: Optional[dict] = None
+
+    @property
+    def step_display(self):
+        """Per-build names for the checklist rows. The step FUNCTIONS are
+        shared across targets, but the T-Echo's onboarding is USB and its
+        verify is an EEPROM read-back — showing "wifi_onboarding" on a board
+        with no WiFi radio was a lie in the checklist (review, 2026-08-19)."""
+        if self.target.mechanism == "techo_dfu":
+            return {"wifi_onboarding": "usb_setup",
+                    "verify_beacon": "verify_usb"}
+        return {}
+
+    @property
+    def step_phase_labels(self):
+        """The live one-line narration per step, same rule as step_display."""
+        if self.target.mechanism == "techo_dfu":
+            return {
+                "flash_firmware": "Building and flashing over serial DFU… "
+                                  "the board reboots twice — keep it plugged "
+                                  "in.",
+                "wifi_onboarding": "Configuring over USB — identity, then the "
+                                   "radio parameters (no WiFi on this board; "
+                                   "nothing leaves your network).",
+                "verify_beacon": "Verifying over USB — reading the "
+                                 "provisioning back off the board.",
+            }
+        return {}
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)

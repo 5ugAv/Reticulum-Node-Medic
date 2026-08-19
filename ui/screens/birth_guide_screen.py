@@ -1189,6 +1189,18 @@ class BirthGuideScreen(BoxLayout):
                 return paths, ""
             boards = det.get("boards") or []
             name = boards[0].display_name if len(boards) == 1 else "this board"
+            if chip == "nrf52840" and not det.get("board_key"):
+                # The medic could not tell WHICH nRF52 this is — that is not
+                # the same as knowing it has no build, and a T-Echo running
+                # older firmware reads as a generic "nRF52840 DK" (the only
+                # RTNode T-Echo in existence is in exactly that state,
+                # review 2026-08-19). Say the cause and the way in.
+                return paths, tr(
+                    "A mesh transport node (RTNode-2400) isn't offered: the "
+                    "medic couldn't tell which nRF52 board this is. If it is "
+                    "a LilyGO T-Echo, double-tap its side RESET button (two "
+                    "quick presses) — in its bootloader it names itself — "
+                    "then go Back and come in again.")
             return paths, tr(
                 "A mesh transport node (RTNode-2400) isn't offered: there is "
                 "no RTNode-2400 build for {board} ({chip}). The boards that "

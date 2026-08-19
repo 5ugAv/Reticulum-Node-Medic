@@ -1845,9 +1845,14 @@ class BirthScreen(BoxLayout):
         yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
         dark = theme.hex_to_rgba(theme.COLORS["background"])
         body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        # "Check the silkscreen" answers the V3-or-V4 question; a T-Echo is
+        # a cased product with no silkscreen question to answer.
+        warn_hint = ("Check the silkscreen on the board itself."
+                     if key in ("heltec_v3", "heltec_v4")
+                     else "Check it against the photo below.")
         warn = Label(
             text=("WARNING:  Selecting the wrong board can BRICK the "
-                  "hardware.\nCheck the silkscreen on the board itself."),
+                  "hardware.\n" + warn_hint),
             bold=True, font_size="19sp", color=dark, halign="center",
             valign="middle", size_hint_y=None, height=dp(92))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
@@ -2468,10 +2473,17 @@ class BirthScreen(BoxLayout):
         # popping into existence one at a time hid what was still to come).
         self._step_rows = {}
         from kivy.uix.anchorlayout import AnchorLayout
+        step_display = getattr(workflow, "step_display", {}) or {}
+        self._step_display = step_display
+        self._step_phase_labels = getattr(workflow, "step_phase_labels", {}) or {}
         for n in self._pg_names:
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(28), spacing=dp(12))
-            lbl = _line("  " + n, color="text_secondary", size="13.5sp")
+            # A workflow may rename a step for THIS build — the T-Echo has no
+            # WiFi, so a row reading "wifi_onboarding" while USB provisioning
+            # runs was a lie in the checklist (review, 2026-08-19).
+            lbl = _line("  " + step_display.get(n, n),
+                        color="text_secondary", size="13.5sp")
             lbl.size_hint_x = 0.5
             # dp(28) is a FLOOR the row grows past, not a pin. _line already
             # grows the label with its wrapped text, but the row stayed 28
@@ -2736,7 +2748,9 @@ class BirthScreen(BoxLayout):
             lbl = getattr(self, "_busy_label", None)
             names = getattr(self, "_pg_names", None) or []
             if lbl is not None and self._pg_done < len(names):
-                lbl.text = _PHASE_LABELS.get(names[self._pg_done], "Working…")
+                cur = names[self._pg_done]
+                phases = getattr(self, "_step_phase_labels", {}) or {}
+                lbl.text = phases.get(cur) or _PHASE_LABELS.get(cur, "Working…")
             if getattr(self, "_build_ring", None) is not None:
                 self._build_ring.set_fraction(
                     sum(self._pg_secs[:self._pg_done]) / self._pg_total)
@@ -2824,11 +2838,22 @@ class BirthScreen(BoxLayout):
                     f"on the screen behind this.",
                     "One last step", False, tone="success")
             else:
-                view = requirement_popup(
-                    "Build finished — details and the birth certificate are in "
-                    "the build log below. Watch VITALS for the node's first "
-                    "health beacon.",
-                    "Build finished", False, tone="success")
+                # A USB-verified build (T-Echo tier) demonstrated no beacon —
+                # promising one on VITALS would be a claim nothing checked.
+                if getattr(getattr(self._workflow, "target", None), "verify",
+                           "") == "eeprom":
+                    view = requirement_popup(
+                        "Build finished — details and the birth certificate "
+                        "are in the build log below. The node was verified "
+                        "over USB; when it is heard over LoRa it will appear "
+                        "in VITALS.",
+                        "Build finished", False, tone="success")
+                else:
+                    view = requirement_popup(
+                        "Build finished — details and the birth certificate are in "
+                        "the build log below. Watch VITALS for the node's first "
+                        "health beacon.",
+                        "Build finished", False, tone="success")
             # Dismissing the success card SCROLLS TO THE CERTIFICATE (QR
             # included) — going straight home raced past it (operator spec
             # 2026-08-01: 'let the user see the birth screen with QR code for
@@ -3167,6 +3192,22 @@ class BirthScreen(BoxLayout):
         h = (cert.get("health_dst") or cert.get("reticulum_address")
              or cert.get("identity_hash") or "")
         if not h:
+            # A USB-verified RTNode (the T-Echo tier) DOES have a mesh identity
+            # — RNS mints one on its first configured boot — the medic just
+            # never read it over USB. Saying "no mesh address of its own" about
+            # a transport node whose signature was validated minutes ago is
+            # false (review, 2026-08-19); the honest sentence is that the
+            # address was not read, and where it will surface.
+            if getattr(getattr(self, "_workflow", None), "target",
+                       None) is not None and getattr(
+                    self._workflow.target, "verify", "") == "eeprom":
+                self._radio_proof = RadioProof.na(
+                    "Not read — this node mints its own mesh identity when it "
+                    "first runs configured, and the USB check does not read "
+                    "it. It will announce itself over LoRa; it can be adopted "
+                    "into this medic's kin when first heard.")
+                cert.update(self._radio_proof.cert_fields())
+                return
             # NOT APPLICABLE, said out loud (operator, 2026-08-07). A plain
             # RNode has no Reticulum identity of its own, so there is nothing
             # addressable to hear — that is not a test it failed, and it is not

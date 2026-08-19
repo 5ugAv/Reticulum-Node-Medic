@@ -26,10 +26,16 @@ def test_the_rak4631_is_never_told_to_hold_boot():
     assert "double-tap" in txt.lower() and "RST" in txt
 
 
-def test_the_t_echo_gets_its_own_two_button_dance():
+def test_the_t_echo_recovery_is_the_bench_proven_double_tap():
+    """This used to pin a two-button chord ("hold the lower, press the upper")
+    that is not this board's gesture. The bench proved the real one on
+    2026-08-19: a double-tap of the side RESET reaches the UF2 bootloader —
+    ten clean cycles that night, plus the medic's own no-hands 1200-baud
+    touch. Advice for a button dance that does not work is worse than none."""
     txt = recovery_for_board(_board("techo"))
     assert "BOOT" not in txt
-    assert "lower button" in txt and "upper button" in txt
+    assert "Double-tap" in txt and "RESET" in txt
+    assert "lower button" not in txt
 
 
 def test_the_heltec_v4_is_matched_by_KEY_not_display_name():

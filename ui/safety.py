@@ -21,12 +21,16 @@ BOARD_RECOVERY = {
         "The tool will reset the board automatically — no button needed.",
     "T3S3":
         "The tool will reset the board automatically — no button needed.",
+    # BENCH-PROVEN 2026-08-19: the double-tap is what actually reaches the
+    # UF2 bootloader (an earlier entry here described a two-button chord that
+    # is not this board's gesture). The medic can also do it with no hands —
+    # the 1200-baud touch — so the button is the fallback, not the ritual.
     "LilyGO T-Echo":
-        "Hold the lower button, press the upper button briefly, then release "
-        "both. The LED pulses green to confirm.",
+        "Double-tap the side RESET button — two quick presses, like a "
+        "double-click. The board re-appears as a T-Echo bootloader.",
     "T-Echo":
-        "Hold the lower button, press the upper button briefly, then release "
-        "both. The LED pulses green to confirm.",
+        "Double-tap the side RESET button — two quick presses, like a "
+        "double-click. The board re-appears as a T-Echo bootloader.",
     # VERIFIED on the board, 2026-08-05: no USB drive ever appears. In DFU the
     # RAK exposes only CDC interfaces (class 02 + 0a on cdc_acm) — serial DFU,
     # no mass storage. The flasher also does the 1200-baud touch itself, so the

@@ -587,10 +587,18 @@ def test_techo_provisioning_resolves_the_raw_port():
 
 def test_techo_onboarding_bakes_the_canonical_params():
     """Set-radio-params-at-birth: the node must leave the bench running
-    915.125/125/SF9/CR5/17 standalone, not wait for a host to set them."""
+    915.125/125/SF9/CR5/17 standalone, not wait for a host to set them.
+
+    -T (TNC mode) is the ONLY rnodeconf branch that consumes the five flags.
+    An earlier version of this very test asserted "-N" with a comment calling
+    it TNC mode — -N is NORMAL (host-controlled) mode and silently ignores all
+    five flags, so the test pinned the bug it existed to prevent (adversarial
+    review, 2026-08-19, verified in rnodeconf's source). Assert the flag WITH
+    its meaning so the two cannot drift apart again."""
     from tests.srcutil import func_source
     src = func_source("workflows/rtnode_build.py", "_onboard_techo")
-    assert "-N" in src, "TNC mode is what makes the params standalone"
+    assert "-T --freq" in src, "-T/--tnc is the branch that consumes the flags"
+    assert "-N --freq" not in src, "-N is host mode; it IGNORES the flags"
     for field in ("frequency_mhz", "bandwidth_khz", "spreading_factor",
                   "coding_rate", "tx_power_dbm"):
         assert field in src, f"params must come from the profile ({field})"
@@ -613,3 +621,185 @@ def test_an_unidentified_nrf52_still_gets_no_rtnode_offer():
     assert firmware_options("nrf52840", None) == ["rnode"]
     assert firmware_options("nrf52840", "rak4631") == ["rnode"]
     assert firmware_options("nrf52840", "techo") == ["rtnode2400", "rnode"]
+
+
+# --- the techo steps EXECUTED against an emulated medic, not just read -------
+# The adversarial review's coverage finding was blunt: every techo test was a
+# registry lookup or a source-inspection substring, so a wrong rnodeconf flag
+# sailed through a green suite — and one did (-N for -T). These run the real
+# functions against EmulatedConnection with the shell answers a real medic
+# gives, so a broken command line has to actually fail here.
+
+def _techo_wf(conn):
+    from workflows.rtnode_build import RTNodeBuildWorkflow
+    from node_profile import NodeProfile
+    return RTNodeBuildWorkflow(conn, NodeProfile(), target="techo",
+                               node_name="testnode")
+
+
+class _TechoMedic(EmulatedConnection):
+    """A medic with a T-Echo attached, stateful where the flow is: the board
+    starts in APP mode (its NEW identity, one capital from the bootloader's)
+    and only presents the bootloader after the 1200-baud touch."""
+
+    def __init__(self, start_in_bootloader=False):
+        super().__init__(default_code=0, default_stdout="")
+        self.in_bootloader = start_in_bootloader
+
+    def run(self, cmd, *a, **k):
+        self.history.append(cmd)
+        if "techo_touch.py" in cmd:
+            self.in_bootloader = True
+            return 0, "touch sent", ""
+        if "for f in /dev/serial/by-id/" in cmd:
+            return 0, "/dev/ttyACM1\n", ""
+        if "grep -q 'LilyGo_T-Echo'" in cmd:          # bootloader, exact case
+            return (0 if self.in_bootloader else 1), "", ""
+        if "grep -q 'T-Echo'" in cmd:                 # app OR bootloader
+            return 0, "", ""
+        if "make firmware-techo" in cmd:
+            return 0, "Sketch uses 629796 bytes", ""
+        if "make flash-techo" in cmd:
+            self.in_bootloader = False                # DFU ends in the app
+            return 0, "Device programmed.", ""
+        if "rnodeconf" in cmd and " -r " in cmd:
+            return 0, "EEPROM Bootstrapping successful!", ""
+        if "rnodeconf" in cmd and " -T " in cmd:
+            return 0, "Device set to TNC operating mode", ""
+        if "rnodeconf" in cmd and " -i" in cmd:
+            return 0, ("Current firmware version: 1.85\n"
+                       "EEPROM checksum correct\nDevice signature validated\n"
+                       "Firmware version   : 1.85"), ""
+        return 0, "", ""
+
+
+def test_flash_techo_survives_the_identity_rename():
+    """The image RENAMES the board (LilyGO / T-Echo RTNode-2400). The wait
+    after flashing must accept that identity — the first version waited for
+    "Nordic", which the new image never presents, so every successful first
+    flash would have reported failure (both reviews, independently)."""
+    from workflows.rtnode_build import _flash_techo
+    c = _TechoMedic()
+    res = _flash_techo(_techo_wf(c), "/dev/ttyACM1")
+    assert res.success, res.message
+    assert not any("grep -qi" in x for x in c.history), (
+        "case-insensitive identity greps are how a running board got read as "
+        "already-in-bootloader")
+    assert not any("'Nordic'" in x for x in c.history), (
+        "nothing may wait for the identity the image itself removes")
+
+
+def test_flash_techo_touches_a_running_board_first():
+    """A board in APP mode must get the 1200-baud touch — the old
+    case-insensitive check read the app identity as already-in-bootloader,
+    skipped the touch, and the flash then refused with the board plugged in."""
+    from workflows.rtnode_build import _flash_techo
+    c = _TechoMedic(start_in_bootloader=False)
+    res = _flash_techo(_techo_wf(c), "/dev/ttyACM1")
+    assert res.success, res.message
+    assert any("techo_touch.py" in x for x in c.history)
+
+
+def test_flash_techo_skips_the_touch_when_already_in_bootloader():
+    from workflows.rtnode_build import _flash_techo
+    c = _TechoMedic(start_in_bootloader=True)
+    res = _flash_techo(_techo_wf(c), "/dev/ttyACM1")
+    assert res.success, res.message
+    assert not any("techo_touch.py" in x for x in c.history)
+
+
+def test_onboard_techo_uses_tnc_mode_with_all_five_params():
+    from workflows.rtnode_build import _onboard_techo
+    c = _TechoMedic()
+    res = _onboard_techo(_techo_wf(c))
+    assert res.success, res.message
+    tnc = [x for x in c.history if " -T " in x and "rnodeconf" in x]
+    assert tnc, "the params must go through -T (TNC mode)"
+    line = tnc[0]
+    assert "--freq 915125000" in line and "--bw 125000" in line
+    assert "--sf 9" in line and "--cr 5" in line and "--txp 17" in line
+    assert " -N " not in line, "-N silently ignores every one of these flags"
+    assert "by-id" not in line, "rnodeconf must get the RAW port on nRF52"
+
+
+def test_onboard_techo_fails_when_tnc_mode_is_not_confirmed():
+    """The old exit-code check was dead (`| tail` ate it, no pipefail), so a
+    failed params step reported the full green TNC message. A positive
+    confirmation is required now."""
+    from workflows.rtnode_build import _onboard_techo
+
+    class _NoTnc(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "rnodeconf" in cmd and " -T " in cmd:
+                self.history.append(cmd)
+                return 0, "some unrelated chatter", ""
+            return super().run(cmd, *a, **k)
+
+    res = _onboard_techo(_techo_wf(_NoTnc()))
+    assert not res.success
+    assert "Radio parameters failed" in res.message
+
+
+def test_onboard_techo_accepts_an_already_provisioned_board():
+    """A re-birth must not fail because the identity already exists — that is
+    the identity SURVIVING, which is the design. The read-back decides."""
+    from workflows.rtnode_build import _onboard_techo
+
+    class _Provisioned(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "rnodeconf" in cmd and " -r " in cmd:
+                self.history.append(cmd)
+                return 0, ("EEPROM bootstrap was requested, but a valid "
+                           "EEPROM was already present.\n"
+                           "No changes are being made."), ""
+            return super().run(cmd, *a, **k)
+
+    res = _onboard_techo(_techo_wf(_Provisioned()))
+    assert res.success, res.message
+
+
+def test_verify_techo_reads_back_and_captures_the_firmware_version():
+    from workflows.rtnode_build import _verify_techo
+    wf = _techo_wf(_TechoMedic())
+    res = _verify_techo(wf)
+    assert res.success, res.message
+    assert "No over-the" in res.message, "the honest scope must be stated"
+    assert getattr(wf, "techo_fw_version", None) == "1.85", (
+        "the certificate's firmware field comes from here — 'firmware: None' "
+        "about an image we just flashed is paperwork rot")
+
+
+def test_techo_raw_port_never_returns_a_glob_literal():
+    """An unmatched glob passes through bash as a literal and readlink -f
+    prints it with exit 0 — the first version would have handed
+    '/dev/serial/by-id/*Nordic*' to rnodeconf as a port whenever other by-id
+    devices existed but the T-Echo did not (adversarial review)."""
+    from workflows.rtnode_build import _techo_raw_port
+    c = EmulatedConnection(default_code=0, default_stdout="")
+    c.rule("for f in /dev/serial/by-id/", 0, "")
+    assert _techo_raw_port(_techo_wf(c)) == ""
+
+
+def test_techo_raw_port_refuses_two_candidates():
+    """Guard checks the pinned port; a glob that grabs whichever of two nRF
+    boards sorts first would provision the wrong one. Refusal beats a guess."""
+    from workflows.rtnode_build import _techo_raw_port
+    c = EmulatedConnection(default_code=0, default_stdout="")
+    c.rule("for f in /dev/serial/by-id/", 0, "/dev/ttyACM1\n/dev/ttyACM2\n")
+    assert _techo_raw_port(_techo_wf(c)) == ""
+
+
+def test_techo_steps_show_honest_names_on_the_checklist():
+    """"wifi_onboarding" on a board with no WiFi radio was a lie in the
+    checklist; the workflow now renames its rows and narration per build."""
+    from workflows.rtnode_build import RTNodeBuildWorkflow
+    from node_profile import NodeProfile
+    wf = _techo_wf(_TechoMedic())
+    assert wf.step_display.get("wifi_onboarding") == "usb_setup"
+    assert wf.step_display.get("verify_beacon") == "verify_usb"
+    assert "USB" in wf.step_phase_labels["wifi_onboarding"]
+    assert "WiFi" not in wf.step_phase_labels["verify_beacon"]
+    # and the pio path keeps its true names — the portal onboarding IS WiFi
+    pio = RTNodeBuildWorkflow(EmulatedConnection(), NodeProfile(),
+                              target="heltec_v4")
+    assert pio.step_display == {}

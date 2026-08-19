@@ -196,7 +196,7 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
             if demo_allowed():
                 return demo_factory()
             return _HonestFailWorkflow("detect_board",
-                "Building an RTNode-2400 needs its ESP32 board plugged into the "
+                "Building an RTNode-2400 needs the board plugged into the "
                 "medic. Connect it with a known-good USB DATA cable, then start "
                 "the build again.", "No board attached")
         board_port = ports[0]             # pin to the work board, never the radio
