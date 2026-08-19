@@ -1183,14 +1183,16 @@ class BirthGuideScreen(BoxLayout):
             from ui.birth_guide_flow import paths_for_chip
             chip = det.get("chip") if det.get("found") else None
             paths, why = paths_for_chip(
-                chip, lambda c: "rtnode2400" in firmware_options(c))
+                chip, lambda c: "rtnode2400" in firmware_options(
+                    c, det.get("board_key")))
             if not why:
                 return paths, ""
             boards = det.get("boards") or []
             name = boards[0].display_name if len(boards) == 1 else "this board"
             return paths, tr(
-                "A mesh transport node (RTNode-2400) isn't offered: it needs an "
-                "ESP32-S3, and {board} uses an {chip}.").format(
+                "A mesh transport node (RTNode-2400) isn't offered: there is "
+                "no RTNode-2400 build for {board} ({chip}). The boards that "
+                "have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.").format(
                     board=name, chip=(chip or "").upper())
         except Exception:
             return list(BIRTH_PATHS), ""

@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "Ein paar Sekunden — dann beginnt die normale Geburt.",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "Eine Maschine unter {addr} antwortete ohne Geburtstoken — wird ignoriert, Beobachtung läuft weiter. Kommt nichts, beschreibe die Karte neu.",
   "A mesh transport node (RTNode-2400)": "Ein Mesh-Transportknoten (RTNode-2400)",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "Ein Mesh-Transportknoten (RTNode-2400) wird nicht angeboten: dafür ist ein ESP32-S3 nötig, und {board} nutzt einen {chip}.",
   "A radio for phone or computer (RNode)": "Ein Funkgerät für Handy oder Computer (RNode)",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "Ein kurzes DATEN-Kabel zum Funkmodul — das Netzteil des Pi versorgt jetzt beide.",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "Startklar — alles ist an Bord.",
   "STILL MISSING: {gaps}": "FEHLT NOCH: {gaps}",
   "This needs a decision from you — it will not fill itself.": "Das erfordert eine Entscheidung von dir — es füllt sich nicht von selbst.",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Was dieses Medic mitführen muss, um ohne Signal zu funktionieren. Gerade jetzt gegen die Festplatte geprüft, nicht gegen das, was vorgesehen war."
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Was dieses Medic mitführen muss, um ohne Signal zu funktionieren. Gerade jetzt gegen die Festplatte geprüft, nicht gegen das, was vorgesehen war.",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "Ein Mesh-Transportknoten (RTNode-2400) wird nicht angeboten: für {board} ({chip}) gibt es keinen RTNode-2400-Build. Boards mit Build: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo."
 }

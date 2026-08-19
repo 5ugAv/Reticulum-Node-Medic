@@ -545,3 +545,71 @@ def test_verify_falls_back_to_lan_probe_when_serial_quiet():
     r = next(f for n, f in w.steps if n == "verify_beacon")(w)
     assert r.success is True
     assert "alive on the LAN" in r.message
+
+
+# --- the T-Echo target, added 2026-08-19 after the firmware was proven -------
+
+def test_techo_target_exists_with_its_own_mechanism():
+    """The T-Echo cannot ride the PlatformIO pipeline: every pio nRF52 env in
+    the firmware tree fails on missing Arduino auto-prototypes (79ea489), it
+    flashes over serial DFU, and it has no WiFi radio so the portal onboarding
+    cannot exist for it. The mechanism field is what routes all of that."""
+    from workflows.rtnode_build import RTNODE_TARGETS
+    t = RTNODE_TARGETS["techo"]
+    assert t.mechanism == "techo_dfu"
+    assert t.verify == "eeprom"
+    assert "noalloc" in t.build_env, (
+        "the allocator build crashes this board before main() — noalloc is "
+        "the image that ships until the init order is fixed")
+
+
+def test_techo_provision_bytes_match_the_firmware():
+    """PRODUCT_TECHO 0x15 / MODEL_17 0x17 / hwrev 1, from the firmware's own
+    Boards.h — never guessed (the V4 homebrew-model lesson capped TX power)."""
+    from workflows.rtnode_build import TECHO_PROVISION_ARGS
+    assert TECHO_PROVISION_ARGS == "--product 15 --model 17 --hwrev 1"
+
+
+def test_techo_provisioning_resolves_the_raw_port():
+    """rnodeconf on nRF52 must NEVER get a by-id symlink: its mid-flow rescan
+    resolves a symlink's serial to None and then matches /dev/ttyAMA10 — the
+    medic's own UART — and provisions THAT while reporting success (proven with
+    a wire spy, 2026-08-19). The step must readlink before every rnodeconf."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/rtnode_build.py", "_techo_raw_port")
+    assert "readlink -f" in src
+    for fn in ("_onboard_techo", "_verify_techo"):
+        body = func_source("workflows/rtnode_build.py", fn)
+        assert "_techo_raw_port" in body, f"{fn} must resolve the raw port"
+        assert "by-id" not in body.replace("by-id symlink", ""), (
+            f"{fn} must not hand rnodeconf a by-id path")
+
+
+def test_techo_onboarding_bakes_the_canonical_params():
+    """Set-radio-params-at-birth: the node must leave the bench running
+    915.125/125/SF9/CR5/17 standalone, not wait for a host to set them."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/rtnode_build.py", "_onboard_techo")
+    assert "-N" in src, "TNC mode is what makes the params standalone"
+    for field in ("frequency_mhz", "bandwidth_khz", "spreading_factor",
+                  "coding_rate", "tx_power_dbm"):
+        assert field in src, f"params must come from the profile ({field})"
+
+
+def test_techo_verify_is_honest_about_its_scope():
+    """It reads the EEPROM back over USB. It must not claim an over-the-air
+    check that never happened — the medic's radio may not even be present."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/rtnode_build.py", "_verify_techo")
+    assert "No over-the" in src   # split across a source line
+
+
+def test_an_unidentified_nrf52_still_gets_no_rtnode_offer():
+    """Three of the four nRF52 boards we stock have no RTNode build, so an
+    ambiguous nRF52 must stay RNode-only — offering a build most candidates
+    cannot take is the wrong kind of fail-open."""
+    from ui.board_detect import firmware_options
+    assert firmware_options("nrf52840") == ["rnode"]
+    assert firmware_options("nrf52840", None) == ["rnode"]
+    assert firmware_options("nrf52840", "rak4631") == ["rnode"]
+    assert firmware_options("nrf52840", "techo") == ["rtnode2400", "rnode"]

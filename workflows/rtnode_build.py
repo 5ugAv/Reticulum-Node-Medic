@@ -43,14 +43,16 @@ RTNODE_BUILD_ENV = "heltec_V4_boundary-local"
 
 @dataclass(frozen=True)
 class RTNodeTarget:
-    """A board the RTNode-2400 build path can flash. Both are ESP32-S3 native-USB
-    (indistinguishable by USB id), so the operator picks the target and it selects
-    the PlatformIO env + how the flash is verified."""
+    """A board the RTNode-2400 build path can flash. The ESP32-S3 pair build via
+    PlatformIO and verify over the air; the nRF52 T-Echo builds via arduino-cli,
+    flashes over serial DFU, and is configured over USB (it has no WiFi radio,
+    so the portal onboarding cannot exist for it)."""
     key: str
     display: str
     build_env: str
     hardware: "NodeHardware"
-    verify: str = "beacon"      # "beacon" (health beacon) | "sd_status" (/status)
+    verify: str = "beacon"      # "beacon" | "sd_status" | "eeprom" (USB read-back)
+    mechanism: str = "pio"      # "pio" (pio run -t upload) | "techo_dfu"
 
 
 #: Operator-selected RTNode-2400 targets. Verified against platformio.ini on
@@ -74,6 +76,14 @@ RTNODE_TARGETS = {
         "tbeam_supreme", "T-Beam Supreme (SD transport node)",
         "tbeam_supreme_boundary-local", NodeHardware.TBEAM_SUPREME,
         verify="sd_status"),
+    # PROVEN BOOTING AND PROVISIONED 2026-08-19 (techo-support 5e1d4b9): the
+    # noalloc image — RNS_USE_ALLOCATOR crashes this board before main(), so
+    # the allocator-less build is the one that ships until the init order is
+    # fixed properly. build_env here names the MAKE target in TECHO_PROJECT_DIR,
+    # not a PlatformIO env; mechanism selects the whole different pipeline.
+    "techo": RTNodeTarget(
+        "techo", "LilyGO T-Echo Plus", "firmware-techo-noalloc",
+        NodeHardware.TECHO, verify="eeprom", mechanism="techo_dfu"),
 }
 DEFAULT_TARGET = "heltec_v4"
 
@@ -86,6 +96,7 @@ DEFAULT_TARGET = "heltec_v4"
 _DETECT_KEY_TO_TARGET = {
     "heltec32_v3": "heltec_v3",
     "heltec32_v4": "heltec_v4",
+    # "techo" and "tbeam_supreme" are already target keys; they pass through.
 }
 
 
@@ -128,6 +139,16 @@ def check_sd_overflow(status_json: str) -> Tuple[bool, str]:
 #: Firmware project location on the tool (carried/cloned asset). The Pi medic is
 #: headless, so this is under the medic home, not ~/Desktop like the Mac flasher.
 RTNODE_PROJECT_DIR = "~/rnm-assets/RTNode2400"
+
+#: The T-Echo builds from the techo-support tree (arduino-cli + Makefile), NOT
+#: the PlatformIO tree above — every PlatformIO nRF52 env in that tree fails on
+#: missing Arduino auto-prototypes (established 2026-08-18, commit 79ea489).
+TECHO_PROJECT_DIR = "~/RTNode-2400"
+
+#: Provisioning bytes from the firmware's own Boards.h — never guessed (the V4
+#: lesson: a wrong model capped TX power). PRODUCT_TECHO 0x15, MODEL_17 0x17
+#: (868/915 MHz band), hwrev 1. Verified against the tree 2026-08-19.
+TECHO_PROVISION_ARGS = "--product 15 --model 17 --hwrev 1"
 #: Onboarding access point the firmware raises after a fresh flash.
 ONBOARDING_SSID = "RTNode-Setup"
 ONBOARDING_URL = "http://10.0.0.1"
@@ -263,6 +284,9 @@ def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     except ImportError:
         pass                              # roster module unavailable off-medic
 
+    if wf.target.mechanism == "techo_dfu":
+        return _flash_techo(wf, port)
+
     # THROTTLE the compile: only 2 of the Pi's 4 cores, at low priority (nice 15),
     # so it can never overload the medic — the touchscreen stays smooth AND the live
     # radio (rnsd), GPS splitter and mesh keep running during a flash. A bit slower
@@ -288,8 +312,148 @@ def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     return StepResult("flash_firmware", False, f"Flash failed: {last}")
 
 
+def _techo_raw_port(wf) -> str:
+    """The T-Echo's RAW /dev/ttyACMx, resolved at the moment of use.
+
+    NEVER hand rnodeconf a by-id symlink on an nRF52 board: its bootstrap
+    closes the port mid-flow and rescans by USB serial number, and a symlink
+    resolves that to None — which then matches the first port with NO serial,
+    /dev/ttyAMA10, the medic's own UART. The whole provisioning then goes into
+    the host's serial port while reporting success (proven with a wire spy,
+    2026-08-19). ESP32 paths never hit this; nRF52 paths always must resolve.
+    """
+    out = wf.connection.run(
+        "readlink -f /dev/serial/by-id/*Nordic* /dev/serial/by-id/*T-Echo* "
+        "2>/dev/null | head -1")[1].strip()
+    return out
+
+
+def _techo_wait(wf, pattern: str, tries: int = 30) -> bool:
+    """Wait for a USB identity to (re)appear — the board re-enumerates on every
+    DFU entry, flash, and rnodeconf reset, and its ttyACM number can move."""
+    for _ in range(tries):
+        if wf.connection.run(f"ls /dev/serial/by-id/ 2>/dev/null | grep -qi '{pattern}'")[0] == 0:
+            return True
+        _sleep(2)
+    return False
+
+
+def _flash_techo(wf, port: str) -> StepResult:
+    """Build + DFU-flash the T-Echo: make in the techo tree, 1200-baud touch
+    into the bootloader (no hands — proven on this board), then the Makefile's
+    guarded flash-techo target, which finds the board by its LilyGo identity
+    and refuses if that ever resolves to the medic's own radio."""
+    build = wf.connection.run(
+        f"cd {TECHO_PROJECT_DIR} && export PATH=$HOME/.local/bin:$PATH && "
+        f"nice -n 15 make {wf.target.build_env} 2>&1 | tail -3", timeout=1200)
+    if build[0] != 0 or "error" in (build[1] or "").lower():
+        return StepResult("flash_firmware", False,
+                          f"T-Echo firmware build failed: {(build[1] or '')[-300:]}")
+    # Already in the bootloader (double-tapped by hand)? Skip the touch.
+    if wf.connection.run(
+            "ls /dev/serial/by-id/ 2>/dev/null | grep -qi 'LilyGo_T-Echo'")[0] != 0:
+        raw = _techo_raw_port(wf)
+        if not raw:
+            return StepResult("flash_firmware", False,
+                              "No T-Echo on USB — plug it in with a data cable "
+                              "and build again.")
+        wf.connection.run(
+            f"python3 ~/reticulum-tool/scripts/techo_touch.py {raw}",
+            timeout=30)
+        if not _techo_wait(wf, "LilyGo_T-Echo", tries=15):
+            return StepResult("flash_firmware", False,
+                              "The 1200-baud touch didn't reach the bootloader "
+                              "— double-tap the side RESET button (two quick "
+                              "presses) and build again.")
+    variant = "noalloc" if "noalloc" in wf.target.build_env else "release"
+    flash = wf.connection.run(
+        f"cd {TECHO_PROJECT_DIR} && export PATH=$HOME/.local/bin:$PATH && "
+        f"make flash-techo VARIANT={variant} 2>&1 | tail -4", timeout=300)
+    if flash[0] != 0 or "programmed" not in (flash[1] or "").lower():
+        return StepResult("flash_firmware", False,
+                          f"DFU flash failed: {(flash[1] or '')[-300:]}")
+    if not _techo_wait(wf, "Nordic", tries=15):
+        return StepResult("flash_firmware", False,
+                          "Flashed, but the board did not come back on USB — "
+                          "double-tap RESET to reach the bootloader and retry.")
+    wf.profile.connection_port = _techo_raw_port(wf) or port
+    wf.profile.radio.serial_port = wf.profile.connection_port
+    return StepResult("flash_firmware", True,
+                      "Flashed RTNode-2400 (T-Echo, serial DFU) and the board "
+                      "booted — back on USB and talking.")
+
+
+def _onboard_techo(wf) -> StepResult:
+    """The T-Echo's onboarding is over USB — it has no WiFi radio, so the
+    captive portal cannot exist for it. Two rnodeconf passes: bootstrap the
+    EEPROM (identity, signature), then bake the canonical radio parameters in
+    TNC mode so the node runs them standalone (set-radio-params-at-birth)."""
+    raw = _techo_raw_port(wf)
+    if not raw:
+        return StepResult("wifi_onboarding", False,
+                          "Board vanished from USB before provisioning.")
+    r = wf.profile.radio
+    prov = wf.connection.run(
+        f"export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 150 rnodeconf {raw} -r {TECHO_PROVISION_ARGS} 2>&1 | tail -4",
+        timeout=180)
+    text = prov[1] or ""
+    if "Bootstrapping successful" not in text and "successful" not in text:
+        # A previously provisioned board refuses a re-bootstrap — that is fine,
+        # its identity is meant to survive. Read it back to be sure.
+        chk = wf.connection.run(
+            f"export PATH=$HOME/.local/bin:$PATH && "
+            f"timeout 40 rnodeconf {_techo_raw_port(wf) or raw} -i 2>&1",
+            timeout=60)[1] or ""
+        if "signature validated" not in chk.lower():
+            return StepResult("wifi_onboarding", False,
+                              f"EEPROM bootstrap failed: {text.strip()[-300:]}")
+    _sleep(4)
+    raw = _techo_raw_port(wf) or raw
+    freq_hz = int(round(r.frequency_mhz * 1_000_000))
+    bw_hz = int(r.bandwidth_khz * 1000)
+    params = wf.connection.run(
+        f"export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 60 rnodeconf {raw} -N --freq {freq_hz} --bw {bw_hz} "
+        f"--sf {r.spreading_factor} --cr {r.coding_rate} "
+        f"--txp {r.tx_power_dbm} 2>&1 | tail -3", timeout=90)
+    if params[0] != 0:
+        return StepResult("wifi_onboarding", False,
+                          f"Radio parameters failed to save: "
+                          f"{(params[1] or '').strip()[-250:]}")
+    return StepResult("wifi_onboarding", True,
+                      f"Configured over USB (no WiFi on this board): identity "
+                      f"provisioned, radio set to {r.frequency_mhz} MHz "
+                      f"SF{r.spreading_factor} CR{r.coding_rate} "
+                      f"{r.tx_power_dbm} dBm — running standalone (TNC mode).")
+
+
+def _verify_techo(wf) -> StepResult:
+    """Read the provisioning back off the board over USB. Honest scope: this
+    proves the EEPROM and signature, not over-the-air reach — say so, rather
+    than implying a radio check that did not happen."""
+    raw = _techo_raw_port(wf)
+    if not raw:
+        return StepResult("verify_beacon", False,
+                          "Board vanished from USB before verification.")
+    out = wf.connection.run(
+        f"export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 40 rnodeconf {raw} -i 2>&1", timeout=60)[1] or ""
+    low = out.lower()
+    if "signature validated" in low and "checksum correct" in low:
+        return StepResult("verify_beacon", True,
+                          "Provisioning verified over USB: EEPROM checksum "
+                          "correct, device signature validated. (No over-the-"
+                          "air check — that needs the medic's own radio "
+                          "listening.)")
+    return StepResult("verify_beacon", False,
+                      f"Board did not validate: {out.strip()[-250:]}")
+
+
 @rtnode_build_step
 def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
+    if wf.target.mechanism == "techo_dfu":
+        return _onboard_techo(wf)
     # The firmware raises its own captive portal (POST /save) for WiFi/LoRa
     # setup. The tool builds the real form with recommended LoRa params
     # pre-filled; node name + WiFi credentials are operator-supplied. Actual
@@ -383,6 +547,8 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
 
 @rtnode_build_step
 def verify_beacon(wf: "RTNodeBuildWorkflow") -> StepResult:
+    if wf.target.verify == "eeprom":
+        return _verify_techo(wf)
     # Runs AFTER onboarding: only a configured board reaches health_beacon_init()
     # and fires its first beacon ~30 s after boot. We RESET the board over
     # serial and capture its boot log — the init line carries the health dst,

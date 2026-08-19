@@ -171,12 +171,23 @@ def narrow_by_flash_size(shortlist, size: Optional[str]):
     return (hits + unmeasured) if hits else shortlist
 
 
-def firmware_options(chip: Optional[str]) -> List[str]:
-    """Firmware the chip can take, best-first. ESP32-S3 boards are the RTNode-2400
-    targets (Grey Hat's standalone transport node — health beacon + remote repair),
-    so RTNode-2400 leads there; everything can run RNode."""
+def firmware_options(chip: Optional[str],
+                     board_key: Optional[str] = None) -> List[str]:
+    """Firmware the board can take, best-first.
+
+    The chip decides for ESP32-S3 (every S3 we stock has an RTNode-2400 build).
+    Elsewhere the chip is NOT enough: "nrf52840" covers the T-Echo, which HAS a
+    proven RTNode-2400 build (2026-08-19), and the RAK4631/T114, which do not —
+    so a positively identified board is asked against the build registry
+    itself. An unidentified nRF52 stays RNode-only: offering a build that three
+    of four candidates cannot take is the wrong kind of fail-open.
+    """
     if chip == "esp32s3":
         return ["rtnode2400", "rnode"]
+    if board_key:
+        from workflows.rtnode_build import target_for_board_key
+        if target_for_board_key(board_key):
+            return ["rtnode2400", "rnode"]
     return ["rnode"]
 
 
@@ -423,11 +434,12 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
         # A named board wins; otherwise offer every nRF52 board we stock rather
         # than guessing one. Never an empty list — that is the bug being fixed.
         shortlist = named or nrf
+        nrf_key = shortlist[0].key if len(shortlist) == 1 else None
         return _out({"found": True, "port": port, "chip": "nrf52840",
                 "platform": "nRF52", "product": product,
-                "firmware": firmware_options("nrf52840"),
+                "firmware": firmware_options("nrf52840", nrf_key),
                 "boards": shortlist,
-                "board_key": shortlist[0].key if len(shortlist) == 1 else None})
+                "board_key": nrf_key})
 
     try:
         out = (reader or _default_reader)(port)

@@ -45,23 +45,23 @@ def blocked_board(detected: Optional[dict]) -> Optional[str]:
 
 
 def identified_target(detected: Optional[dict]) -> Optional[str]:
-    """The Heltec target when detection has identified the board OUTRIGHT, else
+    """The build target when detection has identified the board OUTRIGHT, else
     ``None`` — the only condition under which the chooser may be skipped.
 
     Requires ``board_key``, which ``ui.board_detect`` sets only when its
     shortlist came down to a single board. That is the strict test and it has
     to stay strict: a NATIVE-USB ESP32-S3 is a V4 *or* a Wireless Tracker *or*
     a T-Beam Supreme, and pre-picking the V4 there is how a Tracker walked into
-    the V3/V4 cards on 2026-08-01. A bridge S3 has no such company — it is a V3
-    and nothing else.
+    the V3/V4 cards on 2026-08-01. A bridge S3 has no such company — it is a
+    V3 and nothing else — and an nRF52 that NAMES itself over USB (the T-Echo
+    literally says "T-Echo") is likewise alone in its family.
     """
     key = (detected or {}).get("board_key")
-    t = target_for_board_key(key)
-    return t if t in HELTEC_PAIR else None
+    return target_for_board_key(key)
 
 
 def target_options(detected: Optional[dict]) -> List[str]:
     """The board cards to show. One when the board is identified outright, both
-    when it is not — an ambiguous reading must never narrow the choice."""
+    Heltecs when it is not — an ambiguous reading must never narrow the choice."""
     t = identified_target(detected)
     return [t] if t else list(HELTEC_PAIR)

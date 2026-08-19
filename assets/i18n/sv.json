@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "Några sekunder – sedan startar den normala födelsen.",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "En maskin på {addr} svarade utan födelsetoken — ignorerar den och fortsätter vaka. Kommer inget, skriv om kortet.",
   "A mesh transport node (RTNode-2400)": "En transportnod för nätet (RTNode-2400)",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "En transportnod för nätet (RTNode-2400) erbjuds inte: den kräver en ESP32-S3, och {board} använder en {chip}.",
   "A radio for phone or computer (RNode)": "En radio för telefon eller dator (RNode)",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "En kort DATA-kabel till radion – Pi:ns strömförsörjning bär nu båda.",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "Redo att åka — allt är ombord.",
   "STILL MISSING: {gaps}": "SAKNAS FORTFARANDE: {gaps}",
   "This needs a decision from you — it will not fill itself.": "Det här kräver ett beslut från dig — det fylls inte i av sig självt.",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Vad den här medicen måste ha med sig för att fungera utan signal. Kontrollerat mot disken just nu, inte mot vad som var tänkt."
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Vad den här medicen måste ha med sig för att fungera utan signal. Kontrollerat mot disken just nu, inte mot vad som var tänkt.",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "En mesh-transportnod (RTNode-2400) erbjuds inte: det finns ingen RTNode-2400-build för {board} ({chip}). Kort som har en: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo."
 }

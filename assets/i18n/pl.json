@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "Kilka sekund – potem zaczyna się normalne narodziny.",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "Maszyna pod {addr} odpowiedziała bez tokenu narodzin — ignoruję i obserwuję dalej. Jeśli nic nie nadejdzie, nagraj kartę ponownie.",
   "A mesh transport node (RTNode-2400)": "Węzeł transportowy sieci (RTNode-2400)",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "Węzeł transportowy sieci (RTNode-2400) nie jest dostępny: wymaga ESP32-S3, a {board} używa {chip}.",
   "A radio for phone or computer (RNode)": "Radio do telefonu lub komputera (RNode)",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "Krótki kabel DANYCH do radia — zasilanie Pi obsługuje teraz oba.",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "Gotowe do wyjazdu — wszystko na pokładzie.",
   "STILL MISSING: {gaps}": "WCIĄŻ BRAKUJE: {gaps}",
   "This needs a decision from you — it will not fill itself.": "To wymaga Twojej decyzji — samo się nie uzupełni.",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Co ten medic musi mieć ze sobą, aby działać bez sygnału. Sprawdzone na dysku w tej chwili, a nie na podstawie tego, co miało tam być."
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Co ten medic musi mieć ze sobą, aby działać bez sygnału. Sprawdzone na dysku w tej chwili, a nie na podstawie tego, co miało tam być.",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "Węzeł transportowy mesh (RTNode-2400) nie jest oferowany: nie ma kompilacji RTNode-2400 dla {board} ({chip}). Płytki, które ją mają: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo."
 }

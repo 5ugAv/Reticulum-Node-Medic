@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "Несколько секунд — затем начнётся обычное рождение.",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "Машина по адресу {addr} ответила без токена рождения — игнорирую и продолжаю наблюдение. Если ничего не появится, перезапишите карту.",
   "A mesh transport node (RTNode-2400)": "Транспортный узел сети (RTNode-2400)",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "Транспортный узел сети (RTNode-2400) не предлагается: ему нужен ESP32-S3, а {board} использует {chip}.",
   "A radio for phone or computer (RNode)": "Радио для телефона или компьютера (RNode)",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "Короткий кабель для ДАННЫХ к радио — питание Pi теперь тянет оба устройства.",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "Готово к выезду — всё на борту.",
   "STILL MISSING: {gaps}": "ВСЁ ЕЩЁ НЕ ХВАТАЕТ: {gaps}",
   "This needs a decision from you — it will not fill itself.": "Здесь нужно ваше решение — само не заполнится.",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Что этот medic должен нести с собой, чтобы работать без сигнала. Проверено по диску прямо сейчас, а не по тому, что должно было там быть."
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Что этот medic должен нести с собой, чтобы работать без сигнала. Проверено по диску прямо сейчас, а не по тому, что должно было там быть.",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "Транспортный узел mesh (RTNode-2400) не предлагается: для {board} ({chip}) нет сборки RTNode-2400. Платы, у которых она есть: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo."
 }

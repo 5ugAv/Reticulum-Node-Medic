@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "Beberapa detik — lalu kelahiran normal dimulai.",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "Mesin di {addr} menjawab tanpa token kelahiran — diabaikan, tetap memantau. Jika tidak ada yang datang, tulis ulang kartu.",
   "A mesh transport node (RTNode-2400)": "Node transport mesh (RTNode-2400)",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "Node transport mesh (RTNode-2400) tidak ditawarkan: ia butuh ESP32-S3, sedangkan {board} memakai {chip}.",
   "A radio for phone or computer (RNode)": "Radio untuk ponsel atau komputer (RNode)",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "Kabel DATA pendek ke radio — catu daya Pi kini menanggung keduanya.",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "Siap berangkat — semuanya sudah lengkap.",
   "STILL MISSING: {gaps}": "MASIH KURANG: {gaps}",
   "This needs a decision from you — it will not fill itself.": "Ini butuh keputusan dari Anda — tidak akan terisi sendiri.",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Apa yang harus dibawa medic ini agar bisa bekerja tanpa sinyal. Diperiksa langsung dari disk saat ini, bukan dari apa yang seharusnya ada."
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "Apa yang harus dibawa medic ini agar bisa bekerja tanpa sinyal. Diperiksa langsung dari disk saat ini, bukan dari apa yang seharusnya ada.",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "Node transport mesh (RTNode-2400) tidak ditawarkan: tidak ada build RTNode-2400 untuk {board} ({chip}). Papan yang memilikinya: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo."
 }

@@ -25,7 +25,6 @@
   "A few seconds — then the normal birth starts.": "数秒 — その後、通常の誕生が始まります。",
   "A machine at {addr} answered without a birth token — ignoring it and still watching. If nothing arrives, re-image the card.": "{addr} のマシンが誕生トークンなしで応答 — 無視して監視を続けます。何も来なければカードを書き直してください。",
   "A mesh transport node (RTNode-2400)": "メッシュの中継ノード（RTNode-2400）",
-  "A mesh transport node (RTNode-2400) isn't offered: it needs an ESP32-S3, and {board} uses an {chip}.": "メッシュの中継ノード（RTNode-2400）は選べません。ESP32-S3 が必要ですが、{board} は {chip} を使っています。",
   "A radio for phone or computer (RNode)": "スマホやパソコン用の無線機（RNode）",
   "A rebirth would be premature — it is still talking.": "A rebirth would be premature — it is still talking.",
   "A short DATA cable to the radio — the Pi's supply now carries both.": "無線機へは短いデータケーブルで。Pi の電源が両方をまかないます。",
@@ -517,5 +516,6 @@
   "Ready to go — everything is aboard.": "出発準備完了 — すべて揃っています。",
   "STILL MISSING: {gaps}": "まだ不足: {gaps}",
   "This needs a decision from you — it will not fill itself.": "これはあなたの判断が必要です — 自動では埋まりません。",
-  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "この medic が信号なしで動作するために携行すべきもの。今この瞬間のディスクの状態を確認しています。予定されていた内容ではありません。"
+  "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "この medic が信号なしで動作するために携行すべきもの。今この瞬間のディスクの状態を確認しています。予定されていた内容ではありません。",
+  "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "メッシュ・トランスポートノード（RTNode-2400）は提供されません：{board}（{chip}）向けのRTNode-2400ビルドがありません。対応ボード：Heltec V3/V4、T-Beam Supreme、LilyGO T-Echo。"
 }
