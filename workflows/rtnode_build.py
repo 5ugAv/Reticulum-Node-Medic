@@ -162,6 +162,15 @@ _PORT_GLOBS = ("/dev/ttyACM*", "/dev/ttyUSB*",
 _BEACON_RE = re.compile(r"\[HealthBeacon\][^\n]*dst=([0-9a-fA-F]+)[^\n]*data=([0-9a-fA-F]+)")
 _INIT_RE = re.compile(r"\[HealthBeacon\] init dst=([0-9a-fA-F]+)")
 
+#: The identity line the nRF52 RTNode prints when RNS starts (added to the
+#: firmware 2026-08-19 — FIREWALL_MODE targets announce theirs via the
+#: HealthBeacon init line above, but the T-Echo build compiles neither WiFi
+#: nor the firewall feature set, so this print is the only place its identity
+#: crosses the USB boundary). identity = what every announce verifiably
+#: carries (the registry's kin-fold key); dst = the rnstransport destination.
+_TECHO_ID_RE = re.compile(
+    r"\[RTNode\] identity=([0-9a-fA-F]+) dst=([0-9a-fA-F]+)")
+
 #: Injectable sleep so the single-pass retry logic is unit-testable.
 _sleep = time.sleep
 
@@ -501,6 +510,23 @@ def _verify_techo(wf) -> StepResult:
     if not raw:
         return StepResult("verify_beacon", False,
                           "Board vanished from USB before verification.")
+    # FIRST: reboot the configured board and read its own words. This is the
+    # start of identity-over-USB (2026-08-19): the firmware prints
+    # "[RTNode] identity=… dst=…" the moment RNS comes up, and that identity
+    # is what lets the certificate name the node and the kin roster fold its
+    # announces from the first one heard. Best-effort — a board running older
+    # firmware prints no such line, and that absence is recorded honestly
+    # downstream, never invented.
+    ident = dst = None
+    bootlog = wf.connection.run(
+        f"timeout 75 python3 ~/reticulum-tool/scripts/techo_bootlog.py "
+        f"{raw} 40 2>&1", timeout=90)[1] or ""
+    m = _TECHO_ID_RE.search(bootlog)
+    if m:
+        ident, dst = m.group(1), m.group(2)
+        wf.profile.reticulum_identity_hash = ident
+        wf.techo_dst = dst
+    raw = _techo_raw_port(wf) or raw          # the reset moves the port
     out = wf.connection.run(
         f"export PATH=$HOME/.local/bin:$PATH && "
         f"timeout 40 rnodeconf {raw} -i 2>&1", timeout=60)[1] or ""
@@ -512,11 +538,21 @@ def _verify_techo(wf) -> StepResult:
         m = re.search(r"Firmware version\s*:\s*([\w.\-]+)", out)
         if m:
             wf.techo_fw_version = m.group(1)
+        if ident:
+            return StepResult("verify_beacon", True,
+                              f"Provisioning verified over USB: EEPROM "
+                              f"checksum correct, signature validated, and "
+                              f"the node announced its identity "
+                              f"{ident[:12]}… at boot. (No over-the-air "
+                              f"check — that needs the medic's own radio "
+                              f"listening.)")
         return StepResult("verify_beacon", True,
                           "Provisioning verified over USB: EEPROM checksum "
-                          "correct, device signature validated. (No over-the-"
-                          "air check — that needs the medic's own radio "
-                          "listening.)")
+                          "correct, device signature validated. This "
+                          "firmware did not print its identity at boot "
+                          "(older image) — the node will appear in VITALS "
+                          "when first heard. (No over-the-air check — that "
+                          "needs the medic's own radio listening.)")
     return StepResult("verify_beacon", False,
                       f"Board did not validate: {out.strip()[-250:]}")
 
@@ -719,6 +755,13 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         "location": location,          # exact coords, or None if no GPS fix
         "session_id": wf.profile.session_id,
     }
+    if getattr(wf, "techo_dst", None):
+        # The rnstransport destination the node announced at boot (nRF52
+        # boot-log read) — the kin roster keys on BOTH hashes, so either
+        # sighting folds it. Only present when actually read: the cert page
+        # prints every field verbatim, and a permanent None key would put
+        # "reticulum_address: None" on every ESP32 certificate.
+        wf.birth_certificate["reticulum_address"] = wf.techo_dst
     return StepResult("birth_certificate", True,
                       "Birth certificate ready (photograph / share via Bluetooth).")
 

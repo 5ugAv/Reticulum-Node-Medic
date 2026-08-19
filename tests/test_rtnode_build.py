@@ -666,6 +666,11 @@ class _TechoMedic(EmulatedConnection):
             return 0, "EEPROM Bootstrapping successful!", ""
         if "rnodeconf" in cmd and " -T " in cmd:
             return 0, "Device set to TNC operating mode", ""
+        if "techo_bootlog.py" in cmd:
+            return 0, ("[STACK] loop task headroom: 3136 / 4096 bytes free\n"
+                       "[RTNode] identity=aabbccddeeff00112233445566778899 "
+                       "dst=99887766554433221100ffeeddccbbaa\n"
+                       "RNS is READY!"), ""
         if "rnodeconf" in cmd and " -i" in cmd:
             return 0, ("Current firmware version: 1.85\n"
                        "EEPROM checksum correct\nDevice signature validated\n"
@@ -803,3 +808,74 @@ def test_techo_steps_show_honest_names_on_the_checklist():
     pio = RTNodeBuildWorkflow(EmulatedConnection(), NodeProfile(),
                               target="heltec_v4")
     assert pio.step_display == {}
+
+
+# --- identity over USB (started 2026-08-19) ----------------------------------
+
+def test_verify_techo_reads_the_identity_from_the_boot_log():
+    """The firmware prints "[RTNode] identity=… dst=…" when RNS starts (the
+    T-Echo build compiles neither WiFi nor FIREWALL_MODE, so the HealthBeacon
+    init line the ESP32 parser reads does not exist there). Without this read,
+    the certificate said the node had no mesh address and the newborn appeared
+    in VITALS as a stranger."""
+    from workflows.rtnode_build import _verify_techo
+    wf = _techo_wf(_TechoMedic())
+    res = _verify_techo(wf)
+    assert res.success, res.message
+    assert wf.profile.reticulum_identity_hash == (
+        "aabbccddeeff00112233445566778899")
+    assert wf.techo_dst == "99887766554433221100ffeeddccbbaa"
+    assert "identity aabbccddeeff" in res.message, (
+        "what was read must be said — a silent capture is unverifiable")
+
+
+def test_verify_techo_survives_an_older_firmware_without_the_line():
+    """A board running an image from before the identity print must not fail
+    verification — the absence is recorded honestly, never invented."""
+    from workflows.rtnode_build import _verify_techo
+
+    class _OldFirmware(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "techo_bootlog.py" in cmd:
+                self.history.append(cmd)
+                return 0, "RNS is READY!", ""     # boots, but no identity line
+            return super().run(cmd, *a, **k)
+
+    wf = _techo_wf(_OldFirmware())
+    res = _verify_techo(wf)
+    assert res.success, res.message
+    assert wf.profile.reticulum_identity_hash is None
+    assert "did not print its identity" in res.message
+
+
+def test_the_certificate_carries_both_hashes_when_read():
+    from workflows.rtnode_build import _verify_techo, birth_certificate
+    wf = _techo_wf(_TechoMedic())
+    _verify_techo(wf)
+    res = birth_certificate(wf)
+    assert res.success
+    cert = wf.birth_certificate
+    assert cert["identity_hash"] == "aabbccddeeff00112233445566778899"
+    assert cert["reticulum_address"] == "99887766554433221100ffeeddccbbaa"
+
+
+def test_an_esp32_certificate_never_gains_a_none_address_row():
+    """The cert page prints every field verbatim — a permanently present key
+    would put "reticulum_address: None" on every ESP32 certificate."""
+    from workflows.rtnode_build import RTNodeBuildWorkflow, birth_certificate
+    from node_profile import NodeProfile
+    wf = RTNodeBuildWorkflow(EmulatedConnection(), NodeProfile(),
+                             target="heltec_v4")
+    birth_certificate(wf)
+    assert "reticulum_address" not in wf.birth_certificate
+
+
+def test_the_identity_regex_matches_the_firmware_print():
+    """The exact format the firmware emits (RNode_Firmware.ino, after the
+    rnstransport destination is created) — one source of truth per side, this
+    test the bridge between them."""
+    from workflows.rtnode_build import _TECHO_ID_RE
+    line = ("[RTNode] identity=0123456789abcdef0123456789abcdef "
+            "dst=fedcba9876543210fedcba9876543210")
+    m = _TECHO_ID_RE.search("noise before\n" + line + "\nnoise after")
+    assert m and m.group(1).startswith("0123") and m.group(2).startswith("fedc")
