@@ -2499,7 +2499,12 @@ class BirthScreen(BoxLayout):
             row.add_widget(holder)
             self.list.add_widget(row)
             self._step_rows[n] = (lbl, bar)
-        self._pg_secs = [_STEP_SECONDS.get(n, _DEFAULT_STEP_SECONDS) for n in self._pg_names]
+        # A workflow may size its own steps: the global table said
+        # wifi_onboarding=2s while a legal nRF usb_setup runs ~5 minutes —
+        # the ring froze at full for the whole step (storm review, 2026-08-20).
+        _wf_secs = getattr(workflow, "step_seconds", {}) or {}
+        self._pg_secs = [_wf_secs.get(n) or _STEP_SECONDS.get(n, _DEFAULT_STEP_SECONDS)
+                         for n in self._pg_names]
         self._pg_total = max(1.0, float(sum(self._pg_secs)))
         self._pg_done = 0                        # completed step count
         self._pg_step_start = time.monotonic()

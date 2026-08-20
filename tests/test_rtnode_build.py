@@ -578,9 +578,13 @@ def test_techo_provisioning_resolves_the_raw_port():
     from tests.srcutil import func_source
     src = func_source("workflows/rtnode_build.py", "_techo_raw_port")
     assert "readlink -f" in src
+    resolver = func_source("workflows/rtnode_build.py", "_nrf_reresolve")
+    assert "_nrf_ports" in resolver, "the strict resolver must enumerate"
     for fn in ("_onboard_techo", "_verify_techo"):
         body = func_source("workflows/rtnode_build.py", fn)
-        assert "_techo_raw_port" in body, f"{fn} must resolve the raw port"
+        assert "_nrf_reresolve" in body, (
+            f"{fn} must resolve via the strict resolver (readlinked raw "
+            f"ports, refuses on none/many — storm review F1/F5)")
         assert "by-id" not in body.replace("by-id symlink", ""), (
             f"{fn} must not hand rnodeconf a by-id path")
 

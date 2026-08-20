@@ -373,13 +373,7 @@ def _techo_raw_port(wf) -> str:
     # returns the string "/dev/serial/by-id/*Nordic*" as a "port" whenever
     # other by-id devices exist but the T-Echo doesn't (adversarial review,
     # 2026-08-19). Existence-check every candidate; take only real nodes.
-    t = wf.target
-    pats = [p for p in (t.usb_app_id, t.usb_boot_id, *t.usb_stock_ids) if p]
-    globs = " ".join(f"/dev/serial/by-id/*{p}*" for p in pats)
-    out = wf.connection.run(
-        f"for f in {globs}; do "
-        "[ -e \"$f\" ] && readlink -f \"$f\"; done 2>/dev/null | sort -u")[1]
-    ports = [l.strip() for l in out.splitlines() if l.strip().startswith("/dev/")]
+    ports = _nrf_ports(wf)
     if len(ports) > 1:
         # Two nRF-identity devices at once: refusing beats provisioning the
         # wrong one — the guard checked the PINNED port, not whatever a glob
@@ -410,6 +404,41 @@ def _techo_wait(wf, pattern: str, tries: int = 30) -> bool:
 #: flash. Distinguishing them is what makes the touch decision correct.
 TECHO_BOOTLOADER_ID = "LilyGo_T-Echo"
 TECHO_APP_ID = "T-Echo_RTNode-2400"
+
+
+def _nrf_ports(wf):
+    """Every real port matching this target's identities, resolved NOW."""
+    t = wf.target
+    pats = [p for p in (t.usb_app_id, t.usb_boot_id, *t.usb_stock_ids) if p]
+    globs = " ".join(f"/dev/serial/by-id/*{p}*" for p in pats)
+    out = wf.connection.run(
+        f"for f in {globs}; do "
+        "[ -e \"$f\" ] && readlink -f \"$f\"; done 2>/dev/null | sort -u")[1]
+    return [l.strip() for l in out.splitlines() if l.strip().startswith("/dev/")]
+
+
+def _nrf_reresolve(wf, step: str):
+    """(port, failure StepResult|None) — the ONLY way a step may re-find its
+    board mid-flow. The old pattern was `_techo_raw_port(wf) or raw`: the
+    resolver's own >1-boards refusal came back as "" and the `or raw` erased
+    it, falling back to a STALE tty — and in emulation a second board that
+    took that tty number during a reset received the birth board's firmware
+    hash and TNC params while the step reported success (storm review,
+    2026-08-20). None and many are different truths and neither may ever
+    become "use the old number"."""
+    ports = _nrf_ports(wf)
+    if len(ports) == 1:
+        return ports[0], None
+    if not ports:
+        return "", StepResult(step, False,
+                              "The board is not on USB right now (it may "
+                              "still be rebooting) — refusing to touch the "
+                              "old port number, which another device could "
+                              "have taken. Run the build again.")
+    return "", StepResult(step, False,
+                          f"{len(ports)} boards match — unplug the others; "
+                          "provisioning refuses to guess which one is being "
+                          "born.")
 
 
 def _kiss_ready(wf, raw: str, timeout: int = 90) -> bool:
@@ -502,9 +531,12 @@ def _flash_techo(wf, port: str) -> StepResult:
                           "Flashed, but the board did not come back as the "
                           "running app — check the cable, then double-tap "
                           "RESET and retry.")
-    wf.profile.connection_port = _techo_raw_port(wf) or port
-    wf.profile.radio.serial_port = wf.profile.connection_port
-    if not _kiss_ready(wf, wf.profile.connection_port):
+    fresh, fail = _nrf_reresolve(wf, "flash_firmware")
+    if fail:
+        return fail
+    wf.profile.connection_port = fresh
+    wf.profile.radio.serial_port = fresh
+    if not _kiss_ready(wf, fresh):
         return StepResult("flash_firmware", False,
                           "The board enumerated but never answered the RNode "
                           "detect — the firmware may have hung during its "
@@ -519,10 +551,9 @@ def _onboard_techo(wf) -> StepResult:
     captive portal cannot exist for it. Two rnodeconf passes: bootstrap the
     EEPROM (identity, signature), then bake the canonical radio parameters in
     TNC mode so the node runs them standalone (set-radio-params-at-birth)."""
-    raw = _techo_raw_port(wf)
-    if not raw:
-        return StepResult("wifi_onboarding", False,
-                          "Board vanished from USB before provisioning.")
+    raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+    if fail:
+        return fail
     if not _kiss_ready(wf, raw):
         return StepResult("wifi_onboarding", False,
                           "The board is on USB but not answering the RNode "
@@ -534,18 +565,57 @@ def _onboard_techo(wf) -> StepResult:
         f"timeout 150 rnodeconf {raw} -r {wf.target.provision_args} 2>&1 | tail -4",
         timeout=180)
     text = prov[1] or ""
+    if "EEPROM checksum mismatch" in text:
+        # The one state -r cannot pass THROUGH: a locked-but-corrupt EEPROM
+        # (our own 2026-08-19 bench residue was exactly this). rnodeconf
+        # refuses — with exit code 0, its refusals always exit 0 — and no
+        # amount of rerunning helps; the cure is a wipe. The store is
+        # unreadable, so its identity is already lost: wiping loses nothing
+        # that exists, and saying so is the honest note. One wipe, one retry.
+        wf.connection.run(
+            f"export PATH=$HOME/.local/bin:$PATH && "
+            f"timeout 90 rnodeconf {raw} --eeprom-wipe 2>&1 | tail -2",
+            timeout=120)
+        if not _techo_wait(wf, wf.target.usb_app_id, tries=20):
+            return StepResult("wifi_onboarding", False,
+                              "The stored EEPROM was corrupt; it was wiped "
+                              "but the board did not return — double-tap "
+                              "RESET and run the build again.")
+        raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+        if fail:
+            return fail
+        if not _kiss_ready(wf, raw):
+            return StepResult("wifi_onboarding", False,
+                              "Wiped a corrupt EEPROM but the board is not "
+                              "answering yet — run the build again.")
+        prov = wf.connection.run(
+            f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
+            f"timeout 150 rnodeconf {raw} -r {wf.target.provision_args} "
+            f"2>&1 | tail -4", timeout=180)
+        text = prov[1] or ""
+        wf.techo_eeprom_wiped = True
     if "Bootstrapping successful" not in text:
         # (The old check also accepted any line containing "successful" —
         # which matches "unsuccessful" too. One exact sentence, or the
         # read-back decides.) A previously provisioned board REFUSES a
         # re-bootstrap and that is fine — its identity is meant to survive.
+        chk_port, fail = _nrf_reresolve(wf, "wifi_onboarding")
+        if fail:
+            return fail
         chk = wf.connection.run(
             f"export PATH=$HOME/.local/bin:$PATH && "
-            f"timeout 40 rnodeconf {_techo_raw_port(wf) or raw} -i 2>&1",
-            timeout=60)[1] or ""
+            f"timeout 40 rnodeconf {chk_port} -i 2>&1", timeout=60)[1] or ""
         if "signature validated" not in chk.lower():
+            # Quote the READ-BACK that made the decision, not -r's benign
+            # "already present" refusal — a bad-signature board used to fail
+            # under words that never said "signature" (storm review F6).
+            wiped_note = (" A corrupt EEPROM was already wiped once this "
+                          "run; if this repeats, the flash itself is "
+                          "suspect — reflash, then build again."
+                          if getattr(wf, "techo_eeprom_wiped", False) else "")
             return StepResult("wifi_onboarding", False,
-                              f"EEPROM bootstrap failed: {text.strip()[-300:]}")
+                              f"EEPROM read-back failed validation: "
+                              f"{chk.strip()[-300:]}{wiped_note}")
     # rnodeconf -r ends in a hard reset on nRF52 — the board re-enumerates and
     # its ttyACM number can move. WAIT for the APP identity (the loose family
     # pattern also matched the bootloader — prosecution review, 2026-08-20).
@@ -554,7 +624,9 @@ def _onboard_techo(wf) -> StepResult:
                           "Board did not return after provisioning — check "
                           "the cable, then run the build again (its identity "
                           "is already saved; the retry is safe).")
-    raw = _techo_raw_port(wf) or raw
+    raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+    if fail:
+        return fail
     if not _kiss_ready(wf, raw):
         return StepResult("wifi_onboarding", False,
                           "The board returned but is not answering yet — run "
@@ -572,7 +644,7 @@ def _onboard_techo(wf) -> StepResult:
     hcmd = wf.connection.run(
         f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
         f"export PATH=$HOME/.local/bin:$PATH && "
-        f"./partition_hashes from_device {raw} 2>/dev/null | tail -1",
+        f"timeout 80 ./partition_hashes from_device {raw} 2>/dev/null | tail -1",
         timeout=90)
     fw_hash = (hcmd[1] or "").strip().splitlines()[-1].strip() if (hcmd[1] or "").strip() else ""
     if fw_hash == "0" * 64:
@@ -595,7 +667,9 @@ def _onboard_techo(wf) -> StepResult:
         return StepResult("wifi_onboarding", False,
                           f"Setting the firmware hash failed: "
                           f"{(seth[1] or '').strip()[-200:]}")
-    raw = _techo_raw_port(wf) or raw
+    raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+    if fail:
+        return fail
     freq_hz = int(round(r.frequency_mhz * 1_000_000))
     bw_hz = int(r.bandwidth_khz * 1000)
     # -T (TNC mode) is the branch that CONSUMES the five flags and leaves the
@@ -626,9 +700,25 @@ def _onboard_techo(wf) -> StepResult:
         wf.gps_fix = fix
     except Exception:
         wf.gps_fix = None
+    # F3 (storm): the certificate must name the port the board LIVES on,
+    # not the pin from two re-enumerations ago.
+    final_port, _ = _nrf_reresolve(wf, "wifi_onboarding")
+    if final_port:
+        wf.profile.connection_port = final_port
+        wf.profile.radio.serial_port = final_port
+    if getattr(wf, "techo_eeprom_wiped", False):
+        ident_word = ("stored EEPROM was corrupt — wiped and freshly "
+                      "provisioned (a new identity; the old store was "
+                      "unreadable)")
+    elif "Bootstrapping successful" in text:
+        ident_word = "identity provisioned"
+    else:
+        # the -r refusal path: the identity SURVIVED, which is the design —
+        # but "provisioned" would claim a mint that never happened.
+        ident_word = "identity already present — kept"
     return StepResult("wifi_onboarding", True,
-                      f"Configured over USB (no WiFi on this board): identity "
-                      f"provisioned, firmware hash set, radio set to "
+                      f"Configured over USB (no WiFi on this board): "
+                      f"{ident_word}, firmware hash set, radio set to "
                       f"{r.frequency_mhz} MHz SF{r.spreading_factor} "
                       f"CR{r.coding_rate} {r.tx_power_dbm} dBm — running "
                       f"standalone (TNC mode).")
@@ -638,10 +728,9 @@ def _verify_techo(wf) -> StepResult:
     """Read the provisioning back off the board over USB. Honest scope: this
     proves the EEPROM and signature, not over-the-air reach — say so, rather
     than implying a radio check that did not happen."""
-    raw = _techo_raw_port(wf)
-    if not raw:
-        return StepResult("verify_beacon", False,
-                          "Board vanished from USB before verification.")
+    raw, fail = _nrf_reresolve(wf, "verify_beacon")
+    if fail:
+        return fail
     # FIRST: reboot the configured board and read its own words. This is the
     # start of identity-over-USB (2026-08-19): the firmware prints
     # "[RTNode] identity=… dst=…" the moment RNS comes up, and that identity
@@ -670,7 +759,9 @@ def _verify_techo(wf) -> StepResult:
         ident, dst = m.group(1), m.group(2)
         wf.profile.reticulum_identity_hash = ident
         wf.techo_dst = dst
-    raw = _techo_raw_port(wf) or raw          # the reset moves the port
+    raw, fail = _nrf_reresolve(wf, "verify_beacon")   # the reset moves the port
+    if fail:
+        return fail
     # Target-vs-actual firmware hash EQUALITY — the check the EEPROM read
     # cannot make. Both lines come from the device (rnodeconf -K -L prints
     # "The target firmware hash is:" / "The actual firmware hash is:"); if
@@ -977,6 +1068,18 @@ class RTNodeBuildWorkflow:
         if self.target.mechanism == "nrf_dfu":
             return {"wifi_onboarding": "usb_setup",
                     "verify_beacon": "verify_usb"}
+        return {}
+
+    @property
+    def step_seconds(self):
+        """Per-build progress-ring weights. The global _STEP_SECONDS says
+        wifi_onboarding=2s; a legal nRF usb_setup can run ~570s (first-boot
+        LittleFS format + three rnodeconf conversations + two reboots) — the
+        ring froze at 100% for minutes, the exact banned "stall" look
+        (storm review F4). Estimates, honestly sized."""
+        if self.target.mechanism == "nrf_dfu":
+            return {"flash_firmware": 240, "wifi_onboarding": 300,
+                    "verify_beacon": 120}
         return {}
 
     @property
