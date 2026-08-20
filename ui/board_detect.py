@@ -65,6 +65,16 @@ _NRF52_PRODUCT_KEYS = (
     # The STOCK RNode app calls the board by Heltec's module name, not "T114"
     # (observed live 2026-08-20: product "HT-n5262", manufacturer "Heltec").
     ("ht-n5262", "heltec_t114"),
+    # A stock-RNode T-Echo goes ANONYMOUS: Mark's build uses the pca10056
+    # defaults, so the board presents Nordic's generic "nRF52840 DK" — and
+    # the RTNode option vanished for a board we had proven an hour earlier
+    # (observed live 2026-08-20). Within the STOCKED catalogue that generic
+    # identity can only be the T-Echo — the RAK and T114 stock builds name
+    # themselves — so infer it, the same only-candidate logic as the
+    # V3-behind-a-bridge rule. If another generic-presenting nRF board is
+    # ever stocked, REMOVE this line and rely on the bootloader-name ladder
+    # (the confirm gate still stands either way).
+    ("nrf52840 dk", "techo"),
 )
 
 #: ESP32 boards that NAME THEMSELVES over USB, exactly like the nRF52 family

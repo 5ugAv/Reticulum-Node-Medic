@@ -206,3 +206,15 @@ def test_named_xiao_skips_the_rtnode_chooser():
     det = _named_det("seeed-xiao-s3")
     assert identified_target(det) == "xiao_esp32s3"
     assert target_options(det) == ["xiao_esp32s3"]
+
+
+def test_stock_rnode_techo_is_inferred_from_the_generic_nordic_identity():
+    """A stock-RNode T-Echo presents Nordic's generic "nRF52840 DK" (Mark's
+    build uses pca10056 defaults) — and the RTNode option vanished for a
+    board proven an hour earlier (live, 2026-08-20). Within the stocked
+    catalogue only the T-Echo stock build is generic (RAK and T114 name
+    themselves), so the only-candidate inference applies."""
+    from ui.board_detect import nrf52_board_key
+    assert nrf52_board_key("nRF52840 DK") == "techo"
+    assert nrf52_board_key("WisCore RAK4631 Board") == "rak4631"
+    assert nrf52_board_key("HT-n5262") == "heltec_t114"
