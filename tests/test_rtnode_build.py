@@ -654,6 +654,9 @@ class _TechoMedic(EmulatedConnection):
         if "techo_touch.py" in cmd:
             self.in_bootloader = True
             return 0, "touch sent", ""
+        if "kiss_detect.py" in cmd:
+            # answers only when the app is running (not in the bootloader)
+            return (1 if self.in_bootloader else 0), "detect: answered", ""
         if "udevadm info" in cmd:
             # the PID is the truth: 002a in the bootloader, 8029 running.
             # (The command pipes through grep|cut; the emulator returns what
@@ -1081,3 +1084,35 @@ def test_rak4631_finds_its_stock_app_before_first_flash():
     _techo_raw_port(wf)
     glob_cmd = next(c for c in cmds if "for f in /dev/serial/by-id/" in c)
     assert "RAKwireless_WisBlock" in glob_cmd and "RAK4631_RTNode-2400" in glob_cmd
+
+
+def test_the_pipeline_waits_for_a_kiss_answer_not_just_enumeration():
+    """USB enumeration is not readiness: a first-ever boot formats LittleFS in
+    setup() — tens of seconds with the port present and silent — and rnodeconf
+    gives up in ~3s ("RNode did not respond", RAK4631 maiden birth). Flash and
+    onboarding must both hold for the firmware's own CMD_DETECT answer."""
+    from workflows.rtnode_build import _flash_techo, _onboard_techo
+    c = _TechoMedic()
+    assert _flash_techo(_techo_wf(c), "/dev/ttyACM1").success
+    assert any("kiss_detect.py" in x for x in c.history), (
+        "flash must not report 'talking' without a KISS answer")
+    c2 = _TechoMedic()
+    assert _onboard_techo(_techo_wf(c2)).success
+    probes = [x for x in c2.history if "kiss_detect.py" in x]
+    assert len(probes) >= 2, (
+        "onboarding probes before -r AND after its trailing reset")
+
+
+def test_a_board_that_never_answers_fails_honestly():
+    from workflows.rtnode_build import _flash_techo
+
+    class _Mute(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "kiss_detect.py" in cmd:
+                self.history.append(cmd)
+                return 1, "", "detect: no answer"
+            return super().run(cmd, *a, **k)
+
+    res = _flash_techo(_techo_wf(_Mute()), "/dev/ttyACM1")
+    assert not res.success
+    assert "never answered" in res.message

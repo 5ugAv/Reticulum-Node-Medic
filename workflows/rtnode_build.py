@@ -412,6 +412,21 @@ TECHO_BOOTLOADER_ID = "LilyGo_T-Echo"
 TECHO_APP_ID = "T-Echo_RTNode-2400"
 
 
+def _kiss_ready(wf, raw: str, timeout: int = 90) -> bool:
+    """Wait until the firmware ANSWERS — USB enumeration is not readiness.
+
+    On nRF52 the KISS handler only runs once setup() finishes, and a
+    first-ever boot formats LittleFS in setup — tens of seconds during which
+    the port exists and says nothing. rnodeconf waits ~3s and declares "RNode
+    did not respond" about a board that is busy being born (RAK4631 maiden
+    birth, 2026-08-20; the T-Echo escaped only because its filesystem had
+    been formatted during pre-birth debugging). The probe succeeds only on
+    the firmware's own CMD_DETECT response."""
+    return wf.connection.run(
+        f"python3 ~/reticulum-tool/scripts/kiss_detect.py {raw} {timeout}",
+        timeout=timeout + 15)[0] == 0
+
+
 def _flash_techo(wf, port: str) -> StepResult:
     """Build + DFU-flash the T-Echo: make in the techo tree, 1200-baud touch
     into the bootloader (no hands — proven on this board), then the Makefile's
@@ -489,9 +504,14 @@ def _flash_techo(wf, port: str) -> StepResult:
                           "RESET and retry.")
     wf.profile.connection_port = _techo_raw_port(wf) or port
     wf.profile.radio.serial_port = wf.profile.connection_port
+    if not _kiss_ready(wf, wf.profile.connection_port):
+        return StepResult("flash_firmware", False,
+                          "The board enumerated but never answered the RNode "
+                          "detect — the firmware may have hung during its "
+                          "first boot. Replug it and run the build again.")
     return StepResult("flash_firmware", True,
-                      "Flashed RTNode-2400 (T-Echo, serial DFU) and the board "
-                      "booted — back on USB and talking.")
+                      f"Flashed RTNode-2400 ({wf.target.display}, serial DFU) "
+                      "and the board booted — back on USB and answering.")
 
 
 def _onboard_techo(wf) -> StepResult:
@@ -503,6 +523,11 @@ def _onboard_techo(wf) -> StepResult:
     if not raw:
         return StepResult("wifi_onboarding", False,
                           "Board vanished from USB before provisioning.")
+    if not _kiss_ready(wf, raw):
+        return StepResult("wifi_onboarding", False,
+                          "The board is on USB but not answering the RNode "
+                          "detect — a first boot can take a while (it formats "
+                          "its filesystem); run the build again.")
     r = wf.profile.radio
     prov = wf.connection.run(
         f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
@@ -530,6 +555,10 @@ def _onboard_techo(wf) -> StepResult:
                           "the cable, then run the build again (its identity "
                           "is already saved; the retry is safe).")
     raw = _techo_raw_port(wf) or raw
+    if not _kiss_ready(wf, raw):
+        return StepResult("wifi_onboarding", False,
+                          "The board returned but is not answering yet — run "
+                          "the build again (its identity is already saved).")
     # THE FIRMWARE HASH, WITHOUT WHICH EVERYTHING ELSE QUIETLY DIES. The
     # firmware compares its stored expected-hash against the running image at
     # boot; unset, the check fails, hw_ready stays false, RNS refuses to
