@@ -91,6 +91,54 @@ def _autoinstall_ok(code: int, out: str) -> bool:
     return (ALREADY_PROVISIONED_MARKER in low) or (SUCCESS_MARKER in low)
 
 
+def _esp32_hw_cdc_touch(connection, port: str):
+    """(port, note) — park a hardware-CDC ESP32 in its bootloader before
+    rnodeconf ever opens the port.
+
+    An ESP32-S3 running firmware with ARDUINO_USB_MODE=1 (our RTNode-2400
+    images) presents the chip's OWN USB-JTAG/serial peripheral — and that
+    peripheral RESETS THE CHIP when a program opens the port with DTR/RTS
+    asserted, which pyserial does by default. rnodeconf holds one serial
+    handle for its whole run, so its opening probe kills the board under it
+    and every later serial write hits a dead fd: the XIAO reflash hung,
+    then crashed at leave(), then 'Could not find specified port' —
+    three faces of one cause (2026-08-20). In the ROM bootloader the port
+    is stable and opening it is harmless, so: esptool performs its DTR/RTS
+    download-mode dance and LEAVES the chip there (--after no_reset);
+    autoinstall then probes a silent, stable port, takes the fresh-device
+    path, and flashes. The nRF path has done exactly this (the 1200-baud
+    touch) since its first birth.
+
+    Only fires when udevadm says the port IS the hardware CDC
+    ("USB_JTAG_serial_debug_unit"); stock TinyUSB boards (e.g. the factory
+    XIAO) and bridge boards (CP2102/CH340) keep the proven direct path.
+    Re-resolves the port by USB serial number afterwards — entering the
+    bootloader can re-enumerate it."""
+    try:
+        model = (connection.run(
+            f"udevadm info -q property -n {port} 2>/dev/null | "
+            f"grep '^ID_MODEL=' | cut -d= -f2")[1] or "").strip()
+        if model != "USB_JTAG_serial_debug_unit":
+            return port, ""
+        serial = (connection.run(
+            f"udevadm info -q property -n {port} 2>/dev/null | "
+            f"grep '^ID_SERIAL_SHORT=' | cut -d= -f2")[1] or "").strip()
+        connection.run(
+            f"export PATH=$HOME/.local/bin:$PATH && "
+            f"timeout 30 esptool --port {port} --after no_reset "
+            f"chip_id >/dev/null 2>&1; sleep 2", timeout=45)
+        if serial:
+            fresh = (connection.run(
+                "for f in /dev/serial/by-id/*" + serial + "*; do "
+                "[ -e \"$f\" ] && readlink -f \"$f\"; done 2>/dev/null "
+                "| head -1")[1] or "").strip()
+            if fresh.startswith("/dev/"):
+                return fresh, "parked in the bootloader for a stable flash"
+        return port, "parked in the bootloader for a stable flash"
+    except Exception:                                  # noqa: BLE001
+        return port, ""                               # fail open — old path
+
+
 #: The flasher rnodeconf shells out to for every nRF52 board. Named here so the
 #: preflight and any future carrier of it agree on one string.
 NRF_FLASHER = "adafruit-nrfutil"
@@ -157,6 +205,9 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
         missing = _missing_nrf_flasher(connection)
         if missing:
             return False, missing, False
+
+    if (board.platform or "").upper().startswith("ESP32"):
+        port, _touch_note = _esp32_hw_cdc_touch(connection, port)
 
     if hasattr(connection, "run_interactive"):
         cmd = board.autoinstall_command(port, version=version, offline=True)

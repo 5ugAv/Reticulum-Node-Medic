@@ -245,3 +245,57 @@ def test_failed_autoinstall_erases_foreign_firmware_and_retries():
     assert state["erased"], "the board was never erased"
     assert r.success, r.message
     assert "erasing" in r.message
+
+
+# ---- the hardware-CDC bootloader park (the XIAO reflash saga) ------------
+
+class _HwCdcConn(_PtyConn):
+    """A board whose CURRENT firmware presents the ESP32-S3's own USB-JTAG
+    CDC — the kind that RESETS when a program opens the port (our RTNode
+    images). udevadm names it; the by-id re-resolve returns the fresh tty."""
+
+    def __init__(self, replies, model="USB_JTAG_serial_debug_unit"):
+        super().__init__(replies)
+        self._model = model
+        self.history = []
+
+    def run(self, command, timeout=30):
+        self.history.append(command)
+        if "ID_MODEL=" in command and "udevadm" in command:
+            return (0, self._model, "")
+        if "ID_SERIAL_SHORT=" in command:
+            return (0, "0200000B000B", "")
+        if "esptool" in command:
+            return (0, "", "")
+        if "for f in /dev/serial/by-id/" in command:
+            return (0, "/dev/ttyACM3\n", "")
+        return super().run(command, timeout=timeout)
+
+
+def test_hw_cdc_board_is_parked_in_the_bootloader_before_autoinstall():
+    """The XIAO-running-RTNode reflash failed three different ways from ONE
+    cause: rnodeconf's port open resets a hardware-CDC ESP32 and the board
+    dies under its single serial handle (hung PTY, dead-fd crash at leave(),
+    'Could not find specified port' — all 2026-08-20). The flash must park
+    the chip in its ROM bootloader first (esptool --after no_reset), where
+    opening the port is harmless, then re-resolve the tty by USB serial."""
+    conn = _HwCdcConn([(0, SUCCESS_MARKER)])
+    ok, msg, _prov = birth_flash(conn, V4, "/dev/ttyACM1")
+    assert ok, msg
+    touches = [c for c in conn.history if "esptool" in c and "no_reset" in c]
+    assert touches, "no bootloader park before autoinstall"
+    # the autoinstall must target the RE-RESOLVED port, not the pinned one
+    cmd, _ = conn.interactive_calls[0]
+    assert "/dev/ttyACM3" in cmd, cmd
+
+
+def test_stock_and_bridge_boards_keep_the_proven_direct_path():
+    """A factory TinyUSB XIAO ('seeed-xiao-s3') or a CP2102-bridged V3 does
+    not reset on open — the community-proven direct autoinstall stands."""
+    conn = _HwCdcConn([(0, SUCCESS_MARKER)], model="seeed-xiao-s3")
+    ok, _msg, _prov = birth_flash(conn, V4, "/dev/ttyACM1")
+    assert ok
+    assert not [c for c in conn.history if "esptool" in c], (
+        "a non-hw-CDC board must not be touched")
+    cmd, _ = conn.interactive_calls[0]
+    assert "/dev/ttyACM1" in cmd
