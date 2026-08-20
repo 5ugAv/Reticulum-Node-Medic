@@ -62,6 +62,9 @@ _NRF52_PRODUCT_KEYS = (
     ("t-echo", "techo"),
     ("techo", "techo"),
     ("t114", "heltec_t114"),
+    # The STOCK RNode app calls the board by Heltec's module name, not "T114"
+    # (observed live 2026-08-20: product "HT-n5262", manufacturer "Heltec").
+    ("ht-n5262", "heltec_t114"),
 )
 
 #: ESP32 boards that NAME THEMSELVES over USB, exactly like the nRF52 family

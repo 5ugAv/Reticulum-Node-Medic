@@ -625,9 +625,12 @@ def test_an_unidentified_nrf52_still_gets_no_rtnode_offer():
     from ui.board_detect import firmware_options
     assert firmware_options("nrf52840") == ["rnode"]
     assert firmware_options("nrf52840", None) == ["rnode"]
-    assert firmware_options("nrf52840", "heltec_t114") == ["rnode"]
+    # heltec_t114 graduated 2026-08-20 — the THIRD board out of this test.
+    # The remaining honest no-build nRF example is a key with no target.
+    assert firmware_options("nrf52840", "xiao_nrf52840") == ["rnode"]
     assert firmware_options("nrf52840", "techo") == ["rtnode2400", "rnode"]
     assert firmware_options("nrf52840", "rak4631") == ["rtnode2400", "rnode"]
+    assert firmware_options("nrf52840", "heltec_t114") == ["rtnode2400", "rnode"]
 
 
 # --- the techo steps EXECUTED against an emulated medic, not just read -------

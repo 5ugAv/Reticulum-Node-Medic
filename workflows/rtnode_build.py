@@ -129,6 +129,22 @@ RTNODE_TARGETS = {
     # onboarding (it has WiFi), health-beacon verify. Firmware BOARD_XIAO_S3
     # is 0x3E, already in the tool's beacon vocabulary ("XIAO S3"). The key
     # equals the detector/catalogue key, so the crossing needs no map entry.
+    # Identities OBSERVED live 2026-08-20 (the RAK lesson holds): stock
+    # RNode app "Heltec_HT-n5262" PID 8071, bootloader
+    # "Heltec_AutoMation_HT-n5262" PID 0071 (already in NRF_DFU_PIDS), our
+    # app renamed by the Makefile's USB_ID_T114. Product/model from the
+    # firmware's own Boards.h AND rnodeconf's table, in agreement:
+    # 0xC2 / MODEL_C7 = 863-928 MHz (915.125 fits). Built on Heltec's OWN
+    # core (HT-n5262 fqbn) — the pin table upstream was authored against it,
+    # and a substitute core would silently re-map pins.
+    "heltec_t114": RTNodeTarget(
+        "heltec_t114", "Heltec Mesh Node T114", "firmware-t114-noalloc",
+        NodeHardware.HELTEC_T114, verify="eeprom", mechanism="nrf_dfu",
+        usb_app_id="T114_RTNode-2400",
+        usb_boot_id="AutoMation_HT-n5262",
+        usb_stock_ids=("Heltec_HT-n5262",),
+        flash_target="flash-t114",
+        provision_args="--product c2 --model c7 --hwrev 1"),
     "xiao_esp32s3": RTNodeTarget(
         "xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)",
         "seeed_xiao_esp32s3_sx1262_boundary_local",

@@ -65,9 +65,15 @@ def test_detector_keys_resolve_to_build_targets(detect_key, expected):
     assert target_for_board_key(detect_key) == expected
 
 
-@pytest.mark.parametrize("key", ["heltec_t114", "not_a_board", None, ""])
+@pytest.mark.parametrize("key", ["xiao_nrf52840", "not_a_board", None, ""])
 def test_boards_without_a_build_resolve_to_nothing(key):
     assert target_for_board_key(key) is None
+
+
+def test_the_t114_gained_a_build_on_2026_08_20():
+    """Fourth graduation out of the no-build list (T-Echo, RAK4631, XIAO S3,
+    now the T114) — the registry, never a hardcoded list, decides."""
+    assert target_for_board_key("heltec_t114") == "heltec_t114"
 
 
 def test_the_techo_gained_a_build_on_2026_08_19():
@@ -108,10 +114,16 @@ def test_a_board_with_no_rtnode_build_is_still_blocked():
     """Its whole purpose. The example board used to be the T-Echo — which then
     GAINED a build (2026-08-19), which is exactly why this gate must key on the
     build registry and never on a hardcoded list."""
-    # The example board keeps graduating: first the T-Echo (2026-08-19),
-    # then the RAK4631 (2026-08-20) gained builds — which is the point of
-    # keying on the registry. The T114 is the current no-build nRF52.
-    assert blocked_board(_det("heltec_t114", ["heltec_t114"])) == "Heltec Mesh Node T114"
+    # The example board keeps graduating: T-Echo, RAK4631, XIAO S3, and now
+    # the T114 all gained builds — which is the point of keying on the
+    # registry. The current honest no-build example is a board we stock no
+    # RTNode image for at all.
+    class _B:
+        key = "xiao_nrf52840"
+    import ui.board_images as bi
+    det = _det("xiao_nrf52840", [])
+    got = blocked_board(det)
+    assert got is not None and "xiao" in got.lower()
 
 
 def test_an_unidentified_board_is_never_blocked():
@@ -147,11 +159,14 @@ def test_nothing_detected_offers_every_card_rather_than_none():
     assert identified_target(None) is None
 
 
-def test_a_board_with_no_heltec_target_never_auto_picks_a_heltec():
-    """A RAK4631 must not be silently treated as a V3 or a V4."""
-    det = _det("heltec_t114", ["heltec_t114"], port="/dev/ttyACM0")
+def test_a_board_with_no_build_never_auto_picks_another_board():
+    """An identified board with NO RTNode build must not be silently treated
+    as some other board that has one. (The T114 lived here until it gained
+    its own build, 2026-08-20 — at which point resolving to ITSELF became
+    the correct answer, and this test moved to a genuinely build-less key.)"""
+    det = _det("xiao_nrf52840", ["xiao_nrf52840"], port="/dev/ttyACM0")
     assert identified_target(det) is None
-    assert "heltec_t114" not in target_options(det)
+    assert "xiao_nrf52840" not in target_options(det)
     assert len(target_options(det)) > 1
 
 
