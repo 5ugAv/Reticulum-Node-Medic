@@ -64,6 +64,29 @@ _NRF52_PRODUCT_KEYS = (
     ("t114", "heltec_t114"),
 )
 
+#: ESP32 boards that NAME THEMSELVES over USB, exactly like the nRF52 family
+#: above. Seeed's board definition ships a CDC product string of
+#: "seeed-xiao-s3" (read live off the stock board, 2026-08-20), and our
+#: RTNode-2400 image sets "XIAO-S3 RTNode-2400" explicitly — so the board is
+#: identifiable by name BEFORE and AFTER birth. A generic Espressif identity
+#: ("USB JTAG/serial debug unit" — the chip's own bootloader, every native S3
+#: presents it in download mode) deliberately names NOTHING: it proves the
+#: chip, never the board.
+_ESP32_PRODUCT_KEYS = (
+    ("seeed-xiao-s3", "xiao_esp32s3"),
+    ("xiao-s3 rtnode-2400", "xiao_esp32s3"),
+)
+
+
+def esp32_self_named_key(product: str) -> Optional[str]:
+    """The board key an ESP32 USB product string names, or None. None is the
+    common case — most ESP32 boards present the chip's generic identity."""
+    low = (product or "").lower()
+    for needle, key in _ESP32_PRODUCT_KEYS:
+        if needle in low:
+            return key
+    return None
+
 
 def parse_chip(esptool_output: str) -> Optional[str]:
     """The chip family from esptool's stdout ("Chip is ESP32-S3 …"), or None."""
@@ -441,6 +464,21 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                 "firmware": firmware_options("nrf52840", nrf_key),
                 "boards": shortlist,
                 "board_key": nrf_key})
+
+    # Self-naming ESP32 boards SECOND, still before esptool: the XIAO S3's
+    # CDC product string literally names the board (and after birth our image
+    # names it "XIAO-S3 RTNode-2400"), which outranks anything inferable from
+    # silicon — a V4 and a XIAO are the same chip to esptool. Only the named
+    # hit short-circuits; the generic JTAG identity falls through to the
+    # esptool ladder as before.
+    named_key = esp32_self_named_key((product_fn or port_usb_product)(port))
+    if named_key:
+        hit = [b for b in boards if b.key == named_key]
+        if hit:
+            return _out({"found": True, "port": port, "chip": "esp32s3",
+                    "platform": "ESP32-S3",
+                    "firmware": firmware_options("esp32s3", named_key),
+                    "boards": hit, "board_key": named_key})
 
     try:
         out = (reader or _default_reader)(port)

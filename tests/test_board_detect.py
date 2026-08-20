@@ -158,3 +158,49 @@ def test_the_flapping_warning_reaches_the_birth_screen():
     from tests.srcutil import func_source
     src = func_source("ui/screens/birth_screen.py", "_build_chooser")
     assert "unstable" in src and "unstable_reason" in src
+
+
+# --- self-naming ESP32 boards (the XIAO S3, 2026-08-20) -----------------------
+
+def _named_det(product):
+    from ui.board_detect import detect_board
+    from workflows.rnode_boards import RNODE_BOARDS
+    return detect_board(
+        list(RNODE_BOARDS.values()),
+        ports_fn=lambda: ["/dev/ttyACM1"],
+        reader=lambda p: (_ for _ in ()).throw(AssertionError(
+            "esptool must not run — the name already answered")),
+        vendor_fn=lambda p: "Espressif Systems",
+        product_fn=lambda p: product,
+        sleep_fn=lambda s: None)
+
+
+def test_stock_xiao_names_itself_and_skips_esptool():
+    """Read live off the bench 2026-08-20: the stock board's CDC product
+    string is "seeed-xiao-s3". A name outranks silicon — esptool sees the
+    same chip on a V4 and a XIAO."""
+    det = _named_det("seeed-xiao-s3")
+    assert det["found"] and det["board_key"] == "xiao_esp32s3"
+
+
+def test_birthed_xiao_stays_named():
+    """Our image sets USB_PRODUCT "XIAO-S3 RTNode-2400" (platformio env), so
+    the board is identifiable by name after birth too — rebirth and adoption
+    flows see the board, not a generic Espressif identity."""
+    det = _named_det("XIAO-S3 RTNode-2400")
+    assert det["found"] and det["board_key"] == "xiao_esp32s3"
+
+
+def test_generic_jtag_identity_names_nothing():
+    from ui.board_detect import esp32_self_named_key
+    assert esp32_self_named_key("USB JTAG/serial debug unit") is None
+    assert esp32_self_named_key("") is None
+
+
+def test_named_xiao_skips_the_rtnode_chooser():
+    """The whole point: one less question. identified_target on the named
+    board resolves straight to the xiao target (confirm gate still stands)."""
+    from ui.rtnode_choice import identified_target, target_options
+    det = _named_det("seeed-xiao-s3")
+    assert identified_target(det) == "xiao_esp32s3"
+    assert target_options(det) == ["xiao_esp32s3"]
