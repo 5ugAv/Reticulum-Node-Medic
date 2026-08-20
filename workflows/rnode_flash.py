@@ -123,10 +123,24 @@ def _esp32_hw_cdc_touch(connection, port: str):
         serial = (connection.run(
             f"udevadm info -q property -n {port} 2>/dev/null | "
             f"grep '^ID_SERIAL_SHORT=' | cut -d= -f2")[1] or "").strip()
-        connection.run(
+        # esptool.py, the pip entry point — a bare `esptool` does not exist
+        # on the medic (the first deploy of this touch failed open on that
+        # and the reflash raced the reset exactly as before, 2026-08-20).
+        # The park must be VERIFIED, not assumed: no esptool -> no touch ->
+        # say so, rather than letting rnodeconf race the reset again.
+        # rc captured BEFORE the settle sleep — a trailing command would
+        # replace the exit code and make this check dead (the pipefail
+        # lesson, again).
+        code = connection.run(
             f"export PATH=$HOME/.local/bin:$PATH && "
-            f"timeout 30 esptool --port {port} --after no_reset "
-            f"chip_id >/dev/null 2>&1; sleep 2", timeout=45)
+            f"timeout 30 esptool.py --port {port} --after no_reset "
+            f"chip_id >/dev/null 2>&1; rc=$?; sleep 2; exit $rc",
+            timeout=45)[0]
+        if code != 0:
+            return port, ("WARNING: could not park the board in its "
+                          "bootloader (esptool.py missing or the touch "
+                          "failed) — the flash may race the board's "
+                          "reset-on-open")
         if serial:
             fresh = (connection.run(
                 "for f in /dev/serial/by-id/*" + serial + "*; do "
