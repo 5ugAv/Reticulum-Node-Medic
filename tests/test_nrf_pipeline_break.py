@@ -114,6 +114,11 @@ class _Dev:
     # Device.h:142: decided once, at boot — False for every maiden board
     # until the reboot that follows the hash write.
     sig_validated_at_boot: bool = False
+    # The hard reset fires a beat AFTER the host's rnodeconf exits: the dying
+    # tty lingers on the bus until the next touch (RAK third birth,
+    # 2026-08-20 — a wait-for-identity passed instantly against the old
+    # entry and a 90 s KISS pin then starved on the dead number).
+    reset_pending: bool = False
     tnc: bool = False
     checksum_ok: bool = True
     signature_ok: bool = True
@@ -230,6 +235,14 @@ class _Bench(EmulatedConnection):
             if d is None:
                 self.stale_cmds.append(cmd)
                 return 1, "", "no answer"
+            if d.reset_pending:
+                # the deferred hard reset lands during the probe window: the
+                # old tty dies under the probe and the board comes back on a
+                # NEW number — a probe pinned to this port never succeeds
+                self.move(d)
+                d.reset_pending = False
+                d.sig_validated_at_boot = True
+                return 1, "", "no answer"
             ok = d.mode == "app" and d.kiss
             return (0 if ok else 1), ("detect: answered" if ok else ""), ""
 
@@ -316,6 +329,14 @@ class _Bench(EmulatedConnection):
             # rnodeconf's port check ends in graceful_exit() — EXIT CODE 0.
             self.stale_cmds.append(cmd)
             return 0, "That port does not exist, exiting now.", ""
+        if d.reset_pending:
+            # rnodeconf opens the dying port and the board resets under it —
+            # the exact 13:04:58 failure, exit 0 as always
+            self.move(d)
+            d.reset_pending = False
+            d.sig_validated_at_boot = True
+            return 0, ("Serial port opened, but RNode did not respond. "
+                       "Is a valid firmware installed?"), ""
         if d.mode != "app" or not d.kiss:
             return 0, ("Serial port opened, but RNode did not respond. "
                        "Is a valid firmware installed?"), ""
@@ -335,11 +356,10 @@ class _Bench(EmulatedConnection):
             d.stored_hash = re.search(r"--firmware-hash (\S+)", cmd).group(1)
             if not d.sig_validated_at_boot:
                 # Device.h:142 — device_save_firmware_hash() ends in
-                # hard_reset() on every maiden birth; the board
-                # re-enumerates and its tty number moves (RAK4631 second
-                # birth, 13:04:58, 2026-08-20).
-                self.move(d)
-                d.sig_validated_at_boot = True
+                # hard_reset() on every maiden birth; and it fires AFTER
+                # this command returns, with the old tty lingering
+                # (RAK births two and three, 2026-08-20).
+                d.reset_pending = True
             if self.after_hash_set:
                 self.after_hash_set()
             return 0, ("EEPROM checksum correct\nDevice signature validated\n"
@@ -491,7 +511,8 @@ def test_s2_vanish_during_the_r_reset_says_the_identity_survived():
     bench.after_r_reset = lambda: bench.devices.clear()
     res = _onboard_techo(_wf(bench))
     assert not res.success
-    assert "did not return" in res.message
+    assert "not on USB after provisioning" in res.message
+    assert "already written is saved" in res.message
     assert d.provisioned, "the message promises a saved identity — verify it"
 
 
@@ -513,7 +534,8 @@ def test_s2_vanish_between_hash_and_params_fails_and_names_the_port_state():
     # with the honest "did not return" message — and rnodeconf never
     # touches the stale tty (stronger than the original "does not exist"
     # expectation).
-    assert "did not return after the firmware-hash write" in res.message
+    assert "not on USB after the firmware-hash write" in res.message
+    assert "already written is saved" in res.message
     assert not bench.stale_cmds
 
 

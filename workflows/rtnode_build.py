@@ -441,6 +441,39 @@ def _nrf_reresolve(wf, step: str):
                           "born.")
 
 
+def _nrf_settle(wf, step: str, after: str, laps: int = 12):
+    """(port, failure StepResult|None) — the gate for AFTER any write that can
+    reboot the board (-r, --eeprom-wipe, --firmware-hash, CMD_RESET).
+
+    The nRF52's hard reset fires a beat AFTER the host command exits, and the
+    dying tty LINGERS on the bus: a wait-for-identity passes instantly against
+    the old entry, a strict re-resolve then returns the old number, and a 90 s
+    KISS pin starves on a port whose board has moved (RAK births two AND
+    three, 2026-08-20 — the second lost -T to it, the third lost the pinned
+    KISS gate to it). The only cure is to re-resolve EVERY lap and probe
+    short, so a mid-loop re-enumeration is caught on the next lap."""
+    state = "not on USB"
+    for _ in range(laps):
+        ports = _nrf_ports(wf)
+        if len(ports) > 1:
+            return "", StepResult(step, False,
+                                  f"{len(ports)} boards match — unplug the "
+                                  "others; provisioning refuses to guess "
+                                  "which one is being born.")
+        if len(ports) == 1:
+            if _kiss_ready(wf, ports[0], timeout=8):
+                return ports[0], None
+            state = "on USB but not answering"
+        else:
+            state = "not on USB"
+            wf.connection.run("sleep 2")
+    return "", StepResult(step, False,
+                          f"The board is {state} after {after} — it may "
+                          "still be rebooting. Unplug it, plug it back in, "
+                          "and run the build again (everything already "
+                          "written is saved).")
+
+
 def _kiss_ready(wf, raw: str, timeout: int = 90) -> bool:
     """Wait until the firmware ANSWERS — USB enumeration is not readiness.
 
@@ -576,18 +609,10 @@ def _onboard_techo(wf) -> StepResult:
             f"export PATH=$HOME/.local/bin:$PATH && "
             f"timeout 90 rnodeconf {raw} --eeprom-wipe 2>&1 | tail -2",
             timeout=120)
-        if not _techo_wait(wf, wf.target.usb_app_id, tries=20):
-            return StepResult("wifi_onboarding", False,
-                              "The stored EEPROM was corrupt; it was wiped "
-                              "but the board did not return — double-tap "
-                              "RESET and run the build again.")
-        raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+        raw, fail = _nrf_settle(wf, "wifi_onboarding",
+                                "the corrupt-EEPROM wipe", laps=15)
         if fail:
             return fail
-        if not _kiss_ready(wf, raw):
-            return StepResult("wifi_onboarding", False,
-                              "Wiped a corrupt EEPROM but the board is not "
-                              "answering yet — run the build again.")
         prov = wf.connection.run(
             f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
             f"timeout 150 rnodeconf {raw} -r {wf.target.provision_args} "
@@ -616,21 +641,13 @@ def _onboard_techo(wf) -> StepResult:
             return StepResult("wifi_onboarding", False,
                               f"EEPROM read-back failed validation: "
                               f"{chk.strip()[-300:]}{wiped_note}")
-    # rnodeconf -r ends in a hard reset on nRF52 — the board re-enumerates and
-    # its ttyACM number can move. WAIT for the APP identity (the loose family
-    # pattern also matched the bootloader — prosecution review, 2026-08-20).
-    if not _techo_wait(wf, wf.target.usb_app_id, tries=15):
-        return StepResult("wifi_onboarding", False,
-                          "Board did not return after provisioning — check "
-                          "the cable, then run the build again (its identity "
-                          "is already saved; the retry is safe).")
-    raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+    # rnodeconf -r ends in a hard reset on nRF52 — the board re-enumerates,
+    # its ttyACM number can move, and the dying tty lingers. The settle gate
+    # re-resolves every lap; a name-grep wait is worthless here because the
+    # app NAME never leaves the bus, only the number moves.
+    raw, fail = _nrf_settle(wf, "wifi_onboarding", "provisioning")
     if fail:
         return fail
-    if not _kiss_ready(wf, raw):
-        return StepResult("wifi_onboarding", False,
-                          "The board returned but is not answering yet — run "
-                          "the build again (its identity is already saved).")
     # THE FIRMWARE HASH, WITHOUT WHICH EVERYTHING ELSE QUIETLY DIES. The
     # firmware compares its stored expected-hash against the running image at
     # boot; unset, the check fails, hw_ready stays false, RNS refuses to
@@ -675,19 +692,9 @@ def _onboard_techo(wf) -> StepResult:
     # but RNode did not respond", RAK4631 second birth, 13:04:58,
     # 2026-08-20). Same treatment as post--r: app identity, re-resolve,
     # KISS gate.
-    if not _techo_wait(wf, wf.target.usb_app_id, tries=15):
-        return StepResult("wifi_onboarding", False,
-                          "Board did not return after the firmware-hash "
-                          "write (it reboots itself to re-check the image) — "
-                          "run the build again; everything so far is saved.")
-    raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
+    raw, fail = _nrf_settle(wf, "wifi_onboarding", "the firmware-hash write")
     if fail:
         return fail
-    if not _kiss_ready(wf, raw):
-        return StepResult("wifi_onboarding", False,
-                          "The board rebooted after the firmware-hash write "
-                          "but is not answering yet — run the build again "
-                          "(everything so far is saved).")
     freq_hz = int(round(r.frequency_mhz * 1_000_000))
     bw_hz = int(r.bandwidth_khz * 1000)
     # -T (TNC mode) is the branch that CONSUMES the five flags and leaves the
@@ -777,7 +784,9 @@ def _verify_techo(wf) -> StepResult:
         ident, dst = m.group(1), m.group(2)
         wf.profile.reticulum_identity_hash = ident
         wf.techo_dst = dst
-    raw, fail = _nrf_reresolve(wf, "verify_beacon")   # the reset moves the port
+    # The bootlog capture ends in CMD_RESET: the port moves and the dying
+    # tty lingers — settle, don't pin (same physics as the hash write).
+    raw, fail = _nrf_settle(wf, "verify_beacon", "the verification reboot")
     if fail:
         return fail
     # Target-vs-actual firmware hash EQUALITY — the check the EEPROM read

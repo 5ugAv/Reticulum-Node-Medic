@@ -98,6 +98,7 @@ class NrfBoard(EmulatedConnection):
         # reboot that follows the hash write.
         self.sig_validated_at_boot = (provisioned
                                       and stored_hash == RUNNING_HASH)
+        self.reset_pending = False   # deferred hash-write hard reset
         self.tnc_params = None
         self.tnc_actually_saved = provisioned and stored_hash == RUNNING_HASH
         self.violations = []        # talked-too-early / wrong-mode records
@@ -150,6 +151,14 @@ class NrfBoard(EmulatedConnection):
         if "kiss_detect.py" in command:
             m = re.search(r"kiss_detect\.py (\S+) (\d+)", command)
             port, budget = m.group(1), float(m.group(2))
+            if self.reset_pending:
+                # deferred hash-write reset lands under the probe: this
+                # probe's port dies; the board is back on a NEW number
+                self.reset_pending = False
+                self._reenumerate("app_rtnode", quiet=8.0)
+                self.sig_validated_at_boot = True
+                self.clock += 2
+                return 1, "", "detect: no answer"
             # The script POLLS for its whole budget: a board mid-format
             # answers the moment setup() finishes, IF the budget covers it.
             if port != self.dev or self.state != "app_rtnode":
@@ -237,6 +246,14 @@ class NrfBoard(EmulatedConnection):
     def _talk_gate(self, what, port):
         """Anything KISS-shaped talking to a board that cannot answer yet is a
         recorded violation AND the failure the real tool prints."""
+        if self.reset_pending:
+            # the deferred hard reset lands NOW, under whatever touched the
+            # port: old tty dies, new number, fresh boot quiet
+            self.reset_pending = False
+            self._reenumerate("app_rtnode", quiet=8.0)
+            self.sig_validated_at_boot = True
+            return 1, _log("Serial port opened, but RNode did not respond. "
+                           "Is a valid firmware installed?"), ""
         if port != self.dev:
             self.violations.append(f"{what} aimed at stale port {port} (board on {self.dev})")
             return 1, _log(f"Could not find specified port {port}, exiting now"), ""
@@ -265,12 +282,10 @@ class NrfBoard(EmulatedConnection):
             if not self.sig_validated_at_boot:
                 # Device.h:142 — device_save_firmware_hash() ends in
                 # hard_reset() when the signature was NOT validated at boot,
-                # i.e. on EVERY maiden birth: the firmware must reboot to
-                # re-check the image against the new expectation. The board
-                # re-enumerates and the tty number moves (RAK4631 second
-                # birth, 13:04:58, 2026-08-20: -T raced this and lost).
-                self._reenumerate("app_rtnode", quiet=8.0)
-                self.sig_validated_at_boot = True
+                # i.e. on EVERY maiden birth. The reset fires AFTER this
+                # command returns and the dying tty LINGERS until the next
+                # touch (RAK births two and three, 2026-08-20).
+                self.reset_pending = True
             return 0, _log("Firmware hash set"), ""
         if " -r " in command:
             if self.eeprom_provisioned:
