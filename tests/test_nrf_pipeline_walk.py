@@ -93,6 +93,11 @@ class NrfBoard(EmulatedConnection):
         self.littlefs_formatted = provisioned or stored_hash is not None
         self.eeprom_provisioned = provisioned
         self.stored_hash = stored_hash    # the expectation written to EEPROM
+        # Device.h:142: fw_signature_validated is decided ONCE, at boot. A
+        # maiden board boots with no stored hash, so it is False until the
+        # reboot that follows the hash write.
+        self.sig_validated_at_boot = (provisioned
+                                      and stored_hash == RUNNING_HASH)
         self.tnc_params = None
         self.tnc_actually_saved = provisioned and stored_hash == RUNNING_HASH
         self.violations = []        # talked-too-early / wrong-mode records
@@ -257,6 +262,15 @@ class NrfBoard(EmulatedConnection):
             self.stored_hash = re.search(r"--firmware-hash (\S+)", command).group(1)
             self.tnc_actually_saved = self.stored_hash == RUNNING_HASH
             self._event("hash_set")
+            if not self.sig_validated_at_boot:
+                # Device.h:142 — device_save_firmware_hash() ends in
+                # hard_reset() when the signature was NOT validated at boot,
+                # i.e. on EVERY maiden birth: the firmware must reboot to
+                # re-check the image against the new expectation. The board
+                # re-enumerates and the tty number moves (RAK4631 second
+                # birth, 13:04:58, 2026-08-20: -T raced this and lost).
+                self._reenumerate("app_rtnode", quiet=8.0)
+                self.sig_validated_at_boot = True
             return 0, _log("Firmware hash set"), ""
         if " -r " in command:
             if self.eeprom_provisioned:

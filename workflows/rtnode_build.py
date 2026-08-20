@@ -667,9 +667,27 @@ def _onboard_techo(wf) -> StepResult:
         return StepResult("wifi_onboarding", False,
                           f"Setting the firmware hash failed: "
                           f"{(seth[1] or '').strip()[-200:]}")
+    # Device.h:142 — device_save_firmware_hash() ends in hard_reset() when
+    # the signature was NOT validated at boot, which is EVERY maiden birth
+    # (the board booted with no stored hash). It reboots to re-check the
+    # image, re-enumerates, and the tty number can move. The -T below used
+    # to race that reboot on the dying port and lose ("Serial port opened,
+    # but RNode did not respond", RAK4631 second birth, 13:04:58,
+    # 2026-08-20). Same treatment as post--r: app identity, re-resolve,
+    # KISS gate.
+    if not _techo_wait(wf, wf.target.usb_app_id, tries=15):
+        return StepResult("wifi_onboarding", False,
+                          "Board did not return after the firmware-hash "
+                          "write (it reboots itself to re-check the image) — "
+                          "run the build again; everything so far is saved.")
     raw, fail = _nrf_reresolve(wf, "wifi_onboarding")
     if fail:
         return fail
+    if not _kiss_ready(wf, raw):
+        return StepResult("wifi_onboarding", False,
+                          "The board rebooted after the firmware-hash write "
+                          "but is not answering yet — run the build again "
+                          "(everything so far is saved).")
     freq_hz = int(round(r.frequency_mhz * 1_000_000))
     bw_hz = int(r.bandwidth_khz * 1000)
     # -T (TNC mode) is the branch that CONSUMES the five flags and leaves the

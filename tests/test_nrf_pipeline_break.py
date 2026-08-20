@@ -111,6 +111,9 @@ class _Dev:
     kiss: bool = True              # app answers CMD_DETECT
     provisioned: bool = False
     stored_hash: str = ""
+    # Device.h:142: decided once, at boot — False for every maiden board
+    # until the reboot that follows the hash write.
+    sig_validated_at_boot: bool = False
     tnc: bool = False
     checksum_ok: bool = True
     signature_ok: bool = True
@@ -330,6 +333,13 @@ class _Bench(EmulatedConnection):
         if "--firmware-hash" in cmd:
             self._write("firmware-hash", d)
             d.stored_hash = re.search(r"--firmware-hash (\S+)", cmd).group(1)
+            if not d.sig_validated_at_boot:
+                # Device.h:142 — device_save_firmware_hash() ends in
+                # hard_reset() on every maiden birth; the board
+                # re-enumerates and its tty number moves (RAK4631 second
+                # birth, 13:04:58, 2026-08-20).
+                self.move(d)
+                d.sig_validated_at_boot = True
             if self.after_hash_set:
                 self.after_hash_set()
             return 0, ("EEPROM checksum correct\nDevice signature validated\n"
@@ -498,9 +508,12 @@ def test_s2_vanish_between_hash_and_params_fails_and_names_the_port_state():
     # The fix improved on this test's original expectation: the failure is
     # now the strict resolver's honest port-state refusal, not a params
     # failure blamed on a board that had merely vacated its tty.
-    assert "not on USB right now" in res.message
-    # Stronger than the original "does not exist" expectation: the resolver
-    # now refuses BEFORE rnodeconf ever touches the stale tty.
+    # The hash-set hard reset (Device.h:142) is now waited out via
+    # _techo_wait, so a board that truly vanishes there fails at THAT wait
+    # with the honest "did not return" message — and rnodeconf never
+    # touches the stale tty (stronger than the original "does not exist"
+    # expectation).
+    assert "did not return after the firmware-hash write" in res.message
     assert not bench.stale_cmds
 
 
@@ -794,6 +807,27 @@ def test_s7_progress_estimate_is_in_the_same_world_as_the_nrf_reality():
     assert "step_seconds" in src, (
         "birth_screen no longer consults the workflow's step_seconds "
         "override — the static ESP32 table would pace the nRF birth again")
+
+
+# =========================================================================
+# Scenario 9 — the hash-set hard reset (the second RAK bench failure)
+# =========================================================================
+
+def test_s9_hash_set_hard_reset_is_waited_out_before_params():
+    """13:04:58, 2026-08-20, on the bench: Device.h:142 hard-resets the board
+    after the maiden hash write, the tty moved ACM2→ACM1, and -T opened the
+    dying port ("Serial port opened, but RNode did not respond"). The step
+    must treat the hash write exactly like -r: wait for the app identity,
+    re-resolve, and gate on KISS before the params call."""
+    bench = _Bench("rak4631")
+    d = bench.add("app")
+    res = _onboard_techo(_wf(bench))
+    assert res.success, res.message
+    assert not bench.stale_cmds, bench.stale_cmds
+    t_cmds = [c for c in bench.history if " -T " in c]
+    assert t_cmds and d.tty in t_cmds[-1], (
+        f"-T must target the post-reset tty {d.tty}: {t_cmds}")
+    assert d.tnc
 
 
 # =========================================================================
