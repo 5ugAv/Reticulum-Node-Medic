@@ -183,12 +183,14 @@ def test_stock_xiao_names_itself_and_skips_esptool():
     assert det["found"] and det["board_key"] == "xiao_esp32s3"
 
 
-def test_birthed_xiao_stays_named():
-    """Our image sets USB_PRODUCT "XIAO-S3 RTNode-2400" (platformio env), so
-    the board is identifiable by name after birth too — rebirth and adoption
-    flows see the board, not a generic Espressif identity."""
-    det = _named_det("XIAO-S3 RTNode-2400")
-    assert det["found"] and det["board_key"] == "xiao_esp32s3"
+def test_birthed_xiao_is_generic_and_falls_through_to_the_ladder():
+    """Hardware verdict from the first XIAO birth (2026-08-20): our image
+    runs ARDUINO_USB_MODE=1, whose USB descriptors are burned into the chip —
+    a USB_PRODUCT define is a no-op there, so a BIRTHED board presents the
+    generic Espressif identity and must NOT be treated as named."""
+    from ui.board_detect import esp32_self_named_key
+    assert esp32_self_named_key("XIAO-S3 RTNode-2400") is None
+    assert esp32_self_named_key("USB JTAG/serial debug unit") is None
 
 
 def test_generic_jtag_identity_names_nothing():

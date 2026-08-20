@@ -65,16 +65,17 @@ _NRF52_PRODUCT_KEYS = (
 )
 
 #: ESP32 boards that NAME THEMSELVES over USB, exactly like the nRF52 family
-#: above. Seeed's board definition ships a CDC product string of
-#: "seeed-xiao-s3" (read live off the stock board, 2026-08-20), and our
-#: RTNode-2400 image sets "XIAO-S3 RTNode-2400" explicitly — so the board is
-#: identifiable by name BEFORE and AFTER birth. A generic Espressif identity
-#: ("USB JTAG/serial debug unit" — the chip's own bootloader, every native S3
-#: presents it in download mode) deliberately names NOTHING: it proves the
-#: chip, never the board.
+#: above. Seeed's FACTORY firmware ships TinyUSB descriptors reading
+#: "seeed-xiao-s3" (read live off the stock board, 2026-08-20) — so a fresh
+#: XIAO identifies outright. AFTER birth the name is gone: our image runs
+#: ARDUINO_USB_MODE=1 (hardware CDC/JTAG), whose descriptors are burned into
+#: the ESP32-S3 silicon and cannot be renamed — the birthed board presents
+#: the generic "USB JTAG/serial debug unit" (verified on the first XIAO
+#: birth, 2026-08-20; a USB_PRODUCT define proved to be a no-op in mode 1).
+#: The generic identity deliberately names NOTHING: it proves the chip,
+#: never the board.
 _ESP32_PRODUCT_KEYS = (
     ("seeed-xiao-s3", "xiao_esp32s3"),
-    ("xiao-s3 rtnode-2400", "xiao_esp32s3"),
 )
 
 
