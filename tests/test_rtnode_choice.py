@@ -37,8 +37,8 @@ class _Board:
         self.key = key
 
 
-def _det(board_key=None, keys=()):
-    return {"found": True, "port": "/dev/ttyUSB0", "chip": "esp32s3",
+def _det(board_key=None, keys=(), port="/dev/ttyUSB0"):
+    return {"found": True, "port": port, "chip": "esp32s3",
             "board_key": board_key, "boards": [_Board(k) for k in keys]}
 
 
@@ -133,21 +133,26 @@ def test_a_bridged_v3_is_identified_and_the_question_is_not_asked():
 def test_a_native_s3_is_still_asked_because_it_could_be_a_tracker():
     """A native ESP32-S3 is a V4 or a Wireless Tracker or a T-Beam Supreme.
     Pre-picking the V4 is how a Tracker walked into these cards (2026-08-01)."""
-    det = _det(None, ["heltec32_v4", "heltec_wireless_tracker", "tbeam_supreme"])
+    det = _det(None, ["heltec32_v4", "heltec_wireless_tracker", "tbeam_supreme"],
+               port="/dev/ttyACM1")
     assert identified_target(det) is None
-    assert target_options(det) == list(HELTEC_PAIR)
+    # Still ASKED — the chooser may prune impossibilities by port type but
+    # must never come back with a single pre-picked card here.
+    assert len(target_options(det)) > 1
 
 
-def test_nothing_detected_offers_both_boards_rather_than_none():
-    assert target_options(None) == list(HELTEC_PAIR)
+def test_nothing_detected_offers_every_card_rather_than_none():
+    from ui.rtnode_choice import ALL_CARDS
+    assert target_options(None) == list(ALL_CARDS)
     assert identified_target(None) is None
 
 
 def test_a_board_with_no_heltec_target_never_auto_picks_a_heltec():
     """A RAK4631 must not be silently treated as a V3 or a V4."""
-    det = _det("heltec_t114", ["heltec_t114"])
+    det = _det("heltec_t114", ["heltec_t114"], port="/dev/ttyACM0")
     assert identified_target(det) is None
-    assert target_options(det) == list(HELTEC_PAIR)
+    assert "heltec_t114" not in target_options(det)
+    assert len(target_options(det)) > 1
 
 
 def test_an_identified_techo_skips_the_chooser_to_its_own_target():
@@ -193,5 +198,34 @@ def test_a_native_s3_is_still_asked():
     det = _detect("/dev/ttyACM1")
     assert det["board_key"] is None
     assert identified_target(det) is None
-    assert target_options(det) == list(HELTEC_PAIR)
+    # A native ttyACM can never be the bridged V3 — the port fact prunes it —
+    # but V4-vs-XIAO is a question only the operator can answer.
+    from ui.rtnode_choice import S3_NATIVE_CARDS
+    assert target_options(det) == list(S3_NATIVE_CARDS)
     assert blocked_board(det) is None
+
+
+def test_xiao_s3_target_exists_and_reuses_the_proven_esp32_pipeline():
+    """The Seeed XIAO ESP32S3 (Wio-SX1262) target: pio mechanism, beacon
+    verify, the 8MB boundary_local env — pinned so a rename in the firmware
+    tree or a mechanism drift surfaces here, not on the bench."""
+    from workflows.rtnode_build import RTNODE_TARGETS, target_for_board_key
+    t = RTNODE_TARGETS["xiao_esp32s3"]
+    assert t.mechanism == "pio"
+    assert t.verify == "beacon"
+    assert t.build_env == "seeed_xiao_esp32s3_sx1262_boundary_local"
+    assert target_for_board_key("xiao_esp32s3") is t.key or \
+        target_for_board_key("xiao_esp32s3") == "xiao_esp32s3"
+
+
+def test_bridge_port_prunes_to_the_v3_alone():
+    """A ttyUSB port is a CP2102 bridge — the only bridged S3 we stock is the
+    V3, and native-USB boards (V4, XIAO S3) physically cannot present it."""
+    assert target_options({"port": "/dev/ttyUSB0"}) == ["heltec_v3"]
+
+
+def test_native_port_offers_v4_and_xiao_but_never_v3():
+    from ui.rtnode_choice import S3_NATIVE_CARDS
+    opts = target_options({"port": "/dev/ttyACM2"})
+    assert opts == list(S3_NATIVE_CARDS)
+    assert "heltec_v3" not in opts

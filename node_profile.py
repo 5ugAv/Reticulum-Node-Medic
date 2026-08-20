@@ -21,6 +21,7 @@ class NodeHardware(Enum):
     TBEAM_SUPREME = "LilyGO T-Beam Supreme"
     TECHO = "LilyGO T-Echo"
     RAK4631 = "RAK4631"
+    XIAO_S3 = "Seeed XIAO ESP32S3"
     WIRELESS_TRACKER = "Heltec Wireless Tracker"
     UNKNOWN = "Unknown"
 

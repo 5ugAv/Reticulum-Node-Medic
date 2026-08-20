@@ -1322,9 +1322,11 @@ class BirthScreen(BoxLayout):
                 Clock.schedule_once(
                     lambda dt, k=key: self._confirm_board_gate(k), 0)
             return
+        from ui import board_images as _bi
+        names = " / ".join(_bi.label(k) or k for k in opts)
         self.header.add_widget(_line(
-            "Which board is it?  Tap the one in front of you (the silkscreen "
-            "says V3 or V4).", size="13.5sp",
+            f"Which board is it?  Tap the one in front of you ({names} — "
+            "check the name printed on the board).", size="13.5sp",
             color="accent"))
         self.header.add_widget(self._warning_box(
             "WARNING:  Selecting the wrong board can brick the hardware. Check your "

@@ -154,6 +154,7 @@ def parse_flash_size(esptool_output: str) -> Optional[str]:
 #: shortens the "which radio board is this?" list for everyone after.
 _FLASH_SIZE = {
     "heltec32_v4": ("16MB",),      # measured 2026-08-09, Boya 68/4018
+    "xiao_esp32s3": ("8MB",),      # PlatformIO board JSON + Seeed spec, 2026-08-20
 }
 
 

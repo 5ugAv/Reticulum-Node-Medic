@@ -121,6 +121,18 @@ RTNODE_TARGETS = {
         usb_stock_ids=("RAKwireless_WisBlock",),
         flash_target="flash-rak4631 VARIANT=noalloc",
         provision_args="--product 10 --model 12 --hwrev 1"),
+    # PROVEN COMPILING 2026-08-20 on the medic (env fixed the same day: the
+    # tree shipped a 16MB flash override but the plain XIAO carries 8MB —
+    # the V4 --flash_size lesson again, caught against PlatformIO's own
+    # board JSON before any hardware was touched). ESP32-S3 native USB, so
+    # the whole proven V4 pipeline applies: pio upload, captive-portal
+    # onboarding (it has WiFi), health-beacon verify. Firmware BOARD_XIAO_S3
+    # is 0x3E, already in the tool's beacon vocabulary ("XIAO S3"). The key
+    # equals the detector/catalogue key, so the crossing needs no map entry.
+    "xiao_esp32s3": RTNodeTarget(
+        "xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)",
+        "seeed_xiao_esp32s3_sx1262_boundary_local",
+        NodeHardware.XIAO_S3, verify="beacon"),
 }
 DEFAULT_TARGET = "heltec_v4"
 

@@ -21,10 +21,16 @@ from typing import List, Optional
 
 from workflows.rtnode_build import target_for_board_key
 
-#: The two boards the photo chooser offers. The T-Beam Supreme is a real
-#: RTNODE_TARGETS entry but reaches the operator by its own button, so it must
-#: not appear as a card here.
+#: The chooser's card pools. The T-Beam Supreme is a real RTNODE_TARGETS
+#: entry but reaches the operator by its own button, so it must not appear as
+#: a card here. The port type prunes what USB wiring makes impossible: a
+#: bridge tty (ttyUSB, CP2102) can only be the V3; a native tty (ttyACM,
+#: ESP32-S3 USB-JTAG) can never be the V3 but could be a V4 or a XIAO S3 —
+#: they present the IDENTICAL Espressif USB identity, so only the operator
+#: can tell them apart.
 HELTEC_PAIR = ("heltec_v3", "heltec_v4")
+S3_NATIVE_CARDS = ("heltec_v4", "xiao_esp32s3")
+ALL_CARDS = ("heltec_v3", "heltec_v4", "xiao_esp32s3")
 
 
 def blocked_board(detected: Optional[dict]) -> Optional[str]:
@@ -61,7 +67,18 @@ def identified_target(detected: Optional[dict]) -> Optional[str]:
 
 
 def target_options(detected: Optional[dict]) -> List[str]:
-    """The board cards to show. One when the board is identified outright, both
-    Heltecs when it is not — an ambiguous reading must never narrow the choice."""
+    """The board cards to show. One when the board is identified outright;
+    otherwise every card the PORT TYPE leaves possible — the port is a
+    physical fact, not an inference, so pruning by it never narrows an
+    ambiguity, it removes impossibilities (a native ttyACM cannot be the
+    bridged V3; a bridge ttyUSB cannot be a native-USB V4 or XIAO S3).
+    With no port fact at all, every card shows."""
     t = identified_target(detected)
-    return [t] if t else list(HELTEC_PAIR)
+    if t:
+        return [t]
+    port = (detected or {}).get("port") or ""
+    if "ttyACM" in port:
+        return list(S3_NATIVE_CARDS)
+    if "ttyUSB" in port:
+        return ["heltec_v3"]
+    return list(ALL_CARDS)
