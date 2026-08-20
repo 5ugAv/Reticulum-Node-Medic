@@ -52,7 +52,17 @@ class RTNodeTarget:
     build_env: str
     hardware: "NodeHardware"
     verify: str = "beacon"      # "beacon" | "sd_status" | "eeprom" (USB read-back)
-    mechanism: str = "pio"      # "pio" (pio run -t upload) | "techo_dfu"
+    mechanism: str = "pio"      # "pio" (pio run -t upload) | "nrf_dfu"
+    # nrf_dfu targets only — the per-board identities and provisioning bytes.
+    # usb_app_id: substring of the RUNNING app's by-id name (set by the
+    #   Makefile's USB identity overrides). usb_boot_id: the bootloader's,
+    #   burned in and unaffected by app flashes. flash_target: the Makefile
+    #   flash rule. provision_args: rnodeconf -r bytes from the firmware's own
+    #   Boards.h, never guessed.
+    usb_app_id: str = ""
+    usb_boot_id: str = ""
+    flash_target: str = ""
+    provision_args: str = ""
 
 
 #: Operator-selected RTNode-2400 targets. Verified against platformio.ini on
@@ -83,7 +93,23 @@ RTNODE_TARGETS = {
     # not a PlatformIO env; mechanism selects the whole different pipeline.
     "techo": RTNodeTarget(
         "techo", "LilyGO T-Echo", "firmware-techo-noalloc",
-        NodeHardware.TECHO, verify="eeprom", mechanism="techo_dfu"),
+        NodeHardware.TECHO, verify="eeprom", mechanism="nrf_dfu",
+        usb_app_id="T-Echo_RTNode-2400", usb_boot_id="LilyGo_T-Echo",
+        flash_target="flash-techo VARIANT=noalloc",
+        provision_args="--product 15 --model 17 --hwrev 1"),
+    # PROVEN COMPILING 2026-08-20 (614308B/75%, 39036B/16% RAM) on the RAK
+    # BSP installed with the native-ARM64 toolchain trick. Same nRF52840 +
+    # SX1262 family as the T-Echo, so every hard-won fix (per-write eeprom
+    # sync, firmware hash at birth, beacon port, noise-floor deadlock) rides
+    # in from the shared tree. Model 0x12 = 779–928 MHz (915.125 fits, 22 dBm
+    # cap — we run 17). The WisBlock ecosystem takes solar + real batteries:
+    # this is the INSTALLABLE transport where the T-Echo is the carryable one.
+    "rak4631": RTNodeTarget(
+        "rak4631", "RAK4631", "firmware-rak4631-noalloc",
+        NodeHardware.RAK4631, verify="eeprom", mechanism="nrf_dfu",
+        usb_app_id="RAK4631_RTNode-2400", usb_boot_id="WisBlock_RAK4631",
+        flash_target="flash-rak4631 VARIANT=noalloc",
+        provision_args="--product 10 --model 12 --hwrev 1"),
 }
 DEFAULT_TARGET = "heltec_v4"
 
@@ -293,7 +319,7 @@ def flash_firmware(wf: "RTNodeBuildWorkflow") -> StepResult:
     except ImportError:
         pass                              # roster module unavailable off-medic
 
-    if wf.target.mechanism == "techo_dfu":
+    if wf.target.mechanism == "nrf_dfu":
         return _flash_techo(wf, port)
 
     # THROTTLE the compile: only 2 of the Pi's 4 cores, at low priority (nice 15),
@@ -336,9 +362,11 @@ def _techo_raw_port(wf) -> str:
     # returns the string "/dev/serial/by-id/*Nordic*" as a "port" whenever
     # other by-id devices exist but the T-Echo doesn't (adversarial review,
     # 2026-08-19). Existence-check every candidate; take only real nodes.
+    t = wf.target
+    pats = [p for p in (t.usb_app_id, t.usb_boot_id, "Nordic") if p]
+    globs = " ".join(f"/dev/serial/by-id/*{p}*" for p in pats)
     out = wf.connection.run(
-        "for f in /dev/serial/by-id/*T-Echo* /dev/serial/by-id/*RTNode* "
-        "/dev/serial/by-id/*Nordic*; do "
+        f"for f in {globs}; do "
         "[ -e \"$f\" ] && readlink -f \"$f\"; done 2>/dev/null | sort -u")[1]
     ports = [l.strip() for l in out.splitlines() if l.strip().startswith("/dev/")]
     if len(ports) > 1:
@@ -389,40 +417,54 @@ def _flash_techo(wf, port: str) -> StepResult:
         return StepResult("flash_firmware", False,
                           "T-Echo firmware build failed: "
                           f"{(build[1] or '').strip()[-300:] or 'build timed out'}")
+    t = wf.target
+    # THE MULTI-BOARD REFUSAL RUNS FIRST — before the bootloader-skip decision.
+    # It used to live only on the touch branch, so two nRF boards with one
+    # already in DFU sailed past it straight into the Makefile's head -1 glob
+    # (prosecution review, 2026-08-20). _techo_raw_port returns "" on >1.
+    raw = _techo_raw_port(wf)
+    in_boot = wf.connection.run(
+        f"ls /dev/serial/by-id/ 2>/dev/null | grep -q '{t.usb_boot_id}'")[0] == 0
+    if not raw and not in_boot:
+        return StepResult("flash_firmware", False,
+                          f"No {t.display} on USB (or more than one nRF board "
+                          "attached — unplug the others). Plug it in with "
+                          "a data cable and build again.")
     # Already in the bootloader (double-tapped by hand)? Then skip the touch.
-    # EXACT case: the RUNNING app is one capital away (see TECHO_APP_ID).
-    if wf.connection.run(
-            f"ls /dev/serial/by-id/ 2>/dev/null | grep -q '{TECHO_BOOTLOADER_ID}'")[0] != 0:
-        raw = _techo_raw_port(wf)
-        if not raw:
-            return StepResult("flash_firmware", False,
-                              "No T-Echo on USB (or more than one nRF board "
-                              "attached — unplug the others). Plug it in with "
-                              "a data cable and build again.")
+    # EXACT case: the RUNNING app is one capital away on the T-Echo.
+    if not in_boot:
         wf.connection.run(
             f"python3 ~/reticulum-tool/scripts/techo_touch.py {raw}",
             timeout=30)
-        if not _techo_wait(wf, TECHO_BOOTLOADER_ID, tries=15):
+        if not _techo_wait(wf, t.usb_boot_id, tries=15):
             return StepResult("flash_firmware", False,
                               "The 1200-baud touch didn't reach the bootloader "
                               "— double-tap the side RESET button (two quick "
                               "presses) and build again.")
-    variant = "noalloc" if "noalloc" in wf.target.build_env else "release"
-    flash = wf.connection.run(
-        f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
-        f"export PATH=$HOME/.local/bin:$PATH && "
-        f"make flash-techo VARIANT={variant} 2>&1 | tail -4", timeout=300)
+    # ONE whole-transfer retry lap, never a mid-stream one: resent DFU packets
+    # confuse the bootloader's state machine (Columba's war note), so the only
+    # safe retry is the entire DFU after re-confirming the bootloader is there.
+    flash = ("", "", "")
+    for attempt in (1, 2):
+        flash = wf.connection.run(
+            f"set -o pipefail; cd {TECHO_PROJECT_DIR} && "
+            f"export PATH=$HOME/.local/bin:$PATH && "
+            f"make {t.flash_target} 2>&1 | tail -4", timeout=300)
+        if flash[0] == 0 and "programmed" in (flash[1] or "").lower():
+            break
+        if attempt == 1 and not _techo_wait(wf, t.usb_boot_id, tries=10):
+            break                       # bootloader gone — a retry can't help
     if flash[0] != 0 or "programmed" not in (flash[1] or "").lower():
         return StepResult("flash_firmware", False,
                           f"DFU flash failed: {(flash[1] or '').strip()[-300:]}")
-    # The image this pipeline builds RENAMES the board (Makefile USB_ID):
-    # it comes back as "T-Echo RTNode-2400", never as Nordic's default. The
-    # first version of this wait grepped for "Nordic" and would have failed
-    # every successful first flash (both reviews, independently, 2026-08-19).
-    if not _techo_wait(wf, "T-Echo", tries=15):
+    # Wait for the APP identity, exactly — the loose "T-Echo" pattern also
+    # matched the bootloader's name, so a board that crashed straight back
+    # into DFU read as "booted and talking" (prosecution review, 2026-08-20).
+    if not _techo_wait(wf, t.usb_app_id, tries=15):
         return StepResult("flash_firmware", False,
-                          "Flashed, but the board did not come back on USB — "
-                          "check the cable, then double-tap RESET and retry.")
+                          "Flashed, but the board did not come back as the "
+                          "running app — check the cable, then double-tap "
+                          "RESET and retry.")
     wf.profile.connection_port = _techo_raw_port(wf) or port
     wf.profile.radio.serial_port = wf.profile.connection_port
     return StepResult("flash_firmware", True,
@@ -442,7 +484,7 @@ def _onboard_techo(wf) -> StepResult:
     r = wf.profile.radio
     prov = wf.connection.run(
         f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
-        f"timeout 150 rnodeconf {raw} -r {TECHO_PROVISION_ARGS} 2>&1 | tail -4",
+        f"timeout 150 rnodeconf {raw} -r {wf.target.provision_args} 2>&1 | tail -4",
         timeout=180)
     text = prov[1] or ""
     if "Bootstrapping successful" not in text:
@@ -458,8 +500,9 @@ def _onboard_techo(wf) -> StepResult:
             return StepResult("wifi_onboarding", False,
                               f"EEPROM bootstrap failed: {text.strip()[-300:]}")
     # rnodeconf -r ends in a hard reset on nRF52 — the board re-enumerates and
-    # its ttyACM number can move. WAIT for it, don't just sleep.
-    if not _techo_wait(wf, "T-Echo", tries=15):
+    # its ttyACM number can move. WAIT for the APP identity (the loose family
+    # pattern also matched the bootloader — prosecution review, 2026-08-20).
+    if not _techo_wait(wf, wf.target.usb_app_id, tries=15):
         return StepResult("wifi_onboarding", False,
                           "Board did not return after provisioning — check "
                           "the cable, then run the build again (its identity "
@@ -481,6 +524,14 @@ def _onboard_techo(wf) -> StepResult:
         f"./partition_hashes from_device {raw} 2>/dev/null | tail -1",
         timeout=90)
     fw_hash = (hcmd[1] or "").strip().splitlines()[-1].strip() if (hcmd[1] or "").strip() else ""
+    if fw_hash == "0" * 64:
+        # Columba's war table: a device mid-glitch returns all zeros, and
+        # writing THAT as the expectation bricks hw_ready on the next boot —
+        # they log a warning and write it anyway; we refuse.
+        return StepResult("wifi_onboarding", False,
+                          "The board reported an all-zeros firmware hash — "
+                          "that is a read glitch, not a hash. Replug and "
+                          "build again.")
     if len(fw_hash) != 64 or not all(c in "0123456789abcdef" for c in fw_hash):
         return StepResult("wifi_onboarding", False,
                           "Could not read the running firmware's hash off the "
@@ -551,12 +602,39 @@ def _verify_techo(wf) -> StepResult:
     bootlog = wf.connection.run(
         f"timeout 75 python3 ~/reticulum-tool/scripts/techo_bootlog.py "
         f"{raw} 40 2>&1", timeout=90)[1] or ""
+    # THE BOARD'S OWN VERDICT OUTRANKS EVERY EEPROM READ. rnodeconf prints
+    # "checksum correct / signature validated" from the EEPROM alone — a
+    # firmware-hash mismatch kills hw_ready and RNS while rnodeconf keeps
+    # answering politely, so the old check passed the exact shipped-dead
+    # state of 2026-08-20 (prosecution review). The boot log names it.
+    if "hardware is not ready" in bootlog:
+        return StepResult("verify_beacon", False,
+                          "The board's own boot log says RNS is inoperable — "
+                          "hardware not ready. That is the firmware-hash / "
+                          "provisioning gate failing on the device. Run the "
+                          "build again; if it repeats, the flash and the "
+                          "stored hash disagree.")
     m = _TECHO_ID_RE.search(bootlog)
     if m:
         ident, dst = m.group(1), m.group(2)
         wf.profile.reticulum_identity_hash = ident
         wf.techo_dst = dst
     raw = _techo_raw_port(wf) or raw          # the reset moves the port
+    # Target-vs-actual firmware hash EQUALITY — the check the EEPROM read
+    # cannot make. Both lines come from the device (rnodeconf -K -L prints
+    # "The target firmware hash is:" / "The actual firmware hash is:"); if
+    # they differ, the next boot is the dead state above, and saying so NOW
+    # beats an operator discovering red LEDs in the field.
+    kl = wf.connection.run(
+        f"set -o pipefail; export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout 40 rnodeconf {raw} -K -L 2>&1", timeout=60)[1] or ""
+    hashes = re.findall(r"hash is:\s*\n?\s*([0-9a-f]{64})", kl)
+    if len(hashes) >= 2 and hashes[0] != hashes[1]:
+        return StepResult("verify_beacon", False,
+                          "Firmware hash mismatch: the stored expectation and "
+                          "the running image disagree — the board will refuse "
+                          "to start RNS on its next boot. Re-run the build "
+                          "(the flash and hash steps repair this).")
     out = wf.connection.run(
         f"export PATH=$HOME/.local/bin:$PATH && "
         f"timeout 40 rnodeconf {raw} -i 2>&1", timeout=60)[1] or ""
@@ -589,7 +667,7 @@ def _verify_techo(wf) -> StepResult:
 
 @rtnode_build_step
 def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
-    if wf.target.mechanism == "techo_dfu":
+    if wf.target.mechanism == "nrf_dfu":
         return _onboard_techo(wf)
     # The firmware raises its own captive portal (POST /save) for WiFi/LoRa
     # setup. The tool builds the real form with recommended LoRa params
@@ -845,7 +923,7 @@ class RTNodeBuildWorkflow:
         shared across targets, but the T-Echo's onboarding is USB and its
         verify is an EEPROM read-back — showing "wifi_onboarding" on a board
         with no WiFi radio was a lie in the checklist (review, 2026-08-19)."""
-        if self.target.mechanism == "techo_dfu":
+        if self.target.mechanism == "nrf_dfu":
             return {"wifi_onboarding": "usb_setup",
                     "verify_beacon": "verify_usb"}
         return {}
@@ -853,7 +931,7 @@ class RTNodeBuildWorkflow:
     @property
     def step_phase_labels(self):
         """The live one-line narration per step, same rule as step_display."""
-        if self.target.mechanism == "techo_dfu":
+        if self.target.mechanism == "nrf_dfu":
             return {
                 "flash_firmware": "Building and flashing over serial DFU… "
                                   "the board reboots twice — keep it plugged "

@@ -20,6 +20,7 @@ class NodeHardware(Enum):
     HELTEC_V4 = "Heltec LoRa32 V4"
     TBEAM_SUPREME = "LilyGO T-Beam Supreme"
     TECHO = "LilyGO T-Echo"
+    RAK4631 = "RAK4631"
     WIRELESS_TRACKER = "Heltec Wireless Tracker"
     UNKNOWN = "Unknown"
 

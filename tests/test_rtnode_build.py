@@ -556,7 +556,7 @@ def test_techo_target_exists_with_its_own_mechanism():
     cannot exist for it. The mechanism field is what routes all of that."""
     from workflows.rtnode_build import RTNODE_TARGETS
     t = RTNODE_TARGETS["techo"]
-    assert t.mechanism == "techo_dfu"
+    assert t.mechanism == "nrf_dfu"
     assert t.verify == "eeprom"
     assert "noalloc" in t.build_env, (
         "the allocator build crashes this board before main() — noalloc is "
@@ -613,14 +613,17 @@ def test_techo_verify_is_honest_about_its_scope():
 
 
 def test_an_unidentified_nrf52_still_gets_no_rtnode_offer():
-    """Three of the four nRF52 boards we stock have no RTNode build, so an
-    ambiguous nRF52 must stay RNode-only — offering a build most candidates
-    cannot take is the wrong kind of fail-open."""
+    """An ambiguous nRF52 stays RNode-only — offering a build some candidates
+    cannot take is the wrong kind of fail-open. The example no-build board
+    used to be the RAK4631, which then GAINED a build (2026-08-20) — the
+    second board to graduate out of this test, which is exactly why the gate
+    keys on the registry and never a hardcoded list."""
     from ui.board_detect import firmware_options
     assert firmware_options("nrf52840") == ["rnode"]
     assert firmware_options("nrf52840", None) == ["rnode"]
-    assert firmware_options("nrf52840", "rak4631") == ["rnode"]
+    assert firmware_options("nrf52840", "heltec_t114") == ["rnode"]
     assert firmware_options("nrf52840", "techo") == ["rtnode2400", "rnode"]
+    assert firmware_options("nrf52840", "rak4631") == ["rtnode2400", "rnode"]
 
 
 # --- the techo steps EXECUTED against an emulated medic, not just read -------
@@ -655,7 +658,9 @@ class _TechoMedic(EmulatedConnection):
             return 0, "/dev/ttyACM1\n", ""
         if "grep -q 'LilyGo_T-Echo'" in cmd:          # bootloader, exact case
             return (0 if self.in_bootloader else 1), "", ""
-        if "grep -q 'T-Echo'" in cmd:                 # app OR bootloader
+        if "grep -q 'T-Echo_RTNode-2400'" in cmd:     # the RUNNING app, exact
+            return (1 if self.in_bootloader else 0), "", ""
+        if "grep -q 'T-Echo'" in cmd:                 # legacy loose pattern
             return 0, "", ""
         if "make firmware-techo" in cmd:
             return 0, "Sketch uses 629796 bytes", ""
@@ -677,6 +682,10 @@ class _TechoMedic(EmulatedConnection):
                        "[RTNode] identity=aabbccddeeff00112233445566778899 "
                        "dst=99887766554433221100ffeeddccbbaa\n"
                        "RNS is READY!"), ""
+        if "rnodeconf" in cmd and " -K -L" in cmd:
+            h = "b9a932741fd128ac7dc137bc733b1b9a9189a71eca95fd4ce55d4836de8196bc"
+            return 0, (f"The target firmware hash is: {h}\n"
+                       f"The actual firmware hash is: {h}"), ""
         if "rnodeconf" in cmd and " -i" in cmd:
             return 0, ("Current firmware version: 1.85\n"
                        "EEPROM checksum correct\nDevice signature validated\n"
@@ -921,3 +930,110 @@ def test_onboard_techo_fails_honestly_on_an_unreadable_hash():
     res = _onboard_techo(_techo_wf(_NoHash()))
     assert not res.success
     assert "hash" in res.message.lower()
+
+
+# --- the Columba-review merge (2026-08-20) -----------------------------------
+
+def test_rak4631_is_an_nrf_target_with_its_own_identities():
+    from workflows.rtnode_build import RTNODE_TARGETS
+    t = RTNODE_TARGETS["rak4631"]
+    assert t.mechanism == "nrf_dfu" and t.verify == "eeprom"
+    assert t.provision_args == "--product 10 --model 12 --hwrev 1", (
+        "model 0x12 = 779-928 MHz from rnodeconf's own table — 0x11 is the "
+        "433 band, and Columba's COMMENTS have the two inverted")
+    assert t.usb_app_id and t.usb_boot_id and t.flash_target
+
+
+def test_verify_fails_on_the_boards_own_not_ready_verdict():
+    """rnodeconf prints "checksum correct / signature validated" from EEPROM
+    alone — a firmware-hash mismatch kills hw_ready and RNS while rnodeconf
+    keeps answering, so the old verify passed the exact shipped-dead state of
+    2026-08-20. The board's own boot log outranks every EEPROM read."""
+    from workflows.rtnode_build import _verify_techo
+
+    class _DeadBoard(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "techo_bootlog.py" in cmd:
+                self.history.append(cmd)
+                return 0, ("[ERR] RNS is inoperable because hardware is not "
+                           "ready!"), ""
+            return super().run(cmd, *a, **k)
+
+    res = _verify_techo(_techo_wf(_DeadBoard()))
+    assert not res.success
+    assert "hardware not ready" in res.message
+
+
+def test_verify_fails_on_target_vs_actual_hash_mismatch():
+    from workflows.rtnode_build import _verify_techo
+
+    class _Mismatched(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "rnodeconf" in cmd and " -K -L" in cmd:
+                self.history.append(cmd)
+                return 0, ("The target firmware hash is: " + "a" * 64 + "\n"
+                           "The actual firmware hash is: " + "b" * 64), ""
+            return super().run(cmd, *a, **k)
+
+    res = _verify_techo(_techo_wf(_Mismatched()))
+    assert not res.success
+    assert "hash mismatch" in res.message.lower()
+
+
+def test_onboarding_refuses_an_all_zeros_firmware_hash():
+    """Columba logs a warning and writes the zeros anyway — which bricks
+    hw_ready on the next boot. We refuse."""
+    from workflows.rtnode_build import _onboard_techo
+
+    class _ZeroHash(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "partition_hashes from_device" in cmd:
+                self.history.append(cmd)
+                return 0, "0" * 64, ""
+            return super().run(cmd, *a, **k)
+
+    res = _onboard_techo(_techo_wf(_ZeroHash()))
+    assert not res.success
+    assert "all-zeros" in res.message
+
+
+def test_flash_refuses_two_nrf_boards_even_when_one_is_in_dfu():
+    """The >1 refusal used to live only on the touch branch; a second board
+    with one already in DFU sailed into the Makefile's head-1 glob."""
+    from workflows.rtnode_build import _flash_techo
+
+    class _TwoBoards(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            if "for f in /dev/serial/by-id/" in cmd:
+                self.history.append(cmd)
+                return 0, "/dev/ttyACM1\n/dev/ttyACM2\n", ""
+            if "grep -q 'LilyGo_T-Echo'" in cmd:
+                self.history.append(cmd)
+                return 1, "", ""          # NOT in bootloader either
+            return super().run(cmd, *a, **k)
+
+    res = _flash_techo(_techo_wf(_TwoBoards()), "/dev/ttyACM1")
+    assert not res.success
+    assert "more than one" in res.message
+
+
+def test_txp_above_17_is_refused_before_rnodeconf_can_hang():
+    """rnodeconf's -T branch validates 0..17 and otherwise falls into an
+    interactive input() — under our subprocess timeout that dies as a garbled
+    failure with nothing saying why. SX1262 boards legally reach 22 dBm, so an
+    operator raising the Settings default arms this."""
+    import pytest
+    from workflows.radio_params import set_params_command
+    from node_profile import RadioConfig
+    cfg = RadioConfig()
+    cfg.tx_power_dbm = 18
+    with pytest.raises(ValueError, match="17"):
+        set_params_command("/dev/ttyACM1", cfg)
+
+
+def test_the_dfu_pid_table_knows_all_three_bootloaders():
+    """One PID mis-read a RAK or T114 sitting in DFU as running. The set is
+    Columba's device-verified table cross-checked on our bench (our T-Echo
+    has presented BOTH 0x0029 and 0x002a)."""
+    from workflows.rnode_flash import NRF_DFU_PIDS
+    assert set(NRF_DFU_PIDS) == {"0029", "002a", "0071"}

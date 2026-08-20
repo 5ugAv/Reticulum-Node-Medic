@@ -258,7 +258,13 @@ def find_port_by_usb_serial(connection, serial, tries: int = 20,
 
 #: The Adafruit nRF52 bootloader's USB product id. In DFU the board enumerates
 #: as this instead of its application id (0x8029 on the RAK4631).
-NRF_DFU_PID = "002a"
+#: Every nRF52 UF2-bootloader PID we may meet, from Columba's device-verified
+#: table (NordicDFUFlasher.kt) cross-checked against our own bench: 0x0029
+#: (RAK-customized — though our T-Echo has ALSO presented it), 0x002a (generic
+#: pca10056 — T-Echo usually), 0x0071 (Heltec T114 HT-n5262). Knowing one PID
+#: mis-read a RAK or T114 sitting in DFU as "running".
+NRF_DFU_PIDS = ("0029", "002a", "0071")
+NRF_DFU_PID = "002a"          # kept for existing callers/tests
 
 
 def in_dfu_already(connection, port: str, vendor_fn=None, pid_fn=None) -> bool:
@@ -274,7 +280,7 @@ def in_dfu_already(connection, port: str, vendor_fn=None, pid_fn=None) -> bool:
             return False
         if pid_fn is None:
             from ui.board_detect import port_usb_product_id as pid_fn
-        return (pid_fn(port) or "").lower() == NRF_DFU_PID
+        return (pid_fn(port) or "").lower() in NRF_DFU_PIDS
     except Exception:                                             # noqa: BLE001
         return False
 

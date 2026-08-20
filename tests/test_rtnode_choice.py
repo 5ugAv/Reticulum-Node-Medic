@@ -65,7 +65,7 @@ def test_detector_keys_resolve_to_build_targets(detect_key, expected):
     assert target_for_board_key(detect_key) == expected
 
 
-@pytest.mark.parametrize("key", ["rak4631", "heltec_t114", "not_a_board", None, ""])
+@pytest.mark.parametrize("key", ["heltec_t114", "not_a_board", None, ""])
 def test_boards_without_a_build_resolve_to_nothing(key):
     assert target_for_board_key(key) is None
 
@@ -108,7 +108,10 @@ def test_a_board_with_no_rtnode_build_is_still_blocked():
     """Its whole purpose. The example board used to be the T-Echo — which then
     GAINED a build (2026-08-19), which is exactly why this gate must key on the
     build registry and never on a hardcoded list."""
-    assert blocked_board(_det("rak4631", ["rak4631"])) == "RAK4631"
+    # The example board keeps graduating: first the T-Echo (2026-08-19),
+    # then the RAK4631 (2026-08-20) gained builds — which is the point of
+    # keying on the registry. The T114 is the current no-build nRF52.
+    assert blocked_board(_det("heltec_t114", ["heltec_t114"])) == "Heltec Mesh Node T114"
 
 
 def test_an_unidentified_board_is_never_blocked():
@@ -142,7 +145,7 @@ def test_nothing_detected_offers_both_boards_rather_than_none():
 
 def test_a_board_with_no_heltec_target_never_auto_picks_a_heltec():
     """A RAK4631 must not be silently treated as a V3 or a V4."""
-    det = _det("rak4631", ["rak4631"])
+    det = _det("heltec_t114", ["heltec_t114"])
     assert identified_target(det) is None
     assert target_options(det) == list(HELTEC_PAIR)
 

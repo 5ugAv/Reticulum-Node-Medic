@@ -28,12 +28,16 @@ def test_set_params_command_converts_to_hz_with_tnc_flag():
 
 
 def test_set_params_command_honours_a_custom_config():
+    # tx_power_dbm here was 22 — which is precisely the value rnodeconf's -T
+    # branch refuses into an interactive input() hang; this test was pinning
+    # the dangerous input as valid (Columba-review merge, 2026-08-20). The
+    # >17 refusal has its own test in test_rtnode_build.py.
     cfg = RadioConfig(frequency_mhz=868.5, bandwidth_khz=250.0,
-                      spreading_factor=7, coding_rate=6, tx_power_dbm=22)
+                      spreading_factor=7, coding_rate=6, tx_power_dbm=14)
     cmd = set_params_command("/dev/ttyACM1", cfg)
     assert "--freq 868500000" in cmd
     assert "--bw 250000" in cmd
-    assert "--sf 7" in cmd and "--cr 6" in cmd and "--txp 22" in cmd
+    assert "--sf 7" in cmd and "--cr 6" in cmd and "--txp 14" in cmd
 
 
 def test_normal_mode_command_returns_board_to_host_control():

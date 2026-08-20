@@ -59,10 +59,14 @@ def test_nordics_own_vendor_id_counts_too():
     assert r["found"] is True and r["board_key"] == "rak4631"
 
 
-def test_nrf52_boards_are_offered_rnode_only():
-    """RTNode-2400 needs an ESP32-S3. An nRF52 can only ever be an RNode, so
-    offering it would be a dead end the operator discovers after choosing."""
-    assert _detect("239a", "WisCore RAK4631 Board")["firmware"] == ["rnode"]
+def test_nrf52_boards_are_offered_per_the_build_registry():
+    """This test's original docstring said "RTNode-2400 needs an ESP32-S3. An
+    nRF52 can only ever be an RNode" — both halves are now FALSE: the T-Echo
+    (2026-08-19) and the RAK4631 (2026-08-20) run RTNode-2400. The offer comes
+    from the build registry per identified board; the T114 is the remaining
+    nRF52 without a build and holds the RNode-only line."""
+    assert _detect("239a", "WisCore RAK4631 Board")["firmware"] == [
+        "rtnode2400", "rnode"]
 
 
 def test_an_esp32_still_goes_through_esptool():

@@ -30,6 +30,17 @@ def set_params_command(port: str, cfg: Optional[RadioConfig] = None) -> str:
     ``--tnc`` is required alongside the flags or rnodeconf silently ignores them.
     ``RadioConfig`` carries MHz/kHz; rnodeconf wants Hz."""
     cfg = cfg or RadioConfig()
+    # rnodeconf's --tnc/-T branch VALIDATES txp with `0 <= txp <= 17` and on
+    # any other value falls into an interactive input() prompt — which, under
+    # our subprocess timeout, dies as a garbled "failed to save" with nothing
+    # saying why (adversarial review vs rnodeconf source, 2026-08-20). The
+    # SX1262 boards legally go to 22 dBm, so an operator raising the default
+    # in Settings would arm this. Clamp HERE, out loud, rather than hang.
+    if cfg.tx_power_dbm > 17:
+        raise ValueError(
+            f"rnodeconf refuses TX power above 17 dBm ({cfg.tx_power_dbm} "
+            "requested) — it would hang on an interactive prompt. Use 17 or "
+            "less for provisioning; higher power needs direct KISS commands.")
     freq_hz = int(round(cfg.frequency_mhz * 1_000_000))
     bw_hz = int(round(cfg.bandwidth_khz * 1_000))
     return (f"rnodeconf {port} --tnc "
