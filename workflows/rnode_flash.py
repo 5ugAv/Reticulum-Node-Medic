@@ -716,6 +716,9 @@ class RNodeFlashWorkflow:
         self._reacquire_port()          # ditto — the board may have moved
         out = self.connection.run(f"rnodeconf {self.port} --info")[1]
         ok = "Device signature" in out and "Firmware version" in out
+        hash_note = ""
+        if ok:
+            hash_note = self._check_and_cure_firmware_hash()
         if ok:
             # An RNode has no Reticulum identity, so its birth record is keyed
             # by the board's USB fingerprint — how the medic recognises it as
@@ -732,8 +735,53 @@ class RNodeFlashWorkflow:
             }
         return StepResult(
             "verify", ok,
-            "Board verified as a provisioned RNode." if ok
+            ("Board verified as a provisioned RNode." + hash_note) if ok
             else "Board did not report as a valid RNode after flashing.")
+
+    def _check_and_cure_firmware_hash(self) -> str:
+        """Catch and cure the zero firmware hash the offline autoinstall
+        leaves behind.
+
+        `--autoinstall --nocheck` (every offline birth) skips hash-marking, so
+        the stored expectation stays ALL ZEROS: the device's own boot check
+        fails, the screen says FIRMWARE CORRUPT, the LEDs sit red — while
+        rnodeconf answers politely and the old verify called it healthy. The
+        T-Echo Plus shipped exactly that state and its e-paper told on us
+        (2026-08-20). Cure: write the DEVICE-COMPUTED hash of the image we
+        just flashed from our own cache as the expectation — the same
+        trust anchor the RTNode path uses. On nRF52 the write ends in the
+        firmware's own hard reset (Device.h), so re-find the port after.
+        Returns a note for the verify message; never fails the step (the
+        board IS a valid RNode — an uncured hash is reported, not hidden)."""
+        kl = self.connection.run(
+            f"timeout 45 rnodeconf {self.port} -K -L 2>&1", timeout=60)[1] or ""
+        import re as _re
+        hashes = _re.findall(r"hash is:\s*\n?\s*([0-9a-f]{64})", kl)
+        if len(hashes) < 2:
+            return " (firmware-hash state unreadable — check the screen.)"
+        target, actual = hashes[0], hashes[1]
+        if target == actual:
+            return ""
+        if target != "0" * 64:
+            return (" WARNING: stored and running firmware hashes disagree — "
+                    "the board will report FIRMWARE CORRUPT.")
+        seth = self.connection.run(
+            f"timeout 45 rnodeconf {self.port} --firmware-hash {actual} 2>&1",
+            timeout=60)[1] or ""
+        if "Firmware hash set" not in seth:
+            return (" WARNING: the firmware hash was never marked and could "
+                    "not be set — the board will report FIRMWARE CORRUPT.")
+        # the hash write hard-resets the board; give it a beat and re-find it
+        self.connection.run("sleep 6")
+        self._reacquire_port()
+        kl2 = self.connection.run(
+            f"timeout 45 rnodeconf {self.port} -K -L 2>&1", timeout=60)[1] or ""
+        h2 = _re.findall(r"hash is:\s*\n?\s*([0-9a-f]{64})", kl2)
+        if len(h2) >= 2 and h2[0] == h2[1]:
+            return (" Firmware hash was unmarked (offline install) — set and "
+                    "verified; the board's own check now passes.")
+        return (" Firmware hash set, but the read-back after the reboot did "
+                "not confirm it — check the board's screen.")
 
     # -- driver ------------------------------------------------------------
 

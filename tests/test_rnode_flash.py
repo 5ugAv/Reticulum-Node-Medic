@@ -299,3 +299,64 @@ def test_stock_and_bridge_boards_keep_the_proven_direct_path():
         "a non-hw-CDC board must not be touched")
     cmd, _ = conn.interactive_calls[0]
     assert "/dev/ttyACM1" in cmd
+
+
+# ---- the zero firmware hash the offline autoinstall leaves (T-Echo Plus) ----
+
+def test_verify_cures_the_zero_firmware_hash():
+    """--autoinstall --nocheck (every offline birth) skips hash-marking: the
+    stored expectation stays all zeros, the board's own boot check fails, and
+    its screen says FIRMWARE CORRUPT while rnodeconf answers politely — the
+    T-Echo Plus shipped exactly that and its e-paper told on us (2026-08-20).
+    Verify must read target-vs-actual, cure a zero target with the
+    device-computed hash, and confirm after the reboot."""
+    from workflows.rnode_flash import RNodeFlashWorkflow
+    ACTUAL = "b6" * 32
+    state = {"target": "0" * 64}
+
+    class _Conn(EmulatedConnection):
+        def __init__(self):
+            super().__init__(default_code=0, default_stdout="ok")
+        def run(self, command, timeout=30):
+            self.history.append(command)
+            if "-K -L" in command:
+                return (0, f"The target firmware hash is: {state['target']}\n"
+                           f"The actual firmware hash is: {ACTUAL}", "")
+            if "--firmware-hash" in command:
+                state["target"] = ACTUAL
+                return (0, "Firmware hash set", "")
+            if "--info" in command:
+                return (0, "Device signature validated\nFirmware version 1.86", "")
+            return super().run(command, timeout=timeout)
+
+    conn = _Conn()
+    wf = RNodeFlashWorkflow(connection=conn, board=V4, port="/dev/ttyACM1")
+    res = wf._verify()
+    assert res.success
+    assert "set and verified" in res.message, res.message
+    assert any("--firmware-hash " + ACTUAL in c for c in conn.history)
+
+
+def test_verify_reports_a_true_hash_mismatch_without_lying():
+    """A non-zero mismatch is NOT cured (that would paper over a genuinely
+    wrong image) — it is reported in the verify message."""
+    from workflows.rnode_flash import RNodeFlashWorkflow
+
+    class _Conn(EmulatedConnection):
+        def __init__(self):
+            super().__init__(default_code=0, default_stdout="ok")
+        def run(self, command, timeout=30):
+            self.history.append(command)
+            if "-K -L" in command:
+                return (0, "The target firmware hash is: " + "aa" * 32 + "\n"
+                           "The actual firmware hash is: " + "bb" * 32, "")
+            if "--info" in command:
+                return (0, "Device signature validated\nFirmware version 1.86", "")
+            return super().run(command, timeout=timeout)
+
+    conn = _Conn()
+    wf = RNodeFlashWorkflow(connection=conn, board=V4, port="/dev/ttyACM1")
+    res = wf._verify()
+    assert res.success                       # still a valid RNode
+    assert "WARNING" in res.message and "disagree" in res.message
+    assert not any("--firmware-hash" in c for c in conn.history)
