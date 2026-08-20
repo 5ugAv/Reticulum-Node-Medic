@@ -654,6 +654,11 @@ class _TechoMedic(EmulatedConnection):
         if "techo_touch.py" in cmd:
             self.in_bootloader = True
             return 0, "touch sent", ""
+        if "udevadm info" in cmd:
+            # the PID is the truth: 002a in the bootloader, 8029 running.
+            # (The command pipes through grep|cut; the emulator returns what
+            # the PIPELINE would print, not the raw udevadm line.)
+            return 0, ("002a" if self.in_bootloader else "8029"), ""
         if "for f in /dev/serial/by-id/" in cmd:
             return 0, "/dev/ttyACM1\n", ""
         if "grep -q 'LilyGo_T-Echo'" in cmd:          # bootloader, exact case
@@ -1037,3 +1042,42 @@ def test_the_dfu_pid_table_knows_all_three_bootloaders():
     has presented BOTH 0x0029 and 0x002a)."""
     from workflows.rnode_flash import NRF_DFU_PIDS
     assert set(NRF_DFU_PIDS) == {"0029", "002a", "0071"}
+
+
+def test_bootloader_state_is_decided_by_pid_not_name():
+    """The RAK4631's app and bootloader by-id names differ by ONE capital
+    letter (RAKwireless vs RAKWireless, observed on the bench 2026-08-20); the
+    first birth read the running app as already-in-bootloader, skipped the
+    touch, and aimed DFU at an application. The PID cannot be spoofed by a
+    naming coincidence — a running app (8029) must get the touch."""
+    from workflows.rtnode_build import _flash_techo
+    c = _TechoMedic(start_in_bootloader=False)
+    res = _flash_techo(_techo_wf(c), "/dev/ttyACM1")
+    assert res.success, res.message
+    assert any("udevadm info" in x for x in c.history), (
+        "the bootloader decision must consult the PID")
+    assert any("techo_touch.py" in x for x in c.history), (
+        "a running app (PID 8029) must be touched into the bootloader")
+
+
+def test_rak4631_finds_its_stock_app_before_first_flash():
+    """A factory RAK presents 'RAKwireless_WisBlock_RAK4631' — the renamed
+    RTNode identity doesn't exist yet, so the port resolver must know the
+    stock spelling or a virgin board is invisible to its own first birth."""
+    from workflows.rtnode_build import RTNODE_TARGETS, _techo_raw_port
+    from workflows.rtnode_build import RTNodeBuildWorkflow
+    from node_profile import NodeProfile
+    t = RTNODE_TARGETS["rak4631"]
+    assert "RAKwireless_WisBlock" in t.usb_stock_ids
+    assert t.usb_boot_id == "RAKWireless_WisBlock", (
+        "capital W = the bootloader, observed not guessed")
+    wf = RTNodeBuildWorkflow(_TechoMedic(), NodeProfile(), target="rak4631")
+    cmds = []
+    class _Spy(_TechoMedic):
+        def run(self, cmd, *a, **k):
+            cmds.append(cmd)
+            return super().run(cmd, *a, **k)
+    wf = RTNodeBuildWorkflow(_Spy(), NodeProfile(), target="rak4631")
+    _techo_raw_port(wf)
+    glob_cmd = next(c for c in cmds if "for f in /dev/serial/by-id/" in c)
+    assert "RAKwireless_WisBlock" in glob_cmd and "RAK4631_RTNode-2400" in glob_cmd

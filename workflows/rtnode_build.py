@@ -61,6 +61,9 @@ class RTNodeTarget:
     #   Boards.h, never guessed.
     usb_app_id: str = ""
     usb_boot_id: str = ""
+    #: by-id substrings the board presents BEFORE its first RTNode flash
+    #: (stock firmware / generic core names) — used only to FIND the port.
+    usb_stock_ids: tuple = ()
     flash_target: str = ""
     provision_args: str = ""
 
@@ -95,6 +98,7 @@ RTNODE_TARGETS = {
         "techo", "LilyGO T-Echo", "firmware-techo-noalloc",
         NodeHardware.TECHO, verify="eeprom", mechanism="nrf_dfu",
         usb_app_id="T-Echo_RTNode-2400", usb_boot_id="LilyGo_T-Echo",
+        usb_stock_ids=("Nordic",),
         flash_target="flash-techo VARIANT=noalloc",
         provision_args="--product 15 --model 17 --hwrev 1"),
     # PROVEN COMPILING 2026-08-20 (614308B/75%, 39036B/16% RAM) on the RAK
@@ -107,7 +111,14 @@ RTNODE_TARGETS = {
     "rak4631": RTNodeTarget(
         "rak4631", "RAK4631", "firmware-rak4631-noalloc",
         NodeHardware.RAK4631, verify="eeprom", mechanism="nrf_dfu",
-        usb_app_id="RAK4631_RTNode-2400", usb_boot_id="WisBlock_RAK4631",
+        # OBSERVED ON THE BENCH, not guessed (the first guess cost a failed
+        # birth, 2026-08-20): the running app is manufacturer "RAKwireless"
+        # (lowercase w), the bootloader "RAKWireless" (capital W) — same
+        # product string, one capital apart, the LilyGo/LilyGO lesson again.
+        # Names this fragile don't decide anything: the bootloader check is
+        # by PID (8029 app vs 002a/0029 boot); these strings only FIND ports.
+        usb_app_id="RAK4631_RTNode-2400", usb_boot_id="RAKWireless_WisBlock",
+        usb_stock_ids=("RAKwireless_WisBlock",),
         flash_target="flash-rak4631 VARIANT=noalloc",
         provision_args="--product 10 --model 12 --hwrev 1"),
 }
@@ -363,7 +374,7 @@ def _techo_raw_port(wf) -> str:
     # other by-id devices exist but the T-Echo doesn't (adversarial review,
     # 2026-08-19). Existence-check every candidate; take only real nodes.
     t = wf.target
-    pats = [p for p in (t.usb_app_id, t.usb_boot_id, "Nordic") if p]
+    pats = [p for p in (t.usb_app_id, t.usb_boot_id, *t.usb_stock_ids) if p]
     globs = " ".join(f"/dev/serial/by-id/*{p}*" for p in pats)
     out = wf.connection.run(
         f"for f in {globs}; do "
@@ -423,8 +434,19 @@ def _flash_techo(wf, port: str) -> StepResult:
     # already in DFU sailed past it straight into the Makefile's head -1 glob
     # (prosecution review, 2026-08-20). _techo_raw_port returns "" on >1.
     raw = _techo_raw_port(wf)
-    in_boot = wf.connection.run(
-        f"ls /dev/serial/by-id/ 2>/dev/null | grep -q '{t.usb_boot_id}'")[0] == 0
+    # IN-BOOTLOADER IS A PID QUESTION. On the RAK4631 the app and bootloader
+    # by-id names differ by one capital letter; the first birth read the
+    # RUNNING APP as "already in bootloader", skipped the touch, and aimed
+    # DFU at an application — which answered garbage ("Bootloader version
+    # does not match", 2026-08-20). The USB PID cannot be spoofed by a
+    # naming coincidence: 0x0029/0x002a/0x0071 are the UF2 bootloaders.
+    in_boot = False
+    if raw:
+        pid = wf.connection.run(
+            f"udevadm info -q property -n {raw} 2>/dev/null "
+            f"| grep '^ID_MODEL_ID=' | cut -d= -f2")[1].strip().lower()
+        from workflows.rnode_flash import NRF_DFU_PIDS
+        in_boot = pid in NRF_DFU_PIDS
     if not raw and not in_boot:
         return StepResult("flash_firmware", False,
                           f"No {t.display} on USB (or more than one nRF board "
