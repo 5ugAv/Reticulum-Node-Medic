@@ -1588,6 +1588,7 @@ class ReticulumNodeMedicApp(App):
         not. rnpath -w does the request+wait; monitor.mesh.parse_path_probe reads
         the result. Off-thread; reports back to the detail screen."""
         import threading
+        import time
         from monitor.mesh import parse_path_probe
 
         def work():
@@ -1627,10 +1628,19 @@ class ReticulumNodeMedicApp(App):
                             "GREEN as it answers; fresh readings arrive in "
                             "seconds.")
                 Clock.schedule_once(lambda dt: report(msg, True), 0)
+                self.monitor_service.registry.record_probe(
+                    probe, ok=True, now=time.time())
             else:
+                # The registry hears about the SILENCE too — an unanswered
+                # probe is the freshest evidence there is, and it demotes the
+                # node's green face to amber until the node itself speaks
+                # (seed: powered off but green, 2026-08-20).
+                self.monitor_service.registry.record_probe(
+                    probe, ok=False, now=time.time())
                 Clock.schedule_once(lambda dt: report(
                     "Not answering right now — it may be down or out of range. "
-                    "The medic keeps watching it.", False), 0)
+                    "Its VITALS row shows amber until it is heard again.",
+                    False), 0)
 
         threading.Thread(target=work, daemon=True).start()
 

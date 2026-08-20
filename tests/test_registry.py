@@ -303,6 +303,67 @@ def test_record_poll_unreachable_does_not_update_last_seen():
     assert r.get(HASH).last_seen is None
 
 
+# --- an unanswered probe outranks a stale green (seed, 2026-08-20) -----------
+
+def test_unanswered_probe_demotes_a_green_face_to_warn():
+    """seed was powered OFF; the operator's ping said unreachable; the tile
+    stayed green off a 40-minute-old beacon. The newest direct evidence — the
+    tool's own failed interrogation — must win the face."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)                    # clean beacon → green
+    assert r.get(HASH).status(NOW + 2400) == "ok"
+    r.record_probe(HASH, ok=False, now=NOW + 2400)   # ping went unanswered
+    assert r.get(HASH).status(NOW + 2400) == "warn"
+
+
+def test_a_newer_beacon_clears_the_unanswered_probe():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.record_probe(HASH, ok=False, now=NOW + 100)
+    assert r.get(HASH).status(NOW + 100) == "warn"
+    r.ingest(HASH, beacon(), NOW + 200)              # the node itself speaks
+    assert r.get(HASH).status(NOW + 200) == "ok"
+    assert r.get(HASH).poll_failed_at is None
+
+
+def test_an_answered_probe_clears_the_failure_too():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.record_probe(HASH, ok=False, now=NOW + 100)
+    r.record_probe(HASH, ok=True, now=NOW + 200)     # rnpath proved it live
+    assert r.get(HASH).status(NOW + 200) == "ok"
+
+
+def test_unanswered_probe_never_upgrades_a_worse_face():
+    """Demote-only: an alert node stays alert; the probe failure must not
+    LAUNDER a red face into amber."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(fault=True), NOW)          # alert
+    r.record_probe(HASH, ok=False, now=NOW + 100)
+    assert r.get(HASH).status(NOW + 100) == "alert"
+
+
+def test_record_poll_failure_now_stamps_the_record():
+    """record_poll used to DISCARD silence ("staleness will take it red on
+    its own") — hours of green lie. It stamps now."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    result = PollResult(node_status="unreachable", reachable=False,
+                        attempts=3, beacon=None)
+    r.record_poll(HASH, result, NOW + 100)
+    assert r.get(HASH).probe_unanswered
+    assert r.get(HASH).status(NOW + 100) == "warn"
+
+
+def test_poll_failed_at_survives_a_restart():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.record_probe(HASH, ok=False, now=NOW + 100)
+    r2 = NodeRegistry.from_dict(r.to_dict())
+    assert r2.get(HASH).poll_failed_at == NOW + 100
+    assert r2.get(HASH).status(NOW + 100) == "warn"
+
+
 def test_ingest_announce_adapter_decodes_and_stores():
     r = NodeRegistry()
     dst = bytes.fromhex(HASH)

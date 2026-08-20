@@ -194,6 +194,12 @@ class NodeRecord:
     #: When the node last spoke to us directly — a health beacon, an HTTP poll,
     #: an announce. Stronger evidence than a route, and never overwritten by one.
     last_direct: Optional[float] = None
+    #: When a DIRECT interrogation (the operator's ping / 0x01 poll) last went
+    #: unanswered. Newest-evidence rule: while this is fresher than last_seen,
+    #: the node must not wear a clean green face — the tool itself just failed
+    #: to raise it (seed, powered off but green, 2026-08-20). Cleared by any
+    #: newer beacon, HTTP poll, or answered probe.
+    poll_failed_at: Optional[float] = None
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
     #: Whether this node PUBLISHES a position to the public mesh map — the
@@ -346,7 +352,24 @@ class NodeRecord:
                 return "battery"
         return "battery"
 
+    @property
+    def probe_unanswered(self) -> bool:
+        """The freshest DIRECT evidence about this node is a failed
+        interrogation — nothing heard from it since a probe went unanswered."""
+        return (self.poll_failed_at is not None
+                and (self.last_seen is None
+                     or self.poll_failed_at > self.last_seen))
+
     def status(self, now: float) -> str:
+        base = self._status_base(now)
+        # An unanswered probe outranks a stale-but-green beacon: the operator
+        # ASKED and the node did not answer. It demotes a clean face to warn;
+        # it never upgrades warn/alert (worse evidence stands).
+        if self.probe_unanswered and base in ("ok", "unknown"):
+            return "warn"
+        return base
+
+    def _status_base(self, now: float) -> str:
         if self.last_seen is None:
             return "unknown"
         if (now - self.last_seen) / 3600.0 > STALE_ALERT_HOURS:
@@ -589,6 +612,9 @@ class NodeRegistry:
             rec = self.register(dst_hash)
         rec.latest_beacon = beacon
         rec.last_seen = now
+        if rec.poll_failed_at is not None and rec.last_seen is not None \
+                and rec.last_seen >= rec.poll_failed_at:
+            rec.poll_failed_at = None   # newer direct word from the node itself
         rec.last_direct = now
         from monitor.history import HistoryPoint
         self.history.append(dst_hash, HistoryPoint(
@@ -735,11 +761,28 @@ class NodeRegistry:
     def record_poll(self, dst_hash: str, result: PollResult,
                     now: float) -> Optional[NodeRecord]:
         """Fold an on-demand poll result in: a fresh reply updates the node
-        (clearing red/orange to green if clean); silence changes nothing (the
-        staleness rule will take it red on its own)."""
+        (clearing red/orange to green if clean); SILENCE IS RECORDED TOO —
+        an unanswered interrogation is the freshest evidence there is, and
+        discarding it left a powered-off node wearing a green face for hours
+        (seed, 2026-08-20)."""
         if result.reachable and result.beacon is not None:
             return self.ingest(dst_hash, result.beacon, now)
-        return self.nodes.get(dst_hash)
+        return self.record_probe(dst_hash, ok=False, now=now)
+
+    @_locked
+    def record_probe(self, dst_hash: str,
+                     ok: bool, now: float) -> Optional[NodeRecord]:
+        """Record the OUTCOME of a direct probe (ping / rnpath / 0x01).
+        Failure stamps poll_failed_at so status() can refuse the green face;
+        success clears it (a proven-live path is direct evidence)."""
+        rec = self.nodes.get(dst_hash)
+        if rec is None:
+            return None
+        if ok:
+            rec.poll_failed_at = None
+        else:
+            rec.poll_failed_at = now
+        return rec
 
     # -- dashboard views ---------------------------------------------------
 
@@ -1015,6 +1058,7 @@ class NodeRegistry:
                 # old path timestamp.
                 "last_direct": r.last_direct,
                 "mesh_heard": r.mesh_heard,
+                "poll_failed_at": r.poll_failed_at,
                 "lat": r.lat,
                 "lon": r.lon,
                 "share_location": r.share_location,
@@ -1045,6 +1089,7 @@ class NodeRegistry:
                 last_seen=n.get("last_seen"),
                 last_direct=n.get("last_direct"),
                 mesh_heard=n.get("mesh_heard"),
+                poll_failed_at=n.get("poll_failed_at"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
                 # A registry file written before this field existed carries no
