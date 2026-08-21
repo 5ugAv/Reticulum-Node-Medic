@@ -211,6 +211,12 @@ class NodeRecord:
     #: board's row was "seen" 90 s after unplugging because of exactly this.
     #: Recorded for diagnosis; never evidence of life.
     last_echo_at: Optional[float] = None
+    #: sha256 hexdigest of the last BARE announce payload heard from this node
+    #: (announces that don't decode as beacons). The bare-announce twin of the
+    #: byte-identical beacon check: rnsd replays these from its cache too, and
+    #: without a fingerprint to compare, ingest_announce laundered every replay
+    #: into a genuine sighting. None = never heard one / no payload to print.
+    last_announce_fp: Optional[str] = None
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
     #: Whether this node PUBLISHES a position to the public mesh map — the
@@ -289,7 +295,19 @@ class NodeRecord:
         not the node speaking (the dead board that stayed green, 2026-08-21)."""
         if self.last_echo_at is None:
             return None
-        return (now - self.last_echo_at) / 3600.0
+        # Clamped: a clock stepping backwards must not turn "echo on record"
+        # into a negative age that a display sentinel reads as "no echo".
+        return max(0.0, (now - self.last_echo_at) / 3600.0)
+
+    def last_direct_hours(self, now: float) -> Optional[float]:
+        """Age of the node's last DIRECT word (beacon / HTTP / announce), or
+        ``None``. This is what the echo tag is gated on — not last_seen, which
+        a mesh scan may bump from a path row's learned-time (weaker evidence,
+        see ingest_mesh). Clamped like last_echo_hours, and for the same
+        reason: both surfaces must agree by construction."""
+        if self.last_direct is None:
+            return None
+        return max(0.0, (now - self.last_direct) / 3600.0)
 
     def signal_dbm(self) -> Optional[int]:
         """Best available WiFi signal — HTTP /status first, then the beacon.
@@ -353,8 +371,12 @@ class NodeRecord:
             # status colour above (which was computed before this line and
             # does not read last_echo_at). That separation is the fix for
             # 2026-08-21: a powered-off, battery-less board stayed green for
-            # hours because replays kept "seeing" it.
-            "last_echo_hours": self.last_echo_hours(now),   # None = no echo
+            # hours because replays kept "seeing" it. The direct age rides
+            # with it because the tag is gated on the node's last DIRECT word
+            # (formatting.seen_and_echo) — last_seen can carry a mesh scan's
+            # path-learned time, which is not the node speaking either.
+            "last_echo_hours": self.last_echo_hours(now),     # None = no echo
+            "last_direct_hours": self.last_direct_hours(now),  # None = never
             "battery_pct": self._battery_pct(),
             "powered_by": self._powered_by(),
         }
@@ -695,13 +717,32 @@ class NodeRegistry:
             rec = self.ingest(h, beacon, now)
         else:
             rec = self.nodes.get(h) or self.register(h)
-            rec.last_seen = now
-            rec.last_direct = now
-            # Record a bare heard-event point so intermittent / neighbour nodes
-            # (which never send a beacon) still accumulate an activity time-series
-            # — the raw material for the "when is this node usually up?" profile.
-            from monitor.history import HistoryPoint
-            self.history.append(h, HistoryPoint(t=now))
+            import hashlib
+            fp = (hashlib.sha256(bytes(app_data)).hexdigest()
+                  if app_data else None)
+            if (fp is not None and fp == rec.last_announce_fp
+                    and rec.last_seen is not None):
+                # REPLAY, NOT A SIGHTING — the bare-announce twin of the guard
+                # in ``ingest``. rnsd re-emits cached announces byte-for-byte
+                # on path requests, and this branch used to launder that copy
+                # into a genuine sighting (last_seen AND last_direct) — which,
+                # pooled across a multi-aspect device, buried the echo tag the
+                # 2026-08-21 dead board earned. Identical payload bytes we
+                # have already heard are the transport speaking, not the node.
+                rec.last_echo_at = now       # recorded; nothing else moves
+            else:
+                if fp is not None:
+                    rec.last_announce_fp = fp
+                # A payloadless announce is exempt from replay detection: with
+                # nothing to compare, "identical" cannot be established — and
+                # never guess. It stays a sighting.
+                rec.last_seen = now
+                rec.last_direct = now
+                # Record a bare heard-event point so intermittent / neighbour nodes
+                # (which never send a beacon) still accumulate an activity time-series
+                # — the raw material for the "when is this node usually up?" profile.
+                from monitor.history import HistoryPoint
+                self.history.append(h, HistoryPoint(t=now))
         if identity_hash:
             had_identity = rec.identity_hash == identity_hash
             rec.identity_hash = identity_hash
@@ -973,12 +1014,16 @@ class NodeRegistry:
         seen = [r.last_seen for r in members if r.last_seen is not None]
         if seen:
             merged.last_seen = max(seen)
-        # Echoes pool like sightings (freshest wins) but stay in their own
-        # field — a merged row must never let one aspect's replay pass for
-        # another aspect's live word (the 2026-08-21 rule, device-level).
+        # Echoes and direct words pool like sightings (freshest wins) but stay
+        # in their own fields — a merged row must never let one aspect's replay
+        # pass for another aspect's live word (the 2026-08-21 rule, device-
+        # level), and the echo tag is GATED on the pooled direct word.
         echoes = [r.last_echo_at for r in members if r.last_echo_at is not None]
         if echoes:
             merged.last_echo_at = max(echoes)
+        directs = [r.last_direct for r in members if r.last_direct is not None]
+        if directs:
+            merged.last_direct = max(directs)
         return merged
 
     @_locked
@@ -1101,6 +1146,7 @@ class NodeRegistry:
                 "mesh_heard": r.mesh_heard,
                 "poll_failed_at": r.poll_failed_at,
                 "last_echo_at": r.last_echo_at,
+                "last_announce_fp": r.last_announce_fp,
                 "lat": r.lat,
                 "lon": r.lon,
                 "share_location": r.share_location,
@@ -1133,6 +1179,7 @@ class NodeRegistry:
                 mesh_heard=n.get("mesh_heard"),
                 poll_failed_at=n.get("poll_failed_at"),
                 last_echo_at=n.get("last_echo_at"),
+                last_announce_fp=n.get("last_announce_fp"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
                 # A registry file written before this field existed carries no

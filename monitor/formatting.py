@@ -72,40 +72,59 @@ def format_age(hours) -> str:
     return f"{days}d" if rest == 0 else f"{days}d {rest}h"
 
 
-def echo_annotation(last_seen_hours, last_echo_hours):
-    """The muted ``echo 0.2h`` tag for a node whose last "hearing" was the
-    transport replaying it, or ``None`` when no such tag may appear.
+def format_age_fine(hours) -> str:
+    """``format_age``, but below the hour it speaks MINUTES.
 
-    An echo is a byte-identical copy of the node's last beacon re-emitted by
-    rnsd from its announce cache — the mesh repeating the node's last words,
-    not the node speaking. On 2026-08-21 a powered-off, battery-less board's
-    row stayed green for hours because exactly those replays kept "seeing" it.
-    So the tag exists to make weaker evidence LOOK weaker, and it is bound by
-    two rules the callers must not soften:
-
-      * it only appears when the echo is strictly FRESHER than the sighting —
-        once the node itself has spoken, the stale replay is noise;
-      * it is an annotation and nothing else — it feeds no status colour and
-        never makes a row greener.
+    Built for the echo tag: the canonical replay of the 2026-08-21 incident
+    arrived 90 seconds after the board was unplugged, and through format_age
+    that renders "echo 0.0h" — an annotation that says nothing. Minutes are
+    the right size of thought under an hour; the floor is "1m" because an
+    echo on record is never "0m ago" (that would read as "not there").
+    format_age itself keeps its coarser scale — "3.2h" is already right for
+    SEEN (operator, 2026-08-10), and its tests hold it to that.
     """
-    if last_seen_hours is None or last_echo_hours is None:
-        return None
     try:
-        seen, echo = float(last_seen_hours), float(last_echo_hours)
+        h = float(hours)
     except (TypeError, ValueError):
-        return None
-    if echo >= seen:
-        return None                # the node itself spoke since the replay
-    return f"echo {format_age(echo)}"
+        return "?"
+    if h < 0:
+        h = 0.0
+    if h < 0.95:
+        return f"{max(1, int(round(h * 60)))}m"
+    return format_age(h)
 
 
-def seen_line(node) -> str:
-    """The full SEEN text for one dashboard row dict — ``"SEEN 3.1h"``, or
-    ``"SEEN 3.1h · echo 0.2h"`` when a replay is fresher than the sighting.
-    Pure and Kivy-free so the honesty rules above are unit-testable; the
-    StatBar widget renders the same two parts (echo_annotation decides for
-    both) with the echo half in muted grey."""
-    base = f"SEEN {format_age(node.get('last_seen_hours'))}"
-    tag = echo_annotation(node.get("last_seen_hours"),
-                          node.get("last_echo_hours"))
-    return base if tag is None else f"{base} · {tag}"
+def seen_and_echo(row):
+    """``(seen_text, echo_tag_or_None)`` for one dashboard row dict — THE one
+    composer both surfaces render from (the VITALS StatBar strip and the node
+    detail line), so the honesty rules live and are tested in exactly one
+    place. An echo is rnsd replaying the node's last announce from its cache
+    — the mesh repeating the node's last words, not the node speaking — the
+    evidence that kept a powered-off, battery-less board green for hours on
+    2026-08-21. So:
+
+      * SEEN stays driven by ``last_seen_hours``, exactly as before;
+      * the tag appears only while the echo is strictly FRESHER than the
+        node's last DIRECT word (``last_direct_hours``). Not last_seen: a
+        mesh scan may bump last_seen from a path row's learned-time (weaker
+        evidence — see registry.ingest_mesh), and gating on that would hide
+        the tag precisely when it mattered. No direct word on record means
+        nothing outranks the echo, so the tag shows;
+      * a rendered echo age identical to the rendered SEEN age is a
+        difference below display resolution — not a meaningful claim — and
+        is dropped;
+      * the tag is a string and nothing more: it feeds no status colour, and
+        the callers keep it muted.
+    """
+    seen_h = row.get("last_seen_hours")
+    seen_text = f"SEEN {format_age(seen_h)}"
+    echo_h = row.get("last_echo_hours")
+    if echo_h is None:
+        return seen_text, None
+    direct_h = row.get("last_direct_hours")
+    if direct_h is not None and echo_h >= direct_h:
+        return seen_text, None      # the node itself has spoken since
+    tag_age = format_age_fine(echo_h)
+    if tag_age == format_age(seen_h):
+        return seen_text, None      # below display resolution: no claim
+    return seen_text, f"echo {tag_age}"
