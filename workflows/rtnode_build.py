@@ -334,8 +334,12 @@ def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
         wf.profile.hardware = wf.target.hardware
         wf.profile.connection_port = wf.board_port
         wf.profile.radio.serial_port = wf.board_port
+        # Engraved-hole translation ("Port 3 (/dev/ttyACM1)") where the medic
+        # measured it; the raw path elsewhere. Same for the two messages below.
+        from ui.usb_ports import describe_port
         return StepResult("detect_board", True,
-                          f"Using {wf.target.display} on {wf.board_port} "
+                          f"Using {wf.target.display} on "
+                          f"{describe_port(wf.board_port)} "
                           "(the medic's own radio is excluded).")
     out = wf.connection.run(f"ls {' '.join(_PORT_GLOBS)} 2>/dev/null")[1]
     ports = out.split()
@@ -354,8 +358,10 @@ def detect_board(wf: "RTNodeBuildWorkflow") -> StepResult:
     wf.profile.hardware = wf.target.hardware
     wf.profile.connection_port = port
     wf.profile.radio.serial_port = port
+    from ui.usb_ports import describe_port
     return StepResult("detect_board", True,
-                      f"Found {wf.target.display} on {port}.{extra}")
+                      f"Found {wf.target.display} on {describe_port(port)}."
+                      f"{extra}")
 
 
 @rtnode_build_step

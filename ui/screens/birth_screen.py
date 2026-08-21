@@ -1168,7 +1168,9 @@ class BirthScreen(BoxLayout):
             return d.get("reason", "No board detected.")
         fw = (d.get("firmware") or ["rnode"])[0]
         fw_short = FIRMWARE_LABEL.get(fw, fw).split("  ")[0]
-        return (f"Detected {d.get('platform', d.get('chip'))} on {d.get('port')}"
+        from ui.usb_ports import describe_port
+        return (f"Detected {d.get('platform', d.get('chip'))} on "
+                f"{describe_port(d.get('port'))}"
                 f"  -  suggests {fw_short}")
 
     def _choose_firmware(self):
@@ -1254,8 +1256,9 @@ class BirthScreen(BoxLayout):
         d = self._detected or {}
         fam = FIRMWARE_LABEL.get(self._firmware, self._firmware).split("  ")[0]
         if d.get("found"):
+            from ui.usb_ports import describe_port
             txt = (f"Detected {d.get('platform', d.get('chip', 'board'))} on "
-                   f"{d.get('port', 'USB')}  ·  {fam}")
+                   f"{describe_port(d.get('port')) or 'USB'}  ·  {fam}")
         else:
             txt = fam
         row.add_widget(_line(txt, size="12.5sp", color="green"))
