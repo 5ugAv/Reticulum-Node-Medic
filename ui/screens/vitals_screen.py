@@ -143,6 +143,12 @@ class NodeRow(BoxLayout):
             battery_pct=batt if batt is not None else 0,
             signal_dbm=sig if sig is not None else 0,
             last_seen_hours=node.get("last_seen_hours", 0.0),
+            # has_seen/seen_impossible carry what the number above can't: a
+            # never-heard fleet row ("SEEN never" grey) and a clock-stepped
+            # reading ("SEEN ?" grey). Never green off a collapsed 0.0 — the
+            # dead-board-green class through the clock-step door (2026-08-22).
+            has_seen=node.get("has_seen", True),
+            seen_impossible=node.get("seen_impossible", False),
             # A transport replay fresher than the node's last DIRECT word
             # shows as a muted "echo 4m" after SEEN (StatBar composes it via
             # formatting.seen_and_echo; has_echo/has_direct carry the None-ness

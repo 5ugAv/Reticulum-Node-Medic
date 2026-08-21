@@ -125,6 +125,106 @@ def test_clock_skew_cannot_turn_an_echo_negative():
     assert reg.get(HASH).last_direct_hours(NOW - 50) == 0.0
 
 
+# ---- SEEN honesty: never-heard + clock-step (dead-board-green class) -----
+# set_kin_roster seeds fleet rows before first contact; last_seen_hours used
+# to collapse that None to 0.0 and paint "SEEN 0.0h" GREEN — the exact
+# dead-board-green failure (2026-08-21), reached again through a backward
+# clock step that made the age negative.
+
+
+def test_never_heard_node_is_not_green_and_renders_never():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    reg = NodeRegistry()
+    reg.register(HASH, name="FLEETNODE")      # seeded, never heard
+    d = reg.get(HASH).to_dashboard(NOW)
+    assert d["has_seen"] is False
+    assert d["seen_impossible"] is False
+    assert d["status"] == "unknown"           # hexagon is not healthy
+    assert reg.get(HASH).last_seen_hours(NOW) is None
+    # render helpers: "SEEN never", grey (not green)
+    assert seen_and_echo(d) == ("SEEN never", None)
+    assert seen_is_known(d) is False
+
+
+def test_clock_step_reading_is_not_green_and_renders_question():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(), NOW)          # heard at NOW
+    earlier = NOW - 50 * HOUR                           # clock stepped back
+    rec = reg.get(HASH)
+    # the age accessor clamps negative -> 0.0, like its echo/direct siblings
+    assert rec.last_seen_hours(earlier) == 0.0
+    d = rec.to_dashboard(earlier)
+    assert d["seen_impossible"] is True
+    assert d["has_seen"] is True
+    assert d["last_seen_hours"] == 0.0
+    assert d["status"] == "unknown"           # never green off a negative age
+    # render helpers: "SEEN ?", grey (not the clamped "0.0h" green)
+    assert seen_and_echo(d) == ("SEEN ?", None)
+    assert seen_is_known(d) is False
+
+
+def test_tiny_backward_skew_stays_green_not_grey():
+    """A benign sub-two-minute backward clock jitter must NOT flip a node heard
+    seconds ago to grey "SEEN ?" — that is a dishonesty the other way (crying
+    unknown on a live node). Inside the deadband the age clamps to fresh."""
+    from monitor.formatting import seen_and_echo, seen_is_known
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(status="ok"), NOW)   # heard at NOW
+    skewed = NOW - 3                                        # clock jittered 3s
+    rec = reg.get(HASH)
+    assert rec.last_seen_hours(skewed) == 0.0
+    d = rec.to_dashboard(skewed)
+    assert d["seen_impossible"] is False       # jitter, not a genuine step
+    assert d["has_seen"] is True
+    assert d["status"] == "ok"                  # still green
+    assert seen_and_echo(d) == ("SEEN 0.0h", None)
+    assert seen_is_known(d) is True
+
+
+def test_fresh_node_still_dashboards_green_and_normal():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(status="ok"), NOW)
+    d = reg.get(HASH).to_dashboard(NOW + HOUR)
+    assert d["has_seen"] is True
+    assert d["seen_impossible"] is False
+    assert d["status"] == "ok"
+    assert d["last_seen_hours"] == pytest.approx(1.0)
+    assert seen_and_echo(d) == ("SEEN 1.0h", None)
+    assert seen_is_known(d) is True
+
+
+# ---- HTTP /status must not set an arbitrary node name --------------------
+# The ANNOUNCE path validates names (_valid_display_name); the HTTP adoption
+# path did not, so a hostile /status could name a node anything.
+
+
+def test_http_rejects_overlong_node_name():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(name="x" * 40), NOW)   # > 32 chars
+    assert reg.get(HASH).name == ""            # refused, not adopted
+
+
+def test_http_rejects_non_string_node_name_without_raising():
+    reg = NodeRegistry()
+    # a non-string must be refused, never raise on .strip()/.lower()
+    reg.record_http_status(HASH, http(name=12345), NOW)
+    assert reg.get(HASH).name == ""
+
+
+def test_http_rejects_unprintable_node_name():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(name="ok\x07node"), NOW)
+    assert reg.get(HASH).name == ""
+
+
+def test_http_adopts_a_valid_node_name():
+    reg = NodeRegistry()
+    reg.record_http_status(HASH, http(name="GOODNAME"), NOW)
+    assert reg.get(HASH).name == "GOODNAME"
+
+
 # ---- mesh ingest (rnpath reachability) ----------------------------------
 
 
