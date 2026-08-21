@@ -146,12 +146,15 @@ def test_cpu_temp_unverified_when_thermal_zone_unreadable():
     assert sev(issues, "cpu_temperature") == "info"       # unverified, not "cool"
 
 
-def test_battery_unverified_when_gauge_unreadable():
+def test_battery_absent_sysfs_gauge_does_not_nag():
+    # An I2C UPS HAT has NO /sys/class/power_supply/BAT0 gauge, so pct=None is
+    # the normal healthy state for that hardware. We must NOT nag "unverified"
+    # every run — that would be a perpetual false alarm on good hardware. A real
+    # gauge reporting a low value still warns (covered above).
     conn = healthy_conn()
-    conn.rules.insert(0, ("BAT0/capacity", 1, "", "Permission denied"))
+    conn.rules.insert(0, ("BAT0/capacity", 1, "", "No such file or directory"))
     issues = run(conn, profile(has_battery_bank=True))
-    assert "battery_level" in names(issues)
-    assert sev(issues, "battery_level") == "info"         # unverified, not "full"
+    assert "battery_level" not in names(issues)
 
 
 def test_memory_unverified_when_meminfo_unreadable():

@@ -69,11 +69,7 @@ def test_category_name():
 
 
 def test_all_healthy_no_issues():
-    # A genuinely healthy board must actually REPORT its noise floor; an absent
-    # reading is now "unverified", not a silent pass (see the antenna_rssi
-    # honesty fix). Supply a normal quiet floor so the check truly passes.
-    info = GOOD_INFO + "\n\tNoise floor : -95 dBm"
-    assert run(conn_with(info=info)) == []
+    assert run(conn_with()) == []
 
 
 def test_serial_not_responsive():
@@ -654,10 +650,24 @@ def test_blessing_skipped_when_board_unresponsive():
     assert kl_count(conn) == 0
 
 
-def test_antenna_rssi_unverified_when_noise_floor_absent():
-    # No rnstatus interface AND no noise-floor line in --info -> we cannot clear
-    # the antenna, so we must not imply it is safe to transmit. Unverified (info),
-    # not a silent pass (the honesty fix for the noise-floor offender).
+def test_antenna_rssi_silent_when_noise_floor_architecturally_absent():
+    # A healthy maintenance-mode PROBE reaches check 87 with a FREE port (rnsd
+    # not holding the radio), so noise_floor is architecturally unavailable and
+    # --info never carries it. That is NOT the browning-out false-green — the
+    # honest answer is "not applicable here", so NO antenna Issue is added (a
+    # false amber here would train the operator to ignore PROBE).
     issues = run(conn_with(info=GOOD_INFO))   # GOOD_INFO carries no noise floor
+    assert "antenna_rssi" not in names(issues)
+
+
+def test_antenna_rssi_warns_when_live_interface_reports_bad_floor():
+    # When a LIVE rnsd interface actually reports an anomalous noise floor, we
+    # do surface the pre-transmit warning.
+    import json as _json
+    conn = conn_with()
+    conn.rules.insert(0, ("rnstatus --json", 0, _json.dumps(
+        {"interfaces": [{"type": "RNodeInterface", "noise_floor": -20}]}), ""))
+    issues = run(conn)
+    assert "antenna_rssi" in names(issues)
     rssi = next(i for i in issues if i.check_name == "antenna_rssi")
-    assert rssi.severity == "info"
+    assert rssi.severity == "warning"

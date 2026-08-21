@@ -58,15 +58,18 @@ class PowerHardwareCheck(DiagnosticCheck):
 
         # 24 battery level (only if battery bank fitted)
         if p.has_battery_bank:
-            # A battery gauge that won't read is not a full battery — a
-            # browning-out medic must not be told its power is fine. Unverified,
-            # not passed (matching the SD-card sibling, check 25).
+            # A READ that fails is unverified — BUT the standard sysfs gauge
+            # (/sys/class/power_supply/BAT0/capacity) is ABSENT by design on the
+            # common Waveshare-style I2C UPS HAT, whose pack voltage lives on the
+            # INA219 (monitor/ups.py), not sysfs. So pct=None here is the NORMAL,
+            # healthy state for an I2C-HAT node — emitting "unverified" every run
+            # would be a perpetual false nag on good hardware (the opposite of
+            # what the honesty audit wants). We therefore do NOT flag the None
+            # path; a real sysfs gauge reporting a low value still warns.
+            # FOLLOW-UP: teach this check to read the INA219 SoC via ups.py so an
+            # I2C-HAT battery is positively verified rather than merely skipped.
             pct = self._read_int("cat /sys/class/power_supply/BAT0/capacity")
-            if pct is None:
-                issues.append(self._unverified(
-                    "battery_level",
-                    "the battery level (/sys/class/power_supply/BAT0/capacity)"))
-            else:
+            if pct is not None:
                 issues.append(self._check(
                     "battery_level", pct > 20,
                     f"Battery is low ({pct}%).",

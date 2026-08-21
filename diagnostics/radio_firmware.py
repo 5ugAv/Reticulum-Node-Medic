@@ -389,25 +389,27 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # noise floor comes from rnstatus --json (RNodeInterface.noise_floor);
         # rnodeconf --info does not report it. Fall back to an info regex only
         # for offline/emulated cases.
+        #
+        # NOTE (honesty audit, deliberately NOT "unverified"): a missing noise
+        # floor is NOT the browning-out false-green this audit targets. This
+        # check is only reached with a free port (has_info) — i.e. rnsd is NOT
+        # holding the radio — so noise_floor is architecturally absent here on
+        # every healthy maintenance-mode PROBE. Emitting "unverified" on that
+        # path would flip the whole banner to amber on normal hardware and train
+        # the operator to ignore PROBE. The honest answer when there was no live
+        # interface is "not applicable / read elsewhere", which adds NO Issue.
+        # We only surface an antenna verdict when we actually had a reading.
         iface = self._rnode_interface()
         floor = iface.get("noise_floor") if iface else None
         if floor is None:
             m = re.search(r"[Nn]oise floor\s*:\s*(-?\d+)", info)
             floor = int(m.group(1)) if m else None
-        if floor is None:
-            # No noise-floor reading at all: we CANNOT clear the antenna, so we
-            # must not imply it is safe to transmit. Unverified (info), matching
-            # the hw-revision sibling (check 85) — a missing read is not "OK".
-            issues.append(self._unverified(
-                "antenna_rssi",
-                "the antenna noise floor (rnstatus / rnodeconf)"))
-        else:
-            issues.append(self._check(
-                "antenna_rssi",
-                floor <= -50,
-                "The noise floor is anomalously high — the antenna may be "
-                "missing or disconnected. Do not transmit.",
-                severity="warning"))
+        issues.append(self._check(
+            "antenna_rssi",
+            floor is None or floor <= -50,
+            "The noise floor is anomalously high — the antenna may be missing "
+            "or disconnected. Do not transmit.",
+            severity="warning"))
 
         # 88 Heltec V4 dual antenna ports (reminder)
         issues.append(self._check(
