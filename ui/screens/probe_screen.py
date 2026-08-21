@@ -126,8 +126,24 @@ class ProbeScreen(BoxLayout):
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):
-        self._workflow.run(on_progress=lambda e:
-                           Clock.schedule_once(lambda dt: self._on_event(e), 0))
+        # A check that RAISES used to leave the button stuck "Checking..."
+        # disabled forever (UX review, 2026-08). Guard the worker so the button
+        # always comes back and the operator sees why (mirrors
+        # self_diagnose_screen's guarded worker).
+        try:
+            self._workflow.run(on_progress=lambda e:
+                               Clock.schedule_once(lambda dt: self._on_event(e), 0))
+        except Exception as e:                       # never hang the UI
+            err = str(e)
+            Clock.schedule_once(lambda dt: self._run_failed(err), 0)
+
+    def _run_failed(self, err):
+        self.run_btn.disabled = False
+        self.run_btn.text = tr("Run again")
+        self._set_progress(hidden=True)
+        self.summary_lbl.text = tr("Couldn't run the checks: {err}").format(err=err)
+        self.summary_lbl.color = theme.hex_to_rgba(theme.COLORS["red"])
+        self._set_summary(hidden=False)
 
     def _on_event(self, event):
         if event.type == "category_start":
@@ -238,8 +254,13 @@ class ProbeScreen(BoxLayout):
         button.text = tr("Fixing...")
 
         def work():
-            fix = self._workflow.fix_one(issue)
-            ok = fix.success and self._workflow.verify_fixed(issue)
+            # A raising fix must not leave the Fix button stuck "Fixing..." with
+            # _busy pinned True — treat it as a failed fix so the row re-enables.
+            try:
+                fix = self._workflow.fix_one(issue)
+                ok = fix.success and self._workflow.verify_fixed(issue)
+            except Exception:
+                ok = False
             Clock.schedule_once(lambda dt: self._fix_one_done(button, ok), 0)
 
         threading.Thread(target=work, daemon=True).start()
@@ -265,14 +286,27 @@ class ProbeScreen(BoxLayout):
         self.summary_lbl.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
 
         def work():
-            for i, issue in enumerate(issues, 1):
-                self._workflow.fix_one(issue)
-                Clock.schedule_once(
-                    lambda dt, v=i: setattr(self.progress, "value", v), 0)
-            self._workflow.rescan()
-            Clock.schedule_once(lambda dt: self._fix_all_done(), 0)
+            # If any fix (or the rescan) raises, don't leave _busy True and the
+            # bar frozen — re-enable Fix all and say what went wrong.
+            try:
+                for i, issue in enumerate(issues, 1):
+                    self._workflow.fix_one(issue)
+                    Clock.schedule_once(
+                        lambda dt, v=i: setattr(self.progress, "value", v), 0)
+                self._workflow.rescan()
+                Clock.schedule_once(lambda dt: self._fix_all_done(), 0)
+            except Exception as e:
+                err = str(e)
+                Clock.schedule_once(lambda dt: self._fix_all_failed(err), 0)
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _fix_all_failed(self, err):
+        self._busy = False
+        self._set_progress(hidden=True)
+        self.fix_all_btn.disabled = False
+        self.summary_lbl.text = tr("Couldn't run the checks: {err}").format(err=err)
+        self.summary_lbl.color = theme.hex_to_rgba(theme.COLORS["red"])
 
     def _fix_all_done(self):
         self._busy = False
