@@ -17,6 +17,7 @@ Transport is injected so this is testable without a live mesh:
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -133,7 +134,8 @@ def warm_path(
     if has_path(dest_hash):
         return True
     request_path(dest_hash)
-    for _ in range(max(1, int(wait_s / poll_s))):
+    polls = math.ceil(wait_s / poll_s) if wait_s > 0 and poll_s > 0 else 0
+    for _ in range(polls):
         sleep(poll_s)
         if has_path(dest_hash):
             return True
@@ -166,3 +168,45 @@ def warm_and_send(
     if await_reply(dest_hash, reply_wait_s):
         return DELIVERY_ANSWERED
     return DELIVERY_UNANSWERED
+
+
+def heard_since(
+    get_record: Callable[[str], object],
+    watch_hashes,
+    sent_at: float,
+    wait_s: float,
+    now: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    poll_s: float = 1.0,
+) -> bool:
+    """True once any watched record shows a GENUINE post-send word from the
+    node; False when *wait_s* passes without one.
+
+    The oracle is ``last_heard_announce_at`` — the registry stamp written only
+    by non-echo announce/beacon ingest — and deliberately NOT ``last_seen``:
+    last_seen also moves on mesh path-table folds, so a rediscover tick landing
+    inside the window would have faked an answer from a node dead for an hour
+    (the SolarLove class of lie, in miniature). A record that is missing or
+    unreadable mid-watch is simply not an answer.
+
+    Ends with one final look AFTER the deadline: the reply is most likely to
+    land late in the window, and exiting on the clock alone read a reply at
+    14.3 s as silence.
+    """
+    def _check() -> bool:
+        for h in watch_hashes:
+            try:
+                rec = get_record(h)
+                ts = getattr(rec, "last_heard_announce_at", None)
+            except Exception:
+                continue                  # vanished mid-watch != answered
+            if ts is not None and ts >= sent_at:
+                return True
+        return False
+
+    deadline = now() + wait_s
+    while now() < deadline:
+        if _check():
+            return True
+        sleep(poll_s)
+    return _check()

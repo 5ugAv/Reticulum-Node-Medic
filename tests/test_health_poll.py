@@ -238,7 +238,117 @@ def test_app_ping_is_wired_through_warm_and_send():
     from tests.srcutil import func_source
     src = func_source("ui/app.py", "_ping_node")
     assert "warm_and_send" in src
+    assert "heard_since" in src                 # the reply oracle, not last_seen
+    # no code path reads last_seen (the string-quoted getattr key of the old
+    # oracle); prose mentions of the lesson are fine
+    assert '"last_seen"' not in src
     assert "did not answer" in src
     assert "not sent" in src                    # the no-route wording
+    # every outcome is matched explicitly — a future fourth outcome must not
+    # silently read as "did not answer"
+    assert "DELIVERY_UNANSWERED" in src
     # the old overclaim — promising a reply before hearing one — is gone
     assert "fresh readings arrive in seconds" not in src
+
+
+def test_warm_path_zero_wait_means_no_wait_at_all():
+    # the old max(1, ...) floor slept once even when the caller asked for none
+    t = FakeTransport([False])
+    slept = []
+    assert warm_path(HASH, t.has_path, t.request_path,
+                     wait_s=0.0, poll_s=1.0, sleep=slept.append) is False
+    assert slept == []
+
+
+def test_warm_path_poll_count_is_ceiling_of_the_cap():
+    t = FakeTransport([False])
+    slept = []
+    warm_path(HASH, t.has_path, t.request_path,
+              wait_s=2.5, poll_s=1.0, sleep=slept.append)
+    assert len(slept) == 3          # ceil(2.5 / 1.0), honouring the cap
+
+
+# ---- heard_since: the reply-watch oracle -----------------------------------
+#
+# Watches last_heard_announce_at — stamped ONLY by genuine (non-echo)
+# announce/beacon ingest — never last_seen, which also moves when a mesh
+# rediscover tick folds the path table mid-window (C2/C3 of the 2026-08-22
+# review: a relay dead for an hour must not read as an answer).
+
+from types import SimpleNamespace
+
+from monitor.health_poll import heard_since
+
+
+class WatchRig:
+    """A fake clock + one watched record; the reply lands at *reply_at*
+    seconds after sent_at (None = never)."""
+
+    SENT_AT = 1000.0
+
+    def __init__(self, reply_at=None):
+        self.t = 0.0
+        self.reply_at = reply_at
+        self.rec = SimpleNamespace(last_heard_announce_at=None, last_seen=None)
+
+    def now(self):
+        return self.SENT_AT + self.t
+
+    def sleep(self, s):
+        self.t += s
+
+    def get(self, h):
+        if self.reply_at is not None and self.t >= self.reply_at:
+            self.rec.last_heard_announce_at = self.SENT_AT + self.reply_at
+        return self.rec
+
+    def run(self, wait_s=15.0):
+        return heard_since(self.get, ["ab"], self.SENT_AT, wait_s,
+                           now=self.now, sleep=self.sleep)
+
+
+def test_heard_since_reply_early_in_the_window():
+    rig = WatchRig(reply_at=3.0)
+    assert rig.run() is True
+    assert rig.t == 3.0             # returned as soon as the word landed
+
+
+def test_heard_since_reply_in_the_final_second_still_counts():
+    # C4: the loop's last in-window check is at t=14; a reply at 14.3 s used
+    # to fall off the end of the clock and read as silence. The final
+    # post-deadline look catches it.
+    rig = WatchRig(reply_at=14.3)
+    assert rig.run(wait_s=15.0) is True
+
+
+def test_heard_since_silence_is_false_and_capped():
+    rig = WatchRig(reply_at=None)
+    assert rig.run(wait_s=15.0) is False
+    assert rig.t == 15.0            # waited the window, not a second more
+
+
+def test_heard_since_record_vanishing_mid_watch_is_not_an_answer():
+    calls = {"n": 0}
+
+    def get(h):
+        calls["n"] += 1
+        raise KeyError(h)           # forgotten / re-keyed mid-watch
+
+    elapsed = [0.0]
+
+    def tick(s):
+        elapsed[0] += s
+
+    assert heard_since(get, ["ab"], 1000.0, 3.0,
+                       now=lambda: 1000.0 + elapsed[0],
+                       sleep=tick) is False
+    assert calls["n"] >= 1          # it kept looking, without crashing
+
+
+def test_heard_since_ignores_a_mesh_scan_bump_of_last_seen():
+    # THE C2/C3 pin: last_seen moving mid-window (a rediscover tick folding
+    # the path table) is not the node speaking. Only the genuine-announce
+    # stamp may answer the watch.
+    rig = WatchRig(reply_at=None)
+    rig.rec.last_seen = rig.SENT_AT + 5.0       # fresh — but table-fed
+    assert rig.run(wait_s=4.0) is False

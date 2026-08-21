@@ -78,10 +78,37 @@ def test_ingest_relay_surfaces_the_uplink():
     reg = NodeRegistry()
     reg.set_kin_roster({EVERYWHERE: {"name": "EVERYWHERE", "type": "pi_propagation",
                                      "lat": -37.81, "lon": 144.96}})
-    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=500.0)
+    # The destination row's heard timestamp is the relay's evidence: that
+    # announce arrived over the air as the via's own transmission.
+    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=500.0, heard=480.0)
     rec = reg.get(EVERYWHERE)
-    assert rec.mesh_hops == 1 and rec.last_seen == 500.0
+    assert rec.mesh_hops == 1 and rec.last_seen == 480.0
     assert rec.status(now=500.0) == "ok"           # reachable => healthy, named kin
+
+
+def test_ingest_relay_table_presence_is_not_a_sighting():
+    """The via twin of the SolarLove rule: a rediscover tick used to stamp the
+    relay's last_seen AND last_direct with *now* on pure table presence, so a
+    dead relay wore a fresh face for as long as any path through it lived —
+    and the ping's reply window could read that tick as an answer."""
+    reg = NodeRegistry()
+    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=500.0)   # no heard
+    rec = reg.get(EVERYWHERE)
+    assert rec.mesh_hops == 1                  # surfaced, reachable-by-table
+    assert rec.last_seen is None               # but never SEEN
+    assert rec.last_direct is None             # and it never spoke to us
+    assert rec.last_heard_announce_at is None
+
+
+def test_ingest_relay_pools_heard_freshest_wins_and_never_direct():
+    reg = NodeRegistry()
+    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=500.0, heard=400.0)
+    reg.ingest_relay(EVERYWHERE, "RNodeInterface", now=500.0, heard=300.0)
+    rec = reg.get(EVERYWHERE)
+    assert rec.mesh_heard == 400.0             # an older row can't move it back
+    assert rec.last_seen == 400.0
+    assert rec.last_direct is None             # a relayed route is not the relay
+                                               # speaking about itself
 
 
 def test_service_surfaces_via_from_rnpath():

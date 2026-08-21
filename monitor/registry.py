@@ -338,6 +338,13 @@ class NodeRecord:
     #: board's row was "seen" 90 s after unplugging because of exactly this.
     #: Recorded for diagnosis; never evidence of life.
     last_echo_at: Optional[float] = None
+    #: When a GENUINE (non-echo) announce or beacon from this node was last
+    #: ingested — written ONLY by ingest()/ingest_announce's non-replay
+    #: branches, never by path-table folds (ingest_mesh/ingest_relay) or HTTP
+    #: polls. This is the ping reply-watch's oracle (health_poll.heard_since):
+    #: last_seen also moves on mesh scans, so watching last_seen let a
+    #: mid-window rnpath tick fake an answer from a silent node.
+    last_heard_announce_at: Optional[float] = None
     #: sha256 hexdigest of the last BARE announce payload heard from this node
     #: (announces that don't decode as beacons). The bare-announce twin of the
     #: byte-identical beacon check: rnsd replays these from its cache too, and
@@ -682,18 +689,37 @@ class NodeRegistry:
             rec.device_id = entry["device"]
 
     @_locked
-    def ingest_relay(self, via_hash: str, interface: str, now: float) -> NodeRecord:
+    def ingest_relay(self, via_hash: str, interface: str, now: float,
+                     heard: float = 0.0) -> NodeRecord:
         """Surface the medic's DIRECT next-hop relay (a ``via`` in the path table)
         as a node. A via is the medic's 1-hop LoRa neighbour that the whole mesh
         routes through — e.g. EVERYWHERE — yet it's never a destination in rnpath,
         so without this it stays invisible. Marks it reachable (1 hop) and applies
-        the kin roster (names it if it's ours)."""
+        the kin roster (names it if it's ours).
+
+        BEING NAMED AS A VIA IS NOT BEING SEEN — the same seven-day-table rule
+        ingest_mesh learned from SolarLove (2026-08-11). This used to stamp
+        last_seen AND last_direct with *now* on every rediscover tick, which
+        kept a dead relay wearing a fresh face — and could land inside a ping's
+        reply window and fake an answer. What IS evidence is *heard*: the
+        destination row's own timestamp, when that announce arrived over the
+        air as this via's transmission. Best (newest) heard wins; last_direct
+        is never touched — a route relayed is not the relay speaking about
+        itself. *now* is kept for signature uniformity with the other ingests
+        and deliberately stamps nothing.
+        """
+        del now  # explicit: table presence carries no timestamp evidence
         rec = self.nodes.get(via_hash) or self.register(via_hash)
         rec.mesh_hops = 1
         if interface:
             rec.mesh_interface = interface
-        rec.last_seen = now
-        rec.last_direct = now
+        if heard:
+            # Several destination rows can name the same via with different
+            # ages; pool them freshest-wins, and never move last_seen back.
+            if rec.mesh_heard is None or heard > rec.mesh_heard:
+                rec.mesh_heard = heard
+            direct = rec.last_direct or 0.0
+            rec.last_seen = max(direct, rec.mesh_heard) or None
         self._apply_kin(rec)
         return rec
 
@@ -813,6 +839,7 @@ class NodeRegistry:
             return rec
         rec.latest_beacon = beacon
         rec.last_seen = now
+        rec.last_heard_announce_at = now   # the node itself, freshly heard
         if rec.poll_failed_at is not None and rec.last_seen is not None \
                 and rec.last_seen >= rec.poll_failed_at:
             rec.poll_failed_at = None   # newer direct word from the node itself
@@ -883,6 +910,7 @@ class NodeRegistry:
                 # never guess. It stays a sighting.
                 rec.last_seen = now
                 rec.last_direct = now
+                rec.last_heard_announce_at = now   # genuine, not an echo
                 # Record a bare heard-event point so intermittent / neighbour nodes
                 # (which never send a beacon) still accumulate an activity time-series
                 # — the raw material for the "when is this node usually up?" profile.
@@ -1182,6 +1210,10 @@ class NodeRegistry:
         directs = [r.last_direct for r in members if r.last_direct is not None]
         if directs:
             merged.last_direct = max(directs)
+        genuine = [r.last_heard_announce_at for r in members
+                   if r.last_heard_announce_at is not None]
+        if genuine:
+            merged.last_heard_announce_at = max(genuine)
         return merged
 
     @_locked
@@ -1304,6 +1336,7 @@ class NodeRegistry:
                 "mesh_heard": r.mesh_heard,
                 "poll_failed_at": r.poll_failed_at,
                 "last_echo_at": r.last_echo_at,
+                "last_heard_announce_at": r.last_heard_announce_at,
                 "last_announce_fp": r.last_announce_fp,
                 "lat": r.lat,
                 "lon": r.lon,
@@ -1338,6 +1371,7 @@ class NodeRegistry:
                 mesh_heard=n.get("mesh_heard"),
                 poll_failed_at=n.get("poll_failed_at"),
                 last_echo_at=n.get("last_echo_at"),
+                last_heard_announce_at=n.get("last_heard_announce_at"),
                 last_announce_fp=n.get("last_announce_fp"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),

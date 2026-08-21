@@ -39,6 +39,14 @@ from workflows.build import BuildWorkflow
 from workflows.rtnode_build import RTNodeBuildWorkflow
 from workflows.rnode_flash import RNodeFlashWorkflow
 from monitor.service import MonitorService
+# Pure, RNS-free delivery-honesty helpers (2026-08-21/22 lessons). Imported at
+# module scope ON PURPOSE: the outcome constants are compared even when
+# ``import RNS`` fails inside the ping worker (dev box), and a try-local import
+# left them unbound there — the comparison raised, the thread died, and the
+# detail screen said "Probing over the mesh…" forever.
+from monitor.health_poll import (DELIVERY_ANSWERED, DELIVERY_NO_ROUTE,
+                                 DELIVERY_UNANSWERED, build_request,
+                                 heard_since, warm_and_send)
 
 
 def _local_run(command: str) -> str:
@@ -1621,9 +1629,6 @@ class ReticulumNodeMedicApp(App):
                 outcome = None
                 try:
                     import RNS
-                    from monitor.health_poll import (
-                        DELIVERY_ANSWERED, DELIVERY_NO_ROUTE, build_request,
-                        warm_and_send)
                     dh = bytes.fromhex(probe)
                     ident = RNS.Identity.recall(dh)
                     if ident is not None:
@@ -1645,23 +1650,14 @@ class ReticulumNodeMedicApp(App):
                                 "for the reply…" % hops_txt, None), 0)
 
                         def _heard(_d, wait_s):
-                            # "Answered" == the announce listener ingested a
-                            # beacon from this device AFTER we sent: ingest
-                            # refreshes last_seen (replayed cached announces
-                            # deliberately do not), so this can't be fooled
-                            # by a relay's echo of an old one.
-                            deadline = time.time() + wait_s
-                            while time.time() < deadline:
-                                for h in watch:
-                                    try:
-                                        rec = registry.nodes.get(h)
-                                        ls = getattr(rec, "last_seen", None)
-                                    except Exception:
-                                        continue
-                                    if ls is not None and ls >= sent_at[0]:
-                                        return True
-                                time.sleep(1.0)
-                            return False
+                            # "Answered" == the announce listener stamped
+                            # last_heard_announce_at AFTER we sent — a field
+                            # written only by genuine (non-echo) announce or
+                            # beacon ingest, never by mesh path-table folds.
+                            # Watching last_seen here let a rediscover tick
+                            # inside the window fake an answer.
+                            return heard_since(registry.nodes.get, watch,
+                                               sent_at[0], wait_s)
 
                         outcome = warm_and_send(
                             dh, RNS.Transport.has_path,
@@ -1679,13 +1675,13 @@ class ReticulumNodeMedicApp(App):
                     # rnpath saw a path but OUR stack never resolved one, so
                     # the request was NEVER sent — sending anyway would have
                     # been a silent ephemeral drop (2026-08-21). Worded apart
-                    # from "did not answer": nothing reached the node.
-                    self.monitor_service.registry.record_probe(
-                        probe, ok=False, now=time.time())
+                    # from "did not answer", and the node's record is left
+                    # untouched: nothing reached the node, so this measured
+                    # the medic's own stack, not the node.
                     Clock.schedule_once(lambda dt: report(
-                        "No route to it from this medic right now — the "
-                        "health request was not sent. Its VITALS row shows "
-                        "amber until it is heard again.", False), 0)
+                        "No route from this medic's own stack right now — "
+                        "the health request was not sent, so this says "
+                        "nothing new about the node.", False), 0)
                 elif outcome is None:
                     # Couldn't attempt the 0x01 at all (no RNS lib on a dev
                     # box, or no identity on record for the health dest). The
@@ -1698,7 +1694,7 @@ class ReticulumNodeMedicApp(App):
                         "Reachable now%s. Couldn't request health from it "
                         "(no health destination on record)." % hops_txt,
                         True), 0)
-                else:
+                elif outcome == DELIVERY_UNANSWERED:
                     # Sent, then silence. NOT proof it is down: the firmware
                     # throttles repeat poll replies (2026-08-22), so a healthy
                     # node polled again soon goes quiet on purpose. Recorded
@@ -1710,6 +1706,15 @@ class ReticulumNodeMedicApp(App):
                         "Health requested, but it did not answer. Not proof "
                         "it is down — nodes throttle repeat replies to save "
                         "airtime. Amber until it is heard again.", False), 0)
+                else:
+                    # A value warm_and_send does not return today. Matched
+                    # EXPLICITLY above so a future fourth outcome lands here
+                    # and is refused a verdict, instead of silently reading
+                    # as "did not answer". Nothing is recorded.
+                    Clock.schedule_once(lambda dt: report(
+                        "Ping finished with an unrecognised result (%r) — "
+                        "a Node Medic bug, not a node state." % (outcome,),
+                        None), 0)
             else:
                 # The registry hears about the SILENCE too — an unanswered
                 # probe is the freshest evidence there is, and it demotes the

@@ -86,7 +86,12 @@ class MonitorService:
             # invisible. Skip a self-via and local-interface hops.
             via = getattr(node, "via", "")
             if via and via != node.dst_hash and "Local" not in node.interface:
-                self.registry.ingest_relay(via, node.interface, now)
+                # The destination row's heard timestamp is when ITS announce
+                # arrived over the air — as this via's transmission. That is
+                # the relay's evidence of life; table presence alone is not.
+                self.registry.ingest_relay(via, node.interface, now,
+                                           heard=getattr(node, "heard", 0.0)
+                                           or 0.0)
         return count
 
     def poll_cycle(self) -> None:
