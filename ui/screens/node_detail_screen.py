@@ -19,7 +19,7 @@ from kivy.uix.scrollview import ScrollView
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — node detail section headers/labels/buttons
 from ui.widgets.hex_status import HexStatus
-from monitor.formatting import beacon_lines, format_age
+from monitor.formatting import beacon_lines, format_age, seen_and_echo
 
 
 def _line(text, color="text_primary", size="15sp", bold=False):
@@ -121,6 +121,23 @@ class NodeDetailScreen(BoxLayout):
                 when=tr("never") if seen is None
                 else tr("{age} ago").format(age=format_age(seen))),
             color="text_secondary"))
+        # Same muted annotation as the VITALS row, one line, from the SAME
+        # composer (formatting.seen_and_echo), which enforces the rules in one
+        # tested place: shown only while the replay is FRESHER than the node's
+        # last DIRECT word. Spelled out here because this screen has the room:
+        # an echo is the mesh repeating the node's last announce, not the node
+        # — the very evidence that kept a powered-off board green on
+        # 2026-08-21. Untranslated like the beacon_lines figures above it; it
+        # never touches the hexagon, drawn from record.status(now) before this.
+        _, echo_tag = seen_and_echo({
+            "last_seen_hours": seen,
+            "last_echo_hours": record.last_echo_hours(now),
+            "last_direct_hours": record.last_direct_hours(now),
+        })
+        if echo_tag is not None:
+            self.add_widget(_line(
+                f"· {echo_tag} — a relay repeating its last announce, "
+                "not the node speaking", color="text_secondary", size="12.5sp"))
         # THE SNAPSHOT IS STAMPED (briefing Task 10): a powered-off node
         # showed uptime 28s and WiFi up as if live — these figures are the
         # node's LAST REPORT, rendered at a moment in time, and the card says

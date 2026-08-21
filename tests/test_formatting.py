@@ -84,3 +84,78 @@ def test_nonsense_and_negatives_do_not_crash_the_row():
     assert format_age(None) == "?"
     assert format_age("x") == "?"
     assert format_age(-5) == "0.0h"
+
+
+# --- the SEEN line, and the muted echo tag ---------------------------------
+# The display end of "a replayed announce is not a sighting": on 2026-08-21 a
+# powered-off, battery-less board's row stayed green for hours because rnsd
+# kept replaying its cached announce. seen_and_echo is THE one composer both
+# the StatBar strip and node detail render from — weaker evidence must LOOK
+# weaker, and must vanish once the node itself speaks.
+
+def test_seen_and_echo_appends_a_fresher_echo():
+    from monitor.formatting import seen_and_echo
+    seen, tag = seen_and_echo({"last_seen_hours": 3.1,
+                               "last_direct_hours": 3.1,
+                               "last_echo_hours": 0.2})
+    assert seen == "SEEN 3.1h"
+    assert tag == "echo 12m"
+
+
+def test_seen_without_echo_has_no_tag():
+    from monitor.formatting import seen_and_echo
+    assert seen_and_echo({"last_seen_hours": 3.1}) == ("SEEN 3.1h", None)
+    assert seen_and_echo({"last_seen_hours": 3.1,
+                          "last_echo_hours": None})[1] is None
+
+
+def test_echo_gates_on_the_last_direct_word_not_last_seen():
+    """The gate is the node's last DIRECT word: ingest_mesh can bump last_seen
+    from a path row's learned-time — a route, weaker evidence — and gating on
+    that hid the tag exactly when it mattered."""
+    from monitor.formatting import seen_and_echo
+    # a direct word fresher than the echo silences it
+    assert seen_and_echo({"last_seen_hours": 5.0, "last_direct_hours": 0.1,
+                          "last_echo_hours": 1.0})[1] is None
+    # exactly as fresh is not FRESHER — still silenced
+    assert seen_and_echo({"last_seen_hours": 5.0, "last_direct_hours": 1.0,
+                          "last_echo_hours": 1.0})[1] is None
+    # mesh-bumped last_seen looks fresh, but the last direct word is old:
+    # the echo IS the freshest direct-ish evidence, so it shows
+    seen, tag = seen_and_echo({"last_seen_hours": 0.1,
+                               "last_direct_hours": 5.0,
+                               "last_echo_hours": 1.0})
+    assert seen == "SEEN 0.1h"
+    assert tag == "echo 1.0h"
+    # no direct word on record at all -> nothing outranks the echo
+    assert seen_and_echo({"last_seen_hours": 3.0,
+                          "last_echo_hours": 0.2})[1] == "echo 12m"
+
+
+def test_ninety_second_echo_reads_in_minutes():
+    """The canonical replay of 2026-08-21 arrived 90 s after the unplug;
+    through format_age that is "echo 0.0h" — a tag that says nothing. Below
+    the hour the echo speaks minutes, floored at 1m (an echo on record is
+    never "0m ago"). format_age itself keeps the operator's coarser scale."""
+    from monitor.formatting import format_age_fine
+    assert format_age_fine(90 / 3600) == "2m"
+    assert format_age_fine(20 / 3600) == "1m"     # floor, never "0m"
+    assert format_age_fine(0.0) == "1m"
+    assert format_age_fine(0.5) == "30m"
+    assert format_age_fine(1.0) == "1.0h"         # back on format_age's scale
+    assert format_age_fine(26.0) == "1d 2h"
+    assert format_age_fine(None) == "?"
+    assert format_age_fine(-0.2) == "1m"          # clamped, like format_age
+
+
+def test_sub_resolution_echo_is_dropped():
+    """A rendered echo age identical to the rendered SEEN age is a difference
+    below display resolution — "SEEN 3.1h · echo 3.1h" claims nothing."""
+    from monitor.formatting import seen_and_echo
+    assert seen_and_echo({"last_seen_hours": 3.14, "last_direct_hours": 10.0,
+                          "last_echo_hours": 3.11})[1] is None
+
+
+def test_composer_is_none_safe():
+    from monitor.formatting import seen_and_echo
+    assert seen_and_echo({}) == ("SEEN ?", None)

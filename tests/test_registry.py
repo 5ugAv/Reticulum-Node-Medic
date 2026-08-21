@@ -69,6 +69,62 @@ def test_to_dashboard_signal_falls_back_to_beacon():
     assert reg.get(HASH).to_dashboard(NOW)["signal_dbm"] == -70
 
 
+def test_to_dashboard_carries_a_fresh_echo_without_touching_status():
+    """The display side of 2026-08-21: replays kept a dead board's row green.
+    The echo age now rides to the screen — but as its own key, muted there,
+    and the status the dict carries is the one staleness computed, never one
+    an echo freshened."""
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    reg.ingest(HASH, beacon(), NOW + 0.9 * HOUR)      # byte-identical = replay
+    d = reg.get(HASH).to_dashboard(NOW + HOUR)
+    assert d["last_echo_hours"] == pytest.approx(0.1)
+    assert d["last_echo_hours"] < d["last_seen_hours"]  # echo is the fresher
+    assert d["last_seen_hours"] == pytest.approx(1.0)   # sighting NOT refreshed
+    assert d["last_direct_hours"] == pytest.approx(1.0)  # the tag's gate rides too
+    assert d["status"] == "ok"                # 1h-old beacon; the echo added
+    # ...nothing. And once stale, an even-fresh echo must not soften the red:
+    late = NOW + (STALE_ALERT_HOURS + 2) * HOUR
+    reg.ingest(HASH, beacon(), late - 60)               # replay a minute ago
+    assert reg.get(HASH).to_dashboard(late)["status"] == "alert"
+
+
+def test_to_dashboard_no_echo_is_none():
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    assert reg.get(HASH).to_dashboard(NOW)["last_echo_hours"] is None
+
+
+def test_devices_row_pools_the_echo():
+    """The consolidated dashboard row carries the echo age too (freshest of a
+    device's aspects), so VITALS — which renders devices(), not raw records —
+    can actually show it. The direct age pools with it: the tag is gated on
+    the device's freshest DIRECT word, and one aspect's replay must never be
+    silenced by nothing — nor pass for another aspect's live word."""
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    reg.ingest(HASH, beacon(), NOW + 0.5 * HOUR)
+    row = [d for d in reg.devices(NOW + HOUR) if d["identity"] == HASH][0]
+    assert row["last_echo_hours"] == pytest.approx(0.5)
+    assert row["last_seen_hours"] == pytest.approx(1.0)
+    assert row["last_direct_hours"] == pytest.approx(1.0)
+
+
+def test_clock_skew_cannot_turn_an_echo_negative():
+    """A clock stepping backwards past the echo must not hand the display a
+    negative age — a sentinel there once meant "no echo", and node detail
+    would have rendered the nonsense straight. Clamped in the record methods
+    so every surface (to_dashboard, devices, node detail) agrees by
+    construction."""
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    reg.ingest(HASH, beacon(), NOW + 100)               # replay
+    d = reg.get(HASH).to_dashboard(NOW + 50)            # clock stepped back
+    assert d["last_echo_hours"] == 0.0                  # clamped, still real
+    assert reg.get(HASH).last_echo_hours(NOW + 50) == 0.0
+    assert reg.get(HASH).last_direct_hours(NOW - 50) == 0.0
+
+
 # ---- mesh ingest (rnpath reachability) ----------------------------------
 
 
@@ -366,6 +422,62 @@ def test_last_echo_at_survives_save_and_load():
     r.ingest(HASH, beacon(), NOW)
     r.ingest(HASH, beacon(), NOW + 200)
     r2 = NodeRegistry.from_dict(r.to_dict())
+    assert r2.get(HASH).last_echo_at == NOW + 200
+
+
+# ---- bare-announce replays (the non-beacon twin of the guard above) ------
+
+
+def test_a_replayed_bare_announce_is_an_echo_too():
+    """rnsd replays BARE announces from its cache byte-for-byte as well, and
+    the non-beacon branch used to launder that copy into a genuine sighting
+    (last_seen AND last_direct) — which, pooled across a multi-aspect device
+    (the Pi propagation-node case), buried the echo tag the 2026-08-21 dead
+    board earned. Identical payload bytes already heard = the transport
+    speaking, not the node."""
+    r = NodeRegistry()
+    raw = bytes.fromhex(HASH)
+    r.ingest_announce(raw, b"WILDNODE", NOW)
+    n_hist = len(r.history.series(HASH))
+    r.ingest_announce(raw, b"WILDNODE", NOW + 200)   # byte-identical = replay
+    rec = r.get(HASH)
+    assert rec.last_seen == NOW                       # unchanged
+    assert rec.last_direct == NOW                     # unchanged
+    assert rec.last_echo_at == NOW + 200              # recorded for diagnosis
+    assert len(r.history.series(HASH)) == n_hist      # no fake activity
+
+
+def test_a_changed_bare_announce_is_a_sighting():
+    r = NodeRegistry()
+    raw = bytes.fromhex(HASH)
+    r.ingest_announce(raw, b"WILDNODE", NOW)
+    r.ingest_announce(raw, b"WILDNODE-2", NOW + 200)  # new bytes = node spoke
+    rec = r.get(HASH)
+    assert rec.last_seen == NOW + 200
+    assert rec.last_direct == NOW + 200
+    assert rec.last_echo_at is None
+
+
+def test_payloadless_announces_are_exempt_from_replay_detection():
+    """No payload, nothing to compare — "identical" cannot be established,
+    and never guess. Every empty announce stays a sighting."""
+    r = NodeRegistry()
+    raw = bytes.fromhex(HASH)
+    r.ingest_announce(raw, None, NOW)
+    r.ingest_announce(raw, None, NOW + 200)
+    rec = r.get(HASH)
+    assert rec.last_seen == NOW + 200
+    assert rec.last_echo_at is None
+
+
+def test_announce_fingerprint_survives_save_and_load():
+    """A replay across a restart is still a replay — the fingerprint rides
+    the registry file like last_echo_at does."""
+    r = NodeRegistry()
+    r.ingest_announce(bytes.fromhex(HASH), b"WILDNODE", NOW)
+    r2 = NodeRegistry.from_dict(r.to_dict())
+    r2.ingest_announce(bytes.fromhex(HASH), b"WILDNODE", NOW + 200)
+    assert r2.get(HASH).last_seen == NOW
     assert r2.get(HASH).last_echo_at == NOW + 200
 
 

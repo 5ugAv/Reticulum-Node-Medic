@@ -137,10 +137,23 @@ class NodeRow(BoxLayout):
         is_rtnode = node.get("type") == "rtnode2400"
         batt = node.get("battery_pct")
         sig = node.get("signal_dbm")
+        echo = node.get("last_echo_hours")
+        direct = node.get("last_direct_hours")
         self.add_widget(StatBar(
             battery_pct=batt if batt is not None else 0,
             signal_dbm=sig if sig is not None else 0,
             last_seen_hours=node.get("last_seen_hours", 0.0),
+            # A transport replay fresher than the node's last DIRECT word
+            # shows as a muted "echo 4m" after SEEN (StatBar composes it via
+            # formatting.seen_and_echo; has_echo/has_direct carry the None-ness
+            # a NumericProperty can't). Display-only: the hexagon above took
+            # node["status"] before this line and echoes feed no status
+            # anywhere — the rule from 2026-08-21, when replays kept a dead
+            # board's row green.
+            last_echo_hours=echo if echo is not None else 0.0,
+            has_echo=echo is not None,
+            last_direct_hours=direct if direct is not None else 0.0,
+            has_direct=direct is not None,
             powered_by=node.get("powered_by", "battery"),
             show_battery=batt is not None and not is_rtnode,
             show_solar=batt is not None and not is_rtnode,
