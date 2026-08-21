@@ -2340,9 +2340,16 @@ class BirthScreen(BoxLayout):
             verdict = power_check(pi_key, board.key)
             # Two voices gate here: the current-budget arithmetic (check) and
             # the operator's bench chart (pairing_verdicts) — a coin-flip cell
-            # warns even when the arithmetic is content.
-            from workflows.pairing_verdicts import needs_warning
-            if needs_warning(pi_key, board.key, verdict):
+            # warns even when the arithmetic is content. The chart is ADVICE:
+            # if it can't load, fall back to the arithmetic-only gate rather
+            # than let advisory code block a birth.
+            try:
+                from workflows.pairing_verdicts import needs_warning
+                warn = needs_warning(pi_key, board.key, verdict)
+            except Exception:
+                warn = bool(verdict and
+                            verdict.get("verdict") in ("blocked", "caution"))
+            if warn:
                 self._show_power_popup(
                     verdict, board.display_name, pi_key,
                     lambda: self._launch(workflow, title),

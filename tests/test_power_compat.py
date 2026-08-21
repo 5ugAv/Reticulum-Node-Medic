@@ -17,12 +17,10 @@ def test_zero_plus_v4_is_blocked_by_field_verification():
     assert any("17 dBm" in r for r in v["remedies"])       # lower-TX remedy
 
 
-def test_zero_plus_v3_is_bench_blocked():
-    """Was caution/untested until the operator's 2026-08 bench mark: same
-    power class as the ruled-out V4 pairing. Bench ink overwrites hedges."""
+def test_zero_plus_v3_is_untested_caution():
     v = check("pi_zero_2w", "heltec32_v3")
-    assert v["verdict"] == "blocked" and v["src"] == "verified"
-    assert "bench" in v["why"]
+    assert v["verdict"] == "caution" and v["src"] == "untested"
+    assert "bench-tested" in v["why"]
 
 
 def test_low_power_boards_pass_everywhere_even_the_zero():
@@ -63,14 +61,18 @@ def test_recommendations_suggest_the_SIMPLEST_pi_that_works():
     be the smallest sufficient Pi — recommending a Pi 5 for everything reads as
     'this is expensive' when a 3 A+ would do (operator spec 2026-08-01)."""
     from workflows.power_compat import recommended_pairings, PI_POWER, check
+    from workflows.pairing_verdicts import verdict as chart_verdict, WARN_LEVELS
     recs = recommended_pairings(limit=5)
     assert recs, "no workable pairings at all"
     for r in recs:
         assert check(r["pi_key"], r["board_key"])["verdict"] == "ok"
-        # no SMALLER Pi also clears the bar for this board
+        # no SMALLER Pi also clears the bar for this board — "clears" now
+        # includes the bench chart's veto (a coin-flip cell is not a
+        # recommendation), same rule recommended_pairings itself applies
         smaller = [k for k, v in PI_POWER.items()
                    if v["budget_ma"] < r["pi_budget"]
-                   and (check(k, r["board_key"]) or {}).get("verdict") == "ok"]
+                   and (check(k, r["board_key"]) or {}).get("verdict") == "ok"
+                   and chart_verdict(k, r["board_key"])[0] not in WARN_LEVELS]
         assert not smaller, f"{r['text']} — but {smaller} also works"
 
 
@@ -82,11 +84,10 @@ def test_recommendations_prefer_the_pi_the_operator_already_owns():
 
 
 def test_the_operators_actual_pairing_is_flagged():
-    """Zero 2 W + Heltec V3 — bench-blocked since the operator's 2026-08 mark
-    (was caution while it sat untested)."""
+    """Zero 2 W + Heltec V3 — thin margin, never bench-tested."""
     from workflows.power_compat import check
     v = check("pi_zero_2w", "heltec32_v3")
-    assert v["verdict"] == "blocked"
+    assert v["verdict"] == "caution"
     v4 = check("pi_zero_2w", "heltec32_v4")
     assert v4["verdict"] == "blocked"      # measured brownouts on this project
 
@@ -129,9 +130,7 @@ def test_warning_never_recommends_the_pairing_it_is_warning_about():
 
 
 def test_blocked_and_caution_both_produce_full_advice():
-    # V3 moved from caution to bench-blocked (2026-08); the LoRa32 v2.0 now
-    # exercises the caution headline instead.
-    for board, expect in (("heltec32_v4", "blocked"), ("lora32_v20", "may brown out")):
+    for board, expect in (("heltec32_v4", "blocked"), ("heltec32_v3", "may brown out")):
         ls = _lines(board=board)
         assert expect in ls[0]["text"]
         assert any(l["kind"] == "good" for l in ls)

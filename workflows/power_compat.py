@@ -76,14 +76,10 @@ OVERRIDES: Dict[tuple, dict] = {
         "verdict": "ok", "src": "verified",
         "why": "Pi 3A+ powers the Heltec V4 cleanly (confirmed on hardware "
                "2026-07-18)."},
-    # Was "caution / untested" until the operator bench-tested the class:
-    # marked BLOCKED on the bench (2026-08), same power class as the V4
-    # pairing. Bench ink overwrites the old hedge — see
-    # workflows.pairing_verdicts for the full chart.
     ("pi_zero_2w", "heltec32_v3"): {
-        "verdict": "blocked", "src": "verified",
-        "why": "Blocked on the bench (2026-08): the operator marked Zero 2W + "
-               "Heltec V3 unbuildable - same power class as the V4 pairing."},
+        "verdict": "caution", "src": "untested",
+        "why": "Pi Zero + Heltec V3 is close to the Zero's limit and has not "
+               "been bench-tested yet - verify before deploying."},
 }
 
 
@@ -139,11 +135,18 @@ def recommended_pairings(limit: int = 4, pi_key: str = "") -> List[dict]:
     # recommendation should be the simplest thing that works, not the biggest
     # Pi in the catalogue — an operator reads "you need a Pi 5" as "this is
     # expensive", when a 3 A+ would have done.
+    from workflows.pairing_verdicts import verdict as _chart_verdict, \
+        WARN_LEVELS as _CHART_WARNS
     best = {}
     for bk, board in BOARD_POWER.items():
         for pk, pi in sorted(PI_POWER.items(), key=lambda kv: kv[1]["budget_ma"]):
             v = check(pk, bk)
             if not v or v.get("verdict") != "ok":
+                continue
+            # The bench chart vetoes too: recommending a cell the tool would
+            # itself warn about (a Pi-5-at-3A coin flip, say) is advice that
+            # contradicts its own popup one tap later.
+            if _chart_verdict(pk, bk)[0] in _CHART_WARNS:
                 continue
             best[bk] = {
                 "pi_key": pk, "board_key": bk,
@@ -233,12 +236,15 @@ def warning_lines(verdict: dict, pi_name: str, board_name: str,
     from workflows.pairing_verdicts import (verdict as chart_verdict,
                                             WARN_LEVELS)
     chart = None                       # the chart's provenance line, if any
-    if board_key and pi_key:
-        level, prov = chart_verdict(pi_key, board_key)
-        if level in WARN_LEVELS:
-            # kind "body" on purpose: both screens render body lines, and the
-            # provenance WORDING already carries the weight (bench vs theory).
-            chart = {"kind": "body", "text": prov}
+    # Same gate as pairing_verdicts.needs_warning, on purpose: verdict()
+    # answers UNTESTED for empty/unknown keys, so an empty key can never make
+    # the two disagree (needs_warning saying "interrupt" while this returns
+    # nothing would leave the operator staring at a blank popup).
+    level, prov = chart_verdict(pi_key, board_key)
+    if level in WARN_LEVELS:
+        # kind "body" on purpose: both screens render body lines, and the
+        # provenance WORDING already carries the weight (bench vs theory).
+        chart = {"kind": "body", "text": prov}
     v = (verdict or {}).get("verdict", "")
     if v not in ("blocked", "caution"):
         # Arithmetic is content, so only the chart has something to say. A
@@ -250,8 +256,11 @@ def warning_lines(verdict: dict, pi_name: str, board_name: str,
                  chart]
         recs = recommended_pairings(limit=3, pi_key=pi_key)
         if recs:
+            # "on paper": these come from the estimated draw figures in
+            # BOARD_POWER, not from bench runs — the heading says so.
             lines.append({"kind": "good",
-                          "text": "Pairings predicted to run cleanly:"})
+                          "text": "Pairings within budget on paper "
+                                  "(estimated draw figures):"})
             lines += [{"kind": "good",
                        "text": f"  ✓ {r['text']}   "
                                f"({r['margin_ma']} mA to spare)"}
@@ -265,9 +274,12 @@ def warning_lines(verdict: dict, pi_name: str, board_name: str,
     ]
     if (verdict or {}).get("why"):
         lines.append({"kind": "body", "text": verdict["why"]})
-    # Skip the chart line when the OVERRIDE's why already opens with the same
-    # ruling ("Blocked on the bench (2026-08): …") — one bench sentence, not two.
-    if chart is not None and chart["text"].split(":")[0] not in verdict.get("why", ""):
+    # The chart line always shows alongside the arithmetic's why — no dedup.
+    # A substring-match dedup was tried and dropped: it keyed on the text's
+    # leading phrase, which silently breaks the moment either sentence is
+    # reworded (brittle, and it fails open by HIDING provenance). Two sources,
+    # two sentences is the honest rendering even when they overlap.
+    if chart is not None:
         lines.append(chart)
     lines.append({"kind": "warn", "text":
                   f"This pairing will NOT run reliably without a powered USB "
