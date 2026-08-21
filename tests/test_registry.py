@@ -1026,3 +1026,51 @@ def test_consolidation_pools_is_propagation_across_members():
     r.ingest_announce(b"\xee" * 16, b"", NOW, identity_hash="i-p")
     rec = r.consolidated_record("ee" * 16, NOW)
     assert rec.is_propagation is True
+
+
+# ---- last_heard_announce_at: the ping reply-watch's oracle ------------------
+#
+# Written ONLY by genuine (non-echo) announce/beacon ingest, so the ping's
+# reply window (health_poll.heard_since) cannot be answered by a mesh
+# rediscover tick or a transport replay (2026-08-22 review, C2/C3).
+
+def test_genuine_beacon_stamps_last_heard_announce_at():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(uptime_s=10), NOW)
+    assert r.get(HASH).last_heard_announce_at == NOW
+
+
+def test_beacon_replay_does_not_stamp_last_heard_announce_at():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(uptime_s=10), NOW)
+    r.ingest(HASH, beacon(uptime_s=10), NOW + 60)   # byte-identical = echo
+    assert r.get(HASH).last_heard_announce_at == NOW
+
+
+def test_bare_announce_stamps_it_and_its_replay_does_not():
+    r = NodeRegistry()
+    raw = bytes.fromhex(HASH)
+    r.ingest_announce(raw, b"WILDNODE", NOW)
+    assert r.get(HASH).last_heard_announce_at == NOW
+    r.ingest_announce(raw, b"WILDNODE", NOW + 60)   # byte-identical = replay
+    assert r.get(HASH).last_heard_announce_at == NOW
+    r.ingest_announce(raw, b"WILDNODE-2", NOW + 90)  # new bytes = node spoke
+    assert r.get(HASH).last_heard_announce_at == NOW + 90
+
+
+def test_path_table_folds_never_stamp_last_heard_announce_at():
+    # ingest_mesh and ingest_relay both fold the path table — table presence
+    # (even with a heard timestamp) is not the node speaking NOW, and must not
+    # be able to answer an in-flight ping's reply watch.
+    r = NodeRegistry()
+    r.ingest_mesh(_mesh(HASH, hops=2, heard=NOW), NOW)
+    r.ingest_relay(HASH2, "RNodeInterface", NOW, heard=NOW)
+    assert r.get(HASH).last_heard_announce_at is None
+    assert r.get(HASH2).last_heard_announce_at is None
+
+
+def test_last_heard_announce_at_survives_a_round_trip():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(uptime_s=10), NOW)
+    r2 = NodeRegistry.from_dict(r.to_dict())
+    assert r2.get(HASH).last_heard_announce_at == NOW
