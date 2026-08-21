@@ -161,6 +161,62 @@ def _printable_name(app_data) -> str:
     return ""
 
 
+def _is_propagation_announce(app_data) -> bool:
+    """Does this announce app_data carry the LXMF PROPAGATION-NODE payload?
+
+    On 2026-08-22 two "anonymous neighbour" rows in VITALS turned out to be
+    the medic's own two Pi relays — SKYFINGER and ELSEWHERE — wearing their
+    THIRD identity. A Pi relay announces as three destinations: rnsd
+    transport, the health reporter, and lxmd's ``lxmf.propagation`` aspect.
+    The first two the registry can name; the third keeps its own identity
+    file and announces a msgpack blob instead of a name, so it sat on the
+    screen as a nameless stranger. The blob has a recognisable shape — a
+    real capture decodes to:
+
+        [False, 1787316090, True, 256, 10240, [16, 3, 18], {}]
+
+    i.e. a list whose [0] is a bool, [1] a plausible unix timestamp, [2] a
+    bool (propagation enabled). That shape is what the FORMAT
+    proves, and it is ALL it proves — it never says whose machine it is, so
+    the label downstream stays "Propagation relay", not a name.
+
+    Decode with Reticulum's own vendored msgpack when it is importable
+    (``import RNS`` is heavy, so it happens in here, and its absence — a
+    dev Mac with no radio stack — is just the fallback path, never a
+    crash). The fallback reads only the leading bytes of the wire format:
+    fixarray, bool, uint32 timestamp, bool — enough to say yes to the
+    real captures and no to names, beacons and noise.
+    """
+    try:
+        raw = bytes(app_data or b"")
+        if not raw:
+            return False
+        obj = None
+        try:
+            from RNS.vendor import umsgpack        # heavy: only on demand
+            obj = umsgpack.unpackb(raw)
+        except Exception:
+            # Bundled minimal check: fixarray(>=3), bool, uint32, bool.
+            # Every plausible-era timestamp (2015-2100) is a msgpack uint32.
+            if (len(raw) >= 8 and (raw[0] & 0xF0) == 0x90
+                    and (raw[0] & 0x0F) >= 3
+                    and raw[1] in (0xC2, 0xC3) and raw[2] == 0xCE
+                    and raw[7] in (0xC2, 0xC3)):
+                obj = [raw[1] == 0xC3,
+                       int.from_bytes(raw[3:7], "big"),
+                       raw[7] == 0xC3]
+        if not isinstance(obj, (list, tuple)) or len(obj) < 3:
+            return False
+        if not isinstance(obj[0], bool) or not isinstance(obj[2], bool):
+            return False
+        ts = obj[1]
+        if isinstance(ts, bool) or not isinstance(ts, int):
+            return False
+        return 1420070400 <= ts <= 4102444800      # 2015-01-01 .. 2100-01-01
+    except Exception:
+        return False
+
+
 def version_tuple(v: str):
     """Parse a dotted version ("0.6.2") into a comparable int tuple."""
     out = []
@@ -239,6 +295,11 @@ class NodeRecord:
     #: in VITALS for one machine.
     device_id: Optional[str] = None
     announced_name: str = ""                # name a neighbour announces (e.g. LXMF)
+    #: This destination announces the LXMF propagation-node payload — see
+    #: ``_is_propagation_announce``. Proves WHAT the destination is (an lxmd
+    #: propagation relay), never WHOSE machine it is. Defaults False so a
+    #: registry file written before the field existed loads unchanged.
+    is_propagation: bool = False
     links: Optional[dict] = None            # KIN-declared interfaces the node HAS
                                             # ({lora,wifi,bluetooth,internet}: True)
     builder_hash: Optional[str] = None      # identity of the medic UNIT that
@@ -327,11 +388,23 @@ class NodeRecord:
         status = self.status(now)
         if neighbour and status == "ok":
             status = "unknown"           # heard != healthy; we know nothing yet
+        display = self.name or (
+            (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
+            if neighbour else "(unnamed)")
+        where = self.location or ("heard on the mesh" if neighbour else "")
+        # A nameless neighbour whose announces carry the LXMF propagation
+        # payload gets called what the format PROVES it is — a propagation
+        # relay — and nothing more. Never which machine: SKYFINGER and
+        # ELSEWHERE each wear one of these as a third identity (2026-08-22),
+        # but the announce itself cannot say so, so neither do we. Any
+        # operator-given or announced name still wins.
+        if neighbour and self.is_propagation and not (self.name
+                                                      or self.announced_name):
+            display = f"Propagation relay {self.dst_hash[:8]}"
+            where = self.location or "LXMF propagation announces"
         return {
-            "name": self.name or (
-                (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
-                if neighbour else "(unnamed)"),
-            "location": self.location or ("heard on the mesh" if neighbour else ""),
+            "name": display,
+            "location": where,
             "status": status,
             "type": self.node_type,
             "provenance": self.provenance,
@@ -686,6 +759,8 @@ class NodeRegistry:
             # — the raw material for the "when is this node usually up?" profile.
             from monitor.history import HistoryPoint
             self.history.append(h, HistoryPoint(t=now))
+            if _is_propagation_announce(app_data):
+                rec.is_propagation = True   # what the format proves; no owner
         if identity_hash:
             had_identity = rec.identity_hash == identity_hash
             rec.identity_hash = identity_hash
@@ -697,6 +772,12 @@ class NodeRegistry:
                 self._apply_kin(rec)
         if rec.announced_name and not _valid_display_name(rec.announced_name):
             rec.announced_name = ""     # residue the old decoder let through
+        # A propagation payload is msgpack, not a name — _printable_name's
+        # strict UTF-8 already refuses the real captures, but the refusal is
+        # made explicit here so no future loosening of the name decoder can
+        # ever resurrect the "j(" ghosts (2026-08-14) from THIS payload.
+        if beacon is None and _is_propagation_announce(app_data):
+            return rec
         name = _printable_name(app_data)
         if name and not rec.announced_name:
             rec.announced_name = name
@@ -1085,6 +1166,7 @@ class NodeRegistry:
                 "share_applied_at": r.share_applied_at,
                 "identity_hash": r.identity_hash,
                 "announced_name": r.announced_name,
+                "is_propagation": r.is_propagation,
                 "notes": list(r.notes),
                 "events": [
                     {"at": e.at, "kind": e.kind, "summary": e.summary,
@@ -1125,6 +1207,7 @@ class NodeRegistry:
                 announced_name=(n.get("announced_name", "")
                                 if _valid_display_name(
                                     n.get("announced_name", "")) else ""),
+                is_propagation=bool(n.get("is_propagation", False)),
             )
             rec.notes = list(n.get("notes", []))
             rec.events = [CommissionEvent(**e) for e in n.get("events", [])]

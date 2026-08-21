@@ -794,3 +794,81 @@ def test_a_nameless_placeholder_still_joins_its_named_machine():
     r.register("rtnode:hope", name="HOPE")
     groups = r._device_groups()
     assert len(groups) == 1
+
+
+# -- LXMF propagation-node announces ----------------------------------------
+# 2026-08-22: two "anonymous neighbour" rows were the operator's own two Pi
+# relays (SKYFINGER and ELSEWHERE) heard through their THIRD identity — lxmd's
+# lxmf.propagation aspect. The payload's msgpack shape is recognisable; the
+# announce proves WHAT the destination is, never WHOSE machine it is.
+
+# Real captured app_data from the two live rows.
+PROP_ANNOUNCE_1 = b"\x97\xc2\xcej\x88Gz\xc3\xcd\x01\x00\xcd(\x00\x93\x10\x03\x12\x80"
+PROP_ANNOUNCE_2 = b"\x97\xc2\xcej\x88T\xbb\xc3\xcd\x01\x00\xcd(\x00\x93\x10\x03\x12\x80"
+
+
+def test_propagation_announce_recognised_from_real_captures():
+    from monitor.registry import _is_propagation_announce
+    assert _is_propagation_announce(PROP_ANNOUNCE_1)
+    assert _is_propagation_announce(PROP_ANNOUNCE_2)
+
+
+def test_propagation_check_refuses_everything_else():
+    from monitor.registry import _is_propagation_announce
+    from monitor.health_beacon import encode
+    health = encode(uptime_s=36, heap_kb=140, wifi_rssi_dbm=-62, reset_reason=0,
+                    wifi_up=True, lora_up=True, tcp_backbone_up=True,
+                    local_tcp_server_up=True, wdt_armed=True, psram=True,
+                    fault=False, board_id=0x3F, fw=(0, 6, 2))
+    assert not _is_propagation_announce(health)
+    assert not _is_propagation_announce(None)
+    assert not _is_propagation_announce(b"")
+    assert not _is_propagation_announce(b"\x00\x01\x02\x03garbage")
+    assert not _is_propagation_announce(b"\x0bSKYFINGER!")   # an LXMF name
+    # Right shape, impossible timestamp: fixarray [bool, 7, bool] is noise,
+    # not a propagation node announcing in 1970.
+    assert not _is_propagation_announce(b"\x93\xc2\x07\xc3")
+
+
+def test_ingest_announce_marks_propagation_and_roundtrips():
+    r = NodeRegistry()
+    rec = r.ingest_announce(b"\xdd" * 16, PROP_ANNOUNCE_1, NOW)
+    assert rec.is_propagation is True
+    # msgpack residue must never become a display name (the "j(" ghosts).
+    assert rec.announced_name == ""
+    # Survives the monitoring DB round-trip; an old file without the field
+    # loads as False (checked via a plain heard-neighbour record below).
+    r2 = NodeRegistry.from_dict(r.to_dict())
+    assert r2.nodes["dd" * 16].is_propagation is True
+    plain = r.ingest_announce(b"\xee" * 16, b"", NOW)
+    assert plain.is_propagation is False
+    d = r.to_dict()
+    for n in d["nodes"]:
+        del n["is_propagation"]            # a registry file from before the field
+    old = NodeRegistry.from_dict(d)
+    assert old.nodes["ee" * 16].is_propagation is False
+
+
+def test_propagation_row_reads_propagation_relay():
+    r = NodeRegistry()
+    r.ingest_announce(b"\xdd" * 16, PROP_ANNOUNCE_1, NOW)
+    row = r.nodes["dd" * 16].to_dashboard(NOW)
+    assert row["name"] == "Propagation relay " + "dd" * 4
+    assert row["location"] == "LXMF propagation announces"
+    # An operator-given name always outranks the format label.
+    r.nodes["dd" * 16].name = "SKYFINGER relay"
+    assert r.nodes["dd" * 16].to_dashboard(NOW)["name"] == "SKYFINGER relay"
+
+
+def test_propagation_check_survives_missing_rns(monkeypatch):
+    """A dev Mac without the radio stack still classifies correctly: poison the
+    RNS import so the bundled minimal wire-format check must answer alone."""
+    import sys
+    from monitor.registry import _is_propagation_announce
+    monkeypatch.setitem(sys.modules, "RNS", None)
+    monkeypatch.setitem(sys.modules, "RNS.vendor", None)
+    monkeypatch.setitem(sys.modules, "RNS.vendor.umsgpack", None)
+    assert _is_propagation_announce(PROP_ANNOUNCE_1)
+    assert _is_propagation_announce(PROP_ANNOUNCE_2)
+    assert not _is_propagation_announce(b"\x0bSKYFINGER!")
+    assert not _is_propagation_announce(b"\x93\xc2\x07\xc3")

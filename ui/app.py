@@ -1936,7 +1936,10 @@ class ReticulumNodeMedicApp(App):
         days = max(1, round(gh / 24.0))
         name = device.get("name") or "A node"
         loc = device.get("location") or ""
-        where = f" at {loc}" if loc and loc != "heard on the mesh" else ""
+        # Placeholder subtitles are not places — neither of these may become
+        # "...at heard on the mesh" / "...at LXMF propagation announces".
+        placeholder = loc in ("heard on the mesh", "LXMF propagation announces")
+        where = f" at {loc}" if loc and not placeholder else ""
         msg = (f"{name}{where} has been unreachable for {days} "
                f"day{'s' if days != 1 else ''} — it likely needs a physical check.")
         self._mode_toast(msg, ok=False)
