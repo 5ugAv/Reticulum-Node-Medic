@@ -36,11 +36,20 @@ DESTRUCTIVE = (
     "write_flash", "erase_flash", "verify_flash",
     "arduino-cli upload", "--autoinstall", "dfu serial",
     "--target upload", "hard_reset",
+    # --firmware-hash WRITES EEPROM (and on nRF52 ends in a hard reset) —
+    # added with the firmware-blessing diagnostic (adversarial review C6,
+    # 2026-08-22) so any new site that stamps a hash must consult the guard.
+    "--firmware-hash",
 )
 
 #: Evidence the module actually RUNS a command rather than just building a
 #: string. A pure command-builder needs no guard; the caller that executes does.
-EXECUTES = (".run(", "subprocess.", "check_call", "Popen", "call(")
+EXECUTES = (".run(", "subprocess.", "check_call", "Popen", "call(",
+            # diagnostics modules shell out through DiagnosticCheck._run_cmd,
+            # which is connection.run behind one indirection — without this
+            # marker the whole diagnostics/ tree would scan as "builds
+            # strings, executes nothing" and pass vacuously.
+            "_run_cmd(")
 
 #: The guard, in any of its forms.
 GUARDS = ("assert_flashable", "is_flashable_work_board", "local_board_ports",
@@ -56,11 +65,19 @@ EXEMPT = {
     # (rnode_flash.birth_flash) is guarded.
     "workflows/rnode_boards.py": "builds command strings, executes nothing",
     "workflows/updater.py": "builds command strings, executes nothing",
+    # Operator GUIDANCE prose names "--firmware-hash" as advice text; the
+    # module itself only restarts services / reads journals — it never
+    # touches a serial port.
+    "monitor/self_diagnose_runtime.py":
+        "names --firmware-hash in operator guidance prose, writes nothing",
 }
 
 
 def _sources():
-    for d in ("workflows", "ui", "provisioning", "transport", "monitor"):
+    for d in ("workflows", "ui", "provisioning", "transport", "monitor",
+              # diagnostics joined the scan when the firmware-blessing check
+              # gave PROBE a serial-touching step of its own (2026-08-22).
+              "diagnostics"):
         for p in (REPO / d).rglob("*.py"):
             yield p
 
