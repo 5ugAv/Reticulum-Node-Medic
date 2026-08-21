@@ -128,3 +128,117 @@ def test_carries_fresh_beacon_for_dashboard():
     result = poller(ch).poll(HASH)
     assert result.beacon is not None
     assert result.beacon.uptime_s == 999
+
+
+# ---- warm-and-send delivery honesty (2026-08-21/22 field lessons) ----------
+#
+# 2026-08-21: a packet sent while the sending stack's has_path() is False dies
+# SILENTLY — warm_and_send must never call send() without a path. 2026-08-22:
+# the firmware throttles repeat poll replies, so sent-but-silent is its own
+# outcome ("did not answer"), distinct from no-route ("never sent").
+
+from monitor.health_poll import (
+    DELIVERY_ANSWERED,
+    DELIVERY_NO_ROUTE,
+    DELIVERY_UNANSWERED,
+    warm_and_send,
+    warm_path,
+)
+
+
+class FakeTransport:
+    """has_path answers scripted per call (then False forever); records every
+    request_path / send / await_reply, and counts sleeps instead of sleeping."""
+
+    def __init__(self, path_answers, reply=False):
+        self._answers = list(path_answers)
+        self.reply = reply
+        self.requested = []
+        self.sent = []
+        self.awaited = []
+        self.slept = []
+
+    def has_path(self, dh):
+        return self._answers.pop(0) if self._answers else False
+
+    def request_path(self, dh):
+        self.requested.append(dh)
+
+    def send(self, dh):
+        self.sent.append(dh)
+
+    def await_reply(self, dh, wait_s):
+        self.awaited.append((dh, wait_s))
+        return self.reply
+
+
+def _run(t, **kw):
+    kw.setdefault("sleep", t.slept.append)
+    return warm_and_send(HASH, t.has_path, t.request_path,
+                         t.send, t.await_reply, **kw)
+
+
+def test_path_already_known_sends_immediately():
+    t = FakeTransport([True], reply=True)
+    assert _run(t) == DELIVERY_ANSWERED
+    assert t.requested == []          # no request needed
+    assert t.slept == []              # and no waiting either
+    assert t.sent == [HASH]
+
+
+def test_path_arriving_on_third_wait_still_sends():
+    # initial check False, then polls: False, False, True -> send
+    t = FakeTransport([False, False, False, True], reply=True)
+    assert _run(t) == DELIVERY_ANSWERED
+    assert t.requested == [HASH]      # exactly one path request
+    assert t.sent == [HASH]
+    assert len(t.slept) == 3          # slept up to (and incl.) the 3rd poll
+
+
+def test_path_never_arriving_is_no_route_and_never_sends():
+    t = FakeTransport([False])
+    assert _run(t) == DELIVERY_NO_ROUTE
+    # THE 2026-08-21 rule: no path -> the packet is never fired (it would
+    # have died silently), and there is no reply window to wait through.
+    assert t.sent == []
+    assert t.awaited == []
+    # the wait is capped: 15 s at one poll per second
+    assert len(t.slept) == 15
+
+
+def test_sent_but_silent_is_unanswered_not_no_route():
+    t = FakeTransport([True], reply=False)
+    assert _run(t) == DELIVERY_UNANSWERED
+    assert t.sent == [HASH]           # it WAS delivered into the mesh
+    # the reply window that was actually waited through is the default one
+    assert t.awaited == [(HASH, 15.0)]
+
+
+def test_warm_path_polls_once_per_interval_up_to_cap():
+    t = FakeTransport([False])
+    slept = []
+    ok = warm_path(HASH, t.has_path, t.request_path,
+                   wait_s=5.0, poll_s=1.0, sleep=slept.append)
+    assert ok is False
+    assert slept == [1.0] * 5
+
+
+def test_warm_path_immediate_when_known():
+    t = FakeTransport([True])
+    assert warm_path(HASH, t.has_path, t.request_path,
+                     sleep=lambda s: None) is True
+    assert t.requested == []
+
+
+def test_app_ping_is_wired_through_warm_and_send():
+    """The UI's ping must ride this module's honesty logic — and its wording
+    must separate 'no route' (never sent) from 'did not answer' (sent, then
+    silence), never claiming the node is down on silence alone (throttling,
+    2026-08-22). Source inspection because Kivy is not importable here."""
+    from tests.srcutil import func_source
+    src = func_source("ui/app.py", "_ping_node")
+    assert "warm_and_send" in src
+    assert "did not answer" in src
+    assert "not sent" in src                    # the no-route wording
+    # the old overclaim — promising a reply before hearing one — is gone
+    assert "fresh readings arrive in seconds" not in src

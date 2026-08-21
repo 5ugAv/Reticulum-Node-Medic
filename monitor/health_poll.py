@@ -89,3 +89,80 @@ class HealthPoller:
             attempts=self.retries,
             beacon=None,
         )
+
+
+# -- delivery honesty: warm the path, send, then believe only what was heard --
+#
+# Two field lessons (proven 2026-08-21/22) that make a naive fire-and-forget
+# 0x01 lie in both directions:
+#
+# 1. SILENT EPHEMERAL DROP: an RNS packet sent while ``Transport.has_path()``
+#    is False dies without an error in THIS process — even when rnpath, talking
+#    to the shared rnsd daemon, just proved the path. The sending stack must
+#    hold the path itself: request it, then wait for it, before sending.
+# 2. REPLY THROTTLING: the firmware rations poll replies to spend less shared
+#    airtime, so a node polled repeatedly goes reply-silent while perfectly
+#    healthy. Silence after a delivered request is "did not answer" — never
+#    "is down".
+#
+# The transports are injected callables so this logic is testable without a
+# live mesh (and without Kivy), same pattern as HealthPoller above.
+
+#: Outcomes of ``warm_and_send`` — three DISTINCT truths, because the honest
+#: wording differs: "no route" means nothing ever left this medic; "unanswered"
+#: means the request was delivered into the mesh and silence followed.
+DELIVERY_ANSWERED = "answered"
+DELIVERY_UNANSWERED = "unanswered"
+DELIVERY_NO_ROUTE = "no_route"
+
+
+def warm_path(
+    dest_hash: bytes,
+    has_path: Callable[[bytes], bool],
+    request_path: Callable[[bytes], None],
+    wait_s: float = 15.0,
+    poll_s: float = 1.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """True once this stack holds a path to *dest_hash*; False if none arrives.
+
+    Already-known path -> immediate True, no request, no waiting. Otherwise one
+    ``request_path`` then a poll of ``has_path`` once per *poll_s*, capped at
+    *wait_s* — the caller is expected to run this OFF the UI thread.
+    """
+    if has_path(dest_hash):
+        return True
+    request_path(dest_hash)
+    for _ in range(max(1, int(wait_s / poll_s))):
+        sleep(poll_s)
+        if has_path(dest_hash):
+            return True
+    return False
+
+
+def warm_and_send(
+    dest_hash: bytes,
+    has_path: Callable[[bytes], bool],
+    request_path: Callable[[bytes], None],
+    send: Callable[[bytes], None],
+    await_reply: Callable[[bytes, float], bool],
+    path_wait_s: float = 15.0,
+    reply_wait_s: float = 15.0,
+    poll_s: float = 1.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """One honest delivery attempt: warm the path, send, listen.
+
+    Returns DELIVERY_NO_ROUTE (path never resolved — ``send`` was NEVER
+    called, because it would have been a silent ephemeral drop),
+    DELIVERY_ANSWERED (sent and ``await_reply`` heard the node), or
+    DELIVERY_UNANSWERED (sent, then silence — which throttling makes a
+    normal thing for a healthy node to do).
+    """
+    if not warm_path(dest_hash, has_path, request_path,
+                     wait_s=path_wait_s, poll_s=poll_s, sleep=sleep):
+        return DELIVERY_NO_ROUTE
+    send(dest_hash)
+    if await_reply(dest_hash, reply_wait_s):
+        return DELIVERY_ANSWERED
+    return DELIVERY_UNANSWERED
