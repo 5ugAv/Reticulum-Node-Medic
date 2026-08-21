@@ -37,7 +37,7 @@ _STATUS_RANK = {"alert": 0, "warn": 1, "ok": 2, "unknown": 3}
 def _capabilities(members) -> dict:
     """{lora, wifi, bluetooth, internet}: True = seen working, False = the
     node itself reports it down, None = unknowable from here (renders grey)."""
-    lora = wifi = internet = None
+    lora = wifi = internet = bluetooth = None
     for r in members:
         iface = r.mesh_interface or ""
         if "RNode" in iface:
@@ -68,6 +68,11 @@ def _capabilities(members) -> dict:
                 wifi = bool(beacon.wifi_up)
             if internet is None:
                 internet = bool(beacon.tcp_backbone_up)
+            # Bluetooth: the KNOWN/UP bit pair (power-flags byte) — None on
+            # beacons from firmware that predates the bits, so old nodes
+            # stay honestly grey instead of falsely amber (SolarLove rule).
+            if bluetooth is None and getattr(beacon, "bt_up", None) is not None:
+                bluetooth = beacon.bt_up
     # NOTHING IS ADDED HERE. Everything above came from the node itself — heard
     # over an interface, or self-reported in its own health beacon or /status.
     #
@@ -85,7 +90,7 @@ def _capabilities(members) -> dict:
     #
     # A board's datasheet is not a node's state. An interface the node has not
     # mentioned stays None and renders as unknown, which is the truth.
-    return {"lora": lora, "wifi": wifi, "bluetooth": None, "internet": internet}
+    return {"lora": lora, "wifi": wifi, "bluetooth": bluetooth, "internet": internet}
 
 
 def name_key(name: str) -> str:

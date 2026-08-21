@@ -145,6 +145,9 @@ class HealthBeacon:
     # -- v2 power + link tail (None/False when the beacon is v1) -------------
     battery_mv: Optional[int] = None       # battery voltage, millivolts
     battery_pct: Optional[int] = None      # charge estimate 0..100
+    #: None = the beacon predates the BT bits (unknown); True/False = the
+    #: node's own verdict (power-flags byte, KNOWN 0x10 / UP 0x20 pair).
+    bt_up: Optional[bool] = None
     on_battery: bool = False               # running from battery (not external)
     charging: bool = False                 # battery is charging
     on_solar: bool = False                 # solar input present
@@ -208,6 +211,7 @@ class HealthBeacon:
             board_id=self.board_id, airtime_lock=self.airtime_lock,
             fw=fw, format_version=self.format_version,
             battery_mv=self.battery_mv, battery_pct=self.battery_pct,
+            bt_up=self.bt_up,
             on_battery=self.on_battery, charging=self.charging,
             on_solar=self.on_solar, on_mains=self.on_mains,
             lora_snr_db=self.lora_snr_db, lora_rssi_dbm=self.lora_rssi_dbm)
@@ -232,6 +236,7 @@ def encode(
     format_version: int = FORMAT_VERSION,
     battery_mv: Optional[int] = None,
     battery_pct: Optional[int] = None,
+    bt_up: Optional[bool] = None,
     on_battery: bool = False,
     charging: bool = False,
     on_solar: bool = False,
@@ -275,7 +280,9 @@ def encode(
     if not has_tail:
         return head
     power_flags = (
-        (0x01 if on_battery else 0)
+        (0x10 if bt_up is not None else 0)
+        | (0x20 if bt_up else 0)
+        | (0x01 if on_battery else 0)
         | (0x02 if charging else 0)
         | (0x04 if on_solar else 0)
         | (0x08 if on_mains else 0)
@@ -332,6 +339,7 @@ def decode(app_data: bytes) -> HealthBeacon:
             ">HBBbb", app_data, PAYLOAD_LEN)
         b.battery_mv = None if batt_mv == BATTERY_MV_UNKNOWN else batt_mv
         b.battery_pct = None if batt_pct == BATTERY_PCT_UNKNOWN else batt_pct
+        b.bt_up = bool(power_flags & 0x20) if (power_flags & 0x10) else None
         b.on_battery = bool(power_flags & 0x01)
         b.charging = bool(power_flags & 0x02)
         b.on_solar = bool(power_flags & 0x04)
