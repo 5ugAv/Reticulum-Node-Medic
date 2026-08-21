@@ -2836,7 +2836,15 @@ class BirthScreen(BoxLayout):
                     recover = recovery_for_board(getattr(self, "_last_board", None))
                     body = (f"{head}\n\nBoard won't flash?  {recover}  If it "
                             "still won't, try a short, known-good USB data cable.")
-                view = requirement_popup(body, "Build didn't finish", False)
+                # Show-don't-tell: the recovery text names buttons to press, so
+                # show the board they're on. image_for() returns None when we
+                # have no photo for this board — then it's the old text-only
+                # card, unchanged (UX review 2026-08-14: "never shows the board
+                # it's telling the operator to press buttons on").
+                from ui import board_images
+                board_png = board_images.image_for(getattr(self, "_last_board", None))
+                view = requirement_popup(body, "Build didn't finish", False,
+                                         image_path=board_png)
                 # Bring the chooser back so the operator can rerun, but KEEP
                 # the log below — it names what failed.
                 view.bind(on_dismiss=lambda *_:

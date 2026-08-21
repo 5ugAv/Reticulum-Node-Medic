@@ -519,5 +519,6 @@
   "What this medic must carry to work with no signal. Checked against the disk right now, not against what was meant to be here.": "この medic が信号なしで動作するために携行すべきもの。今この瞬間のディスクの状態を確認しています。予定されていた内容ではありません。",
   "A mesh transport node (RTNode-2400) isn't offered: there is no RTNode-2400 build for {board} ({chip}). The boards that have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.": "メッシュ・トランスポートノード（RTNode-2400）は提供されません：{board}（{chip}）向けのRTNode-2400ビルドがありません。対応ボード：Heltec V3/V4、T-Beam Supreme、LilyGO T-Echo。",
   "A mesh transport node (RTNode-2400) isn't offered: the medic couldn't tell which nRF52 board this is. If it is a LilyGO T-Echo, double-tap its side RESET button (two quick presses) — in its bootloader it names itself — then go Back and come in again.": "メッシュ・トランスポートノード（RTNode-2400）は提供されません：どのnRF52ボードか判別できませんでした。LilyGO T-Echoの場合は、側面のRESETボタンを素早く2回押してください — ブートローダーでは自分の名前を名乗ります — その後、戻ってやり直してください。",
-  "You can still build it this way — nobody has bench-tested this pairing, so treat the first field days as the test.": "このままでも組み立てられます — この組み合わせはまだベンチで検証されていないので、フィールドでの最初の数日をテストと考えてください。"
+  "You can still build it this way — nobody has bench-tested this pairing, so treat the first field days as the test.": "このままでも組み立てられます — この組み合わせはまだベンチで検証されていないので、フィールドでの最初の数日をテストと考えてください。",
+  "Got it": "了解"
 }
