@@ -131,3 +131,43 @@ def test_recent_uptime_is_info():
     conn.rules.insert(0, ("/proc/uptime", 0, "120.5 60.0", ""))
     issues = run(conn)
     assert sev(issues, "uptime") == "info"
+
+
+# -- honesty: an UNREADABLE sensor is "unverified" (info), never a silent pass.
+# The false-green that this guards against: a browning-out medic whose thermal
+# zone / battery gauge / meminfo won't read must NOT show a healthy tick. A
+# denied read is not evidence of health (mirrors the SD-card sibling, check 25).
+
+def test_cpu_temp_unverified_when_thermal_zone_unreadable():
+    conn = healthy_conn()
+    conn.rules.insert(0, ("thermal_zone0/temp", 1, "", "No such file"))
+    issues = run(conn)
+    assert "cpu_temperature" in names(issues)
+    assert sev(issues, "cpu_temperature") == "info"       # unverified, not "cool"
+
+
+def test_battery_absent_sysfs_gauge_does_not_nag():
+    # An I2C UPS HAT has NO /sys/class/power_supply/BAT0 gauge, so pct=None is
+    # the normal healthy state for that hardware. We must NOT nag "unverified"
+    # every run — that would be a perpetual false alarm on good hardware. A real
+    # gauge reporting a low value still warns (covered above).
+    conn = healthy_conn()
+    conn.rules.insert(0, ("BAT0/capacity", 1, "", "No such file or directory"))
+    issues = run(conn, profile(has_battery_bank=True))
+    assert "battery_level" not in names(issues)
+
+
+def test_memory_unverified_when_meminfo_unreadable():
+    conn = healthy_conn()
+    conn.rules.insert(0, ("MemAvailable", 1, "", ""))
+    issues = run(conn)
+    assert "available_memory" in names(issues)
+    assert sev(issues, "available_memory") == "info"      # unverified, not "plenty"
+
+
+def test_uptime_unverified_when_proc_uptime_unreadable():
+    conn = healthy_conn()
+    conn.rules.insert(0, ("/proc/uptime", 1, "", ""))
+    issues = run(conn)
+    assert "uptime" in names(issues)
+    assert sev(issues, "uptime") == "info"

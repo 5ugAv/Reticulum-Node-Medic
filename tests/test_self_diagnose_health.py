@@ -18,7 +18,7 @@ def test_disk_space_levels():
     assert check_disk_space(_df(88)).severity == SEV_WARN
     d = check_disk_space(_df(97))
     assert d.severity == SEV_CRIT and d.fix == "free_space" and d.data["pct"] == 97
-    assert check_disk_space("").severity == SEV_OK          # unreadable -> no alarm
+    assert check_disk_space("").severity == SEV_WARN        # unreadable -> unknown, not a green tick
 
 
 def test_service_check():
@@ -32,7 +32,7 @@ def test_cpu_temp_levels():
     assert check_cpu_temp("temp=48.3'C").severity == SEV_OK
     assert check_cpu_temp("temp=78.0'C").severity == SEV_WARN
     assert check_cpu_temp("temp=85.1'C").severity == SEV_CRIT
-    assert check_cpu_temp("").severity == SEV_OK
+    assert check_cpu_temp("").severity == SEV_WARN          # unreadable -> unknown, not "cool"
 
 
 def test_throttled_bits():
@@ -40,7 +40,9 @@ def test_throttled_bits():
     assert check_throttled("throttled=0x50000").severity == SEV_WARN   # occurred
     assert check_throttled("throttled=0x1").severity == SEV_CRIT       # under-volt now
     assert check_throttled("throttled=0x4").severity == SEV_CRIT       # throttled now
-    assert check_throttled("").severity == SEV_OK
+    # THE browning-out case: can't read the throttle register -> unknown, WARN,
+    # never a green ":) healthy" on a medic that may be under-volting right now.
+    assert check_throttled("").severity == SEV_WARN
 
 
 def test_wifi_never_critical():
@@ -50,6 +52,9 @@ def test_wifi_never_critical():
     # picks the in-use AP (starts with *), ignores other scanned networks
     assert check_wifi(":90:OtherNet\n*:80:HomeNet").severity == SEV_OK
     assert check_wifi("").severity == SEV_OK                 # not connected -> no alarm
+    # connected AP but the signal % won't parse -> unknowable, WARN (not a
+    # green tick); being offline stays OK, this is a different branch.
+    assert check_wifi("*:notanumber:HomeNet").severity == SEV_WARN
     assert "HomeNet" in check_wifi("*:80:HomeNet").detail    # names the AP
 
 

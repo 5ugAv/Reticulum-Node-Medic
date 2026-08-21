@@ -189,3 +189,12 @@ def test_fix_swap_disables_swap():
     issue = next(i for i in check.run() if i.check_name == "swap_on_sd")
     fix = check.fix(issue)
     assert fix.success is True
+
+
+def test_disk_space_unverified_when_df_unreadable():
+    # df won't parse -> unverified (info), NOT a silent "disk is fine" pass. A
+    # struggling node with an unreadable/full/read-only SD must not show green.
+    conn = ins(healthy_conn(), ("--output=pcent", 1, "", "df: cannot read"))
+    issues = run(conn)
+    assert "disk_space" in names(issues)
+    assert sev(issues, "disk_space") == "info"

@@ -207,7 +207,10 @@ def check_disk_space(df_output: str, warn_pct: int = 85, crit_pct: int = 95) -> 
         if m:
             pct = int(m.group(1))
     if pct is None:
-        return Finding("disk", SEV_OK, "Disk usage unavailable.")
+        # "Couldn't read it" is NOT "plenty of space". A medic whose df won't
+        # parse must not show a green disk tick — same stance as
+        # check_usb_present: an unknowable reading is a WARN, not an OK.
+        return Finding("disk", SEV_WARN, "Could not read disk usage — unknown.")
     if pct >= crit_pct:
         return Finding("disk", SEV_CRIT,
                        f"Storage almost full ({pct}%) — writes may fail or corrupt the "
@@ -274,7 +277,11 @@ def check_cpu_temp(temp_output: str, warn_c: float = 75.0, crit_c: float = 82.0)
     throttles around 80-85C; sustained heat drops performance and ages the board."""
     m = re.search(r"temp=([\d.]+)", temp_output or "")
     if not m:
-        return Finding("cpu_temp", SEV_OK, "CPU temperature unavailable.")
+        # A thermometer we can't read is not a cool CPU. Like check_usb_present,
+        # an unknowable reading is a WARN — never a green ":) healthy" on a medic
+        # that may be overheating while browning out.
+        return Finding("cpu_temp", SEV_WARN,
+                       "Could not read CPU temperature — unknown.")
     t = float(m.group(1))
     if t >= crit_c:
         return Finding("cpu_temp", SEV_CRIT,
@@ -293,7 +300,12 @@ def check_throttled(throttled_output: str) -> Finding:
     important for a battery/UPS-powered medic."""
     m = re.search(r"0x([0-9a-fA-F]+)", throttled_output or "")
     if not m:
-        return Finding("power", SEV_OK, "Power/throttle status unavailable.")
+        # THE browning-out case this whole audit is about: the medic cannot read
+        # its own throttle register. That is precisely when a green power tick is
+        # most dangerous, so — like check_usb_present — report the unknowable as
+        # a WARN, not an OK.
+        return Finding("power", SEV_WARN,
+                       "Could not read power/throttle status — unknown.")
     bits = int(m.group(1), 16)
     if bits & 0x1 or bits & 0x4:                 # under-voltage now / throttled now
         why = "under-voltage" if bits & 0x1 else "throttling"
@@ -320,7 +332,12 @@ def check_wifi(nmcli_output: str, warn_pct: int = 40) -> Finding:
     try:
         pct = int(parts[1])
     except (IndexError, ValueError):
-        return Finding("wifi", SEV_OK, "WiFi signal unavailable.")
+        # We ARE connected but couldn't parse the signal strength — that is
+        # unknowable, not fine. (Being OFFLINE is fine and stays OK above; this
+        # branch is a connected AP with an unreadable reading.) WARN, matching
+        # check_usb_present's "couldn't check is its own answer".
+        return Finding("wifi", SEV_WARN,
+                       "Could not read WiFi signal strength — unknown.")
     ssid = parts[2] if len(parts) > 2 else ""
     label = f" to {ssid}" if ssid else ""
     if pct <= warn_pct:

@@ -389,6 +389,16 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # noise floor comes from rnstatus --json (RNodeInterface.noise_floor);
         # rnodeconf --info does not report it. Fall back to an info regex only
         # for offline/emulated cases.
+        #
+        # NOTE (honesty audit, deliberately NOT "unverified"): a missing noise
+        # floor is NOT the browning-out false-green this audit targets. This
+        # check is only reached with a free port (has_info) — i.e. rnsd is NOT
+        # holding the radio — so noise_floor is architecturally absent here on
+        # every healthy maintenance-mode PROBE. Emitting "unverified" on that
+        # path would flip the whole banner to amber on normal hardware and train
+        # the operator to ignore PROBE. The honest answer when there was no live
+        # interface is "not applicable / read elsewhere", which adds NO Issue.
+        # We only surface an antenna verdict when we actually had a reading.
         iface = self._rnode_interface()
         floor = iface.get("noise_floor") if iface else None
         if floor is None:
