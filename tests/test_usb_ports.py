@@ -36,7 +36,7 @@ def _host(monkeypatch, *, guard=True, model="Raspberry Pi 5 Model B Rev 1.0",
     (device unknown), exactly like the real tool."""
     monkeypatch.setattr(onboard_roster, "guard_is_active", lambda *a, **k: guard)
     monkeypatch.setattr(onboard_roster, "load_roster",
-                        lambda *a, **k: {"rnode_eeff": JONESEY_SERIAL})
+                        lambda *a, **k: {"jonesey_lora": JONESEY_SERIAL})
     monkeypatch.setattr(onboard_roster, "attached_serial_ports",
                         lambda *a, **k: ["/dev/ttyACM0"])
     monkeypatch.setattr(onboard_roster, "serial_for_port",

@@ -121,16 +121,18 @@ def _device_tree_model() -> str:
 
 
 def _jonesey_segment() -> Optional[str]:
-    """Where Jonesey (the roster's rnode-role board) sits right now, or None.
+    """Where Jonesey (the medic's permanent onboard RNode) sits right now.
 
-    The roster records {role_tail: serial}; find the attached port carrying
-    the rnode serial and resolve its segment. No rnode in the roster, Jonesey
-    unplugged, or an unresolvable serial all mean None — and the caller then
-    keeps the map dark."""
+    The roster records {role_key: serial} and the LIVE medic's key is
+    "jonesey_lora" (read off the deployed roster 2026-08-22 — an earlier
+    guess of "rnode_*" matched nothing and kept the map dark on the very
+    machine it was measured for). The anchor keys on the name because this
+    map IS this medic's: no Jonesey entry, Jonesey unplugged, or an
+    unresolvable serial all mean None — and the caller keeps the map dark."""
     try:
         from ui import onboard_roster as roster
         serials = {v for k, v in roster.load_roster().items()
-                   if v and k.split("_")[0] == "rnode"}
+                   if v and k.split("_")[0] == "jonesey"}
         if not serials:
             return None
         for port in roster.attached_serial_ports():
