@@ -17,10 +17,12 @@ def test_zero_plus_v4_is_blocked_by_field_verification():
     assert any("17 dBm" in r for r in v["remedies"])       # lower-TX remedy
 
 
-def test_zero_plus_v3_is_untested_caution():
+def test_zero_plus_v3_is_bench_blocked():
+    """Was caution/untested until the operator's 2026-08 bench mark: same
+    power class as the ruled-out V4 pairing. Bench ink overwrites hedges."""
     v = check("pi_zero_2w", "heltec32_v3")
-    assert v["verdict"] == "caution" and v["src"] == "untested"
-    assert "bench-tested" in v["why"]
+    assert v["verdict"] == "blocked" and v["src"] == "verified"
+    assert "bench" in v["why"]
 
 
 def test_low_power_boards_pass_everywhere_even_the_zero():
@@ -80,10 +82,11 @@ def test_recommendations_prefer_the_pi_the_operator_already_owns():
 
 
 def test_the_operators_actual_pairing_is_flagged():
-    """Zero 2 W + Heltec V3 — thin margin, never bench-tested."""
+    """Zero 2 W + Heltec V3 — bench-blocked since the operator's 2026-08 mark
+    (was caution while it sat untested)."""
     from workflows.power_compat import check
     v = check("pi_zero_2w", "heltec32_v3")
-    assert v["verdict"] == "caution"
+    assert v["verdict"] == "blocked"
     v4 = check("pi_zero_2w", "heltec32_v4")
     assert v4["verdict"] == "blocked"      # measured brownouts on this project
 
@@ -126,7 +129,9 @@ def test_warning_never_recommends_the_pairing_it_is_warning_about():
 
 
 def test_blocked_and_caution_both_produce_full_advice():
-    for board, expect in (("heltec32_v4", "blocked"), ("heltec32_v3", "may brown out")):
+    # V3 moved from caution to bench-blocked (2026-08); the LoRa32 v2.0 now
+    # exercises the caution headline instead.
+    for board, expect in (("heltec32_v4", "blocked"), ("lora32_v20", "may brown out")):
         ls = _lines(board=board)
         assert expect in ls[0]["text"]
         assert any(l["kind"] == "good" for l in ls)

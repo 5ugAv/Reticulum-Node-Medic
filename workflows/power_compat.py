@@ -76,10 +76,14 @@ OVERRIDES: Dict[tuple, dict] = {
         "verdict": "ok", "src": "verified",
         "why": "Pi 3A+ powers the Heltec V4 cleanly (confirmed on hardware "
                "2026-07-18)."},
+    # Was "caution / untested" until the operator bench-tested the class:
+    # marked BLOCKED on the bench (2026-08), same power class as the V4
+    # pairing. Bench ink overwrites the old hedge — see
+    # workflows.pairing_verdicts for the full chart.
     ("pi_zero_2w", "heltec32_v3"): {
-        "verdict": "caution", "src": "untested",
-        "why": "Pi Zero + Heltec V3 is close to the Zero's limit and has not "
-               "been bench-tested yet - verify before deploying."},
+        "verdict": "blocked", "src": "verified",
+        "why": "Blocked on the bench (2026-08): the operator marked Zero 2W + "
+               "Heltec V3 unbuildable - same power class as the V4 pairing."},
 }
 
 
@@ -207,7 +211,7 @@ def short_board_name(board_key: str, fallback: str = "") -> str:
 
 
 def warning_lines(verdict: dict, pi_name: str, board_name: str,
-                  pi_key: str = "") -> List[dict]:
+                  pi_key: str = "", board_key: str = "") -> List[dict]:
     """The power-warning copy, as ordered ``{text, kind}`` lines.
 
     Pure so the WORDS can be tested without a display — the medic's Kivy popup
@@ -218,8 +222,41 @@ def warning_lines(verdict: dict, pi_name: str, board_name: str,
     reliably without a powered USB hub, and then point at combinations that
     need no hub at all — most people don't own one, and a node that needs one
     permanently isn't a simple build.
+
+    With *board_key*, the operator's bench chart (workflows.pairing_verdicts)
+    speaks too: bench ink as a warn line, pencil predictions as a plain body
+    line — the wording itself keeps fact and theory apart. When the chart
+    warns but the arithmetic said "ok" (a coin-flip cell), the chart line IS
+    the message: no "will not run reliably" claim gets made, because nobody
+    has verified one.
     """
+    from workflows.pairing_verdicts import (verdict as chart_verdict,
+                                            WARN_LEVELS)
+    chart = None                       # the chart's provenance line, if any
+    if board_key and pi_key:
+        level, prov = chart_verdict(pi_key, board_key)
+        if level in WARN_LEVELS:
+            # kind "body" on purpose: both screens render body lines, and the
+            # provenance WORDING already carries the weight (bench vs theory).
+            chart = {"kind": "body", "text": prov}
     v = (verdict or {}).get("verdict", "")
+    if v not in ("blocked", "caution"):
+        # Arithmetic is content, so only the chart has something to say. A
+        # coin flip is not a brown-out promise — state the cell and stop.
+        if chart is None:
+            return []
+        lines = [{"kind": "head",
+                  "text": f"{pi_name} + {board_name}: untested pairing."},
+                 chart]
+        recs = recommended_pairings(limit=3, pi_key=pi_key)
+        if recs:
+            lines.append({"kind": "good",
+                          "text": "Pairings predicted to run cleanly:"})
+            lines += [{"kind": "good",
+                       "text": f"  ✓ {r['text']}   "
+                               f"({r['margin_ma']} mA to spare)"}
+                      for r in recs]
+        return lines
     headline = "blocked" if v == "blocked" else "may brown out"
     lines = [
         {"kind": "head",
@@ -228,6 +265,10 @@ def warning_lines(verdict: dict, pi_name: str, board_name: str,
     ]
     if (verdict or {}).get("why"):
         lines.append({"kind": "body", "text": verdict["why"]})
+    # Skip the chart line when the OVERRIDE's why already opens with the same
+    # ruling ("Blocked on the bench (2026-08): …") — one bench sentence, not two.
+    if chart is not None and chart["text"].split(":")[0] not in verdict.get("why", ""):
+        lines.append(chart)
     lines.append({"kind": "warn", "text":
                   f"This pairing will NOT run reliably without a powered USB "
                   f"hub between the Pi and the {board_name}. Note the flash "
