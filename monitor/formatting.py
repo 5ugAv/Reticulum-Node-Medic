@@ -116,6 +116,22 @@ def seen_and_echo(row):
       * the tag is a string and nothing more: it feeds no status colour, and
         the callers keep it muted.
     """
+    # Honesty gate BEFORE any age math: a SEEN line is a freshness CLAIM, and
+    # there are two states where there is no real forward measurement behind
+    # it — both of which reach the 2026-08-21 dead-board-green class:
+    #   * has_seen is explicitly False — a fleet row seeded by set_kin_roster
+    #     that has NEVER been heard. "SEEN never", and no echo dresses it live.
+    #   * seen_impossible — the freshest stamp predates the current clock (a
+    #     backward step), so last_seen_hours clamped a negative age to 0.0,
+    #     which format_age floors to "0.0h" and the theme paints GREEN. The
+    #     age is unknowable, not zero: "SEEN ?" (the clock-step door,
+    #     2026-08-22).
+    # A MISSING has_seen key is a pre-flag caller, NOT a never-heard claim —
+    # fall through to the numeric age (keeps the None-safe "SEEN ?").
+    if row.get("has_seen") is False:
+        return "SEEN never", None
+    if row.get("seen_impossible"):
+        return "SEEN ?", None
     seen_h = row.get("last_seen_hours")
     seen_text = f"SEEN {format_age(seen_h)}"
     echo_h = row.get("last_echo_hours")
@@ -128,3 +144,19 @@ def seen_and_echo(row):
     if tag_age == format_age(seen_h):
         return seen_text, None      # below display resolution: no claim
     return seen_text, f"echo {tag_age}"
+
+
+def seen_is_known(row) -> bool:
+    """Whether the SEEN age is a REAL forward measurement — the colour gate
+    for the SEEN icon. False for a never-heard row (``has_seen`` False) or an
+    impossible reading that predates the clock (``seen_impossible``); those
+    must render grey ("unknown"), NEVER green off an absent/clamped age (the
+    2026-08-21 dead-board-green class, reached again through the clock-step
+    door 2026-08-22). Kept beside seen_and_echo so text and colour agree in
+    one tested place. A missing ``has_seen`` key is a pre-flag caller — treat
+    the age as known, matching seen_and_echo's None-safe fall-through."""
+    if row.get("has_seen") is False:
+        return False
+    if row.get("seen_impossible"):
+        return False
+    return True

@@ -159,3 +159,42 @@ def test_sub_resolution_echo_is_dropped():
 def test_composer_is_none_safe():
     from monitor.formatting import seen_and_echo
     assert seen_and_echo({}) == ("SEEN ?", None)
+
+
+# --- SEEN honesty: never-heard and clock-stepped rows -----------------------
+# Two doors onto the same 2026-08-21 dead-board-green class: a fleet row that
+# has NEVER been heard, and a reading that PREDATES the clock (a backward
+# step). Both must render grey and unmistakably NOT "0.0h" green.
+
+def test_never_heard_renders_never_not_zero():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    # has_seen False overrides the (meaningless) 0.0 the NumericProperty holds
+    row = {"has_seen": False, "last_seen_hours": 0.0}
+    assert seen_and_echo(row) == ("SEEN never", None)
+    assert seen_is_known(row) is False          # -> grey, never green
+
+
+def test_clock_stepped_reading_renders_question_not_zero():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    row = {"seen_impossible": True, "last_seen_hours": 0.0}
+    assert seen_and_echo(row) == ("SEEN ?", None)
+    assert seen_is_known(row) is False          # -> grey, never green
+
+
+def test_fresh_node_still_renders_normally_and_green():
+    from monitor.formatting import seen_and_echo, seen_is_known
+    from ui import theme
+    row = {"last_seen_hours": 3.1, "has_seen": True, "seen_impossible": False}
+    assert seen_and_echo(row) == ("SEEN 3.1h", None)
+    assert seen_is_known(row) is True
+    # seen_is_known True + a fresh age -> the SEEN icon paints green
+    assert theme.last_seen_status(row["last_seen_hours"]) == "ok"
+
+
+def test_missing_has_seen_is_not_a_never_claim():
+    """A pre-flag caller (no has_seen key) keeps the old None-safe behaviour:
+    the numeric age drives, and an absent age is "SEEN ?", not "SEEN never"."""
+    from monitor.formatting import seen_and_echo, seen_is_known
+    assert seen_and_echo({}) == ("SEEN ?", None)
+    assert seen_is_known({}) is True
+    assert seen_and_echo({"last_seen_hours": 3.1}) == ("SEEN 3.1h", None)

@@ -27,6 +27,15 @@ class StatBar(BoxLayout):
     battery_pct = NumericProperty(100)
     signal_dbm = NumericProperty(-80)
     last_seen_hours = NumericProperty(0.0)
+    #: Honesty flags for the SEEN line, valid regardless of the number above —
+    #: a NumericProperty can't carry "never heard" or "predates the clock", so
+    #: the truth rides as booleans (mirroring has_echo/has_direct). ``has_seen``
+    #: False renders "SEEN never" grey; ``seen_impossible`` renders "SEEN ?"
+    #: grey. Neither is EVER green: 0.0h off an absent/clamped age is exactly
+    #: the dead-board-green class (2026-08-21, reached via the clock-step door
+    #: 2026-08-22). Default True/False so a plain fresh node renders normally.
+    has_seen = BooleanProperty(True)
+    seen_impossible = BooleanProperty(False)
     #: Age of the last transport REPLAY of this node's announce, valid only
     #: while ``has_echo`` — an explicit flag, not a -1 sentinel, so "no echo"
     #: and a genuine 0.0h echo can never conflate (the registry clamps ages
@@ -50,7 +59,8 @@ class StatBar(BoxLayout):
             battery_pct=self._rebuild, signal_dbm=self._rebuild,
             last_seen_hours=self._rebuild, last_echo_hours=self._rebuild,
             has_echo=self._rebuild, last_direct_hours=self._rebuild,
-            has_direct=self._rebuild, powered_by=self._rebuild,
+            has_direct=self._rebuild, has_seen=self._rebuild,
+            seen_impossible=self._rebuild, powered_by=self._rebuild,
             show_battery=self._rebuild, show_solar=self._rebuild,
         )
         self._rebuild()
@@ -72,15 +82,23 @@ class StatBar(BoxLayout):
         # DAYS ONCE IT IS DAYS. "SEEN 268h" makes the reader do the division,
         # and the thing they are dividing towards — is this node overdue? — is
         # measured in days (operator, 2026-08-10).
-        from monitor.formatting import seen_and_echo
-        seen_text, echo_tag = seen_and_echo({
+        from monitor.formatting import seen_and_echo, seen_is_known
+        seen_row = {
             "last_seen_hours": self.last_seen_hours,
             "last_echo_hours": self.last_echo_hours if self.has_echo else None,
             "last_direct_hours": (self.last_direct_hours
                                   if self.has_direct else None),
-        })
-        self.add_widget(_StatIcon(
-            seen_text, theme.last_seen_status(self.last_seen_hours)))
+            "has_seen": self.has_seen,
+            "seen_impossible": self.seen_impossible,
+        }
+        seen_text, echo_tag = seen_and_echo(seen_row)
+        # Grey ("unknown"), never green, when there is no real forward age —
+        # a never-heard row or a clock-stepped reading (seen_is_known). The
+        # text ("SEEN never" / "SEEN ?") and this colour agree because both
+        # read the same flags through the one tested composer.
+        seen_status = (theme.last_seen_status(self.last_seen_hours)
+                       if seen_is_known(seen_row) else "unknown")
+        self.add_widget(_StatIcon(seen_text, seen_status))
         # A replay fresher than the node's last DIRECT word gets a MUTED tag
         # after SEEN, and nothing more. It is deliberately weaker-looking than
         # everything else on this strip: an echo is rnsd repeating the node's

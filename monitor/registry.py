@@ -24,6 +24,14 @@ from ui import theme
 
 #: Not heard for longer than this -> red (matches the Monitor spec).
 STALE_ALERT_HOURS = theme.NOT_HEARD_ALERT_HOURS  # 18
+#: A backward clock step this small is benign jitter, not "the reading predates
+#: the clock". Without a deadband ANY raw < 0 (even a 3-second step behind a
+#: node heard 2 seconds ago) would flip a LIVE node to grey "SEEN ?" — a
+#: dishonesty the other way (crying unknown on a healthy node). Only a step
+#: LARGER than this counts as a genuine clock-step worth flagging; inside the
+#: band we clamp to 0.0 and treat the node as fresh.
+SEEN_CLOCK_SKEW_TOLERANCE_S = 120        # two minutes
+_SEEN_SKEW_TOLERANCE_H = SEEN_CLOCK_SKEW_TOLERANCE_S / 3600.0
 #: Not heard for longer than this -> "quiet": drops below the VITALS divider but
 #: is NOT necessarily red yet. A softer, recency-only signal (a ping lifts it back).
 QUIET_AFTER_HOURS = theme.QUIET_AFTER_HOURS  # 12
@@ -422,10 +430,35 @@ class NodeRecord:
             return False
         return version_tuple(fw) < version_tuple(latest)
 
-    def last_seen_hours(self, now: float) -> Optional[float]:
+    def _seen_age_raw(self, now: float) -> Optional[float]:
+        """Hours since the freshest evidence (``last_seen``), or ``None`` when
+        the node has NEVER been heard (set_kin_roster seeds fleet rows before
+        first contact). May be NEGATIVE: a clock that stepped backwards behind
+        the stored stamp makes ``now - last_seen < 0``, and that is not
+        freshness — it means this reading PREDATES the current clock. The ONE
+        place the raw age is computed, so the age accessor (last_seen_hours)
+        and the status derivation (_status_base) can never disagree about
+        whether a node is fresh — the sibling rule the echo/direct ages already
+        hold ("both surfaces must agree by construction"). Reached here through
+        the clock-step door: last_seen_hours did NOT clamp like its siblings,
+        so a backward step floored to "SEEN 0.0h" GREEN — the 2026-08-21
+        dead-board-green class, again (2026-08-22)."""
         if self.last_seen is None:
             return None
         return (now - self.last_seen) / 3600.0
+
+    def last_seen_hours(self, now: float) -> Optional[float]:
+        """Age of the freshest evidence, clamped to ``>= 0`` like
+        last_echo_hours / last_direct_hours — a backward clock step must not
+        turn "heard" into a negative age (format_age floors it to 0.0 and
+        last_seen_status paints that GREEN). ``None`` stays ``None`` (never
+        heard). The impossibility is not lost: to_dashboard carries a
+        ``seen_impossible`` flag off the raw age so the screen renders
+        "SEEN ?" grey rather than a clamped "0.0h" green."""
+        raw = self._seen_age_raw(now)
+        if raw is None:
+            return None
+        return max(0.0, raw)
 
     def last_echo_hours(self, now: float) -> Optional[float]:
         """Age of the last transport REPLAY, or ``None`` when none is on
@@ -487,7 +520,17 @@ class NodeRecord:
         invented numbers — unknown signal/battery stay None and the screen
         hides them; a bare mesh destination renders as a grey Neighbour, not a
         healthy green RTNode."""
+        raw_seen = self._seen_age_raw(now)
         lsh = self.last_seen_hours(now)
+        # Honesty flags for the SEEN line, mirroring the has_echo/has_direct
+        # pattern: a NumericProperty on the StatBar can't carry "never heard"
+        # or "predates the clock", so the truth rides as booleans instead of
+        # being collapsed into a misleading 0.0.
+        has_seen = raw_seen is not None            # False = never heard
+        # Impossible only past the deadband: a sub-two-minute backward jitter is
+        # not "predates the clock", so it stays fresh (see _status_base).
+        seen_impossible = (raw_seen is not None
+                           and raw_seen < -_SEEN_SKEW_TOLERANCE_H)
         sig = self.signal_dbm()
         neighbour = self.provenance == "neighbour"
         status = self.status(now)
@@ -517,6 +560,11 @@ class NodeRecord:
 
             "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
+            # ...but 0.0 is a lie for a never-heard or clock-stepped row, so
+            # these flags carry the truth the number can't (rendered as
+            # "SEEN never" / "SEEN ?" grey, never "0.0h" green).
+            "has_seen": has_seen,
+            "seen_impossible": seen_impossible,
             # The replay age rides along so the screen can show an echo for
             # what it is — muted, informational, and NEVER an input to the
             # status colour above (which was computed before this line and
@@ -570,9 +618,19 @@ class NodeRecord:
         return base
 
     def _status_base(self, now: float) -> str:
-        if self.last_seen is None:
+        raw = self._seen_age_raw(now)
+        if raw is None:
             return "unknown"
-        if (now - self.last_seen) / 3600.0 > STALE_ALERT_HOURS:
+        if raw < -_SEEN_SKEW_TOLERANCE_H:
+            # The freshest stamp predates the current clock by MORE than benign
+            # jitter (a genuine backward step): not freshness, a clock warning.
+            # NEVER green off such an age — last_seen_hours clamps the SAME raw
+            # value and to_dashboard flags it on the SAME threshold, so the SEEN
+            # icon and this hexagon agree by construction (the sibling rule,
+            # reached through the clock-step door 2026-08-22). A sub-tolerance
+            # step falls through and is treated as fresh.
+            return "unknown"
+        if raw > STALE_ALERT_HOURS:
             return "alert"                  # not heard -> red, regardless
         # Prefer the richer HTTP /status (has an explicit faults array) when a
         # node is LAN-reachable; then the mesh beacon; then bare mesh
@@ -990,14 +1048,23 @@ class NodeRegistry:
             rec.latest_http = status
             rec.last_seen = now
             rec.last_direct = now
-            if status.node_name and not rec.name:
-                rec.name = status.node_name
-            if status.node_name and not rec.device_id:
+            # A hostile /status must NOT set an arbitrary-length/arbitrary-
+            # content node name: the ANNOUNCE path already runs names through
+            # _printable_name -> _valid_display_name (strict UTF-8, length
+            # 2-32), so the HTTP path must judge them by the same gate before
+            # adoption. Type-check FIRST — a non-string node_name is refused,
+            # never allowed to raise on .strip()/.lower() (2026-08-22).
+            name = status.node_name
+            clean = (name.strip() if isinstance(name, str)
+                     and _valid_display_name(name) else None)
+            if clean and not rec.name:
+                rec.name = clean
+            if clean and not rec.device_id:
                 # A REAL JOIN, NOT A COINCIDENCE OF SPELLING (build-lens,
                 # 2026-08-13): when /status names a machine the roster knows,
                 # the discovery row takes that machine's device id — the same
                 # key birth wrote — instead of relying on the name collapse.
-                low = status.node_name.strip().lower()
+                low = clean.lower()
                 for entry in self.kin_roster.values():
                     if ((entry.get("name") or "").strip().lower() == low
                             and entry.get("device")):
