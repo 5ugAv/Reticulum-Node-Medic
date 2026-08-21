@@ -480,7 +480,13 @@ class RNodeFlashWorkflow:
         # needs a way back to THIS board rather than to whatever now holds the
         # number it used to have.
         self._usb_serial = by_id_serial(usb_id_for_port(self.connection, port))
-        return StepResult("detect_port", True, f"Board on {port}.")
+        # "Board on Port 3 (/dev/ttyACM1)." where the engraved-hole map knows
+        # the hole; the raw path (unchanged behaviour) everywhere else — and
+        # a port an emulated/remote connection reported is never labelled.
+        from ui.usb_ports import connection_is_local, describe_port
+        return StepResult(
+            "detect_port", True,
+            f"Board on {describe_port(port, local=connection_is_local(self.connection))}.")
 
     def _ensure_single_board(self) -> StepResult:
         # Flashing erases/re-provisions the EEPROM; never guess between boards.

@@ -35,11 +35,33 @@ def pytest_configure(config):
         "markers",
         "onboard_guard: test drives the onboard-board guard itself — do not "
         "neutralise the host lookups for it")
+    config.addinivalue_line(
+        "markers",
+        "usb_ports: test drives the engraved-hole port translation itself — "
+        "do not stand its medic-identity check down for it")
 
 
 @pytest.fixture(autouse=True)
 def _hermetic_onboard_guard(request, monkeypatch, tmp_path):
     """Stand the medic's onboard-board gate down for the duration of a test."""
+    # ui.usb_ports leaks the host in the same way: its engraved-hole labels
+    # consult udevadm, /proc/device-tree/model and the roster, so a message
+    # like "Board on /dev/ttyACM1." on the Mac reads "Board on Port 3
+    # (/dev/ttyACM1)." on the medic — different text, same 2026-08-05 class of
+    # failure. The cached per-process verdict is reset for EVERY test (marked
+    # or not — a verdict one test measured must never leak into the next);
+    # then the identity check is pinned False so no label ever fires, except
+    # for the tests that drive the translation itself (``usb_ports`` marker),
+    # which mock every host lookup on their own.
+    try:
+        import ui.usb_ports as _usb_ports
+    except Exception:
+        _usb_ports = None
+    if _usb_ports is not None:
+        _usb_ports._reset_for_tests()
+        if not request.node.get_closest_marker("usb_ports"):
+            monkeypatch.setattr(_usb_ports, "_medic_verified",
+                                lambda: False, raising=False)
     if request.node.get_closest_marker("onboard_guard"):
         return
     try:
