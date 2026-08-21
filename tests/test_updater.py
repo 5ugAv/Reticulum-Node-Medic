@@ -181,7 +181,6 @@ def test_check_tool_update_up_to_date():
 # key and value is treated as hostile. Filenames are charset-validated; every
 # interpolated value is shell-quoted.
 
-import shlex as _shlex
 
 
 def _manifest_conn(manifest_json):
@@ -216,25 +215,55 @@ def test_manifest_entry_without_a_hash_is_not_trusted():
     assert res.failed                              # unverifiable -> not flashed
 
 
-def test_injecting_version_is_quoted_everywhere_it_appears():
-    version = "1.86; touch /tmp/pwned"
-    manifest = {"good.zip": {"hash": "aaa", "version": version}}
-    conn = _manifest_conn(json.dumps(manifest))
-    sync_firmware(conn)
-    q = _shlex.quote(version)
-    for cmd in conn.history:
-        if "touch /tmp/pwned" in cmd:              # any command carrying it...
-            assert q in cmd, f"unquoted version reached a shell: {cmd}"
+def test_injecting_version_is_rejected_not_merely_quoted():
+    # A version carrying a shell metacharacter is now REFUSED by the path-segment
+    # validator (";" isn't in the charset) — stronger than quoting, and it means
+    # the payload never reaches a command at all.
+    for version in ("1.86; touch /tmp/pwned", "1.86;reboot", "a$(reboot)", "a`id`"):
+        manifest = {"good.zip": {"hash": "aaa", "version": version}}
+        conn = _manifest_conn(json.dumps(manifest))
+        res = sync_firmware(conn)
+        assert res.failed and res.changed == [], version
+        # refused before any path/command is built from the version
+        assert not any(c.startswith("mkdir -p") for c in conn.history), version
+        assert not any("curl -fsSL -m 120 -o" in c for c in conn.history), version
 
 
-def test_injecting_download_url_is_quoted():
-    # fname is validated, but it also flows into the download URL; the whole URL
-    # is quoted, so even an odd version embedded in it cannot break out.
-    version = "1.86;reboot"
-    manifest = {"good.zip": {"hash": "aaa", "version": version}}
-    conn = _manifest_conn(json.dumps(manifest))
+# ---- CRITICAL #1 regression: a traversing manifest version is an RCE ---------
+# shlex.quote stops shell metacharacters but NOT "../": a version like
+# "../../../.ssh" (the cache SUBDIRECTORY) would redirect the download tree to
+# ~/.ssh/authorized_keys, and a MITM who also chose the sha256 passes the hash
+# gate. So the version must clear the traversal validator BEFORE a path is built.
+
+
+def test_traversing_manifest_version_is_refused_before_any_path_is_built():
+    for bad in ("../../../.ssh", "a/b", "..", "../evil", "1.86\n", "a\rb"):
+        # the confirmed exploit shape: attacker-named file + traversing version
+        manifest = {"authorized_keys": {"hash": "aaa", "version": bad}}
+        conn = _manifest_conn(json.dumps(manifest))
+        res = sync_firmware(conn)
+        assert res.failed and res.changed == [] and res.up_to_date == [], bad
+        # NOTHING that builds or writes a path may run for an unsafe version
+        assert not any(cmd.startswith("mkdir -p") for cmd in conn.history), bad
+        assert not any("curl -fsSL -m 120 -o" in cmd for cmd in conn.history), bad
+        assert not any("authorized_keys" in cmd for cmd in conn.history), bad
+
+
+def test_a_normal_version_still_syncs_byte_identically():
+    # the traversal guard must not perturb a legitimate version: exact commands.
+    conn = _manifest_conn(json.dumps({"good.zip": {"hash": "aaa", "version": "1.86"}}))
     sync_firmware(conn)
-    dl = [c for c in conn.history if c.startswith("curl -fsSL -m 120 -o")]
-    assert dl, "a download should have been attempted"
-    for cmd in dl:
-        assert ";reboot" not in cmd or _shlex.quote(version) in cmd
+    assert "mkdir -p ~/.config/rnodeconf/update/1.86" in conn.history
+    assert any(c.startswith("curl -fsSL -m 120 -o ~/.config/rnodeconf/update/1.86/good.zip")
+               for c in conn.history)
+
+
+def test_path_segment_validators_reject_trailing_newline():
+    # ^...$ + match would accept "x\n" (``$`` matches before a trailing newline);
+    # fullmatch + explicit newline reject makes the guard real, not incidental.
+    from workflows.updater import _safe_path_segment
+    from workflows.phone_apps import _safe_apk_name
+    assert not _safe_path_segment("1.86\n") and not _safe_path_segment("a/b")
+    assert not _safe_path_segment("..") and not _safe_path_segment("../x")
+    assert _safe_path_segment("1.86")
+    assert not _safe_apk_name("ok.apk\n") and _safe_apk_name("ok.apk")

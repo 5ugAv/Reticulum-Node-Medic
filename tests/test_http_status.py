@@ -221,3 +221,22 @@ def test_oversize_body_is_capped_by_the_default_getter(monkeypatch):
     monkeypatch.setattr(hs, "_NO_PROXY_OPENER", _Opener())
     code, body = hs._default_get("http://h/status", 1.0)
     assert code == 200 and len(body) <= hs.MAX_STATUS_BYTES
+
+
+# ---- non-finite floats: json.loads accepts Infinity/NaN, int() on them raises
+
+
+def test_infinity_and_nan_fields_never_raise():
+    for v in (float("inf"), float("-inf"), float("nan")):
+        assert parse_status(dict(HEALTHY, uptime_ms=v)).uptime_s == 0
+    for v in (float("inf"), float("nan")):
+        assert parse_status(dict(HEALTHY, wifi_rssi=v)).wifi_rssi_dbm is None
+
+
+def test_json_body_with_Infinity_and_NaN_is_survivable():
+    # Python's json.loads decodes these tokens by default — a hostile node can
+    # send them and the sweep must not crash.
+    body = '{"uptime_ms": Infinity, "wifi_rssi": NaN, "faults": []}'
+    ns = poll_status("h", get=getter(200, body))     # must not raise
+    assert ns.reachable is True
+    assert ns.uptime_s == 0 and ns.wifi_rssi_dbm is None

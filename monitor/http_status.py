@@ -22,6 +22,7 @@ Real capture (healthy node), for reference:
 from __future__ import annotations
 
 import json
+import math
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
@@ -59,11 +60,18 @@ def _safe_int(value, default: int = 0) -> int:
 
     The body is JSON off the LAN, so ``uptime_ms`` may arrive as a string, a
     list, or null. int() on any of those throws — and this feeds a sweep that
-    must survive one bad node — so coerce defensively and fall back instead."""
+    must survive one bad node — so coerce defensively and fall back instead.
+
+    Non-finite floats are the sharp edge: Python's json.loads accepts ``Infinity``
+    and ``NaN`` by default, and ``int(float('inf'))`` raises OverflowError while
+    ``int(float('nan'))`` raises ValueError. A "never raises" contract has to
+    cover them explicitly, so reject anything that isn't finite."""
     if isinstance(value, bool):
         return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) else default
     if isinstance(value, str):
         try:
             return int(value.strip())
@@ -167,7 +175,8 @@ def parse_status(d: dict) -> NodeStatus:
         firmware_version=_safe_str(d.get("fw_version")),
         wifi_connected=bool(d.get("wifi_connected", False)),
         wifi_rssi_dbm=int(rssi) if isinstance(rssi, (int, float))
-                      and not isinstance(rssi, bool) else None,
+                      and not isinstance(rssi, bool) and math.isfinite(rssi)
+                      else None,   # isfinite: json accepts Infinity/NaN; int() on them raises
         wifi_ip=_safe_str(d.get("wifi_ip")),
         lora_online=bool(d.get("lora_online", False)),
         local_tcp_server_up=bool(d.get("local_tcp_server_up", False)),

@@ -30,16 +30,19 @@ from transport.connection import Connection
 from workflows.updater import SyncResult, has_connectivity
 
 #: An APK filename comes from the GitHub release JSON — a remote value that
-#: becomes both a path and a shell argument. Allow only a bare filename (no path
-#: separators, no "..") so a crafted asset name cannot escape the cache dir or
-#: inject a command. Everything interpolated into a command is ALSO shell-quoted
-#: below; this is the belt to that suspenders.
-_SAFE_APK_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+#: becomes both a path and a shell argument. Allow only a bare filename so a
+#: crafted asset name can neither inject a command (stopped by quoting) nor
+#: traverse out of the cache dir (NOT stopped by quoting — "../x" has no shell
+#: metacharacter). Reject "/", "..", and newlines outright, and require the
+#: charset with fullmatch (``match`` + ``$`` would accept a trailing newline).
+_SAFE_APK_NAME = re.compile(r"[A-Za-z0-9._-]+")
 
 
 def _safe_apk_name(name) -> bool:
     return (isinstance(name, str) and bool(name)
-            and ".." not in name and _SAFE_APK_NAME.match(name) is not None)
+            and "/" not in name and ".." not in name
+            and "\n" not in name and "\r" not in name
+            and _SAFE_APK_NAME.fullmatch(name) is not None)
 
 
 def _file_sha256(connection: Connection, path: str) -> Optional[str]:
@@ -355,10 +358,36 @@ def sync_all(connection: Connection, cache_dir: str = APPS_CACHE_DIR) -> dict:
     return {k: sync_app(k, connection, cache_dir) for k in APPS}
 
 
+def _cached_integrity(connection: Connection, path: str) -> str:
+    """Read the ``.meta`` sidecar's integrity flag for a carried APK.
+
+    Fail SAFE: a missing/unreadable/old sidecar, or one without the field, is
+    reported ``"unverified"``, never ``"verified"``. A file we cannot prove was
+    hash-checked is not one to present as trusted.
+
+    TODO(security, needs decision): the serve/UI layer MUST honor this — an
+    ``"unverified"`` APK may be listed as carried but must be surfaced as
+    unverified and NOT offered as a trusted install. Fully closing this needs the
+    deferred APK signing-certificate pinning (which cert to trust); until then
+    the flag is the seam the serve layer checks."""
+    code, out, _ = connection.run(f"cat {path}.meta 2>/dev/null")
+    if code != 0 or not out.strip():
+        return "unverified"
+    try:
+        meta = json.loads(out)
+    except ValueError:
+        return "unverified"
+    return "verified" if isinstance(meta, dict) and meta.get("integrity") == "verified" \
+        else "unverified"
+
+
 def cached_app(app_key: str, connection: Connection,
                cache_dir: str = APPS_CACHE_DIR) -> Optional[dict]:
     """The carried APK for one app, or None. ``{key, name, file, path, version,
-    license, blurb}`` — the Comms screen's per-app row."""
+    license, blurb, integrity}`` — the Comms screen's per-app row. ``integrity``
+    is ``"verified"`` only when the ``.meta`` sidecar says the bytes were
+    sha256-checked at download; the serve layer must not offer an
+    ``"unverified"`` APK as trusted."""
     app = APPS.get(app_key)
     if app is None:
         return None
@@ -382,7 +411,8 @@ def cached_app(app_key: str, connection: Connection,
             path = tagged[-1]
     return {"key": app_key, "name": app["name"], "file": path.rsplit("/", 1)[-1],
             "path": path, "version": version,
-            "license": app["license"], "blurb": app["blurb"]}
+            "license": app["license"], "blurb": app["blurb"],
+            "integrity": _cached_integrity(connection, path)}
 
 
 def cached_apps(connection: Connection,
@@ -395,5 +425,5 @@ def cached_apps(connection: Connection,
         out.append(c and {**c, "carried": True} or {
             "key": key, "name": app["name"], "file": None, "path": None,
             "version": None, "license": app["license"], "blurb": app["blurb"],
-            "carried": False})
+            "integrity": None, "carried": False})
     return out

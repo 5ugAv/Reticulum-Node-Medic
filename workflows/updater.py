@@ -23,18 +23,29 @@ from typing import List, Optional
 
 from transport.connection import Connection
 
-# A firmware filename is a KEY in release.json, which is fetched over plain HTTPS
-# from a public release and is NOT authenticated (see the manifest-signing TODO
-# in _fetch_manifest). Every key must therefore be treated as hostile: it becomes
-# both a filesystem path and — via the download URL — a shell argument that
-# Connection.run() feeds to a shell. Allow a bare filename only, and never "..".
-_SAFE_FW_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+# release.json is fetched over plain HTTPS from a public release and is NOT
+# authenticated (see the manifest-signing TODO in _fetch_manifest). Every value
+# taken from it — the filename KEYS *and* the version — is hostile, and each one
+# becomes BOTH a filesystem path segment and (via the download URL) a shell
+# argument. Two different attacks have to be stopped, and they need different
+# defences:
+#   * shell injection — stopped by shlex.quote at the interpolation sites; but
+#   * path traversal   — is NOT: "../../../.ssh" contains no shell metacharacter,
+#     so shlex.quote returns it verbatim and a hostile ``version`` (the cache
+#     SUBDIRECTORY) or filename would escape the cache dir and let a MITM — who
+#     also chose the sha256 — write e.g. ~/.ssh/authorized_keys. Confirmed RCE.
+# So every remote value that becomes a path segment must clear THIS validator
+# first: exact charset (fullmatch, since ``$`` would accept a trailing newline),
+# and an explicit reject of "/", "..", and newlines. A bare filename, nothing more.
+_SAFE_SEGMENT = re.compile(r"[A-Za-z0-9._-]+")
 
 
-def _safe_fw_name(name) -> bool:
-    """True only for a plain firmware filename safe to put in a path/command."""
-    return (isinstance(name, str) and bool(name)
-            and ".." not in name and _SAFE_FW_NAME.match(name) is not None)
+def _safe_path_segment(value) -> bool:
+    """True only for a value safe to use as ONE path segment / bare filename."""
+    return (isinstance(value, str) and bool(value)
+            and "/" not in value and ".." not in value
+            and "\n" not in value and "\r" not in value
+            and _SAFE_SEGMENT.fullmatch(value) is not None)
 
 #: Official RNode firmware release manifest + download base (markqvist).
 FIRMWARE_VERSION_URL = (
@@ -134,17 +145,27 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             online=True,
             message="Online, but the firmware manifest is malformed — keeping "
                     "the carried cache.")
-    # The version is also a remote manifest value that becomes a path component
-    # and a shell argument. Coerce to str (a JSON number would break shlex.quote)
-    # and quote it everywhere it is interpolated below. The RNODE_UPDATE_DIR
-    # prefix stays UNQUOTED on purpose so its leading ``~`` still expands.
+    # The version is a remote manifest value that becomes the cache SUBDIRECTORY
+    # (dest below), so it must clear the traversal-and-injection validator BEFORE
+    # any path is built from it. shlex.quote alone is NOT enough here: a version
+    # like "../../../.ssh" has no shell metacharacter, so it would sail through
+    # quoting and redirect the whole download tree outside the cache. Refuse the
+    # entire sync rather than build a single path from an unsafe version.
     version = str(version)
+    if not _safe_path_segment(version):
+        return SyncResult(
+            online=True,
+            failed=[f"version {version[:64]!r} (unsafe — possible path traversal)"],
+            message="Online, but the firmware manifest's version is not a safe "
+                    "path component — refusing to sync.")
+    # Coerce done; quote everywhere it is still interpolated (defence in depth).
+    # RNODE_UPDATE_DIR stays UNQUOTED on purpose so its leading ``~`` expands.
     dest = f"{RNODE_UPDATE_DIR}/{_shq(version)}"
     connection.run(f"mkdir -p {dest}")
 
     res = SyncResult(online=True, version=version)
     for fname, info in sorted(manifest.items()):
-        if not _safe_fw_name(fname):
+        if not _safe_path_segment(fname):
             # A crafted key ("../../etc/x", "a;reboot", spaces) never reaches a
             # path or a shell — skip it, report it, keep syncing the honest rest.
             res.failed.append(f"{str(fname)[:64]} (unsafe firmware name — skipped)")
