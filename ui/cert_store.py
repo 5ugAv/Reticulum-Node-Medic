@@ -113,12 +113,25 @@ def usb_serial_key(usb_serial: str) -> str:
     A rebirth is usually a REPAIR, not a replacement (operator, 2026-08-05): the
     node keeps its name and must still be kin afterwards. That only works if the
     board's identity is stable across the reflash — which is this function.
+
+    But a serial only IDENTIFIES when it is unique. A USB-UART bridge board ships
+    the factory default "0001" (the Heltec V3's CP2102, and any board off that
+    line), so keying two different-model boards on "0001" would call them ONE and
+    hand back the wrong board's certificate. When the serial is a placeholder we
+    fall back to the full by-id name — non-unique, but at least it tells two
+    different models apart. (Same-model boards that BOTH carry "0001" still
+    collide here, as they did before this reader could read a bridge serial at
+    all — identical full names; this only closes the cross-model case the shared
+    splitter newly exposed by reading "0001" off boards it used to read blank.)
     """
     if not usb_serial:
         return ""
     try:
-        from workflows.rnode_flash import by_id_serial
-        return (by_id_serial(usb_serial) or usb_serial).lower()
+        from provisioning.by_id import by_id_serial, is_uniquely_identified
+        if is_uniquely_identified(usb_serial):
+            return by_id_serial(usb_serial).lower()
+        # No unique serial: key on the whole name, never a shared default.
+        return usb_serial.lower()
     except Exception:                                             # noqa: BLE001
         return usb_serial.lower()
 
