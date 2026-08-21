@@ -450,7 +450,12 @@ class HeltecV4RGBWorkflow:
         # net (2026-08-12).
         from workflows.rnode_flash import by_id_serial, usb_id_for_port
         self._usb_serial = by_id_serial(usb_id_for_port(self.connection, port))
-        return StepResult("detect_port", True, f"Board on {port}.")
+        # Engraved-hole translation, real local connections only (an emulated
+        # run's pinned port isn't in any hole).
+        from ui.usb_ports import connection_is_local, describe_port
+        return StepResult(
+            "detect_port", True,
+            f"Board on {describe_port(port, local=connection_is_local(self.connection))}.")
 
     def _guard(self) -> "str | None":
         """HARD GATE for this workflow's write boundaries — a FULL CHIP erase

@@ -1170,7 +1170,7 @@ class BirthScreen(BoxLayout):
         fw_short = FIRMWARE_LABEL.get(fw, fw).split("  ")[0]
         from ui.usb_ports import describe_port
         return (f"Detected {d.get('platform', d.get('chip'))} on "
-                f"{describe_port(d.get('port'))}"
+                f"{describe_port(d.get('port')) or 'USB'}"
                 f"  -  suggests {fw_short}")
 
     def _choose_firmware(self):
