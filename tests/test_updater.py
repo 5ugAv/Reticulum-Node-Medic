@@ -174,3 +174,67 @@ def test_check_tool_update_up_to_date():
     c.rule("git -C", 0, "")
     res = check_tool_update(c)
     assert res["update_available"] is False
+
+
+# ---- a hostile manifest cannot inject a command or escape the cache ---------
+# release.json is fetched over plain HTTPS and is NOT authenticated, so every
+# key and value is treated as hostile. Filenames are charset-validated; every
+# interpolated value is shell-quoted.
+
+import shlex as _shlex
+
+
+def _manifest_conn(manifest_json):
+    """Online node that serves *manifest_json* and stubs the download/hash."""
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.rule("curl -fsI", 0, "HTTP/2 200")
+    c.rule(FIRMWARE_VERSION_URL, 0, manifest_json)
+    c.rule("sha256sum", 1, "")                     # nothing cached / can't verify
+    c.rule("curl -fsSL -m 120 -o", 0, "")
+    return c
+
+
+def test_unsafe_firmware_filename_is_skipped_never_run():
+    for bad in ("../../etc/passwd", "a;reboot.zip", "a$(reboot).zip",
+                "a`id`.zip", "a b.zip", "..evil.zip"):
+        manifest = {bad: {"hash": "aaa", "version": "1.86"}}
+        conn = _manifest_conn(json.dumps(manifest))
+        res = sync_firmware(conn)
+        assert res.failed, f"{bad!r} should be reported failed"
+        # the crafted name never became a download or a hashing command
+        assert not any(bad in cmd and "curl -fsSL -m 120" in cmd
+                       for cmd in conn.history)
+        assert not any(bad in cmd and cmd.startswith("sha256sum")
+                       for cmd in conn.history)
+
+
+def test_manifest_entry_without_a_hash_is_not_trusted():
+    manifest = {"good.zip": {"version": "1.86"}}   # no "hash"
+    conn = _manifest_conn(json.dumps(manifest))
+    res = sync_firmware(conn)
+    assert res.changed == [] and res.up_to_date == []
+    assert res.failed                              # unverifiable -> not flashed
+
+
+def test_injecting_version_is_quoted_everywhere_it_appears():
+    version = "1.86; touch /tmp/pwned"
+    manifest = {"good.zip": {"hash": "aaa", "version": version}}
+    conn = _manifest_conn(json.dumps(manifest))
+    sync_firmware(conn)
+    q = _shlex.quote(version)
+    for cmd in conn.history:
+        if "touch /tmp/pwned" in cmd:              # any command carrying it...
+            assert q in cmd, f"unquoted version reached a shell: {cmd}"
+
+
+def test_injecting_download_url_is_quoted():
+    # fname is validated, but it also flows into the download URL; the whole URL
+    # is quoted, so even an odd version embedded in it cannot break out.
+    version = "1.86;reboot"
+    manifest = {"good.zip": {"hash": "aaa", "version": version}}
+    conn = _manifest_conn(json.dumps(manifest))
+    sync_firmware(conn)
+    dl = [c for c in conn.history if c.startswith("curl -fsSL -m 120 -o")]
+    assert dl, "a download should have been attempted"
+    for cmd in dl:
+        assert ";reboot" not in cmd or _shlex.quote(version) in cmd

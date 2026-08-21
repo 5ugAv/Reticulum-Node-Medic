@@ -149,3 +149,75 @@ def test_unreachable_node_maps_to_alert():
     node = to_monitor_node(NodeStatus(reachable=False, status="unreachable"))
     assert node["status"] == "alert"
     assert node["last_seen_hours"] > 24
+
+
+# ---- hostile /status is survivable: one bad node never aborts the sweep -----
+# Everything below is untrusted JSON off the LAN. parse_status feeds a sweep of
+# MANY nodes, so a single malformed body must become a clean result, never an
+# exception that blinds the medic to every other node.
+
+
+def test_string_uptime_ms_does_not_raise():
+    ns = parse_status(dict(HEALTHY, uptime_ms="not-a-number"))
+    assert ns.uptime_s == 0                       # safe fallback, no crash
+
+
+def test_list_uptime_ms_does_not_raise():
+    ns = parse_status(dict(HEALTHY, uptime_ms=[1, 2, 3]))
+    assert ns.uptime_s == 0
+
+
+def test_non_list_faults_is_treated_as_no_faults():
+    ns = parse_status(dict(HEALTHY, faults="boom"))
+    assert ns.faults == []
+    assert ns.status != "alert"                   # a string must not fake an alert
+
+
+def test_faults_are_bounded_in_count_and_length():
+    from monitor.http_status import MAX_FAULTS, MAX_FAULT_LEN
+    ns = parse_status(dict(HEALTHY, faults=["x" * 100_000] * 5_000))
+    assert len(ns.faults) <= MAX_FAULTS
+    assert all(len(f) <= MAX_FAULT_LEN for f in ns.faults)
+
+
+def test_faults_of_wrong_element_type_are_dropped():
+    ns = parse_status(dict(HEALTHY, faults=[{"a": 1}, 5, None, "real"]))
+    assert ns.faults == ["real"]
+
+
+def test_non_string_text_fields_coerce_to_empty():
+    ns = parse_status(dict(HEALTHY, node_name={"x": 1}, board=["a"], reset_reason=7))
+    assert ns.node_name == "" and ns.board == "" and ns.reset_reason == ""
+
+
+def test_poll_status_never_raises_on_a_hostile_body():
+    hostile = json.dumps({"uptime_ms": [1, 2, 3], "faults": {"nope": 1},
+                          "node_name": {"x": 1}, "wifi_rssi": "loud"})
+    ns = poll_status("h", get=getter(200, hostile))   # must not raise
+    assert ns.reachable is True and ns.uptime_s == 0 and ns.faults == []
+    assert ns.wifi_rssi_dbm is None
+
+
+def test_oversize_body_is_capped_by_the_default_getter(monkeypatch):
+    import monitor.http_status as hs
+
+    class _Resp:
+        status = 200
+        _data = b"x" * (hs.MAX_STATUS_BYTES * 4)
+
+        def read(self, n=-1):
+            return self._data[:n] if n and n >= 0 else self._data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class _Opener:
+        def open(self, url, timeout):
+            return _Resp()
+
+    monkeypatch.setattr(hs, "_NO_PROXY_OPENER", _Opener())
+    code, body = hs._default_get("http://h/status", 1.0)
+    assert code == 200 and len(body) <= hs.MAX_STATUS_BYTES

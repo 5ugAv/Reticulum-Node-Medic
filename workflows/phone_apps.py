@@ -22,10 +22,33 @@ Wi-Fi-serve + QR layer that pushes an APK to a phone reads ``cached_apps``.
 from __future__ import annotations
 
 import json
+import re
+import shlex
 from typing import List, Optional
 
 from transport.connection import Connection
 from workflows.updater import SyncResult, has_connectivity
+
+#: An APK filename comes from the GitHub release JSON — a remote value that
+#: becomes both a path and a shell argument. Allow only a bare filename (no path
+#: separators, no "..") so a crafted asset name cannot escape the cache dir or
+#: inject a command. Everything interpolated into a command is ALSO shell-quoted
+#: below; this is the belt to that suspenders.
+_SAFE_APK_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _safe_apk_name(name) -> bool:
+    return (isinstance(name, str) and bool(name)
+            and ".." not in name and _SAFE_APK_NAME.match(name) is not None)
+
+
+def _file_sha256(connection: Connection, path: str) -> Optional[str]:
+    """Lower-case sha256 of a file on the node, or None if it can't be read."""
+    code, out, _ = connection.run(f"sha256sum {path}")
+    if code != 0:
+        return None
+    parts = out.split()
+    return parts[0].lower() if parts else None
 
 #: Cache dir (served to phones later). Under assets/ so it's gitignored like firmware.
 APPS_CACHE_DIR = "~/reticulum-tool/assets/apps"
@@ -122,8 +145,25 @@ def _pick_apk(assets: list) -> Optional[dict]:
     return max(apks, key=lambda a: a.get("size") or 0)
 
 
+def _asset_sha256(apk: dict) -> Optional[str]:
+    """The published sha256 of an asset, from GitHub's ``digest`` field.
+
+    Release assets carry ``"digest": "sha256:<hex>"``. Return the bare lower-case
+    hex only when it is a well-formed sha256; anything else (missing, a different
+    algo, malformed) is treated as "no digest" so the caller marks the download
+    UNVERIFIED rather than comparing against garbage. This value never reaches a
+    shell — it is only ever compared — so format-validating it is enough."""
+    digest = apk.get("digest")
+    if isinstance(digest, str) and digest.startswith("sha256:"):
+        hexpart = digest.split(":", 1)[1].strip().lower()
+        if re.fullmatch(r"[0-9a-f]{64}", hexpart):
+            return hexpart
+    return None
+
+
 def _fetch_latest_release(connection: Connection, repo: str) -> dict:
-    """Latest release as ``{tag, name, url, size}`` for its APK, or {} on failure."""
+    """Latest release as ``{tag, name, url, size, sha256}`` for its APK, or {} on
+    failure. ``sha256`` is the release-published digest, or None if none given."""
     code, out, _ = connection.run(
         "curl -fsSL -m 20 -H 'Accept: application/vnd.github+json' " + _api(repo))
     if code != 0:
@@ -139,7 +179,7 @@ def _fetch_latest_release(connection: Connection, repo: str) -> dict:
         return {}
     return {"tag": data.get("tag_name") or data.get("name") or "",
             "name": apk.get("name"), "url": apk.get("browser_download_url"),
-            "size": apk.get("size")}
+            "size": apk.get("size"), "sha256": _asset_sha256(apk)}
 
 
 def _cached_size(connection: Connection, path: str) -> Optional[int]:
@@ -194,8 +234,18 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
 
     connection.run(f"mkdir -p {cache_dir}")
     name, url, size = rel["name"], rel["url"], rel.get("size")
-    path = f"{cache_dir}/{name}"
     res = SyncResult(online=True, version=rel["tag"])
+    if not _safe_apk_name(name):
+        # A crafted asset name ("../../x", "a;reboot", spaces) never becomes a
+        # path or a shell argument. Refuse this release, honestly, and stop.
+        res.failed.append(str(name)[:64])
+        res.message = (f"{app['name']}: the release asset name is not a plain "
+                       "filename — refusing to download it.")
+        return res
+    # cache_dir is trusted local config and keeps its leading ``~`` (do NOT quote
+    # it or the tilde stops expanding); only the remote filename is quoted. A
+    # validated name quotes to itself, so this is transparent for real releases.
+    path = f"{cache_dir}/{shlex.quote(name)}"
 
     have = _cached_size(connection, path)
     if not force and have is not None and (size is None or have == size):
@@ -241,7 +291,9 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
         # can never be mistaken for a finished one, whatever kills it.
         part = f"{path}.part"
         connection.run(f"rm -f {part}")
-        if connection.run(f"curl -fsSL -m 300 -o {part} {url}", timeout=330)[0] != 0:
+        # ``url`` is a remote value from the release JSON — quote it. (A validated
+        # https URL quotes to itself, so this is transparent for a real release.)
+        if connection.run(f"curl -fsSL -m 300 -o {part} {shlex.quote(url)}", timeout=330)[0] != 0:
             connection.run(f"rm -f {part}")
             res.failed.append(name)
             res.message = (f"{app['name']} {rel['tag']}: download failed — nothing "
@@ -252,15 +304,49 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
             res.failed.append(name)
             res.message = f"{app['name']} {rel['tag']}: download corrupt, discarded."
             return res
-        connection.run(f"mv -f {part} {path}")
-        res.changed.append(name)
+        # INTEGRITY GATE. A size match is not integrity. GitHub publishes a
+        # per-asset sha256 (the release ``digest``); when we have one the
+        # download is carried ONLY if its bytes hash to exactly that — a phone in
+        # the field cannot re-download to recover from a bad APK. When the
+        # release publishes NO digest we cannot verify at all: the file is kept
+        # but reported UNVERIFIED (a distinct state), never as a clean update.
+        expected = rel.get("sha256")
+        if expected:
+            actual = _file_sha256(connection, part)
+            if actual != expected:
+                connection.run(f"rm -f {part}")
+                res.failed.append(name)
+                res.message = (f"{app['name']} {rel['tag']}: sha256 did not match "
+                               "the published hash — discarded, not carried.")
+                return res
+            connection.run(f"mv -f {part} {path}")
+            res.changed.append(name)
+        else:
+            connection.run(f"mv -f {part} {path}")
+            res.unverified.append(name)
 
+    # Sidecar records the expected digest + whether we verified it THIS run, so
+    # an offline re-check (sha256sum of the file vs this meta) is possible with
+    # no network. Only a file this sync hash-matched is "verified".
+    # TODO(security, needs decision): even a verified sha256 only proves the
+    # bytes match the digest GitHub served over the same unauthenticated channel
+    # as the APK — it is integrity, not authenticity. The real anti-tamper is
+    # pinning the app's signing certificate and checking the APK's v2 signature
+    # block against it; that needs a decision on which cert to trust and is
+    # deliberately NOT implemented here.
+    integrity = "verified" if name in res.changed else "unverified"
     meta = {"app": app["name"], "key": app_key, "version": rel["tag"], "file": name,
-            "license": app["license"], "source": url}
+            "license": app["license"], "source": url,
+            "sha256": rel.get("sha256"), "integrity": integrity}
     connection.run(f"printf '%s' {_shq(json.dumps(meta))} > {path}.meta")
     connection.run(f"printf '%s' {_shq(rel['tag'])} > {cache_dir}/.{app_key}_version")
-    res.message = (f"{app['name']} {rel['tag']}: "
-                   + ("updated." if res.changed else "already current."))
+    if res.changed:
+        res.message = f"{app['name']} {rel['tag']}: updated (sha256 verified)."
+    elif res.unverified:
+        res.message = (f"{app['name']} {rel['tag']}: downloaded, but the release "
+                       "published no sha256 — carried UNVERIFIED.")
+    else:
+        res.message = f"{app['name']} {rel['tag']}: already current."
     return res
 
 

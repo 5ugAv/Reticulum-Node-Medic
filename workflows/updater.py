@@ -16,10 +16,25 @@ this is fully unit-testable without a radio or a live network.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+from shlex import quote as _shq
 from typing import List, Optional
 
 from transport.connection import Connection
+
+# A firmware filename is a KEY in release.json, which is fetched over plain HTTPS
+# from a public release and is NOT authenticated (see the manifest-signing TODO
+# in _fetch_manifest). Every key must therefore be treated as hostile: it becomes
+# both a filesystem path and — via the download URL — a shell argument that
+# Connection.run() feeds to a shell. Allow a bare filename only, and never "..".
+_SAFE_FW_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _safe_fw_name(name) -> bool:
+    """True only for a plain firmware filename safe to put in a path/command."""
+    return (isinstance(name, str) and bool(name)
+            and ".." not in name and _SAFE_FW_NAME.match(name) is not None)
 
 #: Official RNode firmware release manifest + download base (markqvist).
 FIRMWARE_VERSION_URL = (
@@ -41,6 +56,11 @@ class SyncResult:
     changed: List[str] = field(default_factory=list)      # downloaded/updated
     up_to_date: List[str] = field(default_factory=list)    # already current
     failed: List[str] = field(default_factory=list)        # download/verify failed
+    #: Downloaded and size-checked, but its bytes could NOT be hash-verified
+    #: because the release published no sha256 to check them against. A distinct
+    #: state on purpose: not silently trusted as "changed", not thrown away as
+    #: "failed" — the operator is told it is carried-but-unverified.
+    unverified: List[str] = field(default_factory=list)
     version: Optional[str] = None
     message: str = ""
 
@@ -51,7 +71,19 @@ def has_connectivity(connection: Connection, url: str = CONNECTIVITY_URL) -> boo
 
 
 def _fetch_manifest(connection: Connection) -> dict:
-    """The release.json map ``{filename: {hash, version}}``, or {} on failure."""
+    """The release.json map ``{filename: {hash, version}}``, or {} on failure.
+
+    TODO(security, needs key decision): this manifest is fetched over plain HTTPS
+    with NO cryptographic authentication of its own. The per-file sha256s below
+    are only as trustworthy as the manifest that carries them — anyone who can
+    serve this URL (a MITM, a compromised release) chooses both the bytes AND the
+    hash they are checked against. The real fix is a pinned publisher public key
+    verifying a signature over release.json; that is deliberately NOT implemented
+    here because it requires a key-management decision (which key, rotation, where
+    it lives on the medic). Until then, filenames are charset-validated and every
+    interpolated value is shell-quoted so a hostile manifest cannot inject a
+    command or escape the cache directory — but it is not yet authenticated.
+    """
     code, out, _ = connection.run(f"curl -fsSL -m 20 {FIRMWARE_VERSION_URL}")
     if code != 0:
         return {}
@@ -102,18 +134,33 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             online=True,
             message="Online, but the firmware manifest is malformed — keeping "
                     "the carried cache.")
-    dest = f"{RNODE_UPDATE_DIR}/{version}"
+    # The version is also a remote manifest value that becomes a path component
+    # and a shell argument. Coerce to str (a JSON number would break shlex.quote)
+    # and quote it everywhere it is interpolated below. The RNODE_UPDATE_DIR
+    # prefix stays UNQUOTED on purpose so its leading ``~`` still expands.
+    version = str(version)
+    dest = f"{RNODE_UPDATE_DIR}/{_shq(version)}"
     connection.run(f"mkdir -p {dest}")
 
     res = SyncResult(online=True, version=version)
     for fname, info in sorted(manifest.items()):
-        want = info.get("hash")
-        path = f"{dest}/{fname}"
+        if not _safe_fw_name(fname):
+            # A crafted key ("../../etc/x", "a;reboot", spaces) never reaches a
+            # path or a shell — skip it, report it, keep syncing the honest rest.
+            res.failed.append(f"{str(fname)[:64]} (unsafe firmware name — skipped)")
+            continue
+        want = info.get("hash") if isinstance(info, dict) else None
+        if not isinstance(want, str) or not want:
+            # No manifest hash means nothing to verify a download against. An
+            # unverifiable firmware file is not trusted or flashed — report it.
+            res.failed.append(f"{fname} (no manifest hash — skipped)")
+            continue
+        path = f"{dest}/{_shq(fname)}"
         if not force and _sha256(connection, path) == want:
             res.up_to_date.append(fname)
         else:
             url = f"{FIRMWARE_DL_BASE}{version}/{fname}"
-            if connection.run(f"curl -fsSL -m 120 -o {path} {url}")[0] != 0:
+            if connection.run(f"curl -fsSL -m 120 -o {path} {_shq(url)}")[0] != 0:
                 res.failed.append(fname)
                 continue
             if _sha256(connection, path) == want:
@@ -125,10 +172,13 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
         # rnodeconf --autoinstall verifies each firmware against a sidecar
         # "<file>.version" holding "<version> <hash>". Without it the offline
         # flash aborts ("No release hash found ... integrity could not be
-        # verified"). Write/backfill it for every good file.
-        connection.run(f"printf '%s %s' {version} {want} > {path}.version")
+        # verified"). Write/backfill it for every good file. ``path`` already
+        # ends in the quoted filename, so the ``.version`` suffix rides outside
+        # that quote and the shell concatenates it onto the same word.
+        connection.run(f"printf '%s %s' {_shq(version)} {_shq(want)} > {path}.version")
 
-    connection.run(f"printf '%s' {version} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
+    connection.run(
+        f"printf '%s' {_shq(version)} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
 
     parts = []
     if res.changed:
