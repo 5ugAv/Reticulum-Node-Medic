@@ -70,3 +70,42 @@ def format_age(hours) -> str:
     if rest == 24:                      # 47.6h -> 2d, not 1d 24h
         days, rest = days + 1, 0
     return f"{days}d" if rest == 0 else f"{days}d {rest}h"
+
+
+def echo_annotation(last_seen_hours, last_echo_hours):
+    """The muted ``echo 0.2h`` tag for a node whose last "hearing" was the
+    transport replaying it, or ``None`` when no such tag may appear.
+
+    An echo is a byte-identical copy of the node's last beacon re-emitted by
+    rnsd from its announce cache — the mesh repeating the node's last words,
+    not the node speaking. On 2026-08-21 a powered-off, battery-less board's
+    row stayed green for hours because exactly those replays kept "seeing" it.
+    So the tag exists to make weaker evidence LOOK weaker, and it is bound by
+    two rules the callers must not soften:
+
+      * it only appears when the echo is strictly FRESHER than the sighting —
+        once the node itself has spoken, the stale replay is noise;
+      * it is an annotation and nothing else — it feeds no status colour and
+        never makes a row greener.
+    """
+    if last_seen_hours is None or last_echo_hours is None:
+        return None
+    try:
+        seen, echo = float(last_seen_hours), float(last_echo_hours)
+    except (TypeError, ValueError):
+        return None
+    if echo >= seen:
+        return None                # the node itself spoke since the replay
+    return f"echo {format_age(echo)}"
+
+
+def seen_line(node) -> str:
+    """The full SEEN text for one dashboard row dict — ``"SEEN 3.1h"``, or
+    ``"SEEN 3.1h · echo 0.2h"`` when a replay is fresher than the sighting.
+    Pure and Kivy-free so the honesty rules above are unit-testable; the
+    StatBar widget renders the same two parts (echo_annotation decides for
+    both) with the echo half in muted grey."""
+    base = f"SEEN {format_age(node.get('last_seen_hours'))}"
+    tag = echo_annotation(node.get("last_seen_hours"),
+                          node.get("last_echo_hours"))
+    return base if tag is None else f"{base} · {tag}"

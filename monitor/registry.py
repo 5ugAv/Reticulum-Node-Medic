@@ -282,6 +282,15 @@ class NodeRecord:
             return None
         return (now - self.last_seen) / 3600.0
 
+    def last_echo_hours(self, now: float) -> Optional[float]:
+        """Age of the last transport REPLAY, or ``None`` when none is on
+        record. Same convention as ``last_seen_hours`` — but the two are never
+        interchangeable: an echo is the mesh repeating the node's last words,
+        not the node speaking (the dead board that stayed green, 2026-08-21)."""
+        if self.last_echo_at is None:
+            return None
+        return (now - self.last_echo_at) / 3600.0
+
     def signal_dbm(self) -> Optional[int]:
         """Best available WiFi signal — HTTP /status first, then the beacon.
         None when WiFi is DOWN: the wire carries 0 for 'no reading', and
@@ -339,6 +348,13 @@ class NodeRecord:
 
             "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
+            # The replay age rides along so the screen can show an echo for
+            # what it is — muted, informational, and NEVER an input to the
+            # status colour above (which was computed before this line and
+            # does not read last_echo_at). That separation is the fix for
+            # 2026-08-21: a powered-off, battery-less board stayed green for
+            # hours because replays kept "seeing" it.
+            "last_echo_hours": self.last_echo_hours(now),   # None = no echo
             "battery_pct": self._battery_pct(),
             "powered_by": self._powered_by(),
         }
@@ -957,6 +973,12 @@ class NodeRegistry:
         seen = [r.last_seen for r in members if r.last_seen is not None]
         if seen:
             merged.last_seen = max(seen)
+        # Echoes pool like sightings (freshest wins) but stay in their own
+        # field — a merged row must never let one aspect's replay pass for
+        # another aspect's live word (the 2026-08-21 rule, device-level).
+        echoes = [r.last_echo_at for r in members if r.last_echo_at is not None]
+        if echoes:
+            merged.last_echo_at = max(echoes)
         return merged
 
     @_locked

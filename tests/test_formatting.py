@@ -84,3 +84,47 @@ def test_nonsense_and_negatives_do_not_crash_the_row():
     assert format_age(None) == "?"
     assert format_age("x") == "?"
     assert format_age(-5) == "0.0h"
+
+
+# --- the SEEN line, and the muted echo tag ---------------------------------
+# The display end of "a replayed announce is not a sighting": on 2026-08-21 a
+# powered-off, battery-less board's row stayed green for hours because rnsd
+# kept replaying its cached announce. seen_line/echo_annotation are the pure
+# helpers the StatBar and node detail render from — weaker evidence must LOOK
+# weaker, and must vanish once the node itself speaks.
+
+def test_seen_line_appends_a_fresher_echo():
+    from monitor.formatting import seen_line
+    row = {"last_seen_hours": 3.1, "last_echo_hours": 0.2}
+    assert seen_line(row) == "SEEN 3.1h · echo 0.2h"
+
+
+def test_seen_line_without_echo_is_just_seen():
+    from monitor.formatting import seen_line
+    assert seen_line({"last_seen_hours": 3.1}) == "SEEN 3.1h"
+    assert seen_line({"last_seen_hours": 3.1,
+                      "last_echo_hours": None}) == "SEEN 3.1h"
+
+
+def test_echo_staler_than_the_sighting_never_shows():
+    """Once the node itself has spoken, the old replay is noise — and an echo
+    exactly as old as the sighting is not 'fresher' either."""
+    from monitor.formatting import echo_annotation, seen_line
+    assert echo_annotation(0.2, 3.1) is None
+    assert echo_annotation(1.0, 1.0) is None
+    assert seen_line({"last_seen_hours": 0.2,
+                      "last_echo_hours": 3.1}) == "SEEN 0.2h"
+
+
+def test_echo_annotation_is_none_safe():
+    from monitor.formatting import echo_annotation
+    assert echo_annotation(None, 0.2) is None
+    assert echo_annotation(3.1, None) is None
+    assert echo_annotation(None, None) is None
+
+
+def test_echo_tag_speaks_days_like_seen_does():
+    """The echo age goes through format_age too — the units lesson of
+    2026-08-10 applies to every figure on the strip."""
+    from monitor.formatting import echo_annotation
+    assert echo_annotation(300.0, 26.0) == "echo 1d 2h"

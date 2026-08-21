@@ -69,6 +69,43 @@ def test_to_dashboard_signal_falls_back_to_beacon():
     assert reg.get(HASH).to_dashboard(NOW)["signal_dbm"] == -70
 
 
+def test_to_dashboard_carries_a_fresh_echo_without_touching_status():
+    """The display side of 2026-08-21: replays kept a dead board's row green.
+    The echo age now rides to the screen — but as its own key, muted there,
+    and the status the dict carries is the one staleness computed, never one
+    an echo freshened."""
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    reg.ingest(HASH, beacon(), NOW + 0.9 * HOUR)      # byte-identical = replay
+    d = reg.get(HASH).to_dashboard(NOW + HOUR)
+    assert d["last_echo_hours"] == pytest.approx(0.1)
+    assert d["last_echo_hours"] < d["last_seen_hours"]  # echo is the fresher
+    assert d["last_seen_hours"] == pytest.approx(1.0)   # sighting NOT refreshed
+    assert d["status"] == "ok"                # 1h-old beacon; the echo added
+    # ...nothing. And once stale, an even-fresh echo must not soften the red:
+    late = NOW + (STALE_ALERT_HOURS + 2) * HOUR
+    reg.ingest(HASH, beacon(), late - 60)               # replay a minute ago
+    assert reg.get(HASH).to_dashboard(late)["status"] == "alert"
+
+
+def test_to_dashboard_no_echo_is_none():
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    assert reg.get(HASH).to_dashboard(NOW)["last_echo_hours"] is None
+
+
+def test_devices_row_pools_the_echo():
+    """The consolidated dashboard row carries the echo age too (freshest of a
+    device's aspects), so VITALS — which renders devices(), not raw records —
+    can actually show it."""
+    reg = NodeRegistry()
+    reg.ingest(HASH, beacon(), NOW)
+    reg.ingest(HASH, beacon(), NOW + 0.5 * HOUR)
+    row = [d for d in reg.devices(NOW + HOUR) if d["identity"] == HASH][0]
+    assert row["last_echo_hours"] == pytest.approx(0.5)
+    assert row["last_seen_hours"] == pytest.approx(1.0)
+
+
 # ---- mesh ingest (rnpath reachability) ----------------------------------
 
 
