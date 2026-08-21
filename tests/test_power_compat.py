@@ -61,14 +61,18 @@ def test_recommendations_suggest_the_SIMPLEST_pi_that_works():
     be the smallest sufficient Pi — recommending a Pi 5 for everything reads as
     'this is expensive' when a 3 A+ would do (operator spec 2026-08-01)."""
     from workflows.power_compat import recommended_pairings, PI_POWER, check
+    from workflows.pairing_verdicts import verdict as chart_verdict, WARN_LEVELS
     recs = recommended_pairings(limit=5)
     assert recs, "no workable pairings at all"
     for r in recs:
         assert check(r["pi_key"], r["board_key"])["verdict"] == "ok"
-        # no SMALLER Pi also clears the bar for this board
+        # no SMALLER Pi also clears the bar for this board — "clears" now
+        # includes the bench chart's veto (a coin-flip cell is not a
+        # recommendation), same rule recommended_pairings itself applies
         smaller = [k for k, v in PI_POWER.items()
                    if v["budget_ma"] < r["pi_budget"]
-                   and (check(k, r["board_key"]) or {}).get("verdict") == "ok"]
+                   and (check(k, r["board_key"]) or {}).get("verdict") == "ok"
+                   and chart_verdict(k, r["board_key"])[0] not in WARN_LEVELS]
         assert not smaller, f"{r['text']} — but {smaller} also works"
 
 

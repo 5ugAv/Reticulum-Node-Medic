@@ -2715,10 +2715,14 @@ class BirthGuideScreen(BoxLayout):
             return
         try:
             from workflows.power_compat import check as _check
+            from workflows.pairing_verdicts import needs_warning
             v = _check(pi_key, getattr(self, "_board_key", ""))
+            warn = needs_warning(pi_key, getattr(self, "_board_key", ""), v)
         except Exception:
-            v = None
-        if v and v.get("verdict") in ("blocked", "caution"):
+            v, warn = None, False
+        if warn:
+            # The bench chart gates too: a coin-flip or predicted-fail cell
+            # warns even when the current arithmetic is content.
             self._render_power_verdict(v)
             return
         self._resume_steps()
@@ -2791,7 +2795,8 @@ class BirthGuideScreen(BoxLayout):
         board_name = dict(self._board_candidates()).get(
             getattr(self, "_board_key", ""), "this radio")
         lines = warning_lines(verdict, pi_name, board_name,
-                              getattr(self, "_pi_key", ""))
+                              getattr(self, "_pi_key", ""),
+                              board_key=getattr(self, "_board_key", ""))
         wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(8))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
@@ -2805,10 +2810,19 @@ class BirthGuideScreen(BoxLayout):
                     l["text"], "15sp",
                     color="green" if l["kind"] == "good" else "text_secondary",
                     h=30))
-        col.add_widget(_line(
-            tr("You can still build it this way — but the finished node will "
-               "need a POWERED USB HUB between the Pi and the radio, or it will "
-               "brown out when it transmits."), "14.5sp", color="amber", h=72))
+        if (verdict or {}).get("verdict") in ("blocked", "caution"):
+            col.add_widget(_line(
+                tr("You can still build it this way — but the finished node will "
+                   "need a POWERED USB HUB between the Pi and the radio, or it will "
+                   "brown out when it transmits."), "14.5sp", color="amber", h=72))
+        else:
+            # The bench chart flagged it (coin flip / predicted fail) while
+            # the arithmetic was content — a prediction is not a brown-out
+            # promise, so no hub claim gets made here.
+            col.add_widget(_line(
+                tr("You can still build it this way — nobody has bench-tested "
+                   "this pairing, so treat the first field days as the test."),
+                "14.5sp", color="amber", h=72))
         body.add_widget(col)
         wrap.add_widget(body)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),

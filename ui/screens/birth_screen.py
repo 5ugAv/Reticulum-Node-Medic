@@ -2026,9 +2026,13 @@ class BirthScreen(BoxLayout):
             "rtnode2400", None, self._name_in.text.strip())
         self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
 
-    def _show_power_popup(self, verdict, board_name, pi_key, on_proceed):
+    def _show_power_popup(self, verdict, board_name, pi_key, on_proceed,
+                          board_key=""):
         """Warn that this Pi can't power this board over USB — Proceed (⚠ red,
-        bottom-left) / Cancel (green, bottom-right)."""
+        bottom-left) / Cancel (green, bottom-right). *board_key* lets the
+        bench chart (workflows.pairing_verdicts) add its dated provenance
+        line — warn, never hard-block: it is the operator's bench, and a
+        deliberate retest is theirs to run."""
         pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
         # The text can run long (warning + why + remedies + suggestions), and
         # every child here has a FIXED height — so without a scroll the buttons
@@ -2052,9 +2056,11 @@ class BirthScreen(BoxLayout):
                   "bullet": dict(size="12sp", color="text_secondary"),
                   "good":   dict(size="12.5sp", color="green")}
         try:
-            lines = warning_lines(verdict, pi_name, board_name, pi_key)
+            lines = warning_lines(verdict, pi_name, board_name, pi_key,
+                                  board_key=board_key)
         except Exception:                                  # never block a birth
-            lines = [{"kind": "head", "text": verdict.get("why", "Power warning")}]
+            lines = [{"kind": "head",
+                      "text": (verdict or {}).get("why", "Power warning")}]
         for ln in lines:
             style = dict(_STYLE.get(ln["kind"], _STYLE["body"]))
             if ln["kind"] == "good" and ln["text"].endswith(":"):
@@ -2332,10 +2338,22 @@ class BirthScreen(BoxLayout):
         pi_key = self._sel_pi[0] if self._sel_pi else "none"
         if pi_key != "none" and board is not None:
             verdict = power_check(pi_key, board.key)
-            if verdict and verdict.get("verdict") in ("blocked", "caution"):
+            # Two voices gate here: the current-budget arithmetic (check) and
+            # the operator's bench chart (pairing_verdicts) — a coin-flip cell
+            # warns even when the arithmetic is content. The chart is ADVICE:
+            # if it can't load, fall back to the arithmetic-only gate rather
+            # than let advisory code block a birth.
+            try:
+                from workflows.pairing_verdicts import needs_warning
+                warn = needs_warning(pi_key, board.key, verdict)
+            except Exception:
+                warn = bool(verdict and
+                            verdict.get("verdict") in ("blocked", "caution"))
+            if warn:
                 self._show_power_popup(
                     verdict, board.display_name, pi_key,
-                    lambda: self._launch(workflow, title))
+                    lambda: self._launch(workflow, title),
+                    board_key=board.key)
                 return
         self._launch(workflow, title)
 
