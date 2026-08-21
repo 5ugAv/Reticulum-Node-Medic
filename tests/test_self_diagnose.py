@@ -94,6 +94,18 @@ def test_summarize_all_healthy():
     assert s["healthy"] and s["worst"] == SEV_OK and s["fixes"] == []
 
 
+def test_summarize_not_healthy_when_a_reading_is_unavailable():
+    # The honesty gate: a browning-out medic that cannot read its own throttle
+    # register must NOT roll up to ":) healthy". An unknowable power reading is
+    # a WARN, so summarize() must report worst != OK and healthy is False —
+    # this is exactly what self_diagnose_screen.py renders.
+    from monitor.self_diagnose import check_throttled, check_cpu_temp
+    s = summarize([check_usb_present(f"x{MINE}", MINE),
+                   check_throttled(""),          # can't read power -> WARN
+                   check_cpu_temp("temp=48.3'C")])
+    assert not s["healthy"] and s["worst"] == SEV_WARN and s["warning"] == 1
+
+
 # --- the GPS check has to say something TRUE (2026-08-07) -------------------
 # It reported "Telemetry fresh" for months on a medic that had never once had a
 # fix. True, and useless: freshness is a fact about the serial link, not about

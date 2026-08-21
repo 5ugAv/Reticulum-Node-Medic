@@ -31,14 +31,21 @@ class PowerHardwareCheck(DiagnosticCheck):
 
         # 22 CPU temperature (millidegrees C). Routed through _check (dynamic
         # severity) so it streams in live progress like every other check.
+        # An unreadable temperature must NOT pass as "cool": a browning-out Pi
+        # whose thermal zone won't read is exactly when we least want a false
+        # green. Report "unverified" like the SD-card sibling (check 25) does.
         raw = self._read_int("cat /sys/class/thermal/thermal_zone0/temp")
         temp = raw / 1000.0 if raw is not None else None
-        issues.append(self._check(
-            "cpu_temperature", temp is None or temp <= 70,
-            (f"The CPU is running hot ({temp:.0f} °C)." if temp is not None
-             else "The CPU is running hot."),
-            severity="critical" if (temp is not None and temp > 80) else "warning",
-            raw_detail=(f"{temp:.1f} C" if temp is not None else "")))
+        if temp is None:
+            issues.append(self._unverified(
+                "cpu_temperature",
+                "the CPU temperature (/sys/class/thermal/thermal_zone0/temp)"))
+        else:
+            issues.append(self._check(
+                "cpu_temperature", temp <= 70,
+                f"The CPU is running hot ({temp:.0f} °C).",
+                severity="critical" if temp > 80 else "warning",
+                raw_detail=f"{temp:.1f} C"))
 
         # 23 cooling fan (only if fitted)
         if p.has_cooling_fan:
@@ -51,14 +58,20 @@ class PowerHardwareCheck(DiagnosticCheck):
 
         # 24 battery level (only if battery bank fitted)
         if p.has_battery_bank:
+            # A battery gauge that won't read is not a full battery — a
+            # browning-out medic must not be told its power is fine. Unverified,
+            # not passed (matching the SD-card sibling, check 25).
             pct = self._read_int("cat /sys/class/power_supply/BAT0/capacity")
-            issues.append(self._check(
-                "battery_level", pct is None or pct > 20,
-                (f"Battery is low ({pct}%)." if pct is not None
-                 else "Battery is low."),
-                severity="critical" if (pct is not None and pct <= 10)
-                else "warning",
-                raw_detail=(f"{pct}%" if pct is not None else "")))
+            if pct is None:
+                issues.append(self._unverified(
+                    "battery_level",
+                    "the battery level (/sys/class/power_supply/BAT0/capacity)"))
+            else:
+                issues.append(self._check(
+                    "battery_level", pct > 20,
+                    f"Battery is low ({pct}%).",
+                    severity="critical" if pct <= 10 else "warning",
+                    raw_detail=f"{pct}%"))
 
         # 25 SD card health (dmesg for mmc errors). dmesg is often restricted,
         # so read it privileged; if we still can't read it, report "unverified"
@@ -92,20 +105,30 @@ class PowerHardwareCheck(DiagnosticCheck):
             "corruption.",
             severity="critical"))
 
-        # 27 available memory (<64 MB)
+        # 27 available memory (<64 MB). Unreadable meminfo is unverified, not
+        # "plenty of memory" (silent-pass would hide OOM pressure on a sick node).
         mem_kb = self._read_int("grep MemAvailable /proc/meminfo")
         mem_mb = mem_kb / 1024.0 if mem_kb is not None else None
-        issues.append(self._check(
-            "available_memory", mem_mb is None or mem_mb >= 64,
-            f"Very little free memory "
-            f"({mem_mb:.0f} MB)." if mem_mb is not None else "Low memory.",
-            severity="warning"))
+        if mem_mb is None:
+            issues.append(self._unverified(
+                "available_memory",
+                "available memory (/proc/meminfo MemAvailable)"))
+        else:
+            issues.append(self._check(
+                "available_memory", mem_mb >= 64,
+                f"Very little free memory ({mem_mb:.0f} MB).",
+                severity="warning"))
 
-        # 28 uptime (<5 min -> recently rebooted, informational)
+        # 28 uptime (<5 min -> recently rebooted, informational). Unreadable
+        # uptime is unverified (info), not a silent "been up for ages" pass.
         up = self._read_int("cat /proc/uptime")
-        issues.append(self._check(
-            "uptime", up is None or up >= 300,
-            "The node rebooted recently (less than 5 minutes ago).",
-            severity="info"))
+        if up is None:
+            issues.append(self._unverified(
+                "uptime", "the system uptime (/proc/uptime)"))
+        else:
+            issues.append(self._check(
+                "uptime", up >= 300,
+                "The node rebooted recently (less than 5 minutes ago).",
+                severity="info"))
 
         return [i for i in issues if i is not None]

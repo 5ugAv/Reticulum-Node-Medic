@@ -24,14 +24,20 @@ class SystemHealthCheck(DiagnosticCheck):
     def run(self) -> List[Issue]:
         issues: List[Optional[Issue]] = []
 
-        # 29 disk space on / (via _check with dynamic severity -> streams live)
+        # 29 disk space on / (via _check with dynamic severity -> streams live).
+        # If df won't read, that is unverified, NOT "disk is fine" — a silent
+        # pass here would hide a full/read-only SD on a struggling node (same
+        # honesty stance as the ext4-journal sibling, check 62, below).
         used = self._percent("df --output=pcent /")
-        issues.append(self._check(
-            "disk_space", used is None or used <= 80,
-            (f"The root filesystem is {used}% full." if used is not None
-             else "Disk usage could not be read."),
-            severity="critical" if (used is not None and used > 90) else "warning",
-            raw_detail=(f"{used}%" if used is not None else "")))
+        if used is None:
+            issues.append(self._unverified(
+                "disk_space", "root filesystem usage (df /)"))
+        else:
+            issues.append(self._check(
+                "disk_space", used <= 80,
+                f"The root filesystem is {used}% full.",
+                severity="critical" if used > 90 else "warning",
+                raw_detail=f"{used}%"))
 
         # 30 clock drift. Prefer chrony's precise offset when present; a default
         # Raspberry Pi has NO chrony (it uses systemd-timesyncd), in which case

@@ -135,6 +135,34 @@ class DiagnosticCheck(ABC):
             fix_description=fix_description,
         )
 
+    def _unverified(
+        self,
+        check_name: str,
+        what: str,
+        severity: str = "info",
+    ) -> Issue:
+        """A reading came back UNAVAILABLE, so this check is UNVERIFIED.
+
+        The idiom ``self._check(name, reading is None or reading <= limit, ...)``
+        turns an unreadable sensor into a PASSED check — a silent green tick on a
+        medic that is browning out and cannot even read its own throttle register
+        or CPU temperature. "Couldn't check" is its own answer: a denied/absent
+        read is NOT evidence of health, so emit an explicit "unverified" Issue
+        instead of a silent pass.
+
+        The sibling that already does this right (and the pattern to match): the
+        SD-card health check in ``PowerHardwareCheck`` (check 25), which reports
+        an ``info`` "unverified" Issue when ``dmesg`` is denied rather than
+        passing. Defaults to ``info`` because that is the severity every existing
+        "unverified" sibling in these files uses.
+        """
+        return Issue(
+            check_name=check_name,
+            category=self.category_name,
+            description=f"Could not read {what} — unverified.",
+            severity=severity,
+        )
+
     # -- command helpers ---------------------------------------------------
 
     def _run_cmd(self, command: str, timeout: int = 30) -> Result:

@@ -394,12 +394,20 @@ class RadioFirmwareCheck(DiagnosticCheck):
         if floor is None:
             m = re.search(r"[Nn]oise floor\s*:\s*(-?\d+)", info)
             floor = int(m.group(1)) if m else None
-        issues.append(self._check(
-            "antenna_rssi",
-            floor is None or floor <= -50,
-            "The noise floor is anomalously high — the antenna may be missing "
-            "or disconnected. Do not transmit.",
-            severity="warning"))
+        if floor is None:
+            # No noise-floor reading at all: we CANNOT clear the antenna, so we
+            # must not imply it is safe to transmit. Unverified (info), matching
+            # the hw-revision sibling (check 85) — a missing read is not "OK".
+            issues.append(self._unverified(
+                "antenna_rssi",
+                "the antenna noise floor (rnstatus / rnodeconf)"))
+        else:
+            issues.append(self._check(
+                "antenna_rssi",
+                floor <= -50,
+                "The noise floor is anomalously high — the antenna may be "
+                "missing or disconnected. Do not transmit.",
+                severity="warning"))
 
         # 88 Heltec V4 dual antenna ports (reminder)
         issues.append(self._check(

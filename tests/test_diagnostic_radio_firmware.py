@@ -69,7 +69,11 @@ def test_category_name():
 
 
 def test_all_healthy_no_issues():
-    assert run(conn_with()) == []
+    # A genuinely healthy board must actually REPORT its noise floor; an absent
+    # reading is now "unverified", not a silent pass (see the antenna_rssi
+    # honesty fix). Supply a normal quiet floor so the check truly passes.
+    info = GOOD_INFO + "\n\tNoise floor : -95 dBm"
+    assert run(conn_with(info=info)) == []
 
 
 def test_serial_not_responsive():
@@ -648,3 +652,12 @@ def test_blessing_skipped_when_board_unresponsive():
     issues = run(conn)
     assert "firmware_blessing" not in names(issues)
     assert kl_count(conn) == 0
+
+
+def test_antenna_rssi_unverified_when_noise_floor_absent():
+    # No rnstatus interface AND no noise-floor line in --info -> we cannot clear
+    # the antenna, so we must not imply it is safe to transmit. Unverified (info),
+    # not a silent pass (the honesty fix for the noise-floor offender).
+    issues = run(conn_with(info=GOOD_INFO))   # GOOD_INFO carries no noise floor
+    rssi = next(i for i in issues if i.check_name == "antenna_rssi")
+    assert rssi.severity == "info"
