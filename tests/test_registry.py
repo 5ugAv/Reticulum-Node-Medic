@@ -830,6 +830,27 @@ def test_propagation_check_refuses_everything_else():
     assert not _is_propagation_announce(b"\x93\xc2\x07\xc3")
 
 
+def test_lookalike_prefix_is_not_a_propagation_announce():
+    """P1 from the adversarial review: a payload that merely OPENS like the
+    propagation announce — bool, timestamp, bool — but carries something else
+    after (somebody's telemetry dict) must classify False. The shape check
+    runs through [5], the 3-int triple."""
+    from RNS.vendor import umsgpack
+    from monitor.registry import _is_propagation_announce
+    ts = 1787316090
+    assert not _is_propagation_announce(
+        umsgpack.packb([True, ts, True, {"lat": 1.0}]))
+    assert not _is_propagation_announce(
+        umsgpack.packb([False, ts, True, 256, 10240]))          # too short
+    assert not _is_propagation_announce(
+        umsgpack.packb([False, ts, True, 256, 10240, [16, 3], {}]))  # not 3
+    assert not _is_propagation_announce(
+        umsgpack.packb([False, ts, True, 256, 10240, [16, "3", 18], {}]))
+    # ...and the real shape still passes when re-packed from its decode.
+    assert _is_propagation_announce(
+        umsgpack.packb([False, ts, True, 256, 10240, [16, 3, 18], {}]))
+
+
 def test_ingest_announce_marks_propagation_and_roundtrips():
     r = NodeRegistry()
     rec = r.ingest_announce(b"\xdd" * 16, PROP_ANNOUNCE_1, NOW)
@@ -872,3 +893,24 @@ def test_propagation_check_survives_missing_rns(monkeypatch):
     assert _is_propagation_announce(PROP_ANNOUNCE_2)
     assert not _is_propagation_announce(b"\x0bSKYFINGER!")
     assert not _is_propagation_announce(b"\x93\xc2\x07\xc3")
+
+
+def test_propagation_label_survives_consolidation():
+    """P3 from the adversarial review: the VITALS rows come from devices()
+    (through _device_groups/_consolidate), not from to_dashboard directly —
+    the label must survive that path too."""
+    r = NodeRegistry()
+    r.ingest_announce(b"\xdd" * 16, PROP_ANNOUNCE_1, NOW)
+    row = next(d for d in r.devices(NOW) if d["identity"] == "dd" * 16)
+    assert row["name"] == "Propagation relay " + "dd" * 4
+    assert row["location"] == "LXMF propagation announces"
+
+
+def test_consolidation_pools_is_propagation_across_members():
+    """P2: any flagged aspect-destination flags the consolidated device, even
+    when a different (non-propagation) sibling leads the merge."""
+    r = NodeRegistry()
+    r.ingest_announce(b"\xdd" * 16, PROP_ANNOUNCE_1, NOW, identity_hash="i-p")
+    r.ingest_announce(b"\xee" * 16, b"", NOW, identity_hash="i-p")
+    rec = r.consolidated_record("ee" * 16, NOW)
+    assert rec.is_propagation is True

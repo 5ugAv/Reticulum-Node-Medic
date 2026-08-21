@@ -110,6 +110,15 @@ def name_key(name: str) -> str:
     return "".join(ch for ch in (name or "") if ch.isalnum()).lower()
 
 
+#: Placeholder subtitles for rows the medic has no real location for. They
+#: sit in the "location" slot on VITALS but are NOT places: any prose that
+#: says "...at {location}" (ui.app's node-watch escalation) must filter them
+#: by these exact strings, so they live here once instead of drifting apart
+#: as literals.
+HEARD_ON_MESH = "heard on the mesh"
+PROPAGATION_SUBTITLE = "LXMF propagation announces"
+
+
 def _valid_display_name(text) -> bool:
     """Could *text* have been MEANT as a name? Printable throughout, sane
     length, and an alphanumeric residue of at least two characters — because
@@ -161,6 +170,68 @@ def _printable_name(app_data) -> str:
     return ""
 
 
+def _propagation_shape_fallback(raw: bytes):
+    """Byte-level stand-in for msgpack when RNS is not importable (a dev Mac
+    without the radio stack): reads the leading type-tags of MINIMALLY-ENCODED
+    msgpack — what CPython's LXMF emits and what both live captures carry —
+    and returns the decoded prefix as a list, or ``None`` on any mismatch.
+
+    Deliberately narrower than a real decoder: a uint64 timestamp (0xCF) or
+    an array16 header (0xDC) encodes the same values wider than necessary and
+    is only understood on the RNS path in ``_is_propagation_announce``. That
+    divergence is a decision, not an accident — no known emitter pads its
+    encoding, and a fallback that grows toward a full msgpack decoder stops
+    being a fallback.
+    """
+    def _uint(i):
+        """One unsigned msgpack int at *i* -> (next_index, value) or None."""
+        if i >= len(raw):
+            return None
+        b = raw[i]
+        if b <= 0x7F:                                  # positive fixint
+            return i + 1, b
+        if b == 0xCC and i + 1 < len(raw):             # uint8
+            return i + 2, raw[i + 1]
+        if b == 0xCD and i + 2 < len(raw):             # uint16
+            return i + 3, int.from_bytes(raw[i + 1:i + 3], "big")
+        if b == 0xCE and i + 4 < len(raw):             # uint32
+            return i + 5, int.from_bytes(raw[i + 1:i + 5], "big")
+        return None
+
+    try:
+        # fixarray(>=6), bool, uint32 timestamp (every plausible-era unix
+        # time, 2015-2100, is a msgpack uint32 when minimally encoded), bool.
+        if len(raw) < 8 or (raw[0] & 0xF0) != 0x90 or (raw[0] & 0x0F) < 6:
+            return None
+        if raw[1] not in (0xC2, 0xC3) or raw[2] != 0xCE:
+            return None
+        ts = int.from_bytes(raw[3:7], "big")
+        if raw[7] not in (0xC2, 0xC3):
+            return None
+        i = 8
+        limits = []
+        for _ in range(2):                             # obj[3], obj[4]: uints
+            step = _uint(i)
+            if step is None:
+                return None
+            i, v = step
+            limits.append(v)
+        if i >= len(raw) or raw[i] != 0x93:            # obj[5]: exactly-3 array
+            return None
+        i += 1
+        triple = []
+        for _ in range(3):                             # ...of unsigned ints
+            step = _uint(i)
+            if step is None:
+                return None
+            i, v = step
+            triple.append(v)
+        return [raw[1] == 0xC3, ts, raw[7] == 0xC3, limits[0], limits[1],
+                triple]
+    except Exception:
+        return None
+
+
 def _is_propagation_announce(app_data) -> bool:
     """Does this announce app_data carry the LXMF PROPAGATION-NODE payload?
 
@@ -175,42 +246,42 @@ def _is_propagation_announce(app_data) -> bool:
 
         [False, 1787316090, True, 256, 10240, [16, 3, 18], {}]
 
-    i.e. a list whose [0] is a bool, [1] a plausible unix timestamp, [2] a
-    bool (propagation enabled). That shape is what the FORMAT
-    proves, and it is ALL it proves — it never says whose machine it is, so
-    the label downstream stays "Propagation relay", not a name.
+    i.e. a list of at least six elements whose [0] is a bool, [1] a
+    plausible unix timestamp, [2] a bool (propagation enabled), and [5] a
+    triple of ints ([16, 3, 18] in the capture — treated structurally, no
+    claim about what the numbers mean). Checking through [5] matters:
+    ``[True, ts, True, {...}]`` — somebody's telemetry that merely opens the
+    same way — must NOT be called a propagation relay. That shape is what
+    the FORMAT proves, and it is ALL it proves — it never says whose machine
+    it is, so the label downstream stays "Propagation relay", not a name.
 
     Decode with Reticulum's own vendored msgpack when it is importable
     (``import RNS`` is heavy, so it happens in here, and its absence — a
     dev Mac with no radio stack — is just the fallback path, never a
-    crash). The fallback reads only the leading bytes of the wire format:
-    fixarray, bool, uint32 timestamp, bool — enough to say yes to the
-    real captures and no to names, beacons and noise.
+    crash): see ``_propagation_shape_fallback`` for what the byte-level
+    stand-in does and deliberately does not accept.
     """
     try:
         raw = bytes(app_data or b"")
         if not raw:
             return False
-        obj = None
         try:
             from RNS.vendor import umsgpack        # heavy: only on demand
             obj = umsgpack.unpackb(raw)
         except Exception:
-            # Bundled minimal check: fixarray(>=3), bool, uint32, bool.
-            # Every plausible-era timestamp (2015-2100) is a msgpack uint32.
-            if (len(raw) >= 8 and (raw[0] & 0xF0) == 0x90
-                    and (raw[0] & 0x0F) >= 3
-                    and raw[1] in (0xC2, 0xC3) and raw[2] == 0xCE
-                    and raw[7] in (0xC2, 0xC3)):
-                obj = [raw[1] == 0xC3,
-                       int.from_bytes(raw[3:7], "big"),
-                       raw[7] == 0xC3]
-        if not isinstance(obj, (list, tuple)) or len(obj) < 3:
+            obj = _propagation_shape_fallback(raw)
+        if not isinstance(obj, (list, tuple)) or len(obj) < 6:
             return False
         if not isinstance(obj[0], bool) or not isinstance(obj[2], bool):
             return False
         ts = obj[1]
         if isinstance(ts, bool) or not isinstance(ts, int):
+            return False
+        ver = obj[5]
+        if not isinstance(ver, (list, tuple)) or len(ver) != 3:
+            return False
+        if not all(isinstance(v, int) and not isinstance(v, bool)
+                   for v in ver):
             return False
         return 1420070400 <= ts <= 4102444800      # 2015-01-01 .. 2100-01-01
     except Exception:
@@ -391,7 +462,7 @@ class NodeRecord:
         display = self.name or (
             (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
             if neighbour else "(unnamed)")
-        where = self.location or ("heard on the mesh" if neighbour else "")
+        where = self.location or (HEARD_ON_MESH if neighbour else "")
         # A nameless neighbour whose announces carry the LXMF propagation
         # payload gets called what the format PROVES it is — a propagation
         # relay — and nothing more. Never which machine: SKYFINGER and
@@ -401,7 +472,7 @@ class NodeRecord:
         if neighbour and self.is_propagation and not (self.name
                                                       or self.announced_name):
             display = f"Propagation relay {self.dst_hash[:8]}"
-            where = self.location or "LXMF propagation announces"
+            where = self.location or PROPAGATION_SUBTITLE
         return {
             "name": display,
             "location": where,
@@ -748,6 +819,7 @@ class NodeRegistry:
             beacon = decode(app_data)
         except (ValueError, TypeError):
             beacon = None
+        propagation = beacon is None and _is_propagation_announce(app_data)
         if beacon is not None:
             rec = self.ingest(h, beacon, now)
         else:
@@ -759,7 +831,7 @@ class NodeRegistry:
             # — the raw material for the "when is this node usually up?" profile.
             from monitor.history import HistoryPoint
             self.history.append(h, HistoryPoint(t=now))
-            if _is_propagation_announce(app_data):
+            if propagation:
                 rec.is_propagation = True   # what the format proves; no owner
         if identity_hash:
             had_identity = rec.identity_hash == identity_hash
@@ -776,7 +848,7 @@ class NodeRegistry:
         # strict UTF-8 already refuses the real captures, but the refusal is
         # made explicit here so no future loosening of the name decoder can
         # ever resurrect the "j(" ghosts (2026-08-14) from THIS payload.
-        if beacon is None and _is_propagation_announce(app_data):
+        if propagation:
             return rec
         name = _printable_name(app_data)
         if name and not rec.announced_name:
@@ -1038,6 +1110,11 @@ class NodeRegistry:
         seen = [r.last_seen for r in members if r.last_seen is not None]
         if seen:
             merged.last_seen = max(seen)
+        # Pooled like the health fields above: a device is a propagation
+        # relay if ANY of its aspect-destinations announces as one — the
+        # lxmd aspect must not lose the label just because a beacon-carrying
+        # sibling led the merge.
+        merged.is_propagation = any(r.is_propagation for r in members)
         return merged
 
     @_locked
