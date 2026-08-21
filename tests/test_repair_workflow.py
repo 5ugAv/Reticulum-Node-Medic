@@ -58,6 +58,10 @@ def full_healthy_conn():
         .rule("^which rnsd", 0, "/usr/local/bin/rnsd")
         .rule("--info", 0, GOOD_INFO)
         .rule("--loop", 0, "loop ok")
+        # firmware blessing (-K -L): a healthy node's stored and running
+        # hashes agree (the 2026-08-22 parked-radio trap check)
+        .rule("-K -L", 0, "The target firmware hash is: " + "ab" * 32 + "\n"
+                          "The actual firmware hash is: " + "ab" * 32)
         .rule("--version", 0, "RNode 1.80")
         .rule("thermal_zone0/temp", 0, "45000")
         .rule("dmesg", 0, "[    0.000000] Booting Linux 6.1")
