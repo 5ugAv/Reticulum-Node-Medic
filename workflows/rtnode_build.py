@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from node_profile import NodeHardware, NodeProfile
+from provisioning.by_id import by_id_serial
 from transport.connection import Connection
 from diagnostics.rtnode_2400 import CAPTURE_COMMAND
 from monitor.health_beacon import HealthBeacon, decode
@@ -236,7 +237,11 @@ _INIT_RE = re.compile(r"\[HealthBeacon\] init dst=([0-9a-fA-F]+)")
 _TECHO_ID_RE = re.compile(
     r"\[RTNode\] identity=([0-9a-fA-F]+) dst=([0-9a-fA-F]+)")
 
-#: Injectable sleep so the single-pass retry logic is unit-testable.
+#: Module-level sleep. The retry logic calls this instead of ``time.sleep`` so a
+#: test can neutralise the waits with ``monkeypatch.setattr(rtnode_build,
+#: "_sleep", lambda _s: None)`` — it is NOT a parameter, so a test must patch
+#: this global (there is no argument to inject); the word "injectable" here is
+#: aspirational shorthand for "monkeypatchable".
 _sleep = time.sleep
 
 _RTNODE_STEPS: List[Tuple[str, Callable]] = []
@@ -263,14 +268,21 @@ def hw_serial_from_port(wf) -> str:
     nRF52: the chip serial). The one identifier that SURVIVES a reflash,
     so a rebirth can recognise the same physical board and retire its
     previous identity (kin_roster.retire_previous_lives). Empty when the
-    port has no by-id entry — never guess."""
+    port has no by-id entry — never guess.
+
+    Uses the shared reader (provisioning.by_id) rather than a private regex:
+    this used to carry its own ``_([0-9A-Fa-f:]+)-if\\d+`` pattern, which not
+    only re-forked the parser but also could not read a serial with a non-hex
+    character (an FTDI ``A50285BI``) — the shared splitter handles it."""
     out = wf.connection.run("ls -l /dev/serial/by-id/ 2>/dev/null")[1]
     port = (wf.profile.connection_port or "").split("/")[-1]
     for line in out.splitlines():
         if port and line.strip().endswith(port):
-            m = re.search(r"_([0-9A-Fa-f:]+)-if\d+", line)
-            if m:
-                return m.group(1)
+            # ``ls -l`` line: ``… usb-<vendor>_<serial>-if00[-port0] -> …/ttyX``
+            by_id_name = line.split(" -> ", 1)[0].split()[-1]
+            serial = by_id_serial(by_id_name)
+            if serial:
+                return serial
     return ""
 
 

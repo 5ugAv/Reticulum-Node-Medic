@@ -134,7 +134,8 @@ def test_flash_uses_platformio_env_and_port():
     assert "/dev/cu.usbmodem2101" in flash_cmd
 
 
-def test_flash_failure_reported():
+def test_flash_failure_reported(monkeypatch):
+    _quiet_sleep(monkeypatch)          # the flash path retries with real sleeps
     c = conn(flash_code=1)
     w = wf(c)
     w.steps[0][1](w)
@@ -263,7 +264,8 @@ def test_birth_certificate_summarises_node():
     assert "frequency_mhz" in cert
 
 
-def test_flash_failure_stops_run_all():
+def test_flash_failure_stops_run_all(monkeypatch):
+    _quiet_sleep(monkeypatch)          # the flash path retries with real sleeps
     c = conn(flash_code=1)
     w = wf(c)
     w.run_all()

@@ -42,10 +42,27 @@ def test_a_mac_style_serial_is_read_whole():
     assert by_id_serial(JONESEY) == "A1:B2:C3:D4:E5:F6"
 
 
+# The regression the shared reader exists to prevent: a USB-UART BRIDGE board
+# enumerates with a trailing ``-port0``, and the old regex anchored its serial
+# match with ``$`` right after ``-if00`` — the ``-port0`` shoved the anchor off
+# the end, the match failed, and the serial silently read back as nothing. That
+# is the exact board family (Heltec V3, T-Beam) whose reflash re-enumeration the
+# reader was written to follow, so the bug was both silent and worst-targeted.
+CP2102_V3 = ("usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_"
+             "0001-if00-port0")
+FTDI = "usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
+
+
+def test_a_bridge_boards_port_suffix_does_not_defeat_the_read():
+    assert by_id_serial(CP2102_V3) == "0001"          # Heltec V3's CP2102
+    assert by_id_serial(FTDI) == "A50285BI"           # FTDI adapter
+
+
 def test_nonsense_yields_no_serial_rather_than_a_guess():
-    assert by_id_serial("") is None
-    assert by_id_serial(None) is None
-    assert by_id_serial("/dev/ttyACM0") is None
+    # Sentinel is "" (the shared reader's contract), never a guess.
+    assert by_id_serial("") == ""
+    assert by_id_serial(None) == ""
+    assert by_id_serial("/dev/ttyACM0") == ""
 
 
 class _Conn:

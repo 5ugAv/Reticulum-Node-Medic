@@ -141,3 +141,29 @@ def test_an_empty_fingerprint_matches_nothing(tmp_path):
     from ui.cert_store import same_board
     assert not same_board(None, None)
     assert not same_board("", "")
+
+
+# A factory-default serial identifies NOTHING. Two DIFFERENT-model bridge boards
+# both ship the CP2102/FTDI default "0001"; keying them on that serial would
+# call them one board and hand back the wrong certificate. The shared reader can
+# now read "0001" off boards it used to read blank, so this cross-model case is
+# newly reachable and must be closed here.
+_V3_CP2102 = ("usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_"
+              "0001-if00-port0")
+_OTHER_DEFAULT_0001 = "usb-1a86_USB_Single_Serial_0001-if00"
+
+
+def test_a_factory_default_serial_does_not_merge_two_boards():
+    from ui.cert_store import usb_serial_key, same_board
+    # Two different-model boards, both carrying the default "0001", stay apart.
+    assert usb_serial_key(_V3_CP2102) != usb_serial_key(_OTHER_DEFAULT_0001)
+    assert not same_board(_V3_CP2102, _OTHER_DEFAULT_0001)
+    # A board is still the same as itself.
+    assert same_board(_V3_CP2102, _V3_CP2102)
+
+
+def test_a_real_unique_serial_still_matches_itself_across_the_reflash():
+    """The placeholder guard must not cost the RAK4631 its cross-spelling match:
+    its 16-hex serial is unique, so bootloader and firmware spellings fold."""
+    from ui.cert_store import same_board
+    assert same_board(FIRMWARE_ID, BOOTLOADER_ID)

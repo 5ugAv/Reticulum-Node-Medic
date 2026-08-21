@@ -39,6 +39,8 @@ import shlex
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from provisioning.by_id import (          # the ONE serial reader, shared
+    PLACEHOLDER_SERIALS, by_id_serial, is_uniquely_identified)
 from provisioning.gadget import (GADGET_USB_IP, HOST_USB_IP, USB_PREFIX,
                                  GADGET_USB0_SERVICE, GADGET_SERVICE_PATH,
                                  NM_UNMANAGED_PATH, NM_UNMANAGED_CONF,
@@ -258,27 +260,11 @@ def stable_port_for(port: str, runner=None) -> str:
     return port
 
 
-#: Serial numbers that are NOT unique. Seen live on a Heltec V3 (2026-08-01):
-#: its CP2102 reports "0001", the factory default — every V3 off that line has
-#: it. A by-id path is only as unique as the serial baked into it, so treating
-#: one of these as an identity would be a false promise.
-PLACEHOLDER_SERIALS = {"0001", "0000", "0", "1", "00000000", "12345678"}
-
-
-def by_id_serial(by_id_path: str) -> str:
-    """The serial embedded in a ``/dev/serial/by-id/`` name, or "" if there
-    isn't one. Format: ``usb-<vendor>_<product>_<serial>-ifXX[-portX]``."""
-    if not by_id_path.startswith("/dev/serial/by-id/"):
-        return ""
-    name = by_id_path.rsplit("/", 1)[-1]
-    stem = name.split("-if")[0]
-    return stem.rsplit("_", 1)[-1] if "_" in stem else ""
-
-
-def is_uniquely_identified(by_id_path: str) -> bool:
-    """Does this by-id path actually pin ONE physical board?"""
-    serial = by_id_serial(by_id_path)
-    return bool(serial) and serial not in PLACEHOLDER_SERIALS
+# by_id_serial / is_uniquely_identified / PLACEHOLDER_SERIALS now live in
+# provisioning.by_id (imported at the top) — one reader, shared with
+# rnode_flash and rtnode_build, which used to carry diverging copies. The names
+# stay in this module's namespace via that import, so callers and tests keyed
+# to ``cable_birth.by_id_serial`` keep working.
 
 
 def unmoved_warning(by_id_path: str) -> str:
