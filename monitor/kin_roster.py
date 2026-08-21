@@ -64,6 +64,7 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
              links: Optional[dict] = None, builder: Optional[str] = None,
              share_location: Optional[str] = None,
              device: Optional[str] = None,
+             hw_serial: Optional[str] = None,
              path: str = KIN_ROSTER_PATH) -> dict:
     """Record one of the medic's own nodes (idempotent — updates in place).
     Returns the updated roster. Called at BIRTH with the node's identity + name +
@@ -81,6 +82,8 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
         entry["builder"] = builder
     if device is not None:
         entry["device"] = device
+    if hw_serial:
+        entry["hw_serial"] = hw_serial
     if lat is not None:
         entry["lat"] = lat
     if lon is not None:
@@ -104,6 +107,7 @@ def register(rns_hash: str, name: str, node_type: str = "pi",
 def register_device(hashes, name: str, node_type: str = "pi",
                     lat: Optional[float] = None, lon: Optional[float] = None,
                     links: Optional[dict] = None, builder: Optional[str] = None,
+                    hw_serial: Optional[str] = None,
                     path: str = KIN_ROSTER_PATH) -> dict:
     """Record ONE machine that answers on SEVERAL Reticulum destinations.
 
@@ -131,8 +135,36 @@ def register_device(hashes, name: str, node_type: str = "pi",
     device = hs[0]
     for h in hs:
         roster = register(h, name, node_type=node_type, lat=lat, lon=lon,
-                          links=links, builder=builder, device=device, path=path)
+                          links=links, builder=builder, device=device,
+                          hw_serial=hw_serial, path=path)
     return roster
+
+
+def retire_previous_lives(hw_serial: Optional[str], keep_hashes,
+                          path: str = KIN_ROSTER_PATH) -> list:
+    """Remove roster entries for EARLIER identities of the same physical board.
+
+    Every wipe-and-provision mints a fresh identity, but the old one's roster
+    entry (and its registry rows) stayed behind wearing the board's name — on
+    2026-08-21 a single T114 held two "live" rows, and replayed announces
+    kept the dead one green. Called at birth with the board's hardware serial
+    and the hashes the NEW certificate carries: any entry recorded against the
+    same serial under a hash not in *keep_hashes* is a previous life. Returns
+    the removed hashes so the caller can also purge the live registry. A birth
+    with no serial (Pi builds, old certs) is a no-op — never guess.
+    """
+    if not hw_serial:
+        return []
+    keep = {str(h) for h in (keep_hashes or [])}
+    roster = load_roster(path)
+    doomed = [h for h, e in roster.items()
+              if isinstance(e, dict) and e.get("hw_serial") == hw_serial
+              and h not in keep]
+    if doomed:
+        for h in doomed:
+            del roster[h]
+        _save(roster, path)
+    return doomed
 
 
 def set_location(rns_hash: str, lat: float, lon: float,

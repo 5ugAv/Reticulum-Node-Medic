@@ -205,6 +205,12 @@ class NodeRecord:
     #: to raise it (seed, powered off but green, 2026-08-20). Cleared by any
     #: newer beacon, HTTP poll, or answered probe.
     poll_failed_at: Optional[float] = None
+    #: When a byte-identical copy of the last beacon was heard again. A repeated
+    #: payload is a RETRANSMISSION (rnsd re-emits cached announces on path
+    #: requests), not the node speaking: on 2026-08-21 a wiped, battery-less
+    #: board's row was "seen" 90 s after unplugging because of exactly this.
+    #: Recorded for diagnosis; never evidence of life.
+    last_echo_at: Optional[float] = None
     lat: Optional[float] = None             # exact coords (from birth cert)
     lon: Optional[float] = None
     #: Whether this node PUBLISHES a position to the public mesh map — the
@@ -615,6 +621,14 @@ class NodeRegistry:
         rec = self.nodes.get(dst_hash)
         if rec is None:
             rec = self.register(dst_hash)
+        if (rec.latest_beacon is not None
+                and rec.latest_beacon.to_bytes() == beacon.to_bytes()):
+            # REPLAY, NOT A SIGHTING. A live node's beacon always differs from
+            # its last (uptime_s ticks); identical bytes mean the transport
+            # replayed a cached announce. It must not refresh last_seen, must
+            # not cure a failed poll, and must not fake a history point.
+            rec.last_echo_at = now
+            return rec
         rec.latest_beacon = beacon
         rec.last_seen = now
         if rec.poll_failed_at is not None and rec.last_seen is not None \
@@ -1064,6 +1078,7 @@ class NodeRegistry:
                 "last_direct": r.last_direct,
                 "mesh_heard": r.mesh_heard,
                 "poll_failed_at": r.poll_failed_at,
+                "last_echo_at": r.last_echo_at,
                 "lat": r.lat,
                 "lon": r.lon,
                 "share_location": r.share_location,
@@ -1095,6 +1110,7 @@ class NodeRegistry:
                 last_direct=n.get("last_direct"),
                 mesh_heard=n.get("mesh_heard"),
                 poll_failed_at=n.get("poll_failed_at"),
+                last_echo_at=n.get("last_echo_at"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),
                 # A registry file written before this field existed carries no

@@ -257,6 +257,23 @@ def board_mac_from_port(wf) -> str:
     return ""
 
 
+def hw_serial_from_port(wf) -> str:
+    """The board's USB serial off its /dev/serial/by-id symlink — the token
+    between the last underscore and the -ifNN suffix (ESP32: the MAC;
+    nRF52: the chip serial). The one identifier that SURVIVES a reflash,
+    so a rebirth can recognise the same physical board and retire its
+    previous identity (kin_roster.retire_previous_lives). Empty when the
+    port has no by-id entry — never guess."""
+    out = wf.connection.run("ls -l /dev/serial/by-id/ 2>/dev/null")[1]
+    port = (wf.profile.connection_port or "").split("/")[-1]
+    for line in out.splitlines():
+        if port and line.strip().endswith(port):
+            m = re.search(r"_([0-9A-Fa-f:]+)-if\d+", line)
+            if m:
+                return m.group(1)
+    return ""
+
+
 def default_lan_host(mac: str) -> str:
     """The firmware's default mDNS hostname: ``rtnode`` + last two MAC octets
     (verified live: MAC 02:00:00:07:00:07 -> rtnode0007.local)."""
@@ -1060,6 +1077,12 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         "location": location,          # exact coords, or None if no GPS fix
         "session_id": wf.profile.session_id,
     }
+    hw = hw_serial_from_port(wf)
+    if hw:
+        # The physical board's own serial — the key that lets the NEXT birth
+        # of this same board retire this identity's rows instead of leaving a
+        # ghost in VITALS (2026-08-21: one T114, two "live" rows).
+        wf.birth_certificate["hw_serial"] = hw
     if getattr(wf, "techo_dst", None):
         # The rnstransport destination the node announced at boot (nRF52
         # boot-log read) — the kin roster keys on BOTH hashes, so either

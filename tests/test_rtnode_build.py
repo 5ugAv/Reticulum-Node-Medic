@@ -1123,3 +1123,47 @@ def test_a_board_that_never_answers_fails_honestly():
     res = _flash_techo(_techo_wf(_Mute()), "/dev/ttyACM1")
     assert not res.success
     assert "never answered" in res.message
+
+
+# ---- hw_serial: the identifier that survives a reflash ----------------------
+
+def test_hw_serial_from_port_reads_nrf_style_by_id():
+    from workflows.rtnode_build import hw_serial_from_port
+    c = conn(port="/dev/ttyACM1")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0,
+        "lrwxrwxrwx 1 root root 13 Aug 21 21:21 "
+        "usb-Heltec_T114_RTNode-2400_1114000000000001-if00 -> ../../ttyACM1", ""))
+    w = wf(c)
+    w.profile.connection_port = "/dev/ttyACM1"
+    assert hw_serial_from_port(w) == "1114000000000001"
+
+
+def test_hw_serial_from_port_reads_esp32_mac_style():
+    from workflows.rtnode_build import hw_serial_from_port
+    c = conn(port="/dev/ttyACM0")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0,
+        "lrwxrwxrwx 1 root root 13 Aug 21 10:00 "
+        "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:02:00:02-if00 "
+        "-> ../../ttyACM0", ""))
+    w = wf(c)
+    w.profile.connection_port = "/dev/ttyACM0"
+    assert hw_serial_from_port(w) == "02:00:00:02:00:02"
+
+
+def test_hw_serial_from_port_empty_when_no_by_id():
+    from workflows.rtnode_build import hw_serial_from_port
+    w = wf(conn(port="/dev/ttyACM1"))
+    w.profile.connection_port = "/dev/ttyACM1"
+    assert hw_serial_from_port(w) == ""
+
+
+def test_birth_certificate_carries_hw_serial():
+    """The cert is how the serial reaches the kin roster — a rebirth of the
+    same physical board uses it to retire the previous identity's rows."""
+    c = conn(port="/dev/ttyACM1")
+    c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0,
+        "lrwxrwxrwx 1 root root 13 Aug 21 21:21 "
+        "usb-Heltec_T114_RTNode-2400_1114000000000001-if00 -> ../../ttyACM1", ""))
+    w = wf(c)
+    w.run_all()
+    assert w.birth_certificate.get("hw_serial") == "1114000000000001"

@@ -321,7 +321,9 @@ def test_a_newer_beacon_clears_the_unanswered_probe():
     r.ingest(HASH, beacon(), NOW)
     r.record_probe(HASH, ok=False, now=NOW + 100)
     assert r.get(HASH).status(NOW + 100) == "warn"
-    r.ingest(HASH, beacon(), NOW + 200)              # the node itself speaks
+    # uptime has TICKED — a live node's next beacon is never byte-identical
+    # to its last (the replay guard would rightly ignore an exact copy)
+    r.ingest(HASH, beacon(uptime_s=236), NOW + 200)  # the node itself speaks
     assert r.get(HASH).status(NOW + 200) == "ok"
     assert r.get(HASH).poll_failed_at is None
 
@@ -332,6 +334,39 @@ def test_an_answered_probe_clears_the_failure_too():
     r.record_probe(HASH, ok=False, now=NOW + 100)
     r.record_probe(HASH, ok=True, now=NOW + 200)     # rnpath proved it live
     assert r.get(HASH).status(NOW + 200) == "ok"
+
+
+def test_a_replayed_beacon_is_not_a_sighting():
+    """2026-08-21: a battery-less board's row was "seen" 90 s after unplugging
+    — rnsd replayed its cached announce on a path request. Identical bytes are
+    the transport echoing, not the node speaking: no last_seen refresh, no
+    history point, and above all no curing of a failed poll."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.record_probe(HASH, ok=False, now=NOW + 100)
+    n_hist = len(r.history.series(HASH))
+    r.ingest(HASH, beacon(), NOW + 200)              # byte-identical = replay
+    rec = r.get(HASH)
+    assert rec.last_seen == NOW                       # unchanged
+    assert rec.last_echo_at == NOW + 200              # recorded for diagnosis
+    assert rec.poll_failed_at == NOW + 100            # failure NOT cured
+    assert rec.status(NOW + 200) == "warn"
+    assert len(r.history.series(HASH)) == n_hist      # no fake activity
+
+
+def test_a_changed_beacon_still_counts():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(uptime_s=96), NOW + 60)
+    assert r.get(HASH).last_seen == NOW + 60
+
+
+def test_last_echo_at_survives_save_and_load():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(), NOW + 200)
+    r2 = NodeRegistry.from_dict(r.to_dict())
+    assert r2.get(HASH).last_echo_at == NOW + 200
 
 
 def test_unanswered_probe_never_upgrades_a_worse_face():

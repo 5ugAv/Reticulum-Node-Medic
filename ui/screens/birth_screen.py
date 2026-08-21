@@ -3334,6 +3334,18 @@ class BirthScreen(BoxLayout):
             ll = cert_latlon(cert)
             if ll:
                 lat, lon = ll[0], ll[1]
+            # A REBORN BOARD RETIRES ITS PREVIOUS LIVES FIRST. Same physical
+            # serial + a hash the new certificate doesn't carry = an identity
+            # this board used to be. Left in place, replayed announces keep the
+            # old row green forever (one T114, two "live" rows, 2026-08-21).
+            # Roster entry and registry rows go together; no serial, no-op.
+            try:
+                for _old in kin_roster.retire_previous_lives(
+                        cert.get("hw_serial"), hashes):
+                    if _reg is not None:
+                        _reg.forget_node(_old)
+            except Exception:
+                pass
             kin_roster.register_device(
                 hashes, cert.get("node_name") or cert.get("hostname") or "node",
                 # NOT a default — a lookup. See kin_roster.type_for_cert:
@@ -3342,7 +3354,8 @@ class BirthScreen(BoxLayout):
                 # and internet links (2026-08-10).
                 node_type=kin_roster.type_for_cert(cert) or "rtnode2400",
                 lat=lat, lon=lon,
-                builder=tool_identity.identity_hash())
+                builder=tool_identity.identity_hash(),
+                hw_serial=cert.get("hw_serial"))
             # INTO THE LIVE REGISTRY NOW, not at the next rediscover.
             # register_device writes DISK; the running registry re-reads it
             # every ~5 minutes, and a newborn node's first announce lands well

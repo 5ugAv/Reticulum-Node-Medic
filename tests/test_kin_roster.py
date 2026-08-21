@@ -311,3 +311,44 @@ def test_the_three_states_are_kept_apart_on_screen():
     detail = open("ui/screens/node_detail_screen.py").read()
     assert "not reported by the node" in detail
     assert "down — the node says so" in detail
+
+
+# ---- previous lives (one board, many births) --------------------------------
+
+def test_retire_previous_lives_removes_old_identity(tmp_path):
+    """One T114 held two 'live' VITALS rows (2026-08-21): each wipe-and-
+    provision mints a new identity, and the old one's entry stayed behind. The
+    hardware serial is what survives the reflash — same serial + a hash the new
+    cert doesn't carry = a previous life."""
+    path = str(tmp_path / "kin.json")
+    kin_roster.register("aaaa1111", "t114", node_type="rtnode2400",
+                        hw_serial="1114000000000001", path=path)
+    kin_roster.register("bbbb2222", "unrelated", node_type="rtnode2400",
+                        hw_serial="FFFF0000AAAA1111", path=path)
+    removed = kin_roster.retire_previous_lives(
+        "1114000000000001", ["cccc3333"], path=path)
+    assert removed == ["aaaa1111"]
+    roster = kin_roster.load_roster(path)
+    assert "aaaa1111" not in roster
+    assert "bbbb2222" in roster                    # different board untouched
+
+
+def test_retire_previous_lives_keeps_the_new_hashes(tmp_path):
+    path = str(tmp_path / "kin.json")
+    kin_roster.register("cccc3333", "t116", node_type="rtnode2400",
+                        hw_serial="1114000000000001", path=path)
+    removed = kin_roster.retire_previous_lives(
+        "1114000000000001", ["cccc3333"], path=path)
+    assert removed == []
+    assert "cccc3333" in kin_roster.load_roster(path)
+
+
+def test_retire_previous_lives_without_serial_is_a_noop(tmp_path):
+    """A birth that never learned the serial (Pi builds, old certs) must not
+    guess — nothing is removed."""
+    path = str(tmp_path / "kin.json")
+    kin_roster.register("aaaa1111", "t114", node_type="rtnode2400",
+                        hw_serial="1114000000000001", path=path)
+    assert kin_roster.retire_previous_lives(None, ["x"], path=path) == []
+    assert kin_roster.retire_previous_lives("", ["x"], path=path) == []
+    assert "aaaa1111" in kin_roster.load_roster(path)
