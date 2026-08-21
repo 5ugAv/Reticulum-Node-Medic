@@ -135,9 +135,11 @@ def test_eeprom_invalid_flagged_firmware_still_present():
 
 def test_firmware_hash_mismatch_flagged_corrupt():
     # A board can have a valid EEPROM + validated signature yet show "firmware
-    # corrupt": the stored firmware hash != the running firmware. --info hides it;
-    # PROBE reads both hashes via fw_hash_probe and flags it CRITICAL + auto-fix.
+    # corrupt": the stored firmware hash != the running firmware. fw_hash_probe
+    # is now the FALLBACK read (C2 fold): it only runs when the -K -L blessing
+    # read reached no verdict, so make the blessing unreadable here.
     conn = conn_with()
+    conn.rules.insert(0, ("-K -L", 0, "no hashes came back", ""))
     conn.rule("fw_hash_probe", code=0, stdout="FWHASH:MISMATCH aaaa bbbb")
     issues = run(conn)
     hv = next(i for i in issues if i.check_name == "firmware_hash_valid")
@@ -153,8 +155,11 @@ def test_firmware_hash_match_not_flagged():
 
 def test_firmware_hash_unknown_fails_safe():
     # Can't read the hashes (e.g. probe error) -> never flag a fault we can't
-    # confirm. Default conn returns no FWHASH line -> "unknown" -> no issue.
-    assert "firmware_hash_valid" not in names(run(conn_with()))
+    # confirm. With the blessing unreadable too, the fallback probe runs, gets
+    # no FWHASH line -> "unknown" -> no issue.
+    conn = conn_with()
+    conn.rules.insert(0, ("-K -L", 0, "no hashes came back", ""))
+    assert "firmware_hash_valid" not in names(run(conn))
 
 
 def test_firmware_version_outdated():
@@ -369,28 +374,72 @@ def test_fix_frequency_runs_rnodeconf():
 
 
 # ---- firmware blessing (-K -L): the parked-radio trap (2026-08-22 T114) ----
-# A board reflashed outside the medic's birth flow keeps a stale blessed hash
-# in EEPROM: the boot check parks the radio at 0.000 while BLE/KISS/rnodeconf
-# all answer politely. `rnodeconf -K -L` reads both hashes; the check reports
-# BLESSED / PARKED / UNREADABLE and never writes anything.
+# A board whose stored blessed hash disagrees with the firmware actually
+# running is PARKED at 0.000 while BLE/KISS/rnodeconf all answer politely.
+# `rnodeconf -K -L` reads both hashes; the check reports BLESSED / PARKED /
+# UNREADABLE (or refuses an unverifiable port outright) and never writes.
+
+
+@pytest.fixture(autouse=True)
+def _cleared_work_board_gate(monkeypatch):
+    """The C6 Jonesey gate consults the REAL host's roster / by-id tree, so
+    left live it would make this file's results depend on whichever machine
+    runs it. Cleared by default; the guard test below overrides it. Yields
+    the REAL function so the fail-closed test can still exercise it."""
+    import diagnostics.radio_firmware as rf
+    real = rf._work_board_cleared
+    monkeypatch.setattr(rf, "_work_board_cleared", lambda c, p: True)
+    yield real
 
 
 def kl_count(conn):
     return sum(1 for c in conn.history if "-K -L" in c)
 
 
+def probe_ran(conn):
+    return any("fw_hash_probe" in c for c in conn.history)
+
+
 def test_blessed_hashes_match_no_issue():
     conn = conn_with()          # default -K -L rule: hashes agree
     assert "firmware_blessing" not in names(run(conn))
-    # a clean first read needs no settle laps
+    # a clean first read needs no retry laps and no mismatch-confirm read
     assert kl_count(conn) == 1
+    # C5: one settle beat BEFORE the first read (Device.h:142 deferred reset;
+    # the --info reads just above may have rebooted a hw-CDC board)
+    first_kl = next(i for i, c in enumerate(conn.history) if "-K -L" in c)
+    assert any("sleep 6" in c for c in conn.history[:first_kl])
+
+
+def test_blessing_verdict_suppresses_fw_hash_probe():
+    # C2: one fault, one issue. When -K -L reaches a verdict (either way),
+    # the fw_hash_probe fallback must not also run and double-report.
+    blessed = conn_with()
+    run(blessed)
+    assert not probe_ran(blessed)
+    parked = conn_with()
+    parked.rules.insert(0, ("-K -L", 0, kl_output(H_STORED, H_RUNNING), ""))
+    issues = run(parked)
+    assert not probe_ran(parked)
+    assert "firmware_hash_valid" not in names(issues)
+    assert "firmware_blessing" in names(issues)
+
+
+def test_probe_fallback_runs_only_when_blessing_unreadable():
+    conn = conn_with()
+    conn.rules.insert(0, ("-K -L", 0, "no hashes came back", ""))
+    conn.rule("fw_hash_probe", code=0, stdout="FWHASH:MATCH")
+    issues = run(conn)
+    assert probe_ran(conn)                       # fallback consulted
+    assert "firmware_hash_valid" not in names(issues)
 
 
 def test_blessing_uses_raw_port_not_by_id_symlink():
     # the rnodeconf by-id nRF52 trap: a by-id symlink can rescan to None and
     # touch the wrong device — the check must hand rnodeconf the RAW tty.
     conn = conn_with()
-    conn.rules.insert(0, ("^readlink -f", 0, "/dev/ttyACM2", ""))
+    conn.rules.insert(0, ("^readlink -f /dev/serial/by-id", 0,
+                          "/dev/ttyACM2", ""))
     profile = NodeProfile()
     profile.radio.serial_port = (
         "/dev/serial/by-id/usb-RAKwireless_WisCore_RAK4631_Board-if00")
@@ -399,19 +448,44 @@ def test_blessing_uses_raw_port_not_by_id_symlink():
     assert kl and all("/dev/ttyACM2" in c and "by-id" not in c for c in kl)
 
 
-def test_parked_hashes_differ_prescribes_cure():
+def test_blessing_reresolves_moved_port_through_by_id_anchor():
+    # C3: production hands this check a RAW ttyACM node. After a reset the
+    # board can re-enumerate to a DIFFERENT number, so the check anchors on
+    # the stable by-id link and readlinks it each lap — the -K -L command
+    # must follow the board to its NEW raw node, and still never pass the
+    # symlink itself to rnodeconf.
+    conn = conn_with()
+    conn.rules.insert(0, ("for l in /dev/serial/by-id/*", 0,
+                          "/dev/serial/by-id/usb-Heltec_V4-if00", ""))
+    conn.rules.insert(0, ("^readlink -f /dev/serial/by-id", 0,
+                          "/dev/ttyACM2", ""))
+    profile = NodeProfile()
+    profile.radio.serial_port = "/dev/ttyACM1"      # where it USED to be
+    RadioFirmwareCheck(conn, profile).run()
+    kl = [c for c in conn.history if "-K -L" in c]
+    assert kl and all("/dev/ttyACM2" in c and "by-id" not in c for c in kl)
+
+
+def test_parked_needs_two_agreeing_reads_and_prescribes_cure():
     conn = conn_with()
     conn.rules.insert(0, ("-K -L", 0, kl_output(H_STORED, H_RUNNING), ""))
     issues = run(conn)
     parked = next(i for i in issues if i.check_name == "firmware_blessing")
+    # C4: a mismatch is only believed after a CONFIRMING second read
+    assert kl_count(conn) == 2
     assert parked.severity == "critical"
     assert parked.auto_fixable is False          # report + prescribe only
     assert "PARKED" in parked.description
     assert "0.000" in parked.description         # the parked-radio signature
+    # P2: honest about BOTH causes — the commonest is the offline birth that
+    # never stamped a hash, not only "reflashed outside the medic"
+    assert "--autoinstall --nocheck" in parked.description
     # the cure names the exact command with the ACTUAL hash filled in...
     assert f"--firmware-hash {H_RUNNING}" in parked.description
-    # ...and demands the COLD power cycle (a reset is not enough)
+    # ...demands the COLD power cycle (a reset is not enough)...
     assert "COLD power cycle" in parked.description
+    # ...and offers the full reflash only as the heavier fallback
+    assert "BIRTH" in parked.description
     assert H_STORED in parked.raw_detail and H_RUNNING in parked.raw_detail
 
 
@@ -425,7 +499,7 @@ def test_parked_diagnosis_is_read_only():
 
 class _FlakyKLConn(EmulatedConnection):
     """-K -L answers from a scripted sequence (a dying tty lingering after a
-    reset garbles the first read); everything else follows the rule list."""
+    reset garbles reads); everything else follows the rule list."""
 
     def __init__(self, kl_outputs, base=None):
         super().__init__()
@@ -437,6 +511,27 @@ class _FlakyKLConn(EmulatedConnection):
             self.history.append(command)
             return (0, self._kl.pop(0) if self._kl else "", "")
         return super().run(command, timeout)
+
+
+def test_transient_mismatch_is_not_condemned():
+    # C4: one post-reset read shows a mismatch, the confirm read agrees with
+    # itself — the board is BLESSED, and no critical was raised on one read.
+    conn = _FlakyKLConn([kl_output(H_STORED, H_RUNNING),
+                         kl_output(H_STORED, H_STORED)])
+    assert "firmware_blessing" not in names(run(conn))
+    assert kl_count(conn) == 2
+
+
+def test_unstable_confirm_reports_unreadable():
+    # the two reads disagree with EACH OTHER: an unstable state is reported
+    # as UNREADABLE (honest), never committed as PARKED.
+    other = "ef" * 32
+    conn = _FlakyKLConn([kl_output(H_STORED, H_RUNNING),
+                         kl_output(H_STORED, other)])
+    issues = run(conn)
+    unread = next(i for i in issues if i.check_name == "firmware_blessing")
+    assert unread.severity == "info"
+    assert "UNREADABLE" in unread.description
 
 
 def test_settle_retry_recovers_a_garbled_first_read():
@@ -453,15 +548,96 @@ def test_unreadable_is_its_own_honest_answer():
     # every lap fails -> UNREADABLE, reported as "couldn't check", never a
     # guessed BLESSED or PARKED, and never a critical fault we didn't confirm.
     conn = conn_with()
-    conn.rules.insert(0, ("-K -L", 1, "", "rnodeconf: could not open port"))
+    conn.rules.insert(0, ("-K -L", 0,
+                          "rnodeconf: could not open port /dev/ttyACM0", ""))
     issues = run(conn)
     unread = next(i for i in issues if i.check_name == "firmware_blessing")
     assert unread.severity == "info"
     assert unread.auto_fixable is False
     assert "UNREADABLE" in unread.description
     assert "honest" in unread.description
+    # P5: the verdict carries its evidence — the trimmed rnodeconf output
+    assert "could not open port" in unread.raw_detail
     from diagnostics.radio_firmware import BLESSING_LAPS
     assert kl_count(conn) == BLESSING_LAPS       # all settle laps were spent
+
+
+def test_all_zero_actual_hash_never_prescribed():
+    # C1, Columba's war table (mirrored at rtnode_build's hash step): a
+    # device mid-glitch reports an ALL-ZEROS running hash; prescribing that
+    # as the expectation bricks hw_ready on the next boot. Zeros = a read
+    # glitch = UNREADABLE, and no cure command may carry the zero hash.
+    from diagnostics.radio_firmware import ZERO_HASH, BLESSING_LAPS
+    conn = conn_with()
+    conn.rules.insert(0, ("-K -L", 0, kl_output(H_STORED, ZERO_HASH), ""))
+    issues = run(conn)
+    unread = next(i for i in issues if i.check_name == "firmware_blessing")
+    assert "UNREADABLE" in unread.description
+    assert "--firmware-hash" not in unread.description
+    assert ZERO_HASH not in unread.description
+    assert kl_count(conn) == BLESSING_LAPS       # zeros never end the laps
+
+
+def test_zero_target_with_real_actual_is_parked():
+    # the classic unmarked offline birth: stored expectation all zeros, a
+    # REAL running hash. That is a genuine parked state and the prescription
+    # carries the real (non-zero) actual hash.
+    from diagnostics.radio_firmware import ZERO_HASH
+    conn = conn_with()
+    conn.rules.insert(0, ("-K -L", 0, kl_output(ZERO_HASH, H_RUNNING), ""))
+    issues = run(conn)
+    parked = next(i for i in issues if i.check_name == "firmware_blessing")
+    assert parked.severity == "critical"
+    assert f"--firmware-hash {H_RUNNING}" in parked.description
+    assert f"--firmware-hash {ZERO_HASH}" not in parked.description
+
+
+def test_unverifiable_port_is_refused_untouched(monkeypatch):
+    # C6: -K -L writes KISS frames into the port, and the splitter holds
+    # Jonesey without exclusive=True — a port that can't be POSITIVELY
+    # proven a work board is refused before anything touches it, and the
+    # fw_hash_probe fallback (same port!) must not run either.
+    import diagnostics.radio_firmware as rf
+    monkeypatch.setattr(rf, "_work_board_cleared", lambda c, p: False)
+    conn = conn_with()
+    issues = run(conn)
+    refused = next(i for i in issues if i.check_name == "firmware_blessing")
+    assert refused.severity == "info"
+    assert "refusing" in refused.description.lower()
+    assert kl_count(conn) == 0                   # the port was never touched
+    assert not probe_ran(conn)
+
+
+def test_work_board_gate_fails_closed_on_error(_cleared_work_board_gate,
+                                               monkeypatch):
+    # if the roster machinery itself blows up, the gate refuses (fail-closed).
+    # _cleared_work_board_gate yields the REAL function (the autouse fixture
+    # has already swapped the module attribute for a pass-through).
+    import sys
+
+    class Boom:
+        def __getattr__(self, name):
+            raise RuntimeError("roster unavailable")
+
+    monkeypatch.setitem(sys.modules, "ui.onboard_roster", Boom())
+    real_gate = _cleared_work_board_gate
+    assert real_gate(conn_with(), "/dev/ttyACM1") is False
+
+
+def test_blessing_work_runs_inside_the_instrumented_check():
+    # C7: the UI hears check_start BEFORE the blocking serial read, because
+    # the work happens inside the lazy _check call — not before it.
+    from workflows.repair import _InstrumentedModule
+    conn = conn_with()
+    module = RadioFirmwareCheck(conn, NodeProfile())
+    seen = {}
+
+    def emit(e):
+        if e.type == "check_start" and e.check_name == "firmware_blessing":
+            seen["kl_reads_at_start"] = kl_count(conn)
+
+    _InstrumentedModule(module, emit).run()
+    assert seen.get("kl_reads_at_start") == 0
 
 
 def test_blessing_skipped_when_board_unresponsive():

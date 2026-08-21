@@ -1,6 +1,16 @@
 import pytest
 
 from node_profile import NodeProfile
+
+
+@pytest.fixture(autouse=True)
+def _cleared_work_board_gate(monkeypatch):
+    """The firmware-blessing check's C6 Jonesey gate consults the REAL host's
+    roster / by-id tree; cleared here so this file's results don't depend on
+    whichever machine runs it (the gate has its own tests in
+    test_diagnostic_radio_firmware.py)."""
+    import diagnostics.radio_firmware as rf
+    monkeypatch.setattr(rf, "_work_board_cleared", lambda c, p: True)
 from transport.connection import EmulatedConnection
 from diagnostics.radio_firmware import LATEST_FIRMWARE
 from workflows.repair import (

@@ -28,9 +28,54 @@ LATEST_FIRMWARE = "1.86"
 #: was just reset leaves a DYING tty lingering on the bus (the _nrf_settle
 #: lesson from rtnode_build): the first read after a reset can come back
 #: empty or garbled from a port whose board has already moved. Re-resolve and
-#: re-read up to 4 laps, 8 s apart, before honestly answering "couldn't check".
-BLESSING_LAPS = 4
+#: re-read up to 2 laps, 8 s apart, before honestly answering "couldn't
+#: check" — 2, not more, because the operator is watching a PROBE screen and
+#: the whole budget (pre-settle + laps + one mismatch-confirm read at 30 s
+#: per command) must stay under ~2 minutes (adversarial review C7,
+#: 2026-08-22).
+BLESSING_LAPS = 2
 BLESSING_SETTLE_SECONDS = 8
+#: One settle beat BEFORE the first -K -L read. Device.h:142 — the firmware's
+#: deferred hard reset fires AFTER the previous host command exits, and
+#: opening the serial port at all resets hw-CDC ESP32s — so the --info reads
+#: just above the blessing check may have JUST rebooted the board, and lap 1
+#: would land inside that reset window (adversarial review C5, 2026-08-22).
+BLESSING_PRE_SETTLE_SECONDS = 6
+#: Columba's war table (mirrored at workflows/rtnode_build.py's hash step): a
+#: device mid-glitch reports an ALL-ZEROS running hash. Writing that as the
+#: expectation bricks hw_ready on the next boot — Columba logs a warning and
+#: writes it anyway; we refuse to even PRESCRIBE it (adversarial review C1,
+#: 2026-08-22).
+ZERO_HASH = "0" * 64
+
+
+def _work_board_cleared(connection, port: str) -> bool:
+    """C6 — the Jonesey gate for the -K -L read (adversarial review,
+    2026-08-22). ``rnodeconf -K -L`` is not a pure read: it writes KISS
+    detect frames into the port, and the splitter holds Jonesey WITHOUT
+    exclusive=True — so a "read" against the medic's own radio steals bytes
+    from the live mesh stream. And ``_rnode_info``'s fallback enumeration can
+    re-pin the profile onto any answering port. So before -K -L runs the
+    port must be POSITIVELY proven a flashable work board — fail-closed
+    ``is_flashable_work_board``: an unresolvable identity is a refusal, not
+    a pass.
+
+    Scope: the roster describes the MEDIC'S OWN USB tree. Over SSH the port
+    lives on the remote node (where Jonesey is unreachable by definition)
+    and a local roster lookup would compare the wrong machine's devices, so
+    the gate applies to local connections only. A bare dev host / CI with no
+    roster and no by-id tree has no onboard radio to protect
+    (``guard_is_active`` — the repo-wide convention)."""
+    try:
+        from transport.connection import SSHConnection
+        if isinstance(connection, SSHConnection):
+            return True
+        from ui.onboard_roster import guard_is_active, is_flashable_work_board
+        if not guard_is_active():
+            return True
+        return bool(is_flashable_work_board(port))
+    except Exception:
+        return False        # can't even ask -> refuse (fail closed)
 
 #: When a reflash won't take (esptool "serial data stream stopped" / can't sync),
 #: this is the field-tested recovery ladder — surfaced verbatim in the repair
@@ -167,16 +212,58 @@ class RadioFirmwareCheck(DiagnosticCheck):
             "the EEPROM without reflashing).",
             severity="critical", auto_fixable=True,
             fix_description="Re-provision the RNode's EEPROM."))
-        # 14 firmware hash matches the running firmware. A board can have a VALID
-        # EEPROM + a validated device signature yet display "firmware corrupt":
-        # that happens when the firmware hash stamped in the EEPROM differs from
-        # the hash the firmware computes for itself at boot (e.g. an app flashed
-        # without restamping the hash, or a firmware/hash mismatch after a mixed
-        # flash). rnodeconf --info does NOT reveal this, so we read the device's
-        # stored hash vs its computed target directly (fw_hash_probe). Only
-        # meaningful once the board has firmware + a valid EEPROM — otherwise the
-        # serial/firmware/eeprom checks above already own the diagnosis.
-        if has_info and "EEPROM is invalid" not in info:
+        # 14b firmware BLESSING (the parked-radio trap — 2026-08-22 T114 saga,
+        # four hours lost). A BIRTHED board stores a blessed firmware hash in
+        # EEPROM; when it disagrees with the hash the firmware computes for
+        # itself at boot, the boot check quietly refuses TNC mode and parks
+        # the radio at frequency 0.000 — while BLE, KISS and `rnodeconf
+        # --info` all answer politely and swear the EEPROM is a healthy TNC.
+        # The one-second diagnostic is `rnodeconf -K -L`: it prints the
+        # TARGET (stored) and ACTUAL (running) hashes; disagreement = parked.
+        # Deliberately NOT auto-fixable: the cure writes EEPROM and diagnosis
+        # stays read-only — the same caution
+        # rnode_flash._check_and_cure_firmware_hash shows by refusing to
+        # auto-cure a non-zero mismatch during verify. We report the state
+        # and prescribe the exact cure instead.
+        #
+        # ONE fault, ONE issue (adversarial review C2, 2026-08-22): this and
+        # the old fw_hash_probe check (14) read the SAME two device
+        # attributes, so they must never both fire — two criticals for one
+        # fault, one of them auto-fixing with a DESTRUCTIVE full reflash when
+        # a one-line restamp suffices. The blessing read is primary (it can
+        # name the exact restamp cure); the probe below is the FALLBACK for
+        # when the blessing could not reach a verdict.
+        #
+        # The whole read runs INSIDE the lazy _check call so the UI's
+        # check_start fires before the first (possibly slow) serial command
+        # (C7) — see DiagnosticCheck._check.
+        blessing: dict = {}
+        gated_on = has_info and "EEPROM is invalid" not in info
+        if gated_on:
+            def _bless_verdict():
+                # Jonesey gate FIRST — before anything touches the port (C6).
+                if not _work_board_cleared(self.connection, port):
+                    blessing["state"] = "unverified"
+                    blessing["rawp"] = port
+                    return False
+                (blessing["state"], blessing["target"], blessing["actual"],
+                 blessing["rawp"], blessing["detail"]) = \
+                    self._firmware_blessing(port)
+                return blessing["state"] == "blessed"
+
+            issues.append(self._check(
+                "firmware_blessing", _bless_verdict,
+                lambda: self._blessing_description(blessing),
+                severity=lambda: ("critical"
+                                  if blessing.get("state") == "parked"
+                                  else "info"),
+                raw_detail=lambda: self._blessing_raw_detail(blessing)))
+        # 14 fallback: the carried fw_hash_probe (a different read mechanism)
+        # — ONLY when the blessing read reached no verdict. Never after a
+        # guard refusal ("unverified"): the probe opens the same port the
+        # gate just refused to touch. A mismatch found HERE has no actual
+        # hash to prescribe, so the reflash cure is the honest offer.
+        if gated_on and blessing.get("state") == "unreadable":
             hash_status = self._firmware_hash_status(port)
             issues.append(self._check(
                 "firmware_hash_valid", hash_status != "mismatch",
@@ -186,45 +273,6 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 "verifiable firmware (a Heltec V4 gets the full NeoPixel reflash).",
                 severity="critical", auto_fixable=True,
                 fix_description="Re-flash the firmware and restamp its hash."))
-        # 14b firmware BLESSING (the parked-radio trap — 2026-08-22 T114 saga,
-        # four hours lost). A BIRTHED board stores a blessed firmware hash in
-        # EEPROM; if someone reflashes it OUTSIDE the medic's birth flow, the
-        # boot check quietly refuses TNC mode and parks the radio at frequency
-        # 0.000 — while BLE, KISS and `rnodeconf --info` all answer politely
-        # and swear the EEPROM is a healthy TNC. The one-second diagnostic is
-        # `rnodeconf -K -L`: it prints the TARGET (stored) and ACTUAL (running)
-        # hashes, and disagreement = parked. Deliberately NOT auto-fixable:
-        # the cure writes EEPROM and diagnosis stays read-only — the same
-        # caution rnode_flash._check_and_cure_firmware_hash shows by refusing
-        # to auto-cure a non-zero mismatch during verify. We report the state
-        # and prescribe the exact cure instead.
-        if has_info and "EEPROM is invalid" not in info:
-            state, target, actual, rawp = self._firmware_blessing(port)
-            if state == "parked":
-                desc = (
-                    "PARKED: the blessed firmware hash stored in this board's "
-                    "EEPROM does not match the firmware actually running — it "
-                    "was reflashed outside the medic's birth flow. The boot "
-                    "check quietly refuses TNC mode and parks the radio at "
-                    "frequency 0.000, while BLE, KISS and rnodeconf --info all "
-                    "answer politely and report a healthy TNC. Cure, in order:\n"
-                    f"  1. rnodeconf {rawp} --firmware-hash {actual}\n"
-                    "  2. COLD power cycle the board — unplug ALL power (USB "
-                    "and battery); a reset or warm reboot is not enough.")
-                sev = "critical"
-            else:
-                desc = (
-                    "UNREADABLE: couldn't read this board's firmware-blessing "
-                    "state (rnodeconf -K -L returned nothing parseable after "
-                    f"{BLESSING_LAPS} attempts). This is its own honest answer "
-                    "— the medic will not guess BLESSED or PARKED. Retry with "
-                    "the board settled, or read it by hand: "
-                    f"rnodeconf {rawp} -K -L")
-                sev = "info"
-            issues.append(self._check(
-                "firmware_blessing", state == "blessed", desc, severity=sev,
-                raw_detail=(f"target={target} actual={actual}"
-                            if state == "parked" else "")))
         # 15 firmware version current (real: "Firmware version   : 1.86")
         fw = self._info_str(info, r"Firmware version\s*:\s*([\d.]+)")
         cur_ok = has_info and (fw is None
@@ -384,47 +432,146 @@ class RadioFirmwareCheck(DiagnosticCheck):
             return "match"
         return "unknown"
 
-    def _raw_tty(self, port: str) -> str:
-        """The RAW /dev/tty node for *port* — NEVER hand rnodeconf a by-id
-        symlink (the by-id nRF52 trap: rnodeconf rescans the symlink, can
-        match None after a re-enumeration, and then touches the WRONG device
-        — it once provisioned the Pi's OWN UART while reporting success).
-        Falls back to *port* unchanged if the symlink can't be resolved."""
-        if "/by-id/" not in port and "/by-path/" not in port:
+    def _blessing_anchor(self, port: str) -> str:
+        """The stable /dev/serial/by-id link currently pointing at *port*, or
+        ``''``. The anchor is what makes per-lap re-resolution REAL
+        (adversarial review C3, 2026-08-22): production callers hand this
+        check a raw /dev/ttyACM* node, and after a reset the board can
+        re-enumerate to a DIFFERENT number while the dying tty lingers —
+        the raw name alone can never follow it. The by-id link is stable
+        across re-enumeration, so we find it once and readlink it every
+        lap. On a host with no by-id tree (emulated / CI) there is nothing
+        to anchor to and the raw port is used as given."""
+        if "/by-id/" in port or "/by-path/" in port:
             return port
-        code, out, _ = self._run_cmd(f"readlink -f {port}")
+        out = self._run_cmd(
+            'for l in /dev/serial/by-id/*; do '
+            f'if [ "$(readlink -f "$l")" = "{port}" ]; '
+            'then echo "$l"; break; fi; done')[1] or ""
+        link = out.strip().splitlines()[0].strip() if out.strip() else ""
+        return link if link.startswith("/dev/serial/") else ""
+
+    def _raw_tty(self, port: str, anchor: str = "") -> str:
+        """The RAW /dev/tty node for *port*, re-resolved through *anchor* —
+        and NEVER a by-id symlink handed to rnodeconf (the by-id nRF52 trap:
+        rnodeconf rescans the symlink, can match None after a
+        re-enumeration, and then touches the WRONG device — it once
+        provisioned the Pi's OWN UART while reporting success). Falls back
+        to *port* unchanged if nothing resolves."""
+        link = anchor or (port if "/by-id/" in port or "/by-path/" in port
+                          else "")
+        if not link:
+            return port
+        code, out, _ = self._run_cmd(f"readlink -f {link}")
         real = (out or "").strip()
         if code == 0 and real.startswith("/dev/tty"):
             return real
         return port
 
-    def _firmware_blessing(self, port: str):
-        """``(state, target, actual, raw_port)`` where state is ``'blessed'``
-        (stored and running hashes agree), ``'parked'`` (they disagree — the
-        boot check has parked the radio at 0.000) or ``'unreadable'``.
+    def _read_blessing_hashes(self, rawp: str):
+        """One ``rnodeconf -K -L`` read: ``(target, actual, raw_tail)``, with
+        ``('', '', tail)`` when nothing trustworthy came back. Parsing
+        mirrors rnode_flash._check_and_cure_firmware_hash. An ALL-ZEROS
+        actual counts as unreadable, never as a hash: Columba's war table
+        (mirrored at rtnode_build's hash step) — a device mid-glitch
+        returns all zeros, and prescribing THAT as the expectation bricks
+        hw_ready on the next boot. They log a warning and write it anyway;
+        we refuse to even prescribe (C1)."""
+        out = self._run_cmd(
+            f"timeout 30 rnodeconf {rawp} -K -L 2>&1", timeout=40)[1] or ""
+        tail = out.strip()[-200:]
+        hashes = re.findall(r"hash is:\s*\n?\s*([0-9a-f]{64})", out)
+        if len(hashes) < 2 or hashes[1] == ZERO_HASH:
+            return "", "", tail
+        return hashes[0], hashes[1], tail
 
-        Read-only by design: this runs `rnodeconf -K -L` and parses the two
-        "... firmware hash is:" lines, exactly as the flash-verify cure does
-        (rnode_flash._check_and_cure_firmware_hash) — but it never writes.
-        Settle-retry because a just-reset board's dying tty lingers on the
-        bus: re-resolve the raw port EVERY lap so a mid-loop re-enumeration
-        is caught on the next one (the _nrf_settle lesson)."""
-        hashes: List[str] = []
-        rawp = port
+    def _firmware_blessing(self, port: str):
+        """``(state, target, actual, raw_port, detail)`` where state is
+        ``'blessed'`` (stored and running hashes agree), ``'parked'`` (they
+        disagree — the boot check has parked the radio at 0.000) or
+        ``'unreadable'``.
+
+        Read-only by design: it never writes; the cure is prescribed to the
+        operator. Retry discipline:
+
+        * one settle beat BEFORE the first read — the --info reads just ran,
+          and Device.h:142's deferred reset (or the port-open reset on
+          hw-CDC ESP32s) may still be landing (C5);
+        * an unreadable lap settles and re-reads, re-resolving the raw port
+          through the by-id anchor EVERY lap because dying ttys linger and
+          numbers move (the _nrf_settle lesson);
+        * a MISMATCH is never committed on one read (C4): settle, read
+          again, and only two consecutive reads agreeing on the same pair
+          earn PARKED — mirroring rnode_flash's read-back-before-believing.
+          A confirm read that disagrees with the first is an unstable state
+          and reports UNREADABLE, honestly."""
+        anchor = self._blessing_anchor(port)
+        rawp = self._raw_tty(port, anchor)
+        detail = ""
+        self._run_cmd(f"sleep {BLESSING_PRE_SETTLE_SECONDS}")
         for lap in range(BLESSING_LAPS):
             if lap:
                 self._run_cmd(f"sleep {BLESSING_SETTLE_SECONDS}")
-            rawp = self._raw_tty(port)     # re-resolve every lap; ttys move
-            out = self._run_cmd(
-                f"timeout 45 rnodeconf {rawp} -K -L 2>&1", timeout=60)[1] or ""
-            hashes = re.findall(r"hash is:\s*\n?\s*([0-9a-f]{64})", out)
-            if len(hashes) >= 2:
-                break
-        if len(hashes) < 2:
-            return "unreadable", "", "", rawp
-        target, actual = hashes[0], hashes[1]
-        state = "blessed" if target == actual else "parked"
-        return state, target, actual, rawp
+            rawp = self._raw_tty(port, anchor)   # re-resolve; ttys move
+            target, actual, detail = self._read_blessing_hashes(rawp)
+            if not target:
+                continue                          # unreadable lap — settle
+            if target == actual:
+                return "blessed", target, actual, rawp, detail
+            # mismatch: confirm before condemning (C4)
+            self._run_cmd(f"sleep {BLESSING_SETTLE_SECONDS}")
+            rawp = self._raw_tty(port, anchor)
+            t2, a2, d2 = self._read_blessing_hashes(rawp)
+            if (t2, a2) == (target, actual):
+                return "parked", target, actual, rawp, d2
+            if t2 and t2 == a2:
+                return "blessed", t2, a2, rawp, d2
+            return "unreadable", "", "", rawp, (d2 or detail)
+        return "unreadable", "", "", rawp, detail
+
+    def _blessing_description(self, b: dict) -> str:
+        state = b.get("state", "")
+        rawp = b.get("rawp", "")
+        if state == "parked":
+            return (
+                "PARKED: the blessed firmware hash stored in this board's "
+                "EEPROM does not match the firmware actually running. The "
+                "commonest cause is an offline '--autoinstall --nocheck' "
+                "birth that never stamped a hash at all; the other is a "
+                "reflash outside the medic's birth flow. Either way the boot "
+                "check quietly refuses TNC mode and parks the radio at "
+                "frequency 0.000, while BLE, KISS and rnodeconf --info all "
+                "answer politely and report a healthy TNC. Cure, in order:\n"
+                f"  1. rnodeconf {rawp} --firmware-hash {b.get('actual', '')}\n"
+                "  2. COLD power cycle the board — unplug ALL power (USB and "
+                "battery); a reset or warm reboot is not enough.\n"
+                "If it parks again after that, the heavier cure is a full "
+                "re-flash through BIRTH, which restamps the hash.")
+        if state == "unverified":
+            return (
+                "Cannot verify this port is a work board — refusing to touch "
+                "it. rnodeconf -K -L writes KISS frames into the port, and if "
+                "this were the medic's OWN radio that would steal bytes from "
+                "the live mesh stream. Its USB identity could not be "
+                "positively resolved as a flashable work board (fail-closed: "
+                "an unknown board is refused, never guessed at). Replug the "
+                "board or check /dev/serial/by-id, then run PROBE again.")
+        return (
+            "UNREADABLE: couldn't read this board's firmware-blessing state "
+            f"(rnodeconf -K -L gave nothing trustworthy in {BLESSING_LAPS} "
+            "laps). This is its own honest answer — the medic will not guess "
+            "BLESSED or PARKED. Retry with the board settled, or read it by "
+            f"hand: rnodeconf {rawp} -K -L")
+
+    def _blessing_raw_detail(self, b: dict) -> str:
+        state = b.get("state", "")
+        if state == "parked":
+            return f"target={b.get('target')} actual={b.get('actual')}"
+        if state == "unreadable" and b.get("detail"):
+            # P5: carry the trimmed rnodeconf output so "couldn't check"
+            # arrives with its evidence, not just the verdict.
+            return f"rnodeconf said: {b['detail']}"
+        return ""
 
     def _fix_handlers(self):
         param_fix = self._apply_radio_params

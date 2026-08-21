@@ -106,9 +106,25 @@ class DiagnosticCheck(ABC):
         """Return an ``Issue`` when *condition* is False, else ``None``.
 
         A ``True`` condition means the check passed — nothing to report.
+
+        *condition* (and the presentation arguments) may be CALLABLES: they
+        are evaluated HERE, so a slow check's work runs INSIDE the
+        instrumented ``_check`` call — between its ``check_start`` and
+        ``check_done`` events — instead of silently blocking before the UI
+        hears the check even exists (adversarial review C7, 2026-08-22: the
+        firmware-blessing serial read froze the PROBE stream for its whole
+        settle-retry budget because the work happened before ``_check``).
         """
+        if callable(condition):
+            condition = condition()
         if condition:
             return None
+        if callable(plain_description):
+            plain_description = plain_description()
+        if callable(severity):
+            severity = severity()
+        if callable(raw_detail):
+            raw_detail = raw_detail()
         return Issue(
             check_name=check_name,
             category=self.category_name,
