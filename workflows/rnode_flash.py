@@ -13,10 +13,10 @@ verify the board reports as a provisioned RNode.
 from __future__ import annotations
 
 import os
-import re
 import shlex
 from typing import Callable, List, Optional
 
+from provisioning.by_id import by_id_serial
 from transport.connection import Connection
 from workflows.build import StepResult, detect_rnode_port
 from workflows.rnode_boards import RNodeBoard
@@ -275,21 +275,11 @@ def usb_id_for_port(connection: Connection, port: str):
     return lines[0] if lines else None
 
 
-#: ``usb-<vendor>_<product>_<SERIAL>-if00`` — the tail is the board's stable
-#: hardware serial, the ONE thing that survives a re-enumeration.
-_BY_ID_SERIAL = re.compile(r"_([^_]+)-if\d+$")
-
-
-def by_id_serial(by_id_name):
-    """The hardware serial out of a /dev/serial/by-id basename, or None.
-
-    The rest of the name is NOT stable across a flash: the RAK4631 announces
-    itself as ``RAKWireless_WisBlock_RAK4631`` from its bootloader and
-    ``RAKwireless_WisBlock_RAK4631`` once running RNode firmware — a capital W
-    becomes lowercase. Only the serial (``4631000000000002``) is constant.
-    """
-    m = _BY_ID_SERIAL.search(by_id_name or "")
-    return m.group(1) if m else None
+# The serial reader is shared, in provisioning.by_id (imported at the top of
+# this module). It used to be a local regex anchored with ``-if\d+$``, which
+# silently returned nothing for USB-UART BRIDGE boards (CP2102/FTDI: Heltec V3,
+# T-Beam) because their ``-if00-port0`` tail pushed the ``$`` past the match —
+# the very re-enumeration this reader exists to survive. See provisioning/by_id.
 
 
 def find_port_by_usb_serial(connection, serial, tries: int = 20,
@@ -380,7 +370,10 @@ def touch_into_dfu(connection, port: str, serial: str, settle: float = 2.0,
         f"s=serial.Serial({quoted!r}, 1200); s.dtr=False; "
         "time.sleep(0.25); s.close()\" 2>/dev/null || true", timeout=30)
     nap(settle)
-    found = find_port_by_usb_serial(connection, serial)
+    # Forward the injected sleep: find_port_by_usb_serial polls with its own
+    # naps, and without this a test that hands in a no-op sleep still waits the
+    # real ~19s of udev polling.
+    found = find_port_by_usb_serial(connection, serial, sleep=nap)
     return found or port
 
 
