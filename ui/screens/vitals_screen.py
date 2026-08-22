@@ -82,13 +82,29 @@ class NodeRow(BoxLayout):
                          size_hint_x=None, width=dp(48))
         self.add_widget(hexw)
 
-        text = BoxLayout(orientation="vertical")
+        # The name + subtitle stack. 2026-08-22 (live): a "Propagation relay
+        # <hash8>" row rendered with its name, hash and "LXMF propagation
+        # announces" subtitle ON TOP of each other. The cause was two Labels
+        # sharing the column with size_hint_y=1 and text_size bound to their
+        # FULL box: a long name wrapped to two lines whose texture overflowed
+        # its half of the box (valign middle spills both ways) and landed on the
+        # subtitle below. Fix: each line is a FIXED-height, single-line label
+        # that ELLIPSISES when too long (shorten), and the column is sized to its
+        # children and vertically centred — so name and subtitle always stack
+        # cleanly, for a normal row AND the longer propagation-relay case.
+        text = BoxLayout(orientation="vertical", size_hint_y=None,
+                         pos_hint={"center_y": 0.5})
+        text.bind(minimum_height=text.setter("height"))
         name = Label(text=node.get("name", "unknown"), halign="left",
                      valign="middle", bold=True,
+                     size_hint_y=None, height=dp(26),
+                     shorten=True, shorten_from="right",
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         name.bind(size=lambda i, v: setattr(i, "text_size", v))
         loc = Label(text=node.get("location", ""), halign="left",
                     valign="middle", font_size="13sp",
+                    size_hint_y=None, height=dp(20),
+                    shorten=True, shorten_from="right",
                     color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         loc.bind(size=lambda i, v: setattr(i, "text_size", v))
         text.add_widget(name)
