@@ -162,9 +162,12 @@ from monitor.gps_clock import (
 
 
 def _call(d, target, sys_now, recv, sats=12, fix=3):
-    """One evaluate() for a strong, fresh fix at *target* (age 0)."""
-    return d.evaluate(gps_utc=target, gps_utc_recv=recv, sats=sats, fix=fix,
-                      sys_now=sys_now, ntp_synced=False, recv_now=recv)
+    """One evaluate() for a strong, fresh fix at *target* (age 0). Returns the
+    STEP epoch (or None for CONFIRM/NONE) so the corroboration/refusal tests read
+    exactly as they did before evaluate() grew the STEP/CONFIRM/NONE result."""
+    dec = d.evaluate(gps_utc=target, gps_utc_recv=recv, sats=sats, fix=fix,
+                     sys_now=sys_now, ntp_synced=False, recv_now=recv)
+    return dec.target if dec.kind == gps_clock.DECISION_STEP else None
 
 
 def test_no_direct_apply_path_a_single_small_step_does_not_apply():
@@ -286,9 +289,115 @@ def test_status_line_warns_near_the_window_edge():
 
 def test_no_fix_status_when_gps_utc_is_none():
     d = GpsClockDisciplinarian()
-    assert d.evaluate(gps_utc=None, gps_utc_recv=None, sats=0, fix=0,
-                      sys_now=EPOCH, ntp_synced=False, recv_now=1.0) is None
+    dec = d.evaluate(gps_utc=None, gps_utc_recv=None, sats=0, fix=0,
+                     sys_now=EPOCH, ntp_synced=False, recv_now=1.0)
+    assert dec.kind == gps_clock.DECISION_NONE and dec.target is None
     assert d.last_reason == REASON_NO_FIX
+
+
+# ---- CONFIRMATION: clock already right + a solid agreeing fix ---------------
+# The gap proven live 2026-08-22: in the steady state the clock is already right,
+# so clock_decision() returns None and NOTHING was recorded — datetime.json
+# stayed empty and the screen read "never synced" even with an 8-sat fix actively
+# agreeing. A CONFIRM stamps that agreement WITHOUT stepping/rebasing the clock.
+
+def _confirm_call(d, gps_utc, sys_now, recv, sats=8, fix=1, ntp=False):
+    """One evaluate() for a solid, fresh fix that the clock AGREES with."""
+    return d.evaluate(gps_utc=gps_utc, gps_utc_recv=recv, sats=sats, fix=fix,
+                      sys_now=sys_now, ntp_synced=ntp, recv_now=recv)
+
+
+def test_solid_agreeing_fix_confirms_without_stepping():
+    d = GpsClockDisciplinarian()
+    dec = _confirm_call(d, gps_utc=EPOCH, sys_now=EPOCH + 2, recv=1000.0)
+    assert dec.kind == gps_clock.DECISION_CONFIRM       # stamp, don't step
+    assert dec.target == pytest.approx(EPOCH, abs=1.0)  # the confirmed GPS UTC
+    assert dec.reason == REASON_IN_SYNC
+    assert d._ring == []                                 # clock untouched, no ring
+    assert "GPS-synced" in d.status_line(1000.0)         # status reads synced
+
+
+def test_confirmation_is_rate_limited_within_the_interval():
+    d = GpsClockDisciplinarian()
+    d1 = _confirm_call(d, gps_utc=EPOCH, sys_now=EPOCH + 1, recv=1000.0)
+    assert d1.kind == gps_clock.DECISION_CONFIRM         # first stamp
+    # A second solid agreeing tick 30 s later: still confirming, but the config
+    # stamp is rate-limited -> NONE (no fsync churn every 30 s tick).
+    d2 = _confirm_call(d, gps_utc=EPOCH + 30, sys_now=EPOCH + 31, recv=1030.0)
+    assert d2.kind == gps_clock.DECISION_NONE
+    assert d2.reason == REASON_IN_SYNC                    # still in-sync in-memory
+    assert "GPS-synced" in d.status_line(1030.0)          # status stays synced
+    # Once the interval elapses, it stamps again.
+    later = EPOCH + gps_clock.PERSIST_MIN_INTERVAL_S + 5
+    d3 = _confirm_call(d, gps_utc=later, sys_now=later + 1, recv=2000.0)
+    assert d3.kind == gps_clock.DECISION_CONFIRM
+
+
+def test_weak_stale_out_of_window_and_no_fix_never_confirm():
+    # Weak sats: an agreeing time on too few sats is untrustworthy -> no confirm.
+    d = GpsClockDisciplinarian()
+    dec = d.evaluate(gps_utc=EPOCH, gps_utc_recv=1000.0, sats=2, fix=1,
+                     sys_now=EPOCH + 1, ntp_synced=False, recv_now=1000.0)
+    assert dec.kind == gps_clock.DECISION_NONE and dec.reason == REASON_NO_FIX
+    assert "synced" not in d.status_line(1000.0).lower()
+
+    # Stale receipt: the fix agrees but is older than the freshness gate.
+    d = GpsClockDisciplinarian()
+    dec = d.evaluate(gps_utc=EPOCH, gps_utc_recv=1000.0, sats=8, fix=1,
+                     sys_now=EPOCH + 1, ntp_synced=False,
+                     recv_now=1000.0 + gps_clock.GPS_UTC_MAX_AGE_S + 5)
+    assert dec.kind == gps_clock.DECISION_NONE
+    assert dec.reason == gps_clock.REASON_STALE
+    assert "synced" not in d.status_line(2000.0).lower()
+
+    # No fix (fix=0): never a confirmation.
+    d = GpsClockDisciplinarian()
+    dec = d.evaluate(gps_utc=EPOCH, gps_utc_recv=1000.0, sats=8, fix=0,
+                     sys_now=EPOCH + 1, ntp_synced=False, recv_now=1000.0)
+    assert dec.kind == gps_clock.DECISION_NONE and dec.reason == REASON_NO_FIX
+
+    # Out-of-window (a 2099 time) the clock happens to 'agree' with: refused.
+    d = GpsClockDisciplinarian()
+    far = int(calendar.timegm((2099, 1, 1, 0, 0, 0)))
+    dec = d.evaluate(gps_utc=far, gps_utc_recv=1000.0, sats=8, fix=1,
+                     sys_now=far + 1, ntp_synced=False, recv_now=1000.0)
+    assert dec.kind == gps_clock.DECISION_NONE
+    assert dec.reason == REASON_OUT_OF_WINDOW
+
+
+def test_ntp_band_without_tolerance_is_not_a_gps_confirmation():
+    # NTP manages the clock and it's 30 s off GPS: inside the 60 s NTP band (no
+    # step) but NOT within the 10 s tolerance -> NTP owns it, so 'GPS-synced'
+    # would be a lie. No confirmation, and _last_good_at is never set.
+    d = GpsClockDisciplinarian()
+    dec = d.evaluate(gps_utc=EPOCH, gps_utc_recv=1000.0, sats=8, fix=1,
+                     sys_now=EPOCH + 30, ntp_synced=True, recv_now=1000.0)
+    assert dec.kind == gps_clock.DECISION_NONE
+    assert d._last_good_at is None
+
+
+def test_a_genuine_correction_still_returns_step():
+    # No regression: a corroborated far-behind clock still STEPS (the app then
+    # rebases + stamps), never a confirm.
+    d = GpsClockDisciplinarian()
+    out = None
+    for i in range(3):
+        out = d.evaluate(gps_utc=EPOCH + i, gps_utc_recv=float(i),
+                         sats=12, fix=3, sys_now=EPOCH - 5000 + i,
+                         ntp_synced=False, recv_now=float(i))
+    assert out.kind == gps_clock.DECISION_STEP
+    assert out.target == pytest.approx(EPOCH + 2, abs=2.0)
+    assert out.reason == REASON_SYNCED
+
+
+def test_confirmation_does_not_churn_right_after_a_step():
+    # After a step stamps datetime.json, an immediately-following in-sync tick
+    # must NOT re-stamp (record_success seeds the confirm rate-limit).
+    d = GpsClockDisciplinarian()
+    d.record_success(EPOCH)                              # a step just stamped
+    dec = _confirm_call(d, gps_utc=EPOCH + 10, sys_now=EPOCH + 11, recv=1000.0)
+    assert dec.kind == gps_clock.DECISION_NONE           # rate-limited, no churn
+    assert dec.reason == REASON_IN_SYNC
 
 
 def test_cold_boot_corrects_via_median_despite_interleaved_garbage():

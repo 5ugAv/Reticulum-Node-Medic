@@ -44,7 +44,7 @@ import calendar
 import time
 from datetime import datetime, timezone
 from statistics import median
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 #: Epoch of the last successful GPS clock set, for a caller to surface
 #: "clock: GPS-synced Xm ago". Module-level so a stateless caller can read it;
@@ -107,6 +107,35 @@ REASON_AWAITING = "awaiting"
 REASON_IN_SYNC = "in_sync"
 REASON_SYNCED = "synced"
 REASON_BACKOFF = "backoff"
+
+
+# The three shapes evaluate() can return, so the caller can tell a real clock
+# STEP from a mere CONFIRMation (GPS present and AGREEING) from doing NOTHING.
+#
+# WHY CONFIRM EXISTS (proven live 2026-08-22): in the normal steady state the
+# clock is already right — GPS agrees within tolerance — so clock_decision()
+# returns None and, before this, NOTHING was recorded. datetime.json stayed
+# empty and the date/time screen read "never synced" even with an 8-sat fix
+# actively agreeing, so the operator couldn't tell "GPS checked, clock is right"
+# from "GPS never worked". A CONFIRM stamps that agreement (rate-limited),
+# WITHOUT stepping or rebasing the clock.
+DECISION_STEP = "step"        # a corroborated, meaningful correction — set the clock
+DECISION_CONFIRM = "confirm"  # a solid, fresh, agreeing fix — stamp, don't touch the clock
+DECISION_NONE = "none"        # nothing trustworthy/actionable this tick
+
+
+class ClockDecision(NamedTuple):
+    """What evaluate() decided this tick.
+
+    * ``kind``   — DECISION_STEP / DECISION_CONFIRM / DECISION_NONE.
+    * ``target`` — the epoch to set (STEP) or the confirmed GPS UTC (CONFIRM);
+      None for NONE. On CONFIRM the caller passes this to mark_synced() as the
+      stamp time WITHOUT stepping the clock.
+    * ``reason`` — a REASON_* for operator surfacing.
+    """
+    kind: str
+    target: Optional[float]
+    reason: str
 
 
 def clock_decision(gps_utc: Optional[int],
@@ -185,6 +214,10 @@ class GpsClockDisciplinarian:
         self._fail_count = 0
         self._backoff_until = 0.0
         self._last_good_at: Optional[float] = None   # last time GPS set/confirmed
+        # Epoch of the last datetime.json sync STAMP (step or confirmation). Used
+        # ONLY to rate-limit confirmation stamps so a steadily-correct clock does
+        # not fsync the config every 30 s tick (PERSIST_MIN_INTERVAL_S).
+        self._last_persist_at: Optional[float] = None
         self.last_reason: str = REASON_NO_FIX
 
     def _refusal_reason(self, gps_utc, gps_utc_recv, sats, fix, sys_now,
@@ -205,32 +238,58 @@ class GpsClockDisciplinarian:
     def evaluate(self, gps_utc: Optional[int], gps_utc_recv: Optional[float],
                  sats: Optional[int], fix: Optional[int], sys_now: float,
                  ntp_synced: bool, recv_now: float, *,
-                 tolerance_s: float = 10.0, min_sats: int = 4) -> Optional[float]:
-        """Return the epoch to set the clock to, or None. Applies the full policy
-        and updates ``self.last_reason``."""
+                 tolerance_s: float = 10.0, min_sats: int = 4) -> ClockDecision:
+        """Decide what to do with the clock this tick: STEP it, CONFIRM it, or
+        do NOTHING. Applies the full policy and updates ``self.last_reason``.
+
+        Returns a :class:`ClockDecision` (never a bare epoch): the caller steps +
+        rebases + stamps on STEP, stamps ONLY on CONFIRM, and does nothing on NONE.
+        """
         if recv_now < self._backoff_until:
             self.last_reason = REASON_BACKOFF
-            return None
+            return ClockDecision(DECISION_NONE, None, REASON_BACKOFF)
         # Same frame as last acted on -> ignore (dedupe distinct fixes). Leave the
         # reason as-is (the previous frame's classification still stands).
         if gps_utc_recv is not None and gps_utc_recv == self._last_recv:
-            return None
+            return ClockDecision(DECISION_NONE, None, self.last_reason)
 
         target = clock_decision(gps_utc, gps_utc_recv, sats, fix, sys_now,
                                 ntp_synced, recv_now,
                                 tolerance_s=tolerance_s, min_sats=min_sats)
         if target is None:
-            self.last_reason = self._refusal_reason(
+            # No STEP. Either the fix is untrustworthy (weak/stale/out-of-window/
+            # no-fix -> a real refusal), or it is SOLID and the clock already
+            # AGREES with it -> a CONFIRMATION (the normal steady state). Same
+            # solidity gates a step demands; only the corroboration-to-step is
+            # skipped, because nothing changes. Honesty: a confirmation must
+            # reflect a REAL, CURRENT, agreeing fix — never a stale or weak one.
+            reason = self._refusal_reason(
                 gps_utc, gps_utc_recv, sats, fix, sys_now, ntp_synced, recv_now,
                 tolerance_s, min_sats)
-            if self.last_reason == REASON_IN_SYNC:
-                self._last_good_at = recv_now      # GPS is actively confirming it
-            return None
+            self.last_reason = reason
+            if reason == REASON_IN_SYNC:
+                confirmed = self._confirmation_target(
+                    gps_utc, gps_utc_recv, sys_now, recv_now, tolerance_s)
+                if confirmed is not None:
+                    # A genuine agreement (within tolerance of a solid fix), not
+                    # merely inside the wider NTP band. GPS is actively holding
+                    # the clock right, so surface it as GPS-synced...
+                    self._last_good_at = recv_now
+                    # ...but only STAMP the config at most once per interval, so a
+                    # correct-but-constantly-confirmed clock doesn't churn the SD.
+                    if self._persist_due(confirmed):
+                        self._last_persist_at = confirmed
+                        return ClockDecision(DECISION_CONFIRM, confirmed,
+                                             REASON_IN_SYNC)
+                    return ClockDecision(DECISION_NONE, None, REASON_IN_SYNC)
+                # Inside the NTP trust band but NOT within tolerance: NTP owns the
+                # clock, so this is not a GPS confirmation. Fall through to NONE.
+            return ClockDecision(DECISION_NONE, None, reason)
 
         # FIXED plausibility window — the anti-lockout, anti-ratchet bound.
         if not _in_window(target):
             self.last_reason = REASON_OUT_OF_WINDOW
-            return None
+            return ClockDecision(DECISION_NONE, None, REASON_OUT_OF_WINDOW)
 
         # A distinct, in-window, actionable fix.
         self._last_recv = gps_utc_recv
@@ -246,14 +305,36 @@ class GpsClockDisciplinarian:
         chosen = self._corroborated_offset()
         if chosen is None:
             self.last_reason = REASON_AWAITING
-            return None
+            return ClockDecision(DECISION_NONE, None, REASON_AWAITING)
         applied = sys_now + chosen
         if not _in_window(applied):            # median could sit at the very edge
             self.last_reason = REASON_OUT_OF_WINDOW
-            return None
+            return ClockDecision(DECISION_NONE, None, REASON_OUT_OF_WINDOW)
         self._ring.clear()                     # consumed by an actual apply
         self.last_reason = REASON_SYNCED
-        return applied
+        return ClockDecision(DECISION_STEP, applied, REASON_SYNCED)
+
+    def _confirmation_target(self, gps_utc, gps_utc_recv, sys_now, recv_now,
+                             tolerance_s) -> Optional[float]:
+        """The latency-compensated GPS target IFF the clock GENUINELY AGREES with
+        the fix (|target - sys_now| <= tolerance_s). The caller has already
+        verified solidity + freshness + in-window (reason == IN_SYNC); this is the
+        final honesty gate that separates a true agreement from merely sitting
+        inside the wider NTP trust band (where NTP, not GPS, holds the clock and a
+        'GPS-synced' claim would be a lie). Returns None when not a real confirm."""
+        age = recv_now - gps_utc_recv
+        target = gps_utc + age
+        if abs(target - sys_now) <= tolerance_s:
+            return float(target)
+        return None
+
+    def _persist_due(self, target: float) -> bool:
+        """Whether a confirmation should STAMP datetime.json now, rate-limited to
+        at most once per PERSIST_MIN_INTERVAL_S. First confirmation always stamps
+        (no prior stamp); thereafter only once the interval has elapsed, so a
+        steadily-correct clock confirms in-memory every tick but fsyncs rarely."""
+        lp = self._last_persist_at
+        return lp is None or (target - lp) >= PERSIST_MIN_INTERVAL_S
 
     def _corroborated_offset(self) -> Optional[float]:
         """The agreed correction offset, or None if the ring doesn't yet agree.
@@ -279,6 +360,9 @@ class GpsClockDisciplinarian:
         self._backoff_until = 0.0
         if now is not None:
             self._last_good_at = now
+            # A step just stamped datetime.json, so seed the confirmation
+            # rate-limit: the next in-sync ticks won't re-stamp for an interval.
+            self._last_persist_at = now
         self.last_reason = REASON_SYNCED
 
     def record_failure(self, now: float) -> None:
