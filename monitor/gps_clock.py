@@ -25,6 +25,18 @@ from typing import Callable, List, Optional, Tuple
 #: apply_clock() stamps it. Not UI — just the fact.
 last_disciplined_at: Optional[float] = None
 
+#: Freshness window for the satellite-UTC receipt (seconds). The receipt time
+#: (gps_utc_recv) is a WALL-CLOCK stamp taken in the *splitter* process; the app
+#: reads it across a process boundary, so time.monotonic() can't bridge them.
+#: We instead REFUSE to act unless the receipt is recent, which:
+#:   (a) bounds the uncompensated error to this window — trivial next to the
+#:       minutes-to-hours error we exist to fix; and
+#:   (b) KILLS the feedback runaway: after we step the clock, gps_utc_recv (taken
+#:       on the OLD clock) reads stale against the new clock -> refused -> no more
+#:       action until a fresh 0x03 frame re-stamps gps_utc_recv on the corrected
+#:       clock, at which point the drift is < tolerance and we no-op.
+GPS_UTC_MAX_AGE_S = 15.0
+
 
 def clock_decision(gps_utc: Optional[int],
                    gps_utc_recv: Optional[float],
@@ -44,11 +56,14 @@ def clock_decision(gps_utc: Optional[int],
       * sats < min_sats            -> weak fix. A 1- or 2-satellite fix can carry
                                       badly-wrong time; we NEVER discipline off it.
 
-    LATENCY COMPENSATION: the UTC value was true at the moment we RECEIVED it
-    (gps_utc_recv), not now. Between receipt and this decision some real time has
-    elapsed, so the true current UTC is ``gps_utc + (recv_now - gps_utc_recv)``.
-    We clamp the elapsed term at >= 0 so a clock that jumped backwards can't
-    subtract time from the target.
+    FRESHNESS GATE: the receipt age is ``recv_now - gps_utc_recv``, both wall-clock
+    stamps. We refuse if it is negative (clock jumped back / stale stamp) or older
+    than ``GPS_UTC_MAX_AGE_S``. This is what stops the runaway (see the constant's
+    note) — a stale receipt after a step is refused rather than re-compensated.
+
+    LATENCY COMPENSATION: within the fresh window, the UTC value was true at the
+    moment we RECEIVED it, so the true current UTC is ``gps_utc + age``. The gate
+    keeps ``age`` small, so the compensation is a bounded few seconds.
 
       * ntp_synced AND |target - sys_now| <= NTP-trust band (60s) -> defer to NTP.
         When NTP already has the time, we don't fight it over a few seconds. But a
@@ -66,9 +81,13 @@ def clock_decision(gps_utc: Optional[int],
     if sats is None or sats < min_sats:
         return None
 
-    # The fix was true at receipt; add the real time elapsed since (never negative).
-    elapsed = max(0.0, recv_now - gps_utc_recv)
-    target = gps_utc + elapsed
+    # Freshness gate — bounds the compensation AND kills the step->stale->step
+    # runaway. A negative age means the receipt is from the future (clock jumped
+    # back after we stepped it): refuse.
+    age = recv_now - gps_utc_recv
+    if age < 0 or age > GPS_UTC_MAX_AGE_S:
+        return None
+    target = gps_utc + age
 
     # When NTP already has it, defer for small drifts — but let GPS override a
     # wildly-wrong NTP (the band is wide, so only a gross error slips through).
@@ -93,19 +112,27 @@ Runner = Callable[[List[str]], Tuple[int, str, str]]
 
 def apply_clock(target_epoch: float,
                 run: Runner,
-                ntp_synced: bool,
                 now: Callable[[], float] = time.time) -> bool:
     """Set the system clock to *target_epoch* (UTC) via the ALREADY-SCOPED sudoers
     commands. ``run`` is an injected ``callable(list[str]) -> (rc, out, err)`` so
     this is testable without root.
 
-    ``timedatectl set-time`` REFUSES to run while NTP is active, so when NTP is
-    synced we first disable it. We do NOT re-enable NTP afterwards: offline, GPS
-    is the primary time source. (Re-enabling NTP when the medic comes back online
-    is a SEPARATE concern for an online-detector, not this discipline loop.)
+    ``timedatectl set-time`` is REFUSED whenever systemd-timesyncd is ACTIVE
+    (NTP=yes) — regardless of whether it ever actually synchronized, which offline
+    it never does. So we ALWAYS disable NTP first (harmless if already off); the
+    established provisioning/tool_datetime.py does the same. Doing it only when
+    "NTPSynchronized" was true left the feature dead in its own scenario (a
+    power-cycled, offline medic reads NTPSynchronized=no yet set-time is refused).
+
+    We do NOT re-enable NTP on success: offline, GPS is now the authoritative time
+    source. (Re-enabling NTP when the medic comes back online is a SEPARATE concern
+    for an online-detector, not this discipline loop.) On FAILURE, however, we roll
+    NTP back on — leaving it disabled with no GPS time set would be the worst of
+    both worlds.
 
     The emitted argv MUST match provisioning/sudoers.d/nodemedic (NM_CLOCK):
         /usr/bin/timedatectl set-ntp false
+        /usr/bin/timedatectl set-ntp true
         /usr/bin/timedatectl set-time *
     or sudo would prompt for a password and fail. The medic runs UTC, so the
     stamp is formatted as UTC and passed with a trailing "UTC".
@@ -113,12 +140,14 @@ def apply_clock(target_epoch: float,
     Returns True only if the set-time command succeeded.
     """
     global last_disciplined_at
-    if ntp_synced:
-        # Manual set is refused while NTP owns the clock — turn it off first.
-        run(["sudo", "-n", "timedatectl", "set-ntp", "false"])
+    # Always disable NTP first — set-time is refused while timesyncd is active.
+    run(["sudo", "-n", "timedatectl", "set-ntp", "false"])
     stamp = _fmt_utc(target_epoch) + " UTC"
     rc, _out, _err = run(["sudo", "-n", "timedatectl", "set-time", stamp])
     if rc == 0:
         last_disciplined_at = now()
         return True
+    # set-time failed after we disabled NTP: roll back so we don't strand the
+    # medic with NTP off AND no GPS time set.
+    run(["sudo", "-n", "timedatectl", "set-ntp", "true"])
     return False

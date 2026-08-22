@@ -64,18 +64,47 @@ def test_ntp_synced_huge_drift_lets_gps_win():
 
 
 def test_latency_compensation_adds_elapsed_since_receipt():
-    # Received the fix at recv=1000; deciding at recv_now=1042 -> 42s elapsed is
-    # added, because the UTC was true at receipt, not now.
+    # Received the fix at recv=1000; deciding at recv_now=1010 -> 10s elapsed is
+    # added, because the UTC was true at receipt, not now. (Within the freshness
+    # window, so still acted upon.)
     target = clock_decision(EPOCH, 1000.0, 9, 1, sys_now=EPOCH - 5000,
-                            ntp_synced=False, recv_now=1042.0)
-    assert target == EPOCH + 42
+                            ntp_synced=False, recv_now=1010.0)
+    assert target == EPOCH + 10
 
 
-def test_latency_compensation_never_negative():
-    # A clock that jumped backwards (recv_now < gps_utc_recv) must not subtract.
-    target = clock_decision(EPOCH, 1000.0, 9, 1, sys_now=EPOCH - 5000,
-                            ntp_synced=False, recv_now=900.0)
-    assert target == EPOCH
+def test_stale_receipt_beyond_window_is_refused():
+    # Receipt is 42s old (> GPS_UTC_MAX_AGE_S) -> refuse rather than compensate a
+    # large, untrustworthy latency.
+    from monitor.gps_clock import GPS_UTC_MAX_AGE_S
+    assert GPS_UTC_MAX_AGE_S == 15
+    assert clock_decision(EPOCH, 1000.0, 9, 1, sys_now=EPOCH - 5000,
+                          ntp_synced=False, recv_now=1042.0) is None
+
+
+def test_negative_age_is_refused():
+    # recv_now < gps_utc_recv: the receipt is "from the future" (clock jumped back
+    # after a step) -> refuse, never subtract.
+    assert clock_decision(EPOCH, 1000.0, 9, 1, sys_now=EPOCH - 5000,
+                          ntp_synced=False, recv_now=900.0) is None
+
+
+def test_runaway_after_a_step_is_killed_by_freshness_gate():
+    """Reproduce the feedback runaway the freshness gate exists to kill.
+
+    gps_utc_recv was stamped while the clock was WRONG (read 1000). We step the
+    clock to the satellite UTC. On the NEXT cycle the corrected clock reads ~EPOCH,
+    but gps_utc_recv is still 1000 (only a fresh 0x03 frame re-stamps it) -> the
+    receipt looks ancient (age ~= the whole correction) -> refused. Without the
+    gate, elapsed would inflate by the correction and target would land in the
+    future, stepping again and again."""
+    # Cycle 1: wrong clock (sys_now == recv_now == 1000), big drift -> step.
+    step = clock_decision(EPOCH, 1000.0, 9, 1, sys_now=1000.0,
+                          ntp_synced=False, recv_now=1000.0)
+    assert step == EPOCH
+    # Cycle 2: clock now corrected to ~EPOCH, recv stamp still 1000 (stale).
+    corrected_now = float(EPOCH)
+    assert clock_decision(EPOCH, 1000.0, 9, 1, sys_now=corrected_now,
+                          ntp_synced=False, recv_now=corrected_now) is None
 
 
 # ---- apply_clock ----------------------------------------------------------
@@ -92,28 +121,26 @@ class _Runner:
         return self._rc, "", ""
 
 
-def test_apply_clock_builds_settime_utc_matching_sudoers():
+def test_apply_clock_always_disables_ntp_first_then_sets_utc():
     r = _Runner(rc=0)
-    ok = apply_clock(EPOCH, r, ntp_synced=False, now=lambda: 555.0)
+    ok = apply_clock(EPOCH, r, now=lambda: 555.0)
     assert ok is True
-    # Offline: no NTP toggle, one set-time with the UTC stamp for EPOCH.
+    # ALWAYS disable NTP first (set-time is refused while timesyncd is active,
+    # regardless of NTPSynchronized), then one set-time with the UTC stamp. No
+    # re-enable on success — GPS is the authority offline. Both forms are scoped.
     assert r.calls == [
+        ["sudo", "-n", "timedatectl", "set-ntp", "false"],
         ["sudo", "-n", "timedatectl", "set-time", "2026-08-22 01:02:03 UTC"],
     ]
     assert gps_clock.last_disciplined_at == 555.0
 
 
-def test_apply_clock_toggles_ntp_off_first_when_synced():
-    r = _Runner(rc=0)
-    ok = apply_clock(EPOCH, r, ntp_synced=True)
-    assert ok is True
-    # set-time is refused while NTP is active -> disable it first, then set.
+def test_apply_clock_rolls_ntp_back_on_set_time_failure():
+    r = _Runner(rc=1)                          # set-time fails
+    assert apply_clock(EPOCH, r) is False
+    # Rollback: don't strand the medic with NTP off AND no GPS time set.
     assert r.calls == [
         ["sudo", "-n", "timedatectl", "set-ntp", "false"],
         ["sudo", "-n", "timedatectl", "set-time", "2026-08-22 01:02:03 UTC"],
+        ["sudo", "-n", "timedatectl", "set-ntp", "true"],
     ]
-
-
-def test_apply_clock_returns_false_on_runner_failure():
-    r = _Runner(rc=1)
-    assert apply_clock(EPOCH, r, ntp_synced=False) is False

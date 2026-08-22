@@ -2044,7 +2044,7 @@ class ReticulumNodeMedicApp(App):
             def _run(argv):
                 p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
                 return p.returncode, p.stdout, p.stderr
-            apply_clock(target, _run, ntp_synced=ntp)
+            apply_clock(target, _run)
         except Exception:
             pass
 

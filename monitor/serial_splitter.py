@@ -18,6 +18,7 @@ import calendar
 import json
 import os
 import time
+from datetime import datetime
 from typing import Optional
 
 from monitor.rnode_gps import (
@@ -147,16 +148,25 @@ class KissGpsSplitter:
             # [year_hi, year_lo, month, day, hour, minute, second], year u16 BE.
             year = int.from_bytes(payload[0:2], "big")
             month, day, hour, minute, second = payload[2:7]
-            # HONEST REJECT: any out-of-range field means we set NOTHING rather
-            # than feed a garbage clock downstream. A corrupt frame that slipped
-            # KISS framing must never become the system time (leap second => 60).
-            if (2020 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31
-                    and 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 60):
-                # timegm() treats the tuple as UTC (unlike mktime, which applies
-                # the local timezone) — the wire is UTC, so no local-tz bug.
-                self.gps_utc = calendar.timegm(
-                    (year, month, day, hour, minute, second))
-                self.gps_utc_recv = self._now()
+            # HONEST REJECT: KISS has no CRC, so a single bit-flip in the day byte
+            # can turn a real date into a plausible-but-wrong one (Feb 31 -> Mar 3
+            # if we let calendar.timegm silently normalize it). We set NOTHING
+            # unless the fields form a REAL calendar instant. datetime() raises on
+            # impossible dates AND enforces month/day/hour/minute ranges for us; we
+            # still bound the year (it accepts 1..9999) and the leap second (it
+            # rejects 60, so clamp only for this validity probe — the real second
+            # is kept below, and timegm normalizes 23:59:60 to the right instant).
+            if 2020 <= year <= 2100 and 0 <= second <= 60:
+                try:
+                    datetime(year, month, day, hour, minute, min(second, 59))
+                except ValueError:
+                    pass                      # impossible date -> reject, set nothing
+                else:
+                    # timegm() treats the tuple as UTC (unlike mktime, which applies
+                    # the local timezone) — the wire is UTC, so no local-tz bug.
+                    self.gps_utc = calendar.timegm(
+                        (year, month, day, hour, minute, second))
+                    self.gps_utc_recv = self._now()
         self.gps_frames += 1
         self.gps_seen_at = self._now()
         self.updated = self._now()

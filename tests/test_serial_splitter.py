@@ -238,6 +238,17 @@ def test_out_of_range_year_is_rejected():
     assert s.state()["gps_utc"] is None
 
 
+def test_impossible_calendar_dates_are_rejected():
+    """KISS has no CRC — a bit-flip in the day byte can make Feb 31 / Apr 31,
+    which calendar.timegm would SILENTLY normalize to a wrong-but-plausible epoch.
+    datetime() raises on them, so we reject and set nothing."""
+    from monitor.serial_splitter import KissGpsSplitter
+    for month, day in ((2, 31), (4, 31)):          # Feb 31, Apr 31
+        s = KissGpsSplitter()
+        s.feed(_utc_frame(2026, month, day, 1, 2, 3))
+        assert s.state()["gps_utc"] is None, f"{month}/{day} must be rejected"
+
+
 def test_leap_second_60_is_accepted():
     from monitor.serial_splitter import KissGpsSplitter
     s = KissGpsSplitter()
