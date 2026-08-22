@@ -683,6 +683,33 @@ class NodeRegistry:
         #: record whose hash is in here is authoritatively named/typed/located as
         #: KIN — even a plain propagation Pi the medic can't hear directly.
         self.kin_roster: Dict[str, dict] = {}
+        #: THIS medic's OWN identity hashes (full lowercase hex) — its rnsd
+        #: transport identity and its lxmd/LXMF-propagation identity. An announce
+        #: whose identity is in here is the medic HEARING ITSELF, not a neighbour:
+        #: on 2026-08-22 the medic's own lxmd destination (identity 5a180018)
+        #: surfaced in VITALS as an anonymous "Propagation relay". Populated at
+        #: startup from provisioning.tool_identity.own_identity_hashes(); empty by
+        #: default so an un-wired registry (and every test that doesn't set it)
+        #: filters nobody. Matched by IDENTITY, so a node the medic BUILT — which
+        #: carries a DIFFERENT identity — is never mistaken for the medic itself.
+        self.own_identities: set = set()
+
+    @_locked
+    def set_own_identities(self, hashes) -> None:
+        """Record THIS medic's OWN identity hashes (see ``own_identities``) so
+        its own announces are never mistaken for neighbours. Idempotent;
+        normalises to lowercase hex and drops empties. The app wires this at
+        startup from provisioning.tool_identity.own_identity_hashes()."""
+        self.own_identities = {str(h).lower() for h in (hashes or ()) if h}
+
+    def _is_own_identity(self, rec) -> bool:
+        """True if *rec*'s identity is one of THIS medic's own — the guard that
+        keeps the medic's own destinations out of both ingest and the display.
+        Matched by identity hash, so kin (a DIFFERENT identity) never match."""
+        if not self.own_identities:
+            return False
+        ih = getattr(rec, "identity_hash", None)
+        return bool(ih and ih.lower() in self.own_identities)
 
     #: Every NodeRecord field that stores a WALL-CLOCK epoch. Rebased as a set
     #: after the system clock is stepped (GPS discipline) so they stay in the new
@@ -973,6 +1000,16 @@ class NodeRegistry:
         as health data.
         """
         h = dst_hash.hex() if isinstance(dst_hash, (bytes, bytearray)) else str(dst_hash)
+        # THE MEDIC IS NOT ITS OWN NEIGHBOUR. 2026-08-22 (live): the medic heard
+        # its OWN lxmd propagation announce and listed its own destination
+        # 5a0a000a (identity 5a180018) as an anonymous "Propagation relay". An
+        # announce whose identity is one of THIS medic's own destinations is the
+        # medic talking to itself — drop it before any record is created. Keyed
+        # by IDENTITY: a node the medic BUILT carries a DIFFERENT identity, so
+        # this never touches kin (the "EVERYWHERE was only ever a via" lesson).
+        if identity_hash and self.own_identities \
+                and identity_hash.lower() in self.own_identities:
+            return None
         try:
             beacon = decode(app_data)
         except (ValueError, TypeError):
@@ -1149,7 +1186,7 @@ class NodeRegistry:
         """Every node: the operator's OWN nodes first (kin above neighbours),
         alert-first within each group, then by name."""
         return sorted(
-            self.nodes.values(),
+            (r for r in self.nodes.values() if not self._is_own_identity(r)),
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
@@ -1204,6 +1241,12 @@ class NodeRegistry:
         """
         groups: Dict[str, List[NodeRecord]] = {}
         for rec in self.nodes.values():
+            # Never group/surface the medic's OWN destinations. An older
+            # registry may already hold a polluted row (the 2026-08-22 lxmd
+            # relay); filtering here cleans it up on the next render, no wipe
+            # needed. Kin are a different identity and pass through untouched.
+            if self._is_own_identity(rec):
+                continue
             groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
 
         def _collapse(key_of) -> None:
@@ -1375,6 +1418,8 @@ class NodeRegistry:
         omitted (nothing to plot). Sorted by name for stable rendering."""
         out = []
         for rec in sorted(self.nodes.values(), key=lambda r: r.name.lower()):
+            if self._is_own_identity(rec):
+                continue                     # not a node on the map — it's us
             if rec.has_location():
                 out.append({"lat": rec.lat, "lon": rec.lon,
                             "name": rec.name or "(unnamed)",
@@ -1396,6 +1441,8 @@ class NodeRegistry:
     def summary(self, now: float) -> Dict[str, int]:
         counts = {"ok": 0, "warn": 0, "alert": 0, "unknown": 0}
         for rec in self.nodes.values():
+            if self._is_own_identity(rec):
+                continue                     # the medic doesn't count itself
             counts[rec.status(now)] = counts.get(rec.status(now), 0) + 1
         return counts
 

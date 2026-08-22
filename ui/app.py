@@ -653,6 +653,17 @@ class ReticulumNodeMedicApp(App):
         from monitor.registry import NodeRegistry
         self.monitor_service = MonitorService(
             run=_local_run, registry=NodeRegistry.load(self._REGISTRY_FILE))
+        # Teach the registry THIS medic's own identity hashes so it never lists
+        # the medic's own destinations as neighbours (2026-08-22: the medic's
+        # own lxmd propagation dest showed up in VITALS as a "Propagation
+        # relay"). Best-effort and resolved at runtime — no RNS / no files just
+        # yields an empty set, which filters nobody.
+        try:
+            from provisioning import tool_identity as _ti
+            self.monitor_service.registry.set_own_identities(
+                _ti.own_identity_hashes())
+        except Exception as _e:
+            print(f"[identity] own-identity filter skipped: {_e}")
         self._apply_retention(None)                  # honour the saved retention window
         self._start_monitor_polling()
         self._start_announce_listener()

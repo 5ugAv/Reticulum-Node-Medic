@@ -39,6 +39,56 @@ _HASH_CMD = (
     "i=RNS.Identity.from_file(p) if p else None; "
     "print(RNS.hexrep(i.hash, delimit=False) if i else '')\" 2>/dev/null")
 
+#: THIS medic's OWN identity files, in the order the audit lists them. The
+#: rnsd TRANSPORT identity and the LXMD (LXMF propagation) identity are the two
+#: named in the 2026-08-22 finding; the client ``identity`` is included because
+#: when present it is equally the medic's own. An announce from ANY of these is
+#: the medic talking to itself, never a neighbour — see ``own_identity_hashes``.
+_OWN_IDENTITY_FILES = [
+    os.path.expanduser("~/.reticulum/storage/transport_identity"),
+    os.path.expanduser("~/.reticulum/storage/identity"),
+    os.path.expanduser("~/.lxmd/identity"),
+]
+
+
+def own_identity_hashes(paths=None) -> set:
+    """The set of THIS medic's own RNS identity hashes (full lowercase hex).
+
+    Covers the two identities the 2026-08-22 live finding names — the rnsd
+    TRANSPORT identity (``~/.reticulum/storage/transport_identity``) and the
+    LXMD / LXMF-propagation identity (``~/.lxmd/identity``) — plus the client
+    identity if this unit keeps one. Read straight off disk via
+    ``RNS.Identity.from_file`` (no networking, no clash with the running rnsd).
+
+    Why it exists: VITALS was showing the medic's OWN lxmd destination
+    (destination 5a0a000a, identity 5a180018) as an anonymous "Propagation
+    relay" neighbour. An announce whose identity is one of these is the medic
+    hearing itself — it must be neither recorded as a node nor displayed. The
+    hashes are resolved at runtime, never hardcoded.
+
+    Defensive by contract: no RNS library, a missing file, or an unreadable
+    identity each contribute NOTHING rather than raising — a dev box with no
+    Reticulum simply yields an empty set, and an empty set filters nobody.
+    """
+    files = paths if paths is not None else _OWN_IDENTITY_FILES
+    try:
+        import RNS
+    except Exception:
+        return set()
+    out = set()
+    for p in files:
+        try:
+            if not p or not os.path.exists(p):
+                continue
+            ident = RNS.Identity.from_file(p)
+            h = getattr(ident, "hash", None) if ident is not None else None
+            if h is not None:
+                out.add(h.hex().lower())
+        except Exception:
+            continue
+    return out
+
+
 ShellRunner = Callable[[str], Tuple[int, str]]
 
 
