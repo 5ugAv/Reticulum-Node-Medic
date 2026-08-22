@@ -1042,25 +1042,51 @@ def test_propagation_check_refuses_everything_else():
     assert not _is_propagation_announce(b"\x93\xc2\x07\xc3")
 
 
+def _mp(obj):
+    """Minimal msgpack encoder for the exact shapes this test needs (bool,
+    int, str, list, dict). Deliberately RNS-free: CI has no RNS module, and a
+    test that hard-imports RNS.vendor.umsgpack passes on a dev venv and fails
+    in CI (the 2026-08-22 red-main). The bytes are valid msgpack, so both the
+    RNS decode path and the bundled byte-level fallback see the same input."""
+    if isinstance(obj, bool):
+        return b"\xc3" if obj else b"\xc2"
+    if isinstance(obj, int):
+        if 0 <= obj <= 0x7F:
+            return bytes([obj])                       # positive fixint
+        if obj <= 0xFFFF:
+            return b"\xcd" + obj.to_bytes(2, "big")   # uint16
+        return b"\xce" + obj.to_bytes(4, "big")       # uint32
+    if isinstance(obj, str):
+        b = obj.encode()
+        return bytes([0xA0 | len(b)]) + b             # fixstr (len < 32)
+    if isinstance(obj, list):
+        return bytes([0x90 | len(obj)]) + b"".join(_mp(x) for x in obj)
+    if isinstance(obj, dict):
+        out = bytes([0x80 | len(obj)])
+        for k, v in obj.items():
+            out += _mp(k) + _mp(v)
+        return out
+    raise TypeError(obj)
+
+
 def test_lookalike_prefix_is_not_a_propagation_announce():
     """P1 from the adversarial review: a payload that merely OPENS like the
     propagation announce — bool, timestamp, bool — but carries something else
-    after (somebody's telemetry dict) must classify False. The shape check
-    runs through [5], the 3-int triple."""
-    from RNS.vendor import umsgpack
+    after must classify False. The shape check runs through [5], the 3-int
+    triple."""
     from monitor.registry import _is_propagation_announce
     ts = 1787316090
     assert not _is_propagation_announce(
-        umsgpack.packb([True, ts, True, {"lat": 1.0}]))
+        _mp([True, ts, True, 42]))                             # too short (4)
     assert not _is_propagation_announce(
-        umsgpack.packb([False, ts, True, 256, 10240]))          # too short
+        _mp([False, ts, True, 256, 10240]))                    # too short (5)
     assert not _is_propagation_announce(
-        umsgpack.packb([False, ts, True, 256, 10240, [16, 3], {}]))  # not 3
+        _mp([False, ts, True, 256, 10240, [16, 3], {}]))       # [5] not 3
     assert not _is_propagation_announce(
-        umsgpack.packb([False, ts, True, 256, 10240, [16, "3", 18], {}]))
+        _mp([False, ts, True, 256, 10240, [16, "3", 18], {}])) # [5] has a str
     # ...and the real shape still passes when re-packed from its decode.
     assert _is_propagation_announce(
-        umsgpack.packb([False, ts, True, 256, 10240, [16, 3, 18], {}]))
+        _mp([False, ts, True, 256, 10240, [16, 3, 18], {}]))
 
 
 def test_ingest_announce_marks_propagation_and_roundtrips():
