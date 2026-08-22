@@ -1626,6 +1626,26 @@ _RETICULUM_ADDR_CMD = (
     "i=RNS.Identity.from_file(p) if p else None; "
     "print(RNS.hexrep(i.hash, delimit=False) if i else '')\" 2>/dev/null")
 
+#: THE THIRD IDENTITY A PI RELAY WEARS (2026-08-22). A propagation node's lxmd
+#: announces its ``lxmf.propagation`` aspect from an identity kept in its OWN
+#: file (~/.lxmd/identity) — unrelated to rnsd's transport identity and to the
+#: health reporter's. Nothing on the mesh links the three, so lxmd's destination
+#: orphaned in VITALS as an anonymous "Propagation relay" beside the same
+#: machine's named rows (the double-SkyFinger root cause). Read the destination
+#: hash off the node at birth — the ONE moment the medic holds all three at once
+#: — so it can be rostered under the node's name. Mirrors _HEALTH_DST_CMD: build
+#: the SAME destination lxmd announces (RNS.Destination(id, IN, SINGLE, 'lxmf',
+#: 'propagation')). Prints nothing when lxmd is not installed (no identity file),
+#: so a non-propagation node contributes no hash — never a fabricated one.
+_LXMD_DST_CMD = (
+    "python3 -c \"import RNS, os; "
+    "p=os.path.expanduser('~/.lxmd/identity'); "
+    "i=RNS.Identity.from_file(p) if os.path.exists(p) else None; "
+    "RNS.Reticulum() if i else None; "
+    "d=RNS.Destination(i, RNS.Destination.IN, RNS.Destination.SINGLE, "
+    "'lxmf', 'propagation') if i else None; "
+    "print(RNS.hexrep(d.hash, delimit=False) if d else '')\" 2>/dev/null")
+
 
 def _pin_this_node(wf: "BuildWorkflow") -> str:
     """Pin the built node's SSH host key; return the fingerprint or "".
@@ -1706,6 +1726,17 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
     # (the registry key), not just its main rnsd identity.
     if wf.profile.health_dst_hash:
         wf.birth_certificate["health_dst"] = wf.profile.health_dst_hash
+    # AND ITS THIRD IDENTITY: lxmd's lxmf.propagation destination, read the same
+    # way — live off the node, after the services are up. Only for a machine that
+    # actually runs lxmd (the command prints nothing without an ~/.lxmd/identity),
+    # and only a well-formed 32-hex hash is trusted — a blank or garbled read is
+    # dropped, never rostered as a fabricated identity. Without this the relay's
+    # announce has nothing in the roster to fold it under, and it sat in VITALS as
+    # an orphaned "Propagation relay" beside the same Pi's named rows (2026-08-22).
+    lxmd_lines = out(_LXMD_DST_CMD).splitlines()
+    lxmd_dst = lxmd_lines[-1].strip().lower() if lxmd_lines else ""
+    if len(lxmd_dst) == 32 and all(c in "0123456789abcdef" for c in lxmd_dst):
+        wf.birth_certificate["lxmd_dst"] = lxmd_dst
     # WHAT THE MEDIC ACTUALLY HEARD BACK, per channel, in the node's own record.
     # A certificate that states a working node the medic has never heard from is
     # the failure this project keeps meeting; these fields are the answer to

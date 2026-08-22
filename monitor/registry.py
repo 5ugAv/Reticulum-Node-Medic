@@ -1272,6 +1272,31 @@ class NodeRegistry:
         _collapse(lambda members: next(
             (r.device_id for r in members if r.device_id), ""))
 
+        # AN OPERATOR-SET KIN NAME IS AUTHORITATIVE AND UNIQUE — belt-and-
+        # suspenders for the 2026-08-22 double-SkyFinger, catching any gap in
+        # birth-time identity capture. The operator gives each of their OWN nodes
+        # one unique name (they number them sequentially); they will not call two
+        # different physical machines the same thing. So two groups that BOTH
+        # carry the same operator name are one machine, and fold — EVEN when both
+        # bear their own identity. That is the exact case the name pass below
+        # refuses (rightly, for ANNOUNCED names, where a dead machine could hide
+        # behind a live namesake — a name a stranger merely broadcasts is not
+        # authority), so this runs first and is guarded to the operator's own
+        # authority: the naming record must be in the KIN ROSTER (by dst or by
+        # announced identity), which is the operator's own record of their fleet.
+        # A bare mesh-heard row that merely wears a name is NOT roster-backed and
+        # never triggers this — only ``rec.name`` (never announced_name) counts.
+        def _operator_name(members) -> str:
+            for r in members:
+                if not r.name:
+                    continue
+                if (r.dst_hash in self.kin_roster
+                        or (r.identity_hash
+                            and r.identity_hash in self.kin_roster)):
+                    return name_key(r.name)
+            return ""
+        _collapse(_operator_name)
+
         def _grp_name(members) -> str:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
             return (p.name or p.announced_name or "").strip()

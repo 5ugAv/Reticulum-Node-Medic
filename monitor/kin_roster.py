@@ -127,12 +127,26 @@ def register_device(hashes, name: str, node_type: str = "pi",
 
     The FIRST hash given is the device's id; pass the health destination first,
     since that is the one whose beacons carry the readings.
+
+    IDEMPOTENT MERGE (2026-08-22): if ANY of these hashes is already on record
+    under an existing device, the whole set joins THAT device instead of minting
+    a second one. So re-adopting or repairing a node — which re-runs birth and
+    may add a destination the first birth missed (an lxmd aspect that had not
+    announced yet) — ADDS the address to the node's one device rather than
+    splitting it into a live row and a ghost. A brand-new machine (no hash
+    known) still takes its first hash as the device id, as before.
     """
     hs = [str(h) for h in (hashes or []) if h]
     roster = load_roster(path)
     if not hs:
         return roster
-    device = hs[0]
+    existing = ""
+    for h in hs:
+        entry = roster.get(h)
+        if isinstance(entry, dict) and entry.get("device"):
+            existing = entry["device"]
+            break
+    device = existing or hs[0]
     for h in hs:
         roster = register(h, name, node_type=node_type, lat=lat, lon=lon,
                           links=links, builder=builder, device=device,

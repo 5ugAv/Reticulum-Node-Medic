@@ -3328,6 +3328,19 @@ class BirthScreen(BoxLayout):
                 value = cert.get(key)
                 if value and value not in hashes:
                     hashes.append(value)
+            # THE THIRD IDENTITY OF A PI RELAY (2026-08-22). lxmd announces its
+            # lxmf.propagation aspect from its OWN identity file — a hash the
+            # mesh can never link to the node's rnsd or health destinations, so
+            # it orphaned in VITALS as an anonymous "Propagation relay" beside
+            # the same machine's named rows (the double-SkyFinger root cause).
+            # Birth captured it into the certificate (workflows.build.birth_
+            # certificate); record it as one more destination of THIS device so
+            # its first announce folds under the node's name. extra_identities is
+            # the general form for any further destinations a future role adds.
+            for value in ([cert.get("lxmd_dst")]
+                          + list(cert.get("extra_identities") or [])):
+                if value and value not in hashes:
+                    hashes.append(value)
             if not hashes:
                 return
             # THE IDENTITY THE NODE ANNOUNCES UNDER, harvested from what the
