@@ -629,6 +629,7 @@ class ReticulumNodeMedicApp(App):
         # monitor.gps_clock, which needs no seed and can't lock the tool out.
         from monitor.gps_clock import GpsClockDisciplinarian
         self._gps_disciplinarian = GpsClockDisciplinarian()
+        self._gps_last_persist = 0.0          # rate-limit the last-sync config write
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -2030,13 +2031,15 @@ class ReticulumNodeMedicApp(App):
         Guards, in order (each honours a house rule or a review finding):
           * flash/SD-write in progress -> stand down (never disturb a busy medic).
           * operator turned auto-sync OFF -> stand down (manual control is theirs).
-          * GpsClockDisciplinarian applies the sane-jump/corroboration/forward-only
-            policy; it refuses weak/stale/backward/garbage fixes.
-        On a successful step we REBASE every stored wall-clock stamp by the same
-        delta (so nodes don't look silent for the step size), give node_watch a
-        post-step cooldown, advance the forward-only floor, and stamp the datetime
-        screen's sync surface as "GPS". Everything is wrapped so no failure can
-        kill the loop."""
+          * GpsClockDisciplinarian applies the fixed-window + median-ring
+            corroboration policy; it refuses weak/stale/out-of-window/uncorroborated
+            fixes, and surfaces WHY via its status line.
+        On a MEANINGFUL step (delta beyond the SEEN deadband) we REBASE every
+        stored wall-clock stamp by the same delta (so nodes don't look silent for
+        the step size) and give node_watch a post-step cooldown; a sub-deadband
+        correction just sets the clock (no rebase / no config churn). The
+        datetime sync stamp is persisted rate-limited. Everything is wrapped so no
+        failure can kill the loop."""
         try:
             # Never step the clock mid-flash / mid-SD-write (matches the
             # board-disconnect watcher's guard on the same flag).
@@ -2048,13 +2051,17 @@ class ReticulumNodeMedicApp(App):
             if not td.is_autosync():
                 return
             from monitor.geo import read_splitter_state
-            from monitor.gps_clock import apply_clock
+            from monitor.gps_clock import apply_clock, rebase_needed, PERSIST_MIN_INTERVAL_S
             st = read_splitter_state()
-            if not st or st.get("gps_utc") is None:
-                return                            # inert case — no satellite UTC
             import time
-            ntp = td.ntp_synchronized()           # "couldn't check" -> False -> GPS may act
             sys_now = time.time()
+            if not st:
+                from monitor.gps_clock import REASON_NO_FIX
+                self._gps_disciplinarian.last_reason = REASON_NO_FIX
+                return
+            # Even when gps_utc is None (inert, pre-firmware), let evaluate set the
+            # status ("No GPS fix yet") so the screen is honest; it returns None.
+            ntp = td.ntp_synchronized()           # "couldn't check" -> False -> GPS may act
             target = self._gps_disciplinarian.evaluate(
                 st.get("gps_utc"), st.get("gps_utc_recv"),
                 st.get("sats"), st.get("fix"),
@@ -2068,21 +2075,28 @@ class ReticulumNodeMedicApp(App):
                 return p.returncode, p.stdout, p.stderr
             if apply_clock(target, _run):
                 delta = target - sys_now          # new_epoch - old_epoch
-                # ORDER MATTERS: rebase the stored stamps into the new clock frame
-                # FIRST; only then commit the step as a clean success. If rebase
-                # somehow fails we do NOT record_success/mark_synced — a
-                # half-applied step is bounded and recoverable (with no floor, the
-                # next good fix corrects and rebases back), but we won't advertise
-                # it as clean. rebase_wall_clock is itself guarded to not raise.
-                try:
-                    self.monitor_service.registry.rebase_wall_clock(delta)
-                except Exception:
-                    return
-                w = getattr(self, "_node_watcher", None)
-                if w is not None:
-                    w.note_clock_step()           # don't mass-escalate on the step
-                self._gps_disciplinarian.record_success()
-                td.mark_synced(target, "GPS")     # surface "GPS-synced N ago"
+                # GATE the expensive rebase + persist on a meaningful delta. A
+                # sub-deadband correction is absorbed by the SEEN deadband and
+                # node_watch cooldown, so it needs no history rebase and no config
+                # churn — stops a small-step / alternating-±59s path from thrashing
+                # the SD. Above the deadband, rebase FIRST, then commit as clean;
+                # if rebase somehow fails, do NOT record_success/mark_synced.
+                if rebase_needed(delta):
+                    try:
+                        self.monitor_service.registry.rebase_wall_clock(delta)
+                    except Exception:
+                        return
+                    w = getattr(self, "_node_watcher", None)
+                    if w is not None:
+                        w.note_clock_step()       # don't mass-escalate on the step
+                self._gps_disciplinarian.record_success(target)
+                # Persist the "GPS-synced" stamp rate-limited: always on a
+                # meaningful step, otherwise at most once per interval, so a
+                # frequently-confirmed clock doesn't fsync every tick.
+                last_persist = getattr(self, "_gps_last_persist", 0.0)
+                if rebase_needed(delta) or (target - last_persist) >= PERSIST_MIN_INTERVAL_S:
+                    td.mark_synced(target, "GPS")
+                    self._gps_last_persist = target
             else:
                 self._gps_disciplinarian.record_failure(sys_now)
         except Exception:

@@ -152,9 +152,12 @@ def test_apply_clock_rolls_ntp_back_on_set_time_failure():
 # The forward-only floor was DELETED (it caused permanent lockout + didn't stop
 # the ratchet). Plausibility is now a fixed window; large steps need corroboration.
 
+from monitor import gps_clock as gc
 from monitor.gps_clock import (
-    GpsClockDisciplinarian, GPS_EPOCH_MIN, GPS_EPOCH_MAX, DIRECT_APPLY_S,
-    CORROBORATION_K, CORROBORATION_RING, APPLY_FAIL_LIMIT, APPLY_BACKOFF_S,
+    GpsClockDisciplinarian, GPS_EPOCH_MIN, GPS_EPOCH_MAX, rebase_needed,
+    REBASE_MIN_DELTA_S, CORROBORATION_K, CORROBORATION_RING, APPLY_FAIL_LIMIT,
+    APPLY_BACKOFF_S, REASON_AWAITING, REASON_OUT_OF_WINDOW, REASON_SYNCED,
+    REASON_NO_FIX, REASON_IN_SYNC,
 )
 
 
@@ -164,23 +167,128 @@ def _call(d, target, sys_now, recv, sats=12, fix=3):
                       sys_now=sys_now, ntp_synced=False, recv_now=recv)
 
 
-def test_tiny_drift_applies_directly():
+def test_no_direct_apply_path_a_single_small_step_does_not_apply():
+    # The uncorroborated single-frame apply is GONE. Even a small 45 s drift takes
+    # corroboration now (kills the #A ring-clear door and the #B ±59 s thrash).
     d = GpsClockDisciplinarian()
-    # 45 s off (> the 10 s thrash guard, <= the 60 s direct-apply band) -> apply
-    # at once, no corroboration; not a ratchet risk (bounded by the window).
-    assert _call(d, EPOCH, EPOCH - 45, recv=1.0) == EPOCH
+    assert _call(d, EPOCH, EPOCH - 45, recv=1.0) is None
+    assert d.last_reason == REASON_AWAITING
 
 
-def test_step_beyond_direct_band_needs_corroboration():
+def test_small_drift_corrects_after_corroboration():
     d = GpsClockDisciplinarian()
-    # 120 s off (> 60 s) from a single frame -> ring has one vote, no step.
-    assert _call(d, EPOCH, EPOCH - 120, recv=1.0) is None
+    assert _call(d, EPOCH + 0, EPOCH - 45, recv=1.0) is None
+    assert _call(d, EPOCH + 1, EPOCH - 44, recv=2.0) is None   # offset ~45 each
+    out = _call(d, EPOCH + 2, EPOCH - 43, recv=3.0)            # 3rd agree -> apply
+    assert out == pytest.approx(EPOCH + 2, abs=2.0)
 
 
 def test_single_glitch_frame_does_not_step_alone():
     d = GpsClockDisciplinarian()
     # a lone in-window-but-wrong far fix, then silence -> never applied
     assert _call(d, EPOCH + 10 * 86400, EPOCH, recv=1.0) is None
+
+
+def test_cold_boot_corrects_despite_interleaved_small_offset_garbage():
+    """#A door closed: a small-offset garbage frame must NOT clear the ring / step
+    on its own, so a genuinely far-behind cold boot still corrects."""
+    d = GpsClockDisciplinarian()
+    OFF = 3 * 86400
+
+    def sysn(t):
+        return EPOCH + t - OFF
+
+    assert _call(d, EPOCH + 0, sysn(0), recv=0) is None          # far-behind #1
+    # a SMALL-offset garbage frame (offset ~ +30) — used to direct-apply+clear
+    assert _call(d, sysn(30) + 30, sysn(30), recv=1) is None
+    assert _call(d, EPOCH + 60, sysn(60), recv=2) is None        # far-behind #2
+    applied = _call(d, EPOCH + 90, sysn(90), recv=3)             # far-behind #3 -> K
+    assert applied == pytest.approx(EPOCH + 90, abs=2.0)
+
+
+def test_urban_canyon_jittery_offsets_eventually_correct():
+    """#C: a legit behind-clock whose offsets jitter a few seconds apart (poor sky
+    view) must eventually discipline via the bounded-spread fallback."""
+    d = GpsClockDisciplinarian()
+    S = EPOCH
+    out = None
+    for i, off in enumerate((50, 56, 62, 68, 74)):     # spaced 6 s, spread 24 <= 30
+        out = _call(d, S + off, S, recv=float(i))
+        if out is not None:
+            break
+    assert out is not None
+    assert 50 <= (out - S) <= 74                        # median of the agreeing set
+
+
+def test_scattered_garbage_does_not_corroborate():
+    d = GpsClockDisciplinarian()
+    S = EPOCH
+    for i, off in enumerate((10000, -50000, 3000, 800000, -200)):  # in-window, scattered
+        assert _call(d, S + off, S, recv=float(i)) is None
+    assert d.last_reason == REASON_AWAITING
+
+
+def test_stale_ring_entries_expire_and_cannot_corroborate():
+    d = GpsClockDisciplinarian()
+    big = EPOCH + 10 * 86400
+    assert _call(d, big, EPOCH, recv=0.0) is None       # vote @0
+    assert _call(d, big + 1, EPOCH, recv=1.0) is None   # vote @1
+    # a 3rd agreeing fix arrives >90 s later: the first two have expired, so this
+    # is vote #1 again — a stale spoof offset can't linger to complete a cluster.
+    assert _call(d, big, EPOCH, recv=200.0) is None
+    assert len(d._ring) == 1
+
+
+def test_rebase_needed_gates_on_the_seen_deadband():
+    from monitor import registry
+    assert REBASE_MIN_DELTA_S == registry.SEEN_CLOCK_SKEW_TOLERANCE_S
+    assert rebase_needed(200.0) is True          # > 120 s -> rebase history
+    assert rebase_needed(-200.0) is True
+    assert rebase_needed(59.0) is False          # sub-deadband -> set clock only
+    assert rebase_needed(120.0) is False
+
+
+def test_alternating_small_offsets_never_trigger_a_rebase():
+    """#B: even if an alternating small-offset spoof corroborates, every resulting
+    step is sub-deadband, so rebase_needed is False -> no history rebase / persist
+    thrash. (Proven at the gate the app uses.)"""
+    d = GpsClockDisciplinarian()
+    S = EPOCH
+    applied = []
+    for i in range(6):                            # six "+55" frames
+        out = _call(d, S + 55, S, recv=float(i))
+        if out is not None:
+            applied.append(out - S)
+    assert applied                                # it did eventually step...
+    assert all(not rebase_needed(delta) for delta in applied)   # ...but never rebases
+
+
+def test_status_line_reports_awaiting_out_of_window_and_synced():
+    d = GpsClockDisciplinarian()
+    now = float(calendar.timegm((2026, 6, 1, 0, 0, 0)))
+    # awaiting: one large fix, no corroboration yet
+    _call(d, EPOCH + 10 * 86400, EPOCH, recv=1.0)
+    assert "Awaiting" in d.status_line(now)
+    # out of window: a 2099 fix
+    _call(d, float(calendar.timegm((2099, 1, 1, 0, 0, 0))), EPOCH, recv=2.0)
+    assert "window" in d.status_line(now).lower()
+    # synced: after a corroborated apply
+    d.record_success(now)
+    assert "GPS-synced" in d.status_line(now)
+
+
+def test_status_line_warns_near_the_window_edge():
+    d = GpsClockDisciplinarian()
+    d.record_success(GPS_EPOCH_MAX - 100)         # last good, right at the edge
+    line = d.status_line(GPS_EPOCH_MAX - 100)     # "now" near the cliff
+    assert "window ends soon" in line.lower()
+
+
+def test_no_fix_status_when_gps_utc_is_none():
+    d = GpsClockDisciplinarian()
+    assert d.evaluate(gps_utc=None, gps_utc_recv=None, sats=0, fix=0,
+                      sys_now=EPOCH, ntp_synced=False, recv_now=1.0) is None
+    assert d.last_reason == REASON_NO_FIX
 
 
 def test_cold_boot_corrects_via_median_despite_interleaved_garbage():
@@ -251,18 +359,24 @@ def test_same_frame_is_not_counted_twice():
     big = EPOCH + 10 * 86400
     assert _call(d, big, EPOCH, recv=1.0) is None
     assert _call(d, big, EPOCH, recv=1.0) is None    # same receipt -> deduped
-    assert d._ring == [big - EPOCH]                  # only one vote recorded
+    assert [o for (o, _r) in d._ring] == [big - EPOCH]   # only one vote recorded
 
 
 def test_set_time_failure_backoff_stops_re_arming():
     d = GpsClockDisciplinarian()
     for _ in range(APPLY_FAIL_LIMIT):
         d.record_failure(now=1000.0)
-    # within the backoff window, evaluate stands down even for a tiny direct fix
-    assert _call(d, EPOCH, EPOCH - 45, recv=1000.0 + 10) is None
-    # after the window, it acts again
-    assert _call(d, EPOCH, EPOCH - 45,
-                 recv=1000.0 + APPLY_BACKOFF_S + 1) == EPOCH
+    # within the backoff window, evaluate stands down entirely (no ring building)
+    assert _call(d, EPOCH, EPOCH - 3600, recv=1000.0 + 10) is None
+    from monitor.gps_clock import REASON_BACKOFF
+    assert d.last_reason == REASON_BACKOFF
+    assert d._ring == []
+    # after the window, it resumes corroborating: 3 agreeing fixes -> apply
+    base = 1000.0 + APPLY_BACKOFF_S + 1
+    out = None
+    for i in range(CORROBORATION_K):
+        out = _call(d, EPOCH + i, EPOCH - 3600 + i, recv=base + i)
+    assert out == pytest.approx(EPOCH + CORROBORATION_K - 1, abs=2.0)
 
 
 def test_record_success_clears_backoff():
