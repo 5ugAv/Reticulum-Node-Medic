@@ -294,6 +294,11 @@ class WatchRig:
     def now(self):
         return self.SENT_AT + self.t
 
+    def mono(self):
+        # The wait WINDOW is measured on monotonic now (review item 3), so drive
+        # it from the same fake clock the faked sleep advances.
+        return self.t
+
     def sleep(self, s):
         self.t += s
 
@@ -304,7 +309,7 @@ class WatchRig:
 
     def run(self, wait_s=15.0):
         return heard_since(self.get, ["ab"], self.SENT_AT, wait_s,
-                           now=self.now, sleep=self.sleep)
+                           now=self.now, sleep=self.sleep, monotonic=self.mono)
 
 
 def test_heard_since_reply_early_in_the_window():
@@ -341,7 +346,8 @@ def test_heard_since_record_vanishing_mid_watch_is_not_an_answer():
 
     assert heard_since(get, ["ab"], 1000.0, 3.0,
                        now=lambda: 1000.0 + elapsed[0],
-                       sleep=tick) is False
+                       sleep=tick,
+                       monotonic=lambda: elapsed[0]) is False
     assert calls["n"] >= 1          # it kept looking, without crashing
 
 
@@ -352,3 +358,46 @@ def test_heard_since_ignores_a_mesh_scan_bump_of_last_seen():
     rig = WatchRig(reply_at=None)
     rig.rec.last_seen = rig.SENT_AT + 5.0       # fresh — but table-fed
     assert rig.run(wait_s=4.0) is False
+
+
+# ---- clock-step safety (review item 3): the wait must survive a GPS step -----
+# The medic disciplines its clock from GPS on the same loop; a step can land
+# mid-wait. The window is measured on monotonic and "answered" is a forward
+# CHANGE from the send-time snapshot, so neither is fooled.
+
+def test_heard_since_survives_a_forward_clock_step_mid_wait():
+    rec = SimpleNamespace(last_heard_announce_at=None)
+    state = {"t": 0.0}
+    STEP = 3 * 3600                              # +3h wall jump at t>=5
+
+    def now():
+        return 1000.0 + state["t"] + (STEP if state["t"] >= 5 else 0)
+
+    def mono():
+        return state["t"]
+
+    def sleep(s):
+        state["t"] += s
+
+    def get(h):
+        if state["t"] >= 7:                      # a genuine reply after the step
+            rec.last_heard_announce_at = now()
+        return rec
+
+    assert heard_since(get, ["ab"], sent_at=1000.0, wait_s=10.0,
+                       now=now, sleep=sleep, monotonic=mono) is True
+    assert state["t"] <= 8                       # caught it; window not blown open
+
+
+def test_heard_since_silent_node_times_out_despite_a_forward_step():
+    rec = SimpleNamespace(last_heard_announce_at=None)
+    state = {"t": 0.0}
+    STEP = 3 * 3600
+
+    def now():
+        return 1000.0 + state["t"] + (STEP if state["t"] >= 3 else 0)
+
+    assert heard_since(lambda h: rec, ["ab"], sent_at=1000.0, wait_s=10.0,
+                       now=now, sleep=lambda s: state.__setitem__("t", state["t"] + s),
+                       monotonic=lambda: state["t"]) is False
+    assert state["t"] == 10.0                    # full monotonic window, not ended early

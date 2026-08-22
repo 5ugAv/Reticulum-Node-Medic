@@ -1200,3 +1200,55 @@ def test_last_heard_announce_at_survives_a_round_trip():
     r.ingest(HASH, beacon(uptime_s=10), NOW)
     r2 = NodeRegistry.from_dict(r.to_dict())
     assert r2.get(HASH).last_heard_announce_at == NOW
+
+
+# ---- clock-step rebase (review item 4): stamps stay honest across a GPS step --
+# A GPS step (offline time discipline) moves the system clock; without rebasing
+# the stored epochs, a forward step makes every node look silent for the step
+# size (false escalation / false "SEEN ?") and prunes real history.
+
+def test_rebase_wall_clock_shifts_every_stamp_and_history_point():
+    from monitor.history import HistoryPoint
+    from monitor.registry import CommissionEvent
+    reg = NodeRegistry()
+    rec = reg.register(HASH, name="TRUTH")
+    rec.last_seen = NOW
+    rec.last_direct = NOW - 60
+    rec.last_heard_announce_at = NOW
+    rec.mesh_heard = NOW - 120
+    rec.poll_failed_at = NOW - 30
+    rec.last_echo_at = NOW - 10
+    rec.share_applied_at = NOW - 200
+    rec.events.append(CommissionEvent(at=NOW - 300, kind="build", summary="born"))
+    reg.history.append(HASH, HistoryPoint(t=NOW - 500, rssi=-70))
+
+    DELTA = 3 * 3600.0                     # +3h forward step
+    reg.rebase_wall_clock(DELTA)
+
+    assert rec.last_seen == NOW + DELTA
+    assert rec.last_direct == NOW - 60 + DELTA
+    assert rec.last_heard_announce_at == NOW + DELTA
+    assert rec.mesh_heard == NOW - 120 + DELTA
+    assert rec.poll_failed_at == NOW - 30 + DELTA
+    assert rec.last_echo_at == NOW - 10 + DELTA
+    assert rec.share_applied_at == NOW - 200 + DELTA
+    assert rec.events[0].at == NOW - 300 + DELTA
+    assert reg.history.series(HASH)[0].t == NOW - 500 + DELTA
+
+
+def test_rebase_keeps_a_node_heard_5_min_ago_still_5_min_ago():
+    reg = NodeRegistry()
+    rec = reg.register(HASH, name="TRUTH")
+    rec.last_seen = NOW - 300              # heard 5 min ago on the OLD clock
+    DELTA = 3 * 3600.0
+    reg.rebase_wall_clock(DELTA)
+    # "now" is NOW+DELTA after the step; the age is still ~5 min, NOT ~3 hours
+    assert rec.last_seen_hours(NOW + DELTA) == pytest.approx(300 / 3600.0, abs=1e-6)
+
+
+def test_rebase_zero_delta_is_a_noop():
+    reg = NodeRegistry()
+    rec = reg.register(HASH)
+    rec.last_seen = NOW
+    reg.rebase_wall_clock(0.0)
+    assert rec.last_seen == NOW

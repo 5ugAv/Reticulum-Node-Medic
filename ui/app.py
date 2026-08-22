@@ -624,6 +624,16 @@ class ReticulumNodeMedicApp(App):
                 self._node_watcher.load_state(json.load(_f))
         except Exception:
             pass
+        # GPS clock discipline (offline time authority — the Pi 5 has no RTC
+        # battery). Seed the forward-only floor from the persisted last-good epoch
+        # so a spoofed backward jump is refused even straight after a restart.
+        from monitor.gps_clock import GpsClockDisciplinarian
+        import provisioning.tool_datetime as _td
+        try:
+            self._gps_disciplinarian = GpsClockDisciplinarian(
+                last_good_epoch=_td.last_good_epoch())
+        except Exception:
+            self._gps_disciplinarian = GpsClockDisciplinarian()
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -2020,23 +2030,40 @@ class ReticulumNodeMedicApp(App):
         field medic has no NTP, so a good GPS fix is the offline time authority.
 
         INERT until the firmware ships GPS_CMD_UTC (0x03): old firmware never sends
-        it, so gps_utc stays None and we return immediately — a safe no-op. Never
-        sets the clock off a weak/no fix (clock_decision refuses). Guarded so any
-        failure (no state, no sudo, unreadable NTP) can never kill the loop."""
+        it, so gps_utc stays None and we return immediately — a safe no-op.
+
+        Guards, in order (each honours a house rule or a review finding):
+          * flash/SD-write in progress -> stand down (never disturb a busy medic).
+          * operator turned auto-sync OFF -> stand down (manual control is theirs).
+          * GpsClockDisciplinarian applies the sane-jump/corroboration/forward-only
+            policy; it refuses weak/stale/backward/garbage fixes.
+        On a successful step we REBASE every stored wall-clock stamp by the same
+        delta (so nodes don't look silent for the step size), give node_watch a
+        post-step cooldown, advance the forward-only floor, and stamp the datetime
+        screen's sync surface as "GPS". Everything is wrapped so no failure can
+        kill the loop."""
         try:
+            # Never step the clock mid-flash / mid-SD-write (matches the
+            # board-disconnect watcher's guard on the same flag).
+            if self.flash_in_progress():
+                return
+            import provisioning.tool_datetime as td
+            # The operator can turn auto-sync OFF ("set by hand") on the datetime
+            # screen; GPS must then stand down or the screen would be lying.
+            if not td.is_autosync():
+                return
             from monitor.geo import read_splitter_state
-            from monitor.gps_clock import apply_clock, clock_decision
+            from monitor.gps_clock import apply_clock
             st = read_splitter_state()
             if not st or st.get("gps_utc") is None:
                 return                            # inert case — no satellite UTC
             import time
-            from provisioning.tool_datetime import ntp_synchronized
-            ntp = ntp_synchronized()              # "couldn't check" -> False -> GPS may act
-            now = time.time()
-            target = clock_decision(
+            ntp = td.ntp_synchronized()           # "couldn't check" -> False -> GPS may act
+            sys_now = time.time()
+            target = self._gps_disciplinarian.evaluate(
                 st.get("gps_utc"), st.get("gps_utc_recv"),
                 st.get("sats"), st.get("fix"),
-                sys_now=now, ntp_synced=ntp, recv_now=now)
+                sys_now=sys_now, ntp_synced=ntp, recv_now=sys_now)
             if target is None:
                 return
             # argv runner matching the scoped sudoers (NM_CLOCK). subprocess with a
@@ -2044,7 +2071,20 @@ class ReticulumNodeMedicApp(App):
             def _run(argv):
                 p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
                 return p.returncode, p.stdout, p.stderr
-            apply_clock(target, _run)
+            if apply_clock(target, _run):
+                delta = target - sys_now          # new_epoch - old_epoch
+                # Keep every stored timestamp honest across the step.
+                try:
+                    self.monitor_service.registry.rebase_wall_clock(delta)
+                except Exception:
+                    pass
+                w = getattr(self, "_node_watcher", None)
+                if w is not None:
+                    w.note_clock_step()           # don't mass-escalate on the step
+                self._gps_disciplinarian.record_success(target)
+                td.mark_synced(target, "GPS")     # surface "GPS-synced N ago"
+            else:
+                self._gps_disciplinarian.record_failure(sys_now)
         except Exception:
             pass
 

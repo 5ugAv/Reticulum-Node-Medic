@@ -144,3 +144,107 @@ def test_apply_clock_rolls_ntp_back_on_set_time_failure():
         ["sudo", "-n", "timedatectl", "set-time", "2026-08-22 01:02:03 UTC"],
         ["sudo", "-n", "timedatectl", "set-ntp", "true"],
     ]
+
+
+# ---- GpsClockDisciplinarian: sane-jump ceiling + corroboration + guards -----
+# GPS is an UNTRUSTED input with clock authority; these pin the layered policy.
+
+from monitor.gps_clock import (
+    GpsClockDisciplinarian, SANE_STEP_S, CORROBORATION_K,
+    CORROBORATION_TIMEOUT_S, APPLY_FAIL_LIMIT, APPLY_BACKOFF_S,
+)
+
+
+def _fresh(target, recv):
+    """Build an evaluate() call for a strong, fresh fix landing exactly at
+    *target* (age 0, sats 12, fix 3). recv is the distinct receipt time."""
+    return dict(gps_utc=target, gps_utc_recv=recv, sats=12, fix=3, recv_now=recv)
+
+
+def test_small_correction_applies_immediately():
+    d = GpsClockDisciplinarian()
+    # 1 hour off (< 2-day ceiling) -> apply on the first fix, no corroboration.
+    out = d.evaluate(sys_now=EPOCH - 3600, ntp_synced=False, **_fresh(EPOCH, 1.0))
+    assert out == EPOCH
+
+
+def test_large_correction_needs_k_corroborating_fixes():
+    d = GpsClockDisciplinarian()
+    big = EPOCH + 10 * 86400              # 10 days ahead of the system clock
+    sysn = EPOCH
+    # first K-1 distinct agreeing fixes only ACCUMULATE, they don't apply
+    for i in range(CORROBORATION_K - 1):
+        assert d.evaluate(sys_now=sysn, ntp_synced=False,
+                          **_fresh(big + i * 0.5, recv=100.0 + i)) is None
+    # the Kth agreeing fix applies
+    out = d.evaluate(sys_now=sysn, ntp_synced=False,
+                     **_fresh(big, recv=100.0 + CORROBORATION_K))
+    assert out == pytest.approx(big, abs=2.0)
+
+
+def test_single_glitch_frame_never_steps_a_large_jump():
+    d = GpsClockDisciplinarian()
+    # one lone far-future fix, then fixes stop -> nothing is ever applied
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False,
+                      **_fresh(EPOCH + 5 * 365 * 86400, recv=1.0)) is None
+
+
+def test_disagreeing_large_fixes_restart_corroboration():
+    d = GpsClockDisciplinarian()
+    a = EPOCH + 10 * 86400
+    b = EPOCH + 20 * 86400               # disagrees with a by 10 days
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(a, 1.0)) is None
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(b, 2.0)) is None
+    # b only has 1 vote now; one more agreeing b is still short of K
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(b, 3.0)) is None
+
+
+def test_corroboration_resets_if_fixes_stop():
+    d = GpsClockDisciplinarian()
+    big = EPOCH + 10 * 86400
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(big, 1.0)) is None
+    # a fix arrives after the corroboration timeout -> pending was reset, so this
+    # is vote #1 again, not #2
+    late = 1.0 + CORROBORATION_TIMEOUT_S + 5
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(big, late)) is None
+    assert d._pending_count == 1
+
+
+def test_backward_jump_is_refused_once_we_have_good_time():
+    d = GpsClockDisciplinarian(last_good_epoch=EPOCH)
+    # a fix a full hour BEHIND known-good time is spoof/fault -> refused, even
+    # though it is a small, fresh, strong fix
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False,
+                      **_fresh(EPOCH - 3600, recv=1.0)) is None
+
+
+def test_same_frame_is_not_counted_twice():
+    d = GpsClockDisciplinarian()
+    big = EPOCH + 10 * 86400
+    # same receipt time (same 0x03 frame) read twice must not self-corroborate
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(big, 1.0)) is None
+    assert d.evaluate(sys_now=EPOCH, ntp_synced=False, **_fresh(big, 1.0)) is None
+    assert d._pending_count == 1
+
+
+def test_set_time_failure_backoff_stops_re_arming():
+    d = GpsClockDisciplinarian()
+    # simulate APPLY_FAIL_LIMIT consecutive failures
+    for _ in range(APPLY_FAIL_LIMIT):
+        d.record_failure(now=1000.0)
+    # within the backoff window, evaluate stands down even for a good small fix
+    assert d.evaluate(sys_now=EPOCH - 3600, ntp_synced=False,
+                      **_fresh(EPOCH, recv=1000.0 + 10)) is None
+    # after the window, it acts again
+    out = d.evaluate(sys_now=EPOCH - 3600, ntp_synced=False,
+                     **_fresh(EPOCH, recv=1000.0 + APPLY_BACKOFF_S + 1))
+    assert out == EPOCH
+
+
+def test_record_success_clears_backoff_and_sets_floor():
+    d = GpsClockDisciplinarian()
+    for _ in range(APPLY_FAIL_LIMIT):
+        d.record_failure(now=1000.0)
+    d.record_success(EPOCH)
+    assert d.last_good_epoch == EPOCH
+    assert d._backoff_until == 0.0

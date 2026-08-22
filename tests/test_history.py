@@ -119,3 +119,22 @@ def test_no_battery_flag_without_battery_data():
     now = 30 * DAY
     pts = [_pt(now - i * DAY, rssi=-80) for i in range(10)]
     assert "battery_declining" not in _keys(analyse(pts, now))
+
+
+def test_rebase_shifts_every_point_by_delta():
+    """A GPS clock step must move stored history timestamps into the new clock's
+    frame, or a forward step would prune real points and skew the graph."""
+    from monitor.history import NodeHistory, HistoryPoint
+    h = NodeHistory()
+    h.append("aa", HistoryPoint(t=1000.0, rssi=-70))
+    h.append("aa", HistoryPoint(t=2000.0, rssi=-72))
+    h.rebase(3600.0)
+    assert [p.t for p in h.series("aa")] == [1000.0 + 3600.0, 2000.0 + 3600.0]
+
+
+def test_rebase_zero_delta_is_a_noop():
+    from monitor.history import NodeHistory, HistoryPoint
+    h = NodeHistory()
+    h.append("aa", HistoryPoint(t=1000.0))
+    h.rebase(0.0)
+    assert h.series("aa")[0].t == 1000.0

@@ -80,6 +80,40 @@ def _stamp_sync(epoch: float, path: str = CONFIG) -> dict:
     return save(d, path)
 
 
+def last_sync_source(path: str = CONFIG) -> Optional[str]:
+    """How the clock was last synced (e.g. "GPS"), or None. Lets the datetime
+    screen say "GPS-synced N ago" rather than a bare "synced N ago", so the
+    operator can tell a GPS-held clock from a manually-set one."""
+    v = load(path).get("last_sync_source")
+    return v if isinstance(v, str) and v else None
+
+
+def last_good_epoch(path: str = CONFIG) -> Optional[float]:
+    """The last epoch GPS discipline successfully set — the forward-only floor
+    that survives a restart. GPS time never runs backwards, so a later fix well
+    behind this is a spoof or a fault and is refused (monitor.gps_clock)."""
+    v = load(path).get("last_good_epoch")
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def mark_synced(epoch: float, source: str, path: str = CONFIG) -> dict:
+    """Stamp the shared last-sync surface the datetime screen reads, tagged with
+    *source*. Called by the running medic's GPS clock discipline so the screen
+    reflects "GPS-synced N ago" while GPS is actively holding the clock (item 6
+    of the 2026-08-22 review — the operator must tell GPS-synced from never).
+
+    For source "GPS" this also advances the forward-only floor (last_good_epoch),
+    never moving it backwards."""
+    d = load(path)
+    d["last_sync"] = float(epoch)
+    d["last_sync_source"] = str(source)
+    if source == "GPS":
+        prev = d.get("last_good_epoch")
+        if not isinstance(prev, (int, float)) or float(epoch) > float(prev):
+            d["last_good_epoch"] = float(epoch)
+    return save(d, path)
+
+
 # --- reading the current clock / timezone -----------------------------------
 
 def current_timezone(run: Optional[ShellRunner] = None) -> str:

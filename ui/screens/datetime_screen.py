@@ -126,6 +126,11 @@ class DateTimeScreen(BoxLayout):
     def _refresh_sync_status(self, ago=None):
         if ago is None:
             ago = td.format_synced_ago(td.last_sync(), time.time())
+        # If the clock is being held from GPS, say so — "GPS-synced N ago" tells
+        # the operator the offline time source is genuinely backing the clock
+        # (2026-08-22 review item 6), not a stale "never synced".
+        if td.last_sync_source() == "GPS" and td.last_sync():
+            ago = ago.replace("synced", "GPS-synced", 1)
         if self._auto.active:
             self._sync_status.text = f"Auto-sync ON — {ago}. Manual entry is disabled."
         else:

@@ -166,3 +166,28 @@ def test_format_synced_ago():
     assert td.format_synced_ago(1000.0, 1000.0 + 120) == "synced 2 minutes ago"
     assert td.format_synced_ago(1000.0, 1000.0 + 3600) == "synced 1 hour ago"
     assert td.format_synced_ago(1000.0, 1000.0 + 2 * 86400) == "synced 2 days ago"
+
+
+# ---- GPS clock discipline surface (review item 6) --------------------------
+
+def test_mark_synced_stamps_source_and_forward_only_floor(tmp_path):
+    cfg = str(tmp_path / "datetime.json")
+    td.mark_synced(1787360523.0, "GPS", cfg)
+    assert td.last_sync(cfg) == 1787360523.0
+    assert td.last_sync_source(cfg) == "GPS"
+    assert td.last_good_epoch(cfg) == 1787360523.0     # floor seeded
+
+
+def test_mark_synced_floor_never_moves_backwards(tmp_path):
+    cfg = str(tmp_path / "datetime.json")
+    td.mark_synced(2000.0, "GPS", cfg)
+    td.mark_synced(1500.0, "GPS", cfg)                 # an earlier epoch
+    # last_sync reflects the latest stamp, but the forward-only floor holds
+    assert td.last_sync(cfg) == 1500.0
+    assert td.last_good_epoch(cfg) == 2000.0
+
+
+def test_last_good_epoch_and_source_default_none(tmp_path):
+    cfg = str(tmp_path / "datetime.json")
+    assert td.last_good_epoch(cfg) is None
+    assert td.last_sync_source(cfg) is None
