@@ -264,3 +264,66 @@ def test_no_utc_frame_leaves_gps_utc_none_backward_compatible():
     st = s.state()
     assert st["gps_utc"] is None and st["gps_utc_recv"] is None
     assert st["sats"] == 9 and st["lat"] == pytest.approx(-37.8, abs=1e-6)
+
+
+# --- fix quality: accuracy (HDOP 0x04) and altitude (0x05) ------------------
+# The firmware already emits these; the medic used to ignore them, so accuracy
+# and altitude read None on every certificate. Absence stays None (backward
+# compatible); a glitched out-of-range value is rejected to None, never stamped.
+
+def _acc_frame(hdop_x100: int) -> bytes:
+    from monitor.serial_splitter import CMD_GPS, GPS_CMD_ACCURACY
+    return _kiss(CMD_GPS, bytes([GPS_CMD_ACCURACY]) + hdop_x100.to_bytes(2, "big"))
+
+
+def _alt_frame(metres: int) -> bytes:
+    from monitor.serial_splitter import CMD_GPS, GPS_CMD_ALT
+    return _kiss(CMD_GPS,
+                 bytes([GPS_CMD_ALT]) + int(metres).to_bytes(2, "big", signed=True))
+
+
+def test_accuracy_frame_sets_hdop():
+    s = KissGpsSplitter()
+    out = s.feed(_acc_frame(0x0078))          # 120 -> HDOP 1.20
+    assert out == b""                         # consumed, not forwarded
+    assert s.state()["hdop"] == pytest.approx(1.20, abs=1e-9)
+
+
+def test_altitude_frame_sets_alt_m():
+    s = KissGpsSplitter()
+    out = s.feed(_alt_frame(325))
+    assert out == b""
+    assert s.state()["alt_m"] == 325
+
+
+def test_negative_altitude_decodes_signed():
+    """Below sea level (e.g. Dead Sea shore) must survive as a negative int."""
+    s = KissGpsSplitter()
+    s.feed(_alt_frame(-412))
+    assert s.state()["alt_m"] == -412
+
+
+def test_absurd_hdop_is_rejected_to_none():
+    s = KissGpsSplitter()
+    s.feed(_acc_frame(0xFFFF))                 # 655.35 -> nonsense
+    assert s.state()["hdop"] is None
+
+
+def test_absurd_altitude_is_rejected_to_none():
+    s2 = KissGpsSplitter()
+    s2.feed(_alt_frame(-32000))                # far below the Dead Sea -> reject
+    assert s2.state()["alt_m"] is None
+    s3 = KissGpsSplitter()
+    s3.feed(_alt_frame(12001))                 # above the plausible cap -> reject
+    assert s3.state()["alt_m"] is None
+
+
+def test_no_accuracy_or_altitude_frames_leaves_both_none_backward_compatible():
+    """Old firmware never sends 0x04/0x05 — position still works, quality None."""
+    s = KissGpsSplitter()
+    s.feed(_gps(GPS_CMD_LAT, -37.8))
+    s.feed(_gps(GPS_CMD_LNG, 144.9))
+    s.feed(_kiss(CMD_GPS, bytes([GPS_CMD_STATE, 9, 1])))
+    st = s.state()
+    assert st["hdop"] is None and st["alt_m"] is None
+    assert st["has_fix"] is True and st["sats"] == 9

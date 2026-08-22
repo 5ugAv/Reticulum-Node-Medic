@@ -1084,6 +1084,16 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
                     # built the node — can see whether the node is telling the
                     # world roughly where it is, without reading its flash.
                     "share_location": wf.profile.share_location}
+        # HOW GOOD WAS THE FIX? Record altitude and an HDOP-estimated accuracy so
+        # the paperwork says how trustworthy these coordinates were the day they
+        # were stamped. Both only when the firmware actually reported them —
+        # absent stays absent, never a fabricated number on a certificate. The
+        # accuracy is labelled as an ESTIMATE (see monitor.geo.accuracy_label).
+        if wf.gps_fix.altitude_m is not None:
+            location["altitude_m"] = wf.gps_fix.altitude_m
+        if wf.gps_fix.accuracy_m is not None:
+            location["accuracy_m"] = round(wf.gps_fix.accuracy_m, 1)
+            location["accuracy_estimated"] = True   # derived from HDOP, not a CEP
     wf.birth_certificate = {
         "board": wf.beacon.board_label if wf.beacon else wf.profile.hardware.value,
         "firmware": (wf.beacon.firmware_version if wf.beacon

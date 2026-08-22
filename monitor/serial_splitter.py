@@ -36,6 +36,23 @@ _MICRODEG = 1_000_000.0
 # Payload: [year_hi, year_lo, month, day, hour, minute, second], year big-endian.
 GPS_CMD_UTC = 0x03
 
+# Fix-QUALITY sub-frames the firmware already emits alongside position — the
+# medic ignored them until now, so accuracy/altitude read None on every cert.
+# Both are OPTIONAL: old firmware never sends them, so their absence stays None
+# (backward compatible) and is never fabricated into a number.
+GPS_CMD_ACCURACY = 0x04  # uint16 BE = HDOP * 100 (0x0078 = 120 -> HDOP 1.20)
+GPS_CMD_ALT = 0x05       # int16 BE SIGNED = altitude in metres MSL (may be < 0)
+
+# HONEST RANGE GUARDS. KISS has no CRC, so a bit-flip can turn a real reading
+# into a plausible-but-wrong one. We keep a value only when it lands inside a
+# physically sane band; anything outside is rejected to None rather than stamped
+# onto a birth certificate as fact. HDOP above ~50 is already "unusable fix"
+# territory; altitude spans the Dead Sea shore (-430 m) to well above any place
+# a node is planted, capped short of the cruising-altitude nonsense a glitch
+# would produce.
+_HDOP_MIN, _HDOP_MAX = 0.0, 99.0
+_ALT_MIN_M, _ALT_MAX_M = -500, 12000
+
 # RNode stat frames (Framing.h). These are RECORDED as they pass through — but
 # still forwarded byte-for-byte, because rnsd consumes them too.
 CMD_STAT_RSSI = 0x23   # [rssi + 157]                    — per received packet
@@ -87,6 +104,11 @@ class KissGpsSplitter:
         # anchors latency compensation (the fix was true at receipt, not now).
         self.gps_utc: Optional[int] = None
         self.gps_utc_recv: Optional[float] = None
+        # Fix quality, both None until the firmware speaks (absence != a number):
+        #   hdop  — horizontal dilution of precision (unitless geometry factor)
+        #   alt_m — altitude above mean sea level, metres, signed
+        self.hdop: Optional[float] = None
+        self.alt_m: Optional[int] = None
         self.updated: Optional[float] = None
         # live signal state, recorded from stat frames passing through to rnsd
         self.last_rssi: Optional[int] = None       # dBm, per received packet
@@ -167,6 +189,16 @@ class KissGpsSplitter:
                     self.gps_utc = calendar.timegm(
                         (year, month, day, hour, minute, second))
                     self.gps_utc_recv = self._now()
+        elif sub == GPS_CMD_ACCURACY and len(payload) >= 2:
+            # uint16 BE = HDOP * 100. Reject an out-of-band value to None so a
+            # glitched frame can't put a false precision on a certificate.
+            hdop = int.from_bytes(payload[:2], "big") / 100.0
+            self.hdop = hdop if _HDOP_MIN <= hdop <= _HDOP_MAX else None
+        elif sub == GPS_CMD_ALT and len(payload) >= 2:
+            # int16 BE SIGNED = metres MSL (negative below sea level). Same
+            # honest guard: an absurd altitude reads as no altitude, not a lie.
+            alt = int.from_bytes(payload[:2], "big", signed=True)
+            self.alt_m = alt if _ALT_MIN_M <= alt <= _ALT_MAX_M else None
         self.gps_frames += 1
         self.gps_seen_at = self._now()
         self.updated = self._now()
@@ -186,6 +218,10 @@ class KissGpsSplitter:
             # until a valid GPS_CMD_UTC frame arrives -> old firmware that never
             # sends 0x03 is fully backward compatible (feature is inert).
             "gps_utc": self.gps_utc, "gps_utc_recv": self.gps_utc_recv,
+            # Fix quality — HDOP and altitude. None (never a made-up number) when
+            # the firmware doesn't send the 0x04/0x05 sub-frames -> old firmware
+            # stays fully backward compatible.
+            "hdop": self.hdop, "alt_m": self.alt_m,
             # live signal (for TRIAGE / VITALS): per-packet + periodic channel stats
             "last_rssi": self.last_rssi, "last_snr": self.last_snr,
             "packet_heard_at": self.packet_heard_at,
