@@ -625,15 +625,10 @@ class ReticulumNodeMedicApp(App):
         except Exception:
             pass
         # GPS clock discipline (offline time authority — the Pi 5 has no RTC
-        # battery). Seed the forward-only floor from the persisted last-good epoch
-        # so a spoofed backward jump is refused even straight after a restart.
+        # battery). No persisted floor: plausibility is a FIXED window in
+        # monitor.gps_clock, which needs no seed and can't lock the tool out.
         from monitor.gps_clock import GpsClockDisciplinarian
-        import provisioning.tool_datetime as _td
-        try:
-            self._gps_disciplinarian = GpsClockDisciplinarian(
-                last_good_epoch=_td.last_good_epoch())
-        except Exception:
-            self._gps_disciplinarian = GpsClockDisciplinarian()
+        self._gps_disciplinarian = GpsClockDisciplinarian()
 
         credits = Screen(name="credits")
         credits.add_widget(CreditsScreen(
@@ -2073,15 +2068,20 @@ class ReticulumNodeMedicApp(App):
                 return p.returncode, p.stdout, p.stderr
             if apply_clock(target, _run):
                 delta = target - sys_now          # new_epoch - old_epoch
-                # Keep every stored timestamp honest across the step.
+                # ORDER MATTERS: rebase the stored stamps into the new clock frame
+                # FIRST; only then commit the step as a clean success. If rebase
+                # somehow fails we do NOT record_success/mark_synced — a
+                # half-applied step is bounded and recoverable (with no floor, the
+                # next good fix corrects and rebases back), but we won't advertise
+                # it as clean. rebase_wall_clock is itself guarded to not raise.
                 try:
                     self.monitor_service.registry.rebase_wall_clock(delta)
                 except Exception:
-                    pass
+                    return
                 w = getattr(self, "_node_watcher", None)
                 if w is not None:
                     w.note_clock_step()           # don't mass-escalate on the step
-                self._gps_disciplinarian.record_success(target)
+                self._gps_disciplinarian.record_success()
                 td.mark_synced(target, "GPS")     # surface "GPS-synced N ago"
             else:
                 self._gps_disciplinarian.record_failure(sys_now)

@@ -705,15 +705,18 @@ class NodeRegistry:
         would read "3 hours ago" after a 3-hour forward step, and history.py's
         retention would prune genuine points. Best-effort and idempotent-safe: a
         zero delta is a no-op."""
-        if not delta:
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool) or not delta:
             return
+        # Guard every addition: a stamp is normally a float, but a corrupt record
+        # could hold anything, and this runs right after the clock was stepped —
+        # it must NEVER raise (the caller treats a raise as a half-applied step).
+        def _shift(v):
+            return (v + delta) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
         for rec in self.nodes.values():
             for attr in self._WALL_STAMP_FIELDS:
-                v = getattr(rec, attr, None)
-                if v is not None:
-                    setattr(rec, attr, v + delta)
+                setattr(rec, attr, _shift(getattr(rec, attr, None)))
             for ev in rec.events:              # field-log timestamps track wall time too
-                ev.at += delta
+                ev.at = _shift(getattr(ev, "at", None))
         self.history.rebase(delta)
 
     @_locked

@@ -168,26 +168,42 @@ def test_format_synced_ago():
     assert td.format_synced_ago(1000.0, 1000.0 + 2 * 86400) == "synced 2 days ago"
 
 
-# ---- GPS clock discipline surface (review item 6) --------------------------
+# ---- GPS clock discipline surface (honesty seam) ---------------------------
 
-def test_mark_synced_stamps_source_and_forward_only_floor(tmp_path):
+def test_mark_synced_stamps_last_sync_and_source(tmp_path):
     cfg = str(tmp_path / "datetime.json")
     td.mark_synced(1787360523.0, "GPS", cfg)
     assert td.last_sync(cfg) == 1787360523.0
     assert td.last_sync_source(cfg) == "GPS"
-    assert td.last_good_epoch(cfg) == 1787360523.0     # floor seeded
 
 
-def test_mark_synced_floor_never_moves_backwards(tmp_path):
+def test_mark_synced_persists_no_floor_and_scrubs_an_old_one(tmp_path):
+    # The forward-only floor is GONE (it caused permanent lockout). mark_synced
+    # must not write one, and must scrub any left by an older build.
     cfg = str(tmp_path / "datetime.json")
-    td.mark_synced(2000.0, "GPS", cfg)
-    td.mark_synced(1500.0, "GPS", cfg)                 # an earlier epoch
-    # last_sync reflects the latest stamp, but the forward-only floor holds
-    assert td.last_sync(cfg) == 1500.0
-    assert td.last_good_epoch(cfg) == 2000.0
+    td.save({"last_good_epoch": 9999999999.0}, cfg)     # simulate a stale floor
+    td.mark_synced(1500.0, "GPS", cfg)
+    assert "last_good_epoch" not in td.load(cfg)
+    assert not hasattr(td, "last_good_epoch")           # reader removed entirely
 
 
-def test_last_good_epoch_and_source_default_none(tmp_path):
+def test_last_sync_source_defaults_none(tmp_path):
     cfg = str(tmp_path / "datetime.json")
-    assert td.last_good_epoch(cfg) is None
     assert td.last_sync_source(cfg) is None
+
+
+def test_last_sync_rejects_bool_and_non_finite(tmp_path):
+    # isinstance(True, int) is True — a JSON `true`/inf must never read as a number.
+    cfg = str(tmp_path / "datetime.json")
+    td.save({"last_sync": True}, cfg)
+    assert td.last_sync(cfg) is None
+    td.save({"last_sync": float("inf")}, cfg)
+    assert td.last_sync(cfg) is None
+
+
+def test_save_is_atomic_and_survives_reload(tmp_path):
+    cfg = str(tmp_path / "datetime.json")
+    td.mark_synced(1234.0, "GPS", cfg)
+    # a fresh read sees the whole record (temp + os.replace, never a truncation)
+    assert td.last_sync(cfg) == 1234.0
+    assert td.last_sync_source(cfg) == "GPS"

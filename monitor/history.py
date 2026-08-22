@@ -65,11 +65,13 @@ class NodeHistory:
         clock's frame; a forward step would otherwise push real points past the
         retention cutoff (pruning genuine history) and skew the 30-day graph.
         delta = new_epoch - old_epoch."""
-        if not delta:
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool) or not delta:
             return
+        # Runs right after a clock step; must not raise on a corrupt point.
         for pts in self._series.values():
             for p in pts:
-                p.t += delta
+                if isinstance(p.t, (int, float)) and not isinstance(p.t, bool):
+                    p.t += delta
 
     def set_retention(self, retention_s: int, now: float) -> None:
         """Change the retention window and re-prune every series to it now."""
