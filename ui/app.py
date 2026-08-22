@@ -2051,7 +2051,9 @@ class ReticulumNodeMedicApp(App):
             if not td.is_autosync():
                 return
             from monitor.geo import read_splitter_state
-            from monitor.gps_clock import apply_clock, rebase_needed, PERSIST_MIN_INTERVAL_S
+            from monitor.gps_clock import (apply_clock, rebase_needed,
+                                           PERSIST_MIN_INTERVAL_S,
+                                           DECISION_STEP, DECISION_CONFIRM)
             st = read_splitter_state()
             import time
             sys_now = time.time()
@@ -2062,12 +2064,23 @@ class ReticulumNodeMedicApp(App):
             # Even when gps_utc is None (inert, pre-firmware), let evaluate set the
             # status ("No GPS fix yet") so the screen is honest; it returns None.
             ntp = td.ntp_synchronized()           # "couldn't check" -> False -> GPS may act
-            target = self._gps_disciplinarian.evaluate(
+            decision = self._gps_disciplinarian.evaluate(
                 st.get("gps_utc"), st.get("gps_utc_recv"),
                 st.get("sats"), st.get("fix"),
                 sys_now=sys_now, ntp_synced=ntp, recv_now=sys_now)
-            if target is None:
+            if decision.kind == DECISION_CONFIRM:
+                # GPS has a SOLID, FRESH fix that AGREES with the clock — the
+                # normal steady state. Record a CONFIRMATION so the operator can
+                # tell "GPS checked, clock is right" from "GPS never worked"
+                # (proven live 2026-08-22: an 8-sat fix with an already-correct
+                # clock left datetime.json empty, so the screen read never-synced).
+                # NO step, NO rebase; the disciplinarian already rate-limited this
+                # to at most once per PERSIST_MIN_INTERVAL_S, so no config churn.
+                td.mark_synced(decision.target, "GPS")
                 return
+            if decision.kind != DECISION_STEP:
+                return
+            target = decision.target
             # argv runner matching the scoped sudoers (NM_CLOCK). subprocess with a
             # LIST (no shell) so nothing is re-parsed; sudo -n never prompts.
             def _run(argv):
