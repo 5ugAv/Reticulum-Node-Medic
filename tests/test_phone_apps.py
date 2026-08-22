@@ -9,21 +9,28 @@ from workflows.phone_apps import (
 
 CBA = "columba-universal-release.apk"
 SIZE = 12_345_678
+#: A valid sha256 (64 hex chars) the release publishes and the downloaded file
+#: hashes to, so the integrity gate passes and the app is carried "verified".
+DIGEST = "a" * 64
 
 
-def _release(name=CBA, size=SIZE, tag="v0.1"):
+def _release(name=CBA, size=SIZE, tag="v0.1", digest="sha256:" + DIGEST):
+    asset = {"name": name, "browser_download_url": f"https://x/{name}", "size": size}
+    if digest is not None:
+        asset["digest"] = digest
     return json.dumps({"tag_name": tag, "assets": [
         {"name": "app-arm64.apk", "browser_download_url": "https://x/a.apk", "size": 9},
-        {"name": name, "browser_download_url": f"https://x/{name}", "size": size}]})
+        asset]})
 
 
-def _online(cached_size=None, written=SIZE, release=None):
+def _online(cached_size=None, written=SIZE, release=None, sha=DIGEST):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rule("curl -fsI", 0, "HTTP/2 200")
     c.rule("curl -fsSL -m 20", 0, release or _release())
     c.rule("curl -fsSL -m 300 -o", 0, "")
     c.rule("df -Pk", 0, "52428800")          # 50 GB free — the guard is not under test here
     c.rule("mv -f", 0, "")
+    c.rule("sha256sum", 0, f"{sha}  p")      # the downloaded file's hash
     c.rule("stat -c %s", 1 if cached_size is None else 0,
            "" if cached_size is None else str(cached_size))
     c.rule("wc -c <", 0, str(written))
@@ -374,3 +381,77 @@ def test_the_card_shows_an_install_note_when_there_is_one():
     from tests.srcutil import func_source, src
     screen = src("ui/screens/comms_screen.py")
     assert 'install_note' in screen, "the card must render the note it is given"
+
+
+# --- integrity: hash-verify the download, never trust size alone -------------
+# A phone in the field cannot re-download to recover from a bad APK, so a size
+# match is not integrity. GitHub publishes a per-asset sha256 (the `digest`).
+
+
+def test_apk_hash_mismatch_is_discarded_not_carried():
+    # release digest is DIGEST ("a"*64); the file on disk hashes to something else.
+    c = _online(sha="b" * 64)
+    res = sync_app("columba", c)
+    assert res.changed == [] and res.unverified == []
+    assert res.failed == [CBA]
+    assert any(x.startswith("rm -f") and ".part" in x for x in c.history)
+    assert not any(x.startswith("mv -f") for x in c.history)   # never published
+    assert "sha256" in res.message.lower()
+
+
+def test_verified_download_stores_the_digest_in_meta_for_offline_recheck():
+    c = _online()
+    res = sync_app("columba", c)
+    assert res.changed == [CBA]
+    meta = next(cmd for cmd in c.history if f"{CBA}.meta" in cmd)
+    assert '"integrity": "verified"' in meta
+    assert "a" * 64 in meta                       # expected digest kept on disk
+
+
+def test_no_published_digest_is_carried_but_marked_unverified():
+    # A release with no digest cannot be verified; the file is kept but reported
+    # UNVERIFIED (a distinct state), never as a clean "updated".
+    c = _online(release=_release(digest=None))
+    res = sync_app("columba", c)
+    assert res.changed == [] and res.failed == []
+    assert res.unverified == [CBA]
+    assert "unverified" in res.message.lower()
+    meta = next(cmd for cmd in c.history if f"{CBA}.meta" in cmd)
+    assert '"integrity": "unverified"' in meta
+
+
+def test_a_malformed_digest_is_treated_as_no_digest():
+    c = _online(release=_release(digest="sha256:not-hex"))
+    res = sync_app("columba", c)
+    assert res.unverified == [CBA]                # not compared against garbage
+
+
+# --- a crafted asset name never reaches a path or a shell --------------------
+
+
+def test_hostile_asset_name_is_refused_before_any_download():
+    for bad in ("../evil.apk", "a;reboot.apk", "a$(reboot).apk",
+                "a`id`.apk", "a b.apk", "..evil.apk"):
+        rel = json.dumps({"tag_name": "v1", "assets": [
+            {"name": bad, "browser_download_url": "https://x/c.apk",
+             "size": SIZE, "digest": "sha256:" + DIGEST}]})
+        c = _online(release=rel)
+        res = sync_app("columba", c)
+        assert res.changed == [] and res.unverified == []
+        assert res.failed, f"{bad!r} should have been refused"
+        # nothing downloaded, hashed, or moved for a rejected name
+        assert not any("curl -fsSL -m 300 -o" in x for x in c.history)
+        assert not any(x.startswith("mv -f") for x in c.history)
+
+
+def test_remote_url_is_shell_quoted():
+    import shlex
+    evil_url = "https://x/c.apk; touch /tmp/pwned"
+    rel = json.dumps({"tag_name": "v1", "assets": [
+        {"name": CBA, "browser_download_url": evil_url,
+         "size": SIZE, "digest": "sha256:" + DIGEST}]})
+    c = _online(release=rel)
+    sync_app("columba", c)
+    dl = next(x for x in c.history if x.startswith("curl -fsSL -m 300 -o"))
+    assert "touch /tmp/pwned" in dl               # the value is present...
+    assert shlex.quote(evil_url) in dl            # ...but fully quoted, not bare

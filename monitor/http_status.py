@@ -22,6 +22,7 @@ Real capture (healthy node), for reference:
 from __future__ import annotations
 
 import json
+import math
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
@@ -43,6 +44,61 @@ DISCOVERY_MARKERS = ("RTNode", PI_FORK)
 
 #: (status_code, body) — an injected HTTP GET so tests need no network.
 Getter = Callable[[str, float], Tuple[int, str]]
+
+#: Hard cap on a ``/status`` body. A real RTNode reply is a few hundred bytes;
+#: anything past this is a broken or hostile node on the LAN trying to make the
+#: medic buffer megabytes off a single poll. Read is truncated here, not trusted.
+MAX_STATUS_BYTES = 65536
+#: Bounds on the ``faults`` array — a node on the untrusted LAN does not get to
+#: hand the sweep an unbounded list of unbounded strings to carry per cycle.
+MAX_FAULTS = 32
+MAX_FAULT_LEN = 200
+
+
+def _safe_int(value, default: int = 0) -> int:
+    """``int()`` that never raises on a hostile ``/status`` field.
+
+    The body is JSON off the LAN, so ``uptime_ms`` may arrive as a string, a
+    list, or null. int() on any of those throws — and this feeds a sweep that
+    must survive one bad node — so coerce defensively and fall back instead.
+
+    Non-finite floats are the sharp edge: Python's json.loads accepts ``Infinity``
+    and ``NaN`` by default, and ``int(float('inf'))`` raises OverflowError while
+    ``int(float('nan'))`` raises ValueError. A "never raises" contract has to
+    cover them explicitly, so reject anything that isn't finite."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) else default
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
+def _safe_str(value) -> str:
+    """A str field, or ``""`` if the node sent something that isn't one."""
+    return value if isinstance(value, str) else ""
+
+
+def _safe_faults(value) -> List[str]:
+    """The ``faults`` array as a bounded list of bounded strings.
+
+    Only a genuine list of strings counts. A non-list, or list of dicts/ints,
+    yields no faults rather than raising or smuggling junk onto the dashboard."""
+    if not isinstance(value, list):
+        return []
+    out: List[str] = []
+    for item in value:
+        if isinstance(item, str):
+            out.append(item[:MAX_FAULT_LEN])
+            if len(out) >= MAX_FAULTS:
+                break
+    return out
 
 
 @dataclass
@@ -87,7 +143,7 @@ def status_colour(d: dict) -> str:
     firmware that omits a key isn't falsely alarmed. Weak WiFi RSSI only ever
     escalates to WARN — never alert; RED is reserved for faults / LoRa down.
     """
-    if d.get("faults"):
+    if _safe_faults(d.get("faults")):
         return "alert"
     if not d.get("lora_online", True):
         return "alert"
@@ -102,24 +158,33 @@ def status_colour(d: dict) -> str:
 
 
 def parse_status(d: dict) -> NodeStatus:
-    """Parse a decoded ``/status`` dict into a NodeStatus."""
+    """Parse a decoded ``/status`` dict into a NodeStatus.
+
+    Every field is coerced defensively: this dict is JSON straight off the LAN,
+    so a node — broken or hostile — can put a string where a number belongs, a
+    dict where a string belongs, or an oversize ``faults`` list. None of that may
+    raise here, because :func:`poll_status` feeds a sweep of many nodes and one
+    bad reply must become "couldn't read this node", never abort the others.
+    """
     rssi = d.get("wifi_rssi")
     return NodeStatus(
         reachable=True,
         status=status_colour(d),
-        node_name=d.get("node_name", ""),
-        board=d.get("board", ""),
-        firmware_version=d.get("fw_version", ""),
+        node_name=_safe_str(d.get("node_name")),
+        board=_safe_str(d.get("board")),
+        firmware_version=_safe_str(d.get("fw_version")),
         wifi_connected=bool(d.get("wifi_connected", False)),
-        wifi_rssi_dbm=int(rssi) if isinstance(rssi, (int, float)) else None,
-        wifi_ip=d.get("wifi_ip", ""),
+        wifi_rssi_dbm=int(rssi) if isinstance(rssi, (int, float))
+                      and not isinstance(rssi, bool) and math.isfinite(rssi)
+                      else None,   # isfinite: json accepts Infinity/NaN; int() on them raises
+        wifi_ip=_safe_str(d.get("wifi_ip")),
         lora_online=bool(d.get("lora_online", False)),
         local_tcp_server_up=bool(d.get("local_tcp_server_up", False)),
         tcp_backbone_connected=bool(d.get("tcp_backbone_connected", False)),
         wdt_armed=bool(d.get("wdt_armed", False)),
-        uptime_s=int(d.get("uptime_ms", 0)) // 1000,
-        reset_reason=d.get("reset_reason", ""),
-        faults=list(d.get("faults", []) or []),
+        uptime_s=_safe_int(d.get("uptime_ms", 0)) // 1000,
+        reset_reason=_safe_str(d.get("reset_reason")),
+        faults=_safe_faults(d.get("faults")),
         raw=d,
         lora_known="lora_online" in d,
         wifi_known="wifi_connected" in d,
@@ -135,7 +200,12 @@ _NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 def _default_get(url: str, timeout: float) -> Tuple[int, str]:
     with _NO_PROXY_OPENER.open(url, timeout=timeout) as resp:
-        return (resp.status, resp.read().decode("utf-8", "replace"))
+        # Cap the read: an unbounded resp.read() lets one node on the LAN stream
+        # megabytes into the medic's memory off a single poll. A real /status is
+        # a few hundred bytes; MAX_STATUS_BYTES is already far more than enough,
+        # and a body that overruns it parses as junk and is treated unreachable.
+        return (resp.status,
+                resp.read(MAX_STATUS_BYTES).decode("utf-8", "replace"))
 
 
 _UNREACHABLE = NodeStatus(reachable=False, status="unreachable")
@@ -159,7 +229,14 @@ def poll_status(host: str, get: Getter = _default_get,
         return _UNREACHABLE
     if not isinstance(data, dict):
         return _UNREACHABLE
-    return parse_status(data)
+    # parse_status is defensive, but it stays INSIDE the guard: it is the last
+    # place untrusted LAN bytes are shaped, and the whole contract of this
+    # function is "never raise — a bad node is unreachable, not a crash". One
+    # hostile /status must never propagate past the sweep in service.poll_cycle.
+    try:
+        return parse_status(data)
+    except Exception:                          # noqa: BLE001 - see above
+        return _UNREACHABLE
 
 
 def to_monitor_node(ns: NodeStatus, location: str = "") -> dict:

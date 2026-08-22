@@ -16,10 +16,36 @@ this is fully unit-testable without a radio or a live network.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
+from shlex import quote as _shq
 from typing import List, Optional
 
 from transport.connection import Connection
+
+# release.json is fetched over plain HTTPS from a public release and is NOT
+# authenticated (see the manifest-signing TODO in _fetch_manifest). Every value
+# taken from it — the filename KEYS *and* the version — is hostile, and each one
+# becomes BOTH a filesystem path segment and (via the download URL) a shell
+# argument. Two different attacks have to be stopped, and they need different
+# defences:
+#   * shell injection — stopped by shlex.quote at the interpolation sites; but
+#   * path traversal   — is NOT: "../../../.ssh" contains no shell metacharacter,
+#     so shlex.quote returns it verbatim and a hostile ``version`` (the cache
+#     SUBDIRECTORY) or filename would escape the cache dir and let a MITM — who
+#     also chose the sha256 — write e.g. ~/.ssh/authorized_keys. Confirmed RCE.
+# So every remote value that becomes a path segment must clear THIS validator
+# first: exact charset (fullmatch, since ``$`` would accept a trailing newline),
+# and an explicit reject of "/", "..", and newlines. A bare filename, nothing more.
+_SAFE_SEGMENT = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def _safe_path_segment(value) -> bool:
+    """True only for a value safe to use as ONE path segment / bare filename."""
+    return (isinstance(value, str) and bool(value)
+            and "/" not in value and ".." not in value
+            and "\n" not in value and "\r" not in value
+            and _SAFE_SEGMENT.fullmatch(value) is not None)
 
 #: Official RNode firmware release manifest + download base (markqvist).
 FIRMWARE_VERSION_URL = (
@@ -41,6 +67,11 @@ class SyncResult:
     changed: List[str] = field(default_factory=list)      # downloaded/updated
     up_to_date: List[str] = field(default_factory=list)    # already current
     failed: List[str] = field(default_factory=list)        # download/verify failed
+    #: Downloaded and size-checked, but its bytes could NOT be hash-verified
+    #: because the release published no sha256 to check them against. A distinct
+    #: state on purpose: not silently trusted as "changed", not thrown away as
+    #: "failed" — the operator is told it is carried-but-unverified.
+    unverified: List[str] = field(default_factory=list)
     version: Optional[str] = None
     message: str = ""
 
@@ -51,7 +82,19 @@ def has_connectivity(connection: Connection, url: str = CONNECTIVITY_URL) -> boo
 
 
 def _fetch_manifest(connection: Connection) -> dict:
-    """The release.json map ``{filename: {hash, version}}``, or {} on failure."""
+    """The release.json map ``{filename: {hash, version}}``, or {} on failure.
+
+    TODO(security, needs key decision): this manifest is fetched over plain HTTPS
+    with NO cryptographic authentication of its own. The per-file sha256s below
+    are only as trustworthy as the manifest that carries them — anyone who can
+    serve this URL (a MITM, a compromised release) chooses both the bytes AND the
+    hash they are checked against. The real fix is a pinned publisher public key
+    verifying a signature over release.json; that is deliberately NOT implemented
+    here because it requires a key-management decision (which key, rotation, where
+    it lives on the medic). Until then, filenames are charset-validated and every
+    interpolated value is shell-quoted so a hostile manifest cannot inject a
+    command or escape the cache directory — but it is not yet authenticated.
+    """
     code, out, _ = connection.run(f"curl -fsSL -m 20 {FIRMWARE_VERSION_URL}")
     if code != 0:
         return {}
@@ -102,18 +145,43 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             online=True,
             message="Online, but the firmware manifest is malformed — keeping "
                     "the carried cache.")
-    dest = f"{RNODE_UPDATE_DIR}/{version}"
+    # The version is a remote manifest value that becomes the cache SUBDIRECTORY
+    # (dest below), so it must clear the traversal-and-injection validator BEFORE
+    # any path is built from it. shlex.quote alone is NOT enough here: a version
+    # like "../../../.ssh" has no shell metacharacter, so it would sail through
+    # quoting and redirect the whole download tree outside the cache. Refuse the
+    # entire sync rather than build a single path from an unsafe version.
+    version = str(version)
+    if not _safe_path_segment(version):
+        return SyncResult(
+            online=True,
+            failed=[f"version {version[:64]!r} (unsafe — possible path traversal)"],
+            message="Online, but the firmware manifest's version is not a safe "
+                    "path component — refusing to sync.")
+    # Coerce done; quote everywhere it is still interpolated (defence in depth).
+    # RNODE_UPDATE_DIR stays UNQUOTED on purpose so its leading ``~`` expands.
+    dest = f"{RNODE_UPDATE_DIR}/{_shq(version)}"
     connection.run(f"mkdir -p {dest}")
 
     res = SyncResult(online=True, version=version)
     for fname, info in sorted(manifest.items()):
-        want = info.get("hash")
-        path = f"{dest}/{fname}"
+        if not _safe_path_segment(fname):
+            # A crafted key ("../../etc/x", "a;reboot", spaces) never reaches a
+            # path or a shell — skip it, report it, keep syncing the honest rest.
+            res.failed.append(f"{str(fname)[:64]} (unsafe firmware name — skipped)")
+            continue
+        want = info.get("hash") if isinstance(info, dict) else None
+        if not isinstance(want, str) or not want:
+            # No manifest hash means nothing to verify a download against. An
+            # unverifiable firmware file is not trusted or flashed — report it.
+            res.failed.append(f"{fname} (no manifest hash — skipped)")
+            continue
+        path = f"{dest}/{_shq(fname)}"
         if not force and _sha256(connection, path) == want:
             res.up_to_date.append(fname)
         else:
             url = f"{FIRMWARE_DL_BASE}{version}/{fname}"
-            if connection.run(f"curl -fsSL -m 120 -o {path} {url}")[0] != 0:
+            if connection.run(f"curl -fsSL -m 120 -o {path} {_shq(url)}")[0] != 0:
                 res.failed.append(fname)
                 continue
             if _sha256(connection, path) == want:
@@ -125,10 +193,13 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
         # rnodeconf --autoinstall verifies each firmware against a sidecar
         # "<file>.version" holding "<version> <hash>". Without it the offline
         # flash aborts ("No release hash found ... integrity could not be
-        # verified"). Write/backfill it for every good file.
-        connection.run(f"printf '%s %s' {version} {want} > {path}.version")
+        # verified"). Write/backfill it for every good file. ``path`` already
+        # ends in the quoted filename, so the ``.version`` suffix rides outside
+        # that quote and the shell concatenates it onto the same word.
+        connection.run(f"printf '%s %s' {_shq(version)} {_shq(want)} > {path}.version")
 
-    connection.run(f"printf '%s' {version} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
+    connection.run(
+        f"printf '%s' {_shq(version)} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
 
     parts = []
     if res.changed:

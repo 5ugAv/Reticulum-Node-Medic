@@ -88,3 +88,27 @@ def test_run_rediscovers_on_schedule():
     svc.run(cycles=5, discover_every=2, sleep=lambda s: None)
     # cycles 0,2,4 rediscover -> 3 sweeps
     assert sweeps[0] == 3
+
+
+# ---- a single hostile host must never abort the sweep of the others ---------
+# poll_status is contracted never to raise, but poll_cycle guards each host too:
+# the poller is injectable, and one bad node blinding the medic to every other
+# node it watches would be the worst possible field failure.
+
+
+def test_poll_cycle_survives_a_poller_that_raises():
+    svc = MonitorService(run=None, now=clock, kin_roster={})
+    reached = []
+
+    def poll(host):
+        reached.append(host)
+        if host == "bad":
+            raise ValueError("a hostile node blew up mid-parse")
+        return ns("GOOD")
+
+    svc._poll = poll
+    svc.hosts = {"k-bad": "bad", "k-good": "good"}
+    svc.poll_cycle()                      # must not raise
+    assert "good" in reached              # the sweep reached the second host
+    names = {r.name for r in svc.dashboard()}
+    assert "GOOD" in names                # and recorded the healthy one

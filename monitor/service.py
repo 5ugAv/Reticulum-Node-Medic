@@ -97,7 +97,16 @@ class MonitorService:
     def poll_cycle(self) -> None:
         """Re-poll every known host and fold the result into the registry."""
         for key, host in list(self.hosts.items()):
-            self.registry.record_http_status(key, self._poll(host), self._now())
+            # Belt-and-suspenders around the sweep: poll_status is contracted
+            # never to raise (it shapes untrusted LAN bytes behind its own
+            # guard), but the poller is injectable and this loop must survive one
+            # bad host regardless — a single node must never blind the medic to
+            # every other node it is watching.
+            try:
+                ns = self._poll(host)
+            except Exception:                  # noqa: BLE001 - see above
+                continue
+            self.registry.record_http_status(key, ns, self._now())
 
     def cycle(self, rediscover: bool = False) -> None:
         """One monitor tick: optionally rediscover (HTTP + mesh), then poll known
