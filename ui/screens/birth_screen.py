@@ -3328,6 +3328,19 @@ class BirthScreen(BoxLayout):
                 value = cert.get(key)
                 if value and value not in hashes:
                     hashes.append(value)
+            # THE THIRD IDENTITY OF A PI RELAY (2026-08-22). lxmd announces its
+            # lxmf.propagation aspect from its OWN identity file — a hash the
+            # mesh can never link to the node's rnsd or health destinations, so
+            # it orphaned in VITALS as an anonymous "Propagation relay" beside
+            # the same machine's named rows (the double-SkyFinger root cause).
+            # Birth captured it into the certificate (workflows.build.birth_
+            # certificate); record it as one more destination of THIS device so
+            # its first announce folds under the node's name. extra_identities is
+            # the general form for any further destinations a future role adds.
+            for value in ([cert.get("lxmd_dst")]
+                          + list(cert.get("extra_identities") or [])):
+                if value and value not in hashes:
+                    hashes.append(value)
             if not hashes:
                 return
             # THE IDENTITY THE NODE ANNOUNCES UNDER, harvested from what the
@@ -3375,8 +3388,28 @@ class BirthScreen(BoxLayout):
                         _reg.forget_node(_old)
             except Exception:
                 pass
+            _node_name = (cert.get("node_name") or cert.get("hostname")
+                          or "node")
+            # ONE NAME, ONE CURRENT MACHINE. The operator reuses sequential
+            # names across DIFFERENT boards (a spare birthed "A2" after the
+            # first was deployed). Birthing under a name a DIFFERENT device
+            # already holds RETIRES that old device — a clean REPLACE, not a
+            # merge (VITALS must never fold two machines by name and risk hiding
+            # a dead one behind a live namesake, the 2026-08-13 hazard). A still-
+            # live old board just reappears later as an anonymous neighbour.
+            try:
+                _replaced = kin_roster.retire_same_name(
+                    _node_name, hashes, hw_serial=cert.get("hw_serial"))
+                for _old in _replaced:
+                    if _reg is not None:
+                        _reg.forget_node(_old)
+                if _replaced:
+                    print(f"[kin] replaced previous node named "
+                          f"{_node_name!r} ({len(_replaced)} row(s) retired)")
+            except Exception:
+                pass
             kin_roster.register_device(
-                hashes, cert.get("node_name") or cert.get("hostname") or "node",
+                hashes, _node_name,
                 # NOT a default — a lookup. See kin_roster.type_for_cert:
                 # "rtnode2400" as the fallback labelled the first Pi propagation
                 # node ever built as an RTNode-2400 and hid its wifi, bluetooth

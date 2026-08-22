@@ -1272,6 +1272,21 @@ class NodeRegistry:
         _collapse(lambda members: next(
             (r.device_id for r in members if r.device_id), ""))
 
+        # NO NAME FOLD ACROSS IDENTITIES. A "belt-and-suspenders" pass that
+        # folded two identity-bearing groups by a shared OPERATOR name lived here
+        # briefly (2026-08-22) and was proven unsafe the next day: the operator
+        # reuses sequential names across rebirths of DIFFERENT boards (a spare
+        # birthed "A2" after the first "A2" was deployed), and nothing enforces
+        # one-name-one-machine at read time — so the fold could hide a board that
+        # had DIED in the field behind a live namesake's max(last_seen), the very
+        # 2026-08-13 dead-behind-a-namesake hazard. The ground-truth device fold
+        # (birth now captures the lxmd identity too, so a node's addresses share
+        # a device record) makes the name heuristic unnecessary; uniqueness is
+        # enforced at BIRTH instead (birth retires an old same-named device), so
+        # a reused name is a clean REPLACE, never a merge. The guarded general
+        # name pass below stays — it only pulls in rows with NO identity of their
+        # own, never two machines that each announce one.
+
         def _grp_name(members) -> str:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]
             return (p.name or p.announced_name or "").strip()
