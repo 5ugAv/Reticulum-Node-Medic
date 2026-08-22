@@ -50,7 +50,13 @@ GPS_CMD_ALT = 0x05       # int16 BE SIGNED = altitude in metres MSL (may be < 0)
 # territory; altitude spans the Dead Sea shore (-430 m) to well above any place
 # a node is planted, capped short of the cruising-altitude nonsense a glitch
 # would produce.
-_HDOP_MIN, _HDOP_MAX = 0.0, 99.0
+#
+# The HDOP FLOOR is 0.5, not 0: an HDOP of exactly 0 is physically impossible
+# (real receivers bottom out around 0.5 with a perfect sky), so a 0x0000 frame
+# is an uninitialised or bit-flipped reading, NOT a flawless fix. Rejecting it to
+# None keeps the honesty ethos — it must never surface as "~+-0m" on a screen or
+# stamp accuracy_m:0.0 onto a certificate.
+_HDOP_MIN, _HDOP_MAX = 0.5, 99.0
 _ALT_MIN_M, _ALT_MAX_M = -500, 12000
 
 # RNode stat frames (Framing.h). These are RECORDED as they pass through — but

@@ -327,3 +327,31 @@ def test_no_accuracy_or_altitude_frames_leaves_both_none_backward_compatible():
     st = s.state()
     assert st["hdop"] is None and st["alt_m"] is None
     assert st["has_fix"] is True and st["sats"] == 9
+
+
+def test_hdop_zero_is_rejected_to_none():
+    """HDOP of exactly 0 is physically impossible: a 0x0000 accuracy frame is an
+    uninitialised / bit-flipped reading, not a perfect fix. Must NOT claim +-0m."""
+    s = KissGpsSplitter()
+    s.feed(_acc_frame(0x0000))
+    assert s.state()["hdop"] is None
+
+
+def test_accuracy_value_with_escapable_byte_round_trips():
+    """HDOP*100 == 192 == 0x00C0 whose low byte is FEND (0xC0): the on-wire KISS
+    escaping must round-trip through _unescape to decode as HDOP 1.92."""
+    from monitor.rnode_gps import FEND
+    assert (192 & 0xFF) == FEND                # the value really does contain FEND
+    s = KissGpsSplitter()
+    s.feed(_acc_frame(192))
+    assert s.state()["hdop"] == pytest.approx(1.92, abs=1e-9)
+
+
+def test_altitude_value_with_escapable_byte_round_trips():
+    """Altitude == 219 == 0x00DB whose low byte is FESC (0xDB): the KISS escaping
+    must round-trip so the altitude decodes back to 219 m, not a mangled value."""
+    from monitor.rnode_gps import FESC
+    assert (219 & 0xFF) == FESC                # the value really does contain FESC
+    s = KissGpsSplitter()
+    s.feed(_alt_frame(219))
+    assert s.state()["alt_m"] == 219
