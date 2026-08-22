@@ -108,6 +108,28 @@ def test_forward_clock_jump_does_not_escalate():
     w.tick([], now=1000.0, monotonic=1000.0)
     # NTP lands: wall clock leaps 3 days, monotonic advanced 2 seconds
     assert w.tick(dead, now=1000.0 + 3 * 86400, monotonic=1002.0) == []
-    # a normal tick afterwards escalates as usual
-    got = w.tick(dead, now=1000.0 + 3 * 86400 + 60, monotonic=1062.0)
+    # The jump now arms a COOLDOWN (review item 4): a few ticks stay suppressed
+    # while the rebased ages settle, not just the single jump tick.
+    base = 1000.0 + 3 * 86400
+    for i in range(1, 4):
+        assert w.tick(dead, now=base + 60 * i, monotonic=1002.0 + 60 * i) == []
+    # after the cooldown, escalation resumes as usual
+    got = w.tick(dead, now=base + 60 * 5, monotonic=1002.0 + 60 * 5)
     assert [d["identity"] for d in got] == ["abc"]
+
+
+def test_note_clock_step_suppresses_a_few_ticks():
+    """After the medic itself steps the clock (GPS discipline), escalations are
+    suppressed for a few ticks while the rebased ages settle (review item 4)."""
+    from monitor.node_watch import NodeWatcher, COOLDOWN_TICKS
+    w = NodeWatcher()
+    dead = [{"identity": "abc", "status": "alert", "last_seen_hours": 999.0,
+             "powered_by": "solar", "provenance": "kin"}]
+    w.tick([], now=1000.0, monotonic=1000.0)        # baseline
+    w.note_clock_step()
+    t = 1000.0
+    for _ in range(COOLDOWN_TICKS):
+        t += 60
+        assert w.tick(dead, now=t, monotonic=t) == []
+    t += 60
+    assert [d["identity"] for d in w.tick(dead, now=t, monotonic=t)] == ["abc"]

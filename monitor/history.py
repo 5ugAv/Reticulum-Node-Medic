@@ -59,6 +59,20 @@ class NodeHistory:
         if pts and pts[0].t < cutoff:
             self._series[dst_hash] = [p for p in pts if p.t >= cutoff]
 
+    def rebase(self, delta: float) -> None:
+        """Shift every point's timestamp by *delta* after the SYSTEM CLOCK is
+        stepped (e.g. GPS discipline). Stored t's are epoch values in the OLD
+        clock's frame; a forward step would otherwise push real points past the
+        retention cutoff (pruning genuine history) and skew the 30-day graph.
+        delta = new_epoch - old_epoch."""
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool) or not delta:
+            return
+        # Runs right after a clock step; must not raise on a corrupt point.
+        for pts in self._series.values():
+            for p in pts:
+                if isinstance(p.t, (int, float)) and not isinstance(p.t, bool):
+                    p.t += delta
+
     def set_retention(self, retention_s: int, now: float) -> None:
         """Change the retention window and re-prune every series to it now."""
         self.retention_s = retention_s

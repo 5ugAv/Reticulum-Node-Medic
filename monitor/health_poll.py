@@ -178,6 +178,7 @@ def heard_since(
     now: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
     poll_s: float = 1.0,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> bool:
     """True once any watched record shows a GENUINE post-send word from the
     node; False when *wait_s* passes without one.
@@ -189,23 +190,49 @@ def heard_since(
     (the SolarLove class of lie, in miniature). A record that is missing or
     unreadable mid-watch is simply not an answer.
 
+    CLOCK-STEP SAFE (2026-08-22 review item 3): the medic disciplines its clock
+    from GPS on the same 30 s loop, so a step can land mid-wait. Two consequences,
+    both handled here:
+      * The wait WINDOW is measured on ``time.monotonic()``, never the wall clock
+        — a forward step must not end the wait early (a healthy node read as "not
+        responding") nor a backward step extend it.
+      * "Answered" is a CHANGE, not an absolute compare. We snapshot each watched
+        record's ``last_heard_announce_at`` at send time and treat the node as
+        having answered when that field moves FORWARD from its snapshot — so a
+        wall-clock step (which shifts ``sent_at``'s frame) can't hide a real reply
+        or manufacture a false one from the old ``>= sent_at`` test. (The stamp is
+        rebased with the rest of the registry on a step; a genuine reply still
+        lands strictly newer than the pre-send snapshot within the short window.)
+
+    ``sent_at`` is retained for the caller's send-time bookkeeping/logging; the
+    oracle now uses the per-record snapshot below.
+
     Ends with one final look AFTER the deadline: the reply is most likely to
     land late in the window, and exiting on the clock alone read a reply at
     14.3 s as silence.
     """
+    # Snapshot each record's stamp at send time — the baseline the change is
+    # measured against. A record we can't read yet snapshots as None.
+    baseline = {}
+    for h in watch_hashes:
+        try:
+            baseline[h] = getattr(get_record(h), "last_heard_announce_at", None)
+        except Exception:
+            baseline[h] = None
+
     def _check() -> bool:
         for h in watch_hashes:
             try:
-                rec = get_record(h)
-                ts = getattr(rec, "last_heard_announce_at", None)
+                ts = getattr(get_record(h), "last_heard_announce_at", None)
             except Exception:
                 continue                  # vanished mid-watch != answered
-            if ts is not None and ts >= sent_at:
-                return True
+            base = baseline.get(h)
+            if ts is not None and (base is None or ts > base):
+                return True               # the field moved forward -> the node spoke
         return False
 
-    deadline = now() + wait_s
-    while now() < deadline:
+    deadline = monotonic() + wait_s
+    while monotonic() < deadline:
         if _check():
             return True
         sleep(poll_s)

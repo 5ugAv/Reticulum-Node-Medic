@@ -30,6 +30,11 @@ from typing import List, Optional, Set
 #: recharge grace). The safe default applied to every node today.
 DEFAULT_GRACE_H = 72.0
 
+#: How many ticks to suppress escalations after a detected/notified clock jump.
+#: One tick was not enough: a GPS step rebases stored stamps, and the freshly
+#: rebased ages want a moment to settle before we trust them to dispatch someone.
+COOLDOWN_TICKS = 3
+
 #: Per-power-source grace (hours). Activates once real power source is recorded;
 #: until then every real node reads "battery" -> the safe 3-day default. A mains
 #: node can't recharge from sun, so it's flagged sooner when the source is known.
@@ -69,9 +74,15 @@ class NodeWatcher:
         prev_w = getattr(self, "_last_wall", None)
         prev_m = getattr(self, "_last_mono", None)
         self._last_wall, self._last_mono = wall, mono
+        # Cooldown from a prior detected/notified clock step — the stamps were
+        # rebased, but suppress escalations for a few ticks while ages settle.
+        if getattr(self, "_cooldown_ticks", 0) > 0:
+            self._cooldown_ticks -= 1
+            return []
         if prev_w is not None and prev_m is not None:
             drift = (wall - prev_w) - (mono - prev_m)
             if abs(drift) > 300:          # >5 min of unexplained clock motion
+                self._cooldown_ticks = COOLDOWN_TICKS
                 return []                 # this tick's ages are meaningless
         escalated: List[dict] = []
         for d in devices:
@@ -92,6 +103,13 @@ class NodeWatcher:
                 self._notified.add(nid)
                 escalated.append(d)
         return escalated
+
+    def note_clock_step(self) -> None:
+        """Called by the app right after IT steps the system clock (GPS discipline
+        rebases the registry stamps). Suppress escalations for a few ticks so the
+        freshly-rebased ages settle before we act on them — the drift detector
+        catches jumps the watcher didn't cause; this catches the ones it did."""
+        self._cooldown_ticks = COOLDOWN_TICKS
 
     def is_watching(self, device: dict) -> bool:
         """True if this node is red but still inside its grace window — i.e. the

@@ -200,3 +200,67 @@ def test_non_gps_frames_never_inflate_the_count():
     st = KissGpsSplitter(now=lambda: 1.0)
     assert st._consume_gps(bytearray([0x07, 0x01, 0x02])) is False
     assert st.state()["gps_frames"] == 0
+
+
+# --- satellite UTC (GPS_CMD_UTC 0x03) for offline clock discipline ----------
+# Pi 5 RTC is not battery-backed + no NTP afield, so the firmware pushes UTC.
+# [year_hi, year_lo, month, day, hour, minute, second], year u16 big-endian.
+
+def _utc_frame(year, month, day, hour, minute, second):
+    from monitor.serial_splitter import CMD_GPS, GPS_CMD_UTC
+    payload = bytes([year >> 8, year & 0xFF, month, day, hour, minute, second])
+    return _kiss(CMD_GPS, bytes([GPS_CMD_UTC]) + payload)
+
+
+def test_valid_utc_frame_sets_gps_utc_to_the_right_epoch():
+    import calendar
+    from monitor.serial_splitter import KissGpsSplitter
+    s = KissGpsSplitter(now=lambda: 4242.0)
+    out = s.feed(_utc_frame(2026, 8, 22, 1, 2, 3))    # 2026-08-22 01:02:03 UTC
+    assert out == b""                                 # consumed, not forwarded
+    st = s.state()
+    assert st["gps_utc"] == calendar.timegm((2026, 8, 22, 1, 2, 3)) == 1787360523
+    assert st["gps_utc_recv"] == 4242.0               # when we RECEIVED it
+
+
+def test_out_of_range_month_is_rejected_no_garbage_clock():
+    from monitor.serial_splitter import KissGpsSplitter
+    s = KissGpsSplitter()
+    s.feed(_utc_frame(2026, 13, 22, 1, 2, 3))          # month 13 is impossible
+    assert s.state()["gps_utc"] is None
+    assert s.state()["gps_utc_recv"] is None
+
+
+def test_out_of_range_year_is_rejected():
+    from monitor.serial_splitter import KissGpsSplitter
+    s = KissGpsSplitter()
+    s.feed(_utc_frame(1999, 8, 22, 1, 2, 3))           # before 2020 floor
+    assert s.state()["gps_utc"] is None
+
+
+def test_impossible_calendar_dates_are_rejected():
+    """KISS has no CRC — a bit-flip in the day byte can make Feb 31 / Apr 31,
+    which calendar.timegm would SILENTLY normalize to a wrong-but-plausible epoch.
+    datetime() raises on them, so we reject and set nothing."""
+    from monitor.serial_splitter import KissGpsSplitter
+    for month, day in ((2, 31), (4, 31)):          # Feb 31, Apr 31
+        s = KissGpsSplitter()
+        s.feed(_utc_frame(2026, month, day, 1, 2, 3))
+        assert s.state()["gps_utc"] is None, f"{month}/{day} must be rejected"
+
+
+def test_leap_second_60_is_accepted():
+    from monitor.serial_splitter import KissGpsSplitter
+    s = KissGpsSplitter()
+    s.feed(_utc_frame(2026, 12, 31, 23, 59, 60))       # leap second is valid
+    assert s.state()["gps_utc"] is not None
+
+
+def test_no_utc_frame_leaves_gps_utc_none_backward_compatible():
+    """Old firmware never sends 0x03 — lat/lng/state still work, UTC stays None."""
+    s = KissGpsSplitter()
+    s.feed(_gps(GPS_CMD_LAT, -37.8))
+    s.feed(_kiss(CMD_GPS, bytes([GPS_CMD_STATE, 9, 1])))
+    st = s.state()
+    assert st["gps_utc"] is None and st["gps_utc_recv"] is None
+    assert st["sats"] == 9 and st["lat"] == pytest.approx(-37.8, abs=1e-6)

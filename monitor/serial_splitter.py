@@ -14,9 +14,11 @@ The demux (:class:`KissGpsSplitter`) is pure and unit-tested; the PTY plumbing i
 
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import time
+from datetime import datetime
 from typing import Optional
 
 from monitor.rnode_gps import (
@@ -25,6 +27,14 @@ from monitor.rnode_gps import (
 )
 
 _MICRODEG = 1_000_000.0
+
+# Satellite UTC time, pushed by the firmware alongside lat/lng/state. The Pi 5's
+# RTC is NOT battery-backed and a field medic has no internet for NTP, so the
+# GNSS receiver is the only trustworthy clock offline — this sub-frame carries it.
+# Emitted ONLY when the receiver has a valid+fresh satellite UTC; its ABSENCE is
+# an honest "no trustworthy time" (old firmware never sends it -> stays None).
+# Payload: [year_hi, year_lo, month, day, hour, minute, second], year big-endian.
+GPS_CMD_UTC = 0x03
 
 # RNode stat frames (Framing.h). These are RECORDED as they pass through — but
 # still forwarded byte-for-byte, because rnsd consumes them too.
@@ -71,6 +81,12 @@ class KissGpsSplitter:
         # (2026-08-07: Jonesey reporting healthy radio telemetry and zero GPS).
         self.gps_frames: int = 0
         self.gps_seen_at: Optional[float] = None
+        # Satellite UTC (epoch seconds) and the local time we RECEIVED it. Both
+        # None until a GPS_CMD_UTC frame with in-range fields arrives — the honest
+        # unknown that lets the clock-discipline logic refuse to guess. gps_utc_recv
+        # anchors latency compensation (the fix was true at receipt, not now).
+        self.gps_utc: Optional[int] = None
+        self.gps_utc_recv: Optional[float] = None
         self.updated: Optional[float] = None
         # live signal state, recorded from stat frames passing through to rnsd
         self.last_rssi: Optional[int] = None       # dBm, per received packet
@@ -128,6 +144,29 @@ class KissGpsSplitter:
             self.lng = int.from_bytes(payload[:4], "big", signed=True) / _MICRODEG
         elif sub == GPS_CMD_STATE and len(payload) >= 2:
             self.sats, self.fix = payload[0], payload[1]
+        elif sub == GPS_CMD_UTC and len(payload) >= 7:
+            # [year_hi, year_lo, month, day, hour, minute, second], year u16 BE.
+            year = int.from_bytes(payload[0:2], "big")
+            month, day, hour, minute, second = payload[2:7]
+            # HONEST REJECT: KISS has no CRC, so a single bit-flip in the day byte
+            # can turn a real date into a plausible-but-wrong one (Feb 31 -> Mar 3
+            # if we let calendar.timegm silently normalize it). We set NOTHING
+            # unless the fields form a REAL calendar instant. datetime() raises on
+            # impossible dates AND enforces month/day/hour/minute ranges for us; we
+            # still bound the year (it accepts 1..9999) and the leap second (it
+            # rejects 60, so clamp only for this validity probe — the real second
+            # is kept below, and timegm normalizes 23:59:60 to the right instant).
+            if 2020 <= year <= 2100 and 0 <= second <= 60:
+                try:
+                    datetime(year, month, day, hour, minute, min(second, 59))
+                except ValueError:
+                    pass                      # impossible date -> reject, set nothing
+                else:
+                    # timegm() treats the tuple as UTC (unlike mktime, which applies
+                    # the local timezone) — the wire is UTC, so no local-tz bug.
+                    self.gps_utc = calendar.timegm(
+                        (year, month, day, hour, minute, second))
+                    self.gps_utc_recv = self._now()
         self.gps_frames += 1
         self.gps_seen_at = self._now()
         self.updated = self._now()
@@ -143,6 +182,10 @@ class KissGpsSplitter:
             # firmware is not reporting GPS AT ALL — a different fault from a
             # receiver that is reporting and has not locked.
             "gps_frames": self.gps_frames, "gps_seen_at": self.gps_seen_at,
+            # Satellite UTC for clock discipline (offline authority). Both None
+            # until a valid GPS_CMD_UTC frame arrives -> old firmware that never
+            # sends 0x03 is fully backward compatible (feature is inert).
+            "gps_utc": self.gps_utc, "gps_utc_recv": self.gps_utc_recv,
             # live signal (for TRIAGE / VITALS): per-packet + periodic channel stats
             "last_rssi": self.last_rssi, "last_snr": self.last_snr,
             "packet_heard_at": self.packet_heard_at,

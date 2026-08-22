@@ -684,6 +684,41 @@ class NodeRegistry:
         #: KIN — even a plain propagation Pi the medic can't hear directly.
         self.kin_roster: Dict[str, dict] = {}
 
+    #: Every NodeRecord field that stores a WALL-CLOCK epoch. Rebased as a set
+    #: after the system clock is stepped (GPS discipline) so they stay in the new
+    #: clock's frame — otherwise a forward step makes every node look silent for
+    #: the step size (false escalations, false "SEEN ?"/false-fresh) — exactly
+    #: the dishonesty the liveness work removed.
+    _WALL_STAMP_FIELDS = (
+        "last_seen", "mesh_heard", "last_direct", "poll_failed_at",
+        "last_echo_at", "last_heard_announce_at", "share_applied_at",
+    )
+
+    @_locked
+    def rebase_wall_clock(self, delta: float) -> None:
+        """Shift every stored wall-clock stamp — every record's time fields, its
+        commission-event timestamps, and every history point — by *delta* seconds
+        after the system clock is stepped. delta = new_epoch - old_epoch.
+
+        Without this, a GPS step re-creates the very false-escalation and
+        false-freshness bugs tonight's work removed: a node heard "5 min ago"
+        would read "3 hours ago" after a 3-hour forward step, and history.py's
+        retention would prune genuine points. Best-effort and idempotent-safe: a
+        zero delta is a no-op."""
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool) or not delta:
+            return
+        # Guard every addition: a stamp is normally a float, but a corrupt record
+        # could hold anything, and this runs right after the clock was stepped —
+        # it must NEVER raise (the caller treats a raise as a half-applied step).
+        def _shift(v):
+            return (v + delta) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
+        for rec in self.nodes.values():
+            for attr in self._WALL_STAMP_FIELDS:
+                setattr(rec, attr, _shift(getattr(rec, attr, None)))
+            for ev in rec.events:              # field-log timestamps track wall time too
+                ev.at = _shift(getattr(ev, "at", None))
+        self.history.rebase(delta)
+
     @_locked
     def set_kin_roster(self, roster: dict) -> None:
         """Load the medic's fleet roster. Seeds a NAMED, LOCATED record for every

@@ -51,8 +51,11 @@ Cmnd_Alias NM_PORTAL = \
 
 # --- System clock / timezone ------------------------------------------------
 # provisioning/tool_datetime.py  set_datetime()/set_timezone()/sync_from_gps()
+# monitor/gps_clock.py           apply_clock()  -> set-ntp false, set-time, and
+#                                set-ntp true (rollback if set-time then fails)
 Cmnd_Alias NM_CLOCK = \
     /usr/bin/timedatectl set-ntp false, \
+    /usr/bin/timedatectl set-ntp true, \
     /usr/bin/timedatectl set-time *, \
     /usr/bin/timedatectl set-timezone *
 

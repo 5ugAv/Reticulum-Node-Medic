@@ -49,10 +49,25 @@ def load(path: str = CONFIG) -> dict:
 
 
 def save(d: dict, path: str = CONFIG) -> dict:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(d, f, indent=2, sort_keys=True)
+    # Atomic (temp + fsync + os.replace) so a power cut mid-write can't truncate
+    # datetime.json and silently wipe autosync / last_sync — the medic is a
+    # solar/battery field device on an SD card where interrupted writes are THE
+    # documented failure mode (see monitor.atomic_json).
+    from monitor.atomic_json import write_json
+    write_json(path, d, indent=2, sort_keys=True)
     return d
+
+
+def _finite_number(v) -> Optional[float]:
+    """*v* as a float only if it is a real finite number — NOT a JSON bool
+    (isinstance(True, int) is True), NaN, or inf. Anything else -> None, so a
+    corrupt/hostile config value can never reach the clock or the UI as a number."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    f = float(v)
+    if f != f or f in (float("inf"), float("-inf")):
+        return None
+    return f
 
 
 def is_autosync(path: str = CONFIG) -> bool:
@@ -69,14 +84,39 @@ def set_autosync(on: bool, path: str = CONFIG) -> dict:
 
 
 def last_sync(path: str = CONFIG) -> Optional[float]:
-    """Epoch of the last successful GPS sync, or None if never synced."""
-    v = load(path).get("last_sync")
-    return float(v) if isinstance(v, (int, float)) else None
+    """Epoch of the last successful GPS sync, or None if never synced (or if the
+    stored value is not a real finite number)."""
+    return _finite_number(load(path).get("last_sync"))
 
 
 def _stamp_sync(epoch: float, path: str = CONFIG) -> dict:
     d = load(path)
     d["last_sync"] = float(epoch)
+    return save(d, path)
+
+
+def last_sync_source(path: str = CONFIG) -> Optional[str]:
+    """How the clock was last synced (e.g. "GPS"), or None. Lets the datetime
+    screen say "GPS-synced N ago" rather than a bare "synced N ago", so the
+    operator can tell a GPS-held clock from a manually-set one."""
+    v = load(path).get("last_sync_source")
+    return v if isinstance(v, str) and v else None
+
+
+def mark_synced(epoch: float, source: str, path: str = CONFIG) -> dict:
+    """Stamp the shared last-sync surface the datetime screen reads, tagged with
+    *source*. Called by the running medic's GPS clock discipline so the screen
+    reflects "GPS-synced N ago" while GPS is actively holding the clock — the
+    operator must be able to tell GPS-synced from never-synced.
+
+    Deliberately does NOT persist any forward-only floor: that design caused a
+    permanent lockout (a bad corroborated jump poisoned the floor forever) and is
+    gone. GPS plausibility is now bounded by a FIXED window in monitor.gps_clock,
+    which needs no persisted state."""
+    d = load(path)
+    d["last_sync"] = float(epoch)
+    d["last_sync_source"] = str(source)
+    d.pop("last_good_epoch", None)          # scrub any floor left by an old build
     return save(d, path)
 
 

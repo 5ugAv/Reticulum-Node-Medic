@@ -124,13 +124,28 @@ class DateTimeScreen(BoxLayout):
         self._refresh_sync_status(ago)
 
     def _refresh_sync_status(self, ago=None):
-        if ago is None:
-            ago = td.format_synced_ago(td.last_sync(), time.time())
+        # Prefer the LIVE disciplinarian status when available: the operator must
+        # tell GPS-synced from awaiting-corroboration from refused (out-of-window /
+        # stale / no-fix) — an ageing "synced N ago" line hides all three. Falls
+        # back to the persisted last-sync stamp when the disciplinarian isn't up.
+        live = None
+        try:
+            from kivy.app import App
+            d = getattr(App.get_running_app(), "_gps_disciplinarian", None)
+            if d is not None:
+                live = d.status_line(time.time())
+        except Exception:
+            live = None
+        if live is None:
+            if ago is None:
+                ago = td.format_synced_ago(td.last_sync(), time.time())
+            if td.last_sync_source() == "GPS" and td.last_sync():
+                ago = ago.replace("synced", "GPS-synced", 1)
+            live = ago
         if self._auto.active:
-            self._sync_status.text = f"Auto-sync ON — {ago}. Manual entry is disabled."
+            self._sync_status.text = f"Auto-sync ON — {live}. Manual entry is disabled."
         else:
-            self._sync_status.text = (f"Auto-sync OFF — set the clock by hand below "
-                                      f"({ago}).")
+            self._sync_status.text = "Auto-sync OFF — set the clock by hand below."
 
     # -- mode: auto vs manual ---------------------------------------------
 
