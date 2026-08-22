@@ -976,6 +976,7 @@ class ReticulumNodeMedicApp(App):
                     self._check_movement()       # auto-backpack if we're on the move
                     self._check_battery()        # UPS gauge + low-battery shutdown
                     self._check_node_watch(dicts)  # escalate long-unreachable nodes
+                    self._check_gps_clock()      # discipline the clock from GPS UTC
                 except Exception:
                     pass  # never let a poll error kill the loop
                 i += 1
@@ -2010,6 +2011,40 @@ class ReticulumNodeMedicApp(App):
         try:
             for d in w.tick(devices):
                 Clock.schedule_once(lambda dt, dv=d: self._escalate_node(dv), 0)
+        except Exception:
+            pass
+
+    def _check_gps_clock(self):
+        """Runs on the monitor thread each cycle: discipline the system clock from
+        the Tracker's satellite UTC. The Pi 5's RTC is NOT battery-backed and a
+        field medic has no NTP, so a good GPS fix is the offline time authority.
+
+        INERT until the firmware ships GPS_CMD_UTC (0x03): old firmware never sends
+        it, so gps_utc stays None and we return immediately — a safe no-op. Never
+        sets the clock off a weak/no fix (clock_decision refuses). Guarded so any
+        failure (no state, no sudo, unreadable NTP) can never kill the loop."""
+        try:
+            from monitor.geo import read_splitter_state
+            from monitor.gps_clock import apply_clock, clock_decision
+            st = read_splitter_state()
+            if not st or st.get("gps_utc") is None:
+                return                            # inert case — no satellite UTC
+            import time
+            from provisioning.tool_datetime import ntp_synchronized
+            ntp = ntp_synchronized()              # "couldn't check" -> False -> GPS may act
+            now = time.time()
+            target = clock_decision(
+                st.get("gps_utc"), st.get("gps_utc_recv"),
+                st.get("sats"), st.get("fix"),
+                sys_now=now, ntp_synced=ntp, recv_now=now)
+            if target is None:
+                return
+            # argv runner matching the scoped sudoers (NM_CLOCK). subprocess with a
+            # LIST (no shell) so nothing is re-parsed; sudo -n never prompts.
+            def _run(argv):
+                p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+                return p.returncode, p.stdout, p.stderr
+            apply_clock(target, _run, ntp_synced=ntp)
         except Exception:
             pass
 
