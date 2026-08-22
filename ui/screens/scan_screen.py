@@ -29,7 +29,9 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
-from monitor.geo import read_gps, read_splitter_fix, fix_trust, geocode_address
+from monitor.geo import (
+    read_gps, read_splitter_fix, fix_trust, geocode_address, accuracy_label,
+)
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — SCAN controls/labels/status messages
 from ui.onscreen_keyboard import bind_field
@@ -1447,7 +1449,15 @@ class ScanScreen(BoxLayout):
         if t["level"] != "live":
             hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]
         if self._fix is not None and getattr(self._fix, "has_fix", False):
-            self.coords.text = f"{self._fix.lat:.6f},  {self._fix.lon:.6f}   ·   {hint}"
+            # Show the HDOP-estimated accuracy when we have one, so the operator
+            # can judge the fix — always self-labelled "(est. from HDOP)" so it
+            # never reads as a measured figure. None -> nothing shown, never a
+            # fabricated number (accuracy_label is the sole source of the words,
+            # keeping this literal-free for the i18n guard).
+            acc = accuracy_label(self._fix)
+            acc_part = f"   ·   {acc}" if acc else ""
+            self.coords.text = (f"{self._fix.lat:.6f},  {self._fix.lon:.6f}"
+                                f"{acc_part}   ·   {hint}")
             self.confirm_btn.disabled = False
         else:
             self.coords.text = hint

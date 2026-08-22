@@ -24,6 +24,16 @@ from typing import Callable, Optional, Tuple
 #: Nominatim requires a descriptive User-Agent (generic ones are blocked).
 GEOCODE_USER_AGENT = "ReticulumNodeMedic/1.0 (offline mesh node placement)"
 
+#: Nominal User-Equivalent Range Error, metres. HDOP is a UNITLESS geometry
+#: factor; turning it into "how many metres off might I be" needs a per-receiver
+#: ranging error to multiply it by. 2.5 m is the textbook nominal UERE for a
+#: consumer GNSS with a decent sky view. So accuracy_m = HDOP * NOMINAL_UERE_M
+#: is an ESTIMATE — an order-of-magnitude "how good is this fix", NOT a measured
+#: CEP the receiver reported. Anything that shows it to an operator MUST label it
+#: as estimated (see accuracy_label): the honesty ethos forbids dressing a
+#: derived guess up as a measurement.
+NOMINAL_UERE_M = 2.5
+
 
 @dataclass
 class GpsFix:
@@ -32,7 +42,11 @@ class GpsFix:
     source: str = "pi_gps"
     sats: Optional[int] = None          # satellites used (from the Tracker STATE frame)
     fix_quality: Optional[int] = None   # 0 = no fix, >=1 = fix
-    accuracy_m: Optional[float] = None  # None until the firmware reports HDOP (follow-up)
+    #: ESTIMATED horizontal accuracy, metres = HDOP * NOMINAL_UERE_M. None until
+    #: the firmware reports HDOP; never fabricated. This is a derived estimate,
+    #: not a measured CEP — see NOMINAL_UERE_M and accuracy_label().
+    accuracy_m: Optional[float] = None
+    altitude_m: Optional[float] = None  # metres MSL (signed), or None if unreported
     fix_time: Optional[str] = None      # ISO-8601 UTC of the observation
 
     @property
@@ -135,8 +149,28 @@ def read_splitter_fix(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
     if not st or not st.get("has_fix"):
         return None
     fix_time = datetime.fromtimestamp(st["updated"], timezone.utc).isoformat()
+    # HDOP -> an ESTIMATED horizontal accuracy in metres. Carried through only
+    # when the firmware actually reported HDOP; absent -> None, never invented.
+    hdop = st.get("hdop")
+    accuracy_m = (hdop * NOMINAL_UERE_M
+                  if isinstance(hdop, (int, float)) else None)
+    alt = st.get("alt_m")
+    altitude_m = float(alt) if isinstance(alt, (int, float)) else None
     return GpsFix(lat=st["lat"], lon=st["lng"], source="tracker_gps",
-                  sats=st.get("sats"), fix_quality=st.get("fix"), fix_time=fix_time)
+                  sats=st.get("sats"), fix_quality=st.get("fix"),
+                  accuracy_m=accuracy_m, altitude_m=altitude_m, fix_time=fix_time)
+
+
+def accuracy_label(fix: Optional[GpsFix]) -> Optional[str]:
+    """A short, HONEST accuracy string for display, or ``None`` when there's no
+    estimate (so callers show nothing rather than a fabricated number).
+
+    Always spells out that the figure is derived from HDOP, not measured —
+    ``"~±3m (est. from HDOP)"`` — so an operator judging a fix is never misled
+    into reading it as a receiver-reported CEP."""
+    if fix is None or fix.accuracy_m is None:
+        return None
+    return f"~±{fix.accuracy_m:.0f}m (est. from HDOP)"
 
 
 def classify_fix(fix: Optional[GpsFix]) -> str:

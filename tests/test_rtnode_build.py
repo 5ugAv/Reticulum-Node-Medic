@@ -1169,3 +1169,30 @@ def test_birth_certificate_carries_hw_serial():
     w = wf(c)
     w.run_all()
     assert w.birth_certificate.get("hw_serial") == "1114000000000001"
+
+
+def test_birth_certificate_carries_altitude_and_estimated_accuracy():
+    """A node's paperwork records how good its fix was: altitude + an accuracy
+    labelled as an ESTIMATE (derived from HDOP), when the firmware reported them."""
+    from monitor.geo import GpsFix
+    w = wf(gps_reader=lambda: (-37.814, 144.963))
+    w.gps_fix = GpsFix(lat=-37.814, lon=144.963, source="tracker_gps",
+                       accuracy_m=3.0, altitude_m=325.0)
+    # run the birth_certificate step directly with our prepared fix in place
+    dict(w.steps)["birth_certificate"](w)
+    loc = w.birth_certificate["location"]
+    assert loc["altitude_m"] == 325.0
+    assert loc["accuracy_m"] == 3.0
+    assert loc["accuracy_estimated"] is True
+
+
+def test_birth_certificate_omits_quality_when_firmware_did_not_report():
+    """No HDOP/altitude -> the fields are absent, never a fabricated 0/None."""
+    from monitor.geo import GpsFix
+    w = wf(gps_reader=lambda: (-37.814, 144.963))
+    w.gps_fix = GpsFix(lat=-37.814, lon=144.963, source="pi_gps")
+    dict(w.steps)["birth_certificate"](w)
+    loc = w.birth_certificate["location"]
+    assert "altitude_m" not in loc
+    assert "accuracy_m" not in loc
+    assert "accuracy_estimated" not in loc
