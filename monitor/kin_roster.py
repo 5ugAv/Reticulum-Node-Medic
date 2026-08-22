@@ -128,28 +128,52 @@ def register_device(hashes, name: str, node_type: str = "pi",
     The FIRST hash given is the device's id; pass the health destination first,
     since that is the one whose beacons carry the readings.
 
-    IDEMPOTENT MERGE (2026-08-22): if ANY of these hashes is already on record
-    under an existing device, the whole set joins THAT device instead of minting
-    a second one. So re-adopting or repairing a node — which re-runs birth and
-    may add a destination the first birth missed (an lxmd aspect that had not
-    announced yet) — ADDS the address to the node's one device rather than
-    splitting it into a live row and a ghost. A brand-new machine (no hash
-    known) still takes its first hash as the device id, as before.
+    IDEMPOTENT MERGE (2026-08-22): if these hashes touch EXACTLY ONE existing
+    device, the whole set joins THAT device instead of minting a second one. So
+    re-adopting or repairing a node — which re-runs birth and may add a
+    destination the first birth missed (an lxmd aspect that had not announced
+    yet) — ADDS the address to the node's one device rather than splitting it
+    into a live row and a ghost. A brand-new machine (no hash known) takes its
+    first hash as the device id.
+
+    BUT NEVER UNION TWO EXISTING DEVICES (2026-08-22, Finding 2). If the incoming
+    set spans hashes belonging to TWO OR MORE different existing devices — which
+    should not happen from an honest birth, but is reachable via re-imaged cards
+    or a harvested/reused identity_hash — merging them would silently steal a
+    hash off its rightful machine and persist that to disk. So in that case do
+    NOT union: mint this set under its own device (its first hash) and leave the
+    others alone. The collision is logged, because it signals an imaging /
+    identity-reuse mistake worth seeing.
     """
     hs = [str(h) for h in (hashes or []) if h]
     roster = load_roster(path)
     if not hs:
         return roster
-    existing = ""
+    existing_devices = []
     for h in hs:
         entry = roster.get(h)
         if isinstance(entry, dict) and entry.get("device"):
-            existing = entry["device"]
-            break
-    device = existing or hs[0]
+            d = entry["device"]
+            if d not in existing_devices:
+                existing_devices.append(d)
+    # The device NEW hashes join: the one device we already touch, else this
+    # set's own first hash. Known hashes NEVER move (see below), so this only
+    # ever decides where brand-new destinations land.
+    if len(existing_devices) == 1:
+        target = existing_devices[0]
+    else:
+        if len(existing_devices) >= 2:
+            print(f"[kin] register_device: hashes {hs} span "
+                  f"{len(existing_devices)} existing devices {existing_devices} "
+                  f"— NOT unioning them (imaging/identity-reuse collision?)")
+        target = hs[0]
     for h in hs:
+        entry = roster.get(h)
+        # A hash already assigned to a device KEEPS it — never stolen onto
+        # another machine (Finding 2). Only a genuinely new hash takes *target*.
+        own = entry.get("device") if isinstance(entry, dict) else None
         roster = register(h, name, node_type=node_type, lat=lat, lon=lon,
-                          links=links, builder=builder, device=device,
+                          links=links, builder=builder, device=(own or target),
                           hw_serial=hw_serial, path=path)
     return roster
 
@@ -174,6 +198,57 @@ def retire_previous_lives(hw_serial: Optional[str], keep_hashes,
     doomed = [h for h, e in roster.items()
               if isinstance(e, dict) and e.get("hw_serial") == hw_serial
               and h not in keep]
+    if doomed:
+        for h in doomed:
+            del roster[h]
+        _save(roster, path)
+    return doomed
+
+
+def retire_same_name(name: str, keep_hashes, hw_serial: Optional[str] = None,
+                     path: str = KIN_ROSTER_PATH) -> list:
+    """Retire roster entries for a DIFFERENT machine that currently wears *name*.
+
+    ONE NAME MUST MEAN ONE CURRENT MACHINE (2026-08-22, Finding 1). The operator
+    reuses sequential names across rebirths of DIFFERENT boards — a spare birthed
+    "A2" after the first "A2" was deployed. VITALS must never GUESS that two
+    same-named machines are one (folding by name could hide a board that died in
+    the field behind a live namesake's freshness — the 2026-08-13 hazard). So
+    uniqueness is enforced HERE, at birth: birthing a node under a name already
+    held by a DIFFERENT device retires that old device — a clean REPLACE. If the
+    old board is still alive it simply re-announces later as an anonymous
+    neighbour (honest: it is a different machine the operator has un-named),
+    never masked green under the new one.
+
+    The node being (re)birthed is identified by *keep_hashes* (its destinations)
+    and *hw_serial* (its board): a same-named entry that shares a hash, shares
+    the device those hashes already occupy, or shares the serial is the SAME node
+    and is left for ``register_device`` to update. Everything else same-named is a
+    different machine and is removed. Returns the retired hashes so the caller
+    can also purge the live registry rows.
+    """
+    want = (name or "").strip().lower()
+    if not want:
+        return []
+    keep = {str(h) for h in (keep_hashes or [])}
+    roster = load_roster(path)
+    # Devices/hashes the node being birthed already occupies (a re-birth of a
+    # node the roster already knows), so its own older rows are NOT retired here.
+    keep_devices = set(keep)
+    for h, e in roster.items():
+        if h in keep and isinstance(e, dict) and e.get("device"):
+            keep_devices.add(e["device"])
+    doomed = []
+    for h, e in roster.items():
+        if not isinstance(e, dict):
+            continue
+        if (e.get("name") or "").strip().lower() != want:
+            continue
+        if h in keep or e.get("device") in keep_devices:
+            continue                              # the same node — leave it
+        if hw_serial and e.get("hw_serial") == hw_serial:
+            continue                              # same board (retire_previous_lives)
+        doomed.append(h)
     if doomed:
         for h in doomed:
             del roster[h]

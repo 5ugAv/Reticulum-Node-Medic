@@ -913,6 +913,15 @@ def configure_services(wf: "BuildWorkflow") -> StepResult:
     if not services:
         return StepResult("configure_services", False,
                           "Neither rnsd nor lxmd is installed on the node.")
+    # A FRESH lxmd PROPAGATION IDENTITY PER NODE (2026-08-22). lxmd mints its
+    # lxmf.propagation identity into ~/.lxmd/identity on first start — but a Pi
+    # imaged from a GOLDEN card can carry a PREVIOUS node's file, so two physical
+    # nodes would announce the SAME propagation destination and fold into one
+    # machine in VITALS. The rnsd identity is minted fresh per card at imaging;
+    # lxmd's has no such step, so delete any carried-over file here, BEFORE lxmd
+    # first starts, and it mints its own. Only when lxmd is actually configured.
+    if "lxmd" in services:
+        wf.connection.run("rm -f ~/.lxmd/identity")
     wf.connection.run(wf.priv("systemctl daemon-reload"))
     for svc in services:
         wf.connection.run(wf.priv(f"systemctl enable {svc}"))

@@ -134,37 +134,42 @@ def test_register_device_of_a_brand_new_machine_uses_its_first_hash(tmp_path):
     assert {e["device"] for e in kin_roster.load_roster(path).values()} == {HEALTH}
 
 
-# ---- 4. operator kin-name fold (belt-and-suspenders) -----------------------
+# ---- 4. NO name fold across identities (the hazard must be GONE) ------------
 
-def test_two_operator_named_groups_fold_despite_different_identities():
-    """A birth-capture gap can leave two ROSTER-BACKED rows for one node under
-    the operator's one name (different identities, no shared device). The
-    operator's name is unique, so the safety net folds them into one row."""
+def test_two_operator_named_machines_with_different_identities_stay_two_rows():
+    """THE HAZARD, PROVEN GONE (Finding 1, 2026-08-22). Two roster-backed rows
+    that share an operator name but bear DIFFERENT identities and NO shared
+    device are TWO MACHINES (the operator reused "A2" on a spare). They must NOT
+    fold — otherwise a board that dies in the field would show green off its
+    live namesake's freshness (the 2026-08-13 dead-behind-a-namesake hazard).
+    Uniqueness is enforced at BIRTH (retire_same_name), never guessed here."""
     reg = NodeRegistry()
-    # Two roster entries the operator named identically, with NO shared device
-    # (so the device-id fold cannot help) — the belt-and-suspenders case.
     reg.set_kin_roster({
-        "aa" * 16: {"name": "SkyFinger", "type": "pi_propagation"},
-        "bb" * 16: {"name": "SkyFinger", "type": "pi_propagation"},
+        "aa" * 16: {"name": "A2", "type": "pi_propagation"},
+        "bb" * 16: {"name": "A2", "type": "pi_propagation"},
     })
     reg.ingest_announce(bytes.fromhex("aa" * 16), b"", NOW, identity_hash="id-a")
     reg.ingest_announce(bytes.fromhex("bb" * 16), b"", NOW, identity_hash="id-b")
-    rows = reg.devices(NOW)
-    assert len(rows) == 1
-    assert rows[0]["name"] == "SkyFinger"
-
-
-def test_a_bare_named_row_not_in_the_roster_does_not_fold_by_name():
-    """The break-lens guard, restated for the safety net: a name a record merely
-    carries — not backed by the operator's roster — is NOT authority. Two such
-    identity-bearing rows stay two rows (a corpse must not hide behind a
-    live namesake)."""
-    reg = NodeRegistry()
-    reg.register("aa" * 16, name="Relay")
-    reg.nodes["aa" * 16].identity_hash = "id-a"
-    reg.register("bb" * 16, name="Relay")
-    reg.nodes["bb" * 16].identity_hash = "id-b"
     assert len(reg.devices(NOW)) == 2
+
+
+def test_a_dead_board_does_not_show_green_behind_a_live_namesake():
+    """The freshness leak the fold would have caused: an old board last heard
+    long ago must keep its OWN (stale/alert) status, not inherit a live
+    namesake's max(last_seen)."""
+    from monitor.registry import STALE_ALERT_HOURS
+    reg = NodeRegistry()
+    reg.set_kin_roster({
+        "aa" * 16: {"name": "A2", "type": "pi_propagation"},
+        "bb" * 16: {"name": "A2", "type": "pi_propagation"},
+    })
+    old = NOW - (STALE_ALERT_HOURS + 10) * 3600
+    reg.ingest_announce(bytes.fromhex("aa" * 16), b"", old, identity_hash="dead")
+    reg.ingest_announce(bytes.fromhex("bb" * 16), b"", NOW, identity_hash="live")
+    rows = reg.devices(NOW)
+    assert len(rows) == 2
+    dead_row = [d for d in rows if d["identity"] == "aa" * 16][0]
+    assert dead_row["status"] == "alert"        # its own truth, not masked green
 
 
 def test_two_neighbours_with_the_same_ANNOUNCED_name_do_not_fold():
@@ -228,3 +233,113 @@ def test_rtnode_certificate_carries_no_fabricated_lxmd_hash():
     destination at all (nothing to fabricate)."""
     cert_fn = func_source("workflows/rtnode_build.py", "birth_certificate")
     assert "lxmd_dst" not in cert_fn
+
+
+# ---- 6. register_device NEVER unions two existing devices (Finding 2) -------
+
+def test_register_device_does_not_union_two_existing_devices(tmp_path):
+    """A hash set that spans TWO existing devices (re-imaged card / harvested
+    identity_hash) must NOT be merged — a hash is never stolen off its rightful
+    machine."""
+    path = str(tmp_path / "kin.json")
+    D1, D2 = "11" * 16, "22" * 16
+    kin_roster.register_device([D1], "NodeOne", path=path)
+    kin_roster.register_device([D2], "NodeTwo", path=path)
+    # A set that touches BOTH devices at once.
+    kin_roster.register_device([D1, D2], "Confused", path=path)
+    roster = kin_roster.load_roster(path)
+    assert roster[D1]["device"] == D1          # each keeps its own device
+    assert roster[D2]["device"] == D2
+    assert roster[D1]["device"] != roster[D2]["device"]
+
+
+def test_register_device_never_steals_a_known_hash_onto_another_device(tmp_path):
+    """Even a genuine single-device merge must leave OTHER devices' hashes put."""
+    path = str(tmp_path / "kin.json")
+    D1, D2, NEW = "11" * 16, "22" * 16, "33" * 16
+    kin_roster.register_device([D1], "NodeOne", path=path)
+    kin_roster.register_device([D2], "NodeTwo", path=path)
+    # NEW is brand-new and D2 is known-elsewhere; the set spans D2 + a new hash.
+    kin_roster.register_device([NEW, D2], "NodeTwo", path=path)
+    roster = kin_roster.load_roster(path)
+    assert roster[D2]["device"] == D2          # not moved
+    assert roster[NEW]["device"] == D2         # new hash joins the one device
+    assert roster[D1]["device"] == D1          # untouched
+
+
+# ---- 7. birth enforces one-name-one-machine (retire_same_name) --------------
+
+def test_rebirth_under_a_reused_name_retires_the_old_device(tmp_path):
+    """The operator births a NEW board under a name a DIFFERENT device already
+    holds -> the old device is retired so the name belongs to the new board."""
+    path = str(tmp_path / "kin.json")
+    OLD = "aa" * 16
+    NEW = "bb" * 16
+    kin_roster.register_device([OLD], "A2", path=path)
+    retired = kin_roster.retire_same_name("A2", [NEW], path=path)
+    assert retired == [OLD]
+    kin_roster.register_device([NEW], "A2", path=path)
+    roster = kin_roster.load_roster(path)
+    assert OLD not in roster                    # old board's row gone
+    assert roster[NEW]["name"] == "A2"          # new board is the sole A2
+
+
+def test_retire_same_name_leaves_the_same_node_being_rebirthed(tmp_path):
+    """Re-running birth for the SAME node (a shared hash) must NOT retire it."""
+    path = str(tmp_path / "kin.json")
+    H1, H2 = "aa" * 16, "bb" * 16
+    kin_roster.register_device([H1, H2], "A2", path=path)
+    # Re-birth carrying one of the same hashes -> same node, nothing retired.
+    retired = kin_roster.retire_same_name("A2", [H1], path=path)
+    assert retired == []
+    assert set(kin_roster.load_roster(path)) == {H1, H2}
+
+
+def test_retire_same_name_spares_a_same_serial_board(tmp_path):
+    """Same physical board (hw_serial) is handled by retire_previous_lives, not
+    treated as a different machine here."""
+    path = str(tmp_path / "kin.json")
+    OLD, NEW = "aa" * 16, "bb" * 16
+    kin_roster.register(OLD, "A2", device=OLD, hw_serial="SER123", path=path)
+    retired = kin_roster.retire_same_name("A2", [NEW], hw_serial="SER123",
+                                          path=path)
+    assert retired == []                        # same board, left for the serial path
+
+
+def test_a_replaced_but_still_live_old_board_is_an_anon_neighbour_not_folded():
+    """After a name is reused, if the OLD board is still alive it re-announces.
+    With its roster entry retired, it surfaces as an anonymous neighbour — a
+    separate row, never masked green under the new same-named node."""
+    reg = NodeRegistry()
+    OLD, NEW = "aa" * 16, "bb" * 16
+    # The new board is the current 'A2'; the old board is NOT in the roster.
+    reg.set_kin_roster({NEW: {"name": "A2", "type": "pi_propagation",
+                              "device": NEW}})
+    reg.ingest_announce(bytes.fromhex(NEW), b"", NOW, identity_hash="new-id")
+    reg.ingest_announce(bytes.fromhex(OLD), b"", NOW, identity_hash="old-id")
+    rows = reg.devices(NOW)
+    assert len(rows) == 2                        # two separate rows
+    a2 = [d for d in rows if d["name"] == "A2"]
+    assert len(a2) == 1 and a2[0]["provenance"] == "kin"
+    ghost = [d for d in rows if d["provenance"] == "neighbour"]
+    assert len(ghost) == 1                       # the old board, honestly anon
+
+
+# ---- 8. lxmd identity is regenerated per node at birth (Finding 3) ----------
+
+def test_build_regenerates_the_lxmd_identity_at_birth():
+    """A golden card can ship a PREVIOUS node's ~/.lxmd/identity, so two nodes
+    would announce the SAME propagation dest. Birth must delete it before lxmd
+    first starts so each node mints its own unique propagation identity."""
+    fn = func_source("workflows/build.py", "configure_services")
+    assert "rm -f ~/.lxmd/identity" in fn
+    # ...and it must happen BEFORE lxmd is started, or lxmd reuses the stale one.
+    assert fn.index("rm -f ~/.lxmd/identity") < fn.index("systemctl start")
+
+
+def test_birth_screen_enforces_name_uniqueness_at_birth():
+    """_register_kin must retire a different device that already holds the name
+    (a clean REPLACE), not leave two same-named machines for the display."""
+    fn = func_source("ui/screens/birth_screen.py", "_register_kin")
+    assert "retire_same_name" in fn
+    assert "forget_node" in fn

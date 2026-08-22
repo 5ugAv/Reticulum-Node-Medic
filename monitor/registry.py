@@ -1272,30 +1272,20 @@ class NodeRegistry:
         _collapse(lambda members: next(
             (r.device_id for r in members if r.device_id), ""))
 
-        # AN OPERATOR-SET KIN NAME IS AUTHORITATIVE AND UNIQUE — belt-and-
-        # suspenders for the 2026-08-22 double-SkyFinger, catching any gap in
-        # birth-time identity capture. The operator gives each of their OWN nodes
-        # one unique name (they number them sequentially); they will not call two
-        # different physical machines the same thing. So two groups that BOTH
-        # carry the same operator name are one machine, and fold — EVEN when both
-        # bear their own identity. That is the exact case the name pass below
-        # refuses (rightly, for ANNOUNCED names, where a dead machine could hide
-        # behind a live namesake — a name a stranger merely broadcasts is not
-        # authority), so this runs first and is guarded to the operator's own
-        # authority: the naming record must be in the KIN ROSTER (by dst or by
-        # announced identity), which is the operator's own record of their fleet.
-        # A bare mesh-heard row that merely wears a name is NOT roster-backed and
-        # never triggers this — only ``rec.name`` (never announced_name) counts.
-        def _operator_name(members) -> str:
-            for r in members:
-                if not r.name:
-                    continue
-                if (r.dst_hash in self.kin_roster
-                        or (r.identity_hash
-                            and r.identity_hash in self.kin_roster)):
-                    return name_key(r.name)
-            return ""
-        _collapse(_operator_name)
+        # NO NAME FOLD ACROSS IDENTITIES. A "belt-and-suspenders" pass that
+        # folded two identity-bearing groups by a shared OPERATOR name lived here
+        # briefly (2026-08-22) and was proven unsafe the next day: the operator
+        # reuses sequential names across rebirths of DIFFERENT boards (a spare
+        # birthed "A2" after the first "A2" was deployed), and nothing enforces
+        # one-name-one-machine at read time — so the fold could hide a board that
+        # had DIED in the field behind a live namesake's max(last_seen), the very
+        # 2026-08-13 dead-behind-a-namesake hazard. The ground-truth device fold
+        # (birth now captures the lxmd identity too, so a node's addresses share
+        # a device record) makes the name heuristic unnecessary; uniqueness is
+        # enforced at BIRTH instead (birth retires an old same-named device), so
+        # a reused name is a clean REPLACE, never a merge. The guarded general
+        # name pass below stays — it only pulls in rows with NO identity of their
+        # own, never two machines that each announce one.
 
         def _grp_name(members) -> str:
             p = sorted(members, key=lambda r: (r.provenance != "kin", not r.name))[0]

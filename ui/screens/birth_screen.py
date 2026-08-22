@@ -3388,8 +3388,28 @@ class BirthScreen(BoxLayout):
                         _reg.forget_node(_old)
             except Exception:
                 pass
+            _node_name = (cert.get("node_name") or cert.get("hostname")
+                          or "node")
+            # ONE NAME, ONE CURRENT MACHINE. The operator reuses sequential
+            # names across DIFFERENT boards (a spare birthed "A2" after the
+            # first was deployed). Birthing under a name a DIFFERENT device
+            # already holds RETIRES that old device — a clean REPLACE, not a
+            # merge (VITALS must never fold two machines by name and risk hiding
+            # a dead one behind a live namesake, the 2026-08-13 hazard). A still-
+            # live old board just reappears later as an anonymous neighbour.
+            try:
+                _replaced = kin_roster.retire_same_name(
+                    _node_name, hashes, hw_serial=cert.get("hw_serial"))
+                for _old in _replaced:
+                    if _reg is not None:
+                        _reg.forget_node(_old)
+                if _replaced:
+                    print(f"[kin] replaced previous node named "
+                          f"{_node_name!r} ({len(_replaced)} row(s) retired)")
+            except Exception:
+                pass
             kin_roster.register_device(
-                hashes, cert.get("node_name") or cert.get("hostname") or "node",
+                hashes, _node_name,
                 # NOT a default — a lookup. See kin_roster.type_for_cert:
                 # "rtnode2400" as the fallback labelled the first Pi propagation
                 # node ever built as an RTNode-2400 and hid its wifi, bluetooth
