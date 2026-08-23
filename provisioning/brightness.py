@@ -100,12 +100,10 @@ def set_brightness(pct: int, device: Optional[str] = None,
 def save_pct(pct: int, path: str = CONFIG) -> None:
     """Remember the chosen level so it can be restored after a reboot (the backlight
     resets to default on boot). Best-effort — never raises."""
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(str(int(pct)))
-    except OSError:
-        pass
+    # Atomic write so a field power-cut can't truncate the saved level (see
+    # monitor.atomic_json); best-effort, never raises.
+    from monitor.atomic_json import write_text
+    write_text(path, str(int(pct)), mode=0o644)
 
 
 def load_pct(path: str = CONFIG) -> Optional[int]:

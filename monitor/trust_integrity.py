@@ -70,14 +70,13 @@ def load_or_create_key(path: str) -> bytes:
             pass
 
     key = os.urandom(KEY_SIZE)
-    # O_CREAT with mode 0600 so the secret is never briefly world-readable.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    # Write the secret ATOMICALLY (temp + fsync + os.replace, mode 0600). The old
+    # O_CREAT|O_TRUNC + os.write truncated first: a power cut on this field device
+    # between truncate and the 32-byte write left a SHORT key, and the next load
+    # (len < KEY_SIZE) would silently mint a BRAND-NEW key — under which every
+    # existing trust-store signature fails to verify and the whole fleet reads as
+    # un-kinned. The atomic swap means the key file is only ever the full old key
+    # or the full new one, never a truncated stub. (2026-08-23 field audit.)
+    from monitor.atomic_json import write_bytes
+    write_bytes(path, key, mode=0o600)
     return key

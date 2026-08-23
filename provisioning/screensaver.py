@@ -52,9 +52,10 @@ def save(settings: Dict, path: str = CONFIG) -> Dict:
         if k in settings:
             s[k] = settings[k]
     s = load_from(s)                      # re-validate
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(s, f, indent=2)
+    # Atomic write so a field power-cut can't truncate the screensaver prefs
+    # (see monitor.atomic_json).
+    from monitor.atomic_json import write_json
+    write_json(path, s, indent=2, mode=0o644)
     return s
 
 

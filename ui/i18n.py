@@ -198,12 +198,10 @@ def set_language(code: str) -> str:
     code = str(code).strip().lower()
     if code not in {c for c, _, _ in _LANGUAGES} or not _is_renderable(code):
         code = DEFAULT_LANGUAGE
-    try:
-        os.makedirs(os.path.dirname(LANGUAGE_FILE), exist_ok=True)
-        with open(LANGUAGE_FILE, "w", encoding="utf-8") as f:
-            f.write(code)
-    except OSError:
-        pass
+    # Atomic write so a field power-cut can't truncate the language pref (see
+    # monitor.atomic_json); best-effort, never raises.
+    from monitor.atomic_json import write_text
+    write_text(LANGUAGE_FILE, code, mode=0o644)
     global _current
     _current = code
     return code

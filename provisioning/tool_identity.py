@@ -118,9 +118,10 @@ def load(path: str = CONFIG) -> Dict:
 
 
 def save(d: Dict, path: str = CONFIG) -> Dict:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(d, f, indent=2, sort_keys=True)
+    # Atomic write so a field power-cut can't truncate the tool identity (see
+    # monitor.atomic_json).
+    from monitor.atomic_json import write_json
+    write_json(path, d, indent=2, sort_keys=True, mode=0o644)
     return d
 
 

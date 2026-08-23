@@ -46,9 +46,10 @@ def load_settings(path: str = CONFIG) -> Dict:
 def save_settings(settings: Dict, path: str = CONFIG) -> Dict:
     s = load_settings(path)
     s.update({k: bool(v) for k, v in settings.items() if k in ("enabled", "audible")})
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(s, f, indent=2)
+    # Atomic write so a field power-cut can't truncate the alert prefs (see
+    # monitor.atomic_json).
+    from monitor.atomic_json import write_json
+    write_json(path, s, indent=2, mode=0o644)
     return s
 
 

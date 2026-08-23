@@ -117,3 +117,88 @@ def test_key_lands_beside_the_store(tmp_path):
     p = _p(tmp_path)
     trust.set_self("aaaa", "Medic", path=p)
     assert os.path.exists(str(tmp_path / "trust_hmac_key"))
+
+
+# --- crash-safety: the store/sig mismatch un-kin window is closed ----------
+
+def test_signature_is_folded_into_the_store_file(tmp_path):
+    """The store carries its OWN signature (``_integrity``) — one file, one
+    atomic write — so there is no separate-sidecar ordering to lose."""
+    p = _p(tmp_path)
+    trust.set_self("aaaa", "Origin", now=1.0, path=p)
+    trust.record_child_clone("bbbb", "Friend", parent_hash="aaaa", now=2.0, path=p)
+    d = json.load(open(p))
+    assert isinstance(d.get("_integrity"), str) and d["_integrity"]
+    assert set(d["units"]) == {"aaaa", "bbbb"}
+
+
+def test_powercut_between_store_and_sidecar_cannot_unkin(tmp_path):
+    """The OLD failure: a crash after the store write but before the sidecar
+    write left a NEW store paired with an OLD/absent sig -> verify fails ->
+    {"units": {}} -> the whole fleet silently un-kinned.
+
+    Now the sidecar is NOT the authority: even a stale or deleted sidecar leaves
+    the folded, atomically-written store fully trusted."""
+    p = _p(tmp_path)
+    trust.set_self("aaaa", "Origin", now=1.0, path=p)
+    trust.record_child_clone("bbbb", "Friend", parent_hash="aaaa", now=2.0, path=p)
+
+    # Simulate the torn pair: sidecar left describing an EARLIER store (or gone).
+    with open(_sig := p + ".sig", "w") as f:
+        f.write("deadbeef" * 8)          # stale/garbage detached signature
+    assert trust.is_trusted("bbbb", path=p) is True   # folded store still rules
+
+    os.remove(_sig)                       # or the sidecar never got written
+    assert trust.is_trusted("bbbb", path=p) is True
+    assert trust.is_trusted("aaaa", path=p) is True
+
+
+def test_folded_store_still_fails_closed_on_tamper(tmp_path):
+    """Folding the sig in must not weaken tamper detection: editing units without
+    re-signing (no key) is still rejected wholesale."""
+    p = _p(tmp_path)
+    trust.set_self("aaaa", "Origin", now=1.0, path=p)
+    d = json.load(open(p))
+    d["units"]["zzzz"] = {"name": "Stranger", "trusted": True}   # forge, keep sig
+    with open(p, "w") as f:
+        json.dump(d, f)
+    assert trust.is_trusted("zzzz", path=p) is False
+    assert trust.is_trusted("aaaa", path=p) is False
+    assert trust.load(path=p) == {"units": {}}
+
+
+def test_rollback_to_old_load_stays_kinned(tmp_path):
+    """ROLLBACK-safety: a store written by the NEW save() must still verify under
+    the OLD load() logic, or downgrading the medic's code would un-kin the fleet.
+
+    Old load() computed canonical_bytes over the FULL parsed dict (which now
+    carries _integrity) and compared it to the detached .sig sidecar. So the
+    sidecar must be signed over that SAME folded dict — this test reproduces the
+    old check byte-for-byte and asserts it passes."""
+    p = _p(tmp_path)
+    trust.set_self("aaaa", "Origin", now=1.0, path=p)
+    trust.record_child_clone("bbbb", "Friend", parent_hash="aaaa", now=2.0, path=p)
+
+    key = trust_integrity.load_or_create_key(str(tmp_path / "trust_hmac_key"))
+    on_disk = json.load(open(p))                       # full folded dict
+    sidecar = open(p + ".sig").read().strip()
+
+    # This is exactly what the OLD load() did before this change:
+    old_canonical = trust_integrity.canonical_bytes(on_disk)
+    assert trust_integrity.verify(key, old_canonical, sidecar) is True
+
+
+def test_short_key_would_unkin_but_key_write_is_atomic(tmp_path):
+    """A truncated key file (len < KEY_SIZE) triggers a fresh key -> every stored
+    signature fails -> un-kin; the atomic key write is what prevents the truncation
+    in the first place. Here we prove the fresh-key hazard is real (so the atomic
+    write matters) AND that a full-length key round-trips stably."""
+    kp = str(tmp_path / "trust_hmac_key")
+    key = trust_integrity.load_or_create_key(kp)
+    # A power-cut-truncated key: shorter than KEY_SIZE -> a NEW key is minted.
+    with open(kp, "wb") as f:
+        f.write(key[:8])
+    fresh = trust_integrity.load_or_create_key(kp)
+    assert fresh != key and len(fresh) == trust_integrity.KEY_SIZE
+    # A full key is loaded, never regenerated (the atomic write guarantees this).
+    assert trust_integrity.load_or_create_key(kp) == fresh

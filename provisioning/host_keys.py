@@ -202,13 +202,11 @@ def write_known_hosts(host: str, line: str, path: str = PINNED_KNOWN_HOSTS,
     except OSError:
         pass
     kept.append(entry)
-    try:
-        with open(path, "w") as f:
-            f.write("\n".join(kept) + "\n")
-        os.chmod(path, 0o600)
-    except OSError:
-        return False
-    return True
+    # Atomic write at 0600: a field power-cut mid-write must not truncate the
+    # pinned known_hosts (a torn file could drop a pin or lock out the node the
+    # medic just created). os.replace swaps the whole file in or not at all.
+    from monitor.atomic_json import write_text
+    return write_text(path, "\n".join(kept) + "\n", mode=0o600)
 
 
 #: Every cable-born node answers on the SAME address. That is the point of the
@@ -275,12 +273,9 @@ def forget_host_key(host: str, paths: Optional[List[str]] = None,
         kept = [ln for ln in lines
                 if not (ln.strip() and ln.split()[0] == want)]
         if len(kept) != len(lines):
-            try:
-                with open(path, "w") as f:
-                    f.write("\n".join(kept) + ("\n" if kept else ""))
-                os.chmod(path, 0o600)
-            except OSError:
-                pass
+            # Atomic rewrite at 0600 (see write_known_hosts) — best-effort.
+            from monitor.atomic_json import write_text
+            write_text(path, "\n".join(kept) + ("\n" if kept else ""), mode=0o600)
         gone += max(0, before - len(kept))
     return gone
 

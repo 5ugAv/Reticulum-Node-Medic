@@ -82,10 +82,15 @@ def retune_medic(params: Optional[Dict] = None,
         return True, "Medic radio already matches."
     try:
         shutil.copy2(config_path, config_path + ".bak-retune")
-        with open(config_path, "w") as f:
-            f.write(new)
     except OSError as e:
-        return False, f"Couldn't write the medic's Reticulum config: {e}"
+        return False, f"Couldn't back up the medic's Reticulum config: {e}"
+    # Write the config ATOMICALLY (temp + fsync + os.replace). A plain open("w")
+    # truncates first, so a field power-cut mid-write could leave ~/.reticulum/
+    # config half-written — and a garbled config makes the medic DEAF to its own
+    # mesh on next boot. os.replace swaps the whole file in or not at all.
+    from monitor.atomic_json import write_text
+    if not write_text(config_path, new, mode=0o644):
+        return False, "Couldn't write the medic's Reticulum config."
     if restart:
         try:
             r = subprocess.run(["sudo", "-n", "systemctl", "restart", "rnsd"],
