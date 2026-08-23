@@ -207,3 +207,25 @@ def test_save_is_atomic_and_survives_reload(tmp_path):
     # a fresh read sees the whole record (temp + os.replace, never a truncation)
     assert td.last_sync(cfg) == 1234.0
     assert td.last_sync_source(cfg) == "GPS"
+
+
+# ---- ntp_enabled: distinct from ntp_synchronized ---------------------------
+
+def test_ntp_enabled_reads_ntp_property_not_synchronized():
+    # `NTP` = timesyncd is ALLOWED to run (set-ntp true); distinct from
+    # `NTPSynchronized` (it already has). The online-detector needs the former.
+    run = RecordingRunner([("show -p NTP --value", 0, "yes\n")])
+    assert td.ntp_enabled(run=run) is True
+    assert run.issued("timedatectl show -p NTP --value")
+
+
+def test_ntp_enabled_false_when_off():
+    run = RecordingRunner([("show -p NTP --value", 0, "no\n")])
+    assert td.ntp_enabled(run=run) is False
+
+
+def test_ntp_enabled_false_when_check_fails():
+    # "couldn't check" -> False, the safe default (can only prompt a re-enable
+    # consideration, never a disable).
+    run = RecordingRunner([("show -p NTP --value", 1, "")])
+    assert td.ntp_enabled(run=run) is False

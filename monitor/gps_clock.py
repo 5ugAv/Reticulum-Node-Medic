@@ -175,6 +175,61 @@ def clock_decision(gps_utc: Optional[int],
     return target
 
 
+def ntp_fallback_decision(*, autosync: bool, ntp_enabled: bool,
+                          gps_fresh: bool, online: bool,
+                          gps_acted: bool) -> bool:
+    """Whether to RE-ENABLE NTP (``timedatectl set-ntp true``) THIS tick.
+
+    THE GAP THIS CLOSES: when GPS disciplines the clock it DISABLES timesyncd
+    (``set-ntp false``) so satellite UTC is the sole authority — correct off-grid,
+    where there is no NTP to reach anyway. But a medic that GPS-synced once and
+    then sits INDOORS (no sky -> no GPS) with WiFi/internet back would silently
+    keep NTP OFF and slowly drift, having thrown away the one time source it can
+    actually reach. This detector restores NTP as the FALLBACK for exactly that
+    case: GPS can't help AND the internet is available.
+
+    WHY THE TWO TOGGLES ARE STABLE (they trigger on OPPOSITE conditions, so they
+    can never oscillate against each other):
+        * GPS PRESENT (fresh fix)      -> apply_clock() sets NTP OFF (GPS wins).
+        * GPS ABSENT (no/stale fix) + ONLINE -> this sets NTP ON  (NTP fallback).
+    A tick is in exactly one of those worlds, so at most one toggle fires, and it
+    fires only when the state actually needs to change (see the ``ntp_enabled``
+    short-circuit). When GPS returns, apply_clock disables NTP again — no fight.
+
+    Returns True only when EVERY condition holds; otherwise a pure no-op:
+      * ``autosync`` off      -> stand down entirely (the operator set the clock by
+        hand; same posture as _check_gps_clock).
+      * ``gps_acted``         -> GPS touched the clock THIS tick; don't re-enable
+        NTP in the same breath we (or apply_clock) just turned it off — never fight.
+      * ``ntp_enabled``       -> already on; toggling again would be pure thrash.
+      * ``gps_fresh``         -> GPS has a usable fix; it is the authority, leave
+        NTP off (this is the steady off-grid state).
+      * not ``online``        -> nothing to sync to; leaving NTP off changes nothing
+        and avoids flapping timesyncd every tick with no server to reach.
+    """
+    if not autosync:
+        return False
+    if gps_acted:
+        return False
+    if ntp_enabled:
+        return False
+    if gps_fresh:
+        return False
+    if not online:
+        return False
+    return True
+
+
+def enable_ntp(run: Runner) -> bool:
+    """Re-enable systemd-timesyncd via the ALREADY-SCOPED sudoers command, so a
+    medic back online with no GPS gets NTP correction again. argv MUST match
+    provisioning/sudoers.d/nodemedic (NM_CLOCK ``set-ntp true``). Returns True on
+    success. This is the mirror of apply_clock's ``set-ntp false``; the two are
+    stable because they fire on opposite conditions (see ntp_fallback_decision)."""
+    rc, _out, _err = run(["sudo", "-n", "timedatectl", "set-ntp", "true"])
+    return rc == 0
+
+
 def _in_window(epoch) -> bool:
     """True if *epoch* is a finite number inside the fixed plausibility window.
     Rejects bool (isinstance(True, int) is True), NaN/inf, and out-of-era values —
@@ -219,6 +274,13 @@ class GpsClockDisciplinarian:
         # not fsync the config every 30 s tick (PERSIST_MIN_INTERVAL_S).
         self._last_persist_at: Optional[float] = None
         self.last_reason: str = REASON_NO_FIX
+        # Set by the online-detector when it restores NTP because GPS can't help
+        # and the medic is back online. Purely for HONEST status: the datetime
+        # screen must say "using internet time (NTP)" rather than a bare "no GPS
+        # fix", so the operator knows the clock is still being corrected. Cleared
+        # the moment GPS takes the clock back (apply/confirm), because NTP is then
+        # off again — the flag must never outlive the reality it describes.
+        self.ntp_fallback: bool = False
 
     def _refusal_reason(self, gps_utc, gps_utc_recv, sats, fix, sys_now,
                         ntp_synced, recv_now, tolerance_s, min_sats) -> str:
@@ -365,6 +427,16 @@ class GpsClockDisciplinarian:
             self._last_persist_at = now
         self.last_reason = REASON_SYNCED
 
+    def gps_absent(self) -> bool:
+        """True when the last evaluation found NO usable satellite time — either no
+        fix at all or a stale receipt. These are the ONLY states where GPS genuinely
+        cannot discipline the clock, so they are the only states in which the
+        online-detector should let NTP take over. Every other reason (in-sync,
+        synced, awaiting corroboration, out-of-window, backoff) means GPS is
+        present/holding/trying, and we defer to it — that opposite-condition split
+        is what keeps the NTP-off (GPS) and NTP-on (fallback) toggles from fighting."""
+        return self.last_reason in (REASON_NO_FIX, REASON_STALE)
+
     def record_failure(self, now: float) -> None:
         """Call after apply_clock failed. Back off after repeated failures."""
         self._fail_count += 1
@@ -384,8 +456,12 @@ class GpsClockDisciplinarian:
         if r == REASON_OUT_OF_WINDOW:
             return "GPS time outside the plausible window — ignored" + warn
         if r == REASON_STALE:
+            if self.ntp_fallback:
+                return "GPS signal stale — using internet time (NTP)" + warn
             return "GPS signal stale — waiting for a fresh fix" + warn
         if r == REASON_NO_FIX:
+            if self.ntp_fallback:
+                return "No GPS fix — using internet time (NTP)" + warn
             return "No GPS fix yet" + warn
         if r == REASON_AWAITING:
             return "Awaiting GPS corroboration…" + warn

@@ -2088,8 +2088,16 @@ class ReticulumNodeMedicApp(App):
                 # NO step, NO rebase; the disciplinarian already rate-limited this
                 # to at most once per PERSIST_MIN_INTERVAL_S, so no config churn.
                 td.mark_synced(decision.target, "GPS")
+                # GPS is holding the clock, so NTP is not the source — clear any
+                # "using internet time" status left by an earlier no-sky spell.
+                self._gps_disciplinarian.ntp_fallback = False
                 return
             if decision.kind != DECISION_STEP:
+                # GPS did NOT act this tick (no fix / stale / awaiting / etc). If
+                # it genuinely CAN'T help and we're back online, restore NTP as the
+                # fallback so an indoors medic with WiFi stops drifting. No-op in
+                # every other case (see _maybe_restore_ntp / ntp_fallback_decision).
+                self._maybe_restore_ntp(td, gps_acted=False)
                 return
             target = decision.target
             # argv runner matching the scoped sudoers (NM_CLOCK). subprocess with a
@@ -2098,6 +2106,9 @@ class ReticulumNodeMedicApp(App):
                 p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
                 return p.returncode, p.stdout, p.stderr
             if apply_clock(target, _run):
+                # apply_clock just disabled NTP (GPS is authority) — GPS is the
+                # source now, so the fallback status no longer applies.
+                self._gps_disciplinarian.ntp_fallback = False
                 delta = target - sys_now          # new_epoch - old_epoch
                 # GATE the expensive rebase + persist on a meaningful delta. A
                 # sub-deadband correction is absorbed by the SEEN deadband and
@@ -2125,6 +2136,47 @@ class ReticulumNodeMedicApp(App):
                 self._gps_disciplinarian.record_failure(sys_now)
         except Exception:
             pass
+
+    def _maybe_restore_ntp(self, td, gps_acted):
+        """The ONLINE-DETECTOR half of the clock discipline (called from the same
+        monitor tick as _check_gps_clock, only when GPS did NOT set the clock).
+
+        GPS discipline turns NTP OFF so satellite UTC is the sole authority offline
+        — correct in the field, but it means a medic that GPS-synced once and now
+        sits INDOORS (no sky -> no GPS) with WiFi back would keep NTP off and slowly
+        drift, having discarded the one time source it can now reach. This restores
+        NTP as the FALLBACK for exactly that case: GPS can't help AND we're online.
+
+        Stable against the GPS toggle because the two fire on OPPOSITE conditions
+        (GPS present -> NTP off; GPS absent + online -> NTP on), and each fires only
+        when the state actually needs changing — so no thrash. Everything is wrapped
+        by _check_gps_clock's try/except; a slow/failed probe can't break the loop."""
+        from monitor.gps_clock import ntp_fallback_decision, enable_ntp
+        # Real, cheap reachability probe (curl -fsI -m 5 to a known host) — NOT a
+        # mere "interface up": a captive portal / no-route indoors must read as
+        # OFFLINE so we don't flap timesyncd on with nothing to reach. Short
+        # timeout so the 30 s monitor thread is never blocked.
+        from transport.connection import LocalConnection
+        from workflows.updater import has_connectivity
+        try:
+            online = has_connectivity(LocalConnection())
+        except Exception:
+            online = False                       # couldn't check -> treat as offline
+        gps_fresh = not self._gps_disciplinarian.gps_absent()
+        if not ntp_fallback_decision(
+                autosync=True,                   # caller already gated on is_autosync
+                ntp_enabled=td.ntp_enabled(),
+                gps_fresh=gps_fresh,
+                online=online,
+                gps_acted=gps_acted):
+            return                               # no change needed -> pure no-op
+        def _run(argv):
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+            return p.returncode, p.stdout, p.stderr
+        if enable_ntp(_run):
+            # Honest status: the datetime screen now reads "using internet time
+            # (NTP)" instead of a bare "no GPS fix".
+            self._gps_disciplinarian.ntp_fallback = True
 
     def _escalate_node(self, device):
         """A node has been down long enough to warrant a physical visit: alert on

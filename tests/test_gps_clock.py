@@ -496,3 +496,94 @@ def test_record_success_clears_backoff():
     assert d._backoff_until == 0.0
     assert d._fail_count == 0
     assert not hasattr(d, "last_good_epoch")         # the floor is gone
+
+
+# ---- online-detector: NTP fallback when GPS can't help ---------------------
+#
+# THE GAP: GPS discipline turns NTP OFF (GPS is the offline authority). A medic
+# that GPS-synced once and then sits indoors (no sky) with WiFi back would keep
+# NTP off and drift. ntp_fallback_decision restores NTP for exactly that case.
+# The two toggles are STABLE because they fire on OPPOSITE conditions:
+#   GPS present -> NTP off ;  GPS absent + online -> NTP on.
+
+from monitor.gps_clock import (ntp_fallback_decision, enable_ntp,  # noqa: E402
+                               REASON_NO_FIX, REASON_STALE, REASON_IN_SYNC,
+                               REASON_SYNCED, REASON_AWAITING)
+
+
+def test_ntp_restored_when_no_gps_and_online():
+    # NTP off + no usable GPS + back online -> re-enable NTP as the fallback.
+    assert ntp_fallback_decision(autosync=True, ntp_enabled=False,
+                                 gps_fresh=False, online=True,
+                                 gps_acted=False) is True
+
+
+def test_ntp_left_off_when_gps_fresh():
+    # GPS has a usable fix: it is the authority, NTP stays off (steady off-grid).
+    assert ntp_fallback_decision(autosync=True, ntp_enabled=False,
+                                 gps_fresh=True, online=True,
+                                 gps_acted=False) is False
+
+
+def test_ntp_left_off_when_offline():
+    # No GPS AND no internet: nothing to sync to -> leave NTP off (no flapping).
+    assert ntp_fallback_decision(autosync=True, ntp_enabled=False,
+                                 gps_fresh=False, online=False,
+                                 gps_acted=False) is False
+
+
+def test_no_thrash_when_ntp_already_on():
+    # Already enabled -> pure no-op, never re-issue set-ntp true every tick.
+    assert ntp_fallback_decision(autosync=True, ntp_enabled=True,
+                                 gps_fresh=False, online=True,
+                                 gps_acted=False) is False
+
+
+def test_autosync_off_stands_down():
+    # Operator set the clock by hand: the detector stands down entirely, same as
+    # _check_gps_clock — even with every other condition met.
+    assert ntp_fallback_decision(autosync=False, ntp_enabled=False,
+                                 gps_fresh=False, online=True,
+                                 gps_acted=False) is False
+
+
+def test_does_not_fight_a_gps_set_same_tick():
+    # GPS just touched the clock (and disabled NTP) this tick: don't re-enable in
+    # the same breath. Belt-and-braces with gps_fresh, which is also True then.
+    assert ntp_fallback_decision(autosync=True, ntp_enabled=False,
+                                 gps_fresh=False, online=True,
+                                 gps_acted=True) is False
+
+
+def test_enable_ntp_matches_scoped_sudoers_form():
+    # argv MUST equal the NM_CLOCK-scoped `timedatectl set-ntp true` form.
+    r = _Runner(rc=0)
+    assert enable_ntp(r) is True
+    assert r.calls == [["sudo", "-n", "timedatectl", "set-ntp", "true"]]
+
+
+def test_enable_ntp_reports_failure():
+    assert enable_ntp(_Runner(rc=1)) is False
+
+
+# ---- gps_absent: the disciplinarian's "GPS can't help" signal --------------
+
+def test_gps_absent_true_only_for_no_fix_or_stale():
+    d = GpsClockDisciplinarian()
+    for reason, absent in [(REASON_NO_FIX, True), (REASON_STALE, True),
+                           (REASON_IN_SYNC, False), (REASON_SYNCED, False),
+                           (REASON_AWAITING, False)]:
+        d.last_reason = reason
+        assert d.gps_absent() is absent, reason
+
+
+# ---- honest status while NTP is the fallback -------------------------------
+
+def test_status_line_says_internet_time_when_falling_back():
+    d = GpsClockDisciplinarian()
+    d.last_reason = REASON_NO_FIX
+    assert d.status_line(now=0.0) == "No GPS fix yet"
+    d.ntp_fallback = True
+    assert d.status_line(now=0.0) == "No GPS fix — using internet time (NTP)"
+    d.last_reason = REASON_STALE
+    assert d.status_line(now=0.0) == "GPS signal stale — using internet time (NTP)"
