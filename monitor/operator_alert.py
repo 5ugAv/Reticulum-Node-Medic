@@ -55,17 +55,13 @@ def save_operator_address(addr: str) -> str:
     if norm and not valid_address(norm):
         norm = norm            # keep as-typed only if valid; else store nothing
     to_store = norm if valid_address(norm) else ""
-    try:
-        os.makedirs(os.path.dirname(OPERATOR_ADDR_FILE), exist_ok=True)
-        with open(OPERATOR_ADDR_FILE, "w", encoding="utf-8") as f:
-            f.write(to_store)
-            f.flush()
-            os.fsync(f.fileno())
-    except OSError as e:
-        # Don't pretend it saved — the operator would believe alerts are
-        # configured and hear nothing (2026-08-01 bug hunt).
-        raise RuntimeError(
-            f"Couldn't save the operator address: {e}") from e
+    # Atomic write (temp + fsync + os.replace) so a field power-cut can't truncate
+    # the address file — a half-written address is unparseable and the operator
+    # would believe alerts are configured and hear nothing (2026-08-01 bug hunt).
+    from monitor.atomic_json import write_text
+    if not write_text(OPERATOR_ADDR_FILE, to_store):
+        # Don't pretend it saved — fail loud, as before.
+        raise RuntimeError("Couldn't save the operator address.")
     return to_store
 
 

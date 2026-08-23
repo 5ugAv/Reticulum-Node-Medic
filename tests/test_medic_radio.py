@@ -58,3 +58,24 @@ def test_retune_writes_file_and_backs_up(tmp_path):
     # already matching -> honest no-op
     ok2, msg2 = retune_medic(EU, config_path=str(p), restart=False)
     assert ok2 and "already matches" in msg2
+
+
+def test_retune_config_write_is_atomic(tmp_path, monkeypatch):
+    """~/.reticulum/config is written atomically: a power-cut mid-write must not
+    leave a half-written config (which would make the medic DEAF to its own
+    mesh on next boot). If the atomic swap fails, the OLD config is intact, no
+    temp turd is left, and retune honestly reports failure."""
+    import monitor.atomic_json as aj
+    p = tmp_path / "config"
+    p.write_text(SAMPLE)
+
+    def boom(src, dst):
+        raise OSError("simulated power cut before rename")
+    monkeypatch.setattr(aj.os, "replace", boom)
+
+    ok, msg = retune_medic(EU, config_path=str(p), restart=False)
+    assert ok is False
+    assert p.read_text() == SAMPLE        # old config untouched, not truncated
+    leftovers = [n.name for n in tmp_path.iterdir()
+                 if n.name not in ("config", "config.bak-retune")]
+    assert leftovers == []                # temp file cleaned up

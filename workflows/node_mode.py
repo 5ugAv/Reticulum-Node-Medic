@@ -50,12 +50,9 @@ def load_home_profile() -> str:
 
 def save_home_profile(profile: str) -> str:
     profile = TRANSPORT if str(profile).strip().lower() == TRANSPORT else PROPAGATION
-    try:
-        os.makedirs(os.path.dirname(HOME_PROFILE_FILE), exist_ok=True)
-        with open(HOME_PROFILE_FILE, "w") as f:
-            f.write(profile)
-    except OSError:
-        pass
+    # Atomic write so a field power-cut can't truncate the marker (atomic_json).
+    from monitor.atomic_json import write_text
+    write_text(HOME_PROFILE_FILE, profile)
     return profile
 
 
@@ -76,12 +73,9 @@ def load_auto_backpack() -> bool:
 
 def save_auto_backpack(enabled: bool) -> bool:
     enabled = bool(enabled)
-    try:
-        os.makedirs(os.path.dirname(AUTO_BACKPACK_FILE), exist_ok=True)
-        with open(AUTO_BACKPACK_FILE, "w") as f:
-            f.write("on" if enabled else "off")
-    except OSError:
-        pass
+    # Atomic write so a field power-cut can't truncate the marker (atomic_json).
+    from monitor.atomic_json import write_text
+    write_text(AUTO_BACKPACK_FILE, "on" if enabled else "off")
     return enabled
 
 

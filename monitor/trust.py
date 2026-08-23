@@ -41,10 +41,14 @@ def _sig_path(path: str) -> str:
     return path + ".sig"
 
 
-def _write_sig(store: Dict, path: str, key: bytes) -> None:
-    signature = trust_integrity.sign(key, trust_integrity.canonical_bytes(store))
-    with open(_sig_path(path), "w") as f:
-        f.write(signature)
+#: JSON field carrying the store's own HMAC, folded INTO the store file.
+_SIG_FIELD = "_integrity"
+
+
+def _sign_store(store: Dict, key: bytes) -> str:
+    """HMAC over the trust payload (the ``{"units": ...}`` content, NEVER
+    including the ``_integrity`` field itself — that would be circular)."""
+    return trust_integrity.sign(key, trust_integrity.canonical_bytes(store))
 
 
 def load(path: str = CONFIG) -> Dict:
@@ -62,6 +66,24 @@ def load(path: str = CONFIG) -> Dict:
         return {"units": {}}
 
     key = trust_integrity.load_or_create_key(_key_path(path))
+
+    if isinstance(d, dict) and _SIG_FIELD in d:
+        # AUTHORITATIVE PATH: the signature is folded into the one store file
+        # (written atomically), so store and sig can never be a mismatched pair —
+        # the failure that used to un-kin the whole fleet when a power cut landed
+        # between the store write and its separate sidecar write.
+        signature = d.get(_SIG_FIELD)
+        payload = {k: v for k, v in d.items() if k != _SIG_FIELD}
+        if not isinstance(signature, str) or not trust_integrity.verify(
+                key, trust_integrity.canonical_bytes(payload), signature):
+            log.warning("trust store %s failed integrity verification "
+                        "(tampered?); ignoring stored trust and treating all "
+                        "units as untrusted.", path)
+            return {"units": {}}
+        units = payload.get("units")
+        return {"units": units if isinstance(units, dict) else {}}
+
+    # LEGACY PATH: an older store with a detached .sig sidecar (or none at all).
     canonical = trust_integrity.canonical_bytes(d)
     try:
         with open(_sig_path(path)) as f:
@@ -70,14 +92,14 @@ def load(path: str = CONFIG) -> Dict:
         signature = None
 
     if signature is None:
-        # MIGRATION: pre-integrity store — accept once, then stamp a fresh sig.
-        try:
-            _write_sig(d, path, key)
-            log.warning("trust store %s had no integrity signature; migrated "
-                        "(signed in place).", path)
-        except OSError:
-            log.warning("trust store %s had no integrity signature and could not "
-                        "be migrated.", path)
+        # MIGRATION: pre-integrity store — accept once, then re-save it in the
+        # folded, crash-safe format (store + embedded sig, written atomically).
+        units = d.get("units") if isinstance(d, dict) else None
+        migrated = {"units": units if isinstance(units, dict) else {}}
+        save(migrated, path)
+        log.warning("trust store %s had no integrity signature; migrated to the "
+                    "folded, crash-safe format.", path)
+        return migrated
     elif not trust_integrity.verify(key, canonical, signature):
         log.warning("trust store %s failed integrity verification (tampered?); "
                     "ignoring stored trust and treating all units as untrusted.",
@@ -89,12 +111,27 @@ def load(path: str = CONFIG) -> Dict:
 
 
 def save(store: Dict, path: str = CONFIG) -> Dict:
-    """Persist the trust store and its HMAC integrity sidecar (audit C8)."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(store, f, indent=2, sort_keys=True)
+    """Persist the trust store with its HMAC integrity FOLDED IN (audit C8).
+
+    A field power-cut used to be able to un-kin the whole fleet: the old save
+    wrote trust.json, then loaded the key, then wrote trust.json.sig as a
+    SEPARATE file — three windows in which a crash left a new store paired with
+    an old/absent signature, which fails verification on next boot and drops the
+    store to ``{"units": {}}`` (every trusted unit silently un-kinned).
+
+    The fix removes the ordering entirely: the signature is computed FIRST, then
+    embedded in the store dict (``_integrity`` field) and the whole thing written
+    with ONE atomic ``write_json``. A power cut leaves either the complete old
+    file or the complete new one — never a mismatched store/sig pair. The
+    detached ``.sig`` sidecar is still written (atomically, best-effort) for
+    backward compatibility, but ``load`` treats the folded field as the
+    authority, so a torn sidecar can no longer un-kin anyone."""
+    from monitor.atomic_json import write_json, write_text
     key = trust_integrity.load_or_create_key(_key_path(path))
-    _write_sig(store, path, key)
+    signature = _sign_store(store, key)           # sign FIRST, before any write
+    folded = {**store, _SIG_FIELD: signature}
+    write_json(path, folded, indent=2, sort_keys=True)
+    write_text(_sig_path(path), signature)        # compat copy; not the authority
     return store
 
 

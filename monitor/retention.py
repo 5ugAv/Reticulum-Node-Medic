@@ -46,9 +46,10 @@ def load_days(path: str = CONFIG) -> int:
 
 def set_days(days: int, path: str = CONFIG) -> int:
     days = _clamp(days)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump({"days": days}, f, indent=2)
+    # Atomic write: a power-cut mid-write on this SD-card field device must not
+    # truncate the retention setting (see monitor.atomic_json).
+    from monitor.atomic_json import write_json
+    write_json(path, {"days": days}, indent=2)
     return days
 
 
