@@ -121,7 +121,7 @@ def save(d: Dict, path: str = CONFIG) -> Dict:
     # Atomic write so a field power-cut can't truncate the tool identity (see
     # monitor.atomic_json).
     from monitor.atomic_json import write_json
-    write_json(path, d, indent=2, sort_keys=True)
+    write_json(path, d, indent=2, sort_keys=True, mode=0o644)
     return d
 
 

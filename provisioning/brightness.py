@@ -103,7 +103,7 @@ def save_pct(pct: int, path: str = CONFIG) -> None:
     # Atomic write so a field power-cut can't truncate the saved level (see
     # monitor.atomic_json); best-effort, never raises.
     from monitor.atomic_json import write_text
-    write_text(path, str(int(pct)))
+    write_text(path, str(int(pct)), mode=0o644)
 
 
 def load_pct(path: str = CONFIG) -> Optional[int]:

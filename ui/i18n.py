@@ -201,7 +201,7 @@ def set_language(code: str) -> str:
     # Atomic write so a field power-cut can't truncate the language pref (see
     # monitor.atomic_json); best-effort, never raises.
     from monitor.atomic_json import write_text
-    write_text(LANGUAGE_FILE, code)
+    write_text(LANGUAGE_FILE, code, mode=0o644)
     global _current
     _current = code
     return code

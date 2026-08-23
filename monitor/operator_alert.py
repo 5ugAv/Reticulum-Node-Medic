@@ -59,7 +59,7 @@ def save_operator_address(addr: str) -> str:
     # the address file — a half-written address is unparseable and the operator
     # would believe alerts are configured and hear nothing (2026-08-01 bug hunt).
     from monitor.atomic_json import write_text
-    if not write_text(OPERATOR_ADDR_FILE, to_store):
+    if not write_text(OPERATOR_ADDR_FILE, to_store, mode=0o644):
         # Don't pretend it saved — fail loud, as before.
         raise RuntimeError("Couldn't save the operator address.")
     return to_store

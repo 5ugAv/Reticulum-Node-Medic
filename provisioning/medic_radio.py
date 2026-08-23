@@ -89,7 +89,7 @@ def retune_medic(params: Optional[Dict] = None,
     # config half-written — and a garbled config makes the medic DEAF to its own
     # mesh on next boot. os.replace swaps the whole file in or not at all.
     from monitor.atomic_json import write_text
-    if not write_text(config_path, new):
+    if not write_text(config_path, new, mode=0o644):
         return False, "Couldn't write the medic's Reticulum config."
     if restart:
         try:

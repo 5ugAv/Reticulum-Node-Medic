@@ -130,8 +130,16 @@ def save(store: Dict, path: str = CONFIG) -> Dict:
     key = trust_integrity.load_or_create_key(_key_path(path))
     signature = _sign_store(store, key)           # sign FIRST, before any write
     folded = {**store, _SIG_FIELD: signature}
-    write_json(path, folded, indent=2, sort_keys=True)
-    write_text(_sig_path(path), signature)        # compat copy; not the authority
+    # Trust store at 0600 — its folded signature makes it security-relevant.
+    write_json(path, folded, indent=2, sort_keys=True, mode=0o600)
+    # Compat sidecar (not the authority for the NEW load). It signs the FULL
+    # folded dict — INCLUDING _integrity — precisely so a ROLLBACK to old code is
+    # safe: the old load() computes canonical_bytes over the whole parsed dict
+    # (which now contains _integrity) and checks it against this sidecar, so its
+    # verification PASSES and the fleet stays kinned. Signing only the payload
+    # here would guarantee a mismatch under old code and un-kin everyone.
+    sidecar_sig = trust_integrity.sign(key, trust_integrity.canonical_bytes(folded))
+    write_text(_sig_path(path), sidecar_sig)
     return store
 
 

@@ -52,7 +52,7 @@ def save_home_profile(profile: str) -> str:
     profile = TRANSPORT if str(profile).strip().lower() == TRANSPORT else PROPAGATION
     # Atomic write so a field power-cut can't truncate the marker (atomic_json).
     from monitor.atomic_json import write_text
-    write_text(HOME_PROFILE_FILE, profile)
+    write_text(HOME_PROFILE_FILE, profile, mode=0o644)
     return profile
 
 
@@ -75,7 +75,7 @@ def save_auto_backpack(enabled: bool) -> bool:
     enabled = bool(enabled)
     # Atomic write so a field power-cut can't truncate the marker (atomic_json).
     from monitor.atomic_json import write_text
-    write_text(AUTO_BACKPACK_FILE, "on" if enabled else "off")
+    write_text(AUTO_BACKPACK_FILE, "on" if enabled else "off", mode=0o644)
     return enabled
 
 

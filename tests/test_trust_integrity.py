@@ -167,6 +167,27 @@ def test_folded_store_still_fails_closed_on_tamper(tmp_path):
     assert trust.load(path=p) == {"units": {}}
 
 
+def test_rollback_to_old_load_stays_kinned(tmp_path):
+    """ROLLBACK-safety: a store written by the NEW save() must still verify under
+    the OLD load() logic, or downgrading the medic's code would un-kin the fleet.
+
+    Old load() computed canonical_bytes over the FULL parsed dict (which now
+    carries _integrity) and compared it to the detached .sig sidecar. So the
+    sidecar must be signed over that SAME folded dict — this test reproduces the
+    old check byte-for-byte and asserts it passes."""
+    p = _p(tmp_path)
+    trust.set_self("aaaa", "Origin", now=1.0, path=p)
+    trust.record_child_clone("bbbb", "Friend", parent_hash="aaaa", now=2.0, path=p)
+
+    key = trust_integrity.load_or_create_key(str(tmp_path / "trust_hmac_key"))
+    on_disk = json.load(open(p))                       # full folded dict
+    sidecar = open(p + ".sig").read().strip()
+
+    # This is exactly what the OLD load() did before this change:
+    old_canonical = trust_integrity.canonical_bytes(on_disk)
+    assert trust_integrity.verify(key, old_canonical, sidecar) is True
+
+
 def test_short_key_would_unkin_but_key_write_is_atomic(tmp_path):
     """A truncated key file (len < KEY_SIZE) triggers a fresh key -> every stored
     signature fails -> un-kin; the atomic key write is what prevents the truncation

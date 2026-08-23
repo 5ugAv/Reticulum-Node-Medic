@@ -96,11 +96,16 @@ def write_text(path: str, text: str, mode: Optional[int] = None) -> bool:
     return write_bytes(path, text.encode("utf-8"), mode=mode)
 
 
-def write_json(path: str, data: Any, **dump_kwargs) -> bool:
+def write_json(path: str, data: Any, mode: Optional[int] = None,
+               **dump_kwargs) -> bool:
     """Atomically write *data* as JSON to *path*. Returns True on success.
-    Never raises — callers keep their own honest-fail reporting."""
+
+    *mode* chmods the final file (e.g. ``0o600`` for a secret store, ``0o644``
+    to preserve a world-readable config's prior permissions); ``None`` keeps the
+    private ``mkstemp`` default. Never raises — callers keep their own
+    honest-fail reporting."""
     try:
         payload = json.dumps(data, **dump_kwargs).encode("utf-8")
     except Exception:                     # noqa: BLE001 - unserialisable data
         return False
-    return write_bytes(path, payload)
+    return write_bytes(path, payload, mode=mode)

@@ -55,7 +55,7 @@ def save(settings: Dict, path: str = CONFIG) -> Dict:
     # Atomic write so a field power-cut can't truncate the screensaver prefs
     # (see monitor.atomic_json).
     from monitor.atomic_json import write_json
-    write_json(path, s, indent=2)
+    write_json(path, s, indent=2, mode=0o644)
     return s
 
 

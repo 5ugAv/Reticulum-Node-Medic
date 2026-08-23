@@ -58,6 +58,12 @@ def test_write_json_round_trips(tmp_path):
         assert json.load(f) == {"days": 30}
 
 
+def test_write_json_mode_is_applied(tmp_path):
+    p = str(tmp_path / "prefs.json")
+    atomic_json.write_json(p, {"x": 1}, mode=0o644)
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o644
+
+
 def test_failed_write_leaves_old_file_intact(tmp_path, monkeypatch):
     """THE guarantee: if the swap-in fails partway (simulating a power-cut before
     the rename lands), the pre-existing file is UNTOUCHED — never truncated to
