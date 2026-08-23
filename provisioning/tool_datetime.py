@@ -138,6 +138,20 @@ def ntp_synchronized(run: Optional[ShellRunner] = None) -> bool:
     return code == 0 and out.strip().splitlines()[-1].strip() == "yes"
 
 
+def ntp_enabled(run: Optional[ShellRunner] = None) -> bool:
+    """Whether systemd-timesyncd is ENABLED (``set-ntp true`` state) — i.e. NTP is
+    ALLOWED to run and steer the clock. This is the ``NTP`` property, NOT
+    ``NTPSynchronized``: enabled says "timesyncd is active and will correct the
+    clock once it reaches a server"; synchronised says "it already has". The GPS
+    disciplinarian disables NTP (``set-ntp false``) when it takes the clock offline
+    (see monitor.gps_clock.apply_clock); the online-detector reads THIS to know
+    whether NTP still needs restoring. "Couldn't check" -> False, the safe default
+    (a False here can only make the detector consider re-enabling, never disable)."""
+    run = run or _default_run
+    code, out = run("timedatectl show -p NTP --value")
+    return code == 0 and out.strip().splitlines()[-1].strip() == "yes"
+
+
 def now_string(now: Optional[datetime] = None) -> str:
     """Current local wall-clock, formatted for display / the manual fields."""
     return (now or datetime.now()).strftime(FMT)

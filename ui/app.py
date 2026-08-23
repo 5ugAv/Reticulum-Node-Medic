@@ -2088,8 +2088,17 @@ class ReticulumNodeMedicApp(App):
                 # NO step, NO rebase; the disciplinarian already rate-limited this
                 # to at most once per PERSIST_MIN_INTERVAL_S, so no config churn.
                 td.mark_synced(decision.target, "GPS")
+                # GPS is holding the clock, so NTP is not the source — clear any
+                # "using internet time" status left by an earlier no-sky spell.
+                self._gps_disciplinarian.ntp_fallback = False
+                self._gps_disciplinarian.ntp_synced = False
                 return
             if decision.kind != DECISION_STEP:
+                # GPS did NOT act this tick (no fix / stale / awaiting / etc). If
+                # it genuinely CAN'T help, restore NTP as the fallback so an indoors
+                # medic stops drifting once a network returns. No-op in every other
+                # case (see _maybe_restore_ntp / ntp_fallback_decision).
+                self._maybe_restore_ntp(td, gps_acted=False)
                 return
             target = decision.target
             # argv runner matching the scoped sudoers (NM_CLOCK). subprocess with a
@@ -2098,6 +2107,10 @@ class ReticulumNodeMedicApp(App):
                 p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
                 return p.returncode, p.stdout, p.stderr
             if apply_clock(target, _run):
+                # apply_clock just disabled NTP (GPS is authority) — GPS is the
+                # source now, so the fallback status no longer applies.
+                self._gps_disciplinarian.ntp_fallback = False
+                self._gps_disciplinarian.ntp_synced = False
                 delta = target - sys_now          # new_epoch - old_epoch
                 # GATE the expensive rebase + persist on a meaningful delta. A
                 # sub-deadband correction is absorbed by the SEEN deadband and
@@ -2125,6 +2138,49 @@ class ReticulumNodeMedicApp(App):
                 self._gps_disciplinarian.record_failure(sys_now)
         except Exception:
             pass
+
+    def _maybe_restore_ntp(self, td, gps_acted):
+        """The ONLINE-DETECTOR half of the clock discipline (called from the same
+        monitor tick as _check_gps_clock, only when GPS did NOT set the clock).
+
+        GPS discipline turns NTP OFF so satellite UTC is the sole authority offline
+        — correct in the field, but it means a medic that GPS-synced once and now
+        sits INDOORS (no sky -> no GPS) with WiFi back would keep NTP off and slowly
+        drift, having discarded the one time source it can now reach. This restores
+        NTP (re-enables timesyncd) whenever GPS can't help, and lets timesyncd
+        itself decide reachability — there is NO network probe (an offline-first
+        field device must not phone home every tick, and enabling NTP is harmless
+        offline: it just coasts and syncs when a network returns).
+
+        Stable against the GPS toggle because the two fire on OPPOSITE conditions
+        (GPS present -> NTP off; GPS absent -> NTP on), and each fires only when the
+        state actually needs changing — so no thrash. Everything is wrapped by
+        _check_gps_clock's try/except, so a failed toggle can't break the loop."""
+        from monitor.gps_clock import ntp_fallback_decision, enable_ntp
+        ntp_on = td.ntp_enabled()
+        gps_fresh = not self._gps_disciplinarian.gps_absent()
+        if ntp_fallback_decision(
+                autosync=True,                   # caller already gated on is_autosync
+                ntp_enabled=ntp_on,
+                gps_fresh=gps_fresh,
+                gps_acted=gps_acted):
+            def _run(argv):
+                p = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+                return p.returncode, p.stdout, p.stderr
+            if enable_ntp(_run):
+                ntp_on = True
+        # HONEST status. Fallback applies only while GPS is genuinely absent AND
+        # NTP is on to cover it. Then distinguish "on but still coasting" from
+        # "actually synced": ntp_synchronized() is the truth — the screen must not
+        # claim internet time before timesyncd has really reached a server (a
+        # captive portal may never let it), mirroring the CONFIRM branch's rule of
+        # never claiming a sync we don't have.
+        if ntp_on and not gps_fresh:
+            self._gps_disciplinarian.ntp_fallback = True
+            self._gps_disciplinarian.ntp_synced = td.ntp_synchronized()
+        else:
+            self._gps_disciplinarian.ntp_fallback = False
+            self._gps_disciplinarian.ntp_synced = False
 
     def _escalate_node(self, device):
         """A node has been down long enough to warrant a physical visit: alert on
