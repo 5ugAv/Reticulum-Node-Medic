@@ -22,8 +22,16 @@ from typing import Callable, Optional, Tuple
 
 OPERATOR_ADDR_FILE = os.path.expanduser("~/.reticulum-node-medic/operator_address")
 
-#: A Reticulum/LXMF destination hash is 16 bytes = 32 hex chars.
-_ADDR_RE = re.compile(r"^[0-9a-f]{32}$")
+#: A Reticulum/LXMF destination hash is 16 bytes = 32 hex chars. Matched with
+#: re.fullmatch (NOT ^...$): Python's `$` matches just BEFORE a trailing
+#: newline, so `^[0-9a-f]{32}$` with re.match would accept "<32 hex>\n" as
+#: valid — a trailing newline slipping past validation (security review,
+#: regex-newline note). normalize_address already .strip()s leading/trailing
+#: whitespace, so the trailing-\n vector is not reachable in practice today,
+#: but this address is read from a file (load_operator_address) and pasted by
+#: hand, so the validation regex is hardened at the boundary: fullmatch on a
+#: newline-free pattern rejects any trailing/embedded \n or \r outright.
+_ADDR_RE = re.compile(r"[0-9a-f]{32}")
 
 
 def normalize_address(addr: str) -> str:
@@ -37,7 +45,7 @@ def normalize_address(addr: str) -> str:
 
 
 def valid_address(addr: str) -> bool:
-    return bool(_ADDR_RE.match(normalize_address(addr)))
+    return bool(_ADDR_RE.fullmatch(normalize_address(addr)))
 
 
 def load_operator_address() -> str:
