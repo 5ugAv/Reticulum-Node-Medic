@@ -60,3 +60,15 @@ def test_sender_exception_is_contained():
         raise RuntimeError("mesh down")
     ok, _ = send_operator_alert("x", address=GOOD, sender=boom)
     assert ok is False
+
+
+def test_addr_regex_rejects_trailing_newline():
+    # regex-newline security fix: `^[0-9a-f]{32}$` + re.match accepted
+    # "<32 hex>\n" (Python's `$` matches just before a trailing newline).
+    # fullmatch on a newline-free pattern rejects it; a legit hash still
+    # matches. (normalize_address also .strip()s, so valid_address is doubly
+    # protected — this guards the validation boundary itself.)
+    assert oa._ADDR_RE.fullmatch(GOOD)
+    assert oa._ADDR_RE.fullmatch(GOOD + "\n") is None
+    assert oa._ADDR_RE.fullmatch(GOOD + "\r\n") is None
+    assert oa._ADDR_RE.fullmatch(GOOD[:16] + "\n" + GOOD[16:]) is None

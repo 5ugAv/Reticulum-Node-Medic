@@ -88,3 +88,17 @@ def test_the_sweeps_grep_pattern_survives_the_nested_quoting():
     body = seen["cmd"].split("sh -c ", 1)[1]
     assert body.startswith("'") and body.rstrip().endswith("'")
     assert "'" not in body[1:-1], "an inner single quote would end the sh -c body"
+
+
+def test_ipv4_regex_rejects_trailing_newline():
+    # regex-newline security fix: `^...$` + re.match accepted "1.2.3.4\n"
+    # (Python's `$` matches just before a trailing newline), letting a value
+    # with a smuggled trailing newline past validation. fullmatch on a
+    # newline-free pattern rejects any trailing/embedded \n or \r, while a
+    # legit dotted quad still matches.
+    from monitor.discovery import _IPV4_RE
+    assert _IPV4_RE.fullmatch("192.168.1.7")
+    assert _IPV4_RE.fullmatch("192.168.1.7\n") is None
+    assert _IPV4_RE.fullmatch("192.168.1.7\r\n") is None
+    assert _IPV4_RE.fullmatch("10.0.0.1\n192.168.1.7") is None   # embedded \n
+    assert _IPV4_RE.fullmatch("192.168.1.7.8") is None           # no prefix match

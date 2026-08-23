@@ -20,7 +20,14 @@ from monitor.http_status import (
 #: run(command) -> stdout. Injected shell executor (local subprocess or SSH).
 Runner = Callable[[str], str]
 
-_IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+# Matched with re.fullmatch (NOT ^...$ + re.match): Python's `$` matches just
+# BEFORE a trailing newline, so `^...$` with re.match would accept "1.2.3.4\n"
+# — a trailing newline slipping a value past validation (security review,
+# regex-newline note). The IP tokens come from parsed subprocess output
+# (`ip addr` / `hostname -I` / a curl-fed sweep), so a stray \n is possible.
+# fullmatch on a newline-free pattern anchors both ends and rejects any
+# trailing/embedded \n or \r outright.
+_IPV4_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}")
 
 
 def local_subnet(run: Runner) -> Optional[str]:
@@ -28,7 +35,7 @@ def local_subnet(run: Runner) -> Optional[str]:
     out = run("ip -4 -o addr show scope global 2>/dev/null || "
               "hostname -I 2>/dev/null")
     for tok in out.replace("/", " ").split():
-        if _IPV4_RE.match(tok) and not tok.startswith("127."):
+        if _IPV4_RE.fullmatch(tok) and not tok.startswith("127."):
             return tok.rsplit(".", 1)[0]
     return None
 
@@ -55,7 +62,7 @@ def discover_hosts(run: Runner, subnet: str, timeout: int = 3,
     )
     out = run(cmd)
     hosts = {l.strip() for l in out.splitlines()
-             if _IPV4_RE.match(l.strip())}
+             if _IPV4_RE.fullmatch(l.strip())}
     return sorted(hosts, key=lambda ip: int(ip.split(".")[-1]))
 
 

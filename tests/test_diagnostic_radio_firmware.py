@@ -216,6 +216,60 @@ def test_frequency_ignores_range_header():
     assert "frequency" not in names(run(conn_with(info=info)))
 
 
+def test_parked_radio_frequency_zero_flagged():
+    # The DIRECT symptom of the firmware-blessing trap (2026-08-22 T114 saga):
+    # a parked board reports frequency 0.000 MHz while --info otherwise reads a
+    # healthy TNC. The 0.000 readout must be flagged with the parked-radio
+    # explanation on its own — corroborating the firmware_blessing hash check,
+    # so a board still shows the parked verdict even when -K -L reaches none.
+    info = GOOD_INFO.replace("915.125 MHz", "0.000 MHz")
+    issues = run(conn_with(info=info))
+    parked = next(i for i in issues if i.check_name == "radio_parked_frequency")
+    assert "0.000" in parked.description
+    assert "firmware_blessing" in parked.description
+    assert "COLD power cycle" in parked.description
+    assert parked.auto_fixable is False          # read-only signpost
+
+
+def test_parked_frequency_is_the_only_frequency_issue():
+    # ONE fault, ONE issue: a parked board reads freq~0, which would also trip
+    # the generic `frequency` critical whose "re-apply the radio parameters"
+    # auto-fix does NOT cure a blessing mismatch. So the generic frequency
+    # issue must be SUPPRESSED — the parked/blessing warning is the single
+    # authoritative diagnosis for this reading.
+    info = GOOD_INFO.replace("915.125 MHz", "0.000 MHz")
+    n = names(run(conn_with(info=info)))
+    assert "radio_parked_frequency" in n
+    assert "frequency" not in n                  # generic critical suppressed
+
+
+def test_wrong_nonzero_frequency_still_trips_generic_check():
+    # A genuine wrong-but-nonzero frequency (868 vs 915.125) is a real param
+    # mismatch, correctly cured by re-applying params — the generic frequency
+    # issue must still fire, and the parked signal must NOT.
+    info = GOOD_INFO.replace("915.125 MHz", "868.0 MHz")
+    n = names(run(conn_with(info=info)))
+    assert "frequency" in n
+    assert "radio_parked_frequency" not in n
+
+
+def test_invalid_eeprom_reading_zero_gets_no_parked_narrative():
+    # An unprovisioned/corrupt board can read 0 too, but that is the
+    # eeprom_valid fault (no radio config at all) — it must NOT also be told
+    # "blessing mismatch", a narrative that only fits a healthy provisioned TNC.
+    info = ("Device connected\nCurrent firmware version: 1.86\n"
+            "\t  Frequency        : 0.000 MHz\n"
+            "Reading EEPROM...\nEEPROM is invalid, no further information available")
+    n = names(run(conn_with(info=info)))
+    assert "eeprom_valid" in n
+    assert "radio_parked_frequency" not in n
+
+
+def test_healthy_frequency_no_parked_signal():
+    # A board on the intended 915.125 MHz must NOT raise the parked signal.
+    assert "radio_parked_frequency" not in names(run(conn_with()))
+
+
 def test_all_broken_reports_core_faults():
     # A fully unresponsive board: the firmware-hash-mismatch check is correctly
     # SKIPPED (it needs a responsive, provisioned board), so it isn't listed here.

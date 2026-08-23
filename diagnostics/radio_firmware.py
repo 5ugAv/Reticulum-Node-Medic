@@ -295,11 +295,55 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # NB: avoid the "Frequency range : ..." and "Max TX power : ..." header
         # lines — match only the per-mode config values.
         freq = _num(r"Frequency\s*:\s*([\d.]+)\s*MHz")
+        # 15c PARKED RADIO — the DIRECT symptom of the firmware-blessing trap
+        # (2026-08-22 T114 saga, four hours lost). When a birthed board's
+        # stored firmware-hash blessing disagrees with the firmware actually
+        # running, the boot check quietly refuses TNC mode and parks the radio
+        # at frequency 0.000 MHz — while BLE, KISS and rnodeconf --info all
+        # answer politely and swear the EEPROM is a healthy TNC. The
+        # firmware_blessing check below proves this by comparing the -K -L
+        # hashes; here we corroborate it straight off the frequency readout, so
+        # a board reporting 0.000 is flagged with the parked explanation even
+        # when the blessing read couldn't reach a verdict (guard refusal,
+        # unreadable tty).
+        #
+        # Gated on a VALID EEPROM: an unprovisioned/corrupt board can read 0
+        # too, but that is the eeprom_valid fault (it has no radio config at
+        # all) — it must NOT be mis-told "blessing mismatch", a narrative that
+        # only fits a board provisioned as a healthy TNC.
+        #
+        # ONE fault, ONE issue (the same discipline the blessing/probe pair
+        # enforces just below): a parked board reads freq~0, which would ALSO
+        # trip the generic `frequency` check as a critical, auto-fixable
+        # "re-apply the radio parameters" — but re-applying params does NOT
+        # cure a blessing mismatch (the park survives it), so that auto-fix is
+        # ineffective and misleading. So when parked_freq holds we SUPPRESS the
+        # generic frequency issue and let this one stand as the single
+        # authoritative diagnosis. A genuine wrong-but-nonzero frequency (868
+        # vs 915.125) still trips the generic check as before.
+        eeprom_ok = "EEPROM is invalid" not in info
+        parked_freq = (has_info and eeprom_ok and freq is not None
+                       and abs(freq) < 0.001)
         issues.append(self._check(
-            "frequency", has_info and (freq is None or freq == r.frequency_mhz),
+            "frequency",
+            has_info and (parked_freq or freq is None
+                          or freq == r.frequency_mhz),
             f"The radio frequency is {freq} MHz, not {r.frequency_mhz} MHz.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
+        # READ-ONLY and NON-auto-fixable by design: this is a signpost that
+        # points at the firmware_blessing cure, not a second copy of its work —
+        # the actual restamp hash comes from -K -L, so we don't prescribe a
+        # bare number here.
+        issues.append(self._check(
+            "radio_parked_frequency", not parked_freq,
+            "The radio is parked at 0.000 MHz — the firmware-hash blessing "
+            "mismatch signature: the boot check has refused TNC mode (BLE/KISS/"
+            "rnodeconf --info still answer, so nothing else looks wrong). See "
+            "the firmware_blessing check for the hash comparison and the exact "
+            "cure: rnodeconf --firmware-hash <actual hash from -K -L>, then a "
+            "COLD power cycle (unplug ALL power — a reset is not enough).",
+            severity="warning"))
         bw = _num(r"Bandwidth\s*:\s*([\d.]+)\s*KHz")
         issues.append(self._check(
             "bandwidth", has_info and (bw is None or bw == r.bandwidth_khz),
