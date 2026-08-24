@@ -1252,3 +1252,103 @@ def test_rebase_zero_delta_is_a_noop():
     rec.last_seen = NOW
     reg.rebase_wall_clock(0.0)
     assert rec.last_seen == NOW
+
+
+# ---- Stage 1: the SEEN field is now an Observation (source + serialization) --
+# The `last_seen` bare float became an `Observation[None]` carrying WHEN the
+# node was heard and HOW (its source). These tests pin the source each ingest
+# path stamps, the old-file migration, and the rollback mirror — the parts of
+# the migration the pre-existing SEEN tests (which only read the epoch through
+# the compat property) do not exercise.
+
+def test_seen_observation_records_the_beacon_source():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    assert r.get(HASH).seen.source == "beacon"
+    assert r.get(HASH).seen.observed_at == NOW
+
+
+def test_seen_observation_records_the_http_source():
+    r = NodeRegistry()
+    r.record_http_status(HASH, http(status="ok"), NOW)
+    assert r.get(HASH).seen.source == "http"
+
+
+def test_seen_observation_records_the_announce_source():
+    r = NodeRegistry()
+    r.ingest_announce(bytes.fromhex(HASH), b"WILDNODE", NOW)
+    assert r.get(HASH).seen.source == "announce"
+
+
+def test_a_route_fold_is_labelled_path_table_not_the_node_speaking():
+    """A path row is a ROUTE, weaker than the node's own word — the Observation
+    wears that honesty in its source so a fold can never pass for a beacon."""
+    r = NodeRegistry()
+    r.ingest_mesh(_mesh(HASH, heard=NOW - HOUR), NOW)
+    assert r.get(HASH).seen.source == "path-table"
+
+
+def test_never_heard_node_has_no_observation():
+    """None IS the never state — not an Observation of zero. set_kin_roster
+    seeds fleet rows before first contact."""
+    r = NodeRegistry()
+    r.register(HASH)
+    assert r.get(HASH).seen is None
+    assert r.get(HASH).last_seen is None
+
+
+def test_an_old_registry_file_bare_last_seen_float_migrates_to_legacy():
+    """Rollback FORWARD: a file written by the pre-Observation build has a bare
+    `last_seen` float and no `seen` key. It must load — as a "legacy"-sourced
+    Observation stamped at that epoch (we know WHEN, never HOW)."""
+    old = {"nodes": [{"dst_hash": HASH, "name": "OLDNODE",
+                      "last_seen": NOW}], "history": {}}
+    back = NodeRegistry.from_dict(old)
+    rec = back.get(HASH)
+    assert rec.last_seen == NOW               # epoch preserved
+    assert rec.seen.source == "legacy"        # honest: WHEN known, HOW not
+    assert rec.last_seen_hours(NOW + HOUR) == pytest.approx(1.0)
+
+
+def test_an_old_file_never_heard_stays_never():
+    old = {"nodes": [{"dst_hash": HASH, "name": "N", "last_seen": None}],
+           "history": {}}
+    assert NodeRegistry.from_dict(old).get(HASH).seen is None
+
+
+def test_a_new_file_round_trips_the_seen_source():
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    back = NodeRegistry.from_dict(r.to_dict())
+    assert back.get(HASH).seen.source == "beacon"
+    assert back.get(HASH).last_seen == NOW
+
+
+def test_to_dict_writes_a_bare_last_seen_rollback_mirror():
+    """Rollback BACKWARD: an OLDER build reading THIS file must find the plain
+    epoch it expects, not a dict it would choke on — so the bare `last_seen`
+    float is written alongside the `seen` Observation."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    node = r.to_dict()["nodes"][0]
+    assert node["last_seen"] == NOW                       # the mirror
+    assert node["seen"] == {"value": None, "observed_at": NOW,
+                            "source": "beacon"}
+
+
+def test_a_never_heard_node_persists_seen_as_null():
+    r = NodeRegistry()
+    r.register(HASH)
+    node = r.to_dict()["nodes"][0]
+    assert node["seen"] is None
+    assert node["last_seen"] is None
+
+
+def test_rebase_keeps_the_seen_source_through_a_clock_step():
+    """A GPS step shifts observed_at but must NOT relabel HOW we heard it."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.rebase_wall_clock(3 * HOUR)
+    rec = r.get(HASH)
+    assert rec.last_seen == NOW + 3 * HOUR
+    assert rec.seen.source == "beacon"        # source survives the rebase
