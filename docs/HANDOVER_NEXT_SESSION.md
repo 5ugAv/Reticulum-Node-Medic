@@ -13,20 +13,38 @@ the deep index — nearly a hundred verified facts with names like
 
 ## 0. IN-FLIGHT — the very first thing to check
 
-**The DSI panel glitch was live when this session ended.** The touchscreen
-slid sideways with wrong colours while the operator plugged a USB-A board in,
-mid BIRTH wizard (step 1, board read). Proven protocol was followed:
+**The DSI panel colour glitch investigation was LIVE when this session
+ended.** State as of 2026-08-25 ~00:15 AEST — start HERE, all earlier panel
+steps are superseded:
 
-- Framebuffer captured with `grim` over SSH → **rendered pixel-perfect**.
-  Software is innocent; it is the panel state (see memory
-  `display-shift-is-panel-not-code`).
-- Fix is a **COLD power cycle** (pull power, 10 s, replug — warm reboot does
-  NOT clear it). The operator was instructed: Exit wizard → shut down →
-  pull power. **You may be resuming right after that cycle.**
+- Symptom: plugging a USB board (Espressif JTAG/serial, 23:56:49 in the
+  kernel log) scrambled the touchscreen — first shifted+split, then settled
+  to wrong colours (red channel showing blue/purple). Recurrence of memory
+  `display-shift-is-panel-not-code`.
+- PROVEN this time, do not re-derive:
+  * `grim` framebuffer capture renders pixel-perfect → software innocent.
+  * `vcgencmd get_throttled` = 0x0 (sticky bits clean since Aug 22) →
+    undervolt RULED OUT by the firmware counter.
+  * Kernel log at the glitch moment shows ONLY the USB enumeration — zero
+    drm/vc4/dsi errors → the DSI link never dropped; the PANEL's own
+    controller scrambled. The medic was NEVER power-cycled (up since
+    Aug 22); the earlier cold-cycle instruction was NOT executed.
+- Recovery attempt just made: forced panel re-init WITHOUT reboot —
+  `WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wlr-randr
+  --output DSI-2 --off; sleep 2; wlr-randr --output DSI-2 --on`
+  (compositor is labwc/wlroots; connector card1-DSI-2). It re-enabled
+  cleanly. **AWAITING the operator's eyes on whether the red came back** —
+  the framebuffer cannot show panel state.
+- If it worked: wire it as a one-tap "Fix screen" action (Settings or
+  PROBE ▸ Self Diagnose) and note it in the memory. If not: escalate —
+  panel driver unbind/rebind in sysfs, then a true COLD power cycle
+  (pull power 10 s; warm reboot does not clear panel state).
+- Prevention question still open: why does a USB plug-in perturb the panel
+  (EMI on the DSI ribbon? shared ground bounce?) — undervolt is excluded.
 
-First actions: confirm the medic answers (`ssh nodemedic@nodemedic.local`),
-UI process up, `~/ui.log` reaches "Start application main loop", registry
-still loads. Then the operator resumes the rebirth (section 2).
+Also in flight: the operator is REBIRTHING the fleet (registry deliberately
+empty, section 2) and was on BIRTH step 1 with a XIAO/S3-class board
+(ttyACM1) when the glitch interrupted.
 
 ---
 
