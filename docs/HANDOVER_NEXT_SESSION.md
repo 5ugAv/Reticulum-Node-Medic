@@ -1,191 +1,145 @@
 # Handover — read this first
 
-Written 2026-08-15 at the end of a long session, for the next assistant.
+Written 2026-08-24 at the end of a long session, for the next assistant.
 
-Four documents, and you want all four:
-
-- **This file** — the goal, the operator, the roadblocks, and what is done.
-- **`docs/HANDOVER.md`** — the ORIGINAL running project context: the firmware
-  contracts locked with `5ugAv/RTNode-2400`, the beacon codec, the portal field
-  names, the open firmware-side issues. Older than this file and still the best
-  reference for what was agreed with the firmware side. Do not overwrite it —
-  the previous assistant nearly did, on the last night of the session.
-- **`docs/WORKING_METHOD.md`** — the rules that were paid for, and Part 5, the
-  previous assistant's own failures with the correction for each. Read that
-  before you write code.
-- **`docs/NEXT_BRIEFS.md`** — six specified jobs (A–F), ordered because they
-  conflict.
+Start here, then: **`docs/HANDOVER.md`** (original firmware contracts — do not
+overwrite), **`docs/WORKING_METHOD.md`** (the paid-for rules + the previous
+assistant's failures; read before writing code), **`docs/NEXT_BRIEFS.md`**
+(specified jobs, ordered because they conflict). Your auto-memory MEMORY.md is
+the deep index — nearly a hundred verified facts with names like
+`[[rnodeconf-byid-nrf52-trap]]`; trust it, it is all battle-tested.
 
 ---
 
-## 1. What Node Medic is FOR
+## 0. IN-FLIGHT — the very first thing to check
 
-A Raspberry Pi 5 touchscreen field tool that **builds, monitors, diagnoses and
-clones Reticulum LoRa mesh nodes**. It is carried, not installed. Its founding
-principle, in the operator's words:
+**The DSI panel glitch was live when this session ended.** The touchscreen
+slid sideways with wrong colours while the operator plugged a USB-A board in,
+mid BIRTH wizard (step 1, board read). Proven protocol was followed:
 
-> Nodes stay useful and repairable when their keeper moves away or dies.
+- Framebuffer captured with `grim` over SSH → **rendered pixel-perfect**.
+  Software is innocent; it is the panel state (see memory
+  `display-shift-is-panel-not-code`).
+- Fix is a **COLD power cycle** (pull power, 10 s, replug — warm reboot does
+  NOT clear it). The operator was instructed: Exit wizard → shut down →
+  pull power. **You may be resuming right after that cycle.**
 
-Everything follows from that. Nodes must be adoptable by someone who wasn't
-there when they were built; the medic must be handable to someone else; and a
-node in the wild must not be traceable to a person or a place.
-
-**And it must work with no internet.** Not "degrade gracefully" — *work*. The
-mesh exists for places and situations where infrastructure is absent. A tool
-that needs a connection to build a node for a network whose purpose is not
-needing a connection has missed its own point.
-
----
-
-## 2. Offline-first: what already works, and what still breaks
-
-### Solved — do not undo these
-
-- **The cable birth.** A Pi is provisioned over a USB gadget link at
-  `10.55.0.1/10.55.0.2`, no Wi-Fi anywhere in it. Proven end to end.
-- **Carried firmware cache.** RNode firmware is flashed from a local cache;
-  GitHub is only consulted when online (`workflows/updater.py`).
-- **Carried Python wheels.** The build installs `rns` and its stack from
-  wheels on the medic — no PyPI. `_ensure_pip` can even run pip out of the
-  Debian wheel already on the image.
-- **Carried Columba APK** for the operator's phone.
-- **Time without a clock.** No RTC on a Pi; GPS from the onboard Tracker sets
-  it, and Self Diagnose has a clock-sync check because a wrong clock after a
-  power cut breaks TLS and confuses every log.
-
-### Still broken — these are the roadblocks
-
-**1. Geocoding needs the internet.** `monitor/geo.geocode_address()` calls
-Nominatim. The location feature just specified (brief F) asks the operator to
-type a place — *in the field that fails silently*. **Work through it:** the map
-already caches tiles, so let them **pin on the map** instead of typing, and
-accept typed coordinates directly. Typing an address should be the online
-convenience, not the primary path.
-
-**2. Map tiles must be pre-cached, and nothing prompts for it.** There is tile
-download machinery (`ui/map_tiles.py`, `monitor/map_download.py`) but no step in
-any flow says "you are about to go somewhere without internet — cache the tiles
-for that area first". **Work through it:** a pre-trip check, on the same screen
-as Home/Backpack mode. Backpack mode is the signal the operator is leaving.
-
-**3. `apt-get` fallbacks cost 17 minutes of timeouts when offline.** The build
-tries offline sources first (correct), but the last-resort apt path on a node
-with no route burns a long time before failing. **Work through it:** detect
-"no route" once, up front, and skip every network fallback for the rest of the
-run rather than discovering it per-step.
-
-**4. Publishing to a public map needs an uplink** by definition. The audit found
-rmap.world runs a transport node for this. **This is not a bug** — just be
-honest on screen that a LoRa-only node's position will not reach an internet
-map, rather than implying it will.
-
-**5. Refreshing anything carried needs periodic internet.** Firmware, APK,
-wheels, tiles. **Work through it:** one "top up everything while you have a
-connection" action, so the operator does it deliberately before leaving instead
-of discovering a stale cache in the field.
+First actions: confirm the medic answers (`ssh nodemedic@nodemedic.local`),
+UI process up, `~/ui.log` reaches "Start application main loop", registry
+still loads. Then the operator resumes the rebirth (section 2).
 
 ---
 
-## 3. How the operator wants to be given instructions
+## 1. What Node Medic is FOR (unchanged)
 
-This matters more than it sounds. Get it wrong and the work stalls.
-
-> "Can you simplify your instructions to dot point? That's it. Nothing else.
-> I won't do anything that is not asked."
-
-- **Bare actions, one per line.** No reasoning inside a step.
-- **Reasoning goes BETWEEN steps**, or after, or in a hint — never mixed into
-  the thing they are meant to do.
-- **One task at a time when working a list.** Give the step, wait, then the
-  next. Do not stack five and hope.
-- **Board choice once, and one confirmation.** Do not re-ask.
-- **Assume "yes, continue."** Standing instruction: *"if you have questions
-  about progress, I want you to assume I want everything we are working on to
-  keep moving forward until it is clean."* Finish, test, commit, deploy, verify
-  without asking permission at each hop.
-- **Never restart the medic's UI while it is working.** `scripts/restart_ui.sh`
-  refuses during a flash or an SD write; a manual `pkill` does not.
-- **Anything on GitHub that needs their account or a privacy decision:** ask
-  them to do it at the Mac and walk them through it.
-- They are usually **mobile or at the bench**, often with hardware in hand.
-  Photos of the screen are their normal way of reporting. Read them.
+A Raspberry Pi 5 touchscreen field tool that **builds, monitors, diagnoses
+and clones Reticulum LoRa mesh nodes**. Carried, not installed. Founding
+principle: *nodes stay useful and repairable when their keeper moves away or
+dies.* It must WORK with no internet — carry, do not fetch. Nothing on any
+screen may say something unverified: **true = what the thing reported NOW**
+(this rule is in SPEC.md).
 
 ---
 
-## 4. Working process
+## 2. Where the fleet stands RIGHT NOW
 
-Full detail in `docs/WORKING_METHOD.md`. The essentials:
+- **Registry is EMPTY by choice.** 2026-08-24 the operator chose "wipe
+  everything, keep nothing" to clear 14 ghost rows (3× ELSEWHERE, 4×
+  SKYFINGER, 7 stale hash-only). Backup:
+  `~/.reticulum-node-medic/registry.json.bak-20260824-234226-wipe`.
+  `kin.json` already empty. **Wipe method matters**: STOP the UI first
+  (shutdown/5-min autosave clobbers a file edit), then backup, then
+  `{"nodes": []}`, then start.
+- **The operator is rebirthing nodes with sequential numbered names**, one at
+  a time, through the touchscreen BIRTH flow. The one-icon-per-node fix is
+  deployed: each rebirth must land as exactly ONE VITALS icon (name uniqueness
+  enforced at birth via `retire_same_name`, no cross-device union in
+  `register_device`, lxmd identity regenerated at birth). Watch each one land
+  and confirm.
+- Live nodes re-appear on their own as SINGLE rows as they announce (the
+  lowercase `elsewhere` propagation node is the live one). Stale nodes stay
+  gone.
 
-### Two agents, different lenses — standing rule
+## 3. What shipped this session (all deployed + verified live)
 
-Work that would go to one agent goes to **two, briefed from different angles**.
-Identical briefs produce correlated answers, which is the whole thing to avoid.
-Proven splits:
+- **Observation<T> refactor, Stages 0–3 — CLOSED.** `monitor/observation.py`
+  Observation(value, observed_at, source); one clock-skew policy
+  (`age_at`, tolerance 120 s); five liveness stamps folded (`seen`,
+  `last_direct_obs`, `last_echo_at_obs`, `last_heard_announce_at_obs`,
+  `mesh_heard_obs`); bare names served by ONE `_EpochView` data descriptor
+  (registry.py) that stamps each field's intrinsic honest source on write.
+  Serialization writes `_obs` dict + bare-float ROLLBACK MIRROR; loads prefer
+  `_obs`, fall back `from_legacy` → source "legacy"; both loaders raise-proof
+  (corrupt entry nulls the FIELD, never the fleet). Every stage: 2+
+  adversarial review lenses, CI green 3.11+3.12. Deployed `f614208`, live
+  registry loaded through it cleanly before the wipe.
+  **Honest outcome told to the operator: the predicted line SHRINK did not
+  materialize (+80 net); the payoff is safety.** Do not re-litigate.
+- **GPS clock discipline** — proven outdoors (20-min-wrong clock corrected;
+  `datetime.json` source=GPS). Sudoers re-applied so `timedatectl` works
+  (`sudo bash provisioning/security/apply_sudoers.sh` — any NEW scoped
+  command needs a re-apply by the operator; live sudoers lags the repo).
+- **Away-batch** (merged while operator was away, then deployed on return):
+  durable atomic writes (incl. trust-store HMAC folded, rollback-safe),
+  GPS/NTP fallback decision (no internet probe — it phoned home in review and
+  was removed), PROBE parked-radio warning (freq≈0 + EEPROM-valid), regex
+  fixes.
+- **Honesty fixes**: replayed byte-identical announce ≠ sighting; path-table
+  entry ≠ sighting; medic filtered from its own neighbour list; echo
+  annotation; ping delivery honesty (no_route / unanswered / answered are
+  three different truths).
 
-- **source vs consumer** — one reads the protocol for a format, the other reads
-  how existing clients consume it
-- **build vs break** — one implements, the other tries to make it fail
-- **reader vs provenance** — one asks "what does a person need here", the other
-  "what was this sentence written to prevent, and is it still true"
-- **hardware-up vs code-down** — one traces sockets and power, the other traces
-  the code path
+## 4. Deploy + verify mechanics (memorize)
 
-**Findings merge. Designs do not.** Take every discovery from both; where they
-designed the same screen twice, pick one spine and graft the good ideas across.
+- Deploy = `bash .git/hooks/deploy-medic.sh` (rsync; airlock refuses dirty
+  trees). **`git log` ON THE MEDIC LIES** — rsync does not move HEAD; check
+  `git status --porcelain` there, or grep for the code itself.
+- Restart = `ssh … 'cd ~/reticulum-tool && bash scripts/restart_ui.sh'` —
+  it REFUSES during flashes/SD writes. Never restart a busy medic.
+- UI logs to `~/ui.log` (buffered stdout — silence proves nothing).
+  Registry: `~/.reticulum-node-medic/registry.json`. Load in code via
+  `NodeRegistry.load(path)` (classmethod).
+- Test cmd: `python3 -m pytest tests/ -o addopts="" -q` → **4009 passed,
+  11 skipped** as of f614208. CI runs on push (GitHub Actions, 3.11+3.12).
+- The medic's sudo NEEDS the operator's password (device hardening is LIVE).
+  You cannot shut it down remotely; ask the operator.
 
-Skip the pair for mechanical work with an established pattern — you will just
-throw one away.
+## 5. Method — the rules the operator pays for
 
-**This method found**, in one night: five false sentences on the birth screens,
-four screens overflowing the panel, two dead impossibility checks, and the fact
-that the location fuzz is invertible. Both wording agents independently deleted
-the same false sentence. That agreement is the signal.
+- **Two agents, different lenses** on everything nontrivial; commit AND PUSH
+  before launching (agent worktrees branch from origin/main). File-editing
+  agents: `isolation: worktree`. Never `git add -A` while one runs.
+- **Keep moving until clean**: finish → test → commit → deploy → verify
+  without asking. But risky/destructive steps are talked through, and
+  hard-to-reverse actions get an explicit question (AskUserQuestion with a
+  recommendation first).
+- **Evidence before hardware**; hardware gets ONE attempt. **Verify through
+  the medic's own functions** (PROBE/BIRTH/MONITOR), not ad-hoc SSH scripts.
+- Bench instructions = bare dot-point actions; terminal commands
+  self-contained for a brand-new window; name the success line.
+- Say only what you checked, date the evidence, "couldn't check" is an
+  answer. When a premise shifts mid-task (as the Observation line-count did),
+  STOP and put the changed decision back to the operator.
 
-### Non-negotiables
+## 6. Open decisions parked with the operator
 
-- **Commit before launching an agent.** A worktree snapshots `main` at launch;
-  anything committed after is invisible to it. Uncommitted work is work that did
-  not happen — the previous assistant learned this the hard way, twice.
-- **Every file-editing agent runs isolated.** One launched without isolation
-  edited the main tree live, 25 files.
-- **Always ask the agent to verify the brief against the code** and report
-  contradictions. This is the single practice that catches stale claims.
-- **The airlock** (`.git/hooks/`) gates commits on `main` and deploys to the
-  medic while agent work is unreviewed. Override is `AIRLOCK_REVIEWED=1`,
-  per-command, after reading the diff. It is self-attesting — an agent stepped
-  past it once. Treat it as a reminder, not a wall.
+- Teal paint mark on the V3×Zero2W crossover chart — meaning unconfirmed.
+- Manifest/APK signing key decision; SSH master key into the vault;
+  MAC scrub + history rewrite.
+- Foreign-node "adopt these addresses as one node" feature (offered, liked,
+  not commissioned).
+- Encrypt-at-rest vault: BUILT, committed, NOT enabled (boot-unlock UX +
+  key management, task #34). vault.py atomic-write migration +
+  rootfs_user.py /etc/passwd atomicity deferred.
+- Permanent SD reader form-factor (blocks finalizing the guided 'insert SD'
+  animation).
 
----
+## 7. Known traps that will bite you first
 
-## 5. State
-
-**Done and on the medic:** the node-detail crash that killed the app on a VITALS
-tap; a cached path no longer counted as a sighting (verified live); the `/status`
-server and build steps that prove a node reports; one VITALS row per machine.
-
-**Done, on `main`, not deployed:** the location-sharing model, the vault factor
-model (maximum strength), the nine-dot pattern pad, the first-use setup wizard,
-the birth wording rewrite (980→616 words, font +25%).
-
-**Unproven:** the health-beacon fix. `set_default_app_data(current_beacon)` is
-committed and deployed and **has never been observed landing a beacon.** The
-next rebirth is the test.
-
-**The privacy work is complete and published** — history rewritten, the repo is
-clean of the operator's home coordinates, SSID, username, and a collaborator's
-name. Verified against `origin` after the force-push.
-
-**The open jobs are A–F in `docs/NEXT_BRIEFS.md`.** Order matters; they touch
-the same three files. **F (the location fuzz) is the most urgent** — it is the
-only place the tool currently tells an operator something false about their own
-safety.
-
----
-
-## 6. The one habit that matters most
-
-When the tool and the hardware disagree, **believe the hardware**, then find out
-why the tool was wrong. It is almost never where you first look.
-
-And say only what you have checked. The operator holds that standard, holds you
-to it, and it is why the hard bugs in this project get found at all.
+Read these memories before touching the matching subsystem:
+`rnodeconf-byid-nrf52-trap`, `rnodeconf-autoinstall-confirm-hang`,
+`nrf-raw-reflash-hash-trap`, `v4-rgb-flash-size-detect`,
+`stuck-white-led-blocks-reflash`, `medic-usb-port-map` (P1=3-2 is Jonesey —
+the medic's OWN radio, `assert_flashable()` guards it), `card-wifi-is-
+rfkill-blocked`, `cable-birth-stale-host-key`, `stale-module-after-rsync`,
+`mesh-listener-bootrace`, `path-table-is-not-a-sighting`.
