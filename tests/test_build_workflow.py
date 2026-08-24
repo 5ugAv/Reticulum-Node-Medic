@@ -1230,15 +1230,22 @@ def test_every_pi_template_bridges_lora_to_the_lan():
 
 # --- Bluetooth is a birth answer, applied honestly --------------------------
 
-def test_bluetooth_left_on_touches_nothing():
+def test_bluetooth_on_unblocks_the_images_default_soft_block():
+    """ON is not a no-op: the carried image ships Bluetooth rfkill-SOFT-
+    BLOCKED (the card-Wi-Fi lesson), so "on" must unblock and enable — proven
+    live on ELSEWHERE 2026-08-25, whose first honest beacon reported BT
+    known-but-DOWN because the old "touch nothing" left the block in."""
     from node_profile import NodeProfile
     p = NodeProfile()
     p.bluetooth_enabled = True
     w = wf(build_conn(), profile=p)
     r = _run_step(w, "configure_bluetooth")
-    assert r.success is True and "left on" in r.message.lower()
+    assert r.success is True and "unblocked" in r.message.lower()
+    assert any("rfkill unblock bluetooth" in c for c in w.connection.history)
+    assert any("systemctl enable --now bluetooth" in c
+               for c in w.connection.history)
     assert not any("disable-bt" in c for c in w.connection.history)
-    assert not any("rfkill" in c for c in w.connection.history)
+    assert not any("rfkill block " in c for c in w.connection.history)
 
 
 def test_bluetooth_off_lands_in_the_boot_config_and_reads_back():

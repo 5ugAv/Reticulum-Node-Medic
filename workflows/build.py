@@ -1270,8 +1270,19 @@ def configure_bluetooth(wf: "BuildWorkflow") -> StepResult:
     same day).
     """
     if wf.profile.bluetooth_enabled:
+        # ON is NOT "leave the stock OS alone": the carried image ships its
+        # radios rfkill-SOFT-BLOCKED, exactly like the card Wi-Fi that never
+        # joined anything. "Bluetooth on" at birth left the block in place, and
+        # the node's first honest beacon reported BT known-but-DOWN (the orange
+        # chip, ELSEWHERE 2026-08-25). Unblock it and make sure the service
+        # runs — best-effort with " || true", a radio tweak never strands a
+        # birth.
+        wf.connection.run(wf.priv("rfkill unblock bluetooth") + " || true")
+        wf.connection.run(
+            wf.priv("systemctl enable --now bluetooth") + " || true")
         return StepResult("configure_bluetooth", True,
-                          "Bluetooth left on, as chosen at birth.")
+                          "Bluetooth on, as chosen at birth: rfkill "
+                          "unblocked and the service enabled.")
     gaps = []
     conf = "/boot/firmware/config.txt"
     code, body, _ = wf.connection.run(f"cat {conf}")
