@@ -22,7 +22,7 @@ def test_present_but_no_percentage_draws_nothing():
 
 def test_fraction_follows_percent():
     v = battery_view(NS(present=True, percent=75, charging=False))
-    assert v == {"fraction": 0.75, "charging": False, "low": False}
+    assert v == {"fraction": 0.75, "charging": False, "level": "green"}
 
 
 def test_fraction_is_clamped():
@@ -38,8 +38,12 @@ def test_garbage_percent_is_nothing_not_a_raise():
     assert battery_view(NS(present=True, percent="notanumber", charging=False)) is None
 
 
-def test_fill_turns_red_at_or_under_fifteen_percent():
+def test_colour_bands_green_yellow_red():
     from types import SimpleNamespace as NS
-    assert battery_view(NS(present=True, percent=15, charging=False))["low"] is True
-    assert battery_view(NS(present=True, percent=10, charging=False))["low"] is True
-    assert battery_view(NS(present=True, percent=16, charging=False))["low"] is False
+    def lvl(p):
+        return battery_view(NS(present=True, percent=p, charging=False))["level"]
+    assert lvl(21) == "green"
+    assert lvl(20) == "yellow"     # the 15-20% caution window
+    assert lvl(16) == "yellow"
+    assert lvl(15) == "red"
+    assert lvl(5) == "red"

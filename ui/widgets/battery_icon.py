@@ -24,8 +24,10 @@ from kivy.uix.widget import Widget
 #: Seconds between UPS reads. Battery state moves slowly; the bus is shared.
 POLL_S = 20.0
 
-#: At or below this charge fraction the fill turns RED instead of green.
-LOW_FRACTION = 0.15
+#: Fill colour bands (operator spec, 2026-08-25): red at/below 15%, yellow
+#: at/below 20%, green above.
+RED_FRACTION = 0.15
+YELLOW_FRACTION = 0.20
 
 #: The bolt pictogram in unit space (x, y in 0..1), two triangles.
 BOLT_TRIS = (
@@ -49,11 +51,17 @@ def battery_view(reading) -> Optional[dict]:
         frac = max(0.0, min(1.0, float(pct) / 100.0))
     except (TypeError, ValueError):
         return None
+    if frac <= RED_FRACTION:
+        level = "red"
+    elif frac <= YELLOW_FRACTION:
+        level = "yellow"
+    else:
+        level = "green"
     return {"fraction": frac,
             "charging": bool(getattr(reading, "charging", False)),
-            # LOW: at or under 15% the fill turns red (operator, 2026-08-25) —
-            # the glance-value of the gauge is exactly this threshold.
-            "low": frac <= LOW_FRACTION}
+            # The glance-value of the gauge is these bands: green above 20%,
+            # yellow in the 15-20% caution window, red at/below 15%.
+            "level": level}
 
 
 class BatteryIcon(Widget):
@@ -108,11 +116,11 @@ class BatteryIcon(Widget):
             Line(rounded_rectangle=(x, y, body_w, h, dp(3)), width=1.1)
             Rectangle(pos=(x + body_w + dp(0.5), y + h * 0.3),
                       size=(nub_w - dp(1), h * 0.4))
-            # proportional fill: green, or RED at/below the low threshold
-            if v.get("low"):
-                Color(0.86, 0.22, 0.18, 1)
-            else:
-                Color(0.18, 0.80, 0.35, 1)
+            # proportional fill in the level's colour
+            fill = {"red": (0.86, 0.22, 0.18, 1),
+                    "yellow": (0.95, 0.77, 0.06, 1),
+                    "green": (0.18, 0.80, 0.35, 1)}[v.get("level", "green")]
+            Color(*fill)
             fill_w = max(0.0, (body_w - 2 * inset) * v["fraction"])
             Rectangle(pos=(x + inset, y + inset),
                       size=(fill_w, h - 2 * inset))
