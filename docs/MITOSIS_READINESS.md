@@ -61,10 +61,26 @@ monitor/ups.py (INA219 @ 0x43) + voltage-gated safe-shutdown were built
 - enable the safe-shutdown service (already written, gated on voltage)
 - Self Diagnose: add a power check (ups present/voltage sane)
 
-## Open decisions for the operator (ask before building)
+## Medic 2.0 hardware — DECIDED (operator, 2026-08-25 night)
 
-- What hardware is Medic B? (Pi 5 + which screen + SD reader?) The clone
-  flow can't be verified end-to-end without a target board.
-- Does B get the same 58 GB-class card? transfer_firmware_cache +
-  wheelhouse + map tiles need the size known.
-- Case v4 fit report — the HAT's INA219 address confirmed 0x43 on THIS unit.
+8 GB Pi 5 + Waveshare UPS Module 3S (3x Samsung INR18650-35E, ~38 Wh ->
+~4-7 h runtime; 5V 5A output meets the Pi 5) + Heltec Tracker + 5"
+touchscreen (DSI, official-branded ribbon) + active cooler.
+
+UPS facts verified against the Waveshare wiki (2026-08-25):
+- 8-pin header (2x4, near BOOT): 1=SCL 2=SDA 3/4=3V3 5/6=GND 7/8=5V.
+  Monitoring link to the Pi is THREE wires: SDA->phys 3, SCL->phys 5,
+  GND->phys 6. NEVER the 5V pins into GPIO; never tie 3V3 rails.
+- First cell insert: a lit per-cell LED = that cell is REVERSED (do not
+  charge). No output until the BOOT button wakes the protection chip.
+  Charge only with the configured 12.6V 2A supply.
+- monitor/ups.py expects bus 1 @ 0x43; if i2cdetect shows 0x41/0x42
+  (solder pads), change INA219_ADDR — one line, don't rewire.
+
+## Remaining checks before the clone build
+
+- **5" panel resolution** — the UI is built for 720x1280 portrait. `wlr-randr`
+  on the booted target tells it in one line; 800x480-class would make layout
+  adaptation a real work item, 720x1280 means zero UI work.
+- Card size for B (transfer_firmware_cache + wheelhouse + tiles).
+- Case v4 fit report; i2cdetect grid on THIS unit.
