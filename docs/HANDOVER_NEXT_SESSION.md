@@ -13,38 +13,46 @@ the deep index — nearly a hundred verified facts with names like
 
 ## 0. IN-FLIGHT — the very first thing to check
 
-**The DSI panel colour glitch investigation was LIVE when this session
-ended.** State as of 2026-08-25 ~00:15 AEST — start HERE, all earlier panel
-steps are superseded:
+State as of 2026-08-25 ~01:00 AEST. Everything below supersedes any earlier
+panel/cold-cycle notes you may find elsewhere.
 
-- Symptom: plugging a USB board (Espressif JTAG/serial, 23:56:49 in the
-  kernel log) scrambled the touchscreen — first shifted+split, then settled
-  to wrong colours (red channel showing blue/purple). Recurrence of memory
-  `display-shift-is-panel-not-code`.
-- PROVEN this time, do not re-derive:
-  * `grim` framebuffer capture renders pixel-perfect → software innocent.
-  * `vcgencmd get_throttled` = 0x0 (sticky bits clean since Aug 22) →
-    undervolt RULED OUT by the firmware counter.
-  * Kernel log at the glitch moment shows ONLY the USB enumeration — zero
-    drm/vc4/dsi errors → the DSI link never dropped; the PANEL's own
-    controller scrambled. The medic was NEVER power-cycled (up since
-    Aug 22); the earlier cold-cycle instruction was NOT executed.
-- Recovery attempt just made: forced panel re-init WITHOUT reboot —
-  `WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wlr-randr
-  --output DSI-2 --off; sleep 2; wlr-randr --output DSI-2 --on`
-  (compositor is labwc/wlroots; connector card1-DSI-2). It re-enabled
-  cleanly. **AWAITING the operator's eyes on whether the red came back** —
-  the framebuffer cannot show panel state.
-- If it worked: wire it as a one-tap "Fix screen" action (Settings or
-  PROBE ▸ Self Diagnose) and note it in the memory. If not: escalate —
-  panel driver unbind/rebind in sysfs, then a true COLD power cycle
-  (pull power 10 s; warm reboot does not clear panel state).
-- Prevention question still open: why does a USB plug-in perturb the panel
-  (EMI on the DSI ribbon? shared ground bounce?) — undervolt is excluded.
+**1. The DSI panel glitch is SOLVED — cure proven, feature built, deploy
+PENDING.** The panel scrambled (shift/wrong colours) when a USB board plugged
+in; full forensics + the proven no-reboot cure (wlr-randr off/on) are in
+memory `display-shift-is-panel-not-code` — read it, do not re-derive. The
+operator's eyes confirmed the colours returned. A one-tap
+**Settings ▸ Display ▸ "Fix screen colours"** button was built the same night
+(`provisioning/screen_fix.py`, commit 3507e31, CI pending at handover time,
+4017 tests green locally). **It is committed but NOT YET DEPLOYED** — deploy
+was held because a birth was running (never restart a busy medic). First
+idle moment: `bash .git/hooks/deploy-medic.sh` then
+`ssh nodemedic@nodemedic.local 'cd ~/reticulum-tool && bash
+scripts/restart_ui.sh'`, then confirm the button appears under the
+brightness slider.
 
-Also in flight: the operator is REBIRTHING the fleet (registry deliberately
-empty, section 2) and was on BIRTH step 1 with a XIAO/S3-class board
-(ttyACM1) when the glitch interrupted.
+**2. The fleet REBIRTH is in progress.** Registry was deliberately wiped to
+empty (backup `registry.json.bak-20260824-234226-wipe`, 14 ghost rows). The
+operator is rebirthing on the touchscreen. First birth underway at handover:
+node for "EVERYWHERE" duty — Raspberry Pi 3A+ + Heltec V4 (same hardware as
+before), located at the operator's site. The V4 radio side
+COMPLETED cleanly (erase/flash/provision vendor-model/hash/params
+915.125-BW125-SF9-CR5-17/verify/birth-cry; radio USB serial 02:00:00:01:00:01
+captured); the guide was at "Take the radio out of Node Medic", Pi/SD side
+still ahead. Watch `~/ui.log` `[birth]`/`[guide]` lines; verify the finished
+node lands as exactly ONE VITALS icon (the one-icon fix is deployed — that is
+its first real proof). The 3A+ cable-birth path is proven
+(`pi3aplus-cable-birth-works`); the traps live in `cable-birth-stale-host-key`
+and `medic-usb0-networkmanager`.
+
+**3. Deployed vs repo delta.** The medic RUNS f614208 (Observation migration,
+one-icon fix — all verified live). Commits after f614208 (handover docs +
+screen-fix feature, 3507e31) are pushed to origin but NOT on the medic until
+the deploy in item 1. Deploy is rsync — `git log` on the medic lies; check
+code presence directly.
+
+**4. The operator's plan-level usage limit was near** (banner: resets Tuesday
+11:00 am) — be economical: no speculative agent fan-outs, batch questions,
+prefer direct edits with the test suite as oracle.
 
 ---
 
