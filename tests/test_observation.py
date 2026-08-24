@@ -203,3 +203,17 @@ def test_from_dict_non_string_source_degrades_to_unknown():
 
 def test_unknown_is_in_the_vocabulary():
     assert "unknown" in KNOWN_SOURCES
+
+
+def test_from_legacy_corrupt_bare_value_degrades_to_none():
+    # A pre-Observation registry file whose bare timestamp got corrupted must
+    # null that one field, never raise (the fleet-load loop relies on it).
+    assert Observation.from_legacy("notafloat") is None
+    assert Observation.from_legacy(float("nan")) is None
+    assert Observation.from_legacy(float("inf")) is None
+    assert Observation.from_legacy([1, 2, 3]) is None
+
+
+def test_from_legacy_non_string_source_is_unknown():
+    obs = Observation.from_legacy(NOW, source=1234)
+    assert obs.source == "unknown"

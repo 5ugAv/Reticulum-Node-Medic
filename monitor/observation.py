@@ -220,4 +220,13 @@ class Observation(Generic[T]):
         never HOW, so we do not pretend to."""
         if observed_at is None:
             return None
-        return cls(value=None, observed_at=float(observed_at), source=source)
+        try:
+            observed_at = float(observed_at)
+        except (TypeError, ValueError):
+            return None
+        if observed_at != observed_at or observed_at in (
+                float("inf"), float("-inf")):        # NaN / +-inf are not a time
+            return None
+        if not isinstance(source, str):
+            source = "unknown"
+        return cls(value=None, observed_at=observed_at, source=source)
