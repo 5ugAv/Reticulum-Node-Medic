@@ -12,6 +12,7 @@ the backend is deterministic and unit-testable.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -22,6 +23,8 @@ from monitor.http_status import NodeStatus, PI_FORK
 from monitor.geo import navigation_links
 from monitor.observation import Observation, CLOCK_SKEW_TOLERANCE_S
 from ui import theme
+
+log = logging.getLogger(__name__)
 
 #: Not heard for longer than this -> red (matches the Monitor spec).
 STALE_ALERT_HOURS = theme.NOT_HEARD_ALERT_HOURS  # 18
@@ -492,10 +495,13 @@ class NodeRecord:
         last_direct, not from the stored seen), so a record poisoned by the old
         "stamp now for every path row" behaviour repairs itself."""
         direct = self.last_direct or 0.0
-        if heard >= direct:
+        if heard > direct:
             self.seen = Observation.at(heard, "path-table") if heard else None
         else:
-            self.seen = Observation.at(direct, "direct")
+            # A TIE keeps the stronger "direct" label — a route that is no fresher
+            # than the node's own word must not relabel it as path-table (source
+            # honesty for any future consumer; the observed_at is identical).
+            self.seen = Observation.at(direct, "direct") if direct else None
 
     def last_echo_hours(self, now: float) -> Optional[float]:
         """Age of the last transport REPLAY, or ``None`` when none is on
@@ -1575,6 +1581,7 @@ class NodeRegistry:
     def from_dict(cls, data: dict) -> "NodeRegistry":
         reg = cls()
         for n in data.get("nodes", []):
+          try:
             rec = NodeRecord(
                 dst_hash=n["dst_hash"],
                 name=n.get("name", ""),
@@ -1614,6 +1621,15 @@ class NodeRegistry:
             if lb:
                 rec.latest_beacon = decode(bytes.fromhex(lb))
             reg.nodes[rec.dst_hash] = rec
+          except Exception as exc:
+            # ONE corrupt row must not take the fleet down. The old code fed a
+            # garbage last_seen through .get() and degraded it to None; the
+            # richer per-field decoding here (Observation, events, beacon hex)
+            # has more ways to raise, and load() turns any raise into a FRESH
+            # EMPTY registry — every other node's name/history/log silently
+            # gone. Skip the bad row, keep the rest, and say which one went.
+            log.warning("registry.from_dict: dropping corrupt node %r: %s",
+                        (n or {}).get("dst_hash", "<no dst_hash>"), exc)
         from monitor.history import NodeHistory
         reg.history = NodeHistory.from_dict(data.get("history", {}))
         return reg

@@ -1352,3 +1352,61 @@ def test_rebase_keeps_the_seen_source_through_a_clock_step():
     rec = r.get(HASH)
     assert rec.last_seen == NOW + 3 * HOUR
     assert rec.seen.source == "beacon"        # source survives the rebase
+
+
+# ---- corrupt input must not discard the whole registry --------------------
+# Regression: Observation.from_dict used bracket access with no float() guard,
+# and from_dict had no per-node try/except, so ONE bad node raised out of the
+# loop — load() caught it and returned a FRESH EMPTY registry, silently losing
+# every OTHER node's name/history/log. The old bare-float code degraded a
+# garbage value to None and kept the rest; parity is restored on two layers:
+# (a) a corrupt `seen` degrades that node to never-heard (Observation.from_dict);
+# (b) an otherwise unbuildable row is skipped, not fatal (per-node try/except).
+
+def _reg_with_one_corrupt_seen(bad_seen):
+    good = {"dst_hash": HASH, "name": "GOODNODE", "seen":
+            {"value": None, "observed_at": NOW, "source": "beacon"}}
+    bad = {"dst_hash": HASH2, "name": "BADNODE", "seen": bad_seen}
+    return {"nodes": [good, bad], "history": {}}
+
+
+def test_a_corrupt_seen_node_keeps_the_whole_registry():
+    """{}, a non-dict, and a non-numeric observed_at all degrade that node's
+    seen to never-heard — the node stays, and the GOOD node is untouched (the
+    fleet is NOT nuked)."""
+    for bad_seen in ({}, "astring", 12345,
+                     {"observed_at": "notafloat"}, {"observed_at": None}):
+        reg = NodeRegistry.from_dict(_reg_with_one_corrupt_seen(bad_seen))
+        assert reg.get(HASH) is not None, bad_seen           # good node survives
+        assert reg.get(HASH).name == "GOODNODE"
+        assert reg.get(HASH).seen.source == "beacon"
+        bad = reg.get(HASH2)                                 # bad node degraded
+        assert bad is not None and bad.seen is None          # never-heard
+        assert bad.name == "BADNODE"
+
+
+def test_a_node_with_a_corrupt_seen_still_renders():
+    """No deferred crash at render time (age_at / status / to_dashboard) for a
+    node whose seen degraded to never-heard."""
+    reg = NodeRegistry.from_dict(
+        _reg_with_one_corrupt_seen({"observed_at": "notafloat"}))
+    bad = reg.get(HASH2)
+    assert bad.last_seen_hours(NOW) is None
+    assert bad.status(NOW) == "unknown"
+    d = bad.to_dashboard(NOW)
+    assert d["has_seen"] is False and d["seen_impossible"] is False
+
+
+def test_an_unbuildable_row_is_skipped_not_fatal():
+    """The per-node guard: a row missing its dst_hash (KeyError while building)
+    is dropped, and every OTHER node still loads — instead of load() catching
+    the raise and returning a FRESH EMPTY registry."""
+    data = {"nodes": [
+        {"dst_hash": HASH, "name": "GOODNODE"},
+        {"name": "NO_HASH_ROW"},                    # missing dst_hash -> KeyError
+        {"dst_hash": HASH2, "name": "ALSOGOOD"},
+    ], "history": {}}
+    reg = NodeRegistry.from_dict(data)
+    assert reg.get(HASH) is not None and reg.get(HASH).name == "GOODNODE"
+    assert reg.get(HASH2) is not None and reg.get(HASH2).name == "ALSOGOOD"
+    assert len(reg.nodes) == 2                       # the bad row was skipped

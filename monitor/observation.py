@@ -66,9 +66,12 @@ CLOCK_SKEW_TOLERANCE_S = 120.0        # two minutes
 #:  * "operator"   — a human asserted it
 #:  * "assumed"    — a fallback/guess wearing its honest label (NOT a sighting)
 #:  * "legacy"     — reconstructed from a pre-Observation registry file
+#:  * "unknown"    — a bare timestamp written with no source to give (the
+#:                   compat ``NodeRecord.last_seen`` setter, a corrupt source
+#:                   string): the WHEN is real, the HOW was never supplied
 KNOWN_SOURCES = frozenset({
     "beacon", "http", "announce", "path-table", "direct",
-    "operator", "assumed", "legacy",
+    "operator", "assumed", "legacy", "unknown",
 })
 
 
@@ -178,12 +181,30 @@ class Observation(Generic[T]):
     def from_dict(cls, data: Optional[dict]) -> "Optional[Observation[T]]":
         """Rebuild from ``to_dict`` output. ``None`` (JSON null) round-trips to
         the never-observed state — NOT to an observation of ``None`` — because
-        the whole-thing-is-None rule is the never rule."""
-        if data is None:
+        the whole-thing-is-None rule is the never rule.
+
+        A CORRUPT entry must load, not crash (the vocabulary promise, and the
+        registry loads a whole fleet from one file — one bad node must never
+        take the rest down). Anything that is not a dict with a finite numeric
+        ``observed_at`` degrades to never-observed (``None``): a bare string, a
+        number, ``{}``, or ``{"observed_at": "notafloat"}`` all return ``None``
+        rather than raising here or deferring the crash to ``age_at`` at render
+        time. A non-canonical ``source`` string is kept as-is (forward-compat);
+        a missing one defaults to ``"legacy"``."""
+        if not isinstance(data, dict):
             return None
+        try:
+            observed_at = float(data.get("observed_at"))
+        except (TypeError, ValueError):
+            return None
+        if observed_at != observed_at or observed_at in (
+                float("inf"), float("-inf")):        # NaN / +-inf are not a time
+            return None
+        source = data.get("source", "legacy")
+        if not isinstance(source, str):
+            source = "unknown"
         return cls(value=data.get("value"),
-                   observed_at=data["observed_at"],
-                   source=data.get("source", "legacy"))
+                   observed_at=observed_at, source=source)
 
     @classmethod
     def from_legacy(cls, observed_at: Optional[float],

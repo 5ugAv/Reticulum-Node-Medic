@@ -162,3 +162,44 @@ def test_from_legacy_bare_float_becomes_a_legacy_observation():
 
 def test_from_legacy_none_stays_never():
     assert Observation.from_legacy(None) is None
+
+
+# -- from_dict must LOAD corrupt input, never crash --------------------------
+# The registry loads a whole fleet from one file; one bad `seen` entry must
+# degrade to never-observed, not raise here nor defer the crash to age_at at
+# render time. (Regression guard for the hardening review.)
+
+def test_from_dict_non_dict_is_never_not_a_raise():
+    assert Observation.from_dict("astring") is None
+    assert Observation.from_dict(12345) is None
+    assert Observation.from_dict([1, 2, 3]) is None
+
+
+def test_from_dict_empty_dict_is_never_not_a_keyerror():
+    assert Observation.from_dict({}) is None
+
+
+def test_from_dict_non_numeric_observed_at_is_never():
+    assert Observation.from_dict({"observed_at": "notafloat"}) is None
+    assert Observation.from_dict({"observed_at": None}) is None
+
+
+def test_from_dict_nan_and_inf_observed_at_are_never():
+    assert Observation.from_dict({"observed_at": float("nan")}) is None
+    assert Observation.from_dict({"observed_at": float("inf")}) is None
+    assert Observation.from_dict({"observed_at": float("-inf")}) is None
+
+
+def test_from_dict_numeric_string_observed_at_still_loads():
+    # float() accepts "1000.0" — a benign coercion, kept rather than rejected.
+    obs = Observation.from_dict({"observed_at": "1000.0", "source": "beacon"})
+    assert obs.observed_at == 1000.0 and obs.source == "beacon"
+
+
+def test_from_dict_non_string_source_degrades_to_unknown():
+    obs = Observation.from_dict({"observed_at": NOW, "source": 42})
+    assert obs.source == "unknown"       # honest label, never a raise
+
+
+def test_unknown_is_in_the_vocabulary():
+    assert "unknown" in KNOWN_SOURCES
