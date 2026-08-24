@@ -315,6 +315,38 @@ class CommissionEvent:
     operator: str = "operator"
 
 
+class _EpochView:
+    """A bare-epoch read/write view over one ``Observation`` field, stamping a
+    fixed intrinsic SOURCE on write.
+
+    Stage 3 of the Observation refactor collapses five near-identical
+    property pairs (``last_seen``/``last_direct``/``last_echo_at``/
+    ``last_heard_announce_at``/``mesh_heard``) into declarations of this one
+    descriptor. It is the honesty boundary, kept in ONE place: reading gives
+    the ``observed_at`` epoch (or ``None`` when never observed), and writing a
+    bare epoch wraps it in an ``Observation`` wearing the field's INTRINSIC
+    source ("echo" for a replay, "path-table" for a route row, "unknown" when
+    only a timestamp is on offer). The ingest paths that know a FINER source (a
+    direct word was a beacon / http / announce) still stamp the ``_obs`` field
+    directly, below — writing through this view is for the legacy callers and
+    test fixtures that only have a timestamp to give.
+    """
+
+    def __init__(self, obs_field: str, source: str):
+        self._obs_field = obs_field
+        self._source = source
+
+    def __get__(self, inst, owner=None):
+        if inst is None:
+            return self
+        obs = getattr(inst, self._obs_field)
+        return obs.observed_at if obs is not None else None
+
+    def __set__(self, inst, value):
+        setattr(inst, self._obs_field,
+                None if value is None else Observation.at(value, self._source))
+
+
 @dataclass
 class NodeRecord:
     dst_hash: str
@@ -452,88 +484,18 @@ class NodeRecord:
             return False
         return version_tuple(fw) < version_tuple(latest)
 
-    # -- the SEEN liveness observation and its one age policy --------------
-
-    @property
-    def last_seen(self) -> Optional[float]:
-        """The freshest-sighting EPOCH, read straight off the ``seen``
-        Observation — a backward-compatible view so the ingest/merge/save call
-        sites and every test that reads ``rec.last_seen`` keep working. ``None``
-        when never heard."""
-        return self.seen.observed_at if self.seen is not None else None
-
-    @last_seen.setter
-    def last_seen(self, value: Optional[float]) -> None:
-        """Write a bare epoch back — wrapping it in an Observation whose source
-        we do not know here (``"unknown"``). The ingest paths that DO know the
-        source (beacon/http/announce/path-table) stamp ``self.seen`` directly
-        instead; this setter carries the legacy callers and the test fixtures
-        that only have a timestamp to give."""
-        if value is None:
-            self.seen = None
-        else:
-            self.seen = Observation.at(value, "unknown")
-
-    # -- Stage 2 compat properties: four more bare stamps, now Observations ---
-    # Each field below became an ``Observation`` (WHEN + HOW) exactly as
-    # ``seen`` did; the bare float lives on as a read/write PROPERTY so every
-    # ingest/merge/serialization call site and every test that touches the plain
-    # epoch keeps working. The SETTER wears the field's INTRINSIC source (an echo
-    # is always "echo", a path row always "path-table") — the honest label when
-    # only a timestamp is handed in. The ingest paths that know a finer source
-    # (a direct word was a beacon / http / announce) stamp the ``_obs`` field
-    # directly, below.
-
-    @property
-    def last_direct(self) -> Optional[float]:
-        """Epoch the node last spoke to us DIRECTLY, off the ``last_direct_obs``
-        Observation; ``None`` when it never has."""
-        return self.last_direct_obs.observed_at \
-            if self.last_direct_obs is not None else None
-
-    @last_direct.setter
-    def last_direct(self, value: Optional[float]) -> None:
-        # Generic "direct" — the kind (beacon/http/announce) is not retained
-        # when only an epoch is given; the ingest paths stamp the finer source.
-        self.last_direct_obs = (None if value is None
-                                else Observation.at(value, "direct"))
-
-    @property
-    def last_echo_at(self) -> Optional[float]:
-        """Epoch a byte-identical REPLAY was last heard, off ``last_echo_at_obs``;
-        ``None`` when none is on record. Never a sighting — see the field doc."""
-        return self.last_echo_at_obs.observed_at \
-            if self.last_echo_at_obs is not None else None
-
-    @last_echo_at.setter
-    def last_echo_at(self, value: Optional[float]) -> None:
-        self.last_echo_at_obs = (None if value is None
-                                 else Observation.at(value, "echo"))
-
-    @property
-    def last_heard_announce_at(self) -> Optional[float]:
-        """Epoch a GENUINE announce/beacon was last ingested, off
-        ``last_heard_announce_at_obs`` — the heard_since oracle reads this via
-        the property. ``None`` when never genuinely heard."""
-        return self.last_heard_announce_at_obs.observed_at \
-            if self.last_heard_announce_at_obs is not None else None
-
-    @last_heard_announce_at.setter
-    def last_heard_announce_at(self, value: Optional[float]) -> None:
-        self.last_heard_announce_at_obs = (None if value is None
-                                           else Observation.at(value, "announce"))
-
-    @property
-    def mesh_heard(self) -> Optional[float]:
-        """Epoch the node was last heard ON THE MESH from a path row, off
-        ``mesh_heard_obs``; ``None`` when no route has been folded."""
-        return self.mesh_heard_obs.observed_at \
-            if self.mesh_heard_obs is not None else None
-
-    @mesh_heard.setter
-    def mesh_heard(self, value: Optional[float]) -> None:
-        self.mesh_heard_obs = (None if value is None
-                               else Observation.at(value, "path-table"))
+    # -- bare-epoch views over the five liveness Observations -----------------
+    # Each field below is an ``Observation`` (WHEN + HOW). Its bare epoch lives
+    # on as an ``_EpochView`` descriptor, so every ingest/merge/serialization
+    # call site and every test that reads or writes the plain float keeps
+    # working — and the field's honest intrinsic SOURCE is declared HERE, once.
+    # (``last_seen`` is "unknown" because a bare sighting doesn't say how it was
+    # heard; the ingest paths that DO know stamp ``seen``/``_obs`` directly.)
+    last_seen = _EpochView("seen", "unknown")
+    last_direct = _EpochView("last_direct_obs", "direct")
+    last_echo_at = _EpochView("last_echo_at_obs", "echo")
+    last_heard_announce_at = _EpochView("last_heard_announce_at_obs", "announce")
+    mesh_heard = _EpochView("mesh_heard_obs", "path-table")
 
     def _seen_age(self, now: float):
         """The freshest sighting's :class:`~monitor.observation.Age`, or
