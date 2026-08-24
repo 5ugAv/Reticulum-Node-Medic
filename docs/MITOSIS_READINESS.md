@@ -18,9 +18,12 @@ gap map, audited against the code tonight so tomorrow is execution.
   Deliberate: no PSK ever written to a FAT partition.
 - **ui/screens/mitosis_screen.py** — HONEST stub: "Not wired to a real
   target Pi yet: plain popup, don't fake a clone." (161 lines.)
-- **Wheelhouse on the medic**: 17 aarch64 wheels incl. Kivy 2.3.1
-  (bundled SDL2 — no apt needed), cryptography, cffi. `~/pi_os_lite.img.xz`
-  carried; 36 GB free on the medic's card.
+- **Wheelhouse on the medic**: 19 aarch64 wheels incl. Kivy 2.3.1
+  (bundled SDL2 — no apt needed), cryptography, cffi — PLUS smbus2 (the
+  INA219/UPS driver) and Pillow, found MISSING by tonight's lazy-import scan
+  and fetched while online (2026-08-25; medic runs Python 3.13.5, wheels are
+  cp313). The runtime lazy-imports are: RNS, PIL, segno, serial, smbus2 —
+  all now carried. `~/pi_os_lite.img.xz` carried; 36 GB free.
 - Trust machinery: MITOSIS's stamp_lineage/record_child_trust already mesh
   with Settings ▸ Trusted operators (clone-of-clone stays untrusted).
 
@@ -40,8 +43,10 @@ gap map, audited against the code tonight so tomorrow is execution.
    provisioning/security + a session-autostart writer) or B boots to a
    console, not a medic.
 4. **Wheelhouse preflight**: a step that proves the carried wheels satisfy
-   requirements BEFORE imaging starts (fail early on the bench, not at
-   install_dependencies over the cable).
+   the code's imports BEFORE imaging starts (fail early on the bench, not at
+   install_dependencies over the cable). Tonight's scan method: grep both
+   column-0 AND indented imports (this codebase lazy-imports heavily — the
+   first pass missed smbus2/PIL entirely).
 5. **Secrets audit on transfer_tool**: rsync excludes must cover
    ~/.reticulum identities, vault container, trust HMAC key, host keys —
    generate_fresh_identity is pointless if a stray copy rides along. Audit
