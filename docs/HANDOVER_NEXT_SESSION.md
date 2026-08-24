@@ -11,48 +11,31 @@ the deep index — nearly a hundred verified facts with names like
 
 ---
 
-## 0. IN-FLIGHT — the very first thing to check
+## 0. STATE AT HANDOVER (2026-08-25, late night) — all landed, nothing mid-flight
 
-State as of 2026-08-25 ~01:00 AEST. Everything below supersedes any earlier
-panel/cold-cycle notes you may find elsewhere.
+Tonight's arc ended CLEAN. Deployed and verified live on the medic (c5d77b8):
 
-**1. The DSI panel glitch is SOLVED — cure proven, feature built, deploy
-PENDING.** The panel scrambled (shift/wrong colours) when a USB board plugged
-in; full forensics + the proven no-reboot cure (wlr-randr off/on) are in
-memory `display-shift-is-panel-not-code` — read it, do not re-derive. The
-operator's eyes confirmed the colours returned. A one-tap
-**Settings ▸ Display ▸ "Fix screen colours"** button was built the same night
-(`provisioning/screen_fix.py`, commit 3507e31, CI pending at handover time,
-4017 tests green locally). **It is committed but NOT YET DEPLOYED** — deploy
-was held because a birth was running (never restart a busy medic). First
-idle moment: `bash .git/hooks/deploy-medic.sh` then
-`ssh nodemedic@nodemedic.local 'cd ~/reticulum-tool && bash
-scripts/restart_ui.sh'`, then confirm the button appears under the
-brightness slider.
+- **ELSEWHERE fully reborn** (Pi 3A+ + Heltec V4): ONE green VITALS icon,
+  all four chips green (LORA/WIFI/BT/NET), SIG -42 dBm. The one-icon fix
+  proven on a real rebirth.
+- **Ghost neighbours SOLVED for good** — tombstones now enforced at EVERY
+  registry ingest + rebirth auto-retires predecessor hashes from prior
+  certificates. Full story + code map in memory `rebirth-ghosts-solved`.
+- **BT rides the LoRa beacon** (v2 tail KNOWN/UP bits) — and honestly exposed
+  that the image ships Bluetooth rfkill-soft-blocked; birth's ON branch now
+  unblocks (memory `card-wifi-is-rfkill-blocked`).
+- **DSI panel glitch = one tap** — Settings ▸ Display ▸ "Fix screen colours"
+  (memory `display-shift-is-panel-not-code`).
+- **Observation<T> migration complete** (memory `observation-refactor-shipped`).
+- 3A+ birth wording fixed (both power sockets named).
 
-**2. The fleet REBIRTH is in progress.** Registry was deliberately wiped to
-empty (backup `registry.json.bak-20260824-234226-wipe`, 14 ghost rows). The
-operator is rebirthing on the touchscreen. First birth underway at handover:
-node for "EVERYWHERE" duty — Raspberry Pi 3A+ + Heltec V4 (same hardware as
-before), located at the operator's site. The V4 radio side
-COMPLETED cleanly (erase/flash/provision vendor-model/hash/params
-915.125-BW125-SF9-CR5-17/verify/birth-cry; radio USB serial 02:00:00:01:00:01
-captured); the guide was at "Take the radio out of Node Medic", Pi/SD side
-still ahead. Watch `~/ui.log` `[birth]`/`[guide]` lines; verify the finished
-node lands as exactly ONE VITALS icon (the one-icon fix is deployed — that is
-its first real proof). The 3A+ cable-birth path is proven
-(`pi3aplus-cable-birth-works`); the traps live in `cable-birth-stale-host-key`
-and `medic-usb0-networkmanager`.
+Caveat for the next birth: the running UI imported workflows/build.py BEFORE
+the Bluetooth-ON fix deployed — restart the UI once before the next birth so
+configure_bluetooth's new ON branch is the one that runs.
 
-**3. Deployed vs repo delta.** The medic RUNS f614208 (Observation migration,
-one-icon fix — all verified live). Commits after f614208 (handover docs +
-screen-fix feature, 3507e31) are pushed to origin but NOT on the medic until
-the deploy in item 1. Deploy is rsync — `git log` on the medic lies; check
-code presence directly.
-
-**4. The operator's plan-level usage limit was near** (banner: resets Tuesday
-11:00 am) — be economical: no speculative agent fan-outs, batch questions,
-prefer direct edits with the test suite as oracle.
+The operator plans more sequential-numbered births; watch each land as ONE
+icon. Deploy = rsync (medic git HEAD lies); test cmd
+`python3 -m pytest tests/ -o addopts="" -q` (4033 pass).
 
 ---
 
