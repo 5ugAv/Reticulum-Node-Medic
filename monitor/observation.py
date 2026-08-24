@@ -59,6 +59,10 @@ CLOCK_SKEW_TOLERANCE_S = 120.0        # two minutes
 #:  * "beacon"     — a decoded health beacon the node itself emitted
 #:  * "http"       — a reachable HTTP /status poll on the LAN
 #:  * "announce"   — a genuine (non-replayed) RNS announce
+#:  * "echo"       — a byte-identical REPLAY the transport re-emitted from its
+#:                   cache (rnsd answering a path request with a stored
+#:                   announce): the mesh repeating the node's last words, NEVER
+#:                   the node speaking. Recorded for diagnosis; never a sighting.
 #:  * "path-table" — a route learned from the mesh (a ROUTE, not the node
 #:                   speaking — weaker evidence; see registry.ingest_mesh)
 #:  * "direct"     — the node's own direct word, kind not separately retained
@@ -70,7 +74,7 @@ CLOCK_SKEW_TOLERANCE_S = 120.0        # two minutes
 #:                   compat ``NodeRecord.last_seen`` setter, a corrupt source
 #:                   string): the WHEN is real, the HOW was never supplied
 KNOWN_SOURCES = frozenset({
-    "beacon", "http", "announce", "path-table", "direct",
+    "beacon", "http", "announce", "echo", "path-table", "direct",
     "operator", "assumed", "legacy", "unknown",
 })
 
@@ -216,4 +220,13 @@ class Observation(Generic[T]):
         never HOW, so we do not pretend to."""
         if observed_at is None:
             return None
-        return cls(value=None, observed_at=float(observed_at), source=source)
+        try:
+            observed_at = float(observed_at)
+        except (TypeError, ValueError):
+            return None
+        if observed_at != observed_at or observed_at in (
+                float("inf"), float("-inf")):        # NaN / +-inf are not a time
+            return None
+        if not isinstance(source, str):
+            source = "unknown"
+        return cls(value=None, observed_at=observed_at, source=source)

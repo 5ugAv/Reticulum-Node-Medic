@@ -338,33 +338,43 @@ class NodeRecord:
     #: reads or writes ``rec.last_seen`` keep working unchanged.
     seen: "Optional[Observation]" = None
     #: When the node was last heard ON THE MESH, from the path table row's own
-    #: timestamp. Kept apart from last_seen because the two decay differently: a
-    #: path lives seven days after the announce that taught it, so "still in the
-    #: table" is not "still alive". Held separately so a scan can CORRECT a
-    #: record that an earlier version stamped with now — see ingest_mesh.
-    mesh_heard: Optional[float] = None
+    #: timestamp — an Observation sourced "path-table". Kept apart from last_seen
+    #: because the two decay differently: a path lives seven days after the
+    #: announce that taught it, so "still in the table" is not "still alive".
+    #: Held separately so a scan can CORRECT a record that an earlier version
+    #: stamped with now — see ingest_mesh. Stage 2 of the Observation refactor:
+    #: the bare ``mesh_heard`` float is now the read/write PROPERTY below.
+    mesh_heard_obs: "Optional[Observation]" = None
     #: When the node last spoke to us directly — a health beacon, an HTTP poll,
-    #: an announce. Stronger evidence than a route, and never overwritten by one.
-    last_direct: Optional[float] = None
+    #: an announce — as an Observation carrying WHICH (beacon/http/announce is
+    #: its source). Stronger evidence than a route, and never overwritten by one.
+    #: It gates the echo annotation (last_direct_hours), whose old hand-rolled
+    #: ``max(0.0, …)`` clamp is now ``Observation.age_at``. Bare ``last_direct``
+    #: lives on as the property below.
+    last_direct_obs: "Optional[Observation]" = None
     #: When a DIRECT interrogation (the operator's ping / 0x01 poll) last went
     #: unanswered. Newest-evidence rule: while this is fresher than last_seen,
     #: the node must not wear a clean green face — the tool itself just failed
     #: to raise it (seed, powered off but green, 2026-08-20). Cleared by any
-    #: newer beacon, HTTP poll, or answered probe.
+    #: newer beacon, HTTP poll, or answered probe. Stays a BARE stamp: it is not
+    #: a sighting (it is the ABSENCE of one) and has no age surface of its own.
     poll_failed_at: Optional[float] = None
-    #: When a byte-identical copy of the last beacon was heard again. A repeated
-    #: payload is a RETRANSMISSION (rnsd re-emits cached announces on path
-    #: requests), not the node speaking: on 2026-08-21 a wiped, battery-less
-    #: board's row was "seen" 90 s after unplugging because of exactly this.
-    #: Recorded for diagnosis; never evidence of life.
-    last_echo_at: Optional[float] = None
+    #: When a byte-identical copy of the last beacon/announce was heard again —
+    #: an Observation sourced "echo". A repeated payload is a RETRANSMISSION
+    #: (rnsd re-emits cached announces on path requests), not the node speaking:
+    #: on 2026-08-21 a wiped, battery-less board's row was "seen" 90 s after
+    #: unplugging because of exactly this. Recorded for diagnosis (the echo
+    #: annotation reads its age via age_at, its old clamp collapsed); NEVER a
+    #: sighting. Bare ``last_echo_at`` is the property below.
+    last_echo_at_obs: "Optional[Observation]" = None
     #: When a GENUINE (non-echo) announce or beacon from this node was last
-    #: ingested — written ONLY by ingest()/ingest_announce's non-replay
-    #: branches, never by path-table folds (ingest_mesh/ingest_relay) or HTTP
-    #: polls. This is the ping reply-watch's oracle (health_poll.heard_since):
-    #: last_seen also moves on mesh scans, so watching last_seen let a
-    #: mid-window rnpath tick fake an answer from a silent node.
-    last_heard_announce_at: Optional[float] = None
+    #: ingested — an Observation sourced "announce", written ONLY by
+    #: ingest()/ingest_announce's non-replay branches, never by path-table folds
+    #: (ingest_mesh/ingest_relay) or HTTP polls. This is the ping reply-watch's
+    #: oracle (health_poll.heard_since): last_seen also moves on mesh scans, so
+    #: watching last_seen let a mid-window rnpath tick fake an answer from a
+    #: silent node. Bare ``last_heard_announce_at`` is the property below.
+    last_heard_announce_at_obs: "Optional[Observation]" = None
     #: sha256 hexdigest of the last BARE announce payload heard from this node
     #: (announces that don't decode as beacons). The bare-announce twin of the
     #: byte-identical beacon check: rnsd replays these from its cache too, and
@@ -464,6 +474,67 @@ class NodeRecord:
         else:
             self.seen = Observation.at(value, "unknown")
 
+    # -- Stage 2 compat properties: four more bare stamps, now Observations ---
+    # Each field below became an ``Observation`` (WHEN + HOW) exactly as
+    # ``seen`` did; the bare float lives on as a read/write PROPERTY so every
+    # ingest/merge/serialization call site and every test that touches the plain
+    # epoch keeps working. The SETTER wears the field's INTRINSIC source (an echo
+    # is always "echo", a path row always "path-table") — the honest label when
+    # only a timestamp is handed in. The ingest paths that know a finer source
+    # (a direct word was a beacon / http / announce) stamp the ``_obs`` field
+    # directly, below.
+
+    @property
+    def last_direct(self) -> Optional[float]:
+        """Epoch the node last spoke to us DIRECTLY, off the ``last_direct_obs``
+        Observation; ``None`` when it never has."""
+        return self.last_direct_obs.observed_at \
+            if self.last_direct_obs is not None else None
+
+    @last_direct.setter
+    def last_direct(self, value: Optional[float]) -> None:
+        # Generic "direct" — the kind (beacon/http/announce) is not retained
+        # when only an epoch is given; the ingest paths stamp the finer source.
+        self.last_direct_obs = (None if value is None
+                                else Observation.at(value, "direct"))
+
+    @property
+    def last_echo_at(self) -> Optional[float]:
+        """Epoch a byte-identical REPLAY was last heard, off ``last_echo_at_obs``;
+        ``None`` when none is on record. Never a sighting — see the field doc."""
+        return self.last_echo_at_obs.observed_at \
+            if self.last_echo_at_obs is not None else None
+
+    @last_echo_at.setter
+    def last_echo_at(self, value: Optional[float]) -> None:
+        self.last_echo_at_obs = (None if value is None
+                                 else Observation.at(value, "echo"))
+
+    @property
+    def last_heard_announce_at(self) -> Optional[float]:
+        """Epoch a GENUINE announce/beacon was last ingested, off
+        ``last_heard_announce_at_obs`` — the heard_since oracle reads this via
+        the property. ``None`` when never genuinely heard."""
+        return self.last_heard_announce_at_obs.observed_at \
+            if self.last_heard_announce_at_obs is not None else None
+
+    @last_heard_announce_at.setter
+    def last_heard_announce_at(self, value: Optional[float]) -> None:
+        self.last_heard_announce_at_obs = (None if value is None
+                                           else Observation.at(value, "announce"))
+
+    @property
+    def mesh_heard(self) -> Optional[float]:
+        """Epoch the node was last heard ON THE MESH from a path row, off
+        ``mesh_heard_obs``; ``None`` when no route has been folded."""
+        return self.mesh_heard_obs.observed_at \
+            if self.mesh_heard_obs is not None else None
+
+    @mesh_heard.setter
+    def mesh_heard(self, value: Optional[float]) -> None:
+        self.mesh_heard_obs = (None if value is None
+                               else Observation.at(value, "path-table"))
+
     def _seen_age(self, now: float):
         """The freshest sighting's :class:`~monitor.observation.Age`, or
         ``None`` when NEVER heard — the ONE place the SEEN age is computed, so
@@ -507,22 +578,23 @@ class NodeRecord:
         """Age of the last transport REPLAY, or ``None`` when none is on
         record. Same convention as ``last_seen_hours`` — but the two are never
         interchangeable: an echo is the mesh repeating the node's last words,
-        not the node speaking (the dead board that stayed green, 2026-08-21)."""
-        if self.last_echo_at is None:
-            return None
-        # Clamped: a clock stepping backwards must not turn "echo on record"
-        # into a negative age that a display sentinel reads as "no echo".
-        return max(0.0, (now - self.last_echo_at) / 3600.0)
+        not the node speaking (the dead board that stayed green, 2026-08-21).
+        The old hand-rolled ``max(0.0, …)`` clamp — a clock stepping backwards
+        must not turn "echo on record" into a negative age a display sentinel
+        reads as "no echo" — is now ``Observation.age_at`` (its clamp lives in
+        the one place, ``monitor.observation``)."""
+        age = Observation.age_of(self.last_echo_at_obs, now)
+        return None if age is None else age.hours
 
     def last_direct_hours(self, now: float) -> Optional[float]:
         """Age of the node's last DIRECT word (beacon / HTTP / announce), or
         ``None``. This is what the echo tag is gated on — not last_seen, which
         a mesh scan may bump from a path row's learned-time (weaker evidence,
-        see ingest_mesh). Clamped like last_echo_hours, and for the same
-        reason: both surfaces must agree by construction."""
-        if self.last_direct is None:
-            return None
-        return max(0.0, (now - self.last_direct) / 3600.0)
+        see ingest_mesh). Its old clamp collapsed to ``age_at`` too, and for the
+        same reason last_echo_hours' did: both surfaces must agree by
+        construction, and now they share the one age policy."""
+        age = Observation.age_of(self.last_direct_obs, now)
+        return None if age is None else age.hours
 
     def signal_dbm(self) -> Optional[int]:
         """Best available WiFi signal — HTTP /status first, then the beacon.
@@ -757,11 +829,20 @@ class NodeRegistry:
     #: clock's frame — otherwise a forward step makes every node look silent for
     #: the step size (false escalations, false "SEEN ?"/false-fresh) — exactly
     #: the dishonesty the liveness work removed.
-    #: (``last_seen`` is NOT here — it is now the ``seen`` Observation, rebased
-    #: via ``Observation.rebased`` below so its source survives the step.)
-    _WALL_STAMP_FIELDS = (
-        "mesh_heard", "last_direct", "poll_failed_at",
-        "last_echo_at", "last_heard_announce_at", "share_applied_at",
+    #: NONE of the five Observation stamps are here — last_seen (Stage 1) plus
+    #: last_direct / mesh_heard / last_echo_at / last_heard_announce_at (Stage 2)
+    #: are rebased via ``Observation.rebased`` below so their SOURCE survives the
+    #: step (the property setters would relabel them "direct"/"path-table"/…).
+    #: What remains are the two genuinely bare stamps: poll_failed_at (the
+    #: absence of a sighting, no source) and share_applied_at (a config write).
+    _WALL_STAMP_FIELDS = ("poll_failed_at", "share_applied_at")
+
+    #: The Observation-valued stamps, rebased as frozen copies (source preserved)
+    #: rather than through the bare setters — collected here so the loop below is
+    #: one line and a new Observation field is one entry, not another special case.
+    _OBS_STAMP_FIELDS = (
+        "seen", "last_direct_obs", "mesh_heard_obs",
+        "last_echo_at_obs", "last_heard_announce_at_obs",
     )
 
     @_locked
@@ -785,10 +866,14 @@ class NodeRegistry:
         for rec in self.nodes.values():
             for attr in self._WALL_STAMP_FIELDS:
                 setattr(rec, attr, _shift(getattr(rec, attr, None)))
-            # The SEEN Observation shifts in time too, keeping its source — a
-            # frozen value type, so rebased() returns a moved copy.
-            if isinstance(getattr(rec, "seen", None), Observation):
-                rec.seen = rec.seen.rebased(delta)
+            # Every Observation stamp shifts in time too, keeping its source — a
+            # frozen value type, so rebased() returns a moved copy. Rebasing the
+            # _obs field directly (not the bare property) is what keeps a shifted
+            # echo from being relabelled "direct" by the setter.
+            for attr in self._OBS_STAMP_FIELDS:
+                obs = getattr(rec, attr, None)
+                if isinstance(obs, Observation):
+                    setattr(rec, attr, obs.rebased(delta))
             for ev in rec.events:              # field-log timestamps track wall time too
                 ev.at = _shift(getattr(ev, "at", None))
         self.history.rebase(delta)
@@ -1009,7 +1094,7 @@ class NodeRegistry:
         if rec.poll_failed_at is not None and rec.last_seen is not None \
                 and rec.last_seen >= rec.poll_failed_at:
             rec.poll_failed_at = None   # newer direct word from the node itself
-        rec.last_direct = now
+        rec.last_direct_obs = Observation.at(now, "beacon")   # the finer source
         from monitor.history import HistoryPoint
         self.history.append(dst_hash, HistoryPoint(
             t=now,
@@ -1085,7 +1170,7 @@ class NodeRegistry:
                 # nothing to compare, "identical" cannot be established — and
                 # never guess. It stays a sighting.
                 rec.seen = Observation.at(now, "announce")
-                rec.last_direct = now
+                rec.last_direct_obs = Observation.at(now, "announce")
                 rec.last_heard_announce_at = now   # genuine, not an echo
                 # Record a bare heard-event point so intermittent / neighbour nodes
                 # (which never send a beacon) still accumulate an activity time-series
@@ -1164,7 +1249,7 @@ class NodeRegistry:
         if status.reachable:
             rec.latest_http = status
             rec.seen = Observation.at(now, "http")
-            rec.last_direct = now
+            rec.last_direct_obs = Observation.at(now, "http")
             # A hostile /status must NOT set an arbitrary-length/arbitrary-
             # content node name: the ANNOUNCE path already runs names through
             # _printable_name -> _valid_display_name (strict UTF-8, length
@@ -1412,17 +1497,18 @@ class NodeRegistry:
         # Echoes and direct words pool like sightings (freshest wins) but stay
         # in their own fields — a merged row must never let one aspect's replay
         # pass for another aspect's live word (the 2026-08-21 rule, device-
-        # level), and the echo tag is GATED on the pooled direct word.
-        echoes = [r.last_echo_at for r in members if r.last_echo_at is not None]
-        if echoes:
-            merged.last_echo_at = max(echoes)
-        directs = [r.last_direct for r in members if r.last_direct is not None]
-        if directs:
-            merged.last_direct = max(directs)
-        genuine = [r.last_heard_announce_at for r in members
-                   if r.last_heard_announce_at is not None]
-        if genuine:
-            merged.last_heard_announce_at = max(genuine)
+        # level), and the echo tag is GATED on the pooled direct word. Each
+        # carries the winning member's WHOLE Observation (its source too, like
+        # the seen fold above), max()-ed by observed_at so a clock-stepped stamp
+        # cannot out-rank a real one.
+        def _fold_obs(attr: str) -> None:
+            obs = [getattr(r, attr) for r in members
+                   if getattr(r, attr) is not None]
+            if obs:
+                setattr(merged, attr, max(obs, key=lambda o: o.observed_at))
+        _fold_obs("last_echo_at_obs")
+        _fold_obs("last_direct_obs")
+        _fold_obs("last_heard_announce_at_obs")
         return merged
 
     @_locked
@@ -1551,11 +1637,24 @@ class NodeRegistry:
                 # Kept apart across a restart too. Without these the app comes
                 # back unable to tell a route from having heard the node, and
                 # the next mesh scan can overwrite fresh direct evidence with an
-                # old path timestamp.
+                # old path timestamp. Each is now an Observation ({value,
+                # observed_at, source} / null), written ALONGSIDE its bare float
+                # as a ROLLBACK MIRROR — an older (pre-Stage-2) build reads the
+                # plain epoch it expects; new loads prefer the ``_obs`` key and
+                # ignore the mirror. poll_failed_at stays a lone bare stamp.
+                "last_direct_obs": (r.last_direct_obs.to_dict()
+                                    if r.last_direct_obs is not None else None),
                 "last_direct": r.last_direct,
+                "mesh_heard_obs": (r.mesh_heard_obs.to_dict()
+                                   if r.mesh_heard_obs is not None else None),
                 "mesh_heard": r.mesh_heard,
                 "poll_failed_at": r.poll_failed_at,
+                "last_echo_at_obs": (r.last_echo_at_obs.to_dict()
+                                     if r.last_echo_at_obs is not None else None),
                 "last_echo_at": r.last_echo_at,
+                "last_heard_announce_at_obs": (
+                    r.last_heard_announce_at_obs.to_dict()
+                    if r.last_heard_announce_at_obs is not None else None),
                 "last_heard_announce_at": r.last_heard_announce_at,
                 "last_announce_fp": r.last_announce_fp,
                 "lat": r.lat,
@@ -1593,11 +1692,30 @@ class NodeRegistry:
                 # neither loads as never-heard (None).
                 seen=(Observation.from_dict(n["seen"]) if "seen" in n
                       else Observation.from_legacy(n.get("last_seen"))),
-                last_direct=n.get("last_direct"),
-                mesh_heard=n.get("mesh_heard"),
+                # Same rule per Stage-2 field: prefer the new ``_obs`` key,
+                # else adapt an OLD file's bare float via from_legacy (we know
+                # WHEN, never HOW -> source "legacy"). Neither present -> None.
+                # from_dict/from_legacy are corruption-tolerant (a bad entry ->
+                # None, never a raise), and the outer try still catches anything
+                # else so one bad row can't wipe the fleet.
+                last_direct_obs=(Observation.from_dict(n["last_direct_obs"])
+                                 if "last_direct_obs" in n
+                                 else Observation.from_legacy(
+                                     n.get("last_direct"))),
+                mesh_heard_obs=(Observation.from_dict(n["mesh_heard_obs"])
+                                if "mesh_heard_obs" in n
+                                else Observation.from_legacy(
+                                    n.get("mesh_heard"))),
                 poll_failed_at=n.get("poll_failed_at"),
-                last_echo_at=n.get("last_echo_at"),
-                last_heard_announce_at=n.get("last_heard_announce_at"),
+                last_echo_at_obs=(Observation.from_dict(n["last_echo_at_obs"])
+                                  if "last_echo_at_obs" in n
+                                  else Observation.from_legacy(
+                                      n.get("last_echo_at"))),
+                last_heard_announce_at_obs=(
+                    Observation.from_dict(n["last_heard_announce_at_obs"])
+                    if "last_heard_announce_at_obs" in n
+                    else Observation.from_legacy(
+                        n.get("last_heard_announce_at"))),
                 last_announce_fp=n.get("last_announce_fp"),
                 lat=n.get("lat"),
                 lon=n.get("lon"),

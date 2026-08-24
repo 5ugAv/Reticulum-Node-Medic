@@ -1410,3 +1410,135 @@ def test_an_unbuildable_row_is_skipped_not_fatal():
     assert reg.get(HASH) is not None and reg.get(HASH).name == "GOODNODE"
     assert reg.get(HASH2) is not None and reg.get(HASH2).name == "ALSOGOOD"
     assert len(reg.nodes) == 2                       # the bad row was skipped
+
+
+# ---- Stage 2: last_direct / last_echo_at / last_heard_announce_at / mesh_heard
+# The four remaining bare timestamp fields became Observations on the SAME
+# machinery as `seen` (Stage 1): each keeps a compat read/write property, wears
+# an honest source, rebases keeping that source, and serializes with a bare
+# rollback mirror. These tests pin the parts the pre-existing behaviour tests
+# (which read only the epoch through the property) do not exercise.
+
+def test_last_direct_records_the_evidence_class_source():
+    """last_direct wears the KIND of direct word it was — beacon vs http vs
+    announce — not a flat 'direct'. The ingest paths thread the finer source."""
+    rb = NodeRegistry()
+    rb.ingest(HASH, beacon(), NOW)
+    assert rb.get(HASH).last_direct_obs.source == "beacon"
+    assert rb.get(HASH).last_direct == NOW
+
+    rh = NodeRegistry()
+    rh.record_http_status(HASH, http(status="ok"), NOW)
+    assert rh.get(HASH).last_direct_obs.source == "http"
+
+    ra = NodeRegistry()
+    ra.ingest_announce(bytes.fromhex(HASH), b"WILDNODE", NOW)
+    assert ra.get(HASH).last_direct_obs.source == "announce"
+
+
+def test_a_replay_stamps_last_echo_at_with_the_echo_source():
+    """A byte-identical replay is the transport echoing — sourced "echo",
+    NEVER a sighting (seen/last_direct/last_heard_announce_at untouched)."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(), NOW + 200)              # byte-identical = replay
+    rec = r.get(HASH)
+    assert rec.last_echo_at_obs.source == "echo"
+    assert rec.last_echo_at == NOW + 200
+    assert rec.last_direct == NOW                     # the node did NOT speak
+    assert rec.last_heard_announce_at == NOW          # oracle unmoved
+
+
+def test_last_heard_announce_at_is_sourced_announce_and_genuine_only():
+    """The heard_since oracle: written only by a genuine (non-replay) announce
+    or beacon, sourced "announce"; a path fold never touches it."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    assert r.get(HASH).last_heard_announce_at_obs.source == "announce"
+    r.ingest_mesh(_mesh(HASH2, heard=NOW - HOUR), NOW)
+    assert r.get(HASH2).last_heard_announce_at is None   # a route is not a word
+
+
+def test_mesh_heard_is_sourced_path_table():
+    """A path row's own timestamp lands in mesh_heard, sourced "path-table" —
+    a ROUTE, weaker than the node's direct word."""
+    r = NodeRegistry()
+    r.ingest_mesh(_mesh(HASH, heard=NOW - HOUR), NOW)
+    assert r.get(HASH).mesh_heard_obs.source == "path-table"
+    assert r.get(HASH).mesh_heard == NOW - HOUR
+
+
+def test_stage2_fields_round_trip_with_their_sources():
+    """A new file carries each Observation (source included) and restores it."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(), NOW + 200)              # add an echo
+    r.ingest_mesh(_mesh(HASH, heard=NOW - HOUR), NOW + 200)
+    back = NodeRegistry.from_dict(r.to_dict()).get(HASH)
+    assert back.last_direct_obs.source == "beacon"
+    assert back.last_echo_at_obs.source == "echo"
+    assert back.last_heard_announce_at_obs.source == "announce"
+    assert back.mesh_heard_obs.source == "path-table"
+    assert back.last_echo_at == NOW + 200
+
+
+def test_stage2_to_dict_writes_bare_rollback_mirrors():
+    """Rollback BACKWARD: an OLDER build must find plain epochs beside the
+    Observation dicts, not choke on the dicts."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(), NOW + 200)
+    node = r.to_dict()["nodes"][0]
+    assert node["last_direct"] == NOW                 # bare mirrors
+    assert node["last_echo_at"] == NOW + 200
+    assert node["last_heard_announce_at"] == NOW
+    assert node["last_direct_obs"]["source"] == "beacon"
+    assert node["last_echo_at_obs"]["source"] == "echo"
+
+
+def test_an_old_file_bare_stage2_floats_migrate_to_legacy():
+    """Rollback FORWARD: an old file's bare floats (no `_obs` keys) load as
+    "legacy"-sourced Observations — WHEN known, HOW not — and the epochs stand."""
+    old = {"nodes": [{"dst_hash": HASH, "name": "OLDNODE",
+                      "last_direct": NOW, "mesh_heard": NOW - HOUR,
+                      "last_echo_at": NOW - 10,
+                      "last_heard_announce_at": NOW}], "history": {}}
+    rec = NodeRegistry.from_dict(old).get(HASH)
+    assert rec.last_direct == NOW and rec.last_direct_obs.source == "legacy"
+    assert rec.mesh_heard == NOW - HOUR
+    assert rec.last_echo_at == NOW - 10
+    assert rec.last_heard_announce_at == NOW
+    assert rec.last_direct_hours(NOW + HOUR) == pytest.approx(1.0)
+
+
+def test_a_corrupt_stage2_obs_degrades_that_field_not_the_fleet():
+    """A garbage `_obs` entry degrades just that field to None, keeps the node,
+    and never wipes the registry (the from_dict corruption promise)."""
+    data = {"nodes": [
+        {"dst_hash": HASH, "name": "GOODNODE",
+         "last_direct_obs": {"observed_at": "notafloat"},
+         "last_echo_at_obs": "astring",
+         "mesh_heard_obs": {},
+         "last_heard_announce_at_obs": 12345},
+    ], "history": {}}
+    rec = NodeRegistry.from_dict(data).get(HASH)
+    assert rec is not None and rec.name == "GOODNODE"
+    assert rec.last_direct is None and rec.last_echo_at is None
+    assert rec.mesh_heard is None and rec.last_heard_announce_at is None
+    assert rec.last_direct_hours(NOW) is None          # no deferred crash
+
+
+def test_rebase_keeps_stage2_sources_through_a_clock_step():
+    """A GPS step shifts every observed_at but must NOT relabel HOW we heard —
+    the reason these four were pulled out of the bare-setter rebase path."""
+    r = NodeRegistry()
+    r.ingest(HASH, beacon(), NOW)
+    r.ingest(HASH, beacon(), NOW + 200)              # echo
+    r.ingest_mesh(_mesh(HASH, heard=NOW - HOUR), NOW + 200)
+    r.rebase_wall_clock(3 * HOUR)
+    rec = r.get(HASH)
+    assert rec.last_direct == NOW + 3 * HOUR
+    assert rec.last_direct_obs.source == "beacon"     # source survives
+    assert rec.last_echo_at_obs.source == "echo"
+    assert rec.mesh_heard_obs.source == "path-table"
+    assert rec.mesh_heard == NOW - HOUR + 3 * HOUR
