@@ -13,55 +13,22 @@ exists to refuse. No reading -> no icon, never a guessed one.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.graphics import Color, Line, Rectangle, Triangle
 from kivy.metrics import dp
 from kivy.uix.widget import Widget
 
+from ui.battery_state import battery_view
+
 #: Seconds between UPS reads. Battery state moves slowly; the bus is shared.
 POLL_S = 20.0
-
-#: Fill colour bands (operator spec, 2026-08-25): red at/below 15%, yellow
-#: at/below 20%, green above.
-RED_FRACTION = 0.15
-YELLOW_FRACTION = 0.20
 
 #: The bolt pictogram in unit space (x, y in 0..1), two triangles.
 BOLT_TRIS = (
     (0.58, 0.95, 0.22, 0.45, 0.50, 0.45),
     (0.42, 0.55, 0.78, 0.55, 0.44, 0.05),
 )
-
-
-def battery_view(reading) -> Optional[dict]:
-    """The pure view-model: what the icon should show for a UPS *reading*.
-
-    ``None`` when there is nothing honest to draw (no UPS / no percentage).
-    Otherwise ``{"fraction": 0.0..1.0, "charging": bool}``.
-    """
-    if reading is None or not getattr(reading, "present", False):
-        return None
-    pct = getattr(reading, "percent", None)
-    if pct is None:
-        return None
-    try:
-        frac = max(0.0, min(1.0, float(pct) / 100.0))
-    except (TypeError, ValueError):
-        return None
-    if frac <= RED_FRACTION:
-        level = "red"
-    elif frac <= YELLOW_FRACTION:
-        level = "yellow"
-    else:
-        level = "green"
-    return {"fraction": frac,
-            "charging": bool(getattr(reading, "charging", False)),
-            # The glance-value of the gauge is these bands: green above 20%,
-            # yellow in the 15-20% caution window, red at/below 15%.
-            "level": level}
 
 
 class BatteryIcon(Widget):

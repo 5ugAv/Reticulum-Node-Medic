@@ -7,7 +7,7 @@ bolt is the CHARGING flag, not "plugged in looks likely".
 
 from types import SimpleNamespace as NS
 
-from ui.widgets.battery_icon import battery_view
+from ui.battery_state import battery_view
 
 
 def test_no_ups_draws_nothing():
