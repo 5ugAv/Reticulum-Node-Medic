@@ -231,6 +231,7 @@ class SettingsScreen(BoxLayout):
         if not bright.has_control():
             box.add_widget(_line("Brightness control isn't available on this display.",
                                  size="12.5sp", color="text_secondary", h=24))
+            self._add_screen_fix_row(box)
             return box
         cur = bright.get_brightness()
         if cur is None:
@@ -247,7 +248,41 @@ class SettingsScreen(BoxLayout):
         self._bright_val.size_hint_x, self._bright_val.width = None, dp(52)
         row.add_widget(self._bright_val)
         box.add_widget(row)
+        self._add_screen_fix_row(box)
         return box
+
+    def _add_screen_fix_row(self, box):
+        """Fix screen colours — a one-tap DSI panel re-init for the scrambled-
+        panel state (shifted/wrong colours after a USB plug-in). Proven cure
+        2026-08-25; see provisioning/screen_fix.py for the evidence trail. The
+        screen goes black for ~2 s, then returns. Software cannot verify the
+        panel, so the status line reports only that the re-init ran."""
+        self._fix_btn = Button(
+            text=tr("Fix screen colours"), size_hint_y=None, height=dp(44),
+            background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        self._fix_btn.bind(on_release=lambda *_: self._fix_screen())
+        box.add_widget(self._fix_btn)
+        self._fix_status = _line(
+            "If the screen shifts or shows wrong colours, this re-starts the "
+            "panel (screen blanks ~2 s).",
+            size="12.5sp", color="text_secondary", h=24)
+        box.add_widget(self._fix_status)
+
+    def _fix_screen(self):
+        from provisioning import screen_fix
+        self._fix_btn.disabled = True
+        self._fix_status.text = "Re-initialising the panel…"
+
+        def work():
+            ok, msg = screen_fix.reinit_panel()
+            def done(_dt):
+                self._fix_btn.disabled = False
+                self._fix_status.text = msg
+            Clock.schedule_once(done, 0)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _on_brightness(self, value):
         pct = int(value)
