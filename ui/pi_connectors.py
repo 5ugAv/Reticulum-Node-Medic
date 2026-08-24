@@ -86,8 +86,13 @@ PI_CONNECTORS: Dict[str, Connectors] = {
         # "read like plug both in at the same time" (operator, 2026-08-14).
         caveat=tr("Use an A-to-A DATA cable — a charge-only lead won't "
                   "be seen."),
-        one_liner=tr("A-to-A DATA cable into the USB-A socket — a "
-                     "charge-only lead won't be seen.")),
+        # BOTH routes name their socket (operator, 2026-08-25, holding a
+        # supply over the wrong plug): the cable route uses the USB-A, the
+        # own-supply route puts power into the micro-USB. Before this, every
+        # socket this screen named was the USB-A — so "power the Pi" read as
+        # "power into the USB-A".
+        one_liner=tr("Cable: A-to-A DATA lead into the USB-A, not "
+                     "charge-only. Own power: micro-USB.")),
     # The board that cannot, however willing the operator is.
     "pi_3b_plus": Connectors(
         key="pi_3b_plus", can_cable=False,

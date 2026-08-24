@@ -371,7 +371,8 @@ _STEPS = {
                     "drops the link.\n"
                     "\u2022 Pi Zero: inner micro-USB, nearer the mini-HDMI (outer "
                     "is PWR IN)\n"
-                    "\u2022 Pi 3A+: the full-size USB-A"),
+                    "\u2022 Pi 3A+: cable into the full-size USB-A; own "
+                    "power into the micro-USB"),
          "anim": "connect_pi"},
         # THE HAND-OFF, AND THE ONLY STEP THAT MAKES THIS A NODE.
         #
