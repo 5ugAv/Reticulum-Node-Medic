@@ -58,6 +58,10 @@ class PiHealthInputs:
     on_battery: bool = False
     charging: bool = False
     on_solar: bool = False       # stamped at birth (the node's power source)
+    #: Bluetooth truth for the beacon's KNOWN/UP bit pair: True = adapter
+    #: present and not rfkill-blocked, False = absent or blocked, None = could
+    #: not be read (stays honestly unreported on the wire).
+    bt_up: Optional[bool] = None
     on_mains: bool = False
     # the node's own view of its LoRa link (from RNS/RNode packet stats)
     lora_snr_db: Optional[int] = None
@@ -102,6 +106,7 @@ def collect_pi_health(inp: PiHealthInputs) -> HealthBeacon:
         charging=inp.charging,
         on_solar=inp.on_solar,
         on_mains=inp.on_mains,
+        bt_up=inp.bt_up,
         lora_snr_db=inp.lora_snr_db,
         lora_rssi_dbm=inp.lora_rssi_dbm,
     )
@@ -202,7 +207,55 @@ def read_os_inputs(power_source: str = "battery",
         charging=charging,
         on_solar=(src == "solar"),
         on_mains=(src == "mains"),
+        bt_up=_read_bt_up(),
     )
+
+
+def bt_state(has_adapter: bool,
+             rfkill_soft: Optional[str],
+             rfkill_hard: Optional[str]) -> Optional[bool]:
+    """Bluetooth truth from injected sysfs facts (pure, unit-tested).
+
+    True  = an adapter is registered and rfkill shows it unblocked;
+    False = no adapter, or rfkill soft/hard-blocked (the birth's "Bluetooth
+            off" is exactly `rfkill block bluetooth`);
+    None  = there IS an adapter but rfkill state could not be read — unknown,
+            which the beacon encodes as "not reported" (SolarLove rule:
+            never promote a datasheet to a state).
+    """
+    if not has_adapter:
+        return False
+    if rfkill_soft is None and rfkill_hard is None:
+        return None
+    return (rfkill_soft or "0").strip() == "0" and \
+           (rfkill_hard or "0").strip() == "0"
+
+
+def _read_bt_up() -> Optional[bool]:
+    """Best-effort sysfs read feeding :func:`bt_state` on a live node."""
+    import os
+    try:
+        has_adapter = bool(os.listdir("/sys/class/bluetooth"))
+    except OSError:
+        has_adapter = False
+    soft = hard = None
+    try:
+        base = "/sys/class/rfkill"
+        for rk in os.listdir(base):
+            try:
+                with open(f"{base}/{rk}/type") as f:
+                    if f.read().strip() != "bluetooth":
+                        continue
+                with open(f"{base}/{rk}/soft") as f:
+                    soft = f.read()
+                with open(f"{base}/{rk}/hard") as f:
+                    hard = f.read()
+                break
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return bt_state(has_adapter, soft, hard)
 
 
 def _net_up(os_mod) -> bool:

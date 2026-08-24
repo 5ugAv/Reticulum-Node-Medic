@@ -170,3 +170,41 @@ def test_power_source_unknown_is_a_legal_birth_answer():
     import monitor.pi_health_reporter as phr
     src_text = open(phr.__file__).read()
     assert '"unknown"' in src_text.split('--power-source')[1].split(")")[0]
+
+
+# -- Bluetooth truth for the beacon (operator ask, 2026-08-25) ---------------
+# The chip on VITALS lights only from the node's own word (SolarLove rule);
+# this is that word: measured from sysfs, carried in the v2 tail's KNOWN/UP
+# bit pair, over LoRa like every other field.
+
+def test_bt_state_adapter_present_and_unblocked_is_up():
+    from monitor.pi_health_reporter import bt_state
+    assert bt_state(True, "0\n", "0\n") is True
+
+
+def test_bt_state_soft_blocked_is_down():
+    from monitor.pi_health_reporter import bt_state
+    assert bt_state(True, "1\n", "0\n") is False
+
+
+def test_bt_state_no_adapter_is_down_not_unknown():
+    from monitor.pi_health_reporter import bt_state
+    assert bt_state(False, None, None) is False
+
+
+def test_bt_state_unreadable_rfkill_is_unknown():
+    from monitor.pi_health_reporter import bt_state
+    assert bt_state(True, None, None) is None
+
+
+def test_bt_up_rides_the_beacon_wire():
+    from monitor.pi_health_reporter import PiHealthInputs, build_beacon_bytes
+    from monitor.health_beacon import decode
+    base = dict(uptime_s=10, free_ram_kb=1000, disk_used_pct=10,
+                net_up=True, radio_up=True, rns_transport_up=True)
+    up = decode(build_beacon_bytes(PiHealthInputs(bt_up=True, **base)))
+    down = decode(build_beacon_bytes(PiHealthInputs(bt_up=False, **base)))
+    unknown = decode(build_beacon_bytes(PiHealthInputs(bt_up=None, **base)))
+    assert up.bt_up is True
+    assert down.bt_up is False
+    assert unknown.bt_up is None        # honestly unreported, never a guess

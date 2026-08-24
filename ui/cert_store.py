@@ -270,3 +270,51 @@ def delete_by_name(name: str, cert_dir: str = CERT_DIR) -> int:
             except OSError:
                 pass
     return removed
+
+
+def predecessor_hashes(node_name: str, keep_hashes,
+                       cert_dir: str = None) -> set:
+    """Destination hashes that PRIOR certificates for *node_name* recorded and
+    the current birth does not carry — the previous machine's identities.
+
+    A rebirth re-images the machine, so its old transport/health/propagation
+    identities can never speak again; only the mesh's replayed caches keep
+    them moving. The old certs are the one durable record tying those hashes
+    to this name (2026-08-25: three of old-ELSEWHERE's identities sat on
+    VITALS as anonymous neighbours because nothing consulted them). Matching
+    is by node_name OR hostname, case-insensitive; *keep_hashes* (the new
+    cert's own destinations) are excluded, so re-issuing a cert for the SAME
+    machine retires nothing. Read-only and raise-proof: a corrupt cert file is
+    simply skipped.
+    """
+    import json as _json
+    import os as _os
+    want = (node_name or "").strip().lower()
+    if not want:
+        return set()
+    keep = {str(h) for h in (keep_hashes or []) if h}
+    base = cert_dir or CERT_DIR
+    found = set()
+    try:
+        names = _os.listdir(base)
+    except OSError:
+        return set()
+    for fn in names:
+        if not fn.endswith(".json"):
+            continue
+        try:
+            with open(_os.path.join(base, fn)) as f:
+                cert = _json.load(f)
+        except Exception:                                      # noqa: BLE001
+            continue
+        if not isinstance(cert, dict):
+            continue
+        cn = (cert.get("node_name") or "").strip().lower()
+        ch = (cert.get("hostname") or "").strip().lower()
+        if want not in (cn, ch):
+            continue
+        for k in ("reticulum_address", "health_dst", "lxmd_dst", "lxmf_dst"):
+            h = cert.get(k)
+            if h and str(h) not in keep:
+                found.add(str(h))
+    return found

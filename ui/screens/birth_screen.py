@@ -3408,6 +3408,33 @@ class BirthScreen(BoxLayout):
                           f"{_node_name!r} ({len(_replaced)} row(s) retired)")
             except Exception:
                 pass
+            # THE PREDECESSOR'S IDENTITIES, FROM ITS OWN CERTIFICATES.
+            # retire_previous_lives/retire_same_name consult the ROSTER - and
+            # the roster can be empty (wiped 2026-08-22) while the old certs
+            # still record exactly which hashes this name used to be. A
+            # re-imaged machine's old identities can never speak again; only
+            # replayed caches keep them moving, so they are buried too -
+            # without the tombstone the path-table rediscover re-folded every
+            # one of them within the hour (seen live, 2026-08-25).
+            try:
+                from ui import cert_store as _cs
+                from monitor import tombstones as _tomb
+                _dead = set(_cs.predecessor_hashes(_node_name, hashes))
+                try:
+                    _dead |= set(_replaced)
+                except Exception:
+                    pass
+                if _dead:
+                    for _old in _dead:
+                        if _reg is not None:
+                            _reg.forget_node(_old)
+                    _tombs = _tomb.bury(_dead)
+                    if _reg is not None:
+                        _reg.set_tombstones(_tombs)
+                    print(f"[kin] rebirth retired {len(_dead)} predecessor "
+                          f"hash(es) for {_node_name!r}")
+            except Exception as _e:
+                print(f"[kin] predecessor retire skipped: {_e}")
             kin_roster.register_device(
                 hashes, _node_name,
                 # NOT a default — a lookup. See kin_roster.type_for_cert:

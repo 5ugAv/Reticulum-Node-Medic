@@ -752,6 +752,13 @@ class NodeRegistry:
         import threading
         self._lock = threading.RLock()
         self.nodes: Dict[str, NodeRecord] = {}
+        #: Tombstoned hashes ({hash: buried_at}): identities the operator (or a
+        #: rebirth) deleted, suppressed from EVERY ingest for the tombstone's
+        #: 7-day life. The mesh replays a dead identity's cached announces for
+        #: days, and post-delete no replay baseline is left to recognise them —
+        #: so within the window nothing may re-create the row (see
+        #: monitor.tombstones for the trade this makes and why it is honest).
+        self._tombstones: Dict[str, float] = {}
         from monitor.history import NodeHistory
         self.history = NodeHistory()    # per-node time series (VITALS "History")
         #: The medic's own fleet, keyed by RNS hash (monitor.kin_roster). Any
@@ -903,8 +910,36 @@ class NodeRegistry:
             rec.device_id = entry["device"]
 
     @_locked
+    def set_tombstones(self, tombs: Dict[str, float]) -> None:
+        """Install the current tombstone set (monitor.tombstones.load()). The
+        app pushes this at startup and after every Forget/rebirth-retire."""
+        with self._lock:
+            self._tombstones = dict(tombs or {})
+            for h in [h for h in self.nodes if h in self._tombstones]:
+                # PURGE rows already wearing a buried hash - at startup the
+                # autosaved registry still holds resurrected ghosts (2026-08-25:
+                # three deleted neighbours returned with their old SEEN, re-folded
+                # from the path table before the delete's ink dried). Exact-hash
+                # only: spreading by identity could take a living namesake.
+                del self.nodes[h]
+
+    def _buried(self, dst_hash, now: float) -> bool:
+        """True while *dst_hash* rests under an unexpired tombstone."""
+        if not self._tombstones:
+            return False
+        h = dst_hash.hex() if isinstance(dst_hash, (bytes, bytearray)) \
+            else str(dst_hash)
+        ts = self._tombstones.get(h)
+        if ts is None:
+            return False
+        from monitor.tombstones import LIFETIME_S
+        if now - ts >= LIFETIME_S:
+            del self._tombstones[h]           # expired: the node may return
+            return False
+        return True
+
     def ingest_relay(self, via_hash: str, interface: str, now: float,
-                     heard: float = 0.0) -> NodeRecord:
+                     heard: float = 0.0) -> Optional[NodeRecord]:
         """Surface the medic's DIRECT next-hop relay (a ``via`` in the path table)
         as a node. A via is the medic's 1-hop LoRa neighbour that the whole mesh
         routes through — e.g. EVERYWHERE — yet it's never a destination in rnpath,
@@ -922,6 +957,8 @@ class NodeRegistry:
         itself. *now* is kept for signature uniformity with the other ingests
         and deliberately stamps nothing.
         """
+        if self._buried(via_hash, now):
+            return None                       # tombstoned: nothing may re-create it
         del now  # explicit: table presence carries no timestamp evidence
         rec = self.nodes.get(via_hash) or self.register(via_hash)
         rec.mesh_hops = 1
@@ -1037,8 +1074,11 @@ class NodeRegistry:
 
     @_locked
     def ingest(self, dst_hash: str, beacon: HealthBeacon,
-               now: float) -> NodeRecord:
-        """Record a decoded beacon; auto-registers a never-seen node."""
+               now: float) -> Optional[NodeRecord]:
+        """Record a decoded beacon; auto-registers a never-seen node. A
+        tombstoned hash returns None (see set_tombstones)."""
+        if self._buried(dst_hash, now):
+            return None                       # tombstoned: nothing may re-create it
         rec = self.nodes.get(dst_hash)
         if rec is None:
             rec = self.register(dst_hash)
@@ -1093,6 +1133,8 @@ class NodeRegistry:
         as health data.
         """
         h = dst_hash.hex() if isinstance(dst_hash, (bytes, bytearray)) else str(dst_hash)
+        if self._buried(dst_hash, now):
+            return None                       # tombstoned: nothing may re-create it
         # THE MEDIC IS NOT ITS OWN NEIGHBOUR. 2026-08-22 (live): the medic heard
         # its OWN lxmd propagation announce and listed its own destination
         # 5a0a000a (identity 5a180018) as an anonymous "Propagation relay". An
@@ -1164,7 +1206,7 @@ class NodeRegistry:
         return rec
 
     @_locked
-    def ingest_mesh(self, node, now: float) -> NodeRecord:
+    def ingest_mesh(self, node, now: float) -> Optional[NodeRecord]:
         """Fold a mesh path (a monitor.mesh.MeshNode) into the registry, keyed by
         its destination hash — the same key birthed/HTTP nodes use. Records
         reachability (hops, interface); auto-registers an unknown destination
@@ -1184,6 +1226,8 @@ class NodeRegistry:
         moves last_seen backwards — a health beacon or an HTTP poll is fresher
         evidence than the path that carried it.
         """
+        if self._buried(node.dst_hash, now):
+            return None                       # tombstoned: nothing may re-create it
         rec = self.nodes.get(node.dst_hash) or self.register(node.dst_hash)
         rec.mesh_hops = node.hops
         rec.mesh_interface = node.interface

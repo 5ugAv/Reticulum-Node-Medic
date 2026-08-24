@@ -669,6 +669,16 @@ class ReticulumNodeMedicApp(App):
         self._start_announce_listener()
         self._start_board_disconnect_watch()
 
+        # Tombstones: identities the operator (or a rebirth) deleted. Pushed
+        # into the registry so EVERY ingest path suppresses them while they
+        # live (7 days) — without this, the mesh's replayed announces of a
+        # dead identity re-created the row (seen live, 2026-08-25).
+        try:
+            from monitor import tombstones as _tomb
+            self.monitor_service.registry.set_tombstones(_tomb.load())
+        except Exception:
+            pass
+
         # SCAN is now the SINGLE map: coverage + offline caching + node placement.
         # A stationary tap (or the live GPS fix) sets a spot; "Use this position"
         # stamps it and jumps into BIRTH. The fix-trust badge guards against a
@@ -1528,6 +1538,7 @@ class ReticulumNodeMedicApp(App):
             tombs = {h: t for h, t in tombs.items()
                      if now_t - t < 7 * 86400}    # the path table's own lifetime
             _json.dump(tombs, open(tomb_path, "w"))
+            self.monitor_service.registry.set_tombstones(tombs)
         except Exception:                                          # noqa: BLE001
             pass
         self.switch_mode("vitals")
