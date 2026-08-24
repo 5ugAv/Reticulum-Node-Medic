@@ -12,6 +12,7 @@ the backend is deterministic and unit-testable.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -20,18 +21,18 @@ from monitor.health_beacon import HealthBeacon, beacon_status, decode
 from monitor.health_poll import PollResult
 from monitor.http_status import NodeStatus, PI_FORK
 from monitor.geo import navigation_links
+from monitor.observation import Observation, CLOCK_SKEW_TOLERANCE_S
 from ui import theme
+
+log = logging.getLogger(__name__)
 
 #: Not heard for longer than this -> red (matches the Monitor spec).
 STALE_ALERT_HOURS = theme.NOT_HEARD_ALERT_HOURS  # 18
-#: A backward clock step this small is benign jitter, not "the reading predates
-#: the clock". Without a deadband ANY raw < 0 (even a 3-second step behind a
-#: node heard 2 seconds ago) would flip a LIVE node to grey "SEEN ?" — a
-#: dishonesty the other way (crying unknown on a healthy node). Only a step
-#: LARGER than this counts as a genuine clock-step worth flagging; inside the
-#: band we clamp to 0.0 and treat the node as fresh.
-SEEN_CLOCK_SKEW_TOLERANCE_S = 120        # two minutes
-_SEEN_SKEW_TOLERANCE_H = SEEN_CLOCK_SKEW_TOLERANCE_S / 3600.0
+#: The SEEN clock-skew deadband now lives in ``monitor.observation`` — the ONE
+#: place the policy sits after Stage 1 (it used to be re-derived here for both
+#: to_dashboard and _status_base). Re-exported under the old name so importers
+#: (and gps_clock's REBASE_MIN_DELTA_S equality test) keep resolving it here.
+SEEN_CLOCK_SKEW_TOLERANCE_S = CLOCK_SKEW_TOLERANCE_S      # two minutes
 #: Not heard for longer than this -> "quiet": drops below the VITALS divider but
 #: is NOT necessarily red yet. A softer, recency-only signal (a ping lifts it back).
 QUIET_AFTER_HOURS = theme.QUIET_AFTER_HOURS  # 12
@@ -324,7 +325,18 @@ class NodeRecord:
     latest_http: Optional[NodeStatus] = None   # last HTTP /status poll (LAN)
     mesh_hops: Optional[int] = None            # reachable via the LoRa mesh
     mesh_interface: str = ""
-    last_seen: Optional[float] = None       # epoch seconds
+    #: The freshest evidence the node still exists, as an Observation carrying
+    #: WHEN it was heard and HOW (its source). Stage 1 of the Observation
+    #: refactor: this was five incidents' worth of bare-float SEEN gating (a
+    #: raw-age method, a clamp method, two copies of the clock-skew threshold),
+    #: and all of it now routes through ``Observation.age_at``. ``None`` means
+    #: NEVER heard — set_kin_roster seeds fleet rows before first contact — and
+    #: never "couldn't hear" (that is not a state this field represents).
+    #:
+    #: The bare ``last_seen`` float lives on as a read/write PROPERTY below, so
+    #: the ingest/merge/serialization call sites and every existing test that
+    #: reads or writes ``rec.last_seen`` keep working unchanged.
+    seen: "Optional[Observation]" = None
     #: When the node was last heard ON THE MESH, from the path table row's own
     #: timestamp. Kept apart from last_seen because the two decay differently: a
     #: path lives seven days after the announce that taught it, so "still in the
@@ -430,35 +442,66 @@ class NodeRecord:
             return False
         return version_tuple(fw) < version_tuple(latest)
 
-    def _seen_age_raw(self, now: float) -> Optional[float]:
-        """Hours since the freshest evidence (``last_seen``), or ``None`` when
-        the node has NEVER been heard (set_kin_roster seeds fleet rows before
-        first contact). May be NEGATIVE: a clock that stepped backwards behind
-        the stored stamp makes ``now - last_seen < 0``, and that is not
-        freshness — it means this reading PREDATES the current clock. The ONE
-        place the raw age is computed, so the age accessor (last_seen_hours)
-        and the status derivation (_status_base) can never disagree about
-        whether a node is fresh — the sibling rule the echo/direct ages already
-        hold ("both surfaces must agree by construction"). Reached here through
-        the clock-step door: last_seen_hours did NOT clamp like its siblings,
-        so a backward step floored to "SEEN 0.0h" GREEN — the 2026-08-21
-        dead-board-green class, again (2026-08-22)."""
-        if self.last_seen is None:
-            return None
-        return (now - self.last_seen) / 3600.0
+    # -- the SEEN liveness observation and its one age policy --------------
+
+    @property
+    def last_seen(self) -> Optional[float]:
+        """The freshest-sighting EPOCH, read straight off the ``seen``
+        Observation — a backward-compatible view so the ingest/merge/save call
+        sites and every test that reads ``rec.last_seen`` keep working. ``None``
+        when never heard."""
+        return self.seen.observed_at if self.seen is not None else None
+
+    @last_seen.setter
+    def last_seen(self, value: Optional[float]) -> None:
+        """Write a bare epoch back — wrapping it in an Observation whose source
+        we do not know here (``"unknown"``). The ingest paths that DO know the
+        source (beacon/http/announce/path-table) stamp ``self.seen`` directly
+        instead; this setter carries the legacy callers and the test fixtures
+        that only have a timestamp to give."""
+        if value is None:
+            self.seen = None
+        else:
+            self.seen = Observation.at(value, "unknown")
+
+    def _seen_age(self, now: float):
+        """The freshest sighting's :class:`~monitor.observation.Age`, or
+        ``None`` when NEVER heard — the ONE place the SEEN age is computed, so
+        the SEEN number (last_seen_hours), its honesty flags (to_dashboard),
+        and the status hexagon (_status_base) can never disagree. Never / benign
+        clock-jitter / impossible clock-step all come pre-decided by
+        ``Observation.age_at``; this method is now just the None-safe hand-off
+        that used to be four scattered copies of the same threshold arithmetic.
+        """
+        return Observation.age_of(self.seen, now)
 
     def last_seen_hours(self, now: float) -> Optional[float]:
-        """Age of the freshest evidence, clamped to ``>= 0`` like
-        last_echo_hours / last_direct_hours — a backward clock step must not
-        turn "heard" into a negative age (format_age floors it to 0.0 and
-        last_seen_status paints that GREEN). ``None`` stays ``None`` (never
-        heard). The impossibility is not lost: to_dashboard carries a
-        ``seen_impossible`` flag off the raw age so the screen renders
+        """Age of the freshest evidence in hours, clamped to ``>= 0`` (a
+        backward clock step must not turn "heard" into a negative age that
+        format_age floors to 0.0 and last_seen_status paints GREEN). ``None``
+        stays ``None`` (never heard). The impossibility is not lost: to_dashboard
+        carries a ``seen_impossible`` flag off the same Age so the screen renders
         "SEEN ?" grey rather than a clamped "0.0h" green."""
-        raw = self._seen_age_raw(now)
-        if raw is None:
-            return None
-        return max(0.0, raw)
+        age = self._seen_age(now)
+        return None if age is None else age.hours
+
+    def _restamp_seen_from_route(self, heard: float) -> None:
+        """Recompute the SEEN sighting after a PATH-TABLE fold, keyed to whether
+        the route or the node's own direct word is the fresher evidence. A route
+        is weaker than the node speaking (the path-is-not-a-sighting rule,
+        SolarLove 2026-08-11), so the sighting is the newer of ``heard`` and the
+        record's ``last_direct`` — and it wears the SOURCE of whichever won, so
+        a route can never masquerade as the node itself. RECOMPUTED (from
+        last_direct, not from the stored seen), so a record poisoned by the old
+        "stamp now for every path row" behaviour repairs itself."""
+        direct = self.last_direct or 0.0
+        if heard > direct:
+            self.seen = Observation.at(heard, "path-table") if heard else None
+        else:
+            # A TIE keeps the stronger "direct" label — a route that is no fresher
+            # than the node's own word must not relabel it as path-table (source
+            # honesty for any future consumer; the observed_at is identical).
+            self.seen = Observation.at(direct, "direct") if direct else None
 
     def last_echo_hours(self, now: float) -> Optional[float]:
         """Age of the last transport REPLAY, or ``None`` when none is on
@@ -520,17 +563,16 @@ class NodeRecord:
         invented numbers — unknown signal/battery stay None and the screen
         hides them; a bare mesh destination renders as a grey Neighbour, not a
         healthy green RTNode."""
-        raw_seen = self._seen_age_raw(now)
-        lsh = self.last_seen_hours(now)
-        # Honesty flags for the SEEN line, mirroring the has_echo/has_direct
-        # pattern: a NumericProperty on the StatBar can't carry "never heard"
-        # or "predates the clock", so the truth rides as booleans instead of
-        # being collapsed into a misleading 0.0.
-        has_seen = raw_seen is not None            # False = never heard
-        # Impossible only past the deadband: a sub-two-minute backward jitter is
-        # not "predates the clock", so it stays fresh (see _status_base).
-        seen_impossible = (raw_seen is not None
-                           and raw_seen < -_SEEN_SKEW_TOLERANCE_H)
+        # ONE Age decides all three SEEN honesty facts — never / impossible /
+        # measured — so the number and its flags cannot disagree. A
+        # NumericProperty on the StatBar can't carry "never heard" or "predates
+        # the clock", so the truth rides as booleans beside the (possibly 0.0)
+        # age. never == no Observation; impossible == the skew-band decision
+        # Observation.age_at already made (a sub-two-minute jitter is not it).
+        age = self._seen_age(now)
+        lsh = None if age is None else age.hours
+        has_seen = age is not None                 # False = never heard
+        seen_impossible = age is not None and age.impossible
         sig = self.signal_dbm()
         neighbour = self.provenance == "neighbour"
         status = self.status(now)
@@ -618,19 +660,18 @@ class NodeRecord:
         return base
 
     def _status_base(self, now: float) -> str:
-        raw = self._seen_age_raw(now)
-        if raw is None:
+        # The SAME Age the SEEN icon reads, so the hexagon and the SEEN line
+        # agree by construction (the sibling rule). Never heard -> unknown; a
+        # reading that predates the clock past the deadband is impossible, not
+        # fresh, so NEVER green off it — Observation.age_at already made that
+        # skew-band decision (the clock-step door, 2026-08-22). A sub-tolerance
+        # jitter is not impossible and falls through as fresh.
+        age = self._seen_age(now)
+        if age is None:
             return "unknown"
-        if raw < -_SEEN_SKEW_TOLERANCE_H:
-            # The freshest stamp predates the current clock by MORE than benign
-            # jitter (a genuine backward step): not freshness, a clock warning.
-            # NEVER green off such an age — last_seen_hours clamps the SAME raw
-            # value and to_dashboard flags it on the SAME threshold, so the SEEN
-            # icon and this hexagon agree by construction (the sibling rule,
-            # reached through the clock-step door 2026-08-22). A sub-tolerance
-            # step falls through and is treated as fresh.
+        if age.impossible:
             return "unknown"
-        if raw > STALE_ALERT_HOURS:
+        if age.hours > STALE_ALERT_HOURS:
             return "alert"                  # not heard -> red, regardless
         # Prefer the richer HTTP /status (has an explicit faults array) when a
         # node is LAN-reachable; then the mesh beacon; then bare mesh
@@ -716,8 +757,10 @@ class NodeRegistry:
     #: clock's frame — otherwise a forward step makes every node look silent for
     #: the step size (false escalations, false "SEEN ?"/false-fresh) — exactly
     #: the dishonesty the liveness work removed.
+    #: (``last_seen`` is NOT here — it is now the ``seen`` Observation, rebased
+    #: via ``Observation.rebased`` below so its source survives the step.)
     _WALL_STAMP_FIELDS = (
-        "last_seen", "mesh_heard", "last_direct", "poll_failed_at",
+        "mesh_heard", "last_direct", "poll_failed_at",
         "last_echo_at", "last_heard_announce_at", "share_applied_at",
     )
 
@@ -742,6 +785,10 @@ class NodeRegistry:
         for rec in self.nodes.values():
             for attr in self._WALL_STAMP_FIELDS:
                 setattr(rec, attr, _shift(getattr(rec, attr, None)))
+            # The SEEN Observation shifts in time too, keeping its source — a
+            # frozen value type, so rebased() returns a moved copy.
+            if isinstance(getattr(rec, "seen", None), Observation):
+                rec.seen = rec.seen.rebased(delta)
             for ev in rec.events:              # field-log timestamps track wall time too
                 ev.at = _shift(getattr(ev, "at", None))
         self.history.rebase(delta)
@@ -838,8 +885,7 @@ class NodeRegistry:
             # ages; pool them freshest-wins, and never move last_seen back.
             if rec.mesh_heard is None or heard > rec.mesh_heard:
                 rec.mesh_heard = heard
-            direct = rec.last_direct or 0.0
-            rec.last_seen = max(direct, rec.mesh_heard) or None
+            rec._restamp_seen_from_route(rec.mesh_heard)
         self._apply_kin(rec)
         return rec
 
@@ -958,7 +1004,7 @@ class NodeRegistry:
             rec.last_echo_at = now
             return rec
         rec.latest_beacon = beacon
-        rec.last_seen = now
+        rec.seen = Observation.at(now, "beacon")   # the node's own word
         rec.last_heard_announce_at = now   # the node itself, freshly heard
         if rec.poll_failed_at is not None and rec.last_seen is not None \
                 and rec.last_seen >= rec.poll_failed_at:
@@ -1038,7 +1084,7 @@ class NodeRegistry:
                 # A payloadless announce is exempt from replay detection: with
                 # nothing to compare, "identical" cannot be established — and
                 # never guess. It stays a sighting.
-                rec.last_seen = now
+                rec.seen = Observation.at(now, "announce")
                 rec.last_direct = now
                 rec.last_heard_announce_at = now   # genuine, not an echo
                 # Record a bare heard-event point so intermittent / neighbour nodes
@@ -1099,13 +1145,12 @@ class NodeRegistry:
         # inventing a sighting: not knowing is not the same as just now.
         if heard:
             rec.mesh_heard = heard
-            # RECOMPUTED, not max()-ed against the existing value. Records
-            # written by the earlier version already hold "now" from the last
-            # scan, so a max() would defend that wrong number forever. Direct
-            # evidence still wins — it is just held in its own field now, so a
-            # route can never impersonate it.
-            direct = rec.last_direct or 0.0
-            rec.last_seen = max(direct, heard) or None
+            # RECOMPUTED, not max()-ed against the stored sighting. Records
+            # written by the earlier version already hold "now", so a max()
+            # against them would defend that wrong number forever;
+            # _restamp_seen_from_route rebuilds from last_direct + heard so the
+            # route can never impersonate the node's own direct word.
+            rec._restamp_seen_from_route(heard)
         return rec
 
     def record_http_status(self, key: str, status: NodeStatus,
@@ -1118,7 +1163,7 @@ class NodeRegistry:
         rec = self.nodes.get(key) or self.register(key)
         if status.reachable:
             rec.latest_http = status
-            rec.last_seen = now
+            rec.seen = Observation.at(now, "http")
             rec.last_direct = now
             # A hostile /status must NOT set an arbitrary-length/arbitrary-
             # content node name: the ANNOUNCE path already runs names through
@@ -1352,9 +1397,13 @@ class NodeRegistry:
             merged.mesh_hops = m.mesh_hops
             if not merged.mesh_interface:
                 merged.mesh_interface = m.mesh_interface
-        seen = [r.last_seen for r in members if r.last_seen is not None]
-        if seen:
-            merged.last_seen = max(seen)
+        # Freshest sighting wins, and we carry that member's whole Observation
+        # (its source too), not just the epoch — a merged row must not launder
+        # one aspect's path-table fold into another's "beacon". max() by
+        # observed_at, so a clock-stepped stamp cannot out-rank a real one.
+        seen_obs = [r.seen for r in members if r.seen is not None]
+        if seen_obs:
+            merged.seen = max(seen_obs, key=lambda o: o.observed_at)
         # Pooled like the health fields above: a device is a propagation
         # relay if ANY of its aspect-destinations announces as one — the
         # lxmd aspect must not lose the label just because a beacon-carrying
@@ -1405,15 +1454,15 @@ class NodeRegistry:
             # so the row and its tapped detail read the same device health.
             consolidated = self._consolidate(members, now)
             d = consolidated.to_dashboard(now)
-            seen = [r.last_seen for r in members if r.last_seen is not None]
-            if seen:
-                d["last_seen_hours"] = max(0.0, (now - max(seen)) / 3600.0)
             d["aspects"] = len(members)
             d["capabilities"] = _capabilities(members)
             # "quiet" is recency-only (not the same as red): a device unheard past
             # QUIET_AFTER_HOURS sinks below the VITALS divider. A device never heard
-            # at all (last_seen_hours 0.0) is not quiet — it just has nothing yet.
-            d["quiet"] = bool(seen) and d["last_seen_hours"] > QUIET_AFTER_HOURS
+            # at all is not quiet — it just has nothing yet. Both facts come off
+            # the CONSOLIDATED row's own SEEN Observation (has_seen + the already-
+            # clamped last_seen_hours) — no second freshest-wins clamp here, the
+            # merge pooled the freshest sighting once (the sibling rule).
+            d["quiet"] = d["has_seen"] and d["last_seen_hours"] > QUIET_AFTER_HOURS
             out.append(d)
         return sorted(out, key=lambda d: (d["provenance"] != "kin",
                                           _STATUS_RANK.get(d["status"], 3),
@@ -1491,6 +1540,13 @@ class NodeRegistry:
                 "name": r.name,
                 "location": r.location,
                 "node_type": r.node_type,
+                # The SEEN liveness Observation persists as {value, observed_at,
+                # source}; None (never heard) persists as null. A bare
+                # ``last_seen`` float is written ALONGSIDE it as a ROLLBACK
+                # MIRROR: if an older build (pre-Observation) ever reads this
+                # file, it finds the plain epoch it expects instead of choking
+                # on a dict. New loads prefer ``seen`` and ignore the mirror.
+                "seen": r.seen.to_dict() if r.seen is not None else None,
                 "last_seen": r.last_seen,
                 # Kept apart across a restart too. Without these the app comes
                 # back unable to tell a route from having heard the node, and
@@ -1525,12 +1581,18 @@ class NodeRegistry:
     def from_dict(cls, data: dict) -> "NodeRegistry":
         reg = cls()
         for n in data.get("nodes", []):
+          try:
             rec = NodeRecord(
                 dst_hash=n["dst_hash"],
                 name=n.get("name", ""),
                 location=n.get("location", ""),
                 node_type=n.get("node_type", "rtnode2400"),
-                last_seen=n.get("last_seen"),
+                # Prefer the new ``seen`` Observation; fall back to an OLD file's
+                # bare ``last_seen`` float, adapted to a "legacy"-sourced
+                # Observation (we know WHEN it was heard, never HOW). A file with
+                # neither loads as never-heard (None).
+                seen=(Observation.from_dict(n["seen"]) if "seen" in n
+                      else Observation.from_legacy(n.get("last_seen"))),
                 last_direct=n.get("last_direct"),
                 mesh_heard=n.get("mesh_heard"),
                 poll_failed_at=n.get("poll_failed_at"),
@@ -1559,6 +1621,15 @@ class NodeRegistry:
             if lb:
                 rec.latest_beacon = decode(bytes.fromhex(lb))
             reg.nodes[rec.dst_hash] = rec
+          except Exception as exc:
+            # ONE corrupt row must not take the fleet down. The old code fed a
+            # garbage last_seen through .get() and degraded it to None; the
+            # richer per-field decoding here (Observation, events, beacon hex)
+            # has more ways to raise, and load() turns any raise into a FRESH
+            # EMPTY registry — every other node's name/history/log silently
+            # gone. Skip the bad row, keep the rest, and say which one went.
+            log.warning("registry.from_dict: dropping corrupt node %r: %s",
+                        (n or {}).get("dst_hash", "<no dst_hash>"), exc)
         from monitor.history import NodeHistory
         reg.history = NodeHistory.from_dict(data.get("history", {}))
         return reg
