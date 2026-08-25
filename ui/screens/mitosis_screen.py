@@ -322,6 +322,21 @@ class MitosisScreen(BoxLayout):
             f.bind(text=lambda *_: self._password_state())
             self.add_widget(f)
 
+        # SHOW/HIDE (operator ask): mistyping both fields the same way is the
+        # unrecoverable case — seeing the letters beats guessing. Same reveal
+        # the node imaging screen uses for the same risk.
+        self._pw_visible = False
+        reveal = _small_btn("Show the password")
+
+        def _toggle(*_a):
+            self._pw_visible = not self._pw_visible
+            for f in (self.pw1, self.pw2):
+                f.password = not self._pw_visible
+            reveal.text = ("Hide the password" if self._pw_visible
+                           else "Show the password")
+        reveal.bind(on_release=_toggle)
+        self.add_widget(reveal)
+
         # The button WALKS ITS COLOURS (operator spec): amber "Type a
         # password" → amber "Confirm the password" → green "Write the card →"
         # that lights only when the two match and pass the validator.
