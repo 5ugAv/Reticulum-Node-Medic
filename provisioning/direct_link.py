@@ -48,6 +48,12 @@ PEER_ETH_IP = GADGET_USB_IP
 MEDIC_ETH_IP = HOST_USB_IP
 ETH_PREFIX = USB_PREFIX
 
+#: The mDNS name a bone-stock Raspberry Pi OS answers to before anything sets a
+#: hostname. A card the medic imaged has its chosen name, but a Pi we did NOT
+#: image (an adopted board, or one whose hostname write didn't take) still
+#: answers here — so it is always worth a try.
+STOCK_MDNS = "raspberrypi.local"
+
 Runner = Callable[..., Tuple[int, str, str]]
 
 #: Wired NIC name prefixes. Pi OS may present the onboard NIC as ``eth0`` or, with
@@ -107,23 +113,98 @@ def mdns_name(hostname: str) -> str:
 
 
 def _port_open(host: str, port: int = 22, timeout: float = 3.0) -> bool:
+    """True if *host* accepts TCP on *port*. Uses getaddrinfo so a scoped IPv6
+    link-local address (``fe80::1%eth0``) resolves correctly — the plain
+    create_connection path mishandles the ``%iface`` scope. Tries each resolved
+    family until one connects."""
     try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except OSError:
         return False
+    for family, socktype, proto, _canon, sockaddr in infos:
+        s = None
+        try:
+            s = socket.socket(family, socktype, proto)
+            s.settimeout(timeout)
+            s.connect(sockaddr)
+            return True
+        except OSError:
+            continue
+        finally:
+            if s is not None:
+                s.close()
+    return False
+
+
+def eth_subnet_hosts() -> List[str]:
+    """Every host address in the cable /29, PEER first. A medic B that installed
+    ETH_LINK_SERVICE answers at PEER_ETH_IP, but a Pi imaged by a DIFFERENT medic
+    build (or mid-migration) may have claimed another host in the same /29; sweep
+    them all rather than assume .1."""
+    base = PEER_ETH_IP.rsplit(".", 1)[0]           # e.g. "10.55.0"
+    first = int(PEER_ETH_IP.rsplit(".", 1)[1])
+    # /29 usable hosts are .1-.6; lead with PEER, then the rest in order.
+    hosts = [PEER_ETH_IP]
+    for n in range(1, 7):
+        addr = f"{base}.{n}"
+        if addr != PEER_ETH_IP and addr != MEDIC_ETH_IP:
+            hosts.append(addr)
+    return hosts
 
 
 def candidate_targets(hostname: str = "") -> List[str]:
-    """Addresses to try for B, best-first. mDNS leads because it needs nothing
-    baked onto the card; the static /29 only answers once ETH_LINK_SERVICE is in
-    place."""
+    """Addresses to try for B, best-first, de-duplicated. mDNS leads because it
+    needs nothing baked onto the card; the stock name catches a Pi we did not
+    image; the /29 sweep is deterministic once a static address exists.
+
+    Deliberately address-agnostic: a fresh Pi 5 can come up with an address we
+    never chose (a leftover DHCP lease, a self-assigned link-local, a hostname
+    that didn't take). mDNS + the stock name + the full subnet cover the cases
+    a fixed single address misses; :func:`discover_peer` adds live neighbour and
+    IPv6 link-local discovery on top, which need no addressing assumptions at
+    all."""
     targets: List[str] = []
     name = mdns_name(hostname)
     if name:
         targets.append(name)
-    targets.append(PEER_ETH_IP)
+    if STOCK_MDNS not in targets:
+        targets.append(STOCK_MDNS)
+    for host in eth_subnet_hosts():
+        if host not in targets:
+            targets.append(host)
     return targets
+
+
+def parse_neighbour_targets(neigh_output: str, iface: str = "") -> List[str]:
+    """Live peers from ``ip neigh show`` — ANY address that ARP/ND resolved to a
+    MAC, which is the surest sign something is actually on the wire. This is what
+    makes discovery address-agnostic: whatever address B took (DHCP, link-local,
+    static), the moment we exchange one packet it shows up here and becomes a
+    probe target.
+
+    IPv6 link-local (``fe80::``) results get the scope suffix ``%iface`` appended
+    so both the port probe and ssh can reach them — a link-local address is
+    meaningless without knowing which interface it lives on. FAILED/INCOMPLETE
+    entries (a MAC we asked about but never heard back from) are skipped."""
+    out: List[str] = []
+    for line in neigh_output.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        addr = parts[0]
+        state = parts[-1].upper()
+        if state in ("FAILED", "INCOMPLETE"):
+            continue
+        if "lladdr" not in parts and state not in ("REACHABLE", "STALE",
+                                                   "DELAY", "PROBE"):
+            continue
+        if addr in (MEDIC_ETH_IP,):
+            continue
+        if addr.lower().startswith("fe80:") and iface:
+            addr = f"{addr}%{iface}"
+        if addr not in out:
+            out.append(addr)
+    return out
 
 
 def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
@@ -141,7 +222,8 @@ def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
     deadline = now() + timeout
     while now() < deadline:
         rc, out, _ = runner(["ip", "-o", "link"], timeout=5)
-        for ifc in parse_wired_interfaces(out):
+        wired = parse_wired_interfaces(out)
+        for ifc in wired:
             # Absolute path — see provisioning.link.IP_BIN. A bare `ip` resolves
             # through sudo's secure_path to /usr/sbin/ip, which does not match
             # the sudoers rule naming /usr/bin/ip, so the call is refused and
@@ -149,11 +231,41 @@ def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
             runner(["sudo", "-n", IP_BIN, "addr", "add",
                     f"{MEDIC_ETH_IP}/{ETH_PREFIX}", "dev", ifc], timeout=5)
             runner(["sudo", "-n", IP_BIN, "link", "set", ifc, "up"], timeout=5)
-        for target in candidate_targets(hostname):
+            # Nudge the neighbour tables so an unknown-address B reveals itself:
+            # an all-hosts IPv6 ping fills the ND cache with every fe80:: on the
+            # wire (no addressing assumptions — every Pi auto-configures one),
+            # and pinging the /29 broadcast fills the ARP cache for an
+            # IPv4-configured B. Both are best-effort; failure just means the
+            # named/subnet candidates carry the search this lap.
+            runner(["ping", "-6", "-c", "1", "-W", "1", f"ff02::1%{ifc}"],
+                   timeout=5)
+            runner(["ping", "-c", "1", "-W", "1", "-b", _eth_broadcast()],
+                   timeout=5)
+        for target in _all_targets(hostname, wired, runner):
             if probe(target, 22):
                 return target
         sleep(poll)
     return None
+
+
+def _eth_broadcast() -> str:
+    """Directed-broadcast address of the cable /29 (…the .7 of a .0/29)."""
+    base = PEER_ETH_IP.rsplit(".", 1)[0]
+    return f"{base}.7"
+
+
+def _all_targets(hostname: str, wired: List[str], runner: Runner) -> List[str]:
+    """The full best-first probe list this lap: named + subnet candidates, then
+    whatever is live in the neighbour tables (address-agnostic catch-all)."""
+    targets = list(candidate_targets(hostname))
+    for ifc in wired:
+        for fam in ("-4", "-6"):
+            _rc, out, _e = runner([IP_BIN, fam, "neigh", "show", "dev", ifc],
+                                  timeout=5)
+            for t in parse_neighbour_targets(out or "", ifc):
+                if t not in targets:
+                    targets.append(t)
+    return targets
 
 
 def _default_runner(argv: List[str], input: Optional[str] = None,

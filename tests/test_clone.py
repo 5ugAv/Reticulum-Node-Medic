@@ -294,32 +294,41 @@ def test_autostart_is_the_proven_cage_kiosk():
     assert "graphical.target" not in joined
 
 
-# -- the recovery boot-order rung (reader-free mitosis, 2026-08-25) ----------
-# Bonus hardening: a failure must NEVER fail the clone (the button ritual
-# still works), and a successful bake rewrites BOOT_ORDER to 0x31 (SD card
-# first, then wait-as-USB-device for a medic).
+# -- the recovery boot-order rung (2026-08-25) ------------------------------
+# Bonus hardening: a failure must NEVER fail the clone (SD boot is unaffected),
+# and a successful bake rewrites BOOT_ORDER to 0xf321 (SD -> NETWORK -> RPIBOOT
+# -> loop). The NETWORK rung is what lets a SEALED sibling medic be rescued over
+# the ethernet cable alone — the lesson HAWKEYE taught (0x71/mode-7 had no
+# headless door).
 
 def test_bake_recovery_bootorder_is_a_skip_when_chip_unreadable():
     c = conn()
     c.rules.insert(0, ("rpi-eeprom-config", 127, "", "not found"))
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and r.skipped
-    assert "button ritual still works" in r.message
+    assert "SD boot still works" in r.message
 
 
-def test_bake_recovery_bootorder_applies_0x31():
+def test_bake_recovery_bootorder_applies_network_boot_order():
+    from workflows.clone import RECOVERY_BOOT_ORDER
+    # the baked order must include the NETWORK nibble (2) so a sealed medic is
+    # recoverable over ethernet, and must NOT be the mode-7 HTTP trap (7).
+    assert "2" in RECOVERY_BOOT_ORDER and "7" not in RECOVERY_BOOT_ORDER
     c = conn()
     c.rules.insert(0, ("rpi-eeprom-config", 0,
                        "[all]\nBOOT_UART=1\nBOOT_ORDER=0xf461\n", ""))
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and not r.skipped
-    assert any("BOOT_ORDER=0x31" in h for h in c.history), "apply never sent"
-    assert "surgery" in r.message
+    assert any(f"BOOT_ORDER={RECOVERY_BOOT_ORDER}" in h for h in c.history), \
+        "apply never sent"
+    assert "ethernet cable" in r.message
 
 
 def test_bake_recovery_bootorder_skips_when_already_baked():
+    from workflows.clone import RECOVERY_BOOT_ORDER
     c = conn()
-    c.rules.insert(0, ("rpi-eeprom-config", 0, "[all]\nBOOT_ORDER=0x31\n", ""))
+    c.rules.insert(0, ("rpi-eeprom-config", 0,
+                       f"[all]\nBOOT_ORDER={RECOVERY_BOOT_ORDER}\n", ""))
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and r.skipped
     assert not any("--apply" in h for h in c.history)

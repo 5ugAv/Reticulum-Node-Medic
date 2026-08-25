@@ -31,8 +31,66 @@ def test_mdns_name_is_idempotent_and_handles_blanks():
 def test_mdns_leads_because_a_bone_stock_card_has_no_static_ip():
     assert dl.candidate_targets("nodemedic-b")[0] == "nodemedic-b.local"
     assert dl.PEER_ETH_IP in dl.candidate_targets("nodemedic-b")
-    # with no hostname there is only the static address to try
-    assert dl.candidate_targets("") == [dl.PEER_ETH_IP]
+
+
+def test_candidates_cover_unknown_address_pi5s():
+    # A Pi we did not image (stock hostname) and a Pi that took some other host
+    # in the /29 must both be reachable, not just <hostname>.local + .1.
+    cands = dl.candidate_targets("nodemedic-b")
+    assert dl.STOCK_MDNS in cands                      # a Pi we didn't rename
+    # the whole usable /29 is swept, PEER first, medic's own address excluded
+    for n in range(1, 7):
+        addr = f"10.55.0.{n}"
+        if addr == dl.MEDIC_ETH_IP:
+            continue
+        assert addr in cands
+    assert dl.MEDIC_ETH_IP not in cands
+    assert cands.index(dl.PEER_ETH_IP) < cands.index("10.55.0.6")
+    # de-duplicated and no empties
+    assert len(cands) == len(set(cands)) and "" not in cands
+
+
+def test_candidates_have_no_name_but_still_sweep_subnet():
+    cands = dl.candidate_targets("")
+    assert cands[0] == dl.STOCK_MDNS          # no chosen name -> stock leads
+    assert dl.PEER_ETH_IP in cands
+
+
+def test_neighbour_parse_finds_any_live_address_and_scopes_v6():
+    out = (
+        "10.55.0.4 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
+        "169.254.7.9 dev eth0 lladdr 02:00:00:08:00:08 STALE\n"       # link-local v4
+        "10.55.0.9 dev eth0 FAILED\n"                                  # nothing there
+        "fe80::a3b2:c3ff:fed4:e5f6 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
+    )
+    got = dl.parse_neighbour_targets(out, iface="eth0")
+    assert "10.55.0.4" in got
+    assert "169.254.7.9" in got               # self-assigned address, still found
+    assert "10.55.0.9" not in got             # FAILED entry skipped
+    assert "fe80::a3b2:c3ff:fed4:e5f6%eth0" in got   # scope suffix for ssh/probe
+
+
+def test_neighbour_parse_ignores_junk():
+    assert dl.parse_neighbour_targets("", "eth0") == []
+    assert dl.parse_neighbour_targets("garbage line here\n", "eth0") == []
+
+
+def test_discover_finds_a_neighbour_at_an_unknown_address():
+    # B came up at an address we never chose (not mdns-resolvable, not .1). It
+    # only becomes reachable because it shows up in `ip neigh`.
+    neigh = "10.55.0.5 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
+
+    def runner(argv, input=None, timeout=30):
+        if argv[:2] == ["ip", "-o"]:
+            return (0, IP_LINK, "")
+        if "neigh" in argv and "-4" in argv:
+            return (0, neigh, "")
+        return (0, "", "")
+
+    got = dl.discover_peer("nodemedic-b", runner=runner,
+                           probe=lambda h, p=22, timeout=3.0: h == "10.55.0.5",
+                           sleep=lambda s: None, now=lambda: 0.0, timeout=1.0)
+    assert got == "10.55.0.5"
 
 
 def test_reuses_the_gadget_29_so_no_new_sudoers_entry_is_needed():

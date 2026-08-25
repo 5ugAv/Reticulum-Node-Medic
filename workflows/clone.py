@@ -490,51 +490,67 @@ _CLONE_STEPS.insert(
     ("install_display_stack", install_display_stack))
 
 
+#: BOOT_ORDER we bake into every child. Hex nibbles are read RIGHT-TO-LEFT, so
+#: 0xf321 means: SD(1) first, then NETWORK(2), then RPIBOOT(3), then RESTART(f)
+#: the sequence (loop forever rather than give up).
+#:
+#: The NETWORK(2) rung is the one that matters, and it is the lesson HAWKEYE
+#: taught the hard way (2026-08-25): a medic SEALED IN ITS CASE with a dead SD
+#: boot partition has NO button, NO card slot, NO pins reachable — its ONLY
+#: remaining door is the ethernet cable. NETWORK boot (mode 2, plain TFTP) lets
+#: a sibling medic serve it a rescue OS over that cable, headless, and repair it
+#: in place. HAWKEYE was mis-baked to 0x71 (SD then HTTP-boot, mode 7), which is
+#: HTTPS-to-Raspberry-Pi + signature-checked and CANNOT be served locally — so a
+#: sealed HAWKEYE had no remote door at all. RPIBOOT(3) stays as the
+#: button-accessible fallback for a Pi whose case is still open.
+RECOVERY_BOOT_ORDER = "0xf321"
+
+
 def bake_recovery_bootorder(wf: "CloneWorkflow") -> StepResult:
-    """Bake the "never hold the button again" promise into the child's boot
-    chip: BOOT_ORDER = try the SD card, and if it will not boot, become a USB
-    device and wait for a medic (RPIBOOT fallback, nibbles 0x31 —
-    nibble 3 is RPIBOOT; 7 is HTTP boot, proven the hard way on HAWKEYE
-    2026-08-25). From then
-    on a wiped, corrupted or missing card means: plug the USB-C into any
-    medic and the machine PRESENTS ITSELF for surgery — no button ritual.
-    Factory EEPROMs lack this (default 0xf461), which is why a virgin Pi's
-    FIRST birth still needs the 3-second button hold.
+    """Bake remote-recoverability into the child's boot chip
+    (BOOT_ORDER=:data:`RECOVERY_BOOT_ORDER`): try the SD card, then offer
+    NETWORK boot so a sibling medic can rescue it over nothing but an ethernet
+    cable — even sealed in its case — then RPIBOOT for the case-open path, then
+    loop. Factory EEPROMs (0xf461) lack the network rung, which is why a virgin
+    Pi's FIRST birth still needs one button ritual; after this bake, that
+    machine is recoverable for the rest of its life with no hands on the board.
 
     A bonus hardening, not a load-bearing rung: on any failure the clone is
-    still a complete medic (the button ritual keeps working), so this reports
-    an honest skip instead of failing the whole clone."""
+    still a complete medic (SD boot is unaffected), so this reports an honest
+    skip instead of failing the whole clone."""
     code, out, _e = wf.connection.run(
         wf.priv("rpi-eeprom-config") + " 2>/dev/null")
     if code != 0 or "BOOT_ORDER" not in (out or ""):
         return StepResult("bake_recovery_bootorder", True,
                           "Recovery boot-order not baked (could not read the "
-                          "boot chip) — the button ritual still works.",
+                          "boot chip) — SD boot still works.",
                           skipped=True)
     current = ""
     for line in out.splitlines():
         if line.strip().startswith("BOOT_ORDER="):
             current = line.strip().split("=", 1)[1]
-    if current == "0x31":
+    if current == RECOVERY_BOOT_ORDER:
         return StepResult("bake_recovery_bootorder", True,
                           "Recovery boot-order already baked.", skipped=True)
     script = (
         "set -e; rpi-eeprom-config > /tmp/nm-eeprom.conf; "
         "if grep -q '^BOOT_ORDER=' /tmp/nm-eeprom.conf; then "
-        "sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0x31/' /tmp/nm-eeprom.conf; "
-        "else echo 'BOOT_ORDER=0x31' >> /tmp/nm-eeprom.conf; fi; "
-        "rpi-eeprom-config --apply /tmp/nm-eeprom.conf")
+        f"sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER={RECOVERY_BOOT_ORDER}/' "
+        "/tmp/nm-eeprom.conf; "
+        f"else echo 'BOOT_ORDER={RECOVERY_BOOT_ORDER}' >> /tmp/nm-eeprom.conf; "
+        "fi; rpi-eeprom-config --apply /tmp/nm-eeprom.conf")
     code, out2, err = wf.connection.run(
         wf.priv(f"sh -c \"{script}\""), timeout=120)
     if code != 0:
         return StepResult("bake_recovery_bootorder", True,
                           "Recovery boot-order not baked "
-                          f"({(err or out2)[-100:].strip()}) — the button "
-                          "ritual still works.", skipped=True)
+                          f"({(err or out2)[-100:].strip()}) — SD boot still "
+                          "works.", skipped=True)
     return StepResult("bake_recovery_bootorder", True,
-                      "Boot chip baked: if this medic's card ever dies, plug "
-                      "its USB-C into any medic and it offers itself for "
-                      "surgery — no buttons. (Takes effect after the reboot.)")
+                      "Boot chip baked: if this medic's card ever dies, a "
+                      "sibling medic can rescue it over the ethernet cable "
+                      "alone — no case-opening, no buttons. (Takes effect "
+                      "after the reboot.)")
 
 
 _CLONE_STEPS.insert(
