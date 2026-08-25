@@ -48,6 +48,7 @@ def conn(cpuinfo=PI5_CPUINFO):
     c.rules.insert(0, ("/proc/cpuinfo", 0, cpuinfo, ""))
     c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
     c.rules.insert(0, ("rnid --generate", 0, IDENTITY_OUT, ""))
+    c.rules.insert(0, ("test -f ~/.reticulum/storage/identity", 1, "", ""))
     return c
 
 
@@ -210,12 +211,14 @@ def test_final_verification_fails_without_rns():
 
 
 def test_monitoring_db_serialises_the_registry():
+    # scp to registry.json — the filename the app LOADS; the old
+    # monitoring_db.json was a green-ticked no-op (review 2026-08-25).
     c = conn()
     w = wf(c)
     _run(w, "copy_monitoring_db")
     data = json.loads(w.monitoring_db_json)
     assert data["nodes"][0]["name"] == "TRUTH"
-    assert any("monitoring_db.json" in cmd for cmd in c.history)
+    assert any(remote.endswith("/registry.json") for _l, remote in c.pushed)
 
 
 def test_copy_kin_roster_carries_locations(monkeypatch):
@@ -230,8 +233,7 @@ def test_copy_kin_roster_carries_locations(monkeypatch):
     c = conn()
     res = _run(wf(c), "copy_kin_roster")
     assert res.success and "location" in res.message
-    assert any("kin.json" in cmd and "EVERYWHERE" in cmd and "-37.5106" in cmd
-               for cmd in c.history)
+    assert any(remote.endswith("/kin.json") for _l, remote in c.pushed)
 
 
 def test_maps_are_not_excluded_from_the_clone_tree():

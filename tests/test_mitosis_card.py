@@ -96,7 +96,8 @@ def test_image_medic_card_flags_and_password():
         return True, "ok"
 
     ok, msg, pw = mitosis_card.image_medic_card(
-        "/dev/sda", "NodeMedic2.0", flash=fake_flash, wifi=("home", "pass"))
+        "/dev/sda", "NodeMedic2.0", flash=fake_flash, wifi=("home", "pass"),
+        helper_check=lambda: "")
     assert ok and pw == calls["password"]
     assert calls["hostname"] == "nodemedic2-0"     # hostnameify applied
     assert calls["medic"] is True
@@ -115,7 +116,8 @@ def test_bad_name_refuses_before_touching_the_card():
     from workflows import mitosis_card
     ok, msg, pw = mitosis_card.image_medic_card(
         "/dev/sda", "///", flash=lambda *a, **k: (_ for _ in ()).throw(
-            AssertionError("flash must not be called")), wifi=("", ""))
+            AssertionError("flash must not be called")), wifi=("", ""),
+        helper_check=lambda: "")
     assert ok is False and pw == ""
 
 
@@ -220,3 +222,13 @@ def test_cable_unit_retries_for_a_slow_nic():
     from provisioning import direct_link
     assert "for t in 1 2 3 4 5 6" in direct_link.ETH_LINK_SERVICE
     assert "sleep 2" in direct_link.ETH_LINK_SERVICE
+
+
+def test_stale_helper_refuses_before_touching_the_card():
+    from workflows import mitosis_card
+    ok, msg, pw = mitosis_card.image_medic_card(
+        "/dev/sda", "HAWKEYE",
+        flash=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("flash must not run on a stale helper")),
+        wifi=("", ""), helper_check=lambda: "helper is out of date")
+    assert ok is False and "out of date" in msg

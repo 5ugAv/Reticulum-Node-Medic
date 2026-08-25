@@ -11,7 +11,7 @@ onto the card — custom.toml and cloud-init are inert on this image):
   once on the screen — the B-build plan's password UX);
 - i2c + usb_max_current in config.txt (the UPS gauge; GPIO power has no
   USB-PD so without the flag the Pi 5 caps USB at 600 mA);
-- the direct-cable static-IP service (10.55.0.2/29 on the wired NIC), so an
+- the direct-cable static-IP service (10.55.0.1/29 on the wired NIC), so an
   ethernet patch lead reaches the fresh medic from FIRST boot;
 - this medic's own Wi-Fi (read live from NetworkManager, best-effort), so
   the clone also appears on the household network like any sibling.
@@ -68,12 +68,22 @@ def image_medic_card(device_path: str, display_name: str,
                      username: str = "pi",
                      password: Optional[str] = None,
                      flash: Callable = pi_imager.flash,
-                     wifi: Optional[Tuple[str, str]] = None) -> Tuple[bool, str, str]:
+                     wifi: Optional[Tuple[str, str]] = None,
+                     helper_check: Callable = pi_imager.helper_out_of_date,
+                     ) -> Tuple[bool, str, str]:
     """Write + configure the new medic's card. Returns (ok, message, password).
 
     The password is generated here when not given and RETURNED so the screen
     can show it ONCE, big, with 'write this down' — it is the new medic's
     login until its own hardening runs."""
+    # The installed ROOT helper does the medic bake; an out-of-date copy
+    # parses the config fine and silently ignores the medic keys — the
+    # card reports written and the clone boots nameless with no cable
+    # address (adversarial review 2026-08-25). Refuse loudly, like the
+    # node imaging screen always has.
+    stale = helper_check()
+    if stale:
+        return False, stale, ""
     hostname = pi_imager.hostnameify(display_name)
     if not hostname:
         return False, "That name doesn't reduce to a usable hostname.", ""

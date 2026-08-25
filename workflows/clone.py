@@ -118,15 +118,27 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
+    """The registry, to the filename the app actually LOADS (registry.json
+    — the old monitoring_db.json was a green-ticked no-op the app never
+    read), moved by scp rather than a shell heredoc (a fleet-scale registry
+    overflows the kernel's single-argv ceiling and killed the whole thread
+    — both found by adversarial review, 2026-08-25)."""
+    import tempfile
     payload = json.dumps(wf.registry.to_dict())
     wf.monitoring_db_json = payload
-    code, out, err = wf.connection.run(
-        f"mkdir -p {CLONE_DIR} && cat > {CLONE_DIR}/monitoring_db.json "
-        f"<<'RNMEOF'\n{payload}\nRNMEOF")
-    ok = code == 0
+    wf.connection.run(f"mkdir -p {CLONE_DIR}")
+    with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                     delete=False) as fh:
+        fh.write(payload)
+        tmp = fh.name
+    try:
+        ok = wf.connection.push_file(tmp, f"{CLONE_DIR}/registry.json")
+    finally:
+        os.unlink(tmp)
     return StepResult("copy_monitoring_db", ok,
-                      f"Copied the monitoring DB ({len(wf.registry.nodes)} "
-                      f"nodes)." if ok else f"Could not write DB: {err or out}")
+                      f"Copied the monitoring records ({len(wf.registry.nodes)} "
+                      f"nodes)." if ok else
+                      "Could not copy the registry to the clone (scp).")
 
 
 @clone_step
@@ -135,13 +147,19 @@ def copy_kin_roster(wf: "CloneWorkflow") -> StepResult:
     DEPLOYED LOCATION and interface links) to the clone, so the clone's VITALS +
     SCAN map show the same kin from first boot. The map TILES themselves ride the
     tool tree (assets/maps); this is the who-and-where that populates them."""
+    import tempfile
     from monitor.kin_roster import load_roster
     roster = load_roster()
     payload = json.dumps(roster, indent=2, sort_keys=True)
-    code, out, err = wf.connection.run(
-        f"mkdir -p {CLONE_DIR} && cat > {CLONE_DIR}/kin.json "
-        f"<<'RNMEOF'\n{payload}\nRNMEOF")
-    ok = code == 0
+    wf.connection.run(f"mkdir -p {CLONE_DIR}")
+    with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                     delete=False) as fh:
+        fh.write(payload)
+        tmp = fh.name
+    try:
+        ok = wf.connection.push_file(tmp, f"{CLONE_DIR}/kin.json")
+    finally:
+        os.unlink(tmp)
     return StepResult("copy_kin_roster", ok,
                       f"Carried the fleet roster ({len(roster)} node(s) with their "
                       f"locations) to the clone." if ok
@@ -152,6 +170,15 @@ def copy_kin_roster(wf: "CloneWorkflow") -> StepResult:
 def generate_fresh_identity(wf: "CloneWorkflow") -> StepResult:
     # A NEW identity on the target — never the source's — so the clone is a
     # distinct node on the mesh. rnid prints "New identity <hash> written to …".
+    # A RETRY must not deadlock: rnid refuses to overwrite an existing
+    # identity (exit nonzero), so a ladder failing AFTER this step could
+    # never be re-run (adversarial review 2026-08-25). An identity already
+    # on the clone was made by THIS flow — keep it.
+    if wf.connection.run("test -f ~/.reticulum/storage/identity")[0] == 0:
+        wf.fresh_identity_generated = True
+        return StepResult("generate_fresh_identity", True,
+                          "The clone already has its own identity from an "
+                          "earlier run — kept (never regenerated).")
     code, out, err = wf.connection.run(
         "mkdir -p ~/.reticulum/storage && "
         "rnid --generate ~/.reticulum/storage/identity")
@@ -219,20 +246,27 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     user = wf.connection.run("id -un")[1].strip() or "pi"
     home = f"/home/{user}" if user != "root" else "/root"
     priv = "" if user == "root" else "sudo -n "
+    # multi-user.target, NOT graphical: the Lite image never reaches
+    # graphical, so enable succeeded, is-enabled passed, and the clone
+    # booted to a black console forever (adversarial review 2026-08-25).
+    # KIVY_METRICS_DENSITY matches scripts/start_ui.sh — the density the
+    # whole theme is drawn for; without it every screen renders off-scale.
     unit = (
         "[Unit]\n"
         "Description=Reticulum Node Medic (tool)\n"
-        "After=graphical.target network-online.target\n\n"
+        "Wants=network-online.target\n"
+        "After=network-online.target\n\n"
         "[Service]\n"
         "Type=simple\n"
         f"User={user}\n"
         f"Environment=HOME={home}\n"
+        "Environment=KIVY_METRICS_DENSITY=1.5\n"
         f"WorkingDirectory={home}/reticulum-tool\n"
         f"ExecStart=/usr/bin/python3 {home}/reticulum-tool/main.py\n"
         "Restart=on-failure\n"
         "RestartSec=5\n\n"
         "[Install]\n"
-        "WantedBy=graphical.target\n"
+        "WantedBy=multi-user.target\n"
     )
     heredoc = (f"{priv}tee /etc/systemd/system/reticulum-node-medic.service "
                f">/dev/null <<'RNMUNIT'\n{unit}\nRNMUNIT")
@@ -252,7 +286,7 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
     problems = []
     if wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] != 0:
         problems.append("tool code missing")
-    if wf.connection.run(f"test -f {CLONE_DIR}/monitoring_db.json")[0] != 0:
+    if wf.connection.run(f"test -f {CLONE_DIR}/registry.json")[0] != 0:
         problems.append("monitoring DB missing")
     if not wf.fresh_identity_generated:
         problems.append("fresh identity not generated")
@@ -333,8 +367,16 @@ class CloneWorkflow:
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)
         while self.current_index < len(self.steps):
-            _, func = self.steps[self.current_index]
-            result = func(self)
+            name, func = self.steps[self.current_index]
+            try:
+                result = func(self)
+            except Exception as e:                     # noqa: BLE001
+                # A crashing step used to kill the worker thread silently —
+                # no red row, the button stuck on "Cloning..." forever
+                # (adversarial review 2026-08-25). A crash is a FAILURE
+                # with a name, like any other.
+                result = StepResult(name, False,
+                                    f"Step crashed: {e!r}")
             self.results.append(result)
             emit(result)
             if not result.success and not result.skipped:
@@ -376,20 +418,22 @@ def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
         from transport.connection import SSHConnection
         import subprocess
 
-        target = discover_peer(hostname=hostname, timeout=90)
+        target = discover_peer(hostname=hostname, timeout=300)
         if not target:
             name = hostname or "the new medic"
             return StepResult(
                 "find_new_medic", False,
-                f"Could not find {name} — checked {hostname or ''}.local and "
-                "the patch cable (10.55.0.1) for 90 s. Is it powered, booted "
-                "(first boot takes up to 5 min) and cabled/on this WiFi?")
+                f"Could not find {name} — watched {hostname or ''}.local and "
+                "the patch cable (10.55.0.1) for 5 minutes (a first boot "
+                "needs most of that). Is it powered, and cabled or on this "
+                "WiFi?")
         # Fresh machine, possibly at a reused address: drop any stale pin,
         # then pin THIS machine's key (first-contact trust).
         try:
-            subprocess.run(["ssh-keygen", "-R", target,
-                            "-f", host_keys.PINNED_KNOWN_HOSTS],
-                           capture_output=True, timeout=10)
+            for store in (host_keys.PINNED_KNOWN_HOSTS,
+                          os.path.expanduser("~/.ssh/known_hosts")):
+                subprocess.run(["ssh-keygen", "-R", target, "-f", store],
+                               capture_output=True, timeout=10)
             host_keys.pin_host(target)
         except Exception:                                  # noqa: BLE001
             pass                     # transport falls back to accept-new

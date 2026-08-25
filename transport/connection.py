@@ -222,13 +222,13 @@ class SSHConnection(Connection):
                   exclude: "tuple[str, ...]" = ()) -> bool:
         """rsync the tree over SSH (incremental, compressed). A trailing slash on
         the source copies its CONTENTS into *remote_dir*."""
-        if self.known_hosts:
-            ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
-                     f"-o UserKnownHostsFile={self.known_hosts} "
-                     f"-o StrictHostKeyChecking=yes")
-        else:
-            ssh_e = (f"ssh -p {self.port} -o BatchMode=yes "
-                     f"-o StrictHostKeyChecking=accept-new")
+        # THE SAME host-key policy as run()/push_file — this built its own
+        # ssh line and skipped the pinned store, so a fresh machine at a
+        # REUSED address (10.55.0.1, every cable birth) hit the stale-key
+        # refusal exactly one step after find_new_medic pinned the new key
+        # (adversarial review, 2026-08-25).
+        ssh_e = " ".join(["ssh", "-p", str(self.port),
+                          "-o", "BatchMode=yes", *self._hostkey_opts()])
         argv = ["rsync", "-az", "-e", ssh_e]
         for pat in exclude:
             argv += ["--exclude", pat]
