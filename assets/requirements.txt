@@ -16,3 +16,8 @@ kivy==2.3.1
 # be flashed at all. Listed here rather than installed by hand so a CLONE gets
 # it too, and so the wheelhouse carries it for a field birth with no internet.
 adafruit-nrfutil==0.5.3.post16
+# UPS pack telemetry (INA219 over I2C) — Medic 2.0's battery gauge + the
+# voltage-gated safe shutdown read through this.
+smbus2==0.6.1
+# PIL rides along for image handling in previews/asset tooling.
+Pillow==12.2.0
