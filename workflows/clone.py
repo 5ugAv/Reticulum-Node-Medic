@@ -275,6 +275,7 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
         f"Environment=HOME={home}\n"
         "Environment=KIVY_METRICS_DENSITY=1.5\n"
         "Environment=KIVY_GL_BACKEND=sdl2\n"
+        "Environment=XCURSOR_THEME=nodemedic-empty\n"
         f"WorkingDirectory={home}/reticulum-tool\n"
         # cage does NOT forward its child's stdout to the journal — the first
         # crash-loop on HAWKEYE was invisible until the child got its own log.
@@ -307,6 +308,29 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
         'ENV{ID_INPUT_TOUCHSCREEN}="1"\n'
     )
     priv = "" if user == "root" else "sudo -n "
+    # The invisible cursor theme (68-byte generated Xcursor): cage 0.2 draws
+    # its pointer arrow regardless of devices — parked wherever the last tap
+    # landed. Transparent beats fighting it (HAWKEYE, 2026-08-25).
+    theme_dir = os.path.join(TOOL_ROOT, "assets", "ui", "empty-cursor")
+    if os.path.isdir(theme_dir):
+        wf.connection.run("mkdir -p /tmp/nm-cursor")
+        wf.connection.push_file(os.path.join(theme_dir, "left_ptr"),
+                                "/tmp/nm-cursor/left_ptr")
+        wf.connection.push_file(os.path.join(theme_dir, "index.theme"),
+                                "/tmp/nm-cursor/index.theme")
+        wf.connection.run(
+            priv + "mkdir -p /usr/share/icons/nodemedic-empty/cursors && "
+            + priv + "cp /tmp/nm-cursor/left_ptr "
+            "/usr/share/icons/nodemedic-empty/cursors/left_ptr && "
+            + priv + "ln -sf left_ptr "
+            "/usr/share/icons/nodemedic-empty/cursors/default && "
+            + priv + "cp /tmp/nm-cursor/index.theme "
+            "/usr/share/icons/nodemedic-empty/index.theme")
+    # /dev/i2c-1 for the UPS gauge needs the i2c-dev MODULE as well as the
+    # dtparam — the half raspi-config does that the card bake missed.
+    wf.connection.run(priv + "modprobe i2c-dev || true")
+    wf.connection.run("grep -q '^i2c-dev' /etc/modules || "
+                      "echo i2c-dev | " + priv + "tee -a /etc/modules")
     for path, content in (
             ("/etc/systemd/system/reticulum-node-medic.service", unit),
             ("/etc/systemd/system/goodix-rebind.service", rebind),

@@ -545,6 +545,17 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
             except Exception as exc:                    # noqa: BLE001
                 print("PREPARE_WARN: could not write the hostname ("
                       + str(exc) + ") - the card boots with the image default")
+        # /dev/i2c-1 needs the i2c-dev MODULE loaded as well as the dtparam
+        # (the UPS gauge sat dark on HAWKEYE until it was modprobed by hand).
+        try:
+            mods = os.path.join(mnt, "etc/modules")
+            text = open(mods).read() if os.path.exists(mods) else ""
+            if "i2c-dev" not in text:
+                _write(mods, text.rstrip("\n") + "\ni2c-dev\n")
+                say("enabled the i2c-dev module (UPS gauge)")
+        except Exception as exc:                        # noqa: BLE001
+            print("PREPARE_WARN: could not enable i2c-dev ("
+                  + str(exc) + ") - the battery gauge stays dark")
         # The direct-cable static IP, from FIRST boot - so the clone link
         # works with an ethernet lead and nothing else.
         try:

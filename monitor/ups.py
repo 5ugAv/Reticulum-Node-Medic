@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 INA219_ADDR = 0x43
+#: The INA219's address is set by solder pads and VARIES between Waveshare
+#: revisions — HAWKEYE's UPS 3S answers at 0x41 (2026-08-25). Probe the
+#: family rather than assume; first answer wins and is remembered.
+INA219_CANDIDATES = (0x43, 0x41, 0x42, 0x40)
+_found_addr = None
 I2C_BUS = 1                     # Pi 5 GPIO header I2C (dtparam=i2c_arm=on)
 
 _REG_CONFIG = 0x00
@@ -113,9 +118,11 @@ _CHARGE_MA = 50.0
 
 # ---- transport (lazy smbus2; no-op when absent) -----------------------------
 
-def _open_reader(bus: int = I2C_BUS, addr: int = INA219_ADDR) -> Optional[Reader]:
+def _open_reader(bus: int = I2C_BUS, addr: int = None) -> Optional[Reader]:
     """A reader(reg)->word for the INA219, or None when I2C/the device is absent
-    (no HAT, bus not enabled). Writes the calibration once so current reads work."""
+    (no HAT, bus not enabled). Writes the calibration once so current reads work.
+    With no *addr* given, probes INA219_CANDIDATES and remembers the answer."""
+    global _found_addr
     try:
         import smbus2
     except Exception:
@@ -124,6 +131,22 @@ def _open_reader(bus: int = I2C_BUS, addr: int = INA219_ADDR) -> Optional[Reader
         b = smbus2.SMBus(bus)
     except Exception:
         return None
+    if addr is None:
+        candidates = ([_found_addr] if _found_addr is not None
+                      else list(INA219_CANDIDATES))
+        for cand in candidates:
+            try:
+                b.read_byte(cand)
+                _found_addr = addr = cand
+                break
+            except Exception:
+                continue
+        if addr is None:
+            try:
+                b.close()
+            except Exception:
+                pass
+            return None
 
     def _swap(w: int) -> int:            # smbus is little-endian; INA219 big-endian
         return ((w & 0xFF) << 8) | (w >> 8)

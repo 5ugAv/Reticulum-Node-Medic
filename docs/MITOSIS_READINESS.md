@@ -146,3 +146,16 @@ online act ever performed was TODAY'S one-time deb harvest, now cached and
 carried. The only future online need is REFRESHING those caches when the
 base image changes (item 5). WiFi on the clone is optional and typed-in —
 never required.
+
+## Late additions to the punch list (2026-08-25 night)
+
+- Send-ping on a radio-less medic must warn honestly ("no LoRa radio or GPS
+  connected") and offer the Tracker provisioning — folds into THE FIRSTBORN.
+- Firstborn is now formally part of the new-medic first tour (operator).
+- Reader-free mitosis (operator question, answered feasible): Pi 5 recovery
+  boot (rpiboot mass-storage gadget over USB-C) makes the TARGET's own SD
+  slot appear as a USB disk on the medic — the existing imaging pipeline
+  then works unchanged, no card reader in the loop. Sizeable build; carried
+  rpiboot binary needed.
+- UPS INA219 address VARIES by revision (HAWKEYE: 0x41) — driver now probes
+  the family. i2c-dev module now baked (card + ladder).
