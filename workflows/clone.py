@@ -250,44 +250,68 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def configure_autostart(wf: "CloneWorkflow") -> StepResult:
-    # A systemd service so the clone boots into the tool. Runs main.py as the
-    # login user with its ~/.local/bin on PATH (pip --user console scripts).
+    """Boot-into-the-tool, the way that PROVED OUT on HAWKEYE (2026-08-25):
+    a `cage` Wayland kiosk owning tty1 as a real logind seat (PAMName +
+    TTYPath — that grant is what lets it open the display), running the UI
+    with the GL-through-SDL backend (desktop libGL does not exist on Lite)
+    and the theme's designed density. Plus the touch-retry unit: the DSI
+    panel's Goodix chip isn't awake when the driver first probes (~3s,
+    I2C -121); a warm rebind moments later binds instantly."""
     user = wf.connection.run("id -un")[1].strip() or "pi"
     home = f"/home/{user}" if user != "root" else "/root"
-    priv = "" if user == "root" else "sudo -n "
-    # multi-user.target, NOT graphical: the Lite image never reaches
-    # graphical, so enable succeeded, is-enabled passed, and the clone
-    # booted to a black console forever (adversarial review 2026-08-25).
-    # KIVY_METRICS_DENSITY matches scripts/start_ui.sh — the density the
-    # whole theme is drawn for; without it every screen renders off-scale.
     unit = (
         "[Unit]\n"
         "Description=Reticulum Node Medic (tool)\n"
-        "Wants=network-online.target\n"
-        "After=network-online.target\n\n"
+        "Conflicts=getty@tty1.service\n"
+        "After=getty@tty1.service systemd-user-sessions.service\n\n"
         "[Service]\n"
         "Type=simple\n"
         f"User={user}\n"
+        "PAMName=login\n"
+        "TTYPath=/dev/tty1\n"
+        "StandardInput=tty\n"
+        "StandardOutput=journal\n"
+        "StandardError=journal\n"
         f"Environment=HOME={home}\n"
         "Environment=KIVY_METRICS_DENSITY=1.5\n"
+        "Environment=KIVY_GL_BACKEND=sdl2\n"
         f"WorkingDirectory={home}/reticulum-tool\n"
-        f"ExecStart=/usr/bin/python3 {home}/reticulum-tool/main.py\n"
+        f"ExecStart=/usr/bin/cage -s -- /usr/bin/python3 {home}/reticulum-tool/main.py\n"
         "Restart=on-failure\n"
         "RestartSec=5\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
-    heredoc = (f"{priv}tee /etc/systemd/system/reticulum-node-medic.service "
-               f">/dev/null <<'RNMUNIT'\n{unit}\nRNMUNIT")
-    if wf.connection.run(heredoc)[0] != 0:
-        return StepResult("configure_autostart", False,
-                          "Could not write the autostart service unit.")
+    rebind = (
+        "[Unit]\n"
+        "Description=Retry the DSI touch controller after the panel wakes\n"
+        "After=multi-user.target\n\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStart=/bin/sh -c 'for i in $(seq 1 15); do "
+        "grep -q Goodix /proc/bus/input/devices && exit 0; "
+        "echo 11-005d > /sys/bus/i2c/drivers/Goodix-TS/bind 2>/dev/null; "
+        "sleep 2; done; exit 0'\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+    priv = "" if user == "root" else "sudo -n "
+    for path, content in (
+            ("/etc/systemd/system/reticulum-node-medic.service", unit),
+            ("/etc/systemd/system/goodix-rebind.service", rebind)):
+        heredoc = (f"{priv}tee {path} >/dev/null <<'RNMUNIT'\n"
+                   f"{content}\nRNMUNIT")
+        if wf.connection.run(heredoc)[0] != 0:
+            return StepResult("configure_autostart", False,
+                              f"Could not write {path}.")
     wf.connection.run(f"{priv}systemctl daemon-reload")
     code = wf.connection.run(
-        f"{priv}systemctl enable reticulum-node-medic.service")[0]
+        f"{priv}systemctl enable reticulum-node-medic.service "
+        "goodix-rebind.service")[0]
     return StepResult("configure_autostart", code == 0,
-                      "Autostart enabled — the clone boots into the tool." if code == 0
-                      else "Could not enable the autostart service.")
+                      "Kiosk autostart + touch retry enabled — the clone "
+                      "boots into the tool on its own screen." if code == 0
+                      else "Could not enable the autostart units.")
 
 
 @clone_step
@@ -384,6 +408,46 @@ def carry_touch_cure(wf: "CloneWorkflow") -> StepResult:
 _CLONE_STEPS.insert(
     [n for n, _f in _CLONE_STEPS].index("install_dependencies") + 1,
     ("carry_touch_cure", carry_touch_cure))
+
+
+def install_display_stack(wf: "CloneWorkflow") -> StepResult:
+    """The Lite image cannot open a window: the Kivy wheel's SDL has no
+    kmsdrm driver, and desktop libGL doesn't exist. Proven cure (HAWKEYE,
+    2026-08-25): the `cage` Wayland kiosk + wlroots stack, ferried as .debs
+    over the clone link because the field has no apt. The debs are CARRIED
+    in assets/debs (like the wheelhouse); a clone that already has cage
+    skips clean."""
+    if wf.connection.run("command -v cage")[0] == 0:
+        return StepResult("install_display_stack", True,
+                          "Display stack already present.", skipped=True)
+    debs_local = os.path.join(TOOL_ROOT, "assets", "debs")
+    have = (os.path.isdir(debs_local)
+            and any(f.endswith(".deb") for f in os.listdir(debs_local)))
+    if not have:
+        return StepResult(
+            "install_display_stack", False,
+            "No carried display debs (assets/debs is empty) and the clone "
+            "has no cage. On an online medic: run the deb cache refresh, "
+            "then retry.")
+    wf.connection.run("mkdir -p /tmp/nm-debs")
+    ok = wf.connection.push_tree(debs_local, "/tmp/nm-debs")
+    if not ok:
+        return StepResult("install_display_stack", False,
+                          "Could not copy the display debs to the clone.")
+    code, out, err = wf.connection.run(
+        wf.priv("apt-get install -y --no-install-recommends /tmp/nm-debs/*.deb"),
+        timeout=600)
+    if code != 0:
+        return StepResult("install_display_stack", False,
+                          f"Deb install failed: {(err or out)[-160:]}")
+    return StepResult("install_display_stack", True,
+                      "Installed the display stack (cage kiosk) from "
+                      "carried debs — no internet needed.")
+
+
+_CLONE_STEPS.insert(
+    [n for n, _f in _CLONE_STEPS].index("carry_touch_cure") + 1,
+    ("install_display_stack", install_display_stack))
 
 
 class CloneWorkflow:

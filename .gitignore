@@ -43,3 +43,4 @@ docs/previews/
 
 # filter-branch / filter-repo scratch
 .git-rewrite/
+assets/debs/

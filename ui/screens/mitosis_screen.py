@@ -47,6 +47,7 @@ STEP_TITLES = [
     ("transfer_firmware_cache", "Copying the offline firmware cache"),
     ("install_dependencies", "Installing the software stack (offline, from carried wheels)"),
     ("carry_touch_cure", "Carrying the touch settings across"),
+    ("install_display_stack", "Installing the screen stack (carried, offline)"),
     ("copy_monitoring_db", "Copying the monitoring records"),
     ("copy_kin_roster", "Carrying the fleet roster (who and where)"),
     ("generate_fresh_identity", "Giving it its own fresh mesh identity"),
@@ -394,7 +395,79 @@ class MitosisScreen(BoxLayout):
     def _password_continue(self):
         if self.pw_btn.disabled:
             return
-        self._show_stage_write(self.pw1.text)
+        self._chosen_password = self.pw1.text
+        self._show_stage_wifi()
+
+    # -- stage 3b: the WiFi gift (typed, never silently read) ----------------
+    # The first clone shipped an EMPTY WiFi password: NetworkManager refuses
+    # to reveal secrets to the unprivileged UI, and the failure surfaced days
+    # later as a clone that joined nothing ("no-secrets", HAWKEYE 2026-08-25).
+    # Assume nothing: ASK the keeper.
+
+    def _show_stage_wifi(self):
+        self._clear()
+        title = _label("Share your WiFi with it?", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        from workflows.mitosis_card import medic_wifi_credentials
+        ssid = ""
+        try:
+            ssid = medic_wifi_credentials()[0]
+        except Exception:                                  # noqa: BLE001
+            pass
+        body = _label(
+            (f"This medic is on '{ssid}'. Type that network's password and "
+             "the new medic joins it by itself — or skip, and it lives on "
+             "the cable.") if ssid else
+            "Type your WiFi network's name and password, or skip and the "
+            "new medic lives on the cable.",
+            color="text_secondary", size="14sp")
+        body.size_hint_y, body.height = None, dp(56)
+        self.add_widget(body)
+        from kivy.uix.textinput import TextInput
+        from ui.onscreen_keyboard import bind_field
+        self._wifi_ssid_input = TextInput(text=ssid, hint_text="Network name",
+                                          multiline=False,
+                                          font_size=theme.font_sp("18sp"),
+                                          size_hint_y=None, height=dp(48))
+        bind_field(self._wifi_ssid_input)
+        self.add_widget(self._wifi_ssid_input)
+        self._wifi_psk_input = TextInput(hint_text="WiFi password",
+                                         password=True, multiline=False,
+                                         font_size=theme.font_sp("18sp"),
+                                         size_hint_y=None, height=dp(48))
+        bind_field(self._wifi_psk_input)
+        self.add_widget(self._wifi_psk_input)
+        reveal = _small_btn("Show the password")
+
+        def _toggle(*_a):
+            self._wifi_psk_input.password = not self._wifi_psk_input.password
+            reveal.text = ("Hide the password"
+                           if not self._wifi_psk_input.password
+                           else "Show the password")
+        reveal.bind(on_release=_toggle)
+        self.add_widget(reveal)
+        share = Button(text="Share WiFi and write the card →",
+                       size_hint_y=None, height=dp(56), font_size="19sp",
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        share.bind(on_release=lambda *_: self._wifi_continue(True))
+        self.add_widget(share)
+        skip = _small_btn("Skip — cable only")
+        skip.bind(on_release=lambda *_: self._wifi_continue(False))
+        self.add_widget(skip)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+    def _wifi_continue(self, share):
+        ssid = (self._wifi_ssid_input.text or "").strip() if share else ""
+        psk = (self._wifi_psk_input.text or "") if share else ""
+        if share and ssid and not psk:
+            self._wifi_psk_input.hint_text = "Type the WiFi password first"
+            return
+        self._wifi = (ssid, psk)
+        self._show_stage_write(self._chosen_password)
 
     # -- stage 4: WRITE (the BIRTH progress ring) ------------------------------
 
@@ -449,7 +522,8 @@ class MitosisScreen(BoxLayout):
                     from workflows.mitosis_card import image_medic_card
                     ok, msg, _pw = image_medic_card(
                         disks[0]["path"], self._name or "NodeMedic2",
-                        password=password)
+                        password=password,
+                        wifi=getattr(self, "_wifi", None))
             except Exception as e:                         # noqa: BLE001
                 msg = f"Card write failed: {e}"
 

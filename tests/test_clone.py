@@ -21,6 +21,7 @@ EXPECTED_STEPS = [
     "transfer_firmware_cache",
     "install_dependencies",
     "carry_touch_cure",
+    "install_display_stack",
     "copy_monitoring_db",
     "copy_kin_roster",
     "generate_fresh_identity",
@@ -268,3 +269,25 @@ def test_install_dependencies_bootstraps_pip_from_the_images_wheel(monkeypatch):
     assert r.success, r.message
     assert w.pip_cmd.startswith("python3 /usr/share/python-wheels/pip-")
     assert any(w.pip_cmd in cmd and "--no-index" in cmd for cmd in c.history)
+
+
+def test_display_stack_skips_when_cage_present():
+    c = conn()
+    c.rules.insert(0, ("command -v cage", 0, "/usr/bin/cage", ""))
+    r = _run(wf(c), "install_display_stack")
+    assert r.skipped
+
+
+def test_autostart_is_the_proven_cage_kiosk():
+    c = conn()
+    w = wf(c)
+    r = _run(w, "configure_autostart")
+    assert r.success
+    joined = "\n".join(c.history)
+    assert "PAMName=login" in joined
+    assert "TTYPath=/dev/tty1" in joined
+    assert "ExecStart=/usr/bin/cage -s --" in joined
+    assert "KIVY_GL_BACKEND=sdl2" in joined
+    assert "goodix-rebind.service" in joined
+    assert "WantedBy=multi-user.target" in joined
+    assert "graphical.target" not in joined
