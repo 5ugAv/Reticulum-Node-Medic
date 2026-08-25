@@ -267,6 +267,58 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
                       else "Verification failed: " + "; ".join(problems))
 
 
+def carry_the_time(wf: "CloneWorkflow") -> StepResult:
+    """Set the clone's clock from THIS medic's own disciplined clock.
+
+    The clone has no RTC battery, no GPS board yet, and maybe no internet —
+    it boots into a bogus date and would stamp garbage on everything this
+    ladder writes (the lineage stamp, the roster, its first certificates).
+    Medic time is the best time on the bench: GPS-disciplined when outdoors,
+    NTP-synced when online. NTP is switched on for the clone too, so it
+    self-corrects the moment it ever sees internet. Honest about both
+    directions: reports the drift it corrected, and a refusal (no passwordless
+    sudo on the target) is a named failure, not a silent skip."""
+    import time as _time
+
+    code, out, _err = wf.connection.run("date -u +%s")
+    try:
+        clone_epoch = float((out or "").strip())
+    except ValueError:
+        clone_epoch = None
+    now = _time.time()
+    drift = (now - clone_epoch) if clone_epoch is not None else None
+
+    code, out, err = wf.connection.run(f"sudo -n date -u -s @{int(now)}")
+    if code != 0:
+        return StepResult("carry_the_time", False,
+                          "Could not set the clone's clock (sudo refused): "
+                          f"{(err or out)[-120:]}")
+    wf.connection.run("sudo -n timedatectl set-ntp true")
+
+    # local source honesty: say what the carried time was disciplined by
+    src = "this medic's clock"
+    try:
+        import subprocess
+        r = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized"],
+                           capture_output=True, text=True, timeout=5)
+        if "yes" in (r.stdout or ""):
+            src = "this medic's NTP-synced clock"
+    except Exception:                                      # noqa: BLE001
+        pass
+    moved = (f" (corrected {abs(drift):.0f}s of drift)"
+             if drift is not None and abs(drift) > 2 else "")
+    return StepResult("carry_the_time", True,
+                      f"Carried the time from {src}{moved}; NTP enabled on "
+                      "the clone for whenever it sees internet.")
+
+
+# Splice: the clock rides immediately after the target is proven to be a Pi 5 —
+# every later step writes timestamps and deserves a sane clock under them.
+_CLONE_STEPS.insert(
+    [n for n, _f in _CLONE_STEPS].index("verify_target_pi5") + 1,
+    ("carry_the_time", carry_the_time))
+
+
 class CloneWorkflow:
     def __init__(self, connection: Connection, registry: NodeRegistry):
         self.connection = connection

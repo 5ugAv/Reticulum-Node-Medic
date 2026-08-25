@@ -16,6 +16,7 @@ PI5_CPUINFO = "Model : Raspberry Pi 5 Model B Rev 1.0"
 
 EXPECTED_STEPS = [
     "verify_target_pi5",
+    "carry_the_time",
     "transfer_tool",
     "transfer_firmware_cache",
     "install_dependencies",

@@ -117,3 +117,46 @@ def test_bad_name_refuses_before_touching_the_card():
         "/dev/sda", "///", flash=lambda *a, **k: (_ for _ in ()).throw(
             AssertionError("flash must not be called")), wifi=("", ""))
     assert ok is False and pw == ""
+
+
+# -- carry_the_time: the clone's clock comes from the medic ------------------
+
+class _Conn:
+    def __init__(self, clone_epoch="100", sudo_ok=True):
+        self.cmds = []
+        self.clone_epoch = clone_epoch
+        self.sudo_ok = sudo_ok
+
+    def run(self, cmd, timeout=30):
+        self.cmds.append(cmd)
+        if cmd == "date -u +%s":
+            return 0, self.clone_epoch, ""
+        if cmd.startswith("sudo -n date"):
+            return (0, "", "") if self.sudo_ok else (1, "", "sudo: a password is required")
+        return 0, "", ""
+
+
+def test_carry_the_time_sets_clock_and_enables_ntp():
+    from workflows.clone import CloneWorkflow, carry_the_time
+    from monitor.registry import NodeRegistry
+    conn = _Conn(clone_epoch="100")            # clone thinks it's 1970
+    wf = CloneWorkflow(conn, NodeRegistry())
+    r = carry_the_time(wf)
+    assert r.success
+    assert any(c.startswith("sudo -n date -u -s @") for c in conn.cmds)
+    assert "sudo -n timedatectl set-ntp true" in conn.cmds
+    assert "drift" in r.message                # honest about what it corrected
+
+
+def test_carry_the_time_sudo_refusal_is_a_named_failure():
+    from workflows.clone import CloneWorkflow, carry_the_time
+    from monitor.registry import NodeRegistry
+    wf = CloneWorkflow(_Conn(sudo_ok=False), NodeRegistry())
+    r = carry_the_time(wf)
+    assert r.success is False and "sudo" in r.message
+
+
+def test_carry_the_time_rides_right_after_pi5_check():
+    from workflows.clone import _CLONE_STEPS
+    names = [n for n, _ in _CLONE_STEPS]
+    assert names.index("carry_the_time") == names.index("verify_target_pi5") + 1

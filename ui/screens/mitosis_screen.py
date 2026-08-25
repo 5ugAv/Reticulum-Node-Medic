@@ -29,6 +29,7 @@ from ui import theme
 STEP_TITLES = [
     ("find_new_medic", "Find the new medic (cable or WiFi) and log in"),
     ("verify_target_pi5", "Check the new computer is a Raspberry Pi 5"),
+    ("carry_the_time", "Carry the time across (no RTC, no GPS yet)"),
     ("transfer_tool", "Copy the Node Medic tool across"),
     ("transfer_firmware_cache", "Copy the offline firmware cache"),
     ("install_dependencies", "Install the software stack (offline, from carried wheels)"),
