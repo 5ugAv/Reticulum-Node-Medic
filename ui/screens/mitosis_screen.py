@@ -103,7 +103,7 @@ class MitosisScreen(BoxLayout):
             self._anim = None
         # Escape hatches: a marginal reader that never greets, and the case
         # where the new medic is ALREADY booted from a card written earlier.
-        skip = Button(text="The new medic is already booted \— skip to the clone",
+        skip = Button(text="The new medic is already booted — skip to the clone",
                       size_hint_y=None, height=dp(40), font_size="14sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -169,7 +169,7 @@ class MitosisScreen(BoxLayout):
         self.add_widget(self.name_input)
 
         self.card_btn = Button(
-            text="Write the card \→", size_hint_y=None,
+            text="Write the card →", size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -177,8 +177,9 @@ class MitosisScreen(BoxLayout):
         self.add_widget(self.card_btn)
 
         self.card_status = _label("", color="text_secondary", size="14sp")
+        self.card_status.valign = "top"
         self.card_status.size_hint_y = None
-        self.card_status.height = dp(120)
+        self.card_status.height = dp(200)
         self.add_widget(self.card_status)
 
         from kivy.uix.widget import Widget
@@ -198,8 +199,21 @@ class MitosisScreen(BoxLayout):
             return
         name = (self.name_input.text or "").strip()
         self.card_btn.disabled = True
-        self.card_btn.text = "Writing the card\… (takes a few minutes)"
-        self.card_status.text = "Imaging \— leave the card in until this finishes."
+        self.card_btn.text = "Writing the card… (takes a few minutes)"
+        # ELAPSED TIME, honestly ticking (operator, third bench run: still
+        # no progress bars — a multi-minute write with a frozen label reads
+        # as a hang). True percent needs dd itself reporting; until then the
+        # clock moving IS the progress signal, with the long stage named.
+        import time as _time
+        self._write_t0 = _time.monotonic()
+
+        def _tick(_dt):
+            m, sec = divmod(int(_time.monotonic() - self._write_t0), 60)
+            self.card_status.text = (
+                f"Imaging — {m}m {sec:02d}s elapsed. Writing the OS image "
+                "is the long stage (several minutes on a 64 GB card); "
+                "baking the settings at the end is quick. Leave the card in.")
+        self._write_ev = Clock.schedule_interval(_tick, 1.0)
 
         def work():
             ok, msg, pw = False, "", ""
@@ -207,9 +221,9 @@ class MitosisScreen(BoxLayout):
                 from provisioning import pi_imager
                 disks = pi_imager.list_target_disks()
                 if len(disks) != 1:
-                    msg = ("The card has gone \— put it back in the reader."
+                    msg = ("The card has gone — put it back in the reader."
                            if not disks else
-                           "More than one removable disk is attached \— "
+                           "More than one removable disk is attached — "
                            "leave only the new medic's card in.")
                 else:
                     from workflows.mitosis_card import image_medic_card
@@ -219,19 +233,26 @@ class MitosisScreen(BoxLayout):
                 msg = f"Card write failed: {e}"
 
             def done(_dt):
+                ev = getattr(self, "_write_ev", None)
+                if ev is not None:
+                    ev.cancel()
+                    self._write_ev = None
+                # FULL outcome into ui.log — attempt 1 died with a
+                # truncated label and left no trail (2026-08-25).
+                print(f"[mitosis] card write ok={ok}: {msg}")
                 self.card_btn.disabled = False
                 if ok:
                     self._card_written = True
-                    self.card_btn.text = "Card written \✓  \—  Continue \→"
+                    self.card_btn.text = "Card written ✓  —  Continue →"
                     self.card_btn.background_color = theme.hex_to_rgba(
                         theme.COLORS["green"])
                     self.card_status.text = (
-                        "WRITE THIS DOWN \— the new medic's login:\\n\\n"
-                        f"user:  medic\\npassword:  {pw}\\n\\n"
+                        "WRITE THIS DOWN — the new medic's login:\\n\\n"
+                        f"user:  pi\\npassword:  {pw}\\n\\n"
                         "Then: card into the new medic, power on (first boot "
                         "takes up to 5 minutes), cable or WiFi, and Continue.")
                 else:
-                    self.card_btn.text = "Write the card \→"
+                    self.card_btn.text = "Write the card →"
                     self.card_status.text = msg
             Clock.schedule_once(done, 0)
 

@@ -65,7 +65,7 @@ def medic_wifi_credentials(runner: Optional[Callable] = None) -> Tuple[str, str]
 
 
 def image_medic_card(device_path: str, display_name: str,
-                     username: str = "medic",
+                     username: str = "pi",
                      password: Optional[str] = None,
                      flash: Callable = pi_imager.flash,
                      wifi: Optional[Tuple[str, str]] = None) -> Tuple[bool, str, str]:

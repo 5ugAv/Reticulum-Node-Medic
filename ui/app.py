@@ -145,7 +145,7 @@ def _mitosis_factory(hostname: str = ""):
     except Exception:                                          # noqa: BLE001
         reg = NodeRegistry()
     return make_discovering_workflow(reg, hostname=hostnameify(hostname),
-                                     username="medic")
+                                     username="pi")
 
 
 def _demo_rnode_flash(board):

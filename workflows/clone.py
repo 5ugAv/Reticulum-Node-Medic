@@ -358,7 +358,7 @@ class _NotYetConnected:
 
 
 def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
-                              username: str = "medic") -> "CloneWorkflow":
+                              username: str = "pi") -> "CloneWorkflow":
     """A CloneWorkflow whose FIRST step finds the new medic and connects.
 
     Discovery order is provisioning.direct_link's: <hostname>.local (mDNS —
