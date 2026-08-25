@@ -490,6 +490,56 @@ _CLONE_STEPS.insert(
     ("install_display_stack", install_display_stack))
 
 
+def bake_recovery_bootorder(wf: "CloneWorkflow") -> StepResult:
+    """Bake the "never hold the button again" promise into the child's boot
+    chip: BOOT_ORDER = try the SD card, and if it will not boot, become a USB
+    device and wait for a medic (RPIBOOT fallback, nibbles 0x71). From then
+    on a wiped, corrupted or missing card means: plug the USB-C into any
+    medic and the machine PRESENTS ITSELF for surgery — no button ritual.
+    Factory EEPROMs lack this (default 0xf461), which is why a virgin Pi's
+    FIRST birth still needs the 3-second button hold.
+
+    A bonus hardening, not a load-bearing rung: on any failure the clone is
+    still a complete medic (the button ritual keeps working), so this reports
+    an honest skip instead of failing the whole clone."""
+    code, out, _e = wf.connection.run(
+        wf.priv("rpi-eeprom-config") + " 2>/dev/null")
+    if code != 0 or "BOOT_ORDER" not in (out or ""):
+        return StepResult("bake_recovery_bootorder", True,
+                          "Recovery boot-order not baked (could not read the "
+                          "boot chip) — the button ritual still works.",
+                          skipped=True)
+    current = ""
+    for line in out.splitlines():
+        if line.strip().startswith("BOOT_ORDER="):
+            current = line.strip().split("=", 1)[1]
+    if current == "0x71":
+        return StepResult("bake_recovery_bootorder", True,
+                          "Recovery boot-order already baked.", skipped=True)
+    script = (
+        "set -e; rpi-eeprom-config > /tmp/nm-eeprom.conf; "
+        "if grep -q '^BOOT_ORDER=' /tmp/nm-eeprom.conf; then "
+        "sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0x71/' /tmp/nm-eeprom.conf; "
+        "else echo 'BOOT_ORDER=0x71' >> /tmp/nm-eeprom.conf; fi; "
+        "rpi-eeprom-config --apply /tmp/nm-eeprom.conf")
+    code, out2, err = wf.connection.run(
+        wf.priv(f"sh -c \"{script}\""), timeout=120)
+    if code != 0:
+        return StepResult("bake_recovery_bootorder", True,
+                          "Recovery boot-order not baked "
+                          f"({(err or out2)[-100:].strip()}) — the button "
+                          "ritual still works.", skipped=True)
+    return StepResult("bake_recovery_bootorder", True,
+                      "Boot chip baked: if this medic's card ever dies, plug "
+                      "its USB-C into any medic and it offers itself for "
+                      "surgery — no buttons. (Takes effect after the reboot.)")
+
+
+_CLONE_STEPS.insert(
+    [n for n, _f in _CLONE_STEPS].index("configure_autostart") + 1,
+    ("bake_recovery_bootorder", bake_recovery_bootorder))
+
+
 class CloneWorkflow:
     def __init__(self, connection: Connection, registry: NodeRegistry):
         self.connection = connection

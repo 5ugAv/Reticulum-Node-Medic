@@ -624,6 +624,10 @@ class ReticulumNodeMedicApp(App):
         from monitor.ups import BatteryGuard
         self._battery_guard = BatteryGuard()  # low-battery safe-shutdown (UPS HAT)
         self._battery_shutting_down = False
+        from monitor.dual_supply import DualSupplyGuard
+        self._dual_guard = DualSupplyGuard()  # HAT + USB-C at once = danger
+        self._dual_alarm = None               # the red modal while tripped
+        self._start_dual_supply_watch()
         from monitor.node_watch import NodeWatcher
         self._node_watcher = NodeWatcher()    # escalate nodes down past the grace window
         self._WATCH_FILE = os.path.expanduser("~/.reticulum-node-medic/node_watch.json")
@@ -2043,6 +2047,91 @@ class ReticulumNodeMedicApp(App):
         import threading
         from provisioning.power import power_off
         threading.Thread(target=lambda: power_off(), daemon=True).start()
+
+    def _start_dual_supply_watch(self):
+        """A 5 s tripwire thread, separate from the 30 s monitor lap because a
+        keeper plugging USB-C power into a running HAT-powered medic deserves a
+        warning in seconds, not minutes. Inert without the HAT (see
+        monitor.dual_supply arming rule)."""
+        import threading
+
+        def loop():
+            import time
+            while True:
+                try:
+                    from monitor.dual_supply import read_ext5v
+                    from monitor.ups import read_ups
+                    verdict = self._dual_guard.evaluate(
+                        read_ups().present, read_ext5v())
+                    if verdict == "danger":
+                        Clock.schedule_once(lambda dt: self._dual_supply_alarm(), 0)
+                    elif verdict == "clear":
+                        Clock.schedule_once(lambda dt: self._dual_supply_clear(), 0)
+                except Exception:
+                    pass
+                time.sleep(5)
+
+        threading.Thread(target=loop, daemon=True).start()
+
+    def _dual_supply_alarm(self):
+        """TWO SUPPLIES: flash red, beg for the cable, power down if ignored.
+        The countdown lives on the UI clock; the tripwire thread keeps
+        re-reading the PMIC, and the modal dismisses itself the moment the
+        second supply vanishes (guard "clear")."""
+        if self._dual_alarm is not None or getattr(self, "_battery_shutting_down", False):
+            return
+        from kivy.uix.modalview import ModalView
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from monitor.dual_supply import GRACE_SECONDS
+        view = ModalView(size_hint=(1, 1), auto_dismiss=False,
+                         background="", background_color=(0.55, 0.05, 0.05, 1))
+        box = BoxLayout(orientation="vertical", padding=dp(28), spacing=dp(12))
+        title = Label(text="TWO POWER SUPPLIES", font_size="34sp", bold=True,
+                      color=(1, 1, 1, 1))
+        body = Label(
+            text=("This Node Medic is running on its battery HAT and power "
+                  "just arrived on the USB-C socket. Two supplies fight each "
+                  "other and can damage both machines.\n\n"
+                  "UNPLUG THE USB-C CABLE NOW."),
+            font_size="20sp", color=(1, 1, 1, 1), halign="center")
+        body.bind(size=lambda w, sz: setattr(w, "text_size", (sz[0], None)))
+        count = Label(text="", font_size="26sp", bold=True, color=(1, 0.85, 0.3, 1))
+        box.add_widget(title); box.add_widget(body); box.add_widget(count)
+        view.add_widget(box)
+        self._dual_alarm = view
+        view.open()
+        remaining = [GRACE_SECONDS]
+
+        def tick(dt):
+            if self._dual_alarm is not view:      # cleared / superseded
+                return False
+            # flash: alternate the red each second so it reads as an alarm
+            view.background_color = ((0.75, 0.08, 0.08, 1)
+                                     if remaining[0] % 2 else (0.45, 0.02, 0.02, 1))
+            count.text = ("Shutting down in %d s to protect the boards"
+                          % remaining[0])
+            if remaining[0] <= 0:
+                self._dual_alarm = None
+                view.dismiss()
+                self._battery_shutting_down = True
+                self._mode_toast("Two power supplies — shutting down safely.",
+                                 ok=False)
+                import threading
+                from provisioning.power import power_off
+                threading.Thread(target=lambda: power_off(), daemon=True).start()
+                return False
+            remaining[0] -= 1
+            return True
+        Clock.schedule_interval(tick, 1)
+
+    def _dual_supply_clear(self):
+        view = self._dual_alarm
+        if view is None:
+            return
+        self._dual_alarm = None
+        view.dismiss()
+        self._mode_toast("Second supply removed — all safe.", ok=True)
 
     def _check_node_watch(self, devices):
         """Runs on the monitor thread each cycle: escalate any node that has stayed

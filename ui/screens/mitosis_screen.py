@@ -54,6 +54,7 @@ STEP_TITLES = [
     ("stamp_lineage", "Stamping the family line (child knows its parent)"),
     ("record_child_trust", "Trusting the new medic as this unit's child"),
     ("configure_autostart", "Setting the tool to start on boot"),
+    ("bake_recovery_bootorder", "Teaching its boot chip to ask for help"),
     ("final_verification", "Final check-over"),
 ]
 
@@ -68,7 +69,7 @@ STEP_EST_S = {
     "install_dependencies": 300, "carry_touch_cure": 6,
     "copy_monitoring_db": 12, "copy_kin_roster": 6,
     "generate_fresh_identity": 12, "stamp_lineage": 6,
-    "record_child_trust": 4, "configure_autostart": 12,
+    "record_child_trust": 4, "configure_autostart": 12, "bake_recovery_bootorder": 15,
     "final_verification": 12,
 }
 
