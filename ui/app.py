@@ -28,6 +28,7 @@ from ui.screens.scan_screen import ScanScreen
 from ui.screens.probe_screen import ProbeScreen
 from ui.screens.birth_screen import BirthScreen
 from ui.screens.triage_screen import TriageScreen
+from ui.screens.firstborn_screen import FirstbornScreen
 from ui.screens.mitosis_screen import MitosisScreen
 from ui.screens.home_screen import HomeScreen
 from ui.screens.credits_screen import CreditsScreen
@@ -940,6 +941,16 @@ class ReticulumNodeMedicApp(App):
         mitosis.bind(on_pre_enter=lambda *_: _mit.begin(),
                      on_leave=lambda *_: _mit.sleep())
         self.sm.add_widget(mitosis)
+
+        # THE FIRSTBORN — the medic births its own Heltec Tracker (its GPS/time
+        # source) as part of the first tour. Dormant until shown, like MITOSIS:
+        # its plug-state poll must not run while hidden.
+        firstborn = Screen(name="firstborn")
+        _fb = FirstbornScreen(on_home=lambda: self.switch_mode("setup"))
+        firstborn.add_widget(self._with_back(_fb))
+        firstborn.bind(on_pre_enter=lambda *_: _fb.begin_screen(),
+                       on_leave=lambda *_: _fb.sleep())
+        self.sm.add_widget(firstborn)
 
         self.sm.current = self._opening_screen()
         self._install_screensaver()

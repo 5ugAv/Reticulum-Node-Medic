@@ -72,6 +72,7 @@ KEYFILE_STEP = "keyfile"
 SECURITY_SUMMARY = "security_summary"
 
 TOUR_BIRTH = "tour_birth"
+TOUR_FIRSTBORN = "tour_firstborn"
 TOUR_VITALS = "tour_vitals"
 TOUR_SCAN = "tour_scan"
 TOUR_TRIAGE = "tour_triage"
@@ -323,6 +324,23 @@ _TOUR_STEPS = [
              "A radio for a phone or laptop, a transport node that runs the mesh "
              "on its own, or a Raspberry Pi and radio together. It tells you "
              "which cable, which socket, and which board you are holding."},
+
+    {"key": TOUR_FIRSTBORN, "part": TOUR, "poster_card": "birth",
+     "opens": "firstborn", "optional": True,
+     "title": "THE FIRSTBORN — give this medic its own eyes",
+     "body": "This medic has no GPS or clock of its own — a Raspberry Pi can't "
+             "see the sky. Its first child fixes that: a Heltec Wireless "
+             "Tracker, flashed here and adopted as the medic's own position "
+             "and time source. Every node you place, every certificate you "
+             "stamp, gets a real location and a real date because of it.\n\n"
+             "Plug the Tracker into Node Medic and press begin — it is flashed, "
+             "tested until it sees satellites, and welcomed as node number one. "
+             "No Tracker on hand? Skip it; you can hold this ceremony later from "
+             "PROBE.",
+     "hint": "Have ONLY the Tracker plugged in for this — the medic's own radio "
+             "looks alike on USB and is told apart by the satellite stream, not "
+             "the socket.",
+     "next": "Meet the firstborn  →"},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",

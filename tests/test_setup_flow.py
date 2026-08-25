@@ -439,3 +439,26 @@ def test_the_card_crop_reads_the_same_numbers_the_tap_map_does():
         centre_x = left + w / 2
         assert hz.zone_at(centre_x, top + 0.05) == zone
         assert i == hz.CARD_ORDER.index(zone)
+
+
+# -- THE FIRSTBORN tour step (the medic births its own Tracker, 2026-08-25) ---
+
+def test_firstborn_step_follows_birth_and_opens_its_screen():
+    keys = [s["key"] for s in sf.setup_steps()]
+    assert sf.TOUR_FIRSTBORN in keys
+    # it comes right after BIRTH — build a node, then birth the medic's own
+    assert keys.index(sf.TOUR_FIRSTBORN) == keys.index(sf.TOUR_BIRTH) + 1
+    step = sf.step_for(sf.TOUR_FIRSTBORN)
+    assert step["opens"] == "firstborn"
+
+
+def test_firstborn_is_optional_so_a_medic_with_no_tracker_can_skip():
+    # a keeper without a Tracker on hand must not be trapped at this step
+    assert sf.step_for(sf.TOUR_FIRSTBORN).get("optional") is True
+
+
+def test_firstborn_warns_to_isolate_the_lookalike_radio():
+    # the medic's own RNode is a look-alike ESP32-S3; the step must say so
+    step = sf.step_for(sf.TOUR_FIRSTBORN)
+    text = (step.get("hint", "") + step.get("body", "")).lower()
+    assert "only" in text and ("radio" in text or "look" in text)

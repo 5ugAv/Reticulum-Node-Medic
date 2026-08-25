@@ -54,8 +54,6 @@ UNIMPORTED_WITH_REASON = {
         "DORMANT. Plain-English build cautions, never shown. Note its GNSS text "
         "is also WRONG (tells you to put an antenna on the unconnected GNSS "
         "socket) — fix that before wiring it, not after.",
-    "workflows.gps_setup":
-        "DORMANT. One-time medic assembly step (Tracker as GPS), run by hand.",
     "workflows.rnode_nrf52_rgb":
         "DORMANT. nRF52/RAK RGB firmware path, bench work in progress.",
     "provisioning.uart_link":
