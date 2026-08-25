@@ -431,30 +431,108 @@ class MitosisScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             pass
 
-    # -- stage 5: WRITTEN (the physical hand-off) ------------------------------
+    # -- stage 5: the physical hand-off, ANIMATED (three acts) ----------------
+    # Show-don't-tell (operator, live at the bench): every page that asks for
+    # hardware to move gets the picture, so the flow works for someone who
+    # cannot read the words. Act 1 even advances ITSELF — the medic can SEE
+    # its own reader go empty.
 
     def _show_stage_written(self):
         self._clear()
-        title = _label("Card written ✓", bold=True, size="22sp", color="green")
+        gen = self._stage_gen
+        title = _label("Card written ✓ — move it to the new medic",
+                       bold=True, size="20sp", color="green")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        try:
+            from ui.widgets.birth_anims import SdHandoverAnim
+            self._anim = SdHandoverAnim()
+            self.add_widget(self._anim)
+            self._anim.start()
+        except Exception:                                  # noqa: BLE001
+            self._anim = None
+        hint = _label("Take the card out of Node Medic and put it into the "
+                      "NEW medic. Node Medic sees it leave and moves on by "
+                      "itself.", color="text_secondary", size="14sp")
+        hint.size_hint_y, hint.height = None, dp(44)
+        self.add_widget(hint)
+        # watch for the card LEAVING the reader
+        def tick(_dt):
+            def work():
+                try:
+                    from provisioning import pi_imager
+                    st = pi_imager.card_status()
+                except Exception:                          # noqa: BLE001
+                    return
+                if st["state"] == "none":
+                    Clock.schedule_once(lambda _d: self._on_card_gone(gen), 0)
+            threading.Thread(target=work, daemon=True).start()
+        self._card_ev = Clock.schedule_interval(tick, 1.5)
+
+    def _on_card_gone(self, gen):
+        if gen != self._stage_gen:
+            return
+        if self._card_ev is not None:
+            self._card_ev.cancel()
+            self._card_ev = None
+        fn = getattr(self._anim, "mark_moved", None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:                              # noqa: BLE001
+                pass
+        def _advance(_d, g=gen):
+            if g == self._stage_gen:
+                self._show_stage_power()
+        self._advance_ev = Clock.schedule_once(_advance, 1.8)
+
+    def _show_stage_power(self):
+        self._clear()
+        title = _label("Power the new medic on", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         body = _label(
-            "1 · Take the card out of Node Medic\n"
-            "2 · Put it into the NEW medic\n"
-            "3 · Power the new medic on (press BOOT on its power pack "
-            "if it plays dead)\n"
-            "4 · First boot takes up to 5 minutes — green LED flickering "
-            "means it's working\n"
-            "5 · Connect the patch cable between the two medics "
-            "(or let it join your WiFi)",
-            color="text_primary", size="16sp")
-        body.size_hint_y, body.height = None, dp(190)
+            "Press BOOT on its power pack if it plays dead — a fresh pack "
+            "sleeps until asked.
+
+"
+            "First boot takes up to 5 minutes. A flickering green LED means "
+            "it is working — leave it be.",
+            color="text_primary", size="17sp")
+        body.size_hint_y, body.height = None, dp(130)
         self.add_widget(body)
         login = _label("Its screen login is  pi  +  the password you chose.",
                        color="text_secondary", size="13.5sp")
         login.size_hint_y, login.height = None, dp(24)
         self.add_widget(login)
-        nxt = Button(text="Continue to the clone →", size_hint_y=None,
+        nxt = Button(text="It's powered — next →", size_hint_y=None,
+                     height=dp(56), font_size="20sp", background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        nxt.bind(on_release=lambda *_: self._show_stage_cable())
+        self.add_widget(nxt)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+    def _show_stage_cable(self):
+        self._clear()
+        title = _label("Connect the two medics", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        try:
+            from ui.widgets.birth_anims import ProvisionOverCableAnim
+            self._anim = ProvisionOverCableAnim()
+            self.add_widget(self._anim)
+            self._anim.start()
+        except Exception:                                  # noqa: BLE001
+            self._anim = None
+        hint = _label("An ordinary network patch cable between the two "
+                      "medics' network ports — or let the new medic join "
+                      "your WiFi on its own.",
+                      color="text_secondary", size="14sp")
+        hint.size_hint_y, hint.height = None, dp(44)
+        self.add_widget(hint)
+        nxt = Button(text="Connected — go to the clone →", size_hint_y=None,
                      height=dp(56), font_size="20sp", background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                      color=theme.hex_to_rgba(theme.COLORS["background"]))
