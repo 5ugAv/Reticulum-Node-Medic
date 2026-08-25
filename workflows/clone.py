@@ -298,10 +298,19 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
+    # The DSI touchscreen advertises a legacy mouse beside its touch — the
+    # compositor then parks a pointer arrow at every tap (the lost tourist,
+    # HAWKEYE 2026-08-25). Declare it touch-only at the udev layer.
+    touch_rule = (
+        'ATTRS{name}=="Goodix Capacitive TouchScreen", '
+        'ENV{ID_INPUT_MOUSE}="", ENV{ID_INPUT_POINTINGSTICK}="", '
+        'ENV{ID_INPUT_TOUCHSCREEN}="1"\n'
+    )
     priv = "" if user == "root" else "sudo -n "
     for path, content in (
             ("/etc/systemd/system/reticulum-node-medic.service", unit),
-            ("/etc/systemd/system/goodix-rebind.service", rebind)):
+            ("/etc/systemd/system/goodix-rebind.service", rebind),
+            ("/etc/udev/rules.d/71-nodemedic-touch-only.rules", touch_rule)):
         heredoc = (f"{priv}tee {path} >/dev/null <<'RNMUNIT'\n"
                    f"{content}\nRNMUNIT")
         if wf.connection.run(heredoc)[0] != 0:
