@@ -121,6 +121,15 @@ class MitosisScreen(BoxLayout):
             except Exception:                              # noqa: BLE001
                 pass
             self._anim = None
+        # dismiss the on-screen keyboard — it outlived its stage and sat on
+        # top of the ladder (seen live at the bench)
+        try:
+            from kivy.app import App
+            kb = getattr(App.get_running_app(), "keyboard", None)
+            if kb is not None:
+                kb.hide()
+        except Exception:                                  # noqa: BLE001
+            pass
         self.clear_widgets()
 
     # -- stage 1: INSERT ------------------------------------------------------
@@ -431,11 +440,13 @@ class MitosisScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             pass
 
-    # -- stage 5: the physical hand-off, ANIMATED (three acts) ----------------
-    # Show-don't-tell (operator, live at the bench): every page that asks for
-    # hardware to move gets the picture, so the flow works for someone who
-    # cannot read the words. Act 1 even advances ITSELF — the medic can SEE
-    # its own reader go empty.
+    # -- stage 5: the hand-off, ANIMATED and AUTOMATED ------------------------
+    # Operator, live at the bench (twice): "we need to automate as much of
+    # this process as possible". After the password there are ZERO taps:
+    # the medic watches its own reader for the card leaving, then starts
+    # hunting for the new medic IMMEDIATELY — discovery polls for 5 minutes,
+    # which is exactly the physical work's duration. The operator powers and
+    # cables while the first ladder row is already searching.
 
     def _show_stage_written(self):
         self._clear()
@@ -451,12 +462,11 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        hint = _label("Take the card out of Node Medic and put it into the "
-                      "NEW medic. Node Medic sees it leave and moves on by "
+        hint = _label("Node Medic sees the card leave and carries on by "
                       "itself.", color="text_secondary", size="14sp")
-        hint.size_hint_y, hint.height = None, dp(44)
+        hint.size_hint_y, hint.height = None, dp(28)
         self.add_widget(hint)
-        # watch for the card LEAVING the reader
+
         def tick(_dt):
             def work():
                 try:
@@ -481,70 +491,26 @@ class MitosisScreen(BoxLayout):
                 fn()
             except Exception:                              # noqa: BLE001
                 pass
+
         def _advance(_d, g=gen):
             if g == self._stage_gen:
-                self._show_stage_power()
+                self._show_stage_clone(auto=True)
         self._advance_ev = Clock.schedule_once(_advance, 1.8)
-
-    def _show_stage_power(self):
-        self._clear()
-        title = _label("Power the new medic on", bold=True, size="22sp")
-        title.size_hint_y, title.height = None, dp(34)
-        self.add_widget(title)
-        body = _label(
-            "Press BOOT on its power pack if it plays dead — a fresh pack "
-            "sleeps until asked.
-
-"
-            "First boot takes up to 5 minutes. A flickering green LED means "
-            "it is working — leave it be.",
-            color="text_primary", size="17sp")
-        body.size_hint_y, body.height = None, dp(130)
-        self.add_widget(body)
-        login = _label("Its screen login is  pi  +  the password you chose.",
-                       color="text_secondary", size="13.5sp")
-        login.size_hint_y, login.height = None, dp(24)
-        self.add_widget(login)
-        nxt = Button(text="It's powered — next →", size_hint_y=None,
-                     height=dp(56), font_size="20sp", background_normal="",
-                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                     color=theme.hex_to_rgba(theme.COLORS["background"]))
-        nxt.bind(on_release=lambda *_: self._show_stage_cable())
-        self.add_widget(nxt)
-        from kivy.uix.widget import Widget
-        self.add_widget(Widget())
-
-    def _show_stage_cable(self):
-        self._clear()
-        title = _label("Connect the two medics", bold=True, size="22sp")
-        title.size_hint_y, title.height = None, dp(34)
-        self.add_widget(title)
-        try:
-            from ui.widgets.birth_anims import ProvisionOverCableAnim
-            self._anim = ProvisionOverCableAnim()
-            self.add_widget(self._anim)
-            self._anim.start()
-        except Exception:                                  # noqa: BLE001
-            self._anim = None
-        hint = _label("An ordinary network patch cable between the two "
-                      "medics' network ports — or let the new medic join "
-                      "your WiFi on its own.",
-                      color="text_secondary", size="14sp")
-        hint.size_hint_y, hint.height = None, dp(44)
-        self.add_widget(hint)
-        nxt = Button(text="Connected — go to the clone →", size_hint_y=None,
-                     height=dp(56), font_size="20sp", background_normal="",
-                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-                     color=theme.hex_to_rgba(theme.COLORS["background"]))
-        nxt.bind(on_release=lambda *_: self._show_stage_clone())
-        self.add_widget(nxt)
-        from kivy.uix.widget import Widget
-        self.add_widget(Widget())
 
     # -- stage 6: CLONE --------------------------------------------------------
 
-    def _show_stage_clone(self):
+    def _show_stage_clone(self, auto=False):
         self._clear()
+        if auto:
+            head = _label(
+                "Card into the NEW medic → power it on (press BOOT on its "
+                "power pack if it plays dead) → patch cable between the two, "
+                "or let it join your WiFi.\n"
+                "Node Medic is ALREADY watching for it — first boot takes up "
+                "to 5 minutes and the search waits that long.",
+                color="text_primary", size="15sp")
+            head.size_hint_y, head.height = None, dp(110)
+            self.add_widget(head)
         self.run_btn = Button(
             text="Clone onto the new medic", size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
@@ -562,6 +528,11 @@ class MitosisScreen(BoxLayout):
 
         self._rows = {}
         self._build_rows()
+        if auto:
+            # ZERO TAPS: the hunt begins now, while the operator's hands are
+            # full of hardware. The button becomes the status/retry surface.
+            self.run_btn.text = "Searching for the new medic…"
+            Clock.schedule_once(lambda _d: self.start(auto=True), 0.2)
 
     def _build_rows(self, steps=None):
         titles = dict(STEP_TITLES)
@@ -598,7 +569,7 @@ class MitosisScreen(BoxLayout):
 
     # -- run -------------------------------------------------------------------
 
-    def start(self):
+    def start(self, auto=False):
         if self.run_btn.disabled:
             return
         orig_label = self.run_btn.text
