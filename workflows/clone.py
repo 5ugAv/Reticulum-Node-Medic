@@ -402,6 +402,10 @@ def carry_touch_cure(wf: "CloneWorkflow") -> StepResult:
                           "starts on defaults.", skipped=True)
     wf.connection.run("mkdir -p ~/.kivy")
     ok = wf.connection.push_file(src, "~/.kivy/config.ini")
+    # A kiosk has fingers, not a mouse — hide the pointer (it sat in the
+    # middle of HAWKEYE's home screen like a lost tourist, 2026-08-25).
+    wf.connection.run(
+        "sed -i 's/^show_cursor = 1/show_cursor = 0/' ~/.kivy/config.ini")
     return StepResult("carry_touch_cure", ok,
                       "Carried the touch settings (the doubled-tap cure "
                       "rides along)." if ok else
