@@ -72,6 +72,13 @@ class MitosisScreen(BoxLayout):
         if self._card_ev is not None:
             self._card_ev.cancel()
             self._card_ev = None
+        anim = getattr(self, "_anim", None)
+        if anim is not None:
+            try:
+                anim.stop()
+            except Exception:                              # noqa: BLE001
+                pass
+            self._anim = None
         self.clear_widgets()
 
     # -- stage 1: INSERT -----------------------------------------------------
@@ -91,11 +98,12 @@ class MitosisScreen(BoxLayout):
             from ui.widgets.birth_anims import InsertSdAnim
             self._anim = InsertSdAnim()
             self.add_widget(self._anim)
+            self._anim.start()          # the loop: card slides toward the reader
         except Exception:                                  # noqa: BLE001
             self._anim = None
         # Escape hatches: a marginal reader that never greets, and the case
         # where the new medic is ALREADY booted from a card written earlier.
-        skip = Button(text="The new medic is already booted \\u2014 skip to the clone",
+        skip = Button(text="The new medic is already booted \— skip to the clone",
                       size_hint_y=None, height=dp(40), font_size="14sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -161,7 +169,7 @@ class MitosisScreen(BoxLayout):
         self.add_widget(self.name_input)
 
         self.card_btn = Button(
-            text="Write the card \\u2192", size_hint_y=None,
+            text="Write the card \→", size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -190,8 +198,8 @@ class MitosisScreen(BoxLayout):
             return
         name = (self.name_input.text or "").strip()
         self.card_btn.disabled = True
-        self.card_btn.text = "Writing the card\\u2026 (takes a few minutes)"
-        self.card_status.text = "Imaging \\u2014 leave the card in until this finishes."
+        self.card_btn.text = "Writing the card\… (takes a few minutes)"
+        self.card_status.text = "Imaging \— leave the card in until this finishes."
 
         def work():
             ok, msg, pw = False, "", ""
@@ -199,9 +207,9 @@ class MitosisScreen(BoxLayout):
                 from provisioning import pi_imager
                 disks = pi_imager.list_target_disks()
                 if len(disks) != 1:
-                    msg = ("The card has gone \\u2014 put it back in the reader."
+                    msg = ("The card has gone \— put it back in the reader."
                            if not disks else
-                           "More than one removable disk is attached \\u2014 "
+                           "More than one removable disk is attached \— "
                            "leave only the new medic's card in.")
                 else:
                     from workflows.mitosis_card import image_medic_card
@@ -214,16 +222,16 @@ class MitosisScreen(BoxLayout):
                 self.card_btn.disabled = False
                 if ok:
                     self._card_written = True
-                    self.card_btn.text = "Card written \\u2713  \\u2014  Continue \\u2192"
+                    self.card_btn.text = "Card written \✓  \—  Continue \→"
                     self.card_btn.background_color = theme.hex_to_rgba(
                         theme.COLORS["green"])
                     self.card_status.text = (
-                        "WRITE THIS DOWN \\u2014 the new medic's login:\\n\\n"
+                        "WRITE THIS DOWN \— the new medic's login:\\n\\n"
                         f"user:  medic\\npassword:  {pw}\\n\\n"
                         "Then: card into the new medic, power on (first boot "
                         "takes up to 5 minutes), cable or WiFi, and Continue.")
                 else:
-                    self.card_btn.text = "Write the card \\u2192"
+                    self.card_btn.text = "Write the card \→"
                     self.card_status.text = msg
             Clock.schedule_once(done, 0)
 
