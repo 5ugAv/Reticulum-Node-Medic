@@ -1,18 +1,27 @@
 """MITOSIS screen (mode 6) — clone this medic onto a fresh Raspberry Pi 5.
 
-A staged, guided sequence (operator's design, 2026-08-25, first bench run):
+A staged, guided sequence (operator's design, 2026-08-25, refined live at the
+bench across the first real runs):
 
   1. INSERT — an animation asks for the new medic's SD card; the medic
-     watches its own reader and greets the card with the green ripple (the
-     same "I can see it now" every board gets), then moves on by itself.
-  2. NAME — name the new medic (on-screen keyboard), press Continue; the
-     card is written and the one-time password is shown BIG: write it down.
-  3. CLONE — the thirteen-step ladder streams as live rows, exactly as the
-     build flows do.
+     watches its own reader and greets the card with the green ripple, then
+     moves on by itself.
+  2. NAME — name the new medic (on-screen keyboard).
+  3. PASSWORD — the keeper TYPES their own password and confirms it; the
+     button walks amber ("Type a password") → amber ("Confirm the password")
+     → green ("Write the card →") only when the two match and pass the
+     validator. Chosen, never generated: an operator-owned password is one
+     they can actually remember at the new medic's own screen.
+  4. WRITE — the BIRTH imaging progress ring with the organ narration
+     ("Kernel in — the beating heart"), screensaver suppressed.
+  5. WRITTEN — the physical hand-off instructions, one clear page.
+  6. CLONE — the ladder streams as live rows; the active row ticks elapsed
+     time; a failure keeps its WHOLE message and retries FROM the failed
+     step, never from the top.
 
-The workflow is injected (a factory) so the ladder stays transport-agnostic
-and demo-able; the card write runs on a background thread with results
-marshalled onto the UI thread by Clock.
+The screen is DORMANT until shown (begin/sleep wired to the Screen's
+enter/leave) — its card poll must never advance stages behind the operator's
+back while they use the rest of the tool.
 """
 
 from __future__ import annotations
@@ -46,6 +55,10 @@ STEP_TITLES = [
     ("final_verification", "Final check-over"),
 ]
 
+#: Rough dd+config seconds for the write's fill estimate — the same model the
+#: BIRTH imaging screen uses (time-based, capped at 95% until truth arrives).
+EST_WRITE_S = 240.0
+
 
 def _label(text, color="text_primary", bold=False, size="16sp"):
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
@@ -53,6 +66,14 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
                 color=theme.hex_to_rgba(theme.COLORS[color]))
     lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
+
+
+def _small_btn(text):
+    b = Button(text=text, size_hint_y=None, height=dp(40), font_size="14sp",
+               background_normal="",
+               background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+               color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+    return b
 
 
 class MitosisScreen(BoxLayout):
@@ -65,19 +86,16 @@ class MitosisScreen(BoxLayout):
         self._card_written = False
         self._card_ev = None
         self._advance_ev = None
-        self._stage_gen = 0          # bumps on every stage change; stale
-                                     # callbacks compare and give up
+        self._write_ev = None
+        self._stage_gen = 0
         self._retry_workflow = None
-        self._last_pw = ""
         self._cloning = False
-        # DORMANT until the operator actually opens MITOSIS. The screen is
-        # built at app launch, and its card poll used to run from boot —
-        # any card inserted during an ordinary BIRTH silently dragged this
-        # hidden screen through its stages (adversarial review 2026-08-25).
+        self._skip_mode = False
+        self._name = ""
+
+    # -- lifecycle (dormant until shown) -------------------------------------
 
     def begin(self):
-        """Called when the MITOSIS screen is shown. Fresh entry restarts the
-        guided sequence UNLESS a clone is mid-flight."""
         if self._cloning:
             return
         self._card_written = False
@@ -85,13 +103,9 @@ class MitosisScreen(BoxLayout):
         self._show_stage_insert()
 
     def sleep(self):
-        """Called when the operator leaves the screen — stop watching the
-        card reader; never advance stages behind their back."""
         if self._cloning:
-            return                   # the ladder may finish while they check
+            return
         self._clear()
-
-    # -- stage plumbing ------------------------------------------------------
 
     def _clear(self):
         self._stage_gen += 1
@@ -109,7 +123,7 @@ class MitosisScreen(BoxLayout):
             self._anim = None
         self.clear_widgets()
 
-    # -- stage 1: INSERT -----------------------------------------------------
+    # -- stage 1: INSERT ------------------------------------------------------
 
     def _show_stage_insert(self):
         self._clear()
@@ -126,18 +140,10 @@ class MitosisScreen(BoxLayout):
             from ui.widgets.birth_anims import InsertSdAnim
             self._anim = InsertSdAnim()
             self.add_widget(self._anim)
-            self._anim.start()          # the loop: card slides toward the reader
+            self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        # Escape hatches: a marginal reader that never greets, and the case
-        # where the new medic is ALREADY booted from a card written earlier.
-        skip = Button(text="The new medic is already booted — skip to the clone",
-                      size_hint_y=None, height=dp(40), font_size="14sp",
-                      background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        # The skip path still needs the NAME — discovery's first road is
-        # <name>.local, and skipping used to hand it "" (review 2026-08-25).
+        skip = _small_btn("The new medic is already booted — skip to the clone")
         skip.bind(on_release=lambda *_: self._show_stage_name(skip_mode=True))
         self.add_widget(skip)
         self._start_card_poll()
@@ -159,10 +165,9 @@ class MitosisScreen(BoxLayout):
             threading.Thread(target=work, daemon=True).start()
 
         self._card_ev = Clock.schedule_interval(tick, 1.5)
-        tick(0)                          # a card already in place greets NOW
+        tick(0)
 
     def _on_card_seen(self, gen):
-        # an in-flight poll worker from a LEFT stage must not yank the screen
         if gen != self._stage_gen or self._card_greeted:
             return
         self._card_greeted = True
@@ -175,14 +180,13 @@ class MitosisScreen(BoxLayout):
                 fn()
             except Exception:                              # noqa: BLE001
                 pass
-        # Let the green ripple be SEEN (1.4s burst + a beat), then move on —
-        # seeing the card answers this stage, nothing is left to decide here.
+
         def _advance(_d, g=gen):
             if g == self._stage_gen:
                 self._show_stage_name()
         self._advance_ev = Clock.schedule_once(_advance, 1.6)
 
-    # -- stage 2: NAME + write ----------------------------------------------
+    # -- stage 2: NAME --------------------------------------------------------
 
     def _show_stage_name(self, skip_mode=False):
         self._clear()
@@ -198,73 +202,167 @@ class MitosisScreen(BoxLayout):
 
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
-        self.name_input = TextInput(text="NodeMedic2", multiline=False,
+        self.name_input = TextInput(text=self._name or "NodeMedic2",
+                                    multiline=False,
                                     font_size=theme.font_sp("20sp"),
                                     size_hint_y=None, height=dp(52))
         bind_field(self.name_input)
         self.add_widget(self.name_input)
 
-        self.card_btn = Button(
-            text=("Find and clone →" if skip_mode else "Write the card →"),
-            size_hint_y=None,
-            height=dp(56), font_size="20sp", background_normal="",
+        nxt = Button(
+            text=("Find and clone →" if skip_mode else "Continue →"),
+            size_hint_y=None, height=dp(56), font_size="20sp",
+            background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
-        self.card_btn.bind(on_release=lambda *_: self._card_btn_tapped())
-        self.add_widget(self.card_btn)
+        nxt.bind(on_release=lambda *_: self._name_continue())
+        self.add_widget(nxt)
 
-        self.card_status = _label("", color="text_secondary", size="14sp")
-        self.card_status.valign = "top"
-        self.card_status.size_hint_y = None
-        self.card_status.height = dp(200)
-        self.add_widget(self.card_status)
-
-        back = Button(text="← Back", size_hint_y=None, height=dp(40),
-                      font_size="14sp", background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        back.bind(on_release=lambda *_: (not self.card_btn.disabled)
-                  and self._show_stage_insert())
+        back = _small_btn("← Back")
+        back.bind(on_release=lambda *_: self._show_stage_insert())
         self.add_widget(back)
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
 
-    def _card_btn_tapped(self):
-        # ONE binding for the button's whole life — kivy can't unbind a lambda,
-        # and rebinding left the old handler live (a Continue tap would have
-        # started a SECOND card write). The state routes instead.
-        if getattr(self, "_skip_mode", False):
-            self._show_stage_clone()          # already booted: straight to it
-        elif self._card_written:
-            self._show_stage_clone()          # password acknowledged
+    def _name_continue(self):
+        self._name = (self.name_input.text or "").strip()
+        if self._skip_mode:
+            self._show_stage_clone()
         else:
-            self._write_card()
+            self._show_stage_password()
 
-    def _write_card(self):
-        if self.card_btn.disabled:
+    # -- stage 3: PASSWORD (typed + confirmed, never generated) ---------------
+
+    def _show_stage_password(self):
+        self._clear()
+        title = _label("Create its password", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        body = _label(
+            "You will type this to log in on the new medic's own screen "
+            "(user 'pi'). Choose one you can remember — a lost password "
+            "means re-imaging the card.",
+            color="text_secondary", size="14sp")
+        body.size_hint_y, body.height = None, dp(56)
+        self.add_widget(body)
+
+        from kivy.uix.textinput import TextInput
+        from ui.onscreen_keyboard import bind_field
+        self.pw1 = TextInput(hint_text="Password", password=True,
+                             multiline=False,
+                             font_size=theme.font_sp("20sp"),
+                             size_hint_y=None, height=dp(52))
+        self.pw2 = TextInput(hint_text="Confirm password", password=True,
+                             multiline=False,
+                             font_size=theme.font_sp("20sp"),
+                             size_hint_y=None, height=dp(52))
+        for f in (self.pw1, self.pw2):
+            bind_field(f)
+            f.bind(text=lambda *_: self._password_state())
+            self.add_widget(f)
+
+        # The button WALKS ITS COLOURS (operator spec): amber "Type a
+        # password" → amber "Confirm the password" → green "Write the card →"
+        # that lights only when the two match and pass the validator.
+        self.pw_btn = Button(
+            text="Type a password", size_hint_y=None, height=dp(56),
+            font_size="20sp", background_normal="", disabled=True,
+            background_color=theme.hex_to_rgba(theme.COLORS["amber"]),
+            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self.pw_btn.bind(on_release=lambda *_: self._password_continue())
+        self.add_widget(self.pw_btn)
+
+        self.pw_status = _label("", color="text_secondary", size="13sp")
+        self.pw_status.size_hint_y, self.pw_status.height = None, dp(24)
+        self.add_widget(self.pw_status)
+
+        back = _small_btn("← Back")
+        back.bind(on_release=lambda *_: self._show_stage_name())
+        self.add_widget(back)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+        self._password_state()
+
+    def _password_state(self):
+        from provisioning.pi_imager import validate_new_password
+        p1 = self.pw1.text or ""
+        p2 = self.pw2.text or ""
+        if not p1:
+            self.pw_btn.text = "Type a password"
+            self.pw_btn.disabled = True
+            self.pw_btn.background_color = theme.hex_to_rgba(
+                theme.COLORS["amber"])
+            self.pw_status.text = ""
             return
-        name = (self.name_input.text or "").strip()
-        self.card_btn.disabled = True
-        self.card_btn.text = "Writing the card… (takes a few minutes)"
-        # ELAPSED TIME, honestly ticking (operator, third bench run: still
-        # no progress bars — a multi-minute write with a frozen label reads
-        # as a hang). True percent needs dd itself reporting; until then the
-        # clock moving IS the progress signal, with the long stage named.
+        ok, why = validate_new_password(p1, p2 if p2 else None)
+        if not p2 or p1 != p2:
+            self.pw_btn.text = "Confirm the password"
+            self.pw_btn.disabled = True
+            self.pw_btn.background_color = theme.hex_to_rgba(
+                theme.COLORS["amber"])
+            self.pw_status.text = ("" if not p2 else
+                                   "The two passwords don't match yet.")
+            return
+        if not ok:
+            self.pw_btn.text = "Confirm the password"
+            self.pw_btn.disabled = True
+            self.pw_btn.background_color = theme.hex_to_rgba(
+                theme.COLORS["amber"])
+            self.pw_status.text = why
+            return
+        self.pw_btn.text = "Write the card →"
+        self.pw_btn.disabled = False
+        self.pw_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
+        self.pw_status.text = "Passwords match."
+
+    def _password_continue(self):
+        if self.pw_btn.disabled:
+            return
+        self._show_stage_write(self.pw1.text)
+
+    # -- stage 4: WRITE (the BIRTH progress ring) ------------------------------
+
+    def _show_stage_write(self, password):
+        self._clear()
+        gen = self._stage_gen
+        title = _label("Writing the new medic's card", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+
+        from kivy.uix.anchorlayout import AnchorLayout
+        from ui.widgets.progress_ring import ProgressRing
+        holder = AnchorLayout(size_hint_y=None, height=dp(120))
+        self._ring = ProgressRing(size=(dp(104), dp(104)),
+                                  label_font_size="19sp")
+        holder.add_widget(self._ring)
+        self.add_widget(holder)
+
+        from provisioning import pi_imager
+        self._stage_lbl = _label(pi_imager.current_stage_label(0.0),
+                                 color="text_secondary", size="15sp")
+        self._stage_lbl.size_hint_y, self._stage_lbl.height = None, dp(48)
+        self.add_widget(self._stage_lbl)
+
+        warn = _label("Leave the card in until this finishes.",
+                      color="text_secondary", size="13sp")
+        warn.size_hint_y, warn.height = None, dp(24)
+        self.add_widget(warn)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+        self._mark_activity(True)
         import time as _time
-        self._write_t0 = _time.monotonic()
+        t0 = _time.monotonic()
 
         def _tick(_dt):
-            m, sec = divmod(int(_time.monotonic() - self._write_t0), 60)
-            self.card_status.text = (
-                f"Imaging — {m}m {sec:02d}s elapsed. Writing the OS image "
-                "is the long stage (several minutes on a 64 GB card); "
-                "baking the settings at the end is quick. Leave the card in.")
+            frac = min(0.95, (_time.monotonic() - t0) / EST_WRITE_S)
+            self._ring.set_fraction(frac)
+            self._stage_lbl.text = pi_imager.current_stage_label(frac)
         self._write_ev = Clock.schedule_interval(_tick, 1.0)
 
         def work():
-            ok, msg, pw = False, "", ""
+            ok, msg = False, ""
             try:
-                from provisioning import pi_imager
                 disks = pi_imager.list_target_disks()
                 if len(disks) != 1:
                     msg = ("The card has gone — put it back in the reader."
@@ -273,54 +371,102 @@ class MitosisScreen(BoxLayout):
                            "leave only the new medic's card in.")
                 else:
                     from workflows.mitosis_card import image_medic_card
-                    ok, msg, pw = image_medic_card(
-                        disks[0]["path"], name or "NodeMedic2")
+                    ok, msg, _pw = image_medic_card(
+                        disks[0]["path"], self._name or "NodeMedic2",
+                        password=password)
             except Exception as e:                         # noqa: BLE001
                 msg = f"Card write failed: {e}"
 
-            def done(_dt):
-                ev = getattr(self, "_write_ev", None)
-                if ev is not None:
-                    ev.cancel()
-                    self._write_ev = None
-                # FULL outcome into ui.log — attempt 1 died with a
-                # truncated label and left no trail (2026-08-25).
+            def done(_dt, g=gen):
+                self._mark_activity(False)
                 print(f"[mitosis] card write ok={ok}: {msg}")
-                self.card_btn.disabled = False
+                if g != self._stage_gen:
+                    return
+                if self._write_ev is not None:
+                    self._write_ev.cancel()
+                    self._write_ev = None
                 if ok:
                     self._card_written = True
-                    self._last_pw = pw
-                    self.card_btn.text = "I have written the password down →"
-                    self.card_btn.background_color = theme.hex_to_rgba(
-                        theme.COLORS["green"])
-                    self.card_status.font_size = theme.font_sp("20sp")
-                    self.card_status.color = theme.hex_to_rgba(
-                        theme.COLORS["text_primary"])
-                    self.card_status.text = (
-                        "WRITE THIS DOWN — the new medic's screen login:\n\n"
-                        f"      user:  pi\n      password:  {pw}\n\n"
-                        "Card into the new medic → power on (first boot takes "
-                        "up to 5 minutes; the green LED flickers while it "
-                        "works) → connect the patch cable or let it join "
-                        "your WiFi.")
+                    self._ring.set_fraction(1.0)
+                    self._show_stage_written()
                 else:
-                    self.card_btn.text = "Write the card →"
-                    self.card_status.text = msg
+                    self._show_stage_write_failed(msg)
             Clock.schedule_once(done, 0)
 
         threading.Thread(target=work, daemon=True).start()
 
-    # -- stage 3: CLONE ------------------------------------------------------
+    def _show_stage_write_failed(self, msg):
+        self._clear()
+        title = _label("The card write failed", bold=True, size="22sp",
+                       color="red")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        body = _label(msg, color="text_primary", size="15sp")
+        body.valign = "top"
+        body.size_hint_y = None
+        body.height = dp(220)
+        self.add_widget(body)
+        again = Button(text="Try again →", size_hint_y=None, height=dp(56),
+                       font_size="20sp", background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        again.bind(on_release=lambda *_: self._show_stage_password())
+        self.add_widget(again)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+    def _mark_activity(self, on):
+        """Screensaver off + the don't-power-off banner while writing/cloning —
+        a screen going dark mid-dd invites the power yank that corrupts cards."""
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            if app is None:
+                return
+            if on:
+                app.begin_activity("MITOSIS in progress — keep everything "
+                                   "plugged in, don't power off")
+            else:
+                app.end_activity()
+        except Exception:                                  # noqa: BLE001
+            pass
+
+    # -- stage 5: WRITTEN (the physical hand-off) ------------------------------
+
+    def _show_stage_written(self):
+        self._clear()
+        title = _label("Card written ✓", bold=True, size="22sp", color="green")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        body = _label(
+            "1 · Take the card out of Node Medic\n"
+            "2 · Put it into the NEW medic\n"
+            "3 · Power the new medic on (press BOOT on its power pack "
+            "if it plays dead)\n"
+            "4 · First boot takes up to 5 minutes — green LED flickering "
+            "means it's working\n"
+            "5 · Connect the patch cable between the two medics "
+            "(or let it join your WiFi)",
+            color="text_primary", size="16sp")
+        body.size_hint_y, body.height = None, dp(190)
+        self.add_widget(body)
+        login = _label("Its screen login is  pi  +  the password you chose.",
+                       color="text_secondary", size="13.5sp")
+        login.size_hint_y, login.height = None, dp(24)
+        self.add_widget(login)
+        nxt = Button(text="Continue to the clone →", size_hint_y=None,
+                     height=dp(56), font_size="20sp", background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        nxt.bind(on_release=lambda *_: self._show_stage_clone())
+        self.add_widget(nxt)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+    # -- stage 6: CLONE --------------------------------------------------------
 
     def _show_stage_clone(self):
         self._clear()
-        if self._last_pw:
-            hint = _label(f"(login if ever needed on its screen: "
-                          f"pi / {self._last_pw})",
-                          color="text_secondary", size="12.5sp")
-            hint.size_hint_y = None
-            hint.height = dp(24)
-            self.add_widget(hint)
         self.run_btn = Button(
             text="Clone onto the new medic", size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
@@ -338,8 +484,6 @@ class MitosisScreen(BoxLayout):
 
         self._rows = {}
         self._build_rows()
-
-    # -- rows ----------------------------------------------------------------
 
     def _build_rows(self, steps=None):
         titles = dict(STEP_TITLES)
@@ -369,8 +513,6 @@ class MitosisScreen(BoxLayout):
         if detail:
             base = dict(STEP_TITLES).get(name, name)
             text.text = f"{base}\n[{detail}]"
-            # a FAILURE message must be complete on screen — let the row grow
-            # (the truncated-label lesson, third occurrence today)
             row = text.parent
             if color == "red" and row is not None:
                 text.bind(texture_size=lambda i, ts, r=row:
@@ -384,20 +526,16 @@ class MitosisScreen(BoxLayout):
         orig_label = self.run_btn.text
         self.run_btn.disabled = True
         self.run_btn.text = "Cloning..."
-        # RESUME BEFORE RESTART: a failed ladder keeps its workflow, whose
-        # run_all continues from the failed step — a retry must not re-rsync
-        # gigabytes it already moved (review 2026-08-25).
         if self._retry_workflow is not None:
             workflow = self._retry_workflow
             self._retry_workflow = None
             self._cloning = True
+            self._mark_activity(True)
             threading.Thread(target=self._run, args=(workflow,),
                              daemon=True).start()
             return
         try:
-            workflow = self._workflow_factory(
-                hostname=(getattr(self, "name_input", None) and
-                          self.name_input.text or "").strip())
+            workflow = self._workflow_factory(hostname=self._name)
         except TypeError:                       # demo/legacy factory
             workflow = self._workflow_factory()
         if getattr(workflow, "is_blocked", False):
@@ -412,6 +550,7 @@ class MitosisScreen(BoxLayout):
         if workflow.steps:
             self._set_row(workflow.steps[0][0], ">", "accent")
         self._cloning = True
+        self._mark_activity(True)
         threading.Thread(target=self._run, args=(workflow,), daemon=True).start()
 
     def _run(self, workflow):
@@ -419,9 +558,6 @@ class MitosisScreen(BoxLayout):
         self._step_t0 = _time.monotonic()
 
         def _tick(_dt):
-            # elapsed time on the ACTIVE row — a frozen chevron for a
-            # multi-minute rsync reads as a hang (the card write's lesson,
-            # applied to the ladder it was learned for)
             done = {r.name for r in workflow.results}
             m, sec = divmod(int(_time.monotonic() - self._step_t0), 60)
             for name, _f in workflow.steps:
@@ -454,12 +590,11 @@ class MitosisScreen(BoxLayout):
 
     def _finish(self, workflow, results):
         self._cloning = False
+        self._mark_activity(False)
         seen = {r.name for r in results}
         ok = all(r.success or r.skipped for r in results) and results
         self.run_btn.disabled = False
         if ok and len(seen) >= len(self._rows):
-            # HONEST completion: say what was verified, then hand the operator
-            # the next physical act — the firstborn ceremony awaits over there.
             self.run_btn.text = "Clone finished — every step verified"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             done = _label(
