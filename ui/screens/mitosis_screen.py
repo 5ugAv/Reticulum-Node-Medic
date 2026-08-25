@@ -247,8 +247,8 @@ class MitosisScreen(BoxLayout):
                     self.card_btn.background_color = theme.hex_to_rgba(
                         theme.COLORS["green"])
                     self.card_status.text = (
-                        "WRITE THIS DOWN — the new medic's login:\\n\\n"
-                        f"user:  pi\\npassword:  {pw}\\n\\n"
+                        "WRITE THIS DOWN — the new medic's login:\n\n"
+                        f"user:  pi\npassword:  {pw}\n\n"
                         "Then: card into the new medic, power on (first boot "
                         "takes up to 5 minutes), cable or WiFi, and Continue.")
                 else:
