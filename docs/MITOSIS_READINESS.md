@@ -84,3 +84,26 @@ UPS facts verified against the Waveshare wiki (2026-08-25):
   adaptation a real work item, 720x1280 means zero UI work.
 - Card size for B (transfer_firmware_cache + wheelhouse + tiles).
 - Case v4 fit report; i2cdetect grid on THIS unit.
+
+## THE FIRSTBORN — the new medic's first walkthrough (operator spec, 2026-08-25)
+
+After the clone, the new medic's FIRST BOOT opens a guided walkthrough
+directing the operator to birth the Heltec Tracker that will be PERMANENTLY
+attached to it — its own radio + GPS, its Jonesey. "It's, you know, number
+one child. We should make a fun animation screen, a big celebration for
+that happening."
+
+Design intent:
+- First-boot detection: lineage stamped (tool_identity has a parent) AND no
+  own-radio registered yet -> the walkthrough offers itself.
+- Steps, wizard-style with the existing visual language: welcome-as-new-medic
+  -> "plug in the Tracker that will live inside this medic" (animation +
+  board poll + the green ripple) -> flash via the PROVEN Tracker-RNode path
+  (Jonesey's exact build, cb/ca provision) -> provision + register as the
+  medic's OWN protected radio (flash-guard engages, same as Jonesey) ->
+  **CELEBRATION SCREEN**: the firstborn moment, big and fun — family-line
+  motif (parent -> child -> its first child), PIL-preview the animation
+  before deploying (standing method).
+- The walkthrough ships in the tool tree so every clone carries it; it can
+  also be pushed to an already-cloned medic over SSH (rsync), which
+  incidentally proves the parent->child update path.
