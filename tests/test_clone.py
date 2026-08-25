@@ -20,6 +20,7 @@ EXPECTED_STEPS = [
     "transfer_tool",
     "transfer_firmware_cache",
     "install_dependencies",
+    "carry_touch_cure",
     "copy_monitoring_db",
     "copy_kin_roster",
     "generate_fresh_identity",

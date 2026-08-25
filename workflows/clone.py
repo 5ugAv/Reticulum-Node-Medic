@@ -353,6 +353,30 @@ _CLONE_STEPS.insert(
     ("carry_the_time", carry_the_time))
 
 
+def carry_touch_cure(wf: "CloneWorkflow") -> StepResult:
+    """The medic's ~/.kivy/config.ini rides to the clone — it carries the
+    every-tap-twice CURE (probesysfs disabled 2026-07-31 after every touch
+    landed doubled; the SDL2 window already delivers touch). A clone left on
+    Kivy defaults would regenerate probesysfs and relive that bug on its
+    first screen. Same Kivy version both sides, so the file carries as-is."""
+    src = os.path.expanduser("~/.kivy/config.ini")
+    if not os.path.isfile(src):
+        return StepResult("carry_touch_cure", True,
+                          "No Kivy config on this medic to carry — the clone "
+                          "starts on defaults.", skipped=True)
+    wf.connection.run("mkdir -p ~/.kivy")
+    ok = wf.connection.push_file(src, "~/.kivy/config.ini")
+    return StepResult("carry_touch_cure", ok,
+                      "Carried the touch settings (the doubled-tap cure "
+                      "rides along)." if ok else
+                      "Could not copy the Kivy config to the clone.")
+
+
+_CLONE_STEPS.insert(
+    [n for n, _f in _CLONE_STEPS].index("install_dependencies") + 1,
+    ("carry_touch_cure", carry_touch_cure))
+
+
 class CloneWorkflow:
     def __init__(self, connection: Connection, registry: NodeRegistry):
         self.connection = connection

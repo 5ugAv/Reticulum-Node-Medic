@@ -46,6 +46,7 @@ STEP_TITLES = [
     ("transfer_tool", "Copy the Node Medic tool across"),
     ("transfer_firmware_cache", "Copy the offline firmware cache"),
     ("install_dependencies", "Install the software stack (offline, from carried wheels)"),
+    ("carry_touch_cure", "Carry the touch settings (the doubled-tap cure)"),
     ("copy_monitoring_db", "Copy the monitoring records"),
     ("copy_kin_roster", "Carry the fleet roster (who and where)"),
     ("generate_fresh_identity", "Give the clone its own fresh mesh identity"),
