@@ -205,3 +205,18 @@ def test_no_goal_celebration_for_a_poor_area():
     for t, q in enumerate([0.1, 0.1, 0.25, 0.3], start=8):
         r = _drive(s, q, t)
     assert r["at_goal"] is False
+
+
+def test_cancel_at_the_empty_prompt_goes_home_not_down():
+    """The empty-triage prompt's Cancel referenced self._on_home, which no
+    code had EVER set — app.py passed the callback, the constructor dropped
+    it, and every fresh medic crashed its whole UI on first Cancel (found on
+    HAWKEYE's first day alive, 2026-08-25: blank screen, flashing cursor,
+    systemd restart loop)."""
+    from ui.screens.triage_screen import TriageScreen
+    calls = []
+    ts = TriageScreen(feed_factory=lambda: (lambda: None),
+                      on_home=lambda: calls.append("home"))
+    assert ts._on_home is not None
+    ts._on_home()
+    assert calls == ["home"]

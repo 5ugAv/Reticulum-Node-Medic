@@ -33,11 +33,15 @@ class TriageScreen(FloatLayout):
 
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
-                 lighthouse=None, on_build=None, **kwargs):
+                 lighthouse=None, on_build=None, on_home=None, **kwargs):
         super().__init__(**kwargs)
         self._reader = feed_factory()
         self._lighthouse = lighthouse     # (active: bool) -> status dict
         self._on_build = on_build
+        # Cancel's way home. Referenced at the empty-triage prompt since
+        # birth but NEVER SET — every fresh medic crashed the whole UI on
+        # its first triage Cancel (found on HAWKEYE, first day alive).
+        self._on_home = on_home
         self._beacon_on = False
         self._beacon_answered = False
         self._beacon_names = ""
