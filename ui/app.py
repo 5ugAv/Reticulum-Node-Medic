@@ -928,7 +928,13 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(self_dx)
 
         mitosis = Screen(name="mitosis")
-        mitosis.add_widget(self._with_back(MitosisScreen(workflow_factory=_mitosis_factory)))
+        _mit = MitosisScreen(workflow_factory=_mitosis_factory)
+        mitosis.add_widget(self._with_back(_mit))
+        # DORMANT until shown: the card poll ran from app launch and any card
+        # inserted during an ordinary BIRTH dragged the hidden MITOSIS screen
+        # through its stages (adversarial review 2026-08-25).
+        mitosis.bind(on_pre_enter=lambda *_: _mit.begin(),
+                     on_leave=lambda *_: _mit.sleep())
         self.sm.add_widget(mitosis)
 
         self.sm.current = self._opening_screen()
