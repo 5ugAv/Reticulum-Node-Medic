@@ -67,6 +67,38 @@ WANTS_DIR = "/etc/systemd/system/multi-user.target.wants"
 GADGET_USB_IP = "10.55.0.1"
 USB_PREFIX = 29
 
+#: MITOSIS: the direct-cable static-IP service for a MEDIC card. Baked at
+#: imaging so the fresh medic answers at a deterministic address over an
+#: ethernet patch cable from FIRST boot — no mDNS, no DHCP, no WiFi needed.
+#: Mirrors provisioning/direct_link.py (same /29 as the gadget link; the repo
+#: side is the source of truth and a test pins the two together).
+MEDIC_CABLE_UNIT = """\
+[Unit]
+Description=Direct-cable link static IP (Node Medic MITOSIS)
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The NIC name varies (eth0/end0/enp*), so bind to the first wired one present.
+ExecStart=/bin/sh -c 'for i in eth0 end0 enp1s0 eno1; do \
+if ip link show "$i" >/dev/null 2>&1; then \
+ip addr add 10.55.0.1/29 dev "$i" 2>/dev/null; \
+ip link set "$i" up; exit 0; fi; done; exit 0'
+
+[Install]
+WantedBy=multi-user.target
+"""
+MEDIC_CABLE_UNIT_PATH = "/etc/systemd/system/nodemedic-cable-ip.service"
+
+#: MITOSIS: boot-config lines a MEDIC card needs. i2c for the UPS pack gauge
+#: (INA219); usb_max_current because the medic is GPIO-powered from its HAT, so
+#: there is no USB-PD negotiation and without this the Pi 5 caps its USB ports
+#: at 600 mA — the brownout class that killed a USB controller on Medic 1.
+MEDIC_CONFIG_LINES = ("dtparam=i2c_arm=on", "usb_max_current_enable=1")
+
+
 GADGET_UNIT = f"""\
 [Unit]
 Description=USB gadget link static IP (Node Medic provisioning)
@@ -332,6 +364,25 @@ def write_boot(mnt: str, cfg: dict) -> None:
     open(os.path.join(mnt, "ssh"), "a").close()      # enable sshd on first boot
     say("wrote first-boot config")
 
+    if cfg.get("medic"):
+        # A MEDIC card: i2c on (UPS gauge) + full USB current (GPIO-powered,
+        # no USB-PD). Appended in an [all] section so it applies to every
+        # board revision; idempotent so re-preparing a card never doubles it.
+        q = os.path.join(mnt, "config.txt")
+        text = open(q).read()
+        missing = [ln for ln in MEDIC_CONFIG_LINES if ln not in text]
+        if missing:
+            _write(q, text.rstrip("\n") +
+                   "\n\n[all]\n# Node Medic (MITOSIS): UPS i2c + full USB current\n"
+                   + "\n".join(missing) + "\n")
+        back = open(q).read()
+        still = [ln for ln in MEDIC_CONFIG_LINES if ln not in back]
+        if still:
+            print("PREPARE_WARN: medic boot config INCOMPLETE - missing "
+                  + ", ".join(still))
+        else:
+            say("baked the medic boot config (i2c + usb_max_current)")
+
     if cfg.get("cable_link", True):
         # NOT fatal. A card without the cable link still boots and joins WiFi,
         # so a failure here degrades to "birth this one over WiFi" rather than
@@ -432,6 +483,40 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
         except Exception as exc:                        # noqa: BLE001
             print(f"PREPARE_WARN: NetworkManager may claim usb0 and wipe the "
                   f"link address ({exc})")
+
+    if cfg.get("medic"):
+        # Hostname straight onto the rootfs - custom.toml and cloud-init are
+        # both inert on this image (the eternal lesson), and the medic's
+        # cable discovery wants <hostname>.local as its first road.
+        host = (cfg.get("hostname") or "").strip()
+        if host:
+            try:
+                _write(os.path.join(mnt, "etc/hostname"), host + "\n")
+                hp = os.path.join(mnt, "etc/hosts")
+                lines = [ln for ln in open(hp).read().splitlines()
+                         if not ln.startswith("127.0.1.1")]
+                lines.append("127.0.1.1\t" + host)
+                _write(hp, "\n".join(lines) + "\n")
+                say("wrote the hostname onto the rootfs (" + host + ")")
+            except Exception as exc:                    # noqa: BLE001
+                print("PREPARE_WARN: could not write the hostname ("
+                      + str(exc) + ") - the card boots with the image default")
+        # The direct-cable static IP, from FIRST boot - so the clone link
+        # works with an ethernet lead and nothing else.
+        try:
+            unit_path = os.path.join(mnt, MEDIC_CABLE_UNIT_PATH.lstrip("/"))
+            os.makedirs(os.path.dirname(unit_path), exist_ok=True)
+            _write(unit_path, MEDIC_CABLE_UNIT)
+            wants = os.path.join(mnt, WANTS_DIR.lstrip("/"))
+            os.makedirs(wants, exist_ok=True)
+            link = os.path.join(wants, "nodemedic-cable-ip.service")
+            if os.path.islink(link) or os.path.exists(link):
+                os.remove(link)
+            os.symlink(MEDIC_CABLE_UNIT_PATH, link)
+            say("installed the direct-cable static IP service")
+        except Exception as exc:                        # noqa: BLE001
+            print("PREPARE_WARN: cable-ip service not installed ("
+                  + str(exc) + ") - discover the clone over WiFi instead")
 
     write_wifi(mnt, cfg.get("wifi_ssid", ""), cfg.get("wifi_psk", ""),
                cfg.get("wifi_country", ""))

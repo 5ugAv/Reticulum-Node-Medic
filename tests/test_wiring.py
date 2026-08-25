@@ -58,8 +58,6 @@ UNIMPORTED_WITH_REASON = {
         "DORMANT. One-time medic assembly step (Tracker as GPS), run by hand.",
     "workflows.rnode_nrf52_rgb":
         "DORMANT. nRF52/RAK RGB firmware path, bench work in progress.",
-    "provisioning.direct_link":
-        "DORMANT. MITOSIS medic-to-medic cable clone. Planned, not wired.",
     "provisioning.uart_link":
         "DORMANT. UART fallback provisioning for boards with one data port.",
     "provisioning.card_forensics":

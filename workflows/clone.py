@@ -289,3 +289,71 @@ class CloneWorkflow:
                 break
             self.current_index += 1
         return self.results
+
+# --------------------------------------------------------------------------- #
+# The REAL entry: discover the fresh medic on the cable/LAN, then clone.
+# --------------------------------------------------------------------------- #
+
+class _NotYetConnected:
+    """Placeholder connection until find_new_medic swaps in the real one. Any
+    accidental use before discovery is a loud bug, not a quiet hang."""
+
+    def run(self, *_a, **_k):
+        raise RuntimeError("clone step ran before find_new_medic connected")
+
+    def push_tree(self, *_a, **_k):
+        raise RuntimeError("clone step ran before find_new_medic connected")
+
+
+def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
+                              username: str = "medic") -> "CloneWorkflow":
+    """A CloneWorkflow whose FIRST step finds the new medic and connects.
+
+    Discovery order is provisioning.direct_link's: <hostname>.local (mDNS —
+    also answers over the household WiFi), then the baked static /29
+    (10.55.0.1) over the patch cable. The address that answers gets its host
+    key freshly PINNED — a rebirthed/reimaged machine at a reused address is
+    the stale-key trap that has burned every flow before this one, so the old
+    pin is dropped first and the new machine's key trusted on first contact.
+    """
+    wf = CloneWorkflow(_NotYetConnected(), registry)
+
+    def find_new_medic(wf: "CloneWorkflow") -> StepResult:
+        from provisioning.direct_link import discover_peer
+        from provisioning import host_keys
+        from transport.connection import SSHConnection
+        import subprocess
+
+        target = discover_peer(hostname=hostname, timeout=90)
+        if not target:
+            name = hostname or "the new medic"
+            return StepResult(
+                "find_new_medic", False,
+                f"Could not find {name} — checked {hostname or ''}.local and "
+                "the patch cable (10.55.0.1) for 90 s. Is it powered, booted "
+                "(first boot takes up to 5 min) and cabled/on this WiFi?")
+        # Fresh machine, possibly at a reused address: drop any stale pin,
+        # then pin THIS machine's key (first-contact trust).
+        try:
+            subprocess.run(["ssh-keygen", "-R", target,
+                            "-f", host_keys.PINNED_KNOWN_HOSTS],
+                           capture_output=True, timeout=10)
+            host_keys.pin_host(target)
+        except Exception:                                  # noqa: BLE001
+            pass                     # transport falls back to accept-new
+        conn = SSHConnection(target, user=username)
+        code, out, _err = conn.run("echo medic-here && id -un", timeout=20)
+        if code != 0 or "medic-here" not in (out or ""):
+            return StepResult(
+                "find_new_medic", False,
+                f"{target} answered on the network but SSH login as "
+                f"'{username}' failed — was the card imaged with this medic's "
+                "key (MITOSIS step 1)?")
+        wf.connection = conn
+        wf.target_address = target
+        return StepResult("find_new_medic", True,
+                          f"Found the new medic at {target} and logged in.")
+
+    wf.steps.insert(0, ("find_new_medic", find_new_medic))
+    return wf
+

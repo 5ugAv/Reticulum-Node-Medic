@@ -556,7 +556,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           run_shell: Optional[Callable[[str], Tuple[int, str]]] = None,
           pw_hasher: Callable[[str], str] = None,
           authorized_keys: Optional[List[str]] = None,
-          cable_link: bool = True, pi_key: str = "") -> Tuple[bool, str]:
+          cable_link: bool = True, pi_key: str = "",
+          medic: bool = False) -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
     ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
@@ -613,6 +614,13 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         "birth_token": __import__("uuid").uuid4().hex,
         "pwhash": pw_hash,
         "keys": list(authorized_keys or []),
+        # MITOSIS: a MEDIC card. The helper bakes i2c + usb_max_current into
+        # config.txt, the hostname onto the rootfs, and the direct-cable
+        # static-IP service — so the fresh medic answers on an ethernet lead
+        # from first boot. Medic cards carry no dwc2 gadget (cable_link is
+        # passed False by the mitosis driver; a Pi 5's USB-C is power-in).
+        "medic": bool(medic),
+        "hostname": hostname,
     }
     # The helper's WARN lines are the only account of the two steps it is
     # allowed to skip (the cable link and the gadget service). They are

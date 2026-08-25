@@ -124,19 +124,28 @@ def _pi_rnode_factory(address: str = "", user: str = "pi", node_name: str = ""):
     return BuildWorkflow(conn, profile)
 
 
-def _mitosis_factory():
-    """Clone THIS medic onto a fresh Pi. The real target-Pi SSH flow isn't wired
-    yet, so outside opt-in demo mode this honestly fails rather than faking it."""
-    from ui.hw_factories import demo_allowed, _HonestFailWorkflow
+def _mitosis_factory(hostname: str = ""):
+    """Clone THIS medic onto a fresh Pi — the REAL flow (wired 2026-08-25).
+
+    The workflow's own first step discovers the new medic (<hostname>.local
+    over WiFi/mDNS, then the baked static /29 over the patch cable), pins its
+    host key on first contact and logs in with this medic's own key — the one
+    the MITOSIS card writer put on the card. Demo mode still gets the paced
+    emulated ladder."""
+    from ui.hw_factories import demo_allowed
     if demo_allowed():
         return _demo_clone_workflow()
-    return _HonestFailWorkflow(
-        "select_target",
-        "This process is still under construction. Cloning the medic onto a fresh "
-        "Pi through this button isn't built yet (and it won't fake a clone). Coming "
-        "soon: pick the new Pi, then clone over the wire.\n\n"
-        "Noted for the developers to build.",
-        "Mitosis — under construction", under_construction=True)
+    from workflows.clone import make_discovering_workflow
+    from provisioning.pi_imager import hostnameify
+    from monitor.registry import NodeRegistry
+    try:
+        from kivy.app import App
+        _app = App.get_running_app()
+        reg = _app.monitor_service.registry if _app else NodeRegistry()
+    except Exception:                                          # noqa: BLE001
+        reg = NodeRegistry()
+    return make_discovering_workflow(reg, hostname=hostnameify(hostname),
+                                     username="medic")
 
 
 def _demo_rnode_flash(board):

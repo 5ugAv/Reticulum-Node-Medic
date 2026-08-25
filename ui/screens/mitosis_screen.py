@@ -23,14 +23,20 @@ from kivy.uix.scrollview import ScrollView
 
 from ui import theme
 
-#: step name -> plain-English row title (guided mode; order matches _CLONE_STEPS)
+#: step name -> plain-English row title. ORDER MATCHES THE LADDER — the row
+#: list is rebuilt from the workflow's own steps at run time, so a step this
+#: table doesn't know still gets a row (its raw name), never silence.
 STEP_TITLES = [
+    ("find_new_medic", "Find the new medic (cable or WiFi) and log in"),
     ("verify_target_pi5", "Check the new computer is a Raspberry Pi 5"),
     ("transfer_tool", "Copy the Node Medic tool across"),
     ("transfer_firmware_cache", "Copy the offline firmware cache"),
     ("install_dependencies", "Install the software stack (offline, from carried wheels)"),
     ("copy_monitoring_db", "Copy the monitoring records"),
+    ("copy_kin_roster", "Carry the fleet roster (who and where)"),
     ("generate_fresh_identity", "Give the clone its own fresh mesh identity"),
+    ("stamp_lineage", "Stamp the family line (child knows its parent)"),
+    ("record_child_trust", "Trust the new medic as this unit's child"),
     ("configure_autostart", "Set the tool to start on boot"),
     ("final_verification", "Final check-over"),
 ]
@@ -62,8 +68,33 @@ class MitosisScreen(BoxLayout):
         intro.height = dp(92)
         self.add_widget(intro)
 
+        # -- phase 1: write the new medic's SD card in THIS medic's reader --
+        from kivy.uix.textinput import TextInput
+        name_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        name_row.add_widget(_label("New medic's name", size="15sp"))
+        self.name_input = TextInput(text="NodeMedic2", multiline=False,
+                                    font_size=theme.font_sp("17sp"),
+                                    size_hint_x=1.4)
+        name_row.add_widget(self.name_input)
+        self.add_widget(name_row)
+
+        self.card_btn = Button(
+            text="1 \u00b7 Write the new medic's SD card", size_hint_y=None,
+            height=dp(50), font_size="18sp", background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        self.card_btn.bind(on_release=lambda *_: self._write_card())
+        self.add_widget(self.card_btn)
+        self.card_status = _label(
+            "Put the new medic's SD card in this medic's reader first. "
+            "Everything on it will be erased.",
+            color="text_secondary", size="13sp")
+        self.card_status.size_hint_y = None
+        self.card_status.height = dp(40)
+        self.add_widget(self.card_status)
+
         self.run_btn = Button(
-            text="Clone onto the connected Pi 5", size_hint_y=None,
+            text="2 \u00b7 Clone onto the new medic", size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -80,12 +111,57 @@ class MitosisScreen(BoxLayout):
         self._rows = {}
         self._build_rows()
 
+    # -- phase 1: card writing ----------------------------------------------
+
+    def _write_card(self):
+        if self.card_btn.disabled:
+            return
+        name = (self.name_input.text or "").strip()
+        self.card_btn.disabled = True
+        self.card_btn.text = "Writing the card\u2026 (takes a few minutes)"
+        self.card_status.text = "Imaging \u2014 leave the card in until this finishes."
+
+        def work():
+            ok, msg, pw = False, "", ""
+            try:
+                from provisioning import pi_imager
+                disks = pi_imager.list_target_disks()
+                if len(disks) != 1:
+                    msg = ("No card found in the reader." if not disks else
+                           "More than one removable disk is attached \u2014 "
+                           "leave only the new medic's card in.")
+                else:
+                    from workflows.mitosis_card import image_medic_card
+                    ok, msg, pw = image_medic_card(
+                        disks[0]["device"], name or "NodeMedic2")
+            except Exception as e:                     # noqa: BLE001
+                msg = f"Card write failed: {e}"
+            def done(_dt):
+                self.card_btn.disabled = False
+                if ok:
+                    self.card_btn.text = "Card written \u2713"
+                    self.card_btn.background_color = theme.hex_to_rgba(
+                        theme.COLORS["green"])
+                    self.card_status.text = (
+                        f"WRITE THIS DOWN \u2014 the new medic's login:\n"
+                        f"user  medic      password  {pw}\n" + msg)
+                    self.card_status.height = dp(76)
+                else:
+                    self.card_btn.text = "1 \u00b7 Write the new medic's SD card"
+                    self.card_status.text = msg
+            Clock.schedule_once(done, 0)
+
+        threading.Thread(target=work, daemon=True).start()
+
     # -- rows ----------------------------------------------------------------
 
-    def _build_rows(self):
+    def _build_rows(self, steps=None):
+        titles = dict(STEP_TITLES)
+        pairs = ([(n, titles.get(n, n)) for n, _f in steps]
+                 if steps else STEP_TITLES)
         self.list.clear_widgets()
         self._rows = {}
-        for name, title in STEP_TITLES:
+        for name, title in pairs:
             row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
             status = _label("-", color="text_secondary", bold=True, size="18sp")
             status.size_hint_x = None
@@ -116,7 +192,11 @@ class MitosisScreen(BoxLayout):
         orig_label = self.run_btn.text
         self.run_btn.disabled = True
         self.run_btn.text = "Cloning..."
-        workflow = self._workflow_factory()
+        try:
+            workflow = self._workflow_factory(
+                hostname=(self.name_input.text or "").strip())
+        except TypeError:                       # demo/legacy factory
+            workflow = self._workflow_factory()
         # Not wired to a real target Pi yet: plain popup, don't fake a clone.
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
@@ -126,7 +206,7 @@ class MitosisScreen(BoxLayout):
             self.run_btn.disabled = False
             self.run_btn.text = orig_label
             return
-        self._build_rows()
+        self._build_rows(steps=workflow.steps)
         if workflow.steps:
             self._set_row(workflow.steps[0][0], ">", "accent")
         threading.Thread(target=self._run, args=(workflow,), daemon=True).start()
@@ -153,7 +233,7 @@ class MitosisScreen(BoxLayout):
     def _finish(self, results):
         ok = all(r.success or r.skipped for r in results) and results
         self.run_btn.disabled = False
-        if ok and len(results) == len(STEP_TITLES):
+        if ok and len(results) == len(self._rows):
             self.run_btn.text = "Clone complete - the new medic is ready"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
         else:
