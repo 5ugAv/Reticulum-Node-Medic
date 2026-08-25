@@ -40,21 +40,36 @@ from ui import theme
 #: step name -> plain-English row title. Rows are rebuilt from the workflow's
 #: OWN ladder at run time, so an unknown step still gets a row (its raw name).
 STEP_TITLES = [
-    ("find_new_medic", "Find the new medic (cable or WiFi) and log in"),
-    ("verify_target_pi5", "Check the new computer is a Raspberry Pi 5"),
-    ("carry_the_time", "Carry the time across (no RTC, no GPS yet)"),
-    ("transfer_tool", "Copy the Node Medic tool across"),
-    ("transfer_firmware_cache", "Copy the offline firmware cache"),
-    ("install_dependencies", "Install the software stack (offline, from carried wheels)"),
-    ("carry_touch_cure", "Carry the touch settings (the doubled-tap cure)"),
-    ("copy_monitoring_db", "Copy the monitoring records"),
-    ("copy_kin_roster", "Carry the fleet roster (who and where)"),
-    ("generate_fresh_identity", "Give the clone its own fresh mesh identity"),
-    ("stamp_lineage", "Stamp the family line (child knows its parent)"),
-    ("record_child_trust", "Trust the new medic as this unit's child"),
-    ("configure_autostart", "Set the tool to start on boot"),
+    ("find_new_medic", "Finding the new medic (cable or WiFi) and logging in"),
+    ("verify_target_pi5", "Checking the new computer is a Raspberry Pi 5"),
+    ("carry_the_time", "Carrying the time across (it has no clock yet)"),
+    ("transfer_tool", "Copying the Node Medic tool across"),
+    ("transfer_firmware_cache", "Copying the offline firmware cache"),
+    ("install_dependencies", "Installing the software stack (offline, from carried wheels)"),
+    ("carry_touch_cure", "Carrying the touch settings across"),
+    ("copy_monitoring_db", "Copying the monitoring records"),
+    ("copy_kin_roster", "Carrying the fleet roster (who and where)"),
+    ("generate_fresh_identity", "Giving it its own fresh mesh identity"),
+    ("stamp_lineage", "Stamping the family line (child knows its parent)"),
+    ("record_child_trust", "Trusting the new medic as this unit's child"),
+    ("configure_autostart", "Setting the tool to start on boot"),
     ("final_verification", "Final check-over"),
 ]
+
+#: Expected seconds per step — drives each row's progress bar. Estimates from
+#: the real shape of the work (discovery waits on a first boot; the tool tree
+#: and the pip install are the long hauls); the bar creeps to 95% on the
+#: estimate and snaps full on truth. An estimate is honest as long as the bar
+#: never claims DONE.
+STEP_EST_S = {
+    "find_new_medic": 300, "verify_target_pi5": 6, "carry_the_time": 6,
+    "transfer_tool": 240, "transfer_firmware_cache": 90,
+    "install_dependencies": 300, "carry_touch_cure": 6,
+    "copy_monitoring_db": 12, "copy_kin_roster": 6,
+    "generate_fresh_identity": 12, "stamp_lineage": 6,
+    "record_child_trust": 4, "configure_autostart": 12,
+    "final_verification": 12,
+}
 
 #: Rough dd+config seconds for the write's fill estimate — the same model the
 #: BIRTH imaging screen uses (time-based, capped at 95% until truth arrives).
@@ -541,32 +556,47 @@ class MitosisScreen(BoxLayout):
                  if steps else STEP_TITLES)
         self.list.clear_widgets()
         self._rows = {}
+        from kivy.uix.progressbar import ProgressBar
         for name, title in pairs:
-            row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+            row = BoxLayout(orientation="vertical", size_hint_y=None,
+                            height=dp(52))
+            top = BoxLayout(spacing=dp(8), size_hint_y=None, height=dp(40))
             status = _label("-", color="text_secondary", bold=True, size="18sp")
             status.size_hint_x = None
             status.width = dp(34)
             text = _label(title, color="text_secondary")
-            row.add_widget(status)
-            row.add_widget(text)
+            top.add_widget(status)
+            top.add_widget(text)
+            row.add_widget(top)
+            bar = ProgressBar(max=1.0, value=0.0, size_hint_y=None,
+                              height=dp(8))
+            row.add_widget(bar)
             self.list.add_widget(row)
-            self._rows[name] = (status, text)
+            self._rows[name] = (status, text, bar)
 
     def _set_row(self, name, mark, color, detail=None):
         pair = self._rows.get(name)
         if not pair:
             return
-        status, text = pair
+        status, text, bar = pair
+        if color == "green":
+            bar.value = 1.0
+        elif color == "red":
+            bar.value = 1.0
         status.text = mark
         status.color = theme.hex_to_rgba(theme.COLORS[color])
         text.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
         if detail:
             base = dict(STEP_TITLES).get(name, name)
             text.text = f"{base}\n[{detail}]"
-            row = text.parent
-            if color == "red" and row is not None:
-                text.bind(texture_size=lambda i, ts, r=row:
-                          setattr(r, "height", max(dp(44), ts[1] + dp(10))))
+            top = text.parent
+            outer = top.parent if top is not None else None
+            if color == "red" and top is not None and outer is not None:
+                def _grow(_i, ts, t=top, o=outer):
+                    h = max(dp(40), ts[1] + dp(10))
+                    t.height = h
+                    o.height = h + dp(12)
+                text.bind(texture_size=_grow)
 
     # -- run -------------------------------------------------------------------
 
@@ -609,10 +639,15 @@ class MitosisScreen(BoxLayout):
 
         def _tick(_dt):
             done = {r.name for r in workflow.results}
-            m, sec = divmod(int(_time.monotonic() - self._step_t0), 60)
+            elapsed = _time.monotonic() - self._step_t0
+            m, sec = divmod(int(elapsed), 60)
             for name, _f in workflow.steps:
                 if name not in done:
                     self._set_row(name, ">", "accent", f"{m}m {sec:02d}s")
+                    pair = self._rows.get(name)
+                    if pair:
+                        est = STEP_EST_S.get(name, 30)
+                        pair[2].value = min(0.95, elapsed / est)
                     break
         ev = Clock.schedule_interval(_tick, 1.0)
 
