@@ -82,10 +82,11 @@ Wants=network-pre.target
 Type=oneshot
 RemainAfterExit=yes
 # The NIC name varies (eth0/end0/enp*), so bind to the first wired one present.
-ExecStart=/bin/sh -c 'for i in eth0 end0 enp1s0 eno1; do \
+ExecStart=/bin/sh -c 'for t in 1 2 3 4 5 6; do \
+for i in eth0 end0 enp1s0 eno1; do \
 if ip link show "$i" >/dev/null 2>&1; then \
 ip addr add 10.55.0.1/29 dev "$i" 2>/dev/null; \
-ip link set "$i" up; exit 0; fi; done; exit 0'
+ip link set "$i" up; exit 0; fi; done; sleep 2; done; exit 0'
 
 [Install]
 WantedBy=multi-user.target
@@ -342,6 +343,16 @@ def config_txt_with_gadget(text: str, pi_key: str = "") -> str:
             f"[all]\n{overlay}\n")
 
 
+def _cfg_line_present(text: str, line: str) -> bool:
+    """True when *line* exists UNCOMMENTED in config.txt - a commented
+    #dtparam=i2c_arm=on must not satisfy the check (adversarial review
+    2026-08-25: the substring test was fooled by exactly that)."""
+    for ln in text.splitlines():
+        if ln.strip() == line:
+            return True
+    return False
+
+
 def write_boot(mnt: str, cfg: dict) -> None:
     for name in ("config.txt", "cmdline.txt"):
         if not os.path.isfile(os.path.join(mnt, name)):
@@ -370,18 +381,51 @@ def write_boot(mnt: str, cfg: dict) -> None:
         # board revision; idempotent so re-preparing a card never doubles it.
         q = os.path.join(mnt, "config.txt")
         text = open(q).read()
-        missing = [ln for ln in MEDIC_CONFIG_LINES if ln not in text]
+        missing = [ln for ln in MEDIC_CONFIG_LINES
+                   if not _cfg_line_present(text, ln)]
         if missing:
             _write(q, text.rstrip("\n") +
                    "\n\n[all]\n# Node Medic (MITOSIS): UPS i2c + full USB current\n"
                    + "\n".join(missing) + "\n")
         back = open(q).read()
-        still = [ln for ln in MEDIC_CONFIG_LINES if ln not in back]
+        still = [ln for ln in MEDIC_CONFIG_LINES if not _cfg_line_present(back, ln)]
         if still:
             print("PREPARE_WARN: medic boot config INCOMPLETE - missing "
                   + ", ".join(still))
         else:
             say("baked the medic boot config (i2c + usb_max_current)")
+        # NEUTRALIZE THE FIRST-BOOT RENAME WIZARD. userconfig.service goes
+        # INTERACTIVE with no userconf.txt: whiptail owns the touchscreen
+        # every boot and multi-user.target never completes (its oneshot
+        # never exits). userconf.txt is the ONE first-boot mechanism this
+        # image actually consumes - it applies the account non-interactively
+        # and cleans itself up. Written with the SAME hash the account
+        # activation uses, so the two mechanisms cannot disagree.
+        if cfg.get("user") and cfg.get("pwhash"):
+            _write(os.path.join(mnt, "userconf.txt"),
+                   cfg["user"] + ":" + cfg["pwhash"] + "\n")
+            say("neutralized the first-boot wizard (userconf.txt)")
+
+    # THE REGULATORY DOMAIN, for EVERY card given a country - not only the
+    # cable-birth ones. It was gated under cable_link, so MITOSIS medic
+    # cards (cable_link=False) shipped with WiFi rfkill-soft-blocked: the
+    # exact months-long SolarLove failure this file documents (2026-08-25,
+    # found by adversarial review before it reached the bench).
+    country = (cfg.get("wifi_country") or "").strip()
+    if country:
+        try:
+            q = os.path.join(mnt, "cmdline.txt")
+            before = open(q).read()
+            after = cmdline_with_regdom(before, country)
+            if after != before:
+                _write(q, after)
+            if "cfg80211.ieee80211_regdom=" not in open(q).read():
+                print("PREPARE_WARN: the wireless regulatory domain was NOT"
+                      " baked - the WiFi radio will stay rfkill-blocked")
+            else:
+                say("baked the wireless regulatory domain (" + country + ")")
+        except Exception as exc:                    # noqa: BLE001
+            print("PREPARE_WARN: regdom bake failed (" + str(exc) + ")")
 
     if cfg.get("cable_link", True):
         # NOT fatal. A card without the cable link still boots and joins WiFi,
@@ -517,6 +561,45 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
         except Exception as exc:                        # noqa: BLE001
             print("PREPARE_WARN: cable-ip service not installed ("
                   + str(exc) + ") - discover the clone over WiFi instead")
+        # NetworkManager must NOT claim the wired NIC: claiming it flushes
+        # the static /29 the unit above just set - the usb0 lesson
+        # (observed live 2026-08-06), replayed on eth0 by review before it
+        # could replay on the bench. The medic's wired port is the clone
+        # cable; a desk LAN can be added later as an explicit profile.
+        try:
+            os.makedirs(os.path.join(mnt, NM_CONF_DIR.lstrip("/")),
+                        exist_ok=True)
+            _write(os.path.join(mnt, NM_CONF_DIR.lstrip("/"),
+                                "98-nodemedic-wired-clone.conf"),
+                   "# Node Medic MITOSIS: the wired NIC carries the\n"
+                   "# direct-cable static address; NM claiming it would\n"
+                   "# flush that address (the usb0 lesson).\n"
+                   "[keyfile]\n"
+                   "unmanaged-devices=interface-name:eth*;"
+                   "interface-name:end*;interface-name:enp*;"
+                   "interface-name:eno*\n")
+            say("told NetworkManager to leave the wired NIC alone")
+        except Exception as exc:                        # noqa: BLE001
+            print("PREPARE_WARN: NM may claim the wired NIC and flush the "
+                  "cable address (" + str(exc) + ")")
+        # Belt-and-braces wizard cleanup on the rootfs, and key-only SSH:
+        # the write-it-down password is the SCREEN login; sshd answering
+        # passwords on WiFi with a memorable password is an open door.
+        try:
+            for rel in ("etc/ssh/sshd_config.d/rename_user.conf",
+                        "etc/systemd/system/multi-user.target.wants/"
+                        "userconfig.service"):
+                p2 = os.path.join(mnt, rel)
+                if os.path.islink(p2) or os.path.exists(p2):
+                    os.remove(p2)
+            sshd_d = os.path.join(mnt, "etc/ssh/sshd_config.d")
+            os.makedirs(sshd_d, exist_ok=True)
+            _write(os.path.join(sshd_d, "10-nodemedic-keyonly.conf"),
+                   "PasswordAuthentication no\n")
+            say("first-boot wizard disarmed; SSH is key-only")
+        except Exception as exc:                        # noqa: BLE001
+            print("PREPARE_WARN: wizard/sshd hardening incomplete ("
+                  + str(exc) + ")")
 
     write_wifi(mnt, cfg.get("wifi_ssid", ""), cfg.get("wifi_psk", ""),
                cfg.get("wifi_country", ""))

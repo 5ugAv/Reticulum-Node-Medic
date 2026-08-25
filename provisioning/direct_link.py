@@ -68,10 +68,11 @@ Wants=network-pre.target
 Type=oneshot
 RemainAfterExit=yes
 # The NIC name varies (eth0/end0/enp*), so bind to the first wired one present.
-ExecStart=/bin/sh -c 'for i in eth0 end0 enp1s0 eno1; do \
+ExecStart=/bin/sh -c 'for t in 1 2 3 4 5 6; do \
+for i in eth0 end0 enp1s0 eno1; do \
 if ip link show "$i" >/dev/null 2>&1; then \
 ip addr add {PEER_ETH_IP}/{ETH_PREFIX} dev "$i" 2>/dev/null; \
-ip link set "$i" up; exit 0; fi; done; exit 0'
+ip link set "$i" up; exit 0; fi; done; sleep 2; done; exit 0'
 
 [Install]
 WantedBy=multi-user.target

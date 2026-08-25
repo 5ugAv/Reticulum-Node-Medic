@@ -160,3 +160,63 @@ def test_carry_the_time_rides_right_after_pi5_check():
     from workflows.clone import _CLONE_STEPS
     names = [n for n, _ in _CLONE_STEPS]
     assert names.index("carry_the_time") == names.index("verify_target_pi5") + 1
+
+
+# -- adversarial-review round (2026-08-25): the card bakes that save first boot
+
+def _full_boot(tmp_path):
+    (tmp_path / "config.txt").write_text("#dtparam=i2c_arm=on\ndtparam=audio=on\n")
+    (tmp_path / "cmdline.txt").write_text("console=serial0 root=PARTUUID=x rw\n")
+    return str(tmp_path)
+
+
+def test_commented_config_line_does_not_satisfy_the_medic_bake(tmp_path):
+    pc = _helper()
+    mnt = _full_boot(tmp_path)          # ships a COMMENTED #dtparam=i2c_arm=on
+    pc.write_boot(mnt, {"medic": True, "cable_link": False})
+    text = (tmp_path / "config.txt").read_text()
+    assert any(ln.strip() == "dtparam=i2c_arm=on" for ln in text.splitlines())
+
+
+def test_medic_card_gets_the_regdom_despite_no_cable_link(tmp_path):
+    # The SolarLove gate: regdom was only baked for cable-birth cards, so
+    # medic cards shipped rfkill-blocked. Now every card with a country gets it.
+    pc = _helper()
+    mnt = _full_boot(tmp_path)
+    pc.write_boot(mnt, {"medic": True, "cable_link": False,
+                        "wifi_country": "AU"})
+    assert "cfg80211.ieee80211_regdom=AU" in (tmp_path / "cmdline.txt").read_text()
+
+
+def test_medic_card_neutralizes_the_first_boot_wizard(tmp_path):
+    pc = _helper()
+    mnt = _full_boot(tmp_path)
+    pc.write_boot(mnt, {"medic": True, "cable_link": False,
+                        "user": "pi", "pwhash": "$6$abc"})
+    assert (tmp_path / "userconf.txt").read_text() == "pi:$6$abc\n"
+
+
+def test_medic_rootfs_unmanages_wired_nic_and_disarms_wizard(tmp_path):
+    pc = _helper()
+    (tmp_path / "etc").mkdir()
+    (tmp_path / "etc" / "hosts").write_text("127.0.0.1\tlocalhost\n")
+    wants = tmp_path / "etc/systemd/system/multi-user.target.wants"
+    wants.mkdir(parents=True)
+    (wants / "userconfig.service").write_text("stub")
+    sshd = tmp_path / "etc/ssh/sshd_config.d"
+    sshd.mkdir(parents=True)
+    (sshd / "rename_user.conf").write_text("stub")
+    pc.write_rootfs(str(tmp_path), {"medic": True, "cable_link": False,
+                                    "hostname": "hawkeye"})
+    nm = tmp_path / "etc/NetworkManager/conf.d/98-nodemedic-wired-clone.conf"
+    assert "interface-name:eth*" in nm.read_text()
+    assert not (wants / "userconfig.service").exists()
+    assert not (sshd / "rename_user.conf").exists()
+    assert (sshd / "10-nodemedic-keyonly.conf").read_text() == \
+        "PasswordAuthentication no\n"
+
+
+def test_cable_unit_retries_for_a_slow_nic():
+    from provisioning import direct_link
+    assert "for t in 1 2 3 4 5 6" in direct_link.ETH_LINK_SERVICE
+    assert "sleep 2" in direct_link.ETH_LINK_SERVICE
