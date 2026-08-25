@@ -493,7 +493,9 @@ _CLONE_STEPS.insert(
 def bake_recovery_bootorder(wf: "CloneWorkflow") -> StepResult:
     """Bake the "never hold the button again" promise into the child's boot
     chip: BOOT_ORDER = try the SD card, and if it will not boot, become a USB
-    device and wait for a medic (RPIBOOT fallback, nibbles 0x71). From then
+    device and wait for a medic (RPIBOOT fallback, nibbles 0x31 —
+    nibble 3 is RPIBOOT; 7 is HTTP boot, proven the hard way on HAWKEYE
+    2026-08-25). From then
     on a wiped, corrupted or missing card means: plug the USB-C into any
     medic and the machine PRESENTS ITSELF for surgery — no button ritual.
     Factory EEPROMs lack this (default 0xf461), which is why a virgin Pi's
@@ -513,14 +515,14 @@ def bake_recovery_bootorder(wf: "CloneWorkflow") -> StepResult:
     for line in out.splitlines():
         if line.strip().startswith("BOOT_ORDER="):
             current = line.strip().split("=", 1)[1]
-    if current == "0x71":
+    if current == "0x31":
         return StepResult("bake_recovery_bootorder", True,
                           "Recovery boot-order already baked.", skipped=True)
     script = (
         "set -e; rpi-eeprom-config > /tmp/nm-eeprom.conf; "
         "if grep -q '^BOOT_ORDER=' /tmp/nm-eeprom.conf; then "
-        "sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0x71/' /tmp/nm-eeprom.conf; "
-        "else echo 'BOOT_ORDER=0x71' >> /tmp/nm-eeprom.conf; fi; "
+        "sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0x31/' /tmp/nm-eeprom.conf; "
+        "else echo 'BOOT_ORDER=0x31' >> /tmp/nm-eeprom.conf; fi; "
         "rpi-eeprom-config --apply /tmp/nm-eeprom.conf")
     code, out2, err = wf.connection.run(
         wf.priv(f"sh -c \"{script}\""), timeout=120)

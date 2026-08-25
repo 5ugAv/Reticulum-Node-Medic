@@ -296,7 +296,7 @@ def test_autostart_is_the_proven_cage_kiosk():
 
 # -- the recovery boot-order rung (reader-free mitosis, 2026-08-25) ----------
 # Bonus hardening: a failure must NEVER fail the clone (the button ritual
-# still works), and a successful bake rewrites BOOT_ORDER to 0x71 (SD card
+# still works), and a successful bake rewrites BOOT_ORDER to 0x31 (SD card
 # first, then wait-as-USB-device for a medic).
 
 def test_bake_recovery_bootorder_is_a_skip_when_chip_unreadable():
@@ -307,19 +307,19 @@ def test_bake_recovery_bootorder_is_a_skip_when_chip_unreadable():
     assert "button ritual still works" in r.message
 
 
-def test_bake_recovery_bootorder_applies_0x71():
+def test_bake_recovery_bootorder_applies_0x31():
     c = conn()
     c.rules.insert(0, ("rpi-eeprom-config", 0,
                        "[all]\nBOOT_UART=1\nBOOT_ORDER=0xf461\n", ""))
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and not r.skipped
-    assert any("BOOT_ORDER=0x71" in h for h in c.history), "apply never sent"
+    assert any("BOOT_ORDER=0x31" in h for h in c.history), "apply never sent"
     assert "surgery" in r.message
 
 
 def test_bake_recovery_bootorder_skips_when_already_baked():
     c = conn()
-    c.rules.insert(0, ("rpi-eeprom-config", 0, "[all]\nBOOT_ORDER=0x71\n", ""))
+    c.rules.insert(0, ("rpi-eeprom-config", 0, "[all]\nBOOT_ORDER=0x31\n", ""))
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and r.skipped
     assert not any("--apply" in h for h in c.history)
