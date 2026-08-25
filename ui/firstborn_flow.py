@@ -48,6 +48,24 @@ class FirstbornView:
     celebrate: bool = False
 
 
+def succeeded(results) -> bool:
+    """Whether a GpsTrackerSetup run won. Its ``run_all`` returns the LIST of
+    StepResults and stops at the first failure, so success is a non-empty run
+    whose every step passed — a non-empty list is NOT itself a win (that trap
+    would celebrate a failed flash)."""
+    results = list(results or [])
+    return bool(results) and all(getattr(r, "success", False) for r in results)
+
+
+def first_failure(results, default: str = "The Tracker didn't finish coming "
+                  "up.") -> str:
+    """Message of the first failed step, for an honest FAILED screen."""
+    for r in results or []:
+        if not getattr(r, "success", True):
+            return getattr(r, "message", "A step did not complete.")
+    return default
+
+
 def decide(gps_live: bool,
            tracker_candidates: int,
            running: bool = False,

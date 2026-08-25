@@ -200,10 +200,13 @@ class FirstbornScreen(BoxLayout):
         failure = ""
         try:
             workflow = self._setup_factory()
-            outcome = workflow.run_all(on_progress=on_progress)
-            ok = bool(getattr(outcome, "ok", outcome))
+            # GpsTrackerSetup.run_all returns the LIST of StepResults (it stops
+            # at the first failure). Success = a non-empty run whose every step
+            # passed — a non-empty list is NOT itself a win.
+            results = workflow.run_all(on_progress=on_progress) or []
+            ok = ff.succeeded(results)
             if not ok:
-                failure = _last_failure(workflow)
+                failure = ff.first_failure(results)
         except Exception as exc:       # noqa: BLE001
             ok = False
             failure = f"The birth hit a snag: {exc}"
@@ -219,14 +222,6 @@ class FirstbornScreen(BoxLayout):
         self._failure = failure
         self._gps_live = ok or self._gps_live
         self._render(force=True)
-
-
-def _last_failure(workflow) -> str:
-    """The message of the first failed step, for an honest FAILED screen."""
-    for r in getattr(workflow, "results", []) or []:
-        if not getattr(r, "success", True):
-            return getattr(r, "message", "A step did not complete.")
-    return "The Tracker didn't finish coming up."
 
 
 # -- default (real-hardware) seams ------------------------------------------

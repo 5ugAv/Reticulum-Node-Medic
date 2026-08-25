@@ -61,3 +61,35 @@ def test_result_outranks_gps_live_so_the_celebration_holds():
     # celebration, not flip to ALREADY.
     v = ff.decide(gps_live=True, tracker_candidates=1, result=True)
     assert v.stage == ff.DONE
+
+
+# -- success/failure extraction from GpsTrackerSetup.run_all's LIST result ----
+
+class _R:
+    def __init__(self, success, message=""):
+        self.success = success
+        self.message = message
+
+
+def test_succeeded_needs_every_step_to_pass():
+    assert ff.succeeded([_R(True), _R(True)]) is True
+    assert ff.succeeded([_R(True), _R(False)]) is False
+
+
+def test_a_nonempty_list_is_not_itself_a_win():
+    # the trap: run_all returns a non-empty list even when it FAILED early
+    assert ff.succeeded([_R(False, "flash failed")]) is False
+
+
+def test_succeeded_is_false_on_empty_run():
+    assert ff.succeeded([]) is False
+    assert ff.succeeded(None) is False
+
+
+def test_first_failure_names_the_failed_step():
+    msg = ff.first_failure([_R(True, "flashed"), _R(False, "no satellites")])
+    assert msg == "no satellites"
+
+
+def test_first_failure_default_when_all_passed():
+    assert "didn't finish" in ff.first_failure([_R(True)])
