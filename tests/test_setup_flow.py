@@ -223,29 +223,28 @@ def test_a_finished_security_half_resumes_into_the_tour():
 # What is offered, and what is not.
 # --------------------------------------------------------------------------- #
 
-def test_nothing_openable_without_a_passphrase_is_ever_offered():
-    """Operator, 2026-08-11: "let's go for maximum strength". A pattern is ~20
-    bits at its CEILING and less in a real hand, and this is the screen a person
-    meets once, before they have any basis for judging the difference.
-
-    The wizard once kept its own shorter ladder to enforce this, because the
-    model's first rung was then pattern-only. The model dropped that rung
-    itself, so this now guards the JOIN: whatever the ladder grows into, the
-    chooser must never surface a level with no passphrase in it."""
-    for policy, _ok, _why in sf.offered_levels(_ready()):
-        assert PASSPHRASE in policy.ordered, \
-            f"{policy.ordered} can be opened without a passphrase"
+def test_every_offered_level_stands_behind_an_enrolled_passphrase():
+    """2026-08-11 said maximum strength; 2026-08-25, living with the medic
+    day to day, the operator reversed the DAILY half: "pattern OR passphrase
+    OR USB". What this now guards is the survivor of the first ruling: no
+    level is selectable before the passphrase is SET — it stays enrolled as
+    the way back in behind whatever the light daily door is — and the light
+    rungs ARE offered, honest words attached."""
     offered = [p for p, _ok, _why in sf.offered_levels(_ready())]
-    assert Policy((PATTERN,)) not in offered
+    assert Policy((PATTERN,)) in offered          # the new ruling, on the menu
+    from provisioning.vault_factors import Enrolment, can_select
+    no_pass = Enrolment(passphrase_set=False, recovery_key_set=True,
+                        recovery_key_verified=True)
+    for policy, _ok, _why in sf.offered_levels(_ready()):
+        ok, why = can_select(policy, no_pass)
+        assert not ok, f"{policy.ordered} selectable without a passphrase set"
 
 
-def test_a_medic_that_already_holds_pattern_only_still_reads():
-    """The menu is not the whole model. Pattern-only is no longer a rung and no
-    longer offered, but ``Policy`` still constructs it and ``load_policy``
-    still falls back to it, so a medic set up before any of this must not hit
-    a screen that cannot name what it is running."""
+def test_pattern_only_reads_by_its_menu_name():
+    """Pattern-only returned to the menu (2026-08-25), so it now carries its
+    chooser name rather than the constructed fallback."""
     from provisioning.vault_factors import level_name
-    assert level_name(Policy((PATTERN,))) == "Pattern"
+    assert level_name(Policy((PATTERN,))) == "Pattern only"
 
 
 def test_the_levels_climb():

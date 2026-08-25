@@ -209,17 +209,22 @@ def test_the_levels_are_offered_weakest_first():
     from provisioning.vault_factors import LEVELS
     bits = [strength_bits(p) for p in LEVELS]
     assert bits == sorted(bits), "levels must climb"
-    assert LEVELS[0].ordered == (PASSPHRASE,)
+    assert LEVELS[0].ordered == (PATTERN,)      # lightest daily door first
     assert LEVELS[-1].ordered == (PATTERN, PASSPHRASE, KEYFILE)
 
 
-def test_a_passphrase_is_in_every_offered_level():
-    """Maximum strength (operator, 2026-08-11): the passphrase carries the
-    strength and the pattern is added TO it, rather than standing beside it as
-    a back door that would cap the whole vault."""
-    from provisioning.vault_factors import LEVELS
-    assert all(PASSPHRASE in pol.ordered for pol in LEVELS)
-    assert not any(pol.ordered == (PATTERN,) for pol in LEVELS)
+def test_a_passphrase_is_enrolled_behind_every_offered_level():
+    """The 2026-08-11 maximum-strength ruling was reversed for the DAILY door
+    on 2026-08-25 ("pattern OR passphrase OR USB") — what survives is the
+    enrolment: no level is selectable until the passphrase is SET, because it
+    stays enrolled as the way back in behind whatever the daily unlock is."""
+    from provisioning.vault_factors import LEVELS, Enrolment, can_select
+    assert any(pol.ordered == (PATTERN,) for pol in LEVELS)   # the new rung
+    no_pass = Enrolment(passphrase_set=False, recovery_key_set=True,
+                        recovery_key_verified=True)
+    for pol in LEVELS:
+        ok, why = can_select(pol, no_pass)
+        assert not ok and "passphrase" in why.lower()
 
 
 def test_every_offered_level_has_a_name_and_honest_words():
@@ -276,14 +281,14 @@ def test_a_pattern_cannot_be_chosen_before_the_passphrase_is_set():
     assert not ok and "Set the passphrase" in why
 
 
-def test_a_level_without_a_passphrase_is_refused_outright():
-    """Not offered on the ladder, and refused if constructed anyway — with
-    maximum strength there is no level the passphrase is absent from."""
+def test_pattern_only_is_choosable_once_enrolment_is_complete():
+    """The 2026-08-25 ruling: an easy daily door is offered — but only after
+    the passphrase and proven recovery key stand behind it."""
     from provisioning.vault_factors import Enrolment, can_select
     e = Enrolment(passphrase_set=True, recovery_key_set=True,
                   recovery_key_verified=True)
     ok, why = can_select(Policy((PATTERN,)), e)
-    assert not ok and "Every level includes a passphrase" in why
+    assert ok, why
 
 
 def test_nothing_can_be_turned_on_until_the_key_is_written_AND_typed_back():
@@ -324,7 +329,11 @@ def test_the_recovery_key_caps_the_top_level_and_that_is_fine():
     e = Enrolment(passphrase_set=True, recovery_key_set=True,
                   recovery_key_verified=True, policy=strong)
     assert strength_bits(strong) > RECOVERY_KEY_BITS
-    assert effective_bits(e) == RECOVERY_KEY_BITS
+    # Since 2026-08-25 the enrolled passphrase is its own slot beside the
+    # daily policy — so the door an attacker picks on a strong policy is now
+    # the passphrase slot, and the number says so out loud.
+    assert effective_bits(e) == pytest.approx(
+        strength_bits(Policy((PASSPHRASE,))))
 
 
 def test_the_daily_unlock_governs_the_levels_a_person_can_remember():
@@ -334,7 +343,10 @@ def test_the_daily_unlock_governs_the_levels_a_person_can_remember():
     mid = Policy((PATTERN, PASSPHRASE))
     e = Enrolment(passphrase_set=True, recovery_key_set=True,
                   recovery_key_verified=True, policy=mid)
-    assert effective_bits(e) == pytest.approx(strength_bits(mid))
+    # the weakest enrolled door: the standalone passphrase slot (30 bits)
+    # sits below pattern+passphrase (~50)
+    assert effective_bits(e) == pytest.approx(
+        strength_bits(Policy((PASSPHRASE,))))
 
 
 def test_effective_bits_still_takes_the_minimum():

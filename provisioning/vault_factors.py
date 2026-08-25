@@ -308,10 +308,14 @@ def describe(policy: Policy) -> Dict[str, str]:
     asks = " and ".join(names[f] for f in policy.ordered)
     bits = strength_bits(policy)
 
-    if KEYFILE in policy.ordered:
+    if KEYFILE in policy.ordered and len(policy.ordered) > 1:
         strength = ("Strong. The key on the stick is random, not remembered, so "
                     "guessing is not the way in. Whoever holds the stick and "
                     "knows the rest holds the vault.")
+    elif KEYFILE in policy.ordered:
+        strength = ("Strong against guessing — the key on the stick is random, "
+                    "not remembered. But the stick IS the vault: whoever holds "
+                    "it, holds everything, with nothing left to know.")
     elif PASSPHRASE in policy.ordered and PATTERN in policy.ordered:
         strength = ("Good. Two things to know, and the slow unlock makes each "
                     "guess expensive.")
@@ -370,15 +374,26 @@ def describe(policy: Policy) -> Dict[str, str]:
 #: (Said "four" until 2026-08-15 — left behind when the pattern-only rung was
 #: dropped for maximum strength. A comment that outlives its code is how the
 #: next reader learns something false.)
+#: The daily-unlock ladder, lightest first. SINGLE-FACTOR rungs returned
+#: 2026-08-25 (operator, living with the medic day to day: "it should be
+#: pattern OR passphrase OR USB"). This is safe to offer because the daily
+#: policy is only ONE of the vault's doors: the recovery key and the
+#: mandatory passphrase remain enrolled SLOTS — the ways back in — whatever
+#: the operator picks for every day. Each rung's describe() still states
+#: plainly what it is worth and what it does not protect from.
 LEVELS = (
+    Policy((PATTERN,)),
     Policy((PASSPHRASE,)),
     Policy((PATTERN, PASSPHRASE)),
+    Policy((KEYFILE,)),
     Policy((PATTERN, PASSPHRASE, KEYFILE)),
 )
 
 #: Short names for the chooser. The subtitle comes from describe().
 LEVEL_NAMES = {
+    (PATTERN,): "Pattern only",
     (PASSPHRASE,): "Passphrase",
+    (KEYFILE,): "USB key only",
     (PATTERN, PASSPHRASE): "Pattern + passphrase",
     (PATTERN, PASSPHRASE, KEYFILE): "Pattern + passphrase + USB key",
 }
@@ -441,17 +456,15 @@ class Enrolment:
 def can_select(policy: Policy, enrolment: Enrolment) -> tuple:
     """(ok, reason) — may this policy be chosen right now?
 
-    THE PASSPHRASE IS A FACTOR, NOT A BACK DOOR. The operator chose maximum
-    strength on 2026-08-11, and that decides this: a passphrase that opened the
-    vault BY ITSELF would cap the whole thing at whatever a person can remember,
-    however good the pattern and the USB key were. So a passphrase is required
-    in every level and is required IN the unlock, never beside it.
-
-    Which leaves exactly one way back in — the recovery key. It is generated,
-    160 bits, and written on paper, so it caps nothing. It also has to actually
-    exist before any of this can be turned on, and the operator has to prove
-    they wrote it down, because it is now the only thing standing between a
-    forgotten pattern and losing the records for good.
+    TWO RULINGS, BOTH THE OPERATOR'S. 2026-08-11 chose maximum strength:
+    every offered level carried the passphrase IN the unlock. 2026-08-25,
+    living with the medic day to day, they reversed the daily half: "it
+    should be pattern OR passphrase OR USB" — an easy everyday door. What
+    SURVIVES from the first ruling is the enrolment: the passphrase must be
+    SET (it stays enrolled as a slot — a way back in behind whatever daily
+    unlock is picked) and the recovery key must be written down and proven.
+    The cost is stated, not hidden: a light daily door caps the vault at that
+    door's strength — which is exactly what each level's description says.
     """
     if not enrolment.recovery_key_verified:
         return (False,
@@ -459,27 +472,25 @@ def can_select(policy: Policy, enrolment: Enrolment) -> tuple:
                 "maximum strength it is the ONLY way in if you forget your "
                 "passphrase or your pattern — nothing on the medic can rescue "
                 "you, by design.")
-    if PASSPHRASE not in policy.ordered:
-        return (False,
-                "Every level includes a passphrase. It is what the pattern and "
-                "the USB key are added TO.")
     if not enrolment.passphrase_set:
         return (False,
-                "Set the passphrase before adding a pattern or a USB key — it "
-                "is the part of the unlock that carries the strength.")
+                "Set the passphrase first. Whatever daily unlock you pick, "
+                "it stays enrolled as the way back in behind it.")
     return (True, "")
 
 
 def effective_bits(enrolment: Enrolment) -> float:
     """Strength of the WEAKEST way in — which is the strength of the vault.
 
-    With the passphrase folded into the unlock instead of standing beside it,
-    the only other door is the recovery key at 160 bits, which is stronger than
-    any of the levels. So this now reports the policy's own strength — but it
-    still computes the minimum rather than assuming, because the day someone
-    adds a convenience door back is the day this number has to notice.
+    Since 2026-08-25 a light daily door (pattern-only) may stand beside the
+    enrolled passphrase slot — so this minimum is doing real work again: it
+    reports the weakest enrolled way in, exactly as its name promises. The
+    day the operator picks pattern-only, this number says ~20 bits, and the
+    level's own description says the same out loud.
     """
     slots = [strength_bits(enrolment.policy)]
+    if enrolment.passphrase_set:
+        slots.append(strength_bits(Policy((PASSPHRASE,))))
     if enrolment.recovery_key_set:
         slots.append(RECOVERY_KEY_BITS)
     return min(slots)

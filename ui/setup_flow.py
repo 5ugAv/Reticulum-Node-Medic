@@ -459,8 +459,8 @@ def blocked_reason(key: str, state: SetupState) -> str:
                 "the medic knows is that it printed one — not that you have "
                 "it.")
     if key == LEVEL and not state.passphrase_set:
-        return ("Set a passphrase first. It is a part of every option on that "
-                "screen, so there is nothing to choose between until it exists.")
+        return ("Set a passphrase first. Whatever daily unlock you pick, "
+                "the passphrase stays enrolled as the way back in behind it.")
     if key == PATTERN_STEP:
         if state.level is None or PATTERN not in state.level.ordered:
             return "This medic's chosen level does not use a pattern."
@@ -606,7 +606,11 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
         out.append((False,
                     "No encrypted container has been created on this card yet, "
                     "so your records are NOT encrypted. Node Medic will not say "
-                    "otherwise until it has made one and watched it open."))
+                    "otherwise until it has made one and watched it open. When "
+                    "encryption is switched on (a Settings switch still being "
+                    "built), the container will be created at "
+                    "~/.nodemedic-vault.img on this card — opened by exactly "
+                    "the keys and choices you set today."))
     return out
 
 
