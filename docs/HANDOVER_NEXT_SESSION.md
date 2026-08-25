@@ -41,9 +41,25 @@ HAWKEYE hardware IDs + full story: memory `[[hawkeye-identity-netboot]]`.
   Tracker (GPS/time source) with celebration; `ui/firstborn_flow.py` (tested) +
   `ui/screens/firstborn_screen.py` + wired dormant in app.py.
 
-Two adversarial review agents were run over `4a35680`+`d0395ac`; vet + apply
-their findings before deploying. **Deploy step still owed:** rsync to the medic
-+ restart the UI (suite must be green first — it is).
+Two adversarial review agents reviewed `4a35680`+`d0395ac`; their findings were
+vetted and applied in `6a0478e` (discovery neighbour-sweep scoped to the cable
+so a shared-LAN stranger is never a clone target; firstborn shows the Tracker
+board image + a real-fix-proof celebration + honest failure; the tour's green
+button no longer masquerades as the ceremony entrance; PROBE ▸ "Birth the GPS
+Tracker" makes the "later from PROBE" promise real; MITOSIS clone-done text
+stops calling the firstborn "its own radio"). The critical finding (a failed
+flash firing the success celebration) was already fixed in `743b547`. ONE
+finding deferred by design: the "ping with no radio → offer the Tracker" prompt
+— the operator wanted to co-design that walkthrough.
+
+**Deploy step still owed** (do it WITH the operator — a top-level app.py import
+of the new firstborn screen means a bad construction would take the UI down;
+verified import-safe under mock kivy, but widget construction only runs on a
+real display): rsync to the medic + restart the UI (suite green; CI green).
+
+**Boot-order decision owed:** `RECOVERY_BOOT_ORDER` is 0xf321 (network-boot on,
+enables sealed-case recovery but unsigned) — the operator can revert to "0xf31"
+for signature-only boot. Flagged, not decided.
 
 ---
 
