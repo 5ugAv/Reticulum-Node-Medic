@@ -503,6 +503,18 @@ _CLONE_STEPS.insert(
 #: HTTPS-to-Raspberry-Pi + signature-checked and CANNOT be served locally — so a
 #: sealed HAWKEYE had no remote door at all. RPIBOOT(3) stays as the
 #: button-accessible fallback for a Pi whose case is still open.
+#:
+#: SECURITY TRADEOFF (accept-or-revert decision, flagged 2026-08-25): NETWORK
+#: boot (mode 2) is plain TFTP with NO signature check. It only ever triggers
+#: when SD boot has already FAILED, and then the Pi boots whatever a DHCP/TFTP
+#: responder offers. In normal use the medic boots from SD and never reaches
+#: this rung; the exposure is the narrow case of a dead SD boot partition AND
+#: the medic plugged into a hostile/shared LAN (a field medic's real network is
+#: its own LoRa mesh + direct cables, not a shared ethernet). The safe
+#: alternative that KEEPS everything except remote recoverability is "0xf31"
+#: (SD -> RPIBOOT -> loop, no network door). Kept as 0xf321 because sealed-case
+#: recoverability is the whole point of the HAWKEYE lesson; revert this one
+#: constant to "0xf31" if the operator prefers signature-only boot.
 RECOVERY_BOOT_ORDER = "0xf321"
 
 
@@ -634,10 +646,11 @@ def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
             name = hostname or "the new medic"
             return StepResult(
                 "find_new_medic", False,
-                f"Could not find {name} — watched {hostname or ''}.local and "
-                "the patch cable (10.55.0.1) for 5 minutes (a first boot "
-                "needs most of that). Is it powered, and cabled or on this "
-                "WiFi?")
+                f"Could not find {name} for 5 minutes — tried its name "
+                f"({hostname or 'set name'}.local), the stock raspberrypi.local, "
+                "every address on the cable, and any board that answered on the "
+                "wire (a first boot needs most of that time). Is it powered, and "
+                "cabled to this medic or on this WiFi?")
         # Fresh machine, possibly at a reused address: drop any stale pin,
         # then pin THIS machine's key (first-contact trust).
         try:

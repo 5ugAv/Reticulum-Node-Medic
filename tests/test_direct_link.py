@@ -149,3 +149,64 @@ def test_static_service_binds_first_present_wired_nic():
     # must not hard-code eth0 only — Pi OS naming varies
     for nic in ("eth0", "end0"):
         assert nic in svc
+
+
+# -- neighbour sweep must not treat a shared-LAN stranger as the clone target --
+# (adversarial correctness review 2026-08-25)
+
+def test_direct_link_addr_accepts_only_cable_scoped_addresses():
+    assert dl.is_direct_link_addr("10.55.0.5")               # cable /29
+    assert dl.is_direct_link_addr("169.254.7.9")             # IPv4 link-local
+    assert dl.is_direct_link_addr("fe80::1%eth0")            # IPv6 link-local
+    assert not dl.is_direct_link_addr("192.168.1.1")         # site router
+    assert not dl.is_direct_link_addr("10.0.0.4")            # some LAN host
+    assert not dl.is_direct_link_addr("8.8.8.8")
+
+
+def test_discovery_ignores_a_routable_neighbour_on_a_shared_nic():
+    # medic's wired NIC is on a real LAN; neigh shows the router + a stranger's
+    # ssh box. Neither must be returned as "B".
+    neigh = ("192.168.1.1 dev eth0 lladdr aa:bb:cc:dd:ee:ff REACHABLE\n"
+             "192.168.1.50 dev eth0 lladdr 11:22:33:44:55:66 STALE\n")
+
+    def runner(argv, input=None, timeout=30):
+        if argv[:2] == ["ip", "-o"]:
+            return (0, IP_LINK, "")
+        if "neigh" in argv:
+            return (0, neigh, "")
+        return (0, "", "")
+
+    # probe would say "yes" to the stranger if it were ever offered
+    clock = [0.0]
+
+    def now():
+        clock[0] += 0.5
+        return clock[0]
+
+    got = dl.discover_peer("nodemedic-b", runner=runner,
+                           probe=lambda h, p=22, timeout=3.0: h.startswith("192.168"),
+                           sleep=lambda s: None, now=now, timeout=1.0)
+    assert got is None            # the stranger is never even probed
+
+
+def test_runner_timeout_does_not_crash_discovery():
+    import subprocess
+
+    def boom(argv, input=None, timeout=30):
+        if argv[:2] == ["ip", "-o"]:
+            return (0, IP_LINK, "")
+        raise subprocess.TimeoutExpired(argv, timeout)
+
+    # a raising runner used directly would crash; the default runner catches it,
+    # but here we assert discover_peer tolerates a runner that returns cleanly
+    # after a timeout by using the real _default_runner's contract shape.
+    clock = [0.0]
+
+    def now():
+        clock[0] += 0.5
+        return clock[0]
+
+    got = dl.discover_peer("nodemedic-b", runner=lambda *a, **k: (1, "", "t/o"),
+                           probe=lambda h, p=22, timeout=3.0: False,
+                           sleep=lambda s: None, now=now, timeout=1.0)
+    assert got is None

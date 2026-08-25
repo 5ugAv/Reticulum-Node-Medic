@@ -325,22 +325,18 @@ _TOUR_STEPS = [
              "on its own, or a Raspberry Pi and radio together. It tells you "
              "which cable, which socket, and which board you are holding."},
 
-    {"key": TOUR_FIRSTBORN, "part": TOUR, "poster_card": "birth",
+    {"key": TOUR_FIRSTBORN, "part": TOUR, "board_image": "heltec_wireless_tracker",
      "opens": "firstborn", "optional": True,
-     "title": "THE FIRSTBORN — give this medic its own eyes",
-     "body": "This medic has no GPS or clock of its own — a Raspberry Pi can't "
-             "see the sky. Its first child fixes that: a Heltec Wireless "
-             "Tracker, flashed here and adopted as the medic's own position "
-             "and time source. Every node you place, every certificate you "
-             "stamp, gets a real location and a real date because of it.\n\n"
-             "Plug the Tracker into Node Medic and press begin — it is flashed, "
-             "tested until it sees satellites, and welcomed as node number one. "
-             "No Tracker on hand? Skip it; you can hold this ceremony later from "
-             "PROBE.",
-     "hint": "Have ONLY the Tracker plugged in for this — the medic's own radio "
-             "looks alike on USB and is told apart by the satellite stream, not "
-             "the socket.",
-     "next": "Meet the firstborn  →"},
+     "opens_label": "Meet the firstborn  →",
+     "title": "THE FIRSTBORN — this medic's own eyes",
+     "body": "A Raspberry Pi can't see the sky, so this medic has no position "
+             "or clock of its own. Its first child fixes that: a Heltec "
+             "Wireless Tracker, flashed here and adopted as the medic's GPS and "
+             "time. Every node you place gets a real location and date from it.",
+     "hint": "Plug in ONLY the Tracker — the medic's own radio looks alike on "
+             "USB and is told apart by its satellite stream, not the socket. No "
+             "Tracker on hand? Skip for now and run it later from PROBE.",
+     "next": "Skip for now  →"},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",

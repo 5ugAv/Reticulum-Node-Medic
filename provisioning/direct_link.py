@@ -113,10 +113,10 @@ def mdns_name(hostname: str) -> str:
 
 
 def _port_open(host: str, port: int = 22, timeout: float = 3.0) -> bool:
-    """True if *host* accepts TCP on *port*. Uses getaddrinfo so a scoped IPv6
-    link-local address (``fe80::1%eth0``) resolves correctly — the plain
-    create_connection path mishandles the ``%iface`` scope. Tries each resolved
-    family until one connects."""
+    """True if *host* accepts TCP on *port*. Resolves through getaddrinfo so a
+    scoped IPv6 link-local address (``fe80::1%eth0``) carries its ``sin6_scope_id``
+    into the connect() sockaddr, and tries each resolved family until one
+    connects — needed because our neighbour sweep yields scoped fe80:: peers."""
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except OSError:
@@ -142,7 +142,6 @@ def eth_subnet_hosts() -> List[str]:
     build (or mid-migration) may have claimed another host in the same /29; sweep
     them all rather than assume .1."""
     base = PEER_ETH_IP.rsplit(".", 1)[0]           # e.g. "10.55.0"
-    first = int(PEER_ETH_IP.rsplit(".", 1)[1])
     # /29 usable hosts are .1-.6; lead with PEER, then the rest in order.
     hosts = [PEER_ETH_IP]
     for n in range(1, 7):
@@ -254,16 +253,36 @@ def _eth_broadcast() -> str:
     return f"{base}.7"
 
 
+def is_direct_link_addr(addr: str) -> bool:
+    """True only for addresses that can ONLY belong to a peer on the far end of
+    a direct cable: an IPv6 or IPv4 link-local, or a host inside the cable /29.
+    A routable address (a DHCP lease on a shared LAN, the site router) is NOT a
+    mitosis peer — MITOSIS is a point-to-point cable — so the neighbour sweep
+    must never hand `discover_peer` a stranger's SSH host to clone onto (raised
+    by adversarial review 2026-08-25). Named/subnet candidates are already
+    scoped; this gates the promiscuous `ip neigh` results."""
+    a = addr.split("%", 1)[0].lower()
+    if a.startswith("fe80:"):
+        return True
+    if a.startswith("169.254."):
+        return True
+    base = PEER_ETH_IP.rsplit(".", 1)[0] + "."      # "10.55.0."
+    return a.startswith(base)
+
+
 def _all_targets(hostname: str, wired: List[str], runner: Runner) -> List[str]:
     """The full best-first probe list this lap: named + subnet candidates, then
-    whatever is live in the neighbour tables (address-agnostic catch-all)."""
+    live neighbour-table entries — but ONLY those that could be a direct-cable
+    peer (link-local or the cable /29). This stays address-agnostic for a Pi
+    that self-assigned an unexpected link-local while refusing to treat every
+    host on a shared LAN as a clone target."""
     targets = list(candidate_targets(hostname))
     for ifc in wired:
         for fam in ("-4", "-6"):
             _rc, out, _e = runner([IP_BIN, fam, "neigh", "show", "dev", ifc],
                                   timeout=5)
             for t in parse_neighbour_targets(out or "", ifc):
-                if t not in targets:
+                if is_direct_link_addr(t) and t not in targets:
                     targets.append(t)
     return targets
 
@@ -271,6 +290,11 @@ def _all_targets(hostname: str, wired: List[str], runner: Runner) -> List[str]:
 def _default_runner(argv: List[str], input: Optional[str] = None,
                     timeout: int = 30) -> Tuple[int, str, str]:
     import subprocess
-    p = subprocess.run(argv, input=input, capture_output=True, text=True,
-                       timeout=timeout)
+    try:
+        p = subprocess.run(argv, input=input, capture_output=True, text=True,
+                           timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        # A wedged probe must not crash the whole MITOSIS run — the discovery
+        # loop just tries the next candidate / next lap.
+        return 1, "", str(exc)
     return p.returncode, p.stdout, p.stderr

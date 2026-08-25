@@ -15,17 +15,24 @@ from __future__ import annotations
 
 import threading
 
+import os
+
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.graphics import Color, Ellipse
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.image import Image as UIImage
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
 from ui import firstborn_flow as ff
 from ui import theme
+
+#: The board the firstborn always is — show it, don't just name it
+#: ([[show-dont-tell-ux]]).
+_TRACKER_BOARD = "heltec_wireless_tracker"
 
 
 def _label(text, color="text_secondary", bold=False, size="15sp"):
@@ -36,33 +43,46 @@ def _label(text, color="text_secondary", bold=False, size="15sp"):
     return lbl
 
 
+def _tracker_image(height=140):
+    """The Heltec Tracker's picture, or None if the asset is missing (best-effort
+    — a missing image must never break the ceremony)."""
+    try:
+        from ui.board_images import image_for
+        path = image_for(_TRACKER_BOARD)
+        if not path or not os.path.exists(path):
+            return None
+        return UIImage(source=path, size_hint_y=None, height=dp(height),
+                       allow_stretch=True, keep_ratio=True)
+    except Exception:                  # noqa: BLE001
+        return None
+
+
 class _JoyBurst(Widget):
-    """Green rings blooming outward — the 'circles of joy'. Pure canvas, so it
-    costs nothing when it isn't celebrating."""
+    """Green rings blooming outward — the 'circles of joy'. Five staggered rings
+    over ~3s make it a celebration, not a blink. Pure canvas, so it costs
+    nothing when idle; the max radius is bounded to the widget's smaller side so
+    the rings never overdraw the labels around them (geometry PIL-previewed,
+    [[preview-animations-offline]])."""
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        self._anims = []
 
     def celebrate(self):
-        self._ring(0.0)
-        Clock.schedule_once(lambda dt: self._ring(0.0), 0.5)
-        Clock.schedule_once(lambda dt: self._ring(0.0), 1.0)
+        for i in range(5):
+            Clock.schedule_once(lambda dt: self._ring(), i * 0.4)
 
-    def _ring(self, _):
+    def _ring(self):
         cx, cy = self.center
+        r = max(dp(30), min(self.width, self.height) * 0.9)   # diameter, bounded
         with self.canvas:
             col = Color(*theme.hex_to_rgba(theme.COLORS["green"]))
-            col.a = 0.9
-            e = Ellipse(pos=(cx, cy), size=(dp(8), dp(8)))
-        r = dp(160)
-        anim = Animation(size=(r, r),
-                         pos=(cx - r / 2, cy - r / 2), duration=1.4,
-                         t="out_quad")
-        anim &= Animation(a=0.0, duration=1.4)  # fade the Color
-        anim.start(col)
-        Animation(size=(r, r), pos=(cx - r / 2, cy - r / 2),
-                  duration=1.4, t="out_quad").start(e)
+            col.a = 0.85
+            e = Ellipse(pos=(cx - dp(4), cy - dp(4)), size=(dp(8), dp(8)))
+        grow = Animation(size=(r, r), pos=(cx - r / 2, cy - r / 2),
+                         duration=1.4, t="out_quad")
+        grow.start(e)
+        fade = Animation(a=0.0, duration=1.4)
+        fade.start(col)
 
 
 class FirstbornScreen(BoxLayout):
@@ -81,6 +101,7 @@ class FirstbornScreen(BoxLayout):
         self._result = None            # None -> unknown, True/False -> outcome
         self._failure = ""
         self._progress = ""
+        self._proof = ""               # first real fix, shown as celebration proof
         self._gps_live = False
         self._poll = None
         self._last_stage = None
@@ -89,11 +110,16 @@ class FirstbornScreen(BoxLayout):
     def begin_screen(self):
         """Called on entry. Kick a one-off GPS check (a medic that already has a
         Tracker should not be pushed to birth another), then poll the plug
-        state so NEED_TRACKER↔READY tracks the cable."""
-        self._result = None
-        self._running = False
-        self._last_stage = None
-        threading.Thread(target=self._check_gps_once, daemon=True).start()
+        state so NEED_TRACKER↔READY tracks the cable.
+
+        A birth already in flight (the keeper navigated away mid-flash and back)
+        is left ALONE — resetting _running/_result here would orphan the worker
+        and let a second _begin launch a concurrent flash (adversarial review
+        2026-08-25)."""
+        if not self._running:
+            self._result = None
+            self._last_stage = None
+            threading.Thread(target=self._check_gps_once, daemon=True).start()
         if self._poll is None:
             self._poll = Clock.schedule_interval(self._tick, 1.5)
         self._render(force=True)
@@ -146,10 +172,25 @@ class FirstbornScreen(BoxLayout):
         title.bind(size=lambda w, s: setattr(w, "text_size", (s[0], None)))
         self.add_widget(title)
 
+        # Show the board on the stages that ask the keeper to handle it, and in
+        # the celebration — a picture, not just the name.
+        if view.stage in (ff.NEED_TRACKER, ff.READY, ff.DONE):
+            img = _tracker_image(150 if view.stage == ff.DONE else 130)
+            if img is not None:
+                self.add_widget(img)
+
         if view.stage == ff.DONE:
-            burst = _JoyBurst(size_hint_y=None, height=dp(150))
+            plate = Label(text="★  node #1  ·  the firstborn  ★", bold=True,
+                          font_size=theme.font_sp("16sp"),
+                          color=theme.hex_to_rgba(theme.COLORS["green"]),
+                          size_hint_y=None, height=dp(26))
+            self.add_widget(plate)
+            burst = _JoyBurst(size_hint_y=None, height=dp(120))
             self.add_widget(burst)
             Clock.schedule_once(lambda dt: burst.celebrate(), 0.1)
+            if self._proof:
+                self.add_widget(_label(self._proof, color="text_primary",
+                                       size="14sp"))
 
         body = _label(view.body, size="15sp")
         self.add_widget(body)
@@ -159,6 +200,18 @@ class FirstbornScreen(BoxLayout):
                                    size="14sp"))
 
         self.add_widget(Widget())      # spring
+
+        # A keeper with no Tracker (or one that already has GPS) needs an
+        # obvious way onward from the screen itself, not just the back-swipe.
+        if view.stage in (ff.NEED_TRACKER, ff.ALREADY) and self._on_home:
+            skip = Button(text="Skip for now  →", size_hint_y=None,
+                          height=dp(48), font_size=theme.font_sp("16sp"),
+                          background_normal="",
+                          background_color=theme.hex_to_rgba(
+                              theme.COLORS["surface"]),
+                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            skip.bind(on_release=lambda *_: self._on_home())
+            self.add_widget(skip)
 
         if view.can_begin:
             begin = Button(
@@ -221,6 +274,7 @@ class FirstbornScreen(BoxLayout):
         self._result = ok
         self._failure = failure
         self._gps_live = ok or self._gps_live
+        self._proof = _fix_proof() if ok else ""
         self._render(force=True)
 
 
@@ -229,6 +283,27 @@ class FirstbornScreen(BoxLayout):
 def _default_ports():
     from ui.hw_factories import local_board_ports
     return local_board_ports()
+
+
+def _fix_proof() -> str:
+    """The Tracker's first real fix, shown as honest proof in the celebration —
+    the medic states what it actually saw, not a claim. Empty if no fix is
+    readable yet (gpsd may still be acquiring), which is fine: the birth still
+    succeeded, we just don't fake coordinates."""
+    try:
+        from monitor.geo import read_splitter_fix
+        fix = read_splitter_fix()
+        if fix is None:
+            return ""
+        lat = getattr(fix, "lat", None)
+        lon = getattr(fix, "lon", None)
+        sats = getattr(fix, "sats", None)
+        if lat is None or lon is None:
+            return ""
+        tail = f" · {sats} satellites" if sats else ""
+        return f"First fix: {lat:.4f}, {lon:.4f}{tail}"
+    except Exception:                  # noqa: BLE001
+        return ""
 
 
 def _medic_has_gps() -> bool:

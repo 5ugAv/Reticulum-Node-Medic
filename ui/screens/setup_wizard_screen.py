@@ -76,6 +76,24 @@ def _grow(text, size="15sp", color="text_secondary", bold=False):
     return lbl
 
 
+def _board_image_widget(board_key: str):
+    """An Image of a specific board (e.g. the Heltec Tracker) for a tour step,
+    or None. [[show-dont-tell-ux]]: when the medic knows exactly which board a
+    step is about, show that board, not a generic card. Best-effort and silent
+    on a missing asset — the words still work."""
+    try:
+        from kivy.uix.image import Image as UIImage
+        from ui.board_images import image_for
+        path = image_for(board_key)
+        if not path or not os.path.exists(path):
+            return None
+        img = UIImage(source=path, size_hint_y=None, height=dp(150),
+                      allow_stretch=True, keep_ratio=True)
+        return img
+    except Exception:                  # noqa: BLE001
+        return None
+
+
 def poster_card_image(zone: str):
     """An Image of one painted front-page card, or None.
 
@@ -309,6 +327,11 @@ class SetupWizardScreen(BoxLayout):
             img = poster_card_image(card)
             if img is not None:
                 stage.add_widget(img)
+        board = step.get("board_image")
+        if board:
+            bimg = _board_image_widget(board)
+            if bimg is not None:
+                stage.add_widget(bimg)
         if step.get("opens"):
             stage.add_widget(Widget())
             stage.add_widget(self._see_it_button(step))
@@ -322,7 +345,8 @@ class SetupWizardScreen(BoxLayout):
         carry on reading; leaving for a mode is the escape, and dressing it like
         the main button would end the tour at its first screen.
         """
-        b = Button(text=tr("Open it now"), size_hint_y=None, height=dp(48),
+        b = Button(text=step.get("opens_label") or tr("Open it now"),
+                   size_hint_y=None, height=dp(48),
                    bold=True, font_size="15sp", background_normal="",
                    background_color=theme.hex_to_rgba("#78866b"),
                    color=theme.hex_to_rgba("#f0f0f0"))

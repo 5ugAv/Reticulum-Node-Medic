@@ -39,7 +39,7 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
 
 class ProbeScreen(BoxLayout):
     def __init__(self, workflow_factory, target_name="this node",
-                 on_self_diagnose=None, **kwargs):
+                 on_self_diagnose=None, on_birth_tracker=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(10)
@@ -47,6 +47,7 @@ class ProbeScreen(BoxLayout):
         self._workflow_factory = workflow_factory
         self._target = target_name
         self._on_self_diagnose = on_self_diagnose
+        self._on_birth_tracker = on_birth_tracker
         self._workflow = None
         self._category_boxes = {}
         self._issue_rows = {}
@@ -75,6 +76,18 @@ class ProbeScreen(BoxLayout):
                 color=theme.hex_to_rgba(theme.COLORS["accent"]))
             self.self_dx_btn.bind(on_release=lambda *_: self._on_self_diagnose())
             self.add_widget(self.self_dx_btn)
+
+        # (Re)birth the medic's own GPS Tracker — the firstborn ceremony, also
+        # reachable here so the tour's "run it later from PROBE" is a real route.
+        if on_birth_tracker is not None:
+            self.tracker_btn = Button(
+                text=tr("Birth the GPS Tracker  —  this medic's firstborn"),
+                size_hint_y=None, height=dp(46), font_size="15sp", bold=True,
+                background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["accent"]))
+            self.tracker_btn.bind(on_release=lambda *_: self._on_birth_tracker())
+            self.add_widget(self.tracker_btn)
 
         self.summary_bar = BoxLayout(size_hint_y=None, height=dp(0),
                                      spacing=dp(8), opacity=0)

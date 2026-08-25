@@ -923,7 +923,8 @@ class ReticulumNodeMedicApp(App):
             target_name="This node + attached board" if _probe_real
                         else ("Demo node - emulated" if hw.demo_allowed()
                               else "No board — plug one in to PROBE"),
-            on_self_diagnose=lambda: self.switch_mode("self_diagnose"))))
+            on_self_diagnose=lambda: self.switch_mode("self_diagnose"),
+            on_birth_tracker=lambda: self.switch_mode("firstborn"))))
         self.sm.add_widget(probe)
 
         # Self Diagnose — the medic checks & heals its OWN onboard radio/GPS board.

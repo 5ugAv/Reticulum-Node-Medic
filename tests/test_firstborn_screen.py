@@ -34,3 +34,39 @@ def test_app_registers_the_firstborn_screen_dormant():
     assert 'Screen(name="firstborn")' in APP
     assert "FirstbornScreen(" in APP
     assert "_fb.begin_screen()" in APP and "_fb.sleep()" in APP
+
+
+# -- review fixes (2026-08-25 adversarial UX pass) ---------------------------
+
+def test_screen_shows_the_tracker_board_image_not_just_the_name():
+    # show-don't-tell: the physical-action stages carry the board picture
+    assert "heltec_wireless_tracker" in SRC
+    assert "_tracker_image" in SRC
+
+
+def test_celebration_has_a_firstborn_nameplate_and_honest_proof():
+    assert "firstborn" in SRC and "node #1" in SRC
+    # proof is the REAL fix read back, never fabricated coordinates
+    assert "_fix_proof" in SRC and "read_splitter_fix" in SRC
+
+
+def test_non_terminal_stages_offer_an_on_screen_skip():
+    assert "Skip for now" in SRC
+
+
+def test_a_birth_in_flight_is_not_double_started_on_re_entry():
+    assert "if not self._running:" in SRC
+
+
+def test_probe_offers_an_honest_route_to_birth_the_tracker():
+    PROBE = pathlib.Path("ui/screens/probe_screen.py").read_text()
+    assert "on_birth_tracker" in PROBE
+    assert "on_birth_tracker=lambda: self.switch_mode(\"firstborn\")" in APP
+
+
+def test_tour_button_labels_are_not_a_trap():
+    # the green "next" must NOT claim to open the ceremony (that button skips);
+    # the muted opens button carries the "meet the firstborn" label instead.
+    FLOW = pathlib.Path("ui/setup_flow.py").read_text()
+    assert '"opens_label": "Meet the firstborn' in FLOW
+    assert '"next": "Skip for now' in FLOW

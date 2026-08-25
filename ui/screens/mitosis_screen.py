@@ -887,11 +887,12 @@ class MitosisScreen(BoxLayout):
             self.run_btn.text = "Clone finished — every step verified"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             done = _label(
-                "Now: power the new medic on ITS OWN screen. It boots into "
-                "the tool and its first act is birthing its own radio — "
-                "the firstborn.", color="text_primary", size="16sp")
+                "Now: power the new medic on ITS OWN screen. It boots into the "
+                "tool and walks its own setup — which offers to birth its own "
+                "Heltec Tracker (its GPS and clock, the firstborn) if you have "
+                "one on hand.", color="text_primary", size="16sp")
             done.size_hint_y = None
-            done.height = dp(64)
+            done.height = dp(80)
             self.add_widget(done)
         else:
             failed = next((r for r in results
