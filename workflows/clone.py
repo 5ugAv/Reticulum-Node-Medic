@@ -276,7 +276,10 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
         "Environment=KIVY_METRICS_DENSITY=1.5\n"
         "Environment=KIVY_GL_BACKEND=sdl2\n"
         f"WorkingDirectory={home}/reticulum-tool\n"
-        f"ExecStart=/usr/bin/cage -s -- /usr/bin/python3 {home}/reticulum-tool/main.py\n"
+        # cage does NOT forward its child's stdout to the journal — the first
+        # crash-loop on HAWKEYE was invisible until the child got its own log.
+        f"ExecStart=/usr/bin/cage -s -- /bin/sh -c 'exec /usr/bin/python3 "
+        f"{home}/reticulum-tool/main.py >> {home}/ui.log 2>&1'\n"
         "Restart=on-failure\n"
         "RestartSec=5\n\n"
         "[Install]\n"
