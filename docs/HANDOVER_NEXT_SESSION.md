@@ -11,6 +11,42 @@ the deep index — nearly a hundred verified facts with names like
 
 ---
 
+## 0a. OVERNIGHT 2026-08-25→26 — HAWKEYE sealed-case recovery + mitosis polish
+
+**The one action waiting for the operator:** HAWKEYE (the 2nd medic) is fully
+assembled in its case — NO button/SD/pin access, only power-cycle + HAT-vs-USB-C
+switching. Its SD boot partition is blanked and its EEPROM was mis-baked to
+`0x71` (SD then HTTP-boot). A boot server is LEFT RUNNING on the medic (dnsmasq
+on eth0, bound to the HAWKEYE umbilical) with a watcher that writes
+`/tmp/hawkeye-verdict.txt` the instant HAWKEYE next boots. **Morning: power-cycle
+HAWKEYE, then `ssh nodemedic@nodemedic.local 'cat /tmp/hawkeye-verdict.txt'`.**
+- `VERDICT=TFTP_MODE2` → headless recovery is ON: serve an NFS-root netboot
+  (recipe in memory `[[hawkeye-identity-netboot]]` + the netboot agent report),
+  get a root shell on HAWKEYE over the cable, rebuild p1 + set BOOT_ORDER=0xf321.
+- `VERDICT=HTTP_MODE7` → no headless door (HTTP boot is signed to raspberrypi.com).
+  Fallbacks: NAT HAWKEYE to real internet so the genuine installer runs on its
+  OWN touchscreen (operator can tap it), or open the case. Both agents + RPi docs
+  confirmed this fork; the wire decides.
+HAWKEYE hardware IDs + full story: memory `[[hawkeye-identity-netboot]]`.
+
+**Shipped to main tonight (CI green, NOT yet deployed to the live UI):**
+- `41a1216` dual-supply tripwire (HAT+USB-C at once → red alarm + safe-shutdown;
+  reads the PMIC EXT5V; inert without the HAT).
+- `b219c15` RPIBOOT is boot-order nibble 3 not 7 (the HAWKEYE mistake).
+- `4a35680` MITOSIS **address-agnostic peer discovery** (stock raspberrypi.local
+  + full /29 sweep + `ip neigh` + IPv6 link-local fe80:: — finds a Pi 5 at ANY
+  address) AND boot-order bake now **0xf321** (SD→NETWORK→RPIBOOT→loop) so a
+  sealed future child is recoverable over ethernet alone — the HAWKEYE lesson.
+- `d0395ac` **THE FIRSTBORN** tour step: a fresh medic births its own Heltec
+  Tracker (GPS/time source) with celebration; `ui/firstborn_flow.py` (tested) +
+  `ui/screens/firstborn_screen.py` + wired dormant in app.py.
+
+Two adversarial review agents were run over `4a35680`+`d0395ac`; vet + apply
+their findings before deploying. **Deploy step still owed:** rsync to the medic
++ restart the UI (suite must be green first — it is).
+
+---
+
 ## 0. STATE AT HANDOVER (2026-08-25, late night) — all landed, nothing mid-flight
 
 Tonight's arc ended CLEAN. Deployed and verified live on the medic (c5d77b8):
