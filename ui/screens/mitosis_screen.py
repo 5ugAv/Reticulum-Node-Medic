@@ -84,6 +84,42 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
     return lbl
 
 
+class _PowerGlyph(__import__("kivy.uix.widget", fromlist=["Widget"]).Widget):
+    """A large drawn power symbol (circle + stem), pulsing — canvas-drawn so
+    it can never render as a tofu box (the surgery-anim lesson)."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self._alpha = 1.0
+        self._dir = -1
+        self.bind(pos=self._draw, size=self._draw)
+        from kivy.clock import Clock
+        self._ev = Clock.schedule_interval(self._pulse, 1 / 20)
+
+    def stop(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+
+    def _pulse(self, _dt):
+        self._alpha += self._dir * 0.04
+        if self._alpha <= 0.35 or self._alpha >= 1.0:
+            self._dir *= -1
+            self._alpha = max(0.35, min(1.0, self._alpha))
+        self._draw()
+
+    def _draw(self, *_a):
+        from kivy.graphics import Color, Line
+        self.canvas.clear()
+        cx, cy = self.center_x, self.center_y
+        r = min(self.width, self.height) * 0.28
+        with self.canvas:
+            Color(0.18, 0.80, 0.35, self._alpha)
+            # the ring, with a gap at the top for the stem
+            Line(circle=(cx, cy, r, 30, 330), width=dp(4))
+            Line(points=[cx, cy + r * 0.25, cx, cy + r * 1.25], width=dp(4))
+
+
 def _small_btn(text):
     b = Button(text=text, size_hint_y=None, height=dp(40), font_size="14sp",
                background_normal="",
@@ -510,8 +546,89 @@ class MitosisScreen(BoxLayout):
 
         def _advance(_d, g=gen):
             if g == self._stage_gen:
-                self._show_stage_clone(auto=True)
+                self._show_stage_power()
         self._advance_ev = Clock.schedule_once(_advance, 1.8)
+
+    # -- the POWER page: instruct FIRST (words + picture), then one tap -------
+    # The medic cannot SEE power arrive, so this page keeps a single button;
+    # everything it CAN see (card leaving, cable arriving, the machine
+    # answering) advances by itself.
+
+    def _show_stage_power(self):
+        self._clear()
+        title = _label("Power the new medic on", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        self._anim = _PowerGlyph()
+        self.add_widget(self._anim)
+        body = _label(
+            "Press the power button on the new medic. If it plays dead, "
+            "press BOOT on its battery pack once - a fresh pack sleeps "
+            "until asked. A flickering green LED means it is working.",
+            color="text_primary", size="16sp")
+        body.size_hint_y, body.height = None, dp(96)
+        self.add_widget(body)
+        nxt = Button(text="It has power - next", size_hint_y=None,
+                     height=dp(56), font_size="20sp", background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        nxt.bind(on_release=lambda *_: self._show_stage_cable())
+        self.add_widget(nxt)
+
+    # -- the CABLE page: instruct FIRST, then the medic WATCHES for copper ----
+
+    def _show_stage_cable(self):
+        self._clear()
+        gen = self._stage_gen
+        title = _label("Connect the network cable", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        try:
+            from ui.widgets.birth_anims import ProvisionOverCableAnim
+            self._anim = ProvisionOverCableAnim()
+            self.add_widget(self._anim)
+            self._anim.start()
+        except Exception:                                  # noqa: BLE001
+            self._anim = None
+        body = _label(
+            "Plug an ordinary network patch cable into BOTH medics' "
+            "network ports. Node Medic sees the cable arrive and carries "
+            "on by itself.",
+            color="text_primary", size="15sp")
+        body.size_hint_y, body.height = None, dp(64)
+        self.add_widget(body)
+        wifi = _small_btn("No cable - it joins my WiFi instead")
+        wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
+        self.add_widget(wifi)
+
+        # WATCH FOR COPPER: the wired port's carrier line flips to 1 the
+        # moment a live cable connects both ends - readable with no
+        # privileges, and the honest signal that the instruction was done.
+        def tick(_dt):
+            def work():
+                import os as _os
+                try:
+                    for ifc in _os.listdir("/sys/class/net"):
+                        if not ifc.startswith(("eth", "end", "enp", "eno")):
+                            continue
+                        with open(f"/sys/class/net/{ifc}/carrier") as fh:
+                            if fh.read().strip() == "1":
+                                Clock.schedule_once(
+                                    lambda _d: self._on_cable_seen(gen), 0)
+                                return
+                except Exception:                          # noqa: BLE001
+                    pass
+            threading.Thread(target=work, daemon=True).start()
+        self._card_ev = Clock.schedule_interval(tick, 1.5)
+        tick(0)
+
+    def _on_cable_seen(self, gen):
+        if gen != self._stage_gen:
+            return
+        if self._card_ev is not None:
+            self._card_ev.cancel()
+            self._card_ev = None
+        self._show_stage_clone(auto=True)
 
     # -- stage 6: CLONE --------------------------------------------------------
 
@@ -519,13 +636,10 @@ class MitosisScreen(BoxLayout):
         self._clear()
         if auto:
             head = _label(
-                "Card into the NEW medic → power it on (press BOOT on its "
-                "power pack if it plays dead) → patch cable between the two, "
-                "or let it join your WiFi.\n"
-                "Node Medic is ALREADY watching for it — first boot takes up "
-                "to 5 minutes and the search waits that long.",
+                "Node Medic is doing the rest itself. First boot takes up "
+                "to 5 minutes - the search waits that long.",
                 color="text_primary", size="15sp")
-            head.size_hint_y, head.height = None, dp(110)
+            head.size_hint_y, head.height = None, dp(48)
             self.add_widget(head)
         self.run_btn = Button(
             text="Clone onto the new medic", size_hint_y=None,
