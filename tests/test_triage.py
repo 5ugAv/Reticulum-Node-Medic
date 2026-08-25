@@ -208,15 +208,15 @@ def test_no_goal_celebration_for_a_poor_area():
 
 
 def test_cancel_at_the_empty_prompt_goes_home_not_down():
-    """The empty-triage prompt's Cancel referenced self._on_home, which no
-    code had EVER set — app.py passed the callback, the constructor dropped
-    it, and every fresh medic crashed its whole UI on first Cancel (found on
-    HAWKEYE's first day alive, 2026-08-25: blank screen, flashing cursor,
-    systemd restart loop)."""
-    from ui.screens.triage_screen import TriageScreen
-    calls = []
-    ts = TriageScreen(feed_factory=lambda: (lambda: None),
-                      on_home=lambda: calls.append("home"))
-    assert ts._on_home is not None
-    ts._on_home()
-    assert calls == ["home"]
+    """The empty-triage prompt's Cancel called self._on_home; app.py always
+    passed on_home= — and the constructor silently dropped it (Kivy swallows
+    unknown kwargs), so the attribute never existed and every fresh medic
+    crashed its whole UI on first Cancel (HAWKEYE's first day, 2026-08-25).
+    Source-level pin (the screen is a Kivy widget, uninstantiable here):
+    the parameter must be declared, stored, and still used by Cancel."""
+    import os
+    src = open(os.path.join(os.path.dirname(__file__), os.pardir,
+                            "ui", "screens", "triage_screen.py")).read()
+    assert "on_home=None" in src                  # declared
+    assert "self._on_home = on_home" in src       # stored
+    assert "self._on_home and self._on_home()" in src   # used by Cancel
