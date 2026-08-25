@@ -107,3 +107,11 @@ Design intent:
 - The walkthrough ships in the tool tree so every clone carries it; it can
   also be pushed to an already-cloned medic over SSH (rsync), which
   incidentally proves the parent->child update path.
+
+## 2026-08-25 EVENING: MITOSIS PROVEN LIVE — see memory `mitosis-proven`
+
+HAWKEYE cloned end-to-end (15 rungs green) and booted into the tool on its
+own 5" screen, touch working. Display truth: cage kiosk + carried debs +
+goodix-rebind (all now IN the ladder, commit 963e266). Remaining: the
+FIRSTBORN ceremony (above), WiFi-gift page live test, deb-refresh workflow,
+mitosis i18n.
