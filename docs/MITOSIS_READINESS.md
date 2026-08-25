@@ -115,3 +115,34 @@ own 5" screen, touch working. Display truth: cage kiosk + carried debs +
 goodix-rebind (all now IN the ladder, commit 963e266). Remaining: the
 FIRSTBORN ceremony (above), WiFi-gift page live test, deb-refresh workflow,
 mitosis i18n.
+
+## PUNCH LIST — operator input from the first live mitosis day (2026-08-25)
+
+1. THE FIRSTBORN CEREMONY (biggest unbuilt): the clone's setup wizard ends at
+   the homepage with no Tracker walkthrough — build the guided birth of the
+   medic's own permanently-attached Tracker + the celebration screen.
+2. Triage-cancel crash on the clone (screen blanks, cursor top-left = UI
+   crash-loop): trap armed (ui.log now captures the child), awaiting one
+   reproduction for the traceback. Possibly screensaver-related (idle-timed
+   crashes observed at ~40s intervals).
+3. Guided MITOSIS end-to-end ON THE SCREEN: the headless ladder is proven;
+   the touchscreen flow needs one full clean run (re-image + clone) to call
+   the walkthrough itself proven. WiFi-gift page untested live.
+4. i18n for the whole mitosis flow (currently English-only).
+5. Deb-cache refresh workflow (like wheelhouse.cache_wheels) so assets/debs
+   tracks the base image; also add libmtdev1 verification (cosmetic Kivy
+   warning otherwise).
+6. Hardware follow-ups: case power button to Pi 5 J2 (momentary check
+   first), 12.6V CC/CV car charger for the pack, NVMe-boot future = native
+   SD slot imaging.
+7. Vault daily-unlock ruling + container when/where line: DONE 2026-08-25.
+
+## OFFLINE VERDICT (operator's key question, answered honestly)
+
+YES — as of tonight the ENTIRE clone runs with no internet: carried OS
+image, carried cp313 wheels (pip bootstrapped from the image's own wheel),
+carried 72-deb display stack, everything else over the cable. The one
+online act ever performed was TODAY'S one-time deb harvest, now cached and
+carried. The only future online need is REFRESHING those caches when the
+base image changes (item 5). WiFi on the clone is optional and typed-in —
+never required.
