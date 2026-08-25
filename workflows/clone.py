@@ -88,17 +88,26 @@ def transfer_firmware_cache(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def install_dependencies(wf: "CloneWorkflow") -> StepResult:
+    # THE LITE IMAGE SHIPS NO pip3 — the lesson the node births paid for on
+    # HOPE (2026-08-01) and the clone relearned on HAWKEYE (2026-08-25, live:
+    # "pip3: command not found" behind a clipped red row). _ensure_pip
+    # bootstraps pip OFFLINE from the wheel Debian already put on the image.
+    from workflows.build import _ensure_pip
+    pip_ok, pip_note = _ensure_pip(wf)
+    if not pip_ok:
+        return StepResult("install_dependencies", False, pip_note)
+    pip = wf.pip_cmd
     # Install the pinned stack (assets/requirements.txt). Prefer the carried
     # wheelhouse (offline field clone); fall back to online pip if it's absent.
     have_wheels = wf.connection.run(f"ls {REMOTE_WHEELS}/*.whl")[0] == 0
     if have_wheels:
-        cmd = (f"pip3 install --no-index --find-links {REMOTE_WHEELS} "
+        cmd = (f"{pip} install --no-index --find-links {REMOTE_WHEELS} "
                f"--break-system-packages --user -r {REMOTE_REQUIREMENTS}")
-        source = "carried wheelhouse (offline)"
+        source = f"carried wheelhouse (offline){pip_note}"
     elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
-        cmd = (f"pip3 install --break-system-packages --user "
+        cmd = (f"{pip} install --break-system-packages --user "
                f"-r {REMOTE_REQUIREMENTS}")
-        source = "online pip"
+        source = f"online pip{pip_note}"
     else:
         return StepResult(
             "install_dependencies", False,
@@ -385,8 +394,14 @@ class CloneWorkflow:
         self.current_index = 0
         self.results: List[StepResult] = []
         self.monitoring_db_json: str = ""
+        self.pip_cmd: str = "pip3"
         self.fresh_identity_generated: bool = False
         self.fresh_identity_hash: Optional[str] = None
+
+    def priv(self, cmd: str) -> str:
+        """Privileged form of *cmd* on the clone — the imaged 'pi' account
+        carries NOPASSWD sudo (written by the card bake)."""
+        return f"sudo -n {cmd}"
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)

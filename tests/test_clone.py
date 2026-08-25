@@ -253,3 +253,18 @@ def test_clone_does_not_carry_the_parents_onboard_roster():
     w.run_all()
     assert not any("onboard.json" in cmd for cmd in c.history)
     assert not any("onboard" in (local or "") for local, _ in c.pushed_trees)
+
+
+def test_install_dependencies_bootstraps_pip_from_the_images_wheel(monkeypatch):
+    """Lite ships no pip3 (HOPE 2026-08-01; relearned on HAWKEYE 2026-08-25).
+    The ladder must fall back to running pip out of the image's own wheel."""
+    c = conn()
+    c.rules.insert(0, ("command -v pip3", 1, "", ""))
+    c.rules.insert(0, ("python3 -m pip --version", 1, "", ""))
+    c.rules.insert(0, ("ls /usr/share/python-wheels/pip-*.whl", 0,
+                       "/usr/share/python-wheels/pip-25.1.1-py3-none-any.whl", ""))
+    w = wf(c)
+    r = _run(w, "install_dependencies")
+    assert r.success, r.message
+    assert w.pip_cmd.startswith("python3 /usr/share/python-wheels/pip-")
+    assert any(w.pip_cmd in cmd and "--no-index" in cmd for cmd in c.history)
