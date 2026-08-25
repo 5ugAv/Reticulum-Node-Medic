@@ -75,6 +75,11 @@ class MitosisScreen(BoxLayout):
         self.name_input = TextInput(text="NodeMedic2", multiline=False,
                                     font_size=theme.font_sp("17sp"),
                                     size_hint_x=1.4)
+        # Summon the medic's on-screen keyboard on focus — the field is on a
+        # touchscreen; without this it can only be admired (caught live,
+        # first MITOSIS bench run, 2026-08-25).
+        from ui.onscreen_keyboard import bind_field
+        bind_field(self.name_input)
         name_row.add_widget(self.name_input)
         self.add_widget(name_row)
 
