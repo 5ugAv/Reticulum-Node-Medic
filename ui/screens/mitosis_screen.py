@@ -56,6 +56,7 @@ STEP_TITLES = [
     ("configure_autostart", "Setting the tool to start on boot"),
     ("bake_recovery_bootorder", "Teaching its boot chip to ask for help"),
     ("final_verification", "Final check-over"),
+    ("restart_into_tool", "Waking the new medic into the tool"),
 ]
 
 #: Expected seconds per step — drives each row's progress bar. Estimates from
@@ -71,6 +72,7 @@ STEP_EST_S = {
     "generate_fresh_identity": 12, "stamp_lineage": 6,
     "record_child_trust": 4, "configure_autostart": 12, "bake_recovery_bootorder": 15,
     "final_verification": 12,
+    "restart_into_tool": 4,
 }
 
 #: Rough dd+config seconds for the write's fill estimate — the same model the
@@ -604,9 +606,11 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        hint = _label("Node Medic sees the card leave and carries on by "
-                      "itself.", color="text_secondary", size="14sp")
-        hint.size_hint_y, hint.height = None, dp(28)
+        hint = _label("Make sure the new medic is switched OFF first, then push "
+                      "the little card into its slot until it clicks. Node "
+                      "Medic sees the card leave here and carries on by itself.",
+                      color="text_secondary", size="14sp")
+        hint.size_hint_y, hint.height = None, dp(60)
         self.add_widget(hint)
 
         def tick(_dt):
@@ -654,9 +658,11 @@ class MitosisScreen(BoxLayout):
         body = _label(
             "Press the power button on the new medic. If it plays dead, "
             "press BOOT on its battery pack once - a fresh pack sleeps "
-            "until asked. A flickering green LED means it is working.",
+            "until asked. A flickering green LED means it is working.\n\n"
+            "Its OWN screen will stay dark, or show start-up text, until later "
+            "- that's normal. Keep watching THIS screen.",
             color="text_primary", size="16sp")
-        body.size_hint_y, body.height = None, dp(96)
+        body.size_hint_y, body.height = None, dp(150)
         self.add_widget(body)
         nxt = Button(text="It has power - next", size_hint_y=None,
                      height=dp(56), font_size="20sp", background_normal="",
@@ -681,11 +687,13 @@ class MitosisScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             self._anim = None
         body = _label(
-            "Plug an ordinary network patch cable into BOTH medics' "
-            "network ports. Node Medic sees the cable arrive and carries "
-            "on by itself.",
+            "Plug the flat internet cable - the wide plug that clicks in - "
+            "into the network socket on BOTH medics. (Not the little USB "
+            "shapes; the wider one.) Node Medic sees the cable arrive and "
+            "carries on by itself. The new medic's own screen may still be "
+            "dark or showing text - that's normal.",
             color="text_primary", size="15sp")
-        body.size_hint_y, body.height = None, dp(64)
+        body.size_hint_y, body.height = None, dp(120)
         self.add_widget(body)
         wifi = _small_btn("No cable - it joins my WiFi instead")
         wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
@@ -887,10 +895,11 @@ class MitosisScreen(BoxLayout):
             self.run_btn.text = "Clone finished — every step verified"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             done = _label(
-                "Now: power the new medic on ITS OWN screen. It boots into the "
-                "tool and walks its own setup — which offers to birth its own "
-                "Heltec Tracker (its GPS and clock, the firstborn) if you have "
-                "one on hand.", color="text_primary", size="16sp")
+                "The new medic is restarting itself now. In about a minute its "
+                "OWN screen opens its setup — walk that through on the new "
+                "medic. (Until it appears, its screen may show start-up text; "
+                "that's normal — you don't need to do anything here.)",
+                color="text_primary", size="16sp")
             done.size_hint_y = None
             done.height = dp(80)
             self.add_widget(done)

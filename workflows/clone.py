@@ -64,7 +64,10 @@ def transfer_tool(wf: "CloneWorkflow") -> StepResult:
     ok = wf.connection.push_tree(TOOL_ROOT, REMOTE_TOOL_DIR, exclude=TOOL_EXCLUDES)
     if not ok:
         return StepResult("transfer_tool", False,
-                          "Could not copy the tool tree to the target (rsync).")
+                          "Couldn't copy the tool across to the new medic. "
+                          "Check the cable between the two medics is firmly in "
+                          "both, then press Retry. (rsync of the tool tree "
+                          "failed.)")
     present = wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] == 0
     return StepResult("transfer_tool", present,
                       "Copied the tool code + asset store." if present
@@ -111,8 +114,11 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
     else:
         return StepResult(
             "install_dependencies", False,
-            "No carried wheelhouse and no internet — run wheelhouse.cache_wheels "
-            "on the medic (online) so clones install offline, or connect WiFi.")
+            "The new medic needs its software, but this medic has no carried "
+            "copy and no internet to fetch it. Connect THIS medic to WiFi "
+            "(Settings \u25b8 WiFi) and press Retry — once it has been online "
+            "even once, it carries its own copy and later clones work offline. "
+            "(No carried wheelhouse and no internet.)")
     code, out, err = wf.connection.run(cmd, timeout=1200)
     ok = code == 0
     # No apt step needed: the Kivy wheel vendors its own SDL2/SDL2_image/mixer/
@@ -370,6 +376,28 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
                       else "Verification failed: " + "; ".join(problems))
 
 
+@clone_step
+def restart_into_tool(wf: "CloneWorkflow") -> StepResult:
+    """Reboot the new medic so it actually COMES UP in the tool.
+
+    Without this the clone only ``enable``d the autostart service (starts on the
+    NEXT boot) — so after "Clone finished" the new medic sits at a blank console
+    and a solo keeper thinks it failed (three-persona walkthrough 2026-08-26).
+    A reboot also applies the pending EEPROM boot-order bake. The reboot is
+    issued a few seconds in the FUTURE and backgrounded so this ssh call returns
+    cleanly before the link drops; we can't verify past our own disconnect, so a
+    dropped connection here is SUCCESS, not failure."""
+    # sleep-then-reboot, detached, so ssh returns 0 before the box goes down.
+    wf.connection.run(
+        wf.priv("sh -c 'nohup sh -c \"sleep 3; reboot\" "
+                ">/dev/null 2>&1 &'"), timeout=15)
+    return StepResult(
+        "restart_into_tool", True,
+        "Restarting the new medic — in about a minute its own screen opens the "
+        "tool's setup. (Its screen may show start-up text until then; that's "
+        "normal.)")
+
+
 def carry_the_time(wf: "CloneWorkflow") -> StepResult:
     """Set the clone's clock from THIS medic's own disciplined clock.
 
@@ -394,8 +422,10 @@ def carry_the_time(wf: "CloneWorkflow") -> StepResult:
     code, out, err = wf.connection.run(f"sudo -n date -u -s @{int(now)}")
     if code != 0:
         return StepResult("carry_the_time", False,
-                          "Could not set the clone's clock (sudo refused): "
-                          f"{(err or out)[-120:]}")
+                          "The new medic wouldn't let this medic set its clock. "
+                          "This usually means its card wasn't imaged by THIS "
+                          "medic (step 1) — re-image the card and try again. "
+                          f"(sudo refused: {(err or out)[-80:]})")
     wf.connection.run("sudo -n timedatectl set-ntp true")
 
     # local source honesty: say what the carried time was disciplined by

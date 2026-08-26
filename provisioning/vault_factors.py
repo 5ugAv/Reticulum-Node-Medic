@@ -91,7 +91,51 @@ def encode_pattern(dots: Sequence[int]) -> str:
         raise FactorError(f"dots must be 0..{GRID - 1}")
     if len(set(seq)) != len(seq):
         raise FactorError("a pattern cannot use the same dot twice")
+    if _is_straight_line(seq):
+        # The hint promises "not a straight line" — enforce it, or a keeper
+        # draws a single swipe down/across (the most shoulder-guessable
+        # pattern) and the guard the copy claimed never fired (walkthrough
+        # 2026-08-26).
+        raise FactorError(
+            "that is a single straight line — add a turn so it is not just a "
+            "swipe")
     return "-".join(str(d) for d in seq)
+
+
+def _is_straight_line(seq: Sequence[int]) -> bool:
+    """True if every dot lies on ONE straight line on the 3x3 grid (a plain
+    row, column, or diagonal swipe). Dots are 0..8; (col,row) = (d%3, d//3).
+    Two points are always colinear, so a 2-dot line counts, but MIN_PATTERN_DOTS
+    already forbids those."""
+    pts = [(d % 3, d // 3) for d in seq]
+    (x0, y0) = pts[0]
+    (x1, y1) = pts[1]
+    dx, dy = x1 - x0, y1 - y0
+    for (x, y) in pts[2:]:
+        # cross-product of (first->this) with the base direction: 0 == colinear
+        if (x - x0) * dy - (y - y0) * dx != 0:
+            return False
+    return True
+
+
+#: A vault passphrase is the guaranteed way back in, so it must be more than a
+#: PIN. Enough to stop "1234"/"dev1" without demanding a memorised monster.
+MIN_PASSPHRASE_LEN = 8
+
+
+def passphrase_problem(text: str) -> Optional[str]:
+    """Why *text* is too weak to be the vault's fallback key, or None if it is
+    acceptable. The copy promises "a real passphrase, not a word"; this is what
+    makes that true instead of decorative (walkthrough 2026-08-26)."""
+    t = text or ""
+    if len(t) < MIN_PASSPHRASE_LEN:
+        return (f"too short — use at least {MIN_PASSPHRASE_LEN} characters "
+                "(a few words together is easiest to remember)")
+    if len(set(t)) < 4:
+        return "too repetitive — mix in more different characters or words"
+    if t.isdigit():
+        return "all numbers is weak — add words or letters"
+    return None
 
 
 def pattern_space(min_len: int = MIN_PATTERN_DOTS, grid: int = GRID) -> int:

@@ -366,3 +366,34 @@ def test_the_screens_promise_no_back_door():
         d = describe(pol)
         assert "only way back in" in d["fallback"]
         assert "no back door" in d["fallback"]
+
+
+# -- enforce what the setup copy promises (walkthrough 2026-08-26) ------------
+
+def test_straight_line_patterns_are_rejected():
+    import pytest as _pt
+    from provisioning.vault_factors import encode_pattern, FactorError
+    for line in ([0, 1, 2], [0, 3, 6], [0, 4, 8], [2, 4, 6], [3, 4, 5],
+                 [6, 7, 8], [0, 1, 2, 2]):   # last is dup, also rejected
+        with _pt.raises(FactorError):
+            encode_pattern(line)
+
+
+def test_a_pattern_with_a_turn_is_accepted():
+    from provisioning.vault_factors import encode_pattern
+    assert encode_pattern([0, 1, 4, 6])       # has a corner
+    assert encode_pattern([0, 3, 6, 7])       # an L — not a single line
+
+
+def test_passphrase_problem_rejects_pins_and_words():
+    from provisioning.vault_factors import passphrase_problem
+    assert passphrase_problem("1234")          # too short
+    assert passphrase_problem("dev1")          # too short
+    assert passphrase_problem("aaaaaaaa")      # too repetitive
+    assert passphrase_problem("12345678") and "numbers" in passphrase_problem("12345678")
+
+
+def test_a_real_passphrase_passes():
+    from provisioning.vault_factors import passphrase_problem
+    assert passphrase_problem("garden gate rusty") is None
+    assert passphrase_problem("correcthorse") is None

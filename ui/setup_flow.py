@@ -262,9 +262,9 @@ _SECURITY_STEPS = [
 
     {"key": LEVEL, "part": SECURITY,
      "title": "How you will unlock it day to day",
-     "body": "Three options. What each one asks for, and what it is honestly "
-             "worth, is written on the option itself — including what it does "
-             "not protect you from.",
+     "body": "Pick one. What each asks for, and what it is honestly worth, is "
+             "written on the option itself — including what it does not protect "
+             "you from. The stronger ones are further down.",
      "self_advancing": True},
 
     {"key": PATTERN_STEP, "part": SECURITY,
@@ -591,6 +591,18 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
     lying about its own state on the screen designed to explain that state.
     """
     out: List[tuple] = []
+    if not vault_exists:
+        # LEAD with the state that matters, not bury it under green ticks: a
+        # skimmer reads a stack of ✓ lines, feels done, and misses that nothing
+        # is actually locked yet (walkthrough 2026-08-26). The factors below are
+        # ready-and-waiting, not active protection.
+        out.append((False,
+                    "NOT LOCKED YET — your records are NOT encrypted. What you "
+                    "set below is ready and waiting, but it protects nothing "
+                    "until encryption is switched on (a Settings switch still "
+                    "being built). Then the container is created at "
+                    "~/.nodemedic-vault.img, opened by exactly the keys you set "
+                    "today."))
     out.append((state.recovery_key_verified,
                 "Recovery key written down and typed back correctly."
                 if state.recovery_key_verified else
@@ -615,16 +627,9 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
 
     if vault_exists:
         out.append((True, "An encrypted container exists on this card."))
-    else:
-        # THE SENTENCE THAT KEEPS THIS SCREEN HONEST.
-        out.append((False,
-                    "No encrypted container has been created on this card yet, "
-                    "so your records are NOT encrypted. Node Medic will not say "
-                    "otherwise until it has made one and watched it open. When "
-                    "encryption is switched on (a Settings switch still being "
-                    "built), the container will be created at "
-                    "~/.nodemedic-vault.img on this card — opened by exactly "
-                    "the keys and choices you set today."))
+    # When there is no vault, the honest NOT-LOCKED headline is already at the
+    # TOP of this list (see above) — it leads instead of trailing so it can't be
+    # skimmed past under the green ticks.
     return out
 
 

@@ -30,6 +30,7 @@ EXPECTED_STEPS = [
     "configure_autostart",
     "bake_recovery_bootorder",
     "final_verification",
+    "restart_into_tool",
 ]
 
 IDENTITY_OUT = "New identity <2233445566778899aabbccddeeff0011> written to ..."

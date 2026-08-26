@@ -206,9 +206,44 @@ class SetupWizardScreen(BoxLayout):
 
     def _back(self):
         if self._i <= 0:
-            self._finish(skipped=True)
+            # Backing off the FIRST screen skips the entire security half. Don't
+            # do that silently — an impatient tap to "get out of this" would
+            # otherwise leave a wide-open medic that never asks again
+            # (walkthrough 2026-08-26). Confirm first.
+            self._confirm_skip_security()
             return
         self._goto(self._i - 1)
+
+    def _confirm_skip_security(self):
+        from kivy.uix.boxlayout import BoxLayout as _Box
+        from kivy.uix.modalview import ModalView
+        view = ModalView(size_hint=(0.9, None), height=dp(240),
+                         auto_dismiss=False,
+                         background_color=theme.hex_to_rgba(
+                             theme.COLORS["background"]))
+        box = _Box(orientation="vertical", padding=dp(18), spacing=dp(12))
+        box.add_widget(_grow(
+            "Skip setting up how this medic locks itself? You can do it later "
+            "from Settings, but until then its records are not protected.",
+            "16sp", color="text_primary"))
+        stay = Button(text="No — keep setting up", size_hint_y=None,
+                      height=dp(50), background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        stay.bind(on_release=lambda *_: view.dismiss())
+        skip = Button(text="Skip for now", size_hint_y=None, height=dp(46),
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+
+        def _do_skip(*_):
+            view.dismiss()
+            self._finish(skipped=True)
+        skip.bind(on_release=_do_skip)
+        box.add_widget(stay)
+        box.add_widget(skip)
+        view.add_widget(box)
+        view.open()
 
     def _goto(self, index):
         """Move to a step, refusing one whose precondition has gone.
@@ -611,6 +646,11 @@ class SetupWizardScreen(BoxLayout):
         b = self._pw2.text or ""
         if not a:
             self._pw_status.text = "Enter a passphrase."
+            return
+        from provisioning.vault_factors import passphrase_problem
+        weak = passphrase_problem(a)
+        if weak:
+            self._pw_status.text = f"That passphrase is {weak}."
             return
         if a != b:
             # Do NOT clear the first field. Wiping both on a mismatch means
