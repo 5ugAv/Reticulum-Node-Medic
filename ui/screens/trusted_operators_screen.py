@@ -72,8 +72,8 @@ class TrustedOperatorsScreen(BoxLayout):
         us = trust.units()
         if not us:
             self._list.add_widget(_line(
-                "No other units yet. When you clone this medic (MITOSIS), the new "
-                "unit appears here.", size="13.5sp", color="text_secondary", h=44))
+                "No other units yet. When you clone this medic (the Clone button "
+                "under BIRTH), the new unit appears here.", size="13.5sp", color="text_secondary", h=44))
             return
         for u in us:
             self._list.add_widget(self._card(u))

@@ -698,7 +698,7 @@ def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
                 "find_new_medic", False,
                 f"{target} answered on the network but SSH login as "
                 f"'{username}' failed — was the card imaged with this medic's "
-                "key (MITOSIS step 1)?")
+                "key (the Clone step, step 1)?")
         wf.connection = conn
         wf.target_address = target
         return StepResult("find_new_medic", True,

@@ -375,7 +375,7 @@ _TOUR_STEPS = [
              "Diagnose is the first thing to try before suspecting a node."},
 
     {"key": TOUR_MITOSIS, "part": TOUR, "opens": "mitosis",
-     "title": "MITOSIS — make another medic",
+     "title": "CLONE — make another medic",
      "body": "Copies this Node Medic onto a fresh Raspberry Pi 5, so a second "
              "person can build and repair nodes without you.\n\n"
              "That is the point of the whole tool. A mesh that only one person "

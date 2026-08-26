@@ -615,7 +615,7 @@ class MitosisScreen(BoxLayout):
             if app is None:
                 return
             if on:
-                app.begin_activity("MITOSIS in progress — keep everything "
+                app.begin_activity("CLONE in progress — keep everything "
                                    "plugged in, don't power off")
             else:
                 app.end_activity()

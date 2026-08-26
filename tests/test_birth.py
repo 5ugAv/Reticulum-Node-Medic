@@ -12,7 +12,7 @@ def test_birth_offers_four_node_types_in_order():
 def test_birth_labels_are_human():
     labels = [label for _, label in birth_node_types()]
     assert labels == ["RTNode-2400", "RNode", "Pi + RNode",
-                      "Mitosis (clone tool) - requires a Raspberry Pi 5"]
+                      "Clone - copy this medic (needs a Raspberry Pi 5)"]
 
 
 def test_rnode_choices_official_first_custom_last():

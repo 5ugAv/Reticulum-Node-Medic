@@ -1415,7 +1415,7 @@ class BirthGuideScreen(BoxLayout):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line(tr("Mitosis - clone this Node Medic"), "21sp",
+        inner.add_widget(_line(tr("Clone - make another Node Medic"), "21sp",
                                bold=True, color="background", h=30))
         inner.add_widget(_line(tr("Copy this Node Medic onto a fresh Raspberry Pi 5 - "
                                   "a second building tool."), "14sp", color="background"))
