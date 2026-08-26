@@ -947,7 +947,12 @@ class ReticulumNodeMedicApp(App):
         # source) as part of the first tour. Dormant until shown, like MITOSIS:
         # its plug-state poll must not run while hidden.
         firstborn = Screen(name="firstborn")
-        _fb = FirstbornScreen(on_home=lambda: self.switch_mode("setup"))
+        # on_home -> HOME, not "setup": opening a mode from the tour already
+        # marked the walkthrough done (_leave_for), and switch_mode("setup")
+        # re-runs reset() — which would dump a new keeper who JUST finished the
+        # firstborn back at the security-welcome screen, re-running all of setup
+        # (2026-08-27). Home is where every other tour "open" lands.
+        _fb = FirstbornScreen(on_home=lambda: self.switch_mode("home"))
         firstborn.add_widget(self._with_back(_fb))
         firstborn.bind(on_pre_enter=lambda *_: _fb.begin_screen(),
                        on_leave=lambda *_: _fb.sleep())

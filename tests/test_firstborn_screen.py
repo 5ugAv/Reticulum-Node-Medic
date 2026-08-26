@@ -70,3 +70,11 @@ def test_tour_button_labels_are_not_a_trap():
     FLOW = pathlib.Path("ui/setup_flow.py").read_text()
     assert '"opens_label": "Meet the firstborn' in FLOW
     assert '"next": "Skip for now' in FLOW
+
+
+def test_firstborn_returns_home_not_into_a_setup_restart():
+    # on_home must NOT be switch_mode("setup") — that re-runs the wizard reset()
+    # and dumps a keeper who just finished the firstborn back at the security
+    # welcome screen (loop bug, 2026-08-27). Home is where tour opens land.
+    assert 'FirstbornScreen(on_home=lambda: self.switch_mode("home"))' in APP
+    assert 'FirstbornScreen(on_home=lambda: self.switch_mode("setup"))' not in APP

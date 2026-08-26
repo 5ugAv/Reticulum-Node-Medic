@@ -84,9 +84,10 @@ def decide(gps_live: bool,
     if result is True:
         return FirstbornView(
             DONE, "Node number one is alive 🎉",
-            "The Tracker is flashed, adopted, and reporting real satellites. "
-            "This medic can see where it stands and knows the time — every "
-            "birth from here carries a true place and date.",
+            "Meet the firstborn — this medic's own first node, flashed and "
+            "adopted, reporting real satellites right now. The medic can see "
+            "where it stands and knows the time at last, so every node you "
+            "build from here carries a true place and date. A fine first child.",
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
