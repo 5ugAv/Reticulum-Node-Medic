@@ -440,6 +440,36 @@ class BirthGuideScreen(BoxLayout):
         step.next_btn.color = theme.hex_to_rgba("#f0f0f0")
         self._start_board_poll(anim, on_present=self._on_detect)
         self._start_detect_pi_poll()
+        self._start_detect_nudge(step)
+
+    def _start_detect_nudge(self, step):
+        """A silent no-detect looks identical to 'still waiting' — a charge-only
+        cable, the wrong socket, a dead board all read the same (walkthrough
+        2026-08-26). After a grace period with nothing seen, name the usual
+        cause so the keeper isn't left staring."""
+        from kivy.clock import Clock
+        self._stop_detect_nudge()
+        self._detected_something = False
+
+        def nudge(_dt):
+            if self._detected_something:
+                return
+            try:
+                step.set_status(
+                    "Still not seeing anything. This is almost always the USB "
+                    "cable — many are charge-only. Try a different cable, or "
+                    "another socket on Node Medic.")
+            except Exception:                              # noqa: BLE001
+                pass
+        # ~18s: long enough not to nag during a normal plug-in, short enough to
+        # rescue someone stuck on a bad cable.
+        self._detect_nudge_ev = Clock.schedule_once(nudge, 18)
+
+    def _stop_detect_nudge(self):
+        ev = getattr(self, "_detect_nudge_ev", None)
+        if ev is not None:
+            ev.cancel()
+            self._detect_nudge_ev = None
 
     def _start_detect_pi_poll(self):
         """Watch for a Raspberry Pi alongside the serial-board poll.
@@ -497,6 +527,8 @@ class BirthGuideScreen(BoxLayout):
         is the step with a deadline — it resets the board and must not be
         interrupted — and naming can be asked at any point afterwards.
         """
+        self._detected_something = True
+        self._stop_detect_nudge()
         self._stop_detect_pi_poll()
         if getattr(self, "_reading_pending", False):
             return                        # a board read already owns the flow
@@ -513,6 +545,8 @@ class BirthGuideScreen(BoxLayout):
 
     def _on_detect(self, anim):
         """A board appeared — celebrate, then read + classify it off-thread."""
+        self._detected_something = True
+        self._stop_detect_nudge()
         self._stop_board_poll()
         # The Pi watch must stop too, or it fires DURING the read and replaces
         # the "Reading the board…" screen with the name step.
@@ -3233,6 +3267,7 @@ class BirthGuideScreen(BoxLayout):
         self._nav_token = getattr(self, "_nav_token", 0) + 1
         self._stop_board_poll()
         self._stop_node_poll()
+        self._stop_detect_nudge()
         # The Pi poll must die with the step too. Left running it keeps firing
         # _on_pi_detected and yanks the operator back to the name screen from
         # whatever step they had reached.

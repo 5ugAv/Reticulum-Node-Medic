@@ -200,6 +200,36 @@ class WizardStep(BoxLayout):
         if self.next_btn.parent is not None:
             self._nav.remove_widget(self.next_btn)
         self.back_btn.size_hint_x = 1        # Back takes the row on its own
+        self._start_heartbeat()
+
+    def _start_heartbeat(self):
+        """A self-advancing step has no button, so a keeper waiting on the medic
+        to sense hardware sees a still screen and thinks it hung, then pulls the
+        board mid-flash (walkthrough 2026-08-26). A slow-pulsing 'keeping watch'
+        line gives the screen a visible pulse — pure decoration, separate from
+        set_status's narration so the two never fight. Self-cancels once the
+        step is detached, so no Clock leaks after navigation."""
+        from kivy.clock import Clock
+        if getattr(self, "_heartbeat_ev", None):
+            return
+        beat = Label(text="●  keeping watch — you don't need to press anything",
+                     font_size=theme.font_sp("13sp"), halign="left",
+                     valign="middle", size_hint_y=None, height=dp(22),
+                     color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        beat.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        self._heartbeat_lbl = beat
+        self.add_widget(beat, index=1)      # just above the nav row
+        self._heartbeat_up = True
+
+        def pulse(_dt):
+            if self.parent is None:         # step navigated away -> stop
+                self._heartbeat_ev.cancel()
+                self._heartbeat_ev = None
+                return False
+            self._heartbeat_up = not self._heartbeat_up
+            beat.opacity = 1.0 if self._heartbeat_up else 0.35
+            return True
+        self._heartbeat_ev = Clock.schedule_interval(pulse, 0.6)
 
     def show_next(self):
         """Put the Next button back — for a wait that has gone on long enough

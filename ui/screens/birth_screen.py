@@ -2884,6 +2884,18 @@ class BirthScreen(BoxLayout):
                         "over USB; when it is heard over LoRa it will appear "
                         "in VITALS.",
                         "Build finished", False, tone="success")
+                elif getattr(self, "_last_type", "") == "rnode":
+                    # An RNode is a bare RADIO for a phone/computer — it does not
+                    # run the mesh and never beacons, so "watch VITALS" would
+                    # send the keeper looking for something that can't appear
+                    # (walkthrough 2026-08-26, Tomas). Say what it's FOR.
+                    view = requirement_popup(
+                        "Build finished — the radio is flashed and verified, "
+                        "and its birth certificate is in the log below.\n\n"
+                        "This is a radio to plug into a phone or computer. It "
+                        "won't show up in VITALS on its own — that's normal; "
+                        "VITALS is for nodes that run the mesh themselves.",
+                        "Build finished", False, tone="success")
                 else:
                     view = requirement_popup(
                         "Build finished — details and the birth certificate are in "

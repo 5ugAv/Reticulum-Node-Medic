@@ -50,6 +50,25 @@ honest "give it two minutes, nothing is wrong" closers.
 8. **No photos of the actual parts/sockets** (only two Heltec boards + the
    SD-into-Pi animation have real pictures). **(needs photos)**
 
+## Progress (2026-08-26)
+
+DONE (safe, no operator tradeoff):
+- [x] **4. Self-advancing heartbeat** — a pulsing "keeping watch — you don't
+      need to press anything" line on every self-advancing step (WizardStep,
+      fires on hide_next; self-cancels on navigation).
+- [x] **5. Silent no-detect nudge** — after ~18 s with nothing seen, the detect
+      screen names the usual cause (charge-only cable / wrong socket).
+- [x] **7. Honest RNode finish** — a bare RNode is a radio for a phone; it never
+      beacons, so the finish no longer sends the keeper to watch VITALS.
+
+STILL TO DO (safe): **6. Birth pre-flight "what you need"** — best shaped per
+flow WITH the operator (Pi+RNode needs Pi/radio/SD/cable/power; RTNode needs the
+node board + the medic on Wi-Fi). The mitosis pre-flight is the template.
+
+NOTE: mitosis correctly does NOT go through the antenna landing (it starts at
+its own pre-flight). The antenna step + its "never power a radio with no
+antenna" warning fire only for radio births — as intended.
+
 ## Suggested order
 - Safe to implement now (no operator tradeoff): 4 (heartbeat), 5 (silent-failure
   nudge), 6 (birth pre-flight), 7 (finish copy).
