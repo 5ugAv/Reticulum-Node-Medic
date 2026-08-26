@@ -100,9 +100,11 @@ class BirthGuideScreen(BoxLayout):
         self.reset()
 
     def reset(self):
-        """Re-entered: back to the antenna-first landing (attach the antenna BEFORE
-        the next screen powers the board over USB), which leads to the detect-first
-        landing (plug a node in; the medic decides BIRTH vs ADOPT)."""
+        """Re-entered: back to the node-type CHOOSER (pick what you're building —
+        RNode / RTNode / Pi+radio / Clone). For a radio build the antenna warning
+        and the detect step follow the choice; Clone needs neither (operator,
+        2026-08-26). Antenna still precedes the board being powered over USB —
+        it's just after the choice now, not before it."""
         self._stop_current()
         self._path = None
         self._i = 0
@@ -180,10 +182,14 @@ class BirthGuideScreen(BoxLayout):
         # is an instruction about a board the operator isn't holding (walkthrough
         # 2026-08-02). For the Pi path the same warning is carried on the step
         # where the radio actually appears.
-        if self._pi_present_without_radio():
-            self._render_detect()
-        else:
-            self._render_antenna()
+        # THE NODE-TYPE CHOOSER IS THE FIRST BIRTH SCREEN (operator,
+        # 2026-08-26): the operator picks WHAT they are building — a question
+        # they can answer — before the antenna warning and the detect step.
+        # Clone lives on that chooser too and needs no antenna (its radio, the
+        # firstborn Tracker, is born later during the NEW medic's onboarding).
+        # The antenna landing + detect now follow the choice, radio builds only.
+        self._path = None
+        self._render_intro()
 
     @staticmethod
     def _pi_present_without_radio():
@@ -207,14 +213,14 @@ class BirthGuideScreen(BoxLayout):
         fry it. One landing covers every path (all reach detect)."""
         self._stop_current()
         self.clear_widgets()
-        self._back_action = None          # antenna landing is the root -> home
+        self._back_action = self._render_intro   # antenna -> back to the chooser
         anim = ConnectAntennaAnim()
         step = WizardStep(
             index=0, total=1, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
             anim=anim, hint=ANTENNA_STEP.get("hint", ""),
             warning=ANTENNA_STEP["warning"], next_text=tr("Antenna on  →"),
             on_next=self._render_detect,
-            on_back=lambda: self._on_navigate and self._on_navigate("home"))
+            on_back=self._render_intro)
         self.add_widget(step)
         self._current = step
         step.start()
@@ -530,6 +536,8 @@ class BirthGuideScreen(BoxLayout):
         self._detected_something = True
         self._stop_detect_nudge()
         self._stop_detect_pi_poll()
+        if self._path in ("host", "radio"):
+            return          # operator chose a non-Pi build — don't hijack it
         if getattr(self, "_reading_pending", False):
             return                        # a board read already owns the flow
         try:
@@ -668,8 +676,12 @@ class BirthGuideScreen(BoxLayout):
             self._render_already_kin(c)   # already one of ours -> nothing to do
         elif c.get("kind") == "adopt":
             self._render_adopt(c)
+        elif self._path in ("host", "radio", "pi"):
+            # Type already chosen on the chooser (chooser-first flow) — don't
+            # ask again; name the node.
+            self._render_name()
         else:
-            self._render_intro()          # birth -> the build chooser
+            self._render_intro()          # birth -> the build chooser (fallback)
 
     def _render_already_kin(self, c):
         self._stop_current()
@@ -1148,7 +1160,7 @@ class BirthGuideScreen(BoxLayout):
         become?" — see the wipe handler."""
         self.clear_widgets()
         self._current = None
-        self._back_action = self._render_detect   # chooser -> detect landing
+        self._back_action = None   # the chooser is the birth root now -> home
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
         from ui.widgets.help_button import HelpButton
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
@@ -1462,7 +1474,13 @@ class BirthGuideScreen(BoxLayout):
     def _choose(self, path):
         self._path = path
         self._i = 0
-        self._render_name()
+        # Radio-involving builds see the antenna warning, THEN detect the board.
+        # Because the type was already chosen here, detect no longer re-asks —
+        # it routes straight to naming (see _route). A non-radio choice goes on.
+        if path in ("host", "radio", "pi"):
+            self._render_antenna()
+        else:
+            self._render_name()
 
     def _render_name(self):
         """First guided step: name the node. Folded into the flow here (instead of
