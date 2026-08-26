@@ -3,8 +3,13 @@
 The poster (assets/ui/front_page.png) fills the screen (fit, letterboxed
 on the dark ground); taps are converted into image-fraction coordinates and
 resolved by the pure ui.home_zones mapper: the five bottom cards open their
-modes, the red cross opens MITOSIS (the medic itself). Everything visual is
-the artwork — this screen is just an image and a hit-map.
+modes, and the red cross is an Easter egg that opens the credits screen.
+Everything visual is the artwork — this screen is just an image and a hit-map.
+
+NOTE (walkthrough 2026-08-26): MITOSIS has NO entry on this poster — it is only
+reachable via BIRTH ▸ Choose manually. A non-technical keeper looking to "make
+another one" cannot find it. Giving it a real home entry needs an artwork/layout
+decision (a sixth card, or a labelled control) — left for the operator.
 """
 
 from __future__ import annotations

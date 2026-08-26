@@ -25,7 +25,7 @@ how badly a real non-technical person is blocked. Checked off as landed.
 - [x] **6e. Welcome Back silently skips security.** Confirm before skipping.
 
 ## Walkthrough redesign (heavier; shape with operator)
-- [ ] **3. Pre-flight "what you need".** Open MITOSIS with a parts checklist
+- [x] **3. Pre-flight "what you need".** Open MITOSIS with a parts checklist
       (2nd Pi 5, SD card + reader, ethernet cable) + graceful back-out.
 - [ ] **4. Name/label the physical parts + power-off-first.** Plain language and
       real photos on INSERT (card slot), WRITTEN (where the card goes, power off
@@ -33,3 +33,14 @@ how badly a real non-technical person is blocked. Checked off as landed.
       *(photos may not exist — flag which are needed)*
 - [ ] **5. Findability.** MITOSIS is buried under BIRTH behind a muted button;
       give it a plain home-screen entry ("Make another Node Medic").
+
+
+## Needs the operator (artwork / real photos — cannot be done solo)
+- **4. Physical-part photos.** Plain language landed (cable named, power-off-
+  first, socket described in words). REAL PHOTOS still needed of: this medic's
+  SD-card slot, its network socket, and the "which cable" close-up. I can't
+  fabricate device photos — hand these over and I'll wire them in.
+- **5. Home findability.** MITOSIS has no home-poster entry (the red cross is
+  the credits Easter egg, not mitosis — docstring corrected). Giving it a real
+  entry is an artwork/layout call (a sixth card or a labelled control) on your
+  designed poster — your decision, then I implement.

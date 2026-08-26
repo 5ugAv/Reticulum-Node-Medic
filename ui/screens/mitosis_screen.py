@@ -156,7 +156,45 @@ class MitosisScreen(BoxLayout):
             return
         self._card_written = False
         self._retry_workflow = None
-        self._show_stage_insert()
+        self._show_stage_preflight()
+
+    # -- PRE-FLIGHT: what you need, before anything is erased -----------------
+
+    def _show_stage_preflight(self):
+        """Nobody should reach 'move the card to the new medic' holding a card
+        with nowhere to put it (walkthrough 2026-08-26, Marnie). Say up front
+        what this needs, with a graceful way back out if they don't have it."""
+        self._clear()
+        title = _label("Make another Node Medic", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        body = _label(
+            "This copies this Node Medic onto a second one. Before you start, "
+            "have these to hand:\n\n"
+            "  •  a second Node Medic (a Raspberry Pi 5) — switched OFF for now\n"
+            "  •  its memory (SD) card, and this medic's card slot to write it\n"
+            "  •  the flat internet cable that links the two medics\n\n"
+            "It takes about fifteen minutes, mostly waiting. You do a few "
+            "simple steps when asked; Node Medic does the rest.",
+            color="text_primary", size="15sp")
+        body.size_hint_y, body.height = None, dp(230)
+        self.add_widget(body)
+        go = Button(text="I have these — start  →", size_hint_y=None,
+                    height=dp(56), font_size="19sp", background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+        go.bind(on_release=lambda *_: self._show_stage_insert())
+        self.add_widget(go)
+        back = _small_btn("Not yet — take me back")
+        back.bind(on_release=lambda *_: self._leave_home())
+        self.add_widget(back)
+
+    def _leave_home(self):
+        try:
+            from kivy.app import App
+            App.get_running_app().switch_mode("home")
+        except Exception:                                  # noqa: BLE001
+            pass
 
     def sleep(self):
         if self._cloning:
