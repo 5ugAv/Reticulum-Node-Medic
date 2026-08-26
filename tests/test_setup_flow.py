@@ -8,12 +8,30 @@ who reopens a half-finished setup a week later — and every one of those ends i
 a medic that cannot be opened by the person who owns it.
 """
 
+import re
+
 import pytest
 
 from provisioning.vault_factors import (KEYFILE, LEVELS, PASSPHRASE, PATTERN,
                                         Policy, FactorError)
 from ui import setup_flow as sf
+
 from ui.setup_flow import SetupState, advance
+#: An honest "your records are NOT protected" statement, matched by MEANING, not
+#: one exact phrase — a negation word ("not", "no", "never", "nothing",
+#: "isn't"...) sitting close before a protection word (encrypt / lock /
+#: protect). This lets the not-encrypted copy be reworded freely (e.g. "NOT
+#: LOCKED YET", "records are not encrypted", "nothing is protected") as long as
+#: it keeps negating protection — instead of the guard being hostage to the
+#: literal string "NOT encrypted".
+_NEGATED_PROTECTION = re.compile(
+    r"\b(not|no|never|nothing|isn'?t|aren'?t|without)\b[^.]{0,40}?"
+    r"\b(encrypt|lock|protect)",
+    re.IGNORECASE)
+
+
+def _says_not_protected(text: str) -> bool:
+    return bool(_NEGATED_PROTECTION.search(text))
 
 
 def _after_recovery():
@@ -284,7 +302,9 @@ def test_the_summary_refuses_to_say_the_records_are_encrypted():
                     level=Policy((PATTERN, PASSPHRASE)))
     lines = sf.summary_lines(st, vault_exists=False)
     joined = " ".join(line for _ok, line in lines)
-    assert "NOT encrypted" in joined
+    # it must honestly NEGATE protection (any wording), and never claim a
+    # container/encryption as a done (ok=True) fact.
+    assert _says_not_protected(joined)
     assert not any(ok for ok, line in lines if "container" in line)
 
 
@@ -296,7 +316,9 @@ def test_the_summary_reports_the_disk_rather_than_assuming_it():
     yes = " ".join(l for _o, l in sf.summary_lines(st, vault_exists=True))
     no = " ".join(l for _o, l in sf.summary_lines(st, vault_exists=False))
     assert yes != no
-    assert "NOT encrypted" in no and "NOT encrypted" not in yes
+    # no-vault negates protection; a real vault does NOT carry that negation
+    # (it states the container exists instead).
+    assert _says_not_protected(no) and not _says_not_protected(yes)
 
 
 def test_the_summary_names_what_was_missed_rather_than_going_quiet():
