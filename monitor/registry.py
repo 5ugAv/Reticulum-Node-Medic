@@ -1570,16 +1570,26 @@ class NodeRegistry:
 
     def located_nodes(self, now: float) -> List[dict]:
         """Every node with a known location, for SCAN mode — each as
-        ``{lat, lon, name, status}``. Nodes without birth-cert coordinates are
+        ``{lat, lon, name, status, self_located}``. A node's OWN live GPS
+        claim (v3 beacon, 2026-08-27) outranks the birth-cert stamp — and a
+        node that was never stamped but SAYS where it stands still gets its
+        dot (the self-locating T114 was invisible on the map while its
+        detail page proudly showed its position). Nodes with neither are
         omitted (nothing to plot). Sorted by name for stable rendering."""
         out = []
         for rec in sorted(self.nodes.values(), key=lambda r: r.name.lower()):
             if self._is_own_identity(rec):
                 continue                     # not a node on the map — it's us
-            if rec.has_location():
-                out.append({"lat": rec.lat, "lon": rec.lon,
-                            "name": rec.name or "(unnamed)",
-                            "status": rec.status(now)})
+            lat, lon, self_located = rec.lat, rec.lon, False
+            b = getattr(rec, "latest_beacon", None)
+            if b is not None and getattr(b, "has_position", False):
+                lat, lon, self_located = b.lat, b.lng, True
+            if lat is None or lon is None:
+                continue
+            out.append({"lat": lat, "lon": lon,
+                        "name": rec.name or "(unnamed)",
+                        "status": rec.status(now),
+                        "self_located": self_located})
         return out
 
     def visible(self, now: float, status: Optional[str] = None,

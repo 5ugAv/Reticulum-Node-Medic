@@ -247,3 +247,27 @@ def test_nodes_own_lora_rssi_becomes_a_typed_lora_edge():
             if e.transport == "lora" and "aaaa" in (e.a, e.b)]
     assert len(lora) == 1 and lora[0].rssi == -92
     assert lora[0].kind == "direct" and MEDIC_ID in (lora[0].a, lora[0].b)
+
+
+def test_located_nodes_includes_a_self_located_never_stamped_node():
+    # the T114 gap (2026-08-27 on-glass): detail page showed its position,
+    # the MAP had no dot — located_nodes only read the birth stamp.
+    r = NodeRegistry()
+    r.register("dddd", name="Walkabout")            # no stamped location
+    r.ingest("dddd", _beacon_v3(-37.512345, 145.523456), now=NOW)
+    dots = r.located_nodes(NOW)
+    walker = [d for d in dots if d["name"] == "Walkabout"]
+    assert walker and walker[0]["self_located"] is True
+    assert walker[0]["lat"] == pytest.approx(-37.512345, abs=1e-5)
+
+
+def test_located_nodes_prefers_the_nodes_own_claim_over_the_stamp():
+    r = _registry()
+    r.ingest("aaaa", _beacon_v3(-37.512345, 145.523456), now=NOW)
+    dots = r.located_nodes(NOW)
+    d = next(x for x in dots if x["name"] == "Wrenhill")
+    assert d["lat"] == pytest.approx(-37.512345, abs=1e-5)
+    assert d["self_located"] is True
+    # the stamped-only node is untouched and unflagged
+    d2 = next(x for x in dots if x["name"] == "Ironbark")
+    assert d2["self_located"] is False
