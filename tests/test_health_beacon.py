@@ -411,3 +411,59 @@ def test_decode_still_accepts_future_prefix_compatible_versions():
     assert b.format_version == 1
     v3ish = bytes([0x03]) + v2[1:] + b"\x00\x00\x00\x00\x00\x00\x00extra"
     assert decode(v3ish).format_version == 3
+
+
+# -- v3 position tail (2026-08-27: the self-locating node) -------------------
+
+def test_v3_position_round_trip():
+    from monitor.health_beacon import decode, encode
+    raw = encode(60, 100, 0, 0, wifi_up=False, lora_up=True,
+                 tcp_backbone_up=False, local_tcp_server_up=False,
+                 wdt_armed=False, psram=False, fault=False, board_id=0x3C,
+                 lat=-37.810123, lng=144.962555, position_sats=9)
+    assert len(raw) == 29 and raw[0] == 0x03
+    b = decode(raw)
+    assert b.has_position
+    assert abs(b.lat - -37.810123) < 1e-6
+    assert abs(b.lng - 144.962555) < 1e-6
+    assert b.position_sats == 9 and b.position_fuzzed is False
+
+
+def test_v3_no_fix_is_honestly_absent():
+    # "GPS fitted, hunting sky" — a v3 beacon with the sentinel reports
+    # NO position, never 0,0 or a stale place.
+    from monitor.health_beacon import decode, encode, FORMAT_VERSION_V3
+    raw = encode(60, 100, 0, 0, wifi_up=False, lora_up=True,
+                 tcp_backbone_up=False, local_tcp_server_up=False,
+                 wdt_armed=False, psram=False, fault=False, board_id=0x3C,
+                 format_version=FORMAT_VERSION_V3)
+    assert len(raw) == 29 and raw[0] == 0x03
+    b = decode(raw)
+    assert not b.has_position and b.lat is None and b.lng is None
+
+
+def test_v3_fuzzed_flag_survives_and_garbage_never_pins():
+    from monitor.health_beacon import decode, encode
+    raw = encode(60, 100, 0, 0, wifi_up=False, lora_up=True,
+                 tcp_backbone_up=False, local_tcp_server_up=False,
+                 wdt_armed=False, psram=False, fault=False, board_id=0x3C,
+                 lat=1.0, lng=2.0, position_fuzzed=True)
+    assert decode(raw).position_fuzzed is True
+    # flags bit set but coordinates out of range -> refused
+    bad = bytearray(raw)
+    bad[20:24] = (95_000_000).to_bytes(4, "big", signed=True)
+    assert not decode(bytes(bad)).has_position
+
+
+def test_v2_reader_still_reads_a_v3_beacon_prefix():
+    # forward compatibility: the v2/v1 fields decode identically from a v3
+    # payload (append-only contract).
+    from monitor.health_beacon import decode, encode
+    raw = encode(120, 88, 0, 3, wifi_up=False, lora_up=True,
+                 tcp_backbone_up=False, local_tcp_server_up=False,
+                 wdt_armed=True, psram=False, fault=False, board_id=0x3C,
+                 battery_mv=3900, battery_pct=78, lat=1.5, lng=2.5)
+    b = decode(raw[:20])                   # a v2 tool's view: 20 bytes
+    assert b.battery_pct == 78 and b.lat is None
+    full = decode(raw)
+    assert full.battery_pct == 78 and full.has_position

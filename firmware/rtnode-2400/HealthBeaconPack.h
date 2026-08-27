@@ -170,4 +170,51 @@ static inline void health_pack_beacon_v2(
     out[19] = (uint8_t)lora_rssi_dbm;
 }
 
+// ─── v3: self-reported position tail ─────────────────────────────────────────
+// v3 APPENDS a 9-byte position tail after the v2 tail: int32 microdegrees
+// lat/lng (big-endian) + one [sats<<2 | fuzzed<<1 | present] byte. A GPS-fitted
+// node with NO FIX sends the sentinel — "I can know my position but don't right
+// now" is itself information. MUST match monitor/health_beacon.py (">iiB").
+// Privacy: the fuzzed bit marks a deliberately imprecise position (wild-node
+// ethos) so the tool never presents it as exact.
+
+#define HEALTH_BEACON_FORMAT_VERSION_V3 0x03
+#define HEALTH_BEACON_LEN_V3            29
+#define HB_POSITION_UNKNOWN             0x7FFFFFFFL
+
+static inline void health_pack_beacon_v3(
+    uint8_t  out[HEALTH_BEACON_LEN_V3],
+    uint32_t uptime_s,
+    uint16_t heap_kb,
+    int8_t   rssi_dbm,
+    uint8_t  reset_code,
+    bool wifi_up, bool lora_up, bool tcp_backbone_up, bool local_tcp_up,
+    bool wdt_armed, bool psram, bool fault, bool airtime_lock,
+    uint8_t  board_id,
+    uint8_t  fw_major, uint8_t fw_minor, uint8_t fw_patch,
+    uint16_t battery_mv, uint8_t battery_pct, uint8_t power_flags,
+    int8_t   lora_snr_db, int8_t lora_rssi_dbm,
+    int32_t  lat_microdeg,   // HB_POSITION_UNKNOWN = no fix
+    int32_t  lng_microdeg,   // HB_POSITION_UNKNOWN = no fix
+    uint8_t  sats,           // 0 = unknown; capped at 63
+    bool     fuzzed)
+{
+    health_pack_beacon_v2(out, uptime_s, heap_kb, rssi_dbm, reset_code,
+        wifi_up, lora_up, tcp_backbone_up, local_tcp_up,
+        wdt_armed, psram, fault, airtime_lock,
+        board_id, fw_major, fw_minor, fw_patch,
+        battery_mv, battery_pct, power_flags, lora_snr_db, lora_rssi_dbm);
+    out[0] = HEALTH_BEACON_FORMAT_VERSION_V3;
+    bool present = (lat_microdeg != HB_POSITION_UNKNOWN
+                    && lng_microdeg != HB_POSITION_UNKNOWN);
+    uint32_t la = (uint32_t)lat_microdeg, ln = (uint32_t)lng_microdeg;
+    out[20] = (uint8_t)(la >> 24); out[21] = (uint8_t)(la >> 16);
+    out[22] = (uint8_t)(la >> 8);  out[23] = (uint8_t)(la);
+    out[24] = (uint8_t)(ln >> 24); out[25] = (uint8_t)(ln >> 16);
+    out[26] = (uint8_t)(ln >> 8);  out[27] = (uint8_t)(ln);
+    uint8_t s = sats > 63 ? 63 : sats;
+    out[28] = (uint8_t)((s << 2) | (fuzzed ? 0x02 : 0)
+                        | (present ? 0x01 : 0));
+}
+
 #endif // HEALTHBEACONPACK_H

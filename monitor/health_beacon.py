@@ -48,13 +48,19 @@ from typing import Optional
 
 PAYLOAD_LEN = 14           # v1 payload / shared prefix length
 PAYLOAD_LEN_V2 = 20        # v1 prefix (14) + power+link tail (6)
+PAYLOAD_LEN_V3 = 29        # v2 (20) + position tail (9)
 FORMAT_VERSION = 0x01
 FORMAT_VERSION_V2 = 0x02
+FORMAT_VERSION_V3 = 0x03   # + self-reported position (GPS-capable nodes)
 
 #: v2 tail sentinels for "field not reported".
 BATTERY_MV_UNKNOWN = 0
 BATTERY_PCT_UNKNOWN = 0xFF
 LORA_LINK_UNKNOWN = -128   # int8 sentinel for snr/rssi (below any real value)
+
+#: v3 position tail: int32 microdegrees; this sentinel = "no fix / not
+#: reported" (outside the valid ±180e6 range so it can never be a place).
+POSITION_UNKNOWN = 0x7FFFFFFF
 
 #: Battery charge thresholds (percent), used only when the node reports battery
 #: AND is not charging: a discharging node running down is what we flag. A
@@ -155,6 +161,16 @@ class HealthBeacon:
     lora_snr_db: Optional[int] = None      # node's last-heard link SNR
     lora_rssi_dbm: Optional[int] = None    # node's last-heard link RSSI
 
+    # -- v3 position tail (None when the beacon predates it or has no fix) --
+    #: Self-reported position, degrees. THE NODE'S OWN CLAIM about where it
+    #: stands (live GNSS), distinct from the birth-certificate stamp. A
+    #: fuzzed position is deliberately imprecise (wild-node privacy) and
+    #: must never be presented as exact.
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    position_sats: Optional[int] = None
+    position_fuzzed: bool = False
+
     @property
     def reset_reason_label(self) -> str:
         return RESET_REASONS.get(self.reset_reason, "unknown")
@@ -172,6 +188,12 @@ class HealthBeacon:
     def has_link_telemetry(self) -> bool:
         """True once the node reports its own LoRa link quality (a v2 beacon)."""
         return self.lora_snr_db is not None or self.lora_rssi_dbm is not None
+
+    @property
+    def has_position(self) -> bool:
+        """True when the node self-reported a live position (a v3 beacon
+        with a fix — a v3 beacon WITHOUT a fix reports honestly nothing)."""
+        return self.lat is not None and self.lng is not None
 
     @property
     def power_source_label(self) -> str:
@@ -214,7 +236,9 @@ class HealthBeacon:
             bt_up=self.bt_up,
             on_battery=self.on_battery, charging=self.charging,
             on_solar=self.on_solar, on_mains=self.on_mains,
-            lora_snr_db=self.lora_snr_db, lora_rssi_dbm=self.lora_rssi_dbm)
+            lora_snr_db=self.lora_snr_db, lora_rssi_dbm=self.lora_rssi_dbm,
+            lat=self.lat, lng=self.lng, position_sats=self.position_sats,
+            position_fuzzed=self.position_fuzzed)
 
 
 def encode(
@@ -243,6 +267,10 @@ def encode(
     on_mains: bool = False,
     lora_snr_db: Optional[int] = None,
     lora_rssi_dbm: Optional[int] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    position_sats: Optional[int] = None,
+    position_fuzzed: bool = False,
 ) -> bytes:
     """Reference encoder — mirrors what the firmware announcer must emit.
 
@@ -259,13 +287,18 @@ def encode(
         | (0x40 if fault else 0)
         | (0x80 if airtime_lock else 0)
     )
+    has_pos = (format_version >= FORMAT_VERSION_V3
+               or (lat is not None and lng is not None)
+               or position_sats is not None)
     has_tail = (
-        format_version >= FORMAT_VERSION_V2
+        has_pos
+        or format_version >= FORMAT_VERSION_V2
         or battery_mv is not None or battery_pct is not None
         or on_battery or charging or on_solar or on_mains
         or lora_snr_db is not None or lora_rssi_dbm is not None
     )
-    version = FORMAT_VERSION_V2 if has_tail else format_version
+    version = (FORMAT_VERSION_V3 if has_pos
+               else FORMAT_VERSION_V2 if has_tail else format_version)
     head = struct.pack(
         ">BIHbBBBBBB",
         version,
@@ -295,7 +328,21 @@ def encode(
         (LORA_LINK_UNKNOWN if lora_snr_db is None else max(-127, min(127, lora_snr_db))),
         (LORA_LINK_UNKNOWN if lora_rssi_dbm is None else max(-127, min(127, lora_rssi_dbm))),
     )
-    return head + tail
+    if not has_pos:
+        return head + tail
+    # v3 position tail: int32 microdegrees + [flags|sats] byte. A v3 beacon
+    # with no fix carries the sentinel — "I can know my position but don't
+    # right now" is itself information (GPS fitted, hunting sky).
+    if lat is not None and lng is not None:
+        lat_u = max(-90_000_000, min(90_000_000, int(round(lat * 1e6))))
+        lng_u = max(-180_000_000, min(180_000_000, int(round(lng * 1e6))))
+        pflags = 0x01 | (0x02 if position_fuzzed else 0)
+    else:
+        lat_u = lng_u = POSITION_UNKNOWN
+        pflags = 0
+    pflags |= (min(63, position_sats or 0) << 2)
+    pos = struct.pack(">iiB", lat_u, lng_u, pflags & 0xFF)
+    return head + tail + pos
 
 
 def decode(app_data: bytes) -> HealthBeacon:
@@ -346,6 +393,20 @@ def decode(app_data: bytes) -> HealthBeacon:
         b.on_mains = bool(power_flags & 0x08)
         b.lora_snr_db = None if snr == LORA_LINK_UNKNOWN else snr
         b.lora_rssi_dbm = None if rssi_lora == LORA_LINK_UNKNOWN else rssi_lora
+    # v3 position tail — length-gated like the v2 tail, and presence-gated on
+    # the flags bit AND believable coordinates, so garbage can never become a
+    # map pin.
+    if len(app_data) >= PAYLOAD_LEN_V3:
+        lat_u, lng_u, pflags = struct.unpack_from(">iiB", app_data, PAYLOAD_LEN_V2)
+        sats = (pflags >> 2) & 0x3F
+        b.position_sats = sats if sats else None
+        if (pflags & 0x01 and lat_u != POSITION_UNKNOWN
+                and lng_u != POSITION_UNKNOWN
+                and -90_000_000 <= lat_u <= 90_000_000
+                and -180_000_000 <= lng_u <= 180_000_000):
+            b.lat = lat_u / 1e6
+            b.lng = lng_u / 1e6
+            b.position_fuzzed = bool(pflags & 0x02)
     return b
 
 

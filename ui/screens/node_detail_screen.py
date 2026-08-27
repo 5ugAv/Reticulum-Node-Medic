@@ -171,6 +171,24 @@ class NodeDetailScreen(BoxLayout):
             self.add_widget(_line(tr("Signal: not measured"),
                                   color="text_secondary"))
 
+        # SELF-REPORTED POSITION (v3 beacon, 2026-08-27): the node's OWN live
+        # GNSS claim, distinct from the birth-certificate stamp. Shown only
+        # when the node actually said it — a GPS-fitted node hunting sky says
+        # nothing, and nothing is shown. A fuzzed position is announced as
+        # deliberately imprecise, never dressed as exact.
+        b = getattr(record, "latest_beacon", None)
+        if b is not None and getattr(b, "has_position", False):
+            pos = "%.6f, %.6f" % (b.lat, b.lng)
+            extra = []
+            if b.position_sats:
+                extra.append(tr("{n} satellites").format(n=b.position_sats))
+            if b.position_fuzzed:
+                extra.append(tr("deliberately imprecise"))
+            tail = ("  ·  " + " · ".join(extra)) if extra else ""
+            self.add_widget(_line(
+                tr("Position (node's own GPS): {pos}").format(pos=pos) + tail,
+                color="green" if not b.position_fuzzed else "text_secondary"))
+
         # CONNECTIONS, IN WORDS, AND ONLY WHAT THE NODE SAID.
         #
         # The chips in VITALS are a glance; this is the place that has room to
