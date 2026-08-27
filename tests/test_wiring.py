@@ -36,11 +36,8 @@ ACTION_PACKAGES = ["workflows", "monitor", "provisioning", "diagnostics"]
 #: Verified 2026-08-16. Two kinds only: RUNS ELSEWHERE, or DORMANT.
 UNIMPORTED_WITH_REASON = {
     # --- runs elsewhere: imported by something that is not Python source here ---
-    "monitor.serial_splitter":
-        "RUNS ELSEWHERE. Started by systemd on the medic, whose ExecStart is "
-        "`python3 -c 'from monitor.serial_splitter import run; run(...)'` — a "
-        "string in a unit file, invisible to an import scan. Verified live in "
-        "rnode-splitter.service on 2026-08-16.",
+    # (monitor.serial_splitter used to live here — systemd-only — until the
+    # antenna test began importing its KISS constants, 2026-08-27.)
     "monitor.pi_status_server":
         "RUNS ELSEWHERE. Deployed ONTO a built Pi node by "
         "workflows.build.install_status_server and run there, not on the medic.",

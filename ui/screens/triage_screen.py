@@ -33,7 +33,8 @@ class TriageScreen(FloatLayout):
 
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
-                 lighthouse=None, on_build=None, on_home=None, **kwargs):
+                 lighthouse=None, on_build=None, on_home=None,
+                 on_antenna_test=None, **kwargs):
         super().__init__(**kwargs)
         self._reader = feed_factory()
         self._lighthouse = lighthouse     # (active: bool) -> status dict
@@ -109,6 +110,19 @@ class TriageScreen(FloatLayout):
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self._button.bind(on_release=self._save)
         self.add_widget(self._button)
+
+        # Antenna test — compare real antennas with the node's own ear
+        # (bench campaign 2026-08-27; docs/ANTENNA_BENCH_2026-08-27.md).
+        if on_antenna_test is not None:
+            ant = Button(
+                text=tr("Antenna test"), font_size="13sp",
+                size_hint=(None, None), size=(dp(120), dp(40)),
+                pos_hint={"x": 0.02, "y": 0.035},
+                background_normal="", background_down="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            ant.bind(on_release=lambda *a: on_antenna_test())
+            self.add_widget(ant)
 
         # "Not Reading" cover — dropped over the bullseye when the radio reports
         # nothing for a spell, so the HELD last score can't be mistaken for a live

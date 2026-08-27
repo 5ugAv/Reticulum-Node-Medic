@@ -909,12 +909,23 @@ class ReticulumNodeMedicApp(App):
         self.triage_screen = TriageScreen(
             feed_factory=_triage_feed, lighthouse=self._lighthouse,
             on_build=lambda: self.switch_mode("birth"),
-            on_home=lambda: self.switch_mode("home"))
+            on_home=lambda: self.switch_mode("home"),
+            on_antenna_test=lambda: self.switch_mode("antenna_test"))
         triage.add_widget(self._with_back(self.triage_screen))
         # opening Triage auto-activates the beacon; leaving it stops it
         triage.bind(on_enter=lambda *a: self.triage_screen.enter_triage(),
                     on_leave=lambda *a: self.triage_screen.stop_lighthouse())
         self.sm.add_widget(triage)
+
+        # Antenna test — TRIAGE's A/B ear comparison for real antennas.
+        # Dormant until shown (the hidden-screen poll trap must not recur).
+        from ui.screens.antenna_test_screen import AntennaTestScreen
+        ant = Screen(name="antenna_test")
+        _ant = AntennaTestScreen(on_home=lambda: self.switch_mode("triage"))
+        ant.add_widget(self._with_back(_ant))
+        ant.bind(on_enter=lambda *a: _ant.begin_screen(),
+                 on_leave=lambda *a: _ant.sleep())
+        self.sm.add_widget(ant)
 
         probe = Screen(name="probe")
         _probe_real = hw.hardware_present()
