@@ -39,9 +39,14 @@ _AVG_TILE_KB = 15.0
 #: Default basemap: Carto's CDN raster tiles (OSM data, no API key). We learned
 #: the hard way that bulk-fetching tile.openstreetmap.org violates its usage
 #: policy — the volunteer servers auto-block and serve "Access blocked" notice
-#: tiles, poisoning the cache. Carto's CDN is built for app traffic; both
-#: require the attribution shown on the SCAN screen.
-OSM_URL = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+#: tiles, poisoning the cache. Carto's CDN carried us until 2026-08-27, when
+#: it began watermarking every keyless tile "API KEY REQUIRED" (drawn OVER
+#: real imagery, so the identical-bytes circuit breaker cannot see it —
+#: caught on the operator's screen mid-download). Esri's World Street Map
+#: tile service is keyless, CDN-backed for app traffic, and unwatermarked;
+#: NOTE its path order is {z}/{y}/{x}. Attribution shown on the SCAN screen.
+OSM_URL = ("https://server.arcgisonline.com/ArcGIS/rest/services/"
+           "World_Street_Map/MapServer/tile/{z}/{y}/{x}")
 
 #: TERRAIN, from the same button and the same radius. Tilezen/Mapzen terrain
 #: tiles on AWS Open Data: z/x/y PNGs in Web Mercator, exactly the scheme the
@@ -62,7 +67,7 @@ TERRAIN_URL = ("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/"
 #: equator — comparable to SRTM's 30 m postings — so a whole region's terrain is
 #: a few dozen tiles rather than the thousands the basemap needs.
 TERRAIN_ZOOM = 12
-ATTRIBUTION = "(c) OpenStreetMap contributors, (c) CARTO"
+ATTRIBUTION = "(c) Esri, (c) OpenStreetMap contributors"
 USER_AGENT = "ReticulumNodeMedic/1.0 (+offline field node-coverage map)"
 
 

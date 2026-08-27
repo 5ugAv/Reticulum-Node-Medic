@@ -23,8 +23,16 @@ from typing import List, Optional, Tuple
 
 TILE_SIZE = 512   # 2x display: labels legible on the HiDPI 5" panel (was 256)
 
-#: Where carried offline basemaps live (gitignored, like firmware/packages).
-MAPS_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "assets", "maps")
+#: Where carried offline basemaps live. MOVED OUT OF THE REPO TREE
+#: (2026-08-27): deploys rsync into the tree, and the operator's fully
+#: downloaded world map (87,381 tiles, hours of downloading) vanished with
+#: one — map data is DATA and lives in the data home, which no deploy
+#: touches. The legacy assets/maps location is still READ so a previously
+#: carried file keeps working.
+MAPS_DIR = os.path.join(os.path.expanduser("~"), ".reticulum-node-medic",
+                        "maps")
+LEGACY_MAPS_DIR = os.path.join(os.path.dirname(__file__), os.pardir,
+                               "assets", "maps")
 
 
 def project_px(lat: float, lon: float, zoom: int) -> Tuple[float, float]:
@@ -235,7 +243,9 @@ class MBTiles:
 
 
 def find_mbtiles(maps_dir: str = MAPS_DIR) -> Optional["MBTiles"]:
-    """Open the first carried .mbtiles basemap in *maps_dir*, or None if none is
+    """Open the first carried .mbtiles basemap — the durable data home
+    first, then the legacy in-repo location — or None if none is
     present (the Map screen then falls back to the coord plot)."""
-    hits = sorted(glob.glob(os.path.join(maps_dir, "*.mbtiles")))
+    hits = (sorted(glob.glob(os.path.join(maps_dir, "*.mbtiles")))
+            or sorted(glob.glob(os.path.join(LEGACY_MAPS_DIR, "*.mbtiles"))))
     return MBTiles(hits[0]) if hits else None

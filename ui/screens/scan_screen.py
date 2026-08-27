@@ -764,7 +764,11 @@ class MapPlot(Widget):
             self._tile_misses.add(key)            # remember the miss (see __init__)
             return None
         try:
-            tex = CoreImage(io.BytesIO(data), ext="png").texture
+            # sniff the actual format: the world tier is JPEG since the Esri
+            # provider swap (2026-08-27), older region tiles are PNG, and one
+            # mbtiles can hold both — ext must follow the bytes, not a guess.
+            ext = "jpeg" if data[:3] == b"\xff\xd8\xff" else "png"
+            tex = CoreImage(io.BytesIO(data), ext=ext).texture
         except Exception:
             self._tile_misses.add(key)            # undecodable -> treat as absent
             return None
