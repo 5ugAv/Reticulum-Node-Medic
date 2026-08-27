@@ -1743,9 +1743,35 @@ class ReticulumNodeMedicApp(App):
                 if outcome == DELIVERY_ANSWERED:
                     self.monitor_service.registry.record_probe(
                         probe, ok=True, now=time.time())
+                    # PER-LINK SNR MARGIN (operator, 2026-08-27): the factor
+                    # that matters most for the node's antenna — the RF of the
+                    # reply itself, as the medic's own radio heard it. The
+                    # splitter stamps every heard packet; anything heard since
+                    # sent_at is the reply (or its last hop — still the RF
+                    # arriving from that direction). No packet -> no claim.
+                    from monitor.link_margin import link_margin
+                    lm = link_margin(sent_at[0]) if sent_at[0] else None
+                    sig = ""
+                    if lm is not None:
+                        words = {
+                            "strong": "strong link",
+                            "ok": "workable link",
+                            "thin": "thin link — antenna or placement "
+                                    "deserves a look",
+                            "edge": "AT THE EDGE — barely decoding; expect "
+                                    "drop-outs",
+                        }
+                        parts = ["%d dBm" % lm.rssi_dbm]
+                        if lm.snr_db is not None:
+                            parts.append("SNR %g dB" % lm.snr_db)
+                        if lm.headroom_db is not None:
+                            parts.append("%g dB headroom" % lm.headroom_db)
+                        sig = ("\nSignal as heard by the medic: "
+                               + ", ".join(parts) + " — "
+                               + words[lm.verdict] + ".")
                     Clock.schedule_once(lambda dt: report(
                         "Answered%s. Fresh health heard — this page shows the "
-                        "new readings on its next refresh." % hops_txt,
+                        "new readings on its next refresh.%s" % (hops_txt, sig),
                         True), 0)
                 elif outcome == DELIVERY_NO_ROUTE:
                     # rnpath saw a path but OUR stack never resolved one, so
