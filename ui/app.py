@@ -1069,8 +1069,28 @@ class ReticulumNodeMedicApp(App):
             paths = json.loads(raw)
             if not isinstance(paths, list):
                 paths = []
-            return build_topology(self.monitor_service.registry, paths,
-                                  time.time(), exclude=self._forgotten_hashes())
+            topo = build_topology(self.monitor_service.registry, paths,
+                                  time.time(),
+                                  exclude=self._forgotten_hashes())
+            # THE MEDIC PLACES ITSELF TOO: a mesh line needs both ends
+            # located, and the medic node was born coordinate-less — so no
+            # medic<->node line could EVER draw (found 2026-08-27 wiring
+            # thickness=strength). Its position: the live splitter fix when
+            # Jonesey sees sky, else the freshest self-reported kin position
+            # is NOT a stand-in (that would be a lie) — instead fall back to
+            # the operator's stamped home position if one exists on record.
+            try:
+                from monitor.geo import read_splitter_fix
+                fix = read_splitter_fix()
+                if fix is not None:
+                    for n in topo.nodes:
+                        if n.is_medic:
+                            n.lat, n.lon = fix.lat, fix.lng
+                            n.self_located = True
+                            break
+            except Exception:
+                pass
+            return topo
         except Exception:
             return None
 

@@ -86,7 +86,10 @@ def test_link_segments_draws_line_between_two_located_nodes():
     assert len(segs) == 1
     # Since 2026-08-13 a segment carries its transport as the fifth element —
     # LoRa is the standard view, overlays filterable (typed-edges decision).
-    lat1, lon1, lat2, lon2, transport = segs[0]
+    # Since 2026-08-27 the heard RSSI rides sixth, so the map can draw
+    # thickness = strength (None here: this link is path-implied).
+    lat1, lon1, lat2, lon2, transport, rssi = segs[0]
+    assert rssi is None
     assert transport in ("lora", "wifi", "internet", "bluetooth",
                          "local", "unknown")
     ends = {(round(lat1, 3), round(lon1, 3)), (round(lat2, 3), round(lon2, 3))}

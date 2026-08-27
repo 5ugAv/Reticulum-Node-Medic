@@ -212,3 +212,38 @@ def test_a_reborn_node_returns_because_it_was_heard_not_remembered():
     paths = [{"hash": "dd" * 16, "hops": 1, "interface": "RNodeInterface[x]"}]
     topo = build_topology(r, paths, now=1000.0, exclude={"dd" * 16})
     assert ("dd" * 16) in {n.id for n in topo.nodes}
+
+
+# -- v3 self-location + LoRa edge strength (2026-08-27) ----------------------
+
+def _beacon_v3(lat, lng, lora_rssi=-88):
+    return decode(encode(uptime_s=50, heap_kb=100, wifi_rssi_dbm=0,
+                         reset_reason=0, wifi_up=False, lora_up=True,
+                         tcp_backbone_up=False, local_tcp_server_up=False,
+                         wdt_armed=False, psram=False, fault=False,
+                         board_id=0x3C, lat=lat, lng=lng, position_sats=9,
+                         lora_rssi_dbm=lora_rssi))
+
+
+def test_self_reported_position_outranks_the_birth_stamp():
+    r = _registry()
+    # aaaa moves and says so: its own GPS claim must place it, not the stamp
+    r.ingest("aaaa", _beacon_v3(-37.512345, 145.523456), now=NOW)
+    topo = build_topology(r, paths=[], now=NOW)
+    n = next(n for n in topo.nodes if n.id == "aaaa")
+    assert n.self_located is True
+    assert n.lat == pytest.approx(-37.512345, abs=1e-5)
+    assert n.lon == pytest.approx(145.523456, abs=1e-5)
+    # the never-self-located node keeps its stamp, unflagged
+    m = next(n for n in topo.nodes if n.id == "bbbb")
+    assert m.self_located is False and m.lat == pytest.approx(-37.756)
+
+
+def test_nodes_own_lora_rssi_becomes_a_typed_lora_edge():
+    r = _registry()
+    r.ingest("aaaa", _beacon_v3(-37.512345, 145.523456, lora_rssi=-92), now=NOW)
+    topo = build_topology(r, paths=[], now=NOW)
+    lora = [e for e in topo.edges
+            if e.transport == "lora" and "aaaa" in (e.a, e.b)]
+    assert len(lora) == 1 and lora[0].rssi == -92
+    assert lora[0].kind == "direct" and MEDIC_ID in (lora[0].a, lora[0].b)

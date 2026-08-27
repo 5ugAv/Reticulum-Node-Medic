@@ -34,6 +34,9 @@ class TopoNode:
     lat: Optional[float] = None
     lon: Optional[float] = None
     is_medic: bool = False
+    #: True when lat/lon came from the node's OWN live GPS (a v3 beacon) —
+    #: the node placed itself; False = the birth-certificate stamp.
+    self_located: bool = False
 
 
 def transport_of(interface_name) -> str:
@@ -128,9 +131,17 @@ def build_topology(registry, paths: List[dict], now: float,
     known = set()
     for dst, rec in registry.nodes.items():
         known.add(dst)
+        # WHERE THE NODE STANDS: its own live GPS claim (v3 beacon,
+        # 2026-08-27) outranks the birth-certificate stamp — the node was
+        # THERE when it last spoke, and the stamp only says where it was
+        # born. Falls back to the stamp when the node has never self-located.
+        lat, lon, self_located = rec.lat, rec.lon, False
+        b = getattr(rec, "latest_beacon", None)
+        if b is not None and getattr(b, "has_position", False):
+            lat, lon, self_located = b.lat, b.lng, True
         topo.nodes.append(TopoNode(
             id=dst, name=rec.name or dst[:8], status=rec.status(now),
-            lat=rec.lat, lon=rec.lon))
+            lat=lat, lon=lon, self_located=self_located))
         rssi = rec.signal_dbm()
         if rssi is not None or rec.mesh_hops == 1:
             # signal_dbm() is the node's WI-FI RSSI — so the edge it evidences
@@ -138,6 +149,14 @@ def build_topology(registry, paths: List[dict], now: float,
             add_edge(TopoEdge(MEDIC_ID, dst, rssi=rssi, kind="direct",
                               transport="wifi" if rssi is not None
                               else "unknown"))
+        # THE NODE'S OWN EAR ON THE MESH: a v2+ beacon carries the LoRa
+        # RSSI of the last packet the node itself heard — on this hub
+        # topology that is its side of the medic link, and it is a LORA
+        # number on a LORA edge (never the WiFi figure, the 2026-08-13
+        # lesson). It gives the mesh line its honest thickness.
+        if b is not None and getattr(b, "lora_rssi_dbm", None) is not None:
+            add_edge(TopoEdge(MEDIC_ID, dst, rssi=b.lora_rssi_dbm,
+                              kind="direct", transport="lora"))
 
     def _ghost(h):
         return h in exclude and h not in registry.nodes

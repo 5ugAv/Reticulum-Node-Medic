@@ -84,7 +84,7 @@ def _record_map_error(where):
 
 def link_segments(topo, transports=None):
     """Flatten a ``monitor.topology.Topology`` into who-hears-whom LINE SEGMENTS
-    between LOCATED nodes: ``[(lat1, lon1, lat2, lon2, transport), ...]``. Only
+    between LOCATED nodes: ``[(lat1, lon1, lat2, lon2, transport, rssi), ...]``. Only
     edges whose BOTH endpoints have coordinates draw a line; endpoint order is
     normalised so an A-B / B-A pair collapses to one segment. *transports*
     filters (None = all): LoRa is the map's standard view, everything else an
@@ -107,7 +107,11 @@ def link_segments(topo, transports=None):
         if key in seen:
             continue
         seen.add(key)
-        out.append((a.lat, a.lon, b.lat, b.lon, t))
+        # the edge's heard RSSI rides along so the map can draw thickness =
+        # strength (edge_width was built for exactly this and sat unwired
+        # until 2026-08-27); None = path-implied, minimum weight.
+        out.append((a.lat, a.lon, b.lat, b.lon, t,
+                    getattr(e, "rssi", None)))
     return out
 
 
@@ -533,18 +537,25 @@ class MapPlot(Widget):
         segs = self._fetch_links()
         if not segs:
             return
+        from monitor.topology import edge_width
         for seg in segs:
             try:
                 lat1, lon1, lat2, lon2 = seg[0], seg[1], seg[2], seg[3]
                 t = seg[4] if len(seg) > 4 else "unknown"
+                rssi = seg[5] if len(seg) > 5 else None
             except (TypeError, ValueError, IndexError):
                 continue
+            # thickness = heard strength (operator vision: "line THICKNESS =
+            # connection strength"); a strong link also draws a little more
+            # opaque so weight reads even when zoomed out.
+            w = edge_width(rssi)
             Color(*theme.hex_to_rgba(
-                theme.COLORS[self.LINK_COLOURS.get(t, "accent")], 0.35))
+                theme.COLORS[self.LINK_COLOURS.get(t, "accent")],
+                0.30 + 0.08 * (w - 1.0)))
             x1, y1 = view.to_screen(lat1, lon1)
             x2, y2 = view.to_screen(lat2, lon2)
             Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],
-                 width=1.2)
+                 width=max(1.0, dp(0.45) * w))
 
     def _draw_suggestions(self, view):
         """A hollow accent ring + small '+' at each placement suggestion —
