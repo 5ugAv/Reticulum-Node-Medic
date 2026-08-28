@@ -95,3 +95,40 @@ def set_params_at_birth(connection: Connection, port: str,
         return False, (f"Params written but could not return the board to "
                        f"host-controlled mode (exit {code}): {(err or out)[-160:]}")
     return True, (f"Baked radio params at birth: {summary}, left host-controlled.")
+
+
+def bluetooth_on_command(port: str) -> str:
+    """rnodeconf line that ENABLES Bluetooth on the board, persisted in its
+    config. BIRTH POLICY (operator, 2026-08-28): BLE is switched on as an
+    explicit provisioning step — never a firmware default — so a keeper's
+    board works out of the box while a wild node's firmware stays silent.
+    Background (2026-08-27 T-Echo finding): BLE was compiled and healthy on
+    every nRF build and simply never enabled; no birth path wrote the byte."""
+    return f"rnodeconf {port} --bluetooth-on"
+
+
+def enable_bluetooth_at_birth(connection: Connection, port: str,
+                              timeout: int = 60) -> Tuple[bool, str]:
+    """Send the persistent BLE enable at birth. Returns ``(ok, message)``.
+
+    rnodeconf logs "Enabling Bluetooth..." and sends CMD_BT_CTRL
+    fire-and-forget — no acknowledgement is echoed — so success here means
+    THE COMMAND WAS DELIVERED; the node's BLE row filling on its own screen
+    is the visible confirmation. Same write-boundary guard as every other
+    board write: the medic's own radio is never touched."""
+    try:
+        from ui.onboard_roster import assert_flashable, guard_is_active
+        if guard_is_active():
+            assert_flashable(port)
+    except Exception as e:            # noqa: BLE001
+        return False, f"Refusing to write to this port: {e}"
+    code, out, err = connection.run(
+        "export PATH=$HOME/.local/bin:$PATH && "
+        f"timeout {timeout} " + bluetooth_on_command(port) + " 2>&1",
+        timeout=timeout + 30)
+    text = (out or "") + (err or "")
+    if code != 0 or "Enabling Bluetooth" not in text:
+        return False, (f"Bluetooth enable did not go through (exit {code}): "
+                       f"{text.strip()[-160:] or 'no output'}")
+    return True, ("Bluetooth enabled at birth (persisted on the board) — "
+                  "its BLE row fills when the screen next redraws.")

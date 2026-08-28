@@ -12,6 +12,7 @@ EXPECTED_STEPS = [
     "confirm_radio_parameters",
     "flash_rnode_firmware",
     "set_firmware_radio_parameters",
+    "enable_board_bluetooth",
     "write_reticulum_config",
     "install_software_stack",
     "install_radio_rule",
@@ -37,6 +38,8 @@ def build_conn(cpuinfo=PI5_CPUINFO, rnode=False):
     # report active/enabled, and the two files the build writes read back with
     # their markers. Failure tests insert overriding rules above these.
     c.rules.insert(0, ("systemctl is-active", 0, "active", ""))
+    # the BLE-at-birth step (2026-08-28): rnodeconf's fire-and-forget enable
+    c.rules.insert(0, ("--bluetooth-on", 0, "Enabling Bluetooth...", ""))
     c.rules.insert(0, ("systemctl is-enabled", 0, "enabled", ""))
     c.rules.insert(0, ("cat ~/.reticulum/config", 0,
                        "[reticulum]\nenable_transport = Yes\n", ""))
@@ -241,7 +244,7 @@ def test_write_config_substitutes_placeholders():
     w = wf(build_conn(rnode=True))
     w.steps[0][1](w)
     w.steps[1][1](w)
-    result = w.steps[4][1](w)  # write_reticulum_config
+    result = w.steps[5][1](w)  # write_reticulum_config
     assert result.success
     rendered = w.rendered_config
     assert "{{" not in rendered
@@ -259,7 +262,7 @@ def test_write_config_selects_pi5_template():
     w = wf(build_conn(rnode=True))
     w.profile.hardware = NodeHardware.PI_5
     w.steps[1][1](w)
-    w.steps[4][1](w)
+    w.steps[5][1](w)
     assert "RTT-PI5" in w.rendered_config
 
 
@@ -267,7 +270,7 @@ def test_write_config_selects_pi_zero_template():
     w = wf()
     w.profile.hardware = NodeHardware.PI_ZERO_2W
     w.steps[1][1](w)
-    w.steps[4][1](w)
+    w.steps[5][1](w)
     assert "RTT-ZERO" in w.rendered_config
 
 
@@ -277,8 +280,8 @@ def test_failed_step_stops_run_all_and_does_not_advance():
     conn.rules.insert(0, ("cat > ", 1, "", "disk full"))
     w = wf(conn)
     w.run_all()
-    # should stop at write_reticulum_config (index 4)
-    assert w.current_index == 4
+    # should stop at write_reticulum_config (index 5 since BLE-at-birth)
+    assert w.current_index == 5
     assert w.results[-1].success is False
     assert w.results[-1].name == "write_reticulum_config"
 
@@ -286,7 +289,7 @@ def test_failed_step_stops_run_all_and_does_not_advance():
 def test_resume_from():
     w = wf(build_conn(rnode=True))
     w.resume_from("write_reticulum_config")
-    assert w.current_index == 4
+    assert w.current_index == 5
     w.run_all()
     # resumed run should run from write_reticulum_config onward
     names = [r.name for r in w.results]

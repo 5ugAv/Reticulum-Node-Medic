@@ -613,6 +613,22 @@ def set_firmware_radio_parameters(wf: "BuildWorkflow") -> StepResult:
 
 
 @build_step
+def enable_board_bluetooth(wf: "BuildWorkflow") -> StepResult:
+    """BLE at birth (operator policy, 2026-08-28): enabled explicitly as a
+    provisioning step, never a firmware default — keeper boards get working
+    Bluetooth out of the box, wild nodes' firmware stays silent unless
+    deliberately switched on. (The 2026-08-27 T-Echo finding: BLE was
+    compiled and healthy on every nRF build; nothing ever enabled it.)"""
+    if not wf.profile.has_rnode:
+        return StepResult("enable_board_bluetooth", True, "No RNode present.",
+                          skipped=True)
+    from workflows.radio_params import enable_bluetooth_at_birth
+    ok, detail = enable_bluetooth_at_birth(
+        wf.connection, wf.profile.radio.serial_port)
+    return StepResult("enable_board_bluetooth", ok, detail)
+
+
+@build_step
 def write_reticulum_config(wf: "BuildWorkflow") -> StepResult:
     rendered = wf.render_config()
     wf.rendered_config = rendered

@@ -663,6 +663,10 @@ class _TechoMedic(EmulatedConnection):
         if "techo_touch.py" in cmd:
             self.in_bootloader = True
             return 0, "touch sent", ""
+        if "--bluetooth-on" in cmd:
+            # the BLE-at-birth step (2026-08-28): rnodeconf's log line is the
+            # only delivery evidence it prints
+            return 0, "Enabling Bluetooth...", ""
         if "kiss_detect.py" in cmd:
             # answers only when the app is running (not in the bootloader)
             return (1 if self.in_bootloader else 0), "detect: answered", ""

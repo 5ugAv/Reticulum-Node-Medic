@@ -796,6 +796,30 @@ def _onboard_techo(wf) -> StepResult:
     if final_port:
         wf.profile.connection_port = final_port
         wf.profile.radio.serial_port = final_port
+
+    # BLE AT BIRTH (operator policy, 2026-08-28): enabled explicitly as a
+    # provisioning step, never a firmware default — the keeper's board works
+    # out of the box, a wild node's firmware stays silent unless deliberately
+    # switched on. (2026-08-27 T-Echo finding: BLE compiled + healthy on
+    # every nRF build, simply never enabled.) Runs on the SETTLED port; one
+    # retry after a fresh settle covers the deferred-reset window.
+    bt_port = final_port or raw
+    bt_cmd = (f"export PATH=$HOME/.local/bin:$PATH && timeout 60 "
+              f"rnodeconf {bt_port} --bluetooth-on 2>&1")
+    bt = wf.connection.run(bt_cmd, timeout=90)
+    if bt[0] != 0 or "Enabling Bluetooth" not in (bt[1] or ""):
+        bt_port2, bt_fail = _nrf_settle(wf, "wifi_onboarding",
+                                        "the Bluetooth enable")
+        if bt_fail:
+            return bt_fail
+        bt = wf.connection.run(
+            f"export PATH=$HOME/.local/bin:$PATH && timeout 60 "
+            f"rnodeconf {bt_port2} --bluetooth-on 2>&1", timeout=90)
+        if bt[0] != 0 or "Enabling Bluetooth" not in (bt[1] or ""):
+            return StepResult(
+                "wifi_onboarding", False,
+                "Radio configured, but the Bluetooth enable did not go "
+                "through: " + ((bt[1] or "").strip()[-160:] or "no output"))
     if getattr(wf, "techo_eeprom_wiped", False):
         ident_word = ("stored EEPROM was corrupt — wiped and freshly "
                       "provisioned (a new identity; the old store was "

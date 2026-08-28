@@ -72,3 +72,32 @@ def test_set_params_at_birth_fails_if_host_mode_switch_fails():
     ok, msg = set_params_at_birth(conn, "/dev/ttyACM0")
     assert ok is False
     assert "host-controlled mode" in msg
+
+
+# -- BLE at birth (operator policy, 2026-08-28) ------------------------------
+
+def test_bluetooth_on_command_shape():
+    from workflows.radio_params import bluetooth_on_command
+    assert bluetooth_on_command("/dev/ttyACM1") == \
+        "rnodeconf /dev/ttyACM1 --bluetooth-on"
+
+
+def test_enable_bluetooth_at_birth_delivers_and_reports_honestly():
+    from workflows.radio_params import enable_bluetooth_at_birth
+
+    class Conn:
+        def __init__(self, code=0, out="Enabling Bluetooth...\n"):
+            self.code, self.out, self.ran = code, out, []
+        def run(self, cmd, timeout=None):
+            self.ran.append(cmd)
+            return self.code, self.out, ""
+
+    c = Conn()
+    ok, msg = enable_bluetooth_at_birth(c, "/dev/ttyACM1")
+    assert ok and "persisted" in msg
+    assert "--bluetooth-on" in c.ran[0]
+    # no ack is echoed by rnodeconf, so silence = NOT delivered = honest fail
+    ok, msg = enable_bluetooth_at_birth(Conn(out="ok"), "/dev/ttyACM1")
+    assert not ok and "did not go through" in msg
+    ok, msg = enable_bluetooth_at_birth(Conn(code=1), "/dev/ttyACM1")
+    assert not ok

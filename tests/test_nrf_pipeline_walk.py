@@ -275,6 +275,11 @@ class NrfBoard(EmulatedConnection):
         gate = self._talk_gate("rnodeconf", port)
         if gate:
             return gate
+        if "--bluetooth-on" in command:
+            # the BLE-at-birth step (2026-08-28). Real rnodeconf logs the
+            # line and sends CMD_BT_CTRL fire-and-forget — no ack echoed.
+            self._event("bluetooth_enabled")
+            return 0, _log("Enabling Bluetooth..."), ""
         if "--firmware-hash" in command:
             self.stored_hash = re.search(r"--firmware-hash (\S+)", command).group(1)
             self.tnc_actually_saved = self.stored_hash == RUNNING_HASH

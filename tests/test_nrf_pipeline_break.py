@@ -382,6 +382,11 @@ class _Bench(EmulatedConnection):
                 self.after_r_reset()
             return 0, ("Bootstrapping device EEPROM\n"
                        "EEPROM Bootstrapping successful!"), ""
+        if "--bluetooth-on" in cmd:
+            # BLE-at-birth (2026-08-28): the real rnodeconf logs the line and
+            # fires CMD_BT_CTRL with no echoed ack (same device resolution as
+            # every other rnodeconf branch: d is the board on this port)
+            return 0, "Enabling Bluetooth...", ""
         if " -T " in cmd:
             self._write("tnc-params", d)
             d.tnc = True
