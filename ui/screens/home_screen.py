@@ -191,7 +191,26 @@ class HomeScreen(FloatLayout):
         from provisioning.power import power_off
 
         def do_off():
-            threading.Thread(target=lambda: power_off(), daemon=True).start()
+            def work():
+                # THE RESULT IS NOT DISCARDED (2026-08-30: the slider said
+                # "powering off…" and nothing happened — power_off's failure
+                # message was thrown away, so a refused/failed shutdown was
+                # indistinguishable from a slow one. The operator sat with a
+                # full fan and a lying label). On failure the slider itself
+                # carries the reason.
+                ok, msg = power_off()
+                if not ok:
+                    from kivy.clock import Clock
+
+                    def show(_dt):
+                        try:
+                            self.power_slider.hint.text = (
+                                tr("Couldn't power off: ") + msg)
+                            self.power_slider.hint.opacity = 1.0
+                        except Exception:      # noqa: BLE001
+                            pass
+                    Clock.schedule_once(show, 0)
+            threading.Thread(target=work, daemon=True).start()
 
         # During a flash, WARN but let the operator override — a stuck flash must not
         # trap them into being unable to shut the medic down safely.

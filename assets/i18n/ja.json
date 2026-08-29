@@ -115,6 +115,7 @@
  "Couldn't find your location automatically - type home base below.": "位置を自動で特定できませんでした — 下に拠点を入力してください。",
  "Couldn't load street names — check WiFi and try again": "街路名を読み込めませんでした — WiFi を確認して再試行",
  "Couldn't open location settings: {why}": "位置情報の設定を開けませんでした: {why}",
+ "Couldn't power off: ": "電源を切れませんでした: ",
  "Couldn't reach the node: {why}": "ノードに到達できませんでした: {why}",
  "Couldn't read the node's name — enter one": "ノード名を読み取れませんでした — 入力してください",
  "Couldn't reset.": "リセットできませんでした。",

@@ -115,6 +115,7 @@
  "Couldn't find your location automatically - type home base below.": "Kunde inte hitta din plats automatiskt – ange hembas nedan.",
  "Couldn't load street names — check WiFi and try again": "Kunde inte ladda gatunamn – kontrollera WiFi och försök igen",
  "Couldn't open location settings: {why}": "Kunde inte öppna platsinställningarna: {why}",
+ "Couldn't power off: ": "Kunde inte stänga av: ",
  "Couldn't reach the node: {why}": "Kunde inte nå noden: {why}",
  "Couldn't read the node's name — enter one": "Kunde inte läsa nodens namn – ange ett",
  "Couldn't reset.": "Kunde inte återställa.",

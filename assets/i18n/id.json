@@ -115,6 +115,7 @@
  "Couldn't find your location automatically - type home base below.": "Tidak bisa menemukan lokasi Anda otomatis - ketik basis rumah di bawah.",
  "Couldn't load street names — check WiFi and try again": "Tidak bisa memuat nama jalan — periksa WiFi dan coba lagi",
  "Couldn't open location settings: {why}": "Tidak bisa membuka pengaturan lokasi: {why}",
+ "Couldn't power off: ": "Tidak bisa mematikan: ",
  "Couldn't reach the node: {why}": "Tidak bisa menghubungi node: {why}",
  "Couldn't read the node's name — enter one": "Tidak bisa membaca nama node — masukkan satu",
  "Couldn't reset.": "Tidak bisa mengatur ulang.",

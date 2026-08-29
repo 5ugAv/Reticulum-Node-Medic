@@ -115,6 +115,7 @@
  "Couldn't find your location automatically - type home base below.": "Не удалось определить местоположение автоматически — введите базу ниже.",
  "Couldn't load street names — check WiFi and try again": "Не удалось загрузить названия улиц — проверьте WiFi и повторите",
  "Couldn't open location settings: {why}": "Не удалось открыть настройки местоположения: {why}",
+ "Couldn't power off: ": "Не удалось выключить: ",
  "Couldn't reach the node: {why}": "Не удалось связаться с узлом: {why}",
  "Couldn't read the node's name — enter one": "Не удалось прочитать имя узла — введите его",
  "Couldn't reset.": "Не удалось сбросить.",

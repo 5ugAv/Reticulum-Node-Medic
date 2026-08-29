@@ -115,6 +115,7 @@
  "Couldn't find your location automatically - type home base below.": "Nie udało się ustalić lokalizacji automatycznie – wpisz bazę poniżej.",
  "Couldn't load street names — check WiFi and try again": "Nie udało się wczytać nazw ulic – sprawdź WiFi i spróbuj ponownie",
  "Couldn't open location settings: {why}": "Nie udało się otworzyć ustawień lokalizacji: {why}",
+ "Couldn't power off: ": "Nie udało się wyłączyć: ",
  "Couldn't reach the node: {why}": "Nie udało się połączyć z węzłem: {why}",
  "Couldn't read the node's name — enter one": "Nie udało się odczytać nazwy węzła – wpisz ją",
  "Couldn't reset.": "Nie udało się zresetować.",
