@@ -14,6 +14,7 @@ EmulatedConnection, mirroring the build workflows. Large payloads (tool tree,
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -154,6 +155,38 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
                       f"Copied the monitoring records ({len(wf.registry.nodes)} "
                       f"nodes)." if ok else
                       "Could not copy the registry to the clone (scp).")
+
+
+@clone_step
+def copy_offline_maps(wf: "CloneWorkflow") -> StepResult:
+    """The carried basemaps, from the DURABLE maps home (2026-08-27: tiles
+    moved out of the repo tree to ~/.reticulum-node-medic/maps so deploys
+    can't eat them — which silently removed them from the tool-tree rsync
+    above; a clone made after that carried ZERO map tiles, found preparing
+    the 2026-08-30 walkthrough). A map the medic spent hours downloading is
+    exactly the kind of thing a child should inherit rather than re-fetch —
+    offline is the whole point. No maps yet is a recorded absence, not a
+    failure: the clone downloads its own when its keeper asks."""
+    src = os.path.expanduser(os.path.join(CLONE_DIR, "maps"))
+    if not glob.glob(os.path.join(src, "*.mbtiles")):
+        return StepResult("copy_offline_maps", True,
+                          "No offline maps on this medic to hand down — the "
+                          "clone can download its own from Settings.",
+                          skipped=True)
+    wf.connection.run(f"mkdir -p {CLONE_DIR}/maps")
+    ok = True
+    copied = []
+    for path in sorted(glob.glob(os.path.join(src, "*.mbtiles"))):
+        name = os.path.basename(path)
+        if not wf.connection.push_file(path, f"{CLONE_DIR}/maps/{name}"):
+            ok = False
+            break
+        copied.append(name)
+    mb = sum(os.path.getsize(os.path.join(src, n)) for n in copied) / 1e6
+    return StepResult("copy_offline_maps", ok,
+                      f"Handed down the offline maps ({len(copied)} file(s), "
+                      f"{mb:.0f} MB)." if ok else
+                      "Could not copy the offline maps across.")
 
 
 @clone_step

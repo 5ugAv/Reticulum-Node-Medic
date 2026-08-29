@@ -23,6 +23,7 @@ EXPECTED_STEPS = [
     "carry_touch_cure",
     "install_display_stack",
     "copy_monitoring_db",
+    "copy_offline_maps",
     "copy_kin_roster",
     "generate_fresh_identity",
     "stamp_lineage",
