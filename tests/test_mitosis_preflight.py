@@ -18,7 +18,12 @@ def test_begin_opens_the_preflight_not_the_card_insert():
 def test_preflight_lists_the_hardware_and_offers_a_way_back():
     pf = SRC.split("def _show_stage_preflight", 1)[1].split("def _leave_home", 1)[0]
     low = pf.lower()
-    assert "raspberry pi 5" in low and "sd" in low and "cable" in low
-    assert "switched off" in low                 # power-off-first up front
+    # parts, not products (operator, 2026-08-30): raw parts a person can
+    # actually go and fetch — the old "a second Node Medic, switched OFF"
+    # was circular (they are MAKING it). Power-state guidance moved to the
+    # stage where the Pi first enters the flow.
+    assert "raspberry pi 5" in low and "sd" in low
+    assert "ethernet cable" in low and "card reader" in low
+    assert "32" in low and "64" in low           # capacity guidance
     assert "take me back" in low                 # graceful exit if unprepared
     assert "_show_stage_insert()" in pf          # 'start' proceeds to the card

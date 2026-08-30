@@ -168,12 +168,18 @@ class MitosisScreen(BoxLayout):
         title = _label("Make another Node Medic", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
+        # Parts, not products (operator, 2026-08-30 walkthrough): the person
+        # is MAKING the second medic, so "a second Node Medic" was circular —
+        # name the raw parts, plainly. "Ethernet cable" not "flat internet
+        # cable" (not everybody's is flat). 8 GB matches this medic's own
+        # board (verified live: Pi 5 Model B, 8 GB).
         body = _label(
             "This copies this Node Medic onto a second one. Before you start, "
             "have these to hand:\n\n"
-            "  •  a second Node Medic (a Raspberry Pi 5) — switched OFF for now\n"
-            "  •  its memory (SD) card, and this medic's card slot to write it\n"
-            "  •  the flat internet cable that links the two medics\n\n"
+            "  •  a Raspberry Pi 5 (8 GB)\n"
+            "  •  a memory (SD) card — 32 GB minimum, 64 GB is better\n"
+            "  •  an ethernet cable\n"
+            "  •  a memory card reader\n\n"
             "It takes about fifteen minutes, mostly waiting. You do a few "
             "simple steps when asked; Node Medic does the rest.",
             color="text_primary", size="15sp")
