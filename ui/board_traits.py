@@ -12,6 +12,16 @@ operator confirms which board a chip is, the medic files the traits it
 measured on that board under that model. The next board of the same model
 narrows on its own, and the one after that.
 
+ONE MEASUREMENT METHOD, ALWAYS. Traits are only comparable when read the
+same way: esptool with its stub reports PSRAM differently from a --no-stub
+read, so a trait learned one way and compared the other would invent a
+contradiction and drop the right board. Everything here is fed by
+``board_detect._default_reader`` (stub, ``flash_id``) on both sides —
+learning and narrowing — and anything teaching this store from another
+command must record that method first. (Checked live 2026-08-30 on a XIAO
+S3: both methods agreed, psram "none", flash 8MB — agreement is not
+guaranteed on every board.)
+
 THE HONESTY RULE, which is why this never guesses: a trait is recorded ONLY
 when the medic measured it on a board the operator confirmed. A model with
 nothing recorded is never filtered out — an unknown trait can only ever
