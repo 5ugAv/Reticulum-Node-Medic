@@ -16,21 +16,50 @@ def test_parser_never_raises_on_garbage():
         assert parse_ext5v(junk) is None
 
 
-def test_trips_only_after_two_hot_laps():
+def _armed_guard():
+    """A guard that has WITNESSED the baseline: one low read arms it —
+    the redesigned contract (2026-08-30, the HAWKEYE backfeed false
+    positive: hot-from-birth must never trip)."""
     g = DualSupplyGuard()
+    assert g.evaluate(True, 0.05) is None      # the witnessed low = armed
+    return g
+
+
+def test_trips_only_after_two_hot_laps():
+    g = _armed_guard()
     assert g.evaluate(True, 5.0) is None
     assert g.evaluate(True, 5.0) == "danger"
 
 
-def test_single_glitch_does_not_trip():
+def test_hot_from_birth_never_trips_the_backfeed_case():
+    # HAWKEYE 2026-08-30: HAT backfeeds the sense line, EXT5V reads ~5V
+    # with an EMPTY socket from the first read — the old guard shut a
+    # healthy medic down in a 15s loop. Never again.
     g = DualSupplyGuard()
+    for _ in range(50):
+        assert g.evaluate(True, 5.0) is None
+    assert g.armed is False
+    assert "never read low" in g.why_inert()
+
+
+def test_arms_then_catches_a_real_arrival():
+    g = DualSupplyGuard()
+    g.evaluate(True, 0.02)                     # empty socket, sane hardware
+    assert g.armed and g.why_inert() is None
+    g.evaluate(True, 0.02)
+    assert g.evaluate(True, 5.02) is None      # arrival, debounce lap 1
+    assert g.evaluate(True, 5.02) == "danger"  # confirmed
+
+
+def test_single_glitch_does_not_trip():
+    g = _armed_guard()
     assert g.evaluate(True, 5.0) is None
     assert g.evaluate(True, 0.0) is None      # glitch over — counter resets
     assert g.evaluate(True, 5.0) is None      # must debounce again
 
 
 def test_clear_fires_once_when_cable_pulled():
-    g = DualSupplyGuard()
+    g = _armed_guard()
     g.evaluate(True, 5.0); g.evaluate(True, 5.0)
     assert g.evaluate(True, 0.1) == "clear"
     assert g.evaluate(True, 0.1) is None
