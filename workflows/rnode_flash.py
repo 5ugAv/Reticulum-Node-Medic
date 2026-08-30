@@ -664,6 +664,14 @@ class RNodeFlashWorkflow:
         except Exception as e:            # noqa: BLE001
             return StepResult("flash", False, f"Refusing to flash: {e}")
         d = TRACKER_BUILD_DIR
+        # Capture the board's USB fingerprint BEFORE the flash: the S3 hard-
+        # resets afterwards, its CDC identity vanishes and returns (sometimes
+        # on a NEW ttyACM number), and the old "sleep 4 then talk to the old
+        # path" raced that re-enumeration — "Serial port opened, but RNode
+        # did not respond" on the operator's screen, 2026-08-30. Same lesson
+        # the nRF family learned on 2026-08-05; this path never got it.
+        pre_byid = usb_id_for_port(self.connection, self.port)
+        pre_serial = by_id_serial(pre_byid) if pre_byid else None
         code, out, err = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
             f"--baud 115200 --no-stub write_flash -z --flash_size 8MB "
@@ -676,18 +684,42 @@ class RNodeFlashWorkflow:
         if code != 0 and "hash of data verified" not in low:
             return StepResult("flash", False,
                               f"esptool write failed: {(err or out)[-200:]}")
+        # SETTLE: wait for the SAME board (by USB serial) to re-appear and
+        # re-resolve its port — never trust the pre-flash path. Then give the
+        # fresh app a breath before speaking KISS to it.
+        settled = find_port_by_usb_serial(self.connection, pre_serial,
+                                          tries=25, delay=1.0)
+        if settled:
+            self.port = settled
         # boot, then ROM-bootstrap as the custom product (cb/ca for the
-        # Tracker) — signed with the medic's project key.
+        # Tracker) — signed with the medic's project key. One retry after a
+        # fresh settle: the first attempt can still land inside the app's
+        # own boot window.
         p = self.board.provision or {}
-        code, out, err = self.connection.run(
-            f"sleep 4 && rnodeconf {self.port} -r "
-            f"--product {p.get('product', 'cb')} "
-            f"--model {p.get('model', 'ca')} "
-            f"--platform {p.get('platform', '0x80')} "
-            f"--hwrev {p.get('hwrev', '1')}",
-            timeout=self.flash_timeout)
+        boot_cmd = (f"sleep 4 && rnodeconf {self.port} -r "
+                    f"--product {p.get('product', 'cb')} "
+                    f"--model {p.get('model', 'ca')} "
+                    f"--platform {p.get('platform', '0x80')} "
+                    f"--hwrev {p.get('hwrev', '1')}")
+        code, out, err = self.connection.run(boot_cmd,
+                                             timeout=self.flash_timeout)
         low = ((out or "") + (err or "")).lower()
-        if "bootstrapping successful" not in low and "signature validated" not in low:
+        if ("bootstrapping successful" not in low
+                and "signature validated" not in low):
+            settled = find_port_by_usb_serial(self.connection, pre_serial,
+                                              tries=15, delay=1.0)
+            if settled:
+                self.port = settled
+                boot_cmd = (f"sleep 4 && rnodeconf {self.port} -r "
+                            f"--product {p.get('product', 'cb')} "
+                            f"--model {p.get('model', 'ca')} "
+                            f"--platform {p.get('platform', '0x80')} "
+                            f"--hwrev {p.get('hwrev', '1')}")
+            code, out, err = self.connection.run(boot_cmd,
+                                                 timeout=self.flash_timeout)
+            low = ((out or "") + (err or "")).lower()
+        if ("bootstrapping successful" not in low
+                and "signature validated" not in low):
             return StepResult("flash", False,
                               f"Flashed, but EEPROM bootstrap failed: "
                               f"{(err or out)[-200:]}")
