@@ -1,0 +1,25 @@
+# Finishes the carried world map, no matter how many times it's interrupted.
+# Runs at every boot; a complete world exits in seconds (all tiles skip), an
+# incomplete one resumes and keeps trying every 10 minutes until done. Nice/
+# ionice keep it from ever making the touchscreen sluggish (the 2026-08-30
+# "jam" lesson: a full-tilt download in the UI thread starved the medic).
+#
+# Install (as the tool user):
+#   sudo cp ~/reticulum-tool/scripts/world-map-fill.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now world-map-fill
+[Unit]
+Description=Node Medic world map fill (resumable)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nodemedic
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 /home/nodemedic/reticulum-tool/scripts/world_map_fill.py
+Restart=on-failure
+RestartSec=600
+
+[Install]
+WantedBy=multi-user.target

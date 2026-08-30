@@ -268,6 +268,10 @@ class MBTilesWriter:
                  minzoom: int, maxzoom: int, center: Optional[str] = None,
                  fmt: str = "png"):
         self.conn = sqlite3.connect(path)
+        # two writers may briefly coexist (the boot-fill service + a UI
+        # download); a generous busy_timeout turns lock contention into a
+        # short wait instead of an exception mid-tile (2026-08-30)
+        self.conn.execute("PRAGMA busy_timeout=30000")
         c = self.conn
         c.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER, "
                   "tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")

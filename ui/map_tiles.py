@@ -208,6 +208,7 @@ class MBTiles:
 
     def __init__(self, path: str):
         self.conn = sqlite3.connect(path)
+        self.conn.execute("PRAGMA busy_timeout=30000")
 
     def get_tile(self, z: int, x: int, y: int) -> Optional[bytes]:
         tms_y = (2 ** z - 1) - y
