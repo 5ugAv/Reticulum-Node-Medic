@@ -23,14 +23,20 @@ def test_choosing_a_radio_build_shows_the_antenna_warning_next():
 
 
 def test_detect_does_not_re_ask_the_type_when_already_chosen():
-    rt = SRC.split("def _route(self, c):", 1)[1].split("def ", 1)[0]
-    assert 'self._path in ("host", "radio", "pi")' in rt
+    # _route also carries the read's generation + the build chosen when it
+    # started, so a read from an abandoned lap draws nothing and a reset
+    # mid-read cannot turn a chosen build back into a question
+    # (tests/test_birth_asks_once.py, 2026-08-30).
+    rt = SRC.split("def _route(self, c, gen=None, chose=None):", 1)[1].split("\n    def ", 1)[0]
+    assert 'path in ("host", "radio", "pi")' in rt
     assert "_render_name()" in rt             # pre-chosen -> name, not chooser
 
 
 def test_pi_autodetect_does_not_hijack_a_chosen_non_pi_build():
-    pd = SRC.split("def _on_pi_detected(self):", 1)[1].split("def ", 1)[0]
-    assert 'self._path in ("host", "radio")' in pd
+    pd = SRC.split("def _on_pi_detected(self):", 1)[1].split("\n    def ", 1)[0]
+    # by MEANING now, not by listing the two radio keys: any chosen build that
+    # is not a Pi wins over the watcher (2026-08-30).
+    assert 'self._path and self._path != "pi"' in pd
 
 
 def test_antenna_still_precedes_powering_the_board():

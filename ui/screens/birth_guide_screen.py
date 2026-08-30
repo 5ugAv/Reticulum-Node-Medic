@@ -189,6 +189,11 @@ class BirthGuideScreen(BoxLayout):
         # firstborn Tracker, is born later during the NEW medic's onboarding).
         # The antenna landing + detect now follow the choice, radio builds only.
         self._path = None
+        # reset() is the ONLY thing that clears the chosen build, so when a
+        # keeper says they were asked what they are building twice, this line
+        # is the difference between reading the answer out of ui.log and
+        # guessing at it (2026-08-30).
+        self._trace("walkthrough reset — back at the chooser")
         self._render_intro()
 
     @staticmethod
@@ -434,10 +439,16 @@ class BirthGuideScreen(BoxLayout):
                     "USB data cable."),
             anim=anim,
             hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
-            next_text=tr("Choose manually  →"), on_next=self._render_intro,
+            next_text=tr("Choose manually  →"), on_next=self._choose_manually,
             on_back=self._render_antenna)
         self.add_widget(step)
         self._current = step
+        # WHEN THIS SCREEN APPEARED. "Choose manually" throws the chosen build
+        # away, and it is built directly under the finger that just pressed
+        # "Antenna on →" on the screen before — same corner, same size. See
+        # _choose_manually.
+        import time as _t
+        self._detect_shown_at = _t.monotonic()
         step.start()
         # 'Choose manually' is an ADVANCED escape, not the primary action (the
         # primary path is just plugging a node in) — muted khaki-green so it doesn't
@@ -447,6 +458,29 @@ class BirthGuideScreen(BoxLayout):
         self._start_board_poll(anim, on_present=self._on_detect)
         self._start_detect_pi_poll()
         self._start_detect_nudge(step)
+
+    def _choose_manually(self):
+        """The detect screen's escape back to the chooser — but never on a tap
+        the operator did not aim at it (2026-08-30).
+
+        This panel has delivered one press as two before (the ~/.kivy
+        second-input-provider bug), and the popups here already carry
+        open-once fuses for it (_confirm_rebirth). The exposure is worse on
+        this button: it is drawn in the same corner as the "Antenna on →" that
+        opened this screen, so a press that bleeds through the render lands on
+        "Choose manually" and throws away the build the operator had chosen —
+        putting them back on "What are you building?" with nothing to explain
+        it, one screen after they answered it.
+
+        A press inside the first half-second of the screen existing is that
+        bleed-through, not a decision: nobody reads a new screen and rejects it
+        that fast. Later presses are the operator's, and go through.
+        """
+        import time as _t
+        if _t.monotonic() - getattr(self, "_detect_shown_at", 0) < 0.5:
+            self._trace("ignored a Choose-manually tap that arrived with the screen")
+            return
+        self._render_intro()
 
     def _start_detect_nudge(self, step):
         """A silent no-detect looks identical to 'still waiting' — a charge-only
@@ -536,7 +570,12 @@ class BirthGuideScreen(BoxLayout):
         self._detected_something = True
         self._stop_detect_nudge()
         self._stop_detect_pi_poll()
-        if self._path in ("host", "radio"):
+        # ANY chosen build that isn't a Pi wins over this watcher. Listing the
+        # two radio keys meant every other value — a key added later, a lap
+        # whose path came back through a hand-off — fell through the guard and
+        # let a Pi sighting rewrite the operator's answer. Named by what it
+        # means instead of by enumeration (2026-08-30).
+        if self._path and self._path != "pi":
             return          # operator chose a non-Pi build — don't hijack it
         if getattr(self, "_reading_pending", False):
             return                        # a board read already owns the flow
@@ -576,6 +615,30 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._render_detect   # reading -> re-detect
+        # WHOSE READ IS THIS? Captured here, checked before the result is
+        # allowed to move the operator (operator, 2026-08-30: "asked to select
+        # build and attach board twice", reliably, birthing a Wireless Tracker
+        # as an RNode).
+        #
+        # The read below is a THREAD, and a long one — sleep 3 + `timeout 25
+        # rnodeconf --info` on top of two serial reads, so the better part of a
+        # minute. Nothing could cancel it. _on_detect already tokened the 1.6 s
+        # hop INTO this screen (2026-08-03) but the work started here answered
+        # to nobody: a keeper who got bored, left, and came back in started a
+        # fresh walkthrough while the old read was still running, and when it
+        # finally landed it rendered over whatever screen they had reached by
+        # then — sending them back through the choice and the board they had
+        # just made.
+        #
+        # _nav_token is the file's existing "the operator has moved on" counter:
+        # _stop_current bumps it on EVERY navigation, including reset(). Taken
+        # after _stop_current above, so this render's own sweep doesn't
+        # invalidate its own read.
+        self._read_gen = getattr(self, "_nav_token", 0)
+        # And the build they had chosen when the read began. _route decides with
+        # this if the live one has since been cleared, so a read can never ask
+        # "what are you building?" about a board whose build was already picked.
+        self._read_path = self._path
         wrap = BoxLayout(orientation="vertical", padding=dp(24), spacing=dp(18))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
@@ -597,6 +660,7 @@ class BirthGuideScreen(BoxLayout):
         except Exception:
             pass
         import threading
+        gen, chose = self._read_gen, self._read_path
 
         def work():
             c = {"kind": "birth", "reason": "Couldn't read the board."}
@@ -667,20 +731,36 @@ class BirthGuideScreen(BoxLayout):
             except Exception as e:      # noqa: BLE001
                 c = {"kind": "birth", "reason": f"Couldn't read the board: {e}"}
             from kivy.clock import Clock
-            Clock.schedule_once(lambda _d: self._route(c), 0)
+            Clock.schedule_once(lambda _d: self._route(c, gen, chose), 0)
         threading.Thread(target=work, daemon=True).start()
 
-    def _route(self, c):
+    def _route(self, c, gen=None, chose=None):
+        """Where the board read lands. *gen* / *chose* are the read's own
+        generation and chosen build (see _render_reading, 2026-08-30).
+
+        A read that belongs to a walkthrough the operator has left NEVER draws:
+        it is an answer about a screen that is no longer on the panel. Called
+        without a generation (a test, or a future caller) it routes as before.
+        """
+        if gen is not None and gen != getattr(self, "_nav_token", 0):
+            self._trace("dropped a board read from an abandoned walkthrough")
+            return
         from ui.adopt_live import is_kin
+        # The build chosen for THIS read. self._path is the live answer; the
+        # captured one covers a read whose lap has since been reset — which
+        # must still never re-ask a question the operator already answered.
+        path = self._path or chose
         if is_kin(c.get("identity_hash")) or c.get("_kin_by_serial"):
             self._render_already_kin(c)   # already one of ours -> nothing to do
         elif c.get("kind") == "adopt":
             self._render_adopt(c)
-        elif self._path in ("host", "radio", "pi"):
+        elif path in ("host", "radio", "pi"):
             # Type already chosen on the chooser (chooser-first flow) — don't
             # ask again; name the node.
+            self._path = path             # a reset mid-read must not lose it
             self._render_name()
         else:
+            self._trace("board read with no build chosen — asking on the chooser")
             self._render_intro()          # birth -> the build chooser (fallback)
 
     def _render_already_kin(self, c):
@@ -1158,6 +1238,15 @@ class BirthGuideScreen(BoxLayout):
         """The card chooser. *builds_only* drops Mitosis and adopt-over-the-air,
         for the rebirth case where the question is only "what shall THIS board
         become?" — see the wipe handler."""
+        # SWEEP FIRST, like every other render here. The chooser was the one
+        # screen that cleared its widgets without stopping the last screen's
+        # watchers, so a board poll started on the detect step went on ticking
+        # underneath it: with a board still plugged in — which is the normal
+        # state, the operator has just been asked to plug one in — _on_detect
+        # fired against the chooser and replaced it with "Reading the board…"
+        # 1.6 s later. The question moved on its own while it was being read
+        # (2026-08-30: "asked to select build and attach board twice").
+        self._stop_current()
         self.clear_widgets()
         self._current = None
         self._back_action = None   # the chooser is the birth root now -> home
@@ -1474,6 +1563,11 @@ class BirthGuideScreen(BoxLayout):
     def _choose(self, path):
         self._path = path
         self._i = 0
+        # The chooser and the detect landing left NO trace, so the night the
+        # operator was asked to choose and connect twice there was nothing in
+        # ui.log to reconstruct it from — only their account (2026-08-30). The
+        # walkthrough traces itself from _next onwards; it starts here now.
+        self._trace(f"chose build '{path}'")
         # Radio-involving builds see the antenna warning, THEN detect the board.
         # Because the type was already chosen here, detect no longer re-asks —
         # it routes straight to naming (see _route). A non-radio choice goes on.
