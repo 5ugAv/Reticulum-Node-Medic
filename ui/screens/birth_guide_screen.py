@@ -2672,10 +2672,18 @@ class BirthGuideScreen(BoxLayout):
         announce. Failing to remember costs one question, so it never raises.
         """
         try:
-            mac = (getattr(self, "_detected", None) or {}).get("mac")
+            det = getattr(self, "_detected", None) or {}
+            mac = det.get("mac")
             if mac:
                 from ui.board_memory import remember
                 remember(mac, key)
+            # AND teach the MODEL, not just this chip (2026-08-30): the
+            # traits measured here (PSRAM, flash) now describe this board
+            # model, so the NEXT board of the same model narrows itself and
+            # the operator is never shown that gallery again for it.
+            from ui.board_traits import learn
+            learn(key, {"psram": det.get("psram"),
+                        "flash_size": det.get("flash_size")})
         except Exception:                                          # noqa: BLE001
             pass
 

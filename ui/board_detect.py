@@ -195,6 +195,34 @@ _FLASH_SIZE = {
 }
 
 
+def parse_psram(esptool_output: str) -> Optional[str]:
+    """PSRAM as esptool REPORTS it on the Features line — "8MB", "2MB", or
+    "none" when the line exists and mentions no PSRAM. None means we never
+    saw a Features line at all (say nothing rather than guess).
+
+    This is the discriminator the S3 gallery was missing: a Tracker, a XIAO,
+    a T3S3 and a T-Deck are one chip to esptool, but they do not carry the
+    same PSRAM (operator, 2026-08-30: "more information gatherable to
+    distinguish it from other possible boards?"). What each model actually
+    has is LEARNED from confirmed boards — see ui.board_traits — never
+    copied from a datasheet.
+    """
+    for line in (esptool_output or "").splitlines():
+        low = line.strip().lower()
+        if not low.startswith("features:"):
+            continue
+        if "psram" not in low:
+            return "none"
+        # e.g. "Features: WiFi, BLE, Embedded PSRAM 8MB (AP_3v3)"
+        after = low.split("psram", 1)[1]
+        for token in after.replace("(", " ").replace(",", " ").split():
+            t = token.strip().upper()
+            if t.endswith("MB") and t[:-2].isdigit():
+                return t
+        return "yes"          # PSRAM present, size not stated
+    return None
+
+
 def narrow_by_flash_size(shortlist, size: Optional[str]):
     """Boards whose MEASURED flash size matches *size*.
 
@@ -524,6 +552,17 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     # count, so today this mostly re-orders; every board measured onto the bench
     # makes it cut deeper.
     shortlist = narrow_by_flash_size(shortlist, parse_flash_size(out))
+    # Fourth-and-a-half cut: traits LEARNED from boards the operator has
+    # already confirmed (PSRAM + measured flash). Starts inert on a fresh
+    # medic and cuts deeper with every birth — the bench teaches the tool
+    # (2026-08-30). A model with nothing recorded is never excluded.
+    psram = parse_psram(out)
+    measured = {"psram": psram, "flash_size": parse_flash_size(out)}
+    try:
+        from ui.board_traits import narrow_by_traits
+        shortlist = narrow_by_traits(shortlist, measured)
+    except Exception:                                # noqa: BLE001
+        pass
     mac = parse_mac(out)
     # Fifth, and the one that ends the question for good: what the operator
     # already told us THIS chip is. Their answer beats every inference we can
@@ -551,7 +590,7 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                              "boards": hit, "board_key": known,
                              "remembered": True})
     return _out({"found": True, "port": port, "chip": chip, "platform": platform,
-            "mac": mac, "flash_size": parse_flash_size(out),
+            "mac": mac, "flash_size": parse_flash_size(out), "psram": psram,
             "firmware": firmware_options(chip), "boards": shortlist,
             "board_key": shortlist[0].key if len(shortlist) == 1 else None})
 
