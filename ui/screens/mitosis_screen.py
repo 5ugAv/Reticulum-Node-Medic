@@ -49,6 +49,7 @@ STEP_TITLES = [
     ("carry_touch_cure", "Carrying the touch settings across"),
     ("install_display_stack", "Installing the screen stack (carried, offline)"),
     ("copy_monitoring_db", "Copying the monitoring records"),
+    ("copy_offline_maps", "Handing down the offline maps"),
     ("copy_kin_roster", "Carrying the fleet roster (who and where)"),
     ("generate_fresh_identity", "Giving it its own fresh mesh identity"),
     ("stamp_lineage", "Stamping the family line (child knows its parent)"),
