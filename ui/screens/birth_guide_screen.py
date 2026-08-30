@@ -2681,9 +2681,11 @@ class BirthGuideScreen(BoxLayout):
             # traits measured here (PSRAM, flash) now describe this board
             # model, so the NEXT board of the same model narrows itself and
             # the operator is never shown that gallery again for it.
-            from ui.board_traits import learn
+            from ui.board_traits import learn, learn_mac_prefix
             learn(key, {"psram": det.get("psram"),
                         "flash_size": det.get("flash_size")})
+            if mac:
+                learn_mac_prefix(key, mac)
         except Exception:                                          # noqa: BLE001
             pass
 

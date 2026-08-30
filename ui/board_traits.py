@@ -108,3 +108,77 @@ def narrow_by_traits(shortlist, measured: Dict[str, Optional[str]],
             continue
         kept.append(b)
     return kept or shortlist
+
+
+# ---- MAC prefixes: evidence, never proof ------------------------------------
+#
+# Espressif ships its chips in OUI blocks, and a board maker's production runs
+# cluster inside one: on this bench both Heltec Trackers read 3C:0F:02:EB:*
+# (four bytes shared) while the XIAO S3 reads 68:EE:8F:* (2026-08-30). That is
+# real evidence about which model a chip came from — but it is NOT proof: the
+# blocks belong to Espressif, not to Heltec or Seeed, so another vendor's board
+# can legitimately land inside a prefix we have learned.
+#
+# So prefixes RANK, they never eliminate. The likely board is offered first
+# (and named as a suggestion), every other candidate stays one tap away, and
+# the operator's answer — who can see the board — always wins and is what
+# gets learned.
+
+PREFIX_BYTES = 4          # bytes of MAC to remember; 4 was the observed cluster
+
+
+def _prefix(mac: str) -> str:
+    parts = [p for p in (mac or "").replace("-", ":").split(":") if p]
+    return ":".join(p.lower() for p in parts[:PREFIX_BYTES])
+
+
+def learn_mac_prefix(board_key: str, mac: str,
+                     path: Optional[str] = None) -> bool:
+    """Record that a confirmed *board_key* had a chip in this MAC prefix."""
+    pre = _prefix(mac)
+    if not board_key or not pre:
+        return False
+    try:
+        store = _load(path)
+        entry = store.get(board_key)
+        entry = dict(entry) if isinstance(entry, dict) else {}
+        seen = entry.get("mac_prefixes")
+        seen = list(seen) if isinstance(seen, list) else []
+        if pre not in seen:
+            seen.append(pre)
+            seen = seen[-8:]          # a model's runs, not a lifetime log
+        entry["mac_prefixes"] = seen
+        store[board_key] = entry
+        target = path or STORE
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        tmp = target + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(store, f, indent=1, sort_keys=True)
+        os.replace(tmp, target)
+        return True
+    except Exception:                  # noqa: BLE001
+        return False
+
+
+def rank_by_mac(shortlist, mac: str, path: Optional[str] = None):
+    """Reorder so models seen at this MAC prefix come first. Same members,
+    same length — ranking is a suggestion, not a filter."""
+    pre = _prefix(mac)
+    if not shortlist or not pre:
+        return shortlist
+    def seen(b) -> int:
+        known = traits_for(getattr(b, "key", ""), path).get("mac_prefixes")
+        return 1 if isinstance(known, list) and pre in known else 0
+    return sorted(shortlist, key=lambda b: -seen(b))
+
+
+def likely_from_mac(shortlist, mac: str, path: Optional[str] = None):
+    """The single model this MAC prefix points at, or None when the evidence
+    is absent or ambiguous (two models sharing a prefix suggests nothing)."""
+    pre = _prefix(mac)
+    if not pre:
+        return None
+    hits = [b for b in (shortlist or [])
+            if pre in (traits_for(getattr(b, "key", ""), path)
+                       .get("mac_prefixes") or [])]
+    return hits[0] if len(hits) == 1 else None

@@ -564,6 +564,18 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     except Exception:                                # noqa: BLE001
         pass
     mac = parse_mac(out)
+    # MAC-prefix evidence RANKS the survivors (never cuts them): boards of one
+    # model cluster in a MAC block, so the likely one leads the grid and is
+    # named as a suggestion. See ui.board_traits — evidence, not proof.
+    likely_key = None
+    try:
+        from ui.board_traits import likely_from_mac, rank_by_mac
+        if mac:
+            hit = likely_from_mac(shortlist, mac)
+            likely_key = getattr(hit, "key", None) if hit else None
+            shortlist = rank_by_mac(shortlist, mac)
+    except Exception:                                # noqa: BLE001
+        pass
     # Fifth, and the one that ends the question for good: what the operator
     # already told us THIS chip is. Their answer beats every inference we can
     # make from silicon, because they can see the board and we cannot.
@@ -591,6 +603,7 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                              "remembered": True})
     return _out({"found": True, "port": port, "chip": chip, "platform": platform,
             "mac": mac, "flash_size": parse_flash_size(out), "psram": psram,
+            "likely_key": likely_key,
             "firmware": firmware_options(chip), "boards": shortlist,
             "board_key": shortlist[0].key if len(shortlist) == 1 else None})
 
