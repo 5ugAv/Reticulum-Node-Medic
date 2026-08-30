@@ -2535,6 +2535,7 @@ class BirthScreen(BoxLayout):
         self._pg_ev = Clock.schedule_interval(self._tick_progress, 0.2)
         self._workflow = workflow
         self._had_failure = False                # reset for this run's outcome
+        self._failure_messages = []              # what actually failed, verbatim
         self._mark_activity(True)                # keep the screensaver off the flash
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -2664,6 +2665,10 @@ class BirthScreen(BoxLayout):
                                   Clock.schedule_once(lambda dt: self._step(r), 0))
         except Exception as e:
             self._had_failure = True
+            try:
+                self._failure_messages.append(str(getattr(r, "message", "")))
+            except Exception:      # noqa: BLE001
+                pass
             msg = f"{type(e).__name__}: {e}"
             Clock.schedule_once(lambda dt, m=msg: self.list.add_widget(
                 _line(f"  [CRASH] {m}", color="red", size="13sp")), 0)
@@ -2749,6 +2754,10 @@ class BirthScreen(BoxLayout):
                  else "green" if result.success else "red")
         if not result.success and not result.skipped:
             self._had_failure = True
+            try:
+                self._failure_messages.append(str(getattr(r, "message", "")))
+            except Exception:      # noqa: BLE001
+                pass
         pair = getattr(self, "_step_rows", {}).get(result.name)
         if pair is not None:
             # pre-listed checklist row: fill the bar, colour the text
@@ -2925,10 +2934,23 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(_line("X  Something didn't finish", bold=True,
                                        size="18sp", color="red"))
             from ui.safety import recovery_for_board
-            self.list.add_widget(_line(
-                "Fix the failed step above and run it again. If the board won't "
-                f"flash: {recovery_for_board(board)}  If it still won't, try a "
-                "short, known-good USB data cable.", size="14sp", color="amber"))
+            # The won't-flash ritual is advice for a FLASH failure only. When
+            # the firmware landed and a later act failed, prescribing it sends
+            # the operator to fight the wrong problem (operator, 2026-08-30:
+            # "no false, no lies to the user through the UI").
+            wrote_firmware = "firmware IS on the board" in " ".join(
+                getattr(self, "_failure_messages", []))
+            if wrote_firmware:
+                self.list.add_widget(_line(
+                    "The firmware reached the board — a later step didn't "
+                    "finish. Run it again; the medic resets the board itself, "
+                    "so no buttons are needed.", size="14sp", color="amber"))
+            else:
+                self.list.add_widget(_line(
+                    "Fix the failed step above and run it again. If the board "
+                    f"won't flash: {recovery_for_board(board)}  If it still "
+                    "won't, try a short, known-good USB data cable.",
+                    size="14sp", color="amber"))
             return
         self.list.add_widget(_line("OK  Done!", bold=True, size="20sp",
                                    color="green"))

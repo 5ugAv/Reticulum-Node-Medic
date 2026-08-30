@@ -720,9 +720,18 @@ class RNodeFlashWorkflow:
             low = ((out or "") + (err or "")).lower()
         if ("bootstrapping successful" not in low
                 and "signature validated" not in low):
+            # NO LIES THROUGH THE UI (operator, 2026-08-30): the firmware IS
+            # on the board — only its papers failed. Reporting this as a
+            # failed "flash" sent the operator into the won't-flash recovery
+            # ritual (hold PRG, press RST) for a problem that isn't flashing,
+            # three laps in a row. Say what actually happened, and give the
+            # advice that fits THIS act.
             return StepResult("flash", False,
-                              f"Flashed, but EEPROM bootstrap failed: "
-                              f"{(err or out)[-200:]}")
+                              "The firmware IS on the board — writing its "
+                              "identity (EEPROM) is what didn't finish. "
+                              "Press RST on the board once, then run this "
+                              "again; no button-holding needed. Detail: "
+                              + f"{(err or out)[-160:]}")
         # firmware hash = the app image's embedded SHA (validates, not corrupt)
         from workflows.rnode_v4_rgb import embedded_hash_command
         self.connection.run(
