@@ -25,5 +25,10 @@ def test_preflight_lists_the_hardware_and_offers_a_way_back():
     assert "raspberry pi 5" in low and "sd" in low
     assert "ethernet cable" in low and "card reader" in low
     assert "32" in low and "64" in low           # capacity guidance
+    # the FULL build (operator, 2026-08-30): radio + its plumbing included,
+    # so nobody discovers a missing part at the firstborn step
+    assert "tracker" in low and "915" in low
+    assert "usb-a to usb-c" in low and "pigtail" in low
+    assert "power supply" in low and "touch screen" in low
     assert "take me back" in low                 # graceful exit if unprepared
     assert "_show_stage_insert()" in pf          # 'start' proceeds to the card

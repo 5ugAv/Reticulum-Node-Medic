@@ -173,17 +173,26 @@ class MitosisScreen(BoxLayout):
         # name the raw parts, plainly. "Ethernet cable" not "flat internet
         # cable" (not everybody's is flat). 8 GB matches this medic's own
         # board (verified live: Pi 5 Model B, 8 GB).
+        # The FULL build list (operator, 2026-08-30: "give them the full
+        # list of the build... spell it all out") — everything a person
+        # needs to make a complete working medic, not just the imaging
+        # parts. The Tracker is the new medic's own radio + GPS (its
+        # firstborn); the antenna items feed it.
         body = _label(
             "This copies this Node Medic onto a second one. Before you start, "
             "have these to hand:\n\n"
-            "  •  a Raspberry Pi 5 (8 GB)\n"
+            "  •  a Raspberry Pi 5 (8 GB) and its 5 V / 5 A power supply\n"
+            "  •  a 5-inch touch screen (same as this one)\n"
             "  •  a memory (SD) card — 32 GB minimum, 64 GB is better\n"
+            "  •  a memory card reader\n"
             "  •  an ethernet cable\n"
-            "  •  a memory card reader\n\n"
+            "  •  a Heltec Wireless Tracker — the new medic's own radio\n"
+            "  •  a USB-A to USB-C cable, for the Tracker\n"
+            "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
             "It takes about fifteen minutes, mostly waiting. You do a few "
             "simple steps when asked; Node Medic does the rest.",
             color="text_primary", size="15sp")
-        body.size_hint_y, body.height = None, dp(230)
+        body.size_hint_y, body.height = None, dp(330)
         self.add_widget(body)
         go = Button(text="I have these — start  →", size_hint_y=None,
                     height=dp(56), font_size="19sp", background_normal="",
