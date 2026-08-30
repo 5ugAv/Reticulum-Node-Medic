@@ -545,3 +545,30 @@ def download_node_details(points: List[Tuple[float, float, str]], dest_path: str
             blocked = True
             break
     return {"nodes": len(points), "fetched": fetched, "blocked": blocked}
+
+
+def world_fill_service_active() -> bool:
+    """True when the boot-resuming world-map-fill service is running — the
+    signal that the WORLD download already has an owner and the UI must not
+    start a competing fetcher (two writers starve each other on the SQLite
+    lock; seen as a frozen count on glass, 2026-08-30)."""
+    try:
+        out = subprocess.run(["systemctl", "is-active", "world-map-fill"],
+                             capture_output=True, text=True, timeout=5).stdout
+        return out.strip() == "active"
+    except Exception:                     # noqa: BLE001
+        return False
+
+
+def carried_tile_count(dest_path: str) -> Optional[int]:
+    """How many tiles the carried basemap holds right now (None when the
+    file/table doesn't exist yet). Cheap enough to poll for a live label."""
+    import sqlite3 as _sq
+    try:
+        conn = _sq.connect(dest_path)
+        conn.execute("PRAGMA busy_timeout=5000")
+        n = conn.execute("SELECT COUNT(*) FROM tiles").fetchone()[0]
+        conn.close()
+        return int(n)
+    except Exception:                     # noqa: BLE001
+        return None

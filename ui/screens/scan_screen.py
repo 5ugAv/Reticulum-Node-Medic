@@ -1830,8 +1830,43 @@ class ScanScreen(BoxLayout):
             count=count, mb=f"{mb:g}", source=source))
         dest = os.path.join(MAPS_DIR, "offline.mbtiles")
         os.makedirs(MAPS_DIR, exist_ok=True)
+        # THE WORLD ALREADY HAS AN OWNER: the boot-resuming fill service
+        # (2026-08-30). A second fetcher just starves against it on the
+        # SQLite lock and freezes its own counter on glass — so when the
+        # service is running, the button becomes a live WINDOW onto its
+        # progress instead of a competitor.
+        if self._radius_km == WORLD:
+            from ui.map_download import world_fill_service_active
+            if world_fill_service_active():
+                self._watch_world_fill(dest)
+                return
         threading.Thread(target=self._run_download, args=(lat, lon, dest),
                          daemon=True).start()
+
+    def _watch_world_fill(self, dest):
+        """Live label for the background world fill: carried count polled
+        every few seconds; stops itself when the world is complete."""
+        from ui.map_download import carried_tile_count, estimate_world
+        total, _mb = estimate_world()
+        ev_holder = {}
+
+        def tick(_dt):
+            n = carried_tile_count(dest)
+            if n is None:
+                return
+            if n >= total:
+                self._set_status(tr("World map complete — {n} tiles carried."
+                                    ).format(n=n))
+                ev = ev_holder.get("ev")
+                if ev is not None:
+                    ev.cancel()
+                return
+            self._set_status(
+                tr("The medic is downloading the world in the background — "
+                   "{n}/{total} tiles carried.").format(n=n, total=total))
+
+        tick(0)
+        ev_holder["ev"] = Clock.schedule_interval(tick, 5)
 
     def _run_download(self, lat, lon, dest):
         def progress(s):
