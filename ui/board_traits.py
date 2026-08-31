@@ -40,14 +40,52 @@ from typing import Dict, Optional
 STORE = os.path.join(os.path.expanduser("~"), ".reticulum-node-medic",
                      "board_traits.json")
 
+#: FACTORY KNOWLEDGE, carried in the repo and shipped with every medic (and
+#: handed to every clone): traits measured on real boards at the bench, so a
+#: first-time keeper inherits the narrowing instead of having to earn it one
+#: birth at a time (operator, 2026-08-31: "train the medic so a first time
+#: user has had all this work done for them already"). Filled by
+#: scripts/train_boards.py — never by hand, never from a datasheet.
+SEED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "assets", "board_traits_seed.json")
 
-def _load(path: Optional[str] = None) -> dict:
+
+def _read(path: str) -> dict:
     try:
-        with open(path or STORE) as f:
+        with open(path) as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except Exception:                      # noqa: BLE001 — no store = nothing learned
+    except Exception:                      # noqa: BLE001 — absent = nothing known
         return {}
+
+
+def _load(path: Optional[str] = None) -> dict:
+    """Everything the medic knows: the shipped seed, with anything THIS medic
+    has learned laid over the top. The keeper's own boards always win — the
+    seed describes the models we measured, theirs describes the one in their
+    hand. An explicit *path* (tests, tools) is read alone, unlayered."""
+    if path:
+        return _read(path)
+    merged = dict(_read(SEED))
+    for key, learned in _read(STORE).items():
+        if isinstance(learned, dict):
+            base = merged.get(key)
+            base = dict(base) if isinstance(base, dict) else {}
+            # MAC prefixes ACCUMULATE across seed and local: a keeper's board
+            # from a different production run is more knowledge, not a
+            # correction. Every other trait is overwritten by what this medic
+            # measured itself.
+            pres = list(base.get("mac_prefixes") or [])
+            for p in (learned.get("mac_prefixes") or []):
+                if p not in pres:
+                    pres.append(p)
+            base.update(learned)
+            if pres:
+                base["mac_prefixes"] = pres[-16:]
+            merged[key] = base
+        else:
+            merged[key] = learned
+    return merged
 
 
 def traits_for(board_key: str, path: Optional[str] = None) -> Dict[str, str]:
@@ -71,7 +109,7 @@ def learn(board_key: str, traits: Dict[str, Optional[str]],
     if not keep:
         return False
     try:
-        store = _load(path)
+        store = _read(path or STORE)       # write to the LOCAL store only
         entry = store.get(board_key)
         entry = dict(entry) if isinstance(entry, dict) else {}
         entry.update(keep)
@@ -139,7 +177,7 @@ def learn_mac_prefix(board_key: str, mac: str,
     if not board_key or not pre:
         return False
     try:
-        store = _load(path)
+        store = _read(path or STORE)       # write to the LOCAL store only
         entry = store.get(board_key)
         entry = dict(entry) if isinstance(entry, dict) else {}
         seen = entry.get("mac_prefixes")
