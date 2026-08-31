@@ -44,3 +44,6 @@ docs/previews/
 # filter-branch / filter-repo scratch
 .git-rewrite/
 assets/debs/
+
+# Local firmware backups - irreplaceable device images, kept out of git
+.local-backups/

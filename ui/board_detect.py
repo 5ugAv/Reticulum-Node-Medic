@@ -62,9 +62,21 @@ _NRF52_PRODUCT_KEYS = (
     ("t-echo", "techo"),
     ("techo", "techo"),
     ("t114", "heltec_t114"),
-    # The STOCK RNode app calls the board by Heltec's module name, not "T114"
-    # (observed live 2026-08-20: product "HT-n5262", manufacturer "Heltec").
-    ("ht-n5262", "heltec_t114"),
+    # "HT-n5262" DELIBERATELY DOES NOT NAME A BOARD, and must not be re-added.
+    # It is Heltec's MODULE name, shared by at least four products: the Mesh
+    # Node T114, Mesh Node T1, Mesh Solar and the MeshPocket. They present the
+    # same USB product string, the same DFU PID (0x0071) and build with the
+    # same FQBN; only the per-unit USB serial tells them apart.
+    #
+    # It used to map to heltec_t114 (added 2026-08-20, when the T114 was the
+    # only one of the four on this bench). On 2026-09-01 a MeshPocket was
+    # converted here, so that inference is now wrong and dangerous: it would
+    # offer T114 firmware for a MeshPocket, which is exactly the wrong-board
+    # flash that left two MeshPockets boot-looping on Heltec's own forum.
+    # Falling through means the operator gets the nRF52 picker and CHOOSES,
+    # which is the honest answer to an ambiguous identity. This is the same
+    # rule the "nrf52840 dk" note below anticipated: when a second board
+    # starts presenting an identity, the identity stops being evidence.
     # A stock-RNode T-Echo goes ANONYMOUS: Mark's build uses the pca10056
     # defaults, so the board presents Nordic's generic "nRF52840 DK" — and
     # the RTNode option vanished for a board we had proven an hour earlier

@@ -217,4 +217,22 @@ def test_stock_rnode_techo_is_inferred_from_the_generic_nordic_identity():
     from ui.board_detect import nrf52_board_key
     assert nrf52_board_key("nRF52840 DK") == "techo"
     assert nrf52_board_key("WisCore RAK4631 Board") == "rak4631"
-    assert nrf52_board_key("HT-n5262") == "heltec_t114"
+    # A board that NAMES itself T114 still resolves...
+    assert nrf52_board_key("Mesh Node T114") == "heltec_t114"
+
+
+def test_ht_n5262_is_ambiguous_and_must_not_name_a_board():
+    """"HT-n5262" is Heltec's MODULE name, shared by the Mesh Node T114, Mesh
+    Node T1, Mesh Solar and the MeshPocket. It used to map to heltec_t114,
+    which was safe only while the T114 was the sole one of the four on this
+    bench. A MeshPocket was converted here on 2026-09-01, so that inference
+    would now offer T114 firmware for a MeshPocket - the wrong-board flash
+    that left two of them boot-looping on Heltec's own forum.
+
+    Returning None sends the operator to the nRF52 picker to CHOOSE, which is
+    the honest answer to an ambiguous identity. Do not "fix" this by mapping
+    it to a board."""
+    from ui.board_detect import nrf52_board_key
+    assert nrf52_board_key("HT-n5262") is None
+    assert nrf52_board_key("Heltec_HT-n5262") is None
+    assert nrf52_board_key("Heltec_AutoMation_HT-n5262") is None
