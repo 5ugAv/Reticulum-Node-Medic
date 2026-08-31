@@ -85,14 +85,53 @@ Best-value group for the Adafruit pair — cheaper landed than ordering direct.
     * G2 is DISCONTINUED; G3 is current. Treat as backorder — restock was due 29 Aug.
     * shop.uniteng.com now redirects here.
 
-## AliExpress — needs manual search
+## The $8 node — cheap path (AliExpress) — CHECK THEY'RE THE SAME STORE
 
-* Generic ESP32-DevKitC or NodeMCU-32S ×3  -~$5 ea-  NOT FOUND — needs manual search
-    * ⚠ Core Electronics' cheap "ESP32" minis are ESP32-**C3/C6/S3** — RISC-V or S3,
-      NOT the classic ESP32 the homebrew RNode recipe targets. Don't substitute blindly.
-* Ai-Thinker Ra-01H or RFM95W module ×3  -~$3 ea-  NOT FOUND — needs manual search
-    * AliExpress serves nothing machine-readable; this is a manual buy.
-    * AU alternative: Core's RFM95CW at $27.85 AUD ea (pricey by comparison).
+AliExpress charges postage PER STORE, not per order. Put one ESP32 line and one
+radio line in the cart and confirm the store matches before paying twice.
+
+* ESP32 DevKit, CP2102, ESP-WROOM-32 (classic) ×3  -AU$3.43 ea-  https://www.aliexpress.com/item/1005006996548903.html
+    * 10,000+ sold, 4.9★. Cheapest credible classic-ESP32 found anywhere.
+    * chip confirmed from listing title only — item pages don't render for machines
+* ESP32-DevKitC V4, ESP-WROOM-32 ×3  -AU$12.01 ea-  https://www.aliexpress.com/item/1005008889403671.html
+    * SAFER CHOICE for wiring: the plain 38-pin DevKitC definitely exposes all six
+      pins we need (GPIO39 sits on the VN pin). Worth the extra $9.
+* RFM95W 868/915MHz SX1276 ×3  -AU$4.99 ea-  https://www.aliexpress.com/item/1005006061079223.html
+    * ⚠ SELECT THE 868/915 VARIANT — the same listing sells 433MHz parts
+    * bare castellated module (~2mm pads), NOT 0.1" pins — you solder wires to pads
+* RFM95 SX1276 (cheapest) ×3  -AU$3.36 ea-  https://www.aliexpress.com/item/32811523237.html
+    * same 433-vs-915 warning; bare castellated
+* Ai-Thinker Ra-01H SX1276 ×3  -AU$6.89 ea-  https://www.aliexpress.com/item/1005008637642000.html
+    * listing says 868MHz; Ra-01H is the high-band part covering 915 — confirm with seller
+* RadioFruit RFM95W breakout clone (0.1" PINS) ×3  -AU$23.99 ea-  https://www.aliexpress.com/item/1005010595743573.html
+    * the ONLY true 0.1"-pin SX1276 on AliExpress — no soldering to castellations
+    * only 2 sold; clone quality unproven
+* ⚠ DO NOT BUY (appears in "esp32 devkit" searches, wrong silicon):
+      https://www.aliexpress.com/item/1005007090105627.html — ESP32-C6, RISC-V
+      https://www.aliexpress.com/item/1005012049775045.html — "ESP32S" wording, module unconfirmed
+* Shipping to AU: available on all; cost only shown at checkout. Expect 2–6 weeks.
+
+## The $8 node — fast path (Australia, days not weeks, ~AU$142)
+
+* FireBeetle Board ESP32-E (ESP-WROOM-32E, classic) ×3  -AU$18.80 ea-  https://core-electronics.com.au/firebeetle-board-esp32-e-arduino-compatible.html
+    * 16 in stock, same-day dispatch before 2pm; headers included, unsoldered
+    * ⚠ FireBeetle uses Dxx labels and doesn't break out every GPIO — CONFIRM
+      GPIO4/33/39/18/19/23 are all on headers before ordering three
+    * pre-soldered version: AU$20.25  https://core-electronics.com.au/firebeetle-esp32-e-iot-microcontroller-with-header-supports-wi-fi-bluetooth.html
+* LoRa RFM95 Shield 915MHz V1.1 (SX1276) ×3  -AU$28.50 ea-  https://littlebirdelectronics.com.au/products/lora-rfm95-shield-915mhz-v1-1
+    * fastest genuine 915 SX1276 in Australia; 4 local + 8 supplier stock
+    * Arduino-shield form factor — you jumper into its female headers
+* Adafruit RFM95W 915MHz breakout (SX1276, 0.1" pins) ×3  -AU$40.10 ea-  https://littlebirdelectronics.com.au/products/adafruit-rfm95w-lora-radio-transceiver-breakout-868-or-915-mhz
+    * the reliable-but-dear option; header strip included unsoldered; ships from supplier
+* Core Electronics has NO 915MHz SX1276 in stock — their RFM95CW is out of stock and
+  their in-stock RFM9x breakouts are 433MHz (wrong band)
+
+## Still to check by hand
+
+* eBay AU, Amazon AU and Jaycar all block automated fetching (403/503/timeout)
+    * eBay AU is where cheap 915 RFM95W + classic ESP32 devkits usually sit with fast
+      domestic postage — worth 5 minutes searching "esp32 wroom devkit" and
+      "rfm95w 915", filtered to Australia Only
 
 ---
 
