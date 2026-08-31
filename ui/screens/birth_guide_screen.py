@@ -1259,6 +1259,19 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(head)
         wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above."),
                               "16sp", color="text_secondary", h=32))
+        # WHAT SHOULD I BUY? (operator, 2026-08-31) — the question a keeper is
+        # actually holding at this screen isn't only "which of these three",
+        # it's "what hardware do I need, and what will it cost me". That
+        # answer lived only in docs nobody in the field can read.
+        advice = Button(text=tr("What should I build?  Recommended hardware →"),
+                        size_hint_y=None, height=dp(44),
+                        font_size=theme.font_sp("15sp"),
+                        background_normal="", background_down="",
+                        background_color=theme.hex_to_rgba(
+                            theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        advice.bind(on_release=lambda *_: self._open_hardware_advice())
+        wrap.add_widget(advice)
         # Once the board has been READ, drop the builds it cannot do. RTNode-2400
         # needs an ESP32-S3; a classic ESP32 (LoRa32, T-Beam, Heltec V2) can only
         # ever be an RNode. Offering an impossible choice and failing later
@@ -1559,6 +1572,14 @@ class BirthGuideScreen(BoxLayout):
         btn.add_widget(inner)
         btn.bind(on_release=lambda *_: self._choose(key))
         return btn
+
+    def _open_hardware_advice(self):
+        """Show the recommended-hardware page (a reference, not a step)."""
+        try:
+            from kivy.app import App
+            App.get_running_app().switch_mode("hardware_advice")
+        except Exception:                                      # noqa: BLE001
+            pass
 
     def _choose(self, path):
         self._path = path
