@@ -1,1 +1,32 @@
-{}
+{
+ "heltec32_v3": {
+  "flash_size": "8MB",
+  "psram": "none"
+ },
+ "heltec32_v4": {
+  "flash_size": "16MB",
+  "mac_prefixes": [
+   "f8:5b:1b:a7"
+  ],
+  "psram": "none"
+ },
+ "heltec_wireless_tracker": {
+  "mac_prefixes": [
+   "3c:0f:02:eb"
+  ]
+ },
+ "lora32_v21": {
+  "flash_size": "4MB",
+  "mac_prefixes": [
+   "90:15:06:f9"
+  ],
+  "psram": "none"
+ },
+ "xiao_esp32s3": {
+  "flash_size": "8MB",
+  "mac_prefixes": [
+   "68:ee:8f:50"
+  ],
+  "psram": "none"
+ }
+}
