@@ -1,102 +1,125 @@
-# Board shopping list
+# LoRa board shopping list — grouped by seller
 
-From the four-agent hardware survey, 2026-08-31. Every board here could be
-flashed as an RNode or RTNode-2400. Tick as you buy.
+Prices checked 2026-08-31, USD unless marked AUD. Grouped so you pay postage
+once per store. Every link was fetched, not guessed.
 
-Prices indicative (USD, Aug 2026). Buy the **915 MHz** SKU (AU/NZ/US) or 868 (EU).
-
----
-
-## Buy first — proves the porting pipeline (~$70)
-
-- [ ] **Heltec Wireless Stick Lite V3** — ~$15
-      - pin-identical to the Heltec V3 we already flash (free support, an alias)
-- [ ] **CDEBYTE EoRa-S3** — ~$20
-      - pin-identical to the T3-S3 we already flash
-      - Ebyte ships where LilyGO doesn't — best board for remote supply
-- [ ] **Heltec Wireless Paper** — ~$25
-      - already supported by RNode CE; e-paper, sun-readable, low power
-- [ ] **Generic ESP32 devkit ×3** — ~$5 each
-- [ ] **RFM95W or Ra-01H module ×3** — ~$3 each
-      - THE $8 NODE. Firmware already carried offline on the medic
-      - wiring: CS→4, RST→33, DIO0→39, SCK→18, MISO→19, MOSI→23
-
-## Solar / field nodes
-
-- [ ] **Seeed SenseCAP Solar Node P1** — ~$60
-      - most reflashable sealed device found: buttons + USB outside an IPX6 shell
-- [ ] **Heltec Mesh Solar** — ~$40
-      - solar-purposed nRF52840 + SX1262, pin map published
-- [ ] **LilyGO T3-S3 V1.3** — ~$14–20
-      - cheapest board in the range AND the only one with real solar input
-      - ⚠ above 5.6 V a Zener conducts and heats — keep the panel in spec
-- [ ] **Heltec Mesh Node T1** — ~$30
-      - small sealed node, pin map published
-
-## Bench coverage
-
-- [ ] **Seeed XIAO nRF52840 + Wio-SX1262 kit** — ~$25
-      - ⚠ its variant has three conflicting pin blocks (kit revisions)
-- [ ] **RAK3312** — ~$35
-      - ⚠ radio rail must be enabled first (SX126X_POWER_EN)
-- [ ] **ELECROW ThinkNode M1** — ~$30
-      - ⚠ TCXO is 3.3 V, not the usual 1.8 V
-- [ ] **LilyGO T-Echo Lite** — ~$27
-      - native USB + UF2 = easy recovery; e-paper
-- [ ] **CanaryOne** — ~$40
-      - same Heltec-module layout as Mesh Solar
-- [ ] **Adafruit HUZZAH32 + RFM95 FeatherWing** — ~$30
-      - supported in BOTH RNode firmwares; DIY tier (three jumpers to solder)
-
-## Buy only to answer a question
-
-- [ ] **B&Q Station G2/G3**
-      - external firmware-download button — effectively unbrickable test case
-      - ⚠ flashes clean on plain USB but the LoRa PA will NOT transmit without 15 V PD
-- [ ] **RAK WisMesh Pocket V3**
-      - cased consumer device, external button forces DFU — convert-flow test
-- [ ] **LilyGO T-Deck Pro**
-      - ⚠ write address is 0, not 0x1000; TCXO 2.4 V; LORA_EN gate
-- [ ] **Heltec Vision Master E290**
-      - e-paper; LoRa pins identical to Heltec V3
+**Always pick the 915 MHz / AU915 band variant.**
 
 ---
 
-## DO NOT BUY
+## Heltec (heltec.org) — one order, ~$52 for the three in stock
 
-- **Seeed T1000-E, Wio Tracker WM1110, T-Beam 1W / any LR1121 SKU**
-      - LR11xx radio — RNode firmware has no driver at all
-- **Anything SX1280** (T-LoRa v2.1-1.8, MakePython nRF52840)
-      - 2.4 GHz, different band plan entirely
-- **RadioMaster Bandit / Micro / Nano**
-      - USB flashing unproven; Micro and Nano are indistinguishable by hardware model
-- **DFRobot FireBeetle + LoRa Cover**
-      - DFRobot's own page: the two "are not compatible" — the advertised pair doesn't mate
-- **M5Stack Unit LoRaWAN, Waveshare UART LoRa HATs, Ebyte T-suffix modules**
-      - closed AT-command firmware — the transceiver is unreachable
-- **M5Stack C6LoRa / Unit C6L**
-      - ESP32-C6 — no RNode firmware support for that MCU
-- **Heltec MeshPocket, ThinkNode M3/M6, Seeed T1000-A/B**
-      - no usable USB data path (charge-only / pogo / aviation connector)
-- **LilyGO T-Watch S3 (original)**
-      - vendor recovery starts "remove the back and extract the battery"; no reset button
-- **LilyGO T-Halow, T-SIM series** — not LoRa at all
-- **goTenna** — Si4460, not Semtech; cannot run this firmware
+* Heltec Wireless Stick Lite V3  -$14.90-  https://heltec.org/project/wireless-stick-lite-v2/
+    * in stock. URL says "v2" but the product IS V3. Choose 902~928MHz in the band dropdown.
+* Heltec Wireless Paper  -$15.90-  https://heltec.org/project/wireless-paper/
+    * in stock. Dropdown defaults to 863~870MHz — change it to 902~928MHz.
+* Heltec Vision Master E290  -$19.90–21.90-  https://heltec.org/project/vision-master-e290/
+    * in stock. 915 lands at the top of that range.
+* Heltec Mesh Solar  -$38.99–44.90-  https://heltec.org/project/meshsolar/
+    * OUT OF STOCK (confirmed). Not discontinued — check back.
+* Heltec Mesh Node T1  -$39.90-  https://heltec.org/project/mesh-node-t1/
+    * OUT OF STOCK (confirmed).
+* Shipping to AU: yes, FedEx/DHL or economy 7–20 days. No free-shipping threshold.
 
-## The one that got away
+## LilyGO (lilygo.cc) — one order
 
-- **Nano G2 Ultra** — best board in the survey on merit
-      - wideband 815–940 MHz: ONE SKU works in every country, no band question ever
-      - but vendor mid-rebrand, every listing out of stock, ships to no part of
-        Africa or Latin America. Revisit if stock returns.
+* LilyGO T3-S3 V1.3 (SX1262 915MHz)  -$15.31-  https://lilygo.cc/products/t3-s3-v1-3
+    * in stock. CORRECTION: no barrel jack — solar is a JST-2.0 SOLAR_IN pad pair.
+* LilyGO T-Solar Kit (panel for the above)  -$25.34-  https://lilygo.cc/products/t-solar-kit
+* LilyGO T-Echo Lite (915MHz, with shell)  -$27.36-  https://lilygo.cc/products/t-echo-lite
+    * in stock. GPS is a separate $6.34 variant, not included.
+* LilyGO T-Deck Pro (915MHz)  -$84.96-  https://lilygo.cc/products/t-deck-pro
+    * China warehouse only; US/Germany variants out of stock.
+* Shipping to AU: yes. DHL 5–10 days. Free-shipping threshold unverified.
 
-## Before you buy
+## Seeed Studio (seeedstudio.com) — one order
 
-- Check the **band**: 915 MHz for AU/NZ/US, 868 for EU
-- **The SKU trap**: T-LoRa Pager, T-Watch S3 and T-Watch Ultra ship
-  SX1262/SX1280/CC1101/LR1121/SI4432 on identical PCBs — USB cannot tell them
-  apart, so write down which radio you bought
-- Every board needs an **antenna** for its band before it transmits
-  (see docs/ANTENNA_BENCH_2026-08-27.md — fleet picks: thick BBREE whip, 8 cm stubby)
-- Buy known **data** USB cables — a charge-only cable looks exactly like dead
-  firmware and has cost this bench hours
+* Seeed SenseCAP Solar Node P1  -$72.90-  https://www.seeedstudio.com/SenseCAP-Solar-Node-P1-for-Meshtastic-LoRa-p-6425.html
+    * in stock. No battery, no GPS — you fit those.
+* Seeed SenseCAP Solar Node P1-Pro  -$93.90-  https://www.seeedstudio.com/SenseCAP-Solar-Node-P1-Pro-for-Meshtastic-LoRa-p-6412.html
+    * in stock. Adds built-in GPS + four 18650s.
+* Seeed XIAO nRF52840  -$9.90-  https://www.seeedstudio.com/Seeed-XIAO-BLE-nRF52840-p-5201.html
+* Seeed Wio-SX1262 for XIAO  -$4.99-  https://www.seeedstudio.com/Wio-SX1262-for-XIAO-p-6379.html
+    * these two are SEPARATE SKUs, not a bundled kit — buy both (~$14.89 the pair).
+* Band selector not exposed on the pages — worth one email before ordering.
+* Shipping to AU: NOT FOUND — their shipping page 404s.
+
+## RAKwireless (store.rakwireless.com) — one order
+
+* RAK WisMesh RAK3312 Starter Kit  -from $26.99-  https://store.rakwireless.com/products/meshtastic-starter-kit-esp32-s3-lora-sx1262
+    * in stock, 900MHz available. THIS is the usable one — baseboard + antenna included.
+* RAK3312 bare core module  -$15.00-  https://store.rakwireless.com/products/wisblock-core-module-rak3312-lora-wifi-ble
+    * in stock. Core only — no baseboard, no antenna.
+* RAK WisMesh Pocket Mini  -$59.97-  https://store.rakwireless.com/products/wismesh-pocket-mini
+    * in stock AND exposes 900MHz US915/AU915 — the better AU buy of the two pockets.
+* RAK WisMesh Pocket V2  -$89.97-  https://store.rakwireless.com/products/wismesh-pocket
+    * in stock but colour is the only choice — confirm 915MHz with RAK first.
+    * NOTE: "Pocket V3" does not exist; V2 is current.
+* Shipping to AU: yes. DAP 5–10 days / DDP 15–20. No published threshold.
+
+## Core Electronics (core-electronics.com.au) — AU domestic, no customs
+
+Best-value group for the Adafruit pair — cheaper landed than ordering direct.
+
+* Adafruit HUZZAH32 ESP32 Feather (pre-soldered)  -$36.70 AUD-  https://core-electronics.com.au/adafruit-huzzah32-esp32-feather-board-pre-soldered.html
+* Adafruit LoRa Radio FeatherWing RFM95W 900MHz  -$34.55 AUD-  https://core-electronics.com.au/adafruit-lora-radio-featherwing-rfm95w-900-mhz.html
+    * lead time, dispatch ~Sep 08–14. Do NOT order the 433MHz sibling.
+* Shipping: domestic, from $3 stamped / $7 tracked. Free Newcastle pickup.
+
+## Ebyte (ebyteiot.com) — one order
+
+* CDEBYTE EoRa-S3-900TB (915MHz)  -$16.78-  https://ebyteiot.com/products/ebyte-oem-odm-eora-s3-900tb-22dbm-7km-mini-low-power-and-long-distance-sx1262-rf-module-lora-module-915mhz
+    * PRE-ORDER / stock conflicting. Cheapest 915MHz SX1262 board on this list.
+    * cdebyte.com itself has no cart — this is the buy link.
+* Shipping to AU: China Post 7–15 working days. Free air shipping over $89.99.
+
+## Elecrow (elecrow.com) — one order
+
+* ELECROW ThinkNode M1  -from $53.90-  https://www.elecrow.com/thinknode-m1-meshtastic-lora-signal-transceiver-powered-by-nrf52840-with-154-screen-support-gps.html
+    * low stock. Band variant not confirmable on the page — check at checkout.
+* Shipping to AU: registered air from ~$3.18, or DHL 3–5 days.
+
+## B&Q Consulting (store.bqvoy.com) — one order
+
+* B&Q Station G3 (US915MHz)  -$109 (was $159)-  https://store.bqvoy.com/product/meshtastic-mesh-device-station-edition/
+    * G2 is DISCONTINUED; G3 is current. Treat as backorder — restock was due 29 Aug.
+    * shop.uniteng.com now redirects here.
+
+## AliExpress — needs manual search
+
+* Generic ESP32-DevKitC or NodeMCU-32S ×3  -~$5 ea-  NOT FOUND — needs manual search
+    * ⚠ Core Electronics' cheap "ESP32" minis are ESP32-**C3/C6/S3** — RISC-V or S3,
+      NOT the classic ESP32 the homebrew RNode recipe targets. Don't substitute blindly.
+* Ai-Thinker Ra-01H or RFM95W module ×3  -~$3 ea-  NOT FOUND — needs manual search
+    * AliExpress serves nothing machine-readable; this is a manual buy.
+    * AU alternative: Core's RFM95CW at $27.85 AUD ea (pricey by comparison).
+
+---
+
+## Dropped from the list
+
+* CanaryOne  -N/A-  NOT PURCHASABLE
+    * canaryone.com is a parked for-sale page; the maker states it is "winding down".
+      Also absent from Meshtastic's current device list.
+
+## Do not buy
+
+* Seeed T1000-E, Wio Tracker WM1110, T-Beam 1W, any LR1121 SKU — LR11xx radio, no driver exists
+* Anything SX1280 (T-LoRa v2.1-1.8, MakePython nRF52840) — 2.4GHz, wrong band plan
+* RadioMaster Bandit / Micro / Nano — USB flashing unproven; Micro and Nano indistinguishable
+* DFRobot FireBeetle + LoRa Cover — DFRobot's own page says the two don't mate
+* M5Stack Unit LoRaWAN, Waveshare UART LoRa HATs, Ebyte T-suffix — closed AT firmware
+* M5Stack C6LoRa / Unit C6L — ESP32-C6, no firmware support
+* Heltec MeshPocket, ThinkNode M3/M6, Seeed T1000-A/B — no usable USB data path
+* LilyGO T-Watch S3 (original) — recovery needs the back off and the battery out
+* LilyGO T-Halow, T-SIM series — not LoRa
+* goTenna — Si4460, not Semtech
+
+## Before you order
+
+* Band: 915 MHz / AU915 every time
+* SKU trap: T-LoRa Pager, T-Watch S3, T-Watch Ultra ship five different radios on
+  identical PCBs — write down which one you bought
+* Every board needs an antenna for its band (see docs/ANTENNA_BENCH_2026-08-27.md)
+* Buy known DATA USB cables — a charge-only cable looks exactly like dead firmware
+* Two items don't exist as named: WisMesh Pocket **V3** (V2 is current), Station **G2** (now G3)
