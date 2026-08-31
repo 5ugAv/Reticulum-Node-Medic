@@ -17,6 +17,12 @@ if [ "${FORCE:-0}" != "1" ]; then
     # re-enter its bootloader without hands-on recovery.
     pgrep -f "[e]sptool" >/dev/null 2>&1 && busy="a board firmware flash"
     pgrep -f "[r]nodeconf" >/dev/null 2>&1 && busy="an RNode provisioning run"
+    # nRF52 boards flash over serial DFU, not esptool. Interrupting one is
+    # worse than interrupting an ESP32: a board like the Heltec MeshPocket
+    # cannot be power-cycled at all, so recovery is a button press the
+    # operator may not be near.
+    pgrep -f "[a]dafruit-nrfutil" >/dev/null 2>&1 && busy="an nRF52 serial DFU flash"
+    pgrep -f "[a]rduino-cli upload" >/dev/null 2>&1 && busy="a board firmware upload"
     if [ -n "$busy" ]; then
         echo "REFUSING to restart: $busy is in progress." >&2
         echo "Wait for it to finish, or re-run with FORCE=1 if you are certain." >&2
