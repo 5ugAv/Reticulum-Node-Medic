@@ -927,14 +927,6 @@ class ReticulumNodeMedicApp(App):
                  on_leave=lambda *a: _ant.sleep())
         self.sm.add_widget(ant)
 
-        # Recommended hardware — what to build for which job, and what it
-        # really costs (operator, 2026-08-31). Reached from the BIRTH chooser,
-        # where the question is actually being asked.
-        from ui.screens.hardware_advice_screen import HardwareAdviceScreen
-        hw_advice = Screen(name="hardware_advice")
-        hw_advice.add_widget(self._with_back(HardwareAdviceScreen()))
-        self.sm.add_widget(hw_advice)
-
         probe = Screen(name="probe")
         _probe_real = hw.hardware_present()
         probe.add_widget(self._with_back(ProbeScreen(

@@ -77,6 +77,17 @@ def build_guide_content():
         col.add_widget(_role_row(device, role))
 
     col.add_widget(_divider())
+    col.add_widget(_section_title(g.BUILD_TITLE))
+    for head, cost, lines in g.BUILD_SECTIONS:
+        col.add_widget(_wrap(head, size="16sp", color="accent", bold=True))
+        col.add_widget(_wrap(cost, size="14sp", color="green", bold=True))
+        for ln in lines:
+            col.add_widget(_wrap("  •  " + ln, size="14sp",
+                                 color="text_secondary"))
+    for ln in g.BUILD_ALWAYS:
+        col.add_widget(_wrap("  •  " + ln, size="14sp", color="amber"))
+
+    col.add_widget(_divider())
     col.add_widget(_section_title(g.RADIO_TITLE))
     for line in g.radio_lines():
         col.add_widget(_wrap(line, size="15sp", color="text_primary"))
