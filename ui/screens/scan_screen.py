@@ -1762,14 +1762,31 @@ class ScanScreen(BoxLayout):
             return
         if self._radius_km == WORLD:
             # world overview: no centre needed — the whole planet at z0-8
-            self.dl_button.text = tr("Download offline map (World overview)")
             count, mb = estimate_world()
+            # ALREADY CARRIED? Then don't offer it (operator, 2026-08-31:
+            # "anything that has been permanently downloaded should be removed
+            # from the download options"). The medic finished the world on
+            # 2026-08-31 and the screen still invited an hours-long 1.2 GB
+            # re-download of what it already had — an offer that cannot be
+            # true is its own kind of lie.
+            from ui.map_download import carried_tile_count
+            carried = carried_tile_count(
+                os.path.join(MAPS_DIR, "offline.mbtiles"))
+            if carried is not None and carried >= count:
+                self.dl_button.text = tr("World overview - already carried")
+                self.dl_button.disabled = True
+                self._set_status(
+                    tr("The whole world is already on this medic ({n} tiles) "
+                       "- nothing to download.").format(n=carried), "ok")
+                return
+            self.dl_button.text = tr("Download offline map (World overview)")
             verdict = storage_summary(mb, disk_free_mb(
                 MAPS_DIR if os.path.isdir(MAPS_DIR) else "."))
             self.dl_button.disabled = not verdict["ok"]
+            done = tr(" {n} already carried.").format(n=carried) if carried else ""
             self._set_status(
                 tr("The whole world at overview zoom (~{count} tiles - hours, "
-                   "resumable).").format(count=count) + " " + verdict['text'],
+                   "resumable).").format(count=count) + done + " " + verdict['text'],
                 "ok" if verdict["ok"] else "alert")
             return
         self.dl_button.text = tr("Download offline map ({km} km)").format(
