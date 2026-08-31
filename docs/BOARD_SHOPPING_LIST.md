@@ -149,10 +149,27 @@ radio line in the cart and confirm the store matches before paying twice.
 * DFRobot FireBeetle + LoRa Cover — DFRobot's own page says the two don't mate
 * M5Stack Unit LoRaWAN, Waveshare UART LoRa HATs, Ebyte T-suffix — closed AT firmware
 * M5Stack C6LoRa / Unit C6L — ESP32-C6, no firmware support
-* Heltec MeshPocket, ThinkNode M3/M6, Seeed T1000-A/B — no usable USB data path
+* ThinkNode M3/M6, Seeed T1000-A/B — no usable USB data path
 * LilyGO T-Watch S3 (original) — recovery needs the back off and the battery out
 * LilyGO T-Halow, T-SIM series — not LoRa
 * goTenna — Si4460, not Semtech
+
+## Works, with a caveat — proven on this bench
+
+* Heltec MeshPocket (HT-298B, 10000mAh)  -~$60-  https://heltec.org/project/meshpocket/
+    * CONVERTED TO RNODE AND PROVEN ON AIR 2026-09-01 — transmits, receives, and
+      reached a node 2 hops away over LoRa. Previously listed here as "no usable
+      USB data path", which was WRONG.
+    * ⚠ Its USB-C port really is charge-only. Flashing works ONLY through the
+      bundled magnetic pogo cable — there is no replacement source anywhere, so
+      losing that cable strands the board.
+    * ⚠ It reports board-ID `HT-n5262`, which the T114, Mesh Node T1 and Mesh
+      Solar also report. Only the USB serial number tells them apart. Never let
+      a flasher pick firmware for it by board-ID alone.
+    * ⚠ It cannot be power-cycled (3V3 rail has no control line, cells soldered),
+      and Heltec publishes no bootloader recovery image for it.
+    * Good as a phone-mounted personal radio; the internal antenna is small, so
+      not a relay.
 
 ## Before you order
 
