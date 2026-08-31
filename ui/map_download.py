@@ -572,3 +572,28 @@ def carried_tile_count(dest_path: str) -> Optional[int]:
         return int(n)
     except Exception:                     # noqa: BLE001
         return None
+
+
+def carried_of(tiles, dest_path: str) -> int:
+    """How many of *tiles* [(z,x,y), ...] the carried basemap already holds.
+
+    Lets a download offer say what is genuinely left rather than quoting the
+    whole job — radii nest inside each other, so a 200 km pass after a 50 km
+    one is mostly re-fetching, and an estimate that ignores that overstates
+    both the time and the bytes (operator, 2026-08-31).
+    """
+    import sqlite3 as _sq
+    try:
+        conn = _sq.connect(dest_path)
+        conn.execute("PRAGMA busy_timeout=5000")
+        have = 0
+        for z, x, y in tiles:
+            tms = (2 ** z - 1) - y
+            if conn.execute("SELECT 1 FROM tiles WHERE zoom_level=? AND "
+                            "tile_column=? AND tile_row=?",
+                            (z, x, tms)).fetchone():
+                have += 1
+        conn.close()
+        return have
+    except Exception:                     # noqa: BLE001
+        return 0

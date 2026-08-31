@@ -1806,6 +1806,28 @@ class ScanScreen(BoxLayout):
                                                    if os.path.isdir(MAPS_DIR)
                                                    else "."))
         self.dl_button.disabled = not verdict["ok"]
+        # NO OVERLAP TALK (operator, 2026-08-31): "user doesn't need to know
+        # about overlap if the map does." The downloader already skips every
+        # tile it carries (_fetch_tiles: `if writer.has(...)`), so a bigger
+        # radius after a smaller one fetches only the new ring and the keeper
+        # still gets the full circle they asked for — just faster. The one
+        # thing worth saying is when there is NOTHING to fetch, because
+        # offering a download that would do nothing is a lie.
+        try:
+            from ui.map_download import carried_of, tiles_in_radius
+            tiles = tiles_in_radius(center[0], center[1], self._radius_km,
+                                    zmin=DEFAULT_MIN_ZOOM,
+                                    zmax=DEFAULT_MAX_ZOOM)
+            if carried_of(tiles, os.path.join(MAPS_DIR,
+                                              "offline.mbtiles")) >= len(tiles):
+                self.dl_button.text = tr("This area - already carried")
+                self.dl_button.disabled = True
+                self._set_status(
+                    tr("This area is already on the medic - nothing to "
+                       "download."), "ok")
+                return
+        except Exception:                                  # noqa: BLE001
+            pass
         self._set_status(tr("Centred on {source}.").format(source=source)
                          + " " + verdict['text'],
                          "ok" if verdict["ok"] else "alert")
