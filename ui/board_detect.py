@@ -14,6 +14,7 @@ medic). Onboard boards (Jonesey) are already excluded by local_board_ports.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, List, Optional
 
 #: esptool bundled with the rnodeconf firmware cache on the medic (same as the
@@ -395,6 +396,58 @@ def port_usb_product(port: str) -> str:
     return ""
 
 
+#: USB product fragment -> every board that presents it. The counterpart to
+#: _NRF52_PRODUCT_KEYS: that maps an identity to ONE board and must stay silent
+#: when the identity is shared, which left the operator picking from every nRF52
+#: board we stock. This narrows a shared identity to the boards that actually
+#: claim it, which is a real answer without being a guess.
+_NRF52_FAMILY_KEYS = (
+    # Heltec's module name, not a product name. At least four boards ship it:
+    # Mesh Node T114, Mesh Node T1, Mesh Solar and the MeshPocket. Same product
+    # string, same DFU PID 0x0071, same bootloader Model and Board-ID (verified
+    # from a MeshPocket's own INFO_UF2: "Model: HT-n5262"), same FQBN. Only the
+    # per-unit serial differs, and that says WHICH board, never WHAT board.
+    # Only the two we stock are listed; flashing either image onto the other
+    # boot-loops the board, which is why this asks rather than assumes.
+    ("ht-n5262", ("heltec_t114", "heltec_meshpocket")),
+)
+
+#: RNode board byte -> our board key. An already-flashed RNode reports this in
+#: its product line ("... (d2:ce:46)"), and unlike anything on the USB bus it is
+#: the FIRMWARE's own statement of what board it is running on — so it settles
+#: the HT-n5262 ambiguity outright, for re-flashes and adoptions.
+_RNODE_BOARD_BYTE = {
+    0x3C: "heltec_t114",
+    0x46: "heltec_meshpocket",
+    0x51: "rak4631",
+    0x44: "techo",
+}
+
+
+def rnode_board_key(info_output: str) -> Optional[str]:
+    """The board key an ``rnodeconf -i`` transcript names, or None.
+
+    Reads the third byte of the product triple: ``(d2:ce:46)`` -> 0x46 ->
+    MeshPocket. None whenever the board is not a provisioned RNode, the output
+    is unreadable, or the byte is one we do not stock — all of which mean
+    "cannot tell", never "wrong board"."""
+    m = re.search(r"\(([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2})\)",
+                  info_output or "")
+    if not m:
+        return None
+    return _RNODE_BOARD_BYTE.get(int(m.group(3), 16))
+
+
+def nrf52_family_keys(product: str) -> tuple:
+    """Every board key that could be behind this USB product string. Empty when
+    the string is not a known shared identity."""
+    low = (product or "").lower()
+    for needle, keys in _NRF52_FAMILY_KEYS:
+        if needle in low:
+            return keys
+    return ()
+
+
 def nrf52_board_key(product: str) -> Optional[str]:
     """The board key a USB product string names, or None if it names none we
     stock. None is not a failure — the caller then offers every nRF52 board
@@ -471,6 +524,7 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
                  reader: Optional[Callable[[str], str]] = None,
                  vendor_fn: Optional[Callable[[str], str]] = None,
                  product_fn: Optional[Callable[[str], str]] = None,
+                 rnode_fn: Optional[Callable[[str], str]] = None,
                  attempts: int = 6,
                  sleep_fn: Optional[Callable[[float], None]] = None,
                  use_memory: bool = True) -> dict:
@@ -509,9 +563,26 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
         nrf = [b for b in boards
                if _platform_key(getattr(b, "platform", "")) == "nrf52"]
         named = [b for b in nrf if b.key == key] if key else []
-        # A named board wins; otherwise offer every nRF52 board we stock rather
-        # than guessing one. Never an empty list — that is the bug being fixed.
-        shortlist = named or nrf
+
+        # Boards that share a USB identity (HT-n5262: T114 and MeshPocket) can
+        # still be settled by ASKING THE BOARD, when it is already an RNode:
+        # its firmware reports the board byte it was built for, which is a
+        # statement rather than an inference. Only consulted when the product
+        # string was ambiguous, so a board that names itself is never probed,
+        # and any failure just falls through to asking the operator.
+        family = nrf52_family_keys(product) if not named else ()
+        if family:
+            try:
+                probed = rnode_board_key((rnode_fn or _default_rnode_info)(port))
+            except Exception:                        # noqa: BLE001
+                probed = None
+            if probed and probed in family:
+                named = [b for b in nrf if b.key == probed]
+
+        # A named board wins; then the boards that actually claim this shared
+        # identity; then every nRF52 board we stock rather than guessing one.
+        # Never an empty list — that is the bug being fixed.
+        shortlist = named or [b for b in nrf if b.key in family] or nrf
         nrf_key = shortlist[0].key if len(shortlist) == 1 else None
         return _out({"found": True, "port": port, "chip": "nrf52840",
                 "platform": "nRF52", "product": product,
@@ -623,6 +694,25 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
 def _default_ports() -> List[str]:
     from ui.hw_factories import local_board_ports
     return list(local_board_ports())
+
+
+def _default_rnode_info(port: str) -> str:
+    """``rnodeconf -i`` output for *port*, or "" if it says nothing useful.
+
+    Read-only: -i asks the board what it is and writes nothing. Short timeout
+    and every failure swallowed, because this runs only to break a tie — a
+    board that is not an RNode, or is busy (a phone holding it over BLE stops
+    the firmware reading USB at all), simply does not answer, and the operator
+    is asked instead."""
+    import os
+    import subprocess
+    try:
+        return subprocess.run(
+            [os.path.expanduser("~/.local/bin/rnodeconf"), port, "-i"],
+            capture_output=True, text=True, timeout=25,
+        ).stdout or ""
+    except Exception:                                # noqa: BLE001
+        return ""
 
 
 def _default_reader(port: str, esptool: str = DEFAULT_ESPTOOL) -> str:

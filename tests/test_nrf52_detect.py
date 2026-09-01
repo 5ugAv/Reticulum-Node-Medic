@@ -51,7 +51,8 @@ def test_an_unknown_nrf52_offers_every_nrf52_board_rather_than_none():
     keys = [b.key for b in r["boards"]]
     assert r["found"] is True
     assert r["board_key"] is None, "must not guess when the product is unknown"
-    assert set(keys) == {"rak4631", "techo", "heltec_t114"}
+    assert set(keys) == {"rak4631", "techo", "heltec_t114",
+                         "heltec_meshpocket"}
 
 
 def test_nordics_own_vendor_id_counts_too():
@@ -92,3 +93,94 @@ def test_an_esp32_still_goes_through_esptool():
 ])
 def test_product_string_to_board_key(product, expected):
     assert bd.nrf52_board_key(product) == expected
+
+
+# ---------------------------------------------------------------------------
+# HT-n5262: one USB identity, two different boards (2026-09-01)
+#
+# A MeshPocket was converted to an RNode on this bench. It reports the SAME USB
+# product string as the Mesh Node T114, the same DFU PID, and the same
+# bootloader Model/Board-ID (read from the MeshPocket's own INFO_UF2:
+# "Model: HT-n5262"). Nothing on the USB bus separates them, and flashing
+# either image onto the other boot-loops the board.
+# ---------------------------------------------------------------------------
+
+def _detect_family(product, rnode_out):
+    def never(_port):
+        raise AssertionError("esptool was run against an nRF52 board")
+    return bd.detect_board(_boards(),
+                           ports_fn=lambda: ["/dev/ttyACM1"],
+                           reader=never,
+                           vendor_fn=lambda _p: "239a",
+                           product_fn=lambda _p: product,
+                           rnode_fn=lambda _p: rnode_out)
+
+
+def test_ht_n5262_narrows_to_the_family_instead_of_every_nrf52_board():
+    """A shared identity is not "unknown". Offering the two boards that
+    actually claim HT-n5262 is a real answer; offering all four nRF52 boards
+    makes the operator do the disambiguating the tool could have done."""
+    r = _detect_family("HT-n5262", "RNode did not respond")
+    assert r["board_key"] is None, "must not guess between T114 and MeshPocket"
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+
+
+def test_an_already_flashed_meshpocket_identifies_itself_by_board_byte():
+    """The tie-break: ask the board. An RNode reports the board byte its
+    firmware was built for, which is a statement rather than an inference."""
+    r = _detect_family("HT-n5262",
+                       "Product : Heltec MeshPocket 863 - 928 MHz (d2:ce:46)")
+    assert r["board_key"] == "heltec_meshpocket"
+    assert [b.key for b in r["boards"]] == ["heltec_meshpocket"]
+
+
+def test_an_already_flashed_t114_is_not_mistaken_for_a_meshpocket():
+    """The same probe must resolve the OTHER way round — a test that only
+    checked the MeshPocket would pass on a function that always said MeshPocket."""
+    r = _detect_family("HT-n5262", "Product : Heltec T114 (d2:ce:3c)")
+    assert r["board_key"] == "heltec_t114"
+
+
+def test_a_probe_that_names_a_board_outside_the_family_is_ignored():
+    """Fail closed. If the probe answers with something that cannot be behind
+    this USB string, the honest result is the family question, not that board."""
+    r = _detect_family("HT-n5262", "Product : RAK4631 (d2:ce:51)")
+    assert r["board_key"] is None
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+
+
+def test_a_probe_that_raises_falls_back_to_asking_the_operator():
+    """A board held by a phone over BLE does not answer USB at all. That must
+    degrade to the picker, never to an exception out of detection."""
+    def boom(_port):
+        raise OSError("port busy")
+    r = bd.detect_board(_boards(), ports_fn=lambda: ["/dev/ttyACM1"],
+                        reader=lambda _p: "",
+                        vendor_fn=lambda _p: "239a",
+                        product_fn=lambda _p: "HT-n5262",
+                        rnode_fn=boom)
+    assert r["found"] is True
+    assert r["board_key"] is None
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+
+
+def test_a_self_naming_board_is_never_probed():
+    """The probe costs a serial round trip and opening the port re-enumerates
+    some boards. It must only run to break an actual tie."""
+    def must_not_run(_port):
+        raise AssertionError("probed a board that already named itself")
+    r = bd.detect_board(_boards(), ports_fn=lambda: ["/dev/ttyACM1"],
+                        reader=lambda _p: "",
+                        vendor_fn=lambda _p: "239a",
+                        product_fn=lambda _p: "WisCore RAK4631 Board",
+                        rnode_fn=must_not_run)
+    assert r["board_key"] == "rak4631"
+
+
+def test_rnode_board_key_reads_the_third_byte_only():
+    assert bd.rnode_board_key("Product : X (d2:ce:46)") == "heltec_meshpocket"
+    assert bd.rnode_board_key("Product : X (d2:ce:3c)") == "heltec_t114"
+    # Not an RNode / unreadable / a board we do not stock -> "cannot tell".
+    assert bd.rnode_board_key("RNode did not respond") is None
+    assert bd.rnode_board_key("") is None
+    assert bd.rnode_board_key("Product : X (d2:ce:ff)") is None

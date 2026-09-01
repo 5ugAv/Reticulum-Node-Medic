@@ -52,7 +52,16 @@ _NRF52_BOOTLOADER = (
 class RNodeBoard:
     key: str
     display_name: str
-    flash_method: str = "autoinstall"       # "autoinstall" | "arduino_cli"
+    #: "autoinstall"  rnodeconf drives the whole flash from the offline cache
+    #: "arduino_cli"  we build the image here, then arduino-cli uploads it
+    #: "serial_dfu"   we build the image here, then adafruit-nrfutil pushes the
+    #:                signed .zip over the nRF52 serial bootloader. Needed for
+    #:                boards whose firmware is not in upstream RNode at all, so
+    #:                rnodeconf has no menu entry to answer, AND whose upload
+    #:                cannot go through arduino-cli because the board must be
+    #:                put into DFU first (1200-baud touch) and the port MOVES
+    #:                when it gets there.
+    flash_method: str = "autoinstall"  # autoinstall | arduino_cli | serial_dfu
     platform: str = ""                       # ESP32 | ESP32-S3 | nRF52 | AVR
     modem: str = ""                          # SX1262 / SX1276 / ...
     bands: str = ""                          # human band-coverage label
@@ -77,6 +86,13 @@ class RNodeBoard:
     provision: Dict[str, str] = field(default_factory=dict)
     build_properties: List[str] = field(default_factory=list)
     carried_script: str = ""
+    # --- serial_dfu (nRF52) boards only -----------------------------------
+    #: Where this board's built artefact lives on the medic, and what it is
+    #: called. Carried per-board rather than as another module constant: the
+    #: Tracker's path is already a hardcoded TRACKER_BUILD_DIR, and a second
+    #: hardcoded path is how the wrong board's binary gets flashed.
+    build_dir: str = ""
+    dfu_package: str = ""                    # signed .zip for adafruit-nrfutil
 
     @property
     def recovery_instructions(self) -> str:
@@ -138,13 +154,18 @@ class RNodeBoard:
         return f"arduino-cli upload -p {port} --fqbn {self.fqbn} {firmware_dir}"
 
     def provision_commands(self, port: str) -> List[str]:
+        # --platform is OMITTED when the board does not set one, rather than
+        # defaulted. The MeshPocket birth that was verified end-to-end on
+        # hardware ran without it, and the resulting EEPROM is the one proven
+        # to validate; adding a byte that run never wrote would provision
+        # something we have not actually tested.
         p = self.provision
-        return [
-            f"rnodeconf {port} --eeprom-wipe",
-            (f"rnodeconf {port} -r --product {p['product']} "
-             f"--model {p['model']} --platform {p['platform']} "
-             f"--hwrev {p['hwrev']}"),
-        ]
+        parts = [f"rnodeconf {port} -r",
+                 f"--product {p['product']}", f"--model {p['model']}"]
+        if p.get("platform"):
+            parts.append(f"--platform {p['platform']}")
+        parts.append(f"--hwrev {p['hwrev']}")
+        return [f"rnodeconf {port} --eeprom-wipe", " ".join(parts)]
 
 
 def _official(key, name, index, platform, modem, bands, recovery_key="",
@@ -312,6 +333,44 @@ _CUSTOM = [
             "so unplug every other USB board first to avoid flashing the wrong "
             "one."),
     ),
+    RNodeBoard(
+        key="heltec_meshpocket",
+        display_name="Heltec MeshPocket",
+        flash_method="serial_dfu",
+        platform="nRF52",
+        modem="SX1262",
+        bands="863-928 MHz",
+        experimental=True,
+        # Not in upstream RNode at all: this is @TheBeadster's port (PR #87 on
+        # RNode_Firmware_CE), cleaned up and published at
+        # 5ugAv/HELTEC-MeshPocket-RNode. So there is no rnodeconf menu entry to
+        # answer, and the image is built here.
+        board_model=0x46,               # BOARD_HELTEC_MESHP, read from Boards.h
+        fqbn="Heltec_nRF52:Heltec_nRF52:HT-n5262",
+        build_properties=[
+            "build.partitions=no_ota",
+            "upload.maximum_size=2097152",
+        ],
+        # EXACTLY the birth verified on hardware 2026-09-01: no --platform.
+        provision={"product": "d2", "model": "ce", "hwrev": "1"},
+        build_dir=("~/MeshPocket/RNode_Firmware_CE/build/"
+                   "Heltec_nRF52.Heltec_nRF52.HT-n5262"),
+        dfu_package="RNode_Firmware_CE.ino.zip",
+        bootloader_instructions=(
+            "Nothing to press. The tool puts this board into its bootloader "
+            "itself, over USB. Its USB-C socket is CHARGE-ONLY — the magnetic "
+            "pogo cable is the only data path, so use that, and check it is "
+            "seated. If a flash does fail, press RST twice quickly and run it "
+            "again."),
+        recovery_key="MeshPocket",
+        notes=(
+            "nRF52840 + SX1262 with a 2.13\" e-ink screen, built into a "
+            "10000mAh powerbank that magnet-mounts to a phone. It reports the "
+            "SAME USB identity as the Mesh Node T114 (HT-n5262), so if the "
+            "board has not been flashed as an RNode yet the tool CANNOT tell "
+            "them apart and will ask you which it is. Flashing the wrong one "
+            "of the pair boot-loops the board."),
+    ),
 ]
 
 
@@ -333,9 +392,15 @@ def official_boards() -> List[RNodeBoard]:
 
 
 def custom_boards() -> List[RNodeBoard]:
-    """Non-official boards flashed from patched firmware via arduino-cli."""
+    """Non-official boards: firmware we build here rather than pull from the
+    rnodeconf cache, whatever pushes the image afterwards.
+
+    Defined as "not autoinstall" and NOT as "arduino_cli", because the two are
+    not the same thing and assuming they were hid a board completely: adding
+    the serial_dfu MeshPocket left it in neither official_boards() nor here,
+    so it existed in the catalogue and appeared in no picker."""
     return sorted((b for b in RNODE_BOARDS.values()
-                   if b.flash_method == "arduino_cli"),
+                   if b.flash_method != "autoinstall"),
                   key=lambda b: b.display_name)
 
 

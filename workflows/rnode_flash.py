@@ -509,6 +509,20 @@ class RNodeFlashWorkflow:
         return StepResult("ensure_single_board", True, "One work board connected.")
 
     def _ensure_firmware(self) -> StepResult:
+        if self.board.flash_method == "serial_dfu":
+            # The board names its own build, because a second hardcoded path is
+            # how the wrong board's image gets flashed. Checked BEFORE the
+            # board is touched: discovering the artefact is missing after a
+            # 1200-baud touch would leave it sitting in DFU for nothing.
+            pkg = f"{self.board.build_dir}/{self.board.dfu_package}"
+            if self.connection.run(f"test -f {pkg}")[0] != 0:
+                return StepResult(
+                    "ensure_firmware", False,
+                    f"The medic's {self.board.display_name} build is missing "
+                    f"({pkg}) — build it before flashing this board.")
+            return StepResult("ensure_firmware", True,
+                              f"{self.board.display_name} firmware ready "
+                              "(the medic's own build).")
         if self.board.flash_method != "autoinstall":
             # custom fork: the medic's own build is the firmware source
             if self.connection.run(
@@ -561,6 +575,8 @@ class RNodeFlashWorkflow:
         return self.port
 
     def _flash(self) -> StepResult:
+        if self.board.flash_method == "serial_dfu":
+            return self._flash_serial_dfu()
         if self.board.flash_method != "autoinstall":
             return self._flash_custom_fork()
         # The board can move between detect_port and here — an already-birthed
@@ -741,6 +757,102 @@ class RNodeFlashWorkflow:
             "flash", True,
             f"Flashed the medic's proven Tracker fork image and provisioned "
             f"as {self.board.display_name}.")
+
+    def _flash_serial_dfu(self) -> StepResult:
+        """Flash an nRF52 board over its serial DFU bootloader.
+
+        The whole sequence is the one proven by hand on a MeshPocket
+        2026-09-01, in that order and for these reasons:
+
+        1. Guard, then capture the USB serial. EVERY later step re-resolves the
+           port from that serial and never reuses a path, because this board
+           moves: after a medic reboot it took ttyACM0, which had been Jonesey.
+        2. 1200-baud touch to enter DFU. No button to press.
+        3. adafruit-nrfutil, then grep the OUTPUT for "Device programmed." —
+           it exits 0 even when the flash failed, so the exit code is not
+           evidence.
+        4. Provision, then set the firmware hash. Skipping the hash leaves the
+           board showing FIRMWARE CORRUPT on its own screen while rnodeconf
+           still says "signature validated" — those are two different things.
+        """
+        try:                              # NEVER the medic's own radio
+            from ui.onboard_roster import assert_flashable, guard_is_active
+            if guard_is_active():
+                assert_flashable(self.port)
+        except Exception as e:            # noqa: BLE001
+            return StepResult("flash", False, f"Refusing to flash: {e}")
+
+        pkg = f"{self.board.build_dir}/{self.board.dfu_package}"
+        pre_serial = by_id_serial(usb_id_for_port(self.connection, self.port))
+        if not pre_serial:
+            return StepResult(
+                "flash", False,
+                "Could not read this board's USB serial number. That number is "
+                "the only thing telling it apart from the medic's own radio "
+                "once it reboots into its bootloader, so the flash stops here "
+                "rather than write to a port that may have moved.")
+
+        # 1200-baud touch. The board resets the instant the port opens, so the
+        # host often sees the write fail — that is the touch working, not a
+        # fault, and only the DFU device appearing decides it.
+        self.connection.run(
+            f"python3 -c \"import serial,time; "
+            f"s=serial.Serial('{self.port}',1200); s.dtr=False; "
+            f"time.sleep(0.4); s.close()\" 2>/dev/null || true", timeout=30)
+
+        dfu_port = find_port_by_usb_serial(self.connection, pre_serial,
+                                           tries=30, delay=1.0)
+        if not dfu_port:
+            return StepResult(
+                "flash", False,
+                "The board never came back in its bootloader after the reset. "
+                "Press RST twice quickly and run it again — nothing has been "
+                "written, so the board is unchanged.")
+        self.port = dfu_port
+        try:
+            from ui.onboard_roster import assert_flashable, guard_is_active
+            if guard_is_active():         # re-check: the port MOVED
+                assert_flashable(self.port)
+        except Exception as e:            # noqa: BLE001
+            return StepResult("flash", False, f"Refusing to flash: {e}")
+
+        code, out, err = self.connection.run(
+            f"adafruit-nrfutil dfu serial -pkg {pkg} -p {self.port} "
+            f"-b 115200 --singlebank", timeout=self.flash_timeout)
+        if "device programmed." not in ((out or "") + (err or "")).lower():
+            return StepResult(
+                "flash", False,
+                f"Firmware write failed: {((err or out) or '')[-200:]}. Serial "
+                "DFU erases before it writes, so the board is sitting in its "
+                "bootloader and can simply be flashed again.")
+
+        settled = find_port_by_usb_serial(self.connection, pre_serial,
+                                          tries=30, delay=1.0)
+        if settled:
+            self.port = settled
+        for cmd in self.board.provision_commands(self.port):
+            self.connection.run(f"sleep 3 && {cmd}", timeout=self.flash_timeout)
+
+        # The firmware hash is what clears FIRMWARE CORRUPT. Ask the DEVICE what
+        # it computed rather than hashing the file here: if the two disagree the
+        # right answer is to leave it unset and say so, not to paper over it.
+        code, out, err = self.connection.run(
+            f"rnodeconf {self.port} -L", timeout=120)
+        import re as _re
+        m = _re.search(r"\b([0-9a-f]{64})\b", (out or "") + (err or ""))
+        if not m:
+            return StepResult(
+                "flash", True,
+                f"Flashed and provisioned as {self.board.display_name}, but the "
+                "board did not report its firmware hash, so it will show "
+                "FIRMWARE CORRUPT until that is set. The firmware itself is on "
+                "the board and sound.")
+        self.connection.run(
+            f"rnodeconf {self.port} --firmware-hash {m.group(1)}", timeout=120)
+        return StepResult(
+            "flash", True,
+            f"Flashed the medic's own {self.board.display_name} build over "
+            "serial DFU, provisioned it, and set its firmware hash.")
 
     def _set_params(self) -> StepResult:
         # Bake the canonical radio params into the EEPROM AT BIRTH and leave the

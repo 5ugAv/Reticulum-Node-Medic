@@ -229,10 +229,41 @@ def test_nrf52_guidance_does_not_demand_a_button_press():
         "the automatic touch is the normal path — don't send someone hunting RST"
 
 
-def test_custom_boards_are_the_tracker_only():
+def test_custom_boards_is_everything_we_build_here_not_just_arduino_cli():
+    """custom_boards() must mean "not autoinstall", not "arduino_cli".
+
+    When it tested for arduino_cli specifically, adding the serial_dfu
+    MeshPocket put it in NEITHER official_boards() nor custom_boards(): it sat
+    in the catalogue and appeared in no picker, so the board could not be
+    chosen at all. Assert the partition instead of a hard-coded membership, so
+    the next flash method cannot vanish the same way."""
     customs = custom_boards()
-    assert [b.key for b in customs] == ["heltec_wireless_tracker"]
-    assert customs[0].flash_method == "arduino_cli"
+    assert {b.key for b in customs} == {"heltec_wireless_tracker",
+                                        "heltec_meshpocket"}
+    assert all(b.flash_method != "autoinstall" for b in customs)
+    assert {b.flash_method for b in customs} == {"arduino_cli", "serial_dfu"}
+
+
+def test_every_board_appears_in_exactly_one_picker_list():
+    """The partition itself: official + custom == the whole catalogue. This is
+    the invariant that the arduino_cli test above silently violated."""
+    from workflows.rnode_boards import available_boards, official_boards
+    o = {b.key for b in official_boards()}
+    c = {b.key for b in custom_boards()}
+    assert not (o & c), f"a board is in both lists: {o & c}"
+    assert o | c == {b.key for b in available_boards()}, "a board is in neither"
+
+
+def test_meshpocket_provisions_exactly_as_the_verified_birth_did():
+    """--platform is OMITTED, because the birth proven on hardware omitted it.
+    Provisioning a byte that run never wrote would store something untested."""
+    mp = RNODE_BOARDS["heltec_meshpocket"]
+    cmds = mp.provision_commands("/dev/ttyACM0")
+    assert cmds[0] == "rnodeconf /dev/ttyACM0 --eeprom-wipe"
+    assert cmds[1] == ("rnodeconf /dev/ttyACM0 -r --product d2 --model ce "
+                       "--hwrev 1")
+    assert "--platform" not in cmds[1]
+    assert mp.board_model == 0x46          # BOARD_HELTEC_MESHP in Boards.h
 
 
 def test_carried_flasher_script_exists_and_is_hardened():
@@ -245,3 +276,18 @@ def test_carried_flasher_script_exists_and_is_hardened():
     assert "count_boards" in body
     assert 'FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc"' in body
     assert "mapfile -t" not in body               # bash 3.2 safe (no mapfile cmd)
+
+
+def test_serial_dfu_boards_carry_what_the_flash_button_requires():
+    """The birth screen only offers a Flash button when the board is "ready",
+    and what ready MEANS differs by method. A serial_dfu board has no band menu
+    to have transcribed, so a readiness test written as `autoinstall_bands` is
+    permanently false for it — the board gets listed, described, and cannot be
+    flashed. Assert the fields that condition actually depends on."""
+    for b in RNODE_BOARDS.values():
+        if b.flash_method != "serial_dfu":
+            continue
+        assert b.build_dir, f"{b.key}: no build_dir, so nothing can be flashed"
+        assert b.dfu_package.endswith(".zip"), (
+            f"{b.key}: serial DFU needs a signed .zip, not a bare binary")
+        assert b.provision, f"{b.key}: no provision codes"

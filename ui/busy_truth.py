@@ -34,7 +34,14 @@ def busy_truth(node_type: str, board, display_name: str):
                 "part (Reticulum, LXMF and their dependencies). Nothing is "
                 f"compiled. {wait}")
     if node_type == "rnode_flash" and board is not None:
-        if board.flash_method == "arduino_cli":
+        if board.flash_method != "autoinstall":
+            # Anything we build here, whatever pushes the image afterwards
+            # (arduino-cli upload, or serial DFU). Tested on flash_method
+            # rather than on "arduino_cli" because the sentence below is about
+            # whether a COMPILE happens, and serial_dfu compiles too — telling
+            # the operator "nothing is compiled here" while the medic sits in a
+            # toolchain build is exactly the kind of screen that gets a board
+            # unplugged mid-flash.
             # This path REALLY compiles — the old sentence is true here.
             # Two lines: the ACT reads at a glance, the board name cannot
             # shrink it (briefing Task 7).

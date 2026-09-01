@@ -2632,6 +2632,10 @@ class BirthScreen(BoxLayout):
             how = ("Flashed from the offline firmware cache via "
                    "rnodeconf --autoinstall (device menu option "
                    f"{board.autoinstall_index}).")
+        elif board.flash_method == "serial_dfu":
+            how = ("Custom board — built here, then written over the board's "
+                   "own serial bootloader. The tool puts it into that "
+                   "bootloader itself; there is no button to press.")
         else:
             how = ("Custom board — built from patched RNode_Firmware with "
                    "arduino-cli.")
@@ -2644,8 +2648,18 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(_line(board.notes, color="amber", size="12sp"))
         # Flash action — only for autoinstall boards with a verified sequence and
         # an injected flash factory (the tool flashes the locally attached board).
-        if (board.flash_method == "autoinstall" and board.autoinstall_bands
-                and self._rnode_flash_factory is not None):
+        # What "ready to flash" MEANS differs by method, so ask per method
+        # rather than testing autoinstall_bands for everything: a serial_dfu
+        # board has no band menu to have transcribed, so the old condition was
+        # permanently false for it and the button never appeared — the board
+        # would have been listed, described, and impossible to flash.
+        if board.flash_method == "autoinstall":
+            ready = bool(board.autoinstall_bands)
+        elif board.flash_method == "serial_dfu":
+            ready = bool(board.build_dir and board.dfu_package)
+        else:
+            ready = False        # arduino_cli keeps its carried-script route
+        if ready and self._rnode_flash_factory is not None:
             flash_btn = Button(
                 text=f"Flash this board as an RNode", size_hint_y=None,
                 height=dp(48), background_normal="",

@@ -46,6 +46,18 @@ BOARD_POWER: Dict[str, dict] = {
     "xiao_esp32s3":    {"peak_ma": 400, "src": "estimate"},
     "heltec_wireless_tracker": {"peak_ma": 450, "src": "estimate",
                                 "note": "SX1262 TX + GNSS + TFT concurrently"},
+    # NOT a bare board: a 10000 mAh powerbank with the node inside it. The node
+    # section is small (nRF52 + SX1262 + e-ink, in the T114's class at ~160 mA),
+    # but plugging it in starts CHARGING the pack, and that draw dominates and
+    # continues for hours. Rated at a charger-class 1000 mA rather than the
+    # node's own consumption, because what the Pi has to survive is the charge
+    # current. It also feeds a phone wirelessly while charging, which is load on
+    # top of load. Observed on this bench: it is the only board here that can
+    # plausibly out-draw the host it is plugged into.
+    "heltec_meshpocket": {"peak_ma": 1000, "src": "estimate",
+                          "note": "10000 mAh pack CHARGING dominates; the node "
+                                  "itself is ~160 mA. Prefer a powered hub or "
+                                  "flash it with the pack already full"},
 }
 
 #: Pi models: continuous USB output budget (mA, total across ports).
@@ -118,7 +130,8 @@ _BOARD_NAMES = {"lora32_v21": "LilyGO LoRa32 v2.1", "lora32_v20": "LilyGO LoRa32
                 "tbeam_supreme": "LilyGO T-Beam Supreme", "tdeck": "LilyGO T-Deck",
                 "heltec_t114": "Heltec Mesh Node T114",
                 "xiao_esp32s3": "Seeed XIAO ESP32S3",
-                "heltec_wireless_tracker": "Heltec Wireless Tracker"}
+                "heltec_wireless_tracker": "Heltec Wireless Tracker",
+                "heltec_meshpocket": "Heltec MeshPocket"}
 
 
 def recommended_pairings(limit: int = 4, pi_key: str = "") -> List[dict]:
