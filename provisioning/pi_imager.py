@@ -294,17 +294,25 @@ def device_bytes_written(device_path: str) -> int:
     root, does not touch the card, and does not alter the write path - the
     caller samples a baseline before starting and subtracts it, so a card that
     has been written to earlier in the session still reports from zero.
+
+    Returns None - NOT 0 - when the counter cannot be read, because the
+    two mean opposite things. /sys/block/<dev>/stat disappears the moment
+    the card is pulled or the reader re-enumerates, and returning 0 there
+    made the ring fall back to 0% and restart its narration at 'Prepping
+    the card' - so at the instant a write was doomed the screen looked as
+    though it had cheerfully started again. The caller holds its last
+    value when this returns None.
     """
     import os
     name = os.path.basename((device_path or "").strip())
     if not name:
-        return 0
+        return None
     try:
         with open(f"/sys/block/{name}/stat") as fh:
             fields = fh.read().split()
         return int(fields[6]) * 512
     except Exception:                                    # noqa: BLE001
-        return 0
+        return None
 
 
 #: Groups a Raspberry Pi OS "pi" user normally belongs to. Without these the

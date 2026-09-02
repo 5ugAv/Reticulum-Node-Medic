@@ -246,14 +246,18 @@ def test_stale_helper_refuses_before_touching_the_card():
 from workflows import mitosis_card  # noqa: E402
 
 
-def _fake_shell(rootfs: dict, bootfs: dict):
-    """Stand in for the mount/cat/umount shell, emitting the same marker format."""
+def _fake_shell(rootfs: dict, bootfs: dict, mount_ok: bool = True):
+    """Stand in for the mount/cat/umount shell, in the same marker format."""
     def run(cmd):
+        if not mount_ok:
+            return 1, ""                       # the && chain short-circuited
         table = rootfs if "/dev/sda2" in cmd else bootfs
         out = []
         for path, body in table.items():
             out.append("---RNMFILE---" + path)
             out.append(body)
+        out.append("---RNMFILE---__UMOUNT_OK__")
+        out.append("")
         return 0, "\n".join(out) + "\n"
     return run
 
@@ -263,49 +267,85 @@ _GOOD_ROOT = {"/etc/hostname": "hawkeye\n",
 _GOOD_BOOT = {"/config.txt": "dtparam=i2c_arm=on\nusb_max_current_enable=1\n"}
 
 
-def test_a_correctly_baked_card_passes_every_check():
-    ok, checks = mitosis_card.verify_medic_card(
+def test_a_correctly_baked_card_is_good():
+    verdict, checks = mitosis_card.verify_medic_card(
         "/dev/sda", "hawkeye", run_shell=_fake_shell(_GOOD_ROOT, _GOOD_BOOT))
-    assert ok
+    assert verdict == "good"
     assert [c[0] for c in checks] == ["Name", "Key", "Power", "Battery gauge"]
-    assert all(passed for _, passed, _ in checks)
+    assert all(state for _, state, _ in checks)
 
 
-def test_a_card_that_booted_nameless_is_caught():
-    """The exact silent failure this exists for: image fine, name missing."""
+def test_a_card_that_would_boot_nameless_is_bad():
     root = dict(_GOOD_ROOT, **{"/etc/hostname": "\n"})
-    ok, checks = mitosis_card.verify_medic_card(
+    verdict, checks = mitosis_card.verify_medic_card(
         "/dev/sda", "hawkeye", run_shell=_fake_shell(root, _GOOD_BOOT))
-    assert not ok
-    name = next(c for c in checks if c[0] == "Name")
-    assert not name[1] and "nameless" in name[2]
+    assert verdict == "bad"
+    assert not next(c for c in checks if c[0] == "Name")[1]
 
 
-def test_a_missing_medic_key_is_caught():
-    """Without the key the new medic cannot be reached without the password,
-    which is the one thing the operator was told to write down and may not."""
+def test_a_missing_medic_key_is_bad():
     root = dict(_GOOD_ROOT, **{"/home/pi/.ssh/authorized_keys": ""})
-    ok, checks = mitosis_card.verify_medic_card(
+    verdict, checks = mitosis_card.verify_medic_card(
         "/dev/sda", "hawkeye", run_shell=_fake_shell(root, _GOOD_BOOT))
-    assert not ok
+    assert verdict == "bad"
     assert not next(c for c in checks if c[0] == "Key")[1]
 
 
 def test_the_pi5_usb_power_flag_is_checked():
-    """Without usb_max_current_enable the Pi 5 caps USB at 600 mA, which is not
-    enough for the boards this tool exists to flash - and nothing else reports
-    it. Verified present on the real HAWKEYE card, 2026-09-02."""
+    """Without it the Pi 5 caps USB at 600 mA - not enough for the boards this
+    tool exists to flash, and nothing else reports it."""
     boot = {"/config.txt": "dtparam=i2c_arm=on\n"}
-    ok, checks = mitosis_card.verify_medic_card(
+    verdict, checks = mitosis_card.verify_medic_card(
         "/dev/sda", "hawkeye", run_shell=_fake_shell(_GOOD_ROOT, boot))
-    assert not ok
+    assert verdict == "bad"
     assert not next(c for c in checks if c[0] == "Power")[1]
+
+
+def test_a_card_that_cannot_be_READ_is_unknown_not_bad():
+    """THE regression that matters. Discarding the mount exit code turned a
+    refused sudo or a busy mountpoint into four failed checks, condemning a
+    perfectly good card to a nine-minute rewrite - for an environmental reason
+    that would repeat every time."""
+    verdict, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye",
+        run_shell=_fake_shell(_GOOD_ROOT, _GOOD_BOOT, mount_ok=False))
+    assert verdict == "unknown", "an unreadable card must not be called bad"
+    assert all(state is None for _, state, _ in checks)
+    assert "unproven" in checks[0][2]
+
+
+def test_an_unrun_check_is_never_reported_as_a_pass():
+    """The mirror of the above: a check that did not run is not a green tick.
+    None is its own state so the screen can show it amber."""
+    verdict, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye",
+        run_shell=_fake_shell(_GOOD_ROOT, _GOOD_BOOT, mount_ok=False))
+    assert verdict != "good"
+    assert not any(state is True for _, state, _ in checks)
+
+
+def test_the_two_partitions_use_different_mountpoints():
+    """One mountpoint for both meant that if the first umount failed the second
+    mount stacked on it, the single umount popped only the upper one, and a
+    filesystem was left mounted while the next screen said to pull the card."""
+    seen = []
+
+    def spy(cmd):
+        seen.append(cmd)
+        return 0, ""
+    mitosis_card.verify_medic_card("/dev/sda", "hawkeye", run_shell=spy)
+    roots = [c for c in seen if "/dev/sda2" in c]
+    boots = [c for c in seen if "/dev/sda1" in c]
+    assert roots and boots
+    assert mitosis_card._MNT_ROOT in roots[0]
+    assert mitosis_card._MNT_BOOT in boots[0]
+    assert mitosis_card._MNT_ROOT != mitosis_card._MNT_BOOT
 
 
 def test_checks_read_the_rootfs_not_custom_toml():
     """custom.toml and cloud-init are INERT on this image - the bake writes to
-    the root filesystem directly. A check that read custom.toml would happily
-    'verify' a file nothing on the Pi ever reads."""
+    the root filesystem directly, so reading custom.toml would 'verify' a file
+    nothing on the Pi ever opens."""
     seen = []
 
     def spy(cmd):
@@ -317,7 +357,7 @@ def test_checks_read_the_rootfs_not_custom_toml():
     assert "custom.toml" not in joined
 
 
-def test_the_card_is_always_unmounted_even_when_reads_fail():
+def test_every_mount_is_unmounted_even_when_the_reads_fail():
     """The operator is about to be told to pull the card out."""
     seen = []
 

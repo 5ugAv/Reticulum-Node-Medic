@@ -95,18 +95,33 @@ def image_medic_card(device_path: str, display_name: str,
     return ok, msg, pw
 
 
-#: The ONLY mountpoints the medic's sudo policy allows (C2 scoping). Mounting
-#: anywhere else is refused, which is why an earlier read-only check appeared to
-#: prove the card unreadable when it was the mountpoint that was wrong.
-_MNT = "/tmp/rnm-piboot"
+#: The mountpoints the medic's sudo policy allows (C2 scoping). Mounting
+#: anywhere else is refused - which is why an earlier read-only check appeared
+#: to prove the card unreadable when it was the mountpoint that was wrong.
+#: TWO are allowlisted, and both are used: reusing ONE for both partitions
+#: meant that if the first umount failed (busy), the second mount stacked on
+#: top of it and the single umount popped only the upper one, leaving a
+#: filesystem mounted while the next screen told the operator to pull the card
+#: out.
+_MNT_ROOT = "/tmp/rnm-piboot"
+_MNT_BOOT = "/tmp/nm_sd_boot"
 
 
-def _read_card(device_path: str, part: int, paths, run_shell=None):
-    """Mount one partition of the card, read *paths*, unmount. Returns a dict of
-    path -> contents (missing files simply absent).
+def _read_card(device_path: str, part: int, paths, mnt: str, run_shell=None):
+    """Mount one partition, read *paths*, unmount. Returns (ok, {path: text}).
 
-    Always unmounts, including on failure: a card left mounted cannot be pulled
-    out safely, and the operator is about to be told to pull it out."""
+    ``ok`` is False when the MOUNT ITSELF failed, which is a different thing
+    from the files being absent and must not be confused with it: the earlier
+    version discarded the exit code, so a refused sudo or a busy mountpoint
+    produced an empty dict, every check "failed", and a perfectly good card was
+    condemned to a nine-minute rewrite for an environmental reason.
+
+    NOT read-only, and the docstring no longer pretends otherwise: the sudo
+    policy allows `mount <dev> <point>` and nothing else, so `-o ro` is refused
+    outright. Mounting ext4 read-write replays the journal, which is a write.
+    Hence the explicit sync and the checked unmount below - the card must be
+    genuinely quiescent before the next screen invites the operator to pull it.
+    """
     import subprocess, shlex
     if run_shell is None:
         def run_shell(cmd):
@@ -116,38 +131,49 @@ def _read_card(device_path: str, part: int, paths, run_shell=None):
     dev = f"{device_path}{part}"
     marker = "---RNMFILE---"
     reads = " ; ".join(
-        f'echo "{marker}{p}"; cat {shlex.quote(_MNT + p)} 2>/dev/null'
+        f'echo "{marker}{p}"; cat {shlex.quote(mnt + p)} 2>/dev/null'
         for p in paths)
     code, out = run_shell(
-        f"sudo -n mkdir -p {_MNT} && sudo -n mount {shlex.quote(dev)} {_MNT} "
-        f"&& {{ {reads} ; }} ; sudo -n sync ; sudo -n umount {_MNT} 2>/dev/null")
+        f"sudo -n mkdir -p {mnt} && sudo -n mount {shlex.quote(dev)} {mnt} "
+        f"&& {{ {reads} ; }} ; rc=$? ; sudo -n sync ; "
+        f"sudo -n umount {mnt} && echo '{marker}__UMOUNT_OK__' ; exit $rc")
     found = {}
     for chunk in out.split(marker)[1:]:
         line, _, body = chunk.partition("\n")
         found[line.strip()] = body
-    return found
+    mounted = any(k != "__UMOUNT_OK__" for k in found)
+    clean = "__UMOUNT_OK__" in found
+    return (code == 0 and mounted and clean), found
 
 
-def verify_medic_card(device_path: str, hostname: str, expect_wifi: bool = True,
-                      run_shell=None):
-    """Read the written card back and confirm the bake actually landed.
+def verify_medic_card(device_path: str, hostname: str, run_shell=None):
+    """Read the written card back. Returns (verdict, [(label, state, detail)]).
 
-    Returns (ok, [(label, passed, detail), ...]).
+    ``verdict`` is one of "good", "bad" or "unknown", and the third value is
+    why this returns three outcomes rather than a bool: a card that could not
+    be READ is not the same as a card that is WRONG, and the previous version
+    collapsed them. Reporting an unreadable card as four failed checks sent a
+    good card back for a nine-minute rewrite; reporting an unrun check as a
+    green pass was the same lie in the other direction.
 
-    Worth doing because the failure it catches is otherwise invisible until the
-    new medic is closed up, carried away and powered on: the image writes fine
-    while the configuration silently does not, and the screen has already said
-    'done'. Reads only - it never writes to the card.
+    ``state`` is True / False / None, where None means "not checked".
 
-    Checked on the ROOTFS, not the boot partition: custom.toml and cloud-init
-    are inert on this image, so the bake writes to the root filesystem directly
-    and anything looking at custom.toml would 'verify' a file nothing reads.
+    Read from the ROOTFS, not custom.toml: custom.toml and cloud-init are inert
+    on this image, so the bake writes to the root filesystem directly and
+    anything reading custom.toml would 'verify' a file nothing ever opens.
     """
-    root = _read_card(device_path, 2, [
+    ok_root, root = _read_card(device_path, 2, [
         "/etc/hostname",
         "/home/pi/.ssh/authorized_keys",
-    ], run_shell=run_shell)
-    boot = _read_card(device_path, 1, ["/config.txt"], run_shell=run_shell)
+    ], _MNT_ROOT, run_shell=run_shell)
+    ok_boot, boot = _read_card(device_path, 1, ["/config.txt"], _MNT_BOOT,
+                               run_shell=run_shell)
+
+    if not (ok_root and ok_boot):
+        return "unknown", [(
+            "Not checked", None,
+            "the card could not be read back, so it is unproven - the "
+            "firmware is written, but nothing here confirms the settings")]
 
     got_host = (root.get("/etc/hostname", "") or "").strip()
     keys = [l for l in (root.get("/home/pi/.ssh/authorized_keys", "") or
@@ -169,4 +195,4 @@ def verify_medic_card(device_path: str, hostname: str, expect_wifi: bool = True,
          "the battery gauge will be readable" if "dtparam=i2c_arm=on" in cfg
          else "i2c is off - no battery reading"),
     ]
-    return all(p for _, p, _ in checks), checks
+    return ("good" if all(c[1] for c in checks) else "bad"), checks

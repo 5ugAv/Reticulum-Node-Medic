@@ -213,9 +213,19 @@ class MitosisScreen(BoxLayout):
             pass
 
     def sleep(self):
-        if self._cloning:
+        # A card write is as unabandonable as a clone. Only _cloning was
+        # checked, so a left-edge swipe during the write wiped the page while
+        # dd carried on invisibly - and re-entering walked the operator back to
+        # a SECOND write on the same card, two writers on one device.
+        if self._cloning or getattr(self, "_writing", False):
             return
         self._clear()
+
+    def handle_back(self):
+        """True = swallowed. The back gesture must not leave a live write."""
+        if self._cloning or getattr(self, "_writing", False):
+            return True
+        return False
 
     def _clear(self):
         self._stage_gen += 1
@@ -249,11 +259,19 @@ class MitosisScreen(BoxLayout):
         title = _label("Clone this Node Medic", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
+        # "into Node Medic" was ambiguous in the one direction that matters:
+        # the card goes into the READER, and the reader plugs into a USB port.
+        # The only actual card slot on this machine holds the card this medic
+        # is running from, so a person taking the old wording literally goes
+        # looking for a slot and finds the one that must not be touched.
         body = _label(
-            "Insert the new medic's SD card into Node Medic.\n"
-            "Everything on that card will be erased.",
+            "Put the new medic's memory card into the card reader,\n"
+            "then plug the reader into any USB socket on this Node Medic.\n\n"
+            "Do NOT open this Node Medic or touch the card inside it.\n"
+            "Everything on the new card will be erased.",
             color="text_secondary", size="16sp")
-        body.size_hint_y, body.height = None, dp(56)
+        body.size_hint_y, body.height = None, dp(104)
+        self._insert_body = body
         self.add_widget(body)
         try:
             from ui.widgets.birth_anims import InsertSdAnim
@@ -278,18 +296,44 @@ class MitosisScreen(BoxLayout):
                     st = pi_imager.card_status()
                 except Exception:                          # noqa: BLE001
                     return
-                if st["state"] == "none":
+                if st["state"] != "one":
+                    # "several" used to advance too, so the refusal that
+                    # card_status() writes specifically to avoid guessing was
+                    # bypassed - and the operator only learned about it after
+                    # typing a name, a password twice and a WiFi password.
+                    detail = st.get("detail") or ""
+                    if st["state"] == "several" and detail:
+                        Clock.schedule_once(
+                            lambda _d, d=detail: self._say_insert(d), 0)
                     return
-                Clock.schedule_once(lambda _d: self._on_card_seen(gen), 0)
+                Clock.schedule_once(
+                    lambda _d, d=st.get("detail") or "": self._on_card_seen(
+                        gen, d), 0)
             threading.Thread(target=work, daemon=True).start()
 
         self._card_ev = Clock.schedule_interval(tick, 1.5)
         tick(0)
 
-    def _on_card_seen(self, gen):
+    def _say_insert(self, detail):
+        """Replace the insert page's body with a live message when several
+        cards are attached. Stays on this page - the old flow greeted one of
+        them and only refused minutes later, after three forms."""
+        lbl = getattr(self, '_insert_body', None)
+        if lbl is not None:
+            lbl.text = (detail + '\n\nTake the others out and leave only '
+                        'the new medic\'s card in the reader.')
+
+    def _on_card_seen(self, gen, detail=''):
         if gen != self._stage_gen or self._card_greeted:
             return
         self._card_greeted = True
+        # Name what was found. The machine already knew the size and model -
+        # card_status() composes this very sentence - and the screen threw it
+        # away, so the one page that mentions erasing never said WHAT.
+        self._card_detail = detail
+        _lbl = getattr(self, '_insert_body', None)
+        if _lbl is not None and detail:
+            _lbl.text = detail + '\nIt will be erased and written.'
         if self._card_ev is not None:
             self._card_ev.cancel()
             self._card_ev = None
@@ -303,7 +347,8 @@ class MitosisScreen(BoxLayout):
         def _advance(_d, g=gen):
             if g == self._stage_gen:
                 self._show_stage_name()
-        self._advance_ev = Clock.schedule_once(_advance, 1.6)
+        # 1.6s was not long enough to read which card had been found.
+        self._advance_ev = Clock.schedule_once(_advance, 3.2)
 
     # -- stage 2: NAME --------------------------------------------------------
 
@@ -529,6 +574,22 @@ class MitosisScreen(BoxLayout):
     # -- stage 4: WRITE (the BIRTH progress ring) ------------------------------
 
     def _show_stage_write(self, password):
+        # RE-ENTRANCY GUARD. Two taps on the write button ~200ms apart used to
+        # start two worker threads, both running xzcat|dd at the same card and
+        # both using the same fixed config path and mountpoint. The first
+        # thread's result was then discarded by the generation check, so the
+        # screen reported one clean write while a second dd was still chewing
+        # the card. The clone ladder has always had this guard (start() checks
+        # run_btn.disabled); the card write never got one.
+        if getattr(self, "_writing", False):
+            return
+        try:
+            from kivy.app import App
+            if App.get_running_app().flash_in_progress():
+                return          # the node imager is already dd-ing something
+        except Exception:                                  # noqa: BLE001
+            pass
+        self._writing = True
         self._clear()
         gen = self._stage_gen
         title = _label("Writing the new medic's card", bold=True, size="22sp")
@@ -577,19 +638,45 @@ class MitosisScreen(BoxLayout):
         _prog = {"dev": None, "base": None,
                  "total": pi_imager.uncompressed_image_size(
                      pi_imager.carried_image() or "")}
+        # Choose the target ONCE, here, and hand the same one to the writer.
+        # Two separate listings (one for the ring, one in the worker) could
+        # disagree, leaving the ring sampling a device nobody was writing and
+        # frozen at 0% for the whole write. Pinning it also closes a worse
+        # hole: the worker used to re-list at write time, minutes after the
+        # card was greeted, so a reader swapped for a USB stick while the
+        # operator typed a name and two passwords would be silently erased.
         _disks = pi_imager.list_target_disks()
-        if len(_disks) == 1:
-            _prog["dev"] = _disks[0]["path"]
+        self._target = _disks[0] if len(_disks) == 1 else None
+        if self._target:
+            _prog["dev"] = self._target["path"]
             _prog["base"] = pi_imager.device_bytes_written(_prog["dev"])
+            try:
+                self._target_serial = pi_imager.disk_serial(_prog["dev"])
+            except Exception:                              # noqa: BLE001
+                self._target_serial = ""
+
 
         def _tick(_dt):
             frac = None
             if _prog["dev"] and _prog["total"]:
-                written = (pi_imager.device_bytes_written(_prog["dev"])
-                           - (_prog["base"] or 0))
+                now = pi_imager.device_bytes_written(_prog["dev"])
+                if now is None:
+                    # The counter vanished - the card was pulled, or the reader
+                    # re-enumerated. HOLD the last fraction rather than falling
+                    # to 0%: resetting the ring and restarting the narration at
+                    # the exact moment a write is doomed reads as "it started
+                    # over", which is the opposite of the truth.
+                    frac = _prog.get("last")
+                    self._stage_lbl.text = ("The card stopped responding - "
+                                            "do not remove it")
+                    if frac is not None:
+                        self._ring.set_fraction(frac)
+                    return
+                written = now - (_prog["base"] or 0)
                 # Held below 1.0 until the writer actually returns: the card is
                 # not finished when the last byte lands, there is still a sync.
                 frac = max(0.0, min(0.99, written / _prog["total"]))
+                _prog["last"] = frac
             if frac is None:
                 frac = min(0.95, (_time.monotonic() - t0) / EST_WRITE_S)
             self._ring.set_fraction(frac)
@@ -599,19 +686,31 @@ class MitosisScreen(BoxLayout):
         def work():
             ok, msg = False, ""
             try:
+                target = getattr(self, "_target", None)
                 disks = pi_imager.list_target_disks()
-                if len(disks) != 1:
-                    msg = ("The card has gone — put it back in the reader."
+                if target is None or len(disks) != 1:
+                    msg = ("The card has gone - put it back in the reader."
                            if not disks else
-                           "More than one removable disk is attached — "
-                           "leave only the new medic's card in.")
+                           "There is more than one memory card or USB stick "
+                           "plugged in. Take the others out and leave only "
+                           "the new medic's card.")
+                elif disks[0]["path"] != target["path"] or (
+                        getattr(self, "_target_serial", "")
+                        and pi_imager.disk_serial(target["path"])
+                        != self._target_serial):
+                    # The card was swapped between being greeted and being
+                    # written. Refusing is the whole point: this is the window
+                    # in which a reader can become a USB stick full of photos,
+                    # and the old code simply wrote to whatever was there.
+                    msg = ("That is not the same card any more. Put the new "
+                           "medic's card back in and start again.")
                 else:
                     from workflows.mitosis_card import (image_medic_card,
                                                         verify_medic_card)
                     ok, msg, _pw = image_medic_card(
-                        disks[0]["path"], self._name or "NodeMedic2",
+                        target["path"], self._name or "NodeMedic2",
                         password=password,
-                        wifi=getattr(self, "_wifi", None))
+                        wifi=getattr(self, "_wifi", ("", "")))
                     # Read the card back before calling it done. The image can
                     # write perfectly while the configuration silently does
                     # not, and without this the first anyone knows is a medic
@@ -621,17 +720,24 @@ class MitosisScreen(BoxLayout):
                         want = pi_imager.hostnameify(
                             self._name or "NodeMedic2")
                         try:
-                            good, checks = verify_medic_card(
-                                disks[0]["path"], want)
-                        except Exception as e:                 # noqa: BLE001
-                            good, checks = True, [
-                                ("Check skipped", True,
-                                 f"could not read the card back ({e})")]
+                            verdict, checks = verify_medic_card(
+                                target["path"], want)
+                        except Exception as e:             # noqa: BLE001
+                            verdict = "unknown"
+                            checks = [("Not checked", None,
+                                       f"could not read the card back ({e})")]
                         self._verify_checks = checks
-                        if not good:
+                        # THREE outcomes, not two. "could not read it back" is
+                        # not the same as "it is wrong": condemning an
+                        # unreadable card sent good cards back for a nine-minute
+                        # rewrite, and the mirror error - reporting a check that
+                        # never ran as a green pass - was the same lie the other
+                        # way round. Only "bad" fails; "unknown" goes on, and
+                        # says on the next screen that it is unproven.
+                        if verdict == "bad":
                             ok = False
                             bad = ", ".join(c[0].lower()
-                                            for c in checks if not c[1])
+                                            for c in checks if c[1] is False)
                             msg = ("The card was written, but reading it back "
                                    f"shows a problem with: {bad}. "
                                    "Write it again.")
@@ -639,10 +745,15 @@ class MitosisScreen(BoxLayout):
                 msg = f"Card write failed: {e}"
 
             def done(_dt, g=gen):
-                self._mark_activity(False)
                 print(f"[mitosis] card write ok={ok}: {msg}")
                 if g != self._stage_gen:
                     return
+                # BELOW the generation check: an abandoned run's thread used to
+                # decrement the activity counter while a NEW write was in
+                # flight, and one stray end is enough to let the screensaver
+                # cover a live dd - the exact hazard _mark_activity exists for.
+                self._writing = False
+                self._mark_activity(False)
                 if self._write_ev is not None:
                     self._write_ev.cancel()
                     self._write_ev = None
@@ -657,6 +768,7 @@ class MitosisScreen(BoxLayout):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_stage_write_failed(self, msg):
+        self._writing = False
         self._clear()
         title = _label("The card write failed", bold=True, size="22sp",
                        color="red")
@@ -718,8 +830,12 @@ class MitosisScreen(BoxLayout):
         # rather than the field names. Four short true lines beat one
         # unfalsifiable "verified".
         for _lbl, _ok, _detail in getattr(self, "_verify_checks", []):
-            row = _label(("OK   " if _ok else "X    ") + f"{_lbl} - {_detail}",
-                         color=("green" if _ok else "amber"), size="13sp")
+            # THREE states. None means the check never ran, which is not a
+            # pass: showing an unrun check in green under a green tick told
+            # the operator a card was proven when nothing had been read.
+            mark = "OK   " if _ok else ("?    " if _ok is None else "X    ")
+            tone = "green" if _ok else "amber"
+            row = _label(mark + f"{_lbl} - {_detail}", color=tone, size="13sp")
             row.size_hint_y, row.height = None, dp(19)
             self.add_widget(row)
 
@@ -934,7 +1050,8 @@ class MitosisScreen(BoxLayout):
             return
         orig_label = self.run_btn.text
         self.run_btn.disabled = True
-        self.run_btn.text = "Cloning..."
+        self.run_btn.text = ("Searching for the new medic\u2026" if auto
+                             else "Cloning\u2026")
         if self._retry_workflow is not None:
             workflow = self._retry_workflow
             self._retry_workflow = None
@@ -1005,10 +1122,25 @@ class MitosisScreen(BoxLayout):
     def _finish(self, workflow, results):
         self._cloning = False
         self._mark_activity(False)
-        seen = {r.name for r in results}
-        ok = all(r.success or r.skipped for r in results) and results
-        self.run_btn.disabled = False
+        # Judge each step by its LAST result, not by every result ever
+        # recorded. run_all appends and never clears, so after a retry the list
+        # still holds the original failure - and a clone that had genuinely
+        # completed reported failure, offered "Retry from: <a step that already
+        # succeeded>", and re-running it did nothing and said the same again.
+        # find_new_medic failing once (a first boot slower than five minutes)
+        # is the case the retry mechanism exists for, so this was on the
+        # likeliest path through the flow.
+        latest = {}
+        for r in results:
+            latest[r.name] = r
+        final = list(latest.values())
+        seen = set(latest)
+        ok = bool(final) and all(r.success or r.skipped for r in final)
         if ok and len(seen) >= len(self._rows):
+            # NOT re-enabled on success: the finished green button was still
+            # live, so tapping "Clone finished" started a second complete
+            # clone, five-minute search and all.
+            self.run_btn.disabled = True
             self.run_btn.text = "Clone finished — every step verified"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             done = _label(
@@ -1021,7 +1153,8 @@ class MitosisScreen(BoxLayout):
             done.height = dp(80)
             self.add_widget(done)
         else:
-            failed = next((r for r in results
+            self.run_btn.disabled = False
+            failed = next((r for r in final
                            if not r.success and not r.skipped), None)
             self._retry_workflow = workflow
             titles = dict(STEP_TITLES)
