@@ -589,5 +589,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• PiをNode Medicから外す — その差込口に無線機を挿します\n• 最初にフラッシュした無線機を挿す\n• Piに専用電源を与える\n• オプションのRGB LED？ゆっくり白く明滅＝無線機は生きています — VITALSで確認",
   "←  Back": "←  戻る",
   "←  Pick a different Pi": "←  別のPiを選ぶ",
+  "←  Show me the key again": "←  キーをもう一度表示",
   "⚠  Wipe & rebirth": "⚠  消去して再誕"
 }

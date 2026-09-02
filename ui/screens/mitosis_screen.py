@@ -1344,7 +1344,15 @@ class MitosisScreen(BoxLayout):
             done.size_hint_y = None
             # bind to the wrapped text, not a fixed 80px that clipped it
             done.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
-            self.add_widget(done)
+            # Into the SCROLLED list, not onto the screen. As a sibling of the
+            # ladder it had to share 480px with eighteen rows, so the closing
+            # message - the part saying what you now have and what to do next -
+            # was pushed off the bottom exactly when it mattered.
+            try:
+                self.list.add_widget(done)
+                self.scroll.scroll_y = 0          # bring the ending into view
+            except Exception:                                  # noqa: BLE001
+                self.add_widget(done)
             home = _small_btn("← Back to home")
             home.bind(on_release=lambda *_: self._leave_home())
             self.add_widget(home)

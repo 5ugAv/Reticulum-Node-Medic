@@ -453,6 +453,20 @@ class SetupWizardScreen(BoxLayout):
         note = self._notice_widget()
         if note is not None:
             stage.add_widget(note)
+        # A way BACK TO THE KEY, at the TOP of the stage. The step already has a
+        # Back button, but the on-screen keyboard is up the moment a box takes
+        # focus and covers the bottom of the screen where it lives - so to the
+        # person holding it there is no way back, and the one screen they need
+        # is the one they just left. Someone who did not write it down properly
+        # has to be able to go and look again.
+        from kivy.uix.button import Button as _Btn
+        show = _Btn(text=tr("←  Show me the key again"), size_hint_y=None,
+                    height=dp(40), font_size=theme.font_sp("15sp"),
+                    background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                    color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        show.bind(on_release=lambda *_: self._back())
+        stage.add_widget(show)
         # EIGHT BOXES, LAID OUT THE WAY THE KEY WAS SHOWN — two rows of four
         # (operator, 2026-08-18). One long box asked the operator to reproduce
         # the grouping themselves: where the spaces go, whether hyphens count,

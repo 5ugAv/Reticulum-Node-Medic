@@ -589,5 +589,6 @@
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• отключите Pi от Node Medic — этот разъём нужен радиомодулю\n• подключите радиомодуль, прошитый в начале\n• дайте Pi собственное питание\n• опциональный RGB-светодиод? Медленное белое дыхание = радио живо — смотрите VITALS",
   "←  Back": "←  Назад",
   "←  Pick a different Pi": "←  Выбрать другой Pi",
+  "←  Show me the key again": "←  Показать ключ снова",
   "⚠  Wipe & rebirth": "⚠  Стереть и переродить"
 }
