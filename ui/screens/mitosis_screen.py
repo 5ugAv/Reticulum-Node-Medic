@@ -72,6 +72,11 @@ STEP_EST_S = {
     "copy_monitoring_db": 12, "copy_kin_roster": 6,
     "generate_fresh_identity": 12, "stamp_lineage": 6,
     "record_child_trust": 4, "configure_autostart": 12, "bake_recovery_bootorder": 15,
+    # Both of these were missing, so _run fell back to 30s: install_display_stack
+    # unpacks 72 carried debs, so its bar sprinted to 95% in half a minute and
+    # then sat there for minutes - the exact "looks frozen" the write ring was
+    # rebuilt to avoid.
+    "install_display_stack": 180, "copy_offline_maps": 30,
     "final_verification": 12,
     "restart_into_tool": 4,
 }
@@ -133,6 +138,20 @@ def _small_btn(text):
     return b
 
 
+#: stage -> (phase, step-in-phase, steps-in-phase, phase title). Banded into
+#: TWO phases rather than one flat count, because a flat "step 4 of 10"
+#: spanning a 4-minute card write and a 20-minute network copy is a worse lie
+#: than no counter at all. The band also carries the fact the flow never said
+#: out loud: writing the card is not the end.
+_STAGE_POS = {
+    "preflight": (1, 1, 6), "insert": (1, 2, 6), "name": (1, 3, 6),
+    "password": (1, 4, 6), "wifi": (1, 5, 6), "write": (1, 6, 6),
+    "written": (2, 1, 4), "power": (2, 2, 4), "cable": (2, 3, 4),
+    "clone": (2, 4, 4),
+}
+_PHASE_NAME = {1: "Write the card", 2: "Copy the tool across"}
+
+
 class MitosisScreen(BoxLayout):
     def __init__(self, workflow_factory, **kwargs):
         super().__init__(**kwargs)
@@ -161,11 +180,24 @@ class MitosisScreen(BoxLayout):
 
     # -- PRE-FLIGHT: what you need, before anything is erased -----------------
 
+    def _stage_header(self, key):
+        """One line of orientation on every stage. Ten screens deep with no map
+        was why every silent moment read as a failure."""
+        pos = _STAGE_POS.get(key)
+        if not pos:
+            return
+        phase, idx, total = pos
+        self.add_widget(_label(
+            f"PHASE {phase} of 2 - {_PHASE_NAME[phase]}   .   step {idx} of {total}",
+            color="text_secondary", size="12sp",
+            size_hint_y=None, height=dp(18)))
+
     def _show_stage_preflight(self):
         """Nobody should reach 'move the card to the new medic' holding a card
         with nowhere to put it (walkthrough 2026-08-26, Marnie). Say up front
         what this needs, with a graceful way back out if they don't have it."""
         self._clear()
+        self._stage_header("preflight")
         title = _label("Make another Node Medic", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -190,7 +222,12 @@ class MitosisScreen(BoxLayout):
             "  •  a Heltec Wireless Tracker — the new medic's own radio\n"
             "  •  a USB-A to USB-C cable, for the Tracker\n"
             "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
-            "It takes about fifteen minutes, mostly waiting. You do a few "
+            "It happens in two halves. First this Node Medic writes the new "
+            "card - about five minutes. Then you move the card across, switch "
+            "the new medic on, and the two talk to each other over the cable "
+            "while the whole tool is copied - about twenty minutes. You are "
+            "NOT finished when the card is written.\n\n"
+            "It takes about half an hour, mostly waiting. You do a few "
             "simple steps when asked; Node Medic does the rest.",
             color="text_primary", size="15sp")
         body.size_hint_y, body.height = None, dp(330)
@@ -256,6 +293,7 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_insert(self):
         self._clear()
+        self._stage_header("insert")
         title = _label("Clone this Node Medic", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -354,11 +392,14 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_name(self, skip_mode=False):
         self._clear()
+        self._stage_header("name")
         self._skip_mode = skip_mode
-        title = _label("Name this medic", bold=True, size="22sp")
+        title = _label("Name the new medic", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         body = _label(
+            "This is the name you will see when you look for it later. "
+            "NodeMedic2 is a perfectly good answer - just tap Continue.\n"
             "The name becomes its address on the cable and its place in the "
             "family line.", color="text_secondary", size="14sp")
         body.size_hint_y, body.height = None, dp(40)
@@ -399,6 +440,7 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_password(self):
         self._clear()
+        self._stage_header("password")
         title = _label("Create its password", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -508,6 +550,7 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_wifi(self):
         self._clear()
+        self._stage_header("wifi")
         title = _label("Share your WiFi with it?", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -556,7 +599,10 @@ class MitosisScreen(BoxLayout):
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
         share.bind(on_release=lambda *_: self._wifi_continue(True))
         self.add_widget(share)
-        skip = _small_btn("Skip — cable only")
+        self._wifi_warn = _label("", color="text_secondary", size="13sp")
+        self._wifi_warn.size_hint_y, self._wifi_warn.height = None, dp(20)
+        self.add_widget(self._wifi_warn)
+        skip = _small_btn("No WiFi — write the card now →")
         skip.bind(on_release=lambda *_: self._wifi_continue(False))
         self.add_widget(skip)
         from kivy.uix.widget import Widget
@@ -566,7 +612,15 @@ class MitosisScreen(BoxLayout):
         ssid = (self._wifi_ssid_input.text or "").strip() if share else ""
         psk = (self._wifi_psk_input.text or "") if share else ""
         if share and ssid and not psk:
+            # Was a hint_text change on a field the eye is not on, so the big
+            # green button appeared to do nothing at all: tap, nothing, tap
+            # harder, conclude it is broken. Say it where the person is looking.
             self._wifi_psk_input.hint_text = "Type the WiFi password first"
+            warn = getattr(self, "_wifi_warn", None)
+            if warn is not None:
+                warn.text = ("Type the WiFi password before you carry on - or "
+                             "choose 'No WiFi' below.")
+                warn.color = theme.hex_to_rgba(theme.COLORS["amber"])
             return
         self._wifi = (ssid, psk)
         self._show_stage_write(self._chosen_password)
@@ -591,6 +645,7 @@ class MitosisScreen(BoxLayout):
             pass
         self._writing = True
         self._clear()
+        self._stage_header("write")
         gen = self._stage_gen
         title = _label("Writing the new medic's card", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
@@ -742,7 +797,12 @@ class MitosisScreen(BoxLayout):
                                    f"shows a problem with: {bad}. "
                                    "Write it again.")
             except Exception as e:                         # noqa: BLE001
-                msg = f"Card write failed: {e}"
+                # Not the exception text: a raw Python error on a 5-inch
+                # screen reads as "I have broken it" to the person holding it.
+                print(f"[mitosis] card write exception: {e}")
+                msg = ("Something went wrong while writing the card. "
+                       "Check the card is pushed fully into the reader, "
+                       "then try again.")
 
             def done(_dt, g=gen):
                 print(f"[mitosis] card write ok={ok}: {msg}")
@@ -814,6 +874,7 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_written(self):
         self._clear()
+        self._stage_header("written")
         gen = self._stage_gen
         title = _label("Card written ✓ — move it to the new medic",
                        bold=True, size="20sp", color="green")
@@ -883,20 +944,31 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_power(self):
         self._clear()
+        self._stage_header("power")
         title = _label("Power the new medic on", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         self._anim = _PowerGlyph()
         self.add_widget(self._anim)
+        # "press BOOT on its battery pack" named an object that appears NOWHERE
+        # in the parts list, so a person who bought exactly what they were told
+        # to buy went hunting for a thing they do not own. It is now framed as
+        # the alternative it actually is, and the jargon is described rather
+        # than named.
         body = _label(
-            "Press the power button on the new medic. If it plays dead, "
-            "press BOOT on its battery pack once - a fresh pack sleeps "
-            "until asked. A flickering green LED means it is working.\n\n"
+            "Plug the power supply into the new medic. It should start by "
+            "itself - a small green light flickering means it is working.\n\n"
+            "If you are using a battery pack instead of a wall plug, press the "
+            "button marked BOOT on the pack once: a fresh pack sleeps until "
+            "it is asked for power.\n\n"
             "Its OWN screen will stay dark, or show start-up text, until later "
             "- that's normal. Keep watching THIS screen.",
             color="text_primary", size="16sp")
-        body.size_hint_y, body.height = None, dp(150)
+        body.size_hint_y, body.height = None, dp(186)
         self.add_widget(body)
+        stuck = _small_btn("Nothing is happening")
+        stuck.bind(on_release=lambda *_: self._show_power_help())
+        self.add_widget(stuck)
         nxt = Button(text="It has power - next", size_hint_y=None,
                      height=dp(56), font_size="20sp", background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -906,8 +978,38 @@ class MitosisScreen(BoxLayout):
 
     # -- the CABLE page: instruct FIRST, then the medic WATCHES for copper ----
 
+    def _show_power_help(self):
+        """The way out of the only screen in the flow with no way out. Its one
+        button asserted "It has power" - which is exactly what has NOT happened
+        for the person reading it."""
+        self._clear()
+        title = _label("It won't start", bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        self.add_widget(_label(
+            "Work down this list - it is nearly always the first one.\n\n"
+            "1.  Is the power supply pushed all the way in, at BOTH ends?\n\n"
+            "2.  Is it the 5 V / 5 A supply that came with the Pi? A phone "
+            "charger or a smaller supply will not start a Pi 5.\n\n"
+            "3.  Is the memory card pushed in until it clicks? A card that is "
+            "not seated looks exactly like no power at all.\n\n"
+            "4.  On a battery pack, press the button marked BOOT once.\n\n"
+            "If a small green light flickers even briefly, it IS starting - "
+            "give it a full minute before deciding it is dead.",
+            color="text_primary", size="15sp"))
+        back = Button(text="It's working now - carry on  →", size_hint_y=None,
+                      height=dp(52), font_size="17sp", background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        back.bind(on_release=lambda *_: self._show_stage_cable())
+        self.add_widget(back)
+        again = _small_btn("Back")
+        again.bind(on_release=lambda *_: self._show_stage_power())
+        self.add_widget(again)
+
     def _show_stage_cable(self):
         self._clear()
+        self._stage_header("cable")
         gen = self._stage_gen
         title = _label("Connect the network cable", bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
@@ -920,7 +1022,7 @@ class MitosisScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             self._anim = None
         body = _label(
-            "Plug the flat internet cable - the wide plug that clicks in - "
+            "Plug the ethernet cable - the wide plug that clicks in - "
             "into the network socket on BOTH medics. (Not the little USB "
             "shapes; the wider one.) Node Medic sees the cable arrive and "
             "carries on by itself. The new medic's own screen may still be "
@@ -935,18 +1037,41 @@ class MitosisScreen(BoxLayout):
         # WATCH FOR COPPER: the wired port's carrier line flips to 1 the
         # moment a live cable connects both ends - readable with no
         # privileges, and the honest signal that the instruction was done.
-        def tick(_dt):
-            def work():
-                import os as _os
-                try:
-                    for ifc in _os.listdir("/sys/class/net"):
-                        if not ifc.startswith(("eth", "end", "enp", "eno")):
-                            continue
+        #
+        # It must watch for the TRANSITION, not the level. A medic already
+        # sitting on the household LAN has carrier == 1 before this page is
+        # even drawn, so the level test fired instantly: the instruction
+        # flashed past unread and the clone began with nothing plugged in.
+        # Ports already up at entry are remembered and ignored; if EVERY port
+        # is already up there is nothing to detect, so the page simply waits
+        # for the button - which is honest, rather than guessing.
+        def _live_ports():
+            import os as _os
+            up = set()
+            try:
+                for ifc in _os.listdir("/sys/class/net"):
+                    if not ifc.startswith(("eth", "end", "enp", "eno")):
+                        continue
+                    try:
                         with open(f"/sys/class/net/{ifc}/carrier") as fh:
                             if fh.read().strip() == "1":
-                                Clock.schedule_once(
-                                    lambda _d: self._on_cable_seen(gen), 0)
-                                return
+                                up.add(ifc)
+                    except Exception:                      # noqa: BLE001
+                        pass
+            except Exception:                              # noqa: BLE001
+                pass
+            return up
+
+        self._cable_already_up = _live_ports()
+
+        def tick(_dt):
+            def work():
+                try:
+                    fresh = _live_ports() - self._cable_already_up
+                    if fresh:
+                        Clock.schedule_once(
+                            lambda _d: self._on_cable_seen(gen), 0)
+                        return
                 except Exception:                          # noqa: BLE001
                     pass
             threading.Thread(target=work, daemon=True).start()
@@ -965,6 +1090,7 @@ class MitosisScreen(BoxLayout):
 
     def _show_stage_clone(self, auto=False):
         self._clear()
+        self._stage_header("clone")
         if auto:
             head = _label(
                 "Node Medic is doing the rest itself. First boot takes up "
@@ -986,6 +1112,10 @@ class MitosisScreen(BoxLayout):
         self.list.bind(minimum_height=self.list.setter("height"))
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
+        # Under the ladder, not above it: the rows are the thing being watched.
+        _wait = self._while_you_wait()
+        _wait.size_hint_y, _wait.height = None, dp(62)
+        self.add_widget(_wait)
 
         self._rows = {}
         self._build_rows()
@@ -994,6 +1124,20 @@ class MitosisScreen(BoxLayout):
             # full of hardware. The button becomes the status/retry surface.
             self.run_btn.text = "Searching for the new medic…"
             Clock.schedule_once(lambda _d: self.start(auto=True), 0.2)
+
+    def _while_you_wait(self):
+        """The ladder runs for ~20 minutes with nothing for the operator to do,
+        while the preflight has already made them buy a Tracker, a USB cable,
+        an aerial and a pigtail that the flow then never mentions again. This
+        is real preparation, it closes that loop, and it hands them straight
+        into the new medic's first job."""
+        return _label(
+            "[b]While this runs:[/b] get the Tracker, its USB cable, the aerial "
+            "and the little pigtail lead to hand. Screw the aerial onto the "
+            "pigtail and clip the pigtail onto the Tracker. Never power the "
+            "Tracker up without its aerial attached. The new medic will ask "
+            "for it shortly after it wakes.",
+            color="text_secondary", size="13sp")
 
     def _build_rows(self, steps=None):
         titles = dict(STEP_TITLES)
@@ -1143,15 +1287,37 @@ class MitosisScreen(BoxLayout):
             self.run_btn.disabled = True
             self.run_btn.text = "Clone finished — every step verified"
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
+            # It worked / here is what you have / here is what to do next.
+            # The old text said only that it was restarting - it never said
+            # what had been made, and it never mentioned the radio, cable,
+            # antenna and pigtail the parts list made the operator buy and
+            # then never spoke of again.
+            name = self._name or "The new medic"
+            ident = getattr(workflow, "fresh_identity_hash", "") or ""
             done = _label(
-                "The new medic is restarting itself now. In about a minute its "
-                "OWN screen opens its setup — walk that through on the new "
-                "medic. (Until it appears, its screen may show start-up text; "
-                "that's normal — you don't need to do anything here.)",
-                color="text_primary", size="16sp")
+                f"[b]Done - you have made a Node Medic.[/b]\n\n"
+                f"{name} is restarting now. It has its own place on the mesh"
+                + (f" ({ident[:8]})" if ident else "")
+                + " - a new one, not a copy of this medic's - along with the "
+                "whole tool, the offline maps, the firmware store and the "
+                "list of your other nodes.\n\n"
+                "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
+                "1.  It walks you through its own setup - log in as 'pi' with "
+                "the password you typed here.\n"
+                "2.  Then it fits its radio - that is the Tracker, its USB "
+                "cable, the aerial and the little pigtail lead from the list "
+                "at the start.\n\n"
+                "Until its screen appears it may show start-up text. That is "
+                "normal, and there is nothing left to do on this screen.",
+                color="text_primary", size="15sp")
+            done.markup = True
             done.size_hint_y = None
-            done.height = dp(80)
+            # bind to the wrapped text, not a fixed 80px that clipped it
+            done.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
             self.add_widget(done)
+            home = _small_btn("← Back to home")
+            home.bind(on_release=lambda *_: self._leave_home())
+            self.add_widget(home)
         else:
             self.run_btn.disabled = False
             failed = next((r for r in final
