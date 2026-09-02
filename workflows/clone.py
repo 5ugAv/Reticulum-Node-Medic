@@ -40,6 +40,38 @@ CLONE_DIR = "~/.reticulum-node-medic"
 REMOTE_REQUIREMENTS = f"{REMOTE_TOOL_DIR}/assets/requirements.txt"
 REMOTE_WHEELS = f"{REMOTE_TOOL_DIR}/assets/packages"
 
+#: Everything a medic needs to make ANOTHER medic that does NOT already live
+#: inside the tool tree. Without these the clone inherits the code, the Python
+#: stack, the maps and the roster - but cannot build firmware, image a card, or
+#: birth its own first radio. That is a copy of a medic, not a medic.
+#:
+#: Found the hard way: the first clone reached its firstborn step and stopped
+#: with "the medic's Tracker fork build is missing" and "arduino-cli not
+#: installed", because TRACKER_BUILD_DIR points at ~/overlay_test - outside
+#: TOOL_ROOT - and nothing installed a toolchain.
+#:
+#: (path, why it travels, required)
+CARRIED_TREES = (
+    ("~/.arduino15", "the ESP32 and nRF52 toolchains arduino-cli installs", True),
+    ("~/.local/bin", "arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio", True),
+    ("~/Arduino", "Arduino libraries the firmware builds include", True),
+    ("~/pi_os_lite.img.xz", "the Pi OS image, so the clone can image the NEXT card", True),
+    ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", True),
+    ("~/RNode_Firmware", "the RNode firmware fork", False),
+    ("~/MeshPocket", "the MeshPocket RNode port", False),
+    ("~/RTNode-2400", "the RTNode-2400 firmware", False),
+    ("~/rnm-assets", "RTNode-2400 build assets", False),
+)
+
+#: Scratch that must NOT travel: working images, one-off build dirs, backups of
+#: a particular board, and anything a debugging session left behind. Carrying
+#: these would add gigabytes and pass on this medic's mess as if it were the
+#: tool.
+CARRY_SKIP = ("imgwork", "techo-test", "tracker_build", "supreme_build",
+              "upstream_pr", "pr115_alt", "dev_pristine", "pr126_dev",
+              "upstream_baseline")
+
+
 _CLONE_STEPS: List[Tuple[str, Callable]] = []
 
 
@@ -88,6 +120,47 @@ def transfer_firmware_cache(wf: "CloneWorkflow") -> StepResult:
     return StepResult("transfer_firmware_cache", ok,
                       "Copied the offline RNode firmware cache." if ok
                       else "Could not copy the firmware cache.")
+
+
+@clone_step
+def carry_the_toolchain(wf: "CloneWorkflow") -> StepResult:
+    """Copy the toolchains, firmware trees and OS image the clone needs to be a
+    medic in its own right rather than a read-only copy of one.
+
+    This is the step that makes replication actually transitive: after it, the
+    new medic can build firmware, flash a board, image a card and clone again -
+    with no internet, and without this medic.
+
+    Several gigabytes, so it is the slowest step by a wide margin. Missing
+    OPTIONAL trees are skipped and named rather than failing: a medic that never
+    had an RTNode tree should still be able to make a medic.
+    """
+    import os
+    sent, skipped, failed = [], [], []
+    for path, why, required in CARRIED_TREES:
+        local = os.path.expanduser(path)
+        if not os.path.exists(local):
+            (failed if required else skipped).append(f"{path} ({why})")
+            continue
+        remote = path
+        if os.path.isdir(local):
+            wf.connection.run(f"mkdir -p {remote}")
+            ok = wf.connection.push_tree(local, remote, exclude=CARRY_SKIP)
+        else:
+            ok = wf.connection.push_file(local, remote) if hasattr(
+                wf.connection, "push_file") else wf.connection.push_tree(
+                    os.path.dirname(local), os.path.dirname(remote) or "~")
+        (sent if ok else failed).append(path)
+    if failed:
+        return StepResult(
+            "carry_the_toolchain", False,
+            "The new medic did not get everything it needs to build firmware: "
+            + ", ".join(failed) + ". Without these it can run, but it cannot "
+            "birth its own radio or make another medic.")
+    msg = f"Carried {len(sent)} toolchain/firmware trees."
+    if skipped:
+        msg += f" Not on this medic, so not carried: {', '.join(skipped)}."
+    return StepResult("carry_the_toolchain", True, msg)
 
 
 @clone_step

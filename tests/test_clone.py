@@ -5,6 +5,7 @@ import pytest
 from node_profile import NodeProfile
 from transport.connection import EmulatedConnection
 from monitor.health_beacon import encode, decode
+from workflows import clone
 from monitor.registry import NodeRegistry
 from workflows.clone import (
     CloneWorkflow, CLONE_DIR, REMOTE_TOOL_DIR, TOOL_ROOT,
@@ -19,6 +20,7 @@ EXPECTED_STEPS = [
     "carry_the_time",
     "transfer_tool",
     "transfer_firmware_cache",
+    "carry_the_toolchain",
     "install_dependencies",
     "carry_touch_cure",
     "install_display_stack",
@@ -74,6 +76,10 @@ def test_steps_registered_in_order():
 
 def test_full_run_completes(monkeypatch):
     monkeypatch.setattr("os.path.isdir", lambda p: True)   # medic has a fw cache
+    # ...and has its toolchains/firmware trees, which carry_the_toolchain looks
+    # for with os.path.exists. A medic missing a REQUIRED tree fails that step
+    # on purpose - see test_carry_fails_when_a_required_tree_is_missing.
+    monkeypatch.setattr("os.path.exists", lambda p: True)
     w = wf()
     w.run_all()
     assert w.current_index == len(EXPECTED_STEPS)
@@ -334,3 +340,56 @@ def test_bake_recovery_bootorder_skips_when_already_baked():
     r = _run(wf(c), "bake_recovery_bootorder")
     assert r.success and r.skipped
     assert not any("--apply" in h for h in c.history)
+
+
+# ---------------------------------------------------------------------------
+# Total self-replication (2026-09-02)
+#
+# The first real clone reached its firstborn step and stopped: "the medic's
+# Tracker fork build is missing" and "arduino-cli not installed". TRACKER_BUILD_DIR
+# points at ~/overlay_test - OUTSIDE the tool tree - and nothing installed a
+# toolchain, so the clone inherited the code and the Python stack but could not
+# build firmware, image a card, or birth its own radio.
+# ---------------------------------------------------------------------------
+
+def test_carry_fails_when_a_required_tree_is_missing(monkeypatch):
+    """A medic that cannot pass on its toolchain has not replicated, and must
+    say so rather than report success and leave the failure for the operator to
+    discover at the firstborn step."""
+    monkeypatch.setattr("os.path.exists", lambda p: False)
+    w = wf()
+    r = _run(w, "carry_the_toolchain")
+    assert r.success is False
+    assert "arduino15" in r.message or "build firmware" in r.message
+
+
+def test_optional_trees_are_skipped_not_fatal(monkeypatch):
+    """A medic that never had an RTNode tree must still be able to make a medic."""
+    import os as _os
+    required = {p for p, _w, req in clone.CARRIED_TREES if req}
+    monkeypatch.setattr("os.path.exists",
+                        lambda p: any(_os.path.expanduser(r) == p
+                                      for r in required))
+    monkeypatch.setattr("os.path.isdir", lambda p: True)
+    w = wf()
+    r = _run(w, "carry_the_toolchain")
+    assert r.success is True
+    assert "not carried" in r.message
+
+
+def test_the_tracker_build_dir_is_actually_carried():
+    """The specific gap that broke the first clone: whatever path
+    rnode_flash.TRACKER_BUILD_DIR points at must be inside something the clone
+    sends, or the new medic cannot flash its own firstborn."""
+    from workflows import rnode_flash
+    carried = [p for p, _w, _r in clone.CARRIED_TREES]
+    tracker = rnode_flash.TRACKER_BUILD_DIR
+    assert any(tracker.startswith(p) for p in carried), (
+        f"{tracker} is carried by nothing - the clone will fail at its firstborn")
+
+
+def test_scratch_is_not_carried():
+    """Working images and one-off build dirs must not travel: gigabytes, and it
+    passes this medic's mess on as if it were the tool."""
+    assert "imgwork" in clone.CARRY_SKIP
+    assert not any("imgwork" in p for p, _w, _r in clone.CARRIED_TREES)

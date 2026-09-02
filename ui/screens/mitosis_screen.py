@@ -45,6 +45,8 @@ STEP_TITLES = [
     ("carry_the_time", "Carrying the time across (it has no clock yet)"),
     ("transfer_tool", "Copying the Node Medic tool across"),
     ("transfer_firmware_cache", "Copying the offline firmware cache"),
+    ("carry_the_toolchain",
+     "Carrying the toolchains, firmware and OS image (several GB - slow)"),
     ("install_dependencies", "Installing the software stack (offline, from carried wheels)"),
     ("carry_touch_cure", "Carrying the touch settings across"),
     ("install_display_stack", "Installing the screen stack (carried, offline)"),
@@ -68,6 +70,9 @@ STEP_TITLES = [
 STEP_EST_S = {
     "find_new_medic": 300, "verify_target_pi5": 6, "carry_the_time": 6,
     "transfer_tool": 240, "transfer_firmware_cache": 90,
+    # ~7GB over the cable: the toolchains alone are 5.2GB. By far the
+    # longest step, and the one that makes the clone able to replicate.
+    "carry_the_toolchain": 900,
     "install_dependencies": 300, "carry_touch_cure": 6,
     "copy_monitoring_db": 12, "copy_kin_roster": 6,
     "generate_fresh_identity": 12, "stamp_lineage": 6,

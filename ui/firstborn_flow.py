@@ -106,8 +106,10 @@ def decide(gps_live: bool,
         return FirstbornView(
             NEED_TRACKER, "Plug in the Tracker",
             "No Tracker is connected yet. Plug the Heltec Wireless Tracker into "
-            "Node Medic — and only the Tracker, so the medic doesn't mistake "
-            "its own radio for it — then this begins.",
+            "the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to "
+            "USB-C cable.\n\n"
+            "Plug in only the Tracker, so the medic doesn't mistake its own "
+            "radio for it — then this begins.",
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(

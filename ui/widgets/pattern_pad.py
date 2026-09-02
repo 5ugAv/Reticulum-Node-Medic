@@ -61,19 +61,29 @@ class PatternPad(Widget):
             return super().on_touch_down(touch)
         self._path = []
         self._drawing = True
+        self._live = touch.pos
         self._collect(touch.pos)
+        self._redraw()
         return True
 
     def on_touch_move(self, touch):
         if not self._drawing:
             return super().on_touch_move(touch)
+        # Redraw on EVERY move, not only when a new dot is captured. _collect
+        # repaints only when the path changes, so between one dot and the next
+        # nothing on screen moved at all - the pad looked dead until the finger
+        # happened to land on the following dot, and the natural conclusion was
+        # that the touch screen had missed the drag.
+        self._live = touch.pos
         self._collect(touch.pos)
+        self._redraw()
         return True
 
     def on_touch_up(self, touch):
         if not self._drawing:
             return super().on_touch_up(touch)
         self._drawing = False
+        self._live = None
         self._redraw()
         if self._on_complete:
             self._on_complete(list(self._path))
@@ -103,6 +113,16 @@ class PatternPad(Widget):
                     pts.extend(centres[i])
                 Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
                 Line(points=pts, width=dp(3), joint="round", cap="round")
+            # The RUBBER BAND: a line from the last captured dot to wherever the
+            # finger is right now. This is the whole feedback that the pad is
+            # live and following - without it the only thing that ever moves is
+            # a dot lighting up, so the gap between dots reads as no response.
+            live = getattr(self, "_live", None)
+            if self._drawing and self._path and live is not None:
+                lx, ly = centres[self._path[-1]]
+                Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+                Line(points=[lx, ly, live[0], live[1]], width=dp(2),
+                     cap="round")
             for i, (cx, cy) in enumerate(centres):
                 used = i in self._path
                 Color(*theme.hex_to_rgba(
