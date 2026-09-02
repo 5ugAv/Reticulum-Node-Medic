@@ -2559,8 +2559,11 @@ class ReticulumNodeMedicApp(App):
                 unlock_fn=unlock, recover_fn=recover,
                 reset_fn=lambda: (True, "Reset — starting fresh. (preview)"),
                 on_unlocked=lambda: self.switch_mode("settings")))
-            print(f"[preview] demo password is '{DEMO_PASS}'; recovery key {key}",
-                  flush=True)
+            # The KEY is deliberately not printed. This goes to ~/ui.log on an
+            # unencrypted card, and `key` comes from a real recovery_key.generate()
+            # - harmless while it protects nothing, a full compromise the day this
+            # ceremony is wired to a real container.
+            print(f"[preview] demo password is '{DEMO_PASS}'", flush=True)
 
         host.add_widget(RecoveryKeyScreen(on_done=to_unlock))
 

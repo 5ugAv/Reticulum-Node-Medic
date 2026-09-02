@@ -360,12 +360,24 @@ def test_effective_bits_still_takes_the_minimum():
     assert effective_bits(e) == min(strength_bits(e.policy), RECOVERY_KEY_BITS)
 
 
-def test_the_screens_promise_no_back_door():
+def test_the_screens_do_not_claim_a_door_that_is_not_there():
+    """The fallback used to say "there is no back door", on every card.
+
+    It was false. ``can_select`` REQUIRES an enrolled passphrase slot behind
+    whatever daily door is chosen, and this module's own header spells out the
+    consequence: the vault is worth what that passphrase is worth. The honest
+    sentence existed in the source comments and never reached the glass, which
+    is precisely the failure FORBIDDEN_CLAIMS exists to catch.
+
+    Now the card must NAME the passphrase slot, and must not claim there is no
+    way in besides the recovery key."""
     from provisioning.vault_factors import LEVELS
     for pol in LEVELS:
         d = describe(pol)
-        assert "only way back in" in d["fallback"]
-        assert "no back door" in d["fallback"]
+        fb = d["fallback"].lower()
+        assert "no back door" not in fb, "the false claim is back"
+        assert "passphrase" in fb, "the mandatory passphrase slot is unnamed"
+        assert "recovery key" in fb, "the last resort is unnamed"
 
 
 # -- enforce what the setup copy promises (walkthrough 2026-08-26) ------------

@@ -14,6 +14,7 @@ from provisioning.vault import (
     Argon2idParams,
     ScryptParams,
     VaultConfig,
+    _SUPERSEDED_SENSITIVE_ROOTS,
     apply_plan,
     build_luks_format_argv,
     build_luks_open_argv,
@@ -114,7 +115,33 @@ def test_scrypt_maxmem_covers_cost():
 # Migration planning (pure)
 # --------------------------------------------------------------------------- #
 
-def test_plan_covers_all_sensitive_roots():
+def test_the_mesh_identity_stays_OUT_of_the_vault():
+    """RECORDS-ONLY is the shape, and this is the test that keeps it that way.
+
+    ~/.reticulum and ~/.lxmd must NEVER be migrated. Inside the vault, a locked
+    medic cannot start rnsd/lxmd - so a power cut takes the node off the air
+    until a human walks to it, which is a worse failure than a readable card.
+    Operator, 2026-08-02 and again 2026-09-02: "definitely lean to the side of
+    keeping nodes active in the wild".
+
+    The tuple existed and was documented; the DEFAULT was the other one, so
+    every script would have migrated the identity while the setup screen
+    promised it would not."""
+    from provisioning.vault import plan_migration, RECORDS_ROOTS
+    steps = plan_migration("/home/nodemedic")
+    sources = {st.source for st in steps}
+    assert sources == {"/home/nodemedic/.reticulum-node-medic"}
+    assert "/home/nodemedic/.reticulum" not in sources, "mesh identity migrated"
+    assert "/home/nodemedic/.lxmd" not in sources, "LXMF identity migrated"
+
+
+# The pre-2026-08-02 three-root shape. Kept as an EXPLICIT test fixture: cards
+# imaged before that ruling have the mesh identity inside the vault, so revert
+# must keep working against it even though nothing plans it any more.
+_MULTI_ROOT = VaultConfig(roots=_SUPERSEDED_SENSITIVE_ROOTS)
+
+
+def _superseded_plan_covers_all_sensitive_roots():
     steps = plan_migration("/home/nodemedic")
     sources = {s.source for s in steps}
     assert "/home/nodemedic/.lxmd" in sources
@@ -123,7 +150,10 @@ def test_plan_covers_all_sensitive_roots():
 
 
 def test_plan_targets_inside_mount_and_drops_leading_dot():
-    steps = plan_migration("/home/nodemedic")
+    """Mechanics, not policy. Named explicitly via config so this keeps
+    covering multi-root relocation without re-pinning it as the default -
+    the revert path still has to unwind cards migrated under the old shape."""
+    steps = plan_migration("/home/nodemedic", _MULTI_ROOT)
     by_name = {s.name: s for s in steps}
     assert by_name["lxmd"].vault_target == "/home/nodemedic/.nodemedic-vault/lxmd"
     assert by_name["reticulum"].backup.endswith(".pre-vault.bak")
@@ -154,7 +184,7 @@ def test_apply_then_revert_roundtrip(tmp_path):
     mount = home / ".nodemedic-vault"     # stands in for the mounted vault
     mount.mkdir()
 
-    steps = plan_migration(str(home))
+    steps = plan_migration(str(home), _MULTI_ROOT)
     migrated = apply_plan(steps)
     assert len(migrated) == 3
 
@@ -184,7 +214,7 @@ def test_apply_handles_missing_source(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / ".nodemedic-vault").mkdir()
-    steps = plan_migration(str(home))
+    steps = plan_migration(str(home), _MULTI_ROOT)
     apply_plan(steps)
     for s in steps:
         assert os.path.islink(s.source)
@@ -198,7 +228,7 @@ def test_apply_refuses_to_clobber_existing_vault_target(tmp_path):
     (mount / "lxmd").mkdir()              # a stale target already there
     (mount / "lxmd" / "identity").write_bytes(b"STALE")
     with pytest.raises(FileExistsError):
-        apply_plan(plan_migration(str(home)))
+        apply_plan(plan_migration(str(home), _MULTI_ROOT))
 
 
 # --------------------------------------------------------------------------- #

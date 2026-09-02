@@ -60,7 +60,13 @@ SIZE_MB = 256
 #: keeps the daemons from running against absent keys. Whole roots are moved
 #: (rather than individual key files) so a single mount covers everything and
 #: the daemon-gate is unambiguous.
-SENSITIVE_ROOTS = (
+#: SUPERSEDED - kept only so an existing container built to this shape can
+#: still be reverted. DO NOT make this the default again: putting the mesh
+#: identity inside the vault means a locked medic cannot start rnsd/lxmd,
+#: so a power cut takes the node off the air until a human walks to it.
+#: The operator ruled against it 2026-08-02 and reaffirmed it 2026-09-02:
+#: "definitely lean to the side of keeping nodes active in the wild".
+_SUPERSEDED_SENSITIVE_ROOTS = (
     ".reticulum-node-medic",   # kin.json, registry.json, certificates/, identity
     ".lxmd",                   # LXMF private identity
     ".reticulum",              # storage/transport_identity, storage/identities/, config
@@ -78,6 +84,10 @@ SENSITIVE_ROOTS = (
 RECORDS_ROOTS = (
     ".reticulum-node-medic",
 )
+
+#: Backwards-compatible alias. Anything still importing SENSITIVE_ROOTS gets
+#: the superseded tuple, which is only correct for reverting an old container.
+SENSITIVE_ROOTS = _SUPERSEDED_SENSITIVE_ROOTS
 
 #: Suffix for the pre-migration backup left in place (NOT deleted) so enabling
 #: the vault is reversible even if a copy went wrong. The human removes these
@@ -124,7 +134,13 @@ class VaultConfig:
     mapper_name: str = MAPPER_NAME
     mount_point: str = MOUNT_POINT
     size_mb: int = SIZE_MB
-    roots: tuple = SENSITIVE_ROOTS
+    # RECORDS-ONLY is the shape. It was defined, documented and then never
+    # wired: every script, both systemd drop-ins and the whole boot-gate
+    # story were built against the superseded tuple, so migrating would
+    # have moved the mesh identity into the vault and taken the node off
+    # the air after any power cut - while the setup screen promised the
+    # opposite in as many words.
+    roots: tuple = RECORDS_ROOTS
     argon2: Argon2idParams = field(default_factory=Argon2idParams)
     scrypt: ScryptParams = field(default_factory=ScryptParams)
 

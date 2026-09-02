@@ -394,9 +394,10 @@ def describe(policy: Policy) -> Dict[str, str]:
         "warnings": " ".join(warnings),
         "field": ("The medic still boots, rejoins the mesh and relays while "
                   "locked. Only its own records wait for you."),
-        "fallback": ("The recovery key is the only way back in — there is no "
-                     "back door, which is what makes the level above worth "
-                     "what it says. Keep it away from the medic."),
+        "fallback": ("Your passphrase is always enrolled alongside whatever you use daily, "
+        "so a forgotten pattern or a lost stick cannot shut you out, and the "
+        "recovery key is the last resort behind both. That also means this "
+        "vault is only ever as strong as that passphrase."),
     }
 
 
