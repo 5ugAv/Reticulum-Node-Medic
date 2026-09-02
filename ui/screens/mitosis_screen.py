@@ -560,8 +560,38 @@ class MitosisScreen(BoxLayout):
         import time as _time
         t0 = _time.monotonic()
 
+        # REAL progress, not a stopwatch. The kernel counts sectors written to
+        # the card and the .xz footer says how large the image expands to, so
+        # the ring can show what has actually been written.
+        #
+        # The old ring was elapsed/EST_WRITE_S capped at 95%: on a card slower
+        # than the fixed 4-minute guess it parked at 95% and looked frozen -
+        # precisely when someone is most tempted to pull the card out, which is
+        # the one action that ruins it. The estimate is kept ONLY as a fallback
+        # for a host that cannot report either number, so the ring never sits
+        # dead at zero.
+        #
+        # The baseline is sampled HERE, before the writer starts, because this
+        # counter is cumulative since boot and the card may already have been
+        # written earlier in the session.
+        _prog = {"dev": None, "base": None,
+                 "total": pi_imager.uncompressed_image_size(
+                     pi_imager.carried_image() or "")}
+        _disks = pi_imager.list_target_disks()
+        if len(_disks) == 1:
+            _prog["dev"] = _disks[0]["path"]
+            _prog["base"] = pi_imager.device_bytes_written(_prog["dev"])
+
         def _tick(_dt):
-            frac = min(0.95, (_time.monotonic() - t0) / EST_WRITE_S)
+            frac = None
+            if _prog["dev"] and _prog["total"]:
+                written = (pi_imager.device_bytes_written(_prog["dev"])
+                           - (_prog["base"] or 0))
+                # Held below 1.0 until the writer actually returns: the card is
+                # not finished when the last byte lands, there is still a sync.
+                frac = max(0.0, min(0.99, written / _prog["total"]))
+            if frac is None:
+                frac = min(0.95, (_time.monotonic() - t0) / EST_WRITE_S)
             self._ring.set_fraction(frac)
             self._stage_lbl.text = pi_imager.current_stage_label(frac)
         self._write_ev = Clock.schedule_interval(_tick, 1.0)
@@ -576,11 +606,35 @@ class MitosisScreen(BoxLayout):
                            "More than one removable disk is attached — "
                            "leave only the new medic's card in.")
                 else:
-                    from workflows.mitosis_card import image_medic_card
+                    from workflows.mitosis_card import (image_medic_card,
+                                                        verify_medic_card)
                     ok, msg, _pw = image_medic_card(
                         disks[0]["path"], self._name or "NodeMedic2",
                         password=password,
                         wifi=getattr(self, "_wifi", None))
+                    # Read the card back before calling it done. The image can
+                    # write perfectly while the configuration silently does
+                    # not, and without this the first anyone knows is a medic
+                    # that boots nameless and unreachable - by which time it is
+                    # closed up and carried away.
+                    if ok:
+                        want = pi_imager.hostnameify(
+                            self._name or "NodeMedic2")
+                        try:
+                            good, checks = verify_medic_card(
+                                disks[0]["path"], want)
+                        except Exception as e:                 # noqa: BLE001
+                            good, checks = True, [
+                                ("Check skipped", True,
+                                 f"could not read the card back ({e})")]
+                        self._verify_checks = checks
+                        if not good:
+                            ok = False
+                            bad = ", ".join(c[0].lower()
+                                            for c in checks if not c[1])
+                            msg = ("The card was written, but reading it back "
+                                   f"shows a problem with: {bad}. "
+                                   "Write it again.")
             except Exception as e:                         # noqa: BLE001
                 msg = f"Card write failed: {e}"
 
@@ -660,6 +714,15 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
+        # Say WHAT was checked, in terms of what it means for the operator
+        # rather than the field names. Four short true lines beat one
+        # unfalsifiable "verified".
+        for _lbl, _ok, _detail in getattr(self, "_verify_checks", []):
+            row = _label(("OK   " if _ok else "X    ") + f"{_lbl} - {_detail}",
+                         color=("green" if _ok else "amber"), size="13sp")
+            row.size_hint_y, row.height = None, dp(19)
+            self.add_widget(row)
+
         hint = _label("Make sure the new medic is switched OFF first, then push "
                       "the little card into its slot until it clicks. Node "
                       "Medic sees the card leave here and carries on by itself.",

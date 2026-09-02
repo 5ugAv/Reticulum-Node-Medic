@@ -261,6 +261,52 @@ def write_image_command(image_path: str, device_path: str) -> str:
             f"&& sync")
 
 
+def uncompressed_image_size(image_path: str) -> int:
+    """Bytes the image expands to, or 0 if it cannot be read.
+
+    ``xz --robot --list`` reports this from the stream footer, so it costs a
+    seek rather than a full decompression - which matters because this is
+    wanted BEFORE the write starts, to turn a progress bar into a real one.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(["xz", "--robot", "--list", image_path],
+                             capture_output=True, text=True, timeout=30).stdout
+    except Exception:                                    # noqa: BLE001
+        return 0
+    for line in out.splitlines():
+        f = line.split("\t")
+        if f and f[0] == "totals" and len(f) > 4:
+            try:
+                return int(f[4])
+            except ValueError:
+                return 0
+    return 0
+
+
+def device_bytes_written(device_path: str) -> int:
+    """Bytes written to *device_path* since boot, from the kernel's own counter.
+
+    Field 7 of /sys/block/<dev>/stat is sectors written; sectors are 512 bytes
+    by definition of that file regardless of the device's real sector size.
+
+    This is the honest alternative to timing the write and hoping. It needs no
+    root, does not touch the card, and does not alter the write path - the
+    caller samples a baseline before starting and subtracts it, so a card that
+    has been written to earlier in the session still reports from zero.
+    """
+    import os
+    name = os.path.basename((device_path or "").strip())
+    if not name:
+        return 0
+    try:
+        with open(f"/sys/block/{name}/stat") as fh:
+            fields = fh.read().split()
+        return int(fields[6]) * 512
+    except Exception:                                    # noqa: BLE001
+        return 0
+
+
 #: Groups a Raspberry Pi OS "pi" user normally belongs to. Without these the
 #: account exists but can't reach the serial port (dialout) or GPIO — which is
 #: everything a node does.

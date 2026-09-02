@@ -232,3 +232,97 @@ def test_stale_helper_refuses_before_touching_the_card():
             AssertionError("flash must not run on a stale helper")),
         wifi=("", ""), helper_check=lambda: "helper is out of date")
     assert ok is False and "out of date" in msg
+
+
+# ---------------------------------------------------------------------------
+# Reading the card back (2026-09-02)
+#
+# The card write was never verified. The image can land perfectly while the
+# configuration silently does not, and the screen still said "Card written".
+# The first anyone would know is a medic that boots nameless and unreachable -
+# by which point it is closed up and carried to wherever it is going.
+# ---------------------------------------------------------------------------
+
+from workflows import mitosis_card  # noqa: E402
+
+
+def _fake_shell(rootfs: dict, bootfs: dict):
+    """Stand in for the mount/cat/umount shell, emitting the same marker format."""
+    def run(cmd):
+        table = rootfs if "/dev/sda2" in cmd else bootfs
+        out = []
+        for path, body in table.items():
+            out.append("---RNMFILE---" + path)
+            out.append(body)
+        return 0, "\n".join(out) + "\n"
+    return run
+
+
+_GOOD_ROOT = {"/etc/hostname": "hawkeye\n",
+              "/home/pi/.ssh/authorized_keys": "ssh-ed25519 AAAAC3Nz medic\n"}
+_GOOD_BOOT = {"/config.txt": "dtparam=i2c_arm=on\nusb_max_current_enable=1\n"}
+
+
+def test_a_correctly_baked_card_passes_every_check():
+    ok, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye", run_shell=_fake_shell(_GOOD_ROOT, _GOOD_BOOT))
+    assert ok
+    assert [c[0] for c in checks] == ["Name", "Key", "Power", "Battery gauge"]
+    assert all(passed for _, passed, _ in checks)
+
+
+def test_a_card_that_booted_nameless_is_caught():
+    """The exact silent failure this exists for: image fine, name missing."""
+    root = dict(_GOOD_ROOT, **{"/etc/hostname": "\n"})
+    ok, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye", run_shell=_fake_shell(root, _GOOD_BOOT))
+    assert not ok
+    name = next(c for c in checks if c[0] == "Name")
+    assert not name[1] and "nameless" in name[2]
+
+
+def test_a_missing_medic_key_is_caught():
+    """Without the key the new medic cannot be reached without the password,
+    which is the one thing the operator was told to write down and may not."""
+    root = dict(_GOOD_ROOT, **{"/home/pi/.ssh/authorized_keys": ""})
+    ok, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye", run_shell=_fake_shell(root, _GOOD_BOOT))
+    assert not ok
+    assert not next(c for c in checks if c[0] == "Key")[1]
+
+
+def test_the_pi5_usb_power_flag_is_checked():
+    """Without usb_max_current_enable the Pi 5 caps USB at 600 mA, which is not
+    enough for the boards this tool exists to flash - and nothing else reports
+    it. Verified present on the real HAWKEYE card, 2026-09-02."""
+    boot = {"/config.txt": "dtparam=i2c_arm=on\n"}
+    ok, checks = mitosis_card.verify_medic_card(
+        "/dev/sda", "hawkeye", run_shell=_fake_shell(_GOOD_ROOT, boot))
+    assert not ok
+    assert not next(c for c in checks if c[0] == "Power")[1]
+
+
+def test_checks_read_the_rootfs_not_custom_toml():
+    """custom.toml and cloud-init are INERT on this image - the bake writes to
+    the root filesystem directly. A check that read custom.toml would happily
+    'verify' a file nothing on the Pi ever reads."""
+    seen = []
+
+    def spy(cmd):
+        seen.append(cmd)
+        return 0, ""
+    mitosis_card.verify_medic_card("/dev/sda", "hawkeye", run_shell=spy)
+    joined = " ".join(seen)
+    assert "/dev/sda2" in joined and "/etc/hostname" in joined
+    assert "custom.toml" not in joined
+
+
+def test_the_card_is_always_unmounted_even_when_reads_fail():
+    """The operator is about to be told to pull the card out."""
+    seen = []
+
+    def spy(cmd):
+        seen.append(cmd)
+        return 1, ""
+    mitosis_card.verify_medic_card("/dev/sda", "hawkeye", run_shell=spy)
+    assert all("umount" in c for c in seen), "a mount was left behind"

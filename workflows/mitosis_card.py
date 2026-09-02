@@ -93,3 +93,80 @@ def image_medic_card(device_path: str, display_name: str,
                     wifi_ssid=ssid, wifi_password=psk,
                     cable_link=False, medic=True)
     return ok, msg, pw
+
+
+#: The ONLY mountpoints the medic's sudo policy allows (C2 scoping). Mounting
+#: anywhere else is refused, which is why an earlier read-only check appeared to
+#: prove the card unreadable when it was the mountpoint that was wrong.
+_MNT = "/tmp/rnm-piboot"
+
+
+def _read_card(device_path: str, part: int, paths, run_shell=None):
+    """Mount one partition of the card, read *paths*, unmount. Returns a dict of
+    path -> contents (missing files simply absent).
+
+    Always unmounts, including on failure: a card left mounted cannot be pulled
+    out safely, and the operator is about to be told to pull it out."""
+    import subprocess, shlex
+    if run_shell is None:
+        def run_shell(cmd):
+            p = subprocess.run(["bash", "-c", cmd], capture_output=True,
+                               text=True, timeout=120)
+            return p.returncode, (p.stdout + p.stderr)
+    dev = f"{device_path}{part}"
+    marker = "---RNMFILE---"
+    reads = " ; ".join(
+        f'echo "{marker}{p}"; cat {shlex.quote(_MNT + p)} 2>/dev/null'
+        for p in paths)
+    code, out = run_shell(
+        f"sudo -n mkdir -p {_MNT} && sudo -n mount {shlex.quote(dev)} {_MNT} "
+        f"&& {{ {reads} ; }} ; sudo -n sync ; sudo -n umount {_MNT} 2>/dev/null")
+    found = {}
+    for chunk in out.split(marker)[1:]:
+        line, _, body = chunk.partition("\n")
+        found[line.strip()] = body
+    return found
+
+
+def verify_medic_card(device_path: str, hostname: str, expect_wifi: bool = True,
+                      run_shell=None):
+    """Read the written card back and confirm the bake actually landed.
+
+    Returns (ok, [(label, passed, detail), ...]).
+
+    Worth doing because the failure it catches is otherwise invisible until the
+    new medic is closed up, carried away and powered on: the image writes fine
+    while the configuration silently does not, and the screen has already said
+    'done'. Reads only - it never writes to the card.
+
+    Checked on the ROOTFS, not the boot partition: custom.toml and cloud-init
+    are inert on this image, so the bake writes to the root filesystem directly
+    and anything looking at custom.toml would 'verify' a file nothing reads.
+    """
+    root = _read_card(device_path, 2, [
+        "/etc/hostname",
+        "/home/pi/.ssh/authorized_keys",
+    ], run_shell=run_shell)
+    boot = _read_card(device_path, 1, ["/config.txt"], run_shell=run_shell)
+
+    got_host = (root.get("/etc/hostname", "") or "").strip()
+    keys = [l for l in (root.get("/home/pi/.ssh/authorized_keys", "") or
+                        "").splitlines() if l.strip().startswith("ssh-")]
+    cfg = boot.get("/config.txt", "") or ""
+
+    checks = [
+        ("Name", got_host == hostname,
+         f"it will boot as '{got_host}'" if got_host
+         else "no name was written - it would boot nameless"),
+        ("Key", bool(keys),
+         "this medic can log in without a password" if keys
+         else "this medic's key is missing - you would need the password"),
+        ("Power", "usb_max_current_enable=1" in cfg,
+         "USB power is unlocked for the Pi 5" if
+         "usb_max_current_enable=1" in cfg
+         else "USB would be capped at 600 mA"),
+        ("Battery gauge", "dtparam=i2c_arm=on" in cfg,
+         "the battery gauge will be readable" if "dtparam=i2c_arm=on" in cfg
+         else "i2c is off - no battery reading"),
+    ]
+    return all(p for _, p, _ in checks), checks
