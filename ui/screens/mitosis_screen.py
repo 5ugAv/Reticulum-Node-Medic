@@ -226,16 +226,21 @@ class MitosisScreen(BoxLayout):
             "  •  a Heltec Wireless Tracker — the new medic's own radio\n"
             "  •  a USB-A to USB-C cable, for the Tracker\n"
             "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
-            "It happens in two halves. First this Node Medic writes the new "
-            "card - about five minutes. Then you move the card across, switch "
-            "the new medic on, and the two talk to each other over the cable "
-            "while the whole tool is copied - about twenty minutes. You are "
-            "NOT finished when the card is written.\n\n"
-            "It takes about half an hour, mostly waiting. You do a few "
-            "simple steps when asked; Node Medic does the rest.",
+            "Two halves: this medic writes the card (~5 min), then you move "
+            "the card across and the two talk over the cable while the tool "
+            "is copied (~20 min). You are NOT finished when the card is "
+            "written. About half an hour in all, mostly waiting.",
             color="text_primary", size="15sp")
-        body.size_hint_y, body.height = None, dp(330)
-        self.add_widget(body)
+        # SCROLLED, and sized to the wrapped text rather than a fixed dp.
+        # The hardcoded dp(330) silently clipped the TOP of the list the moment
+        # the text grew - so the Raspberry Pi and its 5V/5A supply, the first
+        # and most important items, vanished off-screen while every other line
+        # stayed. A parts list that hides parts is worse than no parts list.
+        body.size_hint_y = None
+        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        _scroll = ScrollView(size_hint=(1, 1))
+        _scroll.add_widget(body)
+        self.add_widget(_scroll)
         go = Button(text="I have these — start  →", size_hint_y=None,
                     height=dp(56), font_size="19sp", background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -312,7 +317,10 @@ class MitosisScreen(BoxLayout):
             "Do NOT open this Node Medic or touch the card inside it.\n"
             "Everything on the new card will be erased.",
             color="text_secondary", size="16sp")
-        body.size_hint_y, body.height = None, dp(104)
+        # Sized to the wrapped text, never a fixed dp: a hardcoded height
+        # clips silently from the top the moment the copy grows.
+        body.size_hint_y = None
+        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self._insert_body = body
         self.add_widget(body)
         try:
@@ -841,7 +849,8 @@ class MitosisScreen(BoxLayout):
         body = _label(msg, color="text_primary", size="15sp")
         body.valign = "top"
         body.size_hint_y = None
-        body.height = dp(220)
+        body.size_hint_y = None
+        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
         again = Button(text="Try again →", size_hint_y=None, height=dp(56),
                        font_size="20sp", background_normal="",
@@ -908,7 +917,10 @@ class MitosisScreen(BoxLayout):
                       "the little card into its slot until it clicks. Node "
                       "Medic sees the card leave here and carries on by itself.",
                       color="text_secondary", size="14sp")
-        hint.size_hint_y, hint.height = None, dp(60)
+        # Sized to the wrapped text, never a fixed dp: a hardcoded height
+        # clips silently from the top the moment the copy grows.
+        hint.size_hint_y = None
+        hint.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(hint)
 
         def tick(_dt):
@@ -968,7 +980,10 @@ class MitosisScreen(BoxLayout):
             "Its OWN screen will stay dark, or show start-up text, until later "
             "- that's normal. Keep watching THIS screen.",
             color="text_primary", size="16sp")
-        body.size_hint_y, body.height = None, dp(186)
+        # Sized to the wrapped text, never a fixed dp: a hardcoded height
+        # clips silently from the top the moment the copy grows.
+        body.size_hint_y = None
+        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
         stuck = _small_btn("Nothing is happening")
         stuck.bind(on_release=lambda *_: self._show_power_help())
@@ -1032,7 +1047,10 @@ class MitosisScreen(BoxLayout):
             "carries on by itself. The new medic's own screen may still be "
             "dark or showing text - that's normal.",
             color="text_primary", size="15sp")
-        body.size_hint_y, body.height = None, dp(120)
+        # Sized to the wrapped text, never a fixed dp: a hardcoded height
+        # clips silently from the top the moment the copy grows.
+        body.size_hint_y = None
+        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
         wifi = _small_btn("No cable - it joins my WiFi instead")
         wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
@@ -1118,7 +1136,10 @@ class MitosisScreen(BoxLayout):
         self.add_widget(self.scroll)
         # Under the ladder, not above it: the rows are the thing being watched.
         _wait = self._while_you_wait()
-        _wait.size_hint_y, _wait.height = None, dp(62)
+        # Sized to the wrapped text, never a fixed dp: a hardcoded height
+        # clips silently from the top the moment the copy grows.
+        _wait.size_hint_y = None
+        _wait.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(_wait)
 
         self._rows = {}

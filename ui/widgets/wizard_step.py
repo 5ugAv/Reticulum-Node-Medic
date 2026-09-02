@@ -44,7 +44,12 @@ class _Dots(BoxLayout):
             with w.canvas:
                 on = i == current
                 Color(*theme.hex_to_rgba(theme.COLORS["accent" if on else "surface"]))
-                e = Ellipse()
+                # Sized HERE, not only in the binding below: Ellipse() with
+                # no size defaults to 100x100, and the size= binding fires
+                # only if a later layout pass happens to change the widget's
+                # size - so a dot could render as a huge circle sitting on
+                # top of the "Step 4 of 10" text above it.
+                e = Ellipse(size=(dp(10), dp(10)))
             w._e = e
             w.bind(pos=lambda wi, *_: setattr(wi._e, "pos",
                    (wi.center_x - dp(5), wi.center_y - dp(5))),
@@ -71,8 +76,10 @@ class WizardStep(BoxLayout):
         if back_text is None:
             back_text = tr("←  Back")
 
-        top = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(46),
-                        spacing=dp(8))
+        # 46 left only 4px of slack over its children (20 + 8 spacing + 14);
+        # any rounding pushed the dots into the counter's line.
+        top = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(56),
+                        spacing=dp(10))
         counter = Label(text=tr("Step {n} of {total}").format(n=index + 1, total=total),
                         bold=True,
                         font_size=theme.font_sp("15sp"), halign="left", valign="middle",

@@ -26,19 +26,29 @@ from ui import theme
 from ui.i18n import tr  # i18n: wrapped — recovery-key ceremony
 from provisioning import recovery_key
 
-#: Each confirmation asks harder than the last. The operator taps through all
-#: three before the medic will continue.
+#: The operator taps through these before the medic will continue.
+#: The middle nag ("Really written it down?") was removed once the next
+#: screen began requiring the key to be TYPED BACK - being made to enter it
+#: proves possession, where tapping Yes to a sterner question proves only
+#: that the person wanted to move on.
 CONFIRMATIONS = [
     (lambda: tr("Have you written it down?"),
      lambda: tr("This is the only way back in if you forget your password.")),
-    (lambda: tr("Really written it down?"),
-     lambda: tr("Not a photo you'll delete, not a note on the medic itself — "
-                "somewhere you'll still have it in a year.")),
     (lambda: tr("Last check — this key is about to disappear."),
      lambda: tr("Node Medic will never show it again, and cannot recover it. "
                 "Without it and your password, this medic's records are lost "
                 "for good.")),
 ]
+
+
+def _this_medic_name() -> str:
+    """This machine's name, for stamping on the key screen. Best effort: the
+    hostname is what the operator named it during imaging."""
+    try:
+        import socket
+        return socket.gethostname() or ""
+    except Exception:                                      # noqa: BLE001
+        return ""
 
 
 def _line(text, size="16sp", color="text_primary", bold=False, h=None,
@@ -53,14 +63,16 @@ def _line(text, size="16sp", color="text_primary", bold=False, h=None,
 
 
 class RecoveryKeyScreen(BoxLayout):
-    """``on_done()`` fires only after all three confirmations."""
+    """``on_done()`` fires only after every confirmation."""
 
-    def __init__(self, key: str = None, on_done=None, **kwargs):
+    def __init__(self, key: str = None, on_done=None, medic_name: str = "",
+                 **kwargs):
         kwargs.setdefault("orientation", "vertical")
         kwargs.setdefault("padding", dp(22))
         kwargs.setdefault("spacing", dp(8))
         super().__init__(**kwargs)
         self.key = key or recovery_key.generate()
+        self.medic_name = (medic_name or _this_medic_name() or "").strip()
         self._on_done = on_done
         self._step = 0
         self._pop = None
@@ -69,6 +81,12 @@ class RecoveryKeyScreen(BoxLayout):
     def _render(self):
         self.add_widget(_line(tr("Write this down now"), "26sp", bold=True,
                               h=40, color="warning_yellow"))
+        # WHOSE key this is. People photograph this screen to keep it, and a
+        # picture of eight code groups with no name on it is unusable the moment
+        # they own a second medic - two photos, no way to tell which is which.
+        if self.medic_name:
+            self.add_widget(_line(tr("for {name}").format(name=self.medic_name),
+                                  "18sp", bold=True, h=26, color="accent"))
         self.add_widget(_line(
             tr("This is your recovery key — the ONLY way into this Node Medic "
                "if you forget your password. It is shown once and never again."),
