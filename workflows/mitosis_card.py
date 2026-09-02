@@ -134,7 +134,11 @@ def _read_card(device_path: str, part: int, paths, mnt: str, run_shell=None):
         f'echo "{marker}{p}"; cat {shlex.quote(mnt + p)} 2>/dev/null'
         for p in paths)
     code, out = run_shell(
-        f"sudo -n mkdir -p {mnt} && sudo -n mount {shlex.quote(dev)} {mnt} "
+        # mkdir WITHOUT sudo: /tmp is user-writable, and only ONE of the two
+        # allowlisted mountpoints has a matching sudo mkdir rule - so the
+        # sudo form silently failed the && chain for the other one and
+        # reported a present, perfectly good card as unreadable.
+        f"mkdir -p {mnt} && sudo -n mount {shlex.quote(dev)} {mnt} "
         f"&& {{ {reads} ; }} ; rc=$? ; sudo -n sync ; "
         f"sudo -n umount {mnt} && echo '{marker}__UMOUNT_OK__' ; exit $rc")
     found = {}
