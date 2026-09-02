@@ -126,6 +126,25 @@ def poster_card_image(zone: str):
         return None
 
 
+
+def _records_are_encrypted() -> bool:
+    """Ask the disk whether this medic's records are actually encrypted.
+
+    The default used to be ``lambda: False`` — a hardcoded answer to the one
+    question the summary screen exists to report. It was right only by accident
+    (no medic had ever been encrypted), and it would have gone on saying NOT
+    LOCKED YET to an operator whose records were locked.
+
+    Any failure answers False, because "could not check" is not "yes".
+    """
+    try:
+        from provisioning.records_vault import is_vault, records_root
+        return is_vault(records_root())
+    except Exception:
+        return False
+
+
+
 class SetupWizardScreen(BoxLayout):
     """The first-use walkthrough.
 
@@ -144,7 +163,7 @@ class SetupWizardScreen(BoxLayout):
         self._on_finish = on_finish
         self._on_navigate = on_navigate
         self._enrol_fn = enrol_fn
-        self._vault_exists_fn = vault_exists_fn or (lambda: False)
+        self._vault_exists_fn = vault_exists_fn or _records_are_encrypted
         self._marker_path = marker_path or first_use.MARKER_PATH
         self._mount_lister = mount_lister
         self.reset()

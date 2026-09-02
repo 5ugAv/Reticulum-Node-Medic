@@ -409,3 +409,48 @@ def test_a_real_passphrase_passes():
     from provisioning.vault_factors import passphrase_problem
     assert passphrase_problem("garden gate rusty") is None
     assert passphrase_problem("correcthorse") is None
+
+
+# ---------------------------------------------------------------------------
+# What the strength sentences may claim (2026-09-03)
+#
+# Two more cases of the code knowing better than the glass, found alongside the
+# "no back door" sentence:
+#
+#   * the pattern card quoted 985,824 — the count of EVERY ordered selection of
+#     4..9 dots. pattern_bits' own docstring said "treat this as the ceiling,
+#     and say so on screen". The screen never said so.
+#   * the keyfile cards said "guessing is not the way in". can_select REQUIRES
+#     an enrolled passphrase, and with real keyslots (records_vault) that
+#     passphrase is a parallel door — so guessing is exactly a way in, at 30
+#     bits rather than 256.
+# ---------------------------------------------------------------------------
+
+def test_the_realistic_pattern_count_is_the_four_dot_subset():
+    from provisioning.vault_factors import pattern_space, pattern_space_realistic
+    assert pattern_space_realistic() == 9 * 8 * 7 * 6 == 3024
+    assert pattern_space_realistic() < pattern_space() / 300
+
+
+def test_the_pattern_card_quotes_the_realistic_count_not_just_the_ceiling():
+    from provisioning.vault_factors import (LEVELS, PATTERN,
+                                            pattern_space_realistic)
+    pol = next(p for p in LEVELS if p.ordered == (PATTERN,))
+    strength = describe(pol)["strength"]
+    assert f"{pattern_space_realistic():,}" in strength, "ceiling quoted alone"
+    assert "only days" not in strength, "the old days-of-grinding claim is back"
+
+
+def test_no_level_claims_guessing_is_not_a_way_in():
+    """It always is. The passphrase slot is mandatory behind every daily door,
+    so the weakest enrolled door is what an attacker actually attacks."""
+    from provisioning.vault_factors import LEVELS
+    for pol in LEVELS:
+        assert "guessing is not the way in" not in describe(pol)["strength"]
+
+
+def test_the_keyfile_levels_name_the_passphrase_behind_them():
+    from provisioning.vault_factors import LEVELS, KEYFILE
+    for pol in [p for p in LEVELS if KEYFILE in p.ordered]:
+        assert "passphrase" in describe(pol)["strength"].lower(), (
+            f"{pol.ordered} claims a strength it does not have alone")

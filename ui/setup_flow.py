@@ -585,10 +585,16 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
     names a specific thing that was or was not done.
 
     NO SENTENCE HERE SAYS THE RECORDS ARE ENCRYPTED unless the caller says a
-    vault exists. The encrypt-at-rest container has been built and reviewed and
-    has never been enabled on a real medic ([[encrypt-at-rest]]); a summary that
-    congratulated the operator on their protected records would be the tool
-    lying about its own state on the screen designed to explain that state.
+    vault exists. A summary that congratulated the operator on their protected
+    records would be the tool lying about its own state on the screen designed
+    to explain that state.
+
+    2026-09-03: the encryption is now BUILT and runnable —
+    ``provisioning.records_vault``, per-file AES-256-GCM with a scrypt-wrapped
+    data key. It replaced the LUKS container, which could never have shipped:
+    ``cryptsetup`` is not installed on the medic and is not in assets/packages,
+    so an offline clone had no way to enable it. The copy below no longer says
+    encryption is "still being built", because it is not.
     """
     out: List[tuple] = []
     if not vault_exists:
@@ -599,10 +605,9 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
         out.append((False,
                     "NOT LOCKED YET — your records are NOT encrypted. What you "
                     "set below is ready and waiting, but it protects nothing "
-                    "until encryption is switched on (a Settings switch still "
-                    "being built). Then the container is created at "
-                    "~/.nodemedic-vault.img, opened by exactly the keys you set "
-                    "today."))
+                    "until you switch encryption on in Settings. When you do, "
+                    "every file in your records is encrypted in place, and each "
+                    "of the keys you set today opens it on its own."))
     out.append((state.recovery_key_verified,
                 "Recovery key written down and typed back correctly."
                 if state.recovery_key_verified else
@@ -626,7 +631,9 @@ def summary_lines(state: SetupState, vault_exists: bool) -> List[tuple]:
         out.append((False, "No unlock method chosen."))
 
     if vault_exists:
-        out.append((True, "An encrypted container exists on this card."))
+        out.append((True,
+                    "Your records on this card are encrypted. Your daily unlock, "
+                    "your passphrase and your recovery key each open them."))
     # When there is no vault, the honest NOT-LOCKED headline is already at the
     # TOP of this list (see above) — it leads instead of trailing so it can't be
     # skimmed past under the green ticks.

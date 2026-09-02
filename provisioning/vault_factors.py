@@ -152,6 +152,24 @@ def pattern_space(min_len: int = MIN_PATTERN_DOTS, grid: int = GRID) -> int:
     return total
 
 
+def pattern_space_realistic(grid: int = GRID) -> int:
+    """How many patterns people ACTUALLY draw, near enough to quote.
+
+    ``pattern_space`` counts every ordered selection of 4..9 dots — 985,824 of
+    them. Almost nobody draws nine. The overwhelming majority use the minimum,
+    and the 4-dot subset alone is 9*8*7*6 = 3,024: a factor of 326 smaller than
+    the ceiling, and the set an attacker works through FIRST.
+
+    Quoting only the ceiling on screen is the same class of error as the "no
+    back door" sentence — correctly derived, and it leaves the operator
+    believing a pattern is worth 326x what theirs is likely worth.
+    """
+    perms = 1
+    for i in range(MIN_PATTERN_DOTS):
+        perms *= grid - i
+    return perms
+
+
 def pattern_bits(min_len: int = MIN_PATTERN_DOTS) -> float:
     """Entropy of a RANDOMLY CHOSEN pattern, in bits.
 
@@ -353,13 +371,15 @@ def describe(policy: Policy) -> Dict[str, str]:
     bits = strength_bits(policy)
 
     if KEYFILE in policy.ordered and len(policy.ordered) > 1:
-        strength = ("Strong. The key on the stick is random, not remembered, so "
-                    "guessing is not the way in. Whoever holds the stick and "
-                    "knows the rest holds the vault.")
+        strength = ("Strong as a daily door — the key on the stick is random, "
+                    "not remembered. Your passphrase stays enrolled behind it "
+                    "though, and that is a door too: this level is only ever as "
+                    "strong as the passphrase you chose.")
     elif KEYFILE in policy.ordered:
-        strength = ("Strong against guessing — the key on the stick is random, "
-                    "not remembered. But the stick IS the vault: whoever holds "
-                    "it, holds everything, with nothing left to know.")
+        strength = ("Strong as a daily door — the key on the stick is random, "
+                    "not remembered. Two things to weigh: whoever takes the "
+                    "stick needs nothing else, and your passphrase stays "
+                    "enrolled behind it, so guessing that is still a way in.")
     elif PASSPHRASE in policy.ordered and PATTERN in policy.ordered:
         strength = ("Good. Two things to know, and the slow unlock makes each "
                     "guess expensive.")
@@ -367,9 +387,11 @@ def describe(policy: Policy) -> Dict[str, str]:
         strength = ("Reasonable, and it depends entirely on the passphrase. A "
                     "few common words is not one.")
     else:
-        strength = (f"Weakest of the options: about {pattern_space():,} possible "
-                    "patterns. The slow unlock still means days of grinding for "
-                    "someone with your card — but only days.")
+        strength = (f"Weakest of the options. There are {pattern_space():,} "
+                    f"patterns in all, but most people draw the shortest one, "
+                    f"and there are only {pattern_space_realistic():,} of those. "
+                    f"A machine grinds through that in minutes, not days. Use "
+                    f"more than four dots.")
 
     warnings = []
     if PATTERN in policy.ordered:
