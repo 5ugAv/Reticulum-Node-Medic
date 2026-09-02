@@ -187,10 +187,14 @@ class MitosisScreen(BoxLayout):
         if not pos:
             return
         phase, idx, total = pos
-        self.add_widget(_label(
+        # size_hint_y/height are set AFTER construction, as every other call
+        # site in this file does - _label() does not take them, and passing
+        # them in crashed the first stage of the flow outright.
+        hdr = _label(
             f"PHASE {phase} of 2 - {_PHASE_NAME[phase]}   .   step {idx} of {total}",
-            color="text_secondary", size="12sp",
-            size_hint_y=None, height=dp(18)))
+            color="text_secondary", size="12sp")
+        hdr.size_hint_y, hdr.height = None, dp(18)
+        self.add_widget(hdr)
 
     def _show_stage_preflight(self):
         """Nobody should reach 'move the card to the new medic' holding a card

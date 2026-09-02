@@ -366,3 +366,20 @@ def test_every_mount_is_unmounted_even_when_the_reads_fail():
         return 1, ""
     mitosis_card.verify_medic_card("/dev/sda", "hawkeye", run_shell=spy)
     assert all("umount" in c for c in seen), "a mount was left behind"
+
+
+def test_no_label_call_passes_layout_kwargs():
+    """_label(text, color, bold, size) takes NOTHING else.
+
+    Passing size_hint_y/height INTO it raises TypeError at widget-construction
+    time, which no unit test sees because none of them instantiate Kivy - so it
+    reached the medic and crashed the walkthrough to the desktop on its very
+    first screen. Every other call site sets those attributes AFTER building the
+    label; this pins that convention cheaply."""
+    import re
+    src = open("ui/screens/mitosis_screen.py").read()
+    offenders = re.findall(
+        r"_label\((?:[^()]|\([^()]*\))*?(?:size_hint_y|height)\s*=", src)
+    assert not offenders, (
+        f"{len(offenders)} _label() call(s) pass layout kwargs _label does not "
+        "accept - set .size_hint_y/.height on the returned widget instead")
