@@ -77,13 +77,37 @@ def test_the_handheld_guide_points_at_a_local_radio_club():
     assert "club" in HANDHELD.caution.lower()
 
 
-def test_the_vox_cut_off_is_warned_about_where_it_happens():
-    """It cuts the start off every transmission and looks exactly like a broken
-    lead. It is the single most common way this setup fails."""
-    vox = [s for s in HANDHELD.steps
-           if "vox" in (s.text + s.detail).lower()]
-    assert vox, "no VOX step at all"
-    assert "cut off" in vox[0].watch_out.lower()
+def test_the_guide_steers_to_a_transmit_wire_not_to_vox():
+    """CORRECTED 2026-09-03 after reading Reticulum's own discussion #198,
+    where the author says of audio-only setups: "there is no direct control of
+    the PTT. You need to use very slow and unreliable VOX operation of the
+    radio". The first draft of this guide told people to start with VOX because
+    it needs no wiring. That was the wrong advice, cheerfully given."""
+    ptt = [s for s in HANDHELD.steps if "transmit pin" in s.text.lower()]
+    assert ptt, "no step for wiring the transmit pin"
+    warn = ptt[0].watch_out.lower()
+    assert "vox" in warn, "VOX is not named as the thing to avoid"
+    assert "cuts the" in warn or "cut off" in warn
+
+
+def test_the_cheap_ptt_hardware_is_named():
+    """A CM108 sound adaptor costs about the same as a coffee and has a spare
+    pin for PTT. Cheap AND correct is the answer this tool should give."""
+    assert "CM108" in " ".join(HANDHELD.needs)
+
+
+def test_the_socket_check_comes_first():
+    """"Does it have a socket for an earpiece?" sorts a found radio into easy
+    or hard, and anyone holding it can answer."""
+    assert "earpiece" in HANDHELD.opening.lower()
+    assert "solder inside" in HANDHELD.opening.lower()
+
+
+def test_the_bench_test_warns_about_deafening_the_radios():
+    """Two radios close together at full power desense each other, and it
+    presents as a fault that is not there."""
+    last = HANDHELD.steps[-1]
+    assert "deafen" in last.watch_out.lower()
 
 
 def test_the_volume_warning_is_on_the_wiring_step():

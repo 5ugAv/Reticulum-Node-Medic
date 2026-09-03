@@ -24,6 +24,7 @@ EXPECTED_STEPS = [
     "install_dependencies",
     "carry_touch_cure",
     "install_display_stack",
+    "install_carried_packages",
     "copy_monitoring_db",
     "copy_offline_maps",
     "copy_kin_roster",

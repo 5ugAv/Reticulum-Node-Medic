@@ -237,11 +237,13 @@ def _handheld_radio_paths(f: Found) -> List[Path]:
                   "of software that turns messages into sound and back. People "
                   "have been doing this for forty years. It is slow: think "
                   "short written messages, not pictures.",
-            needs=("a lead between the radio and a computer (bought, or made "
-                   "from a couple of transformers)",
+            needs=("a cheap USB sound adaptor with a transmit wire (look for "
+                   "the CM108 chip)",
+                   "a lead from that adaptor to the radio's two sockets",
                    "any computer that can run the sound software — an old "
                    "laptop or another Raspberry Pi"),
-            medic_can=("show you the wiring", "write the settings file for you"),
+            medic_can=("show you the wiring",
+                       "give you the sound software it already carries"),
             caution=LICENCE,
             difficulty="some work", medic_ready=False),
         _parts_path("Even if you never use it this way, the aerial and the "

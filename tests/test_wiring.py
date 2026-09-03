@@ -43,10 +43,6 @@ UNIMPORTED_WITH_REASON = {
         "workflows.build.install_status_server and run there, not on the medic.",
 
     # --- dormant: built, not yet wired to anything an operator can reach -------
-    "workflows.wheelhouse":
-        "DORMANT. cache_wheels() refreshes the carried Python wheels but is "
-        "reachable from no screen, so 'top up before you leave' cannot be done "
-        "from the medic itself.",
     "workflows.build_warnings":
         "DORMANT. Plain-English build cautions, never shown. Note its GNSS text "
         "is also WRONG (tells you to put an antenna on the unconnected GNSS "

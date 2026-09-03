@@ -206,6 +206,44 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
+    """Install the .deb packages the medic carries, with no internet.
+
+    Dire Wolf is the software modem that turns a salvaged handheld radio into
+    something that can carry Reticulum traffic. It is in Debian, and until now
+    it was NOT carried — the same trap that killed the LUKS vault, where
+    cryptsetup sat in apt and nowhere on the medic, so a clone in the field
+    could never enable the feature it was being offered.
+
+    Not fatal when the cache is empty. A medic that has never been online to
+    populate it still makes a working clone; it just makes one that cannot yet
+    talk to a voice radio, and the salvage screen already says so.
+    """
+    from workflows.wheelhouse import install_debs_command
+    cache = f"{REMOTE_TOOL_DIR}/assets/packages/debs"
+    code, out, _err = wf.connection.run(f"ls {cache}/*.deb 2>/dev/null | wc -l")
+    try:
+        count = int((out or "0").strip())
+    except ValueError:
+        count = 0
+    if count == 0:
+        return StepResult("install_carried_packages", True,
+                          "No .deb packages carried — skipping (the clone works "
+                          "without them; run the package cache while online to "
+                          "carry Dire Wolf for radio work).")
+    icode, iout, ierr = wf.connection.run(
+        wf.priv(install_debs_command(cache)), timeout=300)
+    have = wf.connection.run("command -v direwolf")[0] == 0
+    if not have:
+        return StepResult("install_carried_packages", False,
+                          f"Installed {count} carried packages but direwolf is "
+                          f"not on PATH: {(ierr or iout)[-160:]}")
+    return StepResult("install_carried_packages", True,
+                      f"Installed {count} carried .deb packages offline "
+                      f"(Dire Wolf is available for radio work).")
+
+
+@clone_step
 def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     """The registry, to the filename the app actually LOADS (registry.json
     — the old monitoring_db.json was a green-ticked no-op the app never

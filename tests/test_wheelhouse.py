@@ -73,3 +73,58 @@ def test_cache_wheels_fails_when_offline_install_check_fails():
     c = _conn(verify=1)
     ok, msg = cache_wheels(c)
     assert ok is False and "offline install check failed" in msg
+
+
+# ---------------------------------------------------------------------------
+# APT packages carried for offline install (2026-09-03)
+#
+# Dire Wolf is the software modem that lets a salvaged handheld radio carry
+# Reticulum traffic. It is in Debian and it was NOT carried — the same trap
+# that killed the LUKS vault, where cryptsetup was in apt and nowhere on the
+# medic, so a clone with no internet could never enable the feature.
+# ---------------------------------------------------------------------------
+
+def test_direwolf_is_carried():
+    from workflows.wheelhouse import APT_PACKAGES
+    assert "direwolf" in APT_PACKAGES
+
+
+def test_the_apt_download_needs_no_root():
+    """This medic's sudo is deliberately scoped (2026-08-02). `apt-get -d
+    install` locks apt's lists and needs root, so it would mean widening root
+    access to perform a download. --print-uris needs no privileges."""
+    from workflows.wheelhouse import apt_download_command
+    cmd = apt_download_command()
+    assert "--print-uris" in cmd
+    assert "sudo" not in cmd and "apt-get -d" not in cmd
+
+
+def test_the_download_saves_under_apts_filename_not_the_urls():
+    """The URL is percent-encoded (%2b for +) and the filename field is not.
+    Saving under the URL basename produces a file the checksum line can never
+    match — a verify step that silently checks nothing."""
+    from workflows.wheelhouse import apt_download_command
+    cmd = apt_download_command()
+    assert 'wget -q -O "$f" "$u"' in cmd, "not saving under apt's filename"
+
+
+def test_the_digest_algorithm_is_read_not_assumed():
+    """apt on this Debian prints MD5Sum, not SHA256. A parser keyed on SHA256
+    matched no lines, downloaded nothing, and reported success."""
+    from workflows.wheelhouse import _uri_lines, verify_debs_command
+    assert 'split($4, a, ":")' in _uri_lines(("x",)), "algorithm hard-coded"
+    v = verify_debs_command()
+    assert "md5sum -c" in v and "sha256sum -c" in v
+
+
+def test_every_cached_deb_is_verified_before_it_is_trusted():
+    from workflows.wheelhouse import verify_debs_command
+    assert "-c" in verify_debs_command()
+
+
+def test_the_install_command_settles_dependency_order():
+    """A single dpkg pass trips over install order; the configure pass after
+    it settles them."""
+    from workflows.wheelhouse import install_debs_command
+    cmd = install_debs_command()
+    assert "dpkg -i" in cmd and "dpkg --configure -a" in cmd

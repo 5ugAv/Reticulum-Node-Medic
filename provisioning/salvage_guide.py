@@ -60,49 +60,60 @@ HANDHELD = Guide(
         "have is a transmitter and an aerial, and that is the expensive part. "
         "You make up the rest: the radio sends sound, so we turn messages into "
         "sound at one end and back into messages at the other. People have "
-        "been doing this since the 1980s."),
+        "been doing this since the 1980s.\n\n"
+        "Start by looking at the radio. Is there a socket for an earpiece? "
+        "Most cheap handhelds have two small round holes side by side. If "
+        "yours does, this is straightforward. If it has none, you can still do "
+        "it, but you will have to open the radio and solder inside it."),
     needs=(
         "The radio, and a way to charge it.",
-        "A lead from the radio's headphone and microphone sockets to a "
-        "computer. You can buy one made for radios, or make one.",
-        "A cheap USB sound adaptor, if the computer has no microphone socket.",
+        "A USB sound adaptor with a transmit wire. The cheap ones built on a "
+        "chip called CM108 have a spare pin that can press the radio's "
+        "transmit button. About the price of a coffee.",
+        "A lead from the sound adaptor to the radio's two sockets.",
         "Any computer that can stay switched on — an old laptop, or another "
         "small board like the one inside this medic.",
     ),
     steps=(
         Step("Find out what your radio's sockets are.",
              "Most handhelds use two small round plugs of different sizes. "
-             "Search for your radio's name and the word 'programming cable' — "
+             "Search for your radio's name and the words 'programming cable' — "
              "the picture will show you.",
              watch_out="The two plugs are usually different sizes on purpose. "
                        "Forcing the wrong one in can break the socket."),
-        Step("Connect the radio's earphone socket to the computer's microphone "
-             "socket, and the computer's earphone socket to the radio's "
+        Step("Connect the radio's earphone socket to the adaptor's microphone "
+             "socket, and the adaptor's earphone socket to the radio's "
              "microphone socket.",
-             "Out of one goes into the other, both ways. That is all the lead "
-             "does.",
+             "Out of one goes into the other, both ways.",
              watch_out="Turn the radio's volume down to about a quarter first. "
-                       "Full volume will overload the computer and nothing will "
-                       "work, and it will look like the lead is wrong."),
-        Step("Set the radio to transmit when it hears sound.",
-             "Most handhelds call this VOX. It saves you wiring a separate "
-             "wire to press the transmit button.",
-             watch_out="VOX takes a moment to start transmitting, so the "
-                       "beginning of every message gets cut off. The software "
-                       "in the next step has a setting to send a longer run-up. "
-                       "If messages are getting through only sometimes, make "
-                       "that run-up longer."),
+                       "Full volume overloads the computer and nothing works — "
+                       "and it looks exactly like a broken lead."),
+        Step("Wire the transmit pin.",
+             "This is the wire that presses the radio's transmit button. It is "
+             "the part worth getting right: without it the radio has to guess "
+             "when to transmit from the sound itself, and it guesses badly.",
+             watch_out="A radio left to guess (the setting is usually called "
+                       "VOX) starts transmitting a moment late and cuts the "
+                       "beginning off every message. The people who built "
+                       "Reticulum call that way slow and unreliable. It can be "
+                       "made to work by sending a longer run-up, but wire the "
+                       "pin if you can."),
         Step("Install the sound software on the computer.",
-             "It is called Dire Wolf, and it is free. It listens on the "
+             "It is called Dire Wolf, it is free, and this medic already "
+             "carries it — you do not need the internet. It listens on the "
              "microphone socket and writes out messages, and the other way "
              "round."),
         Step("Point Reticulum at it.",
-             "Dire Wolf offers what is called a KISS connection. Reticulum has "
-             "been able to talk to those for years — it is one line in its "
-             "settings file."),
+             "Dire Wolf offers what is called a KISS connection on the "
+             "computer itself. Reticulum has been able to talk to those for "
+             "years — it is four lines in its settings file."),
         Step("Test it with a second radio before you rely on it.",
-             "Two radios on a table, a metre apart, both turned right down. If "
-             "a message gets across the table, the hard part is done."),
+             "Two radios on a table, a metre apart, both turned right down, "
+             "aerials off. If a message gets across the table, the hard part "
+             "is done.",
+             watch_out="Do not test two radios close together at full power "
+                       "with the aerials on. They deafen each other, and you "
+                       "will spend a day chasing a fault that is not there."),
     ),
     expect=(
         "It is slow — think short written messages, like a note passed between "
