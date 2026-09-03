@@ -156,3 +156,15 @@ def test_the_recovery_key_screen_names_the_medic():
 def test_a_failure_says_nothing_was_left_half_done():
     body = func_source(SCREEN, "_finished", cls="EncryptionScreen")
     assert "half-done" in body or "as they" in body
+
+
+def test_a_stray_pattern_touch_cannot_crash_the_screen():
+    """PatternPad is a live widget holding a callback into this screen. A touch
+    landing after the operator has moved on reached _pattern_drawn with no
+    stage set — AttributeError mid-gesture. Found by walking the stages on the
+    real medic, which the source guards above could not have caught."""
+    body = func_source(SCREEN, "_pattern_drawn", cls="EncryptionScreen")
+    assert 'get("kind") != "pattern"' in body, "no stage guard"
+    init = func_source(SCREEN, "__init__", cls="EncryptionScreen")
+    assert "self._pattern_first = None" in init
+    assert "self._asking = None" in init

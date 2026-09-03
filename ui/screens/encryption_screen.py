@@ -68,6 +68,13 @@ class EncryptionScreen(BoxLayout):
         self._home = home
         self._on_done = on_done
         self._busy = False
+        # PatternPad is a live widget holding a callback into this screen, and
+        # a touch that lands after the operator has moved on would reach
+        # _pattern_drawn with no stage set. Initialised here so that is a
+        # no-op rather than an AttributeError mid-gesture.
+        self._pattern_first = None
+        self._asking = None
+        self._parts = {}
         self._body = BoxLayout(orientation="vertical", size_hint_y=None,
                                spacing=dp(10))
         self._body.bind(minimum_height=self._body.setter("height"))
@@ -169,6 +176,8 @@ class EncryptionScreen(BoxLayout):
         """Twice, and they must agree. This pattern BECOMES the key — a slip
         while setting it produces a vault whose key is a gesture nobody ever
         made deliberately, found out at the worst possible moment."""
+        if not self._asking or self._asking.get("kind") != "pattern":
+            return                               # a stray touch after moving on
         try:
             if self._pattern_first is None:
                 vf.encode_pattern(path)          # raises if too short
