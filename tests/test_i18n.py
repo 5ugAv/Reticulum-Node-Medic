@@ -267,3 +267,110 @@ def test_proper_nouns_are_not_translated_away():
         for noun in ("Node Medic", "Reticulum", "RNode", "LoRa"):
             if noun in key:
                 assert noun in value, f"{noun!r} translated away in es.json[{key!r}]"
+
+
+# ---------------------------------------------------------------------------
+# Two tiers of catalog (2026-09-03)
+#
+# Catalogs used to be all-or-nothing: every shipped language held to one
+# identical key set. That meant a Swahili speaker could not contribute fifty
+# strings and see them appear — and the languages this tool most needs are
+# exactly the ones least likely to arrive complete in one go.
+#
+# So there are now two tiers. COMPLETE catalogs keep the parity invariant.
+# IN-PROGRESS catalogs must cover the CRITICAL PATH — everything a person meets
+# before they have learned anything about the tool — and past that they fall
+# back to English, which the source-keyed design already does safely.
+# ---------------------------------------------------------------------------
+
+#: Partly translated, offered because they cover the first screens. Move a code
+#: up into _SHIPPED_CATALOGS once it reaches full parity.
+_IN_PROGRESS_CATALOGS = ("pt", "sw", "tpi")
+
+
+def _critical_strings():
+    from ui.i18n import critical_path
+    return critical_path()
+
+
+def test_the_critical_path_is_not_empty():
+    """If this list ever came back empty every partial catalog would pass
+    vacuously, and a language would be offered with nothing translated."""
+    assert len(_critical_strings()) > 20
+
+
+def test_the_critical_path_matches_the_modules_it_was_generated_from():
+    """Regenerate with tools/gen_critical_path.py when a first screen changes.
+    Left stale, the bar quietly stops covering what a newcomer actually sees."""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from gen_critical_path import wrapped_strings
+    assert sorted(_critical_strings()) == sorted(wrapped_strings())
+
+
+@pytest.mark.parametrize("code", _IN_PROGRESS_CATALOGS)
+def test_an_in_progress_catalog_covers_the_whole_critical_path(code):
+    catalog = _load_shipped_catalog(code)
+    missing = [s for s in _critical_strings() if s not in catalog]
+    assert not missing, (
+        f"{code}.json is offered but misses {len(missing)} first-contact "
+        f"strings: {[m[:40] for m in missing[:4]]}")
+
+
+@pytest.mark.parametrize("code", _IN_PROGRESS_CATALOGS)
+def test_an_in_progress_catalog_translates_nothing_it_should_not(code):
+    """Every key must be a real English source string. A typo'd key is a
+    translation that silently never applies."""
+    from ui.i18n import _load_catalog
+    es = set(_load_shipped_catalog("es"))
+    crit = set(_critical_strings())
+    for key in _load_shipped_catalog(code):
+        assert key in es or key in crit, f"{code}.json has stray key {key!r}"
+
+
+@pytest.mark.parametrize("code", _IN_PROGRESS_CATALOGS)
+def test_an_in_progress_catalog_is_a_valid_string_map(code):
+    catalog = _load_shipped_catalog(code)
+    assert catalog
+    assert all(isinstance(k, str) and isinstance(v, str)
+               for k, v in catalog.items())
+
+
+@pytest.mark.parametrize("code", _IN_PROGRESS_CATALOGS)
+def test_an_in_progress_catalog_keeps_its_placeholders(code):
+    """{ssid}, {err}, {name} — a dropped placeholder is a crash at format time,
+    in a language the person reading the traceback may not speak."""
+    import re
+    catalog = _load_shipped_catalog(code)
+    for src, trans in catalog.items():
+        assert set(re.findall(r"\{(\w+)\}", src)) == \
+            set(re.findall(r"\{(\w+)\}", trans)), f"{code}: {src[:40]!r}"
+
+
+def test_a_language_is_not_offered_until_it_covers_the_critical_path():
+    """A language name in the picker followed by English on the very first
+    screen reads as the tool being broken, not as work in progress."""
+    from ui import i18n
+    i18n._reset_cache()
+    offered = {c for c, _n, _e in i18n.available_languages()}
+    for code in _IN_PROGRESS_CATALOGS:
+        assert code in offered, f"{code} covers the critical path but is hidden"
+    # Hindi is registered but has no catalog yet, so it must NOT be offered.
+    assert "hi" not in offered
+
+
+def test_the_community_languages_are_registered():
+    """Operator, 2026-09-03: the medic is for remote communities. The original
+    eight are the languages of countries that buy dev boards."""
+    from ui.i18n import _LANGUAGES
+    codes = {c for c, _n, _e in _LANGUAGES}
+    for code in ("pt", "sw", "tpi", "hi"):
+        assert code in codes, f"{code} is not registered"
+
+
+def test_hindi_is_gated_on_a_devanagari_font():
+    """Same rule as Japanese: without the font it paints boxes, and a screen of
+    boxes is worse than a screen of English."""
+    from ui import i18n
+    assert i18n._is_renderable("hi") == (i18n.devanagari_font_path() is not None)

@@ -21,3 +21,7 @@ adafruit-nrfutil==0.5.3.post16
 smbus2==0.6.1
 # PIL rides along for image handling in previews/asset tooling.
 Pillow==12.2.0
+# Encrypt-at-rest for the records vault (provisioning/records_vault.py).
+# Was only ever a TRANSITIVE dependency, which is why CI had no copy and
+# the vault tests passed locally and failed there (2026-09-03).
+cryptography

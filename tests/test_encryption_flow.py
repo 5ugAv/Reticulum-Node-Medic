@@ -15,6 +15,22 @@ from provisioning import recovery_key as rk
 from provisioning import vault_factors as vf
 from provisioning.vault import ScryptParams
 
+#: The vault needs a real AEAD, which comes from ``cryptography``. It is
+#: installed on the medic and carried in the wheelhouse, and CI installs it too
+#: — but a machine without it should SKIP these, not fail them. The module's own
+#: behaviour there is correct and separately tested: it raises a sentence the
+#: operator can act on, and ``blockers()`` reports it.
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+    _HAVE_CRYPTO = True
+except Exception:                                          # pragma: no cover
+    _HAVE_CRYPTO = False
+
+pytestmark = pytest.mark.skipif(
+    not _HAVE_CRYPTO,
+    reason="cryptography is not installed; the vault cannot be exercised here")
+
+
 FAST = ScryptParams(n=1 << 8, r=8, p=1)
 
 
