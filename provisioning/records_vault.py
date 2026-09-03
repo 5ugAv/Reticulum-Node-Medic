@@ -98,6 +98,10 @@ SKIP_DIRS = ("maps",)
 #: it holds only salts, nonces and ciphertext, and losing it loses the vault.
 KEYRING_NAME = "keyring.json"
 
+#: Files that must stay readable for the vault to be openable at all. See
+#: ``_walk`` for why each one is here.
+_NEVER_ENCRYPT = (KEYRING_NAME, "vault_policy.json")
+
 #: Slot names. Free-form strings on disk, but these three are the ones the
 #: setup flow installs and the ones ``weakest_slot`` knows how to rank.
 SLOT_DAILY = "daily"
@@ -398,8 +402,13 @@ def _walk(root: str):
 
     Symlinks are skipped: following one would encrypt whatever it points at,
     which for ~/.reticulum-node-medic could reach outside the records entirely.
-    The keyring itself is skipped — encrypting the thing that holds the key is
-    the one edit that would make the vault unopenable.
+    Two files are skipped, and both for the same reason: encrypting the thing
+    you need in order to decrypt is the one edit that makes a vault unopenable.
+    The keyring holds the wrapped data key. ``vault_policy.json`` lives INSIDE
+    the records root and records which factors the daily door is made of — the
+    unlock screen reads it to know whether to draw a pattern pad or a text box.
+    Encrypted, ``load_policy`` would fall back to pattern-only and ask a
+    passphrase operator to draw a shape they never set.
     """
     for dirpath, dirnames, filenames in os.walk(root):
         skip = SKIP_DIRS if dirpath == root else ()
@@ -407,7 +416,7 @@ def _walk(root: str):
                              if d not in skip
                              and not os.path.islink(os.path.join(dirpath, d)))
         for name in sorted(filenames):
-            if name == KEYRING_NAME or name.endswith(".rnmtmp"):
+            if name in _NEVER_ENCRYPT or name.endswith(".rnmtmp"):
                 continue
             full = os.path.join(dirpath, name)
             if os.path.islink(full) or not os.path.isfile(full):

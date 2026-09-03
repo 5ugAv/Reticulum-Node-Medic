@@ -746,12 +746,13 @@ class ReticulumNodeMedicApp(App):
         # Settings hub (the home gear) — WiFi to start, more to come.
         settings_scr = Screen(name="settings")
         from ui.screens.settings_screen import SettingsScreen
-        settings_scr.add_widget(self._with_back(SettingsScreen(
+        self.settings_screen = SettingsScreen(
             on_open=self.switch_mode,
             on_retention_change=self._apply_retention,
             node_count_provider=self._monitor_node_count,
             on_preview_screensaver=self._show_screensaver,
-            on_home_profile_change=self._on_home_profile_change)))
+            on_home_profile_change=self._on_home_profile_change)
+        settings_scr.add_widget(self._with_back(self.settings_screen))
         self.sm.add_widget(settings_scr)
 
         notif_scr = Screen(name="notifications")
@@ -813,6 +814,12 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.tool_identity_screen import ToolIdentityScreen
         identity_scr.add_widget(self._with_back(ToolIdentityScreen()))
         self.sm.add_widget(identity_scr)
+
+        enc_scr = Screen(name="encryption")
+        from ui.screens.encryption_screen import EncryptionScreen
+        self.encryption_screen = EncryptionScreen()
+        enc_scr.add_widget(self._with_back(self.encryption_screen))
+        self.sm.add_widget(enc_scr)
 
         storage_scr = Screen(name="storage")
         from ui.screens.storage_screen import StorageScreen
@@ -2611,3 +2618,14 @@ class ReticulumNodeMedicApp(App):
                 self.refresh_radio_badge()   # keep the changed-params badge honest
             if mode_name == "security_preview":
                 self._start_security_preview()
+            # Both of these REPORT the encryption state, and the operator changes
+            # it on one and reads it on the other. Built once at startup, they
+            # would go on showing whatever was true at boot.
+            if mode_name == "encryption":
+                scr = getattr(self, "encryption_screen", None)
+                if scr is not None:
+                    scr.show_overview()
+            if mode_name == "settings":
+                scr = getattr(self, "settings_screen", None)
+                if scr is not None and hasattr(scr, "refresh_encryption_row"):
+                    scr.refresh_encryption_row()

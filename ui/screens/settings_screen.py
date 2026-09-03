@@ -112,9 +112,15 @@ class SettingsScreen(BoxLayout):
         # needs the medic to still be saying so when they get home, and one
         # more grey row in a list of twenty says nothing.
         body.add_widget(self._setup_entry())
-        body.add_widget(self._entry(tr("Security preview  (encrypt-at-rest)"),
+        # THE REAL SWITCH, directly above the walkthrough of it. Its state
+        # goes in a line of its own beneath, because _entry does not render
+        # the subtitle argument (see _setup_entry) — and this is the row an
+        # operator opens to find out whether their records are locked, so it
+        # has to answer that before they tap it.
+        body.add_widget(self._encryption_entry())
+        body.add_widget(self._entry(tr("Security preview  (walkthrough)"),
                                     "Walk the lock screen, recovery key and "
-                                    "reset — nothing real behind it yet",
+                                    "reset without changing anything",
                                     "security_preview"))
         body.add_widget(self._entry(tr("About"),
                                     "Software version, test-suite status, uptime, "
@@ -450,6 +456,58 @@ class SettingsScreen(BoxLayout):
                 size="12.5sp", color="warning_yellow",
                 h=theme.line_dp("12.5sp")))
         return box
+
+    def _encryption_entry(self):
+        """The encrypt-at-rest switch, with its live state underneath.
+
+        Built fresh by ``refresh_encryption_row`` every time Settings is opened.
+        The body of this screen is assembled once in __init__, and the operator
+        reaches this row IMMEDIATELY after changing the thing it reports — a row
+        still reading "NOT encrypted" over freshly encrypted records is the
+        stale-state failure this project keeps finding (the wizard's
+        vault_exists_fn defaulted to False for the same reason).
+
+        Best-effort: a Settings row must never be the thing that fails to draw.
+        """
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(self._entry(tr("Encrypt my records"),
+                                   "Lock the registry, certificates and "
+                                   "messages on this card", "encryption"))
+        try:
+            from provisioning import encryption_flow as ef
+            st = ef.state()
+            on, doors = bool(st["on"]), len(st["doors"])
+        except Exception:
+            # COULD NOT CHECK is not "encrypted", and it is not a blank row
+            # either — say which it is.
+            box.add_widget(_line("Could not check whether your records are "
+                                 "encrypted.", size="12.5sp",
+                                 color="warning_yellow",
+                                 h=theme.line_dp("12.5sp")))
+            return box
+        if on:
+            box.add_widget(_line(
+                f"Encrypted — {doors} {'key' if doors == 1 else 'keys'} open "
+                f"them.", size="12.5sp", color="green",
+                h=theme.line_dp("12.5sp")))
+        else:
+            box.add_widget(_line(
+                "Not encrypted — anyone who takes this card can read them.",
+                size="12.5sp", color="warning_yellow",
+                h=theme.line_dp("12.5sp")))
+        self._encryption_box = box
+        return box
+
+    def refresh_encryption_row(self):
+        """Redraw the row's state line. Called when Settings is opened."""
+        box = getattr(self, "_encryption_box", None)
+        parent = box.parent if box is not None else None
+        if parent is None:
+            return
+        index = parent.children.index(box)
+        parent.remove_widget(box)
+        parent.add_widget(self._encryption_entry(), index=index)
 
     def _entry(self, title, subtitle, target):
         row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
