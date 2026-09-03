@@ -815,6 +815,12 @@ class ReticulumNodeMedicApp(App):
         identity_scr.add_widget(self._with_back(ToolIdentityScreen()))
         self.sm.add_widget(identity_scr)
 
+        salv_scr = Screen(name="salvage")
+        from ui.screens.salvage_screen import SalvageScreen
+        self.salvage_screen = SalvageScreen()
+        salv_scr.add_widget(self._with_back(self.salvage_screen))
+        self.sm.add_widget(salv_scr)
+
         enc_scr = Screen(name="encryption")
         from ui.screens.encryption_screen import EncryptionScreen
         self.encryption_screen = EncryptionScreen()
@@ -860,7 +866,8 @@ class ReticulumNodeMedicApp(App):
             rnode_flash_factory=lambda board:
                 hw.make_rnode_flash(board, _demo_rnode_flash),
             on_mitosis=lambda: self.switch_mode("mitosis"),
-            on_guide=self._open_birth_guide)
+            on_guide=self._open_birth_guide,
+            on_salvage=lambda: self.switch_mode("salvage"))
         birth.add_widget(self._with_back(self.birth_screen))
         self.sm.add_widget(birth)
 
@@ -2621,6 +2628,10 @@ class ReticulumNodeMedicApp(App):
             # Both of these REPORT the encryption state, and the operator changes
             # it on one and reads it on the other. Built once at startup, they
             # would go on showing whatever was true at boot.
+            if mode_name == "salvage":
+                scr = getattr(self, "salvage_screen", None)
+                if scr is not None:
+                    scr.show_start()
             if mode_name == "encryption":
                 scr = getattr(self, "encryption_screen", None)
                 if scr is not None:

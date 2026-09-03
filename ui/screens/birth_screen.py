@@ -228,7 +228,8 @@ class QRCodeWidget(Widget):
 
 class BirthScreen(BoxLayout):
     def __init__(self, workflow_factories, rnode_flash_factory=None,
-                 on_mitosis=None, prefill_location=None, on_guide=None, **kwargs):
+                 on_mitosis=None, prefill_location=None, on_guide=None,
+                 on_salvage=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -241,6 +242,9 @@ class BirthScreen(BoxLayout):
         self._share_location = "hidden"
         # on_guide() — open the step-by-step guided birth (for a new operator).
         self._on_guide = on_guide
+        # on_salvage() — open "Show me what you got", for a keeper whose
+        # hardware is not one of the boards this screen knows how to offer.
+        self._on_salvage = on_salvage
         # When arriving from the guide with a chosen kind, don't let auto-detect
         # flip the firmware family out from under the operator (cleared on a manual
         # firmware tap). None = detection decides (the 'radio' path).
@@ -396,6 +400,21 @@ class BirthScreen(BoxLayout):
                     color=theme.hex_to_rgba(theme.COLORS["background"]))
                 detect.bind(on_release=lambda *_: self._detect_board())
                 self.header.add_widget(detect)
+                # THE OTHER DOOR. "Detect connected board" only answers for
+                # someone holding one of the 16 boards the medic knows. The
+                # operator's brief (2026-09-03) is remote communities using
+                # "any hardware people might have lying around" — an old
+                # handheld radio, a scrap board with no radio on it, a phone.
+                # That keeper needs a way in that does not start by assuming
+                # they bought the right thing.
+                salvage = Button(
+                    text="Not one of these?  Show me what you got",
+                    size_hint_y=None, height=dp(44), font_size="14sp",
+                    background_normal="", background_down="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                    color=theme.hex_to_rgba(theme.COLORS["accent"]))
+                salvage.bind(on_release=lambda *_: self._open_salvage())
+                self.header.add_widget(salvage)
             if self._detected is not None:
                 found = self._detected.get("found")
                 self.header.add_widget(_line(self._detect_summary(), size="12.5sp",
@@ -883,6 +902,15 @@ class BirthScreen(BoxLayout):
         root.add_widget(cancel)
         popup.content = root
         popup.open()
+
+    def _open_salvage(self):
+        """Hand over to the salvage screen. Best-effort: a link that fails must
+        not take the birth screen down with it."""
+        try:
+            if self._on_salvage:
+                self._on_salvage()
+        except Exception:
+            pass
 
     def _choose_board(self):
         """Full-screen picker of every flashable board. Numbers match rnodeconf's
