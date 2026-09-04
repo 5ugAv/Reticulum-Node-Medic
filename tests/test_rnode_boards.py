@@ -175,11 +175,19 @@ def test_boards_with_no_transcribed_flash_sequence_still_refuse_to_guess():
         assert get_board(key).autoinstall_answers(915)
 
 
-def test_both_board_pickers_render_the_disambiguated_label():
+def test_the_board_picker_renders_the_disambiguated_label():
     """Guards the wiring, not just the data: a picker that goes back to
-    display_name silently drops the silkscreen number again."""
+    display_name silently drops the silkscreen number again.
+
+    This used to assert TWO uses — "popup + guidance list". One of them lived in
+    ``show_boards()``, which nothing ever called: a test whose own docstring
+    says it guards the wiring was guarding a picker no operator could reach, and
+    reporting two working pickers where there was one. show_boards() was deleted
+    2026-09-05 (the live picker is _add_rnode_board_pick, reached from
+    _build_action) and the count follows it down.
+    """
     src = open("ui/screens/birth_screen.py").read()
-    assert src.count("board.picker_label") == 2      # popup + guidance list
+    assert src.count("board.picker_label") == 1
     assert "{board.display_name}  [{board.platform}]" not in src
 
 

@@ -46,13 +46,6 @@ def dot_position(dot_radius_norm: float, geometry: Dict,
     return (geometry["cx"] + r * math.cos(a), geometry["cy"] + r * math.sin(a))
 
 
-def ring_for_score(score: float) -> str:
-    """Which ring band a 0..1 score falls in (mirrors triage.score_to_ring but on
-    the geometry side, for labelling the dot's current band)."""
-    from monitor.triage import score_to_ring
-    return score_to_ring(score)
-
-
 # Fixed spoke bearing per metric (degrees, Kivy y-up): SNR straight up, link
 # margin lower-left, noise floor lower-right. Same thirds every session, so the
 # operator learns "top corner = clarity" once. Labels are plain English (guided

@@ -1562,9 +1562,15 @@ class NodeRegistry:
 
     def activity(self, dst_hash: str, now: float,
                  tz_offset_hours: float = 0.0) -> dict:
-        """A node's when-is-it-up profile (monitor.history.activity_profile over its
-        heard-event series). The UI draws hour bars from ``by_hour`` and shows
-        ``describe_activity`` beneath — most useful for intermittent nodes."""
+        """A node's when-is-it-up profile (monitor.history.activity_profile over
+        its heard-event series).
+
+        NOT DRAWN ANYWHERE YET. This docstring used to say "the UI draws hour
+        bars from ``by_hour``" — it does not, and nothing calls this. Wiring it
+        into node-detail is a real improvement and is on the v1.2 list; until
+        then the sentence describing a screen that does not exist is the part
+        that had to go (2026-09-05).
+        """
         from monitor.history import activity_profile
         return activity_profile(self.history.series(dst_hash), now, tz_offset_hours)
 
