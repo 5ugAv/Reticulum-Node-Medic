@@ -794,9 +794,19 @@ class MapPlot(Widget):
             if atex is None:
                 continue
             col, row, cells = subtile_cell(t.x, t.y, k)
-            sub = max(1, TILE_SIZE // cells)      # region size in the 256px tile
-            rx = col * sub
-            ry = TILE_SIZE - (row + 1) * sub      # texture origin is bottom-left
+            # The cell's true size in the ancestor, which goes BELOW one pixel
+            # once cells > 256. The old code took `max(1, TILE_SIZE // cells)`
+            # and then multiplied the CLAMPED size by col/row — so past k=8 it
+            # asked for regions like x=2047, y=-1792 on a 256px texture. Kivy
+            # does not validate get_region, so the GPU sampled outside the
+            # texture and painted the street names as horizontal smears
+            # (operator, 2026-09-05). Positions come from the exact scale and
+            # are then clamped into the texture.
+            scale = TILE_SIZE / float(cells)
+            sub = max(1, int(scale))
+            rx = max(0, min(TILE_SIZE - sub, int(col * scale)))
+            top = int(row * scale)
+            ry = max(0, min(TILE_SIZE - sub, TILE_SIZE - top - sub))
             try:
                 region = atex.get_region(rx, ry, sub, sub)
             except Exception:

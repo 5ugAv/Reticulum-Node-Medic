@@ -221,3 +221,70 @@ def test_to_latlon_round_trips_to_screen():
         sx, sy = v.to_screen(lat, lon)
         rlat, rlon = v.to_latlon(sx, sy)
         assert abs(rlat - lat) < 1e-6 and abs(rlon - lon) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Overzoom must never sample outside the ancestor texture (2026-09-05)
+#
+# Operator, with a photo: zoomed right in, the street names "turn to drags of
+# pixels across the screen".
+#
+# _draw_tile falls back to an ancestor tile when the exact (z,x,y) is not
+# cached, taking a sub-region of it and scaling it up. The region size was
+# `max(1, TILE_SIZE // cells)` — clamped at one pixel — but the POSITION was
+# then computed by multiplying that clamped size by col/row. Past k=8 that asks
+# for regions like x=2047, y=-1792 on a 256-pixel texture. Kivy's get_region
+# does not validate, so the GPU sampled outside the texture and painted the
+# smears in the photo.
+# ---------------------------------------------------------------------------
+
+_TILE_PX = 256   # the drawn tile size; named to avoid shadowing the import
+
+
+def _region_for(x, y, k):
+    """The arithmetic ui/screens/scan_screen.py:_draw_tile uses, mirrored here
+    so it can be checked without Kivy (which CI cannot import)."""
+    from ui.map_tiles import subtile_cell
+    col, row, cells = subtile_cell(x, y, k)
+    scale = _TILE_PX / float(cells)
+    sub = max(1, int(scale))
+    rx = max(0, min(_TILE_PX - sub, int(col * scale)))
+    top = int(row * scale)
+    ry = max(0, min(_TILE_PX - sub, _TILE_PX - top - sub))
+    return rx, ry, sub
+
+
+@pytest.mark.parametrize("k", list(range(1, 16)))
+def test_the_overzoom_region_stays_inside_the_texture(k):
+    """Every cell of every ancestor depth, including the corners."""
+    n = 1 << k
+    for x, y in ((0, 0), (n - 1, n - 1), (n - 1, 0), (0, n - 1),
+                 (n // 2, n // 3)):
+        rx, ry, sub = _region_for(x, y, k)
+        assert 0 <= rx and rx + sub <= _TILE_PX, f"k={k} ({x},{y}) rx={rx}"
+        assert 0 <= ry and ry + sub <= _TILE_PX, f"k={k} ({x},{y}) ry={ry}"
+
+
+def test_the_old_arithmetic_is_what_produced_the_smears():
+    """Pins the bug itself, so the reasoning survives: the ORIGINAL formula
+    goes out of bounds from k=9, which is exactly when the operator saw
+    street names smear."""
+    from ui.map_tiles import subtile_cell
+    first_bad = None
+    for k in range(1, 16):
+        x = y = (1 << k) - 1
+        col, row, cells = subtile_cell(x, y, k)
+        sub = max(1, _TILE_PX // cells)          # the old line
+        rx, ry = col * sub, _TILE_PX - (row + 1) * sub
+        if not (0 <= rx and rx + sub <= _TILE_PX
+                and 0 <= ry and ry + sub <= _TILE_PX):
+            first_bad = k
+            break
+    assert first_bad == 9
+
+
+def test_shallow_overzoom_still_picks_the_right_quadrant():
+    """The fix must not break the case that always worked: one level up, the
+    four cells are the four 128px quadrants."""
+    got = {_region_for(x, y, 1)[:2] for x, y in ((0, 0), (1, 0), (0, 1), (1, 1))}
+    assert got == {(0, 128), (128, 128), (0, 0), (128, 0)}
