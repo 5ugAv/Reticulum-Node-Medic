@@ -926,9 +926,21 @@ class ReticulumNodeMedicApp(App):
             on_home=lambda: self.switch_mode("home"),
             on_antenna_test=lambda: self.switch_mode("antenna_test"))
         triage.add_widget(self._with_back(self.triage_screen))
-        # opening Triage auto-activates the beacon; leaving it stops it
-        triage.bind(on_enter=lambda *a: self.triage_screen.enter_triage(),
-                    on_leave=lambda *a: self.triage_screen.stop_lighthouse())
+        # Opening Triage auto-activates the beacon; leaving it stops the beacon
+        # AND the 2 Hz sampling tick.
+        #
+        # stop() existed and nothing called it (2026-09-05). on_leave stopped
+        # only the lighthouse, so after one visit to TRIAGE the screen kept
+        # feeding its calibrator twice a second for the life of the process —
+        # for a screen nobody was looking at. A profile of the live medic put
+        # 85% of the app's CPU in monitor.triage; the medic sat at ~30% of a
+        # core while idle and every button felt slow. The comment above said
+        # "leaving it stops it" and it was half true, which is why nobody
+        # looked here.
+        triage.bind(on_enter=lambda *a: (self.triage_screen.start(),
+                                         self.triage_screen.enter_triage()),
+                    on_leave=lambda *a: (self.triage_screen.stop_lighthouse(),
+                                         self.triage_screen.stop()))
         self.sm.add_widget(triage)
 
         # Antenna test — TRIAGE's A/B ear comparison for real antennas.

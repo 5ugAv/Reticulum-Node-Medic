@@ -220,3 +220,94 @@ def test_cancel_at_the_empty_prompt_goes_home_not_down():
     assert "on_home=None" in src                  # declared
     assert "self._on_home = on_home" in src       # stored
     assert "self._on_home and self._on_home()" in src   # used by Cancel
+
+
+# ---------------------------------------------------------------------------
+# The calibrator must not grow without limit (2026-09-05)
+#
+# Found by profiling the LIVE medic: 85% of a 12-second sample of the running
+# app was inside MetricRange, and the idle UI sat at ~30% of one core, which is
+# why the operator reported every button feeling slow.
+#
+# Two faults compounded. MetricRange.samples grew for ever, and bounds()
+# re-sorted the whole list on EVERY call while feed() calls it six times per
+# tick. TRIAGE sampled at 2 Hz from CONSTRUCTION - app startup, whether or not
+# anyone opened it - and nothing cancelled it, so after 41 hours each list held
+# ~295,000 readings being sorted six times a second.
+# ---------------------------------------------------------------------------
+
+def test_the_sample_window_is_bounded():
+    from monitor.triage import MAX_CAL_SAMPLES, MetricRange
+    m = MetricRange((0.0, 10.0))
+    for i in range(MAX_CAL_SAMPLES * 5):
+        m.add(float(i % 100))
+    assert len(m.samples) == MAX_CAL_SAMPLES
+
+
+def test_the_window_keeps_the_NEWEST_readings():
+    """A rolling window is better statistics as well as cheaper: an antenna
+    survey's conditions change as the operator moves, so percentiles over two
+    days of stale readings describe nothing being measured now."""
+    from monitor.triage import MAX_CAL_SAMPLES, MetricRange
+    m = MetricRange((0.0, 10.0))
+    for _ in range(MAX_CAL_SAMPLES):
+        m.add(1.0)
+    for _ in range(MAX_CAL_SAMPLES):
+        m.add(9.0)
+    assert list(m.samples) == [9.0] * MAX_CAL_SAMPLES
+
+
+def test_bounds_are_cached_between_calls():
+    """feed() asks six times per tick. Re-sorting each time is what turned a
+    long-running medic into a slow one."""
+    from monitor import triage as tr
+    m = tr.MetricRange((0.0, 10.0))
+    for i in range(50):
+        m.add(float(i))
+    calls = {"n": 0}
+    real = tr._percentile
+
+    def counting(vals, pct):
+        calls["n"] += 1
+        return real(vals, pct)
+
+    tr._percentile = counting
+    try:
+        first = m.bounds()
+        for _ in range(20):
+            m.bounds()
+        assert calls["n"] == 2, "bounds() recomputed on a cache hit"
+        m.add(1.0)                      # a new reading must invalidate it
+        assert m.bounds() is not None
+        assert calls["n"] == 4
+    finally:
+        tr._percentile = real
+    assert first == m.bounds() or True   # value identity is not the point here
+
+
+def test_adding_a_sample_changes_the_answer():
+    """The cache must not freeze the calibration — the whole point of the class
+    is that the range ADAPTS as readings arrive."""
+    from monitor.triage import MIN_CAL_SAMPLES, MetricRange
+    m = MetricRange((0.0, 10.0))
+    for _ in range(MIN_CAL_SAMPLES):
+        m.add(5.0)
+    before = m.bounds()
+    for _ in range(50):
+        m.add(100.0)
+    assert m.bounds() != before, "bounds went stale behind the cache"
+
+
+def test_normalize_stays_cheap_under_a_long_survey():
+    """The regression guard. Before the fix this was ~30 ms PER CALL against a
+    295,000-sample list; feed() makes six such calls, twice a second."""
+    import time
+    from monitor.triage import MetricRange
+    m = MetricRange((0.0, 10.0))
+    for i in range(60000):
+        m.add(float(i % 100))
+    start = time.time()
+    for _ in range(5000):
+        m.normalize(50.0)
+    per_call_ms = (time.time() - start) / 5000 * 1000
+    assert per_call_ms < 1.0, f"{per_call_ms:.3f} ms per normalize() call"

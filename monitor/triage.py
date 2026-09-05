@@ -22,13 +22,19 @@ No hardware, no UI — this is the testable core the Kivy widget renders.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 # -- weights: SNR leads (stable + decode-relevant), margin second, noise last --
 W_SNR, W_MARGIN, W_NOISE = 0.5, 0.3, 0.2
 DECODE_FLOOR_SNR = -12.5           # dB, SF9: below this, packets don't decode at all
 MIN_CAL_SAMPLES = 8                # observations before the adaptive range takes over
+
+#: Readings retained per metric. At TRIAGE's 2 Hz that is ~17 minutes — longer
+#: than any real antenna survey — and it bounds both memory and the sort behind
+#: ``MetricRange.bounds``. Unbounded, it reached ~295,000 on the live medic.
+MAX_CAL_SAMPLES = 2000
 
 # absolute fallback ranges (low_value, high_value) used until the site calibrates
 SNR_DEFAULT = (-12.5, 12.0)        # dB
@@ -65,21 +71,44 @@ def _percentile(sorted_vals: List[float], pct: float) -> float:
 class MetricRange:
     """Learns an achievable range for one metric from observed samples (robust
     10th/90th percentiles once there are enough; a fixed default before that) and
-    normalises a value to 0..1 where 1 = best. ``invert`` for lower-is-better."""
+    normalises a value to 0..1 where 1 = best. ``invert`` for lower-is-better.
+
+    BOUNDED AND CACHED, and both halves matter (2026-09-05). This class was the
+    single largest CPU consumer on the medic — 85% of a 12-second profile of the
+    LIVE app, burning ~30% of a core while the screen sat idle, which is what
+    made every button feel slow.
+
+    Two faults compounded. ``samples`` grew without limit, and ``bounds()``
+    re-sorted the whole list on EVERY call — and ``feed()`` calls it six times
+    per tick. TRIAGE ticks twice a second and its Clock event was never
+    cancelled when the operator left the screen, so after 41 hours of uptime
+    each list held roughly 295,000 readings and the app was sorting them six
+    times a second, for a screen nobody was looking at.
+
+    A rolling window is also BETTER statistics, not just cheaper: an antenna
+    survey's conditions change as the operator moves, and percentiles taken over
+    two days of stale readings describe nothing anyone is measuring now.
+    """
 
     def __init__(self, default: Tuple[float, float], invert: bool = False):
         self.default = default          # (low, high), low < high
         self.invert = invert
-        self.samples: List[float] = []
+        self.samples: Deque[float] = deque(maxlen=MAX_CAL_SAMPLES)
+        self._bounds: Optional[Tuple[float, float]] = None   # cleared by add()
 
     def add(self, v: float) -> None:
-        self.samples.append(v)
+        self.samples.append(v)          # deque drops the oldest past maxlen
+        self._bounds = None             # the answer changed; recompute on demand
 
     def bounds(self) -> Tuple[float, float]:
+        if self._bounds is not None:
+            return self._bounds
         if len(self.samples) < MIN_CAL_SAMPLES:
-            return self.default
-        s = sorted(self.samples)
-        return _percentile(s, 10), _percentile(s, 90)
+            self._bounds = self.default
+        else:
+            s = sorted(self.samples)
+            self._bounds = (_percentile(s, 10), _percentile(s, 90))
+        return self._bounds
 
     def normalize(self, v: float) -> float:
         lo, hi = self.bounds()

@@ -147,7 +147,13 @@ class TriageScreen(FloatLayout):
 
         self._modal = None       # "connect an RTNode" prompt, shown on demand
         self.bind(size=self._relayout, pos=self._relayout)
-        self._event = Clock.schedule_interval(self._tick, poll_interval)
+        # NOT scheduled here. The tick used to start at CONSTRUCTION — i.e. at
+        # app startup, for a screen the operator may never open — and nothing
+        # ever cancelled it. It is started by start() from on_enter and stopped
+        # by stop() from on_leave, so a screen nobody is looking at costs
+        # nothing (2026-09-05; see MetricRange for what that cost grew into).
+        self._poll_interval = poll_interval
+        self._event = None
 
     # -- "connect a lighthouse" modal (only when no beacon node exists) ------
 
@@ -430,7 +436,15 @@ class TriageScreen(FloatLayout):
         self._guidance.text = msg
         self._pin_guidance(10.0)
 
+    def start(self) -> None:
+        """Begin sampling. Idempotent — re-entering the screen must not leave
+        two ticks running."""
+        if getattr(self, "_event", None) is not None:
+            return
+        self._event = Clock.schedule_interval(self._tick, self._poll_interval)
+
     def stop(self) -> None:
         event = getattr(self, "_event", None)
         if event is not None:
             event.cancel()
+            self._event = None

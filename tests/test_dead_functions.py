@@ -160,3 +160,21 @@ def test_the_allowlist_does_not_rot():
     assert not now_used, (
         "These are allowlisted as invisibly-called but ARE now referenced — "
         "delete them from CALLED_INVISIBLY:\n  " + "\n  ".join(now_used))
+
+
+def test_a_screen_that_samples_can_be_stopped_and_started():
+    """TRIAGE's stop() existed and NOTHING called it — the exact shape this
+    file guards, but one layer up: a method, not a module. Its 2 Hz tick was
+    scheduled from __init__ (app startup, whether or not anyone opened the
+    screen) and never cancelled, which is what let the calibrator grow to
+    ~295,000 samples and take the whole UI down to a crawl.
+
+    A sampling screen needs BOTH halves wired, so this asserts the wiring
+    rather than the methods' existence."""
+    app = open(os.path.join(REPO, "ui", "app.py"), encoding="utf-8").read()
+    assert "self.triage_screen.start()" in app, "TRIAGE never starts sampling"
+    assert "self.triage_screen.stop()" in app, "TRIAGE never stops sampling"
+    src = open(os.path.join(REPO, "ui", "screens", "triage_screen.py"),
+               encoding="utf-8").read()
+    assert "Clock.schedule_interval(self._tick" not in src.split("def start")[0], (
+        "the tick is scheduled before start() — it runs for a screen nobody opened")
