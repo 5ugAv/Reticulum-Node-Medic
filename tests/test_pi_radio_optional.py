@@ -174,3 +174,43 @@ def test_build_action_lets_a_moot_board_through():
 def test_the_handoff_forwards_the_guides_own_flag():
     body = func_source(SCREEN, "_hand_over_name", cls="BirthGuideScreen")
     assert "flash_radio=getattr(self, \"_pi_flash_radio\", True)" in body
+
+
+# --------------------------------------------------------------------------- #
+# "Unplug BOTH boards" when neither was ever on the medic (live, 2026-09-06)
+#
+# Operator: Pi Zero already had a working RAK4631 attached, on its own power,
+# reached only over Wi-Fi (never cabled). Both the build-completion popup
+# (birth_screen.py) and the guide's own final step (birth_guide_screen.py,
+# "Step 7 of 7") told them to unplug boards that were never plugged in. "if
+# the node medic registers that the pi is not plugged into the node medic
+# then this message does not need to appear — you can just say finished."
+# --------------------------------------------------------------------------- #
+
+def test_the_final_guide_step_is_skippable_when_nothing_is_on_the_medic():
+    body = func_source(SCREEN, "_step_is_redundant", cls="BirthGuideScreen")
+    assert '"radio_to_pi"' in body
+    assert "_pi_flash_radio" in body
+    assert '"10.55.0."' in body
+
+
+def test_the_final_step_is_never_skipped_when_the_radio_was_flashed_here():
+    """The default (flash-here) path always has real work in this step —
+    the check must short-circuit to "not redundant" for it."""
+    body = func_source(SCREEN, "_step_is_redundant", cls="BirthGuideScreen")
+    section = body.split('"radio_to_pi"', 1)[1]
+    assert "getattr(self, \"_pi_flash_radio\", True)" in section
+    assert "return False" in section.split("\n\n")[0]
+
+
+def test_the_completion_popup_checks_whether_anything_is_on_the_medic():
+    body = func_source(BIRTH_SCREEN, "_popup_outcome", cls="BirthScreen")
+    assert "on_medic" in body
+    assert "_flash_radio" in body
+    assert '"10.55.0."' in body
+
+
+def test_the_completion_popup_has_a_plain_finished_message():
+    body = func_source(BIRTH_SCREEN, "_popup_outcome", cls="BirthScreen")
+    assert '"Finished"' in body
+    assert "nothing here needs moving" in body

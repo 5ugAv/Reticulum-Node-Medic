@@ -2868,17 +2868,37 @@ class BirthScreen(BoxLayout):
                     "beacon.",
                     "Build finished", False, tone="success")
             elif getattr(self, "_last_type", "") == "pi_rnode":
-                # Name the physical action. "Build finished" alone is true and
-                # useless here: the node does not exist yet — the Pi and its
-                # radio are both still plugged into Node Medic.
-                b = getattr(self, "_last_board", None)
-                bn = b.display_name if b is not None else "the radio"
-                view = requirement_popup(
-                    f"Built — but not finished yet.\n\nUnplug BOTH boards from "
-                    f"Node Medic, plug {bn} into the Pi's USB port (the DATA "
-                    f"one), and power the Pi from PWR IN.\n\nThe full steps are "
-                    f"on the screen behind this.",
-                    "One last step", False, tone="success")
+                # Name the physical action — WHEN THERE IS ONE. "Unplug BOTH
+                # boards from Node Medic" is only true if something is
+                # actually on the medic: the radio (flashed here) or the Pi
+                # (reached over its own cable). Live, 2026-09-06: an operator
+                # whose Pi already carried a working radio, powered itself,
+                # reached only over Wi-Fi, was told to unplug two boards that
+                # were never plugged in — asking them to undo work that had
+                # never been done. "if the node medic registers that the pi is
+                # not plugged into the node medic then this message does not
+                # need to appear — you can just say finished" (operator).
+                try:
+                    reached = (self._pi_addr_in.text or "").strip()
+                except Exception:                                  # noqa: BLE001
+                    reached = ""
+                on_medic = (getattr(self, "_flash_radio", True)
+                           or reached.startswith("10.55.0."))
+                if on_medic:
+                    b = getattr(self, "_last_board", None)
+                    bn = b.display_name if b is not None else "the radio"
+                    view = requirement_popup(
+                        f"Built — but not finished yet.\n\nUnplug BOTH boards "
+                        f"from Node Medic, plug {bn} into the Pi's USB port "
+                        f"(the DATA one), and power the Pi from PWR IN.\n\n"
+                        f"The full steps are on the screen behind this.",
+                        "One last step", False, tone="success")
+                else:
+                    view = requirement_popup(
+                        f"Built. {nm} is provisioned and its radio is already "
+                        f"in place — nothing here needs moving. Watch VITALS "
+                        f"for its first health beacon.",
+                        "Finished", False, tone="success")
             else:
                 # A USB-verified build (T-Echo tier) demonstrated no beacon —
                 # promising one on VITALS would be a claim nothing checked.

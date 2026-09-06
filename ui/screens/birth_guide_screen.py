@@ -2103,6 +2103,21 @@ class BirthGuideScreen(BoxLayout):
                 return bool(local_board_ports())
             except Exception:
                 return False
+        if anim == "radio_to_pi":
+            # The physical hand-off step — "unplug the Pi from Node Medic,
+            # plug in your radio, give it its own supply" — has nothing to
+            # ask when NEITHER half was ever on the medic in the first place.
+            # Live, 2026-09-06: flash_radio=False (radio already attached,
+            # skipped here) AND the Pi was reached over Wi-Fi the whole build
+            # (never cabled) — every line of this step described undoing work
+            # that was never done. self._reached_at arrives via resume()'s
+            # payload from birth_screen's own provisioning hand-off, the same
+            # field the closing "{name} is built" screen already trusts to
+            # say "over the cable" vs "over your network" truthfully.
+            if getattr(self, "_pi_flash_radio", True):
+                return False           # the radio WAS flashed here — real work
+            reached = getattr(self, "_reached_at", "") or ""
+            return not reached.startswith("10.55.0.")
         return False
 
     # -- the card arriving in the medic's own reader ------------------------
