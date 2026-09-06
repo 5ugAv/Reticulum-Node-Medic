@@ -133,8 +133,28 @@ class ConfirmLocationPopup(Popup):
         from ui.screens.scan_screen import MapPlot
         # MapPlot's on_pick fires with a SINGLE (lat, lon) TUPLE — unpack it (and
         # never let a touch-callback error crash the app).
+        # A GUARANTEED minimum height, not whatever the other rows leave over.
+        #
+        # This widget had no size of its own, so it took size_hint_y=1 against
+        # SIX fixed-height siblings in the same vertical BoxLayout — on the
+        # real medic (800x480, KIVY_METRICS_DENSITY=1.5) those siblings alone
+        # summed to more than the popup's own height, leaving the map a sliver
+        # or nothing at all. What the operator saw and called "smeared, not
+        # clear" (2026-09-06, with a photo) was a real map tile, correctly
+        # decoded (checked by hand: a clean JPEG, PIL opens it fine) — but
+        # overzoomed for a location outside this medic's downloaded detail
+        # AND squashed into a strip a few dozen pixels tall. A blurry crop
+        # blown up 8x and then viewed through a two-pixel-wide letterbox
+        # reads as flat horizontal bands, because that is almost exactly what
+        # it is.
+        #
+        # 190dp is deliberately fixed rather than computed: this is the same
+        # "the one thing that matters gets starved by fixed-height siblings"
+        # shape as the BIRTH parts list clipping (2026-08-xx) — a resizing
+        # widget under several rigid neighbours is the wrong tool here.
         self.plot = MapPlot(nodes=[], tiles=tiles, interactive=True,
-                            on_pick=self._on_map_pick)
+                            on_pick=self._on_map_pick,
+                            size_hint_y=None, height=dp(190))
         body.add_widget(self.plot)
 
         # coords (always shown, offline) + an OPT-IN "Show address" button. Address

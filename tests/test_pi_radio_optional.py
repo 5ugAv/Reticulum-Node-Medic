@@ -129,3 +129,48 @@ def test_the_gate_still_fires_on_the_default_flash_here_path():
     body = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
     assert 'self._path == "pi"' in body
     assert "_render_pick_board()" in body
+
+
+# --------------------------------------------------------------------------- #
+# The final hand-off's own "Board (radio)" field, found live 2026-09-06
+#
+# The operator's Pi already carried a working RAK4631, on its own power,
+# never plugged into the medic — and the "Bring the node to life" hand-off
+# still blocked on "Tap to choose a board", because self._sel_board is only
+# ever set by identifying a radio ON THE MEDIC'S USB, which never happens in
+# this path. begin_guided() now carries the SAME flash_radio flag the guide
+# itself uses, all the way into birth_screen.py.
+# --------------------------------------------------------------------------- #
+
+BIRTH_SCREEN = "ui/screens/birth_screen.py"
+
+
+def test_begin_guided_accepts_and_stores_flash_radio():
+    sig = func_source(BIRTH_SCREEN, "begin_guided", cls="BirthScreen")
+    assert "flash_radio=True" in sig.split("\n")[0] or "flash_radio" in sig
+    assert "self._flash_radio = bool(flash_radio)" in sig
+
+
+def test_a_fresh_lap_resets_flash_radio_to_true():
+    """A stale False from an earlier skip-flash build must never leak into a
+    build reached some other way."""
+    body = func_source(BIRTH_SCREEN, "_fresh_lap", cls="BirthScreen")
+    assert "self._flash_radio = True" in body
+
+
+def test_the_board_field_does_not_block_when_the_radio_is_never_flashed_here():
+    body = func_source(BIRTH_SCREEN, "_build_chooser", cls="BirthScreen")
+    assert "_flash_radio" in body
+    assert "Not flashed here" in body
+
+
+def test_build_action_lets_a_moot_board_through():
+    """The actual gate that decides whether the build can start at all."""
+    body = func_source(BIRTH_SCREEN, "_build_action", cls="BirthScreen")
+    assert "radio_known_or_moot" in body
+    assert "_flash_radio" in body
+
+
+def test_the_handoff_forwards_the_guides_own_flag():
+    body = func_source(SCREEN, "_hand_over_name", cls="BirthGuideScreen")
+    assert "flash_radio=getattr(self, \"_pi_flash_radio\", True)" in body

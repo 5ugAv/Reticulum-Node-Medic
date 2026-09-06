@@ -278,6 +278,14 @@ class BirthScreen(BoxLayout):
         self._labels = dict(birth_node_types())      # key -> display label
         self._boards = list(rnode_board_choices())
         self._sel_board = None                       # chosen RNodeBoard | None
+        # True unless a guided hand-off says this radio was never plugged into
+        # the medic at all (2026-09-06, live: operator's Pi already carried a
+        # working RAK4631, on its own power, never on the medic's USB — and
+        # "Board (radio)" still blocked the build asking them to identify it).
+        # Load-bearing only when the medic is about to FLASH the radio, which
+        # decides the firmware image; a Pi build using an already-flashed
+        # radio needs no image decision at all.
+        self._flash_radio = True
         self._sel_pi = None                          # chosen (key, name) | None
         self._firmware = None                        # rtnode2400 | rnode | pi_rnode
         self._rtnode_target = None                   # RTNODE_TARGETS key (RTNode-2400)
@@ -494,7 +502,17 @@ class BirthScreen(BoxLayout):
             if self._declared_mismatch:
                 self.header.add_widget(_line(self._declared_mismatch,
                                              size="14sp", color="amber"))
-            if self._sel_board is None:
+            if self._sel_board is None and not getattr(self, "_flash_radio", True):
+                # The operator said so explicitly, earlier in the guide: this
+                # radio was never on the medic's USB and never will be — there
+                # is no image to pick and nothing here to identify.
+                self.header.add_widget(_line("Board (radio)", bold=True,
+                                             size="15sp", color="accent"))
+                self.header.add_widget(_line(
+                    "Not flashed here — already working. Plug it into the "
+                    "Pi when this finishes.", size="13.5sp",
+                    color="text_secondary"))
+            elif self._sel_board is None:
                 self.header.add_widget(_line("Board (radio)", bold=True,
                                              size="15sp", color="accent"))
                 self._add_rnode_board_pick()
@@ -858,7 +876,14 @@ class BirthScreen(BoxLayout):
                 self.list.add_widget(_line("Choose the RTNode-2400 target above.",
                                            size="13sp", color="text_secondary"))
         elif self._firmware in ("rnode", "pi_rnode"):
-            if self._sel_board is not None:
+            radio_known_or_moot = (self._sel_board is not None
+                                   or (self._firmware == "pi_rnode"
+                                       and not getattr(self, "_flash_radio", True)))
+            if radio_known_or_moot:
+                # board=None here means "deliberately not identified" — the
+                # standard network params (frequency/BW/SF/CR/power) apply
+                # uniformly; they are not board-specific, and this radio's own
+                # firmware already carries whatever it was set at birth.
                 self.show_params(self._firmware, board=self._sel_board)
             else:
                 self.list.add_widget(_line("Pick a board above to set radio params "
@@ -1735,6 +1760,7 @@ class BirthScreen(BoxLayout):
         self._sel_board = None
         self._sel_pi = None
         self._detected = None
+        self._flash_radio = True     # a stale False must never leak into the next lap
         self._rtnode_target = None
         self._firmware = None
         self._declared_board_key = None
@@ -1770,7 +1796,8 @@ class BirthScreen(BoxLayout):
 
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
                      pi_address=None, share_location=None,
-                     radio_usb_serial=None, bluetooth=None, location=None):
+                     radio_usb_serial=None, bluetooth=None, location=None,
+                     flash_radio=True):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1793,11 +1820,18 @@ class BirthScreen(BoxLayout):
         answer is known, and every extra pass over that grid is another chance
         to tap the wrong one and flash the wrong image. Detection still runs and
         still gets to DISAGREE — see _detected_done.
+
+        *flash_radio* False means the guide's "I already have a working
+        radio" answer (2026-09-06): this radio is never going to be plugged
+        into the medic at all, so there is no image to choose and nothing to
+        identify — "Board (radio)" would otherwise block a Pi build asking
+        the operator to name a board the medic will never touch.
         """
         if self._busy_with_a_build():
             self._warn_build_running()    # never reset under a running build
             return
         self._fresh_lap()
+        self._flash_radio = bool(flash_radio)
         if name is not None and getattr(self, "_name_in", None) is not None:
             self._name_in.text = str(name)
         if board_key:

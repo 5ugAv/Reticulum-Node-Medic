@@ -2038,7 +2038,14 @@ class BirthGuideScreen(BoxLayout):
                         # And the Bluetooth answer, taken two screens after
                         # the name — the build applies it, so it rides the
                         # same hand-off as everything else already asked.
-                        bluetooth=getattr(self, "_bluetooth_on", False))
+                        bluetooth=getattr(self, "_bluetooth_on", False),
+                        # Whether the medic is EVER going to flash a radio for
+                        # this build. False for "I already have a working
+                        # radio" — without this, the hand-off's "Board
+                        # (radio)" field blocked the build asking the operator
+                        # to identify hardware that will never touch the
+                        # medic's USB (2026-09-06, live).
+                        flash_radio=getattr(self, "_pi_flash_radio", True))
                 elif name and hasattr(scr, "prefill_name"):
                     scr.prefill_name(name)
                 return
