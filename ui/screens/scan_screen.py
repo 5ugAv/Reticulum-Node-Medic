@@ -794,19 +794,32 @@ class MapPlot(Widget):
             if atex is None:
                 continue
             col, row, cells = subtile_cell(t.x, t.y, k)
-            # The cell's true size in the ancestor, which goes BELOW one pixel
-            # once cells > 256. The old code took `max(1, TILE_SIZE // cells)`
-            # and then multiplied the CLAMPED size by col/row — so past k=8 it
-            # asked for regions like x=2047, y=-1792 on a 256px texture. Kivy
-            # does not validate get_region, so the GPU sampled outside the
-            # texture and painted the street names as horizontal smears
-            # (operator, 2026-09-05). Positions come from the exact scale and
-            # are then clamped into the texture.
-            scale = TILE_SIZE / float(cells)
+            # THE SOURCE TEXTURE'S OWN SIZE — NOT TILE_SIZE. TILE_SIZE (512)
+            # is a DRAWING choice ("2x display: labels legible on the HiDPI 5"
+            # panel"); the decoded tile pixel data is 256x256, whatever this
+            # mbtiles actually stores (checked by hand: dumped the exact bytes
+            # DireWolf... no — dumped the exact ancestor tile this bug hit,
+            # decoded it in Kivy, tex.size reported (256, 256)). Every
+            # get_region() call below had been computed against 512 and
+            # clamped into a texture that is only 256px wide — so even the
+            # FIRST ancestor level (k=1) asked for regions starting at x=256
+            # on a 256px-wide texture, entirely past its edge, every time.
+            #
+            # The first fix (2026-09-05) caught the case where the request
+            # went past a 256px ceiling and clamped it — using the WRONG
+            # ceiling throughout, so it clamped requests INTO the wrong
+            # region instead of out of the texture, which is why the operator
+            # kept seeing smeared, banded map previews after that fix shipped
+            # (2026-09-06, live, with photos: correct-looking tiles only where
+            # an EXACT zoom match existed and no get_region() ever ran).
+            # Reading the real size makes this correct for whatever an mbtiles
+            # actually stores, not just whatever TILE_SIZE happens to be today.
+            src = atex.width
+            scale = src / float(cells)
             sub = max(1, int(scale))
-            rx = max(0, min(TILE_SIZE - sub, int(col * scale)))
+            rx = max(0, min(src - sub, int(col * scale)))
             top = int(row * scale)
-            ry = max(0, min(TILE_SIZE - sub, TILE_SIZE - top - sub))
+            ry = max(0, min(src - sub, src - top - sub))
             try:
                 region = atex.get_region(rx, ry, sub, sub)
             except Exception:

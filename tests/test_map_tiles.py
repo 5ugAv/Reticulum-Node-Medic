@@ -224,57 +224,100 @@ def test_to_latlon_round_trips_to_screen():
 
 
 # ---------------------------------------------------------------------------
-# Overzoom must never sample outside the ancestor texture (2026-09-05)
+# Overzoom must never sample outside the ancestor texture (2026-09-05, and
+# again 2026-09-06 — the first fix used the WRONG texture size)
 #
 # Operator, with a photo: zoomed right in, the street names "turn to drags of
-# pixels across the screen".
+# pixels across the screen". A day later, a SECOND photo, after the first fix
+# had shipped: the map preview was STILL smeared, and correct only where an
+# exact zoom match existed and no overzoom ran at all.
 #
 # _draw_tile falls back to an ancestor tile when the exact (z,x,y) is not
-# cached, taking a sub-region of it and scaling it up. The region size was
-# `max(1, TILE_SIZE // cells)` — clamped at one pixel — but the POSITION was
-# then computed by multiplying that clamped size by col/row. Past k=8 that asks
-# for regions like x=2047, y=-1792 on a 256-pixel texture. Kivy's get_region
-# does not validate, so the GPU sampled outside the texture and painted the
-# smears in the photo.
-# ---------------------------------------------------------------------------
+# cached, taking a sub-region of it and scaling it up. Both bugs were the same
+# shape: the region math was computed against a size that did not match the
+# ANCESTOR TEXTURE'S REAL PIXEL DIMENSIONS.
+#
+#   1. The size (`sub`) was clamped to one pixel, but the POSITION was
+#      multiplied by the UNCLAMPED size — out of bounds past k=8.
+#   2. Fixed by clamping position too, but against TILE_SIZE (512) — a DISPLAY
+#      constant ("2x display: labels legible on the HiDPI panel"), not the
+#      decoded tile's actual pixel size. The mbtiles stores 256x256 tiles
+#      (checked by hand: dumped a real ancestor tile from the live medic,
+#      decoded it in Kivy, ``texture.width`` reported 256). Every get_region()
+#      call was clamped into a 512px ceiling on a 256px-wide texture, so even
+#      ONE ancestor level up (k=1) asked for a region starting at x=256 on a
+#      256px texture — entirely past its edge, every single time overzoom ran.
+#
+# The real fix reads ``atex.width`` — the texture's OWN reported size — rather
+# than assuming any constant. That is also the only way to test it honestly:
+# a test that hardcodes "256" and calls it fixed makes exactly the mistake
+# that caused this twice. So `_region_for` below takes the source size as a
+# PARAMETER, and separately, a source-level test pins that the real function
+# reads it from the texture rather than a constant of any value.
+# --------------------------------------------------------------------------- #
 
-_TILE_PX = 256   # the drawn tile size; named to avoid shadowing the import
+_TILE_PX = 256   # the drawn/display constant is separate — see TILE_SIZE
 
 
-def _region_for(x, y, k):
+def _region_for(x, y, k, src=256):
     """The arithmetic ui/screens/scan_screen.py:_draw_tile uses, mirrored here
-    so it can be checked without Kivy (which CI cannot import)."""
+    so it can be checked without Kivy (which CI cannot import). *src* is the
+    ancestor texture's OWN pixel size — parameterised deliberately, so these
+    tests prove the formula is correct for whatever a texture reports, not
+    just for one hardcoded number."""
     from ui.map_tiles import subtile_cell
     col, row, cells = subtile_cell(x, y, k)
-    scale = _TILE_PX / float(cells)
+    scale = src / float(cells)
     sub = max(1, int(scale))
-    rx = max(0, min(_TILE_PX - sub, int(col * scale)))
+    rx = max(0, min(src - sub, int(col * scale)))
     top = int(row * scale)
-    ry = max(0, min(_TILE_PX - sub, _TILE_PX - top - sub))
+    ry = max(0, min(src - sub, src - top - sub))
     return rx, ry, sub
 
 
 @pytest.mark.parametrize("k", list(range(1, 16)))
-def test_the_overzoom_region_stays_inside_the_texture(k):
-    """Every cell of every ancestor depth, including the corners."""
+@pytest.mark.parametrize("src", [256, 512])
+def test_the_overzoom_region_stays_inside_the_texture_at_any_source_size(k, src):
+    """Every cell of every ancestor depth, including the corners — proven for
+    BOTH a 256px source (what this mbtiles actually stores) and 512px (what
+    the second bug wrongly assumed), so the formula cannot silently regress to
+    being right for only one of them."""
     n = 1 << k
     for x, y in ((0, 0), (n - 1, n - 1), (n - 1, 0), (0, n - 1),
                  (n // 2, n // 3)):
-        rx, ry, sub = _region_for(x, y, k)
-        assert 0 <= rx and rx + sub <= _TILE_PX, f"k={k} ({x},{y}) rx={rx}"
-        assert 0 <= ry and ry + sub <= _TILE_PX, f"k={k} ({x},{y}) ry={ry}"
+        rx, ry, sub = _region_for(x, y, k, src=src)
+        assert 0 <= rx and rx + sub <= src, f"k={k} src={src} ({x},{y}) rx={rx}"
+        assert 0 <= ry and ry + sub <= src, f"k={k} src={src} ({x},{y}) ry={ry}"
 
 
-def test_the_old_arithmetic_is_what_produced_the_smears():
-    """Pins the bug itself, so the reasoning survives: the ORIGINAL formula
-    goes out of bounds from k=9, which is exactly when the operator saw
-    street names smear."""
+def test_the_fix_reads_the_textures_own_size_not_a_constant():
+    """THE actual defect. The first fix computed everything against TILE_SIZE
+    (512, a display constant) while the real decoded tile is 256px — so it
+    clamped every request into the WRONG texture, and every overzoom draw from
+    k=1 onward asked for a region starting past the real texture's edge. A
+    test that only checked the arithmetic in the abstract (as the tests above
+    do) cannot catch this — it has to check what the SHIPPED code reads its
+    size from."""
+    from tests.srcutil import func_source
+    body = func_source("ui/screens/scan_screen.py", "_draw_tile")
+    assert "atex.width" in body, (
+        "the overzoom crop is not reading the real texture size — this is "
+        "the exact bug that shipped and stayed broken across two fixes")
+    assert "TILE_SIZE / float(cells)" not in body, (
+        "still scaling against the display constant instead of the texture's "
+        "own size")
+
+
+def test_the_old_arithmetic_is_what_produced_the_first_round_of_smears():
+    """Pins the FIRST bug's reasoning: the ORIGINAL formula (size clamped,
+    position not) goes out of bounds from k=9 — exactly when street names
+    were first seen to smear."""
     from ui.map_tiles import subtile_cell
     first_bad = None
     for k in range(1, 16):
         x = y = (1 << k) - 1
         col, row, cells = subtile_cell(x, y, k)
-        sub = max(1, _TILE_PX // cells)          # the old line
+        sub = max(1, _TILE_PX // cells)           # the ORIGINAL line
         rx, ry = col * sub, _TILE_PX - (row + 1) * sub
         if not (0 <= rx and rx + sub <= _TILE_PX
                 and 0 <= ry and ry + sub <= _TILE_PX):
@@ -283,8 +326,27 @@ def test_the_old_arithmetic_is_what_produced_the_smears():
     assert first_bad == 9
 
 
+def test_the_second_bug_broke_overzoom_from_the_very_first_level():
+    """Pins the SECOND bug's reasoning: clamping against 512 when the real
+    texture is 256 means even k=1 (the most common, mildest overzoom case)
+    asked for a region past the texture's edge."""
+    col, row, cells = 1, 0, 2               # k=1, the worst-case column
+    scale = 512 / float(cells)              # the SECOND fix's ceiling
+    sub = max(1, int(scale))
+    rx = max(0, min(512 - sub, int(col * scale)))
+    real_texture_width = 256
+    assert rx + sub > real_texture_width, (
+        "if this no longer overflows, the regression this test guards has "
+        "changed shape and the test needs re-deriving, not deleting")
+
+
 def test_shallow_overzoom_still_picks_the_right_quadrant():
     """The fix must not break the case that always worked: one level up, the
-    four cells are the four 128px quadrants."""
-    got = {_region_for(x, y, 1)[:2] for x, y in ((0, 0), (1, 0), (0, 1), (1, 1))}
-    assert got == {(0, 128), (128, 128), (0, 0), (128, 0)}
+    four cells are the four quadrants of whatever the source size is."""
+    for src in (256, 512):
+        got = {_region_for(x, y, 1, src=src)[:2]
+               for x, y in ((0, 0), (1, 0), (0, 1), (1, 1))}
+        half = src // 2
+        assert got == {(0, half), (half, half), (0, 0), (half, 0)}
+
+
