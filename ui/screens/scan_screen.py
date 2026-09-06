@@ -1435,8 +1435,23 @@ class ScanScreen(BoxLayout):
             # then sits right next to the download button that cures it.
             if not self._offline_open:
                 self._toggle_offline()
-            self._set_status(tr("No terrain cached for this area yet — it "
-                                "downloads with the offline map."), "alert")
+            # SAY WHICH HALF IS MISSING. "It downloads with the offline map"
+            # read as a flat contradiction next to "This area — already
+            # carried" (operator, with a photo, 2026-09-06): the STREET tiles
+            # for this spot genuinely are carried — that button is telling the
+            # truth — but terrain is a SEPARATE file (offline.terrain.mbtiles)
+            # that downloads ALONGSIDE the street tiles, not automatically
+            # bundled INTO them after the fact. An area cached before this
+            # medic ever tried terrain, or where the terrain fetch failed
+            # silently on the day (it never fails the base map for it), ends
+            # up in exactly this state: streets carried, terrain not.
+            if self._tiles is not None:
+                self._set_status(tr(
+                    "This area's streets are carried, but not its terrain — "
+                    "download this area again to try adding it."), "alert")
+            else:
+                self._set_status(tr("No terrain cached for this area yet — it "
+                                    "downloads with the offline map."), "alert")
             return
         self._terrain_on = want
         self.plot.set_terrain(self._terrain_store() if want else None)
@@ -2012,6 +2027,22 @@ class ScanScreen(BoxLayout):
             msg = tr("Offline map ready — {got} tiles cached.").format(got=got)
             if failed:
                 msg += " " + tr("({failed} unavailable)").format(failed=failed)
+            # TERRAIN'S OWN FATE, SAID NOW — not left for the operator to find
+            # out independently later by toggling "Terrain" on. The fetch
+            # deliberately swallows its own exceptions ("never fail the map
+            # for the terrain" — right instinct, a stalled terrain provider
+            # must not block the base map the operator is actually waiting
+            # on) but that meant a silent terrain failure looked identical to
+            # success: "This area — already carried" sat right above "No
+            # terrain cached for this area yet — it downloads with the
+            # offline map", which reads as a straight contradiction when nothing
+            # explains they are two separate caches (operator, with a photo,
+            # 2026-09-06). radius_km == WORLD never attempts terrain at all,
+            # so it says nothing here — silence is correct there, not a gap.
+            if (self._radius_km != WORLD
+                    and summary.get("terrain", 0) == 0):
+                msg += " " + tr("Terrain could not be downloaded this time — "
+                                "try again later.")
             self._set_status(msg, "ok")
             self.center_input.height = 0            # centre solved; tidy away
             self.center_input.opacity = 0

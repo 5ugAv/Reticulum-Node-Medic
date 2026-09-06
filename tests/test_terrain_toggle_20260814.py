@@ -77,6 +77,11 @@ class _Screen:
         self._downloading = True
         self._tiles = tiles
         self._nodes = []
+        # _download_done now checks radius against WORLD to decide whether
+        # terrain was even attempted (2026-09-06) — a plain non-WORLD default
+        # keeps these fixtures on the "terrain was attempted" branch, which is
+        # what they were already testing before that check existed.
+        self._radius_km = 5
         self.plot = _Plot()
         self.terrain_btn = _Btn("Terrain  off")
         self.dl_button = _Btn()
