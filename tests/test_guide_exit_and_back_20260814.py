@@ -198,9 +198,12 @@ def _back_standin(n=6, i=4, skipped=(), pair_checked=True, share_asked=True):
         return False
 
     scr._step_is_redundant = _sir
-    return _method(scr, "_back",
-                   {"guide_steps": lambda *a, **k: [{"title": f"s{j}"}
-                                                    for j in range(n)]})
+    # _back reaches its step list through self._guide_steps() now (2026-09-06:
+    # the "pi" path can skip its radio-flashing steps, so the raw guide_steps()
+    # call became a method that also knows the flag) — bind it directly on the
+    # stand-in rather than injecting a module-level name that is no longer read.
+    scr._guide_steps = lambda: [{"title": f"s{j}"} for j in range(n)]
+    return _method(scr, "_back")
 
 
 def test_back_declares_back_and_steps_over_the_recorded_skips():

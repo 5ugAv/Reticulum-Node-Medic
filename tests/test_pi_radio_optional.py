@@ -1,0 +1,92 @@
+"""A Pi build no longer has to include flashing a radio (2026-09-06).
+
+Operator, across three messages: "we need to have maybe just RNode, RTNode and
+Pi... the birthing the pi process will walk through... with the option to add
+an RNode to that" and then, with photos of the old forced sequence: "give the
+user an option to either attach a pre-existing RNode or to go back... and
+birth an RNode and then connect it to the finished Raspberry Pi."
+
+The pre-existing "pi" sequence (host-detect radio -> flash -> take it out -> SD
+card -> Pi to life -> plug radio onto Pi) is bench-tested, hard-won design
+(2026-08-02: catch a dead radio before the four-minute card write). It is not
+wrong, it is just the ONLY path offered — an operator with an already-working
+radio was walked through flashing a second one they did not need.
+
+guide_steps() keeps that original sequence, byte for byte, as its default.
+flash_radio=False is the new second path.
+"""
+from ui.birth_guide_flow import guide_steps
+
+_ORIGINAL_TITLES = [
+    "Connect the radio to Node Medic", "The radio has to work first",
+    "Take the radio out of Node Medic", "Put the SD card into Node Medic",
+    "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
+    "Card in the Pi? Choose ONE way to power it", "Bring the node to life", "",
+]
+
+
+def test_the_default_pi_sequence_is_byte_for_byte_unchanged():
+    """The bench-tested order (2026-08-02) must survive untouched — this
+    feature ADDS a second path, it does not touch the first."""
+    assert [s["title"] for s in guide_steps("pi")] == _ORIGINAL_TITLES
+
+
+def test_flash_radio_false_drops_exactly_the_three_medic_flashing_steps():
+    titles = [s["title"] for s in guide_steps("pi", flash_radio=False)]
+    assert titles == [
+        "Put the SD card into Node Medic",
+        "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
+        "Card in the Pi? Choose ONE way to power it",
+        "Bring the node to life", "",
+    ]
+
+
+def test_only_the_pi_path_is_affected_by_the_flag():
+    """host and radio never had a radio-flashing choice to make — the flag
+    must not change anything about them."""
+    for path in ("host", "radio"):
+        assert guide_steps(path, flash_radio=True) == guide_steps(
+            path, flash_radio=False)
+
+
+def test_the_final_handoff_stops_naming_a_radio_that_was_never_flashed_here():
+    """The last step's own words used to say "the radio you flashed at the
+    start" — true only when the medic did the flashing. An operator plugging in
+    their own pre-existing radio would read an instruction about something
+    that never happened."""
+    default_body = [s["body"] for s in guide_steps("pi")
+                    if s.get("anim") == "radio_to_pi"][0]
+    skip_body = [s["body"] for s in guide_steps("pi", flash_radio=False)
+                if s.get("anim") == "radio_to_pi"][0]
+    assert "you flashed at the start" in default_body
+    assert "you flashed at the start" not in skip_body
+    assert "plug in your radio" in skip_body
+
+
+def test_the_antenna_warning_travels_with_the_flashing_steps_not_the_flag():
+    """The warning belongs to POWERING a board with no antenna, which only
+    happens when a radio is flashed here. Dropping the flashing steps must
+    drop their warning with them, not leave an orphaned caution with nothing
+    above it to explain what it is warning about."""
+    skip = guide_steps("pi", flash_radio=False)
+    from ui.birth_guide_flow import NO_ANTENNA_WARNING
+    assert not any(s.get("warning") == NO_ANTENNA_WARNING for s in skip)
+
+
+def test_no_step_is_duplicated_across_the_two_sequences():
+    """The bug the operator's photos showed: "Connect the radio to Node
+    Medic" and "Connect your node" (the antenna-landing's own detect screen)
+    describe the same physical act in near-identical words. Skipping the
+    flashing steps must not leave a second, differently-worded copy of any of
+    them still in the list."""
+    from ui.birth_guide_flow import _PI_FLASH_STEP_TITLES
+    skip_titles = {s["title"] for s in guide_steps("pi", flash_radio=False)}
+    assert not (skip_titles & _PI_FLASH_STEP_TITLES)
+
+
+def test_the_pi_key_hint_still_applies_on_the_shorter_sequence():
+    """The board-specific connector wording (pi_connectors) must not have been
+    wired only to steps that no longer exist in this path."""
+    steps = guide_steps("pi", pi_key="pi_zero_2w", flash_radio=False)
+    connect = [s for s in steps if s.get("anim") == "connect_pi"]
+    assert connect and connect[0]["hint"]

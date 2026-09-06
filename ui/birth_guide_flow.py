@@ -504,7 +504,23 @@ _STEPS = {
 }
 
 
-def guide_steps(path, pi_key=""):
+#: Titles of the three "pi" steps that flash a radio ON THE MEDIC before
+#: anything else happens. Dropped when the operator already has a working
+#: radio (operator, 2026-09-06: "give the user an option to either attach a
+#: pre-existing RNode or... birth one and then connect it to the finished
+#: Raspberry Pi") — a radio that already works needs none of the medic-side
+#: flashing steps, only the physical hand-off at the very end.
+#:
+#: Matched by TITLE rather than by position, so a reordering of _STEPS["pi"]
+#: cannot silently drop the wrong three.
+_PI_FLASH_STEP_TITLES = frozenset({
+    "Connect the radio to Node Medic",
+    "The radio has to work first",
+    "Take the radio out of Node Medic",
+})
+
+
+def guide_steps(path, pi_key="", flash_radio=True):
     """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
     paths return an empty list. Returns a copy so callers can't mutate the source.
 
@@ -518,10 +534,40 @@ def guide_steps(path, pi_key=""):
 
     Empty pi_key keeps the generic line. Naming a specific socket on a board we
     have not identified is precisely the failure being fixed.
+
+    *flash_radio* is True by default, reproducing the ORIGINAL "pi" sequence
+    exactly — the medic flashes a radio as part of this build, which is the
+    hard-won, bench-tested order (2026-08-02: catch a dead radio before the
+    four-minute card write, not after; the medic's 1600 mA feeds a hungry
+    board a Pi cannot). False drops the three medic-flashing steps for a "pi"
+    build where the operator ALREADY has a working, pre-flashed radio — either
+    one they already own, or one birthed separately via the RNode option and
+    brought back. The physical hand-off at the end still happens; only the
+    wording changes, since there is no "radio you flashed at the start" to
+    refer back to.
     """
     from ui.pi_connectors import (connect_hint, connect_warning, power_hint,
                                   standalone_power_hint)
     steps = [dict(s) for s in _STEPS.get(path, [])]
+    if path == "pi" and not flash_radio:
+        steps = [s for s in steps if s.get("title") not in _PI_FLASH_STEP_TITLES]
+        for s in steps:
+            if s.get("anim") == "radio_to_pi":
+                # A SEPARATE, WHOLE translation key — not a runtime substring
+                # edit of the default body. tr() depends on the session's
+                # CURRENT language, a global that other screens/tests set, so
+                # patching a fragment of an already-translated paragraph at
+                # call time silently no-ops (or worse, matches a DIFFERENT
+                # language's catalog entry) the moment the app is not running
+                # in English. Two whole, independently-translatable strings
+                # have no such dependency.
+                s["body"] = tr(
+                    "\u2022 unplug the Pi from Node Medic \u2014 the radio needs "
+                    "that socket\n"
+                    "\u2022 plug in your radio\n"
+                    "\u2022 give the Pi its own power supply\n"
+                    "\u2022 optional RGB LED? Slow white breathe = radio "
+                    "alive \u2014 check VITALS")
     if pi_key:
         for s in steps:
             if s.get("anim") == "connect_pi":

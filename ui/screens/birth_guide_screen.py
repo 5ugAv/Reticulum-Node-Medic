@@ -220,8 +220,17 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         self._back_action = self._render_intro   # antenna -> back to the chooser
         anim = ConnectAntennaAnim()
+        # index=0 of 2, paired with _render_detect's index=1 of 2 below. Both
+        # used to claim "Step 1 of 1" — a coherent two-screen sequence
+        # (attach the antenna, THEN connect the board) reading as if the same
+        # step repeated, which is exactly what "doubling up of screens" looks
+        # like on the panel (operator, with photos, 2026-09-06). They are
+        # always shown as a pair — on_next below goes to _render_detect, and
+        # _render_detect's on_back comes straight back here — so numbering
+        # them as one sequence is not an assumption, it is what the code
+        # already does.
         step = WizardStep(
-            index=0, total=1, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
+            index=0, total=2, title=ANTENNA_STEP["title"], body=ANTENNA_STEP["body"],
             anim=anim, hint=ANTENNA_STEP.get("hint", ""),
             warning=ANTENNA_STEP["warning"], next_text=tr("Antenna on  →"),
             on_next=self._render_detect,
@@ -429,7 +438,7 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._render_antenna   # back -> the antenna landing
         anim = ConnectBoardAnim()
         step = WizardStep(
-            index=0, total=1, title=tr("Connect your node"),
+            index=1, total=2, title=tr("Connect your node"),
             # The medic speaks as "Node Medic" everywhere else; "I'll detect
             # it" was the one first-person sentence in the birth flow. And
             # what it detects is this screen's job, not the operator's.
@@ -588,6 +597,12 @@ class BirthGuideScreen(BoxLayout):
         self._stop_board_poll()
         self._path = "pi"
         self._i = 0
+        # This entry bypasses _choose() (a Pi appeared on its own, with no
+        # radio plugged in yet), so the flag has to be reset explicitly here
+        # too — otherwise a stale False from an earlier "I already have one"
+        # choice this session would silently skip the radio-flash steps in a
+        # build that never asked the question.
+        self._pi_flash_radio = True
         self._render_name()
 
     def _on_detect(self, anim):
@@ -909,6 +924,12 @@ class BirthGuideScreen(BoxLayout):
         self._board_key = self._board_key_of(c)
         self._path = "pi"
         self._i = 0
+        # A radio was just detected and verified LIVE on the medic's own USB —
+        # this is the "ambiguous chip, operator picked Pi + RNode" route, not
+        # the radio-source question, and the radio in hand is real. Keep the
+        # original full sequence rather than trusting a stale flag from
+        # earlier in the session.
+        self._pi_flash_radio = True
         self._render_pick_pi()
 
     def _board_key_of(self, c):
@@ -1574,9 +1595,86 @@ class BirthGuideScreen(BoxLayout):
         btn.bind(on_release=lambda *_: self._choose(key))
         return btn
 
+    def _choice_card(self, title, subtitle, on_press, height=104):
+        """Same card as ``_path_button``, generalised to a callback rather than
+        a fixed ``self._choose(key)`` — for choices that are not "what am I
+        building", like the radio-source question below."""
+        btn = Button(size_hint_y=None, height=dp(height), background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
+        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
+        inner.add_widget(_line(title, "21sp", bold=True, h=52))
+        inner.add_widget(_line(subtitle, "14sp", color="text_secondary"))
+        inner.size = btn.size
+        btn.bind(size=lambda _b, v: setattr(inner, "size", v),
+                 pos=lambda _b, v: setattr(inner, "pos", v))
+        btn.add_widget(inner)
+        btn.bind(on_release=lambda *_: on_press())
+        return btn
+
+    def _render_pi_radio_choice(self):
+        """Does this Pi need a radio flashed here, or does it already have one?
+
+        Operator, 2026-09-06: "give the user an option to either attach a
+        pre-existing RNode or... go back to the menu and birth an RNode and
+        then connect it to the finished Raspberry Pi." Both of those collapse
+        to the same question from this walkthrough's side — will the medic
+        flash a radio as PART OF this build, or will one arrive already
+        working — so it is one screen, not two.
+
+        "Flash one now" keeps the ORIGINAL sequence untouched: antenna, detect,
+        the radio-first steps, all of it — that order is bench-tested
+        (2026-08-02) and nothing about it changes here. "I already have one"
+        skips straight to naming the node; guide_steps() drops the three
+        medic-flashing steps and the final hand-off is worded for a radio that
+        was never on this bench.
+        """
+        self._stop_current()
+        self.clear_widgets()
+        self._current = None
+        self._back_action = self._render_intro
+        wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
+        wrap.add_widget(_line(tr("Does this node have its radio yet?"),
+                             "26sp", bold=True, h=44))
+        wrap.add_widget(_line(
+            tr("A radio has to be flashed with the node software before it can "
+               "join the mesh. If you already have one, or you'll birth one "
+               "separately, skip that here."),
+            "16sp", color="text_secondary"))
+
+        def flash_here():
+            self._pi_flash_radio = True
+            self._render_antenna()
+
+        def already_have_one():
+            self._pi_flash_radio = False
+            self._render_name()
+
+        wrap.add_widget(self._choice_card(
+            tr("Flash a radio now"),
+            tr("Node Medic flashes and tests one before the rest of the build."),
+            flash_here, height=110))
+        wrap.add_widget(self._choice_card(
+            tr("I already have a working radio"),
+            tr("Already flashed — yours, or one you'll birth separately and "
+               "bring back. You'll plug it into the finished Pi at the end."),
+            already_have_one, height=126))
+        _bk = self._back_row()
+        if _bk is not None:
+            wrap.add_widget(_bk)
+        self.add_widget(wrap)
+
+    def _guide_steps(self):
+        """The active path's steps, honouring whether this "pi" build needs the
+        medic to flash a radio (see guide_steps' own docstring). Every other
+        path is unaffected — the flag only ever matters for "pi"."""
+        from ui.birth_guide_flow import guide_steps
+        return guide_steps(self._path, self._pi_key_for_text(),
+                           getattr(self, "_pi_flash_radio", True))
+
     def _choose(self, path):
         self._path = path
         self._i = 0
+        self._pi_flash_radio = True     # reset every choice; see _render_pi_radio_choice
         # The chooser and the detect landing left NO trace, so the night the
         # operator was asked to choose and connect twice there was nothing in
         # ui.log to reconstruct it from — only their account (2026-08-30). The
@@ -1585,7 +1683,9 @@ class BirthGuideScreen(BoxLayout):
         # Radio-involving builds see the antenna warning, THEN detect the board.
         # Because the type was already chosen here, detect no longer re-asks —
         # it routes straight to naming (see _route). A non-radio choice goes on.
-        if path in ("host", "radio", "pi"):
+        if path == "pi":
+            self._render_pi_radio_choice()
+        elif path in ("host", "radio"):
             self._render_antenna()
         else:
             self._render_name()
@@ -1601,7 +1701,7 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._render_intro    # name step -> the chooser
         # +2 for the two decision screens folded in ahead of the physical
         # steps: this one (the name) and the map-sharing question.
-        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
+        total = len(self._guide_steps()) + 2
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                        size_hint_y=None, height=dp(58), font_size="33sp")
@@ -1720,7 +1820,7 @@ class BirthGuideScreen(BoxLayout):
 
         s = LOCATION_SHARE_STEP
         b = BLUETOOTH_STEP
-        total = len(guide_steps(self._path, self._pi_key_for_text())) + 2
+        total = len(self._guide_steps()) + 2
         self._share_pending = self._share_location     # never the last node's
         self._bt_pending = "on" if self._bluetooth_on else "off"
 
@@ -2134,7 +2234,7 @@ class BirthGuideScreen(BoxLayout):
             if getattr(self, "_nav_dir", "forward") == "back":
                 return                      # walking backward — never re-fire
                                             # a forward drive at them (2026-08-14)
-            steps = guide_steps(self._path, self._pi_key_for_text())
+            steps = self._guide_steps()
             cur = steps[self._i] if 0 <= self._i < len(steps) else {}
             if cur.get("anim") != "insert_sd":
                 return                      # not on the card step any more
@@ -2184,7 +2284,7 @@ class BirthGuideScreen(BoxLayout):
         return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
 
     def _render_step(self):
-        steps = guide_steps(self._path, self._pi_key_for_text())
+        steps = self._guide_steps()
         if not steps or self._i >= len(steps):
             self._finish()
             return
@@ -3044,7 +3144,7 @@ class BirthGuideScreen(BoxLayout):
         self._trace(f"resumed at step {at + 1} with {result or {}}")
         for key, val in (result or {}).items():
             setattr(self, f"_{key}", val)
-        steps = guide_steps(self._path, self._pi_key_for_text())
+        steps = self._guide_steps()
         # A FAILED BUILD DOES NOT MOVE THE WALKTHROUGH FORWARD. The hand-off
         # remembered where to come back to and came back there whatever
         # happened, so dismissing "Build didn't finish" landed the operator on
@@ -3200,7 +3300,7 @@ class BirthGuideScreen(BoxLayout):
         # attempt — otherwise a second, successful build would still be held
         # behind the first one's warning.
         self._build_failed = False
-        steps = guide_steps(self._path, self._pi_key_for_text())
+        steps = self._guide_steps()
         cur = steps[self._i] if self._i < len(steps) else {}
         # A gated step will not be walked past. See birth_guide_flow for why the
         # radio has one: an unusable radio discovered AFTER a four-minute card
@@ -3267,7 +3367,7 @@ class BirthGuideScreen(BoxLayout):
         # against someone walking backward (the eleven-bounce trap, 2026-08-14
         # — see reset()).
         self._nav_dir = "back"
-        steps = guide_steps(self._path, self._pi_key_for_text())
+        steps = self._guide_steps()
         i = self._i - 1
         # Step over what the FORWARD pass skipped, from its record rather than
         # by re-probing (probe=False keeps the structural half of the shared

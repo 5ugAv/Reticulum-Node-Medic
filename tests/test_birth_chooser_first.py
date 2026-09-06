@@ -16,10 +16,28 @@ def test_reset_lands_on_the_chooser_not_the_antenna_landing():
 
 
 def test_choosing_a_radio_build_shows_the_antenna_warning_next():
+    """"pi" no longer jumps straight to the antenna landing (2026-09-06): it
+    asks whether a radio needs flashing here at all, since a Pi build can now
+    use one that already works. "Flash a radio now" on that question leads to
+    exactly the same antenna-first sequence host/radio always used — nothing
+    about THAT sequence changed, only what decides whether "pi" enters it."""
     ch = SRC.split("def _choose(self, path):", 1)[1].split("def ", 1)[0]
-    assert 'path in ("host", "radio", "pi")' in ch
+    assert 'path in ("host", "radio")' in ch
     assert "_render_antenna()" in ch          # radio builds -> antenna first
     assert "_render_name()" in ch             # non-radio -> straight on
+    assert "_render_pi_radio_choice()" in ch  # pi -> ask, don't assume
+
+
+def test_the_pi_radio_choice_can_still_reach_the_antenna_landing():
+    """Whichever way "pi" is chosen, "flash one now" is still the untouched,
+    bench-tested antenna-first sequence — this screen only decides whether
+    "pi" ENTERS it, never changes what happens once it does."""
+    rc = SRC.split("def _render_pi_radio_choice(self):", 1)[1].split(
+        "\n    def ", 1)[0]
+    assert "self._render_antenna()" in rc
+    assert "self._render_name()" in rc
+    assert "self._pi_flash_radio = True" in rc
+    assert "self._pi_flash_radio = False" in rc
 
 
 def test_detect_does_not_re_ask_the_type_when_already_chosen():

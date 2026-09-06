@@ -95,3 +95,31 @@ def _hermetic_onboard_guard(request, monkeypatch, tmp_path):
                         raising=False)
     monkeypatch.setattr(roster, "is_onboard", lambda *a, **k: False,
                         raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_language(monkeypatch):
+    """Every test starts and ends in English.
+
+    ``ui.i18n`` caches the active language in a module-level global
+    (``_current``), set by ``set_language()`` and read by every ``tr()`` call.
+    Nothing resets it between tests, so a test that calls
+    ``set_language("es")`` (test_i18n.py does, more than once) leaves every
+    LATER test in the same pytest process reading Spanish — found live
+    2026-09-06: a guide_steps() test compared translated body text and failed
+    only when run after the i18n suite, because tr() was quietly answering in
+    Tok Pisin from an unrelated translation script run earlier in the session.
+
+    Also points ``LANGUAGE_FILE`` at a scratch path so a test cannot read or
+    write the real on-disk preference — the persistence layer belongs to
+    test_i18n.py's own fixtures, not to every other test that happens to
+    import a module which calls ``tr()``.
+    """
+    try:
+        import ui.i18n as i18n
+    except Exception:
+        yield
+        return
+    monkeypatch.setattr(i18n, "_current", None, raising=False)
+    yield
+    i18n._current = None
