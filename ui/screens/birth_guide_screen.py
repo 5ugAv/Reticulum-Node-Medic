@@ -1307,8 +1307,22 @@ class BirthGuideScreen(BoxLayout):
             from ui.board_detect import detect_board, firmware_options
             from workflows.rnode_boards import RNODE_BOARDS
             from ui.hw_factories import local_board_ports
+            # attempts=1: ONE snapshot, no retry loop.
+            #
+            # sample_ports retries once a second, five times, to catch a board
+            # that is REBOOTING IN A LOOP — a real diagnostic, and the right
+            # behaviour on the detect step where the operator has been told to
+            # plug the board in. It is the wrong behaviour HERE, on the menu
+            # that asks what they want to build, because at that moment most
+            # operators have nothing plugged in at all: measured 5,258 ms of
+            # dead screen between pressing BIRTH and the options appearing
+            # (operator, 2026-09-06).
+            #
+            # A board that IS present and stable is still found — sample_ports
+            # returns on the first look when ports exist. Only the empty case
+            # gets faster, and the empty case is the common one here.
             det = detect_board(list(RNODE_BOARDS.values()),
-                               ports_fn=local_board_ports)
+                               ports_fn=local_board_ports, attempts=1)
             # KEEP IT. _board_candidates reads self._detected to offer only the
             # boards the medic could not rule out; nothing ever assigned it, so
             # the fallback always fired and "Which radio board is this?" listed

@@ -20,10 +20,17 @@ BIRTH_PATHS = [
     ("radio", tr("A mesh transport node (RTNode-2400)"),
      tr("Runs the mesh on its own — no phone, computer or Pi. Reports its "
         "health; repairable remotely.")),
-    ("pi", tr("A Raspberry Pi + radio"),
+    # A RASPBERRY PI, NOT "a Pi + radio" (operator, 2026-09-06). The coupled
+    # label forced every Pi build through a radio flash, so an operator who
+    # ALREADY HAS an RNode — the common case for anyone who has built one
+    # before — had no way to say so, and was walked through flashing a second
+    # one. The radio is now an offer at the END of the Pi walkthrough: attach
+    # one you already have, or go back to the menu and birth one.
+    ("pi", tr("A Raspberry Pi propagation node"),
      tr("Holds messages for users who are offline, and bridges LoRa to Wi-Fi, "
         "Bluetooth and the internet. The best node to future-proof the "
-        "network.")),
+        "network. You can add a radio to it at the end — or attach one you "
+        "already have.")),
 ]
 
 #: The antenna-first step. It is NOT part of the guided lists — it's the very first

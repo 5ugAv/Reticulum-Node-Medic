@@ -39,7 +39,7 @@ from workflows.rtnode_build import RTNODE_TARGETS, DEFAULT_TARGET
 FIRMWARE_CHOICES = [
     ("rtnode2400", "RTNode-2400  (standalone — reports health, remote-repairable)"),
     ("rnode", "RNode  (radio for a host)"),
-    ("pi_rnode", "Pi + RNode  (provision a Pi and its radio)"),
+    ("pi_rnode", "Raspberry Pi propagation node  (its radio is optional)"),
 ]
 FIRMWARE_LABEL = dict(FIRMWARE_CHOICES)
 from ui.qr import birth_cert_payload, qr_matrix
