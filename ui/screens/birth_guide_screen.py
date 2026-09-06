@@ -2298,7 +2298,20 @@ class BirthGuideScreen(BoxLayout):
         # radio step was moved first (audit, 2026-08-03).
         #
         # Keyed on the PATH now, which the skip logic cannot mutate.
-        if self._path == "pi" and not getattr(self, "_pair_checked", False):
+        #
+        # AND ONLY WHEN A RADIO WILL BE FLASHED HERE (2026-09-06, live:
+        # operator chose "I already have a working radio", answered the map
+        # question, and landed on "Which radio board is this?" anyway). This
+        # gate exists to identify the EXACT board model so the power-compat
+        # check in _render_pick_pi can warn about a Pi that cannot feed it —
+        # a question that only means something when the medic is about to
+        # power that radio itself. When the radio is never plugged into the
+        # medic at all — it goes straight onto the finished Pi, on the Pi's
+        # OWN supply, per the "give the Pi its own power supply" step — there
+        # is nothing here to identify or warn about, and the screen is asking
+        # the operator to name a board that is not even in their hand yet.
+        if (self._path == "pi" and getattr(self, "_pi_flash_radio", True)
+                and not getattr(self, "_pair_checked", False)):
             self._pair_checked = True
             self._render_pick_board()
             return

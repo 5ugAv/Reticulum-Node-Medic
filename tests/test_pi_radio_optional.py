@@ -90,3 +90,42 @@ def test_the_pi_key_hint_still_applies_on_the_shorter_sequence():
     steps = guide_steps("pi", pi_key="pi_zero_2w", flash_radio=False)
     connect = [s for s in steps if s.get("anim") == "connect_pi"]
     assert connect and connect[0]["hint"]
+
+
+# --------------------------------------------------------------------------- #
+# The board-pick gate, found live 2026-09-06
+#
+# Reported by the operator with a photo: chose "A Raspberry Pi propagation
+# node" -> "I already have a working radio" -> named the node -> answered the
+# map question -> landed on "Which radio board is this?" anyway. That screen
+# identifies an EXACT radio model so the power-compat check can warn about a
+# Pi that cannot feed it — a question that only means anything when the medic
+# is about to power that radio itself. A radio never plugged into the medic at
+# all has nothing here to identify.
+#
+# The gate lives in _render_step, which is real Kivy screen code (Kivy is not
+# importable in CI), so this is a source-level pin: srcutil.func_source over
+# the shipped method, same technique test_encryption_screen.py uses.
+# --------------------------------------------------------------------------- #
+
+from tests.srcutil import func_source
+
+SCREEN = "ui/screens/birth_guide_screen.py"
+
+
+def test_the_board_pick_gate_checks_the_flash_radio_flag():
+    body = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
+    gate = body.split("_render_pick_board()", 1)[0].splitlines()[-6:]
+    gate_src = "\n".join(gate)
+    assert '_pi_flash_radio' in gate_src, (
+        "the board-pick gate fires for every \"pi\" build regardless of "
+        "whether a radio is being flashed here at all")
+
+
+def test_the_gate_still_fires_on_the_default_flash_here_path():
+    """The fix must narrow the gate, not remove it — the bench-tested
+    power-compat check (2026-08-03) still has to run when the medic really is
+    about to flash a radio."""
+    body = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
+    assert 'self._path == "pi"' in body
+    assert "_render_pick_board()" in body
