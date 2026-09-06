@@ -192,6 +192,81 @@ def partition(device: str, n: int) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Grow the root partition — to a SIZE, not to fill the card
+# --------------------------------------------------------------------------- #
+
+def _part_geometry(device: str, n: int):
+    """(start_sector, size_sectors, sector_bytes) for partition *n*."""
+    p = run(["sfdisk", "--json", device])
+    if p.returncode != 0:
+        fail(f"could not read the partition table on {device}")
+    try:
+        d = json.loads(p.stdout)["partitiontable"]
+        sector = int(d.get("sectorsize", 512))
+        for part in d["partitions"]:
+            if part["node"] == partition(device, n):
+                return int(part["start"]), int(part["size"]), sector
+    except Exception as exc:                                # noqa: BLE001
+        fail(f"could not parse the partition table: {exc}")
+    fail(f"{device} has no partition {n}")
+
+
+def grow_rootfs(device: str, target_bytes: int, fill: bool = False) -> str:
+    """Grow partition 2 and its filesystem to *target_bytes*. Returns a note.
+
+    NEVER SHRINKS. resize2fs can shrink, and a shrink below the data on the
+    card destroys it — so a request for less than what is already there is a
+    no-op with an explanation, not an attempt.
+
+    The unallocated tail this leaves behind is deliberate: it is the card
+    controller's spare pool for wear levelling, which is the cheapest endurance
+    available on a node meant to outlive whoever installed it.
+    """
+    if not target_bytes and not fill:
+        return "root partition left as written"
+    start, size, sector = _part_geometry(device, 2)
+    if fill:
+        # A MEDIC card. It carries toolchains, an OS image, maps and a
+        # wheelhouse — 21 GB on the live medic — so a bounded rootfs would
+        # strand its clone at the first build it attempted.
+        total = int(run(["blockdev", "--getsz", device]).stdout.strip() or 0)
+        want_sectors = max(0, total - start - 2048)   # a sector of slack
+    else:
+        want_sectors = int(target_bytes) // sector
+    if want_sectors <= size:
+        return (f"root partition already {size * sector / 1e9:.1f} GB — "
+                f"not shrinking it to {target_bytes / 1e9:.1f} GB")
+
+    disk_sectors = int(run(["blockdev", "--getsz", device]).stdout.strip() or 0)
+    if start + want_sectors > disk_sectors:
+        fail(f"{target_bytes / 1e9:.1f} GB does not fit on this card")
+
+    root = partition(device, 2)
+    run(["umount", root])                       # ignore failure: may not be mounted
+
+    # Resize the PARTITION first (sfdisk keeps the start, changes the size),
+    # then the filesystem inside it.
+    p = subprocess.run(["sfdisk", "--no-reread", "--force", "-N", "2", device],
+                       input=f",{want_sectors}\n", text=True,
+                       capture_output=True)
+    if p.returncode != 0:
+        fail(f"could not resize the partition: {(p.stderr or p.stdout)[-200:]}")
+    run(["partprobe", device])
+    time.sleep(1)
+
+    # resize2fs REFUSES a filesystem that is not clean, and a freshly-dd'd
+    # image often is not.
+    run(["e2fsck", "-f", "-p", root])
+    q = run(["resize2fs", root])
+    if q.returncode != 0:
+        fail(f"could not grow the filesystem: {(q.stderr or q.stdout)[-200:]}")
+
+    spare = (disk_sectors - start - want_sectors) * sector
+    return (f"root grown to {want_sectors * sector / 1e9:.1f} GB, "
+            f"{spare / 1e9:.1f} GB left unallocated as the card's spare pool")
+
+
+# --------------------------------------------------------------------------- #
 # Boot partition: firstboot config + the USB-gadget link
 # --------------------------------------------------------------------------- #
 
@@ -822,6 +897,11 @@ def main() -> int:
 
     run(["partprobe", a.device])
     time.sleep(1)
+
+    # Grow the root filesystem BEFORE anything is mounted or written into it.
+    note = grow_rootfs(a.device, int(cfg.get("rootfs_bytes") or 0),
+                       fill=bool(cfg.get("rootfs_fill")))
+    say(note)
 
     boot, root = partition(a.device, 1), partition(a.device, 2)
     mount(boot, BOOT_MNT)

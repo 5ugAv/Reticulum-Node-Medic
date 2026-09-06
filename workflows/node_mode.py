@@ -94,6 +94,39 @@ def _set_kv_cmd(path: str, key: str, value: str) -> str:
             f"\\1{key} = {value}/' {path}")
 
 
+def _set_or_append_kv_cmd(path: str, key: str, value: str) -> str:
+    """Set ``key = value``, adding the line when it is absent OR only present
+    commented out.
+
+    ``_set_kv_cmd`` deliberately rewrites only ACTIVE lines. That is right for
+    keys the shipped config already sets, and wrong for
+    ``message_storage_limit``, which lxmd ships as a COMMENTED example — so a
+    plain sed would silently change nothing and the node would keep LXMF's
+    500 MB default.
+    """
+    active = (f"grep -qE '^[[:space:]]*{key}[[:space:]]*=' {path}")
+    return (f"if {active}; then {_set_kv_cmd(path, key, value)}; "
+            f"else printf '\n{key} = {value}\n' >> {path}; fi")
+
+
+def storage_limit_for(connection, path: str = "~/.lxmd") -> Optional[int]:
+    """Megabytes to allow the message store on THIS node, or None if unknown.
+
+    Asks the node how much room it actually has, because operators use whatever
+    card they have to hand and a number pinned in the tool would be wrong for
+    most of them.
+    """
+    from provisioning.pi_imager import lxmf_storage_limit_mb
+    code, out, _err = connection.run(
+        f"df -B1 --output=avail {path} 2>/dev/null | tail -1")
+    if code != 0:
+        return None
+    try:
+        return lxmf_storage_limit_mb(int((out or "").strip()))
+    except (TypeError, ValueError):
+        return None
+
+
 def normalise(mode: str) -> str:
     return HOME if str(mode).strip().lower() == HOME else BACKPACK
 
@@ -133,6 +166,21 @@ def set_mode(mode: str, connection: Connection, restart: bool = True,
 
     if connection.run(_set_kv_cmd(LXMD_CONFIG, "enable_node", propagation))[0] == 0:
         res.steps.append(f"propagation -> {propagation}")
+        # Size the message store to the disk this node actually has. Without
+        # this it keeps LXMF's 500 MB default, which on a node built from the
+        # unexpanded image is larger than its free space — and `autopeer = yes`
+        # is willing to pull other nodes' stores in to fill it.
+        if propagation == "yes":
+            mb = storage_limit_for(connection)
+            if mb is None:
+                res.steps.append("message store left at the LXMF default "
+                                 "(could not read the node's free space)")
+            elif connection.run(_set_or_append_kv_cmd(
+                    LXMD_CONFIG, "message_storage_limit", str(mb)))[0] == 0:
+                res.steps.append(f"message store -> {mb} MB (sized to this "
+                                 f"node's free space)")
+            else:
+                res.steps.append("message store limit edit FAILED")
     else:
         res.steps.append("propagation edit skipped (no lxmd config)")
 

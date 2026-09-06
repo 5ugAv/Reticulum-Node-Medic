@@ -253,6 +253,153 @@ def build_custom_toml(hostname: str, username: str, password: str,
     return "\n".join(lines).rstrip() + "\n"
 
 
+# --------------------------------------------------------------------------- #
+# How big to make a node's root partition (2026-09-06)
+#
+# MEASURED from the carried image's own ext4 superblock: the rootfs is 2.43 GB
+# total with only 0.33 GB FREE, and nothing in this repo ever expands it — no
+# resize2fs, no growpart, no parted. (The medic's own card looks expanded only
+# because it was written by Raspberry Pi Imager, whose firstboot did it;
+# `ds=nocloud;i=rpi-imager-…` is still in its cmdline.)
+#
+# 0.33 GB is not enough. workflows/node_mode.py turns on the LXMF propagation
+# node with `enable_node = yes` and nothing sets `message_storage_limit`, so the
+# node inherits LXMF's 500 MB default — a store larger than the disk it has to
+# live on, with `autopeer = yes` willing to pull other nodes' messages in to
+# fill it.
+#
+# So a node card must be GROWN. But not to fill the card: leaving a large
+# unallocated tail gives the card's controller spare blocks to wear-level
+# across, which is the cheapest endurance there is on hardware meant to outlive
+# the person who installed it ([[sd-reliability-overlayfs]]).
+# --------------------------------------------------------------------------- #
+
+#: What a node actually needs: the 2.1 GB image, ~12 MB of Python (RNS, LXMF,
+#: cryptography, pyserial — measured), a bounded LXMF store, logs and room for
+#: an apt upgrade. 6 GB is generous for that and still leaves most of a 16 GB
+#: card unallocated.
+#: Read off the carried image itself (its MBR and ext4 superblock), not
+#: guessed: the rootfs starts at sector 1064960 and is 2.43 GB with 0.33 GB
+#: free. If the carried image is ever replaced, re-measure these.
+IMAGE_BOOT_END_BYTES = 1064960 * 512
+IMAGE_ROOTFS_BYTES = 2_430_000_000
+
+NODE_ROOTFS_BYTES = 6 * 1000 ** 3
+
+#: Never hand more than this fraction of the usable space to the filesystem.
+#: The remainder is left UNALLOCATED on purpose — it is the controller's spare
+#: pool, not wasted space.
+MAX_USED_FRACTION = 0.5
+
+
+def _node_rootfs_bytes(device_path: str, run: Runner = _run) -> int:
+    """Bytes to grow a NODE card's rootfs to, or 0 to leave it as written.
+
+    0 when the card cannot be measured, because guessing a partition size on a
+    device whose capacity is unknown is how a card gets destroyed.
+    """
+    total = disk_bytes(device_path, run)
+    if not total:
+        return 0
+    plan = rootfs_plan(total, IMAGE_ROOTFS_BYTES, IMAGE_BOOT_END_BYTES)
+    return int(plan["target_bytes"]) if plan.get("grow") else 0
+
+
+def disk_bytes(device_path: str, run: Runner = _run) -> int:
+    """Exact capacity of *device_path* in bytes, or 0 when it cannot be read.
+
+    ``list_target_disks`` reports a human string ("59.5G") for the picker; the
+    partition arithmetic needs the real number.
+    """
+    _code, out = run(["lsblk", "-bdno", "SIZE", device_path])
+    try:
+        return int((out or "").strip().splitlines()[0])
+    except (ValueError, IndexError):
+        return 0
+
+
+def rootfs_plan(card_bytes: int, current_root_bytes: int,
+                boot_end_bytes: int,
+                want_bytes: int = NODE_ROOTFS_BYTES,
+                max_used_fraction: float = MAX_USED_FRACTION) -> Dict:
+    """How big to make the root partition, and why. Pure — no device touched.
+
+    Returns ``{target_bytes, spare_bytes, grow, reason, warning}``.
+
+    THREE RULES, in order of how badly they bite:
+
+    1. NEVER SHRINK. Shrinking a filesystem below its data destroys it, and a
+       card handed back smaller than the image on it will not boot. If the
+       arithmetic ever asks for less than what is already there, the plan is to
+       leave it alone.
+    2. Never exceed the card.
+    3. Otherwise take the smaller of what a node needs and half the usable
+       space, so there is always a spare pool to wear-level across.
+    """
+    usable = max(0, int(card_bytes) - int(boot_end_bytes))
+    current = int(current_root_bytes)
+    warning = ""
+
+    if usable <= 0:
+        return {"target_bytes": current, "spare_bytes": 0, "grow": False,
+                "reason": "the card is smaller than its own boot partition",
+                "warning": "this card cannot hold a node"}
+
+    target = int(min(want_bytes, usable * max_used_fraction))
+    if target <= current:
+        # A small card: give the filesystem what is there rather than a share
+        # of it, because a node that cannot fit is worse than one with no spare
+        # pool — but say so.
+        target = min(usable, max(current, want_bytes))
+        if target <= current:
+            return {"target_bytes": current, "spare_bytes": usable - current,
+                    "grow": False,
+                    "reason": "the card is too small to grow the filesystem",
+                    "warning": ("this card leaves the node about "
+                                f"{(current - 2.1e9) / 1e9:.1f} GB to work in — "
+                                "16 GB or larger is the sane minimum")}
+        warning = ("small card: the filesystem takes most of it, so there is "
+                   "little spare left for wear levelling")
+
+    spare = usable - target
+    return {
+        "target_bytes": target,
+        "spare_bytes": spare,
+        "grow": target > current,
+        "reason": (f"{target / 1e9:.1f} GB for the node, "
+                   f"{spare / 1e9:.1f} GB left unallocated as the card's "
+                   f"spare pool ({100 * spare / max(1, usable):.0f}%)"),
+        "warning": warning,
+    }
+
+
+def lxmf_storage_limit_mb(available_bytes: int,
+                          reserve_bytes: int = 1_000_000_000) -> int:
+    """Megabytes to allow the LXMF message store, from the space ACTUALLY FREE.
+
+    MEASURED AT BUILD TIME, on the node, because operators use whatever card
+    they have — 8 GB, 16 GB, 64 GB, second-hand, whatever was in the drawer
+    (operator, 2026-09-06). A number pinned here would be wrong for most of
+    them.
+
+    LXMF defaults to 500 MB and nothing in this tool ever overrode it, so a node
+    built on the unexpanded image was configured to hold more messages than its
+    disk had room for — with ``autopeer = yes`` willing to pull other nodes'
+    stores in to fill it.
+
+    *reserve_bytes* is what must stay free underneath: logs, an apt upgrade, and
+    enough headroom that a FULL message store still never fills the disk. A node
+    that fills its root filesystem stops forwarding, stops reporting, and looks
+    dead from every screen that watches it.
+    """
+    spare = int(available_bytes) - int(reserve_bytes)
+    if spare <= 0:
+        # No room to store, but a node with no mailbox still RELAYS — so the
+        # floor is a token store, never zero.
+        return 32
+    return max(32, min(500, int(spare * 0.6 / 1_000_000)))
+
+
 def write_image_command(image_path: str, device_path: str) -> str:
     """The shell command that decompresses *image_path* and writes it to the card,
     with fsync. Meant for a runner that executes a shell string with sudo."""
@@ -675,6 +822,20 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         # passed False by the mitosis driver; a Pi 5's USB-C is power-in).
         "medic": bool(medic),
         "hostname": hostname,
+        # HOW BIG TO MAKE THE ROOT FILESYSTEM. The carried image is a 2.43 GB
+        # rootfs with 0.33 GB free and nothing here has ever expanded it
+        # (measured 2026-09-06). Left alone, a node has no room for its message
+        # store and a medic clone has no room for anything at all.
+        #
+        # A MEDIC card fills the card: a medic carries toolchains, a Pi OS
+        # image, maps and a wheelhouse — 21 GB on the live one — so a bounded
+        # rootfs would strand its clone at the first build.
+        #
+        # A NODE card grows to a working size and STOPS, leaving the rest
+        # unallocated as the card controller's spare pool for wear levelling.
+        # A node is meant to outlive whoever installed it.
+        "rootfs_fill": bool(medic),
+        "rootfs_bytes": (0 if medic else _node_rootfs_bytes(device_path)),
     }
     # The helper's WARN lines are the only account of the two steps it is
     # allowed to skip (the cable link and the gadget service). They are
