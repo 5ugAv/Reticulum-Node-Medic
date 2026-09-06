@@ -97,7 +97,15 @@ APPS = {
 
 
 def _api(repo: str) -> str:
-    return f"https://api.github.com/repos/{repo}/releases/latest"
+    # NOT /releases/latest: that endpoint explicitly skips any release GitHub
+    # considers a "prerelease". Columba has tagged EVERY release "-beta" since
+    # v2.0.9 (2026-07-20) and never promoted one to a non-prerelease "latest" —
+    # so /releases/latest was permanently stuck serving v2.0.9, the exact build
+    # that stalls at CONNECTING, no matter how many fixed betas shipped after it
+    # (confirmed live 2026-09-06: v2.2.4-beta is newest, /latest still says
+    # v2.0.9). The releases LIST is sorted newest-first by creation regardless
+    # of prerelease status, so the first non-draft entry is the true latest.
+    return f"https://api.github.com/repos/{repo}/releases?per_page=10"
 
 
 def _shq(s: str) -> str:
@@ -172,10 +180,16 @@ def _fetch_latest_release(connection: Connection, repo: str) -> dict:
     if code != 0:
         return {}
     try:
-        data = json.loads(out)
+        parsed = json.loads(out)
     except ValueError:
         return {}
-    if not isinstance(data, dict):
+    if not isinstance(parsed, list):
+        return {}
+    # The list is newest-first by creation date; take the first real release
+    # (skip drafts defensively — the unauthenticated API doesn't serve them,
+    # but nothing here should rely on that holding forever).
+    data = next((r for r in parsed if isinstance(r, dict) and not r.get("draft")), None)
+    if data is None:
         return {}
     apk = _pick_apk(data.get("assets") or [])
     if not apk:

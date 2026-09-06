@@ -4,7 +4,7 @@ import json
 
 from transport.connection import EmulatedConnection
 from workflows.phone_apps import (
-    sync_app, sync_all, cached_app, cached_apps, _pick_apk, APPS, APPS_CACHE_DIR,
+    sync_app, sync_all, cached_app, cached_apps, _pick_apk, _api, APPS, APPS_CACHE_DIR,
 )
 
 CBA = "columba-universal-release.apk"
@@ -18,9 +18,9 @@ def _release(name=CBA, size=SIZE, tag="v0.1", digest="sha256:" + DIGEST):
     asset = {"name": name, "browser_download_url": f"https://x/{name}", "size": size}
     if digest is not None:
         asset["digest"] = digest
-    return json.dumps({"tag_name": tag, "assets": [
+    return json.dumps([{"tag_name": tag, "assets": [
         {"name": "app-arm64.apk", "browser_download_url": "https://x/a.apk", "size": 9},
-        asset]})
+        asset]}])
 
 
 def _online(cached_size=None, written=SIZE, release=None, sha=DIGEST):
@@ -196,9 +196,9 @@ class _SpaceConn(EmulatedConnection):
 
 
 def test_sync_app_refuses_when_the_card_would_fill():
-    rel = json.dumps({"tag_name": "v1", "assets": [
+    rel = json.dumps([{"tag_name": "v1", "assets": [
         {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
-         "browser_download_url": "https://x/c.apk"}]})
+         "browser_download_url": "https://x/c.apk"}]}])
     c = _SpaceConn(free_kb=120 * 1024, release_json=rel)   # 120 MB free, needs 100 MB
     res = sync_app("columba", c)
     assert res.failed, "a 100 MB download with 120 MB free must be refused"
@@ -207,9 +207,9 @@ def test_sync_app_refuses_when_the_card_would_fill():
 
 
 def test_sync_app_proceeds_when_there_is_room():
-    rel = json.dumps({"tag_name": "v1", "assets": [
+    rel = json.dumps([{"tag_name": "v1", "assets": [
         {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
-         "browser_download_url": "https://x/c.apk"}]})
+         "browser_download_url": "https://x/c.apk"}]}])
     c = _SpaceConn(free_kb=2 * 1024 * 1024, release_json=rel)   # 2 GB free
     sync_app("columba", c)
     assert c.downloads == 1
@@ -249,9 +249,9 @@ class _CurlConn(EmulatedConnection):
         return 0, "", ""
 
 
-_REL = json.dumps({"tag_name": "v1", "assets": [
+_REL = json.dumps([{"tag_name": "v1", "assets": [
     {"name": "columba-universal.apk", "size": 100 * 1024 * 1024,
-     "browser_download_url": "https://x/c.apk"}]})
+     "browser_download_url": "https://x/c.apk"}]}])
 
 
 def test_download_is_given_longer_than_the_default_30s():
@@ -432,9 +432,9 @@ def test_a_malformed_digest_is_treated_as_no_digest():
 def test_hostile_asset_name_is_refused_before_any_download():
     for bad in ("../evil.apk", "a;reboot.apk", "a$(reboot).apk",
                 "a`id`.apk", "a b.apk", "..evil.apk"):
-        rel = json.dumps({"tag_name": "v1", "assets": [
+        rel = json.dumps([{"tag_name": "v1", "assets": [
             {"name": bad, "browser_download_url": "https://x/c.apk",
-             "size": SIZE, "digest": "sha256:" + DIGEST}]})
+             "size": SIZE, "digest": "sha256:" + DIGEST}]}])
         c = _online(release=rel)
         res = sync_app("columba", c)
         assert res.changed == [] and res.unverified == []
@@ -447,11 +447,58 @@ def test_hostile_asset_name_is_refused_before_any_download():
 def test_remote_url_is_shell_quoted():
     import shlex
     evil_url = "https://x/c.apk; touch /tmp/pwned"
-    rel = json.dumps({"tag_name": "v1", "assets": [
+    rel = json.dumps([{"tag_name": "v1", "assets": [
         {"name": CBA, "browser_download_url": evil_url,
-         "size": SIZE, "digest": "sha256:" + DIGEST}]})
+         "size": SIZE, "digest": "sha256:" + DIGEST}]}])
     c = _online(release=rel)
     sync_app("columba", c)
     dl = next(x for x in c.history if x.startswith("curl -fsSL -m 300 -o"))
     assert "touch /tmp/pwned" in dl               # the value is present...
     assert shlex.quote(evil_url) in dl            # ...but fully quoted, not bare
+
+
+# --- the /releases/latest trap ------------------------------------------------
+# GitHub's /releases/latest endpoint SKIPS any release it considers a
+# "prerelease". Columba has tagged every release "-beta" since v2.0.9 (the
+# build that stalls at CONNECTING) and never promoted one to non-prerelease —
+# so /latest was permanently stuck on the broken build no matter how many fixed
+# betas shipped after it. Confirmed live against the real repo 2026-09-06.
+
+
+def test_the_api_url_is_not_the_latest_endpoint():
+    # /releases/latest is the trap itself — never call it again.
+    assert "/releases/latest" not in _api("some/repo")
+
+
+def test_fetch_picks_the_newest_release_even_when_it_is_a_prerelease():
+    # The list is newest-first; a beta-tagged first entry must still win over an
+    # older non-prerelease one, or this regresses right back to the same trap.
+    rel = json.dumps([
+        {"tag_name": "v2.2.4-beta", "prerelease": True, "assets": [
+            {"name": "columba-universal-no-sentry.apk",
+             "browser_download_url": "https://x/new.apk", "size": 42}]},
+        {"tag_name": "v2.0.9", "prerelease": False, "assets": [
+            {"name": "columba-universal-no-sentry.apk",
+             "browser_download_url": "https://x/old.apk", "size": 41}]},
+    ])
+    c = _online(release=rel)
+    res = sync_app("columba", c)
+    assert res.version == "v2.2.4-beta"
+    dl = next(x for x in c.history if x.startswith("curl -fsSL -m 300 -o"))
+    assert "new.apk" in dl and "old.apk" not in dl
+
+
+def test_fetch_skips_a_leading_draft():
+    rel = json.dumps([
+        {"tag_name": "v9.9.9", "draft": True, "assets": [
+            {"name": "columba-universal-no-sentry.apk",
+             "browser_download_url": "https://x/draft.apk", "size": 42}]},
+        {"tag_name": "v2.2.4-beta", "prerelease": True, "assets": [
+            {"name": "columba-universal-no-sentry.apk",
+             "browser_download_url": "https://x/real.apk", "size": 41}]},
+    ])
+    c = _online(release=rel)
+    res = sync_app("columba", c)
+    assert res.version == "v2.2.4-beta"
+    dl = next(x for x in c.history if x.startswith("curl -fsSL -m 300 -o"))
+    assert "real.apk" in dl
