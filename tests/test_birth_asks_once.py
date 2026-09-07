@@ -127,6 +127,49 @@ def test_a_pi_sighting_cannot_hijack_any_chosen_non_pi_build():
     assert 'self._path in ("host", "radio")' not in pd
 
 
+# --- 5. the escape hatch cannot fire once a read is already under way -----
+#
+# Operator, 2026-09-07, birthing a Pi + a fresh RNode: chose "pi", chose
+# "Flash a radio now", attached the antenna, plugged the board in, watched it
+# celebrate as "connected" — and was dropped back on "What are you building?"
+# with no explanation. ui.log's last line was "chose build 'pi'" with NOTHING
+# after it — because _choose_manually calls _render_intro() straight through,
+# with no _trace call of its own on the success path.
+#
+# _on_detect marks the board connected and then WAITS 1.6s before replacing
+# the screen with "Reading the board…" — and "Choose manually" sits on that
+# same screen, live, for the whole of that wait. A tap to acknowledge
+# "Connected!" (the natural reflex after a success animation) lands in that
+# exact corner and throws the chosen build away. The existing 0.5s
+# bleed-through guard does not cover this: by the time a board is plugged in
+# and read, the detect screen has been up far longer than 0.5s.
+
+def test_choose_manually_is_inert_once_a_board_read_is_pending():
+    guard = textwrap.dedent(func_source(SCREEN, "_choose_manually"))
+    assert "_reading_pending" in guard, \
+        "the guard must know a board has already been seen and is being read"
+    assert "return" in guard.split("_reading_pending", 1)[1].split("_detect_shown_at")[0], \
+        "a tap that arrives once a read is pending must be dropped, not merely noted"
+    # and checked FIRST — a pending read outranks the 0.5s bleed-through window
+    assert guard.index("_reading_pending") < guard.index("_detect_shown_at"), \
+        "check the pending-read guard before the arrival-time guard"
+
+
+def test_on_detect_sets_the_flag_the_escape_hatch_now_checks():
+    on_detect = textwrap.dedent(func_source(SCREEN, "_on_detect"))
+    assert "self._reading_pending = True" in on_detect, \
+        "the flag _choose_manually now trusts must actually be set the moment a board appears"
+
+
+def test_a_stray_choose_manually_tap_now_leaves_a_trace_too():
+    """The night this was reported, ui.log had 'chose build pi' and then
+    nothing — the operator's account was all there was to go on. The success
+    path through this escape hatch must trace too, not just the guarded ones."""
+    guard = textwrap.dedent(func_source(SCREEN, "_choose_manually"))
+    assert guard.count("_trace") >= 2, \
+        "both guarded returns must trace — a silent one is how this bug hid"
+
+
 # --- the trail the next report will be read from -------------------------
 
 def test_choosing_a_build_and_resetting_both_leave_a_line_in_the_log():

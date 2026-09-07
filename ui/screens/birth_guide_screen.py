@@ -484,7 +484,22 @@ class BirthGuideScreen(BoxLayout):
         A press inside the first half-second of the screen existing is that
         bleed-through, not a decision: nobody reads a new screen and rejects it
         that fast. Later presses are the operator's, and go through.
+
+        A SECOND window opens once a board has actually been seen: _on_detect
+        marks the board connected and celebrates for 1.6s before _render_reading
+        replaces this screen — and this button sits on the panel, live, for the
+        whole of that window. An operator who taps once to acknowledge
+        "Connected!" (a natural reflex after a success animation) lands on this
+        exact corner and throws the chosen build away with NO trace logged,
+        because this method never called _trace on the success path (found via
+        ui.log 2026-09-07: a "chose build 'pi'" line with nothing after it, and
+        the operator looking at the chooser). Once a read is under way the
+        build is already being carried forward automatically — this button
+        must not act, no matter how it was pressed.
         """
+        if getattr(self, "_reading_pending", False):
+            self._trace("ignored a Choose-manually tap — a board read is already under way")
+            return
         import time as _t
         if _t.monotonic() - getattr(self, "_detect_shown_at", 0) < 0.5:
             self._trace("ignored a Choose-manually tap that arrived with the screen")
