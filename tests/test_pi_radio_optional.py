@@ -21,7 +21,7 @@ _ORIGINAL_TITLES = [
     "Connect the radio to Node Medic", "The radio has to work first",
     "Take the radio out of Node Medic", "Put the SD card into Node Medic",
     "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
-    "Card in the Pi? Choose ONE way to power it", "Bring the node to life", "",
+    "Card in the Pi? Now give it power", "Bring the node to life", "",
 ]
 
 
@@ -36,7 +36,7 @@ def test_flash_radio_false_drops_exactly_the_three_medic_flashing_steps():
     assert titles == [
         "Put the SD card into Node Medic",
         "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
-        "Card in the Pi? Choose ONE way to power it",
+        "Card in the Pi? Now give it power",
         "Bring the node to life", "",
     ]
 

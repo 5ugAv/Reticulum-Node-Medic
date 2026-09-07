@@ -2336,21 +2336,39 @@ class BirthGuideScreen(BoxLayout):
         #
         # Keyed on the PATH now, which the skip logic cannot mutate.
         #
-        # AND ONLY WHEN A RADIO WILL BE FLASHED HERE (2026-09-06, live:
-        # operator chose "I already have a working radio", answered the map
-        # question, and landed on "Which radio board is this?" anyway). This
-        # gate exists to identify the EXACT board model so the power-compat
-        # check in _render_pick_pi can warn about a Pi that cannot feed it —
-        # a question that only means something when the medic is about to
-        # power that radio itself. When the radio is never plugged into the
-        # medic at all — it goes straight onto the finished Pi, on the Pi's
-        # OWN supply, per the "give the Pi its own power supply" step — there
-        # is nothing here to identify or warn about, and the screen is asking
-        # the operator to name a board that is not even in their hand yet.
-        if (self._path == "pi" and getattr(self, "_pi_flash_radio", True)
-                and not getattr(self, "_pair_checked", False)):
+        # THE RADIO QUESTION ONLY WHEN A RADIO WILL BE FLASHED HERE
+        # (2026-09-06, live: operator chose "I already have a working radio",
+        # answered the map question, and landed on "Which radio board is
+        # this?" anyway). Identifying the EXACT radio model only means
+        # something when the medic is about to power that radio itself; when
+        # it goes straight onto the finished Pi on the Pi's OWN supply there
+        # is nothing here to identify, and the screen is asking the operator
+        # to name a board that is not even in their hand yet.
+        #
+        # BUT THE PI QUESTION IS ALWAYS ASKED (bug found 2026-09-07, audit).
+        # Skipping the radio question skipped the Pi question with it, because
+        # every route to "Which Raspberry Pi is this?" ran through the radio
+        # picker. That left _pi_key empty for the whole build, and _pi_key is
+        # not a nicety — it decides:
+        #   * dwc2_overlay_for(), so an empty key writes a bare dtoverlay=dwc2
+        #     with no dr_mode. On a 3 A+ (dr_mode=peripheral, gadget.py:60)
+        #     that is the card that BOOTS PERFECTLY AND NEVER ENUMERATES —
+        #     the 2026-08-08 failure that reads as a dead cable and cost a
+        #     night to find;
+        #   * connect_warning(), so the back-feed hazard box vanished from a
+        #     build where the hazard is identical;
+        #   * connect_hint() and the connect animation, so the operator was
+        #     shown another board's sockets;
+        #   * _check_pairing()'s can_cable verdict, so a Pi 3B+ — which cannot
+        #     do this at all — got a four-minute card write and a step that
+        #     could never advance.
+        # Whether a radio is flashed here has nothing to do with any of that.
+        if self._path == "pi" and not getattr(self, "_pair_checked", False):
             self._pair_checked = True
-            self._render_pick_board()
+            if getattr(self, "_pi_flash_radio", True):
+                self._render_pick_board()     # radio first, then the Pi
+            else:
+                self._render_pick_pi()        # no radio here — still need the Pi
             return
         # HOW WAS THIS RENDER ARRIVED AT? _back says "back"; everything else
         # moves forward (see reset()). Consulted below wherever the step would
@@ -2870,7 +2888,13 @@ class BirthGuideScreen(BoxLayout):
         pick-pi — so Back was a tap that did nothing (operator, 2026-08-12;
         the 2026-08-03 audit's trap in a new spot). Same skip rule, both
         directions, one definition — _step_is_redundant's lesson."""
-        if len(self._board_candidates()) == 1:
+        # On the "I already have a working radio" road forward never came
+        # through the radio picker, so Back must not go there either — and
+        # _board_candidates() would re-read the medic's USB looking for a
+        # radio that was never meant to be on it.
+        if not getattr(self, "_pi_flash_radio", True):
+            self._back_to_prelude()
+        elif len(self._board_candidates()) == 1:
             self._back_to_prelude()
         else:
             self._render_pick_board()
@@ -2946,13 +2970,21 @@ class BirthGuideScreen(BoxLayout):
         self.clear_widgets()
         # _change_hardware, not _render_pick_board: a remembered board leaves one
         # candidate, and a one-candidate list auto-advances straight back here.
-        self._back_action = self._change_hardware
+        # On the no-radio-here road there is no remembered board to re-ask
+        # about — "change" means the Pi, which is the only thing confirmed.
+        self._back_action = (self._change_hardware
+                             if getattr(self, "_pi_flash_radio", True)
+                             else self._render_pick_pi)
         from kivy.uix.scrollview import ScrollView
         from ui.screens.birth_screen import PI_HOSTS
         from ui import board_images
 
-        board_name = dict(self._board_candidates()).get(
-            getattr(self, "_board_key", ""), "this radio")
+        # On the "I already have a working radio" road no radio was picked
+        # here — confirming one back would be inventing hardware. Confirm the
+        # Pi alone, which is the answer that actually writes the card.
+        flashing = bool(getattr(self, "_pi_flash_radio", True))
+        board_name = (dict(self._board_candidates()).get(
+            getattr(self, "_board_key", ""), "this radio") if flashing else "")
         pi_name = next((n for k, n in PI_HOSTS
                         if k == getattr(self, "_pi_key", "")), "this Pi")
 
@@ -2969,18 +3001,22 @@ class BirthGuideScreen(BoxLayout):
         # When the radio came from memory rather than from a tap this lap, say
         # so — otherwise a board nobody chose just appears, and a confirmation
         # you don't know the origin of is one you can't really give.
-        if (getattr(self, "_detected", None) or {}).get("remembered"):
+        if flashing and (getattr(self, "_detected", None) or {}).get("remembered"):
             wrap.add_widget(_line(
                 tr("Radio recognised — you told Node Medic what it is."),
                 size="13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
-        for label, name, png in (
-                ("Radio", board_name,
-                 board_images.image_for(getattr(self, "_board_key", "")) or ""),
-                ("Raspberry Pi", pi_name,
-                 board_images.image_for_pi(getattr(self, "_pi_key", "")) or "")):
+        rows = []
+        if flashing:
+            rows.append(("Radio", board_name,
+                         board_images.image_for(
+                             getattr(self, "_board_key", "")) or ""))
+        rows.append(("Raspberry Pi", pi_name,
+                     board_images.image_for_pi(
+                         getattr(self, "_pi_key", "")) or ""))
+        for label, name, png in rows:
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(96), spacing=dp(12))
             if png:

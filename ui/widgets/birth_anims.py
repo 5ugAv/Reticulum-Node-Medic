@@ -1372,9 +1372,20 @@ class ConnectPiAnim(ConnectBoardAnim):
     #: connections must not read as the same action (operator, 2026-08-02).
     _CABLE = (0.30, 0.85, 0.36, 1)
     _PWR = (0.96, 0.52, 0.22, 1)
-    #: The forbidden port. Red with a bar through it, not amber — this socket
-    #: does not merely differ, it must not be used (operator, 2026-08-04).
-    _NO = (0.90, 0.20, 0.20, 1)
+    #: The POWER port — orange ring, no bar. It was red-with-a-bar-through-it
+    #: from 2026-08-04, when this step's only message was "plug the cable in"
+    #: and the only thing to say about this socket was "not this one". The
+    #: step grew a second road on 2026-08-14 — power the Pi from its OWN
+    #: supply, which goes in exactly here — and the picture was never
+    #: revisited. So the screen told the operator "own power: micro-USB"
+    #: while drawing the international NO symbol over the micro-USB (two
+    #: independent reviews, 2026-09-07, both naming it the single biggest
+    #: source of confusion on the step).
+    #:
+    #: The ring still says "this one is power, not data". It must NOT say
+    #: "never use this": on the own-supply road the supply belongs here.
+    #: Which socket is which is now carried by the labels and by the words.
+    _NO = (0.96, 0.52, 0.22, 1)
 
     def __init__(self, pi_key: str = "", **kwargs):
         """Draw the operator's OWN Pi, and only mark sockets we have measured.
@@ -1589,17 +1600,15 @@ class ConnectPiAnim(ConnectBoardAnim):
                     Color(aim[0], aim[1], aim[2], 0.30 + 0.45 * pulse)
                     Line(circle=(data_x, port_y, dp(14)), width=dp(2.0))
             # And its identical twin, which carries power only. Drawn as a NO
-            # ENTRY sign — ring plus a bar through it — not just a differently
-            # coloured ring (operator, 2026-08-04). Two rings side by side say
-            # "here are two ports"; a struck-through one says "not this one",
-            # which is the entire point of the step.
+            # A PLAIN RING, NOT A STRUCK-THROUGH ONE. The bar was added
+            # 2026-08-04 to say "not this one", when the cable was the only
+            # road. Since 2026-08-14 the own-supply road puts the operator's
+            # power lead in this very socket, so a NO symbol over it
+            # contradicts the words beside it — see _NO. The two rings differ
+            # by colour and by their labels; that is what says which is which.
             if pwr_x is not None:
                 Color(*self._NO)
                 Line(circle=(pwr_x, port_y, dp(10)), width=dp(2.0))
-                bar = dp(10) * 0.707                # 45°, ends on the ring
-                Line(points=[pwr_x - bar, port_y - bar,
-                             pwr_x + bar, port_y + bar],
-                     width=dp(2.0), cap="none")
 
         if geo is not None:
             d = self._label("data", text="DATA", font_size="12sp", bold=True,
@@ -1747,12 +1756,10 @@ class ConnectPiAnim(ConnectBoardAnim):
                 aim = theme.hex_to_rgba(theme.COLORS["accent"])
                 Color(aim[0], aim[1], aim[2], 0.30 + 0.45 * pulse)
                 Line(circle=(data_x, data_y, dp(14)), width=dp(2.0))
+            # Plain ring, no bar — same reason as the top-entry scene above.
             if pwr_x is not None:
                 Color(*self._NO)
                 Line(circle=(pwr_x, pwr_y, dp(10)), width=dp(2.0))
-                bar = dp(10) * 0.707
-                Line(points=[pwr_x - bar, pwr_y - bar, pwr_x + bar, pwr_y + bar],
-                     width=dp(2.0), cap="none")
 
         # Labels go OUTSIDE the board. Sat next to their sockets they landed on
         # the PCB itself — green text on green silkscreen, over the very detail

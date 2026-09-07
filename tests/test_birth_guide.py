@@ -26,7 +26,7 @@ def test_step_counts_per_path():
         "Put the SD card into Node Medic",         # -> pi_imager
         "Remove the SD card from Node Medic and insert it into the "
         "Raspberry Pi",
-        "Card in the Pi? Choose ONE way to power it",
+        "Card in the Pi? Now give it power",
         "Bring the node to life",                  # GATE: node_online -> BIRTH
         "",     # the finale: bullets replaced the title (operator, 2026-08-14)
     ]
@@ -227,15 +227,22 @@ def test_no_replug_is_needed_because_the_card_is_written_first():
 
 def test_the_data_port_trap_is_called_out_where_it_happens():
     """A Zero has two identical micro-USB sockets and only one carries data.
-    This cost an hour on the bench, to the person who designed the flow."""
-    # keyed on the ANIMATION, not the title: the title now leads with the SD
-    # card ("Check the SD card is in the Pi, then connect it to Node Medic")
-    # and will be reworded again — the step's identity is what it draws.
-    connect = [s for s in guide_steps("pi") if s.get("anim") == "connect_pi"][0]
-    hint = connect["hint"]
-    assert "DATA port" in hint and "PWR IN" in hint
-    assert "mini-HDMI" in hint, "must say WHICH socket, not just 'the data one'"
-    assert "coiled" in hint, "a thin/coiled cable drops the link - measured"
+    This cost an hour on the bench, to the person who designed the flow.
+
+    ASKED OF THE ZERO'S OWN STEP since 2026-09-07. It used to be asked of the
+    model-unknown step, whose one hint carried every board's sockets at once —
+    which is why a 3 A+ operator was once sent hunting for a data micro-USB
+    that board does not have. The trap is a fact about a Zero, so it is
+    pinned on the Zero's screen; the unknown board names no socket at all
+    (test_each_board_is_told_its_own_sockets_and_no_others).
+    """
+    connect = [s for s in guide_steps("pi", "pi_zero_2w")
+               if s.get("anim") == "connect_pi"][0]
+    both = connect["body"] + " " + connect["hint"]
+    assert "PWR IN" in both, "must name the socket that is NOT data"
+    assert "mini-HDMI" in both, "must say WHICH socket, not just 'the data one'"
+    assert "identical" in both or "look the same" in both, (
+        "the whole trap is that the two sockets cannot be told apart by eye")
 
 
 def test_no_step_asks_for_a_network_address_or_wifi():
@@ -509,14 +516,42 @@ def test_there_is_no_replug_step_any_more():
     assert "Restart the Pi" not in titles
 
 
-def test_the_cable_hint_names_the_data_trap_and_both_boards():
+def test_the_cable_trap_is_named_on_every_board():
     """Three separate faults in one bench session (2026-08-06) were cables, and
     every one first presented as a software bug. A charge-only lead powers a Pi
-    perfectly and never enumerates — the operator has no way to tell by eye."""
-    hints = " ".join(s.get("hint", "") for s in guide_steps("pi"))
-    assert "DATA" in hints and "charge-only" in hints
-    assert "Pi Zero" in hints and "mini-HDMI" in hints      # inner vs PWR IN
-    assert "3A+" in hints and "USB-A" in hints              # its micro-USB is power only
+    perfectly and never enumerates — the operator has no way to tell by eye.
+
+    REWRITTEN 2026-09-07. This used to require BOTH boards' sockets in the
+    model-unknown hint, because the step's body was one generic string and the
+    sockets had nowhere else to live. Naming two boards' sockets on a screen
+    built for ONE board is the exact confusion ui/pi_connectors.py exists to
+    abolish, so the sockets moved into the per-board BODY (power_roads) and
+    this line became the trap that goes with them. What must survive is the
+    cable fault itself, on every board — that is what cost the bench session.
+    """
+    from ui.pi_connectors import PI_CONNECTORS
+    for key in list(PI_CONNECTORS) + [""]:
+        if key == "pi_3b_plus":
+            continue            # cannot use a cable at all; says so instead
+        hints = " ".join(s.get("hint", "") for s in guide_steps("pi", key))
+        assert "charge-only" in hints, f"{key or 'unknown'} never names the trap"
+
+
+def test_each_board_is_told_its_own_sockets_and_no_others():
+    """The sockets live in the body now, and they must be THIS board's."""
+    def _body(key):
+        return [s for s in guide_steps("pi", key)
+                if s.get("anim") == "connect_pi"][0]["body"]
+    zero = _body("pi_zero_2w")
+    threea = _body("pi_3a_plus")
+    assert "mini-HDMI" in zero and "PWR IN" in zero
+    assert "mini-HDMI" not in threea, "a 3A+ has no data micro-USB at all"
+    assert "USB-A" in threea
+    assert "USB-A" not in zero, "a Zero 2 W has no USB-A"
+    # and the unknown board names no socket at all
+    unknown = _body("")
+    for leak in ("mini-HDMI", "USB-A", "USB-C", "PWR IN"):
+        assert leak not in unknown, f"the unknown-board body names {leak}"
 
 
 def test_the_card_step_watches_for_the_card_and_greets_it():
@@ -682,9 +717,14 @@ def test_the_install_step_power_line_is_neutral():
 
 
 def test_an_unknown_board_claims_no_socket():
-    from ui.pi_connectors import power_hint
-    h = power_hint("something_new")
-    assert "if this pi has" in h.lower(), "no socket may be named for a board we don't know"
+    """power_hint() was deleted 2026-09-07 (superseded by power_roads, and
+    dead in production since 2026-08-14). The RULE it was pinning here is not
+    about that function — it is that an unidentified board never has a socket
+    named for it. Asked of the thing that renders now."""
+    from ui.pi_connectors import power_roads
+    h = power_roads("something_new")
+    for leak in ("mini-HDMI", "USB-A", "USB-C", "PWR IN", "micro-USB"):
+        assert leak not in h, f"a board we don't know was told about {leak}"
 
 
 def test_the_end_of_a_walkthrough_is_not_headed_like_the_start():

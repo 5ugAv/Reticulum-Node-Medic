@@ -343,7 +343,15 @@ _STEPS = {
         # correct"): the cable needs no network, and the card is baked with
         # the Wi-Fi credentials, so power alone reaches the medic too. The
         # old body commanded the cable as if it were the only way.
-        {"title": tr("Card in the Pi? Choose ONE way to power it"),
+        # "Choose ONE way" is GONE (2026-09-07, operator approved). It was the
+        # only per-step title that was board-generic on a board-specific
+        # question, and it was flatly wrong on a Zero 2 W, where the right
+        # setup is cable AND supply — a socket each. It also invited a choice
+        # this screen has no control to make: the step advances itself and has
+        # no button, so operators hunted for the A/B controls implied by the
+        # old body. And "it" had two candidate antecedents (the card, the Pi),
+        # which eleven translators each had to guess at.
+        {"title": tr("Card in the Pi? Now give it power"),
          # AND SAY HOW LONG IT TAKES. The step advances itself, so there is
          # nothing to press — which from the operator's side is indistinguishable
          # from a screen that has hung (asked for outright, 2026-08-10: "user
@@ -363,8 +371,13 @@ _STEPS = {
          # status line under the body carries the calm "watching…" words.
          # Two lines; the moves-on-by-itself promise and the wait estimate
          # live on the LIVE status line under this (panel dp budget).
-         "body": tr("A \u2014 Node Medic's cable powers the Pi.\nB \u2014 its "
-                    "own supply; the card knows this Wi-Fi."),
+         # THE FALLBACK BODY ONLY. When the Pi model is known guide_steps()
+         # swaps in pi_connectors.power_roads(), which names that board's
+         # actual sockets. This one claims no socket, because an unidentified
+         # board's sockets are exactly what this flow must never guess at.
+         "body": tr("Node Medic's DATA cable into the Pi's data port.\n"
+                    "No cable? Its own supply instead, if the card has your "
+                    "Wi-Fi."),
          # EARNED THE HARD WAY, 2026-08-06: three separate faults in one bench
          # session were cables, and every one first looked like a software bug.
          # A charge-only lead powers the Pi perfectly and never appears.
@@ -373,13 +386,15 @@ _STEPS = {
          # to cover two boards at once, which is why it is the longest hint in
          # the flow. Dot-pointed rather than run together: the operator is
          # looking for their own board's line, not reading a paragraph.
-         "hint": tr("A short, thick DATA cable into the Pi's DATA port. A "
-                    "charge-only lead never shows up; a thin or coiled one "
-                    "drops the link.\n"
-                    "\u2022 Pi Zero: inner micro-USB, nearer the mini-HDMI (outer "
-                    "is PWR IN)\n"
-                    "\u2022 Pi 3A+: cable into the full-size USB-A; own "
-                    "power into the micro-USB"),
+         # SOCKETS MOVED UP INTO THE BODY (2026-09-07), where the action is.
+         # This hint no longer lists per-board sockets: it was naming BOTH
+         # boards' sockets on a screen for ONE board, which is the confusion
+         # pi_connectors.py exists to abolish. What is left is the cable rule
+         # \u2014 true of every board, and the fault that cost three bench sessions
+         # on 2026-08-06 \u2014 said as a SYMPTOM the operator can actually match
+         # against what they are seeing, rather than as a specification.
+         "hint": tr("A charge-only cable powers the Pi, but Node Medic never "
+                    "sees it. If nothing happens, try a different cable."),
          "anim": "connect_pi"},
         # THE HAND-OFF, AND THE ONLY STEP THAT MAKES THIS A NODE.
         #
@@ -546,7 +561,7 @@ def guide_steps(path, pi_key="", flash_radio=True):
     wording changes, since there is no "radio you flashed at the start" to
     refer back to.
     """
-    from ui.pi_connectors import (connect_hint, connect_warning, power_hint,
+    from ui.pi_connectors import (connect_hint, connect_warning, power_roads,
                                   standalone_power_hint)
     steps = [dict(s) for s in _STEPS.get(path, [])]
     if path == "pi" and not flash_radio:
@@ -571,6 +586,12 @@ def guide_steps(path, pi_key="", flash_radio=True):
     if pi_key:
         for s in steps:
             if s.get("anim") == "connect_pi":
+                # THE BODY IS PER-BOARD TOO (2026-09-07). It was the one
+                # string on this step that stayed generic while hint and
+                # warning were swapped — so a Zero 2 W was told to "choose
+                # ONE way" when both at once is what its own power hint
+                # recommends, and every board got sockets named for another.
+                s["body"] = power_roads(pi_key)
                 s["hint"] = connect_hint(pi_key)
                 # The dual-supply hazard is a WARNING BOX, not a clause buried
                 # mid-hint — the old prose "read like plug both in at the same

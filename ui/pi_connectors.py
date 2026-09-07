@@ -127,29 +127,56 @@ UNKNOWN_HINT = tr("Use the Pi's DATA port and a DATA cable — a charge-only "
                   "lead powers the Pi and never shows up.")
 
 
-def connect_hint(pi_key: str) -> str:
-    """The connector guidance for this board, or the generic line if unknown.
+#: THE TRAP, per board — the thing the step's instruction cannot say for
+#: itself. Since 2026-09-07 the connect step's BODY names this board's sockets
+#: (see power_roads), so a hint that also named them said everything twice and
+#: spent panel height doing it. What is left here is what the instruction
+#: leaves out: on a Zero, that the two sockets are indistinguishable by eye;
+#: everywhere else, that a charge-only cable fails INVISIBLY.
+#:
+#: Said as a SYMPTOM, not a specification. "Use a DATA cable" is unactionable
+#: — charge-only cables look identical, so there is no test the operator can
+#: perform. "If nothing happens, try a different cable" is something they can
+#: actually do at the moment they are stuck, which is the moment it is read.
+#: Three bench faults in one session on 2026-08-06 were cables, and every one
+#: first looked like a software bug.
+_CONNECT_TRAPS = {
+    # BOTH traps on this board, because it has room for both and it is the
+    # likeliest first Pi anyone builds: the sockets cannot be told apart by
+    # eye, AND a charge-only lead in the right socket still fails invisibly.
+    "pi_zero_2w": tr("The two micro-USB sockets look identical. The outer one "
+                     "cannot carry data at all, and a charge-only cable in "
+                     "the inner one fails the same silent way."),
+    # ONE LINE on this board, and it is a height decision, not a style one:
+    # the 3 A+ is the only Pi carrying a warning box on this step, and title +
+    # body + a two-line hint + that box leaves the animation 26 dp — under the
+    # 40 dp floor the guard enforces. The dual-supply hazard earns the box;
+    # the cable rule fits in one line.
+    "pi_3a_plus": tr("A-to-A DATA cable only — a charge-only lead never "
+                     "shows up."),
+    "pi_4b": tr("A charge-only cable powers the Pi, but Node Medic never sees "
+                "it. If nothing happens, try a different cable."),
+    "pi_5": tr("A charge-only cable powers the Pi, but Node Medic never sees "
+               "it. If nothing happens, try a different cable."),
+}
 
-    SOCKET FIRST, in one sentence, because that is what the operator is
-    looking for while holding a plug. The DATA-cable line is last and is the
-    same sentence on every board — it is a rule, not a fact about this Pi.
+
+def connect_hint(pi_key: str) -> str:
+    """This board's TRAP, or the generic cable rule when the board is unknown.
+
+    Until 2026-09-07 this named the board's sockets, because the step's body
+    was one generic string for every Pi and the sockets had nowhere else to
+    live. power_roads() now carries them in the body, where the instruction
+    is — so this line stopped being the socket guidance and became the
+    warning that goes with it. A board we cannot identify still gets a line
+    that names NO socket, which is the rule this whole module exists for.
     """
     c = get(pi_key)
     if c is None:
         return UNKNOWN_HINT
     if not c.can_cable:
         return c.why_not
-    if c.one_liner:
-        return c.one_liner
-    bits = [tr("Plug into {port}.").format(port=c.data_port)]
-    if c.power_port:
-        bits.append(tr("Power goes into {port}.").format(port=c.power_port))
-    if c.caveat:
-        bits.append(c.caveat)
-    if "DATA" not in (c.caveat or ""):
-        bits.append(tr("Use a DATA cable — a charge-only lead powers the Pi "
-                       "and never shows up."))
-    return " ".join(bits)
+    return _CONNECT_TRAPS.get((pi_key or "").strip(), UNKNOWN_HINT)
 
 
 def connect_warning(pi_key: str) -> str:
@@ -163,61 +190,100 @@ def connect_warning(pi_key: str) -> str:
     USB-C boards carry power and data in the one plug.
     """
     if pi_key == "pi_3a_plus":
-        return tr("Do NOT add micro-USB power while this cable is in — "
-                  "two 5V supplies can damage the Pi or Node Medic (safe "
-                  "only with the power wire removed).")
+        # NO EXCEPTION INSIDE THE BOX (operator approved, 2026-09-07). This
+        # ended "(safe only with the power wire removed)" from 2026-08-14.
+        # An exception in a hazard box turns an absolute into something
+        # negotiable, and "the power wire" names nothing the operator can see
+        # — the only reading that makes it actionable is cutting the 5V
+        # conductor inside their cable, which is bench surgery, not a step.
+        # A tired reader lands on "so there IS a safe way to have both".
+        #
+        # It also reads as a rule about COMBINING rather than a ban on the
+        # micro-USB, which is what stops it fighting the own-supply road that
+        # puts a power lead in that same socket.
+        return tr("Never both at once — the medic's cable and a micro-USB "
+                  "supply are two 5V sources fighting. It can damage the Pi "
+                  "or Node Medic.")
     return ""
 
 
-#: Where a node's power comes from during the provisioning run, per board. The
-#: operator asked for the final step to "tell the user to attach the pi to a
-#: power source" (2026-08-09), which is right on one of these boards, wrong on
-#: another and impossible on a third — so it is a per-board line, exactly like
-#: connect_hint above.
+#: NOTE (2026-09-07): power_hint()/_POWER_HINTS/UNKNOWN_POWER_HINT lived here
+#: and were DELETED. They answered "what about power during the long
+#: provisioning run", per board — a real question, and the only place the fact
+#: "on a Zero, cable AND supply is right, a socket each" was written down.
+#: They had had no production caller since 2026-08-14 (imported by
+#: birth_guide_flow and never used), so that fact reached no screen while the
+#: connect step was telling Zero operators to "choose ONE way".
 #:
-#: WHY IT MATTERS RATHER THAN BEING TIDINESS. Provisioning is the longest, most
-#: current-hungry thing a node does on the cable: a full apt/pip install with
-#: the radio attached. The medic reads `throttled=0x50000` — undervoltage has
-#: occurred — on a 3 A supply, and a browning-out rail has already taken out a
-#: whole xhci controller on this bench once. Where a node CAN take its own
-#: supply, it should.
-_POWER_HINTS = {
-    # Separate PWR IN socket, electrically apart from the data port: its own
-    # supply is safe AND wanted, and the medic then carries data only.
-    "pi_zero_2w": tr("Give the Pi its own power on the OUTER micro-USB marked "
-                     "PWR IN. A separate socket, so nothing fights, and Node "
-                     "Medic is left carrying data alone."),
-    # One USB-A, one micro-USB, and an ordinary A-to-A carries 5V at BOTH ends.
-    # A second supply back-feeds into the medic. Only safe with the cable's
-    # power wire lifted.
-    # Why the two supplies fight is stated at the CONNECT step, where the
-    # A-to-A cable is first named. Here it only has to be enforced.
-    "pi_3a_plus": tr("Power comes from Node Medic through this cable. Do NOT "
-                     "plug a supply into the micro-USB as well, unless your "
-                     "A-to-A has its 5V wire removed."),
-    # Same socket for both; nothing to add.
-    "pi_4b": tr("Power and data share the one USB-C, so there is no second "
-                "socket to add a supply to. Keep the cable short and good."),
-    "pi_5": tr("Power and data share the one USB-C, so there is no second "
-               "socket to add a supply to. Keep the cable short and good."),
-}
-
-#: Said when the board is unknown: true of every Pi, and claims no socket.
-UNKNOWN_POWER_HINT = tr(
-    "Installing takes minutes and draws more current than anything before it. "
-    "If this Pi has a power socket separate from its data one, use it.")
-
-
-def power_hint(pi_key: str) -> str:
-    """What to do about POWER for the long provisioning run, per board."""
-    return _POWER_HINTS.get((pi_key or "").strip(), UNKNOWN_POWER_HINT)
-
+#: power_roads() below now carries it, in the BODY of the step where the
+#: operator is actually holding the plug. Deleted rather than left dangling:
+#: a tested-but-never-run function is how can_cable() hid for months.
 
 def can_cable(pi_key: str) -> bool:
     """False only when we KNOW the board cannot do it. An unknown board is not
     declared impossible — fail open, and let the operator try."""
     c = get(pi_key)
     return True if c is None else c.can_cable
+
+
+#: HOW THIS BOARD GETS ITS POWER, as the two lines of the connect step's BODY.
+#:
+#: The body used to be one string for every board: "A — Node Medic's cable
+#: powers the Pi. / B — its own supply; the card knows this Wi-Fi." Three
+#: things were wrong with that, all found 2026-09-07 and all board-shaped:
+#:
+#: 1. "Choose ONE way" is FALSE on a Zero 2 W. That board has a separate PWR
+#:    IN socket, and _STANDALONE_HINTS and _POWER_HINTS both say the right
+#:    setup is cable AND supply — a socket each, nothing fighting. The screen
+#:    forbade the configuration the tool itself recommends.
+#: 2. "A —" / "B —" read as buttons. There is no button on this step; it
+#:    advances itself. Operators hunted the screen for controls that do not
+#:    exist. The roads are now an instruction and a fallback introduced by a
+#:    question the operator answers by looking at their hands ("No cable?").
+#: 3. Neither line told anyone to DO anything. Both explained why a road
+#:    works, on the one screen whose whole job is getting a plug into a hole.
+#:
+#: Sockets are named by SIZE as well as by name ("big USB-A", "small
+#: micro-USB") because that is checkable by someone who does not know
+#: connector names — which is who this tool is for.
+_POWER_ROADS = {
+    # Separate PWR IN socket: both at once is right, and is what the node
+    # will run on afterwards. No "choose one" here — that was the bug.
+    "pi_zero_2w": tr("Cable into the INNER micro-USB, nearer the mini-HDMI.\n"
+                     "Its own supply on the OUTER, marked PWR IN — a socket "
+                     "each."),
+    # One USB-A and one micro-USB, and an ordinary A-to-A carries 5V at both
+    # ends — so here the two roads really are exclusive, and the warning box
+    # under this body says so.
+    "pi_3a_plus": tr("Node Medic's DATA cable into the big USB-A socket.\n"
+                     "No cable? Its own supply in the small micro-USB "
+                     "instead."),
+    # One socket carries both; there is no second road to offer.
+    "pi_4b": tr("One USB-C cable from Node Medic carries power and data.\n"
+                "Nothing else to plug in."),
+    "pi_5": tr("One USB-C cable from Node Medic carries power and data.\n"
+               "Nothing else to plug in."),
+    # Cannot do the cable at all (_check_pairing stops the build before this
+    # step) — but if it is ever reached, only one road is true.
+    "pi_3b_plus": tr("This Pi needs its own power supply.\n"
+                     "Node Medic finds it over Wi-Fi, using the card's "
+                     "details."),
+}
+
+#: Claims NO socket, because we do not know which board this is — the whole
+#: reason this module exists. Still names both roads and the cable trap.
+UNKNOWN_POWER_ROADS = tr(
+    "Node Medic's DATA cable into the Pi's data port.\n"
+    "No cable? Its own supply instead, if the card has your Wi-Fi.")
+
+
+def power_roads(pi_key: str) -> str:
+    """The connect step's BODY for this board: how to give the Pi power.
+
+    Two lines, an instruction and its fallback. Never "choose one" — on some
+    boards both at once is correct, and on others there is only one road.
+    """
+    return _POWER_ROADS.get((pi_key or "").strip(), UNKNOWN_POWER_ROADS)
 
 
 #: The wiring AFTER the Pi comes off Node Medic — the last step of the birth.

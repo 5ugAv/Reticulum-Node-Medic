@@ -219,7 +219,13 @@ class WizardStep(BoxLayout):
         from kivy.clock import Clock
         if getattr(self, "_heartbeat_ev", None):
             return
-        beat = Label(text="●  keeping watch — you don't need to press anything",
+        # WRAPPED FOR TRANSLATION, 2026-09-07. This was a bare literal, so the
+        # one line on a self-advancing screen that tells a keeper nothing is
+        # broken rendered in English in all eleven carried languages — on the
+        # steps where the screen sits still for a minute with no button. The
+        # i18n coverage guard only sees strings already inside tr(), so it
+        # could never have caught this.
+        beat = Label(text=tr("●  keeping watch — you don't need to press anything"),
                      font_size=theme.font_sp("13sp"), halign="left",
                      valign="middle", size_hint_y=None, height=dp(22),
                      color=theme.hex_to_rgba(theme.COLORS["accent"]))

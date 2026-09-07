@@ -16,18 +16,30 @@ from ui.birth_guide_flow import guide_steps
 
 
 def test_a_3a_plus_is_never_told_about_a_micro_usb_data_port():
-    """THE ORIGINAL BUG. Its data path is the full-size USB-A."""
-    hint = pc.connect_hint("pi_3a_plus")
-    assert "USB-A" in hint
-    assert "mini-HDMI" not in hint
-    assert "inner" not in hint.lower()
+    """THE ORIGINAL BUG. Its data path is the full-size USB-A.
+
+    The sockets moved from connect_hint() into power_roads() on 2026-09-07 —
+    the body is where the instruction is, and a hint that named them too said
+    everything twice. The bug this pins is unchanged: a 3 A+ must never be
+    sent looking for a data micro-USB it does not have.
+    """
+    body = pc.power_roads("pi_3a_plus")
+    assert "USB-A" in body
+    for surface in (body, pc.connect_hint("pi_3a_plus")):
+        assert "mini-HDMI" not in surface
+        assert "inner" not in surface.lower()
 
 
 def test_a_zero_is_told_which_of_its_two_identical_sockets_to_use():
-    hint = pc.connect_hint("pi_zero_2w")
-    assert "INNER" in hint or "inner" in hint
-    assert "mini-HDMI" in hint
-    assert "PWR IN" in hint          # and which one NOT to use
+    body = pc.power_roads("pi_zero_2w")
+    assert "INNER" in body or "inner" in body
+    assert "mini-HDMI" in body
+    assert "PWR IN" in body          # and which one the SUPPLY goes in
+    # NOT "which one not to use": since 2026-08-14 the own-supply road puts a
+    # power lead in the outer socket deliberately, and on this board using
+    # both at once is the RECOMMENDED setup - a socket each, nothing fights.
+    # The hint carries why they cannot be told apart by eye.
+    assert "identical" in pc.connect_hint("pi_zero_2w")
 
 
 def test_the_3a_plus_a_to_a_power_hazard_is_stated():
@@ -36,7 +48,14 @@ def test_the_3a_plus_a_to_a_power_hazard_is_stated():
     and since 2026-08-14 it is a WARNING BOX (connect_warning), because folded
     into the hint's prose it read like an instruction to plug both in."""
     warn = pc.connect_warning("pi_3a_plus")
-    assert "damage" in warn and "power wire removed" in warn
+    assert "damage" in warn
+    # NO EXCEPTION IN THE BOX (operator approved, 2026-09-07). It used to end
+    # "(safe only with the power wire removed)". An exception inside a hazard
+    # box turns an absolute into something negotiable, and "the power wire"
+    # names nothing the operator can see - the only actionable reading is
+    # cutting the 5V conductor inside their cable, which is bench surgery.
+    assert "power wire removed" not in warn
+    assert "Never both at once" in warn, "the rule is about COMBINING them"
     assert "A-to-A" in pc.connect_hint("pi_3a_plus")
     # boards without the hazard must NOT get a scare box
     assert pc.connect_warning("pi_5") == ""
@@ -93,8 +112,8 @@ def test_one_boards_wording_never_reaches_another():
     operator is again sent looking for a micro-USB data port."""
     zero = guide_steps("pi", "pi_zero_2w")
     threea = guide_steps("pi", "pi_3a_plus")
-    zh = [s for s in zero if s.get("anim") == "connect_pi"][0]["hint"]
-    th = [s for s in threea if s.get("anim") == "connect_pi"][0]["hint"]
+    zh = [s for s in zero if s.get("anim") == "connect_pi"][0]["body"]
+    th = [s for s in threea if s.get("anim") == "connect_pi"][0]["body"]
     assert zh != th
     assert "mini-HDMI" in zh and "mini-HDMI" not in th
     assert "USB-A" in th and "USB-A" not in zh

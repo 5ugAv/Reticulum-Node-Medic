@@ -55,11 +55,24 @@ def test_card_handover_says_it_once():
 
 # note 6 — the dual-supply hazard is a warning box, not prose
 def test_connect_pi_carries_the_backfeed_warning_on_a_3aplus():
+    """The hazard survives; its EXCEPTION does not.
+
+    Note 6's requirement — the dual-supply hazard belongs in a warning box,
+    not buried in the hint's prose — still holds and is still pinned below.
+    What changed on 2026-09-07, with the operator's approval, is the trailing
+    "(safe only with the power wire removed)". An exception inside a hazard
+    box turns an absolute into something negotiable, and "the power wire"
+    referred to nothing visible on the screen: the only reading that makes it
+    actionable is cutting the 5V conductor inside the operator's own cable.
+    A tired reader lands on "so there IS a safe way to have both".
+    """
     s = _step("connect_pi", "pi_3a_plus")
     warn = s.get("warning", "")
-    assert "while this cable is in" in warn and "damage" in warn
-    assert "power wire removed" in warn          # the one safe exception
-    # and the hint no longer buries the hazard mid-sentence
+    assert "damage" in warn, "the consequence must still be named"
+    assert "5V" in warn, "and WHY — two supplies fighting"
+    assert "Never both at once" in warn, "stated as a rule about combining"
+    assert "power wire removed" not in warn, "no exception inside a hazard box"
+    # and the hint still does not bury the hazard mid-sentence
     assert "don't add a separate supply" not in s["hint"]
 
 

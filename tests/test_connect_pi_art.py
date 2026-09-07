@@ -148,10 +148,36 @@ def test_the_plug_starts_clear_of_the_board():
         "own, the plug sets off from inside its own cable")
 
 
-def test_the_power_port_is_marked_forbidden_not_merely_different():
-    """Two coloured rings say 'here are two ports'. A struck-through red one
-    says 'not this one' — which is the whole point of the step."""
+def test_the_power_port_is_marked_but_NOT_struck_through():
+    """The power socket gets its own ring — and no bar through it.
+
+    REVERSED DELIBERATELY, 2026-09-07, operator approved. From 2026-08-04 this
+    ring was red with a bar through it, because the step's only message then
+    was "plug the cable in" and the only thing to say about this socket was
+    "not this one". On 2026-08-14 the step grew a SECOND road — power the Pi
+    from its own supply — which puts the operator's power lead in exactly this
+    socket. The picture was never revisited, so the screen said "own power:
+    micro-USB" while drawing the international NO symbol over the micro-USB.
+
+    Two independent reviews on 2026-09-07 named this the single biggest source
+    of confusion on the step, and the operator had photographed it. The ring
+    must still say "this one is power, not data"; it must never again say
+    "never use this".
+    """
     seg = _connect_pi()
-    assert "_NO = (" in seg, "needs its own forbidden colour"
-    bar = seg.index("bar = dp(10)")
-    assert bar > seg.index("circle=(pwr_x"), "the bar goes with the power ring"
+    assert "_NO = (" in seg, "the power ring still needs its own colour"
+    assert "circle=(pwr_x" in seg, "the power port is still marked"
+    assert "bar = dp(10)" not in seg, (
+        "a bar through the power ring reads as 'forbidden' — but the "
+        "own-supply road puts the power lead in this socket")
+
+
+def test_the_power_ring_is_not_the_alarm_colour():
+    """Orange marks a port; red forbids one. This ring marks."""
+    seg = _connect_pi()
+    line = next(l for l in seg.splitlines() if l.strip().startswith("_NO = ("))
+    nums = [float(x) for x in
+            line.split("(", 1)[1].rstrip(") \t").split(",")]
+    assert nums[1] > 0.35, (
+        f"green channel {nums[1]} is alarm-red — the power ring must read as "
+        "a marker, not a prohibition")
