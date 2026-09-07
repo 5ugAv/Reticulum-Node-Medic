@@ -214,3 +214,50 @@ def test_the_completion_popup_has_a_plain_finished_message():
     body = func_source(BIRTH_SCREEN, "_popup_outcome", cls="BirthScreen")
     assert '"Finished"' in body
     assert "nothing here needs moving" in body
+
+
+# --- a waypoint never says "finished", in the body OR the title -------------
+# Operator, mid-build 2026-09-07, looking at the new blue card three steps
+# into a ten-step Pi build: "at the very top it shouldn't say build finished,
+# it should say radio flashed — anything that says finished here gives the
+# illusion that we're at the end of the build process." The colour was right
+# and the WORD was still claiming an ending.
+
+def _waypoint_card():
+    """The literal card text of the more_to_come branch — comments stripped,
+    because a test that reads the rationale instead of the copy proves
+    nothing about what reaches the panel."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_popup_outcome",
+                      cls="BirthScreen")
+    branch = src[src.index("if more_to_come:"):]
+    branch = branch[:branch.index("elif")]
+    return "\n".join(l for l in branch.splitlines()
+                     if not l.strip().startswith("#"))
+
+
+def test_the_waypoint_card_is_titled_for_the_step_not_the_build():
+    head = _waypoint_card()
+    assert '"Radio flashed"' in head, "the waypoint names what just happened"
+    assert "finished" not in head.lower(), (
+        "no form of 'finished' may appear on a card with steps still to come")
+
+
+def test_the_waypoint_card_does_not_call_this_radio_a_phone_accessory():
+    """"This is a radio to plug into a phone or computer" is true of a radio
+    built on its own and FALSE of this one — it is going onto a Raspberry Pi,
+    which the operator was told two screens earlier. It stays on the
+    standalone card, where it is true."""
+    head = _waypoint_card()
+    assert "phone or computer" not in head
+    assert "VITALS" not in head, "a mid-build waypoint sends nobody to VITALS"
+
+
+def test_the_standalone_rnode_card_keeps_its_finished_wording():
+    """The fix must not strip the ending from a build that IS the ending."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/birth_screen.py", "_popup_outcome",
+                      cls="BirthScreen")
+    tail = src[src.index('elif getattr(self, "_last_type", "") == "rnode":'):]
+    assert "phone or computer" in tail, "a standalone RNode still says what it is for"
+    assert '"Build finished"' in tail

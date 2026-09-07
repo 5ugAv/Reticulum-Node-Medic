@@ -2922,10 +2922,29 @@ class BirthScreen(BoxLayout):
                         f"for its first health beacon.",
                         "Finished", False, tone=_tone, button_text=_btn)
             else:
+                # A WAYPOINT DOES NOT SAY "FINISHED" — NOR IN ITS TITLE
+                # (operator, mid-build 2026-09-07, looking at the new blue
+                # card): "at the very top it shouldn't say build finished, it
+                # should say radio flashed — anything that says finished here
+                # gives the illusion that we're at the end of the build."
+                # Colour alone was not enough; the WORD was still claiming an
+                # ending three steps into a ten-step build.
+                #
+                # And the standalone-RNode paragraph is wrong here too. "This
+                # is a radio to plug into a phone or computer" is true of a
+                # radio built on its own, and false of this one — it is going
+                # onto a Raspberry Pi, which the operator was told two screens
+                # ago. It stays on the standalone card, where it is true.
+                if more_to_come:
+                    view = requirement_popup(
+                        "The radio is flashed and verified, and its birth "
+                        "certificate is in the log below.\n\n"
+                        "The build carries on behind this card.",
+                        "Radio flashed", False, tone=_tone, button_text=_btn)
                 # A USB-verified build (T-Echo tier) demonstrated no beacon —
                 # promising one on VITALS would be a claim nothing checked.
-                if getattr(getattr(self._workflow, "target", None), "verify",
-                           "") == "eeprom":
+                elif getattr(getattr(self._workflow, "target", None), "verify",
+                             "") == "eeprom":
                     view = requirement_popup(
                         "Build finished — details and the birth certificate "
                         "are in the build log below. The node was verified "
