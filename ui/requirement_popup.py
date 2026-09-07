@@ -45,7 +45,13 @@ from ui.i18n import tr  # i18n: wrapped — the card's own default title/button
 
 _YELLOW = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
 _GREEN = theme.hex_to_rgba(theme.COLORS["green"])
+_BLUE = theme.hex_to_rgba(theme.COLORS["accent"])              # "progress" tone
 _RED = theme.hex_to_rgba(theme.COLORS["red"])
+
+#: Tones that are NOT a warning: no triangle glyph, and the bigger arm's-length
+#: type. Named once so a new tone cannot be added to one list and forgotten in
+#: the other (which is how a "finished" card would grow a warning triangle).
+_CALM_TONES = ("success", "progress")
 _DARK = theme.hex_to_rgba(theme.COLORS["background"])          # text on yellow
 _LIGHT = theme.hex_to_rgba(theme.COLORS["text_primary"])       # text on red button
 _RADIUS = dp(20)
@@ -59,12 +65,26 @@ _MAX_H_FRAC = 0.9
 def requirement_popup(message: str, title: str = "Heads up",
                       under_construction: bool = False,
                       tone: str = "warning",
-                      image_path: str | None = None) -> ModalView:
+                      image_path: str | None = None,
+                      button_text: str | None = None) -> ModalView:
     """Show a dismissible card stating why a path is unavailable (or that it
     FINISHED). *tone*: "warning" = caution-yellow card; "success" = GREEN card
     (still the bold red outline) — a positive confirmation reads as a win, not
-    a warning (operator spec 2026-07-31). When *under_construction*, the hit is
-    logged for the developer (ui.construction_log).
+    a warning (operator spec 2026-07-31); "progress" = BLUE card, for a step
+    that went well inside a walkthrough that is NOT over.
+
+    Green is the colour of arrival here, and it was being spent on waypoints:
+    the radio flashing cleanly mid-Pi-build raised a full green "Build
+    finished" card at step 5 of 10, which "feels too final for the successful
+    radio flash before the process moves to the pi sd provisioning" (operator,
+    2026-09-07). Blue says the same thing — that went well — without claiming
+    the build is done.
+
+    *button_text* renames the dismiss button ("Continue" on a waypoint, where
+    "Got it" reads as an ending). Defaults to "Got it", unchanged.
+
+    When *under_construction*, the hit is logged for the developer
+    (ui.construction_log).
 
     *image_path*: an optional photo (e.g. ui.board_images.image_for(key)) shown
     above the text — so a failure that says "press this button" also shows the
@@ -88,7 +108,8 @@ def requirement_popup(message: str, title: str = "Heads up",
     def _redraw(*_):
         card.canvas.before.clear()
         with card.canvas.before:
-            Color(*(_GREEN if tone == "success" else _YELLOW))
+            Color(*(_BLUE if tone == "progress"
+                    else _GREEN if tone == "success" else _YELLOW))
             RoundedRectangle(pos=card.pos, size=card.size, radius=[_RADIUS] * 4)
             Color(*_RED)
             Line(width=dp(2.5), rounded_rectangle=(
@@ -101,8 +122,9 @@ def requirement_popup(message: str, title: str = "Heads up",
     overhead = dp(44)                        # padding top + bottom
 
     # Success cards carry NO warning glyph (operator 2026-07-31: a triangle on
-    # a green 'finished' card reads as a warning artefact).
-    if tone != "success":
+    # a green 'finished' card reads as a warning artefact) — nor do blue
+    # progress cards, for the same reason.
+    if tone not in _CALM_TONES:
         # A drawn warning triangle with a "!" — the ⚠ emoji renders as tofu in the
         # default font, so we draw it (no font dependency, always crisp).
         icon = FloatLayout(size_hint_y=None, height=dp(66))
@@ -147,7 +169,7 @@ def requirement_popup(message: str, title: str = "Heads up",
     # type scale so a global bump moves them together.
     scroll = ScrollView(size_hint_y=None, do_scroll_x=False, bar_width=dp(4))
     body = Label(text=message, size_hint_y=None,
-                 font_size=theme.font_sp("21sp" if tone == "success" else "16.5sp"),
+                 font_size=theme.font_sp("21sp" if tone in _CALM_TONES else "16.5sp"),
                  color=_DARK, halign="center", valign="top")
     body.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
     body.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1]))
@@ -176,7 +198,8 @@ def requirement_popup(message: str, title: str = "Heads up",
     view.bind(on_dismiss=lambda *_: Window.unbind(height=_on_win_resize))
     _fit()
 
-    ok = Button(text=tr("Got it"), size_hint_y=None, height=dp(54), bold=True,
+    ok = Button(text=tr(button_text or "Got it"),
+                size_hint_y=None, height=dp(54), bold=True,
                 font_size="18sp", background_normal="", background_color=_RED,
                 color=_LIGHT)
     ok.bind(on_release=lambda *_: view.dismiss())

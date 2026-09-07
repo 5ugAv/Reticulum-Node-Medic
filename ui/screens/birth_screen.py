@@ -2858,6 +2858,28 @@ class BirthScreen(BoxLayout):
                 return
             onboarding = getattr(self._workflow, "onboarding", None)
             nm = (onboarding or {}).get("node_name", "") or "the node"
+            # IS THIS THE END, OR A WAYPOINT? Green is the colour of arrival,
+            # and it was being spent on both. Flashing the radio cleanly at
+            # step 5 of a 10-step Pi build raised the full green "Build
+            # finished" card — "too final for the successful radio flash
+            # before the process moves to the pi sd provisioning" (operator,
+            # 2026-09-07), with a "Got it" that reads as a goodbye.
+            #
+            # guided_birth_pending() is the honest test: a walkthrough waiting
+            # for the hand-back HAS more screens to show, so the build that
+            # just finished cannot be the last thing that happens. Same words,
+            # blue card, "Continue" — the good news without the false ending.
+            # A flash started straight from BIRTH has nothing waiting and stays
+            # green, exactly as before.
+            try:
+                from kivy.app import App
+                _app = App.get_running_app()
+                more_to_come = bool(
+                    getattr(_app, "guided_birth_pending", lambda: False)())
+            except Exception:                                      # noqa: BLE001
+                more_to_come = False
+            _tone = "progress" if more_to_come else "success"
+            _btn = "Continue" if more_to_come else None
             if onboarding:
                 view = requirement_popup(
                     f"Build finished for {nm}.\n\nIf its screen still says "
@@ -2866,7 +2888,7 @@ class BirthScreen(BoxLayout):
                     "http://10.0.0.1. If it shows its status screen, it's "
                     "already configured — watch VITALS for its first health "
                     "beacon.",
-                    "Build finished", False, tone="success")
+                    "Build finished", False, tone=_tone, button_text=_btn)
             elif getattr(self, "_last_type", "") == "pi_rnode":
                 # Name the physical action — WHEN THERE IS ONE. "Unplug BOTH
                 # boards from Node Medic" is only true if something is
@@ -2892,13 +2914,13 @@ class BirthScreen(BoxLayout):
                         f"from Node Medic, plug {bn} into the Pi's USB port "
                         f"(the DATA one), and power the Pi from PWR IN.\n\n"
                         f"The full steps are on the screen behind this.",
-                        "One last step", False, tone="success")
+                        "One last step", False, tone=_tone, button_text=_btn)
                 else:
                     view = requirement_popup(
                         f"Built. {nm} is provisioned and its radio is already "
                         f"in place — nothing here needs moving. Watch VITALS "
                         f"for its first health beacon.",
-                        "Finished", False, tone="success")
+                        "Finished", False, tone=_tone, button_text=_btn)
             else:
                 # A USB-verified build (T-Echo tier) demonstrated no beacon —
                 # promising one on VITALS would be a claim nothing checked.
@@ -2909,7 +2931,7 @@ class BirthScreen(BoxLayout):
                         "are in the build log below. The node was verified "
                         "over USB; when it is heard over LoRa it will appear "
                         "in VITALS.",
-                        "Build finished", False, tone="success")
+                        "Build finished", False, tone=_tone, button_text=_btn)
                 elif getattr(self, "_last_type", "") == "rnode":
                     # An RNode is a bare RADIO for a phone/computer — it does not
                     # run the mesh and never beacons, so "watch VITALS" would
@@ -2921,13 +2943,13 @@ class BirthScreen(BoxLayout):
                         "This is a radio to plug into a phone or computer. It "
                         "won't show up in VITALS on its own — that's normal; "
                         "VITALS is for nodes that run the mesh themselves.",
-                        "Build finished", False, tone="success")
+                        "Build finished", False, tone=_tone, button_text=_btn)
                 else:
                     view = requirement_popup(
                         "Build finished — details and the birth certificate are in "
                         "the build log below. Watch VITALS for the node's first "
                         "health beacon.",
-                        "Build finished", False, tone="success")
+                        "Build finished", False, tone=_tone, button_text=_btn)
             # Dismissing the success card SCROLLS TO THE CERTIFICATE (QR
             # included) — going straight home raced past it (operator spec
             # 2026-08-01: 'let the user see the birth screen with QR code for

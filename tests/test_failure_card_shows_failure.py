@@ -64,7 +64,9 @@ def test_popup_only_renders_the_image_when_given():
 def test_popup_default_title_and_button_are_translated():
     popup = func_source("ui/requirement_popup.py", "requirement_popup")
     assert "tr(title)" in popup          # default "Heads up" flows through tr()
-    assert 'tr("Got it")' in popup
+    # The label is a parameter now (a waypoint card says "Continue"), but it
+    # still goes through tr() — both the caller's word and the default.
+    assert 'tr(button_text or "Got it")' in popup
 
 
 def test_got_it_key_is_in_every_catalog():
@@ -74,6 +76,31 @@ def test_got_it_key_is_in_every_catalog():
         path = os.path.join(i18n._I18N_DIR, f"{code}.json")
         with open(path, encoding="utf-8") as f:
             assert "Got it" in json.load(f), f"{code}.json missing 'Got it'"
+
+
+def test_every_button_label_a_caller_passes_is_in_every_catalog():
+    """A label handed in as button_text never appears as a tr("...") literal,
+    so the AST coverage guard cannot see it — it would ship untranslated in
+    silence. Pin the labels the callers actually pass."""
+    import json, os
+    from ui import i18n
+    from tests.srcutil import src
+    passed = set()
+    for path in ("ui/screens/birth_screen.py",):
+        for line in src(path).splitlines():
+            if "button_text=" in line and '"' in line.split("button_text=", 1)[1]:
+                passed.add(line.split("button_text=", 1)[1].split('"')[1])
+    # birth_screen passes its label via a variable; catch that spelling too.
+    for line in src("ui/screens/birth_screen.py").splitlines():
+        if "_btn = " in line and '"' in line:
+            passed.update(p for p in line.split('"')[1::2] if p)
+    assert passed, "no caller-supplied button labels found — has the wiring moved?"
+    for code in ("es", "fr", "de", "sv", "pl", "id", "ru", "ja"):
+        with open(os.path.join(i18n._I18N_DIR, f"{code}.json"),
+                  encoding="utf-8") as f:
+            cat = json.load(f)
+        for label in passed:
+            assert label in cat, f"{code}.json missing button label {label!r}"
 
 
 # -- the birth-failure call site now shows the board it names ----------------

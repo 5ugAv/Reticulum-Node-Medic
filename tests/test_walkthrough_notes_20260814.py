@@ -83,7 +83,13 @@ def test_connect_pi_never_grows_a_next_button():
 # note 8 — the success popup's instructions are readable at arm's length
 def test_success_popup_text_is_bigger():
     popup = func_source("ui/requirement_popup.py", "requirement_popup")
-    assert 'if tone == "success"' in popup and "21sp" in popup
+    # The bigger type belongs to every NON-warning card, not to "success"
+    # alone — the blue "progress" waypoint card (2026-09-07) is read at the
+    # same arm's length from the same bench.
+    assert "_CALM_TONES" in popup and "21sp" in popup
+    # source-level: ui.requirement_popup imports Kivy widgets, which do not
+    # import in CI — same reason every other pin in this file reads source.
+    assert '_CALM_TONES = ("success", "progress")' in src("ui/requirement_popup.py")
 
 
 # note 9 — final step: bullets once, at the top, and the LED truth
