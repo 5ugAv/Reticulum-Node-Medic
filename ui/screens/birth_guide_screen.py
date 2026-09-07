@@ -112,6 +112,16 @@ class BirthGuideScreen(BoxLayout):
         self._pair_checked = False
         self._board_key = ""
         self._pi_key = ""
+        # WHOSE REBIRTH? This is the name a WIPED board used to carry, and the
+        # name step states it as fact: "This board was Brick. It's blank now."
+        # It was set when a board was wiped and never cleared anywhere — not
+        # here, not on a fresh lap — so after one rebirth in a session EVERY
+        # later birth claimed to be the rebirth of that same old name, about
+        # boards that were never wiped and have nothing to do with it.
+        # Seen live 2026-09-07: a fresh Heltec V4, first birth of the lap,
+        # announcing it used to be "Brick". Same class of fault as the false
+        # sentences audit — a screen stating hardware history it cannot know.
+        self._rebirth_of = ""
         # THE SHARING ANSWER BELONGS TO ONE NODE, and starts unanswered.
         #
         # Same rule as the map-stamped position (birth_screen._prefill_location,

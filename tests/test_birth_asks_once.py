@@ -179,3 +179,24 @@ def test_choosing_a_build_and_resetting_both_leave_a_line_in_the_log():
     assert "_trace" in textwrap.dedent(func_source(SCREEN, "_choose"))
     assert "_trace" in textwrap.dedent(func_source(SCREEN, "reset"))
     assert "_trace" in textwrap.dedent(func_source(SCREEN, "_route"))
+
+
+# --- 6. a fresh lap does not inherit the last one's rebirth ----------------
+# Operator, walking a fresh Heltec V4 through its FIRST birth of the lap,
+# 2026-09-07: the name step announced "This board was Brick. It's blank now."
+# about a board that had never been wiped and had nothing to do with that
+# name. _rebirth_of is set when a board IS wiped, and was never cleared
+# anywhere — so after one rebirth in a session, every later birth claimed to
+# be a rebirth of that same old name. A screen stating hardware history it
+# cannot know: the same class of fault as the false-sentences audit.
+
+def test_a_fresh_walkthrough_clears_the_rebirth_name():
+    reset = textwrap.dedent(func_source(SCREEN, "reset"))
+    assert 'self._rebirth_of = ""' in reset, (
+        "a fresh lap must not inherit the previous lap's wiped-board name")
+
+
+def test_the_name_step_only_claims_a_rebirth_when_there_was_one():
+    name = textwrap.dedent(func_source(SCREEN, "_render_name"))
+    assert 'was = getattr(self, "_rebirth_of", "")' in name
+    assert "if was:" in name, "the history sentence is conditional, not default"
