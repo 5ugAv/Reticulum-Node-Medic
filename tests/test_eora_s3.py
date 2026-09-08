@@ -181,3 +181,74 @@ def test_dio2_stays_the_rf_switch():
              if l.startswith("+")]
     sw = [l for l in added if "DIO2_AS_RF_SWITCH" in l]
     assert sw and sw[0].split("//")[0].strip().rstrip(",").strip() == "true"
+
+
+# --- the RTNode-2400 build ---------------------------------------------------
+# Added 2026-09-08. RTNode-2400 shares the RNode_Firmware lineage, so the port
+# is the same four gaps plus the crystal. Two settings here would each give a
+# board that builds and flashes perfectly and then fails silently, so both are
+# pinned: HAS_TCXO false, and 4MB/quad-PSRAM rather than the XIAO's 16MB/octal.
+
+def test_the_board_has_an_rtnode_target():
+    from workflows.rtnode_build import RTNODE_TARGETS, target_for_board_key
+    t = RTNODE_TARGETS["eora_s3"]
+    assert t.build_env == "ebyte_eora_s3_sx1262_boundary_local"
+    assert t.mechanism == "pio"          # ESP32-S3, not nRF serial DFU
+    assert t.verify == "beacon"          # proven over the air, not by USB
+    # the catalogue key and the target key are the same word here, so the
+    # crossing must resolve without needing an alias entry
+    assert target_for_board_key("eora_s3") == "eora_s3"
+
+
+def test_it_reaches_the_operator_as_a_card():
+    """A native-USB S3 is a V4 *or* a XIAO *or* now this — identical Espressif
+    USB identity, so only the operator can tell them apart. Missing from the
+    pool means the board can never be chosen."""
+    from ui.rtnode_choice import S3_NATIVE_CARDS, ALL_CARDS
+    assert "eora_s3" in S3_NATIVE_CARDS
+    assert "eora_s3" in ALL_CARDS
+
+
+def test_the_rtnode_port_declares_a_crystal_too():
+    """Same killer as the RNode port, in a second firmware.
+
+    The XIAO S3 block a few screens above says HAS_TCXO true. Copying the
+    nearest neighbour is exactly how this board goes silent while looking
+    perfectly healthy.
+    """
+    patch = _port_patch("rtnode-boards.patch")
+    added = [l[1:].strip() for l in patch.splitlines() if l.startswith("+")]
+    tcxo = [l for l in added if l.startswith("#define HAS_TCXO")]
+    assert tcxo == ["#define HAS_TCXO false"], tcxo
+
+
+def test_the_rtnode_env_is_not_a_copy_of_the_xiao_one():
+    """4MB + QUAD psram. The XIAO env is 16MB + octal, and octal PSRAM claims
+    GPIO 33-37 — precisely where this board's DIO1, BUSY and LED live."""
+    from pathlib import Path
+    raw = (Path(__file__).resolve().parent.parent
+           / "assets/firmware-ports/eora_s3/rtnode-platformio-env.ini").read_text()
+    # SETTINGS ONLY. The comments in that file explain what the XIAO env does
+    # wrong for this board, so they name "16MB" and "opi" — and an assertion
+    # that reads the whole file matches the explanation instead of the config.
+    # (Cost one red test, 2026-09-08; same shape as grepping a command line
+    # that merely mentions the thing being searched for.)
+    env = "\n".join(l for l in raw.splitlines()
+                    if l.strip() and not l.strip().startswith(";"))
+    assert "board_upload.flash_size = 4MB" in env
+    assert "board_build.psram_type = qspi" in env
+    assert "memory_type = qio_qspi" in env
+    assert "partitions_4mb_ota.csv" in env
+    assert "opi" not in env, "octal PSRAM would claim the radio's own pins"
+    assert "16MB" not in env
+
+
+def test_the_rtnode_port_closes_the_same_four_gaps():
+    """setTxPower dispatch, product whitelist, model check, LED functions —
+    each one silently breaks a different thing when missing."""
+    utils = _port_patch("rtnode-utils.patch")
+    added = "\n".join(l[1:] for l in utils.splitlines() if l.startswith("+"))
+    assert "MODEL_CF) LoRa->setTxPower" in added, "else TX power stays 0 dBm"
+    assert "PRODUCT_EORA_S3" in added, "else the firmware rejects its own EEPROM"
+    assert "if (model == MODEL_CF) {" in added, "model-is-valid-for-this-board"
+    assert "led_rx_on" in added

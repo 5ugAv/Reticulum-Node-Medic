@@ -1,0 +1,73 @@
+diff --git a/Boards.h b/Boards.h
+index 6efe87a..678c799 100755
+--- a/Boards.h
++++ b/Boards.h
+@@ -73,6 +73,10 @@
+   #define MODEL_DD            0xDD // Xiao ESP32S3 with Wio-SX1262 module, 868 MHz
+   #define MODEL_DF            0xDF // Xiao ESP32S3 with LR1121, 2.4 GHz
+ 
++  #define PRODUCT_EORA_S3     0xD3 // Ebyte EoRa-S3-900TB (EoRa PI family)
++  #define BOARD_EORA_S3       0x47
++  #define MODEL_CF            0xCF // Ebyte EoRa-S3-900TB, 863-928 MHz
++
+   #define PRODUCT_XIAO_NRF    0xEC
+   #define BOARD_XIAO_NRF      0x52 // Seeed XIAO nRF52840 with Wio-SX1262 module
+   #define MODEL_E0            0xE0 // Xiao nRF52840 with Wio-SX1262 module, 868 MHz
+@@ -891,6 +895,57 @@
+         #endif
+       #endif
+ 
++    #elif BOARD_MODEL == BOARD_EORA_S3
++      // CDEBYTE EoRa-S3-900TB: ESP32-S3FH4R2 + E22-900MM22S (a raw SX1262),
++      // 0.96" SSD1306, 22 dBm. Pin map verified on hardware.
++      #define IS_ESP32S3 true
++      #ifndef MODEM
++        #define MODEM SX1262
++      #endif
++      #define DIO2_AS_RF_SWITCH true
++      #define HAS_BUSY true
++
++      // NOT A TCXO. This board runs a plain crystal, and declaring otherwise
++      // gives a radio that looks perfect and puts nothing on air - see the
++      // header of this script. The XIAO block above says true; do not copy it.
++      #define HAS_TCXO false
++
++      // The board HAS a 0.96" SSD1306 on I2C (SDA 18 / SCL 17). Left off for
++      // this first pass so the radio is proven on its own, exactly as the
++      // XIAO target does. Turning it on needs a Display.h block as well.
++      #define HAS_DISPLAY false
++      #define HAS_CONSOLE true
++      #define HAS_WIFI true
++      #define HAS_BLUETOOTH false
++      #ifdef FIREWALL_MODE
++        #define HAS_BLE false
++      #else
++        #define HAS_BLE true
++      #endif
++      #define HAS_NP false
++      #define HAS_SD false
++      #define HAS_EEPROM true
++
++      #define HAS_INPUT true
++      #define HAS_SLEEP true
++      #define PIN_WAKEUP GPIO_NUM_0
++      #define WAKEUP_LEVEL 0
++
++      const int pin_btn_usr1 = 0;    // BOOT, with its own pull-up
++      const int pin_cs = 7;
++      const int pin_reset = 8;
++      const int pin_sclk = 5;
++      const int pin_mosi = 6;
++      const int pin_miso = 3;        // strapping pin (JTAG src select) - fine
++      const int pin_tcxo_enable = -1;
++      const int pin_dio = 33;
++      const int pin_busy = 34;
++
++      #if HAS_NP == false
++        const int pin_led_rx = 37;
++        const int pin_led_tx = 37;
++      #endif
++
+     #else
+       #error An unsupported ESP32 board was selected. Cannot compile RNode firmware.
+     #endif

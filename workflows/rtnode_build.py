@@ -150,6 +150,17 @@ RTNODE_TARGETS = {
         "xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)",
         "seeed_xiao_esp32s3_sx1262_boundary_local",
         NodeHardware.XIAO_S3, verify="beacon"),
+    # Ebyte EoRa-S3-900TB. Board block added to the firmware 2026-09-08, from
+    # the pin map the RNode port proved on hardware. Its env is NOT a copy of
+    # the XIAO's: this part is 4MB flash with QUAD PSRAM, the XIAO env is 16MB
+    # with octal — and octal PSRAM claims GPIO 33-37, which is where this
+    # board's DIO1, BUSY and LED live. It also declares HAS_TCXO false, because
+    # it runs a plain crystal; true gives a radio that reports online and puts
+    # nothing on air (see assets/firmware-ports/eora_s3/README.md).
+    "eora_s3": RTNodeTarget(
+        "eora_s3", "Ebyte EoRa-S3",
+        "ebyte_eora_s3_sx1262_boundary_local",
+        NodeHardware.EORA_S3, verify="beacon"),
 }
 DEFAULT_TARGET = "heltec_v4"
 

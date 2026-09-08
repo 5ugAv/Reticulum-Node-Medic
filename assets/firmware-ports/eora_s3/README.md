@@ -9,6 +9,35 @@ clean CE checkout, then `make firmware-eora_s3`.
     patch -p1 < display.patch     # the OLED: I2C pins, Wire.begin, orientation
     patch -p1 < make.patch        # the firmware-eora_s3 target
 
+## Also builds as an RTNode-2400
+
+Added 2026-09-08. RTNode-2400 shares the RNode_Firmware lineage (`Boards.h`,
+`Utilities.h`, `sx126x.cpp`), so the port is the same shape as the one below.
+
+    rtnode-boards.patch          BOARD_EORA_S3 0x47, PRODUCT 0xD3, MODEL_CF, pins
+    rtnode-utils.patch           setTxPower dispatch, product whitelist, model check, LEDs
+    rtnode-platformio-env.ini    append to platformio.ini
+
+Two settings each give a board that builds and flashes perfectly and then
+fails silently, so both are pinned by tests:
+
+* **`HAS_TCXO false`.** Same crystal, same trap. The XIAO S3 block a few
+  screens above in that firmware says `true`; copying the nearest neighbour
+  reproduces the silent-radio failure exactly.
+* **4 MB flash with QUAD PSRAM** — *not* the XIAO env's 16 MB with `opi`.
+  Octal PSRAM claims GPIO 33-37, which is where this board's DIO1 (33),
+  BUSY (34) and LED (37) live. Uses `partitions_4mb_ota.csv`, which exists in
+  that tree precisely because the app is too large for `default.csv`.
+
+Builds at **flash 87.1%** (1,255,961 of 1,441,792 bytes), RAM 21.2%. That is
+only ~186 KB of headroom: the board's OLED is left off for this first pass,
+as the XIAO target does, and turning it on has to fit in what is left.
+
+Reaches the operator through `ui.rtnode_choice.S3_NATIVE_CARDS`. It has to be
+in that pool to be choosable at all — a native-USB ESP32-S3 presents the same
+Espressif identity as the Heltec V4 and the XIAO, so only the operator can
+say which board is on the bench.
+
 ## Pin map, and how it was established
 
 Two independent sources agree on every pin: the Meshtastic variant

@@ -29,8 +29,8 @@ from workflows.rtnode_build import target_for_board_key
 #: they present the IDENTICAL Espressif USB identity, so only the operator
 #: can tell them apart.
 HELTEC_PAIR = ("heltec_v3", "heltec_v4")
-S3_NATIVE_CARDS = ("heltec_v4", "xiao_esp32s3")
-ALL_CARDS = ("heltec_v3", "heltec_v4", "xiao_esp32s3")
+S3_NATIVE_CARDS = ("heltec_v4", "xiao_esp32s3", "eora_s3")
+ALL_CARDS = ("heltec_v3", "heltec_v4", "xiao_esp32s3", "eora_s3")
 
 
 def blocked_board(detected: Optional[dict]) -> Optional[str]:
