@@ -298,6 +298,11 @@ _USB_KIND = {
     "tdeck": "native",
     "tbeam_supreme": "native",
     "t3s3": "native",
+    # Native ESP32-S3 USB: the board JSON declares hwid 303a:1001
+    # (Espressif), and there is no bridge chip on it. This is what keeps
+    # it out of a ttyUSB shortlist, where only the CP2102-bridged V3 can
+    # legitimately appear.
+    "eora_s3": "native",
 }
 
 

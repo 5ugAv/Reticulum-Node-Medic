@@ -371,6 +371,55 @@ _CUSTOM = [
             "them apart and will ask you which it is. Flashing the wrong one "
             "of the pair boot-loops the board."),
     ),
+    RNodeBoard(
+        key="eora_s3",
+        display_name="Ebyte EoRa-S3",
+        flash_method="arduino_cli",
+        platform="ESP32-S3",
+        modem="SX1262",
+        bands="863-928 MHz",
+        experimental=True,
+        # CUSTOM board — not in upstream RNode at all. The port lives in
+        # ~/EoRa-S3/RNode_Firmware_CE (a clean CE baseline plus a board block).
+        #
+        # PIN MAP PROVENANCE, because getting this wrong produces a board that
+        # flashes perfectly and never talks to its radio: taken from the
+        # Meshtastic variant CDEBYTE_EoRa-S3, and independently confirmed
+        # against Tech500/EoRa-PI-Foundation's working sketch — every pin
+        # agrees (CS 7, SCK 5, MOSI 6, MISO 3, BUSY 34, DIO1 33, RST 8).
+        # Ebyte's own product page disagrees on three of them, and also calls
+        # this a 433 MHz board, so it was discarded as misread.
+        #
+        # NOT the EBYTE_ESP32-S3 Meshtastic variant — that is a hand-wired E22
+        # on a generic WROOM board and shares none of these pins.
+        board_model=0x47,
+        # CDCOnBoot=cdc is NOT optional. The generic esp32s3 FQBN leaves it
+        # disabled, which maps the firmware's Serial to UART0 on GPIO 43/44 —
+        # the board then flashes cleanly and is silent to rnodeconf over USB.
+        # FlashSize=4M matches the ESP32-S3FH4R2's in-package 4 MB; a wrong
+        # flash size is what boot-loops an ESP32 (see the V4 RGB note in
+        # ui/safety.py).
+        fqbn="esp32:esp32:esp32s3:FlashSize=4M,CDCOnBoot=cdc",
+        build_properties=[
+            "build.partitions=no_ota",
+            "upload.maximum_size=2097152",
+        ],
+        provision={"product": "d3", "model": "cf", "hwrev": "1"},
+        build_dir="~/EoRa-S3/RNode_Firmware_CE/build/esp32.esp32.esp32s3",
+        bootloader_instructions=(
+            "Attach the 915 MHz antenna FIRST — running the radio without one "
+            "can damage it. Native ESP32-S3 USB, no UART chip: if flashing "
+            "fails, hold BOOT, tap RST once, then release BOOT and retry."),
+        recovery_key="EoRa-S3",
+        notes=(
+            "ESP32-S3 + E22-900MM22S (a raw SX1262), 0.96\" OLED, 22 dBm. "
+            "Unflashed it looks like every other ESP32-S3 on USB (303a:1001), "
+            "so the medic narrows it by MEASURED traits instead: this part is "
+            "the ESP32-S3FH4R2, expected to read 4 MB flash with PSRAM "
+            "present — distinct from the XIAO S3 (8 MB, no PSRAM) and the "
+            "Heltec V4 (16 MB). Those figures are a PREDICTION until a real "
+            "board is read; ui.board_traits learns the truth on first birth."),
+    ),
 ]
 
 

@@ -44,6 +44,13 @@ BOARD_POWER: Dict[str, dict] = {
     "tdeck":           {"peak_ma": 550, "src": "estimate"},
     "heltec_t114":     {"peak_ma": 160, "src": "estimate"},
     "xiao_esp32s3":    {"peak_ma": 400, "src": "estimate"},
+    # ESP32-S3 + a RAW SX1262 (E22-900MM22S) at 22 dBm, plus a small OLED.
+    # No GNSS, no TFT, no PA stage and no battery to charge - so it sits below
+    # the Tracker (which adds GNSS + TFT) and near the XIAO. ESTIMATE: nothing
+    # on this bench has measured it yet. Replace with a measured figure the
+    # first time one is put on a meter.
+    "eora_s3":         {"peak_ma": 420, "src": "estimate",
+                        "note": "ESP32-S3 WiFi + SX1262 TX at 22 dBm, OLED"},
     "heltec_wireless_tracker": {"peak_ma": 450, "src": "estimate",
                                 "note": "SX1262 TX + GNSS + TFT concurrently"},
     # NOT a bare board: a 10000 mAh powerbank with the node inside it. The node
@@ -131,6 +138,7 @@ _BOARD_NAMES = {"lora32_v21": "LilyGO LoRa32 v2.1", "lora32_v20": "LilyGO LoRa32
                 "heltec_t114": "Heltec Mesh Node T114",
                 "xiao_esp32s3": "Seeed XIAO ESP32S3",
                 "heltec_wireless_tracker": "Heltec Wireless Tracker",
+                "eora_s3": "Ebyte EoRa-S3",
                 "heltec_meshpocket": "Heltec MeshPocket"}
 
 
@@ -214,6 +222,7 @@ _BOARD_SHORT = {
     "heltec32_v2": "Heltec V2", "heltec32_v3": "Heltec V3",
     "heltec32_v4": "Heltec V4", "heltec_t114": "Heltec T114",
     "heltec_wireless_tracker": "Heltec Tracker",
+    "eora_s3": "EoRa-S3",
     "lora32_v21": "LoRa32 v2.1", "lora32_v20": "LoRa32 v2.0",
     "lora32_v10": "LoRa32 v1.0", "t3s3": "T3-S3", "tbeam": "T-Beam",
     "tbeam_supreme": "T-Beam Supreme", "tdeck": "T-Deck",
