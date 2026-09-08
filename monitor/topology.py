@@ -89,6 +89,14 @@ class Topology:
         return [e for e in self.edges if node_id in (e.a, e.b)]
 
 
+#: Liveliest-wins order when folding a device's aspects into one node.
+_STATUS_RANK = {"ok": 3, "warn": 2, "alert": 1, "unknown": 0}
+
+
+def _rank(status) -> int:
+    return _STATUS_RANK.get(str(status), 0)
+
+
 def build_topology(registry, paths: List[dict], now: float,
                    exclude=None) -> Topology:
     """Assemble the graph from the registry + a parsed ``rnpath -t --json``
@@ -128,7 +136,28 @@ def build_topology(registry, paths: List[dict], now: float,
         elif existing.rssi is None and e.rssi is not None:
             seen_edges[k] = e
 
+    # ONE DEVICE, ONE NODE. A machine announces many destinations — a Pi's
+    # transport, its LXMF propagation aspect, anything minted after the
+    # paperwork — and each arrived here as its own row. ELSEWHERE drew FIVE
+    # dots at one spot, an RTNode two, and every link landed on whichever
+    # aspect the path table happened to name (operator, 2026-09-09: "we can't
+    # have one node during five duplicate registries ... otherwise the map's
+    # gonna get really messy").
+    #
+    # Nothing needs inferring: the roster already records which physical device
+    # each entry belongs to, and set_kin_roster stamps it on the record as
+    # device_id. This folds on that and NOTHING weaker — never on name, which
+    # would merge two nodes a keeper happened to call the same thing.
+    fold = {}
+    for dst, rec in registry.nodes.items():
+        fold[dst] = getattr(rec, "device_id", None) or dst
+
+    def _f(h):
+        """The node id a hash belongs to. Unknown hashes stand for themselves."""
+        return fold.get(h, h)
+
     known = set()
+    merged = {}
     for dst, rec in registry.nodes.items():
         known.add(dst)
         # WHERE THE NODE STANDS: its own live GPS claim (v3 beacon,
@@ -139,14 +168,32 @@ def build_topology(registry, paths: List[dict], now: float,
         b = getattr(rec, "latest_beacon", None)
         if b is not None and getattr(b, "has_position", False):
             lat, lon, self_located = b.lat, b.lng, True
-        topo.nodes.append(TopoNode(
-            id=dst, name=rec.name or dst[:8], status=rec.status(now),
-            lat=lat, lon=lon, self_located=self_located))
+        key = _f(dst)
+        prev = merged.get(key)
+        if prev is None:
+            merged[key] = TopoNode(
+                id=key, name=rec.name or key[:8], status=rec.status(now),
+                lat=lat, lon=lon, self_located=self_located)
+            topo.nodes.append(merged[key])
+        else:
+            # Fold the aspects into the row already standing. Coordinates and
+            # a real name come from whichever aspect HAS them — one silent
+            # sibling must not blank a node that is located and named.
+            if prev.lat is None and lat is not None:
+                prev.lat, prev.lon, prev.self_located = lat, lon, self_located
+            elif lat is not None and self_located and not prev.self_located:
+                prev.lat, prev.lon, prev.self_located = lat, lon, True
+            if rec.name and (not prev.name or prev.name == key[:8]):
+                prev.name = rec.name
+            # The device is as alive as its liveliest aspect: a node heard on
+            # one destination is not down because another has gone quiet.
+            if _rank(rec.status(now)) > _rank(prev.status):
+                prev.status = rec.status(now)
         rssi = rec.signal_dbm()
         if rssi is not None or rec.mesh_hops == 1:
             # signal_dbm() is the node's WI-FI RSSI — so the edge it evidences
             # is a wifi edge, and the number stays with its own transport.
-            add_edge(TopoEdge(MEDIC_ID, dst, rssi=rssi, kind="direct",
+            add_edge(TopoEdge(MEDIC_ID, _f(dst), rssi=rssi, kind="direct",
                               transport="wifi" if rssi is not None
                               else "unknown"))
         # THE NODE'S OWN EAR ON THE MESH: a v2+ beacon carries the LoRa
@@ -155,7 +202,7 @@ def build_topology(registry, paths: List[dict], now: float,
         # number on a LORA edge (never the WiFi figure, the 2026-08-13
         # lesson). It gives the mesh line its honest thickness.
         if b is not None and getattr(b, "lora_rssi_dbm", None) is not None:
-            add_edge(TopoEdge(MEDIC_ID, dst, rssi=b.lora_rssi_dbm,
+            add_edge(TopoEdge(MEDIC_ID, _f(dst), rssi=b.lora_rssi_dbm,
                               kind="direct", transport="lora"))
 
     def _ghost(h):
@@ -169,18 +216,24 @@ def build_topology(registry, paths: List[dict], now: float,
         if _ghost(dst) or (via and _ghost(via)):
             continue                     # remembered by the path table only
         for h in (dst, via):
-            if h and h not in known and h != MEDIC_ID:
-                known.add(h)
-                topo.nodes.append(TopoNode(id=h, name=h[:8], status="unknown"))
+            k = _f(h) if h else h
+            if k and k not in known and k not in merged and k != MEDIC_ID:
+                known.add(k)
+                topo.nodes.append(TopoNode(id=k, name=k[:8], status="unknown"))
         if hops == 1:
             # The path row's interface names how the MEDIC reaches dst —
             # honest transport for this one edge.
-            add_edge(TopoEdge(MEDIC_ID, dst, kind="direct",
+            add_edge(TopoEdge(MEDIC_ID, _f(dst), kind="direct",
                               transport=transport_of(p.get("interface"))))
         elif via:                        # reached via X -> the X<->dst link exists
             # The far segment's transport is NOT observable from here; the
             # interface field only names the medic's own first hop.
-            add_edge(TopoEdge(via, dst, kind="relayed", transport="unknown"))
+            # BOTH ends folded: a path reached via one of a node's aspects
+            # is a link to the NODE. This is the "paths need to act the same"
+            # half — without it the line hangs off a duplicate dot.
+            if _f(via) != _f(dst):
+                add_edge(TopoEdge(_f(via), _f(dst), kind="relayed",
+                                  transport="unknown"))
 
     topo.edges = list(seen_edges.values())
     return topo

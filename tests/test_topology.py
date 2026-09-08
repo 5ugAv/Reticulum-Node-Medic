@@ -271,3 +271,77 @@ def test_located_nodes_prefers_the_nodes_own_claim_over_the_stamp():
     # the stamped-only node is untouched and unflagged
     d2 = next(x for x in dots if x["name"] == "Ironbark")
     assert d2["self_located"] is False
+
+
+# --- one device, one node -------------------------------------------------
+# Operator, 2026-09-09, looking at a map with FIVE dots stacked on one Pi:
+# "we can't have one node during five duplicate registries. We need to fold
+# them into a single node, and the paths need to act the same as well.
+# Otherwise the map's gonna get really messy."
+#
+# A machine announces many destinations — a Pi's transport, its LXMF
+# propagation aspect, anything minted after the paperwork — and each arrived
+# as its own row. The fold key was already there and unused: the kin roster
+# records which physical device every entry belongs to, and set_kin_roster
+# stamps it on the record as device_id.
+
+def _multi_aspect_registry():
+    """One Pi announcing three destinations, plus an unrelated node."""
+    r = NodeRegistry()
+    for h in ("a1", "a2", "a3"):
+        r.register(h, name="ELSEWHERE")
+        r.nodes[h].device_id = "dev-pi"
+    # only one aspect carries the coordinates, as on the real medic
+    r.nodes["a2"].lat, r.nodes["a2"].lon = -37.512, 145.523
+    r.register("zzzz", name="Faraway", lat=-37.700, lon=145.100)
+    return r
+
+
+def test_a_devices_aspects_collapse_to_one_node():
+    topo = build_topology(_multi_aspect_registry(), paths=[], now=NOW)
+    named = [n for n in topo.nodes if n.name == "ELSEWHERE"]
+    assert len(named) == 1, f"one Pi must be ONE node, got {len(named)}"
+
+
+def test_the_fold_keeps_the_coordinates_a_silent_sibling_lacks():
+    """Only one aspect had a location. Folding must not blank the node."""
+    topo = build_topology(_multi_aspect_registry(), paths=[], now=NOW)
+    n = next(n for n in topo.nodes if n.name == "ELSEWHERE")
+    assert (round(n.lat, 3), round(n.lon, 3)) == (-37.512, 145.523)
+
+
+def test_an_unrelated_node_is_not_swept_into_the_fold():
+    topo = build_topology(_multi_aspect_registry(), paths=[], now=NOW)
+    assert any(n.name == "Faraway" for n in topo.nodes)
+    assert len({n.id for n in topo.nodes if n.name in ("ELSEWHERE", "Faraway")}) == 2
+
+
+def test_a_path_via_any_aspect_links_the_NODE():
+    """"the paths need to act the same" — a link reached via one aspect must
+    land on the folded node, not hang off a duplicate dot."""
+    r = _multi_aspect_registry()
+    r.register("bbbb", name="Ironbark", lat=-37.756, lon=145.005)
+    topo = build_topology(r, paths=[{"hash": "bbbb", "via": "a3", "hops": 2}],
+                          now=NOW)
+    ids = {n.id for n in topo.nodes}
+    assert "a3" not in ids, "the aspect must not survive as its own node"
+    assert any({e.a, e.b} == {"dev-pi", "bbbb"} for e in topo.edges), \
+        "the relayed link must attach to the device, not the aspect"
+
+
+def test_two_aspects_of_one_device_never_link_to_each_other():
+    """A path from one of a node's own aspects to another is not a mesh hop."""
+    r = _multi_aspect_registry()
+    topo = build_topology(r, paths=[{"hash": "a1", "via": "a2", "hops": 2}],
+                          now=NOW)
+    assert not [e for e in topo.edges if e.a == e.b], "no self-link"
+
+
+def test_a_node_with_no_device_id_stands_for_itself():
+    """Folding must never merge on anything weaker than the recorded device —
+    two nodes a keeper happened to name the same are still two nodes."""
+    r = NodeRegistry()
+    r.register("p1", name="Twin", lat=-37.7, lon=145.0)
+    r.register("p2", name="Twin", lat=-37.8, lon=145.1)
+    topo = build_topology(r, paths=[], now=NOW)
+    assert len([n for n in topo.nodes if n.name == "Twin"]) == 2
