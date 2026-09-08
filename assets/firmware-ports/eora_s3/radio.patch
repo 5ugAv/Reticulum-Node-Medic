@@ -1,6 +1,29 @@
 --- a/Radio.cpp
 +++ b/Radio.cpp
-@@ -711,6 +711,13 @@
+@@ -112,6 +112,22 @@
+ bool sx126x::preInit() {
+   pinMode(_ss, OUTPUT);
+   digitalWrite(_ss, HIGH);
++
++  // RESET THE RADIO BEFORE PROBING IT.
++  //
++  // preInit() identifies the modem by reading its sync-word registers, but it
++  // never reset the part first. A power cycle resets the SX1262 along with the
++  // MCU, so that read succeeds and the board works. ANY warm MCU reset - the
++  // DTR/RTS pulse a host asserts when it opens the serial port, or esptool's
++  // hard reset - leaves the radio in whatever state the previous session left
++  // it in. If that was sleep, the read returns garbage, modems_installed goes
++  // false, and the radio can never be started again until someone physically
++  // unplugs the board.
++  //
++  // Diagnosed on an EoRa-S3 2026-09-08: the radio came up only ever on the
++  // first connection after a USB replug. An isolated SPI probe read the sync
++  // word 0x1424 reliably - because that probe pulsed this pin first.
++  reset();
+   
+   // todo: check if this change causes issues on any platforms
+   #if MCU_VARIANT == MCU_ESP32
+@@ -711,6 +727,13 @@
        uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
      #elif BOARD_MODEL == BOARD_HELTEC_T114
        uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};

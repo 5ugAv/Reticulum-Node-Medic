@@ -57,18 +57,55 @@ board that flashes perfectly and then fails silently in a different way:
 `rnodeconf` also needs to learn the board — see `eora-s3-rnodeconf.patch`
 (product `0xD3`, model `0xCF`); stock upstream raises `KeyError` without it.
 
-## KNOWN UNRESOLVED, 2026-09-08
+## KNOWN UNRESOLVED, 2026-09-08 — connection is a coin-flip
 
-The radio comes online — "configured and powered up", `online: True`, MTU 508
-— but only **immediately after a true power cycle**. On a later port open it
-reports `Radio state mismatch` and stays offline.
+Fully working when it connects: `online: True`, "configured and powered up",
+MTU 508, 17 dBm at 915.125/BW125/SF9/CR5, identity `d3:cf:47`, signature
+validated. **But only about 2 connection attempts in 5 succeed.**
 
-`device_init()` (Device.h) returns false unless `bt_ready` **and**
-`fw_signature_validated`, and the firmware's signature hash is computed over
-`dev_bt_mac + eeprom_signature`. The suspicion is a BLE-init ordering or
-BT-MAC issue on this BLE-only board (`HAS_BLUETOOTH false`, `HAS_BLE true`),
-not the radio. Ruled out along the way: the boot-vector path (`boot_flags` is
-hardcoded `0x02`, so it always passes) and USB mode (tried both `hwcdc` and
-OTG `USBMode=default`; no difference).
+### What it is
 
-Not a hardware fault — the SPI probe above proves the radio is healthy.
+A **race on port open**, not a radio fault. Opening the serial port asserts
+DTR/RTS, which on this chip's USB-JTAG resets the MCU. Sometimes the board
+finishes booting before RNS's detect times out; sometimes it does not.
+
+### The one real fix found so far (in radio.patch)
+
+`sx126x::preInit()` identifies the modem by reading its sync-word registers
+and **never reset the part first**. A power cycle resets the SX1262 along with
+the MCU, so the read succeeds; any warm reset leaves the radio in whatever
+state the last session left it in. Adding `reset()` to `preInit()` took the
+success rate from 0/3 to 2/5. This is probably an upstream issue affecting
+every SX126x board, not just this one — worth reporting.
+
+### Theories tested and DISPROVED (recorded so nobody repeats them)
+
+* **Boot vector.** `boot_flags` is hardcoded `0x02` with a `// TODO`, so the
+  vector is always START_FROM_BOOTLOADER and always passes. Not it.
+* **`bt_ready` / firmware signature.** Built with `VALIDATE_FIRMWARE false`,
+  which makes `device_init()` return true immediately and bypasses both. The
+  radio still would not come online: **0/3**. Conclusively not it.
+* **USB mode.** Tried OTG (`USBMode=default`) as well as hwcdc. No difference
+  to the race — and OTG **breaks automatic flashing**, because it is the
+  hardware USB-JTAG bridge that lets esptool enter download mode by itself.
+  Do not switch this board to OTG.
+
+### Two traps that cost real time here
+
+* **`--erase-all` wipes the EEPROM**, not just the app. Provisioning has to be
+  redone afterwards. It also does not fix anything: a full erase + reflash
+  still booted to download mode.
+* **A DTR/RTS reset pulse strapped the board into ROM download mode**
+  (`boot:0x11 DOWNLOAD`) — GPIO0 is driven by DTR on the USB-JTAG. Repeated
+  "the board is stuck" readings were the diagnostic tool causing the fault it
+  was measuring. Read the port passively (DTR/RTS released) before believing
+  a stuck-board diagnosis.
+* Recovery from that state without touching the board: a **1200-baud touch**
+  makes it re-enumerate as the JTAG unit and accept a flash again. The port
+  number moves when it does.
+
+### Next thing to try
+
+Lengthen RNS's detect timeout / settle delay for this board, or hold the port
+open so the DTR transition happens only once. The hardware is not in question:
+an isolated SPI probe reads sync word `0x1424` reliably every time.
