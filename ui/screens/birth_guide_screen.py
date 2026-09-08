@@ -1132,7 +1132,32 @@ class BirthGuideScreen(BoxLayout):
                     self._rebirth_of = old_name or ""   # shown as history
                     self._pair_checked = False         # a fresh lap re-checks
                     self._i = 0
-                    self._render_intro(builds_only=True)
+                    # ...but only if they have not ALREADY answered it on this
+                    # lap. Two good decisions from different dates collided
+                    # here: the chooser above was written 2026-08-06, when a
+                    # rebirth was entered directly and the type genuinely was
+                    # an open question. On 2026-08-26 the node-type chooser
+                    # became the FIRST birth screen, so a rebirth lap now
+                    # normally OPENS with the operator saying what they are
+                    # building — and this asked them again one screen after
+                    # the board was read (operator, with a photo, 2026-09-08:
+                    # "this is the second time I've been asked in this
+                    # process ... we shouldn't need this page here after the
+                    # board's been read").
+                    #
+                    # Same rule the normal read path uses (see _on_read): an
+                    # answer given on the chooser THIS lap is current, so
+                    # carry it and name the node. With nothing chosen — a
+                    # rebirth reached without the chooser — the question is
+                    # still real, so it is still asked.
+                    if self._path in ("host", "radio", "pi"):
+                        self._trace(f"rebirth: build '{self._path}' already "
+                                    f"chosen this lap — not asking again")
+                        self._render_name()
+                    else:
+                        self._trace("rebirth with no build chosen — "
+                                    "asking on the chooser")
+                        self._render_intro(builds_only=True)
                 else:
                     from ui.requirement_popup import requirement_popup
                     requirement_popup(

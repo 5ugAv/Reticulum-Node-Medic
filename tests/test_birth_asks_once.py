@@ -200,3 +200,46 @@ def test_the_name_step_only_claims_a_rebirth_when_there_was_one():
     name = textwrap.dedent(func_source(SCREEN, "_render_name"))
     assert 'was = getattr(self, "_rebirth_of", "")' in name
     assert "if was:" in name, "the history sentence is conditional, not default"
+
+
+# --- 5. the REBIRTH road obeys the same rule ------------------------------
+# Operator, with a photo, 2026-09-08, birthing an Ebyte EoRa-S3 that was
+# already a provisioned RNode: "this is the second time I've been asked in
+# this process ... we shouldn't need this page here after the board's been
+# read." The board being already provisioned sent the lap down the rebirth
+# road, and that road landed on the chooser unconditionally.
+#
+# It was not a careless line. It was written 2026-08-06, when a rebirth was
+# entered directly and the node's type genuinely was an open question, and it
+# was written BECAUSE an operator asked for the visible options. On 2026-08-26
+# the chooser became the first birth screen, and that quietly made this a
+# second asking of a question already answered one screen earlier.
+
+def test_rebirth_does_not_re_ask_a_build_chosen_this_lap():
+    reb = textwrap.dedent(func_source(SCREEN, "_do_rebirth"))
+    assert 'self._path in ("host", "radio", "pi")' in reb, \
+        "an answer given on the chooser THIS lap is current — carry it"
+    chosen = reb.index('self._path in ("host", "radio", "pi")')
+    chooser = reb.index("_render_intro(builds_only=True)")
+    assert chosen < chooser, \
+        "the chooser is the fallback, not the default, on the rebirth road too"
+
+
+def test_rebirth_still_asks_when_nothing_was_chosen():
+    """A rebirth reached WITHOUT the chooser is a real question - keep asking.
+
+    The 2026-08-06 request stands for that case; only the redundant re-ask
+    goes away.
+    """
+    reb = textwrap.dedent(func_source(SCREEN, "_do_rebirth"))
+    assert "_render_intro(builds_only=True)" in reb, \
+        "do not delete the chooser - it is still right when nothing is chosen"
+
+
+def test_both_rebirth_outcomes_leave_a_line_in_the_log():
+    """This was diagnosed from ui.log showing a single 'chose build' line and
+    nothing after it. Whichever way the rebirth goes, say so."""
+    reb = textwrap.dedent(func_source(SCREEN, "_do_rebirth"))
+    branch = reb[reb.index('self._path in ("host", "radio", "pi")'):]
+    assert branch.count("self._trace(") >= 2, \
+        "trace BOTH roads or the next report is unanswerable again"
