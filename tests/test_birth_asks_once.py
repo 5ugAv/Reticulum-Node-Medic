@@ -243,3 +243,40 @@ def test_both_rebirth_outcomes_leave_a_line_in_the_log():
     branch = reb[reb.index('self._path in ("host", "radio", "pi")'):]
     assert branch.count("self._trace(") >= 2, \
         "trace BOTH roads or the next report is unanswerable again"
+
+
+# --- 6. the existing-node screen mirrors the RNode one --------------------
+# Operator, with photos, 2026-09-09, on an EoRa-S3 already running as an
+# RTNode: "the buttons on this screen should mirror the buttons on the screen
+# when we're wiping an RNode that's already an RNode ... it should be red and
+# it should say wipe", and then, having pressed it: "instead of saying keep
+# this one it's taking me back [to the] selection page ask me what I want to
+# birth and the first step was I've already chosen ... an RTNode".
+#
+# Two faults in one button. It looked harmless — plain text beside the green
+# action, nothing marking it destructive — and it did not re-birth anything:
+# it called _render_intro(), throwing the walkthrough back to the chooser.
+
+def test_the_existing_node_screen_actually_rebirths():
+    """It must run the real rebirth, not navigate to the chooser."""
+    src = textwrap.dedent(func_source(SCREEN, "_render_adopt"))
+    assert "_confirm_rebirth(c)" in src, \
+        "the rebirth button must run the rebirth, not re-ask the question"
+    assert "self._render_intro()" not in src, \
+        "sending the operator back to 'What are you building?' is the bug"
+
+
+def test_it_is_marked_destructive_like_the_rnode_screen():
+    """Same wording and same warning colour as the already-an-RNode screen."""
+    src = textwrap.dedent(func_source(SCREEN, "_render_adopt"))
+    assert 'tr("Rebirth — wipe this node & build it fresh")' in src, \
+        "reuse the RNode screen's exact words (also: already translated)"
+    assert 'COLORS["amber"]' in src, "a destructive action must not read as neutral"
+
+
+def test_the_two_screens_use_the_same_rebirth_control():
+    """Pin the mirroring itself: if one screen's control changes, this fails."""
+    adopt = textwrap.dedent(func_source(SCREEN, "_render_adopt"))
+    for token in ('tr("Rebirth — wipe this node & build it fresh")',
+                  'COLORS["amber"]', "_confirm_rebirth(c)"):
+        assert token in adopt, token

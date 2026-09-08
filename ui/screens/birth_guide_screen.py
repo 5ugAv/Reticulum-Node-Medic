@@ -1207,21 +1207,37 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(_line(det, "13.5sp", color="text_secondary", h=78))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
-                        spacing=dp(12))
-        reb = Button(text=tr("Re-birth instead"), font_size="16sp", bold=True,
-                     background_normal="", size_hint_x=0.42,
-                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        reb.bind(on_release=lambda *_: self._render_intro())
+        # MIRROR THE RNODE SCREEN. This is the same decision the operator makes
+        # when the medic finds an existing RNode, so it must look and behave the
+        # same: the keep-it action full width in green, and the destructive one
+        # full width UNDER it in amber, saying plainly that it wipes.
+        #
+        # It did neither (operator, with photos, 2026-09-09). It read
+        # "Re-birth instead" in plain text beside the green button — nothing
+        # marking it destructive — and, worse, it did not re-birth ANYTHING:
+        # it called _render_intro(), which threw the walkthrough back to
+        # "What are you building?" and asked a question already answered one
+        # screen earlier. Same complaint as the rebirth road, different screen.
+        #
+        # _confirm_rebirth is the real path, and it is safe here: it gates on a
+        # destructive-action popup, and _do_rebirth erases by the board's CHIP
+        # FAMILY, not by which firmware happens to be on it. `c` carries
+        # "_port" from the read (see _route), which is what the wipe needs.
         adopt = Button(text=tr("Adopt as kin"), font_size="19sp", bold=True,
-                       background_normal="",
+                       size_hint_y=None, height=dp(62), background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
         adopt.bind(on_release=lambda *_: self._do_adopt(c))
-        row.add_widget(reb)
-        row.add_widget(adopt)
-        wrap.add_widget(row)
+        wrap.add_widget(adopt)
+        # Same words, same colour, same height as the RNode screen's — one
+        # string, so it also needs no new translation.
+        reb = Button(text=tr("Rebirth — wipe this node & build it fresh"),
+                     size_hint_y=None, height=dp(46), font_size="14sp",
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                     color=theme.hex_to_rgba(theme.COLORS["amber"]))
+        reb.bind(on_release=lambda *_: self._confirm_rebirth(c))
+        wrap.add_widget(reb)
         _bk = self._back_row()
         if _bk is not None:
             wrap.add_widget(_bk)
