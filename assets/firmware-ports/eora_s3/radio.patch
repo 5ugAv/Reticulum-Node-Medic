@@ -1,6 +1,8 @@
+diff --git a/Radio.cpp b/Radio.cpp
+index 52364dd..a46f3a2 100644
 --- a/Radio.cpp
 +++ b/Radio.cpp
-@@ -112,6 +112,22 @@
+@@ -112,6 +112,22 @@ sx126x::sx126x(uint8_t index, SPIClass* spi, bool tcxo, bool dio2_as_rf_switch,
  bool sx126x::preInit() {
    pinMode(_ss, OUTPUT);
    digitalWrite(_ss, HIGH);
@@ -23,7 +25,7 @@
    
    // todo: check if this change causes issues on any platforms
    #if MCU_VARIANT == MCU_ESP32
-@@ -323,6 +339,29 @@
+@@ -323,6 +339,29 @@ void sx126x::reset(void) {
      delay(10);
      digitalWrite(_reset, HIGH);
      delay(10);
@@ -53,17 +55,3 @@
    }
  }
  
-@@ -711,6 +750,13 @@
-       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
-     #elif BOARD_MODEL == BOARD_HELTEC_T114
-       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
-+    #elif BOARD_MODEL == BOARD_EORA_S3
-+      // E22-900MM22S ties DIO3 to the TCXO reference at 1.8 V (Ebyte
-+      // datasheet; Meshtastic's CDEBYTE_EoRa-S3 sets the same). Without
-+      // an entry here the #else below sends all zeros - 1.6 V AND a zero
-+      // stabilisation timeout - so the crystal never comes ready and the
-+      // radio reports offline forever. Found on hardware 2026-09-08.
-+      uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
-     #elif BOARD_MODEL == BOARD_E22_ESP32
-       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
-     #else

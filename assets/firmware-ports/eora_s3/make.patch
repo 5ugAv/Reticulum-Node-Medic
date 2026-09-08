@@ -1,6 +1,8 @@
+diff --git a/Makefile b/Makefile
+index 3a86441..dac1150 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -128,6 +128,9 @@
+@@ -128,6 +128,9 @@ firmware-heltec32_v3:
  firmware-heltec_w_paper:
  	arduino-cli compile --fqbn esp32:esp32:heltec_wifi_lora_32_V3 $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x3E\""
  

@@ -1,3 +1,5 @@
+diff --git a/Boards.h b/Boards.h
+index c0f6cc4..f7a8c1b 100644
 --- a/Boards.h
 +++ b/Boards.h
 @@ -69,6 +69,14 @@
@@ -15,7 +17,7 @@
    #define PRODUCT_T32_10      0xB2
    #define BOARD_LORA32_V1_0   0x39
    #define MODEL_BA            0xBA // LilyGO T3 v1.0, 433 MHz
-@@ -1031,7 +1039,75 @@
+@@ -1031,7 +1039,81 @@
                -1  // pin_tcxo_enable
            }
        };
@@ -58,9 +60,15 @@
 +      const bool interface_cfg[INTERFACE_COUNT][3] = {
 +                    // SX1262
 +          {
-+              true, // DEFAULT_SPI
-+              true, // HAS_TCXO           - E22 ties DIO3 to the TCXO reference
-+              true  // DIO2_AS_RF_SWITCH  - inverted on-board to drive RXEN
++              true,  // DEFAULT_SPI
++              false, // HAS_TCXO          - NO. This board has a plain XTAL.
++                     //   Setting this true drives DIO3 as a TCXO supply that
++                     //   is not there and leaves the part calibrated for the
++                     //   wrong clock: it transmits, and nothing hears it.
++                     //   Cost a full evening, 2026-09-08. Do not "fix" it back.
++              true   // DIO2_AS_RF_SWITCH - correct, and confirmed upstream:
++                     //   "All switching is performed with DIO2, it is
++                     //   automatically inverted using circuitry."
 +          },
 +      };
 +      const int8_t interface_pins[INTERFACE_COUNT][10] = {

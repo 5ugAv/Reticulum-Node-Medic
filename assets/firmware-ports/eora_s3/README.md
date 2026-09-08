@@ -5,7 +5,7 @@ clean CE checkout, then `make firmware-eora_s3`.
 
     patch -p1 < boards.patch      # BOARD_EORA_S3 0x47, PRODUCT 0xD3, MODEL_CF 0xCF, pin map, LEDs
     patch -p1 < utils.patch       # setTxPower dispatch, eeprom_product_valid, model check, LED fns
-    patch -p1 < radio.patch       # TCXO at 1.8V (see below)
+    patch -p1 < radio.patch       # reset the SX1262 in preInit, and wait on BUSY
     patch -p1 < display.patch     # the OLED: I2C pins, Wire.begin, orientation
     patch -p1 < make.patch        # the firmware-eora_s3 target
 
@@ -44,9 +44,23 @@ board that flashes perfectly and then fails silently in a different way:
 3. **`PRODUCT_EORA_S3` missing from `eeprom_product_valid()`** — a hardcoded
    whitelist. Without it the firmware judges its own EEPROM invalid, never
    sets `model`, and nothing downstream works.
-4. **`BOARD_EORA_S3` missing from `enableTCXO()`** in `Radio.cpp` — falls
-   through to an `#else` that sends all zeros: 1.6 V *and a zero stabilisation
-   timeout*. The E22 ties DIO3 to a 1.8 V TCXO reference.
+4. **`HAS_TCXO` — this board has a plain crystal, and saying otherwise
+   silently kills the radio.** The trap is that the obvious reading of the
+   symptom points the wrong way. Leaving `HAS_TCXO true` falls through
+   `enableTCXO()` to an `#else` that sends all zeros — 1.6 V *and a zero
+   stabilisation timeout* — and the radio reports offline forever. The
+   tempting fix is to add a board branch with a sane 1.8 V TCXO setting. That
+   makes the radio come online, report correct parameters, accept transmits
+   and advance every counter — **while emitting and hearing nothing at all.**
+   The answer is `HAS_TCXO false`: no DIO3 TCXO control, and `standby()`
+   correctly uses `STDBY_RC` instead of `STDBY_XOSC`. Two sources say so —
+   Meshtastic's variant ("CDEBYTE EoRa-S3 uses an XTAL, thus we do not need
+   DIO3 as TCXO voltage reference", while its sister EoRa-Hub *does* declare
+   one, so the omission is deliberate) and `Tech500/EoRa-PI-Foundation`
+   passing RadioLib `0.0, // No TCXO (EoRa Pi uses XTAL)`. Note also that
+   `calibrate()` and `calibrate_image()` run *before* `enableTCXO()` in
+   `Radio.cpp`, so a late clock-source switch leaves the part calibrated for
+   a configuration it is no longer in.
 5. **`Display.h` keeps its own board chains**, independent of `HAS_DISPLAY` in
    `Boards.h`. The fatal one is the `Wire.begin()` chain: with no matching
    branch the I2C bus is never started on this board's pins, so the panel is
@@ -64,49 +78,37 @@ board that flashes perfectly and then fails silently in a different way:
 `rnodeconf` also needs to learn the board — see `eora-s3-rnodeconf.patch`
 (product `0xD3`, model `0xCF`); stock upstream raises `KeyError` without it.
 
-## STATUS — flashes and provisions; NO RF CONFIRMED ON AIR
-
-Five-minute soak, one connection held open, transmitting throughout:
-
-    online after 20s
-    t+ 30s  online=True  txb=167
-    ...
-    t+300s  online=True  txb=1670
-    === 10 announces sent, 0 drops, final online=True, total TX=1670 bytes ===
+## WORKING — two-way radio contact confirmed 2026-09-08
 
 Identity `Ebyte EoRa-S3 863 - 928 MHz (d3:cf:47)`, signature validated,
-MTU 508, radio reports online, counters advance.
+MTU 508, 915.125 MHz / BW125 / SF9 / CR5 / 17 dBm.
 
-### Read that soak correctly — it is NOT proof of radio contact
+### Proof, and why the earlier proof was not proof
 
-**Corrected 2026-09-08, later the same day.** The figures above prove the
-host-to-modem serial link, that the firmware accepted the transmit commands,
-and that `txb` advanced. They do **not** prove a single byte left the antenna,
-and it now appears none did. Two controlled tests against the medic's own
-RNode sitting inches away at 17 dBm, same band, same room:
+Verified against the medic's own RNode, inches away, 17 dBm, same band. Both
+directions, each measured at the FAR end rather than at the sender:
 
-* **Receive: 0 bytes.** The medic's RNode announced ten times over two
-  minutes. `rxb` on the EoRa stayed at 0 for the whole run.
-* **Transmit: nothing heard.** The EoRa announced until `txb` reached 1169.
-  The medic's RNode received-byte counter did not move at all - 21.33 KB
-  before, 21.33 KB after.
+* **Receive:** the medic's RNode announced ten times; `rxb` on the EoRa went
+  0 -> **2379 bytes**.
+* **Transmit:** the EoRa announced; the medic's RNode received-byte counter
+  moved **22.28 KB -> 24.00 KB**.
+* **Noise floor -105.0 dBm on all 230 samples**, read from the firmware's own
+  framebuffer. The medic's RNode, same room: -106 dBm. Within 1 dB.
 
-Corroborating, from the display's own framebuffer: the EoRa reads a noise
-floor of -90 dBm rising to the top of the scale (>= -60 dBm) about half the
-time, and reports 100% channel load. The medic's RNode, same room and moment,
-reads **-106 dBm and 0.0% / 0.02%**. A 16-46 dB gap against a quiet control
-is the board, not the environment.
+**Earlier the same day this board was reported working, and it was not.** A
+five-minute soak showed 10 announces, 0 drops, `txb` 1670, radio online,
+signature validated — and not one byte ever left the antenna. Every one of
+those figures was measured at the sending end. `txb` counts what the host
+handed the modem. "Radio online" means the modem answered. Neither is radio.
 
-**Working hypothesis: the RF front end is never switched through.** It fails
-symmetrically in both directions, which is what an un-enabled antenna switch
-looks like. The suspect is this port's own guess in `boards.patch` -
-`DIO2_AS_RF_SWITCH true` with `pin_txen`/`pin_rxen` both `-1`. Many E22
-modules carry discrete RXEN/TXEN lines for the LNA and PA; if this one does,
-nothing ever enables either path. That assumption was taken from a variant
-file and has never been checked against the module's own datasheet.
+Before the fix, the same two tests read: **RX 0 bytes** through ten announces,
+and **TX unheard** — the far-end counter did not move at all. The waterfall
+sat at -90 dBm with half its samples pinned at the top of the scale and 100%
+channel load, against a -106 dBm control in the same room. That 16-46 dB gap
+against a quiet control was the tell.
 
-Do not treat this board as a working RNode until a second radio has actually
-heard it.
+**The rule this cost an evening to learn: a counter advancing is not radio
+contact. Nothing is on air until a second radio has heard it.**
 
 ### The 0.96" OLED — verified without looking at it
 
@@ -133,6 +135,17 @@ zero. This is upstream RNode behaviour, not something this port introduced.
 
 The left-hand pane keeps cycling its three pages either way, which makes the
 frozen waterfall beside it look even more like a fault. It is not one.
+
+**The waterfall only moves while a host has the radio on.** `draw_waterfall()`
+is gated on `radio_online`, so with no host attached the radio is off, the
+waterfall stops being drawn, and the **last frame stays on screen**. Beside a
+left-hand pane that keeps cycling its three pages, that reads exactly like a
+hung board. It is upstream RNode behaviour, not something this port added.
+
+Measured with the framebuffer readback: radio on, 22-31 of the waterfall's 46
+rows change every 2 s; radio off, zero. Note that "it has content" is not the
+same as "it is moving" — two stills an evening apart looked identical here and
+sent the diagnosis down the wrong road for a while.
 
 **Reflashing invalidates the firmware hash.** A new binary hashes differently,
 so the panel reads `FIRMWARE CORRUPT` until the hash is written again —

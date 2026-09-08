@@ -138,3 +138,46 @@ def test_display_and_board_patches_agree_on_the_i2c_pins():
     assert disp == {"SDA_OLED": 18, "SCL_OLED": 17}, disp
     assert board["I2C_SDA"] == disp["SDA_OLED"]
     assert board["I2C_SCL"] == disp["SCL_OLED"]
+
+
+# --- the crystal ------------------------------------------------------------
+# The defect that made this board look completely healthy while emitting and
+# hearing nothing: HAS_TCXO true, telling the SX1262 to drive a 1.8 V TCXO from
+# DIO3 that this board does not have. Radio online, correct parameters,
+# transmits accepted, every counter advancing, 0 bytes on air in either
+# direction. Two sources say XTAL: Meshtastic's CDEBYTE_EoRa-S3 variant ("uses
+# an XTAL, thus we do not need DIO3 as TCXO voltage reference" - while its
+# sister EoRa-Hub DOES declare one) and Tech500/EoRa-PI-Foundation passing
+# RadioLib "0.0, // No TCXO (EoRa Pi uses XTAL)".
+
+def test_the_board_is_declared_xtal_not_tcxo():
+    """HAS_TCXO must stay false. Flipping it back is a silently dead radio."""
+    added = [l[1:] for l in _port_patch("boards.patch").splitlines()
+             if l.startswith("+")]
+    tcxo = [l for l in added if "HAS_TCXO" in l]
+    assert len(tcxo) == 1, tcxo
+    flag = tcxo[0].split("//")[0].strip().rstrip(",").strip()
+    assert flag == "false", (
+        "HAS_TCXO is %r - this board has a plain crystal. True gives a radio "
+        "that reports online and puts nothing on air." % flag)
+
+
+def test_no_tcxo_branch_is_reintroduced_in_the_radio_patch():
+    """The tempting wrong fix: a sane-looking 1.8 V branch in enableTCXO().
+
+    It makes the radio come online, which is why it survived a whole evening.
+    With HAS_TCXO false the branch is dead code, so its presence means someone
+    has been round the loop again.
+    """
+    assert "MODE_TCXO" not in _port_patch("radio.patch")
+
+
+def test_dio2_stays_the_rf_switch():
+    """Confirmed upstream, and NOT the fault however much it looked like one.
+
+    Symmetric TX+RX failure pointed here first; the antenna switch was fine.
+    """
+    added = [l[1:] for l in _port_patch("boards.patch").splitlines()
+             if l.startswith("+")]
+    sw = [l for l in added if "DIO2_AS_RF_SWITCH" in l]
+    assert sw and sw[0].split("//")[0].strip().rstrip(",").strip() == "true"
