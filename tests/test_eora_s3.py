@@ -86,3 +86,55 @@ def test_the_provisioning_identity_does_not_collide():
                if b.key != "eora_s3" and b.provision
                and b.provision.get("product") == me["product"]]
     assert not clashes, f"product byte 0xD3 already used by {clashes}"
+
+
+# --- the display -----------------------------------------------------------
+# Added 2026-09-08 after the panel came up. Display.h keeps its OWN chain of
+# `#if BOARD_MODEL ==` blocks, independent of HAS_DISPLAY in Boards.h, and the
+# board was in none of them. The port lives in these patch files, so a dropped
+# or edited patch is a screenless board that still builds and still transmits.
+
+def _port_patch(name):
+    from pathlib import Path
+    p = Path(__file__).resolve().parent.parent / "assets/firmware-ports/eora_s3" / name
+    assert p.exists(), f"{name} missing - the port is incomplete without it"
+    return p.read_text()
+
+
+def test_the_display_patch_starts_the_i2c_bus():
+    """The fatal hunk. No Wire.begin branch means the panel is never addressed.
+
+    Note this is the whole bug: the geometry hunk alone looks like it should
+    work, and does nothing, because nothing ever drives the pins it names.
+    """
+    patch = _port_patch("display.patch")
+    added = [l[1:] for l in patch.splitlines() if l.startswith("+")]
+    assert "#elif BOARD_MODEL == BOARD_EORA_S3" in [l.strip() for l in added]
+    begins = [l for l in added if "Wire.begin(SDA_OLED, SCL_OLED)" in l]
+    assert begins, "no Wire.begin() branch - the I2C bus never starts"
+
+
+def test_display_and_board_patches_agree_on_the_i2c_pins():
+    """Two files name these pins under two different sets of macro names.
+
+    Boards.h calls them I2C_SDA/I2C_SCL and Display.h calls them
+    SDA_OLED/SCL_OLED. Nothing in the compiler connects the two, so they can
+    drift apart silently and the screen just stops working.
+    """
+    def pins(patch, names):
+        found = {}
+        for line in patch.splitlines():
+            if not line.startswith("+"):
+                continue
+            parts = line[1:].split()
+            if len(parts) == 3 and parts[0] == "#define" and parts[1] in names:
+                found[parts[1]] = int(parts[2])
+        return found
+
+    board = pins(_port_patch("boards.patch"), {"I2C_SDA", "I2C_SCL"})
+    disp = pins(_port_patch("display.patch"), {"SDA_OLED", "SCL_OLED"})
+
+    assert board == {"I2C_SDA": 18, "I2C_SCL": 17}, board
+    assert disp == {"SDA_OLED": 18, "SCL_OLED": 17}, disp
+    assert board["I2C_SDA"] == disp["SDA_OLED"]
+    assert board["I2C_SCL"] == disp["SCL_OLED"]

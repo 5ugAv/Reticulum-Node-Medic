@@ -59,6 +59,12 @@ BOARDS: Dict[str, dict] = {
                        has_screen=False),
     "heltec_wireless_tracker": _b("heltec_wireless_tracker",
                                   "Heltec Wireless Tracker"),
+    # illustration supplied by the operator 2026-09-08, the day the board's
+    # OLED came up. Its screen was blanked to the panel's own dark navy so the
+    # node name lands on an empty display; the rect below is the glass, MEASURED
+    # off the artwork rather than eyeballed (largest light blob, plus margin).
+    "eora_s3": _b("eora_s3", "Ebyte EoRa-S3",
+                  oled=(0.269, 0.630, 0.646, 0.840)),
 }
 
 
