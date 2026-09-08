@@ -3623,7 +3623,14 @@ class BirthScreen(BoxLayout):
         name = self._name_in.text.strip()
         if name:
             cert["node_name"] = name
-        if self._prefill_location and "location" not in cert:
+        # `not cert.get(...)`, NOT `"location" not in cert`. The RTNode
+        # workflow ALWAYS writes "location", setting it to None when the medic
+        # has no GPS fix of its own — so the key was present, this test was
+        # False, and the pin the operator had just placed on the map was
+        # silently dropped. Asked for it, carried it through five screens, threw
+        # it away at the last step (operator, 2026-09-09: a node marked at
+        # Sampleton market that arrived with location None).
+        if self._prefill_location and not cert.get("location"):
             lat, lon, src = self._prefill_location
             cert["location"] = f"{lat:.6f}, {lon:.6f} ({src})"
         return cert

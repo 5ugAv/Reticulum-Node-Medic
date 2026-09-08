@@ -58,3 +58,47 @@ def test_the_psk_is_not_written_into_birth_certificates():
     src = open("ui/cert_store.py").read()
     assert '"psk"' not in src and "'psk'" not in src, \
         "cert_store now references psk — a credential would be written to disk"
+
+
+# --- the operator's map pin must survive to the certificate ----------------
+# Operator, 2026-09-09: marked an RTNode as being at Sampleton market, and the
+# certificate arrived with location None. _stamp_identity tested
+# `"location" not in cert` — but the RTNode workflow ALWAYS writes "location",
+# setting it to None when the medic has no GPS fix of its own. Key present,
+# test False, pin discarded. Asked for, carried through five screens, dropped
+# at the last one.
+
+def test_a_none_location_does_not_block_the_operators_pin():
+    src = open(BIRTH).read()
+    i = src.index("def _stamp_identity")
+    # CODE ONLY. The fix's own comment quotes the bad expression to explain
+    # it, so a raw substring check matches the explanation and fails. Fourth
+    # time this shape of self-match has bitten in one session — see also the
+    # env-comment test and the pgrep-guard trap.
+    body = "\n".join(l for l in src[i:i + 1600].splitlines()
+                     if not l.strip().startswith("#"))
+    assert 'not cert.get("location")' in body, \
+        "test the VALUE — the workflow always writes the key"
+    assert '"location" not in cert' not in body, \
+        "key-presence test silently discards the pin the operator placed"
+
+
+# --- map legibility --------------------------------------------------------
+# Operator, 2026-09-09: "the green text is hard to read on the map ... keep the
+# dot representing the location of nodes mirroring their health state colour on
+# vitals, but change the colour of the name text to dark blue."
+
+def test_map_node_names_are_not_status_coloured():
+    src = open("ui/screens/scan_screen.py").read()
+    i = src.index("def _add_label")
+    body = "\n".join(l for l in src[i:i + 1200].splitlines()
+                     if not l.strip().startswith("#"))
+    assert 'COLORS["map_label"]' in body, "the name uses the legible token"
+    assert "status_rgba(point.status)" not in body, \
+        "status green on a pale basemap is what the operator could not read"
+
+
+def test_the_dot_still_carries_health():
+    """Only the TEXT changed — the dot must keep mirroring VITALS."""
+    src = open("ui/screens/scan_screen.py").read()
+    assert "status_rgba" in src, "the dot's health colour must survive"

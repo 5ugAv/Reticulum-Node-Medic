@@ -18,7 +18,12 @@ COLORS = {
     "green": "#00c853",
     "amber": "#ff6d00",
     "red": "#d50000",
-    "accent": "#4fc3f7",   # steel blue
+    "accent": "#4fc3f7",
+    # Node NAME text on the SCAN map. The dot still carries the health
+    # colour (that is the signal); the name only has to be legible on a
+    # pale basemap, and status green was not (operator, 2026-09-09:
+    # "the green text is hard to read on the map").
+    "map_label": "#0d2f6b",   # steel blue
     # Link-overlay lanes on SCAN (2026-08-13): a line's hue says what carried
     # it. Distinct from the status colours on purpose — a green STATUS means
     # healthy, so the Wi-Fi lane is a leafier green; amber means warning, so

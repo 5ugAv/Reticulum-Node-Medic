@@ -166,7 +166,9 @@ def prove_radio(dst_hash: bytes,
                 poll: Callable[[bytes], object],
                 interface_for: Callable[[bytes], str],
                 now: Callable[[], float],
-                node_name: str = "") -> RadioProof:
+                node_name: str = "",
+                settle_s: float = 35.0,
+                sleep: Callable[[float], None] = None) -> RadioProof:
     """Try to hear *dst_hash* over the air, and report honestly either way.
 
     *drop_cached_path* — forget any known route BEFORE asking. Without this the
@@ -196,10 +198,36 @@ def prove_radio(dst_hash: bytes,
             checks=list(FAILURE_CHECKS))
 
     reachable = bool(getattr(result, "reachable", False)) if result else False
+    if not reachable and settle_s:
+        # ASK AGAIN AFTER THE ANNOUNCE WINDOW. A node that has just been born
+        # says so itself — "first announce in ~30s" — and drop_cached_path has
+        # deliberately just forgotten the only route we had, so the first poll
+        # can be asking through a path that does not exist YET. On a rebirth
+        # the node also comes back with a NEW identity, so there has never
+        # been a path to it.
+        #
+        # Measured 2026-09-09 on an EoRa-S3 RTNode: poll at 01:55:20, the
+        # node's announce landed at 01:55:48 — 28 s later. The certificate had
+        # already recorded "did not answer over the radio" for a node that was
+        # on air, 2 hops away, and stayed there. A false NEGATIVE written into
+        # a permanent record, which is the same disease as the false positives
+        # fixed the night before, just inverted.
+        if sleep is None:
+            import time as _t
+            sleep = _t.sleep
+        sleep(settle_s)
+        try:
+            result = poll(dst_hash)
+        except Exception:                                     # noqa: BLE001
+            result = None
+        reachable = bool(getattr(result, "reachable", False)) if result else False
+
     if not reachable:
         return RadioProof(
             heard=False, at=now(),
-            summary=f"{who} did not answer over the radio.",
+            # Say what was actually established. "Did not answer" reads as a
+            # verdict on the node; it is only a verdict on this moment.
+            summary=f"{who} has not answered over the radio yet.",
             checks=list(FAILURE_CHECKS))
 
     iface = ""

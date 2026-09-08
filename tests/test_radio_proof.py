@@ -95,7 +95,10 @@ def test_a_real_rnode_interface_IS_recognised():
 def test_not_being_heard_is_a_RESULT_not_an_exception():
     p = _prove(reachable=False, node_name="faith")
     assert p.heard is False
-    assert "did not answer over the radio" in p.summary
+    # Wording changed 2026-09-09: "did not answer" reads as a verdict on the
+    # node, but it is only a verdict on this moment, and it lands in a
+    # permanent record. See tests/test_radio_proof_settle.py.
+    assert "has not answered over the radio" in p.summary
     assert p.checks, "a failure with no advice is just bad news"
 
 

@@ -1002,8 +1002,13 @@ class MapPlot(Widget):
     def _add_label(self, point, sx, sy, r):
         if not point.label:
             return
-        lbl = Label(text=point.label, font_size=dp(15),
-                    color=theme.status_rgba(point.status), size_hint=(None, None))
+        # The DOT carries health (drawn above, from point.status) — the name
+        # does not need to say it twice, and saying it in status green made the
+        # name unreadable on the basemap. Dark blue: legible over map tiles,
+        # and it leaves colour meaning ONE thing on this screen.
+        lbl = Label(text=point.label, font_size=dp(15), bold=True,
+                    color=theme.hex_to_rgba(theme.COLORS["map_label"]),
+                    size_hint=(None, None))
         lbl.texture_update()
         lbl.size = lbl.texture_size
         lbl.pos = (self.x + sx + r + dp(3), self.y + sy - lbl.height / 2)
