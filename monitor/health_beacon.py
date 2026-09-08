@@ -109,6 +109,10 @@ BOARD_IDS = {
     0x41: "RNode NG 2.1",
     0x42: "T3S3",
     0x44: "T-Echo",
+    # 0x47 is the Ebyte EoRa-S3 (EoRa PI family), added 2026-09-08 when
+    # it became an RTNode-2400 target. Without it verify_beacon reports a
+    # successful birth as "Board is beaconing: unknown(0x47)".
+    0x47: "Ebyte EoRa-S3",
     0x4B: "T-Watch S3 Plus",
     0x50: "Generic nRF52",
     0x51: "RAK4631",

@@ -252,3 +252,17 @@ def test_the_rtnode_port_closes_the_same_four_gaps():
     assert "PRODUCT_EORA_S3" in added, "else the firmware rejects its own EEPROM"
     assert "if (model == MODEL_CF) {" in added, "model-is-valid-for-this-board"
     assert "led_rx_on" in added
+
+
+def test_the_beacon_vocabulary_names_this_board():
+    """verify_beacon prints beacon.board_label on the success screen. Without
+    an entry a perfectly good birth ends with "Board is beaconing:
+    unknown(0x47)" — found while checking the walkthrough was ready, 2026-09-08.
+
+    The real payload below was captured off the board.
+    """
+    from monitor.health_beacon import decode, BOARD_IDS
+    assert BOARD_IDS.get(0x47) == "Ebyte EoRa-S3"
+    b = decode(bytes.fromhex("020000002300cfba053b470007000000ff008080"))
+    assert b.board_label == "Ebyte EoRa-S3"
+    assert "unknown" not in b.board_label
