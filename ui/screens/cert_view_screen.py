@@ -58,11 +58,24 @@ def cert_latlon(cert):
 _PRETTY = [
     ("node_name", "Name"), ("type", "Type"), ("hostname", "Hostname"),
     ("reticulum_address", "Reticulum address"), ("ssh_address", "SSH"),
-    ("location", "Location"), ("ssid", "SSID"), ("psk", "Wi-Fi key"),
+    ("location", "Location"), ("ssid", "SSID"), ("psk", "Wi-Fi key"),  # value MASKED at render, see _MASKED
     ("freq", "Frequency"), ("bw", "Bandwidth"), ("sf", "Spreading factor"),
     ("cr", "Coding rate"), ("txp", "TX power"), ("session_id", "Build session"),
 ]
 _HIDDEN = {"notes"}
+
+#: Keys whose VALUE is never drawn, only their presence. A stored Wi-Fi
+#: password is a live credential; the viewer is a screen people photograph.
+_MASKED = {"psk"}
+
+
+def _mask(key, value):
+    """The value to draw for *key* — masked if it is a credential.
+
+    Presence still shows, so a cert that unexpectedly carries a password is
+    visible as a problem without the password itself being on screen.
+    """
+    return "\u2022" * 8 if key in _MASKED and value not in (None, "") else value
 
 
 def _line(text, color="text_primary", size="15sp", bold=False, h=24):
@@ -161,13 +174,16 @@ class CertViewScreen(BoxLayout):
         shown = set()
         for key, label in _PRETTY:
             if key in self._cert and self._cert[key] not in (None, ""):
-                self.list.add_widget(_line(f"    {label}: {self._cert[key]}", size="13sp"))
+                val = _mask(key, self._cert[key])
+                self.list.add_widget(_line(f"    {label}: {val}", size="13sp"))
                 shown.add(key)
-        # anything else the build recorded, raw (skip internals + already-shown)
+        # anything else the build recorded, raw (skip internals + already-shown).
+        # _mask applies here TOO: a credential must not escape just because it
+        # arrived under a key nobody listed in _PRETTY.
         for k, v in self._cert.items():
             if k.startswith("_") or k in _HIDDEN or k in shown or v in (None, ""):
                 continue
-            self.list.add_widget(_line(f"    {k}: {v}", size="13sp"))
+            self.list.add_widget(_line(f"    {k}: {_mask(k, v)}", size="13sp"))
 
         self._qr_widgets = []
         self._add_qr()

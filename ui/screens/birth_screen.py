@@ -3143,6 +3143,17 @@ class BirthScreen(BoxLayout):
                     continue
                 v = onboarding.get(k, "")
                 shown = v if v != "" else "____  (operator)"
+                # NEVER print the Wi-Fi password on the panel. This block is the
+                # manual fallback - the values to type into the board's portal
+                # by hand - and the operator is typing their OWN network's
+                # password, which they already know. Showing it bought nothing
+                # and put a live credential on a screen that gets photographed
+                # over the operator's shoulder, and photographed BY the operator
+                # to send to me (2026-09-08: "the wifi password is in plain view
+                # here"). Certificates do not store it (checked: 20 on disk, 0
+                # carrying a psk) - so this screen was the whole exposure.
+                if k == "psk" and v:
+                    shown = "\u2022" * 8 + "   (your Wi-Fi password)"
                 self.list.add_widget(_line(f"    {k}: {shown}", size="13sp"))
 
         cert = getattr(self._workflow, "birth_certificate", None)

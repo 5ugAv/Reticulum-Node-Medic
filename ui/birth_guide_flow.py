@@ -179,9 +179,18 @@ _STEPS = {
         # Backpack mode, or anywhere in the field, that is the normal case — so
         # the precondition is stated instead of the outcome promised.
         {"title": tr("What happens next"),
-         "body": tr("After flashing, Node Medic joins the node's own setup "
-                    "Wi-Fi, sets its name and radio settings, and puts it on "
-                    "the same Wi-Fi as Node Medic."),
+         # WORDING, operator with a photo 2026-09-08: "Doesn't the node join
+         # the Node Medic's Wi-Fi?" Both directions are true, which is exactly
+         # why the old line read as a contradiction. It named the medic hopping
+         # to the node AND the node ending up on the medic's network, without
+         # showing that one follows the other. Say the ORDER, and say WHY the
+         # medic goes to the node first: before the node has any credentials,
+         # its own setup AP is the only way to reach it at all.
+         "body": tr("The node starts its own temporary setup Wi-Fi \u2014 the only "
+                    "way to reach it before it knows yours. Node Medic hops "
+                    "onto that, sets the node's name and radio settings, and "
+                    "hands over your Wi-Fi. The node then restarts on your "
+                    "network, alongside Node Medic."),
          "hint": tr("Node Medic has to be on Wi-Fi for this. It briefly leaves "
                     "yours to talk to the node, then rejoins."),
          "anim": "provision",             # ANIMATION PLACEHOLDER — refine with the designer

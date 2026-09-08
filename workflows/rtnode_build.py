@@ -978,6 +978,26 @@ def wifi_onboarding(wf: "RTNodeBuildWorkflow") -> StepResult:
                 f"password for '{ssid}', so the node would be configured with "
                 f"a blank one and never join. Configure it manually at "
                 f"{ONBOARDING_URL}, or fix the medic's WiFi secret access.")
+        # THE BAND. Every ESP32 the tool builds is 2.4 GHz ONLY. Handing it a
+        # 5 GHz SSID births a node that is correctly configured and physically
+        # incapable of joining — and the failure lands two steps later, on
+        # verify_beacon, saying nothing about WiFi at all.
+        #
+        # Found 2026-09-08 on an Ebyte EoRa-S3: the medic was associated at
+        # 5200 MHz, onboarding reported "ok ... joined <ssid>", and the build
+        # then failed with "No health beacon yet". Nothing named the real cause.
+        # Fails OPEN: an unreadable frequency must not block a birth.
+        from workflows.rtnode_portal import esp32_can_join, visible_24ghz_ssids
+        if not esp32_can_join(ssid):
+            alts = visible_24ghz_ssids()
+            near = ("  2.4 GHz networks in range: " + ", ".join(alts[:4])
+                    if alts else "")
+            return StepResult(
+                "wifi_onboarding", False,
+                f"Can't auto-provision: every copy of '{ssid}' in range is on "
+                f"5 GHz, and this node's radio is 2.4 GHz only — it would be "
+                f"configured and then sit silent. Put the node on a 2.4 GHz "
+                f"network, or configure it by hand at {ONBOARDING_URL}." + near)
         # SINGLE-PASS discipline (2026-07-30): believe OUTCOMES, not plumbing.
         # 0) Already configured? Then there IS no portal — that's a birth that
         #    already landed (a previous pass whose tail failed), not a failure.

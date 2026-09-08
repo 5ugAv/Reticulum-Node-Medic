@@ -239,6 +239,66 @@ def medic_wifi_credentials(run: Callable[[list], str] = _nmcli) -> Tuple[str, st
     return (ssid, psk)
 
 
+#: Above this, the medic is on a band an ESP32 cannot reach at all.
+#: 2.4 GHz channels top out at 2484 MHz; 5 GHz starts at 5150.
+_5GHZ_FLOOR_MHZ = 5000
+
+
+def ssid_bands_mhz(ssid: str, run: Callable[[list], str] = _nmcli):
+    """Every frequency (MHz) the medic can see *this SSID* broadcasting on.
+
+    Per-SSID, deliberately — NOT the band the medic happens to be associated
+    on. Most home routers put both bands behind ONE name, and the name is no
+    guide: the network this was found on is called "..._5g" and carries three
+    2.4 GHz BSSes plus one at 5 GHz (operator, 2026-09-08: "it's actually
+    split, it has both 2.4 and 5G on it, the name is deceiving").
+
+    Asking "what band is the medic on?" would have refused that network and
+    blocked a birth that works perfectly.
+    """
+    out = []
+    for line in (run(["nmcli", "-t", "-f", "SSID,FREQ", "device", "wifi"])
+                 or "").splitlines():
+        parts = line.rsplit(":", 1)
+        if len(parts) != 2 or parts[0].strip() != ssid:
+            continue
+        digits = "".join(c for c in parts[1] if c.isdigit())
+        if digits:
+            out.append(int(digits))
+    return out
+
+
+def esp32_can_join(ssid: str, run: Callable[[list], str] = _nmcli) -> bool:
+    """Could a 2.4 GHz-only node (every ESP32 the tool builds) join *ssid*?
+
+    True unless we can SEE the SSID and every BSS of it is 5 GHz. Seeing
+    nothing -> True: a birth must never be blocked by a scan that failed.
+    """
+    bands = ssid_bands_mhz(ssid, run=run)
+    if not bands:
+        return True
+    return any(f < _5GHZ_FLOOR_MHZ for f in bands)
+
+
+def visible_24ghz_ssids(run: Callable[[list], str] = _nmcli):
+    """SSIDs on 2.4 GHz the medic can currently see, best-effort, de-duplicated.
+
+    Used to make the 5 GHz refusal ACTIONABLE — naming the networks that would
+    actually work beats telling the operator their Wi-Fi is wrong.
+    """
+    out = []
+    for line in (run(["nmcli", "-t", "-f", "SSID,FREQ", "device", "wifi"])
+                 or "").splitlines():
+        parts = line.rsplit(":", 1)
+        if len(parts) != 2:
+            continue
+        ssid = parts[0].strip()
+        digits = "".join(c for c in parts[1] if c.isdigit())
+        if ssid and digits and int(digits) < _5GHZ_FLOOR_MHZ and ssid not in out:
+            out.append(ssid)
+    return out
+
+
 def rejoin_medic_wifi(ssid: str, run: Callable[[list], str] = _nmcli) -> bool:
     """Rejoin the medic's own WiFi after the AP hop. NM usually auto-reconnects a
     saved network, but we ask explicitly to be sure the medic comes back online."""
@@ -279,8 +339,14 @@ def provision_node(
     finally:
         rejoin(medic_ssid)                         # ALWAYS restore the medic's WiFi
     if ok:
-        return (True, f"Node configured as '{node_name or 'RTNode'}' and joined "
-                      f"{medic_ssid}; it reboots and beacons in ~30 s.")
+        # SAY WHAT WE KNOW. All that succeeded here is the POST — the node has
+        # our form, nothing more. It said "and joined <ssid>" for a node that
+        # could not possibly join (the medic was on 5 GHz, the node is 2.4 GHz
+        # only), and the operator reasonably believed it; verify_beacon then
+        # failed with no hint why (2026-09-08). The join is verified later, by
+        # the node actually turning up — not asserted here.
+        return (True, f"Node configured as '{node_name or 'RTNode'}' and told to "
+                      f"join {medic_ssid}; it reboots and should beacon in ~30 s.")
     return (False, msg)
 
 
