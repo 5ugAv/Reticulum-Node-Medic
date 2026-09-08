@@ -1,0 +1,16 @@
+--- a/Radio.cpp
++++ b/Radio.cpp
+@@ -711,6 +711,13 @@
+       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
+     #elif BOARD_MODEL == BOARD_HELTEC_T114
+       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
++    #elif BOARD_MODEL == BOARD_EORA_S3
++      // E22-900MM22S ties DIO3 to the TCXO reference at 1.8 V (Ebyte
++      // datasheet; Meshtastic's CDEBYTE_EoRa-S3 sets the same). Without
++      // an entry here the #else below sends all zeros - 1.6 V AND a zero
++      // stabilisation timeout - so the crystal never comes ready and the
++      // radio reports offline forever. Found on hardware 2026-09-08.
++      uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
+     #elif BOARD_MODEL == BOARD_E22_ESP32
+       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
+     #else

@@ -1,0 +1,18 @@
+--- rnodeconf_stock.py	2026-09-08 01:47:57
++++ rnodeconf_eora.py	2026-09-08 11:31:44
+@@ -293,6 +293,7 @@
+     ROM.PRODUCT_OPENCOM_XL: "openCom XL",
+     ROM.PRODUCT_HELTEC_T114: "Heltec Mesh Node T114",
+     ROM.PRODUCT_XIAO_S3: "Seeed XIAO ESP32S3 Wio-SX1262",
++    0xD3:               "Ebyte EoRa-S3",
+ }
+ 
+ platforms = {
+@@ -335,6 +336,7 @@
+     0xC8: [860000000, 930000000, 28, "850 - 950 MHz", "rnode_firmware_heltec32v4pa.zip", "SX1262"],
+     0xC6: [420000000, 520000000, 22, "420 - 520 MHz", "rnode_firmware_heltec_t114.zip", "SX1268"],
+     0xC7: [850000000, 950000000, 22, "850 - 950 MHz", "rnode_firmware_heltec_t114.zip", "SX1262"],
++    0xCF: [863000000, 928000000, 22, "863 - 928 MHz", "rnode_firmware_eora_s3.zip", "SX1262"],
+     0xE4: [420000000, 520000000, 17, "420 - 520 MHz", "rnode_firmware_tbeam.zip", "SX1278"],
+     0xE9: [850000000, 950000000, 17, "850 - 950 MHz", "rnode_firmware_tbeam.zip", "SX1276"],
+     0xD4: [420000000, 520000000, 22, "420 - 520 MHz", "rnode_firmware_tdeck.zip", "SX1268"],
