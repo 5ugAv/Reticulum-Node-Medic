@@ -23,7 +23,37 @@
    
    // todo: check if this change causes issues on any platforms
    #if MCU_VARIANT == MCU_ESP32
-@@ -711,6 +727,13 @@
+@@ -323,6 +339,29 @@
+     delay(10);
+     digitalWrite(_reset, HIGH);
+     delay(10);
++
++    // WAIT FOR THE RADIO TO SAY IT IS READY, rather than assuming 10 ms.
++    //
++    // After NRESET is released the SX1262 holds BUSY high until it has booted
++    // into STDBY_RC, and with a TCXO on DIO3 that includes the crystal's
++    // startup time. Ten milliseconds is not always enough - coming back from
++    // a transmit, with the PA having been active, it is frequently not.
++    //
++    // waitOnBusy() cannot cover this: it gives up after 100 ms and then
++    // proceeds ANYWAY (see the break), so the first register read lands while
++    // the part is still booting and returns garbage. preInit() reads that as
++    // "no modem installed", and the radio can never be started again.
++    //
++    // Measured on an EoRa-S3 2026-09-08: 4/4 connections succeeded before a
++    // transmit and 1/4 after one. Waiting here for BUSY to fall, with a
++    // generous ceiling, is what makes it repeatable.
++    if (_busy != -1) {
++      pinMode(_busy, INPUT);
++      unsigned long start = millis();
++      while (digitalRead(_busy) == HIGH && (millis() - start) < 1000) { delay(1); }
++    } else {
++      delay(50);
++    }
+   }
+ }
+ 
+@@ -711,6 +750,13 @@
        uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
      #elif BOARD_MODEL == BOARD_HELTEC_T114
        uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};

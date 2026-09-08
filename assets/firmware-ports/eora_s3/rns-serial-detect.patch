@@ -1,0 +1,24 @@
+--- a/RNS/Interfaces/RNodeInterface.py
++++ b/RNS/Interfaces/RNodeInterface.py
+@@ -441,8 +441,19 @@
+             while not self.detected and time.time() < detect_time + ble_detect_timeout: time.sleep(0.1)
+             if not self.detected: RNS.log(f"RNode detect timed out over BLE", RNS.LOG_ERROR)
+         else:
+-            sleep(0.2)
+-        
++            # SERIAL GOT 0.2 SECONDS, FLAT, WITH NO POLLING - while TCP and BLE
++            # above each get a 5 s polling loop. Opening a serial port asserts
++            # DTR/RTS, which on an ESP32-S3's USB-JTAG resets the MCU; the board
++            # then has to boot inside the 2.0 s sleep above plus this 0.2 s, or
++            # it is declared absent. On an Ebyte EoRa-S3 that made connection a
++            # coin-flip: roughly 2 attempts in 5 (2026-09-08). Give serial the
++            # same courtesy as the other transports - poll, and take the answer
++            # as soon as it arrives, so a fast board is no slower than before.
++            serial_detect_timeout = 5.0
++            detect_time = time.time()
++            while not self.detected and time.time() < detect_time + serial_detect_timeout:
++                time.sleep(0.1)
++
+         if not self.detected:
+             RNS.log(f"Could not detect device for {self}", RNS.LOG_ERROR)
+             self.serial.close()
