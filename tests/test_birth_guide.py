@@ -1149,16 +1149,30 @@ def test_no_guided_step_overflows_the_panel():
         + ", ".join(f"{n} needs {h:.0f} dp" for n, h in over))
 
 
+def _model_unknown_fallback(name: str) -> bool:
+    """Is this the PI path's two-boards-at-once fallback wording?
+
+    Only that is exempt from the animation-space floor: _render_pick_pi runs
+    before those steps, so a real walkthrough always has a model and sees the
+    per-board copy instead.
+
+    _every_guided_step labels HOST and RADIO steps "(model unknown)" as well,
+    and those have no model to pick — their "(model unknown)" copy IS what
+    ships. Exempting them hid a real regression: radio step 2 ran at 38 dp,
+    under the floor, unchecked, after a wording fix took it from 108 to 38
+    (2026-09-09). Written as a named predicate because the inline version got
+    the and/or precedence wrong and silently exempted everything.
+    """
+    return name.startswith("pi ") and "unknown" in name
+
+
 def test_every_step_keeps_room_for_its_animation():
     """SHOW DON'T TELL only works if the picture has somewhere to be. A step
     whose words fill the screen has silently traded its animation away — and
     the animation is the part that survives not reading English."""
     tight = [(name, theme.PANEL_H_DP - wizard_step_height(s))
              for name, s in _every_guided_step()
-             # the model-unknown wording has to cover two boards at once and is
-             # a fallback: _render_pick_pi runs before these steps, so a real
-             # walkthrough always has a model. It still has to FIT (above).
-             if "unknown" not in name
+             if not _model_unknown_fallback(name)
              and theme.PANEL_H_DP - wizard_step_height(s) < 40]
     assert not tight, (
         "animation stage squeezed under 40 dp: "

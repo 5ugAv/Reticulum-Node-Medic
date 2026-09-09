@@ -186,11 +186,15 @@ _STEPS = {
          # showing that one follows the other. Say the ORDER, and say WHY the
          # medic goes to the node first: before the node has any credentials,
          # its own setup AP is the only way to reach it at all.
-         "body": tr("The node starts its own temporary setup Wi-Fi \u2014 the only "
-                    "way to reach it before it knows yours. Node Medic hops "
-                    "onto that, sets the node's name and radio settings, and "
-                    "hands over your Wi-Fi. The node then restarts on your "
-                    "network, alongside Node Medic."),
+         # SHORT ON PURPOSE. The 2026-09-08 rewrite fixed the ORDER (the node
+         # raises its own Wi-Fi first; the medic goes to it) but ran to 45
+         # words, which squeezed the animation stage from 108 dp to 38 dp —
+         # under the 40 dp floor. The sequence is what an animation is for;
+         # the words only have to name the two ends. See test_birth_guide's
+         # test_every_step_keeps_room_for_its_animation.
+         "body": tr("The node raises its own setup Wi-Fi first \u2014 Node Medic "
+                    "goes to it, hands over your Wi-Fi, and the node comes "
+                    "back on your network."),
          "hint": tr("Node Medic has to be on Wi-Fi for this. It briefly leaves "
                     "yours to talk to the node, then rejoins."),
          "anim": "provision",             # ANIMATION PLACEHOLDER — refine with the designer
