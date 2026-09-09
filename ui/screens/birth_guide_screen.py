@@ -2299,6 +2299,7 @@ class BirthGuideScreen(BoxLayout):
         """
         from kivy.clock import Clock
         self._stop_card_poll()
+        self._card_poll_blind = False
 
         def tick(_dt):
             import threading
@@ -2308,8 +2309,14 @@ class BirthGuideScreen(BoxLayout):
                 try:
                     from provisioning import pi_imager
                     gone = pi_imager.card_status()["state"] == "none"
+                    self._card_poll_blind = False
                 except Exception:                                  # noqa: BLE001
                     gone = False                    # can't tell -> don't advance
+                    # ...and SAY SO. The step shows no button, because the
+                    # medic watches the reader itself; that promise only holds
+                    # while it can actually see. A reader that stops answering
+                    # is the one case where the operator needs a way forward.
+                    self._card_poll_blind = True
                 if gone:
                     Clock.schedule_once(lambda _d: self._on_card_gone(anim), 0)
 
@@ -2927,11 +2934,29 @@ class BirthGuideScreen(BoxLayout):
             # the green button and just let the Node Medic do the work").
             step.hide_next()
             self._start_card_gone_poll(anim)
+            # NO PATIENCE-TIMER BUTTON HERE (operator, 2026-09-09, with this
+            # screen in front of them: "the next button on the screen that
+            # tells user to remove sd card from medic and insert in pi can be
+            # removed as the medic moves to next screen when it registers the
+            # sd has been removed").
+            #
+            # It is the same rule they set on 2026-08-10, and this step obeys
+            # it better than the connect steps can: taking the card OUT is
+            # something the medic watches directly, once a second, in its own
+            # reader — there is no boot to wait through and no second road the
+            # card could have taken. A button that appears after two and a
+            # half minutes says "the tool has given up on seeing this", which
+            # is not true.
+            #
+            # The escape hatch is kept for the one case where the medic really
+            # cannot look: if the reader itself stops answering, the poll says
+            # so and the button comes back (see _start_card_gone_poll).
             from kivy.clock import Clock
             tok = getattr(self, "_nav_token", 0)
             Clock.schedule_once(
                 lambda _d: (getattr(self, "_nav_token", None) == tok
                             and self._current is step
+                            and getattr(self, "_card_poll_blind", False)
                             and step.show_next()), self.WAIT_PATIENCE_S)
         if back_arrival and self._current is step:
             # ARRIVED WALKING BACKWARD. The hides above exist because the

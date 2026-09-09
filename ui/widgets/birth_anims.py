@@ -269,6 +269,64 @@ def _card_texture():
     return _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
 
 
+def _draw_pi_board(x, y, w, h):
+    """A Raspberry Pi drawn as a SCHEMATIC, for the models we have no photo of.
+
+    Operator, 2026-09-09, photographing the card-handover step with a 3 B+
+    selected: "the SD card is just a blue square and the Raspberry Pi is a
+    black square". They are right — the honest-fallback rule ("never draw a Pi
+    we have not confirmed") had been read as "draw a grey rectangle", and a
+    grey rectangle teaches nothing at all.
+
+    A schematic board breaks no rule: it says A Raspberry Pi, not THIS model.
+    Green PCB, gold mounting holes, a 40-pin header along the top edge, the SoC
+    and a memory die, and port blocks on one side — the features every Pi in
+    the range shares, at flat-colour fidelity that could not be mistaken for a
+    photograph of a particular board.
+
+    pi_3b_plus is the one model with slot geometry and no artwork, so this is
+    what its two card steps draw until a photo of one exists.
+    """
+    green = (0.13, 0.44, 0.20, 1)
+    gold = (0.83, 0.68, 0.22, 1)
+    silver = (0.72, 0.74, 0.76, 1)
+    dark = (0.10, 0.10, 0.11, 1)
+    Color(*green)
+    RoundedRectangle(pos=(x, y), size=(w, h), radius=[min(w, h) * 0.06] * 4)
+    # 40-pin header along the top edge
+    Color(*gold)
+    pins, pad = 20, w * 0.055
+    run = w - pad * 2
+    step = run / float(pins)
+    r = min(step * 0.34, h * 0.028)
+    for row in range(2):
+        cy = y + h - h * (0.11 + row * 0.075)
+        for i in range(pins):
+            cx = x + pad + step * (i + 0.5)
+            Ellipse(pos=(cx - r, cy - r), size=(r * 2, r * 2))
+    # mounting holes, one per corner
+    hr = min(w, h) * 0.045
+    for hx, hy in ((x + w * 0.06, y + h * 0.10), (x + w * 0.94, y + h * 0.10),
+                   (x + w * 0.06, y + h * 0.90), (x + w * 0.94, y + h * 0.90)):
+        Color(*gold)
+        Ellipse(pos=(hx - hr, hy - hr), size=(hr * 2, hr * 2))
+        Color(0, 0, 0, 1)
+        Ellipse(pos=(hx - hr * 0.45, hy - hr * 0.45), size=(hr * 0.9, hr * 0.9))
+    # the SoC, and a smaller die beside it
+    Color(*dark)
+    sw = min(w * 0.17, h * 0.30)
+    RoundedRectangle(pos=(x + w * 0.34, y + h * 0.38), size=(sw, sw),
+                     radius=[dp(2)] * 4)
+    Color(*silver)
+    RoundedRectangle(pos=(x + w * 0.56, y + h * 0.44), size=(sw * 0.72, sw * 0.6),
+                     radius=[dp(2)] * 4)
+    # port blocks along the bottom edge
+    Color(*silver)
+    for i in range(2):
+        RoundedRectangle(pos=(x + w * (0.30 + i * 0.30), y + h * 0.03),
+                         size=(w * 0.22, h * 0.14), radius=[dp(2)] * 4)
+
+
 class _CardStage(_LoopAnim):
     """Shared plumbing for the two steps that put a card into a Raspberry Pi.
 
@@ -751,18 +809,35 @@ class RadioToPiAnim(ConnectBoardAnim):
         # the stage and sized to leave that space. Centred and large, the first
         # build drew the radio below the widget's own bottom edge, where a
         # canvas simply stops (read off the glass, 2026-09-09).
+        # THE PI AND THE RADIO SHARE THE PICTURE, and the pair is what gets
+        # centred. Sizing the Pi alone and hanging it from the top left the
+        # radio whatever was underneath — on the panel that was a third of a
+        # board and the operator took it for an SD card, and on a wide stage it
+        # left the whole scene stranded up in one corner (2026-09-09).
         pa = pi_tex.width / float(pi_tex.height)
+        ba = board_tex.width / float(board_tex.height)
         side = self._geo.approach == "right"
         if side:
-            pw = min(w * 0.52, (h * 0.86) * pa)
+            pw = min(w * 0.46, (h * 0.86) * pa)
             ph = pw / pa
-            px = x + dp(8)
+        else:
+            ph = min(h * 0.38, (w * 0.72) / pa)
+            pw = ph * pa
+        # A RAK4631 is about four fifths of a Pi Zero along its longest side in
+        # real life; roughly half is as small as this may go before it stops
+        # reading as a board at all.
+        radio_box = min(h * 0.50, w * 0.32, max(pw, ph) * 0.85)
+        radio_w, radio_h = ((radio_box, radio_box / ba) if ba >= 1.0
+                            else (radio_box * ba, radio_box))
+        reach = min(h * 0.07, dp(24))
+        if side:
+            group = pw + reach + radio_w
+            px = x + (w - group) / 2.0
             py = y + (h - ph) / 2.0
         else:
-            ph = min(h * 0.50, (w * 0.86) / pa)
-            pw = ph * pa
+            group = ph + reach + radio_h
             px = x + (w - pw) / 2.0
-            py = y + h - ph - dp(4)                  # hung from the top
+            py = y + (h + min(group, h)) / 2.0 - ph
         data, power = self._socket_pts(px, py, pw, ph)
         # Which way a plug sits OUT of each socket: the reverse of how it
         # comes in. "bottom" boards are entered from below, "right" ones from
@@ -805,11 +880,7 @@ class RadioToPiAnim(ConnectBoardAnim):
                 # Longest side into one box — see ConnectBoardAnim._draw:
                 # sizing by height alone shrinks portrait board art to a third
                 # of the area of a landscape photo of the same board.
-                ba = board_tex.width / float(board_tex.height)
-                _box = min(h * 0.26, w * 0.34)
-                bw, bh = ((_box, _box / ba) if ba >= 1.0
-                          else (_box * ba, _box))
-                reach = min(h * 0.12, dp(46))
+                bw, bh = radio_w, radio_h
                 bx = data[0] + away[0] * (reach + bw * 0.5) - bw / 2 \
                     + away[0] * dp(30) * (1.0 - e)
                 by = data[1] + away[1] * (reach + bh * 0.5) - bh / 2 \
@@ -1653,11 +1724,21 @@ class InsertSdIntoPiAnim(_CardStage):
         travel = travel * travel * (3.0 - 2.0 * travel)
         cw, ch = w * 0.12, h * 0.16
         cx = self.x + w * 0.05 + (bx - cw * 0.5 - (self.x + w * 0.05)) * travel
+        card_tex = _card_texture()
         with self.canvas:
-            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
-            Rectangle(pos=(bx, by), size=(bw, bh))
-            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
-            Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
+            _draw_pi_board(bx, by, bw, bh)
+            if card_tex is not None:
+                # THE REAL CARD. It is the same card whatever the board is, so
+                # there was never a reason to draw it as a blue rectangle.
+                ca = card_tex.width / float(card_tex.height)
+                ch2 = h * 0.22
+                cw2 = ch2 * ca
+                Color(1, 1, 1, 1)
+                Rectangle(texture=card_tex,
+                          pos=(cx, by + bh / 2 - ch2 / 2), size=(cw2, ch2))
+            else:
+                Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+                Rectangle(pos=(cx, by + bh / 2 - ch / 2), size=(cw, ch))
 
 
 class SdHandoverAnim(_CardStage):
@@ -1765,6 +1846,7 @@ class SdHandoverAnim(_CardStage):
         t = min(1.0, self.phase * 1.25)
         t = t * t * (3.0 - 2.0 * t)
         cw, ch = w * 0.09, h * 0.20
+        card_tex = _card_texture()
         start = x + w * 0.30
         cx = start + (bx - cw * 0.4 - start) * t
         with self.canvas:
@@ -1774,11 +1856,18 @@ class SdHandoverAnim(_CardStage):
                 Color(1, 1, 1, 1)
                 Rectangle(texture=medic, pos=(x + dp(2), y + (h - mh) / 2.0),
                           size=(mw, mh))
-            Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
-            RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(6)] * 4)
-            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
-            RoundedRectangle(pos=(cx, y + (h - ch) / 2.0), size=(cw, ch),
-                             radius=[dp(3)] * 4)
+            _draw_pi_board(bx, by, bw, bh)
+            if card_tex is not None:
+                ca = card_tex.width / float(card_tex.height)
+                ch2 = h * 0.24
+                cw2 = ch2 * ca
+                Color(1, 1, 1, 1)
+                Rectangle(texture=card_tex, pos=(cx, y + (h - ch2) / 2.0),
+                          size=(cw2, ch2))
+            else:
+                Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+                RoundedRectangle(pos=(cx, y + (h - ch) / 2.0), size=(cw, ch),
+                                 radius=[dp(3)] * 4)
 
 
 class ConnectPiAnim(ConnectBoardAnim):
