@@ -17,6 +17,7 @@ preview_birth_walk's own note).
     WALK_BOARD   board_key for animations that take one      (heltec32_v4)
     WALK_PI      pi_key for the Pi animations                (pi_3a_plus)
     WALK_FRAMES  how many phases to sample across the loop   (8)
+    WALK_CALL    a no-argument method to call before shooting  (none)
 """
 import os
 import sys
@@ -76,6 +77,13 @@ class Preview(App):
         # screenshot taken against a moving phase cannot be labelled with the
         # phase it shows.
         self.anim.stop()
+        # A mode an animation only enters later (the charge-only cable
+        # demonstration, which starts after 150 s on the real step) cannot be
+        # photographed without asking for it.
+        call = os.environ.get("WALK_CALL", "")
+        if call:
+            getattr(self.anim, call)()
+            self.anim.stop()
         self.n = 0
         Clock.schedule_once(self._shoot, 0.6)
 

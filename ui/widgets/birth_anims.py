@@ -1872,12 +1872,19 @@ class ConnectPiAnim(ConnectBoardAnim):
     def _payloads(self, pts, seated):
         """Three payloads travelling the run toward the plug. Only ever drawn
         on the demonstration's SECOND cycle — the cable that works."""
-        aim = theme.hex_to_rgba(theme.COLORS["accent"])
-        Color(aim[0], aim[1], aim[2], 0.95)
+        # WHITE, not accent blue: the operator's own cable art IS blue, and
+        # blue payloads on a blue braid disappeared when this was read off the
+        # glass. Not green either — green is "the medic can see it" on this
+        # screen, and the whole point of the demonstration is that nothing has
+        # been seen yet.
         for k in range(3):
             u = (seated * 1.6 + k / 3.0) % 1.0
             bxp, byp = pts[int((1.0 - u) * (len(pts) - 1))]
             r = dp(5.0)
+            Color(1, 1, 1, 0.35)
+            Ellipse(pos=(bxp - r * 1.7, byp - r * 1.7),
+                    size=(r * 3.4, r * 3.4))          # a soft halo
+            Color(1, 1, 1, 0.98)
             Ellipse(pos=(bxp - r, byp - r), size=(r * 2, r * 2))
 
     @staticmethod

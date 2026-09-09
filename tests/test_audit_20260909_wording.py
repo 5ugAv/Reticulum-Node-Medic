@@ -196,7 +196,12 @@ def test_the_cable_demonstration_never_uses_green():
     src = open("ui/widgets/birth_anims.py").read()
     pay = func_source("ui/widgets/birth_anims.py", "_payloads",
                       cls="ConnectPiAnim")
-    assert "accent" in pay and "green" not in pay.lower()
+    code = "\n".join(l for l in pay.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "green" not in code.lower(), \
+        "green is 'the medic can see it', and nothing has been seen yet"
+    assert "_CABLE" not in code and "COLORS[" not in code, \
+        "no themed data/connection colour on a hypothetical"
     doubt = func_source("ui/widgets/birth_anims.py", "show_cable_doubt",
                         cls="ConnectPiAnim")
     assert "_doubt" in doubt
