@@ -119,3 +119,22 @@ def test_the_completion_card_only_names_the_screen_on_boards_that_have_one():
     assert "CONFIG MODE" not in branch[j:], \
         "a screenless board must not be told to read its screen"
     assert "VITALS" in branch[j:], "give it the check it CAN run"
+
+
+# --- 5.4. the Pi picker gets the photos the radio picker has had all along --
+
+def test_the_pi_picker_shows_each_model():
+    pick = func_source(SCREEN, "_render_pick_pi", cls="BirthGuideScreen")
+    assert "image_for_pi" in pick, "the rows must carry the model's photo"
+    code = "\n".join(l for l in pick.splitlines()
+                     if not l.strip().startswith("#"))
+    i = code.index("if not png:")
+    assert "continue" in code[i:i + 120], \
+        "a model with no photo stays text-only — never another Pi's picture"
+
+
+def test_exactly_one_pi_model_still_has_no_art():
+    """If art lands for pi_3b_plus this can go; until then the fallback is the
+    thing under test, so it must stay reachable."""
+    from ui.board_images import pi_art_status
+    assert pi_art_status()["pi_3b_plus"] is False

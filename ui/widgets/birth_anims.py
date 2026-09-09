@@ -643,7 +643,9 @@ class ConnectAntennaAnim(_LoopAnim):
     _ANT_TWIST_DEG = 11.0           # antenna's screw-on rotation, damps to 0 as it seats
 
     def __init__(self, **kwargs):
-        super().__init__(duration=3.6, **kwargs)
+        # TWO halves now, so twice the loop — each half keeps the
+        # 3.6 s it was paced for.
+        super().__init__(duration=7.2, **kwargs)
 
     @staticmethod
     def _ease(v):
@@ -677,7 +679,27 @@ class ConnectAntennaAnim(_LoopAnim):
         if board is None or pig is None or ant is None:
             return self._draw_fallback()
         w, h = self.width, self.height
-        p = self.phase
+        # TWO HALVES, because there are two kinds of board and this screen is
+        # shown BEFORE detection — the medic does not know which one is in the
+        # operator's hand. The words were rewritten in 2026-08-14 to stop
+        # asserting a pigtail; the picture went on asserting it every second
+        # of the loop, which is worse, because a picture is not read as a
+        # claim (audit, 2026-09-09).
+        #
+        #   first half  — an SMA-on-PCB board (T-Beam family): the antenna
+        #                 screws straight onto the board, no pigtail at all;
+        #   second half — a U.FL board (Heltec, RAK): the pigtail clicks on
+        #                 first, then the antenna screws onto its SMA end.
+        #
+        # Same motion vocabulary in both, so the second half reads as "and if
+        # your board has the little gold socket, there is one more piece".
+        if self.phase < 0.5:
+            return self._draw_half(board, ant, w, h, (self.phase / 0.5),
+                                   pig=None)
+        return self._draw_half(board, ant, w, h, ((self.phase - 0.5) / 0.5),
+                               pig=pig)
+
+    def _draw_half(self, board, ant, w, h, p, pig=None):
         pig_t = self._ease(p / 0.55)                       # pigtail seats first
         ant_t = self._ease((p - 0.35) / 0.50)              # antenna follows, overlapping
         seat = self._ease((p - 0.82) / 0.18)               # 0->1 near the end
@@ -688,6 +710,31 @@ class ConnectAntennaAnim(_LoopAnim):
         board_h = self._BOARD_H * h
         pig_h = self._PIG_H * h
         ant_h = self._ANT_H * h
+        if pig is None:
+            # DIRECT SMA: nothing between the board and the antenna. The
+            # antenna's own SMA face seats on the board's connector, with the
+            # same screw-on twist damping out as it lands.
+            # No pigtail to wait for, so the antenna moves from the first
+            # frame — the shared timing leaves a third of the half standing
+            # still, which reads as a stalled animation.
+            ant_t = self._ease(p / 0.78)
+            ant_off = ((1.0 - ant_t) * self._ANT_ENTER[0] * w,
+                       (1.0 - ant_t) * self._ANT_ENTER[1] * h)
+            ant_target = (socket[0] + ant_off[0], socket[1] + ant_off[1])
+            ant_rot = (1.0 - ant_t) * self._ANT_TWIST_DEG
+            with self.canvas:
+                self._blit_anchor(board, self._BOARD_UFL, socket, board_h)
+                self._blit_anchor(ant, self._ANT_SMA, ant_target, ant_h,
+                                  rot_deg=ant_rot)
+                if pulse > 0.01:
+                    g = theme.hex_to_rgba(theme.COLORS["green"])
+                    kx = self.x + socket[0]
+                    ky = self.y + self.height - socket[1]
+                    Color(g[0], g[1], g[2], 0.85 * pulse)
+                    Line(circle=(kx, ky, dp(6) + pulse * dp(16)), width=dp(2.4))
+            self._hide_label("ufl")
+            self._hide_label("sma")
+            return
         pig_w = pig_h * (pig.width / float(pig.height))
         # pigtail's SMA end relative to its IPEX end (in seated px)
         sma_dx = (self._PIG_SMA[0] - self._PIG_IPEX[0]) * pig_w

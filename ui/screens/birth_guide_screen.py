@@ -3158,15 +3158,37 @@ class BirthGuideScreen(BoxLayout):
         # writes a card that boots and never appears.
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(16))
         col.bind(minimum_height=col.setter("height"))
+        # A PHOTO PER ROW, exactly as the radio picker has had since
+        # 2026-08-09. This answer decides the dwc2 dr_mode written onto the
+        # card, and a wrong tap makes a card that boots and never appears —
+        # the failure that reads as a dead cable. "Pi 3 Model A+" and "Pi 3
+        # Model B+" are one word apart in a list and unmistakable in a
+        # picture. Art exists for four of the five models; pi_3b_plus has
+        # none, and that row stays text-only rather than borrowing another
+        # Pi's photo — the degradation image_for_pi's contract asks for
+        # (audit, 2026-09-09).
+        from kivy.uix.image import Image as _Img
+        from ui.board_images import image_for_pi
         for key, name in PI_HOSTS:
             if key == "none":
                 continue                      # this path always has a Pi
+            png = image_for_pi(key)
             b = Button(text=name, size_hint_y=None, height=dp(58),
                        font_size="17sp", bold=True, background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             b.bind(on_release=lambda _b, k=key: self._pi_picked(k))
-            col.add_widget(b)
+            if not png:
+                col.add_widget(b)
+                continue
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(72), spacing=dp(10))
+            row.add_widget(_Img(source=png, allow_stretch=True, keep_ratio=True,
+                                size_hint_x=None, width=dp(104)))
+            b.size_hint_y = 1
+            b.height = dp(72)
+            row.add_widget(b)
+            col.add_widget(row)
         body.add_widget(col)
         wrap.add_widget(body)
         back = self._back_row()
