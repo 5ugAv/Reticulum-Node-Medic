@@ -148,9 +148,36 @@ def build_topology(registry, paths: List[dict], now: float,
     # each entry belongs to, and set_kin_roster stamps it on the record as
     # device_id. This folds on that and NOTHING weaker — never on name, which
     # would merge two nodes a keeper happened to call the same thing.
+    # TWO KINDS OF DUPLICATE, and they need different keys.
+    #
+    #  1. One IDENTITY minting several destinations. Verified live 2026-09-09:
+    #     5a190019 and 5a1a001a both carry identity 5a1b001b (one RTNode), and
+    #     5a1c001c/5a1d001d both carry 5a1e001e (that board before its
+    #     rebirth). device_id does not catch these, because device_id only
+    #     exists for nodes the kin roster names — a stranger's aspects, or our
+    #     own before the paperwork lands, have none.
+    #
+    #  2. Several IDENTITIES on one machine. ELSEWHERE is three, deliberately:
+    #     registry.py:437-441 keeps the health reporter's identity apart from
+    #     rnsd's so "no amount of listening will ever link them". Only the
+    #     roster knows they are one box, so only device_id can fold those.
+    #
+    # So: device first (it spans identities), identity second (it needs no
+    # roster), destination last. Never name — two nodes a keeper happened to
+    # call the same thing are still two nodes.
     fold = {}
     for dst, rec in registry.nodes.items():
-        fold[dst] = getattr(rec, "device_id", None) or dst
+        fold[dst] = (getattr(rec, "device_id", None)
+                     or getattr(rec, "identity_hash", None)
+                     or dst)
+    # An identity is itself announced as a destination, so a record may key on
+    # a hash that is ANOTHER record's fold target. Chase one level so both land
+    # on the same node rather than forming a two-link chain (5a020002's
+    # identity IS 5a010001's destination hash — seen live).
+    for dst, key in list(fold.items()):
+        target = fold.get(key)
+        if target and target != key:
+            fold[dst] = target
 
     def _f(h):
         """The node id a hash belongs to. Unknown hashes stand for themselves."""

@@ -345,3 +345,68 @@ def test_a_node_with_no_device_id_stands_for_itself():
     r.register("p2", name="Twin", lat=-37.8, lon=145.1)
     topo = build_topology(r, paths=[], now=NOW)
     assert len([n for n in topo.nodes if n.name == "Twin"]) == 2
+
+
+# --- the second kind of duplicate: one identity, several destinations ------
+# Operator, 2026-09-09, looking at a path table holding far more identities
+# than nodes: "im guessing the extras on the table are multiple identities from
+# single nodes, this has been an issue."
+#
+# Confirmed live. 5a190019 and 5a1a001a both carry identity 5a1b001b (one
+# RTNode); 5a1c001c and 5a1d001d both carry 5a1e001e (that same board before
+# its rebirth). device_id cannot fold these — it exists only for nodes the kin
+# roster names, so a stranger's aspects, or our own before the paperwork lands,
+# have none. identity_hash needs no roster.
+
+def _identity_registry():
+    r = NodeRegistry()
+    for h in ("d1", "d2"):
+        r.register(h, name="Wanderer")
+        r.nodes[h].identity_hash = "ident-A"
+    r.nodes["d1"].lat, r.nodes["d1"].lon = -37.71, 145.01
+    r.register("other", name="Someone Else", lat=-37.80, lon=145.20)
+    r.nodes["other"].identity_hash = "ident-B"
+    return r
+
+
+def test_destinations_of_one_identity_fold_without_any_roster():
+    topo = build_topology(_identity_registry(), paths=[], now=NOW)
+    assert len([n for n in topo.nodes if n.name == "Wanderer"]) == 1
+    assert len([n for n in topo.nodes if n.name == "Someone Else"]) == 1
+
+
+def test_device_beats_identity_when_both_are_known():
+    """ELSEWHERE is three SEPARATE identities on one machine, kept apart on
+    purpose. Only the roster's device knows they are one box, so device must
+    win over identity."""
+    r = NodeRegistry()
+    for h, ident in (("e1", "i1"), ("e2", "i2"), ("e3", "i3")):
+        r.register(h, name="ELSEWHERE")
+        r.nodes[h].identity_hash = ident
+        r.nodes[h].device_id = "one-pi"
+    r.nodes["e2"].lat, r.nodes["e2"].lon = -37.512, 145.523
+    topo = build_topology(r, paths=[], now=NOW)
+    assert len([n for n in topo.nodes if n.name == "ELSEWHERE"]) == 1
+    n = next(n for n in topo.nodes if n.name == "ELSEWHERE")
+    assert n.lat is not None, "the located aspect's coordinates must survive"
+
+
+def test_an_identity_that_is_also_a_destination_lands_on_one_node():
+    """Seen live: 5a020002's identity_hash IS 5a010001's destination hash. A
+    single fold pass would leave a two-link chain and two dots."""
+    r = NodeRegistry()
+    r.register("5a010001", name="ELSEWHERE", lat=-37.512, lon=145.523)
+    r.register("5a020002", name="ELSEWHERE")
+    r.nodes["5a020002"].identity_hash = "5a010001"
+    topo = build_topology(r, paths=[], now=NOW)
+    assert len([n for n in topo.nodes if n.name == "ELSEWHERE"]) == 1
+
+
+def test_folding_still_never_merges_on_a_name():
+    r = NodeRegistry()
+    r.register("t1", name="Twin", lat=-37.7, lon=145.0)
+    r.nodes["t1"].identity_hash = "ident-1"
+    r.register("t2", name="Twin", lat=-37.8, lon=145.1)
+    r.nodes["t2"].identity_hash = "ident-2"
+    topo = build_topology(r, paths=[], now=NOW)
+    assert len([n for n in topo.nodes if n.name == "Twin"]) == 2
