@@ -1227,8 +1227,14 @@ class BirthGuideScreen(BoxLayout):
         p = c.get("params") or {}
         det = (f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
                f"Radio:  {(p.get('freq', 0) / 1e6):.3f} MHz   SF{p.get('sf')}   "
-               f"{int(p.get('bw', 0) / 1000)}k   CR{p.get('cr')}   {p.get('txp')} dBm   [OK]\n"
-               f"Identity:  {(c.get('identity_hash') or '')[:16]}…   Beaconing [OK]")
+               f"{int(p.get('bw', 0) / 1000)}k   CR{p.get('cr')}   {p.get('txp')} dBm\n"
+               # NO [OK] HERE. Both were literals: nothing on this screen
+               # checked the parameters, and nothing checked that the node is
+               # beaconing — with values missing it rendered
+               # "0.000 MHz SFNone 0k CRNone None dBm [OK]". The already-kin
+               # screen was fixed for exactly this ("only the LIVE probe branch
+               # may claim live proof"); the adopt screen kept the claim.
+               f"Identity:  {(c.get('identity_hash') or '')[:16]}…")
         wrap.add_widget(_line(det, "13.5sp", color="text_secondary", h=78))
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
@@ -3637,8 +3643,17 @@ class BirthGuideScreen(BoxLayout):
         else:
             how = tr("by Node Medic")
         wrap.add_widget(_line(
-            tr("Radio flashed and verified, card written, Pi provisioned "
-               "{how}. It lives in VITALS from now on.").format(how=how),
+            # ONLY CLAIM THE FLASH WHEN THIS LAP DID ONE. On the "I already
+            # have a working radio" road (_pi_flash_radio False) the medic
+            # never touched a radio — all three flashing steps are dropped from
+            # the walkthrough — yet this sentence credited it anyway. Same
+            # class as the "over the cable" claim fixed three lines above
+            # (2026-09-09 audit).
+            (tr("Radio flashed and verified, card written, Pi provisioned "
+                "{how}. It lives in VITALS from now on.").format(how=how)
+             if getattr(self, "_pi_flash_radio", True) else
+             tr("Card written, Pi provisioned {how}. It lives in VITALS "
+                "from now on.").format(how=how)),
             "15sp", color="text_secondary", h=52))
         # "It is off Node Medic and running on its own power now" IS GONE. The
         # medic never checked: the step before this one ASKS for the Pi to be

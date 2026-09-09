@@ -17,6 +17,7 @@
   "Both warnings are normal: they appear for any app not from the Play Store. This one came from the medic in front of you.": "Tupela toklukaut i samting nating: ol i kamap long olgeta ap i no bilong Play Store. Dispela i kam long medic i stap long ai bilong yu.",
   "Cable into the INNER micro-USB, nearer the mini-HDMI.\nIts own supply on the OUTER, marked PWR IN — a socket each.": "Putim kebol long micro-USB INSAIT, klostu long mini-HDMI.\nPawa bilong em yet long ARASAIT, i gat mak PWR IN — wanwan hul.",
   "Card in the Pi? Now give it power": "Kad i stap long Pi? Nau givim pawa long en",
+  "Card written, Pi provisioned {how}. It lives in VITALS from now on.": "Kad i raitim pinis, Pi i redi {how}. Nau em i stap long VITALS.",
   "Checking what's carried…": "Lukluk long wanem samting i stap…",
   "Choose the language Node Medic runs in.": "Makim tokples bilong Node Medic.",
   "Communication apps": "Ol ap bilong toktok",
@@ -94,6 +95,7 @@
   "WiFi & Network": "Wi-Fi na netwok",
   "plug in the radio you flashed at the start": "putim redio yu bin wokim long stat",
   "plug in your radio": "putim redio bilong yu",
+  "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• rausim kebol bilong Node Medic — Pi i ron long paua bilong em yet nau\n• putim redio yu bin flasim long stat\n• givim Pi paua bilong em yet\n• i gat RGB LED? Isi isi waitpela lait = redio i stap gut — lukim VITALS",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• rausim Pi long Node Medic — redio i nidim dispela hul\n• putim redio bilong yu\n• givim Pi pawa bilong em yet\n• RGB LED (sapos yu laik)? Waitpela lait i go daun isi = redio i wok — sekim long VITALS",
   "●  keeping watch — you don't need to press anything": "●  mi was i stap — yu no nidim paitim wanpela samting"
 }

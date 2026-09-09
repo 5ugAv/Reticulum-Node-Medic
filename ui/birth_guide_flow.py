@@ -511,6 +511,11 @@ _STEPS = {
         # and idle; solid white = boot error) — not "stops pulsing = ready",
         # which would be the opposite of what the board actually shows.
         {"title": "",
+         # Bullet 1 is PER BOARD. On a Zero the radio really does take the
+         # socket the medic's cable was in, and on a 3A+ the USB-A — but a
+         # 4B/5 has one USB-C carrying both and a free USB-A the whole time,
+         # so "the radio needs that socket" is simply untrue there, and the
+         # hint two lines below already said so (2026-09-09 audit).
          "body": tr("\u2022 unplug the Pi from Node Medic \u2014 the radio needs that "
                     "socket\n"
                     "\u2022 plug in the radio you flashed at the start\n"
@@ -611,6 +616,24 @@ def guide_steps(path, pi_key="", flash_radio=True, board_key=""):
                         st["hint"] = tr("Nothing leaves your network.")
         except Exception:                                          # noqa: BLE001
             pass
+    # BULLET 1 IS PER BOARD. On a Zero the radio really does take the socket
+    # the medic's cable was in, and on a 3A+ the USB-A — but a 4B/5 has ONE
+    # USB-C carrying power and data and a USB-A free the whole build, so "the
+    # radio needs that socket" is untrue there. The hint two lines below the
+    # bullet already said the right thing per board; the bullet never got the
+    # same treatment (2026-09-09 audit). Whole strings, never a substring edit,
+    # for the translation reason recorded below.
+    if path == "pi" and pi_key in ("pi_4b", "pi_5"):
+        for st in steps:
+            if st.get("anim") == "radio_to_pi":
+                st["body"] = tr(
+                    "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
+                    "own supply from here\n"
+                    "\u2022 plug in the radio you flashed at the start\n"
+                    "\u2022 give the Pi its own power supply\n"
+                    "\u2022 optional RGB LED? Slow white breathe = radio "
+                    "alive \u2014 check VITALS")
+
     if path == "pi" and not flash_radio:
         steps = [s for s in steps if s.get("title") not in _PI_FLASH_STEP_TITLES]
         for s in steps:

@@ -17,6 +17,7 @@
   "Both warnings are normal: they appear for any app not from the Play Store. This one came from the medic in front of you.": "Maonyo yote mawili ni ya kawaida: yanatokea kwa programu yoyote isiyotoka Play Store. Hii imetoka kwenye medic iliyo mbele yako.",
   "Cable into the INNER micro-USB, nearer the mini-HDMI.\nIts own supply on the OUTER, marked PWR IN — a socket each.": "Kebo kwenye micro-USB ya NDANI, karibu na mini-HDMI.\nUmeme wake mwenyewe kwenye ya NJE, iliyoandikwa PWR IN — kila moja na tundu lake.",
   "Card in the Pi? Now give it power": "Kadi imo kwenye Pi? Sasa ipe umeme",
+  "Card written, Pi provisioned {how}. It lives in VITALS from now on.": "Kadi imeandikwa, Pi imeandaliwa {how}. Kuanzia sasa yuko kwenye VITALS.",
   "Checking what's carried…": "Inakagua kilichobebwa…",
   "Choose the language Node Medic runs in.": "Chagua lugha ya Node Medic.",
   "Communication apps": "Programu za mawasiliano",
@@ -94,6 +95,7 @@
   "WiFi & Network": "Wi-Fi na mtandao",
   "plug in the radio you flashed at the start": "unganisha redio uliyoandaa mwanzoni",
   "plug in your radio": "unganisha redio yako",
+  "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• ondoa kebo ya Node Medic — Pi sasa inatumia umeme wake mwenyewe\n• chomeka redio uliyoiweka programu mwanzoni\n• ipe Pi chanzo chake cha umeme\n• kuna taa ya RGB? Mpigo wa polepole mweupe = redio hai — angalia VITALS",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• toa Pi kutoka Node Medic — redio inahitaji tundu hilo\n• unganisha redio yako\n• ipe Pi umeme wake mwenyewe\n• LED ya RGB hiari? Kupumua nyeupe polepole = redio inafanya kazi — angalia VITALS",
   "●  keeping watch — you don't need to press anything": "●  naangalia — huhitaji kubonyeza chochote"
 }

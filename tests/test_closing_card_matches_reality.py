@@ -151,3 +151,47 @@ def test_a_wifi_rtnode_keeps_the_portal_story():
         step = [s for s in guide_steps("radio", board_key=key)
                 if s.get("anim") == "provision"]
         assert "setup Wi-Fi" in step[0]["body"], f"{key} does use the portal"
+
+
+# --- claims a lap did not earn --------------------------------------------
+
+def test_the_done_screen_does_not_credit_a_flash_that_never_happened():
+    """On the "I already have a working radio" road the medic never touches a
+    radio — all three flashing steps are dropped — yet the closing sentence
+    said "Radio flashed and verified" anyway (2026-09-09 audit)."""
+    from tests.srcutil import func_source
+    body = func_source("ui/screens/birth_guide_screen.py", "_render_done",
+                       cls="BirthGuideScreen")
+    code = "\n".join(l for l in body.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "_pi_flash_radio" in code, "must branch on whether THIS lap flashed"
+    assert "Card written, Pi provisioned" in code, "the no-flash sentence"
+
+
+def test_the_usb_adopt_screen_stops_asserting_unmeasured_OKs():
+    """Both [OK]s were literals: nothing there checked the parameters, and
+    nothing checked the node was beaconing. With values missing it rendered
+    "0.000 MHz SFNone 0k CRNone None dBm [OK]"."""
+    from tests.srcutil import func_source
+    body = func_source("ui/screens/birth_guide_screen.py", "_render_adopt",
+                       cls="BirthGuideScreen")
+    code = "\n".join(l for l in body.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "Beaconing [OK]" not in code, "nothing here checked that"
+    assert "dBm   [OK]" not in code, "nothing here checked the parameters"
+
+
+def test_the_last_bullet_is_per_board():
+    """A 4B/5 has one USB-C for power and data and a free USB-A the whole
+    build, so "the radio needs that socket" is untrue there — while the hint
+    below it already said the right thing per board."""
+    from ui.birth_guide_flow import guide_steps
+    for key in ("pi_zero_2w", "pi_3a_plus"):
+        step = [s for s in guide_steps("pi", key)
+                if s.get("anim") == "radio_to_pi"][0]
+        assert "the radio needs that socket" in step["body"], key
+    for key in ("pi_4b", "pi_5"):
+        step = [s for s in guide_steps("pi", key)
+                if s.get("anim") == "radio_to_pi"][0]
+        assert "the radio needs that socket" not in step["body"], key
+        assert "own supply" in step["body"], key
