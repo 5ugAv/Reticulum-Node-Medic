@@ -867,7 +867,7 @@ class ProvisionAnim(_LoopAnim):
                 continue
             px = a[0] + (b[0] - a[0]) * u
             py = a[1] + (b[1] - a[1]) * u - math.sin(u * math.pi) * dp(10)
-            r = dp(2.0)
+            r = dp(3.0)
             Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
         for k in range(dots):
             u = (phase + k / float(max(1, dots))) % 1.0
@@ -932,10 +932,13 @@ class ProvisionAnim(_LoopAnim):
             if beat == 0:
                 for i in range(3):
                     pr = (t + i / 3.0) % 1.0
-                    self._arc(n_edge[0], cy, dp(8) + pr * dp(52),
-                              -40, 40,
+                    # BIG enough to read as "this board is shouting". The
+                    # first pass drew them at the node's edge, small, and the
+                    # beat looked like nothing was happening.
+                    self._arc(n_edge[0], cy, dp(14) + pr * dp(96),
+                              -46, 46,
                               (accent[0], accent[1], accent[2],
-                               max(0.0, 1.0 - pr)))
+                               max(0.0, 1.0 - pr)), width=dp(3.4))
                 self._link((mx + mw / 2, my + mh), r_port, muted)
 
             # BEAT 2 — THE SWITCH-OVER, the part the operator asked about. The
