@@ -12,6 +12,7 @@ and this screen is transport-agnostic.
 
 from __future__ import annotations
 
+import re
 import threading
 
 from kivy.clock import Clock
