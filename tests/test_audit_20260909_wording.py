@@ -267,3 +267,20 @@ def test_the_cutter_leaves_white_that_is_part_of_the_board():
         white = (a[..., :3].min(axis=-1) > 225) & opaque
         assert white.mean() > want * 0.5, \
             f"{name}: its own white has been eaten ({white.mean():.2%})"
+
+
+def test_board_art_is_sized_by_its_longest_side():
+    """Every board photo in the catalogue was landscape until the RAK4631 art
+    arrived portrait (operator, 2026-09-09). Sizing a sprite by HEIGHT assumes
+    the wide shape: at the same height fraction a tall board draws about a
+    third of the area and reads as a chip. Each scene fits the longest side to
+    one box instead, so the next board's photo lands right whichever way round
+    it was taken."""
+    src = open("ui/widgets/birth_anims.py").read()
+    code = "\n".join(l for l in src.splitlines()
+                     if not l.strip().startswith("#"))
+    assert code.count("if ba >= 1.0") + code.count("_na >= 1.0") >= 3, \
+        "the board-drawing scenes must all fit the longest side"
+    from PIL import Image
+    im = Image.open("assets/boards/rak4631.png")
+    assert im.size[1] > im.size[0], "the RAK art is portrait — that is the case"

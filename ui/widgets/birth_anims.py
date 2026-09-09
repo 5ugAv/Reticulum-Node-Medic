@@ -438,10 +438,23 @@ class ConnectBoardAnim(_LoopAnim):
         my = y + (h - mh) / 2.0
         tipx = mx + _PLUG_TIP[0] * mw
         tipy = my + (1.0 - _PLUG_TIP[1]) * mh        # norm-from-top -> kivy y-up
-        # board: small (¼ the medic height), bottom USB port descends onto the tip
+        # board: small beside the medic, bottom USB port descending onto the tip.
+        #
+        # SIZED BY ITS LONGEST SIDE, not by height. Height alone assumes every
+        # board photo is wider than it is tall, which was true of the whole
+        # catalogue until the RAK4631 art arrived portrait (2026-09-09): at the
+        # same height fraction a tall sprite draws barely a third of the area
+        # and reads as a chip rather than a board. Fitting the longest side to
+        # one box makes portrait and landscape art land at a comparable size,
+        # whichever way round the next board's photo is taken.
         ba = board_tex.width / float(board_tex.height)
-        bh = mh * 0.25
-        bw = bh * ba
+        box = mh * 0.42
+        if ba >= 1.0:
+            bw = box
+            bh = bw / ba
+        else:
+            bh = box
+            bw = bh * ba
         p = min(1.0, self.phase / 0.9)
         if self.REVERSED:
             # Same sprites, same junction, motion RUN BACKWARDS: the board sits
@@ -703,8 +716,8 @@ class RadioToPiAnim(ConnectBoardAnim):
         py = y + (h - ph) / 2.0
 
         ba = board_tex.width / float(board_tex.height)
-        bh = ph * 0.46
-        bw = bh * ba
+        _box = ph * 0.62                      # longest side; see _draw above
+        bw, bh = (_box, _box / ba) if ba >= 1.0 else (_box * ba, _box)
         p = min(1.0, self.phase / 0.9)
         far_x = x + dp(6)
         near_x = px - bw * 0.72           # overlapping, not touching a named port
@@ -789,9 +802,13 @@ class RadioToPiAnim(ConnectBoardAnim):
                 # drawn at the end of that run, not floating: the cable is the
                 # thing that reaches the socket.
                 e = self._ease(t)
+                # Longest side into one box — see ConnectBoardAnim._draw:
+                # sizing by height alone shrinks portrait board art to a third
+                # of the area of a landscape photo of the same board.
                 ba = board_tex.width / float(board_tex.height)
-                bh = min(h * 0.20, (w * 0.34) / ba)
-                bw = bh * ba
+                _box = min(h * 0.26, w * 0.34)
+                bw, bh = ((_box, _box / ba) if ba >= 1.0
+                          else (_box * ba, _box))
                 reach = min(h * 0.12, dp(46))
                 bx = data[0] + away[0] * (reach + bw * 0.5) - bw / 2 \
                     + away[0] * dp(30) * (1.0 - e)
@@ -1162,9 +1179,15 @@ class ProvisionAnim(_LoopAnim):
         node_a = 0.35 if (beat == 3 and t < 0.28) else 1.0
 
         with self.canvas:
-            nh = h * 0.34
-            nw = nh * (node.width / float(node.height)) if node is not None \
-                else h * 0.5
+            # Longest side into one box, so a portrait board photo is not
+            # drawn a third the size of a landscape one (2026-09-09).
+            if node is not None:
+                _na = node.width / float(node.height)
+                _box = h * 0.40
+                nw, nh = ((_box, _box / _na) if _na >= 1.0
+                          else (_box * _na, _box))
+            else:
+                nw = nh = h * 0.5
             nx, ny = x + w * 0.06, cy - nh / 2
             mh = h * 0.62
             mw = mh * (medic.width / float(medic.height)) if medic is not None \

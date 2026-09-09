@@ -160,6 +160,14 @@ HOW_TO_TELL: Dict[str, str] = {
     # string appears NOWHERE on it — a real source of confusion, so say it.
     "lora32_v21": ("Check the white label: MODEL: T3 V1.6.1 (the back is "
                    "silkscreened T3_V1.6). It will NOT say v2.1 anywhere."),
+    # Same trap, different vendor, and the operator hit it on the bench
+    # (2026-09-08: "its actually stamped rak 4630"). RAK4631 is the BOARD;
+    # RAK4630 is the module soldered to it, and the module is what carries the
+    # printing. The photo shows exactly that, so the words and the picture now
+    # agree.
+    "rak4631": ("The white module in the middle reads RAK4630 — that is the "
+                "module. The board it sits on is the RAK4631; nothing prints "
+                "\"4631\" on the hardware."),
 }
 
 

@@ -84,18 +84,34 @@ def test_the_lora32_v21_says_the_board_never_prints_v2_1():
 
 
 def test_boards_with_distinctive_looks_get_no_hint():
-    """The hint exists for families that look alike. A Heltec V3 does not need
-    one, and noise would train the operator to skip the line."""
+    """The hint exists for boards whose printing does not match their name. A
+    Heltec V3 says V3 on itself and needs no line; noise would train the
+    operator to skip the ones that matter."""
     from ui.board_images import how_to_tell
-    for k in ("heltec32_v3", "heltec32_v4", "rak4631", "tbeam_supreme"):
+    for k in ("heltec32_v3", "heltec32_v4", "tbeam_supreme"):
         assert how_to_tell(k) == ""
+
+
+def test_the_rak_hint_names_both_numbers():
+    """READ ON THE BENCH, not looked up: the operator, mid-birth on
+    2026-09-08 — "its actually stamped rak 4630". RAK4631 is the board;
+    RAK4630 is the module soldered to it, and the module carries the
+    printing, so an operator checking the silkscreen against our name finds a
+    different number and doubts the tool. The board photo supplied on
+    2026-09-09 shows the same stamp, so words and picture now agree."""
+    from ui.board_images import how_to_tell
+    tell = how_to_tell("rak4631")
+    assert "RAK4630" in tell and "RAK4631" in tell
 
 
 def test_only_verified_markings_are_claimed():
     """Same rule as the chip-variant table: a marking nobody has read is a
-    guess, and a guess printed as instruction is worse than silence."""
+    guess, and a guess printed as instruction is worse than silence. Both
+    entries here were read off real hardware — the LilyGO label from their own
+    two-sided product photo and the wiki, the RAK stamp by the operator with
+    the board in hand."""
     from ui.board_images import HOW_TO_TELL
-    assert set(HOW_TO_TELL) == {"lora32_v21"}
+    assert set(HOW_TO_TELL) == {"lora32_v21", "rak4631"}
 
 
 def test_the_birth_screen_shows_the_hint_with_the_photo():
