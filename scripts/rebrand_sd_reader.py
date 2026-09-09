@@ -37,16 +37,17 @@ CARDS = (
     {"path": os.path.join(_ANIM, "sd_reader.png"), "text": "32",
      "angle": -33.0, "centre": (250, 900), "digits": (170, 852, 254, 922),
      "size": 86, "dx": -3, "dy": -8},
+    # The SAME card, drawn smaller and at a different angle, on the step that
+    # puts a card INTO the medic (birth_anims.InsertSdAnim draws SD_PNG
+    # directly, not _card_texture). Its angle was found by rotating until the
+    # ink's row profile is sharpest — reading it off by eye put it 14 degrees
+    # out, and at 33 the two text lines sat across each other so a box around
+    # the capacity ate the top of "A1".
+    {"path": os.path.join(_ANIM, "sd_card.png"), "text": "32GB",
+     "angle": -47.0, "centre": (238, 238), "digits": (136, 226, 294, 290),
+     "size": 68, "dx": 0, "dy": -9},
 )
 
-#: NOT sd_card.png, and deliberately. That sprite draws the same card at a
-#: different angle in a tighter crop: its glyphs TOUCH — no clean column
-#: between the "4" and the "G" — and no single rotation levels its two text
-#: lines at once. Every cut tried left either a hook of the old 4 or a chewed
-#: "A1", and a chewed glyph is worse than an old number on a file nobody sees:
-#: it is only the FALLBACK behind sd_card_endurance.png
-#: (birth_anims._card_texture), used if that file ever goes missing. If it is
-#: ever redrawn, it should be redrawn as art, not patched.
 #: The cream the lettering is printed in, measured off the glyphs themselves.
 INK = (234, 216, 180)
 
