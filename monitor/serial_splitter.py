@@ -124,13 +124,32 @@ class KissGpsSplitter:
         self.airtime: Optional[float] = None       # 0..1 short-term
         self.channel_load: Optional[float] = None  # 0..1 short-term
         self.interference: Optional[int] = None    # dBm, or None when clean
+        #: Zero-airtime census of relayed announces already crossing this port.
+        #: Counts only — builds no edges, changes no behaviour. See
+        #: monitor/relay_census.py for why this question comes first.
+        from monitor.relay_census import RelayCensus
+        self.census = RelayCensus()
 
     def feed(self, data: bytes) -> bytes:
         out = bytearray()
         for byte in data:
             if byte == FEND:
                 if self._in_frame and self._buf:
-                    self._record_stats(self._buf)          # observe, never consume
+                    # OBSERVERS, NEVER CONSUMERS — and never able to break the
+                    # stream. This runs in the medic's live radio path: rnsd is
+                    # on the other end of `out`, so an exception raised by
+                    # anything observational here would take the LoRa link down.
+                    # _record_stats was unguarded; it is guarded now for the
+                    # same reason the census is. Counting is never worth a
+                    # dropped packet.
+                    try:
+                        self._record_stats(self._buf)
+                    except Exception:                      # noqa: BLE001
+                        pass
+                    try:
+                        self.census.observe(_unescape(bytes(self._buf)))
+                    except Exception:                      # noqa: BLE001
+                        pass
                     if not self._consume_gps(self._buf):
                         out += bytes([FEND]) + self._buf + bytes([FEND])
                 self._buf = bytearray()
