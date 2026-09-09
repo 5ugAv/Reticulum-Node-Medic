@@ -316,3 +316,48 @@ def test_only_ONE_module_defines_where_the_state_file_lives():
         if 'expanduser("~/gps_state.json")' in txt and "LEGACY" not in txt:
             offenders.append(f.name)
     assert not offenders, f"these still define the path themselves: {offenders}"
+
+
+# --- the fuzz has to be a fuzz (audit, 2026-09-09) --------------------------
+
+def test_the_offset_is_not_computable_from_public_information():
+    """It used to be. The seed was the node's destination hash — printed in
+    every announce — run through a published formula in an open-source repo,
+    so anyone seeing the pin could subtract the offset back off. The
+    advertised radius was 800 m and the real protection was ZERO, while every
+    screen and the README promised "never the real one"."""
+    from monitor.geo import fuzz_location
+    lat, lon, key = -37.79, 144.96, "99aabbcc"
+    a = fuzz_location(lat, lon, key, salt=b"a" * 32)
+    b = fuzz_location(lat, lon, key, salt=b"b" * 32)
+    assert (a[0], a[1]) != (b[0], b[1]), \
+        "two medics must not land on the same offset for the same node"
+
+
+def test_it_is_still_deterministic_for_one_medic():
+    """A pin that wanders can be averaged away — that is why the offset is
+    per-node and stable, and this fix must not have traded that away."""
+    from monitor.geo import fuzz_location
+    s = b"c" * 32
+    assert fuzz_location(-37.79, 144.96, "99aabbcc", salt=s) == \
+        fuzz_location(-37.79, 144.96, "99aabbcc", salt=s)
+
+
+def test_the_salt_is_generated_once_and_kept_private(tmp_path):
+    from monitor.geo import fuzz_salt
+    p = str(tmp_path / "sub" / "location_salt")
+    first = fuzz_salt(p)
+    assert len(first) >= 16
+    assert fuzz_salt(p) == first, "a new salt every read would move the pin"
+    import os
+    assert oct(os.stat(p).st_mode & 0o777) == "0o600"
+
+
+def test_a_read_only_home_still_publishes(tmp_path, monkeypatch):
+    """A crash here must never stop a node publishing — the in-memory
+    fallback is worse for pin stability and still unsolvable from outside."""
+    from monitor import geo
+    monkeypatch.setattr(geo.os, "makedirs",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("ro")))
+    salt = geo.fuzz_salt(str(tmp_path / "nope" / "salt"))
+    assert len(salt) >= 16

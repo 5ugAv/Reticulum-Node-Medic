@@ -12,6 +12,7 @@ reader queries gpsd. The coordinate/URL helpers are pure.
 from __future__ import annotations
 
 import json
+import binascii
 import os
 import subprocess
 import time
@@ -340,19 +341,83 @@ def public_pin_radius_m(firmware_jitter: bool = True) -> float:
     return FUZZ_RADIUS_M + (FIRMWARE_JITTER_M if firmware_jitter else 0.0)
 
 
+#: Where this medic keeps the secret that makes the offset unguessable.
+#: 0600, generated once, never transmitted and never in the repo.
+FUZZ_SALT_PATH = os.path.expanduser("~/.reticulum-node-medic/location_salt")
+
+
+def fuzz_salt(path: str = "") -> bytes:
+    """The per-medic secret the location offset is seeded with.
+
+    THE OFFSET HAS TO BE UNGUESSABLE, and for a long time it was not. It was
+    seeded by the node's destination hash alone — a PUBLIC value, printed in
+    every announce — through a published formula in an open-source repo. So
+    anyone who could see the fuzzed pin could recompute the same offset and
+    subtract it: the advertised radius was 800 m and the real protection was
+    ZERO metres (audit, 2026-09-09). Every screen and the README went on
+    promising "up to 800 m from the truth, never the real one".
+
+    Adding a secret to the seed restores the property the whole feature is
+    named for while keeping the two that make it safe: still deterministic per
+    node, so the pin does not wander and cannot be averaged away; still never
+    centred on the real point.
+
+    Generated once and kept 0600. It never leaves the medic — publishing it
+    would undo exactly what it is for. A medic with no writable home falls
+    back to a process-lifetime salt: an offset that changes when the tool
+    restarts is worse for the pin's stability but still not solvable from
+    outside, and a crash here must never stop a node publishing.
+    """
+    global _FUZZ_SALT
+    if _FUZZ_SALT is not None and not path:
+        return _FUZZ_SALT
+    target = path or FUZZ_SALT_PATH
+    try:
+        with open(target, "rb") as f:
+            salt = f.read().strip()
+        if len(salt) >= 16:
+            if not path:
+                _FUZZ_SALT = salt
+            return salt
+    except Exception:                                              # noqa: BLE001
+        pass
+    salt = binascii.hexlify(os.urandom(32))
+    try:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(salt)
+    except Exception:                                              # noqa: BLE001
+        pass                       # in-memory only; see the docstring
+    if not path:
+        _FUZZ_SALT = salt
+    return salt
+
+
+#: Cached so every announce does not re-read the file.
+_FUZZ_SALT = None
+
+
 def fuzz_location(lat: float, lon: float, node_key: str,
-                  radius_m: float = FUZZ_RADIUS_M) -> Tuple[float, float, float]:
+                  radius_m: float = FUZZ_RADIUS_M,
+                  salt: bytes = b"") -> Tuple[float, float, float]:
     """A privacy-fuzzed public position: (lat, lon, radius_m).
 
     The offset is DETERMINISTIC per node (seeded by *node_key*, e.g. the
-    destination hash): the same fake position every time. This matters — a
-    random offset per announce could be averaged away by an observer to
-    recover the true location. It is also never centred on the real point
-    (30-100% of the radius out), so the true position isn't at the middle of
-    the advertised circle."""
+    destination hash, together with this medic's secret salt): the same fake
+    position every time. This matters — a random offset per announce could be
+    averaged away by an observer to recover the true location. It is also
+    never centred on the real point (30-100% of the radius out), so the true
+    position isn't at the middle of the advertised circle.
+
+    THE SALT IS WHAT MAKES IT A FUZZ. Without it the seed is a public value
+    run through a published formula, and anybody can subtract the offset back
+    off — see fuzz_salt. Pass one explicitly only in tests.
+    """
     import hashlib
     import math
-    digest = hashlib.sha256(f"{node_key}:location-fuzz".encode()).digest()
+    key = salt or fuzz_salt()
+    digest = hashlib.sha256(key + f":{node_key}:location-fuzz".encode()).digest()
     angle = int.from_bytes(digest[0:4], "big") / 0xFFFFFFFF * 2 * math.pi
     frac = 0.3 + int.from_bytes(digest[4:8], "big") / 0xFFFFFFFF * 0.7
     dist = radius_m * frac
