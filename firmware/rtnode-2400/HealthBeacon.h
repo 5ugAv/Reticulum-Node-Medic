@@ -124,9 +124,63 @@ inline void health_beacon_send() {
 // just a normal beacon announce — no return address / nonce needed (the tool
 // correlates by our destination hash + freshness). Unknown opcodes are ignored,
 // so the request registry can grow without a firmware lockstep release.
+// WHO IS ALLOWED TO COMMAND THIS NODE? Nobody is authenticated here, and
+// nothing in Reticulum makes them: this is a SINGLE destination, so anyone who
+// has heard our announce holds the public key needed to encrypt a packet to
+// it. Every branch below therefore runs for any stranger within radio range.
+//
+// What that bought an attacker before this guard (audit, 2026-09-09):
+//   * 0x01 — make the node TRANSMIT, as often as they like. Airtime is the
+//     scarcest shared resource on this mesh and it is not even ours to spend;
+//   * 0x02 — ~4 s of blocking LED choreography;
+//   * 0x03 — FIFTEEN SECONDS of delay() inside the packet callback. Repeat it
+//     and a relay is simply off the air, which is a denial of service against
+//     every node behind it — and this project's own rule is that availability
+//     outranks confidentiality.
+//
+// Two guards, neither of which needs a shared secret we do not have:
+//   1. a minimum gap between anything this handler will act on, so commanding
+//      a node costs the attacker far more than it costs the node;
+//   2. the two BLOCKING bench operations are compiled OUT by default. The
+//      tool has never sent them (reticulum-tool monitor/health_poll only ever
+//      builds 0x01); a field node has no use for them; and a build for the
+//      bench can turn them on deliberately with -DHB_REMOTE_BENCH_OPS=1.
+#ifndef HB_REMOTE_BENCH_OPS
+#define HB_REMOTE_BENCH_OPS 0
+#endif
+#ifndef HB_REQUEST_MIN_GAP_MS
+#define HB_REQUEST_MIN_GAP_MS 30000UL
+#endif
+
+static uint32_t health_last_request_ms = 0;
+
+inline bool health_request_allowed() {
+    uint32_t now = millis();
+    // millis() wraps after ~49 days; the subtraction is unsigned, so the
+    // difference stays correct across the wrap. Zero means "never yet".
+    if (health_last_request_ms != 0 &&
+        (now - health_last_request_ms) < HB_REQUEST_MIN_GAP_MS) {
+        return false;
+    }
+    health_last_request_ms = now ? now : 1;
+    return true;
+}
+
 inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& packet) {
     (void)packet;
-    if (data.size() >= 1 && data[0] == HB_OPCODE_FULL_HEALTH) {
+    if (data.size() < 1) return;    // empty: no-op (deliberately not a fault)
+    if (data[0] != HB_OPCODE_FULL_HEALTH
+        && data[0] != HB_OPCODE_IDENTIFY
+        && data[0] != HB_OPCODE_LED_TEST) {
+        return;                     // unknown opcode: the registry can grow
+    }
+    if (!health_request_allowed()) {
+        Serial.printf("[HealthBeacon] request 0x%02X ignored - within %lu ms "
+                      "of the last one\r\n",
+                      (unsigned)data[0], (unsigned long)HB_REQUEST_MIN_GAP_MS);
+        return;
+    }
+    if (data[0] == HB_OPCODE_FULL_HEALTH) {
         Serial.println("[HealthBeacon] on-demand poll request (0x01) -> announcing now");
         health_beacon_send();
         // Visible acknowledgement at the node: two green pulses (operator
@@ -134,16 +188,16 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
         // is already on the air; ~0.5 s of LED time after it is harmless.
         health_ack_blink();
     }
-    else if (data.size() >= 1 && data[0] == HB_OPCODE_IDENTIFY) {
+#if HB_REMOTE_BENCH_OPS
+    else if (data[0] == HB_OPCODE_IDENTIFY) {
         // Identify: replay the birth cry so the operator can spot this exact
-        // board on the bench / in the field. Blocking ~4 s — acceptable, it is
-        // an operator-invoked rarity.
+        // board on the bench. Blocking ~4 s, which is why it is off by default.
         Serial.println("[HealthBeacon] identify request (0x02) -> birth cry");
         birth_cry();
     }
-    else if (data.size() >= 1 && data[0] == HB_OPCODE_LED_TEST) {
+    else if (data[0] == HB_OPCODE_LED_TEST) {
         // LED test: solid green long enough to photograph / probe the pixel
-        // wiring. Blocking 15 s — operator-invoked bench tool only.
+        // wiring. Blocking 15 s — bench builds only, never a field node.
         Serial.println("[HealthBeacon] LED test (0x03) -> solid green 15s");
         #if defined(HAS_NP) && HAS_NP == true
         npset(0, 0xFF, 0);
@@ -151,7 +205,13 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
         npset(0, 0, 0);
         #endif
     }
-    // Unknown/empty opcode: no-op (deliberately not a fault).
+#else
+    else {
+        Serial.printf("[HealthBeacon] request 0x%02X refused - blocking bench "
+                      "ops are not compiled into this build\r\n",
+                      (unsigned)data[0]);
+    }
+#endif
 }
 
 // Initialise once RNS is running (Transport::identity() available). Mirrors
