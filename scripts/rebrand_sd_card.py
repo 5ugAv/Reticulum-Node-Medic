@@ -16,6 +16,8 @@ card and know the class to buy, and words say that as well as logos do.
   * "MAX ENDURANCE" stays. It is a description of the card type, which is the
     single most important thing on the label for a node that writes to its
     card for years (see ui/sd_reliability notes);
+  * the capacity becomes 32 GB — what we would actually tell someone to buy,
+    rather than the size of the card this art was drawn from;
   * the logo cluster becomes plain text: the same information, none of the
     stylised marks.
 
@@ -34,14 +36,15 @@ GOLD = (166, 138, 74, 255)
 DARK = (28, 28, 30, 255)
 
 
-def _font(size):
+def _font(size, bold=True):
     """A face that exists on the medic as well as here, so a re-run on either
     machine produces the same card. Kivy ships Roboto-Bold with itself; the
     DejaVu bold it also names is NOT in the wheel, which is worth knowing
     before writing a path from memory."""
     import kivy
     d = os.path.join(os.path.dirname(kivy.__file__), "data", "fonts")
-    return ImageFont.truetype(os.path.join(d, "Roboto-Bold.ttf"), size)
+    face = "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf"
+    return ImageFont.truetype(os.path.join(d, face), size)
 
 
 def _face_mask(im):
@@ -112,6 +115,22 @@ def main(path=CARD):
            anchor="lm")
 
     # --- the stylised class logos -> the same facts, in words ----------
+    # --- the capacity: 32 GB, not 64 --------------------------------------
+    # THE NUMBER IS ADVICE, and the advice is 32 GB high-endurance (operator,
+    # 2026-09-10). A node's rootfs is grown to 6 GB and never given more than
+    # half the card — the rest is left unallocated as the controller's
+    # wear-levelling spare pool (provisioning/pi_imager: NODE_ROOTFS_BYTES,
+    # MAX_USED_FRACTION), so 32 GB is 6 used and ~26 spare, and 64 buys a node
+    # nothing. The picture is the first place most people will read the
+    # recommendation, so it should say what we would tell them.
+    #
+    # Drawn in the REGULAR weight: the original digits are a light geometric
+    # face, and bold ones sat on the card like a different label. The box and
+    # the baseline are measured off the original art, not eyeballed.
+    _wipe(im, (206, 412, 806, 812), face)
+    d.text((231, 790), "32", font=_font(500, bold=False), fill=GOLD,
+           anchor="ls")
+
     _wipe(im, (824, 392, 1310, 906), face)
     # Two lines, not three: the big "64" already says the size, and a third
     # line pushed the block into the card's rounded corner.

@@ -374,8 +374,8 @@ def flip_state(t: float, geo, span=(_FLIP_FROM, _FLIP_TO)):
     one thing this whole feature exists to prevent.
 
     Three ways out were on the table: mirror the sprite, draw those boards from
-    below, or find a framing that dodges the question. Mirroring shows a
-    back-to-front SanDisk logo, which is a rendering artefact rather than the
+    below, or find a framing that dodges the question. Mirroring shows
+    back-to-front lettering, which is a rendering artefact rather than the
     other side of a card. Drawing the boards from below means underside
     photographs we do not have and must not fake. So the card turns over on its
     way across — the label face leaves the reader, the card flips in mid-air,

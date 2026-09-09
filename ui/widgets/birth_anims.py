@@ -107,8 +107,11 @@ MEDIC_NOCABLE_PNG = os.path.join(_ANIM_DIR, "medic_nocable_micro.png")
 PLUG_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "plug_micro_drawn.png")
 #: A straight slice of the same drawing's braid, from its dead-vertical run.
 BRAID_MICRO_DRAWN_PNG = os.path.join(_ANIM_DIR, "braid_micro_drawn.png")
-#: The operator's actual card (SanDisk MAX Endurance) — background keyed out so
-#: it drops onto the dark UI cleanly. The older square sd_card.png stays for the
+#: The high-endurance card, drawn from the operator's own — background keyed
+#: out so it drops onto the dark UI cleanly, and rebranded (scripts/
+#: rebrand_sd_card.py) so it carries no manufacturer's mark: our own name, the
+#: card TYPE that matters for a node, and 32 GB, which is what we would tell
+#: someone to buy. The older square sd_card.png stays for the
 #: insert-into-the-MEDIC animation, whose geometry is measured against it.
 SD_ENDURANCE_PNG = os.path.join(_ANIM_DIR, "sd_card_endurance.png")
 
@@ -236,8 +239,8 @@ def _blit_card(tex, frame, card_len, card_w, alpha=1.0):
     THE OTHER SIDE. Past halfway the CONTACT face is toward the viewer, and the
     artwork is the label face — so the reverse is drawn instead, from the shapes
     in ui.pi_sd_geometry. Mirroring the sprite was the alternative and it is not
-    honest: a back-to-front SanDisk logo is a rendering artefact, not the other
-    side of a card.
+    honest: back-to-front lettering is a rendering artefact, not the other side
+    of a card.
     """
     w = card_len
     h = max(1.0, card_w * frame.face_scale)
@@ -264,8 +267,8 @@ def _blit_card(tex, frame, card_len, card_w, alpha=1.0):
 
 
 def _card_texture():
-    """The operator's own SanDisk MAX Endurance illustration — the card they
-    are actually holding. The square placeholder stays as a fallback only."""
+    """The high-endurance card illustration — the card a node should be built
+    on. The square placeholder stays as a fallback only."""
     return _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
 
 

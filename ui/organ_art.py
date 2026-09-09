@@ -37,7 +37,7 @@ SPARE_ORGANS = ("message.png", "wifi.png")
 
 #: The dark panel on the card the organs sit in, as fractions of the card sprite
 #: (x0, y0, x1, y1 from its TOP-LEFT). Without one, the first render put a gear
-#: straight across the "64" on the SanDisk label (2026-08-04).
+#: straight across the big capacity digits on the card label (2026-08-04).
 CARD_WINDOW = (0.06, 0.46, 0.62, 0.88)
 
 #: Where each organ settles inside that window, left to right in the order the

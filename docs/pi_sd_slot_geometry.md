@@ -128,7 +128,7 @@ Do not draw a new card. This one already appears in the imaging screens:
 |---|---|
 | **Path** | `assets/ui/anim/sd_card_endurance.png` |
 | **Size** | **1328 × 1003 px**, RGBA (background already keyed out) |
-| **What it is** | SanDisk MAX ENDURANCE 64 GB microSDXC, **label face**, the operator's own card |
+| **What it is** | A high-endurance microSD, **label face**, drawn from the operator's own card and rebranded (`scripts/rebrand_sd_card.py`): no manufacturer's mark, Node Medic's own name, and 32 GB — the size a propagation node should be built on |
 | **Orientation in the file** | long (15 mm) axis **horizontal**; the **contact end points RIGHT**; chamfered corner top-right |
 | **Referenced as** | `SD_ENDURANCE_PNG` in `ui/widgets/birth_anims.py`, also used by `ui/widgets/surgery_anim.py` |
 
