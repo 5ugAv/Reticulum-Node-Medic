@@ -102,17 +102,29 @@ def test_the_animations_are_told_which_board():
 
 def test_the_board_anim_tuple_covers_every_class_that_accepts_one():
     """If someone adds a board-drawing animation, it must be listed or it
-    silently falls back to the generic sprite again."""
-    import inspect
-    from ui.widgets import birth_anims
-    from ui.screens import birth_guide_screen as gs
+    silently falls back to the generic sprite again — which is exactly how
+    this went unnoticed for five weeks.
+
+    Read from SOURCE, not by import: another test in this suite installs Kivy
+    stubs, and importing ui.widgets.birth_anims after that blows up inside the
+    import machinery. tests/srcutil.py records why source inspection is the
+    house style here.
+    """
+    import ast
+    tree = ast.parse(open("ui/widgets/birth_anims.py").read())
     accepts = {
-        cls for _, cls in inspect.getmembers(birth_anims, inspect.isclass)
-        if cls.__module__ == birth_anims.__name__
-        and "board_key" in inspect.signature(cls.__init__).parameters
+        node.name for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+        for fn in node.body
+        if isinstance(fn, ast.FunctionDef) and fn.name == "__init__"
+        and any(a.arg == "board_key" for a in fn.args.args)
     }
-    listed = set(gs._BOARD_ANIMS)
-    missing = {c.__name__ for c in accepts - listed}
+    screen = open("ui/screens/birth_guide_screen.py").read()
+    listed_src = screen[screen.index("_BOARD_ANIMS = ("):]
+    listed_src = listed_src[:listed_src.index(")") + 1]
+    listed = {n for n in accepts if n in listed_src}
+    missing = accepts - listed
+    assert accepts, "no animation accepts a board_key — did the API change?"
     assert not missing, f"accept board_key but are never given one: {missing}"
 
 
