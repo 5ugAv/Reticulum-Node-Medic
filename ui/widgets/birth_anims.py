@@ -399,7 +399,13 @@ class ConnectBoardAnim(_LoopAnim):
         # Labels don't reliably render inside this canvas-drawing widget).
         try:
             from kivy.core.text import Label as CoreLabel
-            cl = CoreLabel(text="Connected!", font_size=dp(34), bold=True)
+            # TRANSLATED. This is drawn straight into the canvas as a
+            # pre-rendered glyph texture rather than through a Label, and the
+            # tr() got lost on the way — the one word the operator reads at
+            # the moment the medic sees their board stayed English in every
+            # language (audit, 2026-09-09).
+            from ui.i18n import tr
+            cl = CoreLabel(text=tr("Connected!"), font_size=dp(34), bold=True)
             cl.refresh()
             self._conn_tex = cl.texture
         except Exception:
@@ -794,41 +800,169 @@ class ConnectAntennaAnim(_LoopAnim):
 
 
 class ProvisionAnim(_LoopAnim):
-    """PLACEHOLDER: Node Medic configuring the node over its setup WiFi — the medic
-    (right) and the small node (left) with pulsing WiFi arcs between them. Rough
-    stand-in for final artwork; the geometry + intent are what's set."""
+    """Node Medic setting a node up over the node's OWN setup Wi-Fi, in four beats.
+
+    What replaced what, and why. The old scene was a self-declared placeholder:
+    a generic radio board on the left, the medic on the right, three arcs
+    pulsing endlessly between them and a caption doing the explaining. It said
+    "these two are talking by radio" and stopped there — while the step's body
+    text had to spend 45 words on the part that actually confuses people, which
+    the operator asked about directly on 2026-09-08: the medic LEAVES the house
+    Wi-Fi, joins the node's own little network, hands over the settings, and
+    they both come back. That is a sequence, and a sequence is what a picture
+    can carry and a paragraph cannot.
+
+    The four beats, one per second, looping:
+
+      1. the node broadcasts its own network — arcs from the node, medic dark,
+         the medic's link to the house router still solid;
+      2. the medic SWITCHES OVER — its link to the router fades out and a link
+         to the node comes up. This is the beat the operator asked about;
+      3. the settings travel medic -> node as boluses along that link. Same
+         grammar as ProvisionOverCableAnim: substance moving means the same
+         thing everywhere in this tool;
+      4. the node reboots (a blink) and its own link to the house router comes
+         up beside the medic's. Both are home; the job is done.
+
+    Wordless by design. The caption that used to sit under it was one of the
+    two in-canvas literals that never went through tr(), and with the sequence
+    doing the telling there is nothing left for it to say.
+    """
+
+    #: Seconds per beat -> the whole loop. Slow enough to read four separate
+    #: events; the old placeholder ran at 2.2 and read as one pulsing blur.
+    BEATS = 4
+
+    def __init__(self, board_key: str = "", **kwargs):
+        """*board_key* draws the operator's ACTUAL board, per the standing rule
+        that every picture is the hardware in their hand."""
+        kwargs.setdefault("duration", 4.4)
+        super().__init__(**kwargs)
+        self._board_png = ""
+        if board_key:
+            try:
+                from ui import board_images
+                self._board_png = board_images.image_for(board_key) or ""
+            except Exception:                                      # noqa: BLE001
+                self._board_png = ""
+
+    # -- geometry ----------------------------------------------------------
+    def _beat(self):
+        """(index 0-3, 0->1 progress within it)."""
+        t = self.phase * self.BEATS
+        return int(t) % self.BEATS, t % 1.0
+
+    def _arc(self, cx, cy, r, a0, a1, rgba, width=None):
+        Color(*rgba)
+        Line(circle=(cx, cy, r, a0, a1), width=width or dp(2.6))
+
+    def _link(self, a, b, rgba, dots=0, phase=0.0):
+        """A wireless link drawn as a dotted run — and, when *dots*, with that
+        many payloads travelling along it."""
+        Color(*rgba)
+        n = 16
+        for i in range(n + 1):
+            u = i / float(n)
+            if i % 2:
+                continue
+            px = a[0] + (b[0] - a[0]) * u
+            py = a[1] + (b[1] - a[1]) * u - math.sin(u * math.pi) * dp(10)
+            r = dp(2.0)
+            Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
+        for k in range(dots):
+            u = (phase + k / float(max(1, dots))) % 1.0
+            px = a[0] + (b[0] - a[0]) * u
+            py = a[1] + (b[1] - a[1]) * u - math.sin(u * math.pi) * dp(10)
+            r = dp(5.5)
+            Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
+
+    def _router(self, x, y, w, h, rgba):
+        """A small house-router glyph: a body with two stub aerials."""
+        Color(*rgba)
+        RoundedRectangle(pos=(x, y), size=(w, h * 0.46), radius=[dp(3)])
+        Line(points=[x + w * 0.24, y + h * 0.46, x + w * 0.10, y + h],
+             width=dp(2.0))
+        Line(points=[x + w * 0.72, y + h * 0.46, x + w * 0.88, y + h],
+             width=dp(2.0))
 
     def _draw(self):
-        medic = _texture(MEDIC_PNG)
-        node = _texture(LORA_PNG)
+        beat, t = self._beat()
+        medic = _texture(MEDIC_NOCABLE_PNG) or _texture(MEDIC_BODY_PNG) \
+            or _texture(MEDIC_PNG)
+        node = (_texture(self._board_png) if self._board_png else None) \
+            or _texture(LORA_PNG) or _texture(BOARD_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
-        cy = y + h / 2
+        cy = y + h * 0.46
+
+        accent = theme.hex_to_rgba(theme.COLORS["accent"])
+        muted = theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.35)
+        green = theme.hex_to_rgba(theme.COLORS["green"])
+
+        # The node reboots on beat 4: a single blink, not a flicker.
+        node_a = 0.35 if (beat == 3 and t < 0.28) else 1.0
+
         with self.canvas:
-            if medic is not None:
-                ma = medic.width / float(medic.height)
-                mh = h * 0.72
-                mw = mh * ma
-                Color(1, 1, 1, 1)
-                Rectangle(texture=medic, pos=(x + w - mw - dp(6), cy - mh / 2),
-                          size=(mw, mh))
+            nh = h * 0.34
+            nw = nh * (node.width / float(node.height)) if node is not None \
+                else h * 0.5
+            nx, ny = x + w * 0.06, cy - nh / 2
+            mh = h * 0.62
+            mw = mh * (medic.width / float(medic.height)) if medic is not None \
+                else h * 0.5
+            mx, my = x + w - mw - dp(8), cy - mh / 2
+            # The house router sits above the medic — where the network the
+            # medic is leaving actually lives, as far as the operator is
+            # concerned.
+            rw, rh = dp(26), dp(20)
+            rx, ry = mx + mw / 2 - rw / 2, y + h - rh - dp(4)
+
             if node is not None:
-                na = node.width / float(node.height)
-                nh = h * 0.34
-                nw = nh * na
+                Color(1, 1, 1, node_a)
+                Rectangle(texture=node, pos=(nx, ny), size=(nw, nh))
+            if medic is not None:
                 Color(1, 1, 1, 1)
-                Rectangle(texture=node, pos=(x + w * 0.06, cy - nh / 2), size=(nw, nh))
-            # pulsing WiFi arcs from the node toward the medic (3 staggered rings)
-            ax = x + w * 0.30
-            for i in range(3):
-                p = (self.phase + i / 3.0) % 1.0
-                Color(*theme.hex_to_rgba(theme.COLORS["accent"], max(0.0, 1.0 - p)))
-                r = dp(8) + p * dp(60)
-                Line(circle=(ax, cy, r, -35, 35), width=dp(3))
-        lbl = self._label("prov", text="Node Medic is setting up your node…",
-                         font_size="13sp", bold=True, halign="center", valign="middle",
-                         color=theme.hex_to_rgba(theme.COLORS["accent"]))
-        lbl.size = (w, dp(24))
-        lbl.pos = (x, y + dp(4))
+                Rectangle(texture=medic, pos=(mx, my), size=(mw, mh))
+
+            n_edge = (nx + nw + dp(6), cy)
+            m_edge = (mx - dp(6), cy)
+            r_port = (rx + rw / 2, ry)
+
+            # BEAT 1 — the node is shouting its own network; nobody has joined
+            # it yet. The medic is still on the house Wi-Fi.
+            if beat == 0:
+                for i in range(3):
+                    pr = (t + i / 3.0) % 1.0
+                    self._arc(n_edge[0], cy, dp(8) + pr * dp(52),
+                              -40, 40,
+                              (accent[0], accent[1], accent[2],
+                               max(0.0, 1.0 - pr)))
+                self._link((mx + mw / 2, my + mh), r_port, muted)
+
+            # BEAT 2 — THE SWITCH-OVER, the part the operator asked about. The
+            # medic's link to the router fades as its link to the node comes up.
+            elif beat == 1:
+                fade = max(0.0, 1.0 - t * 1.4)
+                self._link((mx + mw / 2, my + mh), r_port,
+                           (muted[0], muted[1], muted[2], muted[3] * fade))
+                rise = min(1.0, t * 1.4)
+                self._link(m_edge, n_edge,
+                           (accent[0], accent[1], accent[2], rise))
+
+            # BEAT 3 — the settings themselves, travelling. Boluses, because
+            # that is what "substance moving" looks like everywhere else here.
+            elif beat == 2:
+                self._link(m_edge, n_edge, accent, dots=2, phase=1.0 - t)
+
+            # BEAT 4 — the node reboots and joins the house network beside the
+            # medic. Green, the colour this tool uses for "done".
+            else:
+                self._link((mx + mw / 2, my + mh), r_port, green)
+                self._link((nx + nw / 2, ny + nh), r_port,
+                           (green[0], green[1], green[2], min(1.0, t * 1.8)))
+
+            self._router(rx, ry, rw, rh,
+                         green if beat == 3 else
+                         theme.hex_to_rgba(theme.COLORS["text_secondary"]))
 
 
 class ProvisionOverCableAnim(_LoopAnim):

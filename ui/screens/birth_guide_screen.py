@@ -50,7 +50,8 @@ _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAn
 
 #: Animations that draw the RADIO and so must be told which board it is.
 #: RadioToPiAnim is in BOTH tuples — it draws a Pi and a radio.
-_BOARD_ANIMS = (ConnectBoardAnim, DisconnectBoardAnim, RadioToPiAnim)
+_BOARD_ANIMS = (ConnectBoardAnim, DisconnectBoardAnim, RadioToPiAnim,
+                ProvisionAnim)
 
 #: Animations that draw a specific Raspberry Pi and so must be told which one.
 _PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim,
