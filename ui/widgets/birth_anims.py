@@ -1282,6 +1282,15 @@ class ProvisionOverCableAnim(_LoopAnim):
         pw = ph * (pi.width / float(pi.height))
         gap = max(dp(70), w * 0.18)
         total = pw + gap + mw
+        # FIT THE STAGE. Sized from HEIGHT alone, this scene ran off both sides
+        # of the medic's own portrait panel — the medic sprite was cut in half
+        # by the screen edge (read off a 720x1280 render, 2026-09-09). Kivy does
+        # not clip a canvas, so overflow is not a crop: it paints over whatever
+        # is beside it.
+        if total > w * 0.98:
+            k = (w * 0.98) / total
+            mh *= k; mw *= k; ph *= k; pw *= k; gap *= k
+            total = pw + gap + mw
         pxx = x + (w - total) / 2.0
         pyy = y + (h - ph) / 2.0
         mxx = pxx + pw + gap

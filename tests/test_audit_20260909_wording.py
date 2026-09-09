@@ -230,3 +230,40 @@ def test_it_only_starts_once_the_wait_is_overdue():
         "the demonstration must be on the patience timer, not immediate"
     assert "_nav_token" in code[i - 300:i], \
         "and must not fire onto a step the operator has already left"
+
+
+# --- boards in a scene, not stickers on the screen --------------------------
+
+def test_no_board_photo_ships_as_an_opaque_white_rectangle():
+    """Operator, 2026-09-09, with the walkthrough on the panel: "if there is a
+    white background, clear it so the boards look like animations instead of
+    stickers". Half the catalogue was already cut; the rest were slabs of
+    studio white on a black UI. scripts/cut_board_art.py does it by flooding
+    inward from the edges, never by colour-keying white — a board has white
+    silkscreen, white shells and white text ON it."""
+    import glob
+    import os
+    from PIL import Image
+    bad = []
+    files = glob.glob("assets/boards/*.png")
+    files.append("assets/ui/anim/pi_zero_2w.png")
+    for f in files:
+        a = Image.open(f).convert("RGBA").split()[3].histogram()
+        opaque = sum(a[201:]) / (sum(a) or 1)
+        if opaque > 0.97:
+            bad.append(os.path.basename(f))
+    assert not bad, f"still on a solid background: {bad}"
+
+
+def test_the_cutter_leaves_white_that_is_part_of_the_board():
+    """The T-Echo is a WHITE-CASED device and the RAK is covered in white
+    labels. A colour-key would have eaten both; flooding from the edges must
+    not."""
+    from PIL import Image
+    import numpy as np
+    for name, want in (("techo", 0.25), ("rak4631", 0.10)):
+        a = np.asarray(Image.open(f"assets/boards/{name}.png").convert("RGBA"))
+        opaque = a[..., 3] > 200
+        white = (a[..., :3].min(axis=-1) > 225) & opaque
+        assert white.mean() > want * 0.5, \
+            f"{name}: its own white has been eaten ({white.mean():.2%})"
