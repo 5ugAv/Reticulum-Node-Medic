@@ -55,8 +55,14 @@ class Advice:
 
 
 def advise(status: str, board_attached: bool = False, name: str = "",
-           hours_quiet: Optional[float] = None) -> Optional[Advice]:
+           hours_quiet: Optional[float] = None,
+           heard_ever: bool = True) -> Optional[Advice]:
     """What to tell the operator about a node in *status*.
+
+    *heard_ever* — has anything at all ever been heard from this node? An
+    unanswered probe promotes an unknown node to "warn" (Registry.status), so
+    amber alone does not mean the node is talking, and the advice must not say
+    it is.
 
     *board_attached* — is THIS node's board plugged into the medic right now?
     Only then is a rebirth a thing that can be done rather than a thing to
@@ -77,6 +83,23 @@ def advise(status: str, board_attached: bool = False, name: str = "",
             rebirth_note=tr("Too early to consider a rebirth."))
 
     if status in ("warn", "amber"):
+        # AMBER DOES NOT ALWAYS MEAN "ANSWERING". Registry.status promotes an
+        # unknown node to warn the moment a probe goes unanswered — the
+        # operator ASKED and nothing came back — so a node that has NEVER been
+        # heard arrives here amber. Told it "is answering, but not happily"
+        # and "a rebirth would be premature, it is still talking", on a page
+        # whose own header read "Last heard: never" and "the node is NOT
+        # answering right now" (operator, with SolarLove on the screen,
+        # 2026-09-09). Three statements, one screen, two of them false.
+        if not heard_ever:
+            return Advice(
+                headline=tr("{who} still hasn't answered.").format(who=who),
+                steps=[tr("Nothing has been heard from it yet — the amber is "
+                          "the unanswered ping, not a poor reply."),
+                       tr("It may still be starting up, switched off, out of "
+                          "range, or behind a relay that is asleep."),
+                       tr("Check the antenna is attached at both ends.")],
+                rebirth_note=tr("Too early to consider a rebirth."))
         return Advice(
             headline=tr("{who} is answering, but not happily.").format(who=who),
             steps=[tr("Try 'Ping node now' — a clean reply clears this."),

@@ -1841,14 +1841,23 @@ class SdHandoverAnim(_CardStage):
         plain board. Never a specific Pi we haven't confirmed."""
         x, y, w, h = self.x, self.y, self.width, self.height
         medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
-        bw, bh = w * 0.30, h * 0.46
-        bx, by = x + w - bw - dp(8), y + (h - bh) / 2.0
+        card_tex = _card_texture()
+        # THE CARD IS SMALLER THAN THE BOARD IT GOES INTO. Sized off the stage
+        # height it came out covering most of the Pi and running off the right
+        # of the panel — a microSD is a fingernail, and a picture where it is
+        # bigger than the computer teaches the wrong scale (read off the
+        # glass, 2026-09-09).
+        bw, bh = w * 0.34, h * 0.30
+        bx, by = x + w - bw - dp(10), y + (h - bh) / 2.0
         t = min(1.0, self.phase * 1.25)
         t = t * t * (3.0 - 2.0 * t)
-        cw, ch = w * 0.09, h * 0.20
-        card_tex = _card_texture()
-        start = x + w * 0.30
-        cx = start + (bx - cw * 0.4 - start) * t
+        ca = (card_tex.width / float(card_tex.height)) if card_tex else 1.3
+        ch2 = min(h * 0.11, bh * 0.42)
+        cw2 = ch2 * ca
+        # It stops AT the board's edge — the card enters the slot, it does not
+        # drive across the board.
+        start = x + w * 0.34
+        cx = start + ((bx + bw * 0.12) - start) * t
         with self.canvas:
             if medic is not None:
                 mh = h * 0.9
@@ -1858,16 +1867,13 @@ class SdHandoverAnim(_CardStage):
                           size=(mw, mh))
             _draw_pi_board(bx, by, bw, bh)
             if card_tex is not None:
-                ca = card_tex.width / float(card_tex.height)
-                ch2 = h * 0.24
-                cw2 = ch2 * ca
                 Color(1, 1, 1, 1)
                 Rectangle(texture=card_tex, pos=(cx, y + (h - ch2) / 2.0),
                           size=(cw2, ch2))
             else:
                 Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
-                RoundedRectangle(pos=(cx, y + (h - ch) / 2.0), size=(cw, ch),
-                                 radius=[dp(3)] * 4)
+                RoundedRectangle(pos=(cx, y + (h - ch2) / 2.0),
+                                 size=(cw2, ch2), radius=[dp(3)] * 4)
 
 
 class ConnectPiAnim(ConnectBoardAnim):

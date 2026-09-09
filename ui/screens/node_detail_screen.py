@@ -256,7 +256,10 @@ class NodeDetailScreen(BoxLayout):
         # is not a node that needs wiping.
         from ui.rebirth_advice import advise
         adv = advise(record.status(now), board_attached=self._board_attached,
-                     name=record.name or "", hours_quiet=None)
+                     name=record.name or "", hours_quiet=None,
+                     # The SAME evidence the header above uses for "Last
+                     # heard" — or the advice contradicts the page it sits on.
+                     heard_ever=record.last_seen_hours(now) is not None)
         if adv is not None:
             col.add_widget(_line(tr("What to try"), bold=True, size="17sp"))
             col.add_widget(_wrap("  " + adv.headline, color="amber"))

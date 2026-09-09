@@ -284,3 +284,26 @@ def test_board_art_is_sized_by_its_longest_side():
     from PIL import Image
     im = Image.open("assets/boards/rak4631.png")
     assert im.size[1] > im.size[0], "the RAK art is portrait — that is the case"
+
+
+# --- the advice must not contradict the page it sits on --------------------
+
+def test_amber_does_not_mean_answering_when_nothing_was_ever_heard():
+    """Registry.status promotes an unknown node to warn the moment a probe
+    goes unanswered. A node that has NEVER been heard therefore arrives at the
+    advice block amber — and was told "is answering, but not happily" and "a
+    rebirth would be premature, it is still talking", on a page whose header
+    read "Last heard: never" (operator, SolarLove on the screen, 2026-09-09)."""
+    from ui.rebirth_advice import advise
+    a = advise("warn", name="SolarLove", heard_ever=False)
+    assert "answering, but not happily" not in a.headline
+    assert "still talking" not in a.rebirth_note
+    assert "hasn't answered" in a.headline
+    b = advise("warn", name="FAITH", heard_ever=True)
+    assert "answering, but not happily" in b.headline
+
+
+def test_the_node_page_answers_that_question_from_the_same_evidence():
+    src = open("ui/screens/node_detail_screen.py").read()
+    assert "heard_ever=record.last_seen_hours(now) is not None" in src, \
+        "the advice must read the same evidence as the header's Last heard"

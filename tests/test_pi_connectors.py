@@ -34,11 +34,15 @@ def test_a_zero_is_told_which_of_its_two_identical_sockets_to_use():
     body = pc.power_roads("pi_zero_2w")
     assert "INNER" in body or "inner" in body
     assert "mini-HDMI" in body
-    assert "PWR IN" in body          # and which one the SUPPLY goes in
-    # NOT "which one not to use": since 2026-08-14 the own-supply road puts a
-    # power lead in the outer socket deliberately, and on this board using
-    # both at once is the RECOMMENDED setup - a socket each, nothing fights.
-    # The hint carries why they cannot be told apart by eye.
+    # PWR IN is named, but only to say NOTHING goes in it yet. Naming both
+    # sockets as places to plug something read as "plug both in" — two supplies
+    # into one Pi (operator, 2026-09-09, with the screen in hand). The medic's
+    # cable carries power and data on this step; the outer socket belongs to
+    # the last step, where the Pi leaves the medic.
+    assert "PWR IN" in body
+    assert "nothing goes in PWR IN" in body
+    assert "One cable" in body
+    # The hint carries why the two sockets cannot be told apart by eye.
     assert "identical" in pc.connect_hint("pi_zero_2w")
 
 

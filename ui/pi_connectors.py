@@ -247,11 +247,20 @@ def can_cable(pi_key: str) -> bool:
 #: micro-USB") because that is checkable by someone who does not know
 #: connector names — which is who this tool is for.
 _POWER_ROADS = {
-    # Separate PWR IN socket: both at once is right, and is what the node
-    # will run on afterwards. No "choose one" here — that was the bug.
-    "pi_zero_2w": tr("Cable into the INNER micro-USB, nearer the mini-HDMI.\n"
-                     "Its own supply on the OUTER, marked PWR IN — a socket "
-                     "each."),
+    # ONE CABLE ON THIS STEP. The board does have a separate PWR IN socket,
+    # and naming both here read as an instruction to plug both in — "it sounds
+    # like the user's being instructed to plug the Pi into its own power as
+    # well as into Node Medic, which is misleading; we don't want two lots of
+    # power going in" (operator, with this screen in hand, 2026-09-09).
+    #
+    # They are right about this step. The medic's cable in the inner socket
+    # carries data AND power; that is the whole cable-birth path. The outer
+    # PWR IN belongs to the LAST step, where the Pi leaves the medic and takes
+    # its own supply — and that step already says so in its own bullets.
+    "pi_zero_2w": tr("One cable from Node Medic into the INNER micro-USB, "
+                     "nearer the mini-HDMI.\n"
+                     "It carries power and data — nothing goes in PWR IN "
+                     "yet."),
     # One USB-A and one micro-USB, and an ordinary A-to-A carries 5V at both
     # ends — so here the two roads really are exclusive, and the warning box
     # under this body says so.
