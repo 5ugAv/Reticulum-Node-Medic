@@ -495,9 +495,17 @@ def test_the_handoff_is_in_the_persistent_panel_not_only_a_popup():
 def test_the_handoff_names_all_three_physical_actions():
     src = open("ui/screens/birth_screen.py").read()
     block = src[src.index("def _handoff_block"):src.index("def _finish")]
-    assert "Unplug BOTH" in block
-    assert "DATA" in block and "PWR IN" in block     # the Zero's two identical ports
-    assert "Power the" in block
+    # STILL three actions: take them off the medic, join them, power the Pi.
+    # What changed 2026-09-09 is that none of the three is asserted blindly.
+    # "Unplug BOTH" was printed for every pi_rnode build with no test at all,
+    # so on the already-have-a-radio road it contradicted the popup in front of
+    # it; and "PWR IN"/"mini-HDMI" are Pi Zero words that a 3A+ and a 4B/5 do
+    # not have. The unplug is now chosen from what is really attached, and the
+    # power sentence comes from ui.pi_connectors per board.
+    assert "radio_on" in block and "pi_on" in block, "unplug only what is there"
+    assert "DATA cable" in block                      # the join, still named
+    assert "standalone_power_hint" in block           # the power, per board
+    assert "power supply" in block                    # and a fallback that says it
 
 
 def test_the_completion_popup_does_not_claim_it_is_finished():

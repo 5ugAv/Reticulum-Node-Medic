@@ -2900,19 +2900,23 @@ class BirthScreen(BoxLayout):
                 # never been done. "if the node medic registers that the pi is
                 # not plugged into the node medic then this message does not
                 # need to appear — you can just say finished" (operator).
-                try:
-                    reached = (self._pi_addr_in.text or "").strip()
-                except Exception:                                  # noqa: BLE001
-                    reached = ""
-                on_medic = (getattr(self, "_flash_radio", True)
-                           or reached.startswith("10.55.0."))
+                radio_on, pi_on = self._whats_on_the_medic()
+                on_medic = radio_on or pi_on
                 if on_medic:
                     b = getattr(self, "_last_board", None)
                     bn = b.display_name if b is not None else "the radio"
+                    # Name only the unplugs that are REAL. Three cases, and
+                    # the old copy asserted the first for all of them.
+                    if radio_on and pi_on:
+                        what = "Unplug both boards from Node Medic"
+                    elif pi_on:
+                        what = "Unplug the Pi from Node Medic"
+                    else:
+                        what = "Take the radio off Node Medic"
                     view = requirement_popup(
-                        f"Built — but not finished yet.\n\nUnplug BOTH boards "
-                        f"from Node Medic, plug {bn} into the Pi's USB port "
-                        f"(the DATA one), and power the Pi from PWR IN.\n\n"
+                        f"Built — but not finished yet.\n\n{what}, plug {bn} "
+                        f"into the Pi's DATA port, and give the Pi its own "
+                        f"power supply.\n\n"
                         f"The full steps are on the screen behind this.",
                         "One last step", False, tone=_tone, button_text=_btn)
                 else:
@@ -3064,6 +3068,36 @@ class BirthScreen(BoxLayout):
             (n for k, n in PI_HOSTS if k == pi_key), "the Raspberry Pi")))
         return row
 
+    def _whats_on_the_medic(self):
+        """(radio_on_medic, pi_on_medic) — ASKED, not inferred.
+
+        The old test was `_flash_radio or reached.startswith("10.55.0.")`, and
+        `_flash_radio` means "this build flashed a radio SOMEWHERE", not "a
+        radio is on the medic now". On the guided Pi path the flow itself says
+        "Take the radio out of Node Medic" four steps before the end and even
+        watches it go (_start_absence_poll) — so the flag stayed True while the
+        radio sat in the operator's hand, and the closing card told them to
+        unplug it again (operator, with photos, 2026-09-09).
+
+        The radio is a question the medic can answer directly: is anything on
+        its USB right now. The Pi is only on the medic if we reached it over
+        the cable — a Wi-Fi address means it is powered from somewhere else.
+        Fails toward "nothing attached", because inventing an unplug is the
+        error that wastes the operator's time and confidence.
+        """
+        radio = False
+        try:
+            from ui.hw_factories import local_board_ports
+            radio = bool(local_board_ports())
+        except Exception:                                          # noqa: BLE001
+            radio = False
+        reached = ""
+        try:
+            reached = (self._pi_addr_in.text or "").strip()
+        except Exception:                                          # noqa: BLE001
+            reached = ""
+        return radio, reached.startswith("10.55.0.")
+
     def _handoff_block(self, board):
         """The three physical actions that turn a finished build into a node.
 
@@ -3091,12 +3125,38 @@ class BirthScreen(BoxLayout):
             self.list.add_widget(self._handoff_photos(board))
         except Exception:
             pass
-        steps = [
-            f"1.  Unplug BOTH the {pi_name} and the {board_name} from Node Medic.",
-            f"2.  Plug the {board_name} into the {pi_name}'s USB port - the DATA "
-            f"port (nearer the mini-HDMI on a Pi Zero), not PWR IN.",
-            f"3.  Power the {pi_name} from its PWR IN port.",
-        ]
+        # SAME STATE AS THE POPUP IN FRONT OF IT. This block used to print
+        # "Unplug BOTH" for every pi_rnode build with no test at all, so on the
+        # already-have-a-radio road the popup correctly said "nothing here
+        # needs moving" while the page underneath told the operator to unplug
+        # two boards. Two opposite instructions on one screen (2026-09-09).
+        radio_on, pi_on = self._whats_on_the_medic()
+        if radio_on and pi_on:
+            first = f"1.  Unplug both the {pi_name} and the {board_name} from Node Medic."
+        elif pi_on:
+            first = f"1.  Unplug the {pi_name} from Node Medic."
+        elif radio_on:
+            first = f"1.  Take the {board_name} off Node Medic."
+        else:
+            first = ""          # nothing is attached; do not invent an unplug
+        # PER-BOARD SOCKETS. "PWR IN" and "nearer the mini-HDMI" are Pi Zero
+        # words: a 3A+ has no data micro-USB and no socket marked PWR IN, and a
+        # 4B/5 has one USB-C carrying both. ui.pi_connectors exists to stop
+        # exactly this and already knows the right sentence per board.
+        power = ""
+        try:
+            from ui.pi_connectors import standalone_power_hint
+            power = standalone_power_hint(
+                self._sel_pi[0] if self._sel_pi else "") or ""
+        except Exception:                                          # noqa: BLE001
+            power = ""
+        steps = [x for x in (
+            first,
+            f"{'2' if first else '1'}.  Plug the {board_name} into the "
+            f"{pi_name} with a short DATA cable.",
+            (f"{'3' if first else '2'}.  {power}" if power else
+             f"{'3' if first else '2'}.  Give the {pi_name} its own power supply."),
+        ) if x]
         for line in steps:
             self.list.add_widget(_line(line, size="15sp"))
         self.list.add_widget(_line(

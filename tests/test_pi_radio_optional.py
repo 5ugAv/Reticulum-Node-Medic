@@ -204,10 +204,17 @@ def test_the_final_step_is_never_skipped_when_the_radio_was_flashed_here():
 
 
 def test_the_completion_popup_checks_whether_anything_is_on_the_medic():
+    """REWRITTEN 2026-09-09. This test passed while the thing it guards was
+    broken: all three tokens were present and the boolean joining them was
+    wrong (`_flash_radio` means "this build flashed a radio somewhere", not "a
+    radio is on the medic now"). Tokens cannot see that. It now checks that the
+    decision is made by ASKING the hardware, and the behaviour itself is
+    covered by tests/test_closing_card_matches_reality.py."""
     body = func_source(BIRTH_SCREEN, "_popup_outcome", cls="BirthScreen")
-    assert "on_medic" in body
-    assert "_flash_radio" in body
-    assert '"10.55.0."' in body
+    assert "_whats_on_the_medic" in body, "ask what is attached"
+    assert "radio_on" in body and "pi_on" in body, "and name them separately"
+    probe = func_source(BIRTH_SCREEN, "_whats_on_the_medic", cls="BirthScreen")
+    assert "local_board_ports" in probe and '"10.55.0."' in probe
 
 
 def test_the_completion_popup_has_a_plain_finished_message():
