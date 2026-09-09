@@ -322,7 +322,13 @@ def copy_kin_roster(wf: "CloneWorkflow") -> StepResult:
     return StepResult("copy_kin_roster", ok,
                       f"Carried the fleet roster ({len(roster)} node(s) with their "
                       f"locations) to the clone." if ok
-                      else f"Could not write kin roster: {err or out}")
+                      # NOT "{err or out}": neither name exists in this
+                      # function, so the failure branch raised NameError
+                      # instead of reporting the failure (found by the
+                      # undefined-name guard, 2026-09-09). push_file returns a
+                      # bool and nothing else, so the honest message says only
+                      # what is known.
+                      else "Could not write the kin roster to the clone.")
 
 
 @clone_step

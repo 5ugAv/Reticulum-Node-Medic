@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import subprocess
 import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple

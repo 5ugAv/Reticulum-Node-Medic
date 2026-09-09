@@ -2097,7 +2097,7 @@ class BirthScreen(BoxLayout):
         from ui.busy_truth import busy_truth
         self._busy_banner, self._busy_paragraph = busy_truth(
             "rtnode2400", None, self._name_in.text.strip(),
-            guided=guided_birth_pending())
+            guided=self._guided_pending())
         self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed,
@@ -2473,10 +2473,28 @@ class BirthScreen(BoxLayout):
         from ui.busy_truth import busy_truth
         self._busy_banner, self._busy_paragraph = busy_truth(
             busy_kind, board, self._name_in.text.strip(),
-            guided=guided_birth_pending())
+            guided=self._guided_pending())
         self._apply_radio(workflow, radio)
         self._apply_location_sharing(workflow)
         return workflow, title
+
+    def _guided_pending(self) -> bool:
+        """Is a guided walkthrough waiting for this build to hand back?
+
+        The app owns the answer (ui.app.guided_birth_pending). Asked here as a
+        bare name it was a NameError that killed the whole application the
+        moment the operator pressed "OK — start", on both the Pi and the
+        RTNode roads (live, 2026-09-09). Every other caller in this file
+        already went through the app with a getattr default; this is that
+        pattern, once, so there is one place to be wrong.
+        """
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            return bool(getattr(app, "guided_birth_pending",
+                                lambda: False)())
+        except Exception:                                          # noqa: BLE001
+            return False
 
     def _apply_location_sharing(self, workflow):
         """Put this birth's map answer (and the position it governs) onto the
@@ -2765,7 +2783,12 @@ class BirthScreen(BoxLayout):
         if not result.success and not result.skipped:
             self._had_failure = True
             try:
-                self._failure_messages.append(str(getattr(r, "message", "")))
+                # `r` never existed here: the NameError was swallowed by
+                # the except below, so this list stayed EMPTY and every
+                # screen that reads it lost the reason a build failed
+                # (found by the undefined-name guard, 2026-09-09).
+                self._failure_messages.append(
+                    str(getattr(result, "message", "")))
             except Exception:      # noqa: BLE001
                 pass
         pair = getattr(self, "_step_rows", {}).get(result.name)
