@@ -500,6 +500,13 @@ _STEPS = {
          # itself the moment the node answers; the button exists for the case
          # where it does not.
          "next": tr("Try again  →"),
+         # ...WHICH IS ONLY TRUE ONCE SOMETHING HAS BEEN TRIED. The button is
+         # also revealed when the wait runs past WAIT_PATIENCE_S, and on a
+         # Back arrival — in both cases the press starts provisioning for the
+         # FIRST time, so "Try again" asked the operator to retry something
+         # the medic had never done (audit, 2026-09-09). The screen uses this
+         # label until a build has actually failed here.
+         "next_first": tr("Start now  →"),
          # A PI ON A CABLE, not a radio board broadcasting. "provision"
          # draws radio waves, which is exactly what this step is not
          # (operator, reading it off the screen, 2026-08-09).
@@ -564,7 +571,8 @@ _PI_FLASH_STEP_TITLES = frozenset({
 })
 
 
-def guide_steps(path, pi_key="", flash_radio=True, board_key=""):
+def guide_steps(path, pi_key="", flash_radio=True, board_key="",
+                flashed_here=None):
     """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
     paths return an empty list. Returns a copy so callers can't mutate the source.
 
@@ -616,43 +624,72 @@ def guide_steps(path, pi_key="", flash_radio=True, board_key=""):
                         st["hint"] = tr("Nothing leaves your network.")
         except Exception:                                          # noqa: BLE001
             pass
-    # BULLET 1 IS PER BOARD. On a Zero the radio really does take the socket
-    # the medic's cable was in, and on a 3A+ the USB-A — but a 4B/5 has ONE
-    # USB-C carrying power and data and a USB-A free the whole build, so "the
-    # radio needs that socket" is untrue there. The hint two lines below the
-    # bullet already said the right thing per board; the bullet never got the
-    # same treatment (2026-09-09 audit). Whole strings, never a substring edit,
-    # for the translation reason recorded below.
-    if path == "pi" and pi_key in ("pi_4b", "pi_5"):
+    # Dropping the flash steps and crediting the flash are two different
+    # questions; they used to be one flag. *flashed_here* answers the wording
+    # question alone and, unset, follows flash_radio as it always did.
+    if flashed_here is None:
+        flashed_here = flash_radio
+    # THE LAST STEP'S BULLETS, DECIDED IN ONE PLACE (2026-09-09 audit).
+    # Two independent questions were answered by two overriding blocks that
+    # could not both win, so the fourth combination — a 4B/5 whose radio this
+    # lap did not flash — got the Pi Zero's sockets back:
+    #
+    #   bullet 1: does the radio need the socket the medic's cable is in?
+    #             True on a Zero (inner micro-USB) and a 3A+ (the USB-A);
+    #             FALSE on a 4B/5, which has one USB-C carrying power and
+    #             data and a USB-A free the whole build. The hint below the
+    #             bullet always said the right thing per board; the bullet
+    #             never got the same treatment.
+    #   bullet 2: did THIS lap flash that radio? "The radio you flashed at
+    #             the start" is false on the "Keep it — and build its Pi"
+    #             road, which carries in a radio the medic verified but
+    #             never wrote to, and on any build where the operator
+    #             brought their own.
+    #
+    # Four WHOLE strings, never a substring edit of an already-translated
+    # paragraph: tr() reads the session's current language, so patching a
+    # fragment silently no-ops (or matches another language's entry) the
+    # moment the app is not running in English.
+    if path == "pi":
+        takes_socket = pi_key not in ("pi_4b", "pi_5")
+        if takes_socket and flashed_here:
+            _radio_body = tr(
+                "\u2022 unplug the Pi from Node Medic \u2014 the radio needs that "
+                "socket\n"
+                "\u2022 plug in the radio you flashed at the start\n"
+                "\u2022 give the Pi its own power supply\n"
+                "\u2022 optional RGB LED? Slow white breathe = radio "
+                "alive \u2014 check VITALS")
+        elif takes_socket:
+            _radio_body = tr(
+                "\u2022 unplug the Pi from Node Medic \u2014 the radio needs "
+                "that socket\n"
+                "\u2022 plug in your radio\n"
+                "\u2022 give the Pi its own power supply\n"
+                "\u2022 optional RGB LED? Slow white breathe = radio "
+                "alive \u2014 check VITALS")
+        elif flashed_here:
+            _radio_body = tr(
+                "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
+                "own supply from here\n"
+                "\u2022 plug in the radio you flashed at the start\n"
+                "\u2022 give the Pi its own power supply\n"
+                "\u2022 optional RGB LED? Slow white breathe = radio "
+                "alive \u2014 check VITALS")
+        else:
+            _radio_body = tr(
+                "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
+                "own supply from here\n"
+                "\u2022 plug in your radio\n"
+                "\u2022 give the Pi its own power supply\n"
+                "\u2022 optional RGB LED? Slow white breathe = radio "
+                "alive \u2014 check VITALS")
         for st in steps:
             if st.get("anim") == "radio_to_pi":
-                st["body"] = tr(
-                    "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
-                    "own supply from here\n"
-                    "\u2022 plug in the radio you flashed at the start\n"
-                    "\u2022 give the Pi its own power supply\n"
-                    "\u2022 optional RGB LED? Slow white breathe = radio "
-                    "alive \u2014 check VITALS")
-
+                st["body"] = _radio_body
     if path == "pi" and not flash_radio:
         steps = [s for s in steps if s.get("title") not in _PI_FLASH_STEP_TITLES]
-        for s in steps:
-            if s.get("anim") == "radio_to_pi":
-                # A SEPARATE, WHOLE translation key — not a runtime substring
-                # edit of the default body. tr() depends on the session's
-                # CURRENT language, a global that other screens/tests set, so
-                # patching a fragment of an already-translated paragraph at
-                # call time silently no-ops (or worse, matches a DIFFERENT
-                # language's catalog entry) the moment the app is not running
-                # in English. Two whole, independently-translatable strings
-                # have no such dependency.
-                s["body"] = tr(
-                    "\u2022 unplug the Pi from Node Medic \u2014 the radio needs "
-                    "that socket\n"
-                    "\u2022 plug in your radio\n"
-                    "\u2022 give the Pi its own power supply\n"
-                    "\u2022 optional RGB LED? Slow white breathe = radio "
-                    "alive \u2014 check VITALS")
+
     if pi_key:
         for s in steps:
             if s.get("anim") == "connect_pi":

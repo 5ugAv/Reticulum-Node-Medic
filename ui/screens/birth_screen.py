@@ -2907,13 +2907,35 @@ class BirthScreen(BoxLayout):
             _tone = "progress" if more_to_come else "success"
             _btn = "Continue" if more_to_come else None
             if onboarding:
+                # THE TEST HAS TO BE ONE THE KEEPER CAN RUN. This told them to
+                # read the board's screen — and the catalogue records boards
+                # with no screen at all (XIAO ESP32S3, RAK4631), so on those
+                # it named the one check they cannot perform and left them no
+                # way to tell which of the two outcomes they got (audit,
+                # 2026-09-09). VITALS works on every board, so it leads; the
+                # CONFIG MODE sentence stays only where there is a display to
+                # read it on.
+                try:
+                    from ui.board_images import has_screen as _has_screen
+                    _screened = _has_screen(
+                        getattr(getattr(self, "_last_board", None), "key", "")
+                        or "")
+                except Exception:                                  # noqa: BLE001
+                    _screened = False
+                _setup = ("The setup details are printed in the build log — "
+                          "join the 'RTNode-Setup' WiFi and enter them at "
+                          "http://10.0.0.1.")
+                if _screened:
+                    _how = ("If its screen still says CONFIG MODE, it still "
+                            f"needs setting up. {_setup} If it shows its "
+                            "status screen, it's already configured — watch "
+                            "VITALS for its first health beacon.")
+                else:
+                    _how = ("Watch VITALS for its first health beacon — that "
+                            "is this node saying it is up and configured. If "
+                            f"nothing arrives, it is still waiting. {_setup}")
                 view = requirement_popup(
-                    f"Build finished for {nm}.\n\nIf its screen still says "
-                    "CONFIG MODE, the setup details are printed in the build "
-                    "log — join the 'RTNode-Setup' WiFi and enter them at "
-                    "http://10.0.0.1. If it shows its status screen, it's "
-                    "already configured — watch VITALS for its first health "
-                    "beacon.",
+                    f"Build finished for {nm}.\n\n{_how}",
                     "Build finished", False, tone=_tone, button_text=_btn)
             elif getattr(self, "_last_type", "") == "pi_rnode":
                 # Name the physical action — WHEN THERE IS ONE. "Unplug BOTH

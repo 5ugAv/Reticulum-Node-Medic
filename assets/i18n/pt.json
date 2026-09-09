@@ -78,6 +78,7 @@
   "Set up this Node Medic": "Configurar este Node Medic",
   "Settings": "Configurações",
   "Standard:": "Padrão:",
+  "Start now  →": "Começar agora  →",
   "Storage usage": "Uso do armazenamento",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Guardar e encaminhar está LIGADO — o medic guarda mensagens dos telefones desligados.",
   "Terrain could not be downloaded this time — try again later.": "O relevo não pôde ser baixado desta vez — tente novamente mais tarde.",
@@ -96,6 +97,7 @@
   "plug in the radio you flashed at the start": "ligue o rádio que preparou no início",
   "plug in your radio": "ligue o seu rádio",
   "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• desliga o cabo do Node Medic — o Pi passa a usar a sua própria fonte\n• liga o rádio que gravaste no início\n• dá ao Pi a sua própria fonte de alimentação\n• LED RGB opcional? Respiração branca lenta = rádio vivo — vê o VITALS",
+  "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• desliga o cabo do Node Medic — o Pi passa a usar a sua própria fonte\n• ligue o seu rádio\n• dá ao Pi a sua própria fonte de alimentação\n• LED RGB opcional? Respiração branca lenta = rádio vivo — vê o VITALS",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• desligue o Pi do Node Medic — o rádio precisa dessa porta\n• ligue o seu rádio\n• dê ao Pi a própria alimentação\n• LED RGB opcional? Respiração branca lenta = rádio ativo — confira em VITALS",
   "●  keeping watch — you don't need to press anything": "●  a vigiar — não precisa de premir nada"
 }

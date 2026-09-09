@@ -78,6 +78,7 @@
   "Set up this Node Medic": "Redim dispela Node Medic",
   "Settings": "Ol seting",
   "Standard:": "Nomol:",
+  "Start now  →": "Statim nau  →",
   "Storage usage": "Hamas spes i pulap",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Holim na salim i OPIM — medic i holim ol mesij bilong ol fon i dai.",
   "Terrain could not be downloaded this time — try again later.": "I no inap daunlodim graun long dispela taim — traim gen bihain.",
@@ -96,6 +97,7 @@
   "plug in the radio you flashed at the start": "putim redio yu bin wokim long stat",
   "plug in your radio": "putim redio bilong yu",
   "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• rausim kebol bilong Node Medic — Pi i ron long paua bilong em yet nau\n• putim redio yu bin flasim long stat\n• givim Pi paua bilong em yet\n• i gat RGB LED? Isi isi waitpela lait = redio i stap gut — lukim VITALS",
+  "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• rausim kebol bilong Node Medic — Pi i ron long paua bilong em yet nau\n• putim redio bilong yu\n• givim Pi paua bilong em yet\n• i gat RGB LED? Isi isi waitpela lait = redio i stap gut — lukim VITALS",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• rausim Pi long Node Medic — redio i nidim dispela hul\n• putim redio bilong yu\n• givim Pi pawa bilong em yet\n• RGB LED (sapos yu laik)? Waitpela lait i go daun isi = redio i wok — sekim long VITALS",
   "●  keeping watch — you don't need to press anything": "●  mi was i stap — yu no nidim paitim wanpela samting"
 }

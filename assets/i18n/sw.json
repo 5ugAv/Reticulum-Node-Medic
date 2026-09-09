@@ -78,6 +78,7 @@
   "Set up this Node Medic": "Sanidi Node Medic hii",
   "Settings": "Mipangilio",
   "Standard:": "Ya kawaida:",
+  "Start now  →": "Anza sasa  →",
   "Storage usage": "Matumizi ya hifadhi",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Kuhifadhi na kupeleka kumeWASHWA — medic inashika ujumbe wa simu zilizozimwa.",
   "Terrain could not be downloaded this time — try again later.": "Ardhi haikuweza kupakuliwa wakati huu — jaribu tena baadaye.",
@@ -96,6 +97,7 @@
   "plug in the radio you flashed at the start": "unganisha redio uliyoandaa mwanzoni",
   "plug in your radio": "unganisha redio yako",
   "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in the radio you flashed at the start\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• ondoa kebo ya Node Medic — Pi sasa inatumia umeme wake mwenyewe\n• chomeka redio uliyoiweka programu mwanzoni\n• ipe Pi chanzo chake cha umeme\n• kuna taa ya RGB? Mpigo wa polepole mweupe = redio hai — angalia VITALS",
+  "• unplug Node Medic's cable — the Pi runs on its own supply from here\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• ondoa kebo ya Node Medic — Pi sasa inatumia umeme wake mwenyewe\n• unganisha redio yako\n• ipe Pi chanzo chake cha umeme\n• kuna taa ya RGB? Mpigo wa polepole mweupe = redio hai — angalia VITALS",
   "• unplug the Pi from Node Medic — the radio needs that socket\n• plug in your radio\n• give the Pi its own power supply\n• optional RGB LED? Slow white breathe = radio alive — check VITALS": "• toa Pi kutoka Node Medic — redio inahitaji tundu hilo\n• unganisha redio yako\n• ipe Pi umeme wake mwenyewe\n• LED ya RGB hiari? Kupumua nyeupe polepole = redio inafanya kazi — angalia VITALS",
   "●  keeping watch — you don't need to press anything": "●  naangalia — huhitaji kubonyeza chochote"
 }

@@ -16,7 +16,16 @@ def _step(anim, pi_key="pi_3a_plus"):
 def test_connect_your_node_names_the_radio():
     detect = func_source("ui/screens/birth_guide_screen.py", "_render_detect",
                          cls="BirthGuideScreen")
-    assert "radio node (LoRa32)" in detect
+    # The note was "say WHAT gets plugged" — it named a model because the
+    # screen had a model to hand. It does not: this is the DETECT landing, so
+    # the board is unknown by definition, and hard-coding "(LoRa32)" told an
+    # operator holding a RAK4631 to plug in a LilyGO (audit, 2026-09-09).
+    # The note is kept — a named thing gets plugged — without the invention.
+    assert "radio board" in detect, "still has to say what gets plugged"
+    assert "{board}" in detect, "and name the board once the medic knows it"
+    code = "\n".join(l for l in detect.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "LoRa32" not in code, "never name a board we have not read"
     assert "read and routed" not in detect
 
 

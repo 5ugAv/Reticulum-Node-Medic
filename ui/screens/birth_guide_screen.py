@@ -471,7 +471,14 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._render_antenna   # back -> the antenna landing
-        anim = ConnectBoardAnim()
+        # DRAW AND NAME THE BOARD IN THEIR HANDS, when it is known. Coming in
+        # from a chosen build the board key is already set, so this landing can
+        # be about THAT board. Coming in cold it is not — and then the screen
+        # must not invent one (see the body below).
+        bk = getattr(self, "_board_key", "") or ""
+        anim = ConnectBoardAnim(board_key=bk)
+        from ui.board_images import label as board_label
+        named = board_label(bk) if bk else ""
         step = WizardStep(
             index=1, total=2, title=tr("Connect your node"),
             # The medic speaks as "Node Medic" everywhere else; "I'll detect
@@ -479,8 +486,15 @@ class BirthGuideScreen(BoxLayout):
             # what it detects is this screen's job, not the operator's.
             # The old body said "plug the node in" and promised routing —
             # naming nothing (operator, 2026-08-14): say WHAT gets plugged.
-            body=tr("Plug the radio node (LoRa32) into Node Medic with a "
-                    "USB data cable."),
+            # NEVER NAME A BOARD WE HAVE NOT READ. This said "(LoRa32)" on
+            # every path — the whole point of a detect-first landing is that
+            # the medic does not yet know what is in the operator's hand, and
+            # an operator holding a RAK4631 was told to plug in a LilyGO
+            # (audit, 2026-09-09). Name it only once it IS known.
+            body=(tr("Plug the {board} into Node Medic with a USB data "
+                     "cable.").format(board=named) if named else
+                  tr("Plug your radio board into Node Medic with a USB data "
+                     "cable.")),
             anim=anim,
             hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
             next_text=tr("Choose manually  →"), on_next=self._choose_manually,
@@ -653,6 +667,7 @@ class BirthGuideScreen(BoxLayout):
         # choice this session would silently skip the radio-flash steps in a
         # build that never asked the question.
         self._pi_flash_radio = True
+        self._radio_preflashed = False
         self._render_name()
 
     def _on_detect(self, anim):
@@ -980,6 +995,10 @@ class BirthGuideScreen(BoxLayout):
         # original full sequence rather than trusting a stale flag from
         # earlier in the session.
         self._pi_flash_radio = True
+        # ...but NOT flashed by this lap. The sequence stays whole; only the
+        # closing bullet's claim changes ("plug in your radio", not "the radio
+        # you flashed at the start").
+        self._radio_preflashed = True
         self._render_pick_pi()
 
     def _board_key_of(self, c):
@@ -1767,12 +1786,24 @@ class BirthGuideScreen(BoxLayout):
         from ui.birth_guide_flow import guide_steps
         return guide_steps(self._path, self._pi_key_for_text(),
                            getattr(self, "_pi_flash_radio", True),
-                           board_key=getattr(self, "_board_key", "") or "")
+                           board_key=getattr(self, "_board_key", "") or "",
+                           # DID *THIS LAP* FLASH IT? Not "does this lap run
+                           # the flash steps" — the "Keep it — and build its
+                           # Pi" road keeps the whole sequence (the radio gate
+                           # is already armed by the live probe) while never
+                           # writing to the board, so the closing bullet
+                           # credited a flash that never happened (audit,
+                           # 2026-09-09).
+                           flashed_here=(
+                               getattr(self, "_pi_flash_radio", True)
+                               and not getattr(self, "_radio_preflashed",
+                                               False)))
 
     def _choose(self, path):
         self._path = path
         self._i = 0
         self._pi_flash_radio = True     # reset every choice; see _render_pi_radio_choice
+        self._radio_preflashed = False  # ...and so is "this lap didn't flash it"
         # The chooser and the detect landing left NO trace, so the night the
         # operator was asked to choose and connect twice there was nothing in
         # ui.log to reconstruct it from — only their account (2026-08-30). The
@@ -1797,9 +1828,8 @@ class BirthGuideScreen(BoxLayout):
         from kivy.clock import Clock
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_intro    # name step -> the chooser
-        # +2 for the two decision screens folded in ahead of the physical
-        # steps: this one (the name) and the map-sharing question.
-        total = len(self._guide_steps()) + 2
+        # Only the screens that will actually be shown — see _counter().
+        total = self._counter()[1]
         ti = TextInput(text=self._node_name, multiline=False,
                        hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                        size_hint_y=None, height=dp(58), font_size="33sp")
@@ -1918,7 +1948,7 @@ class BirthGuideScreen(BoxLayout):
 
         s = LOCATION_SHARE_STEP
         b = BLUETOOTH_STEP
-        total = len(self._guide_steps()) + 2
+        total = self._counter()[1]
         self._share_pending = self._share_location     # never the last node's
         self._bt_pending = "on" if self._bluetooth_on else "off"
 
@@ -2403,6 +2433,75 @@ class BirthGuideScreen(BoxLayout):
         """
         return getattr(self, "_pi_key", "") or getattr(self, "_pi_art_key", "")
 
+    def _lead_screens(self):
+        """How many decision screens sit ahead of the physical steps.
+
+        The name, always. The map-sharing question ONLY on the paths that ask
+        it — the host path deliberately does not (a radio for a phone has no
+        position to publish), and counting it there promised a screen that
+        never comes.
+        """
+        return 1 + (1 if self._path in ("radio", "pi") else 0)
+
+    def _counter(self, i=None):
+        """``(index, total)`` for the step counter — counting only screens
+        that will ACTUALLY be shown.
+
+        It used to be ``self._i + 2`` out of ``len(steps) + 2``, which
+        promised two things that were not true (audit, 2026-09-09):
+
+          * the map question is not asked on the host path, so its single
+            step read "Step 1 of 3" and then handed off to the BIRTH form —
+            steps 2 and 3 never existed;
+          * steps the medic skips as already-done were still counted, so the
+            radio path's last screen read "Step 4 of 4" having never shown a
+            step 3.
+
+        A counter that over-promises is the same class of fault as text that
+        over-promises: the operator waits for a screen that is not coming.
+
+        *i* is the index into the path's steps of the screen being drawn.
+        Pass None from a lead screen, which knows its own index already and
+        wants only the total.
+        """
+        steps = self._guide_steps()
+        skipped = getattr(self, "_skipped_fwd", None) or set()
+        live = []
+        for n, st in enumerate(steps):
+            if n in skipped and n != i:
+                continue
+            # The step being drawn is live by definition — never ask the
+            # hardware whether the screen in front of the operator exists.
+            if n != i and self._step_is_redundant(st):
+                continue
+            live.append(n)
+        total = self._lead_screens() + len(live)
+        if i is None:
+            return 0, total
+        # 0-BASED, like every other WizardStep index — the widget prints
+        # index + 1. The lead screens occupy 0..lead-1, so the first live step
+        # IS `lead`.
+        return self._lead_screens() + sum(1 for n in live if n < i), total
+
+    def _next_text_for(self, s):
+        """The step's button label, corrected for what has actually happened.
+
+        "Try again  →" is written into the node_online step because the medic
+        drives that step itself and the button exists only for the case where
+        it cannot (operator, 2026-08-09). But the button is also revealed when
+        the wait runs past WAIT_PATIENCE_S, and on a Back arrival — and in
+        both of those NOTHING has been tried yet: the press starts the
+        provisioning for the first time. So the tool asked the operator to
+        retry something it had never done (audit, 2026-09-09).
+
+        Label it from state: "Start now" until a build has failed here,
+        "Try again" afterwards, when it is the truth.
+        """
+        first = s.get("next_first", "")
+        if first and not getattr(self, "_build_failed", False):
+            return first
+        return s.get("next", "Next  →")
+
     def _render_step(self):
         steps = self._guide_steps()
         if not steps or self._i >= len(steps):
@@ -2586,16 +2685,18 @@ class BirthGuideScreen(BoxLayout):
         else:
             anim = (anim_cls(board_key=bk) if anim_cls in _BOARD_ANIMS
                     else anim_cls() if anim_cls else None)
-        # +2 on index/total for the two decision screens folded in ahead of
-        # these: the name, and the map-sharing question.
-        step = WizardStep(index=self._i + 2, total=len(steps) + 2, title=s["title"],
+        # Index and total count only the screens that will be shown — the
+        # lead decision screens this path actually asks, plus the steps the
+        # medic has not already skipped as done (see _counter).
+        _idx, _tot = self._counter(self._i)
+        step = WizardStep(index=_idx, total=_tot, title=s["title"],
                           body=s["body"], anim=anim, hint=s.get("hint", ""),
                           # A gate refusal outranks the step's standing warning:
                           # it is the reason THIS tap did nothing, and the
                           # standing one is already familiar by now.
                           warning=(getattr(self, "_gate_warning", "")
                                    or s.get("warning", "")),
-                          next_text=s.get("next", "Next  →"),
+                          next_text=self._next_text_for(s),
                           on_next=self._next, on_back=self._back)
         self.clear_widgets()
         self.add_widget(step)
