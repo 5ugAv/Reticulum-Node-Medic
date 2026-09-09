@@ -83,3 +83,59 @@ def test_the_panel_uses_per_board_socket_words():
         if not l.strip().startswith("#"))
     assert "standalone_power_hint" in body, "use the per-board sentence"
     assert "mini-HDMI" not in body, "Pi Zero wording must not be hardcoded"
+
+
+# --- the board in their hands ---------------------------------------------
+# Operator, 2026-09-09, holding a RAK4631 and watching a Heltec slide into a Pi
+# Zero: "all the animations should match the hardware that's being used".
+# ConnectBoardAnim has accepted a board_key since 2026-08-02 and NOTHING ever
+# passed one, so every radio animation on every path drew a LilyGO LoRa32 while
+# fifteen board photos sat unused in assets/boards/.
+
+def test_the_animations_are_told_which_board():
+    from tests.srcutil import func_source
+    body = func_source("ui/screens/birth_guide_screen.py", "_render_step",
+                       cls="BirthGuideScreen")
+    assert "_BOARD_ANIMS" in body, "radio animations must be given the board"
+    assert "board_key=" in body, "and given it by name"
+
+
+def test_the_board_anim_tuple_covers_every_class_that_accepts_one():
+    """If someone adds a board-drawing animation, it must be listed or it
+    silently falls back to the generic sprite again."""
+    import inspect
+    from ui.widgets import birth_anims
+    from ui.screens import birth_guide_screen as gs
+    accepts = {
+        cls for _, cls in inspect.getmembers(birth_anims, inspect.isclass)
+        if cls.__module__ == birth_anims.__name__
+        and "board_key" in inspect.signature(cls.__init__).parameters
+    }
+    listed = set(gs._BOARD_ANIMS)
+    missing = {c.__name__ for c in accepts - listed}
+    assert not missing, f"accept board_key but are never given one: {missing}"
+
+
+# --- an nRF52 RTNode has no Wi-Fi to onboard over --------------------------
+# techo, rak4631 and heltec_t114 are serial-DFU boards with no Wi-Fi radio;
+# wifi_onboarding diverts them to _onboard_techo, whose own docstring says the
+# captive portal "cannot exist for it". The step describing a setup AP and a
+# Wi-Fi hand-over was shown to them anyway, and the NEXT screen contradicted it.
+
+def test_a_wifiless_rtnode_is_not_promised_a_setup_portal():
+    from ui.birth_guide_flow import guide_steps
+    for key in ("rak4631", "techo", "heltec_t114"):
+        step = [s for s in guide_steps("radio", board_key=key)
+                if s.get("anim") == "provision"]
+        assert step, f"{key}: no provisioning step found"
+        body = step[0]["body"].lower()
+        assert "no wi-fi" in body, f"{key} has no Wi-Fi — say so"
+        assert "setup wi-fi" not in body and "hands over your wi-fi" not in body
+
+
+def test_a_wifi_rtnode_keeps_the_portal_story():
+    from ui.birth_guide_flow import guide_steps
+    for key in ("heltec_v4", "eora_s3"):
+        step = [s for s in guide_steps("radio", board_key=key)
+                if s.get("anim") == "provision"]
+        assert "setup Wi-Fi" in step[0]["body"], f"{key} does use the portal"

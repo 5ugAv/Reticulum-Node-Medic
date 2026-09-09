@@ -48,6 +48,10 @@ _ANIMS = {"connect_antenna": ConnectAntennaAnim, "connect_board": ConnectBoardAn
           "sd_handover": SdHandoverAnim,
           "provision": ProvisionAnim}
 
+#: Animations that draw the RADIO and so must be told which board it is.
+#: RadioToPiAnim is in BOTH tuples — it draws a Pi and a radio.
+_BOARD_ANIMS = (ConnectBoardAnim, DisconnectBoardAnim, RadioToPiAnim)
+
 #: Animations that draw a specific Raspberry Pi and so must be told which one.
 _PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim,
              RadioToPiAnim, ProvisionOverCableAnim)
@@ -1735,7 +1739,8 @@ class BirthGuideScreen(BoxLayout):
         path is unaffected — the flag only ever matters for "pi"."""
         from ui.birth_guide_flow import guide_steps
         return guide_steps(self._path, self._pi_key_for_text(),
-                           getattr(self, "_pi_flash_radio", True))
+                           getattr(self, "_pi_flash_radio", True),
+                           board_key=getattr(self, "_board_key", "") or "")
 
     def _choose(self, path):
         self._path = path
@@ -2505,10 +2510,20 @@ class BirthGuideScreen(BoxLayout):
         # Pi steps draw the DETECTED model when we know it. art_key() returns ""
         # for an ambiguous SoC, and the animations fall back to their generic
         # drawing rather than showing a photo of some other Raspberry Pi.
+        # DRAW THE BOARD IN THEIR HANDS. ConnectBoardAnim has taken a
+        # board_key since 2026-08-02 and nothing ever passed one, so every
+        # radio animation on every path drew a LilyGO LoRa32 — an operator
+        # holding a RAK4631 watched a Heltec go into their Pi (2026-09-09).
+        # Fifteen board photos were sitting unused in assets/boards/.
+        bk = getattr(self, "_board_key", "") or ""
         if anim_cls in _PI_ANIMS:
-            anim = anim_cls(pi_key=self._pi_key_for_art(anim_cls))
+            kw = {"pi_key": self._pi_key_for_art(anim_cls)}
+            if anim_cls in _BOARD_ANIMS:
+                kw["board_key"] = bk
+            anim = anim_cls(**kw)
         else:
-            anim = anim_cls() if anim_cls else None
+            anim = (anim_cls(board_key=bk) if anim_cls in _BOARD_ANIMS
+                    else anim_cls() if anim_cls else None)
         # +2 on index/total for the two decision screens folded in ahead of
         # these: the name, and the map-sharing question.
         step = WizardStep(index=self._i + 2, total=len(steps) + 2, title=s["title"],

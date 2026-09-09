@@ -53,13 +53,38 @@ def test_rtnode_build_keeps_its_true_compile_warning():
     assert banner.startswith("Building JONESEY-2")
 
 
-def test_every_kind_tells_the_operator_to_wait_for_the_green_word():
+def test_every_kind_tells_the_operator_what_to_wait_for():
+    """RENAMED AND WIDENED 2026-09-09. It used to demand the words "Build
+    finished" from every kind — but no pi_rnode build produces a card with
+    that title (they are "One last step", "Finished" or "Build didn't
+    finish"), and while a walkthrough is pending the outcome is deliberately a
+    BLUE card with a Continue button. So the test was enforcing the lie. What
+    matters is that a wait instruction is present and names the card that will
+    actually appear."""
     for args in [("pi_rnode", get_board("heltec32_v4"), "x"),
                  ("rnode_flash", get_board("rak4631"), ""),
                  ("rtnode_2400", None, "y")]:
         _b, para = busy_truth(*args)
-        assert "Build finished" in para, (
+        assert "WAIT for" in para, (
             f"{args[0]}: the wait-for-confirmation instruction went missing")
+        assert "Build finished" not in para or args[0] != "pi_rnode", (
+            "pi_rnode never shows a 'Build finished' card")
+
+
+def test_a_guided_build_names_the_blue_continue_card():
+    """During a walkthrough _popup_outcome shows a progress-toned card with a
+    Continue button, never the green one. Promising green there sent the
+    operator looking for a card the code would not draw."""
+    for kind in ("pi_rnode", "rnode_flash", "rtnode_2400"):
+        _b, para = busy_truth(kind, get_board("rak4631"), "n", guided=True)
+        assert "blue" in para and "Continue" in para
+        assert "Build finished" not in para
+
+
+def test_a_standalone_rnode_flash_still_says_green():
+    """Outside a walkthrough the green card is real — don't over-correct."""
+    _b, para = busy_truth("rnode_flash", get_board("rak4631"), "")
+    assert "green" in para and "Build finished" in para
 
 
 def test_the_screen_uses_the_truth_not_the_old_hardcoded_string():

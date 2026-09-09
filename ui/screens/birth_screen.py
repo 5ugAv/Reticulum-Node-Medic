@@ -2085,7 +2085,8 @@ class BirthScreen(BoxLayout):
         # (bench, 2026-08-18).
         from ui.busy_truth import busy_truth
         self._busy_banner, self._busy_paragraph = busy_truth(
-            "rtnode2400", None, self._name_in.text.strip())
+            "rtnode2400", None, self._name_in.text.strip(),
+            guided=guided_birth_pending())
         self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed,
@@ -2460,7 +2461,8 @@ class BirthScreen(BoxLayout):
         # paths that really compile may say so (ui.busy_truth).
         from ui.busy_truth import busy_truth
         self._busy_banner, self._busy_paragraph = busy_truth(
-            busy_kind, board, self._name_in.text.strip())
+            busy_kind, board, self._name_in.text.strip(),
+            guided=guided_birth_pending())
         self._apply_radio(workflow, radio)
         self._apply_location_sharing(workflow)
         return workflow, title

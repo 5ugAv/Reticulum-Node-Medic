@@ -559,7 +559,7 @@ _PI_FLASH_STEP_TITLES = frozenset({
 })
 
 
-def guide_steps(path, pi_key="", flash_radio=True):
+def guide_steps(path, pi_key="", flash_radio=True, board_key=""):
     """The ordered step dicts for a birth *path* (pure — unit-testable). Unknown
     paths return an empty list. Returns a copy so callers can't mutate the source.
 
@@ -588,6 +588,29 @@ def guide_steps(path, pi_key="", flash_radio=True):
     from ui.pi_connectors import (connect_hint, connect_warning, power_roads,
                                   standalone_power_hint)
     steps = [dict(s) for s in _STEPS.get(path, [])]
+
+    # NO WI-FI ON AN nRF52. Three shipped RTNode targets are serial-DFU boards
+    # with no Wi-Fi radio at all — techo, rak4631, heltec_t114 — and for those
+    # wifi_onboarding diverts to _onboard_techo, whose own docstring says "it
+    # has no WiFi radio, so the captive portal cannot exist for it". A step
+    # describing a setup AP and a Wi-Fi hand-over is simply false there, and
+    # the very next screen already contradicts it ("Configuring over USB — no
+    # WiFi on this board"). Found 2026-09-09 with a RAK4631 in hand.
+    if path == "radio" and board_key:
+        try:
+            from workflows.rtnode_build import (RTNODE_TARGETS,
+                                                target_for_board_key)
+            tgt = RTNODE_TARGETS.get(target_for_board_key(board_key) or "")
+            if tgt is not None and tgt.mechanism == "nrf_dfu":
+                for st in steps:
+                    if st.get("anim") == "provision":
+                        st["body"] = tr(
+                            "This board has no Wi-Fi. Node Medic sets its "
+                            "name and radio settings over the USB cable, then "
+                            "reads them back to check.")
+                        st["hint"] = tr("Nothing leaves your network.")
+        except Exception:                                          # noqa: BLE001
+            pass
     if path == "pi" and not flash_radio:
         steps = [s for s in steps if s.get("title") not in _PI_FLASH_STEP_TITLES]
         for s in steps:

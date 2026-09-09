@@ -18,15 +18,32 @@ sentence to account without a window.
 """
 
 
-def busy_truth(node_type: str, board, display_name: str):
+def busy_truth(node_type: str, board, display_name: str,
+               guided: bool = False):
     """(banner, paragraph) for the busy view — each true for THIS build.
 
     ``node_type`` is the birth chooser's kind ("pi_rnode", "rnode_flash", or
     an RTNode build key); ``board`` the RNodeBoard involved (None when there
-    isn't one); ``display_name`` the node's name where one exists.
+    isn't one); ``display_name`` the node's name where one exists; ``guided``
+    whether a walkthrough is waiting to resume after this build.
+
+    NAME THE CARD THAT WILL ACTUALLY APPEAR. This promised a green "Build
+    finished" confirmation unconditionally — and on the Pi path no such card
+    exists in either direction: the outcome is titled "One last step",
+    "Finished" or "Build didn't finish", and while a walkthrough is pending
+    _popup_outcome deliberately shows a BLUE card with a Continue button. So
+    the operator was told twice, through two multi-minute waits, to wait for
+    something the code was never going to show (2026-09-09).
     """
-    wait = ("Keep everything plugged in and WAIT for the green "
-            "'Build finished' confirmation before touching anything.")
+    if guided:
+        wait = ("Keep everything plugged in and WAIT for the blue card with "
+                "the Continue button before touching anything.")
+    elif node_type == "pi_rnode":
+        wait = ("Keep everything plugged in and WAIT for the card that says "
+                "the build is done before touching anything.")
+    else:
+        wait = ("Keep everything plugged in and WAIT for the green "
+                "'Build finished' confirmation before touching anything.")
     if node_type == "pi_rnode":
         name = display_name or "the node"
         return (f"Building {name} — keep the Pi connected, don't power off",
