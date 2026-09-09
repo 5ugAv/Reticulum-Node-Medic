@@ -714,3 +714,41 @@ def test_a_gate_that_has_passed_offers_nothing_to_press_either():
     # the full condition carries the 2026-08-14 direction guard as well
     branch = src[src.index("if ok and not failed and not back_arrival:"):]
     assert "hide_next" in branch[:900]
+
+
+# --- a failed build must be able to speak (audit, 2026-09-09) --------------
+
+def test_resume_marks_the_lap_as_a_failure_rewind():
+    """resume() copies the hand-off's result onto the guide, so
+    ``build_failed`` arrives as ``_build_failed`` — the flag _render_step
+    reads. Guard it, because the rewind depends on the copy happening."""
+    src = func_source(SCREEN, "resume", cls="BirthGuideScreen")
+    assert 'setattr(self, f"_{key}", val)' in src
+    assert 'get("build_failed")' in src
+
+
+def test_a_failure_rewind_is_not_self_advanced_past():
+    """The rewind lands on the step that did the work, with the [FAIL] line
+    and 'tap Try again' in _gate_warning. Every self-driving path in
+    _render_step then fired anyway — the radio is still plugged in, which is
+    exactly what those shortcuts look for — so the failure narration was
+    unreachable in the one case it exists for."""
+    src = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
+    code = "\n".join(l for l in src.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "failure_rewind = bool(getattr(self, \"_build_failed\", False))" in code
+    # the auto-fire of the radio hand-off
+    fire = code[code.index('cur.get("anim") == "connect_board"'):]
+    fire = fire[:fire.index(":")]
+    assert "not failure_rewind" in fire, \
+        "a failure rewind must not re-fire the hand-off it came back from"
+    # and the redundant-step walk
+    assert "if not back_arrival and not failure_rewind:" in code, \
+        "a failure rewind must not be walked past as redundant"
+
+
+def test_the_rewound_step_is_reachable_again_after_tapping_try_again():
+    """_next() clears the flag, so the retry lap is fully self-driving —
+    the guard must not become a permanent brake."""
+    src = func_source(SCREEN, "_next", cls="BirthGuideScreen")
+    assert "self._build_failed = False" in src

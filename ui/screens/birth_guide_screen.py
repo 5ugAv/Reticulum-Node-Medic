@@ -2470,10 +2470,27 @@ class BirthGuideScreen(BoxLayout):
         # ...and never on a BACK arrival: this advance is self-driving, and
         # self-driving is what turned Back into a trap (merge of the two
         # 2026-08-14 fixes, which were written against each other's absence).
+        # A FAILED BUILD MUST BE ABLE TO SPEAK. Everything below this line is
+        # self-driving: it fires the hand-off again, or walks past steps that
+        # look redundant because the hardware is still plugged in. Both are
+        # right on a normal lap and both are wrong on the lap that comes back
+        # from a failure — resume() rewound to this step precisely so the
+        # operator could read the [FAIL] line and tap Try again, and the
+        # radio is of course still connected, so the auto-advance fired
+        # before the screen was ever built. The failure narration was
+        # unreachable in the ONE case it exists for (audit, 2026-09-09).
+        #
+        # _next() clears _build_failed, so tapping Try again gives back a
+        # fully self-driving lap; nothing is stuck.
+        failure_rewind = bool(getattr(self, "_build_failed", False))
+        if failure_rewind:
+            self._trace(f"step {self._i + 1} is a failure rewind — "
+                        "not self-advancing past it")
         cur = steps[self._i]
         if (self._i == 0 and cur.get("screen")
                 and cur.get("anim") == "connect_board"
-                and self._path == "pi" and not back_arrival):
+                and self._path == "pi" and not back_arrival
+                and not failure_rewind):
             ports = []
             try:
                 from ui.hw_factories import local_board_ports
@@ -2535,7 +2552,7 @@ class BirthGuideScreen(BoxLayout):
         # Back press the moment it lands — _back already chose the landing
         # step, and it is not second-guessed. What gets skipped is RECORDED so
         # Back can step over the same ground without re-probing the hardware.
-        if not back_arrival:
+        if not back_arrival and not failure_rewind:
             skipped = getattr(self, "_skipped_fwd", None)
             if skipped is None:
                 skipped = self._skipped_fwd = set()

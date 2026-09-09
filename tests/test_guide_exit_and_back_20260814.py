@@ -79,8 +79,11 @@ def test_a_backward_arrival_is_never_re_skipped_forward():
     Running that against a backward arrival un-does the Back press — _back
     already chose the landing step, and it is not to be second-guessed."""
     rs = func_source(SCREEN, "_render_step")
-    m = re.search(r"if not back_arrival:.*?while self\._i < len\(steps\)", rs,
-                  re.S)
+    # Other conditions may join it (a failure rewind must not be walked past
+    # either, 2026-09-09) — what this test pins is that back_arrival is one
+    # of them.
+    m = re.search(r"if not back_arrival[^:\n]*:.*?while self\._i < len\(steps\)",
+                  rs, re.S)
     assert m, "the redundancy skip loop runs whichever way the operator moved"
 
 

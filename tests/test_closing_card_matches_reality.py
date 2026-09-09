@@ -195,3 +195,44 @@ def test_the_last_bullet_is_per_board():
                 if s.get("anim") == "radio_to_pi"][0]
         assert "the radio needs that socket" not in step["body"], key
         assert "own supply" in step["body"], key
+
+
+# --- advice for the failure we actually had --------------------------------
+
+def test_a_setup_failure_does_not_get_board_recovery_advice():
+    """wifi_onboarding fails for reasons that have nothing to do with the
+    board: the medic not being on Wi-Fi, an unreadable PSK, a 5 GHz-only SSID.
+    The flash SUCCEEDED in every one of those. Offering "hold BOOT, tap RST,
+    try another cable" is the 2026-08-09 'advice for the wrong failure'
+    complaint in an unfixed corner (2026-09-09 audit)."""
+    from tests.srcutil import func_source
+    src = open("ui/screens/birth_screen.py").read()
+    assert "_ONBOARDING_FAILURE" in src, "setup failures need their own branch"
+    body = func_source("ui/screens/birth_screen.py", "_popup_outcome",
+                       cls="BirthScreen")
+    code = "\n".join(l for l in body.splitlines()
+                     if not l.strip().startswith("#"))
+    i = code.index("_ONBOARDING_FAILURE")
+    j = code.index("recovery_for_board")
+    assert i < j, "the setup branch must be tested BEFORE board recovery"
+    branch = code[i:j]
+    assert "flashed fine" in branch, "say the board is not the problem"
+    assert "10.0.0.1" in branch, "and give the manual way in"
+
+
+def test_the_matcher_covers_the_real_onboarding_failures():
+    """Keyed to the actual failure strings in wifi_onboarding, so a reworded
+    failure does not silently fall back to cable advice."""
+    import re
+    src = open("ui/screens/birth_screen.py").read()
+    pat = re.search(r"_ONBOARDING_FAILURE = re\.compile\(\s*(.*?)\s*re\.I\)",
+                    src, re.S).group(1)
+    rx = re.compile("".join(re.findall(r'r?"([^"]*)"', pat)), re.I)
+    for line in (
+        "[FAIL] wifi_onboarding — Can't auto-provision: the medic isn't on WiFi",
+        "[FAIL] wifi_onboarding — couldn't read the WiFi password for 'x'",
+        "[FAIL] wifi_onboarding — every copy of 'x' in range is on 5 GHz",
+    ):
+        assert rx.search(line), f"not recognised as a setup failure: {line}"
+    assert not rx.search("[FAIL] flash_firmware — Hash of data did not verify"), \
+        "a real flash failure must still get board-recovery advice"

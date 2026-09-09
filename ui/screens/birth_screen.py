@@ -180,6 +180,16 @@ class _StepBar(Widget):
                     radius=[dp(4)] * 4)
 
 
+#: Failures that come from the SETUP step, not from flashing the board. The
+#: flash already succeeded when these fire, so board-recovery advice (hold
+#: BOOT, tap RST, change the cable) is advice for a fault the operator does
+#: not have. See workflows/rtnode_build.wifi_onboarding's failure branches.
+_ONBOARDING_FAILURE = re.compile(
+    r"wifi_onboarding|isn't on WiFi|couldn't read the WiFi|5 GHz|"
+    r"configure the node manually|RTNode-Setup",
+    re.I)
+
+
 def _line(text, color="text_primary", bold=False, size="15sp"):
     # height follows the wrapped text — fixed heights made long lines overlap
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
@@ -2839,6 +2849,20 @@ class BirthScreen(BoxLayout):
                             "Its card can be checked too: put it in Node "
                             "Medic's reader and it will say whether the card "
                             "needs writing again.")
+                elif _ONBOARDING_FAILURE.search(fail_line or ""):
+                    # ADVICE FOR THE FAILURE WE ACTUALLY HAD. wifi_onboarding
+                    # fails for reasons that have nothing to do with the board
+                    # or the cable — the medic not being on Wi-Fi, an
+                    # unreadable PSK, a 5 GHz-only SSID. Offering "hold BOOT,
+                    # tap RST, try another cable" there is the 2026-08-09
+                    # "advice for the wrong failure" complaint in an unfixed
+                    # corner: the flash SUCCEEDED, the setup did not.
+                    body = (f"{head}\n\nThe board flashed fine — this failed "
+                            "at the setup step, so buttons and cables won't "
+                            "help. Fix what the line above names, then run the "
+                            "build again. You can also set the node up by hand "
+                            "at its own portal: join its 'RTNode-Setup' Wi-Fi "
+                            "and open http://10.0.0.1.")
                 else:
                     from ui.safety import recovery_for_board
                     recover = recovery_for_board(getattr(self, "_last_board", None))
