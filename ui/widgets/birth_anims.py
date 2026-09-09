@@ -1823,6 +1823,63 @@ class ConnectPiAnim(ConnectBoardAnim):
             except Exception:
                 self._geo = None
 
+    #: How long one plug-in-and-out takes in the charge-only demonstration.
+    #: Two of them make the whole loop.
+    DOUBT_CYCLE_S = 3.4
+
+    def show_cable_doubt(self, on=True):
+        """Start demonstrating the charge-only cable — TWO IDENTICAL CABLES,
+        opposite outcomes.
+
+        Only ever called once the wait is plainly overdue. A charge-only cable
+        is the commonest reason this step never completes, and the copy itself
+        concedes there is no test the operator can perform on it: you cannot
+        tell by looking. What CAN be taught is the SYMPTOM, and a symptom is a
+        sequence — a plug goes in and nothing happens; the same-looking plug
+        goes in and the run carries something.
+
+        The difference is drawn in the CABLE, never in the aiming ring. Green
+        is this UI's word for "the medic can see it", and the ring obeys that
+        law everywhere else on this screen; a green ring for a hypothetical
+        would be the 2026-08-10 fault again — a target read as an
+        acknowledgement. The moving payloads are ProvisionOverCableAnim's
+        "substance moving" grammar, which is exactly the claim being made:
+        one cable carries data, the other carries none.
+        """
+        if bool(on) == bool(getattr(self, "_doubt", False)):
+            return
+        self._doubt = bool(on)
+        self._duration = (self.DOUBT_CYCLE_S * 2) if on else 2.2
+        if self._ev is not None:                       # keep it looping
+            self.start()
+
+    def _plug_travel(self):
+        """(t, cycle, seated): how far the plug is in, which demonstration
+        cycle this is, and how long it has been seated. Outside the
+        demonstration it is the old single approach, unchanged."""
+        if not getattr(self, "_doubt", False) or self._connected:
+            t = (1.0 if self._connected
+                 else self._ease(min(1.0, self.phase * 1.15)))
+            return t, 0, 0.0
+        cycle = int(self.phase * 2) % 2
+        u = (self.phase * 2) % 1.0
+        if u < 0.34:
+            return self._ease(u / 0.34), cycle, 0.0
+        if u < 0.76:
+            return 1.0, cycle, (u - 0.34) / 0.42
+        return 1.0 - self._ease((u - 0.76) / 0.24), cycle, 0.0
+
+    def _payloads(self, pts, seated):
+        """Three payloads travelling the run toward the plug. Only ever drawn
+        on the demonstration's SECOND cycle — the cable that works."""
+        aim = theme.hex_to_rgba(theme.COLORS["accent"])
+        Color(aim[0], aim[1], aim[2], 0.95)
+        for k in range(3):
+            u = (seated * 1.6 + k / 3.0) % 1.0
+            bxp, byp = pts[int((1.0 - u) * (len(pts) - 1))]
+            r = dp(5.0)
+            Ellipse(pos=(bxp - r, byp - r), size=(r * 2, r * 2))
+
     @staticmethod
     def _ease(v):
         v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
@@ -1877,7 +1934,7 @@ class ConnectPiAnim(ConnectBoardAnim):
         braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
 
-        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
+        t, doubt_cycle, doubt_seated = self._plug_travel()
         # A real micro-USB moulding is ~2.4:1 and the drawn one keeps that
         # ratio, so this is sized by WIDTH and the height follows.
         plug_w = dp(20)
@@ -1966,6 +2023,13 @@ class ConnectPiAnim(ConnectBoardAnim):
                               pos=(cx - bw / 2.0, cy - ln / 2.0),
                               size=(bw, ln + dp(1.5)))   # overlap, no seams
                     PopMatrix()
+                # THE DIFFERENCE BETWEEN THE TWO CABLES, DRAWN IN THE CABLE.
+                # First cycle: the plug is in and the run is empty — that is
+                # the charge-only cable, and it looks exactly like the other
+                # one. Second cycle: the same plug, and the run carries
+                # something. See show_cable_doubt.
+                if doubt_cycle == 1 and doubt_seated > 0.0:
+                    self._payloads(pts, doubt_seated)
 
             if medic is not None:
                 Color(1, 1, 1, 1)
@@ -2069,7 +2133,7 @@ class ConnectPiAnim(ConnectBoardAnim):
         plug = _texture(PLUG_MICRO_DRAWN_PNG) or _texture(PLUG_MICRO_PNG)
         braid = _texture(BRAID_MICRO_DRAWN_PNG) or _texture(CABLE_BRAID_PNG)
         x, y, w, h = self.x, self.y, self.width, self.height
-        t = 1.0 if self._connected else self._ease(min(1.0, self.phase * 1.15))
+        t, doubt_cycle, doubt_seated = self._plug_travel()
 
         plug_w = dp(20)
         plug_h = plug_w * (plug.height / float(plug.width)) if plug else dp(48)
@@ -2120,6 +2184,11 @@ class ConnectPiAnim(ConnectBoardAnim):
                     Rectangle(texture=braid, pos=(mx - bw / 2.0, my - ln / 2.0),
                               size=(bw, ln + dp(1.5)))
                     PopMatrix()
+                # Same demonstration on the side-entry boards (3 A+): an
+                # empty run, then an identical plug whose run carries
+                # something. See show_cable_doubt.
+                if doubt_cycle == 1 and doubt_seated > 0.0:
+                    self._payloads(pts, doubt_seated)
 
             if medic is not None:
                 Color(1, 1, 1, 1)

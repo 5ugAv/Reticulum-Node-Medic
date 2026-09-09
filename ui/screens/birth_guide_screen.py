@@ -2712,6 +2712,25 @@ class BirthGuideScreen(BoxLayout):
             # press that changed nothing (operator, 2026-08-02).
             step.hide_next()
             self._start_pi_poll(anim)
+            # THE CHARGE-ONLY CABLE, ONCE THE WAIT IS PLAINLY OVERDUE. It is
+            # the commonest reason this step never completes, and there is no
+            # test the operator can run on the cable — you cannot tell by
+            # looking, which the step's own copy concedes. So the medic shows
+            # the SYMPTOM instead: two identical plugs, one run empty and one
+            # carrying something (birth_anims.ConnectPiAnim.show_cable_doubt).
+            #
+            # Not from the first second. For the first two and a half minutes
+            # the honest picture is "plug it in and wait" — a Pi expanding its
+            # card on first boot looks exactly like a Pi that will never come
+            # up, and casting doubt on a good cable would send the operator
+            # hunting a fault they do not have (audit, 2026-09-09).
+            from kivy.clock import Clock as _Clk
+            _tok = getattr(self, "_nav_token", 0)
+            _Clk.schedule_once(
+                lambda _d: (getattr(self, "_nav_token", None) == _tok
+                            and self._current is step
+                            and anim.show_cable_doubt()),
+                self.WAIT_PATIENCE_S)
             # No patience-timer Next either (operator, 2026-08-14: "remove
             # that next and let the Node Medic move on by itself"). The
             # escape hatch existed for a Pi that came back on Wi-Fi, which

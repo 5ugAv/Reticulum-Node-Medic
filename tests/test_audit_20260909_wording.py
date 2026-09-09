@@ -185,3 +185,41 @@ def test_a_one_socket_board_is_never_given_a_second_one():
     code = "\n".join(l for l in hand.splitlines()
                      if not l.strip().startswith("#"))
     assert "if power is not None:" in code
+
+
+# --- 5.2. the charge-only cable, taught as a symptom ------------------------
+
+def test_the_cable_demonstration_never_uses_green():
+    """Green is this UI's word for 'the medic can see it'. A green ring for a
+    hypothetical is the 2026-08-10 fault — a target read as an
+    acknowledgement. The difference is drawn in the CABLE."""
+    src = open("ui/widgets/birth_anims.py").read()
+    pay = func_source("ui/widgets/birth_anims.py", "_payloads",
+                      cls="ConnectPiAnim")
+    assert "accent" in pay and "green" not in pay.lower()
+    doubt = func_source("ui/widgets/birth_anims.py", "show_cable_doubt",
+                        cls="ConnectPiAnim")
+    assert "_doubt" in doubt
+
+
+def test_the_empty_run_comes_first_and_the_carrying_one_second():
+    trav = func_source("ui/widgets/birth_anims.py", "_plug_travel",
+                       cls="ConnectPiAnim")
+    assert "cycle = int(self.phase * 2) % 2" in trav, \
+        "two plug-ins per loop: the two cables look identical"
+    src = open("ui/widgets/birth_anims.py").read()
+    assert src.count("if doubt_cycle == 1 and doubt_seated > 0.0:") == 2, \
+        "both scenes (bottom-entry and side-entry) must demonstrate it"
+
+
+def test_it_only_starts_once_the_wait_is_overdue():
+    """For the first two and a half minutes the honest picture is 'plug it in
+    and wait' — a Pi expanding its card looks exactly like a Pi that will
+    never come up, and doubting a good cable sends the operator hunting a
+    fault they do not have."""
+    render = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
+    i = render.index("show_cable_doubt")
+    assert "WAIT_PATIENCE_S" in render[i:i + 200], \
+        "the demonstration must be on the patience timer, not immediate"
+    assert "_nav_token" in render[i - 400:i + 400], \
+        "and must not fire onto a step the operator has already left"
