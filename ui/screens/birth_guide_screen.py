@@ -57,6 +57,27 @@ _PI_ANIMS = (InsertSdIntoPiAnim, SdHandoverAnim, ConnectPiAnim,
              RadioToPiAnim, ProvisionOverCableAnim)
 
 
+def _is_rnode_firmware(port: str) -> bool:
+    """Is the board on *port* running RNode firmware right now?
+
+    Read from the USB product string, which the firmware sets: an RTNode-2400
+    build announces itself as e.g. "RAK4631 RTNode-2400", an RNode does not.
+    This is what the board IS, as against what a stored certificate says it
+    once was.
+
+    FAILS CLOSED — an unreadable identity returns False, so the build flashes
+    rather than trusting a board it could not identify. A needless reflash
+    costs a minute; the other way costs a whole build (2026-09-09).
+    """
+    try:
+        from ui.hw_factories import LocalConnection
+        from workflows.rnode_flash import usb_id_for_port
+        ident = (usb_id_for_port(LocalConnection(), port) or "")
+    except Exception:                                              # noqa: BLE001
+        return False
+    return "rtnode" not in ident.lower() if ident else False
+
+
 def _line(text, size, color="text_primary", bold=False, h=None):
     """A left-aligned line of copy at DESIGN *size*, routed through the type
     scale (ui/theme.py) like every other screen.
@@ -2465,11 +2486,29 @@ class BirthGuideScreen(BoxLayout):
                     from ui.cert_store import cert_for_usb_serial
                     serial = by_id_serial(
                         usb_id_for_port(LocalConnection(), ports[0])) or ""
-                    if serial and cert_for_usb_serial(serial):
+                    cert = cert_for_usb_serial(serial) if serial else None
+                    # A CERTIFICATE IS HISTORY, NOT A ROLE. It proves this
+                    # medic flashed and verified this board once — not that the
+                    # board is carrying the firmware THIS build needs. A RAK4631
+                    # birthed earlier as an RTNode-2400 still holds its cert, so
+                    # this shortcut declared it a ready RNode, skipped the flash
+                    # and jumped a step; the Pi then got a standalone mesh node
+                    # where it needed a modem, and came up lora_online=false
+                    # (operator, 2026-09-09 — cost a whole build to find).
+                    #
+                    # The board says what it is running, in its own USB product
+                    # string: "RAK4631 RTNode-2400". That is ground truth about
+                    # NOW, where the cert is only about once.
+                    if cert and _is_rnode_firmware(ports[0]):
                         self._radio_verified = True
                         self._radio_usb_serial = serial
                         self._trace("attached radio holds this medic's "
-                                    "certificate — skipping the flash")
+                                    "certificate AND is running RNode "
+                                    "firmware — skipping the flash")
+                    elif cert:
+                        self._trace("attached radio holds a certificate but is "
+                                    "NOT running RNode firmware — it will be "
+                                    "flashed")
                 except Exception:                                  # noqa: BLE001
                     pass
             if getattr(self, "_radio_verified", False):
