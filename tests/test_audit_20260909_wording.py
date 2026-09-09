@@ -138,3 +138,50 @@ def test_exactly_one_pi_model_still_has_no_art():
     thing under test, so it must stay reachable."""
     from ui.board_images import pi_art_status
     assert pi_art_status()["pi_3b_plus"] is False
+
+
+# --- 5.1. the radio-onto-the-Pi hand-off, with the socket and the adapter ---
+
+def test_the_handoff_scene_only_marks_boards_we_measured():
+    """ART AND GEOMETRY FROM THE SAME BOARD — ConnectPiAnim's rule, and the
+    reason this class refused to point at a socket at all. A board with no
+    photo is drawn from another Pi's sprite, so its measured sockets would be
+    markers on somebody else's picture."""
+    init = func_source("ui/widgets/birth_anims.py", "__init__",
+                       cls="RadioToPiAnim")
+    assert "sockets_for" in init
+    assert "if not self._pi_png:" in init and "self._geo = None" in init
+    draw = func_source("ui/widgets/birth_anims.py", "_draw", cls="RadioToPiAnim")
+    assert "if self._geo is not None:" in draw, \
+        "an unmeasured board keeps the honest two-objects scene"
+
+
+def test_the_adapter_beat_exists_only_where_an_adapter_is_needed():
+    """Not a guess: pi_connectors already says it in words for the Zero."""
+    from ui.pi_connectors import standalone_power_hint
+    assert "OTG" in standalone_power_hint("pi_zero_2w")
+    assert "OTG" not in standalone_power_hint("pi_3a_plus")
+    beats = func_source("ui/widgets/birth_anims.py", "_beats",
+                        cls="RadioToPiAnim")
+    assert "NEEDS_OTG" in beats and '"adapter"' in beats
+    src = open("ui/widgets/birth_anims.py").read()
+    i = src.index("NEEDS_OTG = (")
+    assert "pi_3a_plus" not in src[i:i + 60], \
+        "the 3A+ takes the radio in its USB-A — no adapter"
+
+
+def test_every_beat_of_the_handoff_is_drawn():
+    hand = func_source("ui/widgets/birth_anims.py", "_draw_handoff",
+                       cls="RadioToPiAnim")
+    for beat in ('"unplug"', '"adapter"', '"radio"'):
+        assert beat in hand, beat
+    assert "_PWR" in hand and "_CABLE" in hand, \
+        "green is data and orange is power — the language ConnectPiAnim taught"
+
+
+def test_a_one_socket_board_is_never_given_a_second_one():
+    hand = func_source("ui/widgets/birth_anims.py", "_draw_handoff",
+                       cls="RadioToPiAnim")
+    code = "\n".join(l for l in hand.splitlines()
+                     if not l.strip().startswith("#"))
+    assert "if power is not None:" in code

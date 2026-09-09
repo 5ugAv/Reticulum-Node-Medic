@@ -557,15 +557,114 @@ class RadioToPiAnim(ConnectBoardAnim):
     for how the SD slots were done, and do the same before adding a marker here.
     """
 
+    #: Boards whose DATA socket is a micro-USB, so a USB-A radio cable cannot
+    #: reach it without a micro-USB OTG adapter in between. Not a guess: the
+    #: step's own per-board hint already says it in words
+    #: (pi_connectors._STANDALONE_HINTS["pi_zero_2w"]) — the adapter was simply
+    #: the one object in this hand-off that appeared in no picture, at 14 sp,
+    #: on the last screen of the build (audit, 2026-09-09).
+    NEEDS_OTG = ("pi_zero_2w",)
+
     def __init__(self, board_key: str = "", pi_key: str = "", **kwargs):
+        kwargs.setdefault("duration", 6.0)
         super().__init__(board_key=board_key, **kwargs)
         self._pi_png = ""
+        self._pi_key = pi_key or ""
+        self._geo = None
         if pi_key:
             try:
                 from ui import board_images
                 self._pi_png = board_images.image_for_pi(pi_key) or ""
             except Exception:
                 self._pi_png = ""
+            try:
+                from ui.pi_connector_geometry import sockets_for
+                self._geo = sockets_for(pi_key)
+            except Exception:                                      # noqa: BLE001
+                self._geo = None
+        # ART AND GEOMETRY FROM THE SAME BOARD, ALWAYS — ConnectPiAnim's rule,
+        # and the reason this class refused to mark a socket at all until now.
+        # No photo means the sprite drawn is not this board, so its measured
+        # sockets would be markers on somebody else's picture.
+        if not self._pi_png:
+            self._geo = None
+
+    @staticmethod
+    def _ease(v):
+        v = 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
+        return v * v * (3.0 - 2.0 * v)                    # smoothstep
+
+    # -- the hand-off, beat by beat ---------------------------------------
+    def _beats(self):
+        """The named beats of this scene, in order.
+
+        Three or four: the adapter beat exists only on the boards that need
+        one. Drawn from the geometry, so a board we have not measured has no
+        beats at all and falls back to the honest two-objects-meeting scene.
+        """
+        beats = ["unplug", "radio", "power"]
+        if self._pi_key in self.NEEDS_OTG:
+            beats.insert(1, "adapter")
+        return beats
+
+    def _socket_pts(self, px, py, pw, ph):
+        """(data, power) socket centres in widget coords, or (None, None)."""
+        g = self._geo
+        if g is None:
+            return None, None
+        dx = px + pw * g.data[0]
+        dy = py + ph * (1.0 - g.data[1])
+        if g.power is None:
+            return (dx, dy), None
+        return (dx, dy), (px + pw * g.power[0], py + ph * (1.0 - g.power[1]))
+
+    def _ring(self, pt, rgba, r, width=None):
+        Color(*rgba)
+        Line(circle=(pt[0], pt[1], r), width=width or dp(2.4))
+
+    def _plug_run(self, pt, away, t, rgba, length=None):
+        """A plug travelling in or out of *pt*.
+
+        *away* is the unit direction the plug sits OUT along (its approach
+        reversed), *t* 0 = seated, 1 = clear. One shape for every plug in the
+        scene, because they are the same physical act.
+        """
+        L = length or dp(34)
+        cx = pt[0] + away[0] * L * t
+        cy = pt[1] + away[1] * L * t
+        Color(*rgba)
+        Line(points=[cx + away[0] * L * 1.6, cy + away[1] * L * 1.6, cx, cy],
+             width=dp(3.0))
+        pw_, ph_ = dp(15), dp(9)
+        if abs(away[0]) > abs(away[1]):
+            pw_, ph_ = ph_, pw_
+        RoundedRectangle(pos=(cx - pw_ / 2, cy - ph_ / 2), size=(pw_, ph_),
+                         radius=[dp(2)])
+
+    def _adapter(self, pt, away, t, rgba):
+        """The OTG adapter: a short body with a socket mouth, rotating in.
+
+        It is a DISTINCT OBJECT, and until now it existed in no picture in
+        this tool — only in a hint, at 14 sp, on the last screen of a build.
+        """
+        L = dp(26)
+        cx = pt[0] + away[0] * L * t
+        cy = pt[1] + away[1] * L * t
+        bw, bh = dp(30), dp(16)
+        if abs(away[0]) > abs(away[1]):
+            bw, bh = bh, bw
+        PushMatrix()
+        Rotate(angle=28.0 * t, origin=(cx, cy), axis=(0, 0, 1))
+        Color(*rgba)
+        RoundedRectangle(pos=(cx - bw / 2, cy - bh / 2), size=(bw, bh),
+                         radius=[dp(3)])
+        # the A-socket mouth, on the end AWAY from the board
+        Color(0, 0, 0, 1)
+        mw, mh = bw * 0.52, bh * 0.34
+        RoundedRectangle(pos=(cx + away[0] * bw * 0.24 - mw / 2,
+                              cy + away[1] * bh * 0.24 - mh / 2),
+                         size=(mw, mh), radius=[dp(1.5)])
+        PopMatrix()
 
     def _draw(self):
         """Its OWN scene, not the parent's. Inheriting ConnectBoardAnim's layout
@@ -580,6 +679,16 @@ class RadioToPiAnim(ConnectBoardAnim):
             # medic art: drawing Node Medic here would say "plug it back into the
             # medic", which is the opposite of this step.
             return self._draw_fallback()
+        # A MEASURED BOARD GETS THE WHOLE HAND-OFF, not just two objects
+        # meeting. Three things happen physically on this step and the words
+        # carry all three at 14 sp: the medic's cable comes OUT of the data
+        # socket, the radio goes IN (through an OTG adapter on a Zero), and the
+        # Pi's own supply goes into the OTHER socket. The class refused to
+        # point at any socket because pointing needs measurement — so this runs
+        # only where the measurement exists (ui.pi_connector_geometry), and
+        # every other board keeps the honest scene below.
+        if self._geo is not None:
+            return self._draw_handoff(pi_tex, board_tex)
         x, y, w, h = self.x, self.y, self.width, self.height
         # Pi on the right, radio approaching from the left. Left-to-right because
         # every other step in this flow moves that way, and the operator reads
@@ -606,6 +715,110 @@ class RadioToPiAnim(ConnectBoardAnim):
             Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
             Color(1, 1, 1, 1)
             Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
+
+    def _draw_handoff(self, pi_tex, board_tex):
+        """The measured hand-off: unplug, (adapter), radio in, own power in.
+
+        Colour is the language ConnectPiAnim taught on the step before this
+        one, and it is not re-taught here: GREEN is the data run, ORANGE is
+        power. Reusing it is the point — the operator learned it two screens
+        ago and this is the screen where the two runs finally separate onto
+        two different sockets.
+        """
+        x, y, w, h = self.x, self.y, self.width, self.height
+        beats = self._beats()
+        n = len(beats)
+        i = min(n - 1, int(self.phase * n))
+        t = (self.phase * n) - i
+        beat = beats[i]
+
+        # ROOM FOR THE THINGS THAT MOVE. Everything in this scene happens
+        # OUTSIDE the board — a plug coming out, an adapter going on, a radio
+        # arriving, a supply going in — so the Pi is pushed to the far side of
+        # the stage and sized to leave that space. Centred and large, the first
+        # build drew the radio below the widget's own bottom edge, where a
+        # canvas simply stops (read off the glass, 2026-09-09).
+        pa = pi_tex.width / float(pi_tex.height)
+        side = self._geo.approach == "right"
+        if side:
+            pw = min(w * 0.52, (h * 0.86) * pa)
+            ph = pw / pa
+            px = x + dp(8)
+            py = y + (h - ph) / 2.0
+        else:
+            ph = min(h * 0.50, (w * 0.86) / pa)
+            pw = ph * pa
+            px = x + (w - pw) / 2.0
+            py = y + h - ph - dp(4)                  # hung from the top
+        data, power = self._socket_pts(px, py, pw, ph)
+        # Which way a plug sits OUT of each socket: the reverse of how it
+        # comes in. "bottom" boards are entered from below, "right" ones from
+        # the side (ui.pi_connector_geometry.Sockets.approach).
+        away = (0.0, -1.0) if self._geo.approach == "bottom" else (1.0, 0.0)
+        # The Pi's own supply always comes in at the socket it belongs to; on
+        # a Zero that is the outer micro-USB, underneath, beside the data one.
+        pwr_away = (0.0, -1.0)
+
+        green = ConnectPiAnim._CABLE
+        orange = ConnectPiAnim._PWR
+        idle = theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.55)
+
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            Rectangle(texture=pi_tex, pos=(px, py), size=(pw, ph))
+
+            if beat == "unplug":
+                # The medic's cable LEAVING. Green while it is still in, going
+                # idle as it clears — the ring is the socket's state, not a
+                # decoration.
+                self._plug_run(data, away, self._ease(t), green)
+                mix = 1.0 - self._ease(t)
+                self._ring(data, (green[0] * mix + idle[0] * (1 - mix),
+                                  green[1] * mix + idle[1] * (1 - mix),
+                                  green[2] * mix + idle[2] * (1 - mix),
+                                  0.9), dp(13))
+
+            elif beat == "adapter":
+                self._ring(data, idle, dp(13))
+                self._adapter(data, away, 1.0 - self._ease(t), green)
+
+            elif beat == "radio":
+                if "adapter" in beats:
+                    self._adapter(data, away, 0.0, green)
+                # The radio arrives on its own short cable and seats. It is
+                # drawn at the end of that run, not floating: the cable is the
+                # thing that reaches the socket.
+                e = self._ease(t)
+                ba = board_tex.width / float(board_tex.height)
+                bh = min(h * 0.20, (w * 0.34) / ba)
+                bw = bh * ba
+                reach = min(h * 0.12, dp(46))
+                bx = data[0] + away[0] * (reach + bw * 0.5) - bw / 2 \
+                    + away[0] * dp(30) * (1.0 - e)
+                by = data[1] + away[1] * (reach + bh * 0.5) - bh / 2 \
+                    + away[1] * dp(30) * (1.0 - e)
+                Color(*green)
+                Line(points=[data[0] + away[0] * dp(6),
+                             data[1] + away[1] * dp(6),
+                             bx + bw / 2, by + bh / 2], width=dp(3.0))
+                Color(1, 1, 1, 1)
+                Rectangle(texture=board_tex, pos=(bx, by), size=(bw, bh))
+                self._ring(data, green, dp(13) + dp(4) * math.sin(math.pi * e))
+
+            else:                                   # power
+                if "adapter" in beats:
+                    self._adapter(data, away, 0.0, green)
+                self._ring(data, green, dp(13))
+                if power is not None:
+                    self._plug_run(power, pwr_away, 1.0 - self._ease(t),
+                                   orange)
+                    self._ring(power, orange, dp(13))
+                else:
+                    # One socket carries both on a 4B/5 — nothing separate to
+                    # show, and claiming a second socket would be the exact
+                    # untruth this scene exists to stop.
+                    self._plug_run(data, away, 1.0 - self._ease(t), orange)
+
 
 class ConnectAntennaAnim(_LoopAnim):
     """Antenna-first: three illustrated sprites — the LoRa32 board, the SMA<->U.FL

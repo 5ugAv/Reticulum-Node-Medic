@@ -52,7 +52,11 @@ FRAMES = int(os.environ.get("WALK_FRAMES", "8"))
 
 def _build():
     cls = getattr(anims, NAME)
-    for kw in ({"board_key": BOARD}, {"pi_key": PI_KEY}, {}):
+    # Widest first: an animation that takes BOTH keys (the radio-onto-Pi
+    # hand-off) only draws its measured scene when it gets the pi_key,
+    # and board_key alone silently gave the honest fallback instead.
+    for kw in ({"board_key": BOARD, "pi_key": PI_KEY},
+               {"board_key": BOARD}, {"pi_key": PI_KEY}, {}):
         try:
             return cls(**kw)
         except TypeError:
