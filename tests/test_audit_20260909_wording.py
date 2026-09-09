@@ -218,8 +218,10 @@ def test_it_only_starts_once_the_wait_is_overdue():
     never come up, and doubting a good cable sends the operator hunting a
     fault they do not have."""
     render = func_source(SCREEN, "_render_step", cls="BirthGuideScreen")
-    i = render.index("show_cable_doubt")
-    assert "WAIT_PATIENCE_S" in render[i:i + 200], \
+    code = "\n".join(l for l in render.splitlines()
+                     if not l.strip().startswith("#"))
+    i = code.index("show_cable_doubt")
+    assert "WAIT_PATIENCE_S" in code[i:i + 200], \
         "the demonstration must be on the patience timer, not immediate"
-    assert "_nav_token" in render[i - 400:i + 400], \
+    assert "_nav_token" in code[i - 300:i], \
         "and must not fire onto a step the operator has already left"
