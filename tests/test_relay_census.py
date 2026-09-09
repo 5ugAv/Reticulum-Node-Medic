@@ -88,3 +88,19 @@ def test_the_splitter_never_lets_the_census_break_the_stream():
     payload = _frame()
     out = sp.feed(bytes([FEND]) + payload + bytes([FEND]))
     assert payload in out, "the frame must still reach rnsd"
+
+
+def test_zero_is_a_recordable_answer(tmp_path):
+    """"No relays seen" must be reportable WITH evidence behind it.
+
+    Saving only when a relay was found made an absent file mean both "the
+    census is not running" and "the census ran and found nothing" — the two
+    conclusions furthest apart, and the second is the one we are hunting.
+    """
+    path = str(tmp_path / "census.json")
+    c = RelayCensus(path=path)
+    c.observe(_frame(hops=0))            # a real frame, but not a relay
+    import json, os
+    assert os.path.exists(path), "a frame seen must be recorded even with no relay"
+    d = json.load(open(path))
+    assert d["data_frames"] == 1 and d["relayed_announces"] == 0

@@ -77,6 +77,12 @@ class RelayCensus:
             if len(pkt) < 2 + 2 * _DST_LEN + 1:
                 return
             self.frames += 1
+            # SAVE ON EVERY FRAME, not only on a hit. ZERO IS THE ANSWER WE ARE
+            # LOOKING FOR: if this fleet never relays, the census must be able
+            # to say so with a timestamp and a frame count behind it. Saving
+            # only when a relay was seen made "no file" mean both "not running"
+            # and "running, seen nothing" — the two conclusions furthest apart.
+            self._maybe_save()
             flags, hops = pkt[0], pkt[1]
             if ((flags & 0b01000000) >> 6) != _HEADER_2:
                 return                       # no transport_id -> nothing to learn
@@ -92,7 +98,6 @@ class RelayCensus:
             self.relays[transport_id] = self.relays.get(transport_id, 0) + 1
             seen = self.pairs.setdefault(transport_id, {})
             seen[dst] = seen.get(dst, 0) + 1
-            self._maybe_save()
         except Exception:
             return                           # counting must never cost a packet
 
