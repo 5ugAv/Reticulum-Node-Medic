@@ -200,7 +200,10 @@ def test_no_card_says_so_plainly_instead_of_going_quiet():
     st = pi.card_status(_lsblk(["mmcblk0 59.5G disk mmc 0 ",
                                        "zram0 2G disk  0 "]))
     assert st["state"] == "none" and st["path"] == ""
-    assert "slide one into the reader" in st["detail"].lower()
+    # Reworded 2026-09-09 to stop implying a slot on the medic itself.
+    d = st["detail"].lower()
+    assert "card reader" in d and "usb" in d, \
+        "say where the card goes: a reader, plugged into USB"
 
 
 def test_one_card_is_named_so_the_operator_can_check_it():

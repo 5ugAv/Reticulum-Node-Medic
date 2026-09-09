@@ -43,7 +43,10 @@ def test_pi_picker_buttons_are_not_packed():
 def test_card_step_does_not_call_the_card_blank():
     s = _step("insert_sd")
     assert "blank" not in s["body"].lower()
-    assert "Insert the SD card" in s["body"]
+    # The note-4 point is the word "blank", and it still holds. The rest of the
+    # sentence was rewritten 2026-09-09 so it stops pointing at a card slot on
+    # the medic (there is only one, and the medic is running from it).
+    assert "card reader" in s["body"], "the card goes into a reader"
 
 
 # note 5 — one instruction on the handover step, not two

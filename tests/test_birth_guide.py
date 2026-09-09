@@ -23,7 +23,7 @@ def test_step_counts_per_path():
         "Connect the radio to Node Medic",         # -> BIRTH, flashes + verifies
         "The radio has to work first",             # GATE: radio_ready
         "Take the radio out of Node Medic",
-        "Put the SD card into Node Medic",         # -> pi_imager
+        "Put the SD card in the reader",            # -> pi_imager
         "Remove the SD card from Node Medic and insert it into the "
         "Raspberry Pi",
         "Card in the Pi? Now give it power",
@@ -195,8 +195,13 @@ def test_the_card_goes_into_the_MEDICS_READER_not_into_the_pi():
     0V, so it can NEVER present itself as a USB device, and the step failed
     silently and identically to a bad cable. One uniform route instead."""
     card = [s for s in guide_steps("pi") if "SD card" in s["title"]][0]
-    assert "into Node Medic" in card["title"]
-    assert "card reader on Node Medic" in card["body"]
+    # The rule this test defends — the card is written in a READER on the
+    # medic's USB, never by the Pi — is unchanged. The wording moved on
+    # 2026-09-09: "into Node Medic" sent an operator hunting for a slot, and
+    # the only slot on the machine holds the card the medic runs from.
+    assert "reader" in card["title"]
+    assert "card reader" in card["body"] and "USB socket" in card["body"]
+    assert "running the tool" in card["body"], "warn off the medic's own card"
     assert card.get("screen") == "pi_imager", "writing happens from this step"
 
 
@@ -489,8 +494,14 @@ def test_the_pi_route_writes_the_card_in_the_medics_reader():
     titles = " | ".join(s["title"] for s in steps)
     bodies = " ".join(s.get("body", "") for s in steps)
 
-    assert "card reader on Node Medic" in bodies, "card must go in the MEDIC's reader"
-    assert "Put the SD card into Node Medic" in titles
+    # WORDING CHANGED 2026-09-09. The point of this test is that the card is
+    # written in a READER on the medic's USB, never by the Pi itself — that is
+    # still asserted. What changed is that it must no longer say "into Node
+    # Medic": the medic has no card slot except the one it is running from, and
+    # MITOSIS already learned that the hard way. See tests/test_card_reader_wording.py.
+    assert "card reader" in bodies, "card must go in a READER, not into the Pi"
+    assert "USB socket on Node Medic" in bodies, "and the reader plugs into USB"
+    assert "Put the SD card in the reader" in titles
     # and the old route's promise must be gone
     assert "the Pi will hand its card to Node Medic" not in bodies
     assert "You don't need a card reader" not in bodies

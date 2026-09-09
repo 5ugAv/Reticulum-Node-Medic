@@ -118,7 +118,7 @@ def card_status(run: Runner = _run) -> Dict:
     disks = list_target_disks(run)
     if not disks:
         return {"state": "none", "path": "", "label": "",
-                "detail": "No card yet — slide one into the reader on Node Medic."}
+                "detail": "No card yet — put one in your card reader and plug the reader into a USB socket."}
     if len(disks) > 1:
         names = ", ".join(f"{d['size']} {d['model']}".strip() for d in disks)
         return {"state": "several", "path": "", "label": names,

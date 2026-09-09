@@ -19,7 +19,7 @@ from ui.birth_guide_flow import guide_steps
 
 _ORIGINAL_TITLES = [
     "Connect the radio to Node Medic", "The radio has to work first",
-    "Take the radio out of Node Medic", "Put the SD card into Node Medic",
+    "Take the radio out of Node Medic", "Put the SD card in the reader",
     "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
     "Card in the Pi? Now give it power", "Bring the node to life", "",
 ]
@@ -34,7 +34,7 @@ def test_the_default_pi_sequence_is_byte_for_byte_unchanged():
 def test_flash_radio_false_drops_exactly_the_three_medic_flashing_steps():
     titles = [s["title"] for s in guide_steps("pi", flash_radio=False)]
     assert titles == [
-        "Put the SD card into Node Medic",
+        "Put the SD card in the reader",
         "Remove the SD card from Node Medic and insert it into the Raspberry Pi",
         "Card in the Pi? Now give it power",
         "Bring the node to life", "",

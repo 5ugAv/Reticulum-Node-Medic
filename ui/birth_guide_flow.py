@@ -314,14 +314,25 @@ _STEPS = {
         # The old route also failed SILENTLY and identically to a bad cable,
         # which is the worst possible failure for a field tool. One uniform
         # route is teachable, demonstrable, and behaves the same everywhere.
-        {"title": tr("Put the SD card into Node Medic"),
+        {"title": tr("Put the SD card in the reader"),
          # The second sentence explained why the medic writes it rather than
          # the Pi. That was an argument against a route this flow no longer
          # offers, made to an operator who is holding a card over a slot.
          # NOT "blank" (operator, 2026-08-14): rebirths reuse written cards,
          # and the imager wipes whatever it finds anyway. Calling it blank
          # made an operator holding a used card stop and wonder.
-         "body": tr("Insert the SD card into the card reader on Node Medic."),
+         # "into Node Medic" is ambiguous in the ONE direction that matters.
+         # The card goes into the READER; the reader plugs into a USB port.
+         # The only real card slot on this machine holds the card the medic is
+         # RUNNING FROM — so an operator taking this literally goes looking for
+         # a slot and finds the one that must never be touched. MITOSIS had
+         # this same wording and fixed it (ui/screens/mitosis_screen.py:314);
+         # the birth path never got the lesson, and this step's OWN animation
+         # already says "it has no native card slot"
+         # (ui/widgets/birth_anims.py:947).
+         "body": tr("Put the card into your card reader, then plug the reader "
+                    "into any USB socket on Node Medic. Don't touch the card "
+                    "inside Node Medic — that one is running the tool."),
          "anim": "insert_sd",
          "next": tr("Write the card  \u2192"), "screen": "pi_imager"},
         # ONE INSTRUCTION, ONCE (operator, 2026-08-14): the old body repeated
