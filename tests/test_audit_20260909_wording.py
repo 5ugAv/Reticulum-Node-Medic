@@ -307,3 +307,42 @@ def test_the_node_page_answers_that_question_from_the_same_evidence():
     src = open("ui/screens/node_detail_screen.py").read()
     assert "heard_ever=record.last_seen_hours(now) is not None" in src, \
         "the advice must read the same evidence as the header's Last heard"
+
+
+# --- the T-Deck firmware that shipped on Heltec V4s (2026-09-11) -----------
+
+def test_each_board_model_builds_into_its_own_directory():
+    """arduino-cli keys its build dir by FQBN alone, so every ESP32-S3 target
+    in the RNode sketch shares one directory and the last build wins. A T-Deck
+    build overwrote the Heltec V4 artifact on 2026-08-27 and every V4 birthed
+    afterwards was flashed with T-Deck firmware — radio perfect (both SX1262),
+    screen dead, CONF_DSET never written."""
+    from workflows.rnode_v4_rgb import bin_for, build_dir_for, compile_command
+    assert build_dir_for(0x3F) != build_dir_for(0x3B)
+    assert bin_for(0x3F) != bin_for(0x3B)
+    cmd = compile_command(board_model=0x3F)
+    assert "--build-path" in cmd, \
+        "without an explicit build path arduino-cli shares one per FQBN"
+    assert "0x3F" in cmd
+
+
+def test_verify_refuses_firmware_built_for_another_board():
+    """The old check asked only whether SOMETHING valid answered, so it
+    reported 'Board verified' on a V4 running T-Deck firmware."""
+    from tests.srcutil import func_source
+    src = func_source("workflows/rnode_v4_rgb.py", "_verify",
+                      cls="HeltecV4RGBWorkflow")
+    assert "_reported_board_model" in src
+    assert "self.board_model" in src
+
+
+def test_the_board_model_comes_from_the_firmware_not_the_provisioning():
+    """rnodeconf's product triple is product:model:BOARD. The first two are
+    what we TOLD the board it is; only the third says what the running
+    firmware was compiled as."""
+    from workflows.rnode_v4_rgb import _reported_board_model
+    assert _reported_board_model("Product : Heltec LoRa32 v4 (c3:c8:3f)") == 0x3F
+    assert _reported_board_model("Product : Heltec LoRa32 v4 (c3:c8:3b)") == 0x3B
+    # unreadable evidence must not fail a build on a guess
+    assert _reported_board_model("no triple here") is None
+    assert _reported_board_model("") is None

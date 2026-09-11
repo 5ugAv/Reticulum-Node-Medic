@@ -45,7 +45,26 @@ from node_profile import RadioConfig
 # -- build recipe (setup_rnode_tools.sh) -----------------------------------
 FIRMWARE_REPO = "https://github.com/markqvist/RNode_Firmware.git"
 FIRMWARE_DIR = "~/RNode_Firmware"
-BUILD_SUBDIR = "build/esp32.esp32.esp32s3"
+#: ONE BUILD DIRECTORY PER BOARD MODEL, and never arduino-cli's default.
+#:
+#: arduino-cli keys its build directory by FQBN alone — every ESP32-S3 target
+#: in this sketch shares `build/esp32.esp32.esp32s3`, whatever -DBOARD_MODEL
+#: says. So a T-Deck build (0x3B) done in this tree on 2026-08-27 silently
+#: overwrote the Heltec V4 artifact, and because the flash path skips
+#: compiling "when the firmware is already built" — a test that a FILE EXISTS,
+#: not that it is OUR file — every V4 birthed afterwards was flashed with
+#: T-Deck firmware.
+#:
+#: It ran. Both boards carry an SX1262, so the radio was perfect and the board
+#: validated; the T-Deck's display is a different driver entirely, so the OLED
+#: stayed dark and CONF_DSET was never written. Found 2026-09-11 by comparing
+#: a working V4 (COBE, built 2026-07-31, reports c3:c8:3F) against one birthed
+#: that morning (c3:c8:3B = BOARD_TDECK).
+#:
+#: So the path carries the board model. This constant is the Heltec V4's, the
+#: model this recipe is for; build_dir_for() builds the same string for any
+#: other model, and they can no longer collide.
+BUILD_SUBDIR = "build/rnm-board-0x3F"
 BUILD_BIN = f"{FIRMWARE_DIR}/{BUILD_SUBDIR}/RNode_Firmware.ino.bin"
 PARTITION_HASHES = f"{FIRMWARE_DIR}/partition_hashes"
 FQBN = "esp32:esp32:esp32s3:CDCOnBoot=cdc"
@@ -279,13 +298,27 @@ def esptool_path(version: str = FIRMWARE_VERSION) -> str:
     return f"~/.config/rnodeconf/update/{version}/esptool.py"
 
 
+def build_dir_for(board_model: int = BOARD_MODEL,
+                  firmware_dir: str = FIRMWARE_DIR) -> str:
+    """Where THIS board model's artifacts live. See BUILD_SUBDIR for why they
+    cannot be allowed to share arduino-cli's default."""
+    return f"{firmware_dir}/build/rnm-board-0x{board_model:02X}"
+
+
+def bin_for(board_model: int = BOARD_MODEL,
+            firmware_dir: str = FIRMWARE_DIR) -> str:
+    return f"{build_dir_for(board_model, firmware_dir)}/RNode_Firmware.ino.bin"
+
+
 def compile_command(firmware_dir: str = FIRMWARE_DIR,
                     board_model: int = BOARD_MODEL) -> str:
     """arduino-cli compile line, transcribed verbatim from setup_rnode_tools.sh
-    (no_ota partitions, 2 MB app, -DBOARD_MODEL). ``-e`` exports the binaries so
-    they land at BUILD_BIN."""
+    (no_ota partitions, 2 MB app, -DBOARD_MODEL), with one addition:
+    --build-path, so this board model's binaries cannot be overwritten by a
+    build for a different board in the same tree (see BUILD_SUBDIR)."""
     return (
         f"cd {firmware_dir} && arduino-cli compile --fqbn {FQBN} -e "
+        f'--build-path "{build_dir_for(board_model, firmware_dir)}" '
         f'--build-property "build.partitions=no_ota" '
         f'--build-property "upload.maximum_size=2097152" '
         f'--build-property "compiler.cpp.extra_flags=-DBOARD_MODEL=0x{board_model:02X}"')
@@ -313,6 +346,22 @@ def firmware_hash_command(port: str, bin_path: str = BUILD_BIN,
     return (
         f"HASH=$(python3 {partition_hashes} {bin_path}) && "
         f'test -n "$HASH" && rnodeconf {port} --firmware-hash "$HASH"')
+
+
+def _reported_board_model(info_out: str):
+    """The firmware's OWN compiled board model, from rnodeconf --info.
+
+    The product line ends in a parenthesised triple — product:model:board —
+    e.g. ``(c3:c8:3f)``. The first two come from the EEPROM provisioning (what
+    we TOLD the board it is); the third is what the running firmware was
+    compiled as, which is the one that cannot be faked by provisioning.
+
+    Returns None when the line is absent or unparseable: a check that cannot
+    read the evidence must not fail a build on a guess.
+    """
+    m = re.search(r"\(([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2})\)",
+                  info_out or "")
+    return int(m.group(3), 16) if m else None
 
 
 class HeltecV4RGBWorkflow:
@@ -344,9 +393,11 @@ class HeltecV4RGBWorkflow:
         self.radio_mode = radio_mode
         self.version = version
         self.firmware_dir = firmware_dir
-        self.build_dir = f"{firmware_dir}/{BUILD_SUBDIR}"
         self.neopixel_pin = neopixel_pin
         self.board_model = board_model
+        # Per BOARD MODEL, not per FQBN — see BUILD_SUBDIR for the T-Deck
+        # image that was flashed onto Heltec V4s for a fortnight.
+        self.build_dir = build_dir_for(board_model, firmware_dir)
         self.boot_error_red = boot_error_red
         self.build_timeout = build_timeout
         self.flash_timeout = flash_timeout
@@ -355,7 +406,7 @@ class HeltecV4RGBWorkflow:
 
     @property
     def bin_path(self) -> str:
-        return f"{self.firmware_dir}/{BUILD_SUBDIR}/RNode_Firmware.ino.bin"
+        return bin_for(self.board_model, self.firmware_dir)
 
     # -- build steps (one-time firmware compile) ---------------------------
 
@@ -547,6 +598,23 @@ class HeltecV4RGBWorkflow:
         low = out.lower()
         ok = ("eeprom is invalid" not in low and "corrupt" not in low
               and "firmware version" in low)
+        # AND THAT IT IS THE BOARD WE BUILT FOR. Until 2026-09-11 this step
+        # asked only whether SOMETHING valid answered, so it passed a Heltec
+        # V4 running T-Deck firmware with "Board verified" — for a fortnight,
+        # on every V4 birthed. rnodeconf prints the firmware's own compiled
+        # board model as the third byte of the product triple, e.g.
+        #   Product : Heltec LoRa32 v4 850 - 950 MHz (c3:c8:3f)
+        # 0x3F is BOARD_HELTEC32_V4; the mis-flashed boards said 0x3B, which
+        # is BOARD_TDECK. The radio was perfect either way — both are SX1262 —
+        # so nothing else in the flow could notice.
+        got = _reported_board_model(out)
+        if ok and got is not None and got != self.board_model:
+            return StepResult(
+                "verify", False,
+                f"The board answered as model 0x{got:02X}, but this build is "
+                f"for 0x{self.board_model:02X}. That firmware is for a "
+                "different board — it may run, and its screen and pins will "
+                "be wrong. Rebuild before flashing again.")
         if ok:
             # Identity-less RNode -> the birth record carries the board's USB
             # fingerprint so the medic can recognise it as kin later.
