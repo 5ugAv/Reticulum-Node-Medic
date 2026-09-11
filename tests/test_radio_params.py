@@ -161,3 +161,15 @@ def test_a_board_that_will_not_sleep_still_counts_as_born():
     ok, msg = set_params_at_birth(conn, "/dev/ttyACM9", mode="host")
     assert ok is True
     assert "power-cycled" in msg
+
+
+def test_the_sleep_command_waits_for_the_board_to_re_enumerate():
+    """These boards use the ESP32-S3's native USB-CDC, so OPENING the port
+    resets them. Bytes written immediately after open are lost into a
+    rebooting board (measured on the bench, 2026-09-11: a read 0.4 s after
+    open died with "device reports readiness to read but returned no data")."""
+    from workflows.radio_params import rest_radio_command
+    cmd = rest_radio_command("/dev/ttyACM9")
+    settle = cmd.split("s.write")[0]
+    assert "time.sleep(3.0)" in settle, \
+        "the command must wait for the board's USB to come back before writing"

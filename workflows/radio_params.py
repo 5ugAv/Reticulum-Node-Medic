@@ -86,12 +86,23 @@ def rest_radio_command(port: str) -> str:
     """
     frames = (f"bytes([{_FEND}, {_CMD_RADIO_STATE}, 0x00, {_FEND}])",
               f"bytes([{_FEND}, {_CMD_LEAVE}, 0xFF, {_FEND}])")
+    # SETTLE BEFORE SPEAKING. These boards use the ESP32-S3's native USB-CDC,
+    # and opening the port makes them RE-ENUMERATE — i.e. reset. Measured on
+    # the bench 2026-09-11: a read started 0.4 s after open died with "device
+    # reports readiness to read but returned no data", because the board was
+    # rebooting underneath it. Bytes written that early are simply lost.
+    #
+    # The reset is not a problem in itself — a board that reboots comes up
+    # host-controlled with its radio off, which is the state we are asking
+    # for. But it must not be the ONLY thing that works, because a board that
+    # does NOT reset on open would then never be told anything. So: wait for
+    # the boot, then send the commands. Right either way.
     return (
         "python3 -c \"import serial, time; "
         f"s = serial.Serial('{port}', 115200, timeout=1); "
-        "time.sleep(0.2); "
-        f"s.write({frames[0]}); s.flush(); time.sleep(0.2); "
-        f"s.write({frames[1]}); s.flush(); time.sleep(0.2); "
+        "time.sleep(3.0); "
+        f"s.write({frames[0]}); s.flush(); time.sleep(0.3); "
+        f"s.write({frames[1]}); s.flush(); time.sleep(0.3); "
         "s.close()\"")
 
 
