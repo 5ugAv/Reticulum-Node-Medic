@@ -101,3 +101,63 @@ def test_enable_bluetooth_at_birth_delivers_and_reports_honestly():
     assert not ok and "did not go through" in msg
     ok, msg = enable_bluetooth_at_birth(Conn(code=1), "/dev/ttyACM1")
     assert not ok
+
+
+# --- the board must not lie about itself when we hand it over -------------
+
+def _rec_conn():
+    """A connection that records every command it is asked to run."""
+    c = EmulatedConnection(default_code=0, default_stdout="ok")
+    c.seen = []
+    orig = c.run
+
+    def run(command, timeout=None):
+        c.seen.append(command)
+        return orig(command, timeout)
+
+    c.run = run
+    return c
+
+
+def test_a_host_controlled_birth_puts_the_radio_to_sleep():
+    """`--tnc <params>` is CMD_CONF_SAVE, which brings the radio UP. The `-N`
+    that follows deletes the saved config but never stops the radio already
+    running, so every RNode this tool birthed was left listening with nobody
+    owning it — no standby breathe, live waterfall, which is exactly how a
+    board looks when a host HAS opened it (operator, bench, 2026-09-11)."""
+    from workflows.radio_params import set_params_at_birth
+    conn = _rec_conn()
+    ok, msg = set_params_at_birth(conn, "/dev/ttyACM9", mode="host")
+    assert ok, msg
+    joined = " ".join(conn.seen)
+    assert "--tnc" in joined and "-N" in joined
+    # CMD_RADIO_STATE(0x06) with 0x00 -> stopRadio(), and CMD_LEAVE(0x0A)
+    # with 0xFF -> current_rssi back to -292, which empties the waterfall.
+    assert "192, 6, 0x00, 192" in joined, "radio never told to stop"
+    assert "192, 10, 0xFF, 192" in joined, "host never told the board it left"
+    assert "asleep" in msg
+
+
+def test_a_tnc_birth_leaves_its_radio_running():
+    """The opposite case, and it must stay opposite: a pocket RNode in TNC
+    mode is SUPPOSED to boot with a live radio."""
+    from workflows.radio_params import set_params_at_birth
+    conn = _rec_conn()
+    ok, msg = set_params_at_birth(conn, "/dev/ttyACM9", mode="tnc")
+    assert ok, msg
+    joined = " ".join(conn.seen)
+    assert "192, 6, 0x00, 192" not in joined, \
+        "a TNC board's radio must be left live"
+    assert "-N" not in joined
+
+
+def test_a_board_that_will_not_sleep_still_counts_as_born():
+    """Bedtime is best-effort: a board that will not take the command is
+    still a correctly flashed board, and the birth must not fail over it —
+    but the operator is told, because they will see no pulse."""
+    from workflows.radio_params import set_params_at_birth
+    conn = _rec_conn()
+    conn.rule("import serial", code=1, stdout="no pyserial")
+    ok, msg = set_params_at_birth(conn, "/dev/ttyACM9", mode="host")
+    assert ok is True
+    assert "power-cycled" in msg

@@ -54,6 +54,47 @@ def normal_mode_command(port: str) -> str:
     return f"rnodeconf {port} -N"
 
 
+#: KISS commands the RNode firmware answers (Framing.h). 0x06 with 0x00 calls
+#: stopRadio(); 0x0A with 0xFF is the host saying it has gone away, which
+#: resets current_rssi to -292 and marks the cable disconnected.
+_CMD_RADIO_STATE = 0x06
+_CMD_LEAVE = 0x0A
+_FEND = 0xC0
+
+
+def rest_radio_command(port: str) -> str:
+    """Put a just-birthed board down properly: radio OFF, host gone.
+
+    THE BOARD MUST NOT LIE ABOUT ITSELF WHEN WE HAND IT OVER. Baking the radio
+    params uses `rnodeconf --tnc <params>`, which is CMD_CONF_SAVE — and that
+    brings the radio UP, active. The `-N` that follows deletes the saved config
+    but never stops the radio already running in RAM, so every RNode this tool
+    birthed was left transmitting-capable and listening with nobody owning it.
+
+    On a board with a screen and an RGB that is not a subtle bug. The firmware
+    only runs its white standby breathe while the radio is OFFLINE
+    (RNode_Firmware.ino: `else { led_indicate_standby(); }`), and the waterfall
+    is fed by current_rssi — so a freshly born node showed no pulse and a live
+    waterfall, which is exactly how a board looks when a host HAS opened it.
+    The operator, who reads that LED language fluently, spotted it on the bench
+    (2026-09-11) and confirmed it by power-cycling: pulse back, waterfall
+    empty. This sends the same two things the firmware does on a cold boot,
+    without needing the power cycle.
+
+    Best-effort by design: a board that will not take these is still a
+    correctly flashed board, and the birth must not fail over its bedtime.
+    """
+    frames = (f"bytes([{_FEND}, {_CMD_RADIO_STATE}, 0x00, {_FEND}])",
+              f"bytes([{_FEND}, {_CMD_LEAVE}, 0xFF, {_FEND}])")
+    return (
+        "python3 -c \"import serial, time; "
+        f"s = serial.Serial('{port}', 115200, timeout=1); "
+        "time.sleep(0.2); "
+        f"s.write({frames[0]}); s.flush(); time.sleep(0.2); "
+        f"s.write({frames[1]}); s.flush(); time.sleep(0.2); "
+        "s.close()\"")
+
+
 def set_params_at_birth(connection: Connection, port: str,
                         cfg: Optional[RadioConfig] = None,
                         timeout: int = 120,
@@ -94,7 +135,23 @@ def set_params_at_birth(connection: Connection, port: str,
     if code != 0:
         return False, (f"Params written but could not return the board to "
                        f"host-controlled mode (exit {code}): {(err or out)[-160:]}")
-    return True, (f"Baked radio params at birth: {summary}, left host-controlled.")
+    # ...and put the radio DOWN. See rest_radio_command: -N clears the saved
+    # config but leaves the radio --tnc started still running, so without this
+    # the board rests looking exactly like one a host has opened.
+    rested = False
+    try:
+        rcode, _rout, _rerr = connection.run(rest_radio_command(port),
+                                             timeout=timeout)
+        rested = (rcode == 0)
+    except Exception:                                              # noqa: BLE001
+        rested = False
+    if not rested:
+        return True, (f"Baked radio params at birth: {summary}, left "
+                      "host-controlled — but could not put its radio to "
+                      "sleep, so it may show no standby pulse until it is "
+                      "power-cycled.")
+    return True, (f"Baked radio params at birth: {summary}, left "
+                  "host-controlled with its radio asleep.")
 
 
 def bluetooth_on_command(port: str) -> str:
