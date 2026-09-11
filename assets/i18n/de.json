@@ -118,7 +118,7 @@
   "Classic ESP32 devkit + RFM95/SX1276 radio module.": "Classic ESP32 devkit + RFM95/SX1276 radio module.",
   "Clear": "Löschen",
   "Cleared — alerts stay on the medic only.": "Gelöscht — Warnungen bleiben nur auf dem Medic.",
-  "Clone - make another Node Medic": "Klon - ein weiteres Node Medic erstellen",
+  "Clone this device": "Dieses Gerät klonen",
   "Close": "Schließen",
   "Commissioning log": "Inbetriebnahme-Protokoll",
   "Communication apps": "Kommunikations-Apps",

@@ -1668,7 +1668,13 @@ class BirthGuideScreen(BoxLayout):
         btn = Button(size_hint_y=None, height=dp(104), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line(tr("Clone - make another Node Medic"), "21sp",
+        # THE OPERATOR'S OWN WORDS (2026-09-11), settling the front-page
+        # vocabulary: MITOSIS becomes "clone this device", and it lives inside
+        # BUILD rather than earning a card of its own — "cloning is once in a
+        # device's life, not a weekly mode". The old title led with the verb
+        # and then re-explained itself; this says the thing and lets the line
+        # underneath do the explaining.
+        inner.add_widget(_line(tr("Clone this device"), "21sp",
                                bold=True, color="background", h=30))
         inner.add_widget(_line(tr("Copy this Node Medic onto a fresh Raspberry Pi 5 - "
                                   "a second building tool."), "14sp", color="background"))
