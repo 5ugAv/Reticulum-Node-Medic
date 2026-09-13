@@ -39,7 +39,13 @@ CARD_ORDER = ["vitals", "scan", "birth", "triage", "chat"]
 #:
 #: A test holds these two in step so the mismatch cannot be introduced by an
 #: innocent-looking one-line edit.
-POSTER_CARD_LABELS = ["VITALS", "SCAN", "BIRTH", "TRIAGE", "CHAT"]
+# Repainted 2026-09-13 to the settled vocabulary (docs/FRONT_PAGE_BRIEF.md):
+# a stranger can guess MAPS, BUILD and ANTENNA; nobody ever guessed TRIAGE.
+# The SCREENS keep their internal names — the painted word is the operator's
+# word, and this map is the single place the two are tied together.
+POSTER_CARD_LABELS = ["VITALS", "MAPS", "BUILD", "ANTENNA", "CHAT"]
+POSTER_WORD_FOR = {"vitals": "VITALS", "scan": "MAPS", "birth": "BUILD",
+                   "triage": "ANTENNA", "chat": "CHAT"}
 
 # The red-cross emblem — the Easter egg (credits).
 CROSS_CX = 0.50

@@ -52,9 +52,14 @@ def test_out_of_image_taps_are_none():
 def test_the_tap_zones_match_the_words_on_the_poster():
     from ui.home_zones import CARD_ORDER, POSTER_CARD_LABELS
     assert len(CARD_ORDER) == len(POSTER_CARD_LABELS)
-    assert [c.upper() for c in CARD_ORDER] == POSTER_CARD_LABELS, (
+    # Since the 2026-09-13 repaint the painted word and the screen key are
+    # DIFFERENT strings (SCAN screen, MAPS card) — the law survives as an
+    # explicit mapping: change either side alone and this still fails.
+    from ui.home_zones import POSTER_WORD_FOR
+    assert [POSTER_WORD_FOR[c] for c in CARD_ORDER] == POSTER_CARD_LABELS, (
         "a tap zone no longer matches the word painted on that card — if the "
-        "artwork changed, update POSTER_CARD_LABELS in the same commit")
+        "artwork changed, update POSTER_CARD_LABELS and POSTER_WORD_FOR in "
+        "the same commit")
 
 
 def test_the_poster_is_still_the_size_the_zones_assume():
