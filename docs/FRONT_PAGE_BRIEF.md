@@ -75,10 +75,14 @@ Drop the new PNG in at the same path and these follow, in one commit:
 * the ~40 places in the UI that still say the old words in prose
 * the 11 translation catalogs
 
-## Open question for the operator
+## Self Diagnose — DECIDED (operator, 2026-09-13)
 
-**Self Diagnose** is the medic's own 11-check health run — it is about the tool
-in your hands, not about a node, so it does not belong under VITALS with the
-per-node repairs. Today it is only reachable from the sidebar. The gear is the
-natural home for it. Decide before the art is drawn, in case it wants a word on
-the poster after all.
+**It stays under VITALS.** The operator's reasoning, verbatim in spirit:
+VITALS is where everything gets checked for health, and Self Diagnose is the
+same act pointed at the medic itself — the medic is just another patient.
+The gear proposal above is dead; no poster word needed.
+
+Already true in code: VITALS' filter row carries the Self-check button
+(`ui/screens/vitals_screen.py`, wired in `ui/app.py`). This section exists so
+nobody relocates it to the gear on the strength of the paragraph that used to
+sit here.
