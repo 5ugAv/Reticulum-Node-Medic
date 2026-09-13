@@ -65,7 +65,7 @@ class RadioDefaultsScreen(BoxLayout):
         warn.bind(pos=lambda *_: setattr(self._wr, "pos", warn.pos),
                   size=lambda *_: setattr(self._wr, "size", warn.size))
         warn.add_widget(_line(
-            "These are the tool-wide defaults every BIRTH pre-fills. Leave them "
+            "These are the tool-wide defaults every BUILD pre-fills. Leave them "
             "alone unless you know exactly why — mismatched parameters keep a node "
             "off the mesh, and a different frequency band builds a SEPARATE mesh.",
             size="13.5sp", color="warning_yellow", h=78))
@@ -138,7 +138,7 @@ class RadioDefaultsScreen(BoxLayout):
     def _commit(self, vals, verb):
         stored = rd.save_defaults(vals)
         self._fill_fields(stored)                    # reflect coercion
-        self._status.text = f"{verb} — BIRTH pre-fills {rd.summary(stored)}"
+        self._status.text = f"{verb} — BUILD pre-fills {rd.summary(stored)}"
         try:                                          # home badge follows
             from kivy.app import App
             app = App.get_running_app()

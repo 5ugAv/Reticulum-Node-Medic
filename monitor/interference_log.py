@@ -85,8 +85,8 @@ class InterferenceLog:
             e.t, datetime.timezone.utc).strftime("%d %b %Y")
         dist = _metres(lat, lon, e.lat, e.lon)
         return (f"Interference was logged {dist:.0f}m from this location on "
-                f"{day} (noise floor {e.noise_floor_dbm} dBm). Triage is "
-                "strongly recommended before deploying here.")
+                f"{day} (noise floor {e.noise_floor_dbm} dBm). An ANTENNA "
+                "check is strongly recommended before deploying here.")
 
     # -- persistence (rides in the monitoring DB) ---------------------------
 

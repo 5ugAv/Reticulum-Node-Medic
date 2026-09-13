@@ -43,7 +43,10 @@ def test_near_and_caution_within_radius():
     assert len(log.near(*close)) == 1
     assert log.near(*far) == []
     note = log.caution_for(*close)
-    assert note is not None and "-98 dBm" in note and "Triage" in note
+    # "ANTENNA" is the painted card word since the 2026-09-13 repaint
+    # (docs/FRONT_PAGE_BRIEF.md); the caution must point at a word that is
+    # actually on the glass.
+    assert note is not None and "-98 dBm" in note and "ANTENNA" in note
     assert log.caution_for(*far) is None
 
 

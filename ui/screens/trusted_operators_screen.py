@@ -73,7 +73,7 @@ class TrustedOperatorsScreen(BoxLayout):
         if not us:
             self._list.add_widget(_line(
                 "No other units yet. When you clone this medic (the Clone button "
-                "under BIRTH), the new unit appears here.", size="13.5sp", color="text_secondary", h=44))
+                "under BUILD), the new unit appears here.", size="13.5sp", color="text_secondary", h=44))
             return
         for u in us:
             self._list.add_widget(self._card(u))
@@ -132,7 +132,7 @@ class TrustedOperatorsScreen(BoxLayout):
         msg = Label(halign="center", valign="middle", markup=True, text=(
             f"Revoke trust in [b]{u['name']}[/b]?\n\n"
             "Nodes birthed by this unit will no longer appear as kin on your VITALS "
-            "and SCAN — they drop to neighbour status. You can re-approve it later."))
+            "and MAPS — they drop to neighbour status. You can re-approve it later."))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),

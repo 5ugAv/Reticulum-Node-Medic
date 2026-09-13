@@ -600,7 +600,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 "  2. COLD power cycle the board — unplug ALL power (USB and "
                 "battery); a reset or warm reboot is not enough.\n"
                 "If it parks again after that, the heavier cure is a full "
-                "re-flash through BIRTH, which restamps the hash.")
+                "re-flash through BUILD, which restamps the hash.")
         if state == "unverified":
             return (
                 "Cannot verify this port is a work board — refusing to touch "
@@ -674,7 +674,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
             return Fix(
                 issue=issue, success=False,
                 message=("Couldn't identify this board, so the EEPROM can't be "
-                         "reprovisioned safely from here. Birth it from BIRTH "
+                         "reprovisioned safely from here. Birth it from BUILD "
                          "(pick the board by its silkscreen), or reflash "
                          f"manually.\n\n{FLASH_RECOVERY}"),
                 raw_output="")

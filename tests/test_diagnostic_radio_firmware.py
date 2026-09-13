@@ -538,8 +538,9 @@ def test_parked_needs_two_agreeing_reads_and_prescribes_cure():
     assert f"--firmware-hash {H_RUNNING}" in parked.description
     # ...demands the COLD power cycle (a reset is not enough)...
     assert "COLD power cycle" in parked.description
-    # ...and offers the full reflash only as the heavier fallback
-    assert "BIRTH" in parked.description
+    # ...and offers the full reflash only as the heavier fallback — named by
+    # the painted card word BUILD (repaint 2026-09-13, docs/FRONT_PAGE_BRIEF.md)
+    assert "BUILD" in parked.description
     assert H_STORED in parked.raw_detail and H_RUNNING in parked.raw_detail
 
 

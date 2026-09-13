@@ -22,7 +22,9 @@ from typing import List, Optional
 
 from monitor.topology import Topology, gap_pairs, components, MEDIC_ID
 
-ESTIMATE_CAUTION = ("This is an estimate. Run Triage at this location before "
+# "ANTENNA" is the painted card word since the 2026-09-13 repaint
+# (docs/FRONT_PAGE_BRIEF.md) — the screen it opens is still ui.screens.triage_*.
+ESTIMATE_CAUTION = ("This is an estimate. Run ANTENNA at this location before "
                     "deploying.")
 
 # Simple log-distance path model for 915 MHz suburban air (exponent 2.7),
@@ -115,7 +117,8 @@ def suggest_fill_gaps(topo: Topology, interference_log=None,
             cautions=[ESTIMATE_CAUTION])
         if any(e["est_rssi_dbm"] <= MARGINAL_DBM for e in sug.estimates):
             sug.cautions.append(
-                "Estimated signal is marginal - Triage there is essential.")
+                "Estimated signal is marginal - an ANTENNA check there is "
+                "essential.")
         if interference_log is not None:
             note = interference_log.caution_for(lat, lon)
             if note:

@@ -317,7 +317,10 @@ _SECURITY_STEPS = [
 
 _TOUR_STEPS = [
     {"key": TOUR_BIRTH, "part": TOUR, "poster_card": "birth", "opens": "birth_guide",
-     "title": "BIRTH — build a node",
+     # Titles open with the POSTER's word (POSTER_WORD_FOR, repainted
+     # 2026-09-13 per docs/FRONT_PAGE_BRIEF.md) — the screen shows the actual
+     # painted card beside them, so any other word would contradict the crop.
+     "title": "BUILD — turn a board into a node",
      "body": "Plug a bare board into Node Medic and it walks you through turning "
              "it into a node on your mesh: flashed, named, given a birth "
              "certificate, and placed on the map.\n\n"
@@ -347,7 +350,7 @@ _TOUR_STEPS = [
              "been quiet longer than that."},
 
     {"key": TOUR_SCAN, "part": TOUR, "poster_card": "scan", "opens": "scan",
-     "title": "SCAN — where the next node goes",
+     "title": "MAPS — where the next node goes",
      "body": "The map. Your nodes where they actually stand, the links the medic "
              "has heard between them, and the gaps where the mesh does not "
              "reach.\n\n"
@@ -355,7 +358,7 @@ _TOUR_STEPS = [
              "build starts from there with the position already stamped in."},
 
     {"key": TOUR_TRIAGE, "part": TOUR, "poster_card": "triage", "opens": "triage",
-     "title": "TRIAGE — aim the antenna",
+     "title": "ANTENNA — aim it on site",
      "body": "For when you are standing at the node with it in your hands. "
              "Signal, noise and who can hear you, live, as you move the "
              "antenna.\n\n"
@@ -395,7 +398,7 @@ _TOUR_STEPS = [
     {"key": FINISH, "part": TOUR,
      "title": "That is the medic",
      "body": "Nothing here is finished by reading about it. Plug a board in and "
-             "press BIRTH — the walkthrough will not let you damage anything, "
+             "press BUILD — the walkthrough will not let you damage anything, "
              "and it says what it is about to do before it does it.",
      "next": "Take me to the front page  →"},
 ]

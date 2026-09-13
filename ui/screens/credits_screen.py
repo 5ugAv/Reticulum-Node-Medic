@@ -130,9 +130,12 @@ class CreditsScreen(BoxLayout):
         # the poster's card row, mirrored: five mode buttons along the bottom
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(52), spacing=dp(6))
-        for key, label in (("vitals", "VITALS"), ("scan", "SCAN"),
-                           ("birth", "BIRTH"), ("triage", "TRIAGE"),
-                           ("probe", "PROBE")):
+        # Labels read POSTER_WORD_FOR (repaint 2026-09-13) so this row cannot
+        # say a word the poster no longer paints; PROBE has no card, so it
+        # keeps its own name.
+        from ui.home_zones import POSTER_WORD_FOR
+        for key in ("vitals", "scan", "birth", "triage", "probe"):
+            label = POSTER_WORD_FOR.get(key, key.upper())
             btn = Button(text=label, font_size="13sp", background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))

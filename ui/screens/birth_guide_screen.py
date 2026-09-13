@@ -906,8 +906,8 @@ class BirthGuideScreen(BoxLayout):
                 wrap.add_widget(_line(
                     tr("{name} is enrolled as your kin, but the medic hasn't "
                        "heard its beacon {ago}. It may be failing quietly — a "
-                       "Rebirth gives it a clean start, or check its antenna "
-                       "and power in TRIAGE.").format(name=name, ago=ago),
+                       "Rebirth gives it a clean start, or check its signal "
+                       "and power in ANTENNA.").format(name=name, ago=ago),
                     "16sp", color="text_secondary", h=100))
             else:
                 wrap.add_widget(_line(tr("Already kin"), "28sp", bold=True,

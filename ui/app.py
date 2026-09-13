@@ -1421,11 +1421,14 @@ class ReticulumNodeMedicApp(App):
         if rtnodes:
             nm = ", ".join(rtnodes)
             return {"state": "need_power", "names": nm,
-                    "text": f"Power on your beacon node ({nm}) so Triage can "
+                    # This text shows ON the antenna screen itself, so it says
+                    # "the medic", not the screen's own painted word
+                    # (repaint 2026-09-13, docs/FRONT_PAGE_BRIEF.md).
+                    "text": f"Power on your beacon node ({nm}) so the medic can "
                             "command it to transmit for aiming."}
         return {"state": "need_build",
-                "text": "Triage needs a distant RTNode to aim against. Build one "
-                        "to pair as your lighthouse beacon."}
+                "text": "Aiming needs a distant RTNode to work against. Build "
+                        "one to pair as your lighthouse beacon."}
 
     def _beacon_loop(self, gen=None):
         import time as _t

@@ -66,7 +66,7 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._entry(tr("Language"),
                                     "Run Node Medic in your own language", "language"))
         body.add_widget(self._entry(tr("Default radio parameters"),
-                                    "Frequency, bandwidth, SF, CR, TX power that BIRTH "
+                                    "Frequency, bandwidth, SF, CR, TX power that BUILD "
                                     "pre-fills — includes regional presets", "radio_defaults"))
         body.add_widget(self._entry(tr("Tool identity"),
                                     "This medic's Reticulum identity, name, born date "

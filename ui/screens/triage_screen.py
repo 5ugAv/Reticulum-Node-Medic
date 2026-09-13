@@ -178,7 +178,7 @@ class TriageScreen(FloatLayout):
         card.bind(size=lambda *a: setattr(self._card_bg, "size", card.size),
                   pos=lambda *a: setattr(self._card_bg, "pos", card.pos))
         msg = Label(
-            text=tr("To aim an antenna, Triage needs a distant beacon.\n\n"
+            text=tr("To aim an antenna, the medic needs a distant beacon.\n\n"
                     "Connect (or build) an RTNode-2400 and leave it powered on at "
                     "a distance - it becomes the signal you tune against."),
             halign="center", valign="middle", font_size="16sp",

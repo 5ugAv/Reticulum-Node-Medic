@@ -1,8 +1,9 @@
 """Tap zones for the front-page poster — pure geometry, no Kivy.
 
 The designed front page (assets/ui/front_page.png, 720x1280 — native panel
-size) carries five full-bleed mode cards along the bottom (VITALS / SCAN /
-BIRTH / TRIAGE / PROBE) and the red cross emblem at its heart. Zones are expressed in image-fraction coordinates
+size) carries five full-bleed mode cards along the bottom (VITALS / MAPS /
+BUILD / ANTENNA / CHAT since the 2026-09-13 repaint — POSTER_CARD_LABELS below
+is the tested claim) and the red cross emblem at its heart. Zones are expressed in image-fraction coordinates
 (x rightward, y DOWNWARD from the top-left, 0..1) so they survive any scaling;
 the Kivy screen converts touches into this space and asks ``zone_at``.
 

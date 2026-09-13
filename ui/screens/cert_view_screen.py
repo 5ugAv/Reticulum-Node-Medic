@@ -127,7 +127,7 @@ class CertViewScreen(BoxLayout):
         # the node's own card, reached from VITALS/SCAN) rather than on the BIRTH
         # screen, since it's an action on an existing node, not a new one.
         if self._on_triage is not None:
-            tri = Button(text="Triage — aim this node's antenna", size_hint_y=None,
+            tri = Button(text="ANTENNA — aim this node", size_hint_y=None,
                          height=dp(50), bold=True, font_size=theme.font_sp("16sp"),
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["amber"]),

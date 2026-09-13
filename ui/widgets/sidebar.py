@@ -13,14 +13,14 @@ from ui import theme
 # intended icons, until designed PNGs land, are:
 #   VITALS 🫀 (monitor dashboard) · SCAN 🧫 (topology + map) · BIRTH 🥚 (provision)
 #   TRIAGE 🩺 (site assessment) · PROBE 🩻 (diagnose + repair) · MITOSIS 🧬 (clone)
-MODES = [
-    ("home", "HOME"),
-    ("vitals", "VITALS"),
-    ("scan", "SCAN"),
-    ("birth", "BIRTH"),
-    ("triage", "TRIAGE"),
-    ("probe", "PROBE"),
-]
+# Since the 2026-09-13 repaint (docs/FRONT_PAGE_BRIEF.md) the painted word and
+# the screen key differ (MAPS card, "scan" screen). POSTER_WORD_FOR is the one
+# place the two are tied, so the sidebar reads it instead of keeping a second
+# copy that could drift from the poster. HOME and PROBE have no painted card.
+from ui.home_zones import POSTER_WORD_FOR
+
+MODES = [(key, POSTER_WORD_FOR.get(key, key.upper()))
+         for key in ("home", "vitals", "scan", "birth", "triage", "probe")]
 
 
 class Sidebar(BoxLayout):
