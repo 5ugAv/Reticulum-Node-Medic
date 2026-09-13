@@ -732,6 +732,22 @@ def guide_steps(path, pi_key="", flash_radio=True, board_key="",
     return steps
 
 
+def prelude_count(path):
+    """How many DECISION screens precede the physical steps on *path* — the
+    number the step counter folds in ahead of ``guide_steps``.
+
+    Pure, so the counter's arithmetic is unit-testable. Every path names the
+    node (one screen); only the paths that build a NODE get the map question
+    (see the ``_render_name`` routing: the 'host' path flashes a radio for a
+    phone or laptop, nothing it writes can ever announce a position, so it is
+    deliberately never asked). The screen used a flat ``+ 2`` everywhere, so a
+    host build read "Step 1 of 3" and then "Step 3 of 3" — a step 2 that never
+    existed, on a tool whose counter is a promise about what is coming
+    (breaker audit, 2026-09-13).
+    """
+    return 2 if path in ("radio", "pi") else 1
+
+
 def paths_for_chip(chip, rtnode_capable):
     """Which build paths to offer for a board whose chip reads *chip*.
 

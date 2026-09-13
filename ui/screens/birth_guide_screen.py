@@ -137,6 +137,9 @@ class BirthGuideScreen(BoxLayout):
         self._node_name = ""
         self._pair_checked = False
         self._board_key = ""
+        # One lap's "the board arrived already known" shortcut (the
+        # keep-and-continue road) must never skip the NEXT lap's radio picker.
+        self._board_preknown = False
         self._pi_key = ""
         # WHOSE REBIRTH? This is the name a WIPED board used to carry, and the
         # name step states it as fact: "This board was Brick. It's blank now."
@@ -167,6 +170,15 @@ class BirthGuideScreen(BoxLayout):
         self._node_probe = None
         self._gate_warning = ""
         self._build_failed = False
+        # The hostname the LAST card was written with — one card's hostname
+        # must never be probed for the next node (breaker audit, 2026-09-13).
+        self._imaged_hostname = ""
+        # And the name step's own transients: left set, a fresh walkthrough
+        # opened on the LAST lap's clash warning over an empty box, with a
+        # button reading "Use it anyway →" about a name nobody had typed.
+        self._name_warning = ""
+        self._name_warned = None
+        self._name_blocked = False
         self._proof_inflight = False
         self._radio_verified = False
         self._radio_usb_serial = ""
@@ -988,6 +1000,11 @@ class BirthGuideScreen(BoxLayout):
         self._radio_usb_serial = serial
         self._radio_verified = bool(c.get("_probed_alive"))
         self._board_key = self._board_key_of(c)
+        # The board arrived WITH this road (read off the certificate), so the
+        # radio picker has nothing left to ask — _render_step's pair check
+        # and _back_from_pick_pi both honour this, in the same direction, so
+        # Back cannot bounce off a question forward never showed.
+        self._board_preknown = bool(self._board_key)
         self._path = "pi"
         self._i = 0
         # A radio was just detected and verified LIVE on the medic's own USB —
@@ -1000,7 +1017,16 @@ class BirthGuideScreen(BoxLayout):
         # closing bullet's claim changes ("plug in your radio", not "the radio
         # you flashed at the start").
         self._radio_preflashed = True
-        self._render_pick_pi()
+        # THROUGH THE NAME, not straight to the Pi picker (breaker audit,
+        # 2026-09-13). This road skipped naming entirely, so _node_name stayed
+        # "" for the whole build — and the name is not decoration: the
+        # connect-Pi step proves THE Pi by the card's hostname-derived birth
+        # token, and its button was removed (2026-08-14) on the promise the
+        # proof watcher walks both roads. With no name it walks neither, and
+        # the walkthrough dead-ended at "Card in the Pi?" with nothing to
+        # press. Naming first also restores the map and Bluetooth questions
+        # this node was never asked.
+        self._render_name()
 
     def _board_key_of(self, c):
         """The rnode_boards key for a recognised board, however the candidate
@@ -1853,12 +1879,18 @@ class BirthGuideScreen(BoxLayout):
                       "a name, and you can change it to anything.").format(old=was)
         # A name already in the family is warned about ONCE, then allowed —
         # see _name_next. Re-rendering with the warning is what puts it on
-        # screen, so the button changes with it.
+        # screen, so the button changes with it. A BLOCKED name (one that
+        # hostnameifies to nothing) keeps the plain Next: "Use it anyway →"
+        # on a refusal that cannot be used anyway is a button that lies
+        # (breaker audit, 2026-09-13).
         warn = getattr(self, "_name_warning", "")
+        blocked = getattr(self, "_name_blocked", False)
         step = WizardStep(index=0, total=total, title=tr("Name this node"),
                           body=body, warning=warn,
                           input_widget=ti,
-                          next_text=tr("Use it anyway  →") if warn else tr("Next  →"),
+                          next_text=(tr("Use it anyway  →")
+                                     if warn and not blocked
+                                     else tr("Next  →")),
                           on_next=self._name_next, on_back=self.reset)
         self.clear_widgets()
         self.add_widget(step)
@@ -1874,6 +1906,30 @@ class BirthGuideScreen(BoxLayout):
         if not name:                         # a name is required to continue
             self._name_input.focus = True
             return
+        # A NAME THE NETWORK CANNOT SPEAK IS REFUSED, not warned past
+        # (breaker audit, 2026-09-13). On the Pi path the card's hostname is
+        # this name run through hostnameify, which strips everything outside
+        # a-z 0-9 and dashes — a name typed in kana or cyrillic strips to "",
+        # the imager then blocks on an empty hostname, and the guide's proof
+        # watcher has nothing to resolve: a buttonless dead end several
+        # screens after the cause. Refused HERE, with the reason, and never
+        # behind "Use it anyway" — there is no way to use it anyway.
+        self._name_blocked = False
+        if self._path == "pi":
+            try:
+                from provisioning.pi_imager import hostnameify
+                speakable = bool(hostnameify(name))
+            except Exception:                                  # noqa: BLE001
+                speakable = True             # advice must never block a birth
+            if not speakable:
+                self._name_blocked = True
+                self._name_warning = tr(
+                    "A Pi answers to this name on the network, so it needs "
+                    "at least one ordinary letter (a–z) or digit. Add "
+                    "some — the rest of the name can stay.")
+                self._node_name = name       # keep what they typed
+                self._render_name()
+                return
         # A name already in the family: WARN, then allow. Reusing a name can be
         # deliberate — rebuilding a node that died, keeping its place on the map
         # — so refusing would be wrong. But two nodes with one name are hard to
@@ -2561,10 +2617,18 @@ class BirthGuideScreen(BoxLayout):
         # Whether a radio is flashed here has nothing to do with any of that.
         if self._path == "pi" and not getattr(self, "_pair_checked", False):
             self._pair_checked = True
-            if getattr(self, "_pi_flash_radio", True):
+            # ...but not a radio the road already named. keep-and-continue
+            # reads the board off the stored certificate, so showing the
+            # picker again is the 2026-08-09 complaint ("we have already
+            # selected the radio board, is this screen necessary?") in a new
+            # spot (breaker audit, 2026-09-13). The Pi question is still
+            # always asked — it cannot be read.
+            if (getattr(self, "_pi_flash_radio", True)
+                    and not getattr(self, "_board_preknown", False)):
                 self._render_pick_board()     # radio first, then the Pi
             else:
-                self._render_pick_pi()        # no radio here — still need the Pi
+                self._render_pick_pi()        # board known (or none flashed
+                                              # here) — still need the Pi
             return
         # HOW WAS THIS RENDER ARRIVED AT? _back says "back"; everything else
         # moves forward (see reset()). Consulted below wherever the step would
@@ -2600,6 +2664,14 @@ class BirthGuideScreen(BoxLayout):
             self._trace(f"step {self._i + 1} is a failure rewind — "
                         "not self-advancing past it")
         cur = steps[self._i]
+        # ...AND NEVER AFTER A BUILD THAT JUST FAILED. resume() lands a failed
+        # flash back on this step with the [FAIL] line armed as the gate
+        # warning — and this auto-fire ran first, called _next(), which
+        # cleared both flags and threw the operator straight back onto the
+        # BIRTH screen, whose begin_guided reset wiped the failed build's log
+        # (breaker audit, 2026-09-13). Same law the gate below already keeps
+        # (2026-08-10): a build that just failed suspends the self-driving —
+        # the step renders, the fail line is read, and the button IS the retry.
         if (self._i == 0 and cur.get("screen")
                 and cur.get("anim") == "connect_board"
                 and self._path == "pi" and not back_arrival
@@ -3174,6 +3246,11 @@ class BirthGuideScreen(BoxLayout):
         # radio that was never meant to be on it.
         if not getattr(self, "_pi_flash_radio", True):
             self._back_to_prelude()
+        # Same rule for a board the road itself named (keep-and-continue):
+        # forward skipped the picker, so Back steps over it too — one skip
+        # rule, both directions (breaker audit, 2026-09-13).
+        elif getattr(self, "_board_preknown", False):
+            self._back_to_prelude()
         elif len(self._board_candidates()) == 1:
             self._back_to_prelude()
         else:
@@ -3366,6 +3443,12 @@ class BirthGuideScreen(BoxLayout):
         enumeration physics forbids. The fact fires here now, before anything
         is written.
         """
+        # The pairing IS being checked, so record that — here, not only in
+        # _render_step's own gate. The keep-and-continue road reached this
+        # method without ever passing that gate, so _pair_checked stayed
+        # False and the very next _render_step asked "Which Raspberry Pi is
+        # this?" (and its confirm) a second time (breaker audit, 2026-09-13).
+        self._pair_checked = True
         from ui import pi_connectors
         pi_key = getattr(self, "_pi_key", "")
         if not pi_connectors.can_cable(pi_key):
@@ -3800,7 +3883,20 @@ class BirthGuideScreen(BoxLayout):
             self._render_done()
             return
         if self._on_complete:
-            self._on_complete(path, self._node_name)
+            # THE ANSWERS TRAVEL WITH THE HAND-OFF — all of them, not just the
+            # name. The 'radio' (RTNode) path asks the map question and lets
+            # the operator place a pin, and this call carried neither: the app
+            # handed BIRTH begin_guided(path, name) alone, whose hygiene then
+            # normalised the missing answer to hidden. A "Show on map" with a
+            # placed pin silently became a hidden node — a question asked and
+            # its answer discarded (breaker audit, 2026-09-13). None when it
+            # was never asked (the 'host' path), so hidden-by-default hygiene
+            # still applies where it should.
+            self._on_complete(
+                path, self._node_name,
+                share_location=(self._share_location if self._share_asked
+                                else None),
+                location=getattr(self, "_node_location", None))
 
     def _render_done(self):
         """The closing screen: what was built, and the way out.
@@ -3978,7 +4074,13 @@ class BirthGuideScreen(BoxLayout):
                     try:
                         from provisioning.pi_discover import resolve
                         from provisioning.pi_imager import hostnameify
-                        host = hostnameify(getattr(self, "_node_name", "") or "")
+                        # The hostname the CARD actually carries wins: the
+                        # imager's field is editable, so the operator may have
+                        # written a different one than the guide's name
+                        # derives (breaker audit, 2026-09-13).
+                        host = (getattr(self, "_imaged_hostname", "")
+                                or hostnameify(
+                                    getattr(self, "_node_name", "") or ""))
                         addr = (resolve(host) or "") if host else ""
                     except Exception:                              # noqa: BLE001
                         addr = ""
@@ -4042,7 +4144,10 @@ class BirthGuideScreen(BoxLayout):
         try:
             from provisioning.pi_discover import resolve
             from provisioning.pi_imager import hostnameify
-            host = hostnameify(getattr(self, "_node_name", "") or "")
+            # The written card's own hostname first — see _start_node_poll
+            # (breaker audit, 2026-09-13).
+            host = (getattr(self, "_imaged_hostname", "")
+                    or hostnameify(getattr(self, "_node_name", "") or ""))
             return bool(resolve(host)) if host else False
         except Exception:                                          # noqa: BLE001
             return False
@@ -4064,7 +4169,12 @@ class BirthGuideScreen(BoxLayout):
         try:
             from provisioning.pi_discover import imaged_pi_answers
             from provisioning.pi_imager import hostnameify
-            host = hostnameify(getattr(self, "_node_name", "") or "")
+            # The hostname the imager actually wrote wins over the one the
+            # guide's name derives — the field is editable, and a rename
+            # there made this proof unprovable and the buttonless connect-Pi
+            # step a dead end (breaker audit, 2026-09-13).
+            host = (getattr(self, "_imaged_hostname", "")
+                    or hostnameify(getattr(self, "_node_name", "") or ""))
             if not host:
                 return (False, "", "")
             return imaged_pi_answers(host)

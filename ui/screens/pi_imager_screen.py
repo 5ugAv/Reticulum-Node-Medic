@@ -192,6 +192,12 @@ class PiImagerScreen(BoxLayout):
         """
         from kivy.clock import Clock
         self._stop_card_poll()
+        # Re-arm the one-shot greet. _on_card_found sets _card_greeted and
+        # nothing here ever cleared it, so on the SECOND 'no card' lap in one
+        # session the poll saw the card, hit the guard, and the auto-advance
+        # the operator asked for (2026-08-06) was silently dead — only the
+        # manual button still worked (breaker audit, 2026-09-13).
+        self._card_greeted = False
 
         def tick(_dt):
             import threading
@@ -274,9 +280,15 @@ class PiImagerScreen(BoxLayout):
 
         self.col.add_widget(_line("Raspberry Pi detected", size="17sp",
                                   color="green", bold=True, h=28))
+        # NOT "waiting with a blank card": boot-ROM mode says only that the Pi
+        # found nothing to boot — which is also what NO card looks like, and
+        # what a full card of last night's evidence looks like (a card that
+        # "looked blank" held exactly that, on this bench). Say what was
+        # checked; ensure_card_reader reports honestly if there is no card to
+        # open (breaker audit, 2026-09-13).
         self.col.add_widget(_line(
-            "It's waiting with a blank card. Node Medic is opening the card now "
-            "— no card reader needed.", size="15sp", h=44))
+            "It started up with nothing to boot. Node Medic is opening its "
+            "card slot now — no card reader needed.", size="15sp", h=44))
         status = _line("Waking the Pi's card…", size="14sp", color="accent", h=26)
         self.col.add_widget(status)
         ring = ProgressRing(size_hint_y=None, height=dp(160))
@@ -1028,7 +1040,14 @@ class PiImagerScreen(BoxLayout):
         self._stop_boot_poll()
         if key == "rewrite_card":
             self._situation_shown = None
-            self.reset()
+            # _build(), not self.reset() — which was never a method here, so
+            # the one button offered on a settled failure raised
+            # AttributeError and did NOTHING (breaker audit, 2026-09-13: a
+            # dead end wearing the clothes of an escape hatch). _build()
+            # re-scans for the card and keeps the non-secret answers the
+            # operator already typed; the destructive write stays behind its
+            # own deliberate press, exactly as before.
+            self._build()
             return
         self._back_to_birth()
 
@@ -1112,15 +1131,28 @@ class PiImagerScreen(BoxLayout):
         # has to narrate those steps itself in plain text, and why the operator
         # watched it "just sit there" (2026-08-08). It was the end of the road.
         try:
-            if getattr(app, "resume_guided_birth", None) and app.resume_guided_birth():
+            v = {k: t.text.strip() for k, t in (self._inputs or {}).items()
+                 if hasattr(t, "text")}
+        except Exception:                                          # noqa: BLE001
+            v = {}
+        try:
+            # THE WRITTEN HOSTNAME RIDES THE HAND-BACK (breaker audit,
+            # 2026-09-13). This field is editable, so the card can answer to
+            # a name the guide never learned — and the guide's proof watcher
+            # was keyed on its own name, leaving the buttonless connect-Pi
+            # step unable to prove anything. resume() stores it as
+            # _imaged_hostname; the watchers prefer it.
+            payload = {}
+            if v.get("hostname"):
+                payload["imaged_hostname"] = v["hostname"]
+            if getattr(app, "resume_guided_birth", None) \
+                    and app.resume_guided_birth(payload):
                 return
         except Exception:                                          # noqa: BLE001
             pass            # a broken resume must never strand the operator here
         try:
             scr = getattr(app, "birth_screen", None)
             if scr is not None and hasattr(scr, "arrived_from_imaging"):
-                v = {k: t.text.strip() for k, t in (self._inputs or {}).items()
-                     if hasattr(t, "text")}
                 scr.arrived_from_imaging(v.get("hostname", ""))
             if scr is not None and hasattr(scr, "rescan_after_imaging"):
                 scr.rescan_after_imaging()

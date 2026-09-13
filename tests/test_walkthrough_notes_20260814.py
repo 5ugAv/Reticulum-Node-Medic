@@ -38,7 +38,14 @@ def test_already_flashed_offers_the_pi_build_road():
                        cls="BirthGuideScreen")
     # the radio's serial must ride along, or /dev/rnode loses its pin
     assert "by_id_serial" in keep
-    assert "_render_pick_pi" in keep
+    # 2026-09-13 (breaker audit): the road now enters through the NAME step,
+    # not straight at the Pi picker. Skipping the name left _node_name empty
+    # for the whole build, and the connect-Pi step proves THE Pi by the
+    # card's hostname-derived birth token — with no name the buttonless step
+    # could never advance, which was the dead end this note's own text
+    # ("no reflash, no dead end") forbids. The Pi question is still asked —
+    # by the pair check, once — see test_guided_flow_breaker_20260913.
+    assert "_render_name" in keep
 
 
 # note 3 — pi picker buttons get breathing room

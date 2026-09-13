@@ -2581,16 +2581,25 @@ class ReticulumNodeMedicApp(App):
         g = getattr(self, "birth_guide_screen", None)
         return bool(g is not None and g.has_pending_resume())
 
-    def _guided_birth_complete(self, path, name=""):
+    def _guided_birth_complete(self, path, name="", share_location=None,
+                               location=None):
         """The guide's steps are done — hand off to the real BIRTH screen,
         pre-scoped to the chosen kind with the node name (collected in the guide)
-        prefilled and detection already running."""
+        prefilled and detection already running.
+
+        *share_location* / *location* are the guide's map answer and pin —
+        asked on the 'radio' path and previously DROPPED here, so a "Show on
+        map" with a placed pin became a hidden node the moment this hand-off
+        ran (breaker audit, 2026-09-13). None means never asked, and
+        begin_guided's own hygiene keeps that hidden."""
         bs = getattr(self, "birth_screen", None)
         if bs is not None:
             # One call: begin_guided applies the name itself, so a second reset
             # can't undo the scoping it just set (see BirthScreen.begin_guided).
             if hasattr(bs, "begin_guided"):
-                bs.begin_guided(path, name=name or None)
+                bs.begin_guided(path, name=name or None,
+                                share_location=share_location,
+                                location=location)
             elif name and hasattr(bs, "prefill_name"):
                 bs.prefill_name(name)
         self.switch_mode("birth")
