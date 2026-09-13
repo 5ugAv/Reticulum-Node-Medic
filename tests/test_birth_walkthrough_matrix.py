@@ -254,6 +254,10 @@ _REAL_METHODS = [
 _SHARED_NS = {
     "WizardStep": FakeWizardStep, "_ANIMS": FAKE_ANIMS,
     "_PI_ANIMS": FAKE_PI_ANIMS,
+    # mirrors the shipped tuple at birth_guide_screen.py:53 (board-aware
+    # anims take board_key=): the fakes accept **kw, so membership is all
+    # the exec'd source needs (merge reconciliation, 2026-09-13)
+    "_BOARD_ANIMS": (FConnectBoard, FDisconnect, FRadioToPi, FProvision),
     "ConnectAntennaAnim": FAntenna, "ConnectBoardAnim": FConnectBoard,
     "DisconnectBoardAnim": FDisconnect, "RadioToPiAnim": FRadioToPi,
     "ConnectPiAnim": FConnectPi, "InsertSdAnim": FInsertSd,
@@ -862,9 +866,14 @@ def test_a_failed_flash_with_the_board_still_plugged_rehands_off(rig):
                g.renders[fail_nav["renders_before"]:flashes[1]["renders_before"]]]
     assert all(i <= 1 for i in between), \
         f"a failed flash let the walk advance past the gate: {between}"
-    # the pinned wrinkle itself: nothing (fail_line included) rendered on the
-    # guide between the failed resume and the automatic re-hand-off
-    assert between == [], between
+    # THE PIN FLIPPED, exactly as its docstring invited (2026-09-13, same
+    # day): the breaker's standdown law landed on main — a failed build
+    # suspends the step-0 auto-fire, so the guide now RENDERS step 0 with
+    # the [FAIL] line and the button is the retry. The improvement the old
+    # pin promised to welcome is here; the second hand-off above is now the
+    # operator's press, not the machine's reflex.
+    assert between and all(i == 0 for i in between), \
+        f"the failure should render on step 0 before any re-hand-off: {between}"
 
 
 def test_a_flash_that_never_verified_blocks_the_radio_gate(rig):

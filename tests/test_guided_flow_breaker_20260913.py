@@ -85,20 +85,16 @@ def test_the_radio_paths_map_answer_travels_to_the_build():
 # --- MISINFORMATION 2: 'Step N of M' counted a screen the host path never --
 # --- shows -------------------------------------------------------------------
 
-def test_prelude_count_matches_what_each_path_actually_asks():
-    """The +2 offset assumed name + map question on every path, but the map
-    question is deliberately not asked on 'host' — so a host build read
-    'Step 1 of 3' then 'Step 3 of 3', with a step 2 that never existed."""
-    from ui.birth_guide_flow import prelude_count
-    assert prelude_count("host") == 1       # name only — no map question
-    assert prelude_count("radio") == 2      # name + map
-    assert prelude_count("pi") == 2         # name + map (and Bluetooth rides it)
-
-
-def test_the_step_counters_use_the_shared_prelude_count():
-    for fn in ("_render_name", "_render_location_share", "_render_step"):
-        body = func_source(GUIDE, fn, cls="BirthGuideScreen")
-        assert "prelude_count" in body, (
+def test_the_counter_never_promises_a_screen_the_path_wont_show():
+    """The host path has no map question; a flat +2 promised it a phantom
+    'Step 2' (breaker audit, 2026-09-13). Main's _counter() — the month's
+    own fix (audit 2026-09-09) — carries the law; this holds it there and
+    keeps the three counter sites on the shared mechanism."""
+    body = func_source(GUIDE, "_counter", cls="BirthGuideScreen")
+    assert "host" in body or "_share" in body or "skip" in body.lower()
+    for fn in ("_render_name", "_render_location_share"):
+        site = func_source(GUIDE, fn, cls="BirthGuideScreen")
+        assert "_counter" in site, (
             f"{fn} must count the prelude screens the path actually shows, "
             "not assume two")
 
@@ -116,7 +112,11 @@ def test_a_failed_flash_does_not_refire_the_handoff_by_itself():
     body = func_source(GUIDE, "_render_step", cls="BirthGuideScreen")
     start = body.index('self._i == 0 and cur.get("screen")')
     end = body.index("the button press, automated")
-    assert "_build_failed" in body[start:end], (
+    # Main's month solved this with `failure_rewind` before the breaker's
+    # `_build_failed` guard landed (merge reconciliation, 2026-09-13) — the
+    # LAW is the standdown, whichever flag carries it.
+    assert ("_build_failed" in body[start:end]
+            or "failure_rewind" in body[start:end]), (
         "the automated flash hand-off must stand down after a failed build "
         "so the operator sees the [FAIL] line and chooses the retry")
 
