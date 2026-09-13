@@ -1083,6 +1083,42 @@ class ReticulumNodeMedicApp(App):
                 stop.wait(interval)
 
         threading.Thread(target=loop, daemon=True).start()
+        # THE POST OFFICE STOCKS ITSELF (operator, 2026-09-13: "the user
+        # shouldn't have to download these communication apps"). A medic
+        # online with an empty APK shelf fetches Columba + Sideband itself —
+        # same sha256-verified downloader the Comms screen uses — and
+        # freshens weekly, so a clone always inherits a stocked shelf.
+        # Quiet by design: one ui.log line either way, never a dialog.
+        def _stock_apps():
+            import os as _os, time as _t
+            try:
+                _t.sleep(120)              # let boot, rnsd and the UI settle
+                from workflows.phone_apps import (cached_apps, should_autosync,
+                                                  sync_all)
+                from workflows.updater import has_connectivity
+                from ui.hw_factories import LocalConnection
+                conn = LocalConnection()
+                stamp = _os.path.expanduser(
+                    "~/.reticulum-node-medic/apps_last_sync")
+                try:
+                    age_d = (_t.time() - _os.path.getmtime(stamp)) / 86400.0
+                except OSError:
+                    age_d = 1e9
+                carried = all(a.get("carried") for a in cached_apps(conn))
+                ok, why = should_autosync(carried, age_d,
+                                          has_connectivity(conn))
+                if not ok:
+                    return
+                print(f"[apps] self-stocking the phone-app shelf: {why}",
+                      flush=True)
+                res = sync_all(conn)
+                _os.makedirs(_os.path.dirname(stamp), exist_ok=True)
+                with open(stamp, "w") as fh:
+                    fh.write(str(_t.time()))
+                print(f"[apps] shelf sync finished: {res}", flush=True)
+            except Exception as e:                                # noqa: BLE001
+                print(f"[apps] shelf sync skipped: {e}", flush=True)
+        threading.Thread(target=_stock_apps, daemon=True).start()
 
     def _build_scan_topology(self):
         """The mesh topology (registry + rnpath path table) that drives SCAN's

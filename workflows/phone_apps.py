@@ -367,6 +367,31 @@ def sync_app(app_key: str, connection: Connection, cache_dir: str = APPS_CACHE_D
     return res
 
 
+#: How often a fully-stocked medic re-checks its carried APKs for new
+#: releases. Weekly: fast enough that a clone-parent hands on something
+#: current, slow enough to cost nothing on a bench that is rarely online.
+AUTOSYNC_INTERVAL_DAYS = 7.0
+
+
+def should_autosync(all_carried: bool, age_days: float, online: bool,
+                    interval_days: float = AUTOSYNC_INTERVAL_DAYS):
+    """Should the medic stock its own post office right now? -> (bool, why).
+
+    Operator, 2026-09-13: "the user shouldn't have to download these
+    communication apps" — so the medic does it itself, the moment it is
+    online with an empty shelf, and freshens weekly thereafter. Offline is
+    an honest no whatever the shelf looks like: the downloader needs the
+    internet and there is nobody to nag about it.
+    """
+    if not online:
+        return (False, "offline — the shelf stays as it is")
+    if not all_carried:
+        return (True, "an app is missing from the carried cache")
+    if age_days >= interval_days:
+        return (True, f"carried apps are stale ({age_days:.0f} d old check)")
+    return (False, "stocked and fresh")
+
+
 def sync_all(connection: Connection, cache_dir: str = APPS_CACHE_DIR) -> dict:
     """Refresh every catalogue app; returns ``{app_key: SyncResult}``."""
     return {k: sync_app(k, connection, cache_dir) for k in APPS}
