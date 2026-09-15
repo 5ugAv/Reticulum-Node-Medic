@@ -684,9 +684,13 @@ class BirthScreen(BoxLayout):
                             color="text_secondary"))
                         self._back_home_button()
                         return
+                    # Boot-ROM evidence proves only "started with nothing
+                    # to boot" — presence and blankness of a card were never
+                    # read (the imager's twin claim fell 2026-09-13; this one
+                    # hid untranslated until the wrap found it, 2026-09-15).
                     self.header.add_widget(_line(tr(
-                        "This Raspberry Pi has no operating system yet — it's "
-                        "waiting with a blank card."), size="13.5sp",
+                        "This Raspberry Pi started up with nothing to boot "
+                        "— no working card seen."), size="13.5sp",
                         color="amber"))
                     self.header.add_widget(_line(tr(
                         "Node Medic will write its card first, then reach it "
@@ -794,7 +798,7 @@ class BirthScreen(BoxLayout):
                         from kivy.uix.textinput import TextInput
                         self._pi_addr_in = bind_field(TextInput(
                             text="", multiline=False, font_size="27sp",
-                            hint_text=tr("found automatically — or tap Find")))
+                            hint_text=tr("found automatically — or type it")))
                         self._pi_user_in = bind_field(TextInput(
                             text="pi", multiline=False, font_size="27sp",
                             hint_text=tr("user"), size_hint_x=0.22))
