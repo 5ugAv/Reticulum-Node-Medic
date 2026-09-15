@@ -553,7 +553,9 @@ def test_an_unimaged_pi_is_routed_to_imaging_not_to_a_text_box():
     # the branch and the route, and a fixed window kept going stale.
     _start = SRC.index("if self._pi_needs_imaging():")
     block = SRC[_start:SRC.index("cable = \"\"", _start)]
-    assert "no operating system yet" in block
+    # Reworded 2026-09-15: boot-ROM evidence proves only "nothing to
+    # boot" — presence/blankness of a card were never read.
+    assert "nothing to boot" in block
     assert "no address to enter" in block
     assert "_go_image_pi" in block
 
