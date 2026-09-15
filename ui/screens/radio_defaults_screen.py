@@ -18,6 +18,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — radio-defaults labels/warnings/popups
 from ui.onscreen_keyboard import bind_field
 from provisioning import radio_defaults as rd
 
@@ -47,7 +48,7 @@ class RadioDefaultsScreen(BoxLayout):
         from ui.widgets.help_button import HelpButton
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                          spacing=dp(8))
-        head.add_widget(_line("Default radio parameters", bold=True, size="22sp"))
+        head.add_widget(_line(tr("Default radio parameters"), bold=True, size="22sp"))
         head.add_widget(HelpButton())
         self.add_widget(head)
 
@@ -64,15 +65,15 @@ class RadioDefaultsScreen(BoxLayout):
             self._wr = RoundedRectangle(radius=[dp(8)] * 4)
         warn.bind(pos=lambda *_: setattr(self._wr, "pos", warn.pos),
                   size=lambda *_: setattr(self._wr, "size", warn.size))
-        warn.add_widget(_line(
+        warn.add_widget(_line(tr(
             "These are the tool-wide defaults every BUILD pre-fills. Leave them "
             "alone unless you know exactly why — mismatched parameters keep a node "
-            "off the mesh, and a different frequency band builds a SEPARATE mesh.",
+            "off the mesh, and a different frequency band builds a SEPARATE mesh."),
             size="13.5sp", color="warning_yellow", h=78))
         col.add_widget(warn)
 
         # regional presets
-        col.add_widget(_line("Suggested settings by region", bold=True, size="15sp",
+        col.add_widget(_line(tr("Suggested settings by region"), bold=True, size="15sp",
                              color="accent", h=26))
         for key in rd.preset_keys():
             b = Button(text=rd.preset_label(key), size_hint_y=None, height=dp(46),
@@ -84,14 +85,14 @@ class RadioDefaultsScreen(BoxLayout):
             col.add_widget(b)
 
         # editable fields
-        col.add_widget(_line("Current defaults", bold=True, size="15sp",
+        col.add_widget(_line(tr("Current defaults"), bold=True, size="15sp",
                              color="accent", h=26))
         cur = rd.load_defaults()
         self._inputs = {}
         for key, label in _FIELDS:
             row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50),
                             spacing=dp(8))
-            row.add_widget(_line(label, size="15sp"))
+            row.add_widget(_line(tr(label), size="15sp"))
             v = cur[key]
             ti = TextInput(text=f"{v:g}" if key in ("freq", "bw") else str(v),
                            multiline=False, size_hint=(None, None), width=dp(150),
@@ -102,7 +103,7 @@ class RadioDefaultsScreen(BoxLayout):
             row.add_widget(ti)
             col.add_widget(row)
 
-        save = Button(text="Save defaults", size_hint_y=None, height=dp(54),
+        save = Button(text=tr("Save defaults"), size_hint_y=None, height=dp(54),
                       bold=True, font_size="18sp", background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -133,12 +134,13 @@ class RadioDefaultsScreen(BoxLayout):
         if not rd.is_standard(vals):
             self._confirm_nonstandard(vals)
             return
-        self._commit(vals, "Saved")
+        self._commit(vals, tr("Saved"))
 
     def _commit(self, vals, verb):
         stored = rd.save_defaults(vals)
         self._fill_fields(stored)                    # reflect coercion
-        self._status.text = f"{verb} — BUILD pre-fills {rd.summary(stored)}"
+        self._status.text = tr("{verb} — BUILD pre-fills {summary}").format(
+            verb=verb, summary=rd.summary(stored))
         try:                                          # home badge follows
             from kivy.app import App
             app = App.get_running_app()
@@ -155,7 +157,8 @@ class RadioDefaultsScreen(BoxLayout):
                 from provisioning.medic_radio import retune_medic
                 ok, msg = retune_medic(stored)
             except Exception as e:      # noqa: BLE001
-                ok, msg = False, f"Medic retune failed: {str(e)[:100]}"
+                ok, msg = False, tr("Medic retune failed: {err}").format(
+                    err=str(e)[:100])
             from kivy.clock import Clock
 
             def show(_dt):
@@ -169,42 +172,43 @@ class RadioDefaultsScreen(BoxLayout):
         if getattr(self, "_ns_pop", None) is not None:   # doubled-tap guard
             return
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
-        msg = Label(halign="center", valign="middle", markup=True, text=(
+        msg = Label(halign="center", valign="middle", markup=True, text=tr(
             "[b]Keep the standard parameters?[/b]\n\n"
             "It is STRONGLY recommended to keep the standard settings\n"
-            f"[b]{rd.summary(rd.DEFAULT_PARAMS)}[/b]\n"
+            "[b]{standard}[/b]\n"
             "so that ALL nodes can communicate with each other.\n\n"
             "Nodes built with different parameters CANNOT hear the rest of "
             "the mesh. Only change this if every node you build will use the "
             "same new settings. Node Medic will retune its OWN radio to "
             "match, so it can still talk to your nodes.\n\nYou want to save:\n"
-            f"[b]{rd.summary(vals)}[/b]"),
+            "[b]{yours}[/b]").format(standard=rd.summary(rd.DEFAULT_PARAMS),
+                                     yours=rd.summary(vals)),
             color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        popup = Popup(title="Non-standard radio parameters", content=box,
+        popup = Popup(title=tr("Non-standard radio parameters"), content=box,
                       size_hint=(0.94, 0.8),
                       title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
         self._ns_pop = popup
         popup.bind(on_dismiss=lambda *_: setattr(self, "_ns_pop", None))
-        keep = Button(text="Keep standard", bold=True, background_normal="",
+        keep = Button(text=tr("Keep standard"), bold=True, background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
 
         def _keep(*_):
             popup.dismiss()
-            self._commit(dict(rd.DEFAULT_PARAMS), "Kept standard")
+            self._commit(dict(rd.DEFAULT_PARAMS), tr("Kept standard"))
         keep.bind(on_release=_keep)
-        save_b = Button(text="⚠  Save anyway", bold=True, background_normal="",
+        save_b = Button(text=tr("⚠  Save anyway"), bold=True, background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
 
         def _save_anyway(*_):
             popup.dismiss()
-            self._commit(vals, "Saved NON-STANDARD")
+            self._commit(vals, tr("Saved NON-STANDARD"))
         save_b.bind(on_release=_save_anyway)
         row.add_widget(save_b)                       # danger bottom-left
         row.add_widget(keep)                         # safe bottom-right
@@ -219,23 +223,26 @@ class RadioDefaultsScreen(BoxLayout):
         msg = Label(halign="center", valign="middle", text=(
             f"[b]{rd.preset_label(key)}[/b]\n\n{rd.summary(params)}\n\n"
             f"{rd.preset_note(key)}\n\n"
-            "Nodes built with these settings form a SEPARATE regional mesh from "
-            "nodes on a different band. Apply as the tool defaults?"), markup=True)
+            + tr("Nodes built with these settings form a SEPARATE regional mesh "
+                 "from nodes on a different band. Apply as the tool defaults?")),
+            markup=True)
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        popup = Popup(title="Apply regional preset", content=box, size_hint=(0.9, 0.6))
-        cancel = Button(text="Cancel", background_normal="",
+        popup = Popup(title=tr("Apply regional preset"), content=box,
+                      size_hint=(0.9, 0.6))
+        cancel = Button(text=tr("Cancel"), background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         cancel.bind(on_release=popup.dismiss)
-        apply_b = Button(text="Apply", bold=True, background_normal="",
+        apply_b = Button(text=tr("Apply"), bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
 
         def _apply(*_):
             popup.dismiss()
-            self._commit(params, f"Applied {rd.preset_label(key)}")
+            self._commit(params, tr("Applied {preset}").format(
+                preset=rd.preset_label(key)))
         apply_b.bind(on_release=_apply)
         row.add_widget(cancel)
         row.add_widget(apply_b)

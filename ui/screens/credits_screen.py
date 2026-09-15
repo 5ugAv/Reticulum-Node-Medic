@@ -20,6 +20,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — credits + spiel (names stay verbatim)
 
 #: Support the developer — a scannable QR of the ETH address (generated offline
 #: from ETH_ADDR into assets/ui/donate_eth_qr.png) plus the address in text so it
@@ -70,7 +71,7 @@ class CreditsScreen(BoxLayout):
         self.padding = [dp(20), dp(24), dp(20), dp(8)]
         self.spacing = dp(8)
 
-        title = Label(text="With thanks", bold=True, font_size="26sp",
+        title = Label(text=tr("With thanks"), bold=True, font_size="26sp",
                       size_hint_y=None, height=dp(44),
                       color=theme.hex_to_rgba(theme.COLORS["red"]))
         self.add_widget(title)
@@ -80,13 +81,15 @@ class CreditsScreen(BoxLayout):
                          spacing=dp(4))
         body.bind(minimum_height=body.setter("height"))
         for role, name in CREDITS:
-            row = Label(text=f"[color=9e9e9e]{role}[/color]\n[b]{name}[/b]",
+            # tr() falls straight through for the entries that are pure proper
+            # nouns — only the prose roles/lines carry catalog keys.
+            row = Label(text=f"[color=9e9e9e]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
                         markup=True, halign="center", valign="middle",
                         size_hint_y=None, height=dp(52),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             row.bind(size=lambda i, v: setattr(i, "text_size", v))
             body.add_widget(row)
-        spiel = Label(text=SPIEL, halign="center", valign="top",
+        spiel = Label(text=tr(SPIEL), halign="center", valign="top",
                       font_size="15sp", size_hint_y=None,
                       color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         spiel.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
@@ -94,14 +97,14 @@ class CreditsScreen(BoxLayout):
         body.add_widget(spiel)
 
         # --- Support this work: ETH address + scannable QR ---
-        sup_title = Label(text="Support this work", bold=True, font_size="18sp",
+        sup_title = Label(text=tr("Support this work"), bold=True, font_size="18sp",
                           size_hint_y=None, height=dp(40),
                           color=theme.hex_to_rgba(theme.COLORS["red"]))
         body.add_widget(sup_title)
         sup_line = Label(
-            text=("Node Medic is built and field-tested by one person. If it helps "
-                  "you build the mesh, you can chip in with Ethereum — scan the code "
-                  "with a phone wallet, or send to the address below."),
+            text=tr("Node Medic is built and field-tested by one person. If it helps "
+                    "you build the mesh, you can chip in with Ethereum — scan the code "
+                    "with a phone wallet, or send to the address below."),
             halign="center", valign="top", font_size="14sp", size_hint_y=None,
             color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         sup_line.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
@@ -115,12 +118,12 @@ class CreditsScreen(BoxLayout):
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         addr.bind(size=lambda i, v: setattr(i, "text_size", v))
         body.add_widget(addr)
-        addr_note = Label(text="ETH / EVM address", font_size="11sp",
+        addr_note = Label(text=tr("ETH / EVM address"), font_size="11sp",
                           size_hint_y=None, height=dp(22),
                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
         body.add_widget(addr_note)
 
-        hint = Label(text="tap anywhere to go back",
+        hint = Label(text=tr("tap anywhere to go back"),
                      font_size="12sp", size_hint_y=None, height=dp(24),
                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
         body.add_widget(hint)

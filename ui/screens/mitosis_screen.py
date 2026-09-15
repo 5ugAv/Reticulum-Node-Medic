@@ -36,6 +36,8 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — stage titles/bodies/buttons; step rows
+                        # translate at render (STEP_TITLES stays English source)
 
 #: step name -> plain-English row title. Rows are rebuilt from the workflow's
 #: OWN ladder at run time, so an unknown step still gets a row (its raw name).
@@ -196,7 +198,8 @@ class MitosisScreen(BoxLayout):
         # site in this file does - _label() does not take them, and passing
         # them in crashed the first stage of the flow outright.
         hdr = _label(
-            f"PHASE {phase} of 2 - {_PHASE_NAME[phase]}   .   step {idx} of {total}",
+            tr("PHASE {phase} of 2 - {name}   .   step {idx} of {total}").format(
+                phase=phase, name=tr(_PHASE_NAME[phase]), idx=idx, total=total),
             color="text_secondary", size="12sp")
         hdr.size_hint_y, hdr.height = None, dp(18)
         self.add_widget(hdr)
@@ -207,7 +210,7 @@ class MitosisScreen(BoxLayout):
         what this needs, with a graceful way back out if they don't have it."""
         self._clear()
         self._stage_header("preflight")
-        title = _label("Make another Node Medic", bold=True, size="22sp")
+        title = _label(tr("Make another Node Medic"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         # Parts, not products (operator, 2026-08-30 walkthrough): the person
@@ -220,7 +223,7 @@ class MitosisScreen(BoxLayout):
         # needs to make a complete working medic, not just the imaging
         # parts. The Tracker is the new medic's own radio + GPS (its
         # firstborn); the antenna items feed it.
-        body = _label(
+        body = _label(tr(
             "This copies this Node Medic onto a second one. Before you start, "
             "have these to hand:\n\n"
             "  •  a Raspberry Pi 5 (8 GB) and its 5 V / 5 A power supply\n"
@@ -234,7 +237,7 @@ class MitosisScreen(BoxLayout):
             "Two halves: this medic writes the card (~5 min), then you move "
             "the card across and the two talk over the cable while the tool "
             "is copied (~20 min). You are NOT finished when the card is "
-            "written. About half an hour in all, mostly waiting.",
+            "written. About half an hour in all, mostly waiting."),
             color="text_primary", size="15sp")
         # SCROLLED, and sized to the wrapped text rather than a fixed dp.
         # The hardcoded dp(330) silently clipped the TOP of the list the moment
@@ -246,13 +249,13 @@ class MitosisScreen(BoxLayout):
         _scroll = ScrollView(size_hint=(1, 1))
         _scroll.add_widget(body)
         self.add_widget(_scroll)
-        go = Button(text="I have these — start  →", size_hint_y=None,
+        go = Button(text=tr("I have these — start  →"), size_hint_y=None,
                     height=dp(56), font_size="19sp", background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                     color=theme.hex_to_rgba(theme.COLORS["background"]))
         go.bind(on_release=lambda *_: self._show_stage_insert())
         self.add_widget(go)
-        back = _small_btn("Not yet — take me back")
+        back = _small_btn(tr("Not yet — take me back"))
         back.bind(on_release=lambda *_: self._leave_home())
         self.add_widget(back)
 
@@ -308,7 +311,7 @@ class MitosisScreen(BoxLayout):
     def _show_stage_insert(self):
         self._clear()
         self._stage_header("insert")
-        title = _label("Clone this Node Medic", bold=True, size="22sp")
+        title = _label(tr("Clone this Node Medic"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         # "into Node Medic" was ambiguous in the one direction that matters:
@@ -316,11 +319,11 @@ class MitosisScreen(BoxLayout):
         # The only actual card slot on this machine holds the card this medic
         # is running from, so a person taking the old wording literally goes
         # looking for a slot and finds the one that must not be touched.
-        body = _label(
+        body = _label(tr(
             "Put the new medic's memory card into the card reader,\n"
             "then plug the reader into any USB socket on this Node Medic.\n\n"
             "Do NOT open this Node Medic or touch the card inside it.\n"
-            "Everything on the new card will be erased.",
+            "Everything on the new card will be erased."),
             color="text_secondary", size="16sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
@@ -335,7 +338,7 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        skip = _small_btn("The new medic is already booted — skip to the clone")
+        skip = _small_btn(tr("The new medic is already booted — skip to the clone"))
         skip.bind(on_release=lambda *_: self._show_stage_name(skip_mode=True))
         self.add_widget(skip)
         self._start_card_poll()
@@ -375,8 +378,8 @@ class MitosisScreen(BoxLayout):
         them and only refused minutes later, after three forms."""
         lbl = getattr(self, '_insert_body', None)
         if lbl is not None:
-            lbl.text = (detail + '\n\nTake the others out and leave only '
-                        'the new medic\'s card in the reader.')
+            lbl.text = (detail + "\n\n" + tr("Take the others out and leave only "
+                                             "the new medic's card in the reader."))
 
     def _on_card_seen(self, gen, detail=''):
         if gen != self._stage_gen or self._card_greeted:
@@ -388,7 +391,7 @@ class MitosisScreen(BoxLayout):
         self._card_detail = detail
         _lbl = getattr(self, '_insert_body', None)
         if _lbl is not None and detail:
-            _lbl.text = detail + '\nIt will be erased and written.'
+            _lbl.text = detail + "\n" + tr("It will be erased and written.")
         if self._card_ev is not None:
             self._card_ev.cancel()
             self._card_ev = None
@@ -411,14 +414,14 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("name")
         self._skip_mode = skip_mode
-        title = _label("Name the new medic", bold=True, size="22sp")
+        title = _label(tr("Name the new medic"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
-        body = _label(
+        body = _label(tr(
             "This is the name you will see when you look for it later. "
             "NodeMedic2 is a perfectly good answer - just tap Continue.\n"
             "The name becomes its address on the cable and its place in the "
-            "family line.", color="text_secondary", size="14sp")
+            "family line."), color="text_secondary", size="14sp")
         body.size_hint_y, body.height = None, dp(40)
         self.add_widget(body)
 
@@ -432,7 +435,7 @@ class MitosisScreen(BoxLayout):
         self.add_widget(self.name_input)
 
         nxt = Button(
-            text=("Find and clone →" if skip_mode else "Continue →"),
+            text=(tr("Find and clone →") if skip_mode else tr("Continue →")),
             size_hint_y=None, height=dp(56), font_size="20sp",
             background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -440,7 +443,7 @@ class MitosisScreen(BoxLayout):
         nxt.bind(on_release=lambda *_: self._name_continue())
         self.add_widget(nxt)
 
-        back = _small_btn("← Back")
+        back = _small_btn(tr("← Back"))
         back.bind(on_release=lambda *_: self._show_stage_insert())
         self.add_widget(back)
         from kivy.uix.widget import Widget
@@ -458,24 +461,24 @@ class MitosisScreen(BoxLayout):
     def _show_stage_password(self):
         self._clear()
         self._stage_header("password")
-        title = _label("Create its password", bold=True, size="22sp")
+        title = _label(tr("Create its password"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
-        body = _label(
+        body = _label(tr(
             "You will type this to log in on the new medic's own screen "
             "(user 'pi'). Choose one you can remember — a lost password "
-            "means re-imaging the card.",
+            "means re-imaging the card."),
             color="text_secondary", size="14sp")
         body.size_hint_y, body.height = None, dp(56)
         self.add_widget(body)
 
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
-        self.pw1 = TextInput(hint_text="Password", password=True,
+        self.pw1 = TextInput(hint_text=tr("Password"), password=True,
                              multiline=False,
                              font_size=theme.font_sp("20sp"),
                              size_hint_y=None, height=dp(52))
-        self.pw2 = TextInput(hint_text="Confirm password", password=True,
+        self.pw2 = TextInput(hint_text=tr("Confirm password"), password=True,
                              multiline=False,
                              font_size=theme.font_sp("20sp"),
                              size_hint_y=None, height=dp(52))
@@ -488,14 +491,14 @@ class MitosisScreen(BoxLayout):
         # unrecoverable case — seeing the letters beats guessing. Same reveal
         # the node imaging screen uses for the same risk.
         self._pw_visible = False
-        reveal = _small_btn("Show the password")
+        reveal = _small_btn(tr("Show the password"))
 
         def _toggle(*_a):
             self._pw_visible = not self._pw_visible
             for f in (self.pw1, self.pw2):
                 f.password = not self._pw_visible
-            reveal.text = ("Hide the password" if self._pw_visible
-                           else "Show the password")
+            reveal.text = (tr("Hide the password") if self._pw_visible
+                           else tr("Show the password"))
         reveal.bind(on_release=_toggle)
         self.add_widget(reveal)
 
@@ -503,7 +506,7 @@ class MitosisScreen(BoxLayout):
         # password" → amber "Confirm the password" → green "Write the card →"
         # that lights only when the two match and pass the validator.
         self.pw_btn = Button(
-            text="Type a password", size_hint_y=None, height=dp(56),
+            text=tr("Type a password"), size_hint_y=None, height=dp(56),
             font_size="20sp", background_normal="", disabled=True,
             background_color=theme.hex_to_rgba(theme.COLORS["amber"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -514,7 +517,7 @@ class MitosisScreen(BoxLayout):
         self.pw_status.size_hint_y, self.pw_status.height = None, dp(24)
         self.add_widget(self.pw_status)
 
-        back = _small_btn("← Back")
+        back = _small_btn(tr("← Back"))
         back.bind(on_release=lambda *_: self._show_stage_name())
         self.add_widget(back)
         from kivy.uix.widget import Widget
@@ -526,7 +529,7 @@ class MitosisScreen(BoxLayout):
         p1 = self.pw1.text or ""
         p2 = self.pw2.text or ""
         if not p1:
-            self.pw_btn.text = "Type a password"
+            self.pw_btn.text = tr("Type a password")
             self.pw_btn.disabled = True
             self.pw_btn.background_color = theme.hex_to_rgba(
                 theme.COLORS["amber"])
@@ -534,24 +537,24 @@ class MitosisScreen(BoxLayout):
             return
         ok, why = validate_new_password(p1, p2 if p2 else None)
         if not p2 or p1 != p2:
-            self.pw_btn.text = "Confirm the password"
+            self.pw_btn.text = tr("Confirm the password")
             self.pw_btn.disabled = True
             self.pw_btn.background_color = theme.hex_to_rgba(
                 theme.COLORS["amber"])
             self.pw_status.text = ("" if not p2 else
-                                   "The two passwords don't match yet.")
+                                   tr("The two passwords don't match yet."))
             return
         if not ok:
-            self.pw_btn.text = "Confirm the password"
+            self.pw_btn.text = tr("Confirm the password")
             self.pw_btn.disabled = True
             self.pw_btn.background_color = theme.hex_to_rgba(
                 theme.COLORS["amber"])
             self.pw_status.text = why
             return
-        self.pw_btn.text = "Write the card →"
+        self.pw_btn.text = tr("Write the card →")
         self.pw_btn.disabled = False
         self.pw_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
-        self.pw_status.text = "Passwords match."
+        self.pw_status.text = tr("Passwords match.")
 
     def _password_continue(self):
         if self.pw_btn.disabled:
@@ -568,7 +571,7 @@ class MitosisScreen(BoxLayout):
     def _show_stage_wifi(self):
         self._clear()
         self._stage_header("wifi")
-        title = _label("Share your WiFi with it?", bold=True, size="22sp")
+        title = _label(tr("Share your WiFi with it?"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         from workflows.mitosis_card import medic_wifi_credentials
@@ -578,38 +581,38 @@ class MitosisScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             pass
         body = _label(
-            (f"This medic is on '{ssid}'. Type that network's password and "
-             "the new medic joins it by itself — or skip, and it lives on "
-             "the cable.") if ssid else
-            "Type your WiFi network's name and password, or skip and the "
-            "new medic lives on the cable.",
+            (tr("This medic is on '{ssid}'. Type that network's password and "
+                "the new medic joins it by itself — or skip, and it lives on "
+                "the cable.").format(ssid=ssid)) if ssid else
+            tr("Type your WiFi network's name and password, or skip and the "
+               "new medic lives on the cable."),
             color="text_secondary", size="14sp")
         body.size_hint_y, body.height = None, dp(56)
         self.add_widget(body)
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
-        self._wifi_ssid_input = TextInput(text=ssid, hint_text="Network name",
+        self._wifi_ssid_input = TextInput(text=ssid, hint_text=tr("Network name"),
                                           multiline=False,
                                           font_size=theme.font_sp("18sp"),
                                           size_hint_y=None, height=dp(48))
         bind_field(self._wifi_ssid_input)
         self.add_widget(self._wifi_ssid_input)
-        self._wifi_psk_input = TextInput(hint_text="WiFi password",
+        self._wifi_psk_input = TextInput(hint_text=tr("WiFi password"),
                                          password=True, multiline=False,
                                          font_size=theme.font_sp("18sp"),
                                          size_hint_y=None, height=dp(48))
         bind_field(self._wifi_psk_input)
         self.add_widget(self._wifi_psk_input)
-        reveal = _small_btn("Show the password")
+        reveal = _small_btn(tr("Show the password"))
 
         def _toggle(*_a):
             self._wifi_psk_input.password = not self._wifi_psk_input.password
-            reveal.text = ("Hide the password"
+            reveal.text = (tr("Hide the password")
                            if not self._wifi_psk_input.password
-                           else "Show the password")
+                           else tr("Show the password"))
         reveal.bind(on_release=_toggle)
         self.add_widget(reveal)
-        share = Button(text="Share WiFi and write the card →",
+        share = Button(text=tr("Share WiFi and write the card →"),
                        size_hint_y=None, height=dp(56), font_size="19sp",
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -619,7 +622,7 @@ class MitosisScreen(BoxLayout):
         self._wifi_warn = _label("", color="text_secondary", size="13sp")
         self._wifi_warn.size_hint_y, self._wifi_warn.height = None, dp(20)
         self.add_widget(self._wifi_warn)
-        skip = _small_btn("No WiFi — write the card now →")
+        skip = _small_btn(tr("No WiFi — write the card now →"))
         skip.bind(on_release=lambda *_: self._wifi_continue(False))
         self.add_widget(skip)
         from kivy.uix.widget import Widget
@@ -632,11 +635,11 @@ class MitosisScreen(BoxLayout):
             # Was a hint_text change on a field the eye is not on, so the big
             # green button appeared to do nothing at all: tap, nothing, tap
             # harder, conclude it is broken. Say it where the person is looking.
-            self._wifi_psk_input.hint_text = "Type the WiFi password first"
+            self._wifi_psk_input.hint_text = tr("Type the WiFi password first")
             warn = getattr(self, "_wifi_warn", None)
             if warn is not None:
-                warn.text = ("Type the WiFi password before you carry on - or "
-                             "choose 'No WiFi' below.")
+                warn.text = tr("Type the WiFi password before you carry on - or "
+                               "choose 'No WiFi' below.")
                 warn.color = theme.hex_to_rgba(theme.COLORS["amber"])
             return
         self._wifi = (ssid, psk)
@@ -664,7 +667,7 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("write")
         gen = self._stage_gen
-        title = _label("Writing the new medic's card", bold=True, size="22sp")
+        title = _label(tr("Writing the new medic's card"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
 
@@ -682,7 +685,7 @@ class MitosisScreen(BoxLayout):
         self._stage_lbl.size_hint_y, self._stage_lbl.height = None, dp(48)
         self.add_widget(self._stage_lbl)
 
-        warn = _label("Leave the card in until this finishes.",
+        warn = _label(tr("Leave the card in until this finishes."),
                       color="text_secondary", size="13sp")
         warn.size_hint_y, warn.height = None, dp(24)
         self.add_widget(warn)
@@ -739,8 +742,8 @@ class MitosisScreen(BoxLayout):
                     # the exact moment a write is doomed reads as "it started
                     # over", which is the opposite of the truth.
                     frac = _prog.get("last")
-                    self._stage_lbl.text = ("The card stopped responding - "
-                                            "do not remove it")
+                    self._stage_lbl.text = tr("The card stopped responding - "
+                                              "do not remove it")
                     if frac is not None:
                         self._ring.set_fraction(frac)
                     return
@@ -761,11 +764,11 @@ class MitosisScreen(BoxLayout):
                 target = getattr(self, "_target", None)
                 disks = pi_imager.list_target_disks()
                 if target is None or len(disks) != 1:
-                    msg = ("The card has gone - put it back in the reader."
+                    msg = (tr("The card has gone - put it back in the reader.")
                            if not disks else
-                           "There is more than one memory card or USB stick "
-                           "plugged in. Take the others out and leave only "
-                           "the new medic's card.")
+                           tr("There is more than one memory card or USB stick "
+                              "plugged in. Take the others out and leave only "
+                              "the new medic's card."))
                 elif disks[0]["path"] != target["path"] or (
                         getattr(self, "_target_serial", "")
                         and pi_imager.disk_serial(target["path"])
@@ -774,8 +777,8 @@ class MitosisScreen(BoxLayout):
                     # written. Refusing is the whole point: this is the window
                     # in which a reader can become a USB stick full of photos,
                     # and the old code simply wrote to whatever was there.
-                    msg = ("That is not the same card any more. Put the new "
-                           "medic's card back in and start again.")
+                    msg = tr("That is not the same card any more. Put the new "
+                             "medic's card back in and start again.")
                 else:
                     from workflows.mitosis_card import (image_medic_card,
                                                         verify_medic_card)
@@ -796,8 +799,9 @@ class MitosisScreen(BoxLayout):
                                 target["path"], want)
                         except Exception as e:             # noqa: BLE001
                             verdict = "unknown"
-                            checks = [("Not checked", None,
-                                       f"could not read the card back ({e})")]
+                            checks = [(tr("Not checked"), None,
+                                       tr("could not read the card back "
+                                          "({err})").format(err=e))]
                         self._verify_checks = checks
                         # THREE outcomes, not two. "could not read it back" is
                         # not the same as "it is wrong": condemning an
@@ -810,16 +814,16 @@ class MitosisScreen(BoxLayout):
                             ok = False
                             bad = ", ".join(c[0].lower()
                                             for c in checks if c[1] is False)
-                            msg = ("The card was written, but reading it back "
-                                   f"shows a problem with: {bad}. "
-                                   "Write it again.")
+                            msg = tr("The card was written, but reading it back "
+                                     "shows a problem with: {bad}. "
+                                     "Write it again.").format(bad=bad)
             except Exception as e:                         # noqa: BLE001
                 # Not the exception text: a raw Python error on a 5-inch
                 # screen reads as "I have broken it" to the person holding it.
                 print(f"[mitosis] card write exception: {e}")
-                msg = ("Something went wrong while writing the card. "
-                       "Check the card is pushed fully into the reader, "
-                       "then try again.")
+                msg = tr("Something went wrong while writing the card. "
+                         "Check the card is pushed fully into the reader, "
+                         "then try again.")
 
             def done(_dt, g=gen):
                 print(f"[mitosis] card write ok={ok}: {msg}")
@@ -847,7 +851,7 @@ class MitosisScreen(BoxLayout):
     def _show_stage_write_failed(self, msg):
         self._writing = False
         self._clear()
-        title = _label("The card write failed", bold=True, size="22sp",
+        title = _label(tr("The card write failed"), bold=True, size="22sp",
                        color="red")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -857,7 +861,7 @@ class MitosisScreen(BoxLayout):
         body.size_hint_y = None
         body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
-        again = Button(text="Try again →", size_hint_y=None, height=dp(56),
+        again = Button(text=tr("Try again →"), size_hint_y=None, height=dp(56),
                        font_size="20sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -875,8 +879,8 @@ class MitosisScreen(BoxLayout):
             if app is None:
                 return
             if on:
-                app.begin_activity("CLONE in progress — keep everything "
-                                   "plugged in, don't power off")
+                app.begin_activity(tr("CLONE in progress — keep everything "
+                                      "plugged in, don't power off"))
             else:
                 app.end_activity()
         except Exception:                                  # noqa: BLE001
@@ -894,7 +898,7 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("written")
         gen = self._stage_gen
-        title = _label("Card written ✓ — move it to the new medic",
+        title = _label(tr("Card written ✓ — move it to the new medic"),
                        bold=True, size="20sp", color="green")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -914,13 +918,13 @@ class MitosisScreen(BoxLayout):
             # the operator a card was proven when nothing had been read.
             mark = "OK   " if _ok else ("?    " if _ok is None else "X    ")
             tone = "green" if _ok else "amber"
-            row = _label(mark + f"{_lbl} - {_detail}", color=tone, size="13sp")
+            row = _label(mark + f"{tr(_lbl)} - {_detail}", color=tone, size="13sp")
             row.size_hint_y, row.height = None, dp(19)
             self.add_widget(row)
 
-        hint = _label("Make sure the new medic is switched OFF first, then push "
-                      "the little card into its slot until it clicks. Node "
-                      "Medic sees the card leave here and carries on by itself.",
+        hint = _label(tr("Make sure the new medic is switched OFF first, then push "
+                         "the little card into its slot until it clicks. Node "
+                         "Medic sees the card leave here and carries on by itself."),
                       color="text_secondary", size="14sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
@@ -966,7 +970,7 @@ class MitosisScreen(BoxLayout):
     def _show_stage_power(self):
         self._clear()
         self._stage_header("power")
-        title = _label("Power the new medic on", bold=True, size="22sp")
+        title = _label(tr("Power the new medic on"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         self._anim = _PowerGlyph()
@@ -976,24 +980,24 @@ class MitosisScreen(BoxLayout):
         # to buy went hunting for a thing they do not own. It is now framed as
         # the alternative it actually is, and the jargon is described rather
         # than named.
-        body = _label(
+        body = _label(tr(
             "Plug the power supply into the new medic. It should start by "
             "itself - a small green light flickering means it is working.\n\n"
             "If you are using a battery pack instead of a wall plug, press the "
             "button marked BOOT on the pack once: a fresh pack sleeps until "
             "it is asked for power.\n\n"
             "Its OWN screen will stay dark, or show start-up text, until later "
-            "- that's normal. Keep watching THIS screen.",
+            "- that's normal. Keep watching THIS screen."),
             color="text_primary", size="16sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
         body.size_hint_y = None
         body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
-        stuck = _small_btn("Nothing is happening")
+        stuck = _small_btn(tr("Nothing is happening"))
         stuck.bind(on_release=lambda *_: self._show_power_help())
         self.add_widget(stuck)
-        nxt = Button(text="It has power - next", size_hint_y=None,
+        nxt = Button(text=tr("It has power - next"), size_hint_y=None,
                      height=dp(56), font_size="20sp", background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                      color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -1007,10 +1011,10 @@ class MitosisScreen(BoxLayout):
         button asserted "It has power" - which is exactly what has NOT happened
         for the person reading it."""
         self._clear()
-        title = _label("It won't start", bold=True, size="22sp")
+        title = _label(tr("It won't start"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
-        self.add_widget(_label(
+        self.add_widget(_label(tr(
             "Work down this list - it is nearly always the first one.\n\n"
             "1.  Is the power supply pushed all the way in, at BOTH ends?\n\n"
             "2.  Is it the 5 V / 5 A supply that came with the Pi? A phone "
@@ -1019,15 +1023,15 @@ class MitosisScreen(BoxLayout):
             "not seated looks exactly like no power at all.\n\n"
             "4.  On a battery pack, press the button marked BOOT once.\n\n"
             "If a small green light flickers even briefly, it IS starting - "
-            "give it a full minute before deciding it is dead.",
+            "give it a full minute before deciding it is dead."),
             color="text_primary", size="15sp"))
-        back = Button(text="It's working now - carry on  →", size_hint_y=None,
+        back = Button(text=tr("It's working now - carry on  →"), size_hint_y=None,
                       height=dp(52), font_size="17sp", background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         back.bind(on_release=lambda *_: self._show_stage_cable())
         self.add_widget(back)
-        again = _small_btn("Back")
+        again = _small_btn(tr("Back"))
         again.bind(on_release=lambda *_: self._show_stage_power())
         self.add_widget(again)
 
@@ -1035,7 +1039,7 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("cable")
         gen = self._stage_gen
-        title = _label("Connect the network cable", bold=True, size="22sp")
+        title = _label(tr("Connect the network cable"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         try:
@@ -1045,19 +1049,19 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        body = _label(
+        body = _label(tr(
             "Plug the ethernet cable - the wide plug that clicks in - "
             "into the network socket on BOTH medics. (Not the little USB "
             "shapes; the wider one.) Node Medic sees the cable arrive and "
             "carries on by itself. The new medic's own screen may still be "
-            "dark or showing text - that's normal.",
+            "dark or showing text - that's normal."),
             color="text_primary", size="15sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
         body.size_hint_y = None
         body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
         self.add_widget(body)
-        wifi = _small_btn("No cable - it joins my WiFi instead")
+        wifi = _small_btn(tr("No cable - it joins my WiFi instead"))
         wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
         self.add_widget(wifi)
 
@@ -1119,14 +1123,14 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("clone")
         if auto:
-            head = _label(
+            head = _label(tr(
                 "Node Medic is doing the rest itself. First boot takes up "
-                "to 5 minutes - the search waits that long.",
+                "to 5 minutes - the search waits that long."),
                 color="text_primary", size="15sp")
             head.size_hint_y, head.height = None, dp(48)
             self.add_widget(head)
         self.run_btn = Button(
-            text="Clone onto the new medic", size_hint_y=None,
+            text=tr("Clone onto the new medic"), size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -1152,7 +1156,7 @@ class MitosisScreen(BoxLayout):
         if auto:
             # ZERO TAPS: the hunt begins now, while the operator's hands are
             # full of hardware. The button becomes the status/retry surface.
-            self.run_btn.text = "Searching for the new medic…"
+            self.run_btn.text = tr("Searching for the new medic…")
             Clock.schedule_once(lambda _d: self.start(auto=True), 0.2)
 
     def _while_you_wait(self):
@@ -1161,12 +1165,12 @@ class MitosisScreen(BoxLayout):
         an aerial and a pigtail that the flow then never mentions again. This
         is real preparation, it closes that loop, and it hands them straight
         into the new medic's first job."""
-        return _label(
+        return _label(tr(
             "[b]While this runs:[/b] get the Tracker, its USB cable, the aerial "
             "and the little pigtail lead to hand. Screw the aerial onto the "
             "pigtail and clip the pigtail onto the Tracker. Never power the "
             "Tracker up without its aerial attached. The new medic will ask "
-            "for it shortly after it wakes.",
+            "for it shortly after it wakes."),
             color="text_secondary", size="13sp")
 
     def _build_rows(self, steps=None):
@@ -1183,7 +1187,7 @@ class MitosisScreen(BoxLayout):
             status = _label("-", color="text_secondary", bold=True, size="18sp")
             status.size_hint_x = None
             status.width = dp(34)
-            text = _label(title, color="text_secondary")
+            text = _label(tr(title), color="text_secondary")
             top.add_widget(status)
             top.add_widget(text)
             row.add_widget(top)
@@ -1206,7 +1210,7 @@ class MitosisScreen(BoxLayout):
         status.color = theme.hex_to_rgba(theme.COLORS[color])
         text.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
         if detail:
-            base = dict(STEP_TITLES).get(name, name)
+            base = tr(dict(STEP_TITLES).get(name, name))
             text.text = f"{base}\n[{detail}]"
             top = text.parent
             outer = top.parent if top is not None else None
@@ -1224,8 +1228,8 @@ class MitosisScreen(BoxLayout):
             return
         orig_label = self.run_btn.text
         self.run_btn.disabled = True
-        self.run_btn.text = ("Searching for the new medic\u2026" if auto
-                             else "Cloning\u2026")
+        self.run_btn.text = (tr("Searching for the new medic\u2026") if auto
+                             else tr("Cloning\u2026"))
         if self._retry_workflow is not None:
             workflow = self._retry_workflow
             self._retry_workflow = None
@@ -1241,7 +1245,7 @@ class MitosisScreen(BoxLayout):
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
             requirement_popup(workflow.message,
-                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "title", tr("Heads up")),
                               getattr(workflow, "under_construction", False))
             self.run_btn.disabled = False
             self.run_btn.text = orig_label
@@ -1282,7 +1286,7 @@ class MitosisScreen(BoxLayout):
 
     def _on_step(self, workflow, result):
         if result.skipped:
-            self._set_row(result.name, "s", "text_secondary", "skipped")
+            self._set_row(result.name, "s", "text_secondary", tr("skipped"))
         elif result.success:
             self._set_row(result.name, "OK", "green")
         else:
@@ -1315,30 +1319,30 @@ class MitosisScreen(BoxLayout):
             # live, so tapping "Clone finished" started a second complete
             # clone, five-minute search and all.
             self.run_btn.disabled = True
-            self.run_btn.text = "Clone finished — every step verified"
+            self.run_btn.text = tr("Clone finished — every step verified")
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             # It worked / here is what you have / here is what to do next.
             # The old text said only that it was restarting - it never said
             # what had been made, and it never mentioned the radio, cable,
             # antenna and pigtail the parts list made the operator buy and
             # then never spoke of again.
-            name = self._name or "The new medic"
+            name = self._name or tr("The new medic")
             ident = getattr(workflow, "fresh_identity_hash", "") or ""
             done = _label(
-                f"[b]Done - you have made a Node Medic.[/b]\n\n"
-                f"{name} is restarting now. It has its own place on the mesh"
-                + (f" ({ident[:8]})" if ident else "")
-                + " - a new one, not a copy of this medic's - along with the "
-                "whole tool, the offline maps, the firmware store and the "
-                "list of your other nodes.\n\n"
-                "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
-                "1.  It walks you through its own setup - log in as 'pi' with "
-                "the password you typed here.\n"
-                "2.  Then it fits its radio - that is the Tracker, its USB "
-                "cable, the aerial and the little pigtail lead from the list "
-                "at the start.\n\n"
-                "Until its screen appears it may show start-up text. That is "
-                "normal, and there is nothing left to do on this screen.",
+                tr("[b]Done - you have made a Node Medic.[/b]\n\n"
+                   "{name} is restarting now. It has its own place on the mesh"
+                   "{ident} - a new one, not a copy of this medic's - along "
+                   "with the whole tool, the offline maps, the firmware store "
+                   "and the list of your other nodes.\n\n"
+                   "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
+                   "1.  It walks you through its own setup - log in as 'pi' with "
+                   "the password you typed here.\n"
+                   "2.  Then it fits its radio - that is the Tracker, its USB "
+                   "cable, the aerial and the little pigtail lead from the list "
+                   "at the start.\n\n"
+                   "Until its screen appears it may show start-up text. That is "
+                   "normal, and there is nothing left to do on this screen.").format(
+                       name=name, ident=(f" ({ident[:8]})" if ident else "")),
                 color="text_primary", size="15sp")
             done.markup = True
             done.size_hint_y = None
@@ -1353,7 +1357,7 @@ class MitosisScreen(BoxLayout):
                 self.scroll.scroll_y = 0          # bring the ending into view
             except Exception:                                  # noqa: BLE001
                 self.add_widget(done)
-            home = _small_btn("← Back to home")
+            home = _small_btn(tr("← Back to home"))
             home.bind(on_release=lambda *_: self._leave_home())
             self.add_widget(home)
         else:
@@ -1362,6 +1366,6 @@ class MitosisScreen(BoxLayout):
                            if not r.success and not r.skipped), None)
             self._retry_workflow = workflow
             titles = dict(STEP_TITLES)
-            step_name = titles.get(failed.name, failed.name) if failed else "?"
-            self.run_btn.text = f"Retry from: {step_name}"
+            step_name = tr(titles.get(failed.name, failed.name)) if failed else "?"
+            self.run_btn.text = tr("Retry from: {step}").format(step=step_name)
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["red"])

@@ -21,6 +21,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — imager labels, callouts, popups, status
 from ui.onscreen_keyboard import bind_field
 from ui.widgets.progress_ring import ProgressRing
 from ui.widgets.birth_anims import InsertSdAnim
@@ -76,7 +77,7 @@ class PiImagerScreen(BoxLayout):
         # afterwards: a card reached through the Pi itself is ALREADY in the Pi.
         self._via_pi_reader = False
         self._pi_name = ""
-        self.add_widget(_line("Image a Raspberry Pi SD card", bold=True,
+        self.add_widget(_line(tr("Image a Raspberry Pi SD card"), bold=True,
                               size="22sp", h=40))
         body = ScrollView()
         self.col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
@@ -132,8 +133,9 @@ class PiImagerScreen(BoxLayout):
         self._pi_name = str(pi_name or "")
 
     def _field(self, label, hint, key, password=False, numeric=False):
-        self.col.add_widget(_line(label, size="15sp", color="accent", bold=True, h=24))
-        ti = TextInput(hint_text=hint, multiline=False, password=password,
+        self.col.add_widget(_line(tr(label), size="15sp", color="accent", bold=True,
+                                  h=24))
+        ti = TextInput(hint_text=tr(hint), multiline=False, password=password,
                        size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(ti, numeric=numeric)
         if password:
@@ -156,14 +158,14 @@ class PiImagerScreen(BoxLayout):
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(48), spacing=dp(8))
         row.add_widget(ti)
-        btn = Button(text="Show", size_hint=(None, 1), width=dp(96), bold=True,
+        btn = Button(text=tr("Show"), size_hint=(None, 1), width=dp(96), bold=True,
                      font_size="15sp", background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                      color=theme.hex_to_rgba(theme.COLORS["accent"]))
 
         def _toggle(*_a):
             ti.password = not ti.password
-            btn.text = "Show" if ti.password else "Hide"
+            btn.text = tr("Show") if ti.password else tr("Hide")
             try:
                 ti.focus = True          # keep the keypad up so typing carries on
             except Exception:
@@ -266,9 +268,9 @@ class PiImagerScreen(BoxLayout):
             return False
 
         if state.state == pi_usbboot.GADGET:
-            self.col.add_widget(_line(
+            self.col.add_widget(_line(tr(
                 "This Raspberry Pi already has an operating system and starts "
-                "up as a node — it isn't offering its card.", size="15sp",
+                "up as a node — it isn't offering its card."), size="15sp",
                 color="amber", h=48))
             # This screen used to say "wipe it first" and then offer no way to
             # do it, which is an instruction with a dead end. The engine exists
@@ -278,7 +280,7 @@ class PiImagerScreen(BoxLayout):
         if state.state != pi_usbboot.BOOTROM:
             return False                        # nothing plugged in — normal prompt
 
-        self.col.add_widget(_line("Raspberry Pi detected", size="17sp",
+        self.col.add_widget(_line(tr("Raspberry Pi detected"), size="17sp",
                                   color="green", bold=True, h=28))
         # NOT "waiting with a blank card": boot-ROM mode says only that the Pi
         # found nothing to boot — which is also what NO card looks like, and
@@ -286,10 +288,11 @@ class PiImagerScreen(BoxLayout):
         # "looked blank" held exactly that, on this bench). Say what was
         # checked; ensure_card_reader reports honestly if there is no card to
         # open (breaker audit, 2026-09-13).
-        self.col.add_widget(_line(
+        self.col.add_widget(_line(tr(
             "It started up with nothing to boot. Node Medic is opening its "
-            "card slot now — no card reader needed.", size="15sp", h=44))
-        status = _line("Waking the Pi's card…", size="14sp", color="accent", h=26)
+            "card slot now — no card reader needed."), size="15sp", h=44))
+        status = _line(tr("Waking the Pi's card…"), size="14sp", color="accent",
+                       h=26)
         self.col.add_widget(status)
         ring = ProgressRing(size_hint_y=None, height=dp(160))
         self.col.add_widget(ring)
@@ -321,21 +324,21 @@ class PiImagerScreen(BoxLayout):
         2026-08-02).
         """
         self.col.add_widget(_line(
-            "Build it again from scratch?", bold=True, size="16sp",
+            tr("Build it again from scratch?"), bold=True, size="16sp",
             color="text_primary", h=28))
-        self.col.add_widget(_line(
+        self.col.add_widget(_line(tr(
             "Node Medic can wipe this Pi's card so it starts fresh. It erases "
             "the operating system, this node's identity and its certificate — "
-            "it will no longer be the node it is now, and it can't be undone.",
+            "it will no longer be the node it is now, and it can't be undone."),
             size="13.5sp", color="text_secondary", h=76))
         self.col.add_widget(_line(
-            "Your mesh is not affected. Other nodes keep running.",
+            tr("Your mesh is not affected. Other nodes keep running."),
             size="13sp", color="green", h=22))
         self._wipe_status = _line("", size="13.5sp", color="amber", h=44)
         from ui.widgets.slide_to_power import SlideToPowerOff
         self.col.add_widget(SlideToPowerOff(
             on_power_off=self._do_wipe,
-            hint_text="slide to wipe and start over  →"))
+            hint_text=tr("slide to wipe and start over  →")))
         self.col.add_widget(self._wipe_status)
 
     def _do_wipe(self):
@@ -343,7 +346,7 @@ class PiImagerScreen(BoxLayout):
         and refuses if the medic can't confirm which node that is."""
         status = self._wipe_status
         status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
-        status.text = "Finding the Pi on the cable…"
+        status.text = tr("Finding the Pi on the cable…")
 
         def work():
             msg, ok = "", False
@@ -353,8 +356,8 @@ class PiImagerScreen(BoxLayout):
                 from transport.connection import SSHConnection
                 addr = cable_address(timeout=8.0)
                 if not addr:
-                    msg = ("Couldn't reach the Pi over the cable. It needs to "
-                           "be plugged into Node Medic by its DATA port.")
+                    msg = tr("Couldn't reach the Pi over the cable. It needs to "
+                             "be plugged into Node Medic by its DATA port.")
                 else:
                     conn = SSHConnection(addr, user="pi")
                     # expected_hostname left empty on purpose: the medic has no
@@ -365,7 +368,7 @@ class PiImagerScreen(BoxLayout):
                     r = decommission(conn)
                     ok, msg = r.ok, r.message
             except Exception as exc:                      # noqa: BLE001
-                msg = f"Couldn't wipe it: {str(exc)[:90]}"
+                msg = tr("Couldn't wipe it: {err}").format(err=str(exc)[:90])
             Clock.schedule_once(lambda _dt: self._wipe_done(ok, msg), 0)
 
         threading.Thread(target=work, daemon=True).start()
@@ -374,18 +377,18 @@ class PiImagerScreen(BoxLayout):
         status = self._wipe_status
         status.color = theme.hex_to_rgba(
             theme.COLORS["green" if ok else "amber"])
-        status.text = msg or ("Wiped." if ok else "Couldn't wipe it.")
+        status.text = msg or (tr("Wiped.") if ok else tr("Couldn't wipe it."))
         if not ok:
             return
         # The one step the medic cannot do for itself: uhubctl on the Pi 5 root
         # hub does not cut VBUS (measured — the device stays powered across a
         # 20-second "off"), so the operator has to power-cycle it.
-        self.col.add_widget(_line(
+        self.col.add_widget(_line(tr(
             "Now unplug the Pi, wait ten seconds, then plug it back in. It will "
-            "start up with a blank card and offer it to Node Medic.",
+            "start up with a blank card and offer it to Node Medic."),
             size="14.5sp",
             color="accent", h=48))
-        again = Button(text="I've replugged it — look again", size_hint_y=None,
+        again = Button(text=tr("I've replugged it — look again"), size_hint_y=None,
                        height=dp(52), bold=True, background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -401,10 +404,10 @@ class PiImagerScreen(BoxLayout):
             self._build()                       # the card is a target now
             return
         self.col.clear_widgets()
-        self.col.add_widget(_line("Couldn't open the Pi's card", size="17sp",
+        self.col.add_widget(_line(tr("Couldn't open the Pi's card"), size="17sp",
                                   color="amber", bold=True, h=28))
         self.col.add_widget(_line(result.message, size="14sp", h=64))
-        again = Button(text="Try again", size_hint_y=None, height=dp(52),
+        again = Button(text=tr("Try again"), size_hint_y=None, height=dp(52),
                        bold=True, background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -451,13 +454,14 @@ class PiImagerScreen(BoxLayout):
             return                      # a Pi is plugged in; we took the screen
         if not targets:
             # No card reader — show the insert animation + a rescan.
-            self.col.add_widget(_line(
+            self.col.add_widget(_line(tr(
                 "Put the Pi's microSD into a USB card reader and plug it into Node "
-                "Medic (it has no built-in card slot).", size="15sp", h=48))
+                "Medic (it has no built-in card slot)."), size="15sp", h=48))
             anim = InsertSdAnim(size_hint_y=None, height=dp(180))
             self.col.add_widget(anim)
             anim.start()
-            rescan = Button(text="I've plugged it in — look again", size_hint_y=None,
+            rescan = Button(text=tr("I've plugged it in — look again"),
+                            size_hint_y=None,
                             height=dp(52), bold=True, background_normal="",
                             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -480,13 +484,13 @@ class PiImagerScreen(BoxLayout):
         # one, and the operator has no way to know a choice was even made.
         st = pi_imager.card_status()
         if st["state"] == "several":
-            self.col.add_widget(_line("More than one card is plugged in",
+            self.col.add_widget(_line(tr("More than one card is plugged in"),
                                       bold=True, size="16sp",
                                       color="warning_yellow", h=28))
             self.col.add_widget(_line(st["detail"], size="14sp", h=44))
             self.col.add_widget(_line(st["label"], size="13sp",
                                       color="text_secondary", h=24))
-            again = Button(text="I've taken the others out — look again",
+            again = Button(text=tr("I've taken the others out — look again"),
                            size_hint_y=None, height=dp(52), bold=True,
                            background_normal="",
                            background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -496,11 +500,12 @@ class PiImagerScreen(BoxLayout):
             return
         self._target = targets[0]
         self.col.add_widget(_line(
-            f"Card detected: {self._target['model'] or 'USB card'} "
-            f"({self._target['size']}) at {self._target['path']}",
+            tr("Card detected: {model} ({size}) at {path}").format(
+                model=self._target["model"] or tr("USB card"),
+                size=self._target["size"], path=self._target["path"]),
             size="14sp", color="green", h=24))
         self.col.add_widget(_line(
-            "Everything on this card will be erased.", size="13sp",
+            tr("Everything on this card will be erased."), size="13sp",
             color="warning_yellow", h=22))
 
         hn = self._field("Node hostname", "e.g. propagation-01", "hostname")
@@ -528,13 +533,14 @@ class PiImagerScreen(BoxLayout):
         # PULSING (operator, 2026-08-14): the one heading on this screen that
         # must stop a moving eye — the password below it cannot be recovered.
         self.col.add_widget(Callout(
-            "Write these down now!",
-            "The node name and this password are how you reach this Pi over SSH "
-            "later. Node Medic does NOT store the password — it goes onto the "
-            "card as a one-way hash and can't be read back. Lose it and the only "
-            "way in is to image the card again.", pulse=True))
+            tr("Write these down now!"),
+            tr("The node name and this password are how you reach this Pi over SSH "
+               "later. Node Medic does NOT store the password — it goes onto the "
+               "card as a one-way hash and can't be read back. Lose it and the only "
+               "way in is to image the card again."), pulse=True))
 
-        write = Button(text="Write SD card", size_hint_y=None, height=dp(56), bold=True,
+        write = Button(text=tr("Write SD card"), size_hint_y=None, height=dp(56),
+                       bold=True,
                        font_size="18sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -560,11 +566,11 @@ class PiImagerScreen(BoxLayout):
             why = ""
         if why:
             from ui.requirement_popup import requirement_popup
-            requirement_popup(why, "Card writer out of date", False)
+            requirement_popup(why, tr("Card writer out of date"), False)
             return
         v = self._vals()
         if not v.get("hostname"):
-            self._status.text = "Enter at least a hostname and a login password."
+            self._status.text = tr("Enter at least a hostname and a login password.")
             self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         # A too-short password is as unrecoverable as a mistyped one: it is
@@ -576,21 +582,22 @@ class PiImagerScreen(BoxLayout):
             self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
-        msg = Label(halign="center", valign="middle", markup=True, text=(
-            f"Write Pi OS to [b]{self._target['model'] or 'the USB card'} "
-            f"({self._target['size']})[/b] at [b]{self._target['path']}[/b]?\n\n"
+        msg = Label(halign="center", valign="middle", markup=True, text=tr(
+            "Write Pi OS to [b]{model} ({size})[/b] at [b]{path}[/b]?\n\n"
             "[color=ff5555]This ERASES everything on that card.[/color] It cannot be "
-            "the medic's own storage — only a removable USB card is allowed."))
+            "the medic's own storage — only a removable USB card is allowed.").format(
+                model=self._target["model"] or tr("the USB card"),
+                size=self._target["size"], path=self._target["path"]))
         msg.bind(size=lambda i, val: setattr(i, "text_size", val))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        popup = Popup(title="Confirm — this erases the card", content=box,
+        popup = Popup(title=tr("Confirm — this erases the card"), content=box,
                       size_hint=(0.9, 0.6))
-        cancel = Button(text="Cancel", background_normal="",
+        cancel = Button(text=tr("Cancel"), background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         cancel.bind(on_release=popup.dismiss)
-        go = Button(text="Erase & write", bold=True, background_normal="",
+        go = Button(text=tr("Erase & write"), bold=True, background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                     color=theme.hex_to_rgba(theme.COLORS["background"]))
         go.bind(on_release=lambda *_: (popup.dismiss(), self._write(v)))
@@ -602,14 +609,16 @@ class PiImagerScreen(BoxLayout):
     def _write(self, v):
         self._busy = True
         self.col.clear_widgets()
-        self.col.add_widget(_line(f"Imaging {self._target['path']} as "
-                                  f"'{v['hostname']}'…", bold=True, size="16sp", h=30))
+        self.col.add_widget(_line(
+            tr("Imaging {path} as '{name}'…").format(
+                path=self._target["path"], name=v["hostname"]),
+            bold=True, size="16sp", h=30))
         ring_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(80),
                              spacing=dp(12))
         self._ring = ProgressRing()
         ring_row.add_widget(self._ring)
-        ring_row.add_widget(_line("Writing Pi OS and applying your settings. This "
-                                  "takes a few minutes.",
+        ring_row.add_widget(_line(tr("Writing Pi OS and applying your settings. This "
+                                     "takes a few minutes."),
                                   size="13sp", color="accent"))
         self.col.add_widget(ring_row)
         # Boxed, because this is the window where the operator can actually
@@ -623,10 +632,10 @@ class PiImagerScreen(BoxLayout):
         # instructions on one screen with the louder one wrong (operator,
         # 2026-08-06: "conflicting instructions at this stage").
         self._callout = Callout(
-            "Leave everything alone until this finishes",
-            "Don't unplug anything from Node Medic, don't take the card out, "
-            "and don't power Node Medic off. A card interrupted part-way "
-            "through has to be written again from the start.")
+            tr("Leave everything alone until this finishes"),
+            tr("Don't unplug anything from Node Medic, don't take the card out, "
+               "and don't power Node Medic off. A card interrupted part-way "
+               "through has to be written again from the start."))
         self.col.add_widget(self._callout)
         # The wait is minutes long with nothing to look at, and the most costly
         # thing an operator can do in that window is decide it has hung and pull
@@ -666,7 +675,8 @@ class PiImagerScreen(BoxLayout):
             try:
                 ok, msg = _flash()
             except Exception as exc:                          # noqa: BLE001
-                ok, msg = False, f"The write stopped unexpectedly: {exc}"
+                ok, msg = False, tr("The write stopped unexpectedly: {err}").format(
+                    err=exc)
             Clock.schedule_once(lambda dt: self._done(ok, msg), 0)
 
         def _flash():
@@ -798,10 +808,10 @@ class PiImagerScreen(BoxLayout):
             if app is None:
                 return
             if on:
-                nm = (hostname or "").strip() or "this Pi"
+                nm = (hostname or "").strip() or tr("this Pi")
                 app.begin_activity(
-                    f"Writing {nm}'s card — keep everything plugged in, "
-                    "don't power off")
+                    tr("Writing {name}'s card — keep everything plugged in, "
+                       "don't power off").format(name=nm))
             else:
                 app.end_activity()
         except Exception:
@@ -831,9 +841,9 @@ class PiImagerScreen(BoxLayout):
         lbl = getattr(self, "_stage_lbl", None)
         if lbl is not None:
             lbl.text = (pi_imager.current_stage_label(1.0) if ok
-                        else "The operation stopped.")
+                        else tr("The operation stopped."))
         self._ring.set_fraction(1.0 if ok else self._ring.fraction)
-        self.col.add_widget(_line("✓  Done!" if ok else "✗  Couldn't finish",
+        self.col.add_widget(_line(tr("✓  Done!") if ok else tr("✗  Couldn't finish"),
                                   bold=True, size="19sp",
                                   color="green" if ok else "red", h=30))
         # On success the next-steps block below carries the instruction, and
@@ -874,7 +884,7 @@ class PiImagerScreen(BoxLayout):
             # where the next name gets asked for.
             self._add_next_steps()
             return
-        retry = Button(text="Try again", size_hint_y=None, height=dp(52),
+        retry = Button(text=tr("Try again"), size_hint_y=None, height=dp(52),
                        bold=True, font_size="16sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -909,7 +919,7 @@ class PiImagerScreen(BoxLayout):
         # itself — so asking for a press afterwards is asking the operator to
         # tell the medic something it already knows (operator, 2026-08-02, the
         # same rule as the connect steps in the guided flow).
-        self._boot_lbl = _line("Waiting for the Pi to come back…",
+        self._boot_lbl = _line(tr("Waiting for the Pi to come back…"),
                                size="15sp", color="accent", h=30)
         self.col.add_widget(self._boot_lbl)
         self._start_boot_poll(v.get("hostname", ""))
@@ -1059,8 +1069,9 @@ class PiImagerScreen(BoxLayout):
         if state == pi_usbboot.GADGET or ip:
             self._stop_boot_poll()
             if lbl is not None:
-                lbl.text = (f"The Pi is up on your network at {ip}." if ip
-                            else "The Pi is up and talking over the cable.")
+                lbl.text = (tr("The Pi is up on your network at {ip}.").format(ip=ip)
+                            if ip
+                            else tr("The Pi is up and talking over the cable."))
                 lbl.color = theme.hex_to_rgba(theme.COLORS["green"])
             Clock.schedule_once(lambda _d: self._back_to_birth(), 1.4)
             return
@@ -1113,7 +1124,7 @@ class PiImagerScreen(BoxLayout):
         try:
             idx = self.col.children.index(old)          # children are reversed
             self.col.remove_widget(old)
-            self._callout = Callout(plan.get("title") or "Do this next", body,
+            self._callout = Callout(plan.get("title") or tr("Do this next"), body,
                                     act=True)
             self.col.add_widget(self._callout, index=idx)
         except Exception:                                         # noqa: BLE001

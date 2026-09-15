@@ -230,7 +230,8 @@ def test_the_verdict_is_shown_before_the_certificate_fields():
     key/value list to find out whether it was ever heard."""
     src = open("ui/screens/birth_screen.py").read()
     verdict = src.index("proof.summary")
-    fields = src.index('_line("Birth certificate:"')
+    # The heading is tr()-wrapped since 2026-09-15; the ORDER is the law here.
+    fields = src.index('_line(tr("Birth certificate:")')
     assert verdict < fields
 
 

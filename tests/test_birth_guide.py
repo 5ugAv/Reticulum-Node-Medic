@@ -747,8 +747,11 @@ def test_the_end_of_a_walkthrough_is_not_headed_like_the_start():
     from tests.srcutil import func_source
     src = func_source("ui/screens/birth_screen.py", "_build_chooser")
     assert "_declared_pi_address" in src
-    assert "Bring {nm} to life" in src or 'f"Bring {nm} to life"' in src
-    assert '"Its name" if' in src, "the name field must stop asking for a name"
+    # Headings are tr()-wrapped for translation since 2026-09-15; what this
+    # test guards is that the walkthrough's end is not headed like its start.
+    assert 'tr("Bring {name} to life")' in src
+    assert 'tr("Its name") if' in src, \
+        "the name field must stop asking for a name"
 
 
 def test_the_provisioning_step_draws_a_cable_not_radio_waves():

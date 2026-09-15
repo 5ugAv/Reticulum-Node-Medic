@@ -20,6 +20,7 @@ from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — WiFi screen labels/status/buttons
 from ui.onscreen_keyboard import bind_field
 from provisioning import wifi
 
@@ -39,8 +40,8 @@ def _row_label(n):
 
     Kept out of the widget code so the string the operator taps is testable
     without a Kivy Window (Widget.__init__ needs one)."""
-    tag = ("   • connected" if n["active"]
-           else ("" if n["secure"] else "   (open)"))
+    tag = ("   " + tr("• connected") if n["active"]
+           else ("" if n["secure"] else "   " + tr("(open)")))
     return f"{n['ssid']}    {n['signal']}%{tag}"
 
 
@@ -56,11 +57,11 @@ class WifiScreen(BoxLayout):
         self._busy = False
         self._selected = None
 
-        self.add_widget(_line("WiFi", bold=True, size="22sp"))
+        self.add_widget(_line(tr("WiFi"), bold=True, size="22sp"))
         self.status = _line("", size="14sp", color="text_secondary", h=24)
         self.add_widget(self.status)
 
-        self.scan_btn = Button(text="Search for WiFi networks", size_hint_y=None,
+        self.scan_btn = Button(text=tr("Search for WiFi networks"), size_hint_y=None,
                                height=dp(48), bold=True, background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -81,16 +82,16 @@ class WifiScreen(BoxLayout):
         # password + connect row (revealed when a secured network is picked)
         self.pw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                 height=dp(0), spacing=dp(6), opacity=0)
-        self.pw_in = TextInput(hint_text="password", multiline=False, password=True,
+        self.pw_in = TextInput(hint_text=tr("password"), multiline=False, password=True,
                                font_size="27sp")
         bind_field(self.pw_in)                       # pop the on-screen keyboard
         # Show/Hide toggle so the operator can check the password for typos.
-        self.show_btn = Button(text="Show", size_hint_x=None, width=dp(78), bold=True,
+        self.show_btn = Button(text=tr("Show"), size_hint_x=None, width=dp(78), bold=True,
                                background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                                color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self.show_btn.bind(on_release=lambda *_: self._toggle_pw())
-        self.connect_btn = Button(text="Connect", size_hint_x=None, width=dp(120),
+        self.connect_btn = Button(text=tr("Connect"), size_hint_x=None, width=dp(120),
                                   bold=True, background_normal="",
                                   background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                                   color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -105,7 +106,7 @@ class WifiScreen(BoxLayout):
         # hotspots); off = a one-off network it shouldn't cling to.
         self.autoconn_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                       height=dp(0), spacing=dp(6), opacity=0)
-        self.autoconn_row.add_widget(_line("Reconnect automatically", size="14sp"))
+        self.autoconn_row.add_widget(_line(tr("Reconnect automatically"), size="14sp"))
         self.autoconnect = Switch(active=True, size_hint_x=None, width=dp(90))
         self.autoconn_row.add_widget(self.autoconnect)
         self.add_widget(self.autoconn_row)
@@ -121,7 +122,7 @@ class WifiScreen(BoxLayout):
     def _toggle_pw(self):
         """Reveal / mask the password field so the operator can check for typos."""
         self.pw_in.password = not self.pw_in.password
-        self.show_btn.text = "Hide" if not self.pw_in.password else "Show"
+        self.show_btn.text = tr("Hide") if not self.pw_in.password else tr("Show")
 
     # -- status -------------------------------------------------------------
 
@@ -136,11 +137,11 @@ class WifiScreen(BoxLayout):
 
     def _show_status(self, cur):
         if cur:
-            self.status.text = f"Connected: {cur['ssid']}" + (
+            self.status.text = tr("Connected: {ssid}").format(ssid=cur["ssid"]) + (
                 f"  ({cur['ip']})" if cur.get("ip") else "")
             self.status.color = theme.hex_to_rgba(theme.COLORS["green"])
         else:
-            self.status.text = "Not connected — scan and pick a network."
+            self.status.text = tr("Not connected — scan and pick a network.")
             self.status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
 
     # -- scan ---------------------------------------------------------------
@@ -149,7 +150,7 @@ class WifiScreen(BoxLayout):
         if self._busy:
             return
         self._busy = True
-        self.scan_btn.text = "Searching…"
+        self.scan_btn.text = tr("Searching…")
         self.list.clear_widgets()
 
         def work():
@@ -159,9 +160,9 @@ class WifiScreen(BoxLayout):
 
     def _show_networks(self, nets):
         self._busy = False
-        self.scan_btn.text = "Search for WiFi networks"
+        self.scan_btn.text = tr("Search for WiFi networks")
         if not nets:
-            self.list.add_widget(_line("No networks found.", color="amber"))
+            self.list.add_widget(_line(tr("No networks found."), color="amber"))
             return
         for n in nets:
             btn = Button(text=_row_label(n),
@@ -188,8 +189,9 @@ class WifiScreen(BoxLayout):
             self.pw_row.height, self.pw_row.opacity = dp(48), 1
             self.pw_in.text = ""
             self.pw_in.password = True                # start masked
-            self.show_btn.text = "Show"
-            self.status.text = f"Enter password for {net['ssid']}, then Connect."
+            self.show_btn.text = tr("Show")
+            self.status.text = tr("Enter password for {ssid}, then Connect.").format(
+                ssid=net["ssid"])
             self.status.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
         else:
             self.pw_row.height, self.pw_row.opacity = dp(0), 0
@@ -202,7 +204,7 @@ class WifiScreen(BoxLayout):
         ssid = self._selected["ssid"]
         pw = self.pw_in.text if self._selected["secure"] else ""
         auto = self.autoconnect.active
-        self.status.text = f"Connecting to {ssid}…"
+        self.status.text = tr("Connecting to {ssid}…").format(ssid=ssid)
         self.status.color = theme.hex_to_rgba(theme.COLORS["accent"])
 
         def work():

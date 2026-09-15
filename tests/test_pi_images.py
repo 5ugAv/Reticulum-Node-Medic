@@ -129,7 +129,9 @@ def test_password_fields_can_be_revealed():
     to check, and a mistyped LOGIN password is only discovered much later —
     when the Pi refuses to let you in."""
     block = IMG_SRC[IMG_SRC.index("def _field"):IMG_SRC.index("def _build")]
-    assert 'text="Show"' in block and '"Hide"' in block
+    # The labels are wrapped for translation since 2026-09-15; the reveal
+    # toggle itself is what this test guards.
+    assert 'text=tr("Show")' in block and 'tr("Hide")' in block
     assert "ti.password = not ti.password" in block
 
 

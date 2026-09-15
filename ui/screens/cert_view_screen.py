@@ -22,6 +22,8 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — screen chrome only; the cert PAYLOAD
+                        # (ui.qr.birth_cert_payload) is a document and stays English
 from ui.onscreen_keyboard import bind_field
 from ui.qr import birth_cert_payload, qr_matrix
 from ui.screens.birth_screen import QRCodeWidget
@@ -108,7 +110,8 @@ class CertViewScreen(BoxLayout):
         self._on_edit_location = on_edit_location
         self._latlon = cert_latlon(self._cert)
 
-        name = self._cert.get("node_name") or self._cert.get("hostname") or "(unnamed node)"
+        name = self._cert.get("node_name") or self._cert.get("hostname") \
+            or tr("(unnamed node)")
         loc = self._cert.get("location", "")
         self.add_widget(_line(name, bold=True, size="22sp", h=34))
         if loc:
@@ -116,8 +119,9 @@ class CertViewScreen(BoxLayout):
         saved_at = self._cert.get("_saved_at")
         if saved_at:
             when = datetime.fromtimestamp(saved_at).strftime("%Y-%m-%d %H:%M")
-            self.add_widget(_line(f"Born / saved on this Node Medic — {when}",
-                                  color="text_secondary", size="12sp", h=18))
+            self.add_widget(_line(
+                tr("Born / saved on this Node Medic — {when}").format(when=when),
+                color="text_secondary", size="12sp", h=18))
 
         body = ScrollView()
         self.list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
@@ -127,7 +131,7 @@ class CertViewScreen(BoxLayout):
         # the node's own card, reached from VITALS/SCAN) rather than on the BIRTH
         # screen, since it's an action on an existing node, not a new one.
         if self._on_triage is not None:
-            tri = Button(text="ANTENNA — aim this node", size_hint_y=None,
+            tri = Button(text=tr("ANTENNA — aim this node"), size_hint_y=None,
                          height=dp(50), bold=True, font_size=theme.font_sp("16sp"),
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["amber"]),
@@ -140,11 +144,11 @@ class CertViewScreen(BoxLayout):
         if self._latlon is not None:
             act = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(48), spacing=dp(8))
-            see = Button(text="See on map", bold=True, background_normal="",
+            see = Button(text=tr("See on map"), bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
             see.bind(on_release=lambda *_: self._see_on_map())
-            nav = Button(text="Navigate", bold=True, background_normal="",
+            nav = Button(text=tr("Navigate"), bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
             nav.bind(on_release=lambda *_: self._toggle_navigate())
@@ -161,8 +165,8 @@ class CertViewScreen(BoxLayout):
         # Edit / set the node's location on a map (fix a wrong pin, or add one to a
         # node that has none — e.g. a node adopted over the air).
         if self._on_edit_location is not None:
-            edit = Button(text=("Edit location on map" if self._latlon is not None
-                                else "Set location on map"),
+            edit = Button(text=(tr("Edit location on map") if self._latlon is not None
+                                else tr("Set location on map")),
                           size_hint_y=None, height=dp(48), bold=True,
                           background_normal="",
                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -170,12 +174,12 @@ class CertViewScreen(BoxLayout):
             edit.bind(on_release=lambda *_: self._on_edit_location(self._cert))
             self.list.add_widget(edit)
 
-        self.list.add_widget(_line("Birth certificate", bold=True, size="17sp"))
+        self.list.add_widget(_line(tr("Birth certificate"), bold=True, size="17sp"))
         shown = set()
         for key, label in _PRETTY:
             if key in self._cert and self._cert[key] not in (None, ""):
                 val = _mask(key, self._cert[key])
-                self.list.add_widget(_line(f"    {label}: {val}", size="13sp"))
+                self.list.add_widget(_line(f"    {tr(label)}: {val}", size="13sp"))
                 shown.add(key)
         # anything else the build recorded, raw (skip internals + already-shown).
         # _mask applies here TOO: a credential must not escape just because it
@@ -191,14 +195,15 @@ class CertViewScreen(BoxLayout):
         # Notes — editable here so a field visit's observation saves back onto the
         # stored cert (and the QR above refreshes to carry it).
         self.list.add_widget(Widget(size_hint_y=None, height=dp(8)))
-        self.list.add_widget(_line("Field notes", bold=True, size="16sp", color="accent"))
+        self.list.add_widget(_line(tr("Field notes"), bold=True, size="16sp",
+                                   color="accent"))
         self.notes_in = TextInput(text=self._cert.get("notes", ""),
-                                  hint_text="Add a note (mounting, power, access)…",
+                                  hint_text=tr("Add a note (mounting, power, access)…"),
                                   multiline=True, size_hint_y=None, height=dp(96),
                                   font_size=theme.font_sp("19sp"))
         bind_field(self.notes_in)
         self.list.add_widget(self.notes_in)
-        save = Button(text="Save notes", size_hint_y=None, height=dp(46), bold=True,
+        save = Button(text=tr("Save notes"), size_hint_y=None, height=dp(46), bold=True,
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -226,8 +231,10 @@ class CertViewScreen(BoxLayout):
             self._nav_open = False
             return
         lat, lon = self._latlon
-        rows = [_line(f"    Coordinates: {lat:.6f}, {lon:.6f}", size="13sp"),
-                _line("    Scan for turn-by-turn directions (needs a phone with data):",
+        rows = [_line("    " + tr("Coordinates: {lat}, {lon}").format(
+                    lat=f"{lat:.6f}", lon=f"{lon:.6f}"), size="13sp"),
+                _line("    " + tr("Scan for turn-by-turn directions "
+                                  "(needs a phone with data):"),
                       size="12.5sp", color="text_secondary")]
         h = dp(44)
         matrix = qr_matrix(maps_url(lat, lon))
@@ -239,7 +246,8 @@ class CertViewScreen(BoxLayout):
             rows.append(holder)
             h += qr.height + dp(12)
         else:
-            miss = _line("    (install 'segno' on the medic for a directions QR)",
+            miss = _line("    " + tr("(install 'segno' on the medic for a "
+                                     "directions QR)"),
                          size="12sp", color="text_secondary")
             rows.append(miss)
             h += dp(24)
@@ -256,12 +264,13 @@ class CertViewScreen(BoxLayout):
         self._qr_widgets = []
         matrix = qr_matrix(birth_cert_payload(self._cert))
         if not matrix:
-            w = _line("    (install 'segno' on the medic for a scannable QR)",
+            w = _line("    " + tr("(install 'segno' on the medic for a "
+                                  "scannable QR)"),
                       color="text_secondary", size="12sp")
             self.list.add_widget(w)
             self._qr_widgets = [w]
             return
-        lbl = _line("Scan to save this certificate:", bold=True, size="15sp")
+        lbl = _line(tr("Scan to save this certificate:"), bold=True, size="15sp")
         self.list.add_widget(lbl)
         qr = QRCodeWidget(matrix)
         holder = AnchorLayout(anchor_x="center", size_hint_y=None,
@@ -275,8 +284,8 @@ class CertViewScreen(BoxLayout):
         self._cert["notes"] = notes
         cid = self._cert.get("_id")
         ok = update_notes(cid, notes) if cid else False
-        self.status.text = ("Saved — the QR now includes the notes."
-                            if ok else "Saved to view (couldn't write the file).")
+        self.status.text = (tr("Saved — the QR now includes the notes.")
+                            if ok else tr("Saved to view (couldn't write the file)."))
         self._add_qr()
         if self._on_saved:
             self._on_saved(self._cert)

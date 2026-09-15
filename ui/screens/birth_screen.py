@@ -29,6 +29,9 @@ from kivy.uix.widget import Widget
 
 from node_profile import RadioConfig
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — screen chrome/buttons/popups; the birth
+                        # certificate PAYLOAD (fields, radio-proof verdicts) is a
+                        # DOCUMENT and stays in English
 from ui.onscreen_keyboard import bind_field
 from ui.birth import birth_node_types, rnode_board_choices
 from ui.board_detect import detect_board
@@ -265,11 +268,11 @@ class BirthScreen(BoxLayout):
         # rebuild so a typed name survives board changes. (Existing nodes are reached
         # from VITALS/SCAN -> their certificate card, which offers Triage.) Notes are
         # asked at the END (after the cert).
-        self._name_in = TextInput(hint_text="Name this node  (e.g. Rooftop-East)",
+        self._name_in = TextInput(hint_text=tr("Name this node  (e.g. Rooftop-East)"),
                                   multiline=False, size_hint_y=None, height=dp(46),
                                   font_size="26sp")
         self._end_notes_in = TextInput(
-            hint_text="Notes  (optional — mast height, landmarks…)",
+            hint_text=tr("Notes  (optional — mast height, landmarks…)"),
             multiline=True, size_hint_y=None, height=dp(70), font_size="20sp")
         bind_field(self._name_in)
         bind_field(self._end_notes_in)
@@ -348,13 +351,14 @@ class BirthScreen(BoxLayout):
             self.list.clear_widgets()
         arrived = getattr(self, "_from_imaging", None)
         if arrived:
-            named = arrived if isinstance(arrived, str) else "this node"
+            named = arrived if isinstance(arrived, str) else tr("this node")
             self.header.add_widget(_line(
-                f"Card written — now building {named}", bold=True, size="22sp",
+                tr("Card written — now building {name}").format(name=named),
+                bold=True, size="22sp",
                 color="green"))
-            self.header.add_widget(_line(
+            self.header.add_widget(_line(tr(
                 "Everything below is already filled in from the card you just "
-                "wrote. This is the last step, not the start again.",
+                "wrote. This is the last step, not the start again."),
                 size="13.5sp", color="text_secondary"))
         elif getattr(self, "_declared_pi_address", ""):
             # ARRIVED FROM THE END OF A WALKTHROUGH, not from the start of one.
@@ -367,16 +371,17 @@ class BirthScreen(BoxLayout):
             # has already been named"). Nothing WAS being re-asked; the heading
             # was simply describing the wrong thing.
             nm = (getattr(self, "_name_in", None) is not None
-                  and self._name_in.text.strip()) or "this node"
-            self.header.add_widget(_line(f"Bring {nm} to life", bold=True,
-                                         size="22sp"))
+                  and self._name_in.text.strip()) or tr("this node")
             self.header.add_widget(_line(
+                tr("Bring {name} to life").format(name=nm), bold=True,
+                size="22sp"))
+            self.header.add_widget(_line(tr(
                 "The radio is flashed, the card is written and the Pi is "
                 "answering on the cable. This is the last part: the mesh "
-                "software, and its birth certificate.",
+                "software, and its birth certificate."),
                 size="13.5sp", color="text_secondary"))
         else:
-            self.header.add_widget(_line("Birth a new node", bold=True,
+            self.header.add_widget(_line(tr("Birth a new node"), bold=True,
                                          size="22sp"))
 
         # The step-by-step guide entry lives at the BOTTOM as a modest link —
@@ -390,13 +395,14 @@ class BirthScreen(BoxLayout):
         # chose several screens ago — so asking for it again is the wrong label
         # on a field that is merely still editable.
         self.header.add_widget(_line(
-            "Its name" if getattr(self, "_declared_pi_address", "")
-            else "Name this node", bold=True, size="15sp", color="accent"))
+            tr("Its name") if getattr(self, "_declared_pi_address", "")
+            else tr("Name this node"), bold=True, size="15sp", color="accent"))
         self.header.add_widget(self._name_in)
         if self._prefill_location:
             lat, lon, src = self._prefill_location
             self.header.add_widget(_line(
-                f"Location stamped: {lat:.5f}, {lon:.5f}  (from {src})",
+                tr("Location stamped: {lat}, {lon}  (from {src})").format(
+                    lat=f"{lat:.5f}", lon=f"{lon:.5f}", src=src),
                 size="12.5sp", color="green"))
 
         self.header.add_widget(Widget(size_hint_y=None, height=dp(12)))
@@ -409,10 +415,12 @@ class BirthScreen(BoxLayout):
             # become-ask say it all (operator spec 2026-08-01: 'the board's
             # already been connected').
             if not (self._detected or {}).get("found"):
-                self.header.add_widget(_line("Choose your hardware:", size="13sp",
+                self.header.add_widget(_line(tr("Choose your hardware:"),
+                                             size="13sp",
                                              color="text_secondary"))
                 detect = Button(
-                    text="Detecting board…" if self._detecting else "Detect connected board",
+                    text=tr("Detecting board…") if self._detecting
+                    else tr("Detect connected board"),
                     size_hint_y=None, height=dp(48), bold=True, disabled=self._detecting,
                     background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -427,7 +435,7 @@ class BirthScreen(BoxLayout):
                 # That keeper needs a way in that does not start by assuming
                 # they bought the right thing.
                 salvage = Button(
-                    text="Not one of these?  Show me what you got",
+                    text=tr("Not one of these?  Show me what you got"),
                     size_hint_y=None, height=dp(44), font_size="14sp",
                     background_normal="", background_down="",
                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -465,14 +473,14 @@ class BirthScreen(BoxLayout):
                 # (auto-leading with RTNode-2400 built the wrong firmware —
                 # Tern1 incident, 2026-07-31).
                 self.header.add_widget(_line(
-                    "What should this board become?", bold=True, size="15sp",
+                    tr("What should this board become?"), bold=True, size="15sp",
                     color="accent"))
                 # Uniform family order EVERYWHERE (operator spec 2026-07-31):
                 # RNode -> RTNode-2400 -> Pi + RNode.
                 _rank = {"rnode": 0, "rtnode2400": 1, "pi_rnode": 2}
                 det_opts = sorted(det_opts, key=lambda k: _rank.get(k, 99))
                 for key in det_opts:
-                    b = Button(text=FIRMWARE_LABEL.get(key, key),
+                    b = Button(text=tr(FIRMWARE_LABEL.get(key, key)),
                                size_hint_y=None, height=dp(54), halign="left",
                                font_size="14.5sp", bold=True,
                                background_normal="",
@@ -485,7 +493,7 @@ class BirthScreen(BoxLayout):
                     b.bind(on_release=lambda _b, k=key: self._pick_firmware(k))
                     self.header.add_widget(b)
             else:
-                self.header.add_widget(_line("Firmware", bold=True, size="15sp",
+                self.header.add_widget(_line(tr("Firmware"), bold=True, size="15sp",
                                              color="accent"))
                 fw_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                    height=dp(50), spacing=dp(6))
@@ -517,14 +525,14 @@ class BirthScreen(BoxLayout):
                 # The operator said so explicitly, earlier in the guide: this
                 # radio was never on the medic's USB and never will be — there
                 # is no image to pick and nothing here to identify.
-                self.header.add_widget(_line("Board (radio)", bold=True,
+                self.header.add_widget(_line(tr("Board (radio)"), bold=True,
                                              size="15sp", color="accent"))
-                self.header.add_widget(_line(
+                self.header.add_widget(_line(tr(
                     "Not flashed here — already working. Plug it into the "
-                    "Pi when this finishes.", size="13.5sp",
+                    "Pi when this finishes."), size="13.5sp",
                     color="text_secondary"))
             elif self._sel_board is None:
-                self.header.add_widget(_line("Board (radio)", bold=True,
+                self.header.add_widget(_line(tr("Board (radio)"), bold=True,
                                              size="15sp", color="accent"))
                 self._add_rnode_board_pick()
             elif self._declared_board_key:
@@ -534,11 +542,11 @@ class BirthScreen(BoxLayout):
                 # is the same question a third time, and a question asked when
                 # the answer is already known trains people to tap past it.
                 self.header.add_widget(self._labelled_row(
-                    "Board (radio)",
+                    tr("Board (radio)"),
                     self._sel_button(self._sel_board.display_name,
                                      self._choose_board)))
                 self.header.add_widget(_line(
-                    "✓ Confirmed earlier — tap to change it.",
+                    tr("✓ Confirmed earlier — tap to change it."),
                     size="12.5sp", color="green"))
             else:
                 # Show the PHOTO of what was auto-picked. The medic identifies
@@ -563,7 +571,7 @@ class BirthScreen(BoxLayout):
                 except Exception:
                     pass
                 self.header.add_widget(self._labelled_row(
-                    "Board (radio)",
+                    tr("Board (radio)"),
                     self._sel_button(self._sel_board.display_name,
                                      self._choose_board)))
                 # Say that this one was FOUND. Next to it sits the Host Pi row,
@@ -571,9 +579,9 @@ class BirthScreen(BoxLayout):
                 # grey buttons an operator reads the pair as "it's asking me to
                 # choose a board" even though the board is already known
                 # (walkthrough 2026-08-02).
-                self.header.add_widget(_line(
+                self.header.add_widget(_line(tr(
                     "✓ Found by Node Medic — check it matches the board in your "
-                    "hand. Tap to change it.", size="12.5sp", color="green"))
+                    "hand. Tap to change it."), size="12.5sp", color="green"))
                 # For a board with near-identical siblings, name the mark that
                 # actually differs — a photo alone invites a false confirmation.
                 try:
@@ -607,10 +615,10 @@ class BirthScreen(BoxLayout):
                     except Exception:
                         detected_note = ""
                 self.header.add_widget(self._labelled_row(
-                    "Host Pi",
+                    tr("Host Pi"),
                     self._sel_button(
-                        self._sel_pi[1] if self._sel_pi
-                        else "Tap to choose which Raspberry Pi",
+                        tr(self._sel_pi[1]) if self._sel_pi
+                        else tr("Tap to choose which Raspberry Pi"),
                         self._choose_pi)))
                 if detected_note:
                     # Green only when the Pi actually told us. An assumption
@@ -666,25 +674,26 @@ class BirthScreen(BoxLayout):
                         if self._offer_hub_route():
                             return
                         self.header.add_widget(_line(
-                            "Options", bold=True, size="17sp", color="accent"))
+                            tr("Options"), bold=True, size="17sp", color="accent"))
                         self._recommend_button()
                         # The hub is the WORKAROUND, not the advice — so it sits
                         # below the good answer and reads smaller.
-                        self.header.add_widget(_line(
+                        self.header.add_widget(_line(tr(
                             "Or use a powered USB hub between the Pi and the "
-                            "board to get around this.", size="12.5sp",
+                            "board to get around this."), size="12.5sp",
                             color="text_secondary"))
                         self._back_home_button()
                         return
-                    self.header.add_widget(_line(
+                    self.header.add_widget(_line(tr(
                         "This Raspberry Pi has no operating system yet — it's "
-                        "waiting with a blank card.", size="13.5sp",
+                        "waiting with a blank card."), size="13.5sp",
                         color="amber"))
-                    self.header.add_widget(_line(
+                    self.header.add_widget(_line(tr(
                         "Node Medic will write its card first, then reach it "
-                        "over the same cable. There's no address to enter.",
+                        "over the same cable. There's no address to enter."),
                         size="13sp", color="text_secondary"))
-                    go = Button(text="Set up this Pi's card  →", size_hint_y=None,
+                    go = Button(text=tr("Set up this Pi's card  →"),
+                                size_hint_y=None,
                                 height=dp(54), bold=True, font_size="16sp",
                                 background_normal="",
                                 background_color=theme.hex_to_rgba(
@@ -718,8 +727,9 @@ class BirthScreen(BoxLayout):
                             text="pi", multiline=False, font_size="27sp"))
                     self._pi_addr_in.text = proved
                     self.header.add_widget(_line(
-                        f"Raspberry Pi answered at {proved} a moment ago — "
-                        "change it below if that is no longer where it is.",
+                        tr("Raspberry Pi answered at {addr} a moment ago — "
+                           "change it below if that is no longer where it "
+                           "is.").format(addr=proved),
                         size="13.5sp", color="green", bold=True))
                     # THE FIELD STAYS, AND THAT IS THE WHOLE POINT.
                     #
@@ -747,7 +757,7 @@ class BirthScreen(BoxLayout):
                         cable = ""
                 if cable:
                     self.header.add_widget(_line(
-                        "Raspberry Pi connected by cable — nothing to enter.",
+                        tr("Raspberry Pi connected by cable — nothing to enter."),
                         size="13.5sp", color="green", bold=True))
                     if not hasattr(self, "_pi_addr_in"):
                         from ui.onscreen_keyboard import bind_field
@@ -771,11 +781,11 @@ class BirthScreen(BoxLayout):
                         # because the medic searches by itself. The copy telling
                         # the operator to tap it outlived it by a week, pointing at
                         # a control that is not on the screen (operator, 2026-08-10).
-                        ("Where the Pi is on your network — filled in from the name "
-                         "Node Medic gave it. Type over it if it's wrong."
+                        (tr("Where the Pi is on your network — filled in from the "
+                            "name Node Medic gave it. Type over it if it's wrong.")
                          if suggestion else
-                         "Where the Pi is on your network. Node Medic is looking "
-                         "for it — or type the address in."),
+                         tr("Where the Pi is on your network. Node Medic is "
+                            "looking for it — or type the address in.")),
                         size="12.5sp", color="text_secondary"))
                     row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                     height=dp(48), spacing=dp(8))
@@ -784,10 +794,10 @@ class BirthScreen(BoxLayout):
                         from kivy.uix.textinput import TextInput
                         self._pi_addr_in = bind_field(TextInput(
                             text="", multiline=False, font_size="27sp",
-                            hint_text="found automatically — or tap Find"))
+                            hint_text=tr("found automatically — or tap Find")))
                         self._pi_user_in = bind_field(TextInput(
                             text="pi", multiline=False, font_size="27sp",
-                            hint_text="user", size_hint_x=0.22))
+                            hint_text=tr("user"), size_hint_x=0.22))
                     if suggestion and not self._pi_addr_in.text.strip():
                         self._pi_addr_in.text = suggestion
                     for w_ in (self._pi_addr_in, self._pi_user_in):
@@ -833,10 +843,10 @@ class BirthScreen(BoxLayout):
         self.header.clear_widgets()
         self.header.add_widget(_line(title, bold=True, size="20sp",
                                      color="accent"))
-        self.header.add_widget(_line(
+        self.header.add_widget(_line(tr(
             "The board will restart itself during the flash — its screen and "
             "LED may blink, and it may vanish from USB for a few seconds. "
-            "That's normal. Keep it plugged in.",
+            "That's normal. Keep it plugged in."),
             size="13sp", color="text_secondary"))
 
     def _exit_flash_view(self, keep_list=False):
@@ -878,13 +888,13 @@ class BirthScreen(BoxLayout):
             # be starved to zero height by the tall header). Only the extra
             # explainer goes here.
             if self._rtnode_target:
-                self.list.add_widget(_line(
+                self.list.add_widget(_line(tr(
                     "Flashes the attached board with RTNode-2400 and provisions it "
                     "on the standard channel. WiFi/LoRa details are entered on the "
-                    "node's setup portal after flashing.", size="12.5sp",
+                    "node's setup portal after flashing."), size="12.5sp",
                     color="text_secondary"))
             else:
-                self.list.add_widget(_line("Choose the RTNode-2400 target above.",
+                self.list.add_widget(_line(tr("Choose the RTNode-2400 target above."),
                                            size="13sp", color="text_secondary"))
         elif self._firmware in ("rnode", "pi_rnode"):
             radio_known_or_moot = (self._sel_board is not None
@@ -897,12 +907,12 @@ class BirthScreen(BoxLayout):
                 # firmware already carries whatever it was set at birth.
                 self.show_params(self._firmware, board=self._sel_board)
             else:
-                self.list.add_widget(_line("Pick a board above to set radio params "
-                                           "and start.", size="13sp",
+                self.list.add_widget(_line(tr("Pick a board above to set radio "
+                                              "params and start."), size="13sp",
                                            color="text_secondary"))
         else:
             self.list.add_widget(_line(
-                "Detect the connected board, or choose firmware, to begin.",
+                tr("Detect the connected board, or choose firmware, to begin."),
                 size="13sp", color="text_secondary"))
 
     def _option_button(self, num, text, on_tap):
@@ -930,7 +940,7 @@ class BirthScreen(BoxLayout):
                 num, text, lambda cb=cb: (popup.dismiss(), cb())))
         scroll.add_widget(lst)
         root.add_widget(scroll)
-        cancel = Button(text="Cancel", size_hint_y=None, height=dp(48), bold=True,
+        cancel = Button(text=tr("Cancel"), size_hint_y=None, height=dp(48), bold=True,
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
@@ -959,14 +969,14 @@ class BirthScreen(BoxLayout):
             if board.flash_method == "autoinstall":
                 num, tag = board.autoinstall_index, ""
             else:
-                num, tag = next_custom, "  (custom)"
+                num, tag = next_custom, "  " + tr("(custom)")
                 next_custom += 1
             # picker_label, not display_name: it carries the silkscreen marking
             # for boards sold under a name that is printed nowhere on them
             # (LoRa32 v2.1 = T3 v1.6.1) — the row IS the moment of choice.
             entries.append((num, f"{board.picker_label}{tag}",
                             lambda b=board: self._confirm_rnode_board_gate(b)))
-        self._picker_popup("Select the board", entries)
+        self._picker_popup(tr("Select the board"), entries)
 
     def _pick_board(self, board):
         self._sel_board = board
@@ -1038,7 +1048,7 @@ class BirthScreen(BoxLayout):
         status = getattr(self, "_pi_find_status", None)
         if status is not None:
             status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
-            status.text = "Looking for the Pi…"
+            status.text = tr("Looking for the Pi…")
         import threading
 
         def work():
@@ -1060,13 +1070,14 @@ class BirthScreen(BoxLayout):
                         # A name that can resolve two ways is not an address.
                         # Pin the one that actually answered.
                         res = {"address": addr, "ip": addr,
-                               "confirmed": True, "how": "it answered there"}
+                               "confirmed": True, "how": tr("it answered there")}
                         break
                 if not res:
                     from provisioning.pi_discover import find_pi
                     res = find_pi(self._pi_addr_in.text.strip())
             except Exception as e:            # noqa: BLE001
-                res = {"how": f"couldn't search: {str(e)[:60]}"}
+                res = {"how": tr("couldn't search: {err}").format(
+                    err=str(e)[:60])}
             Clock.schedule_once(lambda _dt: self._found_pi(res), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -1086,8 +1097,11 @@ class BirthScreen(BoxLayout):
             if status is not None:
                 status.color = theme.hex_to_rgba(theme.COLORS["green"])
                 ip = res.get("ip", "")
-                status.text = (f"Found the Pi at {ip} — {res.get('how','')}."
-                               if ip else f"Found it — {res.get('how','')}.")
+                status.text = (tr("Found the Pi at {ip} — {how}.").format(
+                                   ip=ip, how=res.get("how", ""))
+                               if ip else
+                               tr("Found it — {how}.").format(
+                                   how=res.get("how", "")))
             return
         if status is not None:
             status.color = theme.hex_to_rgba(theme.COLORS["amber"])
@@ -1095,8 +1109,8 @@ class BirthScreen(BoxLayout):
             cands = (res or {}).get("candidates")
             status.text = (
                 f"{how}: {cands}" if cands else
-                (how or "Couldn't find the Pi yet — is it powered on and "
-                        "joined to your WiFi? It can take a minute or two."))
+                (how or tr("Couldn't find the Pi yet — is it powered on and "
+                           "joined to your WiFi? It can take a minute or two.")))
 
     def _add_rnode_board_pick(self):
         """The RNode board pick, RTNode-style: detection narrows the catalogue
@@ -1107,12 +1121,13 @@ class BirthScreen(BoxLayout):
         det = self._detected or {}
         shortlist = det.get("boards") or []
         if not det.get("found") or not shortlist:
-            self.header.add_widget(self._sel_button("Tap to choose a board",
+            self.header.add_widget(self._sel_button(tr("Tap to choose a board"),
                                                     self._choose_board))
             return
         self.header.add_widget(_line(
-            f"Detected {det.get('platform') or det.get('chip')} — which board "
-            "is this?", size="13sp", color="text_secondary"))
+            tr("Detected {chip} — which board is this?").format(
+                chip=det.get("platform") or det.get("chip")),
+            size="13sp", color="text_secondary"))
         from ui import board_images
         from ui.widgets.board_card import BoardCard
         # image_for = the photo FILE exists (registry entries are placeholders
@@ -1146,7 +1161,7 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(self._sel_button(
                 b.display_name,
                 lambda bb=b: self._confirm_rnode_board_gate(bb)))
-        other = self._sel_button("Not one of these — full board list",
+        other = self._sel_button(tr("Not one of these — full board list"),
                                  self._choose_board)
         other.height = dp(40)
         other.font_size = "13sp"
@@ -1155,9 +1170,9 @@ class BirthScreen(BoxLayout):
 
     def _choose_pi(self):
         """Full-screen picker of host Pis — plus 'None' for a standalone radio."""
-        entries = [(i, name, lambda k=key, n=name: self._pick_pi(k, n))
+        entries = [(i, tr(name), lambda k=key, n=name: self._pick_pi(k, n))
                    for i, (key, name) in enumerate(PI_HOSTS, 1)]
-        self._picker_popup("Select the host Pi", entries)
+        self._picker_popup(tr("Select the host Pi"), entries)
 
     def _pick_pi(self, key, name):
         self._sel_pi = (key, name)
@@ -1216,10 +1231,16 @@ class BirthScreen(BoxLayout):
                     said = next((b.display_name for b in self._boards
                                  if b.key == self._declared_board_key),
                                 self._declared_board_key)
-                    self._declared_mismatch = (
-                        f"You confirmed {said}, but the board plugged in reads as "
-                        f"{res.get('platform') or res.get('chip')}. Check which "
-                        f"board is in the medic before flashing anything.")
+                    # Local import: test_guide_resume runs this function's
+                    # extracted source in a bare namespace, where the
+                    # module-level tr does not exist (i18n wrap, 2026-09-15).
+                    from ui.i18n import tr
+                    self._declared_mismatch = tr(
+                        "You confirmed {said}, but the board plugged in reads as "
+                        "{chip}. Check which board is in the medic before "
+                        "flashing anything.").format(
+                            said=said,
+                            chip=res.get("platform") or res.get("chip"))
                     self._sel_board = None       # now it IS worth asking
             elif res.get("board_key"):
                 self._sel_board = next(
@@ -1229,18 +1250,19 @@ class BirthScreen(BoxLayout):
     def _detect_summary(self):
         d = self._detected or {}
         if not d.get("found"):
-            return d.get("reason", "No board detected.")
+            return d.get("reason", tr("No board detected."))
         fw = (d.get("firmware") or ["rnode"])[0]
         fw_short = FIRMWARE_LABEL.get(fw, fw).split("  ")[0]
         from ui.usb_ports import describe_port
-        return (f"Detected {d.get('platform', d.get('chip'))} on "
-                f"{describe_port(d.get('port')) or 'USB'}"
-                f"  -  suggests {fw_short}")
+        return tr("Detected {chip} on {port}  -  suggests {fw}").format(
+            chip=d.get("platform", d.get("chip")),
+            port=describe_port(d.get("port")) or "USB",
+            fw=fw_short)
 
     def _choose_firmware(self):
-        entries = [(i, label, lambda k=key: self._pick_firmware(k))
+        entries = [(i, tr(label), lambda k=key: self._pick_firmware(k))
                    for i, (key, label) in enumerate(FIRMWARE_CHOICES, 1)]
-        self._picker_popup("Choose firmware", entries)
+        self._picker_popup(tr("Choose firmware"), entries)
 
     def _pick_firmware(self, key):
         # DEAD-END the RTNode path outright for boards it can't build — a
@@ -1286,8 +1308,8 @@ class BirthScreen(BoxLayout):
             return
         from ui.requirement_popup import requirement_popup
         view = requirement_popup(
-            "This board cannot currently be flashed as an RTNode-2400.",
-            "Not available for this board", False)
+            tr("This board cannot currently be flashed as an RTNode-2400."),
+            tr("Not available for this board"), False)
         self._rtblock_pop = view
 
         def _home(*_a):
@@ -1321,12 +1343,13 @@ class BirthScreen(BoxLayout):
         fam = FIRMWARE_LABEL.get(self._firmware, self._firmware).split("  ")[0]
         if d.get("found"):
             from ui.usb_ports import describe_port
-            txt = (f"Detected {d.get('platform', d.get('chip', 'board'))} on "
-                   f"{describe_port(d.get('port')) or 'USB'}  ·  {fam}")
+            txt = tr("Detected {chip} on {port}  ·  {fw}").format(
+                chip=d.get("platform", d.get("chip", "board")),
+                port=describe_port(d.get("port")) or "USB", fw=fam)
         else:
             txt = fam
         row.add_widget(_line(txt, size="12.5sp", color="green"))
-        change = Button(text="change", size_hint=(None, 1), width=dp(84),
+        change = Button(text=tr("change"), size_hint=(None, 1), width=dp(84),
                         font_size="13sp", bold=True, background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["accent"]))
@@ -1380,8 +1403,9 @@ class BirthScreen(BoxLayout):
             key = ident
             self._rtnode_target = key
             self.header.add_widget(_line(
-                f"Board identified: {board_images.label(key)} — read from the "
-                "USB connection, not guessed. Confirm it on the next screen.",
+                tr("Board identified: {board} — read from the "
+                   "USB connection, not guessed. Confirm it on the next "
+                   "screen.").format(board=board_images.label(key)),
                 size="13.5sp", color="accent"))
             token = (self._detected or {}).get("board_key")
             if getattr(self, "_rtnode_auto_gate", None) != token:
@@ -1392,12 +1416,13 @@ class BirthScreen(BoxLayout):
         from ui import board_images as _bi
         names = " / ".join(_bi.label(k) or k for k in opts)
         self.header.add_widget(_line(
-            f"Which board is it?  Tap the one in front of you ({names} — "
-            "check the name printed on the board).", size="13.5sp",
+            tr("Which board is it?  Tap the one in front of you ({names} — "
+               "check the name printed on the board).").format(names=names),
+            size="13.5sp",
             color="accent"))
-        self.header.add_widget(self._warning_box(
+        self.header.add_widget(self._warning_box(tr(
             "WARNING:  Selecting the wrong board can brick the hardware. Check your "
-            "selection before you build."))
+            "selection before you build.")))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(178),
                         spacing=dp(10))
         self._rtnode_cards = {}
@@ -1424,12 +1449,13 @@ class BirthScreen(BoxLayout):
         # past the brick warning and build for the wrong board). The gate shows
         # the warning LARGE, the chosen board in the middle, and an explicit
         # confirm that then starts the build.
-        self.header.add_widget(_line(
+        self.header.add_widget(_line(tr(
             "Tap the board in front of you — you'll confirm it before "
-            "anything builds.", size="12.5sp", color="text_secondary"))
+            "anything builds."), size="12.5sp", color="text_secondary"))
         # T-Beam Supreme (SD transport) is a rarer RTNode target — keep it reachable
         # without cluttering the common V3/V4 choice.
-        other = Button(text="Other RTNode board (T-Beam Supreme)…", size_hint_y=None,
+        other = Button(text=tr("Other RTNode board (T-Beam Supreme)…"),
+                       size_hint_y=None,
                        height=dp(38), font_size="12.5sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
@@ -1460,14 +1486,16 @@ class BirthScreen(BoxLayout):
             app = App.get_running_app()
             label, secs = app.activity_info()
             mins = int(secs // 60)
-            when = (f"{mins} minute{'s' if mins != 1 else ''} in"
-                    if mins else "just started")
+            when = ((tr("1 minute in") if mins == 1
+                     else tr("{mins} minutes in").format(mins=mins))
+                    if mins else tr("just started"))
             view = requirement_popup(
-                f"{label}\n\nIt's {when} and still going. Starting another "
-                f"build now would interrupt it and can leave a board "
-                f"half-written.\n\nLet it finish — this screen shows its "
-                f"progress and the green confirmation when it's done.",
-                "A build is already running", False)
+                tr("{label}\n\nIt's {when} and still going. Starting another "
+                   "build now would interrupt it and can leave a board "
+                   "half-written.\n\nLet it finish — this screen shows its "
+                   "progress and the green confirmation when it's "
+                   "done.").format(label=label, when=when),
+                tr("A build is already running"), False)
 
             def _to_progress(*_a):
                 try:
@@ -1606,10 +1634,15 @@ class BirthScreen(BoxLayout):
             if not v or v.get("verdict") == "ok":
                 return False
             from ui.widgets.callout import Callout
+            # Local import: the banner's guard test runs this function's
+            # extracted source in a bare namespace, where the module-level
+            # tr does not exist (i18n wrap, 2026-09-15).
+            from ui.i18n import tr
             pi_name = next((n for k, n in PI_HOSTS if k == pi_key), pi_key)
             short = short_board_name(bkey, getattr(board, "display_name", ""))
             self.header.add_widget(Callout(
-                f"{pi_name} may not power {short} over USB"))
+                tr("{pi} may not power {board} over USB").format(
+                    pi=pi_name, board=short)))
             return v.get("verdict") == "blocked"
         except Exception:
             return False                # never block the flow on advice
@@ -1645,7 +1678,7 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(go)
             self.header.add_widget(_line(q["note"], size="12.5sp",
                                          color="amber"))
-            self.header.add_widget(_line("Options", bold=True, size="16sp",
+            self.header.add_widget(_line(tr("Options"), bold=True, size="16sp",
                                          color="accent"))
             self._recommend_button()
             self._back_home_button()
@@ -1655,7 +1688,7 @@ class BirthScreen(BoxLayout):
 
     def _recommend_button(self):
         """Bold: find hardware that actually works with what you have."""
-        b = Button(text="Use a Pi and radio board from the suggested list",
+        b = Button(text=tr("Use a Pi and radio board from the suggested list"),
                    size_hint_y=None, height=dp(56), bold=True, font_size="16sp",
                    background_normal="",
                    background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -1665,7 +1698,7 @@ class BirthScreen(BoxLayout):
 
     def _back_home_button(self):
         """No forward action from a blocked pairing — only out."""
-        b = Button(text="←  Back", size_hint_y=None, height=dp(50),
+        b = Button(text=tr("←  Back"), size_hint_y=None, height=dp(50),
                    font_size="16sp", background_normal="",
                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -1688,9 +1721,9 @@ class BirthScreen(BoxLayout):
         from workflows.power_compat import recommended_pairings
         pi_key = self._sel_pi[0] if self._sel_pi else ""
         box = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
-        box.add_widget(_line(
+        box.add_widget(_line(tr(
             "These run without a powered hub. Bigger spare current = more "
-            "headroom when the radio transmits.", size="14sp",
+            "headroom when the radio transmits."), size="14sp",
             color="text_secondary", h=48))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
@@ -1702,27 +1735,30 @@ class BirthScreen(BoxLayout):
         yours = [p for p in pairs if p.get("pi_key") == pi_key]
         others = [p for p in pairs if p.get("pi_key") != pi_key]
         if yours:
-            col.add_widget(_line("With the Pi you already have", bold=True,
+            col.add_widget(_line(tr("With the Pi you already have"), bold=True,
                                  size="15sp", color="green", h=28))
             for p in yours:
                 col.add_widget(_line(
-                    f"  {p['board']}   —  {p['margin_ma']} mA to spare",
+                    "  " + tr("{board}   —  {margin} mA to spare").format(
+                        board=p["board"], margin=p["margin_ma"]),
                     size="15sp", h=28))
         if others:
-            col.add_widget(_line("With a different Pi", bold=True, size="15sp",
+            col.add_widget(_line(tr("With a different Pi"), bold=True, size="15sp",
                                  color="accent", h=32))
             for p in others:
-                col.add_widget(_line(f"  {p['text']}   —  {p['margin_ma']} mA "
-                                     "to spare", size="14sp",
-                                     color="text_secondary", h=26))
+                col.add_widget(_line(
+                    "  " + tr("{board}   —  {margin} mA to spare").format(
+                        board=p["text"], margin=p["margin_ma"]),
+                    size="14sp",
+                    color="text_secondary", h=26))
         if not pairs:
-            col.add_widget(_line("No pairing data available.", size="14sp",
+            col.add_widget(_line(tr("No pairing data available."), size="14sp",
                                  color="amber", h=30))
         body.add_widget(col)
         box.add_widget(body)
-        popup = Popup(title="Combinations that work", content=box,
+        popup = Popup(title=tr("Combinations that work"), content=box,
                       size_hint=(0.92, 0.86))
-        close = Button(text="Close", size_hint_y=None, height=dp(50),
+        close = Button(text=tr("Close"), size_hint_y=None, height=dp(50),
                        bold=True, background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -1901,7 +1937,7 @@ class BirthScreen(BoxLayout):
     def _choose_rtnode_target(self):
         entries = [(i, t.display, lambda k=key: self._pick_rtnode_target(k))
                    for i, (key, t) in enumerate(RTNODE_TARGETS.items(), 1)]
-        self._picker_popup("RTNode-2400 target", entries)
+        self._picker_popup(tr("RTNode-2400 target"), entries)
 
     def _pick_rtnode_target(self, key):
         self._rtnode_target = key
@@ -1925,12 +1961,12 @@ class BirthScreen(BoxLayout):
         body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         # "Check the silkscreen" answers the V3-or-V4 question; a T-Echo is
         # a cased product with no silkscreen question to answer.
-        warn_hint = ("Check the silkscreen on the board itself."
+        warn_hint = (tr("Check the silkscreen on the board itself.")
                      if key in ("heltec_v3", "heltec_v4")
-                     else "Check it against the photo below.")
+                     else tr("Check it against the photo below."))
         warn = Label(
-            text=("WARNING:  Selecting the wrong board can BRICK the "
-                  "hardware.\n" + warn_hint),
+            text=(tr("WARNING:  Selecting the wrong board can BRICK the "
+                     "hardware.") + "\n" + warn_hint),
             bold=True, font_size="19sp", color=dark, halign="center",
             valign="middle", size_hint_y=None, height=dp(92))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
@@ -1939,19 +1975,20 @@ class BirthScreen(BoxLayout):
                          on_select=lambda *_: None, size_hint_y=1)
         body.add_widget(card)
         confirm_lbl = Label(
-            text=f"Confirm you've selected the correct board:  "
-                 f"{board_images.label(key)}",
+            text=tr("Confirm you've selected the correct board:  "
+                    "{board}").format(board=board_images.label(key)),
             bold=True, font_size="16sp", color=dark, halign="center",
             valign="middle", size_hint_y=None, height=dp(44))
         confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(confirm_lbl)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(58), spacing=dp(10))
-        back = Button(text="Back — wrong board", bold=True, font_size="15sp",
+        back = Button(text=tr("Back — wrong board"), bold=True, font_size="15sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        go = Button(text=f"Confirm — build RTNode-2400\n({tgt.display})",
+        go = Button(text=tr("Confirm — build RTNode-2400\n({target})").format(
+                        target=tgt.display),
                     bold=True, font_size="15sp", halign="center",
                     background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -1971,7 +2008,8 @@ class BirthScreen(BoxLayout):
             border.rectangle = (body.x + dp(2), body.y + dp(2),
                                 body.width - dp(4), body.height - dp(4))
         body.bind(pos=_sync, size=_sync)
-        pop = Popup(title="Check the board", content=body, size_hint=(0.95, 0.9),
+        pop = Popup(title=tr("Check the board"), content=body,
+                    size_hint=(0.95, 0.9),
                     title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                     auto_dismiss=False)
         self._gate_pop = pop
@@ -1987,7 +2025,7 @@ class BirthScreen(BoxLayout):
 
         def _go(btn, *_a):
             btn.disabled = True
-            btn.text = "Starting build…"
+            btn.text = tr("Starting build…")
             pop.dismiss()
             self._run_rtnode()
         go.bind(on_release=_go)
@@ -2006,8 +2044,9 @@ class BirthScreen(BoxLayout):
         dark = theme.hex_to_rgba(theme.COLORS["background"])
         body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         warn = Label(
-            text=("WARNING:  Selecting the wrong board can BRICK the "
-                  "hardware.\nCheck the silkscreen on the board itself."),
+            text=(tr("WARNING:  Selecting the wrong board can BRICK the "
+                     "hardware.") + "\n"
+                  + tr("Check the silkscreen on the board itself.")),
             bold=True, font_size="19sp", color=dark, halign="center",
             valign="middle", size_hint_y=None, height=dp(92))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
@@ -2025,19 +2064,20 @@ class BirthScreen(BoxLayout):
             big.bind(size=lambda w, s: setattr(w, "text_size", s))
             body.add_widget(big)
         confirm_lbl = Label(
-            text=f"Confirm you've selected the correct board:  "
-                 f"{board.display_name}",
+            text=tr("Confirm you've selected the correct board:  "
+                    "{board}").format(board=board.display_name),
             bold=True, font_size="16sp", color=dark, halign="center",
             valign="middle", size_hint_y=None, height=dp(44))
         confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(confirm_lbl)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(58), spacing=dp(10))
-        back = Button(text="Back — wrong board", bold=True, font_size="15sp",
+        back = Button(text=tr("Back — wrong board"), bold=True, font_size="15sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        go = Button(text=f"Confirm — flash as RNode\n({board.display_name})",
+        go = Button(text=tr("Confirm — flash as RNode\n({board})").format(
+                        board=board.display_name),
                     bold=True, font_size="15sp", halign="center",
                     background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -2057,7 +2097,8 @@ class BirthScreen(BoxLayout):
             border.rectangle = (body.x + dp(2), body.y + dp(2),
                                 body.width - dp(4), body.height - dp(4))
         body.bind(pos=_sync, size=_sync)
-        pop = Popup(title="Check the board", content=body, size_hint=(0.95, 0.9),
+        pop = Popup(title=tr("Check the board"), content=body,
+                    size_hint=(0.95, 0.9),
                     title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                     auto_dismiss=False)
         self._gate_pop = pop
@@ -2084,7 +2125,7 @@ class BirthScreen(BoxLayout):
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
             requirement_popup(workflow.message,
-                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "title", tr("Heads up")),
                               getattr(workflow, "under_construction", False))
             return
         # This path builds its workflow directly, so it must also choose the
@@ -2098,7 +2139,8 @@ class BirthScreen(BoxLayout):
         self._busy_banner, self._busy_paragraph = busy_truth(
             "rtnode2400", None, self._name_in.text.strip(),
             guided=self._guided_pending())
-        self._launch(workflow, f"Building RTNode-2400 ({tgt.display})…")
+        self._launch(workflow, tr("Building RTNode-2400 ({target})…").format(
+            target=tgt.display))
 
     def _show_power_popup(self, verdict, board_name, pi_key, on_proceed,
                           board_key=""):
@@ -2134,7 +2176,7 @@ class BirthScreen(BoxLayout):
                                   board_key=board_key)
         except Exception:                                  # never block a birth
             lines = [{"kind": "head",
-                      "text": (verdict or {}).get("why", "Power warning")}]
+                      "text": (verdict or {}).get("why", tr("Power warning"))}]
         for ln in lines:
             style = dict(_STYLE.get(ln["kind"], _STYLE["body"]))
             if ln["kind"] == "good" and ln["text"].endswith(":"):
@@ -2142,18 +2184,19 @@ class BirthScreen(BoxLayout):
             body.add_widget(_line(ln["text"], **style))
         btns = BoxLayout(orientation="horizontal", size_hint_y=None,
                          height=dp(56), spacing=dp(10))
-        proceed = Button(text="⚠  Proceed anyway", font_size="16sp",
+        proceed = Button(text=tr("⚠  Proceed anyway"), font_size="16sp",
                          bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        cancel = Button(text="Cancel", font_size="16sp", bold=True,
+        cancel = Button(text=tr("Cancel"), font_size="16sp", bold=True,
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                         color=theme.hex_to_rgba(theme.COLORS["background"]))
         btns.add_widget(proceed)       # bottom-left
         btns.add_widget(cancel)        # bottom-right
         root.add_widget(btns)          # OUTSIDE the scroll — always reachable
-        popup = Popup(title="Power warning", content=root, size_hint=(0.92, 0.86),
+        popup = Popup(title=tr("Power warning"), content=root,
+                      size_hint=(0.92, 0.86),
                       title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
         proceed.bind(on_release=lambda *_: (popup.dismiss(), on_proceed()))
@@ -2203,7 +2246,7 @@ class BirthScreen(BoxLayout):
 
         def _sync_toggle():
             arrow = "▾" if self._params_open else "▸"
-            toggle.text = f"  {arrow}  Radio parameters     {summary}"
+            toggle.text = f"  {arrow}  " + tr("Radio parameters") + f"     {summary}"
 
         def _toggle(*_a):
             self._params_open = not self._params_open
@@ -2228,7 +2271,7 @@ class BirthScreen(BoxLayout):
             if key not in self._param_inputs:
                 self._param_row(key, label, value)
 
-        ok = Button(text="OK — start", size_hint_y=None, height=dp(60),
+        ok = Button(text=tr("OK — start"), size_hint_y=None, height=dp(60),
                     font_size="20sp", bold=True, background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                     color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -2238,7 +2281,7 @@ class BirthScreen(BoxLayout):
     def _param_row(self, key, label, value):
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(50),
                         spacing=dp(8))
-        row.add_widget(_line(label, size="15sp"))
+        row.add_widget(_line(tr(label), size="15sp"))
         ti = TextInput(text=value, multiline=False, size_hint=(None, None),
                        width=dp(160), height=dp(44), font_size="25sp",
                        input_filter="float" if key in ("freq", "bw") else "int")
@@ -2263,26 +2306,27 @@ class BirthScreen(BoxLayout):
         from provisioning import radio_defaults as rd
         from kivy.uix.label import Label
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
-        msg = Label(halign="center", valign="middle", markup=True, text=(
+        msg = Label(halign="center", valign="middle", markup=True, text=tr(
             "[b]You're about to change the radio parameters.[/b]\n\n"
             "It is STRONGLY advised to keep the preset parameters\n"
-            f"[b]{rd.summary(rd.load_defaults())}[/b]\n"
+            "[b]{presets}[/b]\n"
             "so that ALL nodes can talk to each other. A node built on "
             "different settings CANNOT hear the rest of the mesh.\n\n"
             "To change the settings every build uses, do it once in\n"
-            "Settings ▸ Default radio parameters."),
+            "Settings ▸ Default radio parameters.").format(
+                presets=rd.summary(rd.load_defaults())),
             color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(52), spacing=dp(8))
-        popup = Popup(title="Changing radio parameters", content=box,
+        popup = Popup(title=tr("Changing radio parameters"), content=box,
                       size_hint=(0.94, 0.7),
                       title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
         self._pw_pop = popup
         popup.bind(on_dismiss=lambda *_: setattr(self, "_pw_pop", None))
-        keep = Button(text="Keep presets", bold=True, background_normal="",
+        keep = Button(text=tr("Keep presets"), bold=True, background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
 
@@ -2293,7 +2337,7 @@ class BirthScreen(BoxLayout):
             except Exception:
                 pass
         keep.bind(on_release=_keep)
-        edit = Button(text="⚠  Edit anyway", bold=True,
+        edit = Button(text=tr("⚠  Edit anyway"), bold=True,
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -2358,19 +2402,21 @@ class BirthScreen(BoxLayout):
         from provisioning import radio_defaults as rd
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         from kivy.uix.label import Label
-        msg = Label(halign="center", valign="middle", markup=True, text=(
+        msg = Label(halign="center", valign="middle", markup=True, text=tr(
             "[b]Keep the standard parameters?[/b]\n\n"
             "It is STRONGLY recommended to build every node with the standard "
-            "settings\n[b]" + rd.summary(rd.DEFAULT_PARAMS) + "[/b]\n"
+            "settings\n[b]{standard}[/b]\n"
             "so that ALL nodes can communicate with each other.\n\n"
             "A node built with different parameters CANNOT hear the rest of "
-            "the mesh.\n\nYou entered:\n[b]" + rd.summary(radio) + "[/b]"),
+            "the mesh.\n\nYou entered:\n[b]{yours}[/b]").format(
+                standard=rd.summary(rd.DEFAULT_PARAMS),
+                yours=rd.summary(radio)),
             color=theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(52), spacing=dp(8))
-        popup = Popup(title="Non-standard radio parameters", content=box,
+        popup = Popup(title=tr("Non-standard radio parameters"), content=box,
                       size_hint=(0.94, 0.8),
                       title_color=theme.hex_to_rgba(theme.COLORS["red"]),
                       separator_color=theme.hex_to_rgba(theme.COLORS["red"]))
@@ -2384,7 +2430,7 @@ class BirthScreen(BoxLayout):
                 if ti is not None:
                     ti.text = f"{v:g}" if key in ("freq", "bw") else str(int(v))
             proceed()
-        keep = Button(text="Keep standard", bold=True, background_normal="",
+        keep = Button(text=tr("Keep standard"), bold=True, background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         keep.bind(on_release=_keep)
@@ -2392,7 +2438,7 @@ class BirthScreen(BoxLayout):
         def _anyway(*_):
             popup.dismiss()
             proceed()
-        anyway = Button(text="⚠  Use anyway", bold=True, background_normal="",
+        anyway = Button(text=tr("⚠  Use anyway"), bold=True, background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         anyway.bind(on_release=_anyway)
@@ -2406,7 +2452,8 @@ class BirthScreen(BoxLayout):
         workflow, title = self._make_workflow(node_type, board)
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
-            requirement_popup(workflow.message, getattr(workflow, "title", "Heads up"),
+            requirement_popup(workflow.message,
+                              getattr(workflow, "title", tr("Heads up")),
                               getattr(workflow, "under_construction", False))
             return
         pi_key = self._sel_pi[0] if self._sel_pi else "none"
@@ -2455,16 +2502,18 @@ class BirthScreen(BoxLayout):
                 # The birth answer configure_bluetooth applies on the node.
                 prof.bluetooth_enabled = bool(getattr(
                     self, "_guided_bluetooth", False))
-            title = (f"Building Pi + {board.display_name}..." if board
-                     else "Building Pi + RNode...")
+            title = (tr("Building Pi + {board}...").format(
+                         board=board.display_name) if board
+                     else tr("Building Pi + RNode..."))
             busy_kind = "pi_rnode"
         elif board is not None:                  # standalone RNode flash (no Pi)
             workflow = self._rnode_flash_factory(board)
-            title = f"Flashing {board.display_name}..."
+            title = tr("Flashing {board}...").format(board=board.display_name)
             busy_kind = "rnode_flash"
         else:                                    # RTNode-2400
             workflow = self._factories[node_type]()
-            title = f"Building {self._labels.get(node_type, node_type)}..."
+            title = tr("Building {what}...").format(
+                what=self._labels.get(node_type, node_type))
             busy_kind = node_type
         # The busy view's words are chosen HERE, the one place that knows what
         # kind of work is coming — a Pi build must not promise a firmware
@@ -2523,7 +2572,7 @@ class BirthScreen(BoxLayout):
         if getattr(workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
             requirement_popup(workflow.message,
-                              getattr(workflow, "title", "Heads up"),
+                              getattr(workflow, "title", tr("Heads up")),
                               getattr(workflow, "under_construction", False))
             return
         # Never run two flashes at once — a second pio/esptool on the same board
@@ -2541,10 +2590,11 @@ class BirthScreen(BoxLayout):
                     return
                 from ui.requirement_popup import requirement_popup
                 requirement_popup(
-                    f"{label}\n\nIt has been running {int(elapsed)}s — this is "
-                    "the build YOU started (the red banner at the top). Let it "
-                    "finish before starting another.",
-                    "Your build is running", False)
+                    tr("{label}\n\nIt has been running {secs}s — this is "
+                       "the build YOU started (the red banner at the top). Let it "
+                       "finish before starting another.").format(
+                           label=label, secs=int(elapsed)),
+                    tr("Your build is running"), False)
                 return
         except Exception:
             pass
@@ -2576,8 +2626,8 @@ class BirthScreen(BoxLayout):
         self._build_busy.add_widget(ring_anchor)
         self._busy_label = _line(
             getattr(self, "_run_paragraph", None)
-            or "Working… keep everything plugged in and WAIT for the green "
-               "'Build finished' confirmation before touching anything.",
+            or tr("Working… keep everything plugged in and WAIT for the green "
+                  "'Build finished' confirmation before touching anything."),
             size="13sp", color="accent")
         self._busy_label.halign = "center"
         self._build_busy.add_widget(self._busy_label)
@@ -2641,8 +2691,8 @@ class BirthScreen(BoxLayout):
             app = App.get_running_app()
             if on:
                 banner = (getattr(self, "_run_banner", None)
-                          or "Working — keep everything plugged in, "
-                             "don't power off")
+                          or tr("Working — keep everything plugged in, "
+                                "don't power off"))
                 app.begin_activity(banner)
             else:
                 app.end_activity()
@@ -2798,7 +2848,7 @@ class BirthScreen(BoxLayout):
             lbl.color = theme.hex_to_rgba(theme.COLORS[color])
             lbl.bold = not result.skipped
             if result.skipped:
-                lbl.text = f"  {result.name}  (skipped)"
+                lbl.text = f"  {result.name}  " + tr("(skipped)")
             bar.set(1.0, color=("green" if result.success or result.skipped
                                 else "red"))
         elif not result.skipped:                 # unplanned step -> old style
@@ -2820,7 +2870,8 @@ class BirthScreen(BoxLayout):
             if lbl is not None and self._pg_done < len(names):
                 cur = names[self._pg_done]
                 phases = getattr(self, "_step_phase_labels", {}) or {}
-                lbl.text = phases.get(cur) or _PHASE_LABELS.get(cur, "Working…")
+                lbl.text = phases.get(cur) or tr(_PHASE_LABELS.get(cur,
+                                                                   "Working…"))
             if getattr(self, "_build_ring", None) is not None:
                 self._build_ring.set_fraction(
                     sum(self._pg_secs[:self._pg_done]) / self._pg_total)
@@ -2860,19 +2911,21 @@ class BirthScreen(BoxLayout):
                              and not getattr(r, "skipped", False)), None)
                 fail_line = (f"[FAIL] {fail[0]} — {fail[1]}" if fail
                              else "")
-                head = (fail_line + "\n\nFix that and run the build again."
+                head = (fail_line + "\n\n" + tr("Fix that and run the build "
+                                                "again.")
                         if fail_line else
-                        "A build step failed — the [FAIL] line in the build "
-                        "log names it, with the reason under it. Fix that "
-                        "and run the build again.")
+                        tr("A build step failed — the [FAIL] line in the build "
+                           "log names it, with the reason under it. Fix that "
+                           "and run the build again."))
                 if getattr(self, "_last_type", "") == "pi_rnode":
-                    body = (f"{head}\n\nIf it failed at the first step, the Pi "
-                            "stopped answering. Check its power light, and that "
-                            "it is still plugged in — a Pi drawing its power "
-                            "from Node Medic can brown out part-way through. "
-                            "Its card can be checked too: put it in Node "
-                            "Medic's reader and it will say whether the card "
-                            "needs writing again.")
+                    body = head + "\n\n" + tr(
+                        "If it failed at the first step, the Pi "
+                        "stopped answering. Check its power light, and that "
+                        "it is still plugged in — a Pi drawing its power "
+                        "from Node Medic can brown out part-way through. "
+                        "Its card can be checked too: put it in Node "
+                        "Medic's reader and it will say whether the card "
+                        "needs writing again.")
                 elif _ONBOARDING_FAILURE.search(fail_line or ""):
                     # ADVICE FOR THE FAILURE WE ACTUALLY HAD. wifi_onboarding
                     # fails for reasons that have nothing to do with the board
@@ -2881,17 +2934,20 @@ class BirthScreen(BoxLayout):
                     # tap RST, try another cable" there is the 2026-08-09
                     # "advice for the wrong failure" complaint in an unfixed
                     # corner: the flash SUCCEEDED, the setup did not.
-                    body = (f"{head}\n\nThe board flashed fine — this failed "
-                            "at the setup step, so buttons and cables won't "
-                            "help. Fix what the line above names, then run the "
-                            "build again. You can also set the node up by hand "
-                            "at its own portal: join its 'RTNode-Setup' Wi-Fi "
-                            "and open http://10.0.0.1.")
+                    body = head + "\n\n" + tr(
+                        "The board flashed fine — this failed "
+                        "at the setup step, so buttons and cables won't "
+                        "help. Fix what the line above names, then run the "
+                        "build again. You can also set the node up by hand "
+                        "at its own portal: join its 'RTNode-Setup' Wi-Fi "
+                        "and open http://10.0.0.1.")
                 else:
                     from ui.safety import recovery_for_board
                     recover = recovery_for_board(getattr(self, "_last_board", None))
-                    body = (f"{head}\n\nBoard won't flash?  {recover}  If it "
-                            "still won't, try a short, known-good USB data cable.")
+                    body = head + "\n\n" + tr(
+                        "Board won't flash?  {recover}  If it "
+                        "still won't, try a short, known-good USB data "
+                        "cable.").format(recover=recover)
                 # Show-don't-tell: the recovery text names buttons to press, so
                 # show the board they're on. image_for() returns None when we
                 # have no photo for this board — then it's the old text-only
@@ -2899,7 +2955,7 @@ class BirthScreen(BoxLayout):
                 # it's telling the operator to press buttons on").
                 from ui import board_images
                 board_png = board_images.image_for(getattr(self, "_last_board", None))
-                view = requirement_popup(body, "Build didn't finish", False,
+                view = requirement_popup(body, tr("Build didn't finish"), False,
                                          image_path=board_png)
                 # Bring the chooser back so the operator can rerun, but KEEP
                 # the log below — it names what failed.
@@ -2907,7 +2963,7 @@ class BirthScreen(BoxLayout):
                           self._exit_flash_view(keep_list=True))
                 return
             onboarding = getattr(self._workflow, "onboarding", None)
-            nm = (onboarding or {}).get("node_name", "") or "the node"
+            nm = (onboarding or {}).get("node_name", "") or tr("the node")
             # IS THIS THE END, OR A WAYPOINT? Green is the colour of arrival,
             # and it was being spent on both. Flashing the radio cleanly at
             # step 5 of a 10-step Pi build raised the full green "Build
@@ -2929,7 +2985,7 @@ class BirthScreen(BoxLayout):
             except Exception:                                      # noqa: BLE001
                 more_to_come = False
             _tone = "progress" if more_to_come else "success"
-            _btn = "Continue" if more_to_come else None
+            _btn = tr("Continue") if more_to_come else None
             if onboarding:
                 # THE TEST HAS TO BE ONE THE KEEPER CAN RUN. This told them to
                 # read the board's screen — and the catalogue records boards
@@ -2946,21 +3002,24 @@ class BirthScreen(BoxLayout):
                         or "")
                 except Exception:                                  # noqa: BLE001
                     _screened = False
-                _setup = ("The setup details are printed in the build log — "
-                          "join the 'RTNode-Setup' WiFi and enter them at "
-                          "http://10.0.0.1.")
+                _setup = (tr("The setup details are printed in the build log — "
+                             "join the 'RTNode-Setup' WiFi and enter them at "
+                             "http://10.0.0.1."))
                 if _screened:
-                    _how = ("If its screen still says CONFIG MODE, it still "
-                            f"needs setting up. {_setup} If it shows its "
-                            "status screen, it's already configured — watch "
-                            "VITALS for its first health beacon.")
+                    _how = tr("If its screen still says CONFIG MODE, it still "
+                              "needs setting up. {setup} If it shows its "
+                              "status screen, it's already configured — watch "
+                              "VITALS for its first health beacon.").format(
+                                  setup=_setup)
                 else:
-                    _how = ("Watch VITALS for its first health beacon — that "
-                            "is this node saying it is up and configured. If "
-                            f"nothing arrives, it is still waiting. {_setup}")
+                    _how = tr("Watch VITALS for its first health beacon — that "
+                              "is this node saying it is up and configured. If "
+                              "nothing arrives, it is still waiting. "
+                              "{setup}").format(setup=_setup)
                 view = requirement_popup(
-                    f"Build finished for {nm}.\n\n{_how}",
-                    "Build finished", False, tone=_tone, button_text=_btn)
+                    tr("Build finished for {name}.").format(name=nm)
+                    + "\n\n" + _how,
+                    tr("Build finished"), False, tone=_tone, button_text=_btn)
             elif getattr(self, "_last_type", "") == "pi_rnode":
                 # Name the physical action — WHEN THERE IS ONE. "Unplug BOTH
                 # boards from Node Medic" is only true if something is
@@ -2976,27 +3035,28 @@ class BirthScreen(BoxLayout):
                 on_medic = radio_on or pi_on
                 if on_medic:
                     b = getattr(self, "_last_board", None)
-                    bn = b.display_name if b is not None else "the radio"
+                    bn = b.display_name if b is not None else tr("the radio")
                     # Name only the unplugs that are REAL. Three cases, and
                     # the old copy asserted the first for all of them.
                     if radio_on and pi_on:
-                        what = "Unplug both boards from Node Medic"
+                        what = tr("Unplug both boards from Node Medic")
                     elif pi_on:
-                        what = "Unplug the Pi from Node Medic"
+                        what = tr("Unplug the Pi from Node Medic")
                     else:
-                        what = "Take the radio off Node Medic"
+                        what = tr("Take the radio off Node Medic")
                     view = requirement_popup(
-                        f"Built — but not finished yet.\n\n{what}, plug {bn} "
-                        f"into the Pi's DATA port, and give the Pi its own "
-                        f"power supply.\n\n"
-                        f"The full steps are on the screen behind this.",
-                        "One last step", False, tone=_tone, button_text=_btn)
+                        tr("Built — but not finished yet.\n\n{what}, plug {board} "
+                           "into the Pi's DATA port, and give the Pi its own "
+                           "power supply.\n\n"
+                           "The full steps are on the screen behind this.").format(
+                               what=what, board=bn),
+                        tr("One last step"), False, tone=_tone, button_text=_btn)
                 else:
                     view = requirement_popup(
-                        f"Built. {nm} is provisioned and its radio is already "
-                        f"in place — nothing here needs moving. Watch VITALS "
-                        f"for its first health beacon.",
-                        "Finished", False, tone=_tone, button_text=_btn)
+                        tr("Built. {name} is provisioned and its radio is already "
+                           "in place — nothing here needs moving. Watch VITALS "
+                           "for its first health beacon.").format(name=nm),
+                        tr("Finished"), False, tone=_tone, button_text=_btn)
             else:
                 # A WAYPOINT DOES NOT SAY "FINISHED" — NOR IN ITS TITLE
                 # (operator, mid-build 2026-09-07, looking at the new blue
@@ -3013,38 +3073,38 @@ class BirthScreen(BoxLayout):
                 # ago. It stays on the standalone card, where it is true.
                 if more_to_come:
                     view = requirement_popup(
-                        "The radio is flashed and verified, and its birth "
-                        "certificate is in the log below.\n\n"
-                        "The build carries on behind this card.",
-                        "Radio flashed", False, tone=_tone, button_text=_btn)
+                        tr("The radio is flashed and verified, and its birth "
+                           "certificate is in the log below.\n\n"
+                           "The build carries on behind this card."),
+                        tr("Radio flashed"), False, tone=_tone, button_text=_btn)
                 # A USB-verified build (T-Echo tier) demonstrated no beacon —
                 # promising one on VITALS would be a claim nothing checked.
                 elif getattr(getattr(self._workflow, "target", None), "verify",
                              "") == "eeprom":
                     view = requirement_popup(
-                        "Build finished — details and the birth certificate "
-                        "are in the build log below. The node was verified "
-                        "over USB; when it is heard over LoRa it will appear "
-                        "in VITALS.",
-                        "Build finished", False, tone=_tone, button_text=_btn)
+                        tr("Build finished — details and the birth certificate "
+                           "are in the build log below. The node was verified "
+                           "over USB; when it is heard over LoRa it will appear "
+                           "in VITALS."),
+                        tr("Build finished"), False, tone=_tone, button_text=_btn)
                 elif getattr(self, "_last_type", "") == "rnode":
                     # An RNode is a bare RADIO for a phone/computer — it does not
                     # run the mesh and never beacons, so "watch VITALS" would
                     # send the keeper looking for something that can't appear
                     # (walkthrough 2026-08-26, Tomas). Say what it's FOR.
                     view = requirement_popup(
-                        "Build finished — the radio is flashed and verified, "
-                        "and its birth certificate is in the log below.\n\n"
-                        "This is a radio to plug into a phone or computer. It "
-                        "won't show up in VITALS on its own — that's normal; "
-                        "VITALS is for nodes that run the mesh themselves.",
-                        "Build finished", False, tone=_tone, button_text=_btn)
+                        tr("Build finished — the radio is flashed and verified, "
+                           "and its birth certificate is in the log below.\n\n"
+                           "This is a radio to plug into a phone or computer. It "
+                           "won't show up in VITALS on its own — that's normal; "
+                           "VITALS is for nodes that run the mesh themselves."),
+                        tr("Build finished"), False, tone=_tone, button_text=_btn)
                 else:
                     view = requirement_popup(
-                        "Build finished — details and the birth certificate are in "
-                        "the build log below. Watch VITALS for the node's first "
-                        "health beacon.",
-                        "Build finished", False, tone=_tone, button_text=_btn)
+                        tr("Build finished — details and the birth certificate "
+                           "are in the build log below. Watch VITALS for the "
+                           "node's first health beacon."),
+                        tr("Build finished"), False, tone=_tone, button_text=_btn)
             # Dismissing the success card SCROLLS TO THE CERTIFICATE (QR
             # included) — going straight home raced past it (operator spec
             # 2026-08-01: 'let the user see the birth screen with QR code for
@@ -3065,7 +3125,7 @@ class BirthScreen(BoxLayout):
         never left staring at a finished log wondering what to do."""
         board = getattr(self, "_last_board", None)
         if getattr(self, "_had_failure", False):
-            self.list.add_widget(_line("X  Something didn't finish", bold=True,
+            self.list.add_widget(_line(tr("X  Something didn't finish"), bold=True,
                                        size="18sp", color="red"))
             from ui.safety import recovery_for_board
             # The won't-flash ritual is advice for a FLASH failure only. When
@@ -3075,18 +3135,19 @@ class BirthScreen(BoxLayout):
             wrote_firmware = "firmware IS on the board" in " ".join(
                 getattr(self, "_failure_messages", []))
             if wrote_firmware:
-                self.list.add_widget(_line(
+                self.list.add_widget(_line(tr(
                     "The firmware reached the board — a later step didn't "
                     "finish. Run it again; the medic resets the board itself, "
-                    "so no buttons are needed.", size="14sp", color="amber"))
+                    "so no buttons are needed."), size="14sp", color="amber"))
             else:
-                self.list.add_widget(_line(
+                self.list.add_widget(_line(tr(
                     "Fix the failed step above and run it again. If the board "
-                    f"won't flash: {recovery_for_board(board)}  If it still "
-                    "won't, try a short, known-good USB data cable.",
+                    "won't flash: {recover}  If it still "
+                    "won't, try a short, known-good USB data cable.").format(
+                        recover=recovery_for_board(board)),
                     size="14sp", color="amber"))
             return
-        self.list.add_widget(_line("OK  Done!", bold=True, size="20sp",
+        self.list.add_widget(_line(tr("OK  Done!"), bold=True, size="20sp",
                                    color="green"))
         # THE HAND-OFF. On the cable path the Pi and the radio have spent the
         # whole build on Node Medic and are still there; the node does not exist
@@ -3096,20 +3157,22 @@ class BirthScreen(BoxLayout):
         # dismissed popup is no use once your hands are full.
         if getattr(self, "_last_type", "") == "pi_rnode":
             self._handoff_block(board)
-            self.list.add_widget(_line("Birth another with Change at the top, "
-                                       "or hit BACK.", size="13sp",
+            self.list.add_widget(_line(tr("Birth another with Change at the top, "
+                                          "or hit BACK."), size="13sp",
                                        color="text_secondary"))
             return
         if board is not None:
-            nxt = (f"{board.display_name} is flashed & verified as an RNode on the "
-                   "standard channel (915.125 / 125 / SF9 / CR5 / 17 dBm). "
-                   "Unplug it and fit it to its node/Pi - it's ready to run.")
+            nxt = tr("{board} is flashed & verified as an RNode on the "
+                     "standard channel (915.125 / 125 / SF9 / CR5 / 17 dBm). "
+                     "Unplug it and fit it to its node/Pi - it's ready to "
+                     "run.").format(board=board.display_name)
         else:
-            nxt = ("Node provisioned on the standard channel. Give it power and "
-                   "its antenna; it will announce and appear in VITALS as kin.")
+            nxt = tr("Node provisioned on the standard channel. Give it power and "
+                     "its antenna; it will announce and appear in VITALS as kin.")
         self.list.add_widget(_line(nxt, size="15sp"))
-        self.list.add_widget(_line("Birth another with Change at the top, or hit "
-                                   "BACK.", size="13sp", color="text_secondary"))
+        self.list.add_widget(_line(tr("Birth another with Change at the top, "
+                                      "or hit BACK."), size="13sp",
+                                   color="text_secondary"))
 
     def _handoff_photos(self, board):
         """The Pi and the radio, side by side, with a joining arrow."""
@@ -3131,13 +3194,14 @@ class BirthScreen(BoxLayout):
             return col
 
         row.add_widget(_cell(board_png,
-                             getattr(board, "display_name", "the radio")))
+                             getattr(board, "display_name", tr("the radio"))))
         arrow = _line("->", size="30sp", bold=True, color="green")
         arrow.size_hint_x = None
         arrow.width = dp(44)
         row.add_widget(arrow)
         row.add_widget(_cell(pi_png, next(
-            (n for k, n in PI_HOSTS if k == pi_key), "the Raspberry Pi")))
+            (tr(n) for k, n in PI_HOSTS if k == pi_key),
+            tr("the Raspberry Pi"))))
         return row
 
     def _whats_on_the_medic(self):
@@ -3177,16 +3241,16 @@ class BirthScreen(BoxLayout):
         the model can't drift apart, and so the radio's stable port name is
         stated where the operator is about to move it.
         """
-        pi_name = "the Raspberry Pi"
+        pi_name = tr("the Raspberry Pi")
         try:
             pi_name = next((n for k, n in PI_HOSTS
                             if self._sel_pi and k == self._sel_pi[0]), pi_name)
         except Exception:
             pass
-        board_name = board.display_name if board is not None else "the radio"
+        board_name = board.display_name if board is not None else tr("the radio")
 
         self.list.add_widget(_line(
-            "Last step - join them together", bold=True, size="17sp",
+            tr("Last step - join them together"), bold=True, size="17sp",
             color="accent"))
         # Show the ACTUAL two boards, not a diagram. The operator is holding
         # them; matching what's on screen to what's in their hands is the whole
@@ -3204,11 +3268,15 @@ class BirthScreen(BoxLayout):
         # two boards. Two opposite instructions on one screen (2026-09-09).
         radio_on, pi_on = self._whats_on_the_medic()
         if radio_on and pi_on:
-            first = f"1.  Unplug both the {pi_name} and the {board_name} from Node Medic."
+            first = "1.  " + tr("Unplug both the {pi} and the {board} from "
+                                "Node Medic.").format(pi=pi_name,
+                                                      board=board_name)
         elif pi_on:
-            first = f"1.  Unplug the {pi_name} from Node Medic."
+            first = "1.  " + tr("Unplug the {pi} from Node Medic.").format(
+                pi=pi_name)
         elif radio_on:
-            first = f"1.  Take the {board_name} off Node Medic."
+            first = "1.  " + tr("Take the {board} off Node Medic.").format(
+                board=board_name)
         else:
             first = ""          # nothing is attached; do not invent an unplug
         # PER-BOARD SOCKETS. "PWR IN" and "nearer the mini-HDMI" are Pi Zero
@@ -3224,16 +3292,19 @@ class BirthScreen(BoxLayout):
             power = ""
         steps = [x for x in (
             first,
-            f"{'2' if first else '1'}.  Plug the {board_name} into the "
-            f"{pi_name} with a short DATA cable.",
+            f"{'2' if first else '1'}.  "
+            + tr("Plug the {board} into the {pi} "
+                 "with a short DATA cable.").format(board=board_name,
+                                                    pi=pi_name),
             (f"{'3' if first else '2'}.  {power}" if power else
-             f"{'3' if first else '2'}.  Give the {pi_name} its own power supply."),
+             f"{'3' if first else '2'}.  "
+             + tr("Give the {pi} its own power supply.").format(pi=pi_name)),
         ) if x]
         for line in steps:
             self.list.add_widget(_line(line, size="15sp"))
-        self.list.add_widget(_line(
+        self.list.add_widget(_line(tr(
             "It starts up, finds its radio and announces itself - watch VITALS "
-            "for its first health beacon.", size="14sp", color="green"))
+            "for its first health beacon."), size="14sp", color="green"))
         # Which radio, specifically. The Pi's config names one port.
         try:
             from provisioning.cable_birth import stable_port_for, unmoved_warning
@@ -3250,9 +3321,11 @@ class BirthScreen(BoxLayout):
             v = _power_check(pi_key, bkey) if (pi_key and bkey) else None
             if v and v.get("verdict") in ("blocked", "caution"):
                 self.list.add_widget(_line(
-                    f"Note: Node Medic was powering the {board_name} during the "
-                    f"build. Once it runs off the {pi_name} the pairing's own "
-                    f"limits apply - {v.get('why', '')}", size="13sp",
+                    tr("Note: Node Medic was powering the {board} during the "
+                       "build. Once it runs off the {pi} the pairing's own "
+                       "limits apply - {why}").format(
+                           board=board_name, pi=pi_name,
+                           why=v.get("why", "")), size="13sp",
                     color="amber"))
         except Exception:
             pass
@@ -3265,8 +3338,8 @@ class BirthScreen(BoxLayout):
         self._hand_back_to_guide()
         onboarding = getattr(self._workflow, "onboarding", None)
         if onboarding:
-            self.list.add_widget(_line("Onboarding (enter at RTNode-Setup / "
-                                       "http://10.0.0.1):", bold=True,
+            self.list.add_widget(_line(tr("Onboarding (enter at RTNode-Setup / "
+                                          "http://10.0.0.1):"), bold=True,
                                        size="16sp"))
             for k in ("node_name", "ssid", "psk", "freq", "bw", "sf", "cr",
                       "txp", "advert_en", "advert_lat", "advert_lon",
@@ -3274,7 +3347,7 @@ class BirthScreen(BoxLayout):
                 if k not in onboarding:
                     continue
                 v = onboarding.get(k, "")
-                shown = v if v != "" else "____  (operator)"
+                shown = v if v != "" else "____  " + tr("(operator)")
                 # NEVER print the Wi-Fi password on the panel. This block is the
                 # manual fallback - the values to type into the board's portal
                 # by hand - and the operator is typing their OWN network's
@@ -3285,7 +3358,7 @@ class BirthScreen(BoxLayout):
                 # here"). Certificates do not store it (checked: 20 on disk, 0
                 # carrying a psk) - so this screen was the whole exposure.
                 if k == "psk" and v:
-                    shown = "\u2022" * 8 + "   (your Wi-Fi password)"
+                    shown = "\u2022" * 8 + "   " + tr("(your Wi-Fi password)")
                 self.list.add_widget(_line(f"    {k}: {shown}", size="13sp"))
 
         cert = getattr(self._workflow, "birth_certificate", None)
@@ -3405,8 +3478,9 @@ class BirthScreen(BoxLayout):
         # that passes every step and then shows as a grey row for days is the
         # failure the operator has hit repeatedly (SkyFinger, 2026-08-11).
         self._add_report_verdict()
-        self.list.add_widget(_line("Birth certificate:", bold=True, size="16sp"))
-        self.list.add_widget(_line("    (saved on this Node Medic)",
+        self.list.add_widget(_line(tr("Birth certificate:"), bold=True,
+                                   size="16sp"))
+        self.list.add_widget(_line("    " + tr("(saved on this Node Medic)"),
                                    size="12sp", color="text_secondary"))
         for k, v in cert.items():
             if k.startswith("_"):
@@ -3417,7 +3491,7 @@ class BirthScreen(BoxLayout):
         # The ceremony's closing act: a deliberate DONE under the certificate
         # (all births) — auto-home raced past the cert + QR (operator spec
         # 2026-08-01).
-        done = Button(text="Done — back to home", size_hint_y=None,
+        done = Button(text=tr("Done — back to home"), size_hint_y=None,
                       height=dp(56), bold=True, font_size="17sp",
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -3701,11 +3775,11 @@ class BirthScreen(BoxLayout):
         """Notes are asked HERE — after the certificate is out — then saved onto
         the stored cert (and regenerate the QR so a scan carries them too)."""
         self.list.add_widget(Widget(size_hint_y=None, height=dp(8)))
-        self.list.add_widget(_line("Add notes", bold=True, size="16sp",
+        self.list.add_widget(_line(tr("Add notes"), bold=True, size="16sp",
                                    color="accent"))
         self._end_notes_in.text = getattr(self, "_cert", {}).get("notes", "")
         self.list.add_widget(self._end_notes_in)
-        save = Button(text="Save notes to certificate", size_hint_y=None,
+        save = Button(text=tr("Save notes to certificate"), size_hint_y=None,
                       height=dp(48), bold=True, background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -3723,7 +3797,8 @@ class BirthScreen(BoxLayout):
         if self._saved_cert_id:
             from ui.cert_store import update_notes
             update_notes(self._saved_cert_id, notes)
-        self._notes_status.text = "Saved. (The QR above now includes the notes.)"
+        self._notes_status.text = tr("Saved. (The QR above now includes the "
+                                     "notes.)")
         # refresh the QR so a fresh scan carries the notes
         self._add_cert_qr(cert)
 
@@ -3780,12 +3855,13 @@ class BirthScreen(BoxLayout):
         self._qr_widgets = []
         matrix = qr_matrix(birth_cert_payload(cert))
         if not matrix:
-            w = _line("    (install 'segno' on the medic to show a scannable QR)",
+            w = _line("    " + tr("(install 'segno' on the medic to show a "
+                                  "scannable QR)"),
                       color="text_secondary", size="12sp")
             self.list.add_widget(w)
             self._qr_widgets = [w]
             return
-        lbl = _line("Scan to save this certificate:", bold=True, size="15sp")
+        lbl = _line(tr("Scan to save this certificate:"), bold=True, size="15sp")
         self.list.add_widget(lbl)
         qr = QRCodeWidget(matrix)
         holder = AnchorLayout(anchor_x="center", size_hint_y=None,
