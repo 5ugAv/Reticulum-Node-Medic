@@ -249,6 +249,12 @@ _REAL_METHODS = [
     "_pi_key_for_text", "_on_board_present", "_on_board_absent",
     "_on_card_seen", "_on_card_gone", "_advance_after_card",
     "_on_node_online", "_pi_proven",
+    # _counter joined the driven set when the breaker merge (2026-09-13) made
+    # _render_step's family consult it — the harness missing it broke 489
+    # walks, hidden for two days behind a `pytest | tail` pipeline that
+    # reported tail's exit code (the SAME trap WORKING_METHOD logged on
+    # 2026-08-14; pipefail or read-the-summary-line, never trust the pipe).
+    "_counter", "_lead_screens", "_next_text_for",
 ]
 
 _SHARED_NS = {
@@ -264,6 +270,11 @@ _SHARED_NS = {
     "InsertSdIntoPiAnim": FInsertSdIntoPi, "SdHandoverAnim": FSdHandover,
     "ProvisionAnim": FProvision, "ProvisionOverCableAnim": FProvisionCable,
     "tr": tr,
+    # The month's fail-closed firmware check (2026-09-09): reads the by-id
+    # product string; every harness board presents as "usb-Espressif" (no
+    # "rtnode"), for which the shipped function answers True — so the
+    # stand-in answers the same, faithfully (reconciliation, 2026-09-15).
+    "_is_rnode_firmware": lambda port: True,
 }
 
 
@@ -314,7 +325,10 @@ class DrivenGuide:
         self._i = 0
         self._current = None
         self._node_name = ""
-        self._on_complete = (lambda path, name:
+        # The RTNode hand-off grew keyword answers (share_location, the
+        # placed pin — breaker fix 4, 2026-09-13); the stub swallows them,
+        # recording only what the walk laws assert on.
+        self._on_complete = (lambda path, name, **kw:
                              setattr(self, "ended", ("complete", path)))
         self._on_navigate = self._record_nav
         self.reset()

@@ -564,3 +564,17 @@ action package is imported by nothing outside `tests/`. For firmware, the
 equivalent question has to be asked by a person: *has this target ever been
 executed, by anyone?* If the answer is no, treat the code as unverified
 regardless of how finished it looks — and say so in the commit.
+
+## Update — 2026-09-15: the pipe swallowed pytest again, same author
+
+The 2026-08-14 entry below records `pytest | tail -1` shipping a SyntaxError
+because the pipeline reports tail's exit, not pytest's. On 2026-09-13 the
+same construction hid 489 walkthrough-matrix failures across TWO deploys —
+the harness had never learned `_counter` when the breaker merge made the
+screen call it, and every "suite green" claim in between was tail's opinion.
+A subagent's careful foreground run caught it two days later.
+
+**Protocol, hardened:** never gate a commit on a piped pytest. Either read
+the summary line and the exit code separately, or `set -o pipefail`. A
+lesson written down but not turned into a habit is a lesson scheduled to
+repeat — this is the second time, and the entry exists so there is no third.
