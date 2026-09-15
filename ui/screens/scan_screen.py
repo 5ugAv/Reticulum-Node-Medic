@@ -917,6 +917,12 @@ class MapPlot(Widget):
         return (clat - (n - s) / 2 * f, clat + (n - s) / 2 * f,
                 clon - (e - w) / 2 * f, clon + (e - w) / 2 * f)
 
+    def set_walk_trail(self, points):
+        """The boundary walk's ping history: [{lat, lon, connected}]. [] ends
+        the overlay. Redraw is triggered; the walk owns the cadence."""
+        self._walk_trail = list(points or ())
+        self._trigger()
+
     def _draw_tiled(self, pts, bbox, fill=None):
         from ui.map_tiles import view_at
         if self._center is not None and self._zoom is not None:
@@ -951,6 +957,22 @@ class MapPlot(Widget):
             for t in tiles_for_view(view):
                 self._draw_tile(t)
             self._draw_terrain(view)              # high/low wash UNDER everything
+            # BOUNDARY WALK TRAIL (operator spec 2026-08-13, built
+            # 2026-09-15): every ping the walk has taken, where it happened —
+            # green answered, red silent. Drawn over tiles, under nodes, so
+            # the trail reads as history beneath the live mesh.
+            for wp in getattr(self, "_walk_trail", ()):
+                if wp.get("lat") is None:
+                    continue
+                from ui.map_tiles import project_px
+                wx, wy = project_px(wp["lat"], wp["lon"], view.zoom)
+                sx = self.x + (wx - view.off_x)
+                sy = self.y + view.height - (wy - view.off_y)
+                good = wp.get("connected")
+                Color(*((0.24, 0.78, 0.35, 0.95) if good
+                        else (0.86, 0.16, 0.12, 0.95)))
+                d = dp(7) if good else dp(9)
+                Ellipse(pos=(sx - d / 2, sy - d / 2), size=(d, d))
             self._draw_links(view)                # faint connection lines UNDER dots
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
@@ -2054,3 +2076,138 @@ class ScanScreen(BoxLayout):
         else:
             self._set_status(tr("Download failed — no tiles cached. Check the "
                                 "connection and try again."), "alert")
+
+    # -- the boundary walk (operator spec 2026-08-13; built 2026-09-15) -----
+
+    def begin_walk(self, record, ping_fn, on_finished=None):
+        """Walk-away range truth for ONE node, folded into MAPS as ordered
+        ("fold it into the map view", 2026-08-13 — no seventh mode). The
+        engine is monitor.boundary_walk; this renders it: a banner that
+        flashes MESH CONNECTION LOST at the found boundary, a Stop that
+        banks the evidence, and the ping trail on the map itself."""
+        import time as _t
+        from monitor.boundary_walk import BoundaryWalkSession
+        self.end_walk(persist=False)          # one walk at a time
+        self._walk = BoundaryWalkSession(
+            node_key=record.dst_hash, node_name=record.name or record.dst_hash[:8],
+            node_lat=record.lat, node_lon=record.lon, now=_t.time())
+        self._walk_ping_fn = ping_fn
+        self._walk_done_cb = on_finished
+        from kivy.uix.button import Button
+        hud = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(54), spacing=dp(8))
+        self._walk_lbl = Label(text=tr("Boundary walk — walk away from "
+                                       "{name}. Pinging…").format(
+                                           name=self._walk.node_name),
+                               bold=True, font_size=theme.font_sp("16sp"),
+                               color=theme.hex_to_rgba(theme.COLORS["background"]))
+        with self._walk_lbl.canvas.before:
+            from kivy.graphics import Color as _C, Rectangle as _R
+            self._walk_bg_col = _C(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
+            self._walk_bg = _R()
+        self._walk_lbl.bind(pos=self._walk_fit, size=self._walk_fit)
+        stop = Button(text=tr("Stop walk"), size_hint_x=None, width=dp(110),
+                      bold=True, background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        stop.bind(on_release=lambda *_: self.end_walk())
+        hud.add_widget(self._walk_lbl)
+        hud.add_widget(stop)
+        self._walk_hud = hud
+        self.add_widget(hud, index=len(self.children))   # top of the screen
+        from kivy.clock import Clock as _Clock
+        self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
+        self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
+        self._walk_flash_on = False
+
+    def _walk_fit(self, *_):
+        self._walk_bg.pos = self._walk_lbl.pos
+        self._walk_bg.size = self._walk_lbl.size
+
+    def _walk_tick(self, _dt):
+        import time as _t
+        w = getattr(self, "_walk", None)
+        if w is None or not w.due(_t.time()):
+            return
+        w.begin_ping(_t.time())
+
+        def _report(ok, snr_db=None):
+            from kivy.clock import Clock as _Clock
+            _Clock.schedule_once(lambda _d: self._walk_result(ok, snr_db), 0)
+        try:
+            self._walk_ping_fn(w.node_key, _report)
+        except Exception:                                          # noqa: BLE001
+            _report(False)
+
+    def _walk_result(self, ok, snr_db):
+        import time as _t
+        w = getattr(self, "_walk", None)
+        if w is None:
+            return
+        gps = None
+        try:
+            gps = self._gps_reader() if callable(self._gps_reader) else None
+        except Exception:                                          # noqa: BLE001
+            gps = None
+        w.ping_result(_t.time(), ok, snr_db=snr_db, gps=gps)
+        self.plot.set_walk_trail(w.samples)
+        if w.state != "lost":
+            text, _f = w.banner()
+            self._walk_lbl.text = text
+            self._walk_bg_col.rgba = theme.hex_to_rgba(theme.COLORS["green"])
+            self._walk_lbl.color = theme.hex_to_rgba(theme.COLORS["background"])
+
+    def _walk_flash(self, _dt):
+        """The found boundary flashes yellow/black, as specified on the bench
+        (2026-08-13). Steady green otherwise — a banner that flashes for
+        anything less teaches eyes to ignore it."""
+        w = getattr(self, "_walk", None)
+        if w is None or w.state != "lost":
+            return
+        self._walk_flash_on = not getattr(self, "_walk_flash_on", False)
+        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+        black = (0.05, 0.05, 0.05, 1)
+        self._walk_lbl.text, _f = w.banner()
+        if self._walk_flash_on:
+            self._walk_bg_col.rgba = yellow
+            self._walk_lbl.color = black
+        else:
+            self._walk_bg_col.rgba = black
+            self._walk_lbl.color = yellow
+
+    def end_walk(self, persist=True):
+        """Stop, bank the evidence, tell the story. Safe to call idle."""
+        w = getattr(self, "_walk", None)
+        for ev in ("_walk_ev", "_walk_flash_ev"):
+            e = getattr(self, ev, None)
+            if e is not None:
+                e.cancel()
+                setattr(self, ev, None)
+        hud = getattr(self, "_walk_hud", None)
+        if hud is not None and hud.parent is not None:
+            self.remove_widget(hud)
+        self._walk_hud = None
+        self.plot.set_walk_trail([])
+        self._walk = None
+        if w is None or not persist:
+            return
+        try:
+            from monitor.boundary_walk import append_evidence
+            from monitor.topology import MEDIC_ID
+            obs, fails = w.evidence(medic_id=MEDIC_ID)
+            append_evidence(obs, fails)
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(
+                w.summary() + "\n\n" + tr(
+                    "{o} link sightings and {f} boundary losses banked as "
+                    "range evidence.").format(o=len(obs), f=len(fails)),
+                tr("Boundary walk finished"), False, tone="success")
+        except Exception:                                          # noqa: BLE001
+            pass
+        cb = getattr(self, "_walk_done_cb", None)
+        if cb is not None:
+            try:
+                cb(w)
+            except Exception:                                      # noqa: BLE001
+                pass
+

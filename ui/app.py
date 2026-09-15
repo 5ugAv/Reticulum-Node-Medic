@@ -715,8 +715,35 @@ class ReticulumNodeMedicApp(App):
                 return []
             if self._scan_recs_cache[0] is topo:
                 return self._scan_recs_cache[1]
+            # The boundary walk's banked evidence feeds the same spine
+            # (first live producer, 2026-09-15): sightings widen the store,
+            # losses bound the tail — placement plans on what was WALKED.
+            store = fails = None
+            try:
+                from monitor.boundary_walk import (load_walk_failures,
+                                                   load_walk_observations)
+                from monitor.synapse_links import LinkObservationStore
+                wobs = load_walk_observations()
+                if wobs:
+                    store = LinkObservationStore()
+                    for o in wobs:
+                        store.add(o)
+                fails = load_walk_failures() or None
+            except Exception:                                      # noqa: BLE001
+                store = fails = None
+            kw = {}
+            if store is not None:
+                kw["store"] = store
+            if fails:
+                # recommend() has no failures input — negative evidence
+                # enters through the range estimate, per synapse_range.
+                from monitor.synapse_range import estimate_range
+                from monitor.synapse_links import LinkObservationStore
+                kw["range_estimate"] = estimate_range(
+                    store or LinkObservationStore(), failures=fails)
             recs = scan_recommendations(topo,
-                                        registry=self.monitor_service.registry)
+                                        registry=self.monitor_service.registry,
+                                        **kw)
             positions = {n.id: (n.lat, n.lon) for n in topo.nodes
                          if n.lat is not None and n.lon is not None}
             markers = recommendation_markers(recs, positions)
@@ -1733,7 +1760,7 @@ class ReticulumNodeMedicApp(App):
         scr.clear_widgets()
         scr.add_widget(self._with_back(NodeDetailScreen(
             rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
-            on_forget=self._forget_node,
+            on_forget=self._forget_node, on_walk=self._start_boundary_walk,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps)))
         self.switch_mode("node_detail")
@@ -1748,6 +1775,37 @@ class ReticulumNodeMedicApp(App):
             return -_t.timezone / 3600.0
         except Exception:
             return 0.0
+
+    def _start_boundary_walk(self, record):
+        """Node detail -> MAPS with the walk running (spec 2026-08-13: fold
+        it into the map view — no seventh mode)."""
+        try:
+            self.switch_mode("scan")
+            self.scan_screen.begin_walk(record, self._walk_probe)
+        except Exception as e:                                     # noqa: BLE001
+            print(f"[walk] could not start: {e}", flush=True)
+
+    def _walk_probe(self, dst_hash, report):
+        """One boundary-walk ping: drop the cached path (cached paths lie),
+        request a fresh one, wait up to 15 s — inside the 20 s cadence. Same
+        honesty rules as _ping_node below, without the health-pull weight:
+        the walk asks ONE question, "is the mesh road there right now"."""
+        import threading
+        from monitor.mesh import parse_path_probe
+
+        def work():
+            ok = False
+            try:
+                probe = self.monitor_service.registry.probe_hash_for(
+                    dst_hash or "")
+                if probe:
+                    _local_run(f"rnpath --drop {probe} 2>/dev/null")
+                    out = _local_run(f"rnpath -w 15 {probe} 2>/dev/null")
+                    ok, _hops = parse_path_probe(out)
+            except Exception:                                      # noqa: BLE001
+                ok = False
+            report(bool(ok))
+        threading.Thread(target=work, daemon=True).start()
 
     def _ping_node(self, dst_hash, report):
         """Live mesh reachability check. Drop the (possibly stale) cached path —

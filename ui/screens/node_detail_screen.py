@@ -84,7 +84,7 @@ def _reading(record, name):
 
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
-                 on_forget=None,
+                 on_forget=None, on_walk=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
                  capabilities=None, **kwargs):
@@ -96,6 +96,7 @@ class NodeDetailScreen(BoxLayout):
         self._on_poll = on_poll
         self._on_forget = on_forget
         self._on_navigate = on_navigate
+        self._on_walk = on_walk
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
         # must not have a repair button appear that quietly does nothing.
@@ -343,6 +344,23 @@ class NodeDetailScreen(BoxLayout):
                              color=theme.hex_to_rgba(theme.COLORS["background"]))
             nav_btn.bind(on_release=lambda *_: self._navigate())
             actions.add_widget(nav_btn)
+        if self._on_walk is not None:
+            # BOUNDARY WALK (spec 2026-08-13, built 2026-09-15): walk away
+            # from this node with the medic; MAPS pings it every 20 s and
+            # flashes at the found boundary. Its own row — the actions row
+            # above once squeezed two buttons into "mapelete" (2026-08-14).
+            walk_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                 height=dp(52), spacing=dp(8))
+            walk = Button(text=tr("Boundary walk — find this node's reach"),
+                          font_size=theme.font_sp("16sp"), bold=True,
+                          background_normal="",
+                          background_color=theme.hex_to_rgba(
+                              theme.COLORS["accent"]),
+                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+            walk.bind(on_release=lambda *_: self._on_walk(self.record))
+            walk_row.add_widget(walk)
+            self._walk_row = walk_row
+
         if self._on_forget is not None:
             # DELETE, behind the danger confirm (operator request, 2026-08-13)
             # — and on its OWN ROW since 2026-08-14 (briefing Task 11): packed
@@ -375,6 +393,9 @@ class NodeDetailScreen(BoxLayout):
             rb.bind(on_release=lambda *_: self._rebirth())
             actions.add_widget(rb)
         self.add_widget(actions)
+        if getattr(self, "_walk_row", None) is not None:
+            self.add_widget(self._walk_row)
+            self._walk_row = None
         if getattr(self, "_danger_row", None) is not None:
             self.add_widget(self._danger_row)
             self._danger_row = None
