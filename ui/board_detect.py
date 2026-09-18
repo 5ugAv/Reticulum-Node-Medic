@@ -255,11 +255,13 @@ def firmware_options(chip: Optional[str],
     """Firmware the board can take, best-first.
 
     The chip decides for ESP32-S3 (every S3 we stock has an RTNode-2400 build).
-    Elsewhere the chip is NOT enough: "nrf52840" covers the T-Echo, which HAS a
-    proven RTNode-2400 build (2026-08-19), and the RAK4631/T114, which do not —
-    so a positively identified board is asked against the build registry
-    itself. An unidentified nRF52 stays RNode-only: offering a build that three
-    of four candidates cannot take is the wrong kind of fail-open.
+    Elsewhere the chip is NOT enough: "nrf52840" covers the T-Echo and T114,
+    which HAVE proven RTNode-2400 builds (2026-08-19 and 2026-08-21 — the
+    operator remembered the T114's setup graphics when this docstring still
+    denied it, 2026-09-18), and the RAK4631, which does not — so a positively
+    identified board is asked against the build registry itself. An
+    unidentified nRF52 stays RNode-only: offering a build some candidates
+    cannot take is the wrong kind of fail-open.
     """
     if chip == "esp32s3":
         return ["rtnode2400", "rnode"]
