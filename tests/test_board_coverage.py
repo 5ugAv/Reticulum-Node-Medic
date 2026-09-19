@@ -31,26 +31,45 @@ def test_an_rtnode_is_read_from_its_firmware_line():
     assert classify_cert(c).kind == "rtnode2400"
 
 
-def test_the_t114_at_1_85_is_an_rnode_not_yet_an_rtnode():
-    """The exact board this whole question turned on (2026-09-18): proven as
-    a modem, NOT yet as a pingable node."""
+def test_the_t114_at_1_85_is_AMBIGUOUS_not_assumed_a_modem():
+    """CORRECTED 2026-09-19, by the board itself. This test used to assert
+    "rnode" — because 1.85 looked like the RNode version line. Then a T114
+    was born as a genuine RTNode-2400 and reported 1.85 too: the nRF52
+    RTNode image is built FROM the RNode firmware source. The version is
+    blind on these boards, so an old cert that does not state its node_type
+    is honestly unknown. Guessing "modem" would have written a falsehood
+    into the coverage doc, which exists to be trusted."""
     c = {"node_name": "t115", "board": "Heltec Mesh Node T114", "firmware": "1.85"}
+    assert classify_cert(c).kind == "unknown"
+
+
+def test_a_cert_that_states_its_node_type_is_believed_over_any_version():
+    """Certs written from 2026-09-19 stamp what the build actually made."""
+    c = {"node_name": "RTnodet114", "board": "Heltec Mesh Node T114",
+         "firmware": "1.85", "node_type": "rtnode2400"}
+    assert classify_cert(c).kind == "rtnode2400"
+
+
+def test_an_esp32_at_1_85_is_still_a_modem():
+    """The version DOES decide on the ESP32 targets — their RTNode images
+    carry the 0.x line, so 1.85 there means a stock RNode flash."""
+    c = {"board": "Heltec LoRa32 v4", "firmware": "1.85"}
     assert classify_cert(c).kind == "rnode"
 
 
 def test_coverage_marks_intent_done_only_when_the_ledger_proves_it():
     certs = [
         {"board": "LilyGO T-Echo", "firmware": "0.7.0"},          # rtnode proven
-        {"board": "Heltec Mesh Node T114", "firmware": "1.85"},   # only rnode
+        {"board": "Heltec LoRa32 v4", "firmware": "1.85"},        # modem only
     ]
-    intent = [("Heltec Mesh Node T114", "rtnode2400"),
+    intent = [("Heltec LoRa32 v4", "rtnode2400"),
               ("LilyGO T-Echo", "rtnode2400")]
     rows = coverage(certs, intent)
     by = {(r.board, r.kind): r for r in rows}
     assert by[("LilyGO T-Echo", "rtnode2400")].done is True
-    assert by[("Heltec Mesh Node T114", "rtnode2400")].done is False
-    # ...and the T114's rnode proof is surfaced as context, not counted as the goal
-    assert "rnode" in by[("Heltec Mesh Node T114", "rtnode2400")].note.lower()
+    assert by[("Heltec LoRa32 v4", "rtnode2400")].done is False
+    # ...and its modem proof is surfaced as context, not counted as the goal
+    assert "rnode" in by[("Heltec LoRa32 v4", "rtnode2400")].note.lower()
 
 
 def test_todo_shrinks_when_the_ledger_grows():

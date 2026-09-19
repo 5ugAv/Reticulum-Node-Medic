@@ -951,7 +951,8 @@ class ReticulumNodeMedicApp(App):
             feed_factory=_triage_feed, lighthouse=self._lighthouse,
             on_build=lambda: self.switch_mode("birth"),
             on_home=lambda: self.switch_mode("home"),
-            on_antenna_test=lambda: self.switch_mode("antenna_test"))
+            on_antenna_test=lambda: self.switch_mode("antenna_test"),
+            on_boundary_walk=self._pick_node_for_walk)
         triage.add_widget(self._with_back(self.triage_screen))
         # Opening Triage auto-activates the beacon; leaving it stops the beacon
         # AND the 2 Hz sampling tick.
@@ -1775,6 +1776,87 @@ class ReticulumNodeMedicApp(App):
             return -_t.timezone / 3600.0
         except Exception:
             return 0.0
+
+    def _pick_node_for_walk(self):
+        """ANTENNA's way in: choose WHICH node to walk against, from the ones
+        the medic has actually heard lately (operator, 2026-09-19). The
+        node's own VITALS page keeps its direct button — this is the other
+        door, for the operator standing on a candidate site thinking about
+        placement rather than about one node."""
+        import time as _t
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.button import Button
+        from kivy.uix.label import Label
+        from kivy.uix.scrollview import ScrollView
+        from kivy.metrics import dp
+        from monitor.boundary_walk import (WALK_CANDIDATE_MAX_AGE_H,
+                                           walkable_nodes)
+        from ui.i18n import tr
+        from ui import theme
+        now = _t.time()
+        try:
+            cands = walkable_nodes(self.monitor_service.registry, now)
+        except Exception:                                          # noqa: BLE001
+            cands = []
+        body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        if not cands:
+            # Honest empty state: say WHY there is nothing to offer, and what
+            # would change it — never an empty list with no explanation.
+            msg = Label(
+                text=tr("No node has been heard in the last {h:.0f} hours, so "
+                        "there is nothing to walk against yet. Power a node "
+                        "(or your boundary probe) and wait for it to "
+                        "announce.").format(h=WALK_CANDIDATE_MAX_AGE_H),
+                halign="center", valign="middle",
+                color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            msg.bind(size=lambda i, v: setattr(i, "text_size", v))
+            body.add_widget(msg)
+        else:
+            body.add_widget(Label(
+                text=tr("Walk away from which node?"), bold=True,
+                size_hint_y=None, height=dp(30),
+                color=theme.hex_to_rgba(theme.COLORS["text_primary"])))
+            scroll = ScrollView()
+            col = BoxLayout(orientation="vertical", size_hint_y=None,
+                            spacing=dp(8))
+            col.bind(minimum_height=col.setter("height"))
+            for n in cands:
+                hrs = n["heard_hours"]
+                when = (tr("heard just now") if hrs < 0.1
+                        else tr("heard {m:.0f} min ago").format(m=hrs * 60)
+                        if hrs < 1 else tr("heard {h:.1f} h ago").format(h=hrs))
+                b = Button(text=f"{n['name']}  —  {when}",
+                           size_hint_y=None, height=dp(56), bold=True,
+                           font_size="16sp", background_normal="",
+                           background_color=theme.hex_to_rgba(
+                               theme.COLORS["accent"]),
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+                b.bind(on_release=lambda _b, node=n: (
+                    pop.dismiss(), self._walk_from_pick(node)))
+                col.add_widget(b)
+            scroll.add_widget(col)
+            body.add_widget(scroll)
+        close = Button(text=tr("Cancel"), size_hint_y=None, height=dp(48),
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(
+                           theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        body.add_widget(close)
+        pop = Popup(title=tr("Boundary test"), content=body,
+                    size_hint=(0.92, 0.8), auto_dismiss=True)
+        close.bind(on_release=lambda *_: pop.dismiss())
+        pop.open()
+
+    def _walk_from_pick(self, node):
+        """Start the walk against a picked candidate. The walk engine wants a
+        record-shaped thing (key, name, position); a dict from the picker is
+        adapted here rather than teaching the engine two shapes."""
+        import types
+        rec = types.SimpleNamespace(
+            dst_hash=node["dst_hash"], name=node["name"],
+            lat=node.get("lat"), lon=node.get("lon"))
+        self._start_boundary_walk(rec)
 
     def _start_boundary_walk(self, record):
         """Node detail -> MAPS with the walk running (spec 2026-08-13: fold

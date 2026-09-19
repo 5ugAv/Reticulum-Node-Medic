@@ -26,18 +26,30 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Tuple
 
 
-def FIRMWARE_KIND(firmware: Optional[str]) -> str:
+#: Boards whose RTNode-2400 image is built FROM the RNode firmware source
+#: and therefore reports the RNode version (1.85) — the version cannot tell
+#: the two apart on these, so a cert without an explicit node_type is
+#: honestly ambiguous rather than guessed (2026-09-19, caught when a
+#: freshly born T114 RTNode reported 1.85 like any modem).
+VERSION_BLIND_BOARDS = ("T114", "T-Echo", "RAK4631")
+
+
+def FIRMWARE_KIND(firmware: Optional[str], board: str = "") -> str:
     """"rtnode2400" | "rnode" | "unknown" from a firmware version string.
 
-    The RTNode-2400 firmware carries a 0.x version; the RNode firmware a
-    1.x (1.85 was the line in the field, 2026-08). A missing version tells
-    nothing on its own — the caller falls back to role/node_type."""
+    On the ESP32 targets the RTNode-2400 firmware carries a 0.x version and
+    the RNode firmware a 1.x, so the version decides. On the nRF52 DFU
+    targets it decides nothing — see VERSION_BLIND_BOARDS — and the answer
+    is "unknown" unless the certificate states its node_type outright.
+    Certificates written from 2026-09-19 do state it."""
     v = (firmware or "").strip().lstrip("vV")
     if not v or not v[0].isdigit():
         return "unknown"
     major = v.split(".", 1)[0]
     if major == "0":
         return "rtnode2400"
+    if any(b.lower() in (board or "").lower() for b in VERSION_BLIND_BOARDS):
+        return "unknown"
     return "rnode"
 
 
@@ -69,7 +81,7 @@ def classify_cert(cert: dict) -> BoardFact:
         # trust the firmware line then (it is what actually got flashed).
         kind = "rtnode2400" if FIRMWARE_KIND(fw) == "rtnode2400" else "rnode"
     else:
-        kind = FIRMWARE_KIND(fw)
+        kind = FIRMWARE_KIND(fw, board)
         if kind == "unknown" and (cert.get("node_name") or "").lower().startswith(
                 "rtnode"):
             kind = "rtnode2400"

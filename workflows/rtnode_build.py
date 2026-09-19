@@ -1154,6 +1154,13 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         "firmware": (wf.beacon.firmware_version if wf.beacon
                      else getattr(wf, "techo_fw_version", None)),
         "identity_hash": wf.profile.reticulum_identity_hash,
+        # WHAT WAS BUILT, recorded rather than inferred later. The nRF52
+        # RTNode targets are built from the RNode firmware source and so
+        # report version 1.85 — identical to a stock RNode flash — which
+        # made the version an unreliable tell and nearly filed a freshly
+        # born T114 RTNode as a modem (board_coverage, 2026-09-19). The
+        # build knows exactly what it made; it says so here.
+        "node_type": "rtnode2400",
         "serial_port": wf.profile.connection_port,
         "build_env": wf.target.build_env,
         "frequency_mhz": r.frequency_mhz,

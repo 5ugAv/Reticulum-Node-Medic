@@ -156,6 +156,45 @@ class BoundaryWalkSession:
         return obs, fails
 
 
+#: How recently a node must have been heard to be offered as a walk target.
+#: "Currently connected" has to mean something checkable (operator,
+#: 2026-09-19): a node silent for days would send the operator walking away
+#: from something that was never going to answer. Generous enough to cover a
+#: six-hourly beacon cadence, short enough to mean something.
+WALK_CANDIDATE_MAX_AGE_H = 12.0
+
+
+def walkable_nodes(registry, now: float,
+                   max_age_h: float = WALK_CANDIDATE_MAX_AGE_H) -> List[dict]:
+    """The nodes a boundary walk could be run against right now, freshest
+    first — each as ``{name, dst_hash, heard_hours, lat, lon}``.
+
+    A candidate needs two things and both are checked, never assumed: a mesh
+    address to ping, and a sighting recent enough that pinging it is honest.
+    """
+    out = []
+    try:
+        records = list(registry.all(now))
+    except Exception:                                              # noqa: BLE001
+        return []
+    for rec in records:
+        dst = (getattr(rec, "dst_hash", "") or "").strip()
+        if not dst:
+            continue                       # nothing to ping
+        try:
+            hours = rec.last_seen_hours(now)
+        except Exception:                                          # noqa: BLE001
+            hours = None
+        if hours is None or hours > max_age_h:
+            continue                       # never heard, or long silent
+        out.append({"name": getattr(rec, "name", "") or dst[:8],
+                    "dst_hash": dst, "heard_hours": hours,
+                    "lat": getattr(rec, "lat", None),
+                    "lon": getattr(rec, "lon", None)})
+    out.sort(key=lambda n: n["heard_hours"])
+    return out
+
+
 # -- persistence: the first real producer for the range model ---------------
 
 def append_evidence(obs: List[LinkObservation], fails: List[LinkFailure],

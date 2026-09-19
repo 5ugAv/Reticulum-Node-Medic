@@ -34,7 +34,7 @@ class TriageScreen(FloatLayout):
     def __init__(self, feed_factory: Callable[[], Callable[[], Optional[dict]]],
                  poll_interval: float = 0.5, clock: Callable[[], float] = time.monotonic,
                  lighthouse=None, on_build=None, on_home=None,
-                 on_antenna_test=None, **kwargs):
+                 on_antenna_test=None, on_boundary_walk=None, **kwargs):
         super().__init__(**kwargs)
         self._reader = feed_factory()
         self._lighthouse = lighthouse     # (active: bool) -> status dict
@@ -123,6 +123,22 @@ class TriageScreen(FloatLayout):
                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
             ant.bind(on_release=lambda *a: on_antenna_test())
             self.add_widget(ant)
+
+        # Boundary test — the walk that measures a candidate site's real
+        # reach. It lives on the node's own VITALS page too, but ANTENNA is
+        # where someone THINKING about placement looks for it (operator,
+        # 2026-09-19: "under antenna, leave a button for boundary test" —
+        # their own instinct, and this screen is titled SIGNAL & PLACEMENT).
+        if on_boundary_walk is not None:
+            bwk = Button(
+                text=tr("Boundary test"), font_size="13sp",
+                size_hint=(None, None), size=(dp(120), dp(40)),
+                pos_hint={"right": 0.98, "y": 0.035},
+                background_normal="", background_down="",
+                background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            bwk.bind(on_release=lambda *a: on_boundary_walk())
+            self.add_widget(bwk)
 
         # "Not Reading" cover — dropped over the bullseye when the radio reports
         # nothing for a spell, so the HELD last score can't be mistaken for a live

@@ -9,11 +9,11 @@
 | Ebyte EoRa-S3 | — | ✅ | — |
 | Heltec LoRa32 v4 | — | — | ✅ |
 | Heltec LoRa32 v4 (RGB NeoPixel) | ✅ | — | — |
-| Heltec Mesh Node T114 | ✅ | — | — |
+| Heltec Mesh Node T114 | — | ✅ | — |
 | Heltec Wireless Tracker | ✅ | — | — |
 | Heltec32 V3 | — | ✅ | — |
 | LilyGO LoRa32 v2.1 (T3 v1.6.1) | ✅ | — | — |
-| LilyGO T-Echo | ✅ | — | — |
+| LilyGO T-Echo | — | — | — |
 | RAK4631 | ✅ | — | — |
 | Seeed XIAO ESP32S3 (Wio-SX1262) | ✅ | — | — |
 
@@ -21,9 +21,10 @@
 
 | Board | Firmware | Status |
 |---|---|---|
-| Heltec Mesh Node T114 | rtnode2400 | ⬜ owed — already rnode |
-| LilyGO T-Echo | rtnode2400 | ⬜ owed — already rnode |
+| LilyGO T-Echo | rtnode2400 | ⬜ owed |
 | Seeed XIAO ESP32S3 (Wio-SX1262) | rtnode2400 | ⬜ owed — already rnode |
+
+_Already proven from the intent list: Heltec Mesh Node T114 (rtnode2400)._
 
 ## Raspberry Pi host builds
 
