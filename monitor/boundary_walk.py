@@ -25,7 +25,7 @@ import math
 import os
 import time as _time
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from monitor.synapse_links import LinkObservation, POSITION_EXACT
 from monitor.synapse_range import LinkFailure, walk_failures
@@ -156,12 +156,16 @@ class BoundaryWalkSession:
         return obs, fails
 
 
-#: How recently a node must have been heard to be offered as a walk target.
-#: "Currently connected" has to mean something checkable (operator,
-#: 2026-09-19): a node silent for days would send the operator walking away
-#: from something that was never going to answer. Generous enough to cover a
-#: six-hourly beacon cadence, short enough to mean something.
-WALK_CANDIDATE_MAX_AGE_H = 12.0
+#: How recently a node must have been heard to be worth PROBING. Deliberately
+#: generous: since 2026-09-19 the registry only nominates candidates and a
+#: live ping decides who is actually offered (live_walk_targets), so this
+#: window answers "is this worth a probe?", not "is this alive?". A node
+#: quiet for most of a day may be perfectly well and simply between beacons.
+WALK_CANDIDATE_MAX_AGE_H = 36.0
+
+#: Never probe more than this many candidates when the picker opens — each
+#: probe costs seconds of the operator's time, standing outside.
+WALK_PROBE_LIMIT = 8
 
 
 def walkable_nodes(registry, now: float,
@@ -192,7 +196,37 @@ def walkable_nodes(registry, now: float,
                     "lat": getattr(rec, "lat", None),
                     "lon": getattr(rec, "lon", None)})
     out.sort(key=lambda n: n["heard_hours"])
-    return out
+    # ONE PHYSICAL NODE, ONE ENTRY. A node announces on several destinations
+    # (identity, health, LXMF) — a T114 sat in the registry under four
+    # (2026-09-19). Listing it four times wastes the operator's attention and
+    # probing it four times wastes their daylight. Keep the freshest
+    # destination per device: it is the one likeliest to answer.
+    seen, deduped = set(), []
+    for n in out:
+        key = (n["name"] or "").strip().lower() or n["dst_hash"]
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(n)
+    return deduped
+
+
+def answers_now(node: dict, probe) -> Optional[dict]:
+    """The node, marked live, if it ANSWERS RIGHT NOW — else ``None``.
+
+    Operator, 2026-09-19: "send out a ping and only offer nodes that are
+    currently connected when the user is about to do the walk." The
+    project's oldest law wearing new clothes — a remembered sighting is not
+    a sighting. *probe* is ``(dst_hash) -> bool``, injected so the rule
+    stays pure and the caller can run it off-thread (the picker probes its
+    candidates in parallel; the operator is standing outside in the
+    weather). A probe that RAISES is a no, never a crash.
+    """
+    try:
+        ok = bool(probe(node["dst_hash"]))
+    except Exception:                                              # noqa: BLE001
+        ok = False
+    return {**node, "answered_now": True} if ok else None
 
 
 # -- persistence: the first real producer for the range model ---------------

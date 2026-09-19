@@ -1791,6 +1791,7 @@ class ReticulumNodeMedicApp(App):
         from kivy.uix.scrollview import ScrollView
         from kivy.metrics import dp
         from monitor.boundary_walk import (WALK_CANDIDATE_MAX_AGE_H,
+                                           WALK_PROBE_LIMIT, answers_now,
                                            walkable_nodes)
         from ui.i18n import tr
         from ui import theme
@@ -1813,30 +1814,80 @@ class ReticulumNodeMedicApp(App):
             msg.bind(size=lambda i, v: setattr(i, "text_size", v))
             body.add_widget(msg)
         else:
-            body.add_widget(Label(
-                text=tr("Walk away from which node?"), bold=True,
-                size_hint_y=None, height=dp(30),
-                color=theme.hex_to_rgba(theme.COLORS["text_primary"])))
+            # PING NOW, DO NOT REMEMBER (operator, 2026-09-19). The registry
+            # nominates; a live probe decides. Each answer appears as it
+            # lands, so the operator watches the medic work instead of
+            # waiting at a blank box — and a node that does not answer is
+            # never offered, because walking away from a dead node teaches
+            # nothing and costs a trip.
+            head = Label(
+                text=tr("Pinging your nodes to see which are reachable…"),
+                bold=True, size_hint_y=None, height=dp(52), halign="center",
+                valign="middle",
+                color=theme.hex_to_rgba(theme.COLORS["accent"]))
+            head.bind(size=lambda i, v: setattr(i, "text_size", v))
+            body.add_widget(head)
             scroll = ScrollView()
             col = BoxLayout(orientation="vertical", size_hint_y=None,
                             spacing=dp(8))
             col.bind(minimum_height=col.setter("height"))
-            for n in cands:
-                hrs = n["heard_hours"]
-                when = (tr("heard just now") if hrs < 0.1
-                        else tr("heard {m:.0f} min ago").format(m=hrs * 60)
-                        if hrs < 1 else tr("heard {h:.1f} h ago").format(h=hrs))
-                b = Button(text=f"{n['name']}  —  {when}",
+            scroll.add_widget(col)
+            body.add_widget(scroll)
+
+            def _offer(node):
+                b = Button(text=tr("{name}  —  answering now").format(
+                               name=node["name"]),
                            size_hint_y=None, height=dp(56), bold=True,
                            font_size="16sp", background_normal="",
                            background_color=theme.hex_to_rgba(
-                               theme.COLORS["accent"]),
+                               theme.COLORS["green"]),
                            color=theme.hex_to_rgba(theme.COLORS["background"]))
-                b.bind(on_release=lambda _b, node=n: (
-                    pop.dismiss(), self._walk_from_pick(node)))
+                b.bind(on_release=lambda _b, n=node: (
+                    pop.dismiss(), self._walk_from_pick(n)))
                 col.add_widget(b)
-            scroll.add_widget(col)
-            body.add_widget(scroll)
+
+            def _sweep():
+                import threading as _th
+                live = []
+                lock = _th.Lock()
+
+                def one(node):
+                    # the rule lives in monitor.boundary_walk (pure, tested);
+                    # this thread only supplies the probe and the parallelism
+                    confirmed = answers_now(
+                        node,
+                        probe=lambda d: self._mesh_reachable(d, wait=10))
+                    if confirmed is None:
+                        return
+                    with lock:
+                        live.append(confirmed)
+                    Clock.schedule_once(
+                        lambda _d, n=confirmed: _offer(n), 0)
+
+                threads = [_th.Thread(target=one, args=(n,), daemon=True)
+                           for n in cands[:WALK_PROBE_LIMIT]]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=25)
+                checked = len(cands[:WALK_PROBE_LIMIT])
+
+                def _done(_dt):
+                    if live:
+                        head.text = tr("{n} of {m} answering — pick one.").format(
+                            n=len(live), m=checked)
+                        head.color = theme.hex_to_rgba(theme.COLORS["green"])
+                    else:
+                        head.text = tr(
+                            "None of your {m} nodes answered just now, so "
+                            "there is nothing to walk against. Check the node "
+                            "is powered and in range, then try again.").format(
+                                m=checked)
+                        head.color = theme.hex_to_rgba(theme.COLORS["amber"])
+                Clock.schedule_once(_done, 0)
+
+            import threading as _threading
+            _threading.Thread(target=_sweep, daemon=True).start()
         close = Button(text=tr("Cancel"), size_hint_y=None, height=dp(48),
                        background_normal="",
                        background_color=theme.hex_to_rgba(
@@ -1866,6 +1917,23 @@ class ReticulumNodeMedicApp(App):
             self.scan_screen.begin_walk(record, self._walk_probe)
         except Exception as e:                                     # noqa: BLE001
             print(f"[walk] could not start: {e}", flush=True)
+
+    def _mesh_reachable(self, dst_hash, wait=15):
+        """Is there a mesh road to *dst_hash* RIGHT NOW? Blocking; call it
+        off-thread. Drops the cached path first — a cached path is not a
+        sighting, the project's oldest law — then asks for a fresh one and
+        waits for the answer."""
+        from monitor.mesh import parse_path_probe
+        try:
+            probe = self.monitor_service.registry.probe_hash_for(dst_hash or "")
+            if not probe:
+                return False
+            _local_run(f"rnpath --drop {probe} 2>/dev/null")
+            out = _local_run(f"rnpath -w {int(wait)} {probe} 2>/dev/null")
+            ok, _hops = parse_path_probe(out)
+            return bool(ok)
+        except Exception:                                          # noqa: BLE001
+            return False
 
     def _walk_probe(self, dst_hash, report):
         """One boundary-walk ping: drop the cached path (cached paths lie),
