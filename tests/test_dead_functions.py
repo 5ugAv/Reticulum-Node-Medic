@@ -140,10 +140,12 @@ def test_the_tested_but_never_run_set_does_not_grow():
     that nothing ever called — so a green suite is not evidence a feature runs.
     """
     defs, prod, test = _scan()
+    # A framework hook with a test is not "never run" — Kivy runs it. Without
+    # this, pinning on_stop's behaviour (2026-09-21) counted it as dead.
     test_only = sorted(n for n, sites in defs.items()
                        if prod[n] == 0 and test[n] > 0
                        and not n.startswith("_") and not n.startswith("test_")
-                       and n != "main")
+                       and n != "main" and n not in CALLED_INVISIBLY)
     assert len(test_only) <= MAX_TEST_ONLY, (
         f"{len(test_only)} production functions are reached only by tests, up "
         f"from {MAX_TEST_ONLY}. Something new was written with tests but never "
@@ -152,11 +154,13 @@ def test_the_tested_but_never_run_set_does_not_grow():
 
 
 def test_the_allowlist_does_not_rot():
-    """An entry that IS now referenced must be removed, or the list slowly stops
-    meaning anything — the same rule test_wiring.py applies to its own."""
-    defs, refs, test_refs = _scan()
+    """An entry that production code now calls must be removed, or the list
+    slowly stops meaning anything — the same rule test_wiring.py applies to
+    its own. A TEST referencing a hook does not make it visibly called: the
+    framework still is the caller (2026-09-21, on_stop gained a test)."""
+    defs, refs, _test_refs = _scan()
     now_used = sorted(n for n in CALLED_INVISIBLY
-                      if n in defs and (refs[n] + test_refs[n]) > 0)
+                      if n in defs and refs[n] > 0)
     assert not now_used, (
         "These are allowlisted as invisibly-called but ARE now referenced — "
         "delete them from CALLED_INVISIBLY:\n  " + "\n  ".join(now_used))

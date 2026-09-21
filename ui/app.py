@@ -379,8 +379,13 @@ class ReticulumNodeMedicApp(App):
         try:
             from provisioning import screensaver as ss
             sm = getattr(self, "sm", None)
+            scan = getattr(self, "scan_screen", None)
+            # A walk's whole product is a flash on the screen; the saver
+            # covered it after the idle delay (three agents, 2026-09-21).
+            walking = (getattr(scan, "_walk", None) is not None
+                       or getattr(scan, "_walk_gate", None) is not None)
             busy = ((sm is not None and sm.current in self._NO_SAVER_SCREENS)
-                    or getattr(self, "_activity", 0) > 0)
+                    or getattr(self, "_activity", 0) > 0 or walking)
             if busy:
                 self._reset_idle()            # defer — don't cover an active process
                 return
@@ -1517,6 +1522,10 @@ class ReticulumNodeMedicApp(App):
             _t.sleep(2)
 
     def on_stop(self):
+        try:
+            self.scan_screen.end_walk()       # bank a walk the exit would lose
+        except Exception:                                          # noqa: BLE001
+            pass
         self._lighthouse_on = False
         stop = getattr(self, "_monitor_stop", None)
         if stop is not None:
@@ -1945,6 +1954,15 @@ class ReticulumNodeMedicApp(App):
         because a cached path is not a sighting.
         """
         try:
+            # Evidence is keyed by the MESH address. A VITALS row can be keyed
+            # "rtnode:<name>"; pings resolve it, but the evidence would then be
+            # a different link from the same device's hex-keyed sightings.
+            import dataclasses
+            probe = self.monitor_service.registry.probe_hash_for(
+                getattr(record, "dst_hash", "") or "")
+            if (probe and probe != getattr(record, "dst_hash", None)
+                    and dataclasses.is_dataclass(record)):
+                record = dataclasses.replace(record, dst_hash=probe)
             self.switch_mode("scan")
             self.scan_screen.begin_walk(
                 record, self._walk_probe,
@@ -1964,10 +1982,12 @@ class ReticulumNodeMedicApp(App):
                 return False
             _local_run(f"rnpath --drop {probe} 2>/dev/null")
             out = _local_run(f"rnpath -w {int(wait)} {probe} 2>/dev/null")
+            if not (out or "").strip():
+                return None     # the probe could not run — not "no path"
             ok, _hops = parse_path_probe(out)
             return bool(ok)
         except Exception:                                          # noqa: BLE001
-            return False
+            return None
 
     def _walk_probe(self, dst_hash, report):
         """One boundary-walk ping: drop the cached path (cached paths lie),
@@ -1978,6 +1998,8 @@ class ReticulumNodeMedicApp(App):
         from monitor.mesh import parse_path_probe
 
         def work():
+            import time as _t
+            t0 = _t.time()
             ok = False
             try:
                 probe = self.monitor_service.registry.probe_hash_for(
@@ -1988,6 +2010,10 @@ class ReticulumNodeMedicApp(App):
                     ok, _hops = parse_path_probe(out)
             except Exception:                                      # noqa: BLE001
                 ok = False
+            # The 20 s cadence budget was asserted, never measured (audit,
+            # 2026-09-21): one line per ping so the log can say.
+            print(f"[walk] probe {(dst_hash or '')[:8]} ok={bool(ok)} "
+                  f"{int((_t.time() - t0) * 1000)}ms", flush=True)
             report(bool(ok))
         threading.Thread(target=work, daemon=True).start()
 
@@ -2341,6 +2367,13 @@ class ReticulumNodeMedicApp(App):
         No-ops silently with no GPS fix (can't sense movement without one)."""
         det = getattr(self, "_movement", None)
         if det is None:
+            return
+        scan = getattr(self, "scan_screen", None)
+        if (getattr(scan, "_walk", None) is not None
+                or getattr(scan, "_walk_gate", None) is not None):
+            # A walk IS movement. Switching to Backpack restarts rnsd, and
+            # the medic's own outage would be banked as the node's edge
+            # 150 m out (audit, 2026-09-21).
             return
         try:
             from workflows.node_mode import load_auto_backpack

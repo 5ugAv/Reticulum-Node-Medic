@@ -404,8 +404,8 @@ def test_screen_places_samples_through_walk_position():
     from walk_position(<fix reader>), never from the map's raw gps_reader,
     which hands a coasting fix back as if it were a sighting."""
     src = open("ui/screens/scan_screen.py").read()
-    m = re.search(r"    def _walk_result\(.*?(?=\n    def )", src, re.S)
-    assert m, "_walk_result missing"
-    body = m.group(0)
-    assert "walk_position(" in body
-    assert "_gps_reader" not in body
+    tick = re.search(r"    def _walk_tick\(.*?(?=\n    def )", src, re.S)
+    res = re.search(r"    def _walk_result\(.*?(?=\n    def )", src, re.S)
+    assert tick and res, "_walk_tick/_walk_result missing"
+    assert "walk_position(" in tick.group(0)      # read at SEND time (2026-09-21)
+    assert "_gps_reader" not in res.group(0) and "_fix_reader" not in res.group(0)

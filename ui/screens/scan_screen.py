@@ -1531,7 +1531,9 @@ class ScanScreen(BoxLayout):
         # honest sentence (coasting on memory is worth a sentence).
         self.badge.set("" if t["level"] == "live" else t["title"], t["level"])
         hint = t["detail"]
-        if t["level"] != "live":
+        walking = (getattr(self, "_walk", None) is not None
+                   or getattr(self, "_walk_gate", None) is not None)
+        if t["level"] != "live" and not walking:   # no placement words mid-walk
             hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]
         if self._fix is not None and getattr(self._fix, "has_fix", False):
             # Show the HDOP-estimated accuracy when we have one, so the operator
@@ -1605,6 +1607,9 @@ class ScanScreen(BoxLayout):
     def _on_map_pick(self, latlon):
         """Operator tapped the map to set the location (no GPS/internet needed).
         The pin already moved; adopt the point."""
+        if (getattr(self, "_walk", None) is not None
+                or getattr(self, "_walk_gate", None) is not None):
+            return          # a walk is a measurement, not a placement (2026-09-21)
         if self._manual:                       # a map tap supersedes manual entry
             self._set_manual_shown(False)
         self._picked = latlon
@@ -2107,7 +2112,11 @@ class ScanScreen(BoxLayout):
         ``_mesh_reachable``, the same primitive the ANTENNA picker uses, so
         the two doors cannot drift apart on what "online" means.
         """
-        self.end_walk(persist=False)          # one walk (or gate) at a time
+        # One walk (or gate) at a time — but a walk with samples is BANKED,
+        # not thrown away: the plausible path here is an accidental edge-swipe
+        # home mid-walk and a second press on a door (audit, 2026-09-21).
+        running = getattr(self, "_walk", None)
+        self.end_walk(persist=bool(running is not None and running.samples))
         self._walk_record = record
         self._walk_ping_fn = ping_fn
         self._walk_done_cb = on_finished
@@ -2229,14 +2238,23 @@ class ScanScreen(BoxLayout):
             self._show_walk_unavailable(checked=False)
             return
         node = {"dst_hash": getattr(self._walk_record, "dst_hash", "")}
+        seen = {}
+
+        def _probe(d):
+            # Remember the raw answer: None means the probe could not run
+            # (rnpath absent, rnsd down), which is NOT "it did not answer".
+            seen["r"] = probe(d)
+            return seen["r"]
 
         def work():
-            live = answers_now(node, probe=probe)
+            live = answers_now(node, probe=_probe)
+            checked = seen.get("r") is not None
             _Clock.schedule_once(
-                lambda _d: self._walk_check_done(live is not None, token), 0)
+                lambda _d: self._walk_check_done(live is not None, token,
+                                                 checked=checked), 0)
         threading.Thread(target=work, daemon=True).start()
 
-    def _walk_check_done(self, ok, token=None):
+    def _walk_check_done(self, ok, token=None, checked=True):
         """Gate 1's verdict. A stale answer from a cancelled check is dropped
         — the operator may have pressed Cancel and started another walk."""
         if token is not None and token is not getattr(
@@ -2247,7 +2265,7 @@ class ScanScreen(BoxLayout):
         if ok:
             self._show_walk_gate()
         else:
-            self._show_walk_unavailable(checked=True)
+            self._show_walk_unavailable(checked=checked)
 
     def _show_walk_unavailable(self, checked=True):
         """The refusal, worded as the operator asked: not available. It names
@@ -2382,6 +2400,12 @@ class ScanScreen(BoxLayout):
         g = gps_gate(fix, waited_s=waited)
         self._walk_gate_badge.set_sats(g["sats"])
         self._walk_anchor = g["anchor"]
+        # A canopy hovering at 0<->1 satellites made the button blink every
+        # second. It appears after two consecutive ready looks (audit,
+        # 2026-09-21) and stays for as long as the fix holds.
+        self._walk_ready_ticks = (getattr(self, "_walk_ready_ticks", 0) + 1
+                                  if g["ready"] else 0)
+        ready = self._walk_ready_ticks >= 2
         # SAY WHAT IT IS WAITING FOR, in the words of the thing to do about it
         # — never a bare spinner. Each stage has a different answer.
         if g["ready"]:
@@ -2390,17 +2414,18 @@ class ScanScreen(BoxLayout):
             words, tone = (tr("The GPS is coasting on an old position, not "
                               "tracking. Step into the open and wait."), "amber")
         elif g["stage"] == "slow":
-            words, tone = (tr("Still no fix after two minutes. Move away from "
-                              "walls and trees — or run PROBE ▸ Self Diagnose "
-                              "to check the GPS itself."), "amber")
+            words, tone = (tr("Still no fix after two minutes. Find open sky "
+                              "for the fix, then come back to the node before "
+                              "pressing — or run Self-check under VITALS to "
+                              "check the GPS itself."), "amber")
         else:
             words, tone = (tr("Looking for satellites — this can take a couple "
                               "of minutes from cold. Keep the sky in view."),
                            "text_secondary")
         self._walk_gate_state.text = words
         self._walk_gate_state.color = theme.hex_to_rgba(theme.COLORS[tone])
-        self._walk_go.opacity = 1 if g["ready"] else 0
-        self._walk_go.disabled = not g["ready"]
+        self._walk_go.opacity = 1 if ready else 0
+        self._walk_go.disabled = not ready
 
     def _walk_gate_go(self):
         """The press. Anchor HERE — see _start_walk_now."""
@@ -2493,6 +2518,21 @@ class ScanScreen(BoxLayout):
         self.add_widget(hud, index=len(self.children))   # top of the screen
         self._walk_step_hint()
 
+    def _walk_banner_text(self, w):
+        """The banner's words. monitor/ speaks no language, so the engine
+        supplies counts() and the screen the sentence — and the sentence
+        says how many pings could not be placed, because indoors they kept
+        counting as if they had been (audit, 2026-09-21)."""
+        if w.state == "lost":
+            return tr("MESH CONNECTION LOST")
+        c = w.counts()
+        text = tr("Linked — {n} pings good, furthest {km} km").format(
+            n=c["hits"], km=f"{c['max_km']:.2f}")
+        if c["unplaced"]:
+            text += " " + tr("({n} not placed — no satellite fix)").format(
+                n=c["unplaced"])
+        return text
+
     def _walk_step_hint(self):
         """The one sentence telling the operator what to do with their body,
         right now. Re-read after every ping because the answer changes."""
@@ -2500,15 +2540,28 @@ class ScanScreen(BoxLayout):
         hint = getattr(self, "_walk_hint", None)
         if w is None or hint is None:
             return
+        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
         if w.state == "lost":
-            hint.text = tr("This is the edge of its reach. Press Stop & save "
-                           "to keep it — or walk on a little to check it "
-                           "stays lost.")
-            hint.color = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+            # A loss it cannot place is not "the edge of its reach" — the
+            # operator's route goes through the house 10 m from the node.
+            if w.last_unplaced():
+                hint.text = tr("Lost — but with no satellite fix Node Medic "
+                               "cannot say where. Get under open sky; if the "
+                               "node answers again the walk carries on.")
+            else:
+                hint.text = tr("This is the edge of its reach. Press Stop & "
+                               "save to keep it — or walk on a little to "
+                               "check it stays lost.")
+            hint.color = yellow
             return
         if not w.samples:
             hint.text = tr("Start walking away from the node, in a straight "
                            "line if the ground lets you.")
+        elif w.last_unplaced():
+            hint.text = tr("No satellite fix — that ping counted, but Node "
+                           "Medic cannot place it. Get back under open sky.")
+            hint.color = yellow
+            return
         else:
             hint.text = tr("Keep walking. Node Medic pings every 20 seconds "
                            "and will flash when the mesh drops.")
@@ -2523,36 +2576,37 @@ class ScanScreen(BoxLayout):
         w = getattr(self, "_walk", None)
         if w is None or not w.due(_t.time()):
             return
-        w.begin_ping(_t.time())
-
-        def _report(ok, snr_db=None):
-            from kivy.clock import Clock as _Clock
-            _Clock.schedule_once(lambda _d: self._walk_result(ok, snr_db), 0)
-        try:
-            self._walk_ping_fn(w.node_key, _report)
-        except Exception:                                          # noqa: BLE001
-            _report(False)
-
-    def _walk_result(self, ok, snr_db):
-        import time as _t
-        w = getattr(self, "_walk", None)
-        if w is None:
-            return
-        # Only a LIVE fix places a sample. The map's gps_reader hands back a
-        # coasting fix (flag up, 0 sats) as a position, and the operator's
-        # walk plan (2026-09-21) goes from the tree back through the house:
-        # a silent ping stamped indoors on the anchor is a "loss at 0 km".
+        # Where the operator IS when the ping goes out. rnpath -w returns at
+        # once on an answer and waits the full 15 s on silence, so a fix read
+        # when the result lands stamps every loss ~20 m further out than the
+        # hit before it (audit, 2026-09-21). Only a LIVE fix places a sample:
+        # a coasting fix (flag up, 0 sats) is where the receiver last was.
         from monitor.boundary_walk import walk_position
         gps = None
         try:
             gps = walk_position(self._fix_reader() if self._fix_reader else None)
         except Exception:                                          # noqa: BLE001
             gps = None
+        w.begin_ping(_t.time())
+
+        def _report(ok, snr_db=None):
+            from kivy.clock import Clock as _Clock
+            _Clock.schedule_once(
+                lambda _d: self._walk_result(ok, snr_db, gps=gps), 0)
+        try:
+            self._walk_ping_fn(w.node_key, _report)
+        except Exception:                                          # noqa: BLE001
+            _report(False)
+
+    def _walk_result(self, ok, snr_db, gps=None):
+        import time as _t
+        w = getattr(self, "_walk", None)
+        if w is None:
+            return
         w.ping_result(_t.time(), ok, snr_db=snr_db, gps=gps)
         self.plot.set_walk_trail(w.samples)
         if w.state != "lost":
-            text, _f = w.banner()
-            self._walk_lbl.text = text
+            self._walk_lbl.text = self._walk_banner_text(w)
             self._walk_bg_col.rgba = theme.hex_to_rgba(theme.COLORS["green"])
             self._walk_lbl.color = theme.hex_to_rgba(theme.COLORS["background"])
         self._walk_step_hint()
@@ -2567,7 +2621,7 @@ class ScanScreen(BoxLayout):
         self._walk_flash_on = not getattr(self, "_walk_flash_on", False)
         yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
         black = (0.05, 0.05, 0.05, 1)
-        self._walk_lbl.text, _f = w.banner()
+        self._walk_lbl.text = self._walk_banner_text(w)
         if self._walk_flash_on:
             self._walk_bg_col.rgba = yellow
             self._walk_lbl.color = black
@@ -2596,24 +2650,49 @@ class ScanScreen(BoxLayout):
         self._show_placement(True)
         if w is None or not persist:
             return
+        from monitor.topology import MEDIC_ID
+        obs, fails = w.evidence(medic_id=MEDIC_ID)
+        # The save and the story are separate tries: a write that fails
+        # (disk full, unwritable dir) used to end the walk with no popup at
+        # all — "a step that cannot fail is not a check" (audit, 2026-09-21).
+        save_err = None
         try:
             from monitor.boundary_walk import append_evidence
-            from monitor.topology import MEDIC_ID
-            obs, fails = w.evidence(medic_id=MEDIC_ID)
             append_evidence(obs, fails)
+        except Exception as e:                                     # noqa: BLE001
+            save_err = e
+        try:
             from ui.requirement_popup import requirement_popup
-            # "banked as range evidence" is a sentence for someone who already
-            # knows this tool. SAY WHAT READS IT — otherwise a newcomer's whole
-            # walk ends in a number with no consequence (operator, 2026-09-21).
-            requirement_popup(
-                w.summary() + "\n\n" + tr(
-                    "{o} link sightings and {f} boundary losses banked as "
-                    "range evidence.").format(o=len(obs), f=len(fails))
-                + "\n\n" + tr(
-                    "Node Medic uses this to work out how far your nodes "
-                    "really reach, and where the next one should go — see "
-                    "Build next on this map."),
-                tr("Boundary walk finished"), False, tone="success")
+            c = w.counts()
+            story = tr("{h} pings answered, {m} silent; furthest placed link "
+                       "{km} km from {name}.").format(
+                h=c["hits"], m=c["misses"], km=f"{c['max_km']:.2f}",
+                name=w.node_name)
+            if c["unplaced"]:
+                story += " " + tr("{n} had no satellite fix and were not "
+                                  "placed.").format(n=c["unplaced"])
+            if save_err is not None:
+                requirement_popup(
+                    story + "\n\n"
+                    + tr("Could not save the walk: {err}").format(err=save_err)
+                    + "\n\n" + tr("Nothing was banked. Check the medic's "
+                                    "storage, then walk again."),
+                    tr("Boundary walk not saved"), False, tone="warning")
+            else:
+                # "banked as range evidence" is a sentence for someone who
+                # already knows this tool. SAY WHAT READS IT — and that one
+                # walk does not move the range number (operator, 2026-09-21).
+                requirement_popup(
+                    story + "\n\n" + tr(
+                        "{o} link sightings and {f} boundary losses banked as "
+                        "range evidence.").format(o=len(obs), f=len(fails))
+                    + "\n\n" + tr(
+                        "Node Medic uses this to work out how far your nodes "
+                        "really reach, and where the next one should go — see "
+                        "Build next on this map.")
+                    + " " + tr("The range number only moves once several "
+                               "different nodes have evidence."),
+                    tr("Boundary walk finished"), False, tone="success")
         except Exception:                                          # noqa: BLE001
             pass
         cb = getattr(self, "_walk_done_cb", None)

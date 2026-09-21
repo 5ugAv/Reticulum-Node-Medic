@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Tuple
 
 from monitor.synapse_links import LinkObservation, POSITION_EXACT
-from monitor.synapse_range import LinkFailure, walk_failures
+from monitor.synapse_range import LinkFailure, walk_failures, CO_LOCATED_KM
 
 #: Ping cadence — the operator's own number (2026-08-13: "ping every 20s").
 PING_EVERY_S = 20.0
@@ -130,11 +130,29 @@ class BoundaryWalkSession:
         return (f"Linked — {hits} pings good, "
                 f"furthest {self.max_linked_km:.2f} km", False)
 
-    def summary(self) -> str:
+    def counts(self) -> dict:
+        """The numbers the screen paints, in one place — so the banner, the
+        hint and the summary cannot disagree. ``unplaced`` is the pings taken
+        without a live fix (2026-09-21: the operator's first walk went back indoors; those pings counted for the story but could not
+        be placed, and the banner used to count them as if they had been)."""
         hits = sum(1 for s in self.samples if s["connected"])
-        misses = len(self.samples) - hits
-        return (f"{hits} pings answered, {misses} silent; furthest linked "
-                f"point {self.max_linked_km:.2f} km from {self.node_name}.")
+        return {"hits": hits,
+                "misses": len(self.samples) - hits,
+                "unplaced": sum(1 for s in self.samples if s["km"] is None),
+                "max_km": self.max_linked_km}
+
+    def last_unplaced(self) -> bool:
+        """Was the most recent ping taken without a live fix? The hint reads
+        this: a loss it cannot place is not "the edge of its reach"."""
+        return bool(self.samples) and self.samples[-1]["km"] is None
+
+    def summary(self) -> str:
+        c = self.counts()
+        tail = (f" {c['unplaced']} had no satellite fix and were not placed."
+                if c["unplaced"] else "")
+        return (f"{c['hits']} pings answered, {c['misses']} silent; furthest "
+                f"placed link {c['max_km']:.2f} km from {self.node_name}."
+                + tail)
 
     # -- evidence ------------------------------------------------------------
 
@@ -150,9 +168,15 @@ class BoundaryWalkSession:
                    heard_from_position=POSITION_EXACT,
                    source="boundary_walk")
                for s in self.samples if s["connected"] and s["km"] is not None]
-        fails = walk_failures(
-            [s for s in self.samples if s["km"] is not None],
-            observed_at=self.samples[-1]["t"] if self.samples else 0.0)
+        # A miss AT the node is not a loss. The first ping fires the moment
+        # the walk starts, standing at the anchor, and one LoRa frame can
+        # die of anything — banked, it read "measured a loss at 0 km, trust
+        # the loss" (agents' audit, 2026-09-21). Observations already drop
+        # co-located samples (synapse_range CO_LOCATED_KM); same rule here.
+        # Each loss keeps its own time, not the walk's last one.
+        fails = [f for s in self.samples
+                 if s["km"] is not None and s["km"] > CO_LOCATED_KM
+                 for f in walk_failures([s], observed_at=s["t"])]
         return obs, fails
 
 
@@ -314,20 +338,46 @@ def append_evidence(obs: List[LinkObservation], fails: List[LinkFailure],
 
 
 def _load_jsonl(path: str) -> List[dict]:
+    """Every line that parses. A power cut mid-append leaves half a line;
+    one such line used to raise out of here and the only caller dropped
+    EVERY walk ever banked, silently (audit, 2026-09-21). Bad lines are
+    skipped and counted, never fatal."""
+    out: List[dict] = []
     try:
         with open(path) as fh:
-            return [json.loads(l) for l in fh if l.strip()]
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    _SKIPPED.append(path)
     except OSError:
         return []
+    return out
+
+
+#: Paths of lines the loaders could not read — a count the screen may show.
+_SKIPPED: List[str] = []
+
+
+def _records(cls, dicts):
+    """from_dict per record, dropping the ones that lack a field — the
+    file format has grown before and will again."""
+    out = []
+    for d in dicts:
+        try:
+            out.append(cls.from_dict(d))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
 
 
 def load_walk_observations(base_dir: str = _WALK_DIR) -> List[LinkObservation]:
     base = os.path.expanduser(base_dir)
-    return [LinkObservation.from_dict(d)
-            for d in _load_jsonl(os.path.join(base, _OBS_FILE))]
+    return _records(LinkObservation, _load_jsonl(os.path.join(base, _OBS_FILE)))
 
 
 def load_walk_failures(base_dir: str = _WALK_DIR) -> List[LinkFailure]:
     base = os.path.expanduser(base_dir)
-    return [LinkFailure.from_dict(d)
-            for d in _load_jsonl(os.path.join(base, _FAIL_FILE))]
+    return _records(LinkFailure, _load_jsonl(os.path.join(base, _FAIL_FILE)))
