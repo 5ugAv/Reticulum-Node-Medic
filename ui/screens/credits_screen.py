@@ -43,8 +43,11 @@ CREDITS = [
     ("RTNode for Heltec V4 — the base our fork grew from", "jrl290"),
     ("RTNode-2400 firmware — github.com/GrayHatGuy", "GrayHatGuy"),
     ("Concept, build, field testing & front page", "5ugAv"),
-    ("Engineering companion", "Claude (Anthropic)"),
-    ("Maps", "OpenStreetMap contributors & CARTO"),
+    # Maps: the basemap moved from Carto to Esri on 2026-08-27 (Carto began
+    # watermarking keyless tiles); search is OpenStreetMap's Nominatim. The
+    # credit must name what the code fetches — tests/test_credits_truth.py
+    # holds it to ui/map_download.py.
+    ("Maps", "Esri World Street Map & OpenStreetMap contributors"),
     ("Terrain", "Tilezen & AWS Open Data (SRTM)"),
     ("And", "every neighbour who puts a node on a roof"),
 ]

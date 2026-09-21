@@ -1,0 +1,28 @@
+"""The thanks page names what the code actually fetches (operator,
+2026-09-21: "do we need to adjust the maps?" — yes: the basemap had moved
+from Carto to Esri a month earlier and the credit still said Carto)."""
+from ui import map_download
+from ui.screens import credits_screen as cs
+
+
+def _credit(role):
+    return dict(cs.CREDITS)[role]
+
+
+def test_map_credit_matches_the_basemap_and_the_geocoder():
+    maps = _credit("Maps")
+    if "arcgisonline.com" in map_download.OSM_URL:
+        assert "Esri" in maps
+    if "openstreetmap" in map_download.OSM_URL or "OpenStreetMap" in map_download.ATTRIBUTION:
+        assert "OpenStreetMap" in maps
+    assert "CARTO" not in maps.upper() or "carto" in map_download.OSM_URL
+
+
+def test_terrain_credit_matches_the_terrain_source():
+    terrain = _credit("Terrain")
+    if "elevation-tiles-prod" in map_download.TERRAIN_URL:
+        assert "Tilezen" in terrain and "AWS" in terrain
+
+
+def test_no_engineering_companion_line():
+    assert all(role != "Engineering companion" for role, _ in cs.CREDITS)
