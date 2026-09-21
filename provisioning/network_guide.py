@@ -53,6 +53,44 @@ ROLES: List[Tuple[str, str]] = [
      "Propagation node. The answering machine."),
 ]
 
+#: HOW FAR DOES IT ACTUALLY REACH (operator, 2026-09-21, standing in the
+#: yard with a T114 outdoors: the boundary walk had no entry behind the
+#: red "?" — the one place a person already goes to ask what something is).
+#: It sits here, after the roles table, because that table is where the
+#: question arises: you have just been told which box is the backbone, and the
+#: next thing you want to know is whether it can hear the next one.
+#: Same i18n decision as the rest of this module: not wrapped. Every catalog
+#: under assets/i18n must carry the same key set, so wrapping this would ship
+#: machine translations into eight languages nobody here can read back — and
+#: this page's whole job is to be trusted. English until a speaker checks it.
+REACH_TITLE = "How far does a node actually reach? — the boundary walk"
+REACH_BODY: List[str] = [
+    "Coverage maps and datasheet ranges are guesses. The only honest answer "
+    "is the one you measure, and a boundary walk is how Node Medic measures "
+    "it: leave the node where it will live, then walk away from it carrying "
+    "the medic. It pings the node every 20 seconds and marks every answer on "
+    "the map at the distance you had reached. When the answers stop, the "
+    "screen flashes MESH CONNECTION LOST — you are standing on the edge of "
+    "that node's reach.",
+    "Use it BEFORE you commit to a site: to find out whether a spot you like "
+    "can hear the node you already have, to check what a new antenna really "
+    "bought you, or to prove a gap is real before building a node to fill "
+    "it. Every ping it banks — the answers and the silences both — feeds the "
+    "medic's own range model, so the next walk you do makes the advice on "
+    "the map better.",
+    "Two things are checked before it will start, and it says which it is "
+    "waiting on. FIRST the node itself: Node Medic pings it, and if it does "
+    "not answer it says so and goes no further — there is nothing to be "
+    "learned by walking away from a box that is already silent. THEN a "
+    "satellite fix, because distance is the whole measurement and with no "
+    "GPS the walk would ping away for an hour and record nothing. Stand at "
+    "the node, in the open, and wait for the start button to appear.",
+    "Start it from the node's own page in VITALS, or from ANTENNA ▸ Boundary "
+    "test if you are on site thinking about placement. Take the walk in as "
+    "straight a line as the ground allows — a loop back towards the node "
+    "measures the same short distance twice.",
+]
+
 #: WHAT TO BUILD, AND WHAT IT COSTS (operator, 2026-08-31: "this is probably
 #: a page that we need inside Node Medic as recommended hardware for builds"
 #: — then, seeing a second button appear beside the existing help icon:

@@ -2084,22 +2084,387 @@ class ScanScreen(BoxLayout):
 
     # -- the boundary walk (operator spec 2026-08-13; built 2026-09-15) -----
 
-    def begin_walk(self, record, ping_fn, on_finished=None):
+    def begin_walk(self, record, ping_fn, on_finished=None, reach_probe=None):
         """Walk-away range truth for ONE node, folded into MAPS as ordered
-        ("fold it into the map view", 2026-08-13 — no seventh mode). The
-        engine is monitor.boundary_walk; this renders it: a banner that
-        flashes MESH CONNECTION LOST at the found boundary, a Stop that
-        banks the evidence, and the ping trail on the map itself."""
-        import time as _t
-        from monitor.boundary_walk import BoundaryWalkSession
-        self.end_walk(persist=False)          # one walk at a time
-        self._walk = BoundaryWalkSession(
-            node_key=record.dst_hash, node_name=record.name or record.dst_hash[:8],
-            node_lat=record.lat, node_lon=record.lon, now=_t.time())
+        ("fold it into the map view", 2026-08-13 — no seventh mode).
+
+        Since 2026-09-21 this does NOT start pinging. It opens TWO GATES, in
+        order, and hands over:
+
+          1. ``_show_walk_check`` — does the node answer a ping RIGHT NOW? A
+             no is a refusal, and nothing about GPS is shown, because there
+             is no point waiting on satellites for a node that is dead.
+          2. ``_show_walk_gate`` — stand at the node and wait for a fix. The
+             start button does not exist until there is one.
+
+        They are deliberately two screens with their own words rather than
+        one "getting ready…" spinner: a stranger standing in a yard has to be
+        able to tell whether the hold-up is the node or the sky (operator,
+        2026-09-21). BOTH doors into the walk come through here, so a walk
+        starts the same way whichever button was pressed.
+
+        *reach_probe* is ``(dst_hash) -> bool``, injected — the app supplies
+        ``_mesh_reachable``, the same primitive the ANTENNA picker uses, so
+        the two doors cannot drift apart on what "online" means.
+        """
+        self.end_walk(persist=False)          # one walk (or gate) at a time
+        self._walk_record = record
         self._walk_ping_fn = ping_fn
         self._walk_done_cb = on_finished
+        self._walk_reach_probe = reach_probe
+        # From the first gate onward this screen is a measuring instrument,
+        # not a place-a-node form: the full-width green "Use this position →"
+        # stamps a position and jumps into BIRTH, and the operator hit exactly
+        # that mid-walk (2026-09-21). Restored by end_walk.
+        self._show_placement(False)
+        self._show_walk_check()
+
+    # -- gate 1: is the node even there? -------------------------------------
+
+    def _walk_panel(self):
+        """The chrome shared by all three pre-walk panels — one look, so the
+        operator sees a sequence rather than three unrelated screens.
+
+        SIZED BY ITS CONTENT, never by a guessed height. Four birth screens
+        once pushed their animation off the glass because the text grew past
+        the box drawn for it (2026-08-12), and these panels carry the longest
+        sentences in the feature — in eight languages, on a short panel.
+        """
+        panel = BoxLayout(orientation="vertical", size_hint=(1, None),
+                          spacing=dp(6), padding=[dp(10), dp(8)])
+        panel.bind(minimum_height=panel.setter("height"))
+        with panel.canvas.before:
+            from kivy.graphics import Color as _C, Rectangle as _R
+            _C(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            bg = _R()
+        panel.bind(pos=lambda *_: setattr(bg, "pos", panel.pos),
+                   size=lambda *_: setattr(bg, "size", panel.size))
+        return panel
+
+    @staticmethod
+    def _walk_text(text, size, color, bold=False):
+        """A wrapping label that GROWS to its text. The gate's instructions
+        are the whole of what a first-time operator is told; a German or
+        Russian sentence clipped at a fixed height would silently take half
+        of them away."""
+        lbl = Label(text=text, font_size=theme.font_sp(size), bold=bold,
+                    halign="left", valign="top", size_hint_y=None,
+                    color=theme.hex_to_rgba(theme.COLORS[color]))
+
+        def _sync(*_):
+            lbl.text_size = (lbl.width, None)
+            lbl.texture_update()
+            lbl.height = max(lbl.texture_size[1], dp(20))
+        lbl.bind(width=_sync, text=_sync)
+        return lbl
+
+    def _walk_node_name(self):
+        r = self._walk_record
+        return (getattr(r, "name", "")
+                or (getattr(r, "dst_hash", "") or "")[:8])
+
+    def _show_walk_check(self):
+        """GATE 1. "if the user selects a node underneath VITALS and they
+        click boundary walk, it automatically pings the node to make sure
+        it's online first. And if it's not online, you can say no, not
+        available" (operator, 2026-09-21).
+
+        The node's own VITALS page used to start a walk against whatever was
+        tapped, reachable or not — so an operator could walk away from a box
+        that had been silent for hours and learn it from a trail of red
+        pings. The ANTENNA picker already probed; this puts the same probe in
+        front of BOTH doors.
+
+        THE ANTENNA DOOR IS RE-CHECKED HERE TOO, deliberately, rather than
+        trusting the sweep that built its list. The sweep's answer is up to
+        twenty-five seconds old before the list even appears, plus however
+        long the operator spent reading it — and the project's oldest law is
+        that a remembered sighting is not a sighting, which a half-minute-old
+        probe result already is. It also keeps ONE flow with two entrances
+        instead of two flows; a door that skips a gate is a second flow. The
+        cost is one probe the operator is standing still for anyway.
+        """
         from kivy.uix.button import Button
-        hud = BoxLayout(orientation="horizontal", size_hint=(1, None),
+        name = self._walk_node_name()
+        self._tear_down_walk_gate()
+        panel = self._walk_panel()
+        head = self._walk_text(
+            tr("Checking {name} is on the mesh…").format(name=name),
+            "19sp", "accent", bold=True)
+        why = self._walk_text(
+            tr("Node Medic is pinging it now. There is no point walking away "
+               "from a node that is not answering, and a node last heard an "
+               "hour ago may be long gone. This takes a few seconds."),
+            "14sp", "text_secondary")
+        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(48), spacing=dp(8))
+        cancel = Button(text=tr("Cancel"), size_hint_x=None, width=dp(110),
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(
+                            theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel.bind(on_release=lambda *_: self.end_walk(persist=False))
+        row.add_widget(Widget())
+        row.add_widget(cancel)
+        for w in (head, why, row):
+            panel.add_widget(w)
+        self._walk_gate = panel
+        self.add_widget(panel, index=len(self.children))
+        self._run_walk_check()
+
+    def _run_walk_check(self):
+        """The probe itself, off-thread — it blocks for ~10 s and the operator
+        is standing outside in the weather. The RULE is answers_now's, shared
+        with the ANTENNA picker; this only supplies the probe and the thread."""
+        import threading
+        from kivy.clock import Clock as _Clock
+        from monitor.boundary_walk import answers_now
+        probe = getattr(self, "_walk_reach_probe", None)
+        token = object()
+        self._walk_check_token = token
+        if not callable(probe):
+            # "I could not check" is its own answer, and it is NOT "it works".
+            # A walk started on an unchecked node is the thing this gate
+            # exists to prevent, so a missing probe refuses like a silent one.
+            self._show_walk_unavailable(checked=False)
+            return
+        node = {"dst_hash": getattr(self._walk_record, "dst_hash", "")}
+
+        def work():
+            live = answers_now(node, probe=probe)
+            _Clock.schedule_once(
+                lambda _d: self._walk_check_done(live is not None, token), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _walk_check_done(self, ok, token=None):
+        """Gate 1's verdict. A stale answer from a cancelled check is dropped
+        — the operator may have pressed Cancel and started another walk."""
+        if token is not None and token is not getattr(
+                self, "_walk_check_token", None):
+            return
+        if getattr(self, "_walk_gate", None) is None:
+            return                          # cancelled while the probe ran
+        if ok:
+            self._show_walk_gate()
+        else:
+            self._show_walk_unavailable(checked=True)
+
+    def _show_walk_unavailable(self, checked=True):
+        """The refusal, worded as the operator asked: not available. It names
+        what to check and leaves two ways on — try again, or back out — never
+        a dead end, and never a "walk anyway" that would measure a node that
+        is not there."""
+        from kivy.uix.button import Button
+        name = self._walk_node_name()
+        self._tear_down_walk_gate()
+        panel = self._walk_panel()
+        head = self._walk_text(
+            (tr("{name} is not available.") if checked
+             else tr("Node Medic could not check {name}.")).format(name=name),
+            "19sp", "red", bold=True)
+        why = self._walk_text(
+            (tr("It did not answer a ping just now, so there is nothing "
+                "to walk away from. Check it is powered and within "
+                "range, then try again — a node can also simply be busy, "
+                "and a minute's wait is often enough.") if checked
+             else tr("The mesh check could not be run, so the medic does "
+                     "not know whether this node is there. It will not "
+                     "start a walk on a guess.")),
+            "14sp", "text_secondary")
+        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(50), spacing=dp(8))
+        again = Button(text=tr("Ping it again"), bold=True,
+                       font_size=theme.font_sp("16sp"), background_normal="",
+                       background_color=theme.hex_to_rgba(
+                           theme.COLORS["accent"]),
+                       color=theme.hex_to_rgba(theme.COLORS["background"]))
+        again.bind(on_release=lambda *_: self._show_walk_check())
+        close = Button(text=tr("Close"), size_hint_x=None, width=dp(110),
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(
+                           theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        close.bind(on_release=lambda *_: self.end_walk(persist=False))
+        row.add_widget(again)
+        row.add_widget(close)
+        for w in (head, why, row):
+            panel.add_widget(w)
+        self._walk_gate = panel
+        self.add_widget(panel, index=len(self.children))
+
+    # -- gate 2: stand at the node, wait for sky -----------------------------
+
+    def _show_walk_gate(self):
+        """"STAND NEXT TO THE NODE and wait for a fix" — the operator's own
+        order, 2026-09-21, given outdoors while testing this as a
+        first-time-user experience rather than as a range test.
+
+        A stranger arriving here has just pressed a button and been moved to
+        a map. This panel is the whole of what they are told, so it carries
+        all three things they need: where to put their body, what the medic
+        is doing, and what will happen next. The big green button is the ONLY
+        way forward and it is absent until there is a fix to anchor on —
+        nothing here offers a start that would measure nothing.
+        """
+        import time as _t
+        from kivy.uix.button import Button
+        from kivy.clock import Clock as _Clock
+        name = self._walk_node_name()
+        self._tear_down_walk_gate()
+        gate = self._walk_panel()
+
+        # SAY WHICH GATE PASSED. The operator has just watched a screen ping
+        # the node; without this line the next screen reads as the same wait
+        # continuing, and they cannot tell whether the hold-up is the node or
+        # the sky — which is the whole reason these are two screens.
+        done = self._walk_text(
+            tr("{name} answered — it is on the mesh.").format(name=name),
+            "14.5sp", "green", bold=True)
+        head = self._walk_text(
+            tr("Stand next to {name}.").format(name=name),
+            "19sp", "warning_yellow", bold=True)
+        why = self._walk_text(
+            tr("Node Medic measures how far this node reaches by the distance "
+               "you walk from it — so it has to know where you started. Wait "
+               "here until it has a satellite fix, then press the button and "
+               "walk away."),
+            "14sp", "text_secondary")
+        self._walk_gate_badge = _FixBadge()
+        self._walk_gate_state = self._walk_text("", "14.5sp", "text_secondary")
+
+        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(58), spacing=dp(8))
+        # LARGE and unmistakable, as ordered — and it says WHY it has appeared,
+        # because a button that materialises without explanation is a button
+        # people press without reading.
+        self._walk_go = Button(
+            text=tr("GPS found — start the walk"), bold=True,
+            font_size=theme.font_sp("19sp"), background_normal="",
+            background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self._walk_go.bind(on_release=lambda *_: self._walk_gate_go())
+        cancel = Button(text=tr("Cancel"), size_hint_x=None, width=dp(110),
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(
+                            theme.COLORS["surface"]),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        cancel.bind(on_release=lambda *_: self.end_walk(persist=False))
+        row.add_widget(self._walk_go)
+        row.add_widget(cancel)
+        # Absent, not greyed: a disabled button still reads as "the way on",
+        # and an operator taps it and learns the medic ignores them.
+        self._walk_go.opacity = 0
+        self._walk_go.disabled = True
+
+        for w in (done, head, why, self._walk_gate_badge,
+                  self._walk_gate_state, row):
+            gate.add_widget(w)
+        self._walk_gate = gate
+        self._walk_gate_since = _t.time()
+        self._walk_anchor = None
+        self.add_widget(gate, index=len(self.children))   # top of the screen
+        self._walk_gate_tick(0)
+        self._walk_gate_ev = _Clock.schedule_interval(self._walk_gate_tick, 1.0)
+
+    def _walk_gate_tick(self, _dt):
+        """One look at the sky. The verdict is monitor.boundary_walk.gps_gate's
+        (pure, tested); this only paints it and shows or hides the button."""
+        import time as _t
+        from monitor.boundary_walk import gps_gate
+        if getattr(self, "_walk_go", None) is None:
+            return                          # gate 2 is not the panel on screen
+        fix = None
+        try:
+            fix = self._fix_reader() if self._fix_reader else None
+        except Exception:                                          # noqa: BLE001
+            fix = None
+        waited = _t.time() - getattr(self, "_walk_gate_since", _t.time())
+        g = gps_gate(fix, waited_s=waited)
+        self._walk_gate_badge.set_sats(g["sats"])
+        self._walk_anchor = g["anchor"]
+        # SAY WHAT IT IS WAITING FOR, in the words of the thing to do about it
+        # — never a bare spinner. Each stage has a different answer.
+        if g["ready"]:
+            words, tone = tr("Satellite fix — ready to start."), "green"
+        elif g["stage"] == "held":
+            words, tone = (tr("The GPS is coasting on an old position, not "
+                              "tracking. Step into the open and wait."), "amber")
+        elif g["stage"] == "slow":
+            words, tone = (tr("Still no fix after two minutes. Move away from "
+                              "walls and trees — or run PROBE ▸ Self Diagnose "
+                              "to check the GPS itself."), "amber")
+        else:
+            words, tone = (tr("Looking for satellites — this can take a couple "
+                              "of minutes from cold. Keep the sky in view."),
+                           "text_secondary")
+        self._walk_gate_state.text = words
+        self._walk_gate_state.color = theme.hex_to_rgba(theme.COLORS[tone])
+        self._walk_go.opacity = 1 if g["ready"] else 0
+        self._walk_go.disabled = not g["ready"]
+
+    def _walk_gate_go(self):
+        """The press. Anchor HERE — see _start_walk_now."""
+        anchor = getattr(self, "_walk_anchor", None)
+        if anchor is None:                 # the fix died between paint and tap
+            self._walk_gate_tick(0)
+            return
+        self._tear_down_walk_gate()
+        self._start_walk_now(anchor)
+
+    def _tear_down_walk_gate(self):
+        """Remove whichever pre-walk panel is up (check / refusal / GPS gate)
+        and stop its clock. Safe to call idle, and called by end_walk — so
+        Cancel on any of the three unwinds the whole thing."""
+        ev = getattr(self, "_walk_gate_ev", None)
+        if ev is not None:
+            ev.cancel()
+        self._walk_gate_ev = None
+        self._walk_go = None                 # gate 2 is no longer on screen
+        gate = getattr(self, "_walk_gate", None)
+        if gate is not None and gate.parent is not None:
+            self.remove_widget(gate)
+        self._walk_gate = None
+
+    # -- the walk itself -----------------------------------------------------
+
+    def _start_walk_now(self, anchor):
+        """Begin pinging, anchored at *anchor* — the fix the operator was
+        standing on when they pressed the button.
+
+        NOT the registry's remembered position for the node. That may be
+        hours old, and where the operator shares a fuzzed location it is
+        deliberately wrong by hundreds of metres; either would put a false
+        distance on every sample in the walk. The gate's own words are
+        "stand next to {name}", so the press is the operator asserting they
+        are there, and a measurement taken now beats a remembered one — the
+        project's oldest law, applied to our own coordinates.
+        """
+        import time as _t
+        from kivy.clock import Clock as _Clock
+        from monitor.boundary_walk import BoundaryWalkSession
+        rec = self._walk_record
+        lat, lon = anchor
+        self._walk = BoundaryWalkSession(
+            node_key=rec.dst_hash, node_name=rec.name or rec.dst_hash[:8],
+            node_lat=lat, node_lon=lon, now=_t.time())
+        self._show_walk_hud()
+        self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
+        self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
+        self._walk_flash_on = False
+
+    def _show_walk_hud(self):
+        """Banner + a plain instruction line + the button that ends it.
+
+        The instruction line is new on 2026-09-21. Before it the flashing
+        banner was the end of the conversation: a stranger stood in a field
+        holding a device that said MESH CONNECTION LOST and said nothing
+        about what to do about it.
+        """
+        from kivy.uix.button import Button
+        hud = BoxLayout(orientation="vertical", size_hint=(1, None),
+                        spacing=dp(4))
+        hud.bind(minimum_height=hud.setter("height"))
+        top = BoxLayout(orientation="horizontal", size_hint=(1, None),
                         height=dp(54), spacing=dp(8))
         self._walk_lbl = Label(text=tr("Boundary walk — walk away from "
                                        "{name}. Pinging…").format(
@@ -2111,20 +2476,43 @@ class ScanScreen(BoxLayout):
             self._walk_bg_col = _C(*theme.hex_to_rgba(theme.COLORS["warning_yellow"]))
             self._walk_bg = _R()
         self._walk_lbl.bind(pos=self._walk_fit, size=self._walk_fit)
-        stop = Button(text=tr("Stop walk"), size_hint_x=None, width=dp(110),
+        # NOT red. Red on this tool means Delete / Rebirth — things that
+        # destroy — and this is the button that SAVES the walk. Worded as
+        # what it does, which no colour can be misread into contradicting.
+        stop = Button(text=tr("Stop & save"), size_hint_x=None, width=dp(132),
                       bold=True, background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["red"]),
-                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
         stop.bind(on_release=lambda *_: self.end_walk())
-        hud.add_widget(self._walk_lbl)
-        hud.add_widget(stop)
+        top.add_widget(self._walk_lbl)
+        top.add_widget(stop)
+        self._walk_hint = self._walk_text("", "14sp", "text_secondary")
+        hud.add_widget(top)
+        hud.add_widget(self._walk_hint)
         self._walk_hud = hud
         self.add_widget(hud, index=len(self.children))   # top of the screen
-        self._show_placement(False)
-        from kivy.clock import Clock as _Clock
-        self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
-        self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
-        self._walk_flash_on = False
+        self._walk_step_hint()
+
+    def _walk_step_hint(self):
+        """The one sentence telling the operator what to do with their body,
+        right now. Re-read after every ping because the answer changes."""
+        w = getattr(self, "_walk", None)
+        hint = getattr(self, "_walk_hint", None)
+        if w is None or hint is None:
+            return
+        if w.state == "lost":
+            hint.text = tr("This is the edge of its reach. Press Stop & save "
+                           "to keep it — or walk on a little to check it "
+                           "stays lost.")
+            hint.color = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+            return
+        if not w.samples:
+            hint.text = tr("Start walking away from the node, in a straight "
+                           "line if the ground lets you.")
+        else:
+            hint.text = tr("Keep walking. Node Medic pings every 20 seconds "
+                           "and will flash when the mesh drops.")
+        hint.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
 
     def _walk_fit(self, *_):
         self._walk_bg.pos = self._walk_lbl.pos
@@ -2162,6 +2550,7 @@ class ScanScreen(BoxLayout):
             self._walk_lbl.text = text
             self._walk_bg_col.rgba = theme.hex_to_rgba(theme.COLORS["green"])
             self._walk_lbl.color = theme.hex_to_rgba(theme.COLORS["background"])
+        self._walk_step_hint()
 
     def _walk_flash(self, _dt):
         """The found boundary flashes yellow/black, as specified on the bench
@@ -2182,8 +2571,11 @@ class ScanScreen(BoxLayout):
             self._walk_lbl.color = yellow
 
     def end_walk(self, persist=True):
-        """Stop, bank the evidence, tell the story. Safe to call idle."""
+        """Stop, bank the evidence, tell the story. Safe to call idle — and
+        it also cancels a GPS gate that never got as far as a walk, which is
+        what the gate's Cancel button calls."""
         w = getattr(self, "_walk", None)
+        self._tear_down_walk_gate()
         for ev in ("_walk_ev", "_walk_flash_ev"):
             e = getattr(self, ev, None)
             if e is not None:
@@ -2193,6 +2585,7 @@ class ScanScreen(BoxLayout):
         if hud is not None and hud.parent is not None:
             self.remove_widget(hud)
         self._walk_hud = None
+        self._walk_hint = None
         self.plot.set_walk_trail([])
         self._walk = None
         self._show_placement(True)
@@ -2204,10 +2597,17 @@ class ScanScreen(BoxLayout):
             obs, fails = w.evidence(medic_id=MEDIC_ID)
             append_evidence(obs, fails)
             from ui.requirement_popup import requirement_popup
+            # "banked as range evidence" is a sentence for someone who already
+            # knows this tool. SAY WHAT READS IT — otherwise a newcomer's whole
+            # walk ends in a number with no consequence (operator, 2026-09-21).
             requirement_popup(
                 w.summary() + "\n\n" + tr(
                     "{o} link sightings and {f} boundary losses banked as "
-                    "range evidence.").format(o=len(obs), f=len(fails)),
+                    "range evidence.").format(o=len(obs), f=len(fails))
+                + "\n\n" + tr(
+                    "Node Medic uses this to work out how far your nodes "
+                    "really reach, and where the next one should go — see "
+                    "Build next on this map."),
                 tr("Boundary walk finished"), False, tone="success")
         except Exception:                                          # noqa: BLE001
             pass

@@ -77,6 +77,11 @@ def build_guide_content():
         col.add_widget(_role_row(device, role))
 
     col.add_widget(_divider())
+    col.add_widget(_section_title(g.REACH_TITLE))
+    for para in g.REACH_BODY:
+        col.add_widget(_wrap(para, size="14.5sp", color="text_secondary"))
+
+    col.add_widget(_divider())
     col.add_widget(_section_title(g.BUILD_TITLE))
     for head, cost, lines in g.BUILD_SECTIONS:
         col.add_widget(_wrap(head, size="16sp", color="accent", bold=True))

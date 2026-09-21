@@ -364,7 +364,16 @@ _TOUR_STEPS = [
              "antenna.\n\n"
              "A node in the right place with a badly aimed antenna and a node in "
              "the wrong place look the same in VITALS. This is how you tell them "
-             "apart, on site."},
+             "apart, on site.\n\n"
+             # ONE SENTENCE, NOT A NINTH CARD (2026-09-21). The tour is one
+             # screen per mode and a boundary walk is a thing two modes DO,
+             # not a mode; and a stranger on this screen owns no nodes yet, so
+             # a card about measuring their reach would teach nothing it could
+             # use. But ANTENNA carries the button, so the card that owns the
+             # button names it, and the "?" guide carries the explanation.
+             "It is also where a BOUNDARY TEST starts — you walk away from a "
+             "node on foot and the medic tells you where its signal stops. "
+             "The \"?\" in the corner explains that one."},
 
     {"key": TOUR_PROBE, "part": TOUR, "opens": "probe",
      "title": "PROBE — find out what is wrong",

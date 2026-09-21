@@ -25,6 +25,28 @@ def test_role_table_covers_movers_and_fixed():
     assert "Transport OFF" in phone_role
 
 
+def test_the_guide_explains_the_boundary_walk():
+    """Operator, 2026-09-21: the boundary walk had no entry behind the red
+    "?" — the one place a person already goes to ask what something is."""
+    body = " ".join(g.REACH_BODY).lower()
+    assert "boundary walk" in g.REACH_TITLE.lower() + " " + body
+    # what it IS: walk away and watch for the drop
+    assert "walk away" in body
+    # when to USE it: before committing to a site
+    assert "before" in body
+    # and the honest precondition the gate enforces
+    assert "satellite" in body or "gps" in body
+
+
+def test_the_guide_is_rendered_not_just_declared():
+    """A section declared and never drawn is the project's recurring bug:
+    existing is not running (WORKING_METHOD, 2026-08-18)."""
+    import os
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(here, "ui/widgets/guide_content.py")).read()
+    assert "REACH_TITLE" in src and "REACH_BODY" in src
+
+
 def test_radio_lines_match_canonical_defaults():
     lines = g.radio_lines()
     joined = " ".join(lines)

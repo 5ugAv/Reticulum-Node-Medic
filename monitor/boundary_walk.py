@@ -156,6 +156,60 @@ class BoundaryWalkSession:
         return obs, fails
 
 
+# -- the GPS gate: no anchor, no walk ---------------------------------------
+
+#: A receiver with open sky above it finds its first fix inside this long. Past
+#: it the gate stops saying "wait" and starts saying "check" — two minutes of
+#: nothing is a problem, not patience.
+GPS_COLD_START_S = 120.0
+
+
+def gps_gate(fix, waited_s: float = 0.0) -> dict:
+    """May the walk start yet, and what is the screen waiting on?
+
+    Operator, 2026-09-21, with a T114 outdoors: the walk must not begin until the medic has a satellite fix, and
+    the start button must not EXIST until then.
+
+    The reason is in ``ping_result`` above. A walk's whole product is evidence
+    at a KNOWN DISTANCE, and the distance is measured from the anchor — where
+    the operator stood when they pressed start. With no fix every ping records
+    ``km: None``, ``evidence`` banks nothing, and the screen sits there
+    pinging away looking busy while measuring exactly nothing. That is the
+    shape this project calls decoration: a step whose failure is invisible.
+
+    A COASTING fix is refused with the rest, and named separately so the
+    screen can say which. ``classify_fix`` calls it ``held`` — a fix flag with
+    zero satellites tracked, which is the receiver replaying where it WAS.
+    Anchoring a range measurement on a remembered position would put a wrong
+    number on every sample in the walk, and a wrong number is worse than none.
+
+    Returns ``{ready, stage, sats, anchor}`` where *stage* is one of
+    ``searching`` | ``slow`` | ``held`` | ``ready`` and *anchor* is the
+    ``(lat, lon)`` to measure from, present only when ready.
+
+    Pure, like the rest of this module: the words live in the screen, wrapped
+    for translation. This decides, it does not speak.
+    """
+    from monitor.geo import classify_fix
+    try:
+        level = classify_fix(fix)
+    except Exception:                                              # noqa: BLE001
+        # The fix reader is a file read on a device. It has handed back None,
+        # a stale dict and worse; a malformed one is "no fix", never a crash
+        # with the operator standing outside in the weather.
+        level = "none"
+    sats = getattr(fix, "sats", None)
+    if not isinstance(sats, int):
+        sats = None
+    if level == "live":
+        return {"ready": True, "stage": "ready", "sats": sats,
+                "anchor": (fix.lat, fix.lon)}
+    if level == "held":
+        return {"ready": False, "stage": "held", "sats": sats, "anchor": None}
+    return {"ready": False, "sats": sats, "anchor": None,
+            "stage": "slow" if waited_s >= GPS_COLD_START_S else "searching"}
+
+
 #: How recently a node must have been heard to be worth PROBING. Deliberately
 #: generous: since 2026-09-19 the registry only nominates candidates and a
 #: live ping decides who is actually offered (live_walk_targets), so this

@@ -1801,6 +1801,29 @@ class ReticulumNodeMedicApp(App):
         except Exception:                                          # noqa: BLE001
             cands = []
         body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(10))
+        # SAY WHAT THIS IS BEFORE ASKING THEM TO CHOOSE (operator, 2026-09-21,
+        # testing it as a first-time user). Picking a node here does not open a
+        # page — it moves the operator to MAPS and starts a task they perform
+        # with their legs. A stranger should not discover that by arriving
+        # there. It is also the one place the two names for this thing meet:
+        # ANTENNA calls the button "Boundary test", everything downstream calls
+        # it a boundary walk.
+        intro = Label(
+            text=tr("A boundary walk finds how far a node really reaches: you "
+                    "walk away from it on foot while Node Medic pings it, and "
+                    "it flashes when the mesh drops. Pick the node you will "
+                    "walk away from — you need to be standing at it."),
+            size_hint_y=None, halign="center", valign="top", font_size="14sp",
+            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+
+        def _fit_intro(*_):
+            # Grows to its text: this sentence is half again as long in German
+            # and a fixed height would cut the last line off in silence.
+            intro.text_size = (intro.width, None)
+            intro.texture_update()
+            intro.height = intro.texture_size[1]
+        intro.bind(width=_fit_intro, text=_fit_intro)
+        body.add_widget(intro)
         if not cands:
             # Honest empty state: say WHY there is nothing to offer, and what
             # would change it — never an empty list with no explanation.
@@ -1910,11 +1933,22 @@ class ReticulumNodeMedicApp(App):
         self._start_boundary_walk(rec)
 
     def _start_boundary_walk(self, record):
-        """Node detail -> MAPS with the walk running (spec 2026-08-13: fold
-        it into the map view — no seventh mode)."""
+        """The ONE way into a walk — both doors (a node's own VITALS page and
+        ANTENNA's picker) arrive here, so a walk starts the same way whichever
+        button was pressed. Node detail -> MAPS (spec 2026-08-13: fold it into
+        the map view — no seventh mode).
+
+        Nothing is pinged yet: the screen runs the two gates, node first then
+        sky (see ScanScreen.begin_walk). ``_mesh_reachable`` is handed over as
+        the node check rather than reimplemented there — it is the same
+        primitive the picker's sweep uses, and it drops the cached path first,
+        because a cached path is not a sighting.
+        """
         try:
             self.switch_mode("scan")
-            self.scan_screen.begin_walk(record, self._walk_probe)
+            self.scan_screen.begin_walk(
+                record, self._walk_probe,
+                reach_probe=lambda d: self._mesh_reachable(d, wait=10))
         except Exception as e:                                     # noqa: BLE001
             print(f"[walk] could not start: {e}", flush=True)
 
