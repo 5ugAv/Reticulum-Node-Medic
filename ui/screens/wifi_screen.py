@@ -161,6 +161,7 @@ class WifiScreen(BoxLayout):
     def _show_networks(self, nets):
         self._busy = False
         self.scan_btn.text = tr("Search for WiFi networks")
+        self._rows = []
         if not nets:
             self.list.add_widget(_line(tr("No networks found."), color="amber"))
             return
@@ -176,13 +177,26 @@ class WifiScreen(BoxLayout):
             # settles on. The old ``(v[0] - dp(16), v[1])`` never matched the
             # row width, so size→text_size→size could never converge → storm.
             btn.bind(size=lambda i, v: setattr(i, "text_size", v))
-            btn.bind(on_release=lambda *_a, net=n: self._select(net))
+            btn.bind(on_release=lambda *_a, net=n, row=btn: self._select(net, row=row))
+            self._rows.append(btn)
             self.list.add_widget(btn)
 
     # -- select + connect ---------------------------------------------------
 
-    def _select(self, net):
+    def _highlight_row(self, row):
+        """The tapped row is the one that changes. A status line further down
+        saying "Enter password for X" is not a selection the eye can find in
+        a list of eight look-alike rows (operator, 2026-09-21)."""
+        for b in getattr(self, "_rows", []):
+            b.background_color = theme.hex_to_rgba(theme.COLORS["surface"])
+            b.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
+        if row is not None:
+            row.background_color = theme.hex_to_rgba(theme.COLORS["accent"])
+            row.color = theme.hex_to_rgba(theme.COLORS["background"])
+
+    def _select(self, net, row=None):
         self._selected = net
+        self._highlight_row(row)
         self.autoconnect.active = True                # default: rejoin automatically
         self.autoconn_row.height, self.autoconn_row.opacity = dp(40), 1
         if net["secure"]:
