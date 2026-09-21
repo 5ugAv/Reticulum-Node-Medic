@@ -1282,6 +1282,11 @@ class ScanScreen(BoxLayout):
             act.add_widget(self.confirm_btn)
             act.add_widget(_btn(tr("Enter manually"), "surface", self._toggle_manual))
             self.add_widget(act)
+            # Kept so a boundary walk can put the PLACEMENT controls away —
+            # during a walk this screen is a measuring instrument, not a
+            # place-a-node form (operator, mid-walk 2026-09-21: the big green
+            # "Use this position" jumped them into BIRTH).
+            self._place_row = act
 
             self.detail_btn = Button(
                 text=tr("Load street names for this spot  (needs WiFi)"),
@@ -2115,6 +2120,7 @@ class ScanScreen(BoxLayout):
         hud.add_widget(stop)
         self._walk_hud = hud
         self.add_widget(hud, index=len(self.children))   # top of the screen
+        self._show_placement(False)
         from kivy.clock import Clock as _Clock
         self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
         self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
@@ -2189,6 +2195,7 @@ class ScanScreen(BoxLayout):
         self._walk_hud = None
         self.plot.set_walk_trail([])
         self._walk = None
+        self._show_placement(True)
         if w is None or not persist:
             return
         try:
@@ -2211,3 +2218,31 @@ class ScanScreen(BoxLayout):
             except Exception:                                      # noqa: BLE001
                 pass
 
+    def _show_placement(self, show):
+        """Reveal or put away the place-a-node controls.
+
+        A boundary walk turns this screen into a measuring instrument, and a
+        full-width green "Use this position →" sitting under the walk banner
+        reads as the way forward — it is not: it stamps a position and jumps
+        into BIRTH. The operator hit exactly that, standing outdoors with a node (2026-09-21). The GPS badge and the coordinates
+        STAY: during a walk they are the two most useful numbers on the
+        screen. Same disable-not-just-hide rule as the manual row — an
+        opacity-0 Kivy widget still takes touches.
+        """
+        for w in (getattr(self, "_place_row", None),
+                  getattr(self, "detail_btn", None)):
+            if w is None:
+                continue
+            w.opacity = 1 if show else 0
+            w.disabled = not show
+            if not show:
+                w._walk_saved_h = w.height
+                w.height = 0
+            elif getattr(w, "_walk_saved_h", None):
+                w.height = w._walk_saved_h
+        if not show:
+            # a half-open manual-entry row would survive the hide otherwise
+            try:
+                self._set_manual_shown(False)
+            except Exception:                                      # noqa: BLE001
+                pass

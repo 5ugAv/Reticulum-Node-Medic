@@ -95,3 +95,27 @@ def test_the_reachability_probe_drops_the_cached_path_first():
     probe = func_source("ui/app.py", "_mesh_reachable",
                         cls="ReticulumNodeMedicApp")
     assert "rnpath --drop" in probe and "rnpath -w" in probe
+
+
+# -- a walk is not a placement form (operator, mid-walk 2026-09-21) --------
+
+def test_a_running_walk_puts_the_place_a_node_controls_away():
+    """The operator, standing under a tree with a node in it, was offered a
+    full-width green "Use this position →" under the walk banner — which
+    stamps a position and jumps into BIRTH. During a walk this screen is a
+    measuring instrument, not a form."""
+    from tests.srcutil import func_source
+    begin = func_source("ui/screens/scan_screen.py", "begin_walk",
+                        cls="ScanScreen")
+    assert "_show_placement(False)" in begin
+    end = func_source("ui/screens/scan_screen.py", "end_walk", cls="ScanScreen")
+    assert "_show_placement(True)" in end, "the controls must come back"
+    hide = func_source("ui/screens/scan_screen.py", "_show_placement",
+                       cls="ScanScreen")
+    # disabled, not merely invisible — an opacity-0 Kivy widget still takes taps
+    assert "disabled" in hide
+    # the two numbers a walker actually wants must NOT be hidden — check the
+    # CODE, not the prose (the docstring names them to say they stay)
+    code = hide.split('"""')[-1]
+    assert "_place_row" in code and "detail_btn" in code
+    assert "self.badge" not in code and "self.coords" not in code
