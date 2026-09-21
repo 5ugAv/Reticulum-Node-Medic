@@ -48,6 +48,8 @@ _OWN_IDENTITY_FILES = [
     os.path.expanduser("~/.reticulum/storage/transport_identity"),
     os.path.expanduser("~/.reticulum/storage/identity"),
     os.path.expanduser("~/.lxmd/identity"),
+    # The health-reply destination's identity (docs/HEALTH_REPLY_UNICAST.md).
+    os.path.expanduser("~/.reticulum-node-medic/health_reply_identity"),
 ]
 
 

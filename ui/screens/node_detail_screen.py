@@ -325,6 +325,7 @@ class NodeDetailScreen(BoxLayout):
             texture_size=lambda i, ts: setattr(
                 i, "height", max(dp(max(26, theme.line_dp("13sp"))), ts[1] + dp(4))))
         self.add_widget(self.ping_status)
+        self._show_late_reply()
 
         actions = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(52), spacing=dp(8))
@@ -430,6 +431,13 @@ class NodeDetailScreen(BoxLayout):
             self.ping_status.text = tr("Probing over the mesh…")
             self.ping_status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
             self._on_poll(self.record.dst_hash, self._set_ping_status)
+
+    def _show_late_reply(self):
+        """A unicast health reply that landed after its poll's popup closed
+        (docs/HEALTH_REPLY_UNICAST.md): the record kept the sentence."""
+        note = getattr(self.record, "late_reply_note", None)
+        if note:
+            self._set_ping_status(note, True)
 
     def _set_ping_status(self, text, ok=None):
         self.ping_status.text = text

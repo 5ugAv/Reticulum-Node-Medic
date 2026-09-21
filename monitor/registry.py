@@ -391,6 +391,9 @@ class NodeRecord:
     #: newer beacon, HTTP poll, or answered probe. Stays a BARE stamp: it is not
     #: a sighting (it is the ABSENCE of one) and has no age surface of its own.
     poll_failed_at: Optional[float] = None
+    #: A health reply that landed after its poll's popup had closed — kept
+    #: here so the sentence is not lost with the popup (2026-09-21).
+    late_reply_note: Optional[str] = None
     #: When a byte-identical copy of the last beacon/announce was heard again —
     #: an Observation sourced "echo". A repeated payload is a RETRANSMISSION
     #: (rnsd re-emits cached announces on path requests), not the node speaking:
@@ -775,6 +778,10 @@ class NodeRegistry:
         #: filters nobody. Matched by IDENTITY, so a node the medic BUILT — which
         #: carries a DIFFERENT identity — is never mistaken for the medic itself.
         self.own_identities: set = set()
+        #: THIS medic's own destination hashes (e.g. its health-reply
+        #: destination, hops 0 in rnsd's table). The announce door is closed
+        #: by identity; this closes the path-table door too (review 2026-09-21).
+        self.own_destinations: set = set()
 
     @_locked
     def set_own_identities(self, hashes) -> None:
@@ -783,6 +790,13 @@ class NodeRegistry:
         normalises to lowercase hex and drops empties. The app wires this at
         startup from provisioning.tool_identity.own_identity_hashes()."""
         self.own_identities = {str(h).lower() for h in (hashes or ()) if h}
+
+    def set_own_destinations(self, hashes) -> None:
+        """Record THIS medic's own destination hashes (lowercase hex)."""
+        self.own_destinations = {str(h).lower() for h in (hashes or ()) if h}
+
+    def _is_own_destination(self, dst_hash) -> bool:
+        return bool(dst_hash) and str(dst_hash).lower() in self.own_destinations
 
     def _is_own_identity(self, rec) -> bool:
         """True if *rec*'s identity is one of THIS medic's own — the guard that
@@ -1074,9 +1088,11 @@ class NodeRegistry:
 
     @_locked
     def ingest(self, dst_hash: str, beacon: HealthBeacon,
-               now: float) -> Optional[NodeRecord]:
+               now: float, source: str = "beacon") -> Optional[NodeRecord]:
         """Record a decoded beacon; auto-registers a never-seen node. A
-        tombstoned hash returns None (see set_tombstones)."""
+        tombstoned hash returns None (see set_tombstones). *source* names
+        how the beacon arrived — "beacon" (announced) or "reply" (the
+        unicast health reply, 2026-09-21) — so VITALS can say which."""
         if self._buried(dst_hash, now):
             return None                       # tombstoned: nothing may re-create it
         rec = self.nodes.get(dst_hash)
@@ -1091,12 +1107,12 @@ class NodeRegistry:
             rec.last_echo_at = now
             return rec
         rec.latest_beacon = beacon
-        rec.seen = Observation.at(now, "beacon")   # the node's own word
+        rec.seen = Observation.at(now, source)     # the node's own word
         rec.last_heard_announce_at = now   # the node itself, freshly heard
         if rec.poll_failed_at is not None and rec.last_seen is not None \
                 and rec.last_seen >= rec.poll_failed_at:
             rec.poll_failed_at = None   # newer direct word from the node itself
-        rec.last_direct_obs = Observation.at(now, "beacon")   # the finer source
+        rec.last_direct_obs = Observation.at(now, source)     # the finer source
         from monitor.history import HistoryPoint
         self.history.append(dst_hash, HistoryPoint(
             t=now,
@@ -1228,6 +1244,8 @@ class NodeRegistry:
         """
         if self._buried(node.dst_hash, now):
             return None                       # tombstoned: nothing may re-create it
+        if self._is_own_destination(node.dst_hash):
+            return None                       # the medic is not its own neighbour
         rec = self.nodes.get(node.dst_hash) or self.register(node.dst_hash)
         rec.mesh_hops = node.hops
         rec.mesh_interface = node.interface
@@ -1322,7 +1340,9 @@ class NodeRegistry:
         """Every node: the operator's OWN nodes first (kin above neighbours),
         alert-first within each group, then by name."""
         return sorted(
-            (r for r in self.nodes.values() if not self._is_own_identity(r)),
+            (r for r in self.nodes.values()
+             if not self._is_own_identity(r)
+             and not self._is_own_destination(r.dst_hash)),
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 

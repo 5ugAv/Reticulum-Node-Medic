@@ -973,7 +973,10 @@ _HEALTH_IDENTITY_PATH = "~/.reticulum-node-medic/pi_health_identity"
 #: the endpoint imports the contract constants from http_status rather than
 #: keeping a second copy of them on the far side of a USB cable.
 _HEALTH_MODULES = ("health_beacon.py", "ups.py", "pi_health_reporter.py",
-                   "http_status.py", "pi_status_server.py")
+                   "http_status.py", "pi_status_server.py",
+                   # the unicast health reply (2026-09-21) and the path warmer
+                   # the reporter borrows from the medic's own poll code
+                   "health_reply.py", "health_poll.py")
 
 
 def _push_health_package(wf: "BuildWorkflow") -> "tuple[str, str, str]":

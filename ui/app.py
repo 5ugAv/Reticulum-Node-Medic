@@ -45,6 +45,13 @@ from monitor.service import MonitorService
 # ``import RNS`` fails inside the ping worker (dev box), and a try-local import
 # left them unbound there — the comparison raised, the thread died, and the
 # detail screen said "Probing over the mesh…" forever.
+from monitor.health_reply import (PendingPolls, announce_wait_s,
+                                  build_fallback_request, build_request_to,
+                                  load_or_create_identity, unicast_wait_s,
+                                  uptime_is_fresh, verify_reply,
+                                  REPLY_ANNOUNCE_EVERY_S,
+                                  REPLY_ANNOUNCE_QUIET_AFTER_POLL_S,
+                                  REPLY_APP, REPLY_ASPECTS)
 from monitor.health_poll import (DELIVERY_ANSWERED, DELIVERY_NO_ROUTE,
                                  DELIVERY_UNANSWERED, build_request,
                                  heard_since, warm_and_send)
@@ -1363,6 +1370,7 @@ class ReticulumNodeMedicApp(App):
                         raise
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
+                app._setup_health_reply(RNS, _log)
                 # Positive proof of registration (first-try attach was silent
                 # before, making "attached" and "thread died" indistinguishable).
                 _log("mesh listener attached — announce handlers registered")
@@ -1390,6 +1398,13 @@ class ReticulumNodeMedicApp(App):
         threading.Thread(target=listen, daemon=True).start()
 
     _BEACON_FILE = os.path.expanduser("~/.reticulum-node-medic/beacon_targets.json")
+    #: The unicast health reply (docs/HEALTH_REPLY_UNICAST.md, 2026-09-21):
+    #: the medic's own reply destination, the polls still waiting for a
+    #: word, and when the last poll went out (announces stay quiet after).
+    _reply_dest = None
+    _reply_ident = None
+    _pending_polls = PendingPolls()
+    _last_poll_at = 0.0
     #: Persisted registry (nodes + heard-event history) — so activity accumulates
     #: across restarts. Saved every ~5 min by the monitor loop + on stop.
     _REGISTRY_FILE = os.path.expanduser("~/.reticulum-node-medic/registry.json")
@@ -2025,6 +2040,140 @@ class ReticulumNodeMedicApp(App):
             report(bool(ok), hops=hops, direct=direct)
         threading.Thread(target=work, daemon=True).start()
 
+    def _setup_health_reply(self, RNS, _log):
+        """The medic's reply destination for the unicast health reply
+        (docs/HEALTH_REPLY_UNICAST.md, 2026-09-21). Called on EVERY
+        successful attach: an rnsd restart drops the hops-0 entry that makes
+        rnsd hand inbound packets to this process, and nothing else would
+        put it back for ten minutes (review finding 3). Announced with empty
+        app_data — a labelled persistent identity is a leak the transport
+        announce does not already make."""
+        import time
+        try:
+            if self._reply_ident is None:
+                self._reply_ident = load_or_create_identity(RNS)
+            ident = self._reply_ident
+            dest = RNS.Destination(ident, RNS.Destination.IN,
+                                   RNS.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
+            dest.accepts_links(False)
+            dest.set_packet_callback(self._on_health_reply)
+            self._reply_dest = dest
+            reg = self.monitor_service.registry
+            reg.set_own_destinations(set(reg.own_destinations) | {dest.hash.hex()})
+            reg.set_own_identities(set(reg.own_identities) | {ident.hash.hex()})
+            self._announce_reply_dest(RNS, _log, why="attach")
+            if not getattr(self, "_reply_keeper_started", False):
+                self._reply_keeper_started = True
+                threading.Thread(target=self._keep_reply_dest_announced,
+                                 args=(RNS, _log), daemon=True).start()
+        except Exception as e:                                     # noqa: BLE001
+            _log("health reply destination NOT set up: %s" % e)
+
+    def _announce_reply_dest(self, RNS, _log, why=""):
+        dest = self._reply_dest
+        if dest is None:
+            return
+        try:
+            dest.announce()                         # empty app_data, deliberately
+            _log("health reply destination %s announced (%s)" % (
+                dest.hash.hex()[:8], why))
+        except Exception as e:                                     # noqa: BLE001
+            _log("health reply announce failed: %s" % e)
+
+    def _reply_dest_known_to_rnsd(self, RNS):
+        """The check that can fail: is our reply destination in rnsd's table
+        at 0 hops? After an rnsd restart it is not, and replies would be
+        dropped at the daemon. Read from rnpath, never assumed."""
+        dest = self._reply_dest
+        if dest is None:
+            return False
+        try:
+            import json as _json
+            out = _local_run("rnpath -t --json 2>/dev/null")
+            rows = _json.loads(out or "[]")
+            rows = rows if isinstance(rows, list) else rows.get("paths", [])
+            mine = dest.hash.hex()
+            return any(str(r.get("hash", "")).lower() == mine
+                       and (r.get("hops") or 0) == 0 for r in rows)
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    def _keep_reply_dest_announced(self, RNS, _log):
+        """Every 10 minutes — and at once whenever rnsd has forgotten us —
+        but never within 60 s of a poll (our announce is the likeliest thing
+        to fill a relay's announce cap just when a fallback reply needs it)."""
+        import time
+        last = time.time()
+        while True:
+            time.sleep(60)
+            try:
+                if not self._reply_dest_known_to_rnsd(RNS):
+                    self._announce_reply_dest(RNS, _log, why="rnsd had forgotten it")
+                    last = time.time()
+                    continue
+                if time.time() - self._last_poll_at < REPLY_ANNOUNCE_QUIET_AFTER_POLL_S:
+                    continue
+                if time.time() - last >= REPLY_ANNOUNCE_EVERY_S:
+                    self._announce_reply_dest(RNS, _log, why="periodic")
+                    last = time.time()
+            except Exception:                                      # noqa: BLE001
+                pass
+
+    def _on_health_reply(self, data, packet):
+        """A unicast health reply landed (RNS inbound thread). Verify under
+        the named node's recalled identity, refuse stale uptime, ingest as
+        the node's own word with source "reply", and claim the poll it
+        answers — late or not."""
+        import time
+        try:
+            import RNS
+            got = verify_reply(bytes(data or b""), recall=RNS.Identity.recall)
+            if got is None:
+                self._reply_reject_log("unverifiable health reply dropped")
+                return
+            dest, nonce, beacon_bytes = got
+            from monitor.health_beacon import decode
+            beacon = decode(beacon_bytes)
+            reg = self.monitor_service.registry
+            now = time.time()
+            dest_hex = dest.hex()
+            rec = reg.nodes.get(dest_hex)
+            last = rec.latest_beacon if rec is not None else None
+            rebooted = bool(last is not None and getattr(last, "reset_reason", None)
+                            != getattr(beacon, "reset_reason", None))
+            if not uptime_is_fresh(getattr(beacon, "uptime_s", None),
+                                   getattr(last, "uptime_s", None), rebooted):
+                self._reply_reject_log("stale health reply refused (uptime ran backwards)")
+                return
+            reg.ingest(dest_hex, beacon, now, source="reply")
+            claimed = self._pending_polls.claim(nonce, dest)
+            if claimed is None:
+                return                              # fresh health, no question pending
+            reg.record_probe(dest_hex, ok=True, now=now)
+            after = claimed.get("answered_after_s") or 0.0
+            hops = claimed.get("hops") or 1
+            note = ("Answered %.0f s after the request%s — health heard by "
+                    "unicast reply." % (after, " via relay (%d hops)" % hops
+                                         if hops >= 2 else ""))
+            if after > unicast_wait_s(hops):
+                # The popup has given up; keep the sentence on the record so
+                # the node's page can still say it (review finding 8).
+                if rec is not None:
+                    rec.late_reply_note = note
+                print("[health] late reply: %s %s" % (dest_hex[:8], note), flush=True)
+        except Exception as e:                                     # noqa: BLE001
+            self._reply_reject_log("health reply handler error: %s" % e)
+
+    _reply_reject_last = 0.0
+
+    def _reply_reject_log(self, msg):
+        """Rate-limited: the packet is free for a stranger to send."""
+        import time
+        now = time.time()
+        if now - self._reply_reject_last >= 10.0:
+            self._reply_reject_last = now
+            print("[health] " + msg, flush=True)
+
     def _ping_node(self, dst_hash, report):
         """Live mesh reachability check. Drop the (possibly stale) cached path —
         cached paths lie — then REQUEST a fresh one and WAIT for it. The old code
@@ -2078,23 +2227,64 @@ class ReticulumNodeMedicApp(App):
                         # both records for freshness.
                         watch = {probe, dest.hash.hex()}
                         sent_at = [None]
+                        nonce = [None]
 
                         def _send(_d):
+                            # TWO PHASES (docs/HEALTH_REPLY_UNICAST.md).
+                            # First "speak to me": 0x04 + our reply
+                            # destination + a nonce, answered by a signed
+                            # unicast packet routed back through the mesh —
+                            # the reply a medic that cannot hear this node
+                            # directly can still receive. The 0x01 fallback
+                            # is sent by _heard only after W1, never sooner:
+                            # the node's 30 s rate limiter would swallow it.
                             sent_at[0] = time.time()
-                            RNS.Packet(dest, build_request()).send()
+                            self._last_poll_at = sent_at[0]
+                            rd = self._reply_dest
+                            if rd is not None:
+                                req = build_request_to(bytes(rd.hash))
+                                nonce[0] = req[-8:]
+                                self._pending_polls.add(
+                                    nonce[0], bytes(dest.hash), hops)
+                                RNS.Packet(dest, req).send()
+                            else:
+                                RNS.Packet(dest, build_request()).send()
                             Clock.schedule_once(lambda dt: report(
                                 "Path found%s. Health requested — waiting "
                                 "for the reply…" % hops_txt, None), 0)
 
-                        def _heard(_d, wait_s):
-                            # "Answered" == the announce listener stamped
-                            # last_heard_announce_at AFTER we sent — a field
-                            # written only by genuine (non-echo) announce or
-                            # beacon ingest, never by mesh path-table folds.
-                            # Watching last_seen here let a rediscover tick
-                            # inside the window fake an answer.
-                            return heard_since(registry.nodes.get, watch,
-                                               sent_at[0], wait_s)
+                        def _answered_unicast():
+                            return (nonce[0] is not None
+                                    and not self._pending_polls.is_pending(nonce[0]))
+
+                        def _heard(_d, _wait_s):
+                            # Phase 1: a verified unicast reply claims the
+                            # nonce, OR a fresh announce stamps
+                            # last_heard_announce_at (either is the node's
+                            # own word). Phase 2: the old request, waited
+                            # for as an announce with time for each relay
+                            # to rebroadcast.
+                            w1 = unicast_wait_s(hops)
+                            deadline = time.monotonic() + w1
+                            while time.monotonic() < deadline:
+                                if _answered_unicast():
+                                    return True
+                                if heard_since(registry.nodes.get, watch,
+                                               sent_at[0], 1.0):
+                                    return True
+                            if _answered_unicast():
+                                return True
+                            if nonce[0] is None:
+                                return False        # already sent 0x01
+                            Clock.schedule_once(lambda dt: report(
+                                "No unicast reply in %.0f s — asking it to "
+                                "announce instead…" % w1, None), 0)
+                            RNS.Packet(dest, build_fallback_request()).send()
+                            w2 = announce_wait_s(hops)
+                            if heard_since(registry.nodes.get, watch,
+                                           sent_at[0], w2):
+                                return True
+                            return _answered_unicast()
 
                         outcome = warm_and_send(
                             dh, RNS.Transport.has_path,
@@ -2127,8 +2317,13 @@ class ReticulumNodeMedicApp(App):
                             parts.append("SNR %g dB" % lm.snr_db)
                         if lm.headroom_db is not None:
                             parts.append("%g dB headroom" % lm.headroom_db)
-                        sig = ("\nSignal as heard by the medic: "
-                               + ", ".join(parts) + " — "
+                        # Relayed: the RF the medic heard is the RELAY's
+                        # transmission, not this node's — say so, or the
+                        # operator re-aims the wrong antenna (review, 2026-09-21).
+                        whose = ("Signal of the relay's transmission as heard "
+                                 "by the medic: " if (hops or 1) >= 2
+                                 else "Signal as heard by the medic: ")
+                        sig = ("\n" + whose + ", ".join(parts) + " — "
                                + words[lm.verdict] + ".")
                     Clock.schedule_once(lambda dt: report(
                         "Answered%s. Fresh health heard — this page shows the "

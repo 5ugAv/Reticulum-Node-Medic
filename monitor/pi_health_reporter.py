@@ -316,6 +316,65 @@ def _load_or_create_identity(RNS, path: str):
     return ident
 
 
+def make_command_handler(rns, identity, dest, announce, current_beacon,
+                         log=None, spawn=None, warm_wait_s: float = 10.0):
+    """The packet callback for the health destination — the same contract
+    the firmware implements (docs/HEALTH_REPLY_UNICAST.md, 2026-09-21):
+
+      0x01                -> announce the beacon (today's reply)
+      0x04 | dest | nonce -> reply by UNICAST to *dest* when this node can
+                             recall the medic's identity AND has a path
+                             back; otherwise announce now (the path warmer
+                             has already asked for a road, so the next poll
+                             is unicast). Off the callback thread: warming
+                             a path takes seconds.
+      anything else       -> ignored, like the firmware.
+
+    *rns* is the RNS module (injected so tests use a fake); *spawn* runs the
+    reply work (a daemon thread by default; tests run it inline)."""
+    import threading
+    from monitor.health_poll import warm_path
+    from monitor.health_reply import (OPCODE_HEALTH_TO, REPLY_APP, REPLY_ASPECTS,
+                                      make_reply, node_reply_mode, parse_request)
+    _log = log or (lambda m, lvl=None: None)
+    if spawn is None:
+        def spawn(fn, *a):
+            threading.Thread(target=fn, args=a, daemon=True).start()
+
+    def reply_unicast(reply_dest, nonce):
+        try:
+            ident = rns.Identity.recall(reply_dest)
+            has_path = warm_path(reply_dest, rns.Transport.has_path,
+                                 rns.Transport.request_path, wait_s=warm_wait_s)
+            mode = node_reply_mode(ident is not None, bool(has_path))
+            if mode != "unicast":
+                _log("0x04: no %s to the medic - announcing instead" % (
+                    "identity" if ident is None else "path"))
+                announce()
+                return
+            out = rns.Destination(ident, rns.Destination.OUT,
+                                  rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
+            payload = make_reply(bytes(dest.hash), nonce, current_beacon(),
+                                 identity.sign)
+            rns.Packet(out, payload).send()
+            _log("0x04: unicast health reply sent")
+        except Exception as e:                                     # noqa: BLE001
+            _log("0x04: reply failed: %s - announcing instead" % e)
+            try:
+                announce()
+            except Exception:                                      # noqa: BLE001
+                pass
+
+    def on_command(data, packet):
+        op, reply_dest, nonce = parse_request(bytes(data or b""))
+        if op == OPCODE_HEALTH_TO:
+            spawn(reply_unicast, reply_dest, nonce)
+        elif op == COMMAND_BEACON:
+            announce()
+        # unknown or malformed: ignored, so the registry of opcodes can grow
+    return on_command
+
+
 def serve(power_source: str = "battery",
           firmware_version: str = "1.0.0",
           heartbeat_s: int = HEARTBEAT_S,
@@ -344,12 +403,9 @@ def serve(power_source: str = "battery",
         except Exception as e:      # never let a bad read kill the heartbeat
             RNS.log(f"Pi health: announce failed: {e}", RNS.LOG_ERROR)
 
-    def on_command(data, packet):
-        # any packet to our health destination is a beacon request (the medic
-        # sends a single 0x01 byte) -> reply immediately.
-        announce()
-
-    dest.set_packet_callback(on_command)
+    dest.set_packet_callback(make_command_handler(
+        RNS, identity, dest, announce, current_beacon,
+        log=lambda m, lvl=None: RNS.log("Pi health: " + m, lvl or RNS.LOG_VERBOSE)))
 
     # EVERY ANNOUNCE CARRIES A BEACON, not just the ones this loop makes.
     #
