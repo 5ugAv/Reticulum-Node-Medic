@@ -164,6 +164,21 @@ class BoundaryWalkSession:
 GPS_COLD_START_S = 120.0
 
 
+def walk_position(fix) -> Optional[Tuple[float, float]]:
+    """Where a walk sample is placed — or None, which ping_result treats as
+    "counts for the story, not for the evidence". Only a LIVE fix places a
+    sample. A coasting fix (flag up, 0 sats — classify_fix's ``held``) is the
+    receiver repeating where it last was; the operator's first walk plan
+    (2026-09-21) goes from the node straight back indoors, and
+    every indoor ping would land on the anchor — a silent one there is a
+    0 km loss the range model is built to trust. The gate's rule, applied to
+    every ping."""
+    from monitor.geo import classify_fix
+    if classify_fix(fix) != "live":
+        return None
+    return (fix.lat, fix.lon)
+
+
 def gps_gate(fix, waited_s: float = 0.0) -> dict:
     """May the walk start yet, and what is the screen waiting on?
 

@@ -2538,9 +2538,14 @@ class ScanScreen(BoxLayout):
         w = getattr(self, "_walk", None)
         if w is None:
             return
+        # Only a LIVE fix places a sample. The map's gps_reader hands back a
+        # coasting fix (flag up, 0 sats) as a position, and the operator's
+        # walk plan (2026-09-21) goes from the tree back through the house:
+        # a silent ping stamped indoors on the anchor is a "loss at 0 km".
+        from monitor.boundary_walk import walk_position
         gps = None
         try:
-            gps = self._gps_reader() if callable(self._gps_reader) else None
+            gps = walk_position(self._fix_reader() if self._fix_reader else None)
         except Exception:                                          # noqa: BLE001
             gps = None
         w.ping_result(_t.time(), ok, snr_db=snr_db, gps=gps)

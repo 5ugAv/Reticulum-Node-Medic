@@ -5,6 +5,8 @@ miss — into range evidence at a GPS-known distance.
 
 Pure state machine like its sibling monitor/first_link.py: injected clocks,
 injected GPS, injected ping results; the MAPS screen renders it."""
+import re
+
 import monitor.boundary_walk as bw
 from monitor.boundary_walk import BoundaryWalkSession
 
@@ -380,3 +382,30 @@ def test_the_walk_probe_stays_inside_the_cadence():
     import re
     waits = [int(m) for m in re.findall(r"rnpath -w (\d+)", probe)]
     assert waits and all(w < 20 for w in waits), waits
+
+
+# -- 2026-09-21: a coasting fix must not place a walk sample -----------------
+
+def test_walk_position_only_from_a_live_fix():
+    """The operator's first walk plan (2026-09-21): fix outdoors, back indoors, out again. Indoors the Tracker COASTS — fix flag
+    up, 0 satellites — and keeps reporting the outdoor coordinates. A silent
+    ping placed there becomes "measured a loss at 0 km — trust the loss" in
+    the range model: a kitchen wall masquerading as the edge of reach. The
+    gate already refuses a coasting fix; every sample must too."""
+    assert bw.walk_position(_live(sats=6)) == (-33.87, 151.21)
+    coasting = GpsFix(lat=-33.87, lon=151.21, sats=0, fix_quality=1)
+    assert bw.walk_position(coasting) is None
+    assert bw.walk_position(None) is None
+    assert bw.walk_position(GpsFix(lat=None, lon=None)) is None
+
+
+def test_screen_places_samples_through_walk_position():
+    """Pin the wiring, not the prose: _walk_result must take its position
+    from walk_position(<fix reader>), never from the map's raw gps_reader,
+    which hands a coasting fix back as if it were a sighting."""
+    src = open("ui/screens/scan_screen.py").read()
+    m = re.search(r"    def _walk_result\(.*?(?=\n    def )", src, re.S)
+    assert m, "_walk_result missing"
+    body = m.group(0)
+    assert "walk_position(" in body
+    assert "_gps_reader" not in body
