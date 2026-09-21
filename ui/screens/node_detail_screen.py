@@ -359,6 +359,19 @@ class NodeDetailScreen(BoxLayout):
                           color=theme.hex_to_rgba(theme.COLORS["background"]))
             walk.bind(on_release=lambda *_: self._on_walk(self.record))
             walk_row.add_widget(walk)
+            note = self._last_walk_note()
+            if note:
+                # The last walk's verdict lives here, not only in a popup
+                # that vanished (2026-09-21): the row grows to hold it.
+                col = BoxLayout(orientation="vertical", size_hint_y=None,
+                                height=dp(52) + dp(24), spacing=dp(2))
+                col.add_widget(walk_row)
+                lbl = Label(text=note, font_size=theme.font_sp("13sp"),
+                            size_hint_y=None, height=dp(22), halign="left",
+                            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+                lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+                col.add_widget(lbl)
+                walk_row = col
             self._walk_row = walk_row
 
         if self._on_forget is not None:
@@ -410,6 +423,28 @@ class NodeDetailScreen(BoxLayout):
         self.ping_status.text = text
         color = "green" if ok is True else "amber" if ok is False else "text_secondary"
         self.ping_status.color = theme.hex_to_rgba(theme.COLORS[color])
+
+    def _last_walk_note(self):
+        """One line from the newest boundary walk against this node."""
+        try:
+            from monitor.walk_diagnostics import latest_diagnosis
+            d = latest_diagnosis(self.record.dst_hash or "",
+                                 name=self.record.name or "")
+        except Exception:                                          # noqa: BLE001
+            return ""
+        if not d:
+            return ""
+        words = {"cliff": tr("cliff — something in the way"),
+                 "slope": tr("slope — out of budget"),
+                 "open": tr("no edge found"),
+                 "no_signal": tr("no signal readings")}
+        last = d.get("last") or {}
+        if last:
+            return tr("Last walk: {verdict} at {m} m, last answer {rssi} dBm").format(
+                verdict=words.get(d.get("verdict"), d.get("verdict", "")),
+                m=last.get("m", 0), rssi=int(round(last.get("rssi_dbm") or 0)))
+        return tr("Last walk: {verdict}").format(
+            verdict=words.get(d.get("verdict"), d.get("verdict", "")))
 
     def _navigate(self):
         if self._on_navigate:

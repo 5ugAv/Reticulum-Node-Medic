@@ -2518,6 +2518,86 @@ class ScanScreen(BoxLayout):
         self.add_widget(hud, index=len(self.children))   # top of the screen
         self._walk_step_hint()
 
+    def _walk_signal_story(self, w):
+        """What the readings SAY — monitor/walk_diagnostics decides, this
+        paints it, and the verdict is kept on disk for the node's page
+        (operator, 2026-09-21: "build something that puts that data to
+        use — useful feedback for a user, and troubleshooting")."""
+        try:
+            from monitor.walk_diagnostics import (
+                diagnose, append_diagnosis, medic_radio_params)
+            from monitor.geo import read_splitter_state
+            from provisioning.radio_defaults import DEFAULT_PARAMS
+            params = dict(DEFAULT_PARAMS)
+            try:
+                with open(os.path.expanduser("~/.reticulum/config")) as fh:
+                    params.update(medic_radio_params(fh.read()))
+            except OSError:
+                pass
+            st = read_splitter_state() or {}
+            d = diagnose(w.samples, sf=int(params.get("sf", 9)),
+                         tx_dbm=float(params.get("txp", 17)),
+                         freq_mhz=float(params.get("freq_mhz",
+                                                   params.get("freq", 915.125))),
+                         noise_floor_dbm=st.get("noise_floor"))
+            try:
+                append_diagnosis(w.node_key, d, name=w.node_name)
+            except Exception:                                      # noqa: BLE001
+                pass
+            print(f"[walk] diagnosis {w.node_key[:8]} {d}", flush=True)
+        except Exception as e:                                     # noqa: BLE001
+            print(f"[walk] diagnosis failed: {e}", flush=True)
+            return ""
+        return self._signal_sentences(d)
+
+    @staticmethod
+    def _signal_sentences(d):
+        """The verdict in words a stranger can act on. Rule-of-thumb physics,
+        and it says so by naming what to look at, not a number to trust."""
+        if d["verdict"] == "no_signal":
+            return tr("No signal readings on this walk.")
+        last = d["last"] or {}
+        parts = [tr("Signal — {n} answered pings carried a reading. Last "
+                    "answer: {rssi} dBm at {m} m").format(
+                        n=d["readings"], rssi=int(round(last.get("rssi_dbm", 0))),
+                        m=last.get("m", 0))]
+        if d["margin_db"] is not None:
+            parts[0] += " " + tr("({margin} dB above the decode floor).").format(
+                margin=d["margin_db"])
+        else:
+            parts[0] += "."
+        if d["verdict"] == "cliff":
+            parts.append(tr("A cliff, not a slope: the link was still healthy "
+                            "when it went silent. Look at what stood between "
+                            "you and the node there — a building, the body "
+                            "carrying the medic, an antenna — before changing "
+                            "radio settings."))
+        elif d["verdict"] == "slope":
+            ex = d["predicted_extra_m"]
+            parts.append(tr("A slope: the link ran out of budget. SF10 would "
+                            "add about {sf10} m, SF12 about {sf12} m, 22 dBm "
+                            "at both ends about {txp} m.").format(
+                                sf10=ex.get("sf10", 0), sf12=ex.get("sf12", 0),
+                                txp=ex.get("txp22_both", 0)))
+        elif d["verdict"] == "open":
+            parts.append(tr("The link never went silent — no edge to judge "
+                            "yet. Walk further next time."))
+        ds = d.get("doorstep")
+        if ds and ds.get("flag"):
+            parts.append(tr("At {m} m the medic heard {rssi} dBm where open "
+                            "air would give about {open} dBm — {deficit} dB "
+                            "missing at the node's doorstep. Check both "
+                            "antennas first.").format(
+                                m=ds["m"], rssi=int(round(ds["rssi_dbm"])),
+                                open=int(round(ds["open_air_dbm"])),
+                                deficit=int(round(ds["deficit_db"]))))
+        pen = d.get("noise_penalty_db")
+        if pen:
+            parts.append(tr("The medic's channel noise floor is {pen} dB above "
+                            "a quiet channel — budget spent before the walk "
+                            "starts.").format(pen=int(round(pen))))
+        return " ".join(parts)
+
     def _walk_banner_text(self, w):
         """The banner's words. monitor/ speaks no language, so the engine
         supplies counts() and the screen the sentence — and the sentence
@@ -2693,6 +2773,7 @@ class ScanScreen(BoxLayout):
             if c["unplaced"]:
                 story += " " + tr("{n} had no satellite fix and were not "
                                   "placed.").format(n=c["unplaced"])
+            story += "\n\n" + self._walk_signal_story(w)
             if save_err is not None:
                 requirement_popup(
                     story + "\n\n"
