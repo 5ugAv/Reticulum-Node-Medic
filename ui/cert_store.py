@@ -318,3 +318,35 @@ def predecessor_hashes(node_name: str, keep_hashes,
             if h and str(h) not in keep:
                 found.add(str(h))
     return found
+
+
+def cert_for_node(certs, dst_hash: str = "", name: str = ""):
+    """The certificate this medic wrote for a node, or None. A registry row
+    can be keyed by the node's mesh address, its identity hash, or (an
+    RTNode found by name) "rtnode:<name>" — the certificate may carry any
+    of those, so match address first, identity second, name last; the
+    newest wins (a name is reused after a rebirth). Operator, 2026-09-21:
+    the node's page should say what the medic KNOWS it built, not only
+    what the node reports about itself."""
+    raw = (dst_hash or "").strip()
+    nm = (name or "").strip()
+    if raw.lower().startswith("rtnode:"):
+        nm = nm or raw[len("rtnode:"):]     # the name keeps its case
+        dst = ""
+    else:
+        dst = raw.lower()
+    ranked = []
+    for c in certs or ():
+        addr = (c.get("reticulum_address") or "").lower()
+        ident = (c.get("identity_hash") or "").lower()
+        if dst and dst in (addr, ident):
+            rank = 0
+        elif nm and (c.get("node_name") or "") == nm:
+            rank = 1
+        else:
+            continue
+        ranked.append((rank, -(c.get("_saved_at") or 0), c))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    return ranked[0][2]

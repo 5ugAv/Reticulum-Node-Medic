@@ -233,6 +233,18 @@ class NodeDetailScreen(BoxLayout):
         for ln in beacon_lines(record):
             col.add_widget(_line("  " + ln, size="14sp"))
 
+        # What this MEDIC knows it built — from the birth certificate, not
+        # the node's own beacon. An RNode-firmware node reports nothing about
+        # itself, so without this its page had no board at all; an RTNode's
+        # beacon names the board but not that it is an RTNode (operator,
+        # 2026-09-21: "we know what board this is").
+        birth = self._birth_lines(record)
+        if birth:
+            col.add_widget(_line(tr("Built by this medic"), bold=True,
+                                 size="17sp"))
+            for ln in birth:
+                col.add_widget(_line("  " + ln, size="14sp"))
+
         if activity_text:
             col.add_widget(_line(tr("Activity"), bold=True, size="17sp"))
             col.add_widget(_wrap("  " + activity_text, color="text_secondary"))
@@ -423,6 +435,40 @@ class NodeDetailScreen(BoxLayout):
         self.ping_status.text = text
         color = "green" if ok is True else "amber" if ok is False else "text_secondary"
         self.ping_status.color = theme.hex_to_rgba(theme.COLORS[color])
+
+    def _birth_lines(self, record):
+        """Board, firmware role and birth date from the certificate, or []."""
+        try:
+            from ui.cert_store import load_certs, cert_for_node
+            from provisioning.board_coverage import classify_cert
+            cert = cert_for_node(load_certs(),
+                                 dst_hash=getattr(record, "dst_hash", "") or "",
+                                 name=getattr(record, "name", "") or "")
+        except Exception:                                          # noqa: BLE001
+            return []
+        if not cert:
+            return []
+        fact = classify_cert(cert)
+        out = []
+        if fact.board:
+            out.append(tr("Board: {board}").format(board=fact.board))
+        kinds = {"rnode": tr("RNode"), "rtnode2400": tr("RTNode-2400"),
+                 "pi_rnode": tr("Raspberry Pi + RNode")}
+        kind = kinds.get(fact.kind)
+        if kind and fact.firmware:
+            out.append(tr("Firmware: {kind} {version}").format(
+                kind=kind, version=fact.firmware))
+        elif kind:
+            out.append(tr("Firmware: {kind}").format(kind=kind))
+        elif fact.firmware:
+            # A version-blind board with an older certificate: 1.85 is what
+            # both RNode and RTNode report there, and the cert did not say.
+            out.append(tr("Firmware: {version} — RNode or RTNode, the "
+                          "certificate does not say").format(
+                              version=fact.firmware))
+        if fact.born:
+            out.append(tr("Born: {born}").format(born=fact.born))
+        return out
 
     def _last_walk_note(self):
         """One line from the newest boundary walk against this node."""
