@@ -1161,6 +1161,11 @@ def birth_certificate(wf: "RTNodeBuildWorkflow") -> StepResult:
         # born T114 RTNode as a modem (board_coverage, 2026-09-19). The
         # build knows exactly what it made; it says so here.
         "node_type": "rtnode2400",
+        # The FAMILY is rtnode2400 (what a T114 and an EoRa-S3 share); the
+        # NAME says whose build: the medic flashes from its own fork, the
+        # Node Medic build "RTNode-2400-NM" (decided 2026-09-21).
+        "firmware_name": "RTNode-2400-NM",
+        "firmware_variant": "nm",
         "serial_port": wf.profile.connection_port,
         "build_env": wf.target.build_env,
         "frequency_mhz": r.frequency_mhz,

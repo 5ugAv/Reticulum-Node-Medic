@@ -454,7 +454,7 @@ class NodeDetailScreen(BoxLayout):
             out.append(tr("Board: {board}").format(board=fact.board))
         kinds = {"rnode": tr("RNode"), "rtnode2400": tr("RTNode-2400"),
                  "pi_rnode": tr("Raspberry Pi + RNode")}
-        kind = kinds.get(fact.kind)
+        kind = fact.name or kinds.get(fact.kind)   # the build's own name wins
         if kind and fact.firmware:
             out.append(tr("Firmware: {kind} {version}").format(
                 kind=kind, version=fact.firmware))

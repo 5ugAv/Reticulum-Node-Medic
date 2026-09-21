@@ -1,6 +1,6 @@
 # Board coverage — what the medic has proven
 
-**Generated from the cert ledger — do not hand-edit.** Edit only `provisioning/board_intent.py`, then regenerate with `python3 scripts/board_coverage.py --write`. DONE is the medic's own certificates; TODO is intent minus done, so it shrinks itself as boards get born (operator, 2026-09-18).
+RTNode-2400 below means the Node Medic build, **RTNode-2400-NM** (see `docs/FIRMWARE_NAMING.md`). **Generated from the cert ledger — do not hand-edit.** Edit only `provisioning/board_intent.py`, then regenerate with `python3 scripts/board_coverage.py --write`. DONE is the medic's own certificates; TODO is intent minus done, so it shrinks itself as boards get born (operator, 2026-09-18).
 
 ## Proven (from the ledger)
 
@@ -14,7 +14,7 @@
 | Heltec32 V3 | — | ✅ | — |
 | LilyGO LoRa32 v2.1 (T3 v1.6.1) | ✅ | — | — |
 | LilyGO T-Echo | — | — | — |
-| RAK4631 | ✅ | — | — |
+| RAK4631 | — | ✅ | — |
 | Seeed XIAO ESP32S3 (Wio-SX1262) | ✅ | — | — |
 
 ## To prove (intent minus done)

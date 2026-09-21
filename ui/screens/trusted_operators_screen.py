@@ -100,7 +100,9 @@ class TrustedOperatorsScreen(BoxLayout):
             card.add_widget(_line(u["hash"], size="12sp", color="text_secondary",
                                   mono=True, h=20))
         via = u.get("via", "")
-        if u["status"] == "untrusted" and u.get("parent_name"):
+        if u["status"] == "untrusted" and u.get("revoked"):
+            via = f"trust revoked — was {via or 'known'}"
+        elif u["status"] == "untrusted" and u.get("parent_name"):
             via = f"descended from {u['parent_name']} — approve to trust"
         when = ""
         if u.get("established_at"):
@@ -111,8 +113,17 @@ class TrustedOperatorsScreen(BoxLayout):
             card.add_widget(self._btn("Revoke trust", "red",
                                       lambda: self._confirm_revoke(u)))
         elif u["status"] == "untrusted":
-            card.add_widget(self._btn("Approve — trust this unit", "green",
-                                      lambda: self._approve(u)))
+            # Two answers, not one: approve, or FORGET. A revoked or unknown
+            # unit used to offer only the green button — no way to say no
+            # (operator, 2026-09-21). Forgetting is not trusting: heard again,
+            # the unit comes back here needing approval.
+            row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                            height=dp(44), spacing=dp(8))
+            row.add_widget(self._btn("Approve — trust this unit", "green",
+                                     lambda: self._approve(u)))
+            row.add_widget(self._btn("Forget this unit", "red",
+                                     lambda: self._confirm_forget(u)))
+            card.add_widget(row)
         return card
 
     def _btn(self, text, color, on_tap):
@@ -126,6 +137,34 @@ class TrustedOperatorsScreen(BoxLayout):
     def _approve(self, u):
         trust.trust(u["hash"])
         self._changed()
+
+    def _confirm_forget(self, u):
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        box.add_widget(Label(
+            text=(f"Forget [b]{u['name']}[/b]?\n\n"
+                  "It disappears from this list. Nothing is trusted by "
+                  "forgetting: if this unit is ever heard again it comes back "
+                  "here as untrusted, needing your approval."),
+            markup=True, halign="center", valign="middle"))
+        box.children[0].bind(size=lambda i, v: setattr(i, "text_size", v))
+        btns = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+        popup = Popup(title="Forget this unit", content=box, size_hint=(0.88, 0.5))
+        cancel = Button(text="Cancel", background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
+        cancel.bind(on_release=popup.dismiss)
+        confirm = Button(text="Forget", bold=True, background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]))
+
+        def _do(*_):
+            popup.dismiss()
+            trust.forget(u["hash"])
+            self._changed()
+        confirm.bind(on_release=_do)
+        btns.add_widget(cancel)
+        btns.add_widget(confirm)
+        box.add_widget(btns)
+        popup.open()
 
     def _confirm_revoke(self, u):
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))

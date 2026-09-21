@@ -67,7 +67,7 @@ def render(certs):
     facts = [classify_cert(c) for c in certs]
     lines = ["# Board coverage — what the medic has proven",
              "",
-             "**Generated from the cert ledger — do not hand-edit.** Edit only "
+             "RTNode-2400 below means the Node Medic build, **RTNode-2400-NM** (see `docs/FIRMWARE_NAMING.md`). **Generated from the cert ledger — do not hand-edit.** Edit only "
              "`provisioning/board_intent.py`, then regenerate with "
              "`python3 scripts/board_coverage.py --write`. DONE is the medic's "
              "own certificates; TODO is intent minus done, so it shrinks itself "

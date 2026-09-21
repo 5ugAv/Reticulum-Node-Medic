@@ -62,6 +62,9 @@ class BoardFact:
     node_name: str = ""
     firmware: str = ""
     born: str = ""
+    #: The build's own name when the cert carries one ("RTNode-2400-NM");
+    #: "" for certs written before 2026-09-21 or for upstream builds.
+    name: str = ""
 
 
 def classify_cert(cert: dict) -> BoardFact:
@@ -87,7 +90,8 @@ def classify_cert(cert: dict) -> BoardFact:
             kind = "rtnode2400"
     return BoardFact(board=board, kind=kind,
                      node_name=cert.get("node_name") or "",
-                     firmware=str(fw or ""), born=str(cert.get("born") or "")[:10])
+                     firmware=str(fw or ""), born=str(cert.get("born") or "")[:10],
+                     name=(cert.get("firmware_name") or "").strip())
 
 
 @dataclass

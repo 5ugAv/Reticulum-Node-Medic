@@ -207,6 +207,21 @@ def revoke(unit_hash: str, path: str = CONFIG) -> Dict:
     if u is None or u.get("self"):
         return store
     u["trusted"] = False
+    u["revoked_at"] = _now(None)
+    return save(store, path)
+
+
+def forget(unit_hash: str, path: str = CONFIG) -> Dict:
+    """Remove a unit's record entirely — for a clone that no longer exists (a
+    test card written over). Never the self unit. Forgetting is not trusting:
+    a forgotten unit heard again comes back as an untrusted descendant needing
+    approval (operator, 2026-09-21: revoking left four dead clones on the
+    list with only an Approve button)."""
+    store = load(path)
+    u = store["units"].get(unit_hash)
+    if u is None or u.get("self"):
+        return store
+    del store["units"][unit_hash]
     return save(store, path)
 
 
@@ -248,6 +263,7 @@ def units(path: str = CONFIG) -> List[Dict]:
             "parent_name": (store.get(parent_h, {}).get("name") if parent_h else None),
             "via": u.get("via", ""),
             "established_at": u.get("established_at"),
+            "revoked": bool(u.get("revoked_at")),
             "status": ("self" if u.get("self")
                        else "trusted" if u.get("trusted") else "untrusted"),
         })
