@@ -2165,10 +2165,26 @@ class ReticulumNodeMedicApp(App):
                     # verdict, until the node itself speaks.
                     self.monitor_service.registry.record_probe(
                         probe, ok=False, now=time.time())
-                    Clock.schedule_once(lambda dt: report(
-                        "Health requested, but it did not answer. Not proof "
-                        "it is down — nodes throttle repeat replies to save "
-                        "airtime. Amber until it is heard again.", False), 0)
+                    if hops and hops >= 2:
+                        # The road ran through a relay and the reply never
+                        # reached us: the medic is not hearing this node
+                        # DIRECTLY. Too far — or too close: on the bench
+                        # (2026-09-21, ROOFRAK a foot from the medic) a radio
+                        # that near is too loud to decode, and the mesh
+                        # routed around the link via another node.
+                        why = ("Health requested, but the medic did not hear "
+                               "a reply. The road to it runs through another "
+                               "node (%d hops), so the medic is not hearing "
+                               "this node directly — too far, or too close: a "
+                               "radio within a couple of metres is too loud to "
+                               "decode. Move it a few metres away and ping once "
+                               "more. Amber until it is heard." % hops)
+                    else:
+                        why = ("Health requested, but it did not answer. Not "
+                               "proof it is down — nodes throttle repeat "
+                               "replies to save airtime. Amber until it is "
+                               "heard again.")
+                    Clock.schedule_once(lambda dt: report(why, False), 0)
                 else:
                     # A value warm_and_send does not return today. Matched
                     # EXPLICITLY above so a future fourth outcome lands here
