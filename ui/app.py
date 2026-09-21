@@ -1999,22 +1999,30 @@ class ReticulumNodeMedicApp(App):
 
         def work():
             import time as _t
+            from monitor.mesh import path_interface
             t0 = _t.time()
-            ok = False
+            ok, hops, direct = False, None, None
             try:
                 probe = self.monitor_service.registry.probe_hash_for(
                     dst_hash or "")
                 if probe:
                     _local_run(f"rnpath --drop {probe} 2>/dev/null")
                     out = _local_run(f"rnpath -w 15 {probe} 2>/dev/null")
-                    ok, _hops = parse_path_probe(out)
+                    ok, hops = parse_path_probe(out)
+                    if ok:
+                        # Direct = one hop over this radio. Via the LAN or a
+                        # relay is the mesh's reach, not the radio's.
+                        iface = path_interface(out) or ""
+                        direct = bool(hops == 1
+                                      and iface.startswith("RNodeInterface"))
             except Exception:                                      # noqa: BLE001
                 ok = False
             # The 20 s cadence budget was asserted, never measured (audit,
             # 2026-09-21): one line per ping so the log can say.
             print(f"[walk] probe {(dst_hash or '')[:8]} ok={bool(ok)} "
+                  f"hops={hops} direct={direct} "
                   f"{int((_t.time() - t0) * 1000)}ms", flush=True)
-            report(bool(ok))
+            report(bool(ok), hops=hops, direct=direct)
         threading.Thread(target=work, daemon=True).start()
 
     def _ping_node(self, dst_hash, report):

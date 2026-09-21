@@ -80,6 +80,11 @@ class BoundaryWalkSession:
         self._last_ping_at = now
         self._pinging = True
 
+    def ping_sent_at(self) -> Optional[float]:
+        """When the in-flight (or last) ping went out — the moment a reply's
+        signal must postdate to be the reply's."""
+        return self._last_ping_at
+
     # -- results ------------------------------------------------------------
 
     def _anchor(self) -> Optional[Tuple[float, float]]:
@@ -89,10 +94,18 @@ class BoundaryWalkSession:
 
     def ping_result(self, now: float, ok: bool,
                     snr_db: Optional[float] = None,
-                    gps: Optional[Tuple[float, float]] = None) -> dict:
+                    gps: Optional[Tuple[float, float]] = None,
+                    rssi_dbm: Optional[float] = None,
+                    hops: Optional[int] = None,
+                    direct: Optional[bool] = None) -> dict:
         """One outcome in. GPS may be None (no fix): the outcome still counts
         for the story, but carries no distance and feeds no range evidence —
-        a measurement without a place measures nothing about reach."""
+        a measurement without a place measures nothing about reach.
+        *rssi_dbm*/*snr_db* are the reply as heard by the medic's own radio
+        (2026-09-21 — the first walk had none, and distance-to-silence alone
+        cannot tell a slope from a cliff). *direct* False means the path
+        came via a relay or the LAN: told in the story, not banked as this
+        radio's reach."""
         self._pinging = False
         km = None
         lat = lon = None
@@ -105,7 +118,8 @@ class BoundaryWalkSession:
                 self.node_lat, self.node_lon = lat, lon
             km = _km(lat, lon, self.node_lat, self.node_lon)
         sample = {"t": now, "lat": lat, "lon": lon, "km": km,
-                  "connected": bool(ok), "snr_db": snr_db}
+                  "connected": bool(ok), "snr_db": snr_db,
+                  "rssi_dbm": rssi_dbm, "hops": hops, "direct": direct}
         self.samples.append(sample)
         if ok:
             self._misses = 0
@@ -136,9 +150,15 @@ class BoundaryWalkSession:
         without a live fix (2026-09-21: the operator's first walk went back indoors; those pings counted for the story but could not
         be placed, and the banner used to count them as if they had been)."""
         hits = sum(1 for s in self.samples if s["connected"])
+        last_hit = next((s for s in reversed(self.samples) if s["connected"]),
+                        None)
         return {"hits": hits,
                 "misses": len(self.samples) - hits,
                 "unplaced": sum(1 for s in self.samples if s["km"] is None),
+                "relayed": sum(1 for s in self.samples
+                               if s["connected"] and s.get("direct") is False),
+                "last_rssi": last_hit.get("rssi_dbm") if last_hit else None,
+                "last_snr": last_hit.get("snr_db") if last_hit else None,
                 "max_km": self.max_linked_km}
 
     def last_unplaced(self) -> bool:
@@ -160,14 +180,18 @@ class BoundaryWalkSession:
                  ) -> Tuple[List[LinkObservation], List[LinkFailure]]:
         """Everything the walk proved, in the range model's two currencies.
         Only located samples qualify — see ping_result."""
+        # A relayed answer (direct False) is the mesh's reach, not this
+        # radio's — never a link observation between medic and node.
         obs = [LinkObservation(
                    heard_by=medic_id, heard_from=self.node_key,
                    observed_at=s["t"], snr_db=s["snr_db"],
+                   rssi_dbm=s.get("rssi_dbm"),
                    distance_km=s["km"],
                    heard_by_position=POSITION_EXACT,
                    heard_from_position=POSITION_EXACT,
                    source="boundary_walk")
-               for s in self.samples if s["connected"] and s["km"] is not None]
+               for s in self.samples if s["connected"] and s["km"] is not None
+               and s.get("direct") is not False]
         # A miss AT the node is not a loss. The first ping fires the moment
         # the walk starts, standing at the anchor, and one LoRa frame can
         # die of anything — banked, it read "measured a loss at 0 km, trust
@@ -201,6 +225,20 @@ def walk_position(fix) -> Optional[Tuple[float, float]]:
     if classify_fix(fix) != "live":
         return None
     return (fix.lat, fix.lon)
+
+
+def signal_for_answer(state: Optional[dict], sent_at: Optional[float]
+                      ) -> Tuple[Optional[float], Optional[float]]:
+    """(rssi_dbm, snr_db) of the reply as the medic's own radio heard it —
+    the splitter records both per received packet with ``packet_heard_at``.
+    Only a packet heard AFTER the ping went out can be the reply; anything
+    older is some other node's traffic and is not reported (2026-09-21)."""
+    if not state or sent_at is None:
+        return (None, None)
+    heard = state.get("packet_heard_at")
+    if heard is None or heard < sent_at:
+        return (None, None)
+    return (state.get("last_rssi"), state.get("last_snr"))
 
 
 def gps_gate(fix, waited_s: float = 0.0) -> dict:

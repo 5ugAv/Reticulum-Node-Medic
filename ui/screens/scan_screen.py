@@ -2531,6 +2531,12 @@ class ScanScreen(BoxLayout):
         if c["unplaced"]:
             text += " " + tr("({n} not placed — no satellite fix)").format(
                 n=c["unplaced"])
+        if c["last_rssi"] is not None:
+            text += " " + tr("· last answer {rssi} dBm").format(
+                rssi=int(round(c["last_rssi"])))
+        if c["relayed"]:
+            text += " " + tr("({n} via relay — not this radio's reach)").format(
+                n=c["relayed"])
         return text
 
     def _walk_step_hint(self):
@@ -2589,21 +2595,37 @@ class ScanScreen(BoxLayout):
             gps = None
         w.begin_ping(_t.time())
 
-        def _report(ok, snr_db=None):
+        def _report(ok, snr_db=None, **path):
             from kivy.clock import Clock as _Clock
             _Clock.schedule_once(
-                lambda _d: self._walk_result(ok, snr_db, gps=gps), 0)
+                lambda _d: self._walk_result(ok, snr_db, gps=gps, **path), 0)
         try:
             self._walk_ping_fn(w.node_key, _report)
         except Exception:                                          # noqa: BLE001
             _report(False)
 
-    def _walk_result(self, ok, snr_db, gps=None):
+    def _walk_result(self, ok, snr_db, gps=None, hops=None, direct=None):
         import time as _t
         w = getattr(self, "_walk", None)
         if w is None:
             return
-        w.ping_result(_t.time(), ok, snr_db=snr_db, gps=gps)
+        rssi = None
+        if ok:
+            # The reply's signal, as this radio heard it: the splitter's
+            # per-packet RSSI/SNR, only if the packet postdates the ping.
+            try:
+                from monitor.boundary_walk import signal_for_answer
+                from monitor.geo import read_splitter_state
+                rssi, snr2 = signal_for_answer(read_splitter_state(),
+                                               w.ping_sent_at())
+                if snr_db is None:
+                    snr_db = snr2
+            except Exception:                                      # noqa: BLE001
+                rssi = None
+            print(f"[walk] answer rssi={rssi} snr={snr_db} hops={hops} "
+                  f"direct={direct}", flush=True)
+        w.ping_result(_t.time(), ok, snr_db=snr_db, gps=gps, rssi_dbm=rssi,
+                      hops=hops, direct=direct)
         self.plot.set_walk_trail(w.samples)
         if w.state != "lost":
             self._walk_lbl.text = self._walk_banner_text(w)

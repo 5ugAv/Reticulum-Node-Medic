@@ -54,6 +54,15 @@ def parse_path_probe(output: str) -> Tuple[bool, Optional[int]]:
     return False, None
 
 
+def path_interface(output: str) -> Optional[str]:
+    """The interface a found path arrived over, from the same rnpath text:
+    ``... on RNodeInterface[RNode LoRa Interface]``. None when not found.
+    The boundary walk needs it: a path via the LAN or a relay is the mesh's
+    reach, not this radio's (2026-09-21)."""
+    m = re.search(r"\bon\s+([A-Za-z0-9_]+\[[^\]]*\])", output or "")
+    return m.group(1) if m else None
+
+
 def rns_already_initialised(exc: BaseException) -> bool:
     """True if *exc* is RNS's "Attempt to reinitialise Reticulum, when it was
     already running" OSError — i.e. Reticulum is ALREADY up in this process.
