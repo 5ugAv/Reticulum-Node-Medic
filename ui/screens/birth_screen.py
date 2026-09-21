@@ -1151,11 +1151,22 @@ class BirthScreen(BoxLayout):
         # rows of 3 — five cards in one strip were unreadable thumbnails
         for i in range(0, len(with_photo), 3):
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                            height=dp(120), spacing=dp(10))
+                            height=dp(120) + dp(26), spacing=dp(10))
             for b in with_photo[i:i + 3]:
-                row.add_widget(BoardCard(
+                # Photo AND words. A stranger cannot pick a board from a
+                # picture alone — the friend's Heltec V4, 2026-09-21: "there
+                # was no words until the actual board is selected".
+                col = BoxLayout(orientation="vertical", spacing=dp(2))
+                col.add_widget(BoardCard(
                     b.key, name=self._name_in.text.strip(),
                     on_select=lambda bb=b: self._confirm_rnode_board_gate(bb)))
+                cap = _line(b.display_name, bold=True, size="14sp",
+                            color="text_primary")
+                cap.halign = "center"
+                cap.size_hint_y = None
+                cap.height = dp(24)
+                col.add_widget(cap)
+                row.add_widget(col)
             for _ in range(3 - len(with_photo[i:i + 3])):
                 row.add_widget(Widget())     # keep card widths consistent
             self.header.add_widget(row)
