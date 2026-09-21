@@ -351,7 +351,7 @@ agree, which makes that easier than it sounds.
 Written after the first complete, honest birth (node **ttt**, certificate
 5a040004). Of the morning's "do first" list: all four done. The wording
 worktrees are merged, the radio's serial now travels flash → hand-back →
-udev rule (verified on the glass: "this radio only, serial 02:00:00:05:00:05"),
+udev rule (verified on the glass: "this radio only, serial <that radio's own>"),
 final_verification cannot pass on a mute node, and the false sentence is off
 the screen. The health-beacon path was **observed landing** — ttt's beacon
 arrived over the LAN and made its VITALS row. Unproven no longer.

@@ -22,12 +22,22 @@
 #ifndef HEALTHSTATUS_H
 #define HEALTHSTATUS_H
 
-#include <WiFi.h>
-#include <WebServer.h>
-#include <esp_system.h>
-#include <esp_heap_caps.h>
+// PORTED TO nRF52 (2026-08-20) so the T-Echo RTNode can health-beacon: the
+// whole medic ecology (VITALS, kin folding, outage watch) keys off this
+// announce, and the non-firewall build previously had NOTHING that ever
+// called announce() -- a silent transport the mesh could not see. Everything
+// ESP32- or firewall-only below is guarded, absent values reported honestly
+// (0 / false / "unknown"), never invented.
+#if defined(ESP32)
+  #include <WiFi.h>
+  #include <WebServer.h>
+  #include <esp_system.h>
+  #include <esp_heap_caps.h>
+#endif
 
-#include "FirewallMode.h"   // FirewallState / firewall_state
+#ifdef FIREWALL_MODE
+  #include "FirewallMode.h"   // FirewallState / firewall_state
+#endif
 #include "HealthBeaconPack.h"  // HB_* flags + v2 power/link sentinels (shared codec)
 
 // Fork version string. NOTE: this is the single in-firmware source of truth
@@ -87,7 +97,9 @@ struct HealthSnapshot {
 
     bool        wifi_connected;
     int32_t     wifi_rssi;
+#if defined(ESP32)
     IPAddress   wifi_ip;
+#endif
 
     bool        lora_online;
     bool        tcp_backbone_connected;
@@ -114,12 +126,19 @@ inline const char* health_board_name() {
     return "heltec_v4";
 #elif BOARD_MODEL == BOARD_HELTEC32_V3
     return "heltec_v3";
+#elif BOARD_MODEL == BOARD_TECHO
+    // The detector/catalogue key, deliberately -- board names cross FOUR
+    // vocabularies in the tool and the key is the one that always resolves.
+    return "techo";
 #else
     return "unknown";
 #endif
 }
 
 inline const char* health_reset_reason_str() {
+#if !defined(ESP32)
+    return "unknown";       // nRF52: not wired yet -- honest, never guessed
+#else
     switch (esp_reset_reason()) {
         case ESP_RST_POWERON:   return "poweron";
         case ESP_RST_EXT:       return "external";
@@ -133,6 +152,7 @@ inline const char* health_reset_reason_str() {
         case ESP_RST_SDIO:      return "sdio";
         default:                return "unknown";
     }
+#endif
 }
 
 // ─── Battery (v2 beacon) ─────────────────────────────────────────────────────
@@ -204,18 +224,33 @@ inline void collect_health(HealthSnapshot& h) {
 
     h.board_model = BOARD_MODEL;
     h.board_name  = health_board_name();
+#if defined(ESP32)
     h.psram_size  = ESP.getPsramSize();
     h.psram       = (h.psram_size > 0);
+#else
+    h.psram_size  = 0;
+    h.psram       = false;
+#endif
 
     h.uptime_ms    = millis();
     h.reset_reason = health_reset_reason_str();
 
+#if defined(ESP32)
     h.heap_internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     h.heap_internal_min  = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
     h.heap_total_free    = ESP.getFreeHeap();
+#else
+    // nRF52 (Adafruit core): dbgHeapFree() is the same call microReticulum's
+    // allocator sizing uses. No low-water tracking exists here, so min is
+    // reported as the CURRENT free -- an optimistic bound the tool already
+    // treats as advisory, not a fabricated history.
+    h.heap_internal_free = dbgHeapFree();
+    h.heap_internal_min  = h.heap_internal_free;
+    h.heap_total_free    = h.heap_internal_free;
+#endif
 
-    // The task watchdog is armed unconditionally at boot on ESP32
-    // (esp_task_wdt_init(WDT_TIMEOUT, true)), so this is a static "yes".
+    // The task watchdog is armed unconditionally at boot on both MCUs
+    // (esp_task_wdt_init on ESP32; NRF_WDT block in setup() on nRF52).
     h.wdt_armed     = true;
 #ifdef WDT_TIMEOUT
     h.wdt_timeout_s = WDT_TIMEOUT;
@@ -223,16 +258,27 @@ inline void collect_health(HealthSnapshot& h) {
     h.wdt_timeout_s = 0;
 #endif
 
+#if defined(ESP32)
     h.wifi_connected = (WiFi.status() == WL_CONNECTED);
     h.wifi_rssi      = h.wifi_connected ? WiFi.RSSI() : 0;
     h.wifi_ip        = WiFi.localIP();
+#else
+    h.wifi_connected = false;            // no WiFi radio on this chip
+    h.wifi_rssi      = 0;
+#endif
 
     h.lora_online                 = radio_online;
+#ifdef FIREWALL_MODE
     h.tcp_backbone_connected      = firewall_state.tcp_connected;
     h.local_tcp_server_up         = health_local_server_up();
     h.local_tcp_client_connected  = firewall_state.ap_tcp_connected;
-
     h.node_name = firewall_state.node_name;
+#else
+    h.tcp_backbone_connected      = false;
+    h.local_tcp_server_up         = false;
+    h.local_tcp_client_connected  = false;
+    h.node_name = "";
+#endif
 
     // Power (v2 beacon). PRIMARY source: the firmware's own PMU path (Power.h)
     // — loop() -> update_pmu() -> measure_battery() maintains these globals
@@ -304,7 +350,9 @@ inline String health_to_json(const HealthSnapshot& h) {
 
     j += "\"wifi_connected\":"; j += (h.wifi_connected ? "true" : "false"); j += ",";
     j += "\"wifi_rssi\":";      j += h.wifi_rssi; j += ",";
+#if defined(ESP32)
     j += "\"wifi_ip\":\"";      j += h.wifi_ip.toString(); j += "\",";
+#endif
 
     j += "\"lora_online\":";                j += (h.lora_online ? "true" : "false"); j += ",";
     j += "\"tcp_backbone_connected\":";     j += (h.tcp_backbone_connected ? "true" : "false"); j += ",";
@@ -332,6 +380,9 @@ inline String health_to_json(const HealthSnapshot& h) {
 }
 
 // ─── STA-mode status web server ─────────────────────────────────────────────
+// WiFi-only by nature (WebServer + firewall_state); a chip with no WiFi
+// radio serves its health over the LoRa beacon instead.
+#if defined(ESP32) && defined(FIREWALL_MODE)
 static WebServer* health_server        = nullptr;
 static bool       health_server_started = false;
 
@@ -368,5 +419,6 @@ inline void health_server_loop() {
         health_server->handleClient();
     }
 }
+#endif // ESP32 && FIREWALL_MODE
 
 #endif // HEALTHSTATUS_H

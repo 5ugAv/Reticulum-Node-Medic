@@ -534,7 +534,7 @@ for _n, _f in _compiled().items():
 @pytest.fixture
 def rig(monkeypatch):
     env = {"ports": [], "cert": None, "pi_proven": False,
-           "serial": "02:00:00:05:00:05"}
+           "serial": "02:00:00:01:00:01"}
     clock = FakeClock()
     kivy_pkg = types.ModuleType("kivy")
     clock_mod = types.ModuleType("kivy.clock")

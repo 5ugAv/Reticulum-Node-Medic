@@ -63,6 +63,9 @@ static uint32_t         health_fault_next_check = 0;
 
 // esp_reset_reason() -> wire enum (HB_RESET_*, matches the tool's map).
 inline uint8_t health_reset_reason_code() {
+#if !defined(ESP32)
+    return HB_RESET_OTHER;   // nRF52: reset-reason not wired yet — honest
+#else
     switch (esp_reset_reason()) {
         case ESP_RST_POWERON:  return HB_RESET_POWERON;
         case ESP_RST_PANIC:    return HB_RESET_PANIC;
@@ -71,6 +74,7 @@ inline uint8_t health_reset_reason_code() {
         case ESP_RST_SW:       return HB_RESET_SW;
         default:               return HB_RESET_OTHER;
     }
+#endif
 }
 
 // Gather live health into the 20-byte v2 wire payload (v1 prefix + power/link
@@ -78,7 +82,17 @@ inline uint8_t health_reset_reason_code() {
 // in a later increment; false today). Battery is board-gated in collect_health:
 // until a verified VBAT pin is enabled it packs the "not reported" sentinels, so
 // the payload is always a valid v2 beacon the tool decodes.
-inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_V2], bool fault = false) {
+#if HAS_GPS
+// v3: this board can know where it stands (T114 + L76K). The gps object
+// lives in the .ino; TinyGPSPlus.h's include guard makes this safe.
+#include <TinyGPSPlus.h>
+extern TinyGPSPlus gps;
+#define HEALTH_BEACON_LEN_LOCAL HEALTH_BEACON_LEN_V3
+#else
+#define HEALTH_BEACON_LEN_LOCAL HEALTH_BEACON_LEN_V2
+#endif
+
+inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_LOCAL], bool fault = false) {
     HealthSnapshot h;
     collect_health(h);
 
@@ -92,8 +106,36 @@ inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_V2], bool fault = 
           (h.on_battery ? HB_PWR_ON_BATTERY : 0)
         | (h.charging   ? HB_PWR_CHARGING   : 0)
         | (h.on_solar   ? HB_PWR_SOLAR      : 0)
-        | (h.on_mains   ? HB_PWR_MAINS      : 0);
+        | (h.on_mains   ? HB_PWR_MAINS      : 0)
+        // the live Bluetooth verdict (operator, 2026-08-21: the board's
+        // screen said BT active while VITALS said unknown — the beacon
+        // simply had no word for it). KNOWN set on every beacon from this
+        // firmware; UP mirrors the same source the screen row uses.
+        | HB_PWR_BT_KNOWN
+        | ((bt_state != BT_STATE_OFF) ? HB_PWR_BT_UP : 0);
 
+#if HAS_GPS
+    // v3 position tail: the node's OWN live claim about where it stands.
+    // Sentinel when there's no FRESH fix (valid + < 10 s old — the
+    // telemetry-fresh-vs-actual-fix trap) so a stale place is never
+    // announced. fuzzed=false: kin nodes tell their medic the truth; the
+    // wild-node fuzz policy rides the same bit when it lands.
+    int32_t lat_u = HB_POSITION_UNKNOWN, lng_u = HB_POSITION_UNKNOWN;
+    bool gps_fresh = gps.location.isValid() && gps.location.age() < 10000;
+    if (gps_fresh) {
+        lat_u = (int32_t)lround(gps.location.lat() * 1000000.0);
+        lng_u = (int32_t)lround(gps.location.lng() * 1000000.0);
+    }
+    health_pack_beacon_v3(out,
+        uptime_s, heap_kb, rssi, health_reset_reason_code(),
+        h.wifi_connected, h.lora_online, h.tcp_backbone_connected,
+        h.local_tcp_server_up, h.wdt_armed, h.psram, fault, airtime_lock,
+        (uint8_t)BOARD_MODEL,
+        RTNODE_FW_MAJOR, RTNODE_FW_MINOR, RTNODE_FW_PATCH,
+        h.battery_mv, h.battery_pct, power_flags,
+        h.lora_snr_db, h.lora_rssi_dbm,
+        lat_u, lng_u, (uint8_t)gps.satellites.value(), false);
+#else
     health_pack_beacon_v2(out,
         uptime_s, heap_kb, rssi, health_reset_reason_code(),
         h.wifi_connected, h.lora_online, h.tcp_backbone_connected,
@@ -102,15 +144,16 @@ inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_V2], bool fault = 
         RTNODE_FW_MAJOR, RTNODE_FW_MINOR, RTNODE_FW_PATCH,
         h.battery_mv, h.battery_pct, power_flags,
         h.lora_snr_db, h.lora_rssi_dbm);
+#endif
 }
 
 // Emit one beacon announce immediately (also used by the on-demand poll reply).
 inline void health_beacon_send() {
     if (!health_destination) return;
-    uint8_t payload[HEALTH_BEACON_LEN_V2];
+    uint8_t payload[HEALTH_BEACON_LEN_LOCAL];
     health_build_beacon(payload, health_fault);
     RNS::Bytes app_data;
-    app_data.append(payload, HEALTH_BEACON_LEN_V2);
+    app_data.append(payload, HEALTH_BEACON_LEN_LOCAL);
     health_destination.announce(app_data);
     // Verification log: the exact bytes on the wire + the destination hash the
     // tool keys on. Decode against monitor/health_beacon.py.
@@ -119,11 +162,6 @@ inline void health_beacon_send() {
                   app_data.toHex().c_str());
 }
 
-// On-demand poll receiver. The tool sends a bare 1-byte packet to this same
-// rtnode.health destination; opcode 0x01 = "send full health now". The reply is
-// just a normal beacon announce — no return address / nonce needed (the tool
-// correlates by our destination hash + freshness). Unknown opcodes are ignored,
-// so the request registry can grow without a firmware lockstep release.
 // WHO IS ALLOWED TO COMMAND THIS NODE? Nobody is authenticated here, and
 // nothing in Reticulum makes them: this is a SINGLE destination, so anyone who
 // has heard our announce holds the public key needed to encrypt a packet to
@@ -247,7 +285,11 @@ inline void health_fault_check() {
     if ((int32_t)(millis() - health_fault_next_check) < 0) return;
     health_fault_next_check = millis() + HEALTH_FAULT_CHECK_INTERVAL_MS;
 
+#if defined(ESP32)
     uint32_t heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+#else
+    uint32_t heap = dbgHeapFree();   // Adafruit nRF52 core's free-heap read
+#endif
     bool pressure = (heap < (uint32_t)HEALTH_FAULT_HEAP_KB * 1024UL);
     if (pressure) {
         if (health_fault_strikes < 0xFF) health_fault_strikes++;

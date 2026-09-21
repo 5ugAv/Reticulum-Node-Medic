@@ -20,7 +20,12 @@
 
 #if defined(HAS_NP) && HAS_NP == true
 
-#include <Preferences.h>
+#if MCU_VARIANT == MCU_ESP32
+#include <Preferences.h>        // NVS — ESP32 only
+#elif MCU_VARIANT == MCU_NRF52
+#include <Adafruit_LittleFS.h>  // the same store the EEPROM emulation uses
+#include <InternalFileSystem.h>
+#endif
 
 // Minimal HSV -> RGB (h 0..360, s/v 0..1) for the rainbow sweep.
 inline void np_hsv(float h, float s, float v) {
@@ -105,8 +110,9 @@ inline void birth_cry() {
 // changes on every rebuild, and NVS survives an app-only reflash — so a fresh
 // flash cries once, and every later power-cycle boots quietly.
 inline void birth_cry_maybe() {
-    static Preferences _bc_prefs;
     const char* stamp = __DATE__ " " __TIME__;
+#if MCU_VARIANT == MCU_ESP32
+    static Preferences _bc_prefs;
     _bc_prefs.begin("rnm", false);
     String seen = _bc_prefs.getString("birthcry", "");
     if (seen != stamp) {
@@ -114,6 +120,25 @@ inline void birth_cry_maybe() {
         _bc_prefs.putString("birthcry", stamp);
     }
     _bc_prefs.end();
+#elif MCU_VARIANT == MCU_NRF52
+    // NVS is ESP32-only; here the stamp lives in a LittleFS file beside the
+    // EEPROM store. __DATE__ " " __TIME__ is a fixed 20 characters, so an
+    // in-place overwrite (FILE_O_WRITE does not truncate) is exact.
+    Adafruit_LittleFS_Namespace::File f(InternalFS);
+    char seen[32] = {0};
+    if (f.open("/birthcry", Adafruit_LittleFS_Namespace::FILE_O_READ)) {
+        f.read(seen, sizeof(seen) - 1);
+        f.close();
+    }
+    if (strncmp(seen, stamp, sizeof(seen) - 1) != 0) {
+        birth_cry();
+        if (f.open("/birthcry", Adafruit_LittleFS_Namespace::FILE_O_WRITE)) {
+            f.seek(0);
+            f.write((const uint8_t*)stamp, strlen(stamp));
+            f.close();
+        }
+    }
+#endif
 }
 
 // Health-check acknowledgement: two crisp green pulses after answering the
