@@ -644,22 +644,28 @@ def test_the_card_auto_advance_cannot_outrun_the_operator():
 # which a field operator does not have.
 
 def test_every_screen_with_somewhere_to_go_back_to_SHOWS_it():
-    """If a screen sets _back_action it must also render a visible control.
-    Guided steps get theirs from WizardStep(on_back=...); the rest use
-    _back_row()."""
+    """If a screen sets _back_action there is a visible control for it. Since
+    2026-09-22 that control is the bottom bar's '←' on every mode screen
+    (ui/app.py _NavBar → handle_back → _back_action), so the guide draws no
+    plain "←  Back" of its own any more (operator: "that little back button
+    can be removed now"). What must still hold: a renamed exit ("Not right —
+    change") may stay, since it says something the arrow does not; and every
+    WizardStep under the bar hides its own Back while its on_back is the
+    same target the bar will use."""
     import re
     src = open("ui/screens/birth_guide_screen.py").read()
-    bad = []
+    assert "self._back_row()" not in src, "the plain Back row is the bar's job now"
+    assert "_back_row(label=" in src, "the renamed exits stay"
     for name, body in re.findall(r"def (_render_\w+)\(self[^)]*\):(.*?)(?=\n    def |\Z)",
                                  src, re.S):
-        sets_back = re.search(r"_back_action\s*=\s*self\._(render|back)", body)
-        # "_back_row(" not "_back_row()": a screen may rename its exit (the
-        # hardware confirmation calls it "Not right — change") and it still has
-        # to be THE back control, not a second one.
-        shows = "_back_row(" in body or "on_back=" in body
-        if sets_back and not shows:
-            bad.append(name)
-    assert not bad, f"back target but no visible way to use it: {bad}"
+        if "WizardStep(" not in body:
+            continue
+        assert "show_back=False" in body, f"{name}: a second Back under the bar"
+        assert re.search(r"_back_action\s*=", body), \
+            f"{name}: the bar's arrow has no target here"
+    wiz = open("ui/widgets/wizard_step.py").read()
+    assert "show_back=True" in wiz, "the setup wizard (no bar) keeps its Back by default"
+    assert "show_back=False" not in open("ui/screens/setup_wizard_screen.py").read()
 
 
 def test_the_back_control_never_lies_about_being_there():

@@ -63,7 +63,8 @@ class WizardStep(BoxLayout):
 
     def __init__(self, index, total, title, body, anim=None, on_next=None,
                  on_back=None, next_text=None, back_text=None,
-                 hint="", warning="", input_widget=None, **kwargs):
+                 hint="", warning="", input_widget=None, show_back=True,
+                 **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(20)
@@ -159,19 +160,26 @@ class WizardStep(BoxLayout):
 
         nav = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
                         spacing=dp(12))
-        self.back_btn = Button(text=back_text, font_size=theme.font_sp("18sp"),
-                               bold=True,
-                               size_hint_x=0.4, background_normal="",
-                               background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                               color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        self.back_btn.bind(on_release=lambda *_: self._on_back and self._on_back())
+        # show_back=False: the screen lives under the bottom bar, whose '←'
+        # already does on_back (operator, 2026-09-22: "that little back
+        # button can be removed now"). The setup wizard has no bar and
+        # keeps its own. back_btn stays an attribute (None) for callers.
+        self.back_btn = None
+        if show_back:
+            self.back_btn = Button(text=back_text, font_size=theme.font_sp("18sp"),
+                                   bold=True,
+                                   size_hint_x=0.4, background_normal="",
+                                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                                   color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            self.back_btn.bind(on_release=lambda *_: self._on_back and self._on_back())
         self.next_btn = Button(text=next_text, font_size=theme.font_sp("20sp"),
                                bold=True,
                                background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))
         self.next_btn.bind(on_release=lambda *_: self._on_next and self._on_next())
-        nav.add_widget(self.back_btn)
+        if self.back_btn is not None:
+            nav.add_widget(self.back_btn)
         nav.add_widget(self.next_btn)
         self.add_widget(nav)
         self._nav = nav

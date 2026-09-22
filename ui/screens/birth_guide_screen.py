@@ -286,7 +286,7 @@ class BirthGuideScreen(BoxLayout):
             anim=anim, hint=ANTENNA_STEP.get("hint", ""),
             warning=ANTENNA_STEP["warning"], next_text=tr("Antenna on  →"),
             on_next=self._render_detect,
-            on_back=self._render_intro)
+            show_back=False, on_back=self._render_intro)
         self.add_widget(step)
         self._current = step
         step.start()
@@ -294,10 +294,12 @@ class BirthGuideScreen(BoxLayout):
     def _back_row(self, label=None, height=44):
         """A VISIBLE way out of any screen that isn't a guided step.
 
-        *label* renames the control where "Back" would understate it — the
-        hardware-confirmation screen's way out is "Not right — change", which is
-        the same journey and must stay the SAME control, so every screen keeps
-        exactly one exit and the guard that checks for one keeps working.
+        SINCE 2026-09-22 the plain "←  Back" row is gone from every screen
+        here: the bottom bar's '←' calls handle_back(), the same journey, and
+        the operator asked for the duplicate to go. This row survives for a
+        RENAMED exit only — *label* names the control where "Back" would
+        understate it ("Not right — change", "Pick a different Pi"): it says
+        something the arrow does not, and it is still the same journey.
 
         handle_back() and _back_action have existed all along, but they were
         reachable only by a left-edge SWIPE. An invisible affordance is no
@@ -522,7 +524,7 @@ class BirthGuideScreen(BoxLayout):
             anim=anim,
             hint=tr("Use a DATA USB cable — a charge-only cable won't be seen."),
             next_text=tr("Choose manually  →"), on_next=self._choose_manually,
-            on_back=self._render_antenna)
+            show_back=False, on_back=self._render_antenna)
         self.add_widget(step)
         self._current = step
         # WHEN THIS SCREEN APPEARED. "Choose manually" throws the chosen build
@@ -751,9 +753,6 @@ class BirthGuideScreen(BoxLayout):
                                  "(this resets the board briefly)."),
                               "16sp", color="text_secondary", h=60))
         wrap.add_widget(Widget())
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
         try:
             # The banner read RESETS the board (USB re-enumerates for several
@@ -987,9 +986,6 @@ class BirthGuideScreen(BoxLayout):
         reb.bind(on_release=lambda *_: self._confirm_rebirth(c))
         wrap.add_widget(reb)
         wrap.add_widget(Widget())
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _keep_and_continue(self, c):
@@ -1330,9 +1326,6 @@ class BirthGuideScreen(BoxLayout):
                      color=theme.hex_to_rgba(theme.COLORS["amber"]))
         reb.bind(on_release=lambda *_: self._confirm_rebirth(c))
         wrap.add_widget(reb)
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _do_adopt(self, c):
@@ -1471,9 +1464,6 @@ class BirthGuideScreen(BoxLayout):
                 wrap.add_widget(self._over_air_button())
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _paths_for_connected_board(self):
@@ -1589,9 +1579,6 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(self._heard_row(c))
         sv.add_widget(col)
         root.add_widget(sv)
-        _bk = self._back_row()
-        if _bk is not None:
-            root.add_widget(_bk)
         self.add_widget(root)
 
     def _heard_row(self, c):
@@ -1656,9 +1643,6 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(cancel)
         row.add_widget(adopt)
         wrap.add_widget(row)
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _do_over_air(self, c):
@@ -1820,9 +1804,6 @@ class BirthGuideScreen(BoxLayout):
             tr("Already flashed — yours, or one you'll birth separately and "
                "bring back. You'll plug it into the finished Pi at the end."),
             self._already_have_one, height=126))
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _already_have_one(self):
@@ -1945,7 +1926,7 @@ class BirthGuideScreen(BoxLayout):
                           next_text=(tr("Use it anyway  →")
                                      if warn and not blocked
                                      else tr("Next  →")),
-                          on_next=self._name_next, on_back=self.reset)
+                          on_next=self._name_next, show_back=False, on_back=self.reset)
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
@@ -2107,7 +2088,7 @@ class BirthGuideScreen(BoxLayout):
                           body="", hint=s["hint"], warning=s["warning"],
                           input_widget=choices,
                           on_next=self._prelude_next,
-                          on_back=self._render_name)
+                          show_back=False, on_back=self._render_name)
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
@@ -2865,7 +2846,7 @@ class BirthGuideScreen(BoxLayout):
                           warning=(getattr(self, "_gate_warning", "")
                                    or s.get("warning", "")),
                           next_text=self._next_text_for(s),
-                          on_next=self._next, on_back=self._back)
+                          on_next=self._next, show_back=False, on_back=self._back)
         self.clear_widgets()
         self.add_widget(step)
         self._current = step
@@ -3235,9 +3216,6 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(row)
         body.add_widget(col)
         wrap.add_widget(body)
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     def _board_candidates(self, ignore_memory=False):
@@ -3454,9 +3432,6 @@ class BirthGuideScreen(BoxLayout):
             col.add_widget(row)
         body.add_widget(col)
         wrap.add_widget(body)
-        back = self._back_row()
-        if back is not None:
-            wrap.add_widget(back)
         self.add_widget(wrap)
 
     def _pi_picked(self, key):
@@ -3728,9 +3703,6 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(back)                  # the safe choice reads first
         row.add_widget(on)
         wrap.add_widget(row)
-        _bk = self._back_row()
-        if _bk is not None:
-            wrap.add_widget(_bk)
         self.add_widget(wrap)
 
     # -- returning from a hand-off ------------------------------------------

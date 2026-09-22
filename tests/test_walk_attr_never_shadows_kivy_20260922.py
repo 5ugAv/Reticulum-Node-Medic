@@ -28,15 +28,25 @@ def test_no_widget_is_asked_for_an_attribute_kivy_defines():
 
 
 def test_the_session_attribute_is_not_a_kivy_widget_name():
-    try:
-        from kivy.uix.widget import Widget
-    except Exception:                                              # noqa: BLE001
-        import pytest
+    """Asked of the REAL Kivy in a subprocess: other tests stub sys.modules
+    ["kivy"] in-process, and a stub Widget has no _walk to collide with."""
+    import json
+    import subprocess
+    import sys
+    import pytest
+    names = ["_walk_session", "_walk_gate", "_walk_ev", "_walk_hud",
+             "_walk_record", "_walk_hint", "_walk_flash_ev"]
+    code = ("import json,sys\n"
+            "try:\n    from kivy.uix.widget import Widget\n"
+            "except Exception:\n    print('NOKIVY'); sys.exit(0)\n"
+            f"print(json.dumps({{n: hasattr(Widget, n) for n in ['_walk'] + {names!r}}}))")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                         text=True, timeout=120).stdout.strip().splitlines()
+    if not out or out[-1] == "NOKIVY":
         pytest.skip("kivy not importable here")
-    assert hasattr(Widget, "_walk"), "the collision this test exists for"
-    for name in ("_walk_session", "_walk_gate", "_walk_ev", "_walk_hud",
-                 "_walk_record", "_walk_hint", "_walk_flash_ev"):
-        assert not hasattr(Widget, name), name
+    has = json.loads(out[-1])
+    assert has["_walk"], "the collision this test exists for"
+    assert not any(has[n] for n in names), has
 
 
 def test_the_busy_predicate_reads_the_session_not_the_walker():
