@@ -798,6 +798,7 @@
   "Take the {board} off Node Medic.": "Снимите {board} с Node Medic.",
   "Tap the board in front of you — you'll confirm it before anything builds.": "Нажмите на плату перед вами — вы подтвердите её до начала сборки.",
   "Tap the map to drop the pin, or ": "Нажмите на карту, чтобы поставить метку, или ",
+  "Tap the one in front of you — check the name printed on the board. Node Medic looks at the USB again before it flashes and says if they disagree.": "Нажмите на ту, что перед вами — сверьте название, напечатанное на плате. Node Medic ещё раз проверит USB перед прошивкой и сообщит, если они не совпадают.",
   "Tap to choose a board": "Нажмите, чтобы выбрать плату",
   "Tap to choose which Raspberry Pi": "Нажмите, чтобы выбрать какой Raspberry Pi",
   "Teaching its boot chip to ask for help": "Учим его загрузочный чип просить о помощи",

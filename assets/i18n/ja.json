@@ -798,6 +798,7 @@
   "Take the {board} off Node Medic.": "{board} を Node Medic から外してください。",
   "Tap the board in front of you — you'll confirm it before anything builds.": "目の前のボードをタップしてください — ビルドが始まる前に確認します。",
   "Tap the map to drop the pin, or ": "地図をタップしてピンを置く、または ",
+  "Tap the one in front of you — check the name printed on the board. Node Medic looks at the USB again before it flashes and says if they disagree.": "目の前のボードをタップしてください — ボードに印字された名前を確認してください。Node Medic は書き込み前にもう一度USBを確認し、一致しなければ知らせます。",
   "Tap to choose a board": "タップしてボードを選択",
   "Tap to choose which Raspberry Pi": "タップしてどの Raspberry Pi か選択",
   "Teaching its boot chip to ask for help": "ブートチップに助けを求めることを教える",

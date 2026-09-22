@@ -798,6 +798,7 @@
   "Take the {board} off Node Medic.": "Lepaskan {board} dari Node Medic.",
   "Tap the board in front of you — you'll confirm it before anything builds.": "Ketuk papan di depan Anda — Anda akan mengonfirmasinya sebelum apa pun dibangun.",
   "Tap the map to drop the pin, or ": "Ketuk peta untuk menaruh pin, atau ",
+  "Tap the one in front of you — check the name printed on the board. Node Medic looks at the USB again before it flashes and says if they disagree.": "Ketuk yang ada di depan Anda — periksa nama yang tercetak di papan. Node Medic memeriksa USB lagi sebelum mem-flash dan memberi tahu jika tidak cocok.",
   "Tap to choose a board": "Ketuk untuk memilih papan",
   "Tap to choose which Raspberry Pi": "Ketuk untuk memilih Raspberry Pi yang mana",
   "Teaching its boot chip to ask for help": "Mengajari chip boot-nya meminta bantuan",

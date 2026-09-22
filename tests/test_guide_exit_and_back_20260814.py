@@ -243,13 +243,19 @@ def test_back_off_the_first_step_reaches_the_choosers_then_the_preludes():
 
 # --- the exit: a door on every screen --------------------------------------
 
-def test_every_screen_this_class_renders_carries_the_exit():
-    """Every _render_* starts by clearing the screen's widgets, so the
-    clear_widgets override is the one seam that reaches ALL of them — steps,
-    pickers and preludes alike — without twenty call sites to forget one of."""
-    cw = func_source(SCREEN, "clear_widgets", cls="BirthGuideScreen")
-    assert "_exit_row" in cw, "clearing a screen must re-seed the exit"
-    assert "super().clear_widgets" in cw
+def test_every_screen_this_class_renders_has_the_door():
+    """The door on every screen is the bottom bar's Home (2026-09-22), which
+    the app routes through this screen's handle_home() -> _exit_tapped():
+    the mid-build warning, cancel_resume and the poll sweep. The corner
+    Exit rail that used to be re-seeded by a clear_widgets override was a
+    second door to the same place and is gone (operator, 2026-09-23)."""
+    text = src(SCREEN)
+    assert "_exit_row" not in text and "def clear_widgets" not in text
+    hh = func_source(SCREEN, "handle_home", cls="BirthGuideScreen")
+    assert "_exit_tapped()" in hh
+    app = open("ui/app.py", encoding="utf-8").read()
+    assert 'getattr(widget, "handle_home", None)' in app, \
+        "the bar's Home must ask the screen for its own exit road"
 
 
 def test_every_render_actually_passes_through_that_seam():
@@ -263,7 +269,7 @@ def test_every_render_actually_passes_through_that_seam():
                                                        body):
             continue
         bad.append(name)
-    assert not bad, f"screens rendered without the exit seam: {bad}"
+    assert not bad, f"screens rendered without clearing first: {bad}"
 
 
 def test_exit_warns_before_leaving_a_running_build():
@@ -335,15 +341,8 @@ def test_exit_tapped_run_asks_only_when_a_build_is_running():
             f"flash_in_progress={running} routed to {scr.calls}"
 
 
-def test_a_broken_exit_rail_cannot_take_the_screen_down():
-    """The rail is decoration on top of the render; a render must never die
-    for it (same rule as _expect_board_absence)."""
-    cw = func_source(SCREEN, "clear_widgets", cls="BirthGuideScreen")
-    assert "except Exception" in cw
-
-
 def test_the_exit_strings_are_wrapped_for_translation():
     text = src(SCREEN)
-    for s in ('tr("Exit")', 'tr("Leave this build?")',
+    for s in ('tr("Leave this build?")',
               'tr("Cancel — stay")', 'tr("OK — go home")'):
         assert s in text, f"{s} missing — exit strings must be translatable"

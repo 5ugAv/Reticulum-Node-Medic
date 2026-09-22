@@ -798,6 +798,7 @@
   "Take the {board} off Node Medic.": "Quita la {board} de Node Medic.",
   "Tap the board in front of you — you'll confirm it before anything builds.": "Toca la placa que tienes delante — la confirmarás antes de que se construya nada.",
   "Tap the map to drop the pin, or ": "Toca el mapa para colocar el pin, o ",
+  "Tap the one in front of you — check the name printed on the board. Node Medic looks at the USB again before it flashes and says if they disagree.": "Toca la que tienes delante — comprueba el nombre impreso en la placa. Node Medic vuelve a mirar el USB antes de flashear y avisa si no coinciden.",
   "Tap to choose a board": "Toca para elegir una placa",
   "Tap to choose which Raspberry Pi": "Toca para elegir qué Raspberry Pi",
   "Teaching its boot chip to ask for help": "Enseñando a su chip de arranque a pedir ayuda",

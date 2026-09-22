@@ -186,6 +186,7 @@ class BirthGuideScreen(BoxLayout):
         self._radio_usb_serial = ""
         self._radio_usb_serial_source = ""   # a SERIAL_SOURCES code, or ""
         self._board_source = ""              # a BOARD_SOURCES code, or ""
+        self._manual_board = False           # picked from the catalogue on detect
         # And the Bluetooth answer, for the same reason: OFF is the resting
         # end, and one node's yes must never become the next node's radio.
         self._bluetooth_on = False
@@ -348,44 +349,15 @@ class BirthGuideScreen(BoxLayout):
     #
     # Back walks one screen at a time, and the night it looped on a passed
     # gate the operator had NO other way out — the walkthrough had to be
-    # killed over SSH, which a field operator cannot do. Exit is the standing
-    # answer: small, constant, on every screen this class renders, and it
-    # goes straight home.
-
-    def clear_widgets(self, *args, **kwargs):
-        """Clear the screen — and re-seed the Exit rail on top of it.
-
-        Every _render_* here begins with clear_widgets(), so this override is
-        the one seam that reaches ALL of them — steps, pickers and preludes
-        alike — instead of twenty call sites of which one would eventually be
-        forgotten. First-added sits at the TOP of this vertical box, so the
-        rail lands above whatever the render adds next.
-        """
-        super().clear_widgets(*args, **kwargs)
-        try:
-            super().add_widget(self._exit_row())
-        except Exception:                                          # noqa: BLE001
-            pass       # the rail is decoration on the render — a render must
-                       # never die for it (same rule as _expect_board_absence)
-
-    def _exit_row(self):
-        """A small, constant Exit in the same corner of every screen.
-
-        Right-aligned and muted: Back lives on the LEFT of every step, and
-        the two must never be confusable — Back is one careful step, Exit is
-        the whole way out.
-        """
-        row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                        height=dp(34), padding=(dp(6), 0))
-        row.add_widget(BoxLayout())            # spacer: push Exit to the right
-        b = Button(text=tr("Exit"), size_hint=(None, None),
-                   size=(dp(92), dp(28)), pos_hint={"center_y": 0.5},
-                   font_size="14sp", background_normal="",
-                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                   color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        b.bind(on_release=lambda *_: self._exit_tapped())
-        row.add_widget(b)
-        return row
+    # killed over SSH, which a field operator cannot do. From 2026-08-14 a
+    # small Exit rail sat in the corner of every screen this class renders.
+    # Since 2026-09-22 the bottom bar carries Home on every mode screen and
+    # routes it through handle_home() -> _exit_tapped() below, the same
+    # warning and the same sweep — so the rail was a second door to the same
+    # place, and the operator asked for it to go (2026-09-23, on the adopt
+    # list: "there's an Exit button at the very top right corner as well as
+    # a Back button ... we can get rid of both those because we still have
+    # the Back and Home at the bottom").
 
     def _exit_tapped(self):
         """Home — after a warning when a build is mid-flight.
@@ -497,6 +469,7 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._render_antenna   # back -> the antenna landing
+        self._manual_board = False           # the USB read is the answer here
         # DRAW AND NAME THE BOARD IN THEIR HANDS, when it is known. Coming in
         # from a chosen build the board key is already set, so this landing can
         # be about THAT board. Coming in cold it is not — and then the screen
@@ -578,6 +551,17 @@ class BirthGuideScreen(BoxLayout):
         import time as _t
         if _t.monotonic() - getattr(self, "_detect_shown_at", 0) < 0.5:
             self._trace("ignored a Choose-manually tap that arrived with the screen")
+            return
+        # ON A RADIO ROAD "manually" means the BOARD, not the build (operator,
+        # 2026-09-23: "the choose manually button should give the user an
+        # option to choose through all the available boards instead of
+        # taking the user back to do you want to build a radio or RT node
+        # or Raspberry Pi node"). The build was answered one screen ago;
+        # what the medic could not do is read the board. Cold (no build
+        # chosen) the chooser is still the right home for it.
+        if self._path in ("radio", "host"):
+            self._trace("choose manually: the whole catalogue")
+            self._render_pick_board(manual=True)
             return
         self._render_intro()
 
@@ -1553,13 +1537,9 @@ class BirthGuideScreen(BoxLayout):
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(8))
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
                          spacing=dp(8))
+        # No Back of its own (operator, 2026-09-23): the bar's arrow calls
+        # handle_back(), and _back_action above is the chooser.
         head.add_widget(_line(tr("Nodes heard on the mesh"), "22sp", bold=True))
-        back = Button(text=tr("←  Back"), size_hint_x=None, width=dp(96),
-                      font_size="14sp", background_normal="",
-                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        back.bind(on_release=lambda *_: self._render_intro())
-        head.add_widget(back)
         root.add_widget(head)
         root.add_widget(_line(tr("Pick one to adopt as kin over LoRa (no cable)."),
                               "14sp", color="text_secondary", h=26))
@@ -1866,6 +1846,7 @@ class BirthGuideScreen(BoxLayout):
         self._radio_usb_serial = ""
         self._radio_usb_serial_source = ""
         self._board_source = ""
+        self._manual_board = False
         # The chooser and the detect landing left NO trace, so the night the
         # operator was asked to choose and connect twice there was nothing in
         # ui.log to reconstruct it from — only their account (2026-08-30). The
@@ -1892,7 +1873,9 @@ class BirthGuideScreen(BoxLayout):
         # Name step -> the chooser; on the "already have one" road the
         # picker came just before, so Back shows it again rather than
         # restarting the whole walkthrough (break review, 2026-09-22).
-        if self._path == "pi" and not getattr(self, "_pi_flash_radio", True):
+        if getattr(self, "_manual_board", False):
+            self._back_action = lambda: self._render_pick_board(manual=True)
+        elif self._path == "pi" and not getattr(self, "_pi_flash_radio", True):
             self._back_action = lambda: self._render_pick_board(absent=True)
         else:
             self._back_action = self._render_intro
@@ -3143,7 +3126,7 @@ class BirthGuideScreen(BoxLayout):
         self._render_pick_board(
             force_ask=True, absent=not getattr(self, "_pi_flash_radio", True))
 
-    def _render_pick_board(self, force_ask=False, absent=False):
+    def _render_pick_board(self, force_ask=False, absent=False, manual=False):
         """Which radio is this? Only ever the candidates the medic cannot rule
         out — the chip and the USB transport have already narrowed the list.
 
@@ -3156,9 +3139,17 @@ class BirthGuideScreen(BoxLayout):
         names, and Back returns to the radio question this came from. The
         medic asks because its certificate has to name the board, and a
         board nobody named came out as the profile default (skyfinger).
+
+        *manual* is the detect screen's "Choose manually" on a radio road
+        (2026-09-23): the board IS going onto this bench but the medic has
+        not read it, so the whole catalogue is offered, nothing is
+        remembered against a chip, and Back returns to the detect screen.
+        The BIRTH screen still reads the USB before flashing and warns when
+        the read disagrees with the name (its _declared_mismatch).
         """
         self._stop_current()
         self.clear_widgets()
+        self._manual_board = bool(manual)
         # NOT _render_step_zero: that sets _i = 0 and re-renders, which skips
         # the redundant radio step straight to step 1 — so Back moved the
         # operator FORWARD into a two-screen loop (audit, 2026-08-03).
@@ -3167,6 +3158,8 @@ class BirthGuideScreen(BoxLayout):
         self._back_action = self._back_to_prelude
         if absent:
             self._back_action = self._render_pi_radio_choice   # the question it came from
+        if manual:
+            self._back_action = self._render_detect             # the screen it escaped
         from kivy.uix.scrollview import ScrollView
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
@@ -3182,6 +3175,16 @@ class BirthGuideScreen(BoxLayout):
                 tr("It's not on Node Medic, so only you can say. The node's "
                    "certificate names this board."),
                 "15sp", color="text_secondary", h=32))
+        elif manual:
+            from ui.birth import rnode_board_choices
+            cands = [(b.key, b.display_name) for b in rnode_board_choices()]
+            wrap.add_widget(_line(tr("Which radio board is this?"), "24sp",
+                                  bold=True, h=40))
+            wrap.add_widget(_line(tr(
+                "Tap the one in front of you — check the name printed on the "
+                "board. Node Medic looks at the USB again before it flashes "
+                "and says if they disagree."), "15sp", color="text_secondary",
+                h=52))
         else:
             cands = self._board_candidates(ignore_memory=force_ask)
             if len(cands) == 1 and not force_ask:
@@ -3272,6 +3275,16 @@ class BirthGuideScreen(BoxLayout):
 
     def _board_picked(self, key):
         self._board_key = key
+        if getattr(self, "_manual_board", False):
+            # Named from the catalogue on the detect screen's "Choose
+            # manually" (2026-09-23): a naming, not a reading — nothing is
+            # remembered against a chip and no serial exists yet; the flash
+            # will read both. On to the name, as a detected board would be.
+            self._board_source = "operator"
+            self._radio_usb_serial, self._radio_usb_serial_source = "", ""
+            self._trace(f"board named '{key}' by hand on the detect screen")
+            self._render_name()
+            return
         if not getattr(self, "_pi_flash_radio", True):
             # The "already have one" road (2026-09-22): the radio is not on
             # the bench, so there is no chip to tie this answer to — nothing

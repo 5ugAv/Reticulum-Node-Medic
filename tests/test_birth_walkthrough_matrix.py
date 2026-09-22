@@ -240,7 +240,7 @@ class FakeWizardStep:
 #: Every method here runs EXACTLY as shipped. The stand-ins below cover only
 #: what draws pixels, spawns threads or touches hardware.
 _REAL_METHODS = [
-    "_choose",
+    "_choose", "_choose_manually",
     "reset", "_guide_steps", "_begin_steps", "_resume_steps",
     "_render_step", "_next", "_back", "resume", "has_pending_resume",
     "cancel_resume", "_finish", "_step_is_redundant", "_gate_state",
@@ -358,14 +358,16 @@ class DrivenGuide:
     def _render_location_share(self, *a, **k):
         self.asked.append("share")
 
-    def _render_pick_board(self, force_ask=False, absent=False):
+    def _render_pick_board(self, force_ask=False, absent=False, manual=False):
         # The operator answers the radio question with the scenario's board —
         # the real screen's memory/auto-advance shortcuts are its own tests'
         # business (test_guide_board_candidates). The answer goes through
         # the SHIPPED handler, which decides what follows: the Pi on the
         # flash road; the name on the "already have one" road, where the
         # picker shows the whole catalogue (absent=True, 2026-09-22).
-        self.asked.append("pick_board_absent" if absent else "pick_board")
+        self._manual_board = bool(manual)      # as the shipped render sets it
+        self.asked.append("pick_board_manual" if manual else
+                          "pick_board_absent" if absent else "pick_board")
         self._board_picked(self.sc_board)
 
     def _remember_board(self, key):
@@ -811,6 +813,33 @@ def test_the_have_one_road_carries_no_serial_the_medic_never_read(rig):
     g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
     assert g._radio_usb_serial == "" and g._radio_usb_serial_source == ""
     assert g._board_source == "operator"
+
+
+def test_choose_manually_on_a_radio_road_offers_the_whole_catalogue(rig):
+    """Operator, 2026-09-23: on BUILD -> RNode -> antenna on -> "Connect your
+    node", the "Choose manually" button took them back to "What are you
+    building?" — the question they had just answered. It now asks WHICH
+    BOARD, from the whole catalogue, and carries on to the name as a
+    detected board would; the pick is a naming, not a reading."""
+    env, clock = rig
+    for road in ("radio", "host"):
+        g = DrivenGuide(env, clock)
+        g.sc_board = "rak4631"
+        g._path, g._pi_flash_radio = road, True
+        g.asked.clear()                        # construction renders the intro
+        g._choose_manually()
+        assert g.asked == ["pick_board_manual", "name"], (road, g.asked)
+        assert g._board_key == "rak4631" and g._board_source == "operator"
+        assert g._radio_usb_serial == "" and g._radio_usb_serial_source == ""
+
+
+def test_choose_manually_with_no_build_chosen_still_goes_to_the_chooser(rig):
+    env, clock = rig
+    g = DrivenGuide(env, clock)
+    g._path = None
+    g.asked.clear()
+    g._choose_manually()
+    assert g.asked == ["intro"]
 
 
 def test_choosing_a_road_drops_the_previous_laps_serial(rig):
