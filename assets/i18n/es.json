@@ -382,6 +382,7 @@
   "Higher is better: a good antenna hears MORE of everything, noise included. The quiet one is usually the deaf one.": "Más alto es mejor: una buena antena oye MÁS de todo, ruido incluido. La silenciosa suele ser la sorda.",
   "Holds messages for users who are offline, and bridges LoRa to Wi-Fi, Bluetooth and the internet. The best node to future-proof the network.": "Guarda mensajes para usuarios sin conexión y enlaza LoRa con Wi-Fi, Bluetooth e internet. El mejor nodo para preparar la red para el futuro.",
   "Holds messages for users who are offline, and bridges LoRa to Wi-Fi, Bluetooth and the internet. The best node to future-proof the network. You can add a radio to it at the end — or attach one you already have.": "Guarda mensajes para quienes están sin conexión y conecta LoRa con Wi-Fi, Bluetooth e internet. El mejor nodo para preparar la red para el futuro. Puedes añadirle una radio al final — o conectar una que ya tengas.",
+  "Home": "Inicio",
   "Home mode": "Modo Home",
   "Host Pi": "Pi anfitrión",
   "Hostname": "Nombre de host",

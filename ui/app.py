@@ -17,9 +17,11 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.widget import Widget
 from kivy.metrics import dp
 
 from ui import theme
@@ -252,18 +254,97 @@ def _placeholder(title):
     return screen
 
 
+def _glyph_font_name():
+    """The face the bar's '←' and '⌂' are drawn in, or None to use the default.
+
+    Both glyphs are in DejaVuSans (checked against the bundled file with PIL,
+    2026-09-22); the app's global font is DejaVu for every language but
+    Japanese, where it is Noto Sans JP, whose coverage of U+2302 HOUSE was not
+    checked. Naming the face keeps the two glyphs the same in every language;
+    the word 'Home' next to them stays in the language's own font. None when
+    Kivy's data dir cannot be found (the test suite stubs the package), so a
+    missing path degrades to the default font instead of a dead bar."""
+    try:
+        from ui import fonts
+        path = fonts.dejavu_path()
+        return path if os.path.exists(path) else None
+    except Exception:                                              # noqa: BLE001
+        return None
+
+
+class _NavBar(BoxLayout):
+    """The sliver at the foot of every mode screen: '←' far left, 'Home' centre.
+
+    WHY (operator, 2026-09-22, after walking a stranger through the medic from
+    scratch): "we need a dedicated back and home button — a tiny little sliver
+    at the bottom of every screen". The left-edge swipe stays, but a gesture
+    nobody is told about is not a way out (the lesson the birth guide paid
+    for on 2026-08-06/07 when its swipe-only Back read as a trap, twice).
+
+    A LAYOUT ROW, not an overlay: many screens end in a button on the bottom
+    edge (node_detail's Delete, the walk's Stop & save) and a strip painted
+    over them would cover exactly the control the operator is reaching for.
+    Both controls are at least dp(44) WIDE although the bar is dp(28) tall —
+    the generous hit area is horizontal, because a taller invisible target
+    would take touches from those same bottom-edge buttons.
+    """
+
+    HEIGHT_DP = 28
+    BACK_W_DP = 64        # the arrow's touch target; the bar is too short to be tall
+    HOME_W_DP = 132
+
+    def __init__(self, on_back, on_home, **kwargs):
+        kwargs.setdefault("orientation", "horizontal")
+        kwargs.setdefault("size_hint_y", None)
+        kwargs.setdefault("height", dp(self.HEIGHT_DP))
+        super().__init__(**kwargs)
+        from ui.i18n import tr
+        from kivy.graphics import Color, Rectangle
+        with self.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["sidebar"]))
+            self._bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._sync_bg, size=self._sync_bg)
+        glyph_font = _glyph_font_name()
+        flat = dict(background_normal="", background_down="",
+                    background_color=(0, 0, 0, 0), size_hint=(None, 1),
+                    color=theme.hex_to_rgba(theme.COLORS["accent"]))
+        self.back_button = Button(text="←", font_size="20sp",
+                                  width=dp(self.BACK_W_DP), **flat)
+        if glyph_font:
+            self.back_button.font_name = glyph_font
+        self.back_button.bind(on_release=lambda *_: on_back())
+        # The house glyph is set in its own face by markup so the WORD keeps the
+        # language's font (Japanese would otherwise lose its own characters).
+        house = f"[font={glyph_font}]⌂[/font]  " if glyph_font else ""
+        self.home_button = Button(text=house + tr("Home"), markup=True,
+                                  font_size="14sp", bold=True,
+                                  width=dp(self.HOME_W_DP), **flat)
+        self.home_button.bind(on_release=lambda *_: on_home())
+        self.add_widget(self.back_button)
+        self.add_widget(Widget(size_hint=(1, 1)))              # spacer
+        self.add_widget(self.home_button)
+        self.add_widget(Widget(size_hint=(1, 1)))              # spacer
+        # a blank the arrow's width, so the two spacers are equal and Home sits
+        # on the bar's centre line rather than a half-arrow to the right of it
+        self.add_widget(Widget(size_hint=(None, 1), width=dp(self.BACK_W_DP)))
+
+    def _sync_bg(self, *_):
+        self._bg.pos, self._bg.size = self.pos, self.size
+
+
 class _BackSwipeWrap(FloatLayout):
-    """Wraps a mode screen. A swipe IN from the LEFT EDGE goes back — replacing a
-    corner BACK button that overlapped screen controls (and never having to
-    choreograph controls around it again). A thin translucent chevron marks the
-    zone. Only touches that START within the narrow edge strip are claimed for the
-    back gesture; everything else passes straight through, so map panning, buttons
-    and text fields all still work (a pan starts mid-screen, not at the border)."""
+    """Wraps a mode screen: the content above, the _NavBar sliver below, and a
+    swipe IN from the LEFT EDGE that goes back — the same action as the bar's
+    arrow. A thin translucent chevron marks the swipe zone. Only touches that
+    START within the narrow edge strip (and above the bar) are claimed for the
+    gesture; everything else passes straight through, so map panning, buttons
+    and text fields all still work (a pan starts mid-screen, not at the border).
+    """
 
     EDGE_DP = 26           # width of the left-edge back zone
     TRIGGER_DP = 55        # rightward travel that fires 'back'
 
-    def __init__(self, on_back, **kwargs):
+    def __init__(self, on_back, on_home, **kwargs):
         super().__init__(**kwargs)
         self._on_back = on_back
         self._edge = None                       # (touch, start_x) mid back-swipe
@@ -273,13 +354,21 @@ class _BackSwipeWrap(FloatLayout):
                               size_hint=(None, None), size=(dp(22), dp(64)),
                               pos_hint={"x": 0.0, "center_y": 0.5},
                               color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.55))
+        self._bar = _NavBar(on_back=on_back, on_home=on_home)
+        self._column = BoxLayout(orientation="vertical", size_hint=(1, 1))
 
     def add_content(self, widget):
         widget.size_hint = (1, 1)
-        self.add_widget(widget)
+        self._column.add_widget(widget)
+        self._column.add_widget(self._bar)      # vertical box: last added = bottom row
+        self.add_widget(self._column)
         self.add_widget(self._chevron)          # keep the handle on top
 
     def on_touch_down(self, touch):
+        if touch.y - self.y < self._bar.height:
+            # The arrow sits inside the far-left strip the gesture claims, and
+            # a claimed touch never reaches a button — the bar is exempt.
+            return super().on_touch_down(touch)
         if touch.x - self.x <= dp(self.EDGE_DP):
             self._edge = (touch, touch.x)
             return True                         # claim the edge strip
@@ -304,11 +393,14 @@ class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
     def _with_back(self, widget):
-        """A mode screen that goes back on a LEFT-EDGE SWIPE (faint chevron handle,
-        no corner BACK button to overlap controls). For a MULTI-PAGE flow the swipe
-        steps back ONE page first: if the wrapped screen has ``handle_back()`` and
-        it returns True (it stepped back internally), we stop there; only at the
-        flow's root (or a plain single-page screen) does it fall through to home."""
+        """A mode screen with the bottom sliver ('←' left, 'Home' centre) and the
+        LEFT-EDGE SWIPE. Arrow and swipe are ONE action: for a MULTI-PAGE flow
+        it steps back ONE page first — if the wrapped screen has
+        ``handle_back()`` and it returns True (it stepped back internally), we
+        stop there; only at the flow's root (or a plain single-page screen) does
+        it fall through to home. Home is a plain switch: leaving a screen never
+        interrupts a flash or a birth (the activity counter and the busy marker
+        keep the work alive), so there is nothing to confirm."""
         def on_back():
             h = getattr(widget, "handle_back", None)
             if callable(h):
@@ -318,7 +410,8 @@ class ReticulumNodeMedicApp(App):
                 except Exception:
                     pass
             self.switch_mode("home")
-        wrap = _BackSwipeWrap(on_back=on_back)
+        wrap = _BackSwipeWrap(on_back=on_back,
+                              on_home=lambda: self.switch_mode("home"))
         wrap.add_content(widget)
         return wrap
 
@@ -655,7 +748,8 @@ class ReticulumNodeMedicApp(App):
         self._register_self_unit()
 
         # No sidebar: the front page IS the navigation (its cards open the
-        # modes); every mode screen carries a BACK button bottom-right.
+        # modes); every mode screen is wrapped by _with_back, which gives it
+        # the bottom sliver ('←' / 'Home') and the left-edge back swipe.
         self.sm = ScreenManager()
 
         # HOME: the designed front page — the poster's cards open the modes.
@@ -691,9 +785,12 @@ class ReticulumNodeMedicApp(App):
         self._gps_last_persist = 0.0          # rate-limit the last-sync config write
 
         credits = Screen(name="credits")
-        credits.add_widget(CreditsScreen(
+        # Wrapped like every other mode (operator, 2026-09-22: "every screen").
+        # Its tap-anywhere-goes-home stays; the bar sits below it, outside its
+        # bounds, so the bar's own taps are the bar's.
+        credits.add_widget(self._with_back(CreditsScreen(
             on_select=self.switch_mode,
-            on_back=lambda: self.switch_mode("home")))
+            on_back=lambda: self.switch_mode("home"))))
         self.sm.add_widget(credits)
 
         # Final confirmed modes, registered in sidebar order:
