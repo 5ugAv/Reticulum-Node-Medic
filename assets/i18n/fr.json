@@ -905,6 +905,7 @@
   "Unplug the Pi, put the radio on it, give it power": "Débranchez le Pi, montez la radio dessus, alimentez-le",
   "Unplug the radio and set it aside. It goes onto the Pi at the very end.": "Débranchez la radio et mettez-la de côté. Elle ira sur le Pi tout à la fin.",
   "Unplug the {pi} from Node Medic.": "Débranchez le {pi} de Node Medic.",
+  "Update health reporter": "Mettre à jour le rapporteur de santé",
   "Use a DATA USB cable — a charge-only cable won't be seen.": "Utilisez un câble USB de DONNÉES : un câble de charge seule ne sera pas vu.",
   "Use a DATA cable — a charge-only lead powers the Pi and never shows up.": "Utilisez un câble de DONNÉES — un câble de charge seule alimente le Pi sans jamais apparaître.",
   "Use a Pi and radio board from the suggested list": "Utilisez un Pi et une carte radio de la liste suggérée",

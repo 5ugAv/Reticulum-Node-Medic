@@ -905,6 +905,7 @@
   "Unplug the Pi, put the radio on it, give it power": "Unplug the Pi, put the radio on it, give it power",
   "Unplug the radio and set it aside. It goes onto the Pi at the very end.": "Cabut radio dan sisihkan. Ia dipasang ke Pi di bagian paling akhir.",
   "Unplug the {pi} from Node Medic.": "Cabut {pi} dari Node Medic.",
+  "Update health reporter": "Perbarui pelapor kesehatan",
   "Use a DATA USB cable — a charge-only cable won't be seen.": "Gunakan kabel USB DATA — kabel khusus pengisian daya tidak akan terdeteksi.",
   "Use a DATA cable — a charge-only lead powers the Pi and never shows up.": "Gunakan kabel DATA — kabel khusus pengisian daya menyalakan Pi tetapi tidak pernah muncul.",
   "Use a Pi and radio board from the suggested list": "Gunakan Pi dan papan radio dari daftar yang disarankan",

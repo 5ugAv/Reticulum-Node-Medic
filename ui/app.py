@@ -1786,6 +1786,7 @@ class ReticulumNodeMedicApp(App):
         scr.add_widget(self._with_back(NodeDetailScreen(
             rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
+            on_push_reporter=self._push_reporter,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps)))
         self.switch_mode("node_detail")
@@ -2173,6 +2174,31 @@ class ReticulumNodeMedicApp(App):
         if now - self._reply_reject_last >= 10.0:
             self._reply_reject_last = now
             print("[health] " + msg, flush=True)
+
+    def _push_reporter(self, record, report):
+        """Update a Pi node's health reporter in place (the unicast reply
+        needs it on every Pi already in the field). Over the medic's own
+        key, to the node's mDNS name — the same road birth used. Off-thread;
+        the page's status line carries the outcome, read back, never claimed."""
+        import threading
+        from transport.connection import SSHConnection
+        from workflows.pi_reporter_push import push_health_reporter
+        name = (getattr(record, "name", "") or "").strip()
+        if not name:
+            report("This node has no name on record — cannot find it on the network.", False)
+            return
+        host = f"{name.lower()}.local"
+        report("Updating the health reporter on %s…" % host, None)
+
+        def work():
+            try:
+                conn = SSHConnection(host, user="pi")
+                ok, msg = push_health_reporter(conn, log=lambda m: print(
+                    "[reporter] %s: %s" % (host, m), flush=True))
+            except Exception as e:                                 # noqa: BLE001
+                ok, msg = False, "could not reach %s: %s" % (host, e)
+            Clock.schedule_once(lambda dt: report(msg, ok), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _ping_node(self, dst_hash, report):
         """Live mesh reachability check. Drop the (possibly stale) cached path —

@@ -905,6 +905,7 @@
   "Unplug the Pi, put the radio on it, give it power": "Unplug the Pi, put the radio on it, give it power",
   "Unplug the radio and set it aside. It goes onto the Pi at the very end.": "無線機を抜いて脇に置いてください。Pi に取り付けるのは一番最後です。",
   "Unplug the {pi} from Node Medic.": "{pi} を Node Medic から抜いてください。",
+  "Update health reporter": "ヘルスレポーターを更新",
   "Use a DATA USB cable — a charge-only cable won't be seen.": "データ用 USB ケーブルを使ってください — 充電専用ケーブルは認識されません。",
   "Use a DATA cable — a charge-only lead powers the Pi and never shows up.": "データ用ケーブルを使ってください — 充電専用ケーブルは Pi に給電するだけで、決して現れません。",
   "Use a Pi and radio board from the suggested list": "おすすめリストの Pi と無線ボードを使う",

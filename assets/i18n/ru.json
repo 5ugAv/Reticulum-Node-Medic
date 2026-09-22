@@ -905,6 +905,7 @@
   "Unplug the Pi, put the radio on it, give it power": "Unplug the Pi, put the radio on it, give it power",
   "Unplug the radio and set it aside. It goes onto the Pi at the very end.": "Отключите радио и отложите его. Оно встанет на Pi в самом конце.",
   "Unplug the {pi} from Node Medic.": "Отключите {pi} от Node Medic.",
+  "Update health reporter": "Обновить репортёр состояния",
   "Use a DATA USB cable — a charge-only cable won't be seen.": "Используйте USB-кабель для ДАННЫХ — кабель только для зарядки не будет виден.",
   "Use a DATA cable — a charge-only lead powers the Pi and never shows up.": "Используйте кабель для ДАННЫХ — кабель только для зарядки запитает Pi, но никогда не появится.",
   "Use a Pi and radio board from the suggested list": "Используйте Pi и радиоплату из рекомендованного списка",

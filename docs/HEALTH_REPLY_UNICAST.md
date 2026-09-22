@@ -74,10 +74,14 @@ does, sign `dest ‖ nonce ‖ beacon` with `Transport::identity()`, send
 payload)`. Two green pulses either way.
 
 **Pi nodes (`monitor/pi_health_reporter.py`, ELSEWHERE / EVERYWHERE):**
-the same handler in Python. Existing Pi nodes get the new reporter by a
-"push reporter" step over the same SSH path birth used [12]; until then
-an old reporter answers `0x04` with an announce, which is today's
-behaviour.
+the same handler in Python. Existing Pi nodes get the new reporter
+without a rebirth: **Update health reporter** on the node's VITALS page
+(`workflows/pi_reporter_push.py`) copies the package over the same SSH
+road birth used, restarts `rnm-health`, and reads back that the handler
+landed and the service is active before it says so [12]. Until a node is
+updated its old reporter answers `0x04` with an announce — today's
+behaviour. `scripts/rnm_health_ping.py` runs the same two-phase request
+from a shell for bench proof when nobody is at the glass.
 
 ## The medic's reply destination
 

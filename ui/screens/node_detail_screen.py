@@ -84,7 +84,7 @@ def _reading(record, name):
 
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None, on_navigate=None,
-                 on_forget=None, on_walk=None,
+                 on_forget=None, on_walk=None, on_push_reporter=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
                  capabilities=None, **kwargs):
@@ -97,6 +97,7 @@ class NodeDetailScreen(BoxLayout):
         self._on_forget = on_forget
         self._on_navigate = on_navigate
         self._on_walk = on_walk
+        self._on_push_reporter = on_push_reporter
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
         # must not have a repair button appear that quietly does nothing.
@@ -387,6 +388,23 @@ class NodeDetailScreen(BoxLayout):
                 walk_row = col
             self._walk_row = walk_row
 
+        if self._on_push_reporter is not None and record.node_type == "pi":
+            # A Pi node's health reporter is software the medic can update
+            # over the same SSH road birth used — no cable, no rebirth
+            # (docs/HEALTH_REPLY_UNICAST.md, 2026-09-22: the unicast reply
+            # needs the new reporter on every Pi node already in the field).
+            upd_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                height=dp(52), spacing=dp(8))
+            upd = Button(text=tr("Update health reporter"),
+                         font_size=theme.font_sp("16sp"), bold=True,
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            upd.bind(on_release=lambda *_: self._on_push_reporter(
+                self.record, self._set_ping_status))
+            upd_row.add_widget(upd)
+            self._upd_row = upd_row
+
         if self._on_forget is not None:
             # DELETE, behind the danger confirm (operator request, 2026-08-13)
             # — and on its OWN ROW since 2026-08-14 (briefing Task 11): packed
@@ -421,6 +439,8 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(actions)
         if getattr(self, "_walk_row", None) is not None:
             self.add_widget(self._walk_row)
+            if getattr(self, '_upd_row', None) is not None:
+                self.add_widget(self._upd_row)
             self._walk_row = None
         if getattr(self, "_danger_row", None) is not None:
             self.add_widget(self._danger_row)
