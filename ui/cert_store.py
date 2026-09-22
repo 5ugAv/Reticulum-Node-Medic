@@ -199,25 +199,6 @@ def radio_serial_for_board(board_name: str, certs=None,
                     + (f" on {when}" if when else ""))
 
 
-def update_fields(cid: str, fields: Dict, cert_dir: str = CERT_DIR) -> bool:
-    """Merge *fields* into a stored certificate (by id) and re-save. False if
-    it isn't found. For a repair that corrected a node's radio naming over
-    SSH (workflows.radio_repair, 2026-09-22): the medic's own record of the
-    node must change with it, or VITALS goes on printing the wrong board."""
-    path = os.path.join(cert_dir, f"{cid}.json")
-    if not os.path.exists(path):
-        return False
-    try:
-        with open(path) as f:
-            cert = json.load(f)
-    except (OSError, ValueError):
-        return False
-    cert.update(fields)
-    from monitor.atomic_json import write_json
-    write_json(path, cert, indent=2)
-    return True
-
-
 def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR,
                          keep_id: str = "") -> int:
     """Remove stored certificates whose board fingerprint is *usb_serial*.

@@ -87,7 +87,7 @@ class NodeDetailScreen(BoxLayout):
                  on_forget=None, on_walk=None, on_push_reporter=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
-                 capabilities=None, on_repair_radio=None, **kwargs):
+                 capabilities=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -98,7 +98,6 @@ class NodeDetailScreen(BoxLayout):
         self._on_navigate = on_navigate
         self._on_walk = on_walk
         self._on_push_reporter = on_push_reporter
-        self._on_repair_radio = on_repair_radio
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
         # must not have a repair button appear that quietly does nothing.
@@ -405,23 +404,6 @@ class NodeDetailScreen(BoxLayout):
                 self.record, self._set_ping_status))
             upd_row.add_widget(upd)
             self._upd_row = upd_row
-        if self._on_repair_radio is not None and record.node_type == "pi":
-            # A Pi node born before 2026-09-22 on the "I already have a
-            # working radio" road carries the five-vendor udev net and a
-            # certificate naming the profile DEFAULT board (skyfinger, a
-            # RAK4631 certified as a Heltec V4). The operator names the true
-            # radio from the same photo cards birth uses; the medic writes
-            # the rule over SSH, reads it back, and corrects its own record.
-            fix_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                height=dp(52), spacing=dp(8))
-            fix = Button(text=tr("Fix radio name…"),
-                         font_size=theme.font_sp("16sp"), bold=True,
-                         background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            fix.bind(on_release=lambda *_: self._pick_radio_then_repair())
-            fix_row.add_widget(fix)
-            self._fix_row = fix_row
 
         if self._on_forget is not None:
             # DELETE, behind the danger confirm (operator request, 2026-08-13)
@@ -459,8 +441,6 @@ class NodeDetailScreen(BoxLayout):
             self.add_widget(self._walk_row)
             if getattr(self, '_upd_row', None) is not None:
                 self.add_widget(self._upd_row)
-            if getattr(self, "_fix_row", None) is not None:
-                self.add_widget(self._fix_row)
             self._walk_row = None
         if getattr(self, "_danger_row", None) is not None:
             self.add_widget(self._danger_row)
@@ -524,53 +504,6 @@ class NodeDetailScreen(BoxLayout):
         if port.startswith("/dev/rnode"):
             out.append(tr("Radio port: {port}").format(port=port))
         return out
-
-    def _pick_radio_then_repair(self):
-        """Which radio is on this node? The same photo cards birth asks
-        with (every card carries its name, 2026-09-21), in a popup; the
-        answer goes to the app's repair, which reports into the status line
-        what it read back off the node."""
-        from kivy.uix.popup import Popup
-        from ui.birth import rnode_board_choices
-        from ui.widgets.board_card import BoardCard
-        root = BoxLayout(orientation="vertical", spacing=dp(6), padding=dp(6))
-        scroll = ScrollView()
-        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
-        col.bind(minimum_height=col.setter("height"))
-        popup = Popup(title=tr("Which radio is on this node?"),
-                      size_hint=(0.96, 0.94), title_size="17sp",
-                      separator_color=theme.hex_to_rgba(theme.COLORS["accent"]))
-
-        def chosen(key):
-            popup.dismiss()
-            self._on_repair_radio(self.record, key, self._set_ping_status)
-
-        for b in rnode_board_choices():
-            key, name = b.key, b.display_name
-            row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                            height=dp(96), spacing=dp(10))
-            try:
-                row.add_widget(BoardCard(key, name=name, selected=False,
-                                         size_hint_x=None, width=dp(150)))
-            except Exception:                                      # noqa: BLE001
-                pass
-            btn = Button(text=name, font_size=theme.font_sp("17sp"), bold=True,
-                         background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            btn.bind(on_release=lambda _b, k=key: chosen(k))
-            row.add_widget(btn)
-            col.add_widget(row)
-        scroll.add_widget(col)
-        root.add_widget(scroll)
-        cancel = Button(text=tr("Cancel"), size_hint_y=None, height=dp(48),
-                        bold=True, background_normal="",
-                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        cancel.bind(on_release=lambda *_: popup.dismiss())
-        root.add_widget(cancel)
-        popup.content = root
-        popup.open()
 
     def _last_walk_note(self):
         """One line from the newest boundary walk against this node."""
