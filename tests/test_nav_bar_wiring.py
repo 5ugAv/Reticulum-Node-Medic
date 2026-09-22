@@ -213,13 +213,37 @@ def test_with_back_hands_the_wrapper_both_callbacks():
 
 
 def test_home_switches_to_home_and_nothing_else():
-    """No confirmation popup: leaving a screen during a flash or a birth never
+    """A plain screen: no confirmation popup. Leaving during a flash never
     interrupts it (the activity counter and busy marker keep that true)."""
     with_back = _load_with_back()
     with_back.__globals__["_BackSwipeWrap"] = _StubWrap
     app, switched = _app()
     with_back(app, object()).on_home()
     assert switched == ["home"]
+
+
+def test_home_takes_the_screens_own_exit_road_when_it_has_one():
+    """The birth guide's Exit does more than switch screens: it cancels the
+    late-resume hook and kills its polls, and warns when a build is mid-flight
+    (2026-08-14, the door that cannot be trapped shut). A bare switch from the
+    bar would leave those armed — a card write finishing late would drag the
+    operator back into a walkthrough they had left. Same protocol as
+    handle_back: a screen that defines handle_home() owns its own leaving."""
+    with_back = _load_with_back()
+    with_back.__globals__["_BackSwipeWrap"] = _StubWrap
+    app, switched = _app()
+    left = []
+    guide = types.SimpleNamespace(handle_home=lambda: left.append("exit"))
+    with_back(app, guide).on_home()
+    assert left == ["exit"]
+    assert switched == [], "the screen decides how it leaves; the bar does not double up"
+
+
+def test_the_birth_guide_leaves_by_its_own_exit_from_the_bar():
+    src = open(os.path.join(ROOT, "ui/screens/birth_guide_screen.py")).read()
+    m = re.search(r"    def handle_home\(self\):.*?(?=\n    def |\Z)", src, re.S)
+    assert m, "the guide must offer the bar its Exit road"
+    assert "_exit_tapped()" in m.group(0)
 
 
 def test_back_steps_one_page_inside_a_flow_before_falling_through_to_home():

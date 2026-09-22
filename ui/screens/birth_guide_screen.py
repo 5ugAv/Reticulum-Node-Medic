@@ -333,6 +333,13 @@ class BirthGuideScreen(BoxLayout):
             return True
         return False
 
+    def handle_home(self):
+        """The bottom bar's Home (2026-09-22) leaves THIS screen by the same
+        road as the Exit rail: the mid-build warning, cancel_resume and the
+        poll sweep. A bare switch_mode("home") from the bar would leave a
+        late card hand-off armed to drag the operator back in."""
+        self._exit_tapped()
+
     # -- the door that cannot be trapped shut (operator order, 2026-08-14) --
     #
     # Back walks one screen at a time, and the night it looped on a passed

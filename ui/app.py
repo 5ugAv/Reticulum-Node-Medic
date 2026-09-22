@@ -398,9 +398,14 @@ class ReticulumNodeMedicApp(App):
         it steps back ONE page first — if the wrapped screen has
         ``handle_back()`` and it returns True (it stepped back internally), we
         stop there; only at the flow's root (or a plain single-page screen) does
-        it fall through to home. Home is a plain switch: leaving a screen never
-        interrupts a flash or a birth (the activity counter and the busy marker
-        keep the work alive), so there is nothing to confirm."""
+        it fall through to home. Home is a plain switch for a plain screen:
+        leaving never interrupts a flash (the activity counter and the busy
+        marker keep the work alive), so there is nothing to confirm. A screen
+        that defines ``handle_home()`` owns its own leaving — the birth guide's
+        Exit cancels its late-resume hook and kills its polls before going,
+        and warns mid-build (2026-08-14); a bare switch would leave those
+        armed, and a card write landing late would pull the operator back
+        into a walkthrough they had left (found in review, 2026-09-22)."""
         def on_back():
             h = getattr(widget, "handle_back", None)
             if callable(h):
@@ -410,8 +415,14 @@ class ReticulumNodeMedicApp(App):
                 except Exception:
                     pass
             self.switch_mode("home")
-        wrap = _BackSwipeWrap(on_back=on_back,
-                              on_home=lambda: self.switch_mode("home"))
+
+        def on_home():
+            h = getattr(widget, "handle_home", None)
+            if callable(h):
+                h()                         # the screen's own exit road
+                return
+            self.switch_mode("home")
+        wrap = _BackSwipeWrap(on_back=on_back, on_home=on_home)
         wrap.add_content(widget)
         return wrap
 
