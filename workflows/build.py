@@ -10,6 +10,7 @@ as success and the run continues.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
@@ -548,8 +549,13 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
     port = wf.profile.radio.serial_port
     board = get_board(wf.profile.rnode_board_key)
     if board is None:
-        return StepResult("flash_rnode_firmware", False,
-                          f"Unknown RNode board '{wf.profile.rnode_board_key}'.")
+        return StepResult(
+            "flash_rnode_firmware", False,
+            "A blank radio board is attached but no board was named for this "
+            "build, so Node Medic will not guess which image to flash. Name "
+            "the board and run the build again."
+            if not wf.profile.rnode_board_key else
+            f"Unknown RNode board '{wf.profile.rnode_board_key}'.")
     if has_connectivity(wf.connection):
         sync_firmware(wf.connection)
     elif wf.connection.run(
@@ -737,7 +743,37 @@ _RNODE_USB_VENDORS = (
 )
 
 
-def rnode_udev_rules(serial: str = "") -> str:
+#: Where a radio's USB serial came from — the CODES the profile and the
+#: certificate's radio_rule carry, and the English the certificate prints.
+#: VITALS translates the code; the sentence never crosses a hand-off.
+SERIAL_SOURCES = {
+    "node": "read from the radio on this node",
+    "flash": "read by the medic when it flashed the board",
+    "medic_usb": "read by the medic from the radio on its own USB",
+}
+
+#: How the certificate's board was known, same shape. A tap on a photo card
+#: is not a reading; the record says which it was (2026-09-22).
+BOARD_SOURCES = {
+    "usb": "identified on Node Medic's USB and confirmed by the operator",
+    "operator": "named by the operator from the catalogue; the radio was "
+                "never on Node Medic",
+}
+
+#: What a USB serial looks like. Anything else is NOT written into a udev
+#: match: `ATTRS{serial}=="*"` is a glob that hands /dev/rnode to every tty
+#: while the step, the certificate and VITALS all say "this radio only"
+#: (break review, 2026-09-22).
+_SERIAL_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+
+
+def usable_serial(serial: str) -> str:
+    """*serial* if it can be matched literally by udev, else ""."""
+    serial = (serial or "").strip()
+    return serial if _SERIAL_RE.match(serial) else ""
+
+
+def rnode_udev_rules(serial: str = "", source: str = "") -> str:
     """The udev rules that give the node's radio a stable name.
 
     TAG+="systemd" makes systemd see the radio as dev-rnode.device, and
@@ -770,9 +806,15 @@ def rnode_udev_rules(serial: str = "") -> str:
         "# Node Medic: give this node's radio a stable name.",
         "# Written at birth. See workflows/build.py (RNODE_SYMLINK).",
     ]
+    serial = usable_serial(serial)
     if serial:
+        # The file says where the serial came from, in the words the
+        # certificate uses — not "read from the board at birth", which was
+        # only sometimes true (2026-09-22).
+        how = SERIAL_SOURCES.get(source or "", source or "")
         lines += [
-            "# Matched by the radio's OWN serial, read from the board at birth:",
+            "# Matched by the radio's OWN serial" + (f" ({how})" if how else "")
+            + ":",
             "# no other USB serial device on this node can take the name.",
             f'SUBSYSTEM=="tty", ATTRS{{serial}}=="{serial}", {tail}',
         ]
@@ -821,7 +863,8 @@ def radio_port_text(rule: Optional[dict]) -> str:
     if not rule:
         return f"{RNODE_SYMLINK} (udev rule not recorded by this build)"
     if rule.get("by") == "serial" and rule.get("serial"):
-        source = rule.get("source") or ""
+        code = rule.get("source") or ""
+        source = SERIAL_SOURCES.get(code, code)
         return (f"{RNODE_SYMLINK} (udev, by serial {rule['serial']}"
                 + (f" — {source}" if source else "") + ")")
     return (f"{RNODE_SYMLINK} (udev, by vendor — any tty from "
@@ -853,8 +896,9 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     Runs whether or not a radio is attached — the whole point is that it works
     for the radio that is not here yet.
     """
-    serial = attached_radio_serial(wf)
-    came_from = "read from the radio on this node" if serial else ""
+    serial = usable_serial(attached_radio_serial(wf))
+    came_from = "node" if serial else ""              # a SERIAL_SOURCES code
+    unusable = ""
     if not serial:
         # THE SERIAL THE MEDIC ALREADY HOLDS. On every Pi birth the radio is
         # attached AFTER the build — flashed on the medic at step 0, carried in
@@ -862,15 +906,18 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
         # nothing, every time. The "exception" fallback below was the rule
         # (2026-08-12 handover). The flash captured the board's USB serial; the
         # profile carries it here so the rule can still name that one device.
-        serial = (getattr(wf.profile.radio, "usb_serial", "") or "").strip()
-        # The profile can say where ITS serial came from — the board's own
-        # flash certificate, when the operator named a radio that is not on
-        # the bench (2026-09-22). The generic sentence stays for the flash
-        # hand-back, which is what it always described.
+        # NOTHING ELSE fills it: a serial the medic never read is not carried
+        # (the ledger lookup of 2026-09-22 was a guess printed as a reading).
+        carried = (getattr(wf.profile.radio, "usb_serial", "") or "").strip()
+        serial = usable_serial(carried)
+        if carried and not serial:
+            unusable = (f" The carried value {carried!r} is not a usable "
+                        "serial, so it was not written.")
+        # The flash hand-back predates the provenance code; its serial has
+        # always meant "read at the flash".
         came_from = ((getattr(wf.profile.radio, "usb_serial_source", "") or "")
-                     .strip() or "read by the medic when it flashed the board"
-                     if serial else "")
-    rules = rnode_udev_rules(serial)
+                     .strip() or "flash") if serial else ""
+    rules = rnode_udev_rules(serial, came_from)
     code, out, err = wf.connection.run(
         _write_remote_file(wf, "/etc/udev/rules.d/60-rnode.rules", rules))
     if code != 0:
@@ -900,9 +947,10 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     # (2026-09-22 — skyfinger's cert printed the profile default instead).
     wf.radio_rule = {"by": "serial" if serial else "vendor",
                      "serial": serial, "source": came_from}
-    how = (f"this radio only (serial {serial}, {came_from})" if serial
+    how = (f"this radio only (serial {serial}, "
+           f"{SERIAL_SOURCES.get(came_from, came_from)})" if serial
            else "a radio from any of the makers this tool flashes — no serial "
-                "was available to pin it tighter")
+                "was available to pin it tighter" + unusable)
     return StepResult("install_radio_rule", True,
                       f"The node will answer to {RNODE_SYMLINK} for {how}, "
                       "whenever it is plugged in and on whichever port it "
@@ -1801,6 +1849,12 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         # rebuild can act on it without parsing the sentence.
         "board": board_text(wf.profile.rnode_board_key),
         "board_key": board.key if board else None,
+        # HOW the board was known — "usb" (read on the medic, confirmed) or
+        # "operator" (named from the catalogue, never on the medic). A code
+        # (BOARD_SOURCES has the words): VITALS translates it, and a reader
+        # months on can tell a reading from a naming (2026-09-22).
+        "board_source": ((wf.profile.rnode_board_source or None)
+                         if board else None),
         "rnode_firmware": FIRMWARE_VERSION if wf.profile.has_rnode else None,
         "rgb_led_pin": wf.profile.rnode_rgb_pin,
         "frequency_mhz": r.frequency_mhz,

@@ -62,12 +62,14 @@ class RadioConfig:
     #: finds nothing — this carried value is what lets /dev/rnode be pinned to
     #: THIS radio instead of any tty from five vendors. "" = never read.
     usb_serial: str = ""
-    #: WHERE usb_serial came from, in words the certificate can print —
-    #: "read by the medic when it flashed the board", or "read by this medic
-    #: when it flashed 'rak4' on 2026-08-07" (the board's own flash
-    #: certificate, looked up when the operator names a radio that is not on
-    #: the bench). The certificate says how the udev rule was pinned AND on
-    #: whose word; a serial with no provenance is a number (2026-09-22).
+    #: WHERE usb_serial came from, as a CODE (workflows.build.SERIAL_SOURCES):
+    #: "flash" — read by the medic when it flashed the board; "medic_usb" —
+    #: read off a radio already on the medic's USB. A code, not a sentence:
+    #: the certificate prints its English and VITALS translates it; prose
+    #: crossing the hand-off cannot be translated (2026-09-22). A serial
+    #: with no provenance is a number; a serial the medic never read does
+    #: not exist here — nothing is looked up for a radio that is not on
+    #: the bench.
     usb_serial_source: str = ""
 
 
@@ -98,6 +100,12 @@ class NodeProfile:
     has_rnode: bool = False
     #: Which RNode board to flash a blank attached board as (rnode_boards key).
     rnode_board_key: str = "heltec32_v4"
+    #: HOW rnode_board_key was known, as a code (workflows.build.BOARD_SOURCES):
+    #: "usb" — identified on the medic's USB and confirmed by the operator;
+    #: "operator" — named from the catalogue, the radio never on the medic.
+    #: "" = no board named. The certificate records it so a reader months on
+    #: can tell a reading from a naming (2026-09-22).
+    rnode_board_source: str = ""
     #: LoRa band (MHz) to provision a blank board in.
     rnode_band_mhz: int = 915
     #: GPIO the NeoPixel status LED signal wire lands on, when the RGB build was

@@ -240,6 +240,7 @@ class FakeWizardStep:
 #: Every method here runs EXACTLY as shipped. The stand-ins below cover only
 #: what draws pixels, spawns threads or touches hardware.
 _REAL_METHODS = [
+    "_choose",
     "reset", "_guide_steps", "_begin_steps", "_resume_steps",
     "_render_step", "_next", "_back", "resume", "has_pending_resume",
     "cancel_resume", "_finish", "_step_is_redundant", "_gate_state",
@@ -577,11 +578,7 @@ def rig(monkeypatch):
                             by_id_serial=lambda usb_id: env["serial"],
                             usb_id_for_port=lambda conn, port: "usb-Espressif"))
     monkeypatch.setitem(sys.modules, "ui.cert_store", types.SimpleNamespace(
-        cert_for_usb_serial=lambda serial: env["cert"],
-        # what this medic's ledger holds for a board named on the have-one
-        # road: (serial, how) — nothing unless a scenario says so
-        radio_serial_for_board=lambda name: env.get(
-            "held", ("", f"no {name} flashed by this medic"))))
+        cert_for_usb_serial=lambda serial: env["cert"]))
     return env, clock
 
 
@@ -803,18 +800,27 @@ def test_the_have_one_road_asks_which_radio_once_before_the_name(rig):
     assert g.visits() == [0, 1, 2, 3, 4], g.visits()
 
 
-def test_the_have_one_road_carries_the_serial_this_medic_holds_for_that_board(rig):
-    """This medic flashed exactly one RAK4631 (its flash certificate holds
-    the serial): the Pi hand-off pins /dev/rnode to it. None held: "" and
-    the certificate says by-vendor."""
+def test_the_have_one_road_carries_no_serial_the_medic_never_read(rig):
+    """The radio was never on this medic. The first cut of this road looked
+    the model up in the flash ledger and pinned /dev/rnode to whatever
+    board of that model the medic had flashed once — a guess printed as a
+    reading, and a mute node when the operator owned two (2026-09-22, two
+    review lenses). Nothing is guessed: the hand-off carries the board the
+    operator named, HOW it was known, and no serial."""
     env, clock = rig
-    env["held"] = ("4631000000000001", "read by this medic when it flashed 'rak4'")
-    g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
-    assert g._radio_usb_serial == "4631000000000001"
-    assert g._radio_usb_serial_source.startswith("read by this medic")
-    env["held"] = ("", "no RAK4631 flashed by this medic")
     g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
     assert g._radio_usb_serial == "" and g._radio_usb_serial_source == ""
+    assert g._board_source == "operator"
+
+
+def test_choosing_a_road_drops_the_previous_laps_serial(rig):
+    env, clock = rig
+    g = DrivenGuide(env, clock)
+    g._radio_usb_serial, g._radio_usb_serial_source = "STALE", "flash"
+    g._board_source = "usb"
+    g._choose("pi")
+    assert (g._radio_usb_serial, g._radio_usb_serial_source, g._board_source) \
+        == ("", "", "")
 
 
 # ---------------------------------------------------------------------------

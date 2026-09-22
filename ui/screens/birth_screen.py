@@ -521,12 +521,22 @@ class BirthScreen(BoxLayout):
             if self._declared_mismatch:
                 self.header.add_widget(_line(self._declared_mismatch,
                                              size="14sp", color="amber"))
-            if self._sel_board is None and not getattr(self, "_flash_radio", True):
+            if not getattr(self, "_flash_radio", True):
                 # The operator said so explicitly, earlier in the guide: this
                 # radio was never on the medic's USB and never will be — there
-                # is no image to pick and nothing here to identify.
-                self.header.add_widget(_line(tr("Board (radio)"), bold=True,
-                                             size="15sp", color="accent"))
+                # is no image to pick and nothing here to identify. Since
+                # 2026-09-22 the guide asks which board it is, so the name is
+                # shown (and can be changed) — but this row must never read
+                # like the flash road's: the instruction to plug the radio
+                # into the Pi afterwards is the one thing this road needs.
+                if self._sel_board is not None:
+                    self.header.add_widget(self._labelled_row(
+                        tr("Board (radio)"),
+                        self._sel_button(self._sel_board.display_name,
+                                         self._choose_board)))
+                else:
+                    self.header.add_widget(_line(tr("Board (radio)"), bold=True,
+                                                 size="15sp", color="accent"))
                 self.header.add_widget(_line(tr(
                     "Not flashed here — already working. Plug it into the "
                     "Pi when this finishes."), size="13.5sp",
@@ -1832,6 +1842,7 @@ class BirthScreen(BoxLayout):
         # begin_guided re-sets it from its own hand-off after this reset.
         self._guided_radio_usb_serial = ""
         self._guided_radio_usb_serial_source = ""
+        self._guided_board_source = ""
         # And one node's Bluetooth yes must never become the next node's radio.
         self._guided_bluetooth = False
         # The previous build's page is over; whoever calls _build_chooser next
@@ -1860,7 +1871,8 @@ class BirthScreen(BoxLayout):
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
                      pi_address=None, share_location=None,
                      radio_usb_serial=None, bluetooth=None, location=None,
-                     flash_radio=True, radio_usb_serial_source=None):
+                     flash_radio=True, radio_usb_serial_source=None,
+                     board_source=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1935,6 +1947,9 @@ class BirthScreen(BoxLayout):
         # serial (2026-09-22). Same hygiene: this hand-off's or nothing.
         self._guided_radio_usb_serial_source = (
             radio_usb_serial_source or "").strip()
+        # How the board was known (a workflows.build.BOARD_SOURCES code):
+        # this hand-off's or nothing, like everything above.
+        self._guided_board_source = (board_source or "").strip()
         # The Bluetooth answer, same hygiene: set unconditionally from this
         # hand-off, so a lap that carries none normalises to OFF (the quiet
         # end) rather than inheriting the last node's yes.
@@ -2521,6 +2536,16 @@ class BirthScreen(BoxLayout):
                 # out to be attached is refused rather than flashed with
                 # another board's image.
                 prof.rnode_board_key = board.key if board else ""
+                # HOW it was known, for the certificate: named from the
+                # catalogue on the "already have one" road (the radio was
+                # never on this medic), read off this medic's USB and
+                # confirmed on the flash road; the guide says which, and
+                # a board picked on THIS screen is the operator's naming.
+                prof.rnode_board_source = (
+                    "" if not board else
+                    (getattr(self, "_guided_board_source", "") or
+                     ("operator" if not getattr(self, "_flash_radio", True)
+                      else "usb")))
                 # The serial the medic read at flash time rides the profile so
                 # install_radio_rule can pin /dev/rnode to THIS radio even
                 # though the radio is in the operator's pocket during the build.
@@ -2841,6 +2866,9 @@ class BirthScreen(BoxLayout):
             # build lost the pinned udev rule (live log, 2026-08-12).
             if serial:
                 payload["radio_usb_serial"] = serial
+                # ...WITH its provenance, or resume() would keep the other
+                # road's story next to this road's number (2026-09-22).
+                payload["radio_usb_serial_source"] = "flash"
             Clock.schedule_once(
                 lambda _dt: app.resume_guided_birth(payload), 2.5)
         except Exception:                                          # noqa: BLE001

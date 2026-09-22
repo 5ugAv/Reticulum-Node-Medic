@@ -153,52 +153,6 @@ def cert_for_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR):
     return None
 
 
-def radio_serial_for_board(board_name: str, certs=None,
-                           cert_dir: str = CERT_DIR):
-    """``(serial, how)`` — the ONE USB serial this medic's ledger holds for a
-    radio board it flashed earlier, named *board_name* (the catalogue display
-    name a flash certificate carries as ``board``).
-
-    For the guide's "I already have a working radio" road (2026-09-22): the
-    radio is not on the bench, but if this medic flashed exactly one board of
-    that model, its flash certificate holds the serial, and the Pi's udev
-    rule can be pinned to that radio instead of the five-vendor net. Two or
-    more distinct serials is NOT a guess — ``("", why)`` — and so is none.
-    Only flash records count: a Pi certificate that names the board is the
-    thing being corrected, not evidence. Placeholder serials (``0001``) are
-    not identities (provisioning.by_id).
-    """
-    from provisioning.by_id import by_id_serial, is_uniquely_identified
-    want = (board_name or "").strip().lower()
-    if not want:
-        return "", "no board named"
-    if certs is None:
-        certs = load_certs(cert_dir)
-    found: Dict[str, Dict] = {}
-    for c in certs:
-        if (c.get("board") or "").strip().lower() != want:
-            continue
-        role = (c.get("role") or "").lower()
-        if "propagation" in role or "lxmf" in role:
-            continue                                  # a Pi's record, not a flash
-        usb = c.get("usb_serial") or ""
-        if not usb or not is_uniquely_identified(usb):
-            continue
-        found.setdefault(by_id_serial(usb), c)
-    if not found:
-        return "", f"no {board_name} flashed by this medic"
-    if len(found) > 1:
-        return "", (f"{len(found)} {board_name} boards flashed by this medic "
-                    "— which one is not known")
-    serial, c = next(iter(found.items()))
-    when = (c.get("born") or "")[:10]
-    if not when and c.get("_saved_at"):
-        when = time.strftime("%Y-%m-%d", time.localtime(c["_saved_at"]))
-    name = c.get("node_name") or "a board"
-    return serial, (f"read by this medic when it flashed '{name}'"
-                    + (f" on {when}" if when else ""))
-
-
 def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR,
                          keep_id: str = "") -> int:
     """Remove stored certificates whose board fingerprint is *usb_serial*.

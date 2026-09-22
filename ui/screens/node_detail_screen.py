@@ -478,8 +478,20 @@ class NodeDetailScreen(BoxLayout):
             return []
         fact = classify_cert(cert)
         out = []
-        if fact.board:
-            out.append(tr("Board: {board}").format(board=fact.board))
+        # THE BOARD, from the certificate's codes — never its English prose
+        # inside a translated frame (2026-09-22). A certificate written
+        # since then carries radio_rule; with no board_key it means the
+        # board was never named. Older certificates only have the sentence.
+        new_style = "radio_rule" in cert
+        if cert.get("board_key") or not new_style:
+            if fact.board:
+                out.append(tr("Board: {board}").format(board=fact.board))
+            if cert.get("board_source") == "operator":
+                out.append(tr("Board named by you from the catalogue — the "
+                              "radio was never on Node Medic"))
+        else:
+            out.append(tr("Board: not named at birth — the radio was never "
+                          "on Node Medic"))
         kinds = {"rnode": tr("RNode"), "rtnode2400": tr("RTNode-2400"),
                  "pi_rnode": tr("Raspberry Pi + RNode")}
         kind = fact.name or kinds.get(fact.kind)   # the build's own name wins
@@ -496,13 +508,24 @@ class NodeDetailScreen(BoxLayout):
                               version=fact.firmware))
         if fact.born:
             out.append(tr("Born: {born}").format(born=fact.born))
-        # THE PORT, only when the certificate carries the udev sentence
-        # ("/dev/rnode (udev, by serial … — …)", written from 2026-09-22).
-        # An older certificate's bare "/dev/ttyUSB0" is the NodeProfile
-        # default, a port nothing ever opened — not shown, not a fact.
-        port = str(cert.get("serial_port") or "")
-        if port.startswith("/dev/rnode"):
-            out.append(tr("Radio port: {port}").format(port=port))
+        # THE PORT, composed from install_radio_rule's own record of the
+        # udev rule it wrote and read back (from 2026-09-22). An older
+        # certificate's bare "/dev/ttyUSB0" is the NodeProfile default, a
+        # port nothing ever opened — not shown, not a fact.
+        rule = cert.get("radio_rule") or {}
+        if rule.get("by") == "serial" and rule.get("serial"):
+            source = {
+                "node": tr("read from the radio on the node"),
+                "flash": tr("read by Node Medic when it flashed the radio"),
+                "medic_usb": tr("read by Node Medic from the radio on its "
+                                "own USB"),
+            }.get(str(rule.get("source") or ""), str(rule.get("source") or ""))
+            out.append(tr("Radio port: /dev/rnode, by the radio's serial "
+                          "{serial} ({source})").format(
+                              serial=rule["serial"], source=source))
+        elif rule.get("by") == "vendor":
+            out.append(tr("Radio port: /dev/rnode, by USB maker — no serial "
+                          "was read"))
         return out
 
     def _last_walk_note(self):
