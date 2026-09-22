@@ -18,6 +18,15 @@ So the actor is the medic, drawn from the same illustration the card steps use,
 and the Pi is not in this scene at all — at this moment it is in the operator's
 other hand, waiting for the card.
 
+THE SURGEON GOT A REAL ARM (2026-09-22). The operator, with a photo of this
+screen: *"just the node medic with some pink coloured lines that are supposed
+to represent arms holding the SD card, throwing the icons back and forwards
+... the arms are very rudimentary."* The staging — where everything stands,
+the pick-and-place cycle, the arm's joints — now lives in ``ui.surgery_layout``
+(pure, shared with scripts/preview_surgery.py so the frames that were looked
+at are the frames that ship). This file only paints it. What changed and why
+is written at the top of that module.
+
 Why it earns its screen. Writing a card takes minutes with nothing to look at,
 and the most damaging thing an operator can do in that window is decide it has
 hung and pull the card. A scene that visibly PROGRESSES — organs landing one by
@@ -35,7 +44,6 @@ as tofu boxes (the on-screen keyboard learned that the hard way).
 from __future__ import annotations
 
 import math
-import os
 
 from kivy.graphics import (Color, Ellipse, Line, Quad, Rectangle,
                            RoundedRectangle)
@@ -43,13 +51,12 @@ from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
 
+from ui import surgery_layout as sl
 from ui import theme
 from ui.widgets.birth_anims import (MEDIC_BODY_PNG, MEDIC_PNG,
                                     SD_ENDURANCE_PNG, SD_PNG, _texture)
 
-from ui.organ_art import (CARD_WINDOW as _CARD_WINDOW, ORGANS as _ORGANS,
-                          ORGAN_SEATS as _ORGAN_SEATS,
-                          SPARE_ORGANS as _SPARE_ORGANS, organ_file)
+from ui.organ_art import ORGANS as _ORGANS, organ_file
 
 
 def _organ_texture(key):
@@ -59,7 +66,15 @@ def _organ_texture(key):
 
 
 _TABLE = (0.16, 0.19, 0.22, 1)
+_TABLE_EDGE = (0.38, 0.44, 0.50, 1)
 _TRACE = (0.35, 0.95, 0.55, 1)
+#: The arm is the medic's own: the dark linework every illustration here has,
+#: the case's gunmetal-bronze for the limb, its rim colour for the highlights,
+#: steel for the instrument. Nothing skin-coloured — the medic has no skin.
+_OUTLINE = (0.10, 0.09, 0.08, 1)
+_ARM = (0.33, 0.30, 0.27, 1)
+_ARM_HI = (0.62, 0.56, 0.46, 1)
+_STEEL = (0.80, 0.83, 0.86, 1)
 
 _DISCHARGE_TEX = None
 
@@ -84,6 +99,26 @@ def _discharge_texture():
         except Exception:
             _DISCHARGE_TEX = False        # never try again; the tick carries it
     return _DISCHARGE_TEX or None
+
+
+def _stroke(points, width, colour, outline=True):
+    """A drawn line: dark linework underneath, the colour on top — the look of
+    the illustrated sprites, so the arm belongs to the same picture."""
+    if outline:
+        Color(*_OUTLINE)
+        Line(points=points, width=width + dp(1.2), cap="round", joint="round")
+    Color(*colour)
+    Line(points=points, width=width, cap="round", joint="round")
+
+
+def _joint(p, r, colour=_ARM):
+    Color(*_OUTLINE)
+    Ellipse(pos=(p[0] - r - dp(1.2), p[1] - r - dp(1.2)),
+            size=(2 * r + dp(2.4), 2 * r + dp(2.4)))
+    Color(*colour)
+    Ellipse(pos=(p[0] - r, p[1] - r), size=(2 * r, 2 * r))
+    Color(*_ARM_HI)
+    Ellipse(pos=(p[0] - r * 0.35, p[1] - r * 0.35), size=(r * 0.7, r * 0.7))
 
 
 class SurgeryAnim(Widget):
@@ -120,7 +155,9 @@ class SurgeryAnim(Widget):
             self._ev = None
 
     def _tick(self, dt):
-        self.phase = (self.phase + dt * 0.6) % 1.0
+        # one loop of phase is one pick-and-place; the rate is the layout
+        # module's so the previewer and the device agree on what 2.4 s shows
+        self.phase = (self.phase + dt * sl.PHASE_PER_S) % 1.0
 
     def set_fraction(self, f):
         from provisioning.pi_imager import stages_upto
@@ -174,54 +211,50 @@ class SurgeryAnim(Widget):
         with self.canvas:
             self._draw_scene()
 
-    # -- layout ------------------------------------------------------------
-    # One place to move things. The first version scattered the pieces across
-    # the widget with dead space between them and they read as loose objects
-    # rather than a scene (operator, on the live screen, 2026-08-02). The stage
-    # is wide and short (roughly 700x230 on the 5" panel), so: monitor as a band
-    # across the top, table low and left, surgeon standing to its right and
-    # LEANING OVER the card — overlapping the table so the two are related.
-    _MON_H = 0.34            # monitor band, fraction of height
-    _TABLE_X, _TABLE_W = 0.04, 0.50
-    _TABLE_TOP = 0.22        # table surface height (card sits ON this)
-    _PI_X, _PI_W = 0.52, 0.44
+    def _next_stage(self):
+        from provisioning.pi_imager import IMAGING_STAGES
+        return next((s for s in IMAGING_STAGES if s["at"] > self.fraction), None)
 
     def _draw_scene(self):
-        x, y, w, h = self.x, self.y, self.width, self.height
-        done = self.fraction >= 1.0
-
-        # --- the operating table -------------------------------------------
-        tw = w * self._TABLE_W
-        tx = x + w * self._TABLE_X
-        ty = y + h * self._TABLE_TOP           # the SURFACE
-        th = h * 0.075
-        Color(*_TABLE)
-        RoundedRectangle(pos=(tx, ty - th), size=(tw, th), radius=[dp(5)] * 4)
-        Color(0.10, 0.12, 0.14, 1)
-        for leg in (tx + tw * 0.10, tx + tw * 0.82):
-            Rectangle(pos=(leg, y), size=(dp(5), ty - th - y))
-
-        # --- the patient: the microSD card, LYING ON the table ---------------
         card = _texture(SD_ENDURANCE_PNG) or _texture(SD_PNG)
-        cw = tw * 0.60
-        ch = cw * 0.72
-        if card is not None:
-            ch = cw * (card.height / float(card.width))
-            if ch > h * 0.34:
-                ch = h * 0.34
-                cw = ch * (card.width / float(card.height))
-        cx = tx + (tw - cw) / 2.0
-        cy = ty                                 # resting on the surface
-        self._card_box = (cx, cy, cw, ch)
+        medic = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
+        ca = card.width / float(card.height) if card is not None else 1.324
+        ma = medic.width / float(medic.height) if medic is not None else 0.935
+        lay = sl.layout((self.x, self.y, self.width, self.height), ca, ma,
+                        pad=dp(2))
+        done = self.fraction >= 1.0
+        nxt = self._next_stage()
+        seat = sl.seat_point(lay.window, nxt["organ"]) if nxt else None
+        pose = sl.arm_pose(self.phase, lay, seat)
 
         # --- the surgical light, tying the scene together --------------------
-        # A soft cone from above onto the patient. Cheap, and it does the job
-        # composition was failing at: it says these two things belong together.
-        top = y + h * (1.0 - self._MON_H) - dp(2)
-        Color(1.0, 0.98, 0.85, 0.07)
+        # A soft cone from under the monitor onto the patient. It says these
+        # things belong together; 0.07 alpha was invisible on the panel.
+        cx, cy, cw, ch = lay.card
+        top = lay.monitor[1] - dp(2)
+        Color(1.0, 0.98, 0.85, 0.10)
         Quad(points=[cx + cw * 0.30, top, cx + cw * 0.70, top,
                      cx + cw * 1.15, cy, cx - cw * 0.15, cy])
 
+        # --- the operating table: base, pedestal, slab, lit edge -------------
+        Color(0.10, 0.12, 0.14, 1)
+        RoundedRectangle(pos=lay.base[:2], size=lay.base[2:], radius=[dp(3)] * 4)
+        Rectangle(pos=lay.pedestal[:2], size=lay.pedestal[2:])
+        Color(*_TABLE)
+        RoundedRectangle(pos=lay.table[:2], size=lay.table[2:], radius=[dp(4)] * 4)
+        tx, ty, tw, th = lay.table
+        Color(*_TABLE_EDGE)
+        Line(points=[tx + dp(3), ty + th - dp(1), tx + tw - dp(3), ty + th - dp(1)],
+             width=dp(1.0))
+
+        # --- the instrument tray, with the next organ waiting on it ----------
+        trx, try_, trw, trh = lay.tray
+        Color(0.08, 0.09, 0.10, 1)
+        RoundedRectangle(pos=(trx, try_), size=(trw, trh), radius=[dp(3)] * 4)
+        Color(*_TABLE_EDGE)
+        Line(rounded_rectangle=(trx, try_, trw, trh, dp(3)), width=dp(1.0))
+
+        # --- the patient: the microSD card, LYING ON the table ---------------
         if card is not None:
             Color(1, 1, 1, 1)
             Rectangle(texture=card, pos=(cx, cy), size=(cw, ch))
@@ -229,156 +262,120 @@ class SurgeryAnim(Widget):
             Color(0.90, 0.90, 0.92, 1)
             RoundedRectangle(pos=(cx, cy), size=(cw, ch), radius=[dp(4)] * 4)
 
+        # --- the monitor's lead, from the band down to a pad on the patient --
+        lead = []
+        for px, py in sl.lead_points(lay):
+            lead += [px, py]
+        _stroke(lead, dp(1.6), (_TRACE[0], _TRACE[1], _TRACE[2], 0.85))
+        pr = max(dp(3), lay.organ_r * 0.45)
+        Color(*_OUTLINE)
+        Ellipse(pos=(lay.lead_pad[0] - pr - dp(1), lay.lead_pad[1] - pr - dp(1)),
+                size=(2 * pr + dp(2), 2 * pr + dp(2)))
+        Color(*_TRACE)
+        Ellipse(pos=(lay.lead_pad[0] - pr, lay.lead_pad[1] - pr), size=(2 * pr, 2 * pr))
+
         # --- the window the organs live in ----------------------------------
-        wx0, wy0, wx1, wy1 = _CARD_WINDOW
-        win_x = cx + cw * wx0
-        win_w = cw * (wx1 - wx0)
-        win_h = ch * (wy1 - wy0)
-        win_y = cy + ch * (1.0 - wy1)          # fractions are top-down
+        wx, wy, ww, wh = lay.window
         Color(0.10, 0.10, 0.11, 1)
-        RoundedRectangle(pos=(win_x, win_y), size=(win_w, win_h),
-                         radius=[dp(3)] * 4)
+        RoundedRectangle(pos=(wx, wy), size=(ww, wh), radius=[dp(3)] * 4)
 
         # --- the organs, seated in the patient ------------------------------
-        # Sized so FIVE fit the row: the seats are ~0.19 apart, and an organ
-        # is drawn at r*2.6, so r must be about win_w/14. At win_w/5.6 each
-        # organ came out 46% of the window wide and they overlapped and spilled
-        # off both ends (offline render, 2026-08-04).
-        r = min(win_w / 14.0, win_h * 0.38)
-        for key in self._landed:
-            art = _ORGANS.get(key)
-            col = art[1] if art else (1, 1, 1, 1)
-            fx, fy = _ORGAN_SEATS.get(key, (0.5, 0.5))
-            ox, oy = win_x + win_w * fx, win_y + win_h * fy
+        for i, key in enumerate(self._landed):
+            ox, oy = sl.seat_point(lay.window, key)
             # a soft glow that breathes, so an implanted organ reads as ALIVE
-            pulse = 0.5 + 0.5 * math.sin(self.phase * 2 * math.pi + hash(key) % 7)
-            Color(col[0], col[1], col[2], 0.22 + 0.16 * pulse)
-            Ellipse(pos=(ox - r * 1.9, oy - r * 1.9), size=(r * 3.8, r * 3.8))
-            tex = _organ_texture(key)
-            if tex is not None:
-                gw = r * 2.6
-                gh = gw * (tex.height / float(tex.width))
-                Color(1, 1, 1, 1)
-                Rectangle(texture=tex, pos=(ox - gw / 2, oy - gh / 2),
-                          size=(gw, gh))
-            else:
-                Color(*col)
-                Ellipse(pos=(ox - r, oy - r), size=(r * 2, r * 2))
+            pulse = 0.5 + 0.5 * math.sin(self.phase * 2 * math.pi + i * 0.9)
+            self._draw_organ(key, (ox, oy), lay, glow=0.22 + 0.16 * pulse)
 
-        self._draw_incoming(cx, cy, cw, ch)
+        # --- the one being fitted right now ---------------------------------
+        if nxt and pose.fit > 0.0 and nxt["organ"] not in self._landed:
+            self._draw_organ(nxt["organ"], seat, lay, glow=0.0,
+                             alpha=0.35 + 0.55 * pose.fit)
+        # --- and the one waiting on the tray --------------------------------
+        if nxt:
+            wait = sl.tray_organ_alpha(self.phase)
+            if wait > 0.0:
+                self._draw_organ(nxt["organ"], lay.pick, lay, glow=0.30 * wait,
+                                 alpha=wait)
 
-        # --- the surgeon, leaning in over the table -------------------------
-        self._draw_surgeon(x + w * self._PI_X, y + h * 0.06,
-                           w * self._PI_W, h * (0.94 - self._MON_H), done)
-
-        # --- the heart monitor, as a band across the top ---------------------
-        self._draw_monitor(x + dp(2), y + h * (1.0 - self._MON_H),
-                           w - dp(4), h * self._MON_H - dp(2), done)
-
-        if done:
-            self._draw_smile(cx, cy, cw, ch)
-
-    def _draw_incoming(self, cx, cy, cw, ch):
-        """The next organ, in the surgeon's hands, on its way to its seat."""
-        from provisioning.pi_imager import IMAGING_STAGES
-        nxt = next((s for s in IMAGING_STAGES if s["at"] > self.fraction), None)
-        if nxt is None:
-            return
-        art = _ORGANS.get(nxt["organ"])
-        col = art[1] if art else (1, 1, 1, 1)
-        fx, fy = _ORGAN_SEATS.get(nxt["organ"], (0.5, 0.5))
-        wx0, wy0, wx1, wy1 = _CARD_WINDOW
-        # travel is the free-running phase, so it keeps moving even when the
-        # write is between stages — a still picture reads as a hang
-        t = 0.5 - 0.5 * math.cos(self.phase * 2 * math.pi)
-        sx, sy = self.x + self.width * 0.72, self.y + self.height * 0.52
-        tx_ = cx + cw * wx0 + cw * (wx1 - wx0) * fx
-        ty_ = cy + ch * (1.0 - wy1) + ch * (wy1 - wy0) * fy
-        px = sx + (tx_ - sx) * t
-        py = sy + (ty_ - sy) * t
-        r = min(cw, ch) * 0.11
-        Color(col[0], col[1], col[2], 0.30)
-        Ellipse(pos=(px - r * 2, py - r * 2), size=(r * 4, r * 4))
-        tex = _organ_texture(nxt["organ"])
-        if tex is not None:
-            gw = r * 2.4
-            gh = gw * (tex.height / float(tex.width))
+        # --- the surgeon --------------------------------------------------
+        mx, my, mw, mh = lay.medic
+        if medic is not None:
             Color(1, 1, 1, 1)
-            Rectangle(texture=tex, pos=(px - gw / 2, py - gh / 2), size=(gw, gh))
-        else:
-            Color(col[0], col[1], col[2], 0.95)
-            Ellipse(pos=(px - r, py - r), size=(r * 2, r * 2))
-
-    def _draw_surgeon(self, x, y, w, h, done):
-        """Node Medic, leaning over the patient with both hands on it.
-
-        Drawn BIG, and portrait: the medic sprite is taller than it is wide
-        (0.94:1), so it is sized by HEIGHT here where the Pi board was sized by
-        width. Fitted to 0.86 of the surgeon's box rather than the board's 0.66
-        — at the old cap a portrait sprite came out a third of the width of the
-        space it was given and read as a small object standing nearby rather
-        than as the one doing the work.
-
-        No head mirror and no surgical mask. Both existed to turn a bare
-        circuit board into something recognisably a doctor; the medic arrives
-        already wearing a red cross and its own name, and drawing a mask across
-        its front panel would cover exactly the markings that identify it.
-        """
-        tex = _texture(MEDIC_BODY_PNG) or _texture(MEDIC_PNG)
-        bw = w * 0.60
-        bh = bw * 1.06
-        if tex is not None:
-            bh = h * 0.86
-            bw = bh * (tex.width / float(tex.height))
-            if bw > w * 0.86:
-                bw = w * 0.86
-                bh = bw * (tex.height / float(tex.width))
-        bx = x + (w - bw) / 2.0
-        by = y + h * 0.06
-        if tex is not None:
-            Color(1, 1, 1, 1)
-            Rectangle(texture=tex, pos=(bx, by), size=(bw, bh))
+            Rectangle(texture=medic, pos=(mx, my), size=(mw, mh))
         else:
             Color(0.20, 0.22, 0.24, 1)
-            RoundedRectangle(pos=(bx, by), size=(bw, bh), radius=[dp(5)] * 4)
+            RoundedRectangle(pos=(mx, my), size=(mw, mh), radius=[dp(5)] * 4)
             Color(0.84, 0.0, 0.0, 1)      # the red cross, so it is still a medic
-            t = min(bw, bh) * 0.16
-            ccx, ccy = bx + bw / 2.0, by + bh / 2.0
-            arm = min(bw, bh) * 0.30
+            t = min(mw, mh) * 0.16
+            ccx, ccy = mx + mw / 2.0, my + mh / 2.0
+            arm = min(mw, mh) * 0.30
             RoundedRectangle(pos=(ccx - t / 2, ccy - arm), size=(t, 2 * arm),
                              radius=[t / 2] * 4)
             RoundedRectangle(pos=(ccx - arm, ccy - t / 2), size=(2 * arm, t),
                              radius=[t / 2] * 4)
 
-        # the hands: two arms reaching down-left toward the patient, so the
-        # surgeon is clearly WORKING ON the card rather than standing near it
-        # They leave from the medic's LOWER-left and sag on the way, because the
-        # medic is a tall portrait object where the Pi board was a short wide
-        # one: taken from halfway up its side and drawn dead straight, the two
-        # arms crossed the gap as taut horizontal lines and read as string
-        # rather than as somebody reaching (offline render, before this went
-        # near the panel).
-        cb = getattr(self, "_card_box", None)
-        if cb:
-            cx, cy, cw, ch = cb
-            hx, hy = cx + cw * 0.90, cy + ch * 0.62
-            Color(0.98, 0.82, 0.64, 0.95)
-            for i, dxy in enumerate((0.0, dp(7))):
-                ax, ay = bx + bw * 0.06, by + bh * (0.30 - 0.12 * i)
-                mx_ = (ax + hx) / 2.0
-                my_ = (ay + hy) / 2.0 - min(bh, ch) * 0.16      # the sag
-                Line(points=[ax, ay, mx_, my_, hx + dxy, hy],
-                     width=dp(3.0), joint="round", cap="round")
-            Ellipse(pos=(hx - dp(5), hy - dp(5)), size=(dp(10), dp(10)))
+        self._draw_arm(pose, lay, nxt["organ"] if nxt else None)
+
+        # --- the heart monitor, as a band across the top ---------------------
+        self._draw_monitor(*lay.monitor, done)
 
         if done:
-            hx2, hy2 = bx + bw * 1.00, by + bh * 0.62
-            s2 = max(dp(12), min(bw, bh) * 0.30)
-            Color(0.98, 0.80, 0.62, 1)
-            RoundedRectangle(pos=(hx2, hy2), size=(s2, s2 * 0.9),
-                             radius=[s2 * 0.28] * 4)
-            RoundedRectangle(pos=(hx2 + s2 * 0.30, hy2 + s2 * 0.72),
-                             size=(s2 * 0.34, s2 * 0.74), radius=[s2 * 0.17] * 4)
+            self._draw_smile(cx, cy, cw, ch)
+
+    def _draw_organ(self, key, at, lay, glow=0.0, alpha=1.0):
+        """One organ, centred on *at*: its glow, then its sprite."""
+        art = _ORGANS.get(key)
+        col = art[1] if art else (1, 1, 1, 1)
+        r = lay.organ_r
+        ox, oy = at
+        if glow > 0.0:
+            Color(col[0], col[1], col[2], glow * alpha)
+            Ellipse(pos=(ox - r * 1.9, oy - r * 1.9), size=(r * 3.8, r * 3.8))
+        tex = _organ_texture(key)
+        if tex is not None:
+            gw = sl.organ_diam(lay)
+            gh = gw * (tex.height / float(tex.width))
+            Color(1, 1, 1, alpha)
+            Rectangle(texture=tex, pos=(ox - gw / 2, oy - gh / 2), size=(gw, gh))
+        else:
+            Color(col[0], col[1], col[2], alpha)
+            Ellipse(pos=(ox - r, oy - r), size=(r * 2, r * 2))
+
+    def _draw_arm(self, pose, lay, carrying_key):
+        """Shoulder on the case, upper arm, elbow, telescoping forearm, forceps
+        — and the organ in the forceps when there is one.
+
+        Drawn AFTER the medic so it comes out of the case, and after the card
+        so it reaches over the patient. Widths scale with the organ so the arm
+        is in proportion to what it handles, on any size of stage.
+        """
+        r = lay.organ_r
+        w_up = max(dp(4), r * 0.70)
+        w_fore = w_up * 0.72
+        w_fore2 = w_up * 0.56
+        w_rod = w_up * 0.42
+        w_tine = max(dp(1.6), r * 0.22)
+        sh, el, sv, sv2, wr, tip = (lay.shoulder, pose.elbow, pose.sleeve,
+                                    pose.sleeve2, pose.wrist, pose.tip)
+
+        _stroke([sh[0], sh[1], el[0], el[1]], w_up, _ARM)
+        _stroke([el[0], el[1], wr[0], wr[1]], w_rod, _STEEL)        # inner rod
+        _stroke([el[0], el[1], sv2[0], sv2[1]], w_fore2, _ARM)      # 2nd stage
+        _stroke([el[0], el[1], sv[0], sv[1]], w_fore, _ARM)         # sleeve
+        _joint(sh, w_up * 1.1)
+        _joint(el, w_up * 0.85)
+        # the forceps: two tines from the wrist pivot to the tips
+        _stroke([wr[0], wr[1], pose.tine_a[0], pose.tine_a[1]], w_tine, _STEEL)
+        _stroke([wr[0], wr[1], pose.tine_b[0], pose.tine_b[1]], w_tine, _STEEL)
+        # the organ, held between them
+        if pose.carrying and carrying_key:
+            self._draw_organ(carrying_key, tip, lay, glow=0.30)
+            Color(*_STEEL)
+            Line(points=[wr[0], wr[1], pose.tine_a[0], pose.tine_a[1]], width=w_tine)
+            Line(points=[wr[0], wr[1], pose.tine_b[0], pose.tine_b[1]], width=w_tine)
+        # the pivot: the one red accent, the medic's own colour
+        _joint(wr, max(dp(2.2), w_fore * 0.55),
+               colour=theme.hex_to_rgba(theme.COLORS["red"]))
 
     def _draw_monitor(self, x, y, w, h, done):
         """The trace: noise and dropouts early, a clean rhythm by the end."""
@@ -389,32 +386,10 @@ class SurgeryAnim(Widget):
 
         steady = self.fraction                     # 0 = erratic, 1 = strong
         mid = y + h * 0.5
-        amp = h * (0.16 + 0.26 * steady)
+        amp = h * (0.16 + 0.26 * steady)           # as monitor_trace draws it
         pts = []
-        n = 90
-        scroll = self.phase * 2.0
-        for i in range(n + 1):
-            u = i / float(n)
-            # beats per screen rises as the patient stabilises
-            beat = (u * 2.2 + scroll) % 1.0
-            v = 0.0
-            if 0.10 < beat < 0.16:                 # P
-                v = 0.22
-            elif 0.20 < beat < 0.24:               # Q
-                v = -0.30
-            elif 0.24 < beat < 0.30:               # R, the spike
-                v = 1.0
-            elif 0.30 < beat < 0.35:               # S
-                v = -0.45
-            elif 0.45 < beat < 0.56:               # T
-                v = 0.30
-            # early on the rhythm is unreliable: the spike often fails to fire
-            if steady < 0.9:
-                flicker = math.sin((u * 13.0 + self.phase * 5.0) * math.pi)
-                if flicker > (0.10 + 0.85 * steady):
-                    v *= 0.15
-                v += (1.0 - steady) * 0.10 * math.sin(u * 47.0 + scroll * 6.0)
-            pts.extend([x + w * u, mid + amp * v])
+        for px, py in sl.monitor_trace((x, y, w, h), steady, self.phase):
+            pts.extend([px, py])
         gone = self.discharged                  # 0 = still monitoring, 1 = left
         if gone < 1.0:
             Color(_TRACE[0], _TRACE[1], _TRACE[2],
@@ -488,14 +463,19 @@ class SurgeryAnim(Widget):
                       size=(tex.width, tex.height))
 
     def _draw_smile(self, cx, cy, cw, ch):
-        """The patient, pleased with the outcome."""
-        ex = cw * 0.16
-        ey = ch * 0.72
-        er = min(cw, ch) * 0.055
+        """The patient, pleased with the outcome.
+
+        Drawn in the blank corner of the label to the right of the NODE MEDIC
+        header (x 0.74-0.94, y 0.76-0.92 of the card): the window below is
+        full of organs by now, and the first render put the eyes straight
+        across the lettering.
+        """
+        ey = ch * 0.87
+        er = min(cw, ch) * 0.030
         Color(0.15, 0.13, 0.10, 1)
-        for dx in (0.36, 0.64):
+        for dx in (0.79, 0.89):
             Ellipse(pos=(cx + cw * dx - er, cy + ey - er), size=(er * 2, er * 2))
         # a curved mouth, drawn as the lower arc of an ellipse
-        mw, mh = cw * 0.30, ch * 0.22
-        Line(ellipse=(cx + cw * 0.5 - mw / 2, cy + ch * 0.42 - mh / 2,
-                      mw, mh, 100, 260), width=dp(2.0))
+        mw, mh = cw * 0.12, ch * 0.08
+        Line(ellipse=(cx + cw * 0.84 - mw / 2, cy + ch * 0.80 - mh / 2,
+                      mw, mh, 100, 260), width=dp(1.8))

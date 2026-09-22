@@ -79,7 +79,11 @@ def test_the_monitor_never_flatlines():
     mon = src[src.index("def _draw_monitor"):src.index("def _draw_discharged")]
     # the fade multiplies alpha; it must not touch the amplitude
     assert "(1.0 - gone)" in mon, "the trace is not faded out"
-    assert "amp = h * (0.16 + 0.26 * steady)" in mon, (
+    # the trace itself moved to ui.surgery_layout (2026-09-22) so the
+    # previewer draws the same one; the amplitude formula lives there now,
+    # and tests/test_surgery_layout.py checks the beat is never flat
+    trace = open("ui/surgery_layout.py").read()
+    assert "amp = h * (0.16 + 0.26 * steady)" in trace, (
         "amplitude changed — check it is not being driven to zero (flatline)")
 
 

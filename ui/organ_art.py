@@ -38,7 +38,14 @@ SPARE_ORGANS = ("message.png", "wifi.png")
 #: The dark panel on the card the organs sit in, as fractions of the card sprite
 #: (x0, y0, x1, y1 from its TOP-LEFT). Without one, the first render put a gear
 #: straight across the big capacity digits on the card label (2026-08-04).
-CARD_WINDOW = (0.06, 0.46, 0.62, 0.88)
+#:
+#: 2026-09-22: widened to the card's full width. It stopped at 0.62 because
+#: the microSD's bottom-right NOTCH begins there (y > 0.877 on the sprite), and
+#: the old window ran down to 0.88. Lifted clear of the notch it can span the
+#: card, which is what lets the surgeon grow (the medic must be the bigger
+#: figure) while five organs stay as readable as they were. It covers the "32"
+#: and the speed marks; the header — cross, NODE MEDIC, MAX ENDURANCE — stays.
+CARD_WINDOW = (0.06, 0.41, 0.94, 0.82)
 
 #: Where each organ settles inside that window, left to right in the order the
 #: real write completes them. A row: five organs scattered read as spilled
