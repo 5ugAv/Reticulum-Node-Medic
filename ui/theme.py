@@ -15,6 +15,7 @@ COLORS = {
     "background": "#1a1a1a",
     "surface": "#242424",
     "sidebar": "#141414",
+    "black": "#000000",      # the front page's power line (2026-09-22)
     "green": "#00c853",
     "amber": "#ff6d00",
     "red": "#d50000",

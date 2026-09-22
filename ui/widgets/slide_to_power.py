@@ -16,6 +16,7 @@ from kivy.uix.image import Image
 from kivy.uix.label import Label
 
 from ui import theme
+from ui.power_slide_layout import STYLES, hint_font_px, hint_rect, track_rect
 
 POWER = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -25,15 +26,25 @@ _TRIGGER = 0.92          # fraction of the track that counts as "powered off"
 
 
 class SlideToPowerOff(FloatLayout):
-    def __init__(self, on_power_off=None, hint_text="slide to power off  →", **kwargs):
+    def __init__(self, on_power_off=None, hint_text="slide to power off  →",
+                 track="pill", **kwargs):
+        """*track*: "pill" (a rounded bar that carries a sentence — the
+        imager's "slide to wipe") or "line" (a thin BLACK line the unchanged
+        red knob rides along — the front page's OFF, operator 2026-09-22:
+        "instead of having that big oval shaped thing that the off button
+        slides across ... it will just slide on a thin black line")."""
+        if track not in STYLES:
+            raise ValueError(track)
         kwargs.setdefault("size_hint_y", None)
         kwargs.setdefault("height", dp(84))
         super().__init__(**kwargs)
         self._cb = on_power_off
+        self._style = track
         self._pad = dp(6)
         self._grab = False
         with self.canvas.before:
-            self._track_c = Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
+            self._track_c = Color(*theme.hex_to_rgba(
+                theme.COLORS["black" if track == "line" else "surface"]))
             self._track = RoundedRectangle()
             self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS["red"], 0))
             self._fill = RoundedRectangle()
@@ -46,19 +57,21 @@ class SlideToPowerOff(FloatLayout):
         self.add_widget(self.knob)
         self.bind(pos=self._layout, size=self._layout)
 
-    # -- geometry -----------------------------------------------------------
-    # The track is a THIN bar (TRACK_FRAC of the widget height), vertically
-    # centred, so the full-height round knob sits slightly PROUD of it.
-    TRACK_FRAC = 0.64
+    # -- geometry (ui/power_slide_layout — pure, previewable) ---------------
+    # The track is thinner than the knob and vertically centred, so the
+    # full-height round knob sits proud of it: a pill, or a thin line.
 
     def _ks(self):
         return self.height                     # knob = full height -> proud of the track
 
+    def _track(self):
+        return track_rect(self.x, self.y, self.width, self.height, self._style)
+
     def _th(self):
-        return self.height * self.TRACK_FRAC   # track height (thinner than the knob)
+        return self._track()[3]
 
     def _ty(self):
-        return self.y + (self.height - self._th()) / 2.0
+        return self._track()[1]
 
     def _left(self):
         return self.x
@@ -77,14 +90,14 @@ class SlideToPowerOff(FloatLayout):
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
             self.knob.pos = (self._left(), self.y)
-        # Keep the label roughly centred in the pill, but pad the left by a fraction
-        # of the knob so the resting knob never hides it.
-        off = self._ks() * 0.35
-        hx, hw = self.x + off, self.width - off
-        self.hint.pos, self.hint.size = (hx, ty - dp(3)), (hw, th)
-        self.hint.text_size = (hw, th)
+        # The label sits right of the resting knob so the knob never hides
+        # it: inside the pill, or ON the line in a face the line cannot give.
+        hx, hy, hw, hh = hint_rect(self.x, self.y, self.width, self.height,
+                                   self._ks(), self._style)
+        self.hint.pos, self.hint.size = (hx, hy - dp(3)), (hw, hh)
+        self.hint.text_size = (hw, hh)
         self.hint.halign, self.hint.valign = "center", "middle"
-        self.hint.font_size = max(dp(9.5), th * 0.5)   # scales with the thin track
+        self.hint.font_size = hint_font_px(self.height, self._style, dp(9.5))
         self._refresh()
 
     def _refresh(self, *_):

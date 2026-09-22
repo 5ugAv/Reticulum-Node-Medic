@@ -57,10 +57,11 @@ class HomeScreen(FloatLayout):
 
         # Power slide (top-left) — a small slide-to-power-off, track ~3x the knob,
         # so a safe shutdown is right on the front page but can't fire by accident.
+        # The red knob rides a THIN BLACK LINE, not a pill (operator, 2026-09-22).
         from ui.widgets.slide_to_power import SlideToPowerOff
         knob = dp(52)
         self.power_slider = SlideToPowerOff(
-            on_power_off=self._power_off, hint_text=tr("OFF"),
+            on_power_off=self._power_off, hint_text=tr("OFF"), track="line",
             size_hint=(None, None), size=(knob * 3, knob),
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
