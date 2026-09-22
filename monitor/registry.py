@@ -1552,6 +1552,21 @@ class NodeRegistry:
         return None
 
     @_locked
+    def consolidated_records(self, now: float) -> List[tuple]:
+        """ONE record per physical device, with the member records it was
+        folded from: ``[(consolidated NodeRecord, [members]), ...]``.
+
+        The single fold every screen must share (2026-09-23): the adopt-
+        over-the-air list grouped by announced identity alone and showed
+        ELSEWHERE three times — one row per destination — while VITALS,
+        folding by the roster's device record, showed one. Same machine,
+        two screens, two answers. Both read this now. Dot status/health
+        come from the CONSOLIDATED record (health pooled across members),
+        not an arbitrary primary that may lack a beacon — so a row and its
+        tapped detail read the same device health."""
+        return [(self._consolidate(members, now), members)
+                for members in self._device_groups()]
+
     def devices(self, now: float) -> List[dict]:
         """The CONSOLIDATED dashboard: one row per physical device. Destinations
         that announced the same identity collapse into one entry (a phone's
@@ -1560,11 +1575,7 @@ class NodeRegistry:
         ``capabilities``: {lora, wifi, bluetooth, internet} — True (seen
         working), False (reported down), None (no way to know yet)."""
         out = []
-        for members in self._device_groups():
-            # Dot status/health come from the CONSOLIDATED record (health pooled
-            # across members), not an arbitrary primary that may lack a beacon —
-            # so the row and its tapped detail read the same device health.
-            consolidated = self._consolidate(members, now)
+        for consolidated, members in self.consolidated_records(now):
             d = consolidated.to_dashboard(now)
             d["aspects"] = len(members)
             d["capabilities"] = _capabilities(members)

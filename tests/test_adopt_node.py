@@ -116,6 +116,49 @@ def test_heard_candidates_lists_devices_neighbours_first():
     assert all(c["key"] for c in cands)
 
 
+def test_heard_candidates_fold_one_machine_the_way_vitals_does():
+    """Operator's photo, 2026-09-23: the adopt-over-the-air list showed
+    ELSEWHERE three times and skyfinger twice — one row per mesh destination.
+    The registry already knows those destinations are ONE machine (the kin
+    roster's device record, written at birth), and VITALS folds by it; the
+    adopt list folded only by announced identity. Same fold, both screens —
+    including the guard that two identity-bearing groups sharing a NAME stay
+    two machines (a dead board must not hide behind a live namesake)."""
+    import time
+    from monitor.registry import NodeRegistry
+    from monitor.mesh import MeshNode
+    from ui.adopt_live import heard_candidates
+    now = time.time()
+    reg = NodeRegistry()
+    dev = "aa11aa11aa11aa11"
+    reg.set_kin_roster({
+        "aa11aa11aa11aa11": {"name": "ELSEWHERE", "type": "pi_propagation", "device": dev},
+        "bb22bb22bb22bb22": {"name": "ELSEWHERE", "type": "pi_propagation", "device": dev},
+        "cc33cc33cc33cc33": {"name": "ELSEWHERE", "type": "pi_propagation", "device": dev},
+    })
+    for h in ("aa11aa11aa11aa11", "bb22bb22bb22bb22", "cc33cc33cc33cc33"):
+        reg.ingest_mesh(MeshNode(dst_hash=h, hops=1, interface="LoRa"), now)
+    # two OTHER machines that both announce their own identity under one name
+    reg.set_kin_roster(dict(reg.kin_roster, **{
+        "d1d1d1d1d1d1d1d1": {"name": "A2", "type": "rtnode2400"},
+        "e2e2e2e2e2e2e2e2": {"name": "A2", "type": "rtnode2400"}}))
+    reg.ingest_announce(bytes.fromhex("d1d1d1d1d1d1d1d1"), b"", now,
+                        identity_hash="1111111111111111")
+    reg.ingest_announce(bytes.fromhex("e2e2e2e2e2e2e2e2"), b"", now,
+                        identity_hash="2222222222222222")
+    cands = heard_candidates(reg, now)
+    names = sorted(c["name"] for c in cands)
+    assert names.count("ELSEWHERE") == 1, names
+    assert names.count("A2") == 2, "two identities, two machines — never folded by name"
+    els = next(c for c in cands if c["name"] == "ELSEWHERE")
+    assert els["key"] in ("aa11aa11aa11aa11", "bb22bb22bb22bb22", "cc33cc33cc33cc33")
+    assert ":" not in els["key"], "the kin key is a mesh destination, never a pseudo-hash"
+    assert els["aspects"] == 3
+    # and it is the SAME fold VITALS draws
+    vitals = [d for d in reg.devices(now) if d["name"] == "ELSEWHERE"]
+    assert len(vitals) == 1 and vitals[0]["aspects"] == 3
+
+
 def test_confirmed_location_overrides_gps():
     """An operator-confirmed location wins over the raw GPS reader (the map gate
     already vetted it)."""

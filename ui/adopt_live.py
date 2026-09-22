@@ -129,19 +129,24 @@ def heard_candidates(registry, now: float):
     """Nodes the medic can HEAR over the mesh, one per physical device — the
     candidates for over-the-air adoption. Neighbours (not yet kin) sort first;
     already-kin nodes are included (re-adopt just refreshes + writes a cert)."""
-    best = {}
-    for rec in registry.all(now):
-        gid = rec.identity_hash or rec.dst_hash
-        cur = best.get(gid)
-        if cur is None or (not cur.name and rec.name):
-            best[gid] = rec
     out = []
-    for rec in best.values():
+    # THE SAME FOLD VITALS DRAWS (registry.consolidated_records, 2026-09-23):
+    # grouping by announced identity alone put one Pi on this list once per
+    # destination (ELSEWHERE x3, skyfinger x2 in the operator's photo).
+    for rec, members in registry.consolidated_records(now):
         d = rec.to_dashboard(now)
+        # The kin key must be a MESH destination: a device led by an HTTP
+        # "rtnode:<name>" discovery row would otherwise hand adopt a
+        # pseudo-hash nothing on the mesh answers to.
+        key = next((m.dst_hash for m in members
+                    if m.dst_hash and ":" not in m.dst_hash and m.identity_hash),
+                   next((m.dst_hash for m in members
+                         if m.dst_hash and ":" not in m.dst_hash), rec.dst_hash))
         out.append({
             "name": d["name"],
-            "key": rec.dst_hash,                 # the kin key
+            "key": key,                          # the kin key
             "identity": rec.identity_hash,
+            "aspects": len(members),
             "node_type": rec.node_type,
             "provenance": d["provenance"],
             "last_seen_hours": d.get("last_seen_hours"),
