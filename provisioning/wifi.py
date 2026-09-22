@@ -8,6 +8,7 @@ through an injected *run* so the parsing is unit-tested without hardware.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from typing import Callable, List, Optional, Tuple
 
@@ -78,6 +79,32 @@ def connected_ssid(run: Runner = _default_run, iface: Optional[str] = None) -> s
     return ""
 
 
+def is_hidden_ssid(ssid: str) -> bool:
+    """A hidden AP's name comes through as nothing, or as a run of NUL
+    escapes (``\\x00\\x00…``, as ``iw`` prints them) — which the picker once
+    showed as a tappable row of backslashes (operator, 2026-09-22)."""
+    s = (ssid or "").strip()
+    s = re.sub(r"(\\x00|\x00)+", "", s).strip()
+    return not s
+
+
+#: Why a connection failed, in the operator's terms. nmcli's last line is
+#: kept for the "other" case — an honest tail beats a wrong guess.
+FAIL_PASSWORD = "password"
+FAIL_OUT_OF_RANGE = "out_of_range"
+FAIL_OTHER = "other"
+
+
+def explain_failure(message: str) -> Tuple[str, str]:
+    """(kind, tail): kind is FAIL_PASSWORD / FAIL_OUT_OF_RANGE / FAIL_OTHER."""
+    m = (message or "").lower()
+    if "secrets were required" in m or "secret" in m or "password" in m or "802.1x" in m:
+        return FAIL_PASSWORD, message
+    if "no network with ssid" in m or "not found" in m or "no such" in m:
+        return FAIL_OUT_OF_RANGE, message
+    return FAIL_OTHER, message
+
+
 def _parse_iw_scan(out: str) -> List[dict]:
     """Parse ``iw dev <if> scan`` into ``[{ssid, signal, secure}]`` (one per BSS).
     ``signal`` is a 0–100%; ``secure`` is set when the BSS advertises an RSN/WPA IE.
@@ -104,7 +131,7 @@ def _parse_iw_scan(out: str) -> List[dict]:
             cur["secure"] = True
     if cur is not None:
         blocks.append(cur)
-    return blocks
+    return [b for b in blocks if not is_hidden_ssid(b["ssid"])]
 
 
 def scan_networks(run: Runner = _default_run) -> List[dict]:
@@ -124,7 +151,7 @@ def scan_networks(run: Runner = _default_run) -> List[dict]:
     nets: dict = {}
     for b in parsed:
         ssid = (b["ssid"] or "").strip()
-        if not ssid:
+        if is_hidden_ssid(ssid):
             continue                                  # hidden network — skip
         active = ssid == connected
         entry = nets.get(ssid)
@@ -150,7 +177,7 @@ def _scan_networks_nmcli(run: Runner = _default_run) -> List[dict]:
             continue
         inuse, signal, security = parts[0], parts[1], parts[2]
         ssid = ":".join(parts[3:]).strip()
-        if not ssid:
+        if is_hidden_ssid(ssid):
             continue                                  # hidden network — skip
         try:
             sig = int(signal)

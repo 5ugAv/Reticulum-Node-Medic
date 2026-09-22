@@ -48,8 +48,9 @@ def _row_label(n):
 class WifiScreen(BoxLayout):
     """Scan + connect to WiFi. *run* is injectable for tests."""
 
-    def __init__(self, run=None, **kwargs):
+    def __init__(self, run=None, on_done=None, **kwargs):
         super().__init__(**kwargs)
+        self._on_done = on_done            # back to Settings once connected
         self.orientation = "vertical"
         self.spacing = dp(8)
         self.padding = dp(12)
@@ -227,10 +228,39 @@ class WifiScreen(BoxLayout):
         threading.Thread(target=work, daemon=True).start()
 
     def _show_result(self, ok, msg):
+        """A VERDICT the operator can act on, then onward — not a status
+        line under a keyboard (operator, 2026-09-22: "user should get a
+        confirmation of connection or connection failed, then sent back to
+        settings"). Connected: say so and return to Settings on dismiss.
+        Failed: say why in plain words, keep the password field so the
+        retry is one tap — sending them away would make them find the
+        network again."""
+        from ui.requirement_popup import requirement_popup
         self._busy = False
         self.status.text = msg
         self.status.color = theme.hex_to_rgba(theme.COLORS["green" if ok else "red"])
+        ssid = (self._selected or {}).get("ssid", "")
         if ok:
             self.pw_row.height, self.pw_row.opacity = dp(0), 0
             self.autoconn_row.height, self.autoconn_row.opacity = dp(0), 0
             self._refresh_status()
+            pop = requirement_popup(
+                tr("Connected to {ssid}.").format(ssid=ssid) + "\n\n"
+                + tr("Node Medic will use this network from now on."),
+                tr("Wi-Fi connected"), False, tone="success")
+            if self._on_done is not None:
+                pop.bind(on_dismiss=lambda *_: self._on_done())
+            return
+        kind, tail = wifi.explain_failure(msg)
+        words = {
+            wifi.FAIL_PASSWORD: tr("The password was not accepted. Check it and "
+                                   "try again."),
+            wifi.FAIL_OUT_OF_RANGE: tr("That network is out of range right now."),
+        }
+        why = words.get(kind) or (tr("The network did not accept the connection.")
+                                  + "\n" + tail)
+        requirement_popup(tr("Could not connect to {ssid}.").format(ssid=ssid)
+                          + "\n\n" + why, tr("Wi-Fi connection failed"), False,
+                          tone="warning")
+        if self._selected and self._selected.get("secure"):
+            self.pw_in.focus = True
