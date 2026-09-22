@@ -64,14 +64,19 @@ class SlideToPowerOff(FloatLayout):
     def _ks(self):
         return self.height                     # knob = full height -> proud of the track
 
-    def _track(self):
+    def _track_geom(self):
+        # NOT _track: that name is the canvas RoundedRectangle set in
+        # __init__, and a method of the same name is shadowed by it — the
+        # first layout raised "RoundedRectangle is not callable" and the
+        # medic's UI went down on deploy (2026-09-22). test_no_method_is_
+        # shadowed_by_an_attribute now forbids the pattern tool-wide.
         return track_rect(self.x, self.y, self.width, self.height, self._style)
 
     def _th(self):
-        return self._track()[3]
+        return self._track_geom()[3]
 
     def _ty(self):
-        return self._track()[1]
+        return self._track_geom()[1]
 
     def _left(self):
         return self.x
