@@ -14,7 +14,6 @@
 # stop. STOP_ONLY=1 stops without starting (for a registry prune) under the
 # SAME guard: there is no other sanctioned way to stop the UI.
 bash "$(dirname "$0")/ui_busy_guard.sh" || exit 3
-fi
 pkill -f "[p]ython3 .*main.py" 2>/dev/null
 sleep 3
 pkill -9 -f "[p]ython3 .*main.py" 2>/dev/null

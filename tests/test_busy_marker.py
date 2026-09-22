@@ -52,3 +52,11 @@ def test_the_app_drives_the_marker_from_one_busy_predicate():
     assert src.count("self._busy_heartbeat()") >= 3       # start, begin, end
     j = src.index("def on_stop(self):")
     assert "busy_marker.clear()" in src[j:j + 900]
+
+
+def test_the_shell_scripts_parse():
+    """A substring pin let a restart script with a stray `fi` ship and the
+    medic's UI could not be restarted (2026-09-22). bash -n is the test."""
+    for script in ("scripts/restart_ui.sh", "scripts/ui_busy_guard.sh"):
+        r = subprocess.run(["bash", "-n", script], capture_output=True, text=True)
+        assert r.returncode == 0, f"{script}: {r.stderr}"
