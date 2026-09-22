@@ -19,12 +19,92 @@ from kivy.metrics import dp
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — the 2026-09-22 zoom / select-here controls
+from ui.map_pick import centre_of, format_pin, tile_caption
+
+#: Map pane height, by the window's ACTUAL shape (2026-09-22). 190dp is the
+#: figure proven on the landscape panel, where six fixed-height siblings
+#: starved the pane (the long comment at its use). Operated portrait
+#: (720x1280 — the 2026-09-22 brief) there is ~700px more height, and the
+#: operator's complaint that day was "you can move it around a little bit":
+#: a taller pane is part of the answer, +/− and Select here the rest. The
+#: shape is READ from the Window at build time, never assumed — the app
+#: goes fullscreen on whatever the display reports (ui/app.py build()).
+MAP_HEIGHT_PORTRAIT_DP = 240
+MAP_HEIGHT_LANDSCAPE_DP = 190
+
+
+def _map_height():
+    try:
+        from kivy.core.window import Window
+        portrait = Window.height > Window.width
+    except Exception:                                              # noqa: BLE001
+        portrait = False
+    return dp(MAP_HEIGHT_PORTRAIT_DP if portrait else MAP_HEIGHT_LANDSCAPE_DP)
+
+
+def _overlay_btn(text, width, on_tap, font="26sp", color="surface", fg="text_primary"):
+    b = Button(text=text, font_size=font, bold=True, background_normal="",
+               background_color=theme.hex_to_rgba(theme.COLORS[color], 0.92),
+               color=theme.hex_to_rgba(theme.COLORS[fg]),
+               size_hint=(None, None), width=width)
+    b.bind(on_release=lambda *_: on_tap())
+    return b
+
+
+class _Chip(Label):
+    """A one-line caption drawn OVER the map on a translucent dark strip, so
+    it reads on any tile. No touch handler: taps fall through to the map."""
+
+    def __init__(self, **kwargs):
+        super().__init__(font_size="11.5sp", halign="left", valign="middle",
+                         shorten=True, shorten_from="right",
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]),
+                         padding=(dp(6), 0), **kwargs)
+        from kivy.graphics import Color, Rectangle
+        with self.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["background"], 0.72))
+            self._bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._sync, size=self._sync)
+
+    def _sync(self, *a):
+        self._bg.pos, self._bg.size = self.pos, self.size
+        self.text_size = self.size
+
+
+class _Crosshair(Widget):
+    """The 'icon on the map' (operator, 2026-09-22): a ring with four ticks
+    fixed at the pane's centre. Moving the map moves what sits under it;
+    'Select here' adopts that point. Deliberately NO touch handler — a plain
+    Widget passes every touch through, so pan / pinch / tap-to-place under
+    the marker keep working exactly as before."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        from kivy.graphics import Color, Line
+        with self.canvas.after:
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.95))
+            self._ring = Line(circle=(0, 0, 0), width=dp(1.6))
+            self._ticks = [Line(points=[], width=dp(1.5)) for _ in range(4)]
+            self._dot = Line(circle=(0, 0, 0), width=dp(1.2))
+        self.bind(pos=self._redraw, size=self._redraw)
+
+    def _redraw(self, *a):
+        cx, cy = self.center
+        r, gap, arm = dp(12), dp(4), dp(14)
+        self._ring.circle = (cx, cy, r)
+        self._dot.circle = (cx, cy, dp(1.2))
+        self._ticks[0].points = [cx - r - arm, cy, cx - r - gap, cy]
+        self._ticks[1].points = [cx + r + gap, cy, cx + r + arm, cy]
+        self._ticks[2].points = [cx, cy - r - arm, cx, cy - r - gap]
+        self._ticks[3].points = [cx, cy + r + gap, cx, cy + r + arm]
 
 
 def _lbl(text, size="14sp", color="text_primary", bold=False, h=None):
@@ -120,8 +200,9 @@ class ConfirmLocationPopup(Popup):
                           "online (optional).",
                           "12.5sp", color="text_secondary", h=30)
         body.add_widget(self._addr)
-        body.add_widget(_lbl("or tap the map / Use GPS to place the pin", "12.5sp",
-                             color="accent", h=18))
+        body.add_widget(_lbl(tr("or tap the map · pan under the crosshair and "
+                                "Select here · Use GPS"),
+                             "12.5sp", color="accent", h=18))
 
         # the map (reused SCAN widget) with a draggable-by-tap pin
         if tiles is None:
@@ -152,10 +233,55 @@ class ConfirmLocationPopup(Popup):
         # "the one thing that matters gets starved by fixed-height siblings"
         # shape as the BIRTH parts list clipping (2026-08-xx) — a resizing
         # widget under several rigid neighbours is the wrong tool here.
+        # (2026-09-22: still fixed — 190 landscape / 240 portrait, chosen by
+        # the Window's real shape; see _map_height.)
+        #
+        # ZOOM + SELECT HERE (operator, 2026-09-22: "there is no option to
+        # zoom in to the map ... select a location by pressing an icon on the
+        # map and saying 'select here'"). MapPlot always had pinch-to-zoom
+        # and tap-to-place; what it lacked HERE was SCAN's explicit +/− (a
+        # 7-inch panel's pinch is not something to depend on), a fixed centre
+        # marker, and a button that adopts the centre. Overlaid in a
+        # FloatLayout like SCAN's, so no extra rows compete for height:
+        #   top-left  — an honest caption: which zoom, how many of its tiles
+        #               the CARRIED cache has (never fetched mid-birth)
+        #   top-right — + / −, greyed where a press would do nothing
+        #   centre    — the crosshair
+        #   bottom    — 'Select here' carrying the live centre coordinates,
+        #               so the number it will save is the number it shows
+        map_wrap = FloatLayout(size_hint_y=None, height=_map_height())
         self.plot = MapPlot(nodes=[], tiles=tiles, interactive=True,
-                            on_pick=self._on_map_pick,
-                            size_hint_y=None, height=dp(190))
-        body.add_widget(self.plot)
+                            on_pick=self._on_map_pick, on_view=self._on_view,
+                            size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
+        map_wrap.add_widget(self.plot)
+        map_wrap.add_widget(_Crosshair(size_hint=(1, 1), pos_hint={"x": 0, "y": 0}))
+        self._tiles_lbl = _Chip(size_hint=(0.64, None), height=dp(22),
+                                pos_hint={"x": 0.01, "top": 0.99})
+        map_wrap.add_widget(self._tiles_lbl)
+        zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
+                         size=(dp(50), dp(104)), spacing=dp(6),
+                         pos_hint={"right": 0.98, "top": 0.98})
+        self._zoom_btns = {}
+        for sym, d in (("+", +1), ("−", -1)):
+            zb = _overlay_btn(sym, dp(50), lambda dd=d: self.plot.zoom_by(dd))
+            zb.height = dp(49)
+            self._zoom_btns[d] = zb
+            zbox.add_widget(zb)
+        map_wrap.add_widget(zbox)
+        self._select_btn = _overlay_btn(tr("Select here"), dp(300), self._select_here,
+                                        font="13.5sp", color="accent",
+                                        fg="background")
+        self._select_btn.height = dp(40)
+        self._select_btn.pos_hint = {"center_x": 0.5, "y": 0.03}
+        map_wrap.add_widget(self._select_btn)
+        body.add_widget(map_wrap)
+        if tiles is None:
+            # No carried basemap: MapPlot draws nothing and takes no touch,
+            # so say so and grey the controls that would press into nothing.
+            self._tiles_lbl.text = tile_caption(None, 0, 0, zooms=[])
+            for zb in self._zoom_btns.values():
+                zb.disabled = True
+            self._select_btn.disabled = True
 
         # coords (always shown, offline) + an OPT-IN "Show address" button. Address
         # lookup is NOT automatic: reverse-geocoding sends the exact pin to a third
@@ -209,7 +335,35 @@ class ConfirmLocationPopup(Popup):
 
     # -- pin movement ------------------------------------------------------
     def _coord_text(self):
-        return f"{self._lat:.6f}, {self._lon:.6f}"
+        # The SAVED pair, printed the one way (ui/map_pick.format_pin) — the
+        # certificate gets exactly these floats (see _confirm).
+        return tr("Pin: {coords}").format(coords=format_pin(self._lat, self._lon))
+
+    def _on_view(self, view):
+        """After every drawn view (MapPlot.on_view): the crosshair's centre
+        onto the Select-here button, the honest zoom/tiles caption, and +/−
+        greyed where a press would change nothing. Reads the drawer's own
+        record of the draw — never a fresh tile query, never the network."""
+        lat, lon = centre_of(view)
+        self._select_btn.text = tr("Select here") + "   " + format_pin(lat, lon)
+        rep = self.plot.view_tile_report()
+        z, present, total = rep if rep else (view.zoom, 0, 0)
+        self._tiles_lbl.text = tile_caption(z, present, total,
+                                            zooms=self.plot._zooms)
+        for d, zb in self._zoom_btns.items():
+            zb.disabled = not self.plot.can_zoom(d)
+        self._select_btn.disabled = False
+
+    def _select_here(self):
+        """'Select here' (operator, 2026-09-22): adopt the point under the
+        crosshair — the map's drawn centre — as the pin, through the same
+        _move_pin every other road (tap, address, GPS) uses. The numbers on
+        the button and the numbers saved are the same floats."""
+        ll = self.plot.centre_latlon()
+        if ll is None:
+            self._addr.text = tr("No map drawn yet — type an address or use GPS.")
+            return
+        self._move_pin(ll[0], ll[1])
 
     def _on_map_pick(self, latlon):
         """MapPlot tap-to-place: it passes a (lat, lon) tuple. Guarded so a bad

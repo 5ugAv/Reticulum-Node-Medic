@@ -263,13 +263,18 @@ class MapPlot(Widget):
 
     def __init__(self, nodes=None, tiles=None, interactive=True, on_pick=None,
                  on_node_pick=None, links_provider=None, suggestions_provider=None,
-                 **kwargs):
+                 on_view=None, **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
         self._interactive = interactive          # False = a fixed verify view
         self._on_pick = on_pick                  # tap-to-place callback (lat, lon)
         self._on_node_pick = on_node_pick        # tap-a-node-dot callback (name)
+        # on_view(view) fires after every drawn view (2026-09-22): the birth's
+        # confirm-location popup prints the crosshair's centre and an honest
+        # zoom/tiles caption from it, so those lines follow the pan instead of
+        # polling. Default None -> nothing changes for SCAN.
+        self._on_view = on_view
         # Optional data feeds (default None -> nothing extra drawn, map unchanged):
         #   links_provider()      -> [(lat1,lon1,lat2,lon2), ...] mesh connections
         #   suggestions_provider()-> [obj/dict with lat/lon/reason/kind] placements
@@ -677,13 +682,58 @@ class MapPlot(Widget):
     OVERZOOM_MAX = 16
 
     def _step_to_next_zoom(self, current, direction):
-        from ui.map_tiles import step_zoom
-        # with no cache, fall back to the full interactive range
-        zs = self._zooms or list(range(2, DETAIL_MAX_ZOOM + 1))
-        nxt = step_zoom(zs, current, direction)
-        if direction > 0 and nxt == current and current < self.OVERZOOM_MAX:
-            return current + 1        # past the cached edge: overzoom renders it
-        return nxt
+        # One rule for the step, shared with the confirm popup's +/− state
+        # (2026-09-22): ui/map_pick.next_zoom is the tested copy — cached
+        # levels first, then one overzoom level at a time up to OVERZOOM_MAX,
+        # and the full 2..DETAIL_MAX_ZOOM range when nothing is cached.
+        from ui.map_pick import next_zoom
+        return next_zoom(self._zooms, current, direction,
+                         self.OVERZOOM_MAX, DETAIL_MAX_ZOOM)
+
+    def can_zoom(self, direction):
+        """Would a +/− press in *direction* change the level? False at the
+        cached floor / overzoom cap, and always False with no view yet — so
+        a button can grey out instead of pressing into nothing."""
+        view = self._current_view()
+        if view is None or self._tiles is None:
+            return False
+        from ui.map_pick import can_zoom
+        cur = self._zoom if self._zoom is not None else view.zoom
+        return can_zoom(self._zooms, cur, direction,
+                        self.OVERZOOM_MAX, DETAIL_MAX_ZOOM)
+
+    def centre_latlon(self):
+        """The geo point under the pane's middle pixel, as DRAWN — what a
+        centred crosshair sits on. None before the first draw (no tiles, or
+        not laid out yet), so a caller can refuse rather than guess."""
+        view = self._current_view()
+        if view is None:
+            return None
+        from ui.map_pick import centre_of
+        return centre_of(view)
+
+    def view_tile_report(self):
+        """(zoom, present, total) for the last drawn view: how many of the
+        tiles it asked for the cache actually had, read from the drawer's
+        own hit/miss record — no fresh SQLite, never the network. None
+        before the first draw."""
+        view = self._current_view()
+        if view is None:
+            return None
+        from ui.map_pick import tile_report
+        present, total = tile_report(tiles_for_view(view), self._tex_cache,
+                                     self._tile_misses)
+        return view.zoom, present, total
+
+    def _notify_view(self, view):
+        """Hand the drawn view to on_view; a listener's error must never
+        take the map (or the app) down with it."""
+        if self._on_view is None:
+            return
+        try:
+            self._on_view(view)
+        except Exception:
+            _record_map_error("on_view")
 
     def _zoom_at(self, pos, direction):
         """Zoom one level toward the tapped screen point, recentring on the geo
@@ -931,11 +981,10 @@ class MapPlot(Widget):
             # drawer overzooms from the nearest ancestor, so the pane blurs
             # instead of blanking (and instead of snapping the operator back
             # to state level the moment they zoomed past the basemap).
-            z = self._zoom
-            if not self._zooms or z <= self._zooms[-1]:
-                z = self._snap_zoom(z)
-            else:
-                z = min(z, self.OVERZOOM_MAX)
+            # (2026-09-22: the rule is ui/map_pick.render_zoom, tested there
+            # and shared with the confirm popup's caption.)
+            from ui.map_pick import render_zoom
+            z = render_zoom(self._zooms, self._zoom, self.OVERZOOM_MAX)
             view = view_at(self._center[0], self._center[1], z,
                            self.width, self.height)      # user-driven pan/zoom
         elif fill is not None:
@@ -985,6 +1034,9 @@ class MapPlot(Widget):
             sx, sy = view.to_screen(p.lat, p.lon)
             self._add_label(p, sx, sy, r)
         self._add_me_label(view)
+        # AFTER the tiles are drawn, so a listener's tile report reads this
+        # view's hits and misses, not the previous one's.
+        self._notify_view(view)
 
     def _draw_me_marker(self, view):
         """A red MAP PIN whose point sits on the exact spot (the medic's GPS fix /
