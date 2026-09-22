@@ -141,6 +141,8 @@ class BirthGuideScreen(BoxLayout):
         # keep-and-continue road) must never skip the NEXT lap's radio picker.
         self._board_preknown = False
         self._pi_key = ""
+        self._pi_asked_for_art = False
+        self._pi_pick_returns_to_step = False
         # WHOSE REBIRTH? This is the name a WIPED board used to carry, and the
         # name step states it as fact: "This board was Brick. It's blank now."
         # It was set when a board was wiped and never cleared anywhere — not
@@ -2169,6 +2171,24 @@ class BirthGuideScreen(BoxLayout):
         # night) and the bypassed check then detonated at RESUME time,
         # rewinding a finished flash to "Flash this radio" (both SKYFINGER
         # runs; the operator was marched into re-flashing a green board).
+        if (self._path == "pi" and not getattr(self, "_pi_key", "")
+                and not getattr(self, "_pi_art_key", "")
+                and not getattr(self, "_pi_asked_for_art", False)):
+            # DRAW THE BOARD IN THEIR HANDS. The Pi build's steps draw a Pi
+            # (the card going into it) before the pairing question is
+            # reached, and when the Pi has not been seen on USB this run
+            # nothing knows which model to draw: 2026-09-22 the SD-handover
+            # step showed a generic green board; the run before, the Zero
+            # had been on USB and the picture was right. So ask ONCE here,
+            # before the steps begin; a question raised mid-step re-enters
+            # the step machine (the walkthrough matrix caught steps visited
+            # twice). Back = "draw what you can", asked no more.
+            self._pi_asked_for_art = True
+            self._pi_pick_returns_to_step = True
+            self._trace("asking which Pi before the steps — nothing knows yet")
+            self._render_pick_pi()
+            self._back_action = self._begin_steps
+            return
         self._i = 0
         self._nav_dir = "forward"       # answered — on into the physical steps
         self._render_step()
@@ -3257,7 +3277,13 @@ class BirthGuideScreen(BoxLayout):
             self._render_pick_board()
 
     def _render_pick_pi(self):
-        """Which Raspberry Pi is this? Asked because it cannot be read."""
+        """Which Raspberry Pi is this? Asked because it cannot be read — and
+        asked ONCE: answered earlier for the sake of a picture, the pairing
+        step goes straight to its confirmation."""
+        if getattr(self, "_pi_key", "") and not getattr(
+                self, "_pi_pick_returns_to_step", False):
+            self._render_confirm_pair()
+            return
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._back_from_pick_pi
@@ -3325,6 +3351,10 @@ class BirthGuideScreen(BoxLayout):
 
     def _pi_picked(self, key):
         self._pi_key = key
+        if getattr(self, "_pi_pick_returns_to_step", False):
+            self._pi_pick_returns_to_step = False
+            self._begin_steps()               # on into the steps, picture known
+            return
         self._render_confirm_pair()
 
     def _render_confirm_pair(self):

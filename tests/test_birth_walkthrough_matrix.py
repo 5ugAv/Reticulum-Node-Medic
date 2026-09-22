@@ -243,7 +243,7 @@ _REAL_METHODS = [
     "reset", "_guide_steps", "_begin_steps", "_resume_steps",
     "_render_step", "_next", "_back", "resume", "has_pending_resume",
     "cancel_resume", "_finish", "_step_is_redundant", "_gate_state",
-    "_radio_gate", "_node_gate", "_check_pairing", "_trace", "_stop_current",
+    "_radio_gate", "_node_gate", "_check_pairing", "_pi_picked", "_trace", "_stop_current",
     "_stop_board_poll", "_stop_node_poll", "_stop_card_poll",
     "_stop_detect_nudge", "_stop_detect_pi_poll", "_pi_key_for_art",
     "_pi_key_for_text", "_on_board_present", "_on_board_absent",
@@ -362,9 +362,18 @@ class DrivenGuide:
         self._render_pick_pi()
 
     def _render_pick_pi(self, *a, **k):
+        # Answer the way the SCREEN does — through _pi_picked — and let the
+        # real code decide what follows: the pairing confirmation, or (since
+        # 2026-09-22, when the question is asked before the steps so the
+        # first Pi drawing is the operator's Pi) straight on into the steps.
+        # Answering-and-confirming here dragged the pairing gate forward in
+        # the simulation only, and failed a test the real flow passes.
+        if getattr(self, "_pi_key", "") and not getattr(
+                self, "_pi_pick_returns_to_step", False):
+            self._render_confirm_pair()     # the real method's short-circuit
+            return
         self.asked.append("pick_pi")
-        self._pi_key = self.sc_pi
-        self._render_confirm_pair()
+        self._pi_picked(self.sc_pi)
 
     def _render_confirm_pair(self, *a, **k):
         self.asked.append("confirm_pair")
@@ -721,8 +730,10 @@ def test_the_full_flash_walk_visits_every_step_once_in_order(rig):
     assert [n["screen"] for n in g.navigations] == \
         ["birth", "pi_imager", "birth"]
     assert [n["job"] for n in g.navigations] == ["host", "host", "pi"]
-    # asked[0] is reset()'s chooser render; the pairing questions follow
-    assert g.asked[1:4] == ["pick_board", "pick_pi", "confirm_pair"], \
+    # asked[0] is reset()'s chooser render; the pairing questions follow.
+    # Since 2026-09-22 the Pi is asked FIRST, before the steps, so the first
+    # Pi drawing is the operator's Pi; the board and the pair follow as before.
+    assert g.asked[1:4] == ["pick_pi", "pick_board", "confirm_pair"], \
         "the pairing must be identified before the card is written"
     # the disconnect step told the watcher the absence is intended
     assert g.absence_expected is True
