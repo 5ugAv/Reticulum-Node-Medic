@@ -1,12 +1,19 @@
 """The thanks page names what the code actually fetches (operator,
 2026-09-21: "do we need to adjust the maps?" — yes: the basemap had moved
 from Carto to Esri a month earlier and the credit still said Carto)."""
+import ast
+import re
+
 from ui import map_download
-from ui.screens import credits_screen as cs
+
+# The credits screen imports Kivy; CI has none. Read the CREDITS list out of
+# the source instead — it is a literal, and a literal is what we are checking.
+_SRC = open("ui/screens/credits_screen.py").read()
+_CREDITS = ast.literal_eval(re.search(r"^CREDITS = (\[.*?^\])", _SRC, re.S | re.M).group(1))
 
 
 def _credit(role):
-    return dict(cs.CREDITS)[role]
+    return dict(_CREDITS)[role]
 
 
 def test_map_credit_matches_the_basemap_and_the_geocoder():
@@ -25,4 +32,4 @@ def test_terrain_credit_matches_the_terrain_source():
 
 
 def test_no_engineering_companion_line():
-    assert all(role != "Engineering companion" for role, _ in cs.CREDITS)
+    assert all(role != "Engineering companion" for role, _ in _CREDITS)

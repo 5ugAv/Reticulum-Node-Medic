@@ -1,11 +1,10 @@
 """Updating the health reporter on an existing Pi node without a rebirth
 (docs/HEALTH_REPLY_UNICAST.md, 2026-09-22)."""
-from types import SimpleNamespace
-
 from workflows import pi_reporter_push as prp
 
 
 class FakeConn:
+    """Returns transport.connection's REAL shape: (code, stdout, stderr)."""
     def __init__(self, marker_count="1", active="active", who="pi", push_ok=True):
         self.cmds, self.pushed = [], []
         self._marker, self._active, self._who, self._push_ok = marker_count, active, who, push_ok
@@ -13,14 +12,14 @@ class FakeConn:
     def run(self, cmd, timeout=30):
         self.cmds.append(cmd)
         if cmd == "id -un":
-            return SimpleNamespace(code=0, stdout=self._who)
+            return (0, self._who, "")
         if cmd == "echo $HOME":
-            return SimpleNamespace(code=0, stdout="/home/pi")
+            return (0, "/home/pi", "")
         if cmd.startswith("grep -c"):
-            return SimpleNamespace(code=0, stdout=self._marker)
+            return (0, self._marker, "")
         if cmd.startswith("systemctl is-active"):
-            return SimpleNamespace(code=0, stdout=self._active)
-        return SimpleNamespace(code=0, stdout="")
+            return (0, self._active, "")
+        return (0, "", "")
 
     def push_file(self, local, remote):
         self.pushed.append(remote)
@@ -69,3 +68,12 @@ def test_the_action_is_reachable_from_a_pi_nodes_page():
     i = app.index("def _push_reporter(self, record, report):")
     body = app[i:i + 2000]
     assert "push_health_reporter(conn" in body and "SSHConnection(host" in body
+
+
+def test_the_fake_matches_the_real_connection_contract():
+    """transport.connection.Result is (code, stdout, stderr); the step must
+    index it, never attribute it — and the fake is held to the same shape."""
+    r = FakeConn().run("echo $HOME")
+    assert isinstance(r, tuple) and len(r) == 3
+    src = open("workflows/pi_reporter_push.py").read()
+    assert not any(".stdout" in l for l in src.splitlines() if "conn.run" in l)
