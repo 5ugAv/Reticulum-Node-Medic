@@ -405,7 +405,9 @@ def serve(power_source: str = "battery",
 
     dest.set_packet_callback(make_command_handler(
         RNS, identity, dest, announce, current_beacon,
-        log=lambda m, lvl=None: RNS.log("Pi health: " + m, lvl or RNS.LOG_VERBOSE)))
+        # NOTICE, not VERBOSE: a 0x04 is rare and is the evidence a bench
+        # proof reads back from the journal (2026-09-22).
+        log=lambda m, lvl=None: RNS.log("Pi health: " + m, lvl or RNS.LOG_NOTICE)))
 
     # EVERY ANNOUNCE CARRIES A BEACON, not just the ones this loop makes.
     #

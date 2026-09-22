@@ -15,9 +15,13 @@ bench instrument, not the medic.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 import time
+
+# Run from anywhere: the repo root, not scripts/, is the import root.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitor.health_reply import (announce_wait_s, build_fallback_request,
                                   build_request_to, unicast_wait_s, verify_reply,
@@ -50,8 +54,9 @@ def main(argv=None) -> int:
     node_dest = RNS.Destination(ident, RNS.Destination.OUT, RNS.Destination.SINGLE,
                                 "rtnode", "health")
 
-    got = {"unicast": None, "announce": None}
-    ev = threading.Event()
+    got = {"unicast": None, "announce": None, "announce_at": None, "unicast_at": None}
+    ev = threading.Event()          # set only by a UNICAST reply
+    ann = threading.Event()         # set by an announce with a beacon
     my_ident = RNS.Identity()
     reply_dest = RNS.Destination(my_ident, RNS.Destination.IN, RNS.Destination.SINGLE,
                                  REPLY_APP, *REPLY_ASPECTS)
@@ -60,6 +65,7 @@ def main(argv=None) -> int:
         r = verify_reply(bytes(data), recall=RNS.Identity.recall)
         if r is not None and r[0] == node_dest.hash:
             got["unicast"] = r
+            got["unicast_at"] = time.time()
             ev.set()
     reply_dest.set_packet_callback(on_reply)
 
@@ -67,8 +73,13 @@ def main(argv=None) -> int:
         aspect_filter = "rtnode.health"
         def received_announce(self, destination_hash, announced_identity, app_data):
             if destination_hash == node_dest.hash and app_data:
+                # An announce is NOT taken as the answer by itself: a path
+                # request makes a node re-announce, and that lands within
+                # a second of the request — before any reply could. Note it;
+                # the unicast is what proves the new path.
                 got["announce"] = bytes(app_data)
-                ev.set()
+                got["announce_at"] = got["announce_at"] or time.time()
+                ann.set()
     RNS.Transport.register_announce_handler(_Ann())
 
     reply_dest.announce()
@@ -88,16 +99,20 @@ def main(argv=None) -> int:
     print(f"0x04 sent; waiting up to {w1:.0f} s for a signed unicast reply…")
     if ev.wait(w1) and got["unicast"]:
         _, nonce, beacon = got["unicast"]
-        print(f"ANSWERED by unicast in {time.time() - sent:.1f} s: nonce echoed={nonce == req[-8:]}, "
-              f"beacon {len(beacon)} bytes")
+        extra = (f"; an announce also arrived at +{got['announce_at'] - sent:.1f} s"
+                 if got["announce_at"] else "")
+        print(f"ANSWERED by unicast in {got['unicast_at'] - sent:.1f} s: nonce echoed={nonce == req[-8:]}, "
+              f"beacon {len(beacon)} bytes{extra}")
         return 0
     if got["announce"]:
-        print(f"ANSWERED by announce in {time.time() - sent:.1f} s (old firmware or no path back)")
+        print(f"no unicast reply in {w1:.0f} s; an announce arrived at +{got['announce_at'] - sent:.1f} s "
+              "(old reporter/firmware, no path back, or a path-request re-announce)")
         return 0
     print("no unicast reply; sending 0x01 (announce request)…")
     RNS.Packet(node_dest, build_fallback_request()).send()
     w2 = announce_wait_s(args.hops)
-    if ev.wait(w2) and (got["announce"] or got["unicast"]):
+    ann.clear()
+    if ev.wait(0) or ann.wait(w2):
         how = "unicast (late)" if got["unicast"] else "announce"
         print(f"ANSWERED by {how} in {time.time() - sent:.1f} s")
         return 0
