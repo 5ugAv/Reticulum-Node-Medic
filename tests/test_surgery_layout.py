@@ -20,6 +20,13 @@ from tests.srcutil import src
 from ui import surgery_layout as sl
 from ui.organ_art import CARD_WINDOW, ORGAN_SEATS
 
+
+def _arm_points(pose, lay):
+    """Every point the arm occupies — a TEST helper (it lived in the module
+    and the dead-code ratchet rightly asked who in production called it)."""
+    return [lay.shoulder, pose.elbow, pose.sleeve, pose.sleeve2, pose.wrist,
+            pose.tip, pose.tine_a, pose.tine_b]
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIDGET = "ui/widgets/surgery_anim.py"
 
@@ -282,7 +289,7 @@ def test_the_arm_never_leaves_the_stage(stage):
     for seat in seats:
         for i in range(60):
             pose = sl.arm_pose(i / 60.0, lay, seat)
-            for p in sl.arm_points(pose, lay):
+            for p in _arm_points(pose, lay):
                 assert _point_inside(p, stage, slack=1.0), \
                     f"arm at {p} is off the stage {stage} (seat {seat}, {i / 60.0:.2f})"
             assert pose.tip[1] + lay.organ_r * 1.2 <= lay.monitor[1] + 0.5, \

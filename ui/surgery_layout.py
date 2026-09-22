@@ -374,12 +374,6 @@ def tray_organ_alpha(u: float) -> float:
     return 0.0
 
 
-def arm_points(pose: Pose, lay: Layout) -> List[Point]:
-    """Every point the arm occupies — for the test that keeps it on stage."""
-    return [lay.shoulder, pose.elbow, pose.sleeve, pose.sleeve2, pose.wrist,
-            pose.tip, pose.tine_a, pose.tine_b]
-
-
 # --------------------------------------------------------------------------- #
 # the monitor
 # --------------------------------------------------------------------------- #
