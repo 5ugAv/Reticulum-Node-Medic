@@ -35,9 +35,19 @@ def test_the_pi_radio_choice_can_still_reach_the_antenna_landing():
     rc = SRC.split("def _render_pi_radio_choice(self):", 1)[1].split(
         "\n    def ", 1)[0]
     assert "self._render_antenna()" in rc
-    assert "self._render_name()" in rc
     assert "self._pi_flash_radio = True" in rc
-    assert "self._pi_flash_radio = False" in rc
+    # The "already have one" answer moved into its own method on 2026-09-22:
+    # it still turns the flash off, but now asks WHICH radio (the whole
+    # catalogue — the radio is not on the bench) before the name, so the
+    # certificate can say. The name is reached from the picker's handler.
+    assert "self._already_have_one" in rc
+    have = SRC.split("def _already_have_one(self):", 1)[1].split(
+        "\n    def ", 1)[0]
+    assert "self._pi_flash_radio = False" in have
+    assert "self._render_pick_board(absent=True)" in have
+    picked = SRC.split("def _board_picked(self, key):", 1)[1].split(
+        "\n    def ", 1)[0]
+    assert "self._render_name()" in picked
 
 
 def test_detect_does_not_re_ask_the_type_when_already_chosen():

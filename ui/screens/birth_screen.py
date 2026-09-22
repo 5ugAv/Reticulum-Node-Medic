@@ -1831,6 +1831,7 @@ class BirthScreen(BoxLayout):
         # One node's radio serial must never become the next node's udev rule —
         # begin_guided re-sets it from its own hand-off after this reset.
         self._guided_radio_usb_serial = ""
+        self._guided_radio_usb_serial_source = ""
         # And one node's Bluetooth yes must never become the next node's radio.
         self._guided_bluetooth = False
         # The previous build's page is over; whoever calls _build_chooser next
@@ -1859,7 +1860,7 @@ class BirthScreen(BoxLayout):
     def begin_guided(self, path, name=None, board_key=None, pi_key=None,
                      pi_address=None, share_location=None,
                      radio_usb_serial=None, bluetooth=None, location=None,
-                     flash_radio=True):
+                     flash_radio=True, radio_usb_serial_source=None):
         """Arrived from the step-by-step guide. Pre-scope the firmware for the chosen
         kind (radio = let detection decide; host = RNode; pi = Pi + RNode) and
         auto-run detection, since the board is already plugged in per the guide — so
@@ -1930,6 +1931,10 @@ class BirthScreen(BoxLayout):
         # the share answer above): a lap that carries none must not inherit
         # the previous node's radio.
         self._guided_radio_usb_serial = (radio_usb_serial or "").strip()
+        # ...and its provenance, printed on the certificate beside the
+        # serial (2026-09-22). Same hygiene: this hand-off's or nothing.
+        self._guided_radio_usb_serial_source = (
+            radio_usb_serial_source or "").strip()
         # The Bluetooth answer, same hygiene: set unconditionally from this
         # hand-off, so a lap that carries none normalises to OFF (the quiet
         # end) rather than inheriting the last node's yes.
@@ -2506,14 +2511,23 @@ class BirthScreen(BoxLayout):
                 getattr(self, "_pi_user_in", None) and self._pi_user_in.text or "pi",
                 self._name_in.text.strip())
             prof = getattr(workflow, "profile", None)
-            if prof is not None and board is not None:
-                prof.rnode_board_key = board.key
             if prof is not None:
+                # THE BOARD THE OPERATOR NAMED, OR NOTHING. NodeProfile's
+                # rnode_board_key defaults to heltec32_v4, and with no board
+                # picked that default went into the build and onto the
+                # certificate as a fact — skyfinger, a RAK4631, was certified
+                # as a Heltec V4 (2026-09-22). "" is the honest value: the
+                # certificate prints "unknown", and a blank board that turns
+                # out to be attached is refused rather than flashed with
+                # another board's image.
+                prof.rnode_board_key = board.key if board else ""
                 # The serial the medic read at flash time rides the profile so
                 # install_radio_rule can pin /dev/rnode to THIS radio even
                 # though the radio is in the operator's pocket during the build.
                 prof.radio.usb_serial = getattr(
                     self, "_guided_radio_usb_serial", "") or ""
+                prof.radio.usb_serial_source = getattr(
+                    self, "_guided_radio_usb_serial_source", "") or ""
                 # The birth answer configure_bluetooth applies on the node.
                 prof.bluetooth_enabled = bool(getattr(
                     self, "_guided_bluetooth", False))
@@ -3443,7 +3457,13 @@ class BirthScreen(BoxLayout):
         # ESP32-S3 and the operator was made to pick it out of a grid of
         # look-alikes (operator, 2026-08-02). A plain RNode carries no Reticulum
         # identity, so this fingerprint is the ONLY way to know it again.
-        if not cert.get("usb_serial"):
+        # ...but NEVER onto a Pi's certificate (2026-09-22). A Pi build's
+        # radio is not on the medic's USB, so ports[0] here is whatever
+        # bystander board happens to be plugged in — and save_cert RETIRES
+        # every other certificate carrying that serial, i.e. that board's
+        # own. The radio's identity travels as radio_rule instead.
+        if (not cert.get("usb_serial")
+                and getattr(self, "_last_type", "") != "pi_rnode"):
             try:
                 from ui.hw_factories import local_board_ports, LocalConnection
                 from workflows.rnode_flash import usb_id_for_port

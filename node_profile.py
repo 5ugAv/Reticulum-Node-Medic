@@ -62,6 +62,13 @@ class RadioConfig:
     #: finds nothing — this carried value is what lets /dev/rnode be pinned to
     #: THIS radio instead of any tty from five vendors. "" = never read.
     usb_serial: str = ""
+    #: WHERE usb_serial came from, in words the certificate can print —
+    #: "read by the medic when it flashed the board", or "read by this medic
+    #: when it flashed 'rak4' on 2026-08-07" (the board's own flash
+    #: certificate, looked up when the operator names a radio that is not on
+    #: the bench). The certificate says how the udev rule was pinned AND on
+    #: whose word; a serial with no provenance is a number (2026-09-22).
+    usb_serial_source: str = ""
 
 
 @dataclass

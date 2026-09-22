@@ -1934,6 +1934,7 @@ class ReticulumNodeMedicApp(App):
             rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
             on_push_reporter=self._push_reporter,
+            on_repair_radio=self._repair_radio,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps)))
         self.switch_mode("node_detail")
@@ -2344,6 +2345,69 @@ class ReticulumNodeMedicApp(App):
                     "[reporter] %s: %s" % (host, m), flush=True))
             except Exception as e:                                 # noqa: BLE001
                 ok, msg = False, "could not reach %s: %s" % (host, e)
+            Clock.schedule_once(lambda dt: report(msg, ok), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _repair_radio(self, record, board_key, report):
+        """Correct a Pi node's radio naming in place (workflows.radio_repair,
+        2026-09-22): the operator named the true board on the node page; the
+        serial, when this medic holds it, comes from that board's own flash
+        certificate; the udev rule goes over the same SSH road birth used and
+        is read back before anything is claimed. Then the medic's OWN
+        certificate for the node is corrected — a repaired node whose VITALS
+        page still says "Heltec LoRa32 v4" is half a repair. Off-thread; the
+        page's status line carries the outcome."""
+        import threading
+        import time
+        from transport.connection import SSHConnection
+        from workflows.radio_repair import (correct_certificate,
+                                            plan_radio_repair,
+                                            repair_radio_name)
+        from ui.cert_store import (cert_for_node, load_certs,
+                                   radio_serial_for_board)
+        name = (getattr(record, "name", "") or "").strip()
+        if not name:
+            report("This node has no name on record — cannot find it on the network.", False)
+            return
+        try:
+            board_name = plan_radio_repair(board_key).board_name
+        except ValueError as e:
+            report(str(e), False)
+            return
+        serial, how = radio_serial_for_board(board_name)
+        host = f"{name.lower()}.local"
+        report("Naming the radio on %s (%s, %s)…" % (
+            host, board_name, f"serial {serial}" if serial else how), None)
+        today = time.strftime("%Y-%m-%d")
+
+        def work():
+            try:
+                conn = SSHConnection(host, user="pi")
+                ok, msg = repair_radio_name(
+                    conn, board_key, serial, source=how if serial else "",
+                    repaired_on=today,
+                    log=lambda m: print("[radio-repair] %s: %s" % (host, m),
+                                        flush=True))
+            except Exception as e:                                 # noqa: BLE001
+                ok, msg = False, "could not reach %s: %s" % (host, e)
+            if ok:
+                # The node is right; now the medic's word about it — the
+                # SAME certificate, amended in place with what changed.
+                # Never deleted or re-saved (operator, 2026-09-22: Delete
+                # would tombstone the node's hashes for seven days).
+                try:
+                    cert = cert_for_node(load_certs(), dst_hash=getattr(
+                        record, "dst_hash", "") or "", name=name)
+                    plan = plan_radio_repair(
+                        board_key, serial, source=how if serial else "",
+                        repaired_on=today)
+                    if cert and correct_certificate(cert, plan):
+                        msg += " Certificate corrected."
+                    else:
+                        msg += (" No certificate of this medic's to correct "
+                                "— VITALS shows what the node reports.")
+                except Exception as e:                             # noqa: BLE001
+                    msg += " Certificate NOT corrected: %s" % e
             Clock.schedule_once(lambda dt: report(msg, ok), 0)
         threading.Thread(target=work, daemon=True).start()
 

@@ -184,6 +184,7 @@ class BirthGuideScreen(BoxLayout):
         self._proof_inflight = False
         self._radio_verified = False
         self._radio_usb_serial = ""
+        self._radio_usb_serial_source = ""   # one lap's provenance dies with it
         # And the Bluetooth answer, for the same reason: OFF is the resting
         # end, and one node's yes must never become the next node's radio.
         self._bluetooth_on = False
@@ -1007,6 +1008,10 @@ class BirthGuideScreen(BoxLayout):
         except Exception:                                          # noqa: BLE001
             serial = ""
         self._radio_usb_serial = serial
+        # Read off the board on the medic's USB just now — not at a flash.
+        # The certificate prints this sentence next to the serial.
+        self._radio_usb_serial_source = (
+            "read by the medic from the radio on its own USB" if serial else "")
         self._radio_verified = bool(c.get("_probed_alive"))
         self._board_key = self._board_key_of(c)
         # The board arrived WITH this road (read off the certificate), so the
@@ -1803,10 +1808,6 @@ class BirthGuideScreen(BoxLayout):
             self._pi_flash_radio = True
             self._render_antenna()
 
-        def already_have_one():
-            self._pi_flash_radio = False
-            self._render_name()
-
         wrap.add_widget(self._choice_card(
             tr("Flash a radio now"),
             tr("Node Medic flashes and tests one before the rest of the build."),
@@ -1815,11 +1816,30 @@ class BirthGuideScreen(BoxLayout):
             tr("I already have a working radio"),
             tr("Already flashed — yours, or one you'll birth separately and "
                "bring back. You'll plug it into the finished Pi at the end."),
-            already_have_one, height=126))
+            self._already_have_one, height=126))
         _bk = self._back_row()
         if _bk is not None:
             wrap.add_widget(_bk)
         self.add_widget(wrap)
+
+    def _already_have_one(self):
+        """"I already have a working radio" — the medic flashes nothing, but
+        it still has to be TOLD which radio, or its certificate cannot say.
+
+        Until 2026-09-22 this went straight to naming. The 2026-09-06 gate
+        that keeps the picker out of the STEPS on this road was right — the
+        radio is never on the medic's USB, so detection has nothing to
+        narrow — but it was read as "never ask", and the build then carried
+        NodeProfile's default board key into the certificate: skyfinger
+        (a Pi Zero 2 W + RAK4631) was certified as "Heltec LoRa32 v4" under
+        "Built by this medic", with the five-vendor udev net because no
+        serial could be looked up for a board nobody had named. One picker
+        screen, photos and names, asked once here; the answer rides the
+        hand-off as rnode_board_key and, when this medic flashed exactly one
+        board of that model, its serial pins /dev/rnode to that radio.
+        """
+        self._pi_flash_radio = False
+        self._render_pick_board(absent=True)
 
     def _guide_steps(self):
         """The active path's steps, honouring whether this "pi" build needs the
@@ -2253,6 +2273,12 @@ class BirthGuideScreen(BoxLayout):
                         # operator's pocket by now.
                         radio_usb_serial=getattr(
                             self, "_radio_usb_serial", "") or None,
+                        # ...and where that serial came from, so the
+                        # certificate can say on whose word /dev/rnode was
+                        # pinned (a flash certificate looked up for a radio
+                        # that was never on this bench, 2026-09-22).
+                        radio_usb_serial_source=getattr(
+                            self, "_radio_usb_serial_source", "") or None,
                         # And the Bluetooth answer, taken two screens after
                         # the name — the build applies it, so it rides the
                         # same hand-off as everything else already asked.
@@ -3106,12 +3132,19 @@ class BirthGuideScreen(BoxLayout):
         self._detected = None            # re-read rather than trust the snapshot
         self._render_pick_board(force_ask=True)
 
-    def _render_pick_board(self, force_ask=False):
+    def _render_pick_board(self, force_ask=False, absent=False):
         """Which radio is this? Only ever the candidates the medic cannot rule
         out — the chip and the USB transport have already narrowed the list.
 
         *force_ask* keeps the list on screen even when only one candidate
         survives, for the operator who has just said the one we chose is wrong.
+
+        *absent* is the "I already have a working radio" road (2026-09-22):
+        the radio is NOT on this bench, so there is no chip to read, nothing
+        to narrow and nothing to remember — the whole catalogue, photos and
+        names, and Back returns to the radio question this came from. The
+        medic asks because its certificate has to name the board, and a
+        board nobody named came out as the profile default (skyfinger).
         """
         self._stop_current()
         self.clear_widgets()
@@ -3121,22 +3154,37 @@ class BirthGuideScreen(BoxLayout):
         # Through the prelude: the share screen when it was asked, else the
         # name — never past the once-only map question.
         self._back_action = self._back_to_prelude
+        if absent:
+            self._back_action = self._render_pi_radio_choice   # the question it came from
         from kivy.uix.scrollview import ScrollView
         from ui.widgets.board_card import BoardCard
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(10))
-        cands = self._board_candidates(ignore_memory=force_ask)
-        if len(cands) == 1 and not force_ask:
-            self._board_key = cands[0][0]        # nothing to ask
-            self._render_pick_pi()
-            return
-        wrap.add_widget(_line(tr("Which radio board is this?"), "24sp", bold=True,
-                              h=40))
-        wrap.add_widget(_line(
-            tr("Same chip, same USB — only you can see which one you're "
-               "holding."), "15sp", color="text_secondary", h=32))
-        wrap.add_widget(_line(
-            tr("Answer once; Node Medic remembers this board."),
-            "13.5sp", color="green", h=24))
+        if absent:
+            # Not _board_candidates(): that re-reads the medic's USB, and a
+            # bystander board plugged into the medic would narrow the list
+            # to a radio that is not the one going onto this Pi.
+            from ui.birth import rnode_board_choices
+            cands = [(b.key, b.display_name) for b in rnode_board_choices()]
+            wrap.add_widget(_line(tr("Which radio will this node carry?"),
+                                  "24sp", bold=True, h=40))
+            wrap.add_widget(_line(
+                tr("It's not on Node Medic, so only you can say. The node's "
+                   "certificate names this board."),
+                "15sp", color="text_secondary", h=32))
+        else:
+            cands = self._board_candidates(ignore_memory=force_ask)
+            if len(cands) == 1 and not force_ask:
+                self._board_key = cands[0][0]        # nothing to ask
+                self._render_pick_pi()
+                return
+            wrap.add_widget(_line(tr("Which radio board is this?"), "24sp",
+                                  bold=True, h=40))
+            wrap.add_widget(_line(
+                tr("Same chip, same USB — only you can see which one you're "
+                   "holding."), "15sp", color="text_secondary", h=32))
+            wrap.add_widget(_line(
+                tr("Answer once; Node Medic remembers this board."),
+                "13.5sp", color="green", h=24))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
@@ -3216,8 +3264,42 @@ class BirthGuideScreen(BoxLayout):
 
     def _board_picked(self, key):
         self._board_key = key
+        if not getattr(self, "_pi_flash_radio", True):
+            # The "already have one" road (2026-09-22): the radio is not on
+            # the bench, so there is no chip to tie this answer to — nothing
+            # to remember — and the road continues where it always did, at
+            # the name. What CAN be known is the radio's serial: if this
+            # medic flashed exactly one board of that model, its own flash
+            # certificate holds it, and the build pins /dev/rnode to that
+            # radio instead of the five-vendor net. Two of them, or none,
+            # is "" — the rule stays wide and the certificate says so.
+            self._radio_usb_serial, self._radio_usb_serial_source = "", ""
+            try:
+                from ui.cert_store import radio_serial_for_board
+                serial, how = radio_serial_for_board(
+                    self._board_display_name(key))
+                if serial:
+                    self._radio_usb_serial = serial
+                    self._radio_usb_serial_source = how
+                self._trace(f"radio picked '{key}' (not on the bench): "
+                            f"serial {serial or 'unknown'} — {how}")
+            except Exception:                                      # noqa: BLE001
+                pass
+            self._render_name()
+            return
         self._remember_board(key)
         self._render_pick_pi()
+
+    def _board_display_name(self, key):
+        """The catalogue name for a board key, or "this radio". From the
+        catalogue, NOT _board_candidates(): that re-reads the medic's USB,
+        which on the "already have one" road holds no radio of ours."""
+        try:
+            from workflows.rnode_boards import get_board
+            b = get_board(key or "")
+            return b.display_name if b else "this radio"
+        except Exception:                                          # noqa: BLE001
+            return "this radio"
 
     def _remember_board(self, key):
         """Tie the operator's answer to THIS chip, so it is never asked twice.
@@ -3395,12 +3477,15 @@ class BirthGuideScreen(BoxLayout):
         from ui.screens.birth_screen import PI_HOSTS
         from ui import board_images
 
-        # On the "I already have a working radio" road no radio was picked
-        # here — confirming one back would be inventing hardware. Confirm the
-        # Pi alone, which is the answer that actually writes the card.
+        # The radio row appears when a board is KNOWN — picked from the
+        # medic's USB on the flash road, or named from the photo picker on
+        # the "already have one" road (2026-09-22; before that road asked,
+        # confirming a radio here would have been inventing hardware). The
+        # name comes from the catalogue, never from _board_candidates(),
+        # which re-reads the medic's USB for a radio that may not be here.
         flashing = bool(getattr(self, "_pi_flash_radio", True))
-        board_name = (dict(self._board_candidates()).get(
-            getattr(self, "_board_key", ""), "this radio") if flashing else "")
+        board_name = (self._board_display_name(getattr(self, "_board_key", ""))
+                      if getattr(self, "_board_key", "") else "")
         pi_name = next((n for k, n in PI_HOSTS
                         if k == getattr(self, "_pi_key", "")), "this Pi")
 
@@ -3425,7 +3510,7 @@ class BirthGuideScreen(BoxLayout):
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
         rows = []
-        if flashing:
+        if board_name:
             rows.append(("Radio", board_name,
                          board_images.image_for(
                              getattr(self, "_board_key", "")) or ""))

@@ -789,6 +789,45 @@ def rnode_udev_rules(serial: str = "") -> str:
     return "\n".join(lines) + "\n"
 
 
+#: What the certificate says for a board the medic was never told about.
+#: On the guide's "I already have a working radio" road the radio never
+#: touches the medic; until 2026-09-22 that road never asked which board it
+#: was either, so NodeProfile's DEFAULT key (heltec32_v4) reached the
+#: certificate as "Heltec LoRa32 v4" — printed under "Built by this medic"
+#: for skyfinger, which carries a RAK4631. A default is not a fact.
+UNKNOWN_BOARD_TEXT = "unknown — radio attached after the build, board not named"
+
+
+def board_text(board_key: str) -> str:
+    """The board's catalogue name for the certificate, or the honest unknown.
+
+    Never the profile's hardware value: that is the Pi model (or its default),
+    and printing it as the radio board was the second half of the same lie.
+    """
+    board = get_board(board_key or "")
+    return board.display_name if board else UNKNOWN_BOARD_TEXT
+
+
+def radio_port_text(rule: Optional[dict]) -> str:
+    """The port line for the certificate: what the udev rule ACTUALLY does.
+
+    The node's config points at the symlink (see render_config), so the only
+    truthful port is /dev/rnode plus how udev decides which device gets that
+    name — by the radio's own serial (and where the medic learned it), or by
+    the vendor net. *rule* is what install_radio_rule recorded after reading
+    the file back; None means that step left no record, and the text says so
+    rather than falling back to a port name nothing ever opened.
+    """
+    if not rule:
+        return f"{RNODE_SYMLINK} (udev rule not recorded by this build)"
+    if rule.get("by") == "serial" and rule.get("serial"):
+        source = rule.get("source") or ""
+        return (f"{RNODE_SYMLINK} (udev, by serial {rule['serial']}"
+                + (f" — {source}" if source else "") + ")")
+    return (f"{RNODE_SYMLINK} (udev, by vendor — any tty from "
+            f"{len(_RNODE_USB_VENDORS)} makers; no serial known)")
+
+
 def attached_radio_serial(wf: "BuildWorkflow") -> str:
     """The serial of the radio attached to the node right now, or "".
 
@@ -824,7 +863,13 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
         # (2026-08-12 handover). The flash captured the board's USB serial; the
         # profile carries it here so the rule can still name that one device.
         serial = (getattr(wf.profile.radio, "usb_serial", "") or "").strip()
-        came_from = "read by the medic when it flashed the board" if serial else ""
+        # The profile can say where ITS serial came from — the board's own
+        # flash certificate, when the operator named a radio that is not on
+        # the bench (2026-09-22). The generic sentence stays for the flash
+        # hand-back, which is what it always described.
+        came_from = ((getattr(wf.profile.radio, "usb_serial_source", "") or "")
+                     .strip() or "read by the medic when it flashed the board"
+                     if serial else "")
     rules = rnode_udev_rules(serial)
     code, out, err = wf.connection.run(
         _write_remote_file(wf, "/etc/udev/rules.d/60-rnode.rules", rules))
@@ -848,6 +893,13 @@ def install_radio_rule(wf: "BuildWorkflow") -> StepResult:
     # the bench does.
     wf.connection.run(wf.priv("udevadm control --reload-rules"))
     wf.connection.run(wf.priv("udevadm trigger --subsystem-match=tty"))
+    # WHAT WAS WRITTEN AND READ BACK, for the certificate. The cert step
+    # cannot see this file (it asks the node about other things) and must
+    # not reconstruct it from the profile: the record is made here, after
+    # the read-back, so the certificate's port line is what the node holds
+    # (2026-09-22 — skyfinger's cert printed the profile default instead).
+    wf.radio_rule = {"by": "serial" if serial else "vendor",
+                     "serial": serial, "source": came_from}
     how = (f"this radio only (serial {serial}, {came_from})" if serial
            else "a radio from any of the makers this tool flashes — no serial "
                 "was available to pin it tighter")
@@ -1740,7 +1792,15 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         "mac_address": mac,
         "reticulum_address": ret_addr or None,
         "role": wf.profile.role.value,
-        "board": board.display_name if board else wf.profile.hardware.value,
+        # THE BOARD THE MEDIC WAS TOLD, OR "UNKNOWN". This line used to fall
+        # back to wf.profile.hardware.value — and get_board() of the profile
+        # DEFAULT key is a real board, so skyfinger's certificate named a
+        # Heltec V4 the medic had never seen (2026-09-22). board_text prints
+        # the catalogue name for a key the profile actually carries and an
+        # honest unknown otherwise; board_key travels raw so a repair or
+        # rebuild can act on it without parsing the sentence.
+        "board": board_text(wf.profile.rnode_board_key),
+        "board_key": board.key if board else None,
         "rnode_firmware": FIRMWARE_VERSION if wf.profile.has_rnode else None,
         "rgb_led_pin": wf.profile.rnode_rgb_pin,
         "frequency_mhz": r.frequency_mhz,
@@ -1748,7 +1808,16 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         "spreading_factor": r.spreading_factor,
         "coding_rate": r.coding_rate,
         "tx_power_dbm": r.tx_power_dbm,
-        "serial_port": r.serial_port,
+        # THE PORT THE NODE'S CONFIG NAMES, and how udev fills it — not
+        # r.serial_port, which on every Pi birth is the NodeProfile default
+        # (the radio is never attached during the build; see RNODE_SYMLINK).
+        # radio_rule is install_radio_rule's own record of the file it
+        # wrote and read back; the serial is kept OUT of "usb_serial", the
+        # key save_cert retires other certificates by — the radio's own
+        # flash certificate would be deleted the moment this one was saved.
+        "serial_port": radio_port_text(getattr(wf, "radio_rule", None)),
+        "radio_rule": dict(wf.radio_rule) if getattr(wf, "radio_rule", None)
+                      else None,
         "session_id": wf.profile.session_id,
         # THE ANSWER TRAVELS WITH THE NODE. Whoever inherits this node — the
         # whole point of a birth certificate — can see whether it tells the
@@ -1835,6 +1904,10 @@ class BuildWorkflow:
         #: Filled by ``prove_the_node_reports``: what the node was actually heard
         #: to say, per channel. Read onto the birth certificate.
         self.report_proof = None
+        #: install_radio_rule's record of the udev rule it wrote AND read
+        #: back: {"by": "serial"|"vendor", "serial", "source"}. None until
+        #: that step succeeds; the certificate prints it (2026-09-22).
+        self.radio_rule: Optional[dict] = None
         self._root: Optional[bool] = None
         self._user: Optional[str] = None
 

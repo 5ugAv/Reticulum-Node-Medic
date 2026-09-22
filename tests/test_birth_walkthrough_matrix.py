@@ -255,6 +255,11 @@ _REAL_METHODS = [
     # reported tail's exit code (the SAME trap WORKING_METHOD logged on
     # 2026-08-14; pipefail or read-the-summary-line, never trust the pipe).
     "_counter", "_lead_screens", "_next_text_for",
+    # The radio-source answer and the picker's own handler run as shipped
+    # (2026-09-22): "I already have a working radio" now goes THROUGH the
+    # board picker before naming, and _board_picked decides where a pick
+    # leads — the name on that road, the Pi on the flash road.
+    "_already_have_one", "_board_picked", "_board_display_name",
 ]
 
 _SHARED_NS = {
@@ -352,14 +357,21 @@ class DrivenGuide:
     def _render_location_share(self, *a, **k):
         self.asked.append("share")
 
-    def _render_pick_board(self, force_ask=False):
+    def _render_pick_board(self, force_ask=False, absent=False):
         # The operator answers the radio question with the scenario's board —
         # the real screen's memory/auto-advance shortcuts are its own tests'
-        # business (test_guide_board_candidates); the FLOW is the same either
-        # way: board -> Pi -> confirm.
-        self.asked.append("pick_board")
-        self._board_key = self.sc_board
-        self._render_pick_pi()
+        # business (test_guide_board_candidates). The answer goes through
+        # the SHIPPED handler, which decides what follows: the Pi on the
+        # flash road; the name on the "already have one" road, where the
+        # picker shows the whole catalogue (absent=True, 2026-09-22).
+        self.asked.append("pick_board_absent" if absent else "pick_board")
+        self._board_picked(self.sc_board)
+
+    def _remember_board(self, key):
+        pass                            # board memory is a real-USB concern
+
+    def _render_pi_radio_choice(self, *a, **k):
+        self.asked.append("radio_choice")   # Back from the absent picker
 
     def _render_pick_pi(self, *a, **k):
         # Answer the way the SCREEN does — through _pi_picked — and let the
@@ -565,7 +577,11 @@ def rig(monkeypatch):
                             by_id_serial=lambda usb_id: env["serial"],
                             usb_id_for_port=lambda conn, port: "usb-Espressif"))
     monkeypatch.setitem(sys.modules, "ui.cert_store", types.SimpleNamespace(
-        cert_for_usb_serial=lambda serial: env["cert"]))
+        cert_for_usb_serial=lambda serial: env["cert"],
+        # what this medic's ledger holds for a board named on the have-one
+        # road: (serial, how) — nothing unless a scenario says so
+        radio_serial_for_board=lambda name: env.get(
+            "held", ("", f"no {name} flashed by this medic"))))
     return env, clock
 
 
@@ -580,7 +596,13 @@ def _pi_guide(env, clock, *, pi, board, state, reach=CABLE_ADDR):
     g._node_name = "MatrixNode"
     g._share_asked = True
     g._bt_asked = True
-    g._pi_flash_radio = state != "have_one"
+    if state == "have_one":
+        # The shipped answer to "Does this node have its radio yet?" —
+        # since 2026-09-22 it asks WHICH radio (the whole catalogue, the
+        # radio not being on the bench) and only then goes on to the name.
+        g._already_have_one()
+    else:
+        g._pi_flash_radio = True
     return g
 
 
@@ -593,9 +615,10 @@ def walk_pi(env, clock, *, pi, board, state, reach=CABLE_ADDR):
 
 def _expected_power_warning(pi, board, state):
     """The verdict screen the walkthrough OWES this pairing, computed the way
-    _check_pairing computes it. On the have-one road no board was picked, so
-    the check runs against '' exactly as shipped."""
-    bk = board if state != "have_one" else ""
+    _check_pairing computes it. Since 2026-09-22 the have-one road names its
+    board too, so the same pairing gets the same verdict on every road — the
+    Pi feeds that radio at the end whichever road it came by."""
+    bk = board
     try:
         return bool(needs_warning(pi, bk, power_compat.check(pi, bk)))
     except Exception:                                          # noqa: BLE001
@@ -762,14 +785,36 @@ def test_a_certified_radio_skips_the_flash_entirely(rig):
         "the recorded certificate's serial must arm the udev pinning"
 
 
-def test_the_have_one_road_never_asks_about_a_radio(rig):
+def test_the_have_one_road_asks_which_radio_once_before_the_name(rig):
+    """Until 2026-09-22 this road never asked, and the build carried the
+    profile DEFAULT board onto the certificate (skyfinger, a RAK4631,
+    certified as a Heltec V4). Now: the whole-catalogue picker ONCE, at the
+    radio question, then the name — and never again inside the steps, where
+    the 2026-09-06 gate still holds (the radio is not on the medic's USB)."""
     env, clock = rig
-    g = walk_pi(env, clock, pi="pi_4b", board="heltec32_v4", state="have_one")
+    g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
     assert g.ended == ("done",)
+    assert g.asked.count("pick_board_absent") == 1
     assert "pick_board" not in g.asked, \
-        "'I already have a working radio' must not ask which radio"
+        "the steps' own picker reads the medic's USB — not for this road"
+    assert g.asked.index("pick_board_absent") < g.asked.index("name")
+    assert g._board_key == "rak4631" and g._pi_flash_radio is False
     assert [n["screen"] for n in g.navigations] == ["pi_imager", "birth"]
     assert g.visits() == [0, 1, 2, 3, 4], g.visits()
+
+
+def test_the_have_one_road_carries_the_serial_this_medic_holds_for_that_board(rig):
+    """This medic flashed exactly one RAK4631 (its flash certificate holds
+    the serial): the Pi hand-off pins /dev/rnode to it. None held: "" and
+    the certificate says by-vendor."""
+    env, clock = rig
+    env["held"] = ("4631000000000001", "read by this medic when it flashed 'rak4'")
+    g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
+    assert g._radio_usb_serial == "4631000000000001"
+    assert g._radio_usb_serial_source.startswith("read by this medic")
+    env["held"] = ("", "no RAK4631 flashed by this medic")
+    g = walk_pi(env, clock, pi="pi_4b", board="rak4631", state="have_one")
+    assert g._radio_usb_serial == "" and g._radio_usb_serial_source == ""
 
 
 # ---------------------------------------------------------------------------
