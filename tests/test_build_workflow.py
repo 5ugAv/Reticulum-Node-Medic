@@ -22,6 +22,7 @@ EXPECTED_STEPS = [
     "apply_system_hardening",
     "configure_bluetooth",
     "set_hostname",
+    "set_node_timezone",
     "final_verification",
     "prove_the_node_reports",
     "hand_the_usb_port_back",

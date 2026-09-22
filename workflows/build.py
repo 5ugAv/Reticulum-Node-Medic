@@ -1445,6 +1445,43 @@ def set_hostname(wf: "BuildWorkflow") -> StepResult:
                       else f"Could not set hostname: {err or out}")
 
 
+_TZ_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$")
+
+
+@build_step
+def set_node_timezone(wf: "BuildWorkflow") -> StepResult:
+    """Give the node the medic's own timezone, and read it back.
+
+    A stock Pi OS image is Europe/London; NTP then sets the CLOCK right and
+    every timestamp the node prints is still nine hours off for an
+    Australian operator (ELSEWHERE and SKYFINGER, 2026-09-23). The card's
+    custom.toml carries the zone for first boot; this step covers a card
+    imaged elsewhere and proves the result. The zone is the medic's own,
+    read at birth — when the medic could not read its own, the node keeps
+    the image default and this step says so rather than guessing one.
+    """
+    tz = (wf.profile.timezone or "").strip()
+    if not tz:
+        return StepResult("set_node_timezone", True,
+                          "Node Medic could not read its own timezone, so the "
+                          "node keeps the image default (Europe/London on a "
+                          "stock Pi OS image).", skipped=True)
+    if not _TZ_RE.match(tz):
+        return StepResult("set_node_timezone", False,
+                          f"{tz!r} is not a timezone name; nothing was changed.")
+    code, out, err = wf.connection.run(wf.priv(f"timedatectl set-timezone {tz}"))
+    if code != 0:
+        return StepResult("set_node_timezone", False,
+                          f"Could not set the timezone: {err or out}")
+    got = (wf.connection.run("timedatectl show -p Timezone --value")[1] or "").strip()
+    if got != tz:
+        return StepResult("set_node_timezone", False,
+                          f"Set the timezone to {tz} but the node reads back "
+                          f"{got or 'nothing'}.")
+    return StepResult("set_node_timezone", True,
+                      f"Timezone {tz} — the medic's own — set and read back.")
+
+
 @build_step
 def final_verification(wf: "BuildWorkflow") -> StepResult:
     """The check-over that must not be passable by a mute node.
@@ -1873,6 +1910,8 @@ def birth_certificate(wf: "BuildWorkflow") -> StepResult:
         "radio_rule": dict(wf.radio_rule) if getattr(wf, "radio_rule", None)
                       else None,
         "session_id": wf.profile.session_id,
+        # The zone the node prints its own timestamps in (set_node_timezone).
+        "timezone": wf.profile.timezone or None,
         # THE ANSWER TRAVELS WITH THE NODE. Whoever inherits this node — the
         # whole point of a birth certificate — can see whether it tells the
         # world roughly where it is, without having to read its config or guess

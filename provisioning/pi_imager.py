@@ -758,7 +758,7 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           pw_hasher: Callable[[str], str] = None,
           authorized_keys: Optional[List[str]] = None,
           cable_link: bool = True, pi_key: str = "",
-          medic: bool = False) -> Tuple[bool, str]:
+          medic: bool = False, timezone: str = "") -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
     ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
@@ -782,9 +782,11 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     code, out = run_shell(write_image_command(image, device_path))
     if code != 0:
         return (False, f"Writing the image failed: {out[-200:]}")
+    # The MEDIC'S timezone for first boot (2026-09-23): a stock image is
+    # Europe/London, and NTP fixes the clock but never the zone.
     toml = build_custom_toml(hostname, username, password,
-                             wifi_country, enable_ssh, pw_hasher=pw_hasher,
-                             authorized_keys=authorized_keys)
+                             wifi_country, enable_ssh, timezone=timezone,
+                             pw_hasher=pw_hasher, authorized_keys=authorized_keys)
     hasher = pw_hasher or password_hash
     pw_hash = hasher(password) if password else ""
     user_data = build_cloud_init_user_data(

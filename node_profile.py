@@ -106,6 +106,12 @@ class NodeProfile:
     #: "" = no board named. The certificate records it so a reader months on
     #: can tell a reading from a naming (2026-09-22).
     rnode_board_source: str = ""
+    #: The node's timezone, as an IANA name — the MEDIC'S own, read at birth
+    #: (provisioning.tool_datetime.current_timezone). "" = the medic could not
+    #: read its own, and the node keeps the image default (the build says so).
+    #: ELSEWHERE and SKYFINGER printed London time on Sydney clocks for weeks
+    #: because nothing ever said which zone they live in (2026-09-23).
+    timezone: str = ""
     #: LoRa band (MHz) to provision a blank board in.
     rnode_band_mhz: int = 915
     #: GPIO the NeoPixel status LED signal wire lands on, when the RGB build was

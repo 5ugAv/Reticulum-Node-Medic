@@ -30,6 +30,15 @@ from ui.widgets.surgery_anim import SurgeryAnim
 from provisioning import pi_imager
 from provisioning.pi_imager import hostnameify, validate_new_password
 
+
+def _medic_timezone() -> str:
+    """The medic's own IANA timezone, or "" when it cannot be read."""
+    try:
+        from provisioning.tool_datetime import current_timezone
+        return current_timezone() or ""
+    except Exception:                                              # noqa: BLE001
+        return ""
+
 _EST_WRITE_S = 240.0                       # rough dd+config time for the fill estimate
 
 
@@ -688,7 +697,11 @@ class PiImagerScreen(BoxLayout):
                 # pin, so the default dr_mode=otg resolves to HOST and the board
                 # can never appear on the medic. Empty (board unknown) keeps the
                 # plain overlay, which is what every board got before.
-                pi_key=self._pi_config_key())
+                pi_key=self._pi_config_key(),
+                # The medic's own timezone, for the card's first boot — a
+                # stock image is Europe/London (2026-09-23). "" = unknown,
+                # and the toml then says nothing rather than guessing.
+                timezone=_medic_timezone())
             if ok:
                 # Remember what we just named it, so BIRTH can offer the Pi's
                 # address instead of asking the operator for an IP they have

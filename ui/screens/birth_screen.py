@@ -2541,6 +2541,13 @@ class BirthScreen(BoxLayout):
                 # never on this medic), read off this medic's USB and
                 # confirmed on the flash road; the guide says which, and
                 # a board picked on THIS screen is the operator's naming.
+                # THE MEDIC'S OWN TIMEZONE rides to the node (2026-09-23);
+                # "" when it cannot be read, and the build step says so.
+                try:
+                    from provisioning.tool_datetime import current_timezone
+                    prof.timezone = current_timezone() or ""
+                except Exception:                                  # noqa: BLE001
+                    prof.timezone = ""
                 prof.rnode_board_source = (
                     "" if not board else
                     (getattr(self, "_guided_board_source", "") or
