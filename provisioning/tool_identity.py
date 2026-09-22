@@ -50,6 +50,9 @@ _OWN_IDENTITY_FILES = [
     os.path.expanduser("~/.lxmd/identity"),
     # The health-reply destination's identity (docs/HEALTH_REPLY_UNICAST.md).
     os.path.expanduser("~/.reticulum-node-medic/health_reply_identity"),
+    # The shell health ping's persistent identity (scripts/rnm_health_ping.py)
+    # — the medic's own instrument, never a neighbour.
+    os.path.expanduser("~/.reticulum-node-medic/health_ping_identity"),
 ]
 
 

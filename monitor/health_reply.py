@@ -68,6 +68,11 @@ PENDING_TTL_S = 300.0
 #: A dedicated, persistent identity for the reply destination — not the rnsd
 #: transport identity (rnsd owns that) and not lxmd's.
 REPLY_IDENTITY_PATH = "~/.reticulum-node-medic/health_reply_identity"
+#: The shell ping's own identity — ONE, persistent. A throwaway identity
+#: per run announced a new destination each time, and the medic listed
+#: each as "Neighbour … heard on the mesh" (four ghosts, 2026-09-22).
+#: This file is in the medic's own-identity list, so it never lists.
+PING_TOOL_IDENTITY_PATH = "~/.reticulum-node-medic/health_ping_identity"
 
 
 def load_or_create_identity(rns, path: str = REPLY_IDENTITY_PATH):

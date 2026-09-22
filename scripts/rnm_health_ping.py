@@ -24,8 +24,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from monitor.health_reply import (announce_wait_s, build_fallback_request,
-                                  build_request_to, unicast_wait_s, verify_reply,
-                                  REPLY_APP, REPLY_ASPECTS)
+                                  build_request_to, load_or_create_identity,
+                                  unicast_wait_s, verify_reply,
+                                  PING_TOOL_IDENTITY_PATH, REPLY_APP, REPLY_ASPECTS)
 
 
 def main(argv=None) -> int:
@@ -57,7 +58,9 @@ def main(argv=None) -> int:
     got = {"unicast": None, "announce": None, "announce_at": None, "unicast_at": None}
     ev = threading.Event()          # set only by a UNICAST reply
     ann = threading.Event()         # set by an announce with a beacon
-    my_ident = RNS.Identity()
+    # ONE persistent identity for this tool — a fresh one per run announced a
+    # new destination every time, and the medic listed each as a neighbour.
+    my_ident = load_or_create_identity(RNS, PING_TOOL_IDENTITY_PATH)
     reply_dest = RNS.Destination(my_ident, RNS.Destination.IN, RNS.Destination.SINGLE,
                                  REPLY_APP, *REPLY_ASPECTS)
 
