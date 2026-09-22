@@ -358,6 +358,11 @@ class ReticulumNodeMedicApp(App):
             self._idle_ev = None
             Window.bind(on_touch_down=lambda *_a: self._reset_idle())
             self._reset_idle()
+            # The busy marker (monitor/busy_marker.py): written every 30 s
+            # while the UI is mid-task, so nothing stops the process under a
+            # birth (2026-09-22).
+            self._busy_clock = Clock.schedule_interval(self._busy_heartbeat, 30.0)
+            self._busy_heartbeat()
         except Exception as e:
             print(f"[screensaver] install skipped: {e}")
 
@@ -386,19 +391,45 @@ class ReticulumNodeMedicApp(App):
         try:
             from provisioning import screensaver as ss
             sm = getattr(self, "sm", None)
-            scan = getattr(self, "scan_screen", None)
-            # A walk's whole product is a flash on the screen; the saver
-            # covered it after the idle delay (three agents, 2026-09-21).
-            walking = (getattr(scan, "_walk", None) is not None
-                       or getattr(scan, "_walk_gate", None) is not None)
-            busy = ((sm is not None and sm.current in self._NO_SAVER_SCREENS)
-                    or getattr(self, "_activity", 0) > 0 or walking)
+            busy = self._busy_reason() is not None
             if busy:
                 self._reset_idle()            # defer — don't cover an active process
                 return
             if not self._screensaver.active:
                 self._screensaver.show(ss.style())
         except Exception:
+            pass
+
+    def _busy_reason(self):
+        """Why the UI must not be stopped or covered right now, or None. ONE
+        predicate for the screensaver AND the busy marker (monitor/
+        busy_marker.py): a mid-task screen (birth, imaging, triage, probe,
+        clone, self-check), a counted activity (a flash/build), or a
+        boundary walk or its gates."""
+        sm = getattr(self, "sm", None)
+        if sm is not None and sm.current in self._NO_SAVER_SCREENS:
+            return "the %s screen is mid-task" % sm.current
+        if getattr(self, "_activity", 0) > 0:
+            return getattr(self, "_activity_label", "a build")
+        scan = getattr(self, "scan_screen", None)
+        if getattr(scan, "_walk", None) is not None:
+            return "a boundary walk"
+        if getattr(scan, "_walk_gate", None) is not None:
+            return "a boundary walk (waiting at the gate)"
+        return None
+
+    def _busy_heartbeat(self, *_):
+        """Every 30 s: write the marker while busy, clear it when not. A
+        Pi birth over SSH was killed by a shell-side UI stop that had no
+        way to know (2026-09-22); now the UI says so on disk."""
+        try:
+            from monitor import busy_marker
+            why = self._busy_reason()
+            if why:
+                busy_marker.write(why)
+            else:
+                busy_marker.clear()
+        except Exception:                                          # noqa: BLE001
             pass
 
     def begin_activity(self, label="Working — please wait"):
@@ -413,6 +444,7 @@ class ReticulumNodeMedicApp(App):
         self._activity_started = _t.time()
         if self._activity == 1:
             self._show_activity_banner(label)
+        self._busy_heartbeat()
 
     def activity_info(self):
         """(label, seconds_running) of the current activity — for telling the
@@ -424,6 +456,7 @@ class ReticulumNodeMedicApp(App):
 
     def end_activity(self):
         self._activity = max(0, getattr(self, "_activity", 0) - 1)
+        self._busy_heartbeat()
         if self._activity == 0:
             self._hide_activity_banner()
 
@@ -1540,6 +1573,11 @@ class ReticulumNodeMedicApp(App):
     def on_stop(self):
         try:
             self.scan_screen.end_walk()       # bank a walk the exit would lose
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:
+            from monitor import busy_marker
+            busy_marker.clear()               # a clean exit is not busy
         except Exception:                                          # noqa: BLE001
             pass
         self._lighthouse_on = False

@@ -8,29 +8,16 @@
 # why. A restart is never so urgent that it is worth destroying work in
 # progress, and the person typing it usually cannot see the screen.
 # Override with FORCE=1 when the running instance is the thing that is broken.
-if [ "${FORCE:-0}" != "1" ]; then
-    busy=""
-    # An SD image write: xzcat feeding dd, or dd straight onto a USB disk.
-    pgrep -f "[x]zcat" >/dev/null 2>&1 && busy="an SD card image write"
-    pgrep -f "[d]d .*of=/dev/sd" >/dev/null 2>&1 && busy="an SD card write"
-    # A board flash. Interrupting one mid-erase can leave a board that will not
-    # re-enter its bootloader without hands-on recovery.
-    pgrep -f "[e]sptool" >/dev/null 2>&1 && busy="a board firmware flash"
-    pgrep -f "[r]nodeconf" >/dev/null 2>&1 && busy="an RNode provisioning run"
-    # nRF52 boards flash over serial DFU, not esptool. Interrupting one is
-    # worse than interrupting an ESP32: a board like the Heltec MeshPocket
-    # cannot be power-cycled at all, so recovery is a button press the
-    # operator may not be near.
-    pgrep -f "[a]dafruit-nrfutil" >/dev/null 2>&1 && busy="an nRF52 serial DFU flash"
-    pgrep -f "[a]rduino-cli upload" >/dev/null 2>&1 && busy="a board firmware upload"
-    if [ -n "$busy" ]; then
-        echo "REFUSING to restart: $busy is in progress." >&2
-        echo "Wait for it to finish, or re-run with FORCE=1 if you are certain." >&2
-        exit 3
-    fi
+# The guard lives in ui_busy_guard.sh (2026-09-22): the hardware checks
+# below plus the UI's own BUSY marker — a Pi birth runs over SSH inside the
+# UI process and showed nothing here, and one was killed by a shell-side
+# stop. STOP_ONLY=1 stops without starting (for a registry prune) under the
+# SAME guard: there is no other sanctioned way to stop the UI.
+bash "$(dirname "$0")/ui_busy_guard.sh" || exit 3
 fi
 pkill -f "[p]ython3 .*main.py" 2>/dev/null
 sleep 3
 pkill -9 -f "[p]ython3 .*main.py" 2>/dev/null
 sleep 1
+if [ "${STOP_ONLY:-0}" = "1" ]; then echo "UI stopped (STOP_ONLY)"; exit 0; fi
 setsid nohup env WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:0 XDG_SESSION_TYPE=tty bash ~/reticulum-tool/scripts/start_ui.sh >> ~/ui.log 2>&1 </dev/null &

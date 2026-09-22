@@ -578,3 +578,24 @@ A subagent's careful foreground run caught it two days later.
 the summary line and the exit code separately, or `set -o pipefail`. A
 lesson written down but not turned into a habit is a lesson scheduled to
 repeat — this is the second time, and the entry exists so there is no third.
+
+## 2026-09-22 — The UI is never stopped by hand
+
+A Pi Zero birth was killed mid-flight. The medic's UI was stopped from a
+shell (`pkill` on the process) to prune the registry; the check before
+it looked only for a running boundary walk. `scripts/restart_ui.sh`
+refuses during a card write or a board flash because those show up as
+processes — but a Pi birth runs over SSH from *inside* the UI process
+and shows nothing on the machine. The operator came back to a dead
+build.
+
+The rule: **the only sanctioned way to stop the UI is
+`scripts/restart_ui.sh`** (`STOP_ONLY=1` to stop without starting, for a
+prune). It runs `scripts/ui_busy_guard.sh`, which refuses on the
+hardware signs *and* on the UI's own **busy marker**
+(`~/.reticulum-node-medic/ui_busy`, `monitor/busy_marker.py`): the UI
+writes it while a mid-task screen, a counted activity, or a walk is
+running, and touches it every 30 s; a marker older than 90 s is a crashed
+UI's and does not block. `FORCE=1` overrides, and is for when the running
+instance is the thing that is broken — with the operator's word, never on
+a hunch. A shell that bypasses the script bypasses the operator.

@@ -92,8 +92,11 @@ def test_a_truncated_evidence_line_does_not_hide_the_rest(tmp_path):
 # -- screen and app wiring (pinned in code, not prose) ---------------------
 
 def test_the_screensaver_never_covers_a_walk_or_its_gate():
-    body = _body(APP, "_show_screensaver")
-    assert "_walk" in body and "_walk_gate" in body
+    # Since 2026-09-22 the screensaver defers on ONE predicate shared with
+    # the busy marker; the walk and its gate must be in that predicate.
+    assert "self._busy_reason()" in _body(APP, "_show_screensaver")
+    busy = _body(APP, "_busy_reason")
+    assert "_walk" in busy and "_walk_gate" in busy
 
 
 def test_auto_backpack_stands_down_while_a_walk_is_running():
