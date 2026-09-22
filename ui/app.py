@@ -516,7 +516,7 @@ class ReticulumNodeMedicApp(App):
         if getattr(self, "_activity", 0) > 0:
             return getattr(self, "_activity_label", "a build")
         scan = getattr(self, "scan_screen", None)
-        if getattr(scan, "_walk", None) is not None:
+        if getattr(scan, "_walk_session", None) is not None:
             return "a boundary walk"
         if getattr(scan, "_walk_gate", None) is not None:
             return "a boundary walk (waiting at the gate)"
@@ -2761,7 +2761,7 @@ class ReticulumNodeMedicApp(App):
         if det is None:
             return
         scan = getattr(self, "scan_screen", None)
-        if (getattr(scan, "_walk", None) is not None
+        if (getattr(scan, "_walk_session", None) is not None
                 or getattr(scan, "_walk_gate", None) is not None):
             # A walk IS movement. Switching to Backpack restarts rnsd, and
             # the medic's own outage would be banked as the node's edge

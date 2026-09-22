@@ -1583,7 +1583,7 @@ class ScanScreen(BoxLayout):
         # honest sentence (coasting on memory is worth a sentence).
         self.badge.set("" if t["level"] == "live" else t["title"], t["level"])
         hint = t["detail"]
-        walking = (getattr(self, "_walk", None) is not None
+        walking = (getattr(self, "_walk_session", None) is not None
                    or getattr(self, "_walk_gate", None) is not None)
         if t["level"] != "live" and not walking:   # no placement words mid-walk
             hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]
@@ -1659,7 +1659,7 @@ class ScanScreen(BoxLayout):
     def _on_map_pick(self, latlon):
         """Operator tapped the map to set the location (no GPS/internet needed).
         The pin already moved; adopt the point."""
-        if (getattr(self, "_walk", None) is not None
+        if (getattr(self, "_walk_session", None) is not None
                 or getattr(self, "_walk_gate", None) is not None):
             return          # a walk is a measurement, not a placement (2026-09-21)
         if self._manual:                       # a map tap supersedes manual entry
@@ -2167,7 +2167,7 @@ class ScanScreen(BoxLayout):
         # One walk (or gate) at a time — but a walk with samples is BANKED,
         # not thrown away: the plausible path here is an accidental edge-swipe
         # home mid-walk and a second press on a door (audit, 2026-09-21).
-        running = getattr(self, "_walk", None)
+        running = getattr(self, "_walk_session", None)
         self.end_walk(persist=bool(running is not None and running.samples))
         self._walk_record = record
         self._walk_ping_fn = ping_fn
@@ -2521,7 +2521,7 @@ class ScanScreen(BoxLayout):
         from monitor.boundary_walk import BoundaryWalkSession
         rec = self._walk_record
         lat, lon = anchor
-        self._walk = BoundaryWalkSession(
+        self._walk_session = BoundaryWalkSession(
             node_key=rec.dst_hash, node_name=rec.name or rec.dst_hash[:8],
             node_lat=lat, node_lon=lon, now=_t.time())
         self._show_walk_hud()
@@ -2545,7 +2545,7 @@ class ScanScreen(BoxLayout):
                         height=dp(54), spacing=dp(8))
         self._walk_lbl = Label(text=tr("Boundary walk — walk away from "
                                        "{name}. Pinging…").format(
-                                           name=self._walk.node_name),
+                                           name=self._walk_session.node_name),
                                bold=True, font_size=theme.font_sp("16sp"),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))
         with self._walk_lbl.canvas.before:
@@ -2674,7 +2674,7 @@ class ScanScreen(BoxLayout):
     def _walk_step_hint(self):
         """The one sentence telling the operator what to do with their body,
         right now. Re-read after every ping because the answer changes."""
-        w = getattr(self, "_walk", None)
+        w = getattr(self, "_walk_session", None)
         hint = getattr(self, "_walk_hint", None)
         if w is None or hint is None:
             return
@@ -2711,7 +2711,7 @@ class ScanScreen(BoxLayout):
 
     def _walk_tick(self, _dt):
         import time as _t
-        w = getattr(self, "_walk", None)
+        w = getattr(self, "_walk_session", None)
         if w is None or not w.due(_t.time()):
             return
         # Where the operator IS when the ping goes out. rnpath -w returns at
@@ -2738,7 +2738,7 @@ class ScanScreen(BoxLayout):
 
     def _walk_result(self, ok, snr_db, gps=None, hops=None, direct=None):
         import time as _t
-        w = getattr(self, "_walk", None)
+        w = getattr(self, "_walk_session", None)
         if w is None:
             return
         rssi = None
@@ -2769,7 +2769,7 @@ class ScanScreen(BoxLayout):
         """The found boundary flashes yellow/black, as specified on the bench
         (2026-08-13). Steady green otherwise — a banner that flashes for
         anything less teaches eyes to ignore it."""
-        w = getattr(self, "_walk", None)
+        w = getattr(self, "_walk_session", None)
         if w is None or w.state != "lost":
             return
         self._walk_flash_on = not getattr(self, "_walk_flash_on", False)
@@ -2787,7 +2787,7 @@ class ScanScreen(BoxLayout):
         """Stop, bank the evidence, tell the story. Safe to call idle — and
         it also cancels a GPS gate that never got as far as a walk, which is
         what the gate's Cancel button calls."""
-        w = getattr(self, "_walk", None)
+        w = getattr(self, "_walk_session", None)
         self._tear_down_walk_gate()
         for ev in ("_walk_ev", "_walk_flash_ev"):
             e = getattr(self, ev, None)
@@ -2800,7 +2800,7 @@ class ScanScreen(BoxLayout):
         self._walk_hud = None
         self._walk_hint = None
         self.plot.set_walk_trail([])
-        self._walk = None
+        self._walk_session = None
         self._show_placement(True)
         if w is None or not persist:
             return
