@@ -23,4 +23,9 @@ done
 # -u: unbuffered stdout/stderr. ui.log is a pipe/file, so buffered prints (RNS
 # log lines included) can sit invisible in an 8 KB buffer for hours — which hid
 # the 2026-07-30 deaf-listener evidence. Live logs are worth the tiny cost.
-exec /usr/bin/python3 -u main.py
+# ONE LOG FOR EVERY ROAD (2026-09-23). Started by the desktop's autostart
+# at boot, the UI's output went to ~/.xsession-errors; started by
+# scripts/restart_ui.sh, to ~/ui.log — so a boot-time UI left nothing in
+# the file every diagnosis reads, and two UIs launched by a doubled
+# autostart went unnoticed for a whole boot. Append here, whoever calls.
+exec /usr/bin/python3 -u main.py >> "$HOME/ui.log" 2>&1

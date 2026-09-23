@@ -60,3 +60,17 @@ def test_the_shell_scripts_parse():
     for script in ("scripts/restart_ui.sh", "scripts/ui_busy_guard.sh"):
         r = subprocess.run(["bash", "-n", script], capture_output=True, text=True)
         assert r.returncode == 0, f"{script}: {r.stderr}"
+
+
+def test_start_ui_logs_to_the_same_file_whoever_starts_it():
+    """The desktop's autostart and restart_ui.sh must leave the UI's output in
+    ONE file (~/ui.log). At boot it went to ~/.xsession-errors instead, and a
+    doubled autostart ran two UIs for a whole boot with nothing in the file
+    every diagnosis reads (2026-09-23)."""
+    import os, subprocess
+    from tests.srcutil import ROOT
+    path = os.path.join(ROOT, "scripts/start_ui.sh")
+    src = open(path, encoding="utf-8").read()
+    execs = [l for l in src.splitlines() if l.strip().startswith("exec ")]
+    assert len(execs) == 1 and 'main.py >> "$HOME/ui.log" 2>&1' in execs[0], execs
+    assert subprocess.run(["bash", "-n", path]).returncode == 0

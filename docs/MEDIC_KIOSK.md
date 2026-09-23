@@ -14,20 +14,29 @@ runs no notification service. The panel's window list shows a hover
 tooltip with the focused window's title in exactly that style, and the
 new window came up under wherever the pointer last rested.
 
-**What was done.** labwc reads `~/.config/labwc/autostart` INSTEAD of
-`/etc/xdg/labwc/autostart` when the user file exists. The medic account
-got a copy of the system file with the `wf-panel-pi` line removed:
+**What was done — corrected 2026-09-23.** The first attempt (22 Sep)
+wrote a per-user `~/.config/labwc/autostart` on the belief that labwc
+reads it INSTEAD of `/etc/xdg/labwc/autostart`. On this labwc it reads
+BOTH: at the next boot every entry ran twice — two `pcmanfm-pi`, two
+`kanshi`, `lxsession-xdg-autostart` twice and therefore TWO Node Medic
+UIs stacked on one screen — and the panel came back anyway. Found on
+23 Sep after the operator's reboot; fixed the honest way:
+
+- `/etc/xdg/labwc/autostart` (system file, root) has the `wf-panel-pi`
+  line removed, with a dated comment; the original is kept beside it as
+  `/etc/xdg/labwc/autostart.nodemedic-orig`.
+- `~/.config/labwc/autostart` is deleted (one file, no doubling).
+- `scripts/start_ui.sh` now appends the UI's output to `~/ui.log`
+  itself, so the boot road and the restart road log to the same file.
+
+Now:
 
 ```
 /usr/bin/lwrespawn /usr/bin/pcmanfm-pi &
 /usr/bin/kanshi &
 /usr/bin/lxsession-xdg-autostart
-# Node Medic kiosk (2026-09-22): wf-panel-pi removed — …
+# Node Medic kiosk (2026-09-23): wf-panel-pi line removed …
 ```
-
-The running panel and its respawner were stopped by hand once; from the
-next login it is simply not started. No package removed, nothing
-system-wide edited.
 
 **What it costs.** With the app stopped, the desktop shows wallpaper and
 no menu bar — recovery is over SSH. The panel's own tray bubbles
@@ -36,8 +45,8 @@ gone; all of them drew under the fullscreen app anyway. Connectivity is
 unaffected (NetworkManager, rnsd, the reporter and SSH do not involve
 the panel). About 55 MB of RAM is freed.
 
-**Undo.** `rm ~/.config/labwc/autostart` and log the session in again
-(or reboot).
+**Undo.** `sudo cp /etc/xdg/labwc/autostart.nodemedic-orig /etc/xdg/labwc/autostart`
+and reboot.
 
 **Not yet proven.** That the tooltip was the panel's is reasoned from the
 desktop's behaviour, not observed. If the box appears again after a
