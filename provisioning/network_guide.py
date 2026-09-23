@@ -20,9 +20,15 @@ CONCEPTS: List[Tuple[str, str]] = [
     ("RNode",
      "The radio hardware. Every device needs one to talk over LoRa. It's just "
      "the mouth and ears — it doesn't decide anything."),
+    # "Like a phone call" made it sound like the handset (operator, on the
+    # glass 2026-09-24): a newcomer could expect to talk THROUGH a transport
+    # node. It is the tower, not the phone — you still need an RNode of your
+    # own to speak.
     ("Transport node",
-     "Connects messages live, like a phone call. If the person on the other end "
-     "isn't there to pick up, the message doesn't get through."),
+     "The relay tower of the network. It passes messages along, live, between "
+     "other devices — you don't talk through it yourself; for that you need "
+     "your own RNode. If the person on the other end isn't there to pick up, "
+     "the message doesn't get through."),
     ("Propagation node",
      "The answering machine of the network. If someone is offline, it holds their "
      "messages and delivers them when they come back. Without one, a message to an "
