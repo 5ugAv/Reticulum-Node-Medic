@@ -77,9 +77,18 @@ class MapSharingPopup(Popup):
                              bold=True, h=24))
         self._where = _lbl("", "14sp", "text_secondary", h=44)
         body.add_widget(self._where)
-        body.add_widget(_btn(tr("Set location on the map…"), "surface",
+        # THE SAME THREE WAYS AS AT BIRTH (operator, 2026-09-23): the map
+        # picker carries "type an address" and "move the pin"; the GPS road
+        # is its own button here so it is seen before opening anything, and
+        # it is live only while the medic holds a satellite fix.
+        body.add_widget(_btn(tr("Choose a location on the map…"), "surface",
                              "text_primary", self._pick_location))
 
+        self._gps_btn = _btn(tr("Use GPS location"), "surface", "text_primary",
+                             self._use_gps_fix)
+        body.add_widget(self._gps_btn)
+        self._gps_line = _lbl("", "13sp", "text_secondary", h=22)
+        body.add_widget(self._gps_line)
         body.add_widget(_lbl(tr("The public map"), "16sp", "text_primary",
                              bold=True, h=24))
         # THE SAME SWITCH AS THE BIRTH STEP, and it means the same thing here:
@@ -133,6 +142,7 @@ class MapSharingPopup(Popup):
         else:
             self._where.text = tr("Not known. Set one before sharing — there "
                                   "is nothing to publish without it.")
+        self._refresh_gps()
         self._status.text = location_share.status_line(
             rec.share_location, rec.share_applied_at is not None,
             rec.lat, rec.lon)
@@ -180,6 +190,56 @@ class MapSharingPopup(Popup):
         ConfirmLocationPopup(lat, lon, node_name=rec.name,
                              on_confirm=self._location_confirmed,
                              gps_reader=reader).open()
+
+    def _gps_now(self):
+        """The medic's satellite fix, judged — {"ok", ...} (ui.location_offer)."""
+        try:
+            from monitor.geo import read_splitter_fix
+            from ui.location_offer import gps_offer
+            return gps_offer(read_splitter_fix())
+        except Exception:                                          # noqa: BLE001
+            return {"ok": False, "reason": "none", "coords": "", "acc_m": None,
+                    "lat": None, "lon": None}
+
+    def _refresh_gps(self):
+        btn = getattr(self, "_gps_btn", None)
+        if btn is None:
+            return
+        offer = self._gps_now()
+        btn.disabled = not offer["ok"]
+        if offer["ok"]:
+            acc = offer["acc_m"]
+            self._gps_line.text = (
+                tr("Satellite fix now: {coords} (~±{acc}m)").format(
+                    coords=offer["coords"], acc=int(round(acc)))
+                if acc is not None else
+                tr("Satellite fix now: {coords}").format(coords=offer["coords"]))
+        else:
+            self._gps_line.text = tr("No satellite fix right now — choose on "
+                                     "the map instead.")
+
+    def _use_gps_fix(self):
+        """Take the medic's LIVE fix as this node's position — confirmed,
+        with the numbers on the card, and only right when the operator is
+        standing at the node (the card says so)."""
+        offer = self._gps_now()
+        if not offer["ok"]:
+            self._refresh_gps()
+            return
+        from ui.confirm import confirm_leave
+        rec = self.record
+        name = rec.name or rec.dst_hash[:8]
+        acc = offer["acc_m"]
+        where = (tr("{coords} (~±{acc}m)").format(coords=offer["coords"],
+                                                   acc=int(round(acc)))
+                 if acc is not None else offer["coords"])
+        lat, lon = offer["lat"], offer["lon"]
+        confirm_leave(
+            tr("{where} — Node Medic's satellite fix right now. Only right if "
+               "you are standing at the node.").format(where=where),
+            tr("Set {name}'s position to where Node Medic is now?").format(name=name),
+            lambda: self._location_confirmed(lat, lon),
+            tr("Cancel"), tr("Set it"))
 
     def _location_confirmed(self, lat, lon):
         rec = self.record
