@@ -210,6 +210,7 @@
   "Clock: set by Node Medic over the mesh {age} ago": "Jam: disetel oleh Node Medic lewat mesh {age} yang lalu",
   "Clock: set by Node Medic over the mesh {age} ago (was {off} off)": "Jam: disetel oleh Node Medic lewat mesh {age} yang lalu (selisih {off})",
   "Clock: the node keeps NTP time — left alone": "Jam: node memakai waktu NTP — dibiarkan",
+  "Clock: the node refused an older time from Node Medic {age} ago — check Node Medic's own clock": "Jam: {age} lalu node menolak waktu yang lebih lama dari Node Medic — periksa jam Node Medic sendiri",
   "Clone finished — every step verified": "Kloning selesai — setiap langkah terverifikasi",
   "Clone onto the new medic": "Klon ke medic baru",
   "Clone this Node Medic": "Klon Node Medic ini",

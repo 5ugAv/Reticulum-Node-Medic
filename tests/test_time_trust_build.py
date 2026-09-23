@@ -204,15 +204,19 @@ def test_final_verification_verifies_the_time_trust_on_a_pi_node(anchor):
     assert any(HELPER_STAT in c for c in hist) and any(SUDOERS_STAT in c for c in hist)
 
 
-def test_final_verification_lists_a_missing_time_trust_as_a_problem(anchor):
+def test_final_verification_says_a_missing_time_trust_but_never_fails_on_it(anchor):
+    """A node without the time trust is not mute. Failing final_verification
+    stops run_all before hand_the_usb_port_back — the stranding the birth
+    step itself was made never to cause (2026-09-23). Said, not failed."""
     c = _prop_conn()
     c.rules.insert(0, ("cat /home/pi/.rnm-health/trusted_medic.json", 1, "", "No such file"))
     r = _run_step(_w(c), "final_verification")
-    assert not r.success and "node will not take the time from Node Medic" in r.message
+    assert r.success and "Not checked" in r.message
+    assert "node will not take the time from Node Medic" in r.message
     assert "trust file missing" in r.message
     c = _prop_conn(sudoers_stat="root:root 644")
     r = _run_step(_w(c), "final_verification")
-    assert not r.success and "root:root 644, not root:root 440" in r.message
+    assert r.success and "root:root 644, not root:root 440" in r.message
 
 
 def test_final_verification_without_an_anchor_says_it_could_not_check_the_name(monkeypatch):

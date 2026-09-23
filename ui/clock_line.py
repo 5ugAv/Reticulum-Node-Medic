@@ -52,6 +52,9 @@ def clock_line(entry: Optional[dict], now: Callable[[], float] = time.time) -> s
                   ).format(age=_age(t_now, acked_at))
     if state == "ntp":
         return tr("Clock: the node keeps NTP time — left alone")
+    if state == "older":
+        return tr("Clock: the node refused an older time from Node Medic {age} ago "
+                  "— check Node Medic's own clock").format(age=_age(t_now, acked_at))
     if state == "stale":
         if extra.get("tried"):
             return tr("Clock: last confirmed {age} ago; a later try did not reach the node"

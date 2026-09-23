@@ -210,6 +210,7 @@
   "Clock: set by Node Medic over the mesh {age} ago": "時計: {age}前に Node Medic がメッシュ経由で設定",
   "Clock: set by Node Medic over the mesh {age} ago (was {off} off)": "時計: {age}前に Node Medic がメッシュ経由で設定（{off} ずれていました）",
   "Clock: the node keeps NTP time — left alone": "時計: ノードは NTP 時刻を保持 — 変更なし",
+  "Clock: the node refused an older time from Node Medic {age} ago — check Node Medic's own clock": "時計: {age}前、ノードは Node Medic からの古い時刻を拒否しました — Node Medic 自身の時計を確認してください",
   "Clone finished — every step verified": "クローン完了 — 全ステップ検証済み",
   "Clone onto the new medic": "新しいメディックへクローン",
   "Clone this Node Medic": "この Node Medic をクローンする",

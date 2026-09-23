@@ -1857,8 +1857,13 @@ def final_verification(wf: "BuildWorkflow") -> StepResult:
         verified.extend(t_ok)
         unchecked.extend(t_unchecked)
         if t_bad:
-            problems.append("node will not take the time from Node Medic ("
-                            + "; ".join(t_bad) + ")")
+            # NOT a problem: a node without the time trust still routes,
+            # stores and beacons. A problem here fails this step and stops
+            # run_all before hand_the_usb_port_back — the mute-node stranding
+            # WORKING_METHOD Part 3 records (review, 2026-09-23). Said in the
+            # "Not checked" tail, in so many words, and on the node page.
+            unchecked.append("node will not take the time from Node Medic ("
+                             + "; ".join(t_bad) + ")")
 
     tail = ("  Not checked: " + "; ".join(unchecked) + "." if unchecked else "")
     if problems:

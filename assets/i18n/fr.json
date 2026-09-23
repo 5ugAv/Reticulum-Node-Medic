@@ -210,6 +210,7 @@
   "Clock: set by Node Medic over the mesh {age} ago": "Horloge : réglée par Node Medic via le maillage il y a {age}",
   "Clock: set by Node Medic over the mesh {age} ago (was {off} off)": "Horloge : réglée par Node Medic via le maillage il y a {age} (décalée de {off})",
   "Clock: the node keeps NTP time — left alone": "Horloge : le nœud garde l'heure NTP — laissée telle quelle",
+  "Clock: the node refused an older time from Node Medic {age} ago — check Node Medic's own clock": "Horloge : il y a {age}, le nœud a refusé une heure plus ancienne de Node Medic — vérifiez l'horloge de Node Medic",
   "Clone finished — every step verified": "Clonage terminé — chaque étape vérifiée",
   "Clone onto the new medic": "Cloner sur le nouveau medic",
   "Clone this Node Medic": "Cloner ce Node Medic",

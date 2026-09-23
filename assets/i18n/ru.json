@@ -210,6 +210,7 @@
   "Clock: set by Node Medic over the mesh {age} ago": "Часы: установлены Node Medic через mesh {age} назад",
   "Clock: set by Node Medic over the mesh {age} ago (was {off} off)": "Часы: установлены Node Medic через mesh {age} назад (расхождение {off})",
   "Clock: the node keeps NTP time — left alone": "Часы: узел держит время NTP — не трогали",
+  "Clock: the node refused an older time from Node Medic {age} ago — check Node Medic's own clock": "Часы: {age} назад узел отклонил более старое время от Node Medic — проверьте часы самого Node Medic",
   "Clone finished — every step verified": "Клонирование завершено — каждый шаг проверен",
   "Clone onto the new medic": "Клонировать на новый медик",
   "Clone this Node Medic": "Клонировать этот Node Medic",

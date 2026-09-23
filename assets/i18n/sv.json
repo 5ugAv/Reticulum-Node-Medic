@@ -210,6 +210,7 @@
   "Clock: set by Node Medic over the mesh {age} ago": "Klocka: ställd av Node Medic via meshen för {age} sedan",
   "Clock: set by Node Medic over the mesh {age} ago (was {off} off)": "Klocka: ställd av Node Medic via meshen för {age} sedan (gick {off} fel)",
   "Clock: the node keeps NTP time — left alone": "Klocka: noden håller NTP-tid — lämnad orörd",
+  "Clock: the node refused an older time from Node Medic {age} ago — check Node Medic's own clock": "Klocka: för {age} sedan avvisade noden en äldre tid från Node Medic — kontrollera Node Medics egen klocka",
   "Clone finished — every step verified": "Kloningen klar — varje steg verifierat",
   "Clone onto the new medic": "Klona till den nya medicen",
   "Clone this Node Medic": "Klona denna Node Medic",

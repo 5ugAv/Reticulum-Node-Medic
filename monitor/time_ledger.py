@@ -188,12 +188,13 @@ def clock_state(entry: Optional[dict], now: Optional[float] = None,
                  a send is the later one;
       "none"     no ack at all (a send with no ack claims nothing).
 
+      "older"    an ack with status REFUSED_STALE: the node refused a time
+                 not newer than the last it applied — a replay, or Node
+                 Medic's own clock behind the node's. NOT "already right":
+                 nothing about the node's clock was checked (2026-09-23).
+
     Old rows (before the status byte) carry only `applied`; it is read as
-    SET / NOT_NEEDED. A REFUSED_STALE ack (4) reads as "checked": the node
-    refused a replay, which says nothing about its clock — the previous
-    ack's state stands... except it was overwritten; so "checked" it is,
-    honestly: the node answered and did not move. Never raises on a
-    malformed row."""
+    SET / NOT_NEEDED. Never raises on a malformed row."""
     if not isinstance(entry, dict):
         return ("none", None, None, {})
     acked_at = _num(entry.get("acked_at"))
@@ -220,4 +221,6 @@ def clock_state(entry: Optional[dict], now: Optional[float] = None,
         return ("failed", acked_at, delta, {})
     if status == 3:
         return ("ntp", acked_at, delta, {})
+    if status == 4:
+        return ("older", acked_at, delta, {})
     return ("checked", acked_at, delta, {})

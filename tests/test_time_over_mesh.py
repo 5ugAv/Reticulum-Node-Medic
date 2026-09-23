@@ -668,7 +668,7 @@ def test_clock_state_reads_every_status_and_never_claims_an_unacked_set():
     assert tl.clock_state(acked(1))[:3] == ("set", 14.0, 3.0)
     assert tl.clock_state(acked(2))[0] == "failed"
     assert tl.clock_state(acked(3))[0] == "ntp"
-    assert tl.clock_state(acked(4))[0] == "checked"
+    assert tl.clock_state(acked(4))[0] == "older"
     # old rows before the status byte
     assert tl.clock_state({"sent_at": 10.0, "acked_at": 14.0, "applied": True})[0] == "set"
     assert tl.clock_state({"sent_at": 10.0, "acked_at": 14.0, "applied": False})[0] == "checked"
@@ -688,6 +688,18 @@ def test_clock_state_reads_every_status_and_never_claims_an_unacked_set():
 
 
 # -- the node page's one honest line --------------------------------------------
+
+def test_a_stale_refusal_is_its_own_state_never_already_right():
+    """Status 4 (REFUSED_STALE) means the node refused a time not newer than
+    the last it applied — a replay, or the medic's clock behind. Reading it
+    as "checked — already right" claimed a check nobody made (2026-09-23)."""
+    from monitor.time_ledger import clock_state
+    from ui.clock_line import clock_line
+    row = {"sent_at": 10.0, "acked_at": 14.0, "status": 4, "delta_s": -3600.0}
+    assert clock_state(row, now=100.0)[0] == "older"
+    line = clock_line(row, now=lambda: 100.0)
+    assert "older time" in line and "already right" not in line
+
 
 def test_clock_line_wording_uses_ages_never_hhmm():
     from ui.clock_line import clock_line
