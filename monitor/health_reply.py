@@ -14,14 +14,23 @@ Wire:
   request = 0x04 | reply_dest[16] | nonce[8]
   reply   = node_dest[16] | nonce[8] | beacon[N] | sig[64]
             sig = Ed25519 over (node_dest | nonce | beacon)
+
+Time over the mesh (2026-09-23, same doc, section "Time over the mesh"):
+  TIME_REQ = 0x06 | node_dest[16] | nonce[8]                   node -> medic reply dest
+  TIME     = 0x05 | time_s u64be[8] | nonce[8] | sig[64]        medic -> node health dest
+             sig = medic reply identity over (node_dest | 0x05 | time | nonce)
+  TIME_ACK = 0x07 | node_dest[16] | nonce[8] | before u64be[8] | applied[1] | sig[64]
+             sig = node identity over (node_dest | 0x07 | nonce | before | applied)
 """
 from __future__ import annotations
 
 import os
+import struct
 import threading
 import time
 from typing import Callable, Dict, Optional, Tuple
 
+from monitor.health_beacon import PAYLOAD_LEN as _BEACON_MIN_LEN
 from monitor.health_poll import OPCODE_FULL_HEALTH
 
 #: "Send full health to the destination that follows." Unknown to older
@@ -61,6 +70,25 @@ ANNOUNCE_CAP = 0.02
 DEFAULT_BITRATE_BPS = 1800.0
 #: How long a poll stays claimable by a late reply.
 PENDING_TTL_S = 300.0
+
+#: Time over the mesh (2026-09-23). A solar Pi that dies overnight boots with
+#: no clock; the medic feeds it one, signed. Three opcodes on the two
+#: destinations that already exist: TIME goes to the node's rtnode.health
+#: destination (next to 0x01/0x04), TIME_REQ and TIME_ACK come back to the
+#: medic's nodemedic.health.reply destination (next to the health reply).
+OPCODE_TIME = 0x05
+OPCODE_TIME_REQ = 0x06
+OPCODE_TIME_ACK = 0x07
+TIME_LEN_FIELD = 8
+TIME_REQ_LEN = 1 + DEST_HASH_LEN + NONCE_LEN                       # 25
+TIME_LEN = 1 + TIME_LEN_FIELD + NONCE_LEN + SIG_LEN                # 81
+TIME_ACK_LEN = 1 + DEST_HASH_LEN + NONCE_LEN + TIME_LEN_FIELD + 1 + SIG_LEN   # 98
+#: The shortest health reply the medic could ever verify AND decode: a
+#: beacon is at least PAYLOAD_LEN (14) bytes, so 16 + 8 + 14 + 64 = 102.
+#: Both time packets that share the reply destination (25 and 98 bytes)
+#: sit below it — length alone separates them from a reply; the framing
+#: of the reply itself is untouched (2026-09-23).
+MIN_REPLY_LEN = DEST_HASH_LEN + NONCE_LEN + _BEACON_MIN_LEN + SIG_LEN
 
 
 # -- the medic's reply identity ------------------------------------------------
@@ -183,6 +211,148 @@ def uptime_is_fresh(new_uptime_s: Optional[int], last_uptime_s: Optional[int],
     if new_uptime_s >= last_uptime_s:
         return True
     return rebooted or new_uptime_s <= reboot_grace_s
+
+
+# -- time over the mesh ---------------------------------------------------------
+
+def _u64(n: int) -> bytes:
+    return struct.pack(">Q", int(n))
+
+
+def build_time_req(node_dest: bytes, nonce: Optional[bytes] = None) -> bytes:
+    """0x06 + the node's own health destination + a fresh nonce: 25 bytes,
+    which no health reply can be (a reply is 88 bytes before its beacon)."""
+    if len(node_dest) != DEST_HASH_LEN:
+        raise ValueError("node destination hash must be 16 bytes")
+    n = bytes(nonce) if nonce is not None else os.urandom(NONCE_LEN)
+    if len(n) != NONCE_LEN:
+        raise ValueError("nonce must be 8 bytes")
+    return bytes([OPCODE_TIME_REQ]) + bytes(node_dest) + n
+
+
+def parse_time_req(data: bytes) -> Optional[Tuple[bytes, bytes]]:
+    """(node_dest, nonce), or None unless it is exactly a 25-byte 0x06."""
+    b = bytes(data or b"")
+    if len(b) != TIME_REQ_LEN or b[0] != OPCODE_TIME_REQ:
+        return None
+    return (b[1:1 + DEST_HASH_LEN], b[1 + DEST_HASH_LEN:])
+
+
+def time_signed_bytes(node_dest: bytes, time_s: int, nonce: bytes) -> bytes:
+    """What the medic signs: the NODE's destination is inside the signature,
+    so a TIME captured for one node is worthless replayed to another."""
+    return bytes(node_dest) + bytes([OPCODE_TIME]) + _u64(time_s) + bytes(nonce)
+
+
+def build_time(node_dest: bytes, time_s: int, nonce: bytes, sign) -> bytes:
+    """0x05 | time u64be | nonce | sig — *sign* is the medic reply identity's."""
+    if len(node_dest) != DEST_HASH_LEN or len(nonce) != NONCE_LEN:
+        raise ValueError("bad destination or nonce length")
+    sig = bytes(sign(time_signed_bytes(node_dest, time_s, nonce)))
+    if len(sig) != SIG_LEN:
+        raise ValueError("signature must be 64 bytes")
+    return bytes([OPCODE_TIME]) + _u64(time_s) + bytes(nonce) + sig
+
+
+def parse_time(data: bytes) -> Optional[Tuple[int, bytes, bytes]]:
+    """(time_s, nonce, sig) or None unless it is exactly an 81-byte 0x05."""
+    b = bytes(data or b"")
+    if len(b) != TIME_LEN or b[0] != OPCODE_TIME:
+        return None
+    t = struct.unpack(">Q", b[1:1 + TIME_LEN_FIELD])[0]
+    return (t, b[1 + TIME_LEN_FIELD:1 + TIME_LEN_FIELD + NONCE_LEN], b[-SIG_LEN:])
+
+
+def verify_time(node_dest: bytes, data: bytes, ident) -> Optional[Tuple[int, bytes]]:
+    """(time_s, nonce) when *ident* (the node's trusted medic, already
+    checked against the trust anchor by the caller) signed this TIME for
+    *node_dest*; None otherwise. Never a time from anyone else."""
+    parts = parse_time(data)
+    if parts is None or ident is None:
+        return None
+    t, nonce, sig = parts
+    try:
+        ok = bool(ident.validate(sig, time_signed_bytes(node_dest, t, nonce)))
+    except Exception:                                              # noqa: BLE001
+        ok = False
+    return (t, nonce) if ok else None
+
+
+def ack_signed_bytes(node_dest: bytes, nonce: bytes, before_s: int, applied: bool) -> bytes:
+    return (bytes(node_dest) + bytes([OPCODE_TIME_ACK]) + bytes(nonce)
+            + _u64(before_s) + bytes([1 if applied else 0]))
+
+
+def build_time_ack(node_dest: bytes, nonce: bytes, before_s: int, applied: bool,
+                   sign) -> bytes:
+    """0x07 | node_dest | nonce | before u64be | applied | sig — 98 bytes,
+    *sign* being the node's health identity's."""
+    if len(node_dest) != DEST_HASH_LEN or len(nonce) != NONCE_LEN:
+        raise ValueError("bad destination or nonce length")
+    sig = bytes(sign(ack_signed_bytes(node_dest, nonce, before_s, applied)))
+    if len(sig) != SIG_LEN:
+        raise ValueError("signature must be 64 bytes")
+    return (bytes([OPCODE_TIME_ACK]) + bytes(node_dest) + bytes(nonce)
+            + _u64(before_s) + bytes([1 if applied else 0]) + sig)
+
+
+def parse_time_ack(data: bytes) -> Optional[Tuple[bytes, bytes, int, bool, bytes]]:
+    """(node_dest, nonce, before_s, applied, sig) or None unless it is
+    exactly a 98-byte 0x07."""
+    b = bytes(data or b"")
+    if len(b) != TIME_ACK_LEN or b[0] != OPCODE_TIME_ACK:
+        return None
+    i = 1
+    dest = b[i:i + DEST_HASH_LEN]; i += DEST_HASH_LEN
+    nonce = b[i:i + NONCE_LEN]; i += NONCE_LEN
+    before = struct.unpack(">Q", b[i:i + TIME_LEN_FIELD])[0]; i += TIME_LEN_FIELD
+    applied = b[i] == 1; i += 1
+    return (dest, nonce, before, applied, b[i:])
+
+
+def verify_time_ack(data: bytes, recall: Callable[[bytes], object]
+                    ) -> Optional[Tuple[bytes, bytes, int, bool]]:
+    """(node_dest, nonce, before_s, applied) under the named node's own
+    recalled identity; None otherwise. As with the reply: the hash names
+    the key, the signature is the authority."""
+    parts = parse_time_ack(data)
+    if parts is None:
+        return None
+    dest, nonce, before, applied, sig = parts
+    try:
+        ident = recall(dest)
+        ok = ident is not None and bool(
+            ident.validate(sig, ack_signed_bytes(dest, nonce, before, applied)))
+    except Exception:                                              # noqa: BLE001
+        ok = False
+    return (dest, nonce, before, applied) if ok else None
+
+
+def classify_inbound(data: bytes, time_nonce_pending: Callable[[bytes], bool]) -> str:
+    """What landed on the medic's reply destination: "time_req", "time_ack"
+    or "reply" — decided BEFORE any verification, in this order:
+
+      1. exactly 25 bytes, first byte 0x06  -> TIME_REQ (no reply is 25 bytes);
+      2. exactly 98 bytes, first byte 0x07 AND its nonce is a TIME the medic
+         is still waiting on                -> TIME_ACK;
+      3. anything else                      -> the health reply path.
+
+    Step 2's nonce check runs before the reply path so a real ack is never
+    fed to the reply verifier; a 98-byte 0x07 with an unknown nonce is
+    handed to the reply path, where it fails verification like any other
+    stranger's bytes (design, 2026-09-23). MIN_REPLY_LEN says no valid
+    reply is that short anyway."""
+    b = bytes(data or b"")
+    if len(b) == TIME_REQ_LEN and b[0] == OPCODE_TIME_REQ:
+        return "time_req"
+    if len(b) == TIME_ACK_LEN and b[0] == OPCODE_TIME_ACK:
+        nonce = b[1 + DEST_HASH_LEN:1 + DEST_HASH_LEN + NONCE_LEN]
+        try:
+            if time_nonce_pending(nonce):
+                return "time_ack"
+        except Exception:                                          # noqa: BLE001
+            pass
+    return "reply"
 
 
 # -- the node's decision -------------------------------------------------------

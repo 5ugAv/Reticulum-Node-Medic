@@ -18,6 +18,7 @@ EXPECTED_STEPS = [
     "install_radio_rule",
     "configure_services",
     "install_health_reporter",
+    "install_time_trust",
     "install_status_server",
     "apply_system_hardening",
     "configure_bluetooth",

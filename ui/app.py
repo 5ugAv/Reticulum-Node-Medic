@@ -49,14 +49,18 @@ from monitor.service import MonitorService
 # detail screen said "Probing over the mesh…" forever.
 from monitor.health_reply import (PendingPolls, announce_wait_s,
                                   build_fallback_request, build_request_to,
-                                  load_or_create_identity, unicast_wait_s,
-                                  uptime_is_fresh, verify_reply,
+                                  build_time, classify_inbound,
+                                  load_or_create_identity, parse_time_req,
+                                  unicast_wait_s, uptime_is_fresh,
+                                  verify_reply, verify_time_ack,
                                   REPLY_ANNOUNCE_EVERY_S,
                                   REPLY_ANNOUNCE_QUIET_AFTER_POLL_S,
                                   REPLY_APP, REPLY_ASPECTS)
 from monitor.health_poll import (DELIVERY_ANSWERED, DELIVERY_NO_ROUTE,
                                  DELIVERY_UNANSWERED, build_request,
-                                 heard_since, warm_and_send)
+                                 heard_since, warm_and_send, warm_path)
+from monitor.node_time import epoch_is_sane
+from monitor.time_ledger import TimeLedger, TIME_PUSH_EVERY_S
 
 
 def _local_run(command: str) -> str:
@@ -1549,6 +1553,11 @@ class ReticulumNodeMedicApp(App):
     _reply_ident = None
     _pending_polls = PendingPolls()
     _last_poll_at = 0.0
+    #: Time over the mesh (same doc, 2026-09-23): the TIMEs still waiting
+    #: for a TIME_ACK (keyed by nonce, the same table shape as the polls),
+    #: and the per-node ledger the node page reads its one clock line from.
+    _pending_times = PendingPolls()
+    _time_ledger = TimeLedger()
     #: Persisted registry (nodes + heard-event history) — so activity accumulates
     #: across restarts. Saved every ~5 min by the monitor loop + on stop.
     _REGISTRY_FILE = os.path.expanduser("~/.reticulum-node-medic/registry.json")
@@ -1929,6 +1938,18 @@ class ReticulumNodeMedicApp(App):
                     break
         except Exception:                                      # noqa: BLE001
             caps = None
+        # The clock line (2026-09-23): the ledger is keyed by the node's
+        # health destination; the row's key may be a display key for a
+        # merged device, so try the resolved mesh hash as well.
+        clock_entry = None
+        try:
+            clock_entry = self._time_ledger.entry(rec.dst_hash or "")
+            if clock_entry is None:
+                probe = self.monitor_service.registry.probe_hash_for(rec.dst_hash or "")
+                if probe:
+                    clock_entry = self._time_ledger.entry(probe)
+        except Exception:                                      # noqa: BLE001
+            clock_entry = None
         from ui.screens.node_detail_screen import NodeDetailScreen
         scr = self.sm.get_screen("node_detail")
         scr.clear_widgets()
@@ -1937,7 +1958,7 @@ class ReticulumNodeMedicApp(App):
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
             on_push_reporter=self._push_reporter,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
-            insights=insights, capabilities=caps)))
+            insights=insights, capabilities=caps, clock_entry=clock_entry)))
         self.switch_mode("node_detail")
 
     def _local_tz_offset_hours(self):
@@ -2270,14 +2291,27 @@ class ReticulumNodeMedicApp(App):
                 pass
 
     def _on_health_reply(self, data, packet):
-        """A unicast health reply landed (RNS inbound thread). Verify under
-        the named node's recalled identity, refuse stale uptime, ingest as
-        the node's own word with source "reply", and claim the poll it
-        answers — late or not."""
+        """A packet landed on the reply destination (RNS inbound thread).
+        Three things arrive here (docs/HEALTH_REPLY_UNICAST.md, "Time over
+        the mesh", 2026-09-23), told apart BEFORE any verification: a
+        25-byte 0x06 is a TIME_REQ; a 98-byte 0x07 whose nonce is a TIME
+        still pending is a TIME_ACK; everything else is a health reply —
+        verified under the named node's recalled identity, refused if its
+        uptime ran backwards, ingested as the node's own word with source
+        "reply", the poll it answers claimed — late or not — and then a
+        TIME pushed unasked if none went to that node in six hours."""
         import time
         try:
             import RNS
-            got = verify_reply(bytes(data or b""), recall=RNS.Identity.recall)
+            data = bytes(data or b"")
+            kind = classify_inbound(data, self._pending_times.is_pending)
+            if kind == "time_req":
+                self._on_time_req(data)
+                return
+            if kind == "time_ack":
+                self._on_time_ack(data, RNS)
+                return
+            got = verify_reply(data, recall=RNS.Identity.recall)
             if got is None:
                 self._reply_reject_log("unverifiable health reply dropped")
                 return
@@ -2296,6 +2330,7 @@ class ReticulumNodeMedicApp(App):
                 self._reply_reject_log("stale health reply refused (uptime ran backwards)")
                 return
             reg.ingest(dest_hex, beacon, now, source="reply")
+            self._maybe_push_time(dest)
             claimed = self._pending_polls.claim(nonce, dest)
             if claimed is None:
                 return                              # fresh health, no question pending
@@ -2323,6 +2358,109 @@ class ReticulumNodeMedicApp(App):
         if now - self._reply_reject_last >= 10.0:
             self._reply_reject_last = now
             print("[health] " + msg, flush=True)
+
+    # -- time over the mesh (docs/HEALTH_REPLY_UNICAST.md, 2026-09-23) -------
+
+    def _time_log(self, msg):
+        """Every time sent, answered or acked, in ui.log AND the RNS log at
+        NOTICE — the evidence a bench proof reads back (journald drops
+        VERBOSE, 2026-09-22)."""
+        print("[time] " + msg, flush=True)
+        try:
+            import RNS
+            RNS.log("Node Medic time: " + msg, RNS.LOG_NOTICE)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def _on_time_req(self, data):
+        """A node asked for the time (a 25-byte 0x06 on the inbound thread).
+        Answered off-thread: warming a path takes seconds."""
+        parsed = parse_time_req(data)
+        if parsed is None:
+            return
+        node_dest, nonce = parsed
+        self._time_log("TIME_REQ from %s — answering" % node_dest.hex()[:8])
+        threading.Thread(target=self._send_time, args=(node_dest, nonce, "asked"),
+                         daemon=True).start()
+
+    def _send_time(self, node_dest, nonce, why):
+        """Send one signed TIME to a node's rtnode.health destination — the
+        two-phase pattern of _ping_node: recall the node's identity (an
+        announce taught it), warm THIS stack's path (a send without one
+        drops silently, 2026-08-21), then sign `node_dest ‖ 0x05 ‖ time ‖
+        nonce` with the reply identity. *nonce* echoes a TIME_REQ; None
+        means an unasked push and a fresh one. The time is read AFTER the
+        warm wait so it is as fresh as the packet."""
+        import time
+        dest_hex = node_dest.hex()
+        try:
+            import RNS
+            if self._reply_ident is None:
+                self._time_log("TIME not sent to %s: reply identity not set up yet"
+                               % dest_hex[:8])
+                return
+            if not epoch_is_sane(time.time()):
+                # A medic whose own clock reads before 2026 has nothing to
+                # offer; the node would refuse it anyway — save the airtime.
+                self._time_log("TIME not sent to %s: this medic's own clock reads %d, "
+                               "before 2026 — not offering it" % (dest_hex[:8], time.time()))
+                return
+            ident = RNS.Identity.recall(node_dest)
+            if ident is None:
+                self._time_log("TIME not sent to %s: node identity not recalled (no "
+                               "announce heard from it)" % dest_hex[:8])
+                return
+            if not warm_path(node_dest, RNS.Transport.has_path,
+                             RNS.Transport.request_path, wait_s=15.0):
+                self._time_log("TIME not sent to %s: no path from this stack (path "
+                               "requested; the node's next ask will find one)" % dest_hex[:8])
+                return
+            dest = RNS.Destination(ident, RNS.Destination.OUT, RNS.Destination.SINGLE,
+                                   "rtnode", "health")
+            n = bytes(nonce) if nonce else os.urandom(8)
+            now_s = int(time.time())
+            pkt = build_time(node_dest, now_s, n, self._reply_ident.sign)
+            self._pending_times.add(n, node_dest, None)
+            self._time_ledger.record_sent(dest_hex, now_s, why=why)
+            RNS.Packet(dest, pkt).send()
+            self._time_log("TIME sent to %s (%s): %d, nonce %s — waiting for its ack"
+                           % (dest_hex[:8], why, now_s, n.hex()))
+        except Exception as e:                                     # noqa: BLE001
+            self._time_log("TIME to %s failed: %s" % (dest_hex[:8], e))
+
+    def _on_time_ack(self, data, RNS):
+        """A node's word on what it did with a TIME: verified under the
+        node's own recalled identity, bound to a pending send by nonce AND
+        destination, recorded in the ledger — the only source the node
+        page may claim a set from."""
+        got = verify_time_ack(data, recall=RNS.Identity.recall)
+        if got is None:
+            self._reply_reject_log("unverifiable TIME_ACK dropped")
+            return
+        node_dest, nonce, before, applied = got
+        if self._pending_times.claim(nonce, node_dest) is None:
+            self._time_log("TIME_ACK from %s names a nonce sent to another node — dropped"
+                           % node_dest.hex()[:8])
+            return
+        entry = self._time_ledger.record_ack(node_dest.hex(), before, applied)
+        delta = entry.get("delta_s")
+        self._time_log("TIME_ACK from %s: %s (its clock read %d; %s)" % (
+            node_dest.hex()[:8],
+            "clock SET" if applied else "not moved — already within 30 s",
+            before,
+            "was %+d s off" % delta if delta is not None else "delta unknown"))
+
+    def _maybe_push_time(self, node_dest):
+        """After a verified health reply: push a TIME unasked if none went
+        to this node in TIME_PUSH_EVERY_S. The node ignores it when within
+        30 s and acks applied=0 — one 81-byte packet per node per six hours."""
+        try:
+            if not self._time_ledger.should_push(node_dest.hex(), TIME_PUSH_EVERY_S):
+                return
+            threading.Thread(target=self._send_time, args=(node_dest, None, "push"),
+                             daemon=True).start()
+        except Exception as e:                                     # noqa: BLE001
+            self._time_log("unasked TIME push to %s failed: %s" % (node_dest.hex()[:8], e))
 
     def _push_reporter(self, record, report):
         """Update a Pi node's health reporter in place (the unicast reply

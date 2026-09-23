@@ -317,7 +317,8 @@ def _load_or_create_identity(RNS, path: str):
 
 
 def make_command_handler(rns, identity, dest, announce, current_beacon,
-                         log=None, spawn=None, warm_wait_s: float = 10.0):
+                         log=None, spawn=None, warm_wait_s: float = 10.0,
+                         trust_path=None, run=None, now=None, time_state=None):
     """The packet callback for the health destination — the same contract
     the firmware implements (docs/HEALTH_REPLY_UNICAST.md, 2026-09-21):
 
@@ -328,18 +329,59 @@ def make_command_handler(rns, identity, dest, announce, current_beacon,
                              has already asked for a road, so the next poll
                              is unicast). Off the callback thread: warming
                              a path takes seconds.
+      0x05 | time | nonce | sig
+                          -> the TIME (2026-09-23, "Time over the mesh"):
+                             accepted ONLY from the trusted medic on file,
+                             applied through the root helper when the clock
+                             is more than 30 s off, and answered with a
+                             signed TIME_ACK to the medic's reply
+                             destination — asked for or not.
       anything else       -> ignored, like the firmware.
 
     *rns* is the RNS module (injected so tests use a fake); *spawn* runs the
-    reply work (a daemon thread by default; tests run it inline)."""
+    reply work (a daemon thread by default; tests run it inline); *run*,
+    *now* and *trust_path* are the clock's outside world (tests inject);
+    *time_state* is shared with the asker so a set clock stops the asking."""
     import threading
+    from monitor import node_time
     from monitor.health_poll import warm_path
-    from monitor.health_reply import (OPCODE_HEALTH_TO, REPLY_APP, REPLY_ASPECTS,
-                                      make_reply, node_reply_mode, parse_request)
+    from monitor.health_reply import (OPCODE_HEALTH_TO, OPCODE_TIME, REPLY_APP,
+                                      REPLY_ASPECTS, build_time_ack, make_reply,
+                                      node_reply_mode, parse_request)
     _log = log or (lambda m, lvl=None: None)
     if spawn is None:
         def spawn(fn, *a):
             threading.Thread(target=fn, args=a, daemon=True).start()
+    trust_path = trust_path or node_time.TRUST_PATH
+    run = run or node_time.run_argv
+    state = time_state if time_state is not None else node_time.TimeState()
+
+    def handle_time(data):
+        got = node_time.handle_time(bytes(dest.hash), data, rns, trust_path=trust_path,
+                                    now=now, run=run, log=_log)
+        if got is None:
+            return                       # said why already; nothing to ack
+        nonce, before, applied = got
+        if applied:
+            state.clock_set = True       # the asker stops
+        try:
+            trust = node_time.load_trust(trust_path)
+            medic = node_time.recall_trusted_medic(rns, trust)
+            reply_dest = bytes.fromhex(trust["reply_dest"])
+            has_path = warm_path(reply_dest, rns.Transport.has_path,
+                                 rns.Transport.request_path, wait_s=warm_wait_s)
+            if medic is None or not has_path:
+                _log("TIME_ACK not sent: no %s to the medic's reply destination" % (
+                    "identity" if medic is None else "path"))
+                return
+            out = rns.Destination(medic, rns.Destination.OUT,
+                                  rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
+            rns.Packet(out, build_time_ack(bytes(dest.hash), nonce, before, applied,
+                                           identity.sign)).send()
+            _log("TIME_ACK sent to medic %s: applied=%d before=%d" % (
+                trust["identity_hash"][:8], 1 if applied else 0, before))
+        except Exception as e:                                     # noqa: BLE001
+            _log("TIME_ACK failed: %s" % e)
 
     def reply_unicast(reply_dest, nonce):
         try:
@@ -371,8 +413,52 @@ def make_command_handler(rns, identity, dest, announce, current_beacon,
             spawn(reply_unicast, reply_dest, nonce)
         elif op == COMMAND_BEACON:
             announce()
+        elif op == OPCODE_TIME:
+            spawn(handle_time, bytes(data or b""))
         # unknown or malformed: ignored, so the registry of opcodes can grow
     return on_command
+
+
+def make_time_asker(rns, dest, trust_path=None, log=None, warm_wait_s: float = 10.0):
+    """The TIME_REQ sender (2026-09-23): returns ``ask()`` -> True when a
+    request went out. Sends ONLY when the trust file exists, the trusted
+    medic's identity is recalled (an announce from its reply destination
+    was heard) and a path exists or can be warmed — the same predicate
+    the unicast reply uses. Every refusal is said in *log*."""
+    from monitor import node_time
+    from monitor.health_poll import warm_path
+    from monitor.health_reply import REPLY_APP, REPLY_ASPECTS, build_time_req
+    _log = log or (lambda m, lvl=None: None)
+    trust_path = trust_path or node_time.TRUST_PATH
+
+    def ask() -> bool:
+        try:
+            trust = node_time.load_trust(trust_path)
+            if trust is None:
+                _log("TIME_REQ not sent: no trusted medic on file (%s)" % trust_path)
+                return False
+            medic = node_time.recall_trusted_medic(rns, trust)
+            if medic is None:
+                _log("TIME_REQ not sent: trusted medic %s not recalled yet (no announce "
+                     "heard from %s)" % (trust["identity_hash"][:8], trust["reply_dest"][:8]))
+                return False
+            reply_dest = bytes.fromhex(trust["reply_dest"])
+            has_path = warm_path(reply_dest, rns.Transport.has_path,
+                                 rns.Transport.request_path, wait_s=warm_wait_s)
+            if not has_path:
+                _log("TIME_REQ not sent: no path to the medic's reply destination %s "
+                     "(path requested)" % trust["reply_dest"][:8])
+                return False
+            out = rns.Destination(medic, rns.Destination.OUT,
+                                  rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
+            rns.Packet(out, build_time_req(bytes(dest.hash))).send()
+            _log("TIME_REQ sent to medic %s (%s)" % (trust["identity_hash"][:8],
+                                                     trust.get("name") or "unnamed"))
+            return True
+        except Exception as e:                                     # noqa: BLE001
+            _log("TIME_REQ failed: %s" % e)
+            return False
+    return ask
 
 
 def serve(power_source: str = "battery",
@@ -385,8 +471,10 @@ def serve(power_source: str = "battery",
     Imports RNS lazily so this module stays importable where RNS is absent; the
     reporter is installed as a systemd service at BIRTH for propagation nodes.
     """
+    import threading
     import time
     import RNS
+    from monitor import node_time
 
     RNS.Reticulum()
     identity = _load_or_create_identity(RNS, identity_path)
@@ -403,11 +491,17 @@ def serve(power_source: str = "battery",
         except Exception as e:      # never let a bad read kill the heartbeat
             RNS.log(f"Pi health: announce failed: {e}", RNS.LOG_ERROR)
 
+    # NOTICE, not VERBOSE: a 0x04 is rare and is the evidence a bench
+    # proof reads back from the journal (2026-09-22) — and journald drops
+    # VERBOSE, so every time-over-the-mesh line goes at NOTICE too.
+    def _nlog(m, lvl=None):
+        RNS.log("Pi health: " + m, lvl or RNS.LOG_NOTICE)
+
+    time_state = node_time.TimeState()
     dest.set_packet_callback(make_command_handler(
-        RNS, identity, dest, announce, current_beacon,
-        # NOTICE, not VERBOSE: a 0x04 is rare and is the evidence a bench
-        # proof reads back from the journal (2026-09-22).
-        log=lambda m, lvl=None: RNS.log("Pi health: " + m, lvl or RNS.LOG_NOTICE)))
+        RNS, identity, dest, announce, current_beacon, log=_nlog,
+        trust_path=node_time.TRUST_PATH, time_state=time_state))
+    ask_time = make_time_asker(RNS, dest, trust_path=node_time.TRUST_PATH, log=_nlog)
 
     # EVERY ANNOUNCE CARRIES A BEACON, not just the ones this loop makes.
     #
@@ -433,11 +527,29 @@ def serve(power_source: str = "battery",
 
     announce()                       # beacon once on startup
     next_at = time.time() + heartbeat_s
+    # TIME OVER THE MESH (2026-09-23): a solar node that died overnight has
+    # no clock at boot. After a 90 s grace (NTP may still fix it on a node
+    # with internet) ask the trusted medic, and keep asking every 10 min
+    # while timedatectl says NTP is not synchronised — until the medic's
+    # TIME was applied (time_state.clock_set) or NTP reports synchronised.
+    # The ask warms a path (seconds), so it runs off this heartbeat loop.
+    started_at = time.time()
+    ntp_synced = None
     while True:
         time.sleep(1)
         if time.time() >= next_at:
             announce()
             next_at = time.time() + heartbeat_s
+        if node_time.should_ask(time.time(), started_at, time_state.last_ask_at,
+                                time_state.clock_set, ntp_synced):
+            ntp_synced = node_time.ntp_synchronized()
+            if ntp_synced is True:
+                _nlog("clock is NTP-synchronised - not asking the medic for time")
+                continue
+            time_state.last_ask_at = time.time()
+            _nlog("clock not NTP-synchronised (timedatectl says %s) - asking the medic"
+                  % ("no" if ntp_synced is False else "unreadable"))
+            threading.Thread(target=ask_time, daemon=True).start()
 
 
 if __name__ == "__main__":          # pragma: no cover

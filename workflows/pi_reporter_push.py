@@ -8,6 +8,11 @@ already in the field needs the new files and a service restart, without a
 rebirth and without a cable: the same SSH road birth used, driven from the
 medic (which holds the key) or from any machine that can log in.
 
+Since 2026-09-23 it also carries time over the mesh: the trust file naming
+this medic, the clock helper and its sudoers line — the same three things
+birth's install_time_trust writes, through the same installer, read back
+the same way.
+
 Pure over a connection object (``run`` -> ``(code, stdout, stderr)``,
 ``push_file`` -> bool — transport.connection's contract), so it is tested
 with a recording fake that returns the SAME shape; the real one is
@@ -21,11 +26,14 @@ from __future__ import annotations
 import os
 from typing import Callable, List, Optional, Tuple
 
-from workflows.build import _HEALTH_MODULES
+from workflows import build
+from workflows.build import _HEALTH_MODULES, install_node_time_trust
 
 SERVICE = "rnm-health"
 #: The one line that proves the NEW reporter landed — the unicast handler.
 MARKER = "def make_command_handler("
+#: ...and the one that proves the time asker landed (2026-09-23).
+TIME_MARKER = "def make_time_asker("
 
 
 def _priv(conn, command: str) -> str:
@@ -40,13 +48,15 @@ def _priv(conn, command: str) -> str:
 def push_health_reporter(conn, monitor_dir: Optional[str] = None,
                          log: Optional[Callable[[str], None]] = None
                          ) -> Tuple[bool, str]:
-    """Copy the reporter package, restart the service, and PROVE both:
-    the marker line is on the node and the service reports active. Returns
-    (ok, message); nothing is claimed that was not read back."""
+    """Copy the reporter package, install the time trust, restart the
+    service, and PROVE each: the marker lines are on the node, the three
+    trust files read back, the service reports active. Returns (ok,
+    message); nothing is claimed that was not read back."""
     _log = log or (lambda m: None)
     mon_dir = monitor_dir or os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "monitor")
     home = (conn.run("echo $HOME")[1] or "").strip() or "/home/pi"
+    user = (conn.run("id -un")[1] or "").strip() or "pi"
     pkg_dir = f"{home}/.rnm-health/monitor"
     conn.run(f"mkdir -p {pkg_dir}")
     conn.run(f"touch {pkg_dir}/__init__.py")
@@ -59,14 +69,27 @@ def push_health_reporter(conn, monitor_dir: Optional[str] = None,
             return False, f"could not copy {name} to the node"
         pushed.append(name)
     _log("pushed %d reporter modules" % len(pushed))
-    # Read back: the unicast handler must be in the file that landed.
-    marker = conn.run(f"grep -c '{MARKER}' {pkg_dir}/pi_health_reporter.py")
-    if (marker[1] or "").strip() != "1":
-        return False, "the new reporter did not land (unicast handler missing on the node)"
+    # Read back: the unicast handler and the time asker must be in the file
+    # that landed.
+    for marker, what in ((MARKER, "unicast handler"), (TIME_MARKER, "time asker")):
+        got = conn.run(f"grep -c '{marker}' {pkg_dir}/pi_health_reporter.py")
+        if (got[1] or "").strip() != "1":
+            return False, f"the new reporter did not land ({what} missing on the node)"
+    # The time trust — the medic's OWN anchor, computed with RNS or not at all.
+    # Through the module so a test can stand in for the real medic.
+    try:
+        anchor = build.medic_time_anchor()
+    except Exception as e:                                             # noqa: BLE001
+        return False, f"could not compute this medic's time-trust anchor: {e}"
+    ok, msg = install_node_time_trust(conn, lambda c: _priv(conn, c), user, home, anchor)
+    if not ok:
+        return False, msg
+    _log("time trust installed and read back")
     conn.run(_priv(conn, f"systemctl restart {SERVICE}"))
     state = (conn.run(f"systemctl is-active {SERVICE}")[1] or "").strip()
     if state != "active":
         return False, f"{SERVICE} is '{state or 'unknown'}' after restart — check journalctl -u {SERVICE}"
     _log("%s restarted and active" % SERVICE)
-    return True, "reporter updated (%d files) — %s active; the node now answers health requests by unicast" % (
-        len(pushed), SERVICE)
+    return True, ("reporter updated (%d files) — %s active; the node now answers health "
+                  "requests by unicast and takes the time from this medic over the mesh"
+                  % (len(pushed), SERVICE))

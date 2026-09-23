@@ -1,6 +1,22 @@
 """Updating the health reporter on an existing Pi node without a rebirth
 (docs/HEALTH_REPLY_UNICAST.md, 2026-09-22)."""
+import pytest
+
+import monitor.node_time as nt
+from workflows import build
 from workflows import pi_reporter_push as prp
+
+#: The push now also carries the time trust (2026-09-23); the medic's real
+#: anchor needs RNS and the real identity file, so every test here stands
+#: in a fixed one. tests/test_time_trust_build.py holds the trust to its
+#: own read-backs; this file keeps holding the reporter push.
+_ANCHOR = {"identity_hash": "ab" * 16, "reply_dest": "cd" * 16,
+           "name": "nodemedic", "since": "2026-09-23"}
+
+
+@pytest.fixture(autouse=True)
+def _anchor(monkeypatch):
+    monkeypatch.setattr(build, "medic_time_anchor", lambda: dict(_ANCHOR))
 
 
 class FakeConn:
@@ -19,6 +35,13 @@ class FakeConn:
             return (0, self._marker, "")
         if cmd.startswith("systemctl is-active"):
             return (0, self._active, "")
+        # the time trust's three read-backs answer as written
+        if cmd.startswith("cat /home/pi/.rnm-health/trusted_medic.json"):
+            return (0, nt.trust_anchor_json(_ANCHOR), "")
+        if cmd.startswith("cat /usr/local/sbin/nm-settime"):
+            return (0, build.NM_SETTIME_SCRIPT, "")
+        if "cat /etc/sudoers.d/nm-settime" in cmd:
+            return (0, build.nm_settime_sudoers(self._who), "")
         return (0, "", "")
 
     def push_file(self, local, remote):

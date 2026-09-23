@@ -93,6 +93,8 @@ _STEP_SECONDS = {
     "ensure_toolchain": 90, "ensure_source": 30, "build_firmware": 300,
     "write_reticulum_config": 5, "install_software_stack": 180, "configure_services": 20,
     "install_health_reporter": 25, "install_status_server": 15,
+    # three small files, one visudo, three read-backs (2026-09-23)
+    "install_time_trust": 8,
     "apply_system_hardening": 10, "set_hostname": 5, "final_verification": 15,
     # An rnpath wait plus a beacon wait; on the Pi path it is only the HTTP
     # poll and returns in seconds, but the bar must not stall on the slow case.
@@ -121,6 +123,7 @@ _PHASE_LABELS = {
                               "fresh Pi).",
     "configure_services": "Starting the node's services…",
     "install_health_reporter": "Installing the health reporter…",
+    "install_time_trust": "Telling the node to take the time from this Node Medic…",
     "install_status_server": "Giving the node a status page Node Medic can read…",
     "prove_the_node_reports": "Asking the node to report on itself…",
     "apply_system_hardening": "Hardening the system…",

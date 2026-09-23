@@ -17,6 +17,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.clock_line import clock_line
 from ui.i18n import tr  # i18n: wrapped — node detail section headers/labels/buttons
 from ui.widgets.hex_status import HexStatus
 from monitor.formatting import beacon_lines, format_age, seen_and_echo
@@ -87,7 +88,7 @@ class NodeDetailScreen(BoxLayout):
                  on_forget=None, on_walk=None, on_push_reporter=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
-                 capabilities=None, **kwargs):
+                 capabilities=None, clock_entry=None, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -172,6 +173,16 @@ class NodeDetailScreen(BoxLayout):
         else:
             self.add_widget(_line(tr("Signal: not measured"),
                                   color="text_secondary"))
+
+        if record.node_type == "pi":
+            # THE NODE'S CLOCK (docs/HEALTH_REPLY_UNICAST.md, "Time over the
+            # mesh", 2026-09-23): a Pi node with no RTC boots with no time;
+            # the medic feeds it one over LoRa. One line, from the medic's
+            # ledger, and only what the node ACKED — a TIME sent and never
+            # answered reads "not yet given". Pi nodes only: an RTNode has
+            # no OS clock to keep.
+            self.add_widget(_line(clock_line(clock_entry), color="text_secondary",
+                                  size="13sp"))
 
         # SELF-REPORTED POSITION (v3 beacon, 2026-08-27): the node's OWN live
         # GNSS claim, distinct from the birth-certificate stamp. Shown only
