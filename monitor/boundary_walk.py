@@ -287,6 +287,31 @@ def gps_gate(fix, waited_s: float = 0.0) -> dict:
             "stage": "slow" if waited_s >= GPS_COLD_START_S else "searching"}
 
 
+def leave_plan(walk_live: bool, gate_up: bool) -> dict:
+    """What the bottom bar's arrow or Home does to a walk (operator,
+    2026-09-23, mid-walk on the roof node: "I just accidentally exited the
+    boundary walk halfway through it").
+
+    THE FACT BEFORE THE FIX: ScanScreen defined neither ``handle_back`` nor
+    ``handle_home``, so App._with_back switched straight to home. Leaving
+    did NOT call end_walk — the session's Clock intervals kept pinging with
+    no HUD on the glass and no road back; the walk was only banked when
+    the app stopped, or when the next press on a door found a running
+    session with samples (begin_walk). The gate's clock likewise kept
+    looking at the sky on a screen nobody was on.
+
+    Returns ``{ask, persist, then}``: *ask* — open the confirmation first;
+    *persist* — what end_walk should be told when the operator confirms
+    (a live walk is banked; a gate that never became a walk has nothing to
+    bank); *then* — where the screen goes afterwards. SCAN has no inner
+    page, so back and home both end at home; the caller passes which
+    button was pressed so the map of "what happens" stays in one place.
+    Pure: this decides, the screen asks and moves.
+    """
+    ask = bool(walk_live or gate_up)
+    return {"ask": ask, "persist": bool(walk_live), "then": "home"}
+
+
 #: How recently a node must have been heard to be worth PROBING. Deliberately
 #: generous: since 2026-09-19 the registry only nominates candidates and a
 #: live ping decides who is actually offered (live_walk_targets), so this

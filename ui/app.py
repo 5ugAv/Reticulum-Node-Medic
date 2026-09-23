@@ -413,7 +413,12 @@ class ReticulumNodeMedicApp(App):
         Exit cancels its late-resume hook and kills its polls before going,
         and warns mid-build (2026-08-14); a bare switch would leave those
         armed, and a card write landing late would pull the operator back
-        into a walkthrough they had left (found in review, 2026-09-22)."""
+        into a walkthrough they had left (found in review, 2026-09-22).
+        SCAN owns its leaving the same way since 2026-09-23: with a boundary
+        walk live (or its GPS gate up) both controls used to switch straight
+        home and the walk kept pinging off-glass with no way back — the
+        operator lost a walk that way; now ScanScreen.handle_back/handle_home
+        ask first (see ScanScreen.handle_back for the fact as checked)."""
         def on_back():
             h = getattr(widget, "handle_back", None)
             if callable(h):
@@ -1847,6 +1852,17 @@ class ReticulumNodeMedicApp(App):
         try:
             from ui.cert_store import delete_by_name
             removed += delete_by_name(name)
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:                              # the walk anchor: by hash and by name
+            # Where the operator stood to start a boundary walk against
+            # this node (monitor/walk_anchor.py, 2026-09-23). A reborn node
+            # under the same name is a new machine in a new place — a kept
+            # anchor would measure its first walk from the old one.
+            from monitor.walk_anchor import forget_anchor
+            for h in set(hashes) | {rec.dst_hash}:
+                forget_anchor(node_key=h or "")
+            forget_anchor(name=name)
         except Exception:                                          # noqa: BLE001
             pass
         try:                              # kin roster: by hash and by name

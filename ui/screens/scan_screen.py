@@ -2390,44 +2390,96 @@ class ScanScreen(BoxLayout):
         done = self._walk_text(
             tr("{name} answered — it is on the mesh.").format(name=name),
             "14.5sp", "green", bold=True)
-        head = self._walk_text(
-            tr("Stand next to {name}.").format(name=name),
-            "19sp", "warning_yellow", bold=True)
-        why = self._walk_text(
-            tr("Node Medic measures how far this node reaches by the distance "
-               "you walk from it — so it has to know where you started. Wait "
-               "here until it has a satellite fix, then press the button and "
-               "walk away."),
-            "14sp", "text_secondary")
+        # THE SECOND ROAD (operator, 2026-09-23, after backing out of a walk
+        # by accident: "once the GPS coordinates are set for a node, that's
+        # locked in and the user can start the boundary walk away from the
+        # node"). When monitor.walk_anchor holds where the operator STOOD at
+        # an earlier start, the walk may begin from anywhere and measure from
+        # that spot. Two buttons, worded so neither can be mistaken for the
+        # other — and BOTH still wait for a steady live fix, because every
+        # sample is placed by the live fix, not by the anchor (the two-gate
+        # rule stays: a walk started away from the node with no fix would
+        # place nothing).
+        from monitor.walk_anchor import anchor_stamp, load_anchor
+        saved = None
+        try:
+            saved = load_anchor(getattr(self._walk_record, "dst_hash", "") or "",
+                                name=name)
+        except Exception:                                          # noqa: BLE001
+            saved = None                    # a corrupt file is "no anchor"
+        self._walk_saved_anchor = saved
+        when = anchor_stamp(saved["at"]) if saved else ""
+        if saved:
+            head = self._walk_text(
+                tr("Stand next to {name} — or start from where you "
+                   "are.").format(name=name),
+                "19sp", "warning_yellow", bold=True)
+            why = self._walk_text(
+                tr("{name} already has a start position, saved on {date}: "
+                   "where you stood when that walk began. Standing at the "
+                   "node again sets a fresh one; away from it, the saved one "
+                   "is used. Either way, wait for a satellite fix first — "
+                   "every ping is placed by the live fix.").format(
+                       name=name, date=when),
+                "14sp", "text_secondary")
+        else:
+            head = self._walk_text(
+                tr("Stand next to {name}.").format(name=name),
+                "19sp", "warning_yellow", bold=True)
+            why = self._walk_text(
+                tr("Node Medic measures how far this node reaches by the "
+                   "distance you walk from it — so it has to know where you "
+                   "started. Wait here until it has a satellite fix, then "
+                   "press the button and walk away."),
+                "14sp", "text_secondary")
         self._walk_gate_badge = _FixBadge()
         self._walk_gate_state = self._walk_text("", "14.5sp", "text_secondary")
 
-        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
-                        height=dp(58), spacing=dp(8))
+        roads = BoxLayout(orientation="vertical", size_hint=(1, None),
+                          spacing=dp(8))
+        roads.bind(minimum_height=roads.setter("height"))
         # LARGE and unmistakable, as ordered — and it says WHY it has appeared,
         # because a button that materialises without explanation is a button
         # people press without reading.
         self._walk_go = Button(
-            text=tr("GPS found — start the walk"), bold=True,
-            font_size=theme.font_sp("19sp"), background_normal="",
+            text=(tr("GPS found — I'm standing at the node (set its "
+                     "position again)") if saved
+                  else tr("GPS found — start the walk")),
+            bold=True, size_hint_y=None, height=dp(58),
+            font_size=theme.font_sp("17sp" if saved else "19sp"),
+            background_normal="",
             background_color=theme.hex_to_rgba(theme.COLORS["green"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
         self._walk_go.bind(on_release=lambda *_: self._walk_gate_go())
+        roads.add_widget(self._walk_go)
+        self._walk_go_saved = None
+        if saved:
+            self._walk_go_saved = Button(
+                text=tr("GPS found — I'm away from it (use the position "
+                        "saved on {date})").format(date=when),
+                bold=True, size_hint_y=None, height=dp(58),
+                font_size=theme.font_sp("17sp"), background_normal="",
+                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            self._walk_go_saved.bind(
+                on_release=lambda *_: self._walk_gate_go(use_saved=True))
+            roads.add_widget(self._walk_go_saved)
+        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(48), spacing=dp(8))
         cancel = Button(text=tr("Cancel"), size_hint_x=None, width=dp(110),
                         background_normal="",
                         background_color=theme.hex_to_rgba(
                             theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         cancel.bind(on_release=lambda *_: self.end_walk(persist=False))
-        row.add_widget(self._walk_go)
+        row.add_widget(Widget())
         row.add_widget(cancel)
         # Absent, not greyed: a disabled button still reads as "the way on",
         # and an operator taps it and learns the medic ignores them.
-        self._walk_go.opacity = 0
-        self._walk_go.disabled = True
+        self._walk_show_roads(False)
 
         for w in (done, head, why, self._walk_gate_badge,
-                  self._walk_gate_state, row):
+                  self._walk_gate_state, roads, row):
             gate.add_widget(w)
         self._walk_gate = gate
         self._walk_gate_since = _t.time()
@@ -2476,17 +2528,35 @@ class ScanScreen(BoxLayout):
                            "text_secondary")
         self._walk_gate_state.text = words
         self._walk_gate_state.color = theme.hex_to_rgba(theme.COLORS[tone])
-        self._walk_go.opacity = 1 if ready else 0
-        self._walk_go.disabled = not ready
+        self._walk_show_roads(ready)
 
-    def _walk_gate_go(self):
-        """The press. Anchor HERE — see _start_walk_now."""
-        anchor = getattr(self, "_walk_anchor", None)
-        if anchor is None:                 # the fix died between paint and tap
+    def _walk_show_roads(self, ready):
+        """Both start buttons appear and vanish together — the saved-anchor
+        road needs the live fix exactly as much as the re-anchor road does
+        (the samples are placed by the fix; the anchor only says where zero
+        is)."""
+        for btn in (getattr(self, "_walk_go", None),
+                    getattr(self, "_walk_go_saved", None)):
+            if btn is not None:
+                btn.opacity = 1 if ready else 0
+                btn.disabled = not ready
+
+    def _walk_gate_go(self, use_saved=False):
+        """The press. Anchor HERE — see _start_walk_now — or, on the second
+        road, at the anchor saved for this node (2026-09-23). Either way a
+        live fix must be on the glass right now: the saved road is not a
+        way around the sky, only around standing at the node."""
+        live = getattr(self, "_walk_anchor", None)
+        if live is None:                   # the fix died between paint and tap
             self._walk_gate_tick(0)
             return
+        saved = getattr(self, "_walk_saved_anchor", None)
         self._tear_down_walk_gate()
-        self._start_walk_now(anchor)
+        if use_saved and saved:
+            self._start_walk_now((saved["lat"], saved["lon"]),
+                                 saved_at=saved["at"])
+        else:
+            self._start_walk_now(live)
 
     def _tear_down_walk_gate(self):
         """Remove whichever pre-walk panel is up (check / refusal / GPS gate)
@@ -2497,6 +2567,7 @@ class ScanScreen(BoxLayout):
             ev.cancel()
         self._walk_gate_ev = None
         self._walk_go = None                 # gate 2 is no longer on screen
+        self._walk_go_saved = None
         gate = getattr(self, "_walk_gate", None)
         if gate is not None and gate.parent is not None:
             self.remove_widget(gate)
@@ -2504,7 +2575,7 @@ class ScanScreen(BoxLayout):
 
     # -- the walk itself -----------------------------------------------------
 
-    def _start_walk_now(self, anchor):
+    def _start_walk_now(self, anchor, saved_at=None):
         """Begin pinging, anchored at *anchor* — the fix the operator was
         standing on when they pressed the button.
 
@@ -2515,14 +2586,31 @@ class ScanScreen(BoxLayout):
         "stand next to {name}", so the press is the operator asserting they
         are there, and a measurement taken now beats a remembered one — the
         project's oldest law, applied to our own coordinates.
+
+        *saved_at* None means the operator is AT the node on a live fix, and
+        that fix becomes the node's locked anchor (monitor.walk_anchor,
+        2026-09-23) so the next walk can start from anywhere. A value means
+        the gate's second road: *anchor* is the one saved at that time, and
+        nothing is re-saved — a walk started away from the node must never
+        move where zero is.
         """
         import time as _t
         from kivy.clock import Clock as _Clock
         from monitor.boundary_walk import BoundaryWalkSession
         rec = self._walk_record
         lat, lon = anchor
+        name = rec.name or rec.dst_hash[:8]
+        if saved_at is None:
+            try:
+                from monitor.walk_anchor import save_anchor
+                save_anchor(rec.dst_hash, lat, lon, _t.time(), name=name)
+            except Exception as e:                                 # noqa: BLE001
+                # The walk itself does not need the file; the NEXT walk
+                # does. Said in the log, never a crash at the press.
+                print(f"[walk] anchor not saved: {e}", flush=True)
+        self._walk_anchor_saved_at = saved_at
         self._walk_session = BoundaryWalkSession(
-            node_key=rec.dst_hash, node_name=rec.name or rec.dst_hash[:8],
+            node_key=rec.dst_hash, node_name=name,
             node_lat=lat, node_lon=lon, now=_t.time())
         self._show_walk_hud()
         self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
@@ -2563,7 +2651,20 @@ class ScanScreen(BoxLayout):
         stop.bind(on_release=lambda *_: self.end_walk())
         top.add_widget(self._walk_lbl)
         top.add_widget(stop)
+        # FIRST LINE: which anchor the distances are measured from
+        # (2026-09-23). A walk started away from the node reads "0 km" as
+        # the saved spot, not the operator's feet — said, so the numbers
+        # that follow cannot be misread.
+        from monitor.walk_anchor import anchor_stamp
+        saved_at = getattr(self, "_walk_anchor_saved_at", None)
+        self._walk_anchor_lbl = self._walk_text(
+            (tr("Anchored at {name} — position saved {date}.").format(
+                name=self._walk_session.node_name,
+                date=anchor_stamp(saved_at)) if saved_at is not None
+             else tr("Anchored here — where you pressed start.")),
+            "13sp", "text_secondary")
         self._walk_hint = self._walk_text("", "14sp", "text_secondary")
+        hud.add_widget(self._walk_anchor_lbl)
         hud.add_widget(top)
         hud.add_widget(self._walk_hint)
         self._walk_hud = hud
@@ -2782,6 +2883,90 @@ class ScanScreen(BoxLayout):
         else:
             self._walk_bg_col.rgba = black
             self._walk_lbl.color = yellow
+
+    # -- leaving: the bottom bar's arrow and Home ask first (2026-09-23) -----
+
+    def handle_back(self):
+        """The bottom bar's '←' (and the left-edge swipe), via App._with_back.
+
+        THE FACT, checked 2026-09-23 before this existed: ScanScreen had no
+        handle_back and no handle_home, so both controls switched straight
+        to home. Leaving did NOT end the walk — end_walk was never called;
+        the session's Clock intervals kept pinging with no HUD on the glass
+        and no road back to it, until the app stopped (on_stop banks it) or
+        the next press on a door found a running session with samples
+        (begin_walk). The operator backed out mid-walk on the roof node by
+        exactly this route and could not restart: "I'm not next to the node
+        to set the GPS coordinates where I started."
+
+        Now: with a walk live or a gate up, ONE confirmation. Returns True
+        (handled — the popup owns what happens next) so the app stays put;
+        with nothing running, False, and the app goes home as before. SCAN
+        has no inner page, so 'back' with no walk IS home."""
+        from monitor.boundary_walk import leave_plan
+        plan = leave_plan(getattr(self, "_walk_session", None) is not None,
+                          getattr(self, "_walk_gate", None) is not None)
+        if not plan["ask"]:
+            return False
+        self._confirm_leave_walk(plan)
+        return True
+
+    def handle_home(self):
+        """The bottom bar's Home. Same confirmation as the arrow; a plain
+        switch to home when nothing is running (what _with_back would have
+        done on its own)."""
+        from monitor.boundary_walk import leave_plan
+        plan = leave_plan(getattr(self, "_walk_session", None) is not None,
+                          getattr(self, "_walk_gate", None) is not None)
+        if not plan["ask"]:
+            self._go_home()
+            return
+        self._confirm_leave_walk(plan)
+
+    def _confirm_leave_walk(self, plan):
+        """'Leave the walk?' — the house card (ui.confirm.confirm_leave),
+        safe choice first. The body says the truth for the state: a live
+        walk is banked whole and its anchor stays, so another walk against
+        the same node can start from here; a gate that never became a walk
+        has measured nothing and has nothing to save."""
+        from ui.confirm import confirm_leave
+        name = self._walk_node_name()
+        if plan["persist"]:
+            body = tr("Leaving ends this walk. Everything it has recorded so "
+                      "far is saved and counts; you can start another walk "
+                      "against {name} from here — its anchor is "
+                      "kept.").format(name=name)
+            go = tr("End the walk and save")
+        else:
+            body = tr("Leaving cancels the wait at the gate — nothing has "
+                      "been measured yet, so there is nothing to save. You "
+                      "can start another walk against {name} from "
+                      "here.").format(name=name)
+            go = tr("Leave — nothing to save")
+        self._walk_leave_popup = confirm_leave(
+            body, tr("Leave the walk?"),
+            lambda: self._leave_walk(plan),
+            stay_text=tr("Keep walking"), leave_text=go)
+
+    def _leave_walk(self, plan):
+        """The confirmed exit: bank (or drop) the walk, then go where the
+        operator asked. end_walk's summary card is a ModalView on the
+        Window, so it stays readable over home."""
+        self.end_walk(persist=bool(plan["persist"]))
+        if plan["then"] == "home":
+            self._go_home()
+
+    def _go_home(self):
+        """switch_mode("home") through the running app — what _with_back
+        does for a screen with no exit road of its own."""
+        try:
+            from kivy.app import App
+            app = App.get_running_app()
+            fn = getattr(app, "switch_mode", None)
+            if callable(fn):
+                fn("home")
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def end_walk(self, persist=True):
         """Stop, bank the evidence, tell the story. Safe to call idle — and
