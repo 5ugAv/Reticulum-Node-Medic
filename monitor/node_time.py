@@ -1,43 +1,61 @@
 """Time over the mesh — the NODE's side (docs/HEALTH_REPLY_UNICAST.md,
-"Time over the mesh", 2026-09-23).
+"Time over the mesh", 2026-09-23; revised after review the same day).
 
 A Pi propagation node on a solar bank dies overnight and boots again in the
 sun with no correct time: no RTC, no internet in the field, no NTP. A
 wrong clock corrupts its own logs and LXMF message expiry and misleads
 VITALS. So the node ASKS its medic for the time over LoRa (TIME_REQ), the
 medic answers with a SIGNED time (TIME), and the node sets its clock
-through one tiny root helper and says what it did (TIME_ACK).
+through one tiny root helper and says what it did (TIME_ACK, with a
+status byte).
 
 This module is the policy, pure: the trust anchor, the sanity window, the
-30 s slop, the helper invocation, the ask schedule. It runs ON THE NODE
+30 s slop, the monotonic floor, the issued-nonce memory, the NTP rule, the
+helper invocation, the ask schedule with its backoff. It runs ON THE NODE
 (shipped in the reporter package, workflows.build._HEALTH_MODULES) and is
 imported by monitor.pi_health_reporter, which owns the RNS calls. Every
-outside effect — the clock, timedatectl, the packets — is injected, so all
-of it is tested with plain values and fake RNS. Nothing in here may accept
-a time from anyone but the trusted medic.
+outside effect — the clock, timedatectl, the packets, the state file — is
+injected, so all of it is tested with plain values and fake RNS. Nothing
+in here may accept a time from anyone but the trusted medic.
+
+Freshness, in layers: Reticulum's transport refuses a replayed packet by
+its packet-hash list (first layer); at the protocol, the FLOOR (an epoch
+must be newer than the last one applied, persisted across restarts) and
+the ISSUED NONCES (an answer is "asked" only when its nonce is one this
+node sent, within ISSUED_NONCE_TTL_S) own freshness. A pushed TIME (nonce
+not ours) still passes the floor — it is signed for this node.
 """
 from __future__ import annotations
 
 import json
 import os
 import subprocess
+import threading
 from typing import Callable, Optional, Tuple
 
-from monitor.health_reply import verify_time
+from monitor.health_reply import (TIME_STATUS_HELPER_FAILED, TIME_STATUS_NOT_NEEDED,
+                                  TIME_STATUS_REFUSED_NTP, TIME_STATUS_REFUSED_STALE,
+                                  TIME_STATUS_SET, verify_time)
 
 #: Written at birth (workflows.build.install_time_trust) and by the reporter
 #: push: which medic this node believes about the time. Keyed by the medic's
 #: health-reply identity hash; reply_dest is how the node recalls that
 #: identity from an announce it heard.
 TRUST_PATH = "~/.rnm-health/trusted_medic.json"
+#: The monotonic floor, persisted: the last epoch this node APPLIED. A TIME
+#: whose epoch is not newer is refused (status 4) — a captured TIME cannot
+#: wind the clock back after a restart either (2026-09-23 review).
+TIME_STATE_PATH = "~/.rnm-health/time_state.json"
 #: The ONLY road to the clock. The reporter runs as the build user; this
 #: helper (installed 0755 root, sudoers NOPASSWD for that one path) checks
 #: its argument and runs `date -s` — nothing else.
 SETTIME_HELPER = "/usr/local/sbin/nm-settime"
-#: A single unicast packet crosses N LoRa hops at ~1.8 kbps and lands
-#: seconds late (roughly 1-3 s per hop). Moving the clock for less than
+#: A single unicast packet crosses N LoRa hops and lands late. The figure
+#: "roughly 1-3 s per hop" is an ESTIMATE from the 1.8 kbps airtime of an
+#: ~81-byte packet plus per-relay processing — not a measurement; nothing
+#: here has been timed on air (2026-09-23). Moving the clock for less than
 #: this would chase the latency, not the truth; logs, LXMF expiry and
-#: VITALS are all fine at ±30 s (2026-09-23).
+#: VITALS are all fine at ±30 s.
 CLOCK_SLOP_S = 30
 #: Sanity window for a time anyone offers: 2026-01-01 .. 2100-01-01 UTC.
 #: Before the first is a clock that has not been set; after the second is
@@ -47,8 +65,21 @@ EPOCH_MAX = 4102444800
 #: On reporter start, wait this long before asking — NTP may still fix
 #: the clock on a node that does have internet (2026-09-23).
 ASK_GRACE_S = 90
-#: ...then ask this often while timedatectl says NTP is not synchronised.
+#: ...then ask this often while timedatectl says NTP is not synchronised
+#: and no TIME has been applied yet.
 ASK_EVERY_S = 600
+#: Once a TIME was applied, re-ask this often while NTP stays unsynced: a
+#: node whose clock was set at dawn drifts, and the medic's push is only
+#: opportunistic (it rides on an operator's ping). No latch (review).
+RE_ASK_S = 24 * 3600
+#: After this many consecutive IDENTICAL refusals (no trust file / medic
+#: not recalled / no road) the ask goes hourly — a node with no medic in
+#: range must not warm a path every ten minutes forever.
+ASK_BACKOFF_AFTER = 3
+ASK_BACKOFF_S = 3600
+#: A nonce this node issued stays "ours" this long; bounded too.
+ISSUED_NONCE_TTL_S = 15 * 60
+ISSUED_NONCE_MAX = 32
 
 _HEX32 = set("0123456789abcdef")
 
@@ -99,6 +130,76 @@ def recall_trusted_medic(rns, trust: dict):
         return None
 
 
+# -- the monotonic floor ------------------------------------------------------------
+
+def load_last_applied(path: str = TIME_STATE_PATH) -> Optional[int]:
+    """The last epoch this node applied, or None (no file, or not an int)."""
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as fh:
+            data = json.load(fh)
+        v = data.get("last_applied_epoch")
+        if isinstance(v, bool) or not isinstance(v, int):
+            return None
+        return v
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def save_last_applied(epoch: int, path: str = TIME_STATE_PATH) -> bool:
+    """Atomic write (tmp + rename). False, never an exception, when the
+    directory cannot be written — the clock was still set; the floor is
+    simply not remembered across a restart."""
+    try:
+        p = os.path.expanduser(path)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"last_applied_epoch": int(epoch)}, fh, sort_keys=True, indent=2)
+            fh.write("\n")
+        os.replace(tmp, p)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def passes_floor(epoch: int, last_applied: Optional[int]) -> bool:
+    """Strictly newer than the last applied epoch, or no floor yet."""
+    return last_applied is None or int(epoch) > int(last_applied)
+
+
+# -- the nonces this node issued -----------------------------------------------------------
+
+class IssuedNonces:
+    """The TIME_REQ nonces this node sent, with a TTL and a cap. A TIME whose
+    nonce is here answers an ask; any other TIME is a push. Both still pass
+    the floor and the signature — this only labels the outcome honestly."""
+
+    def __init__(self, ttl_s: float = ISSUED_NONCE_TTL_S, max_entries: int = ISSUED_NONCE_MAX,
+                 now: Callable[[], float] = None):
+        import time as _time
+        self._ttl, self._max, self._now = ttl_s, max_entries, now or _time.monotonic
+        self._lock = threading.Lock()
+        self._rows: dict = {}
+
+    def issue(self, nonce: bytes) -> None:
+        with self._lock:
+            self._expire()
+            while len(self._rows) >= self._max:
+                del self._rows[min(self._rows, key=self._rows.get)]
+            self._rows[bytes(nonce)] = self._now()
+
+    def was_issued(self, nonce: bytes) -> bool:
+        """True (and the nonce is spent) when this node issued it."""
+        with self._lock:
+            self._expire()
+            return self._rows.pop(bytes(nonce), None) is not None
+
+    def _expire(self) -> None:
+        cutoff = self._now() - self._ttl
+        for k in [k for k, t in self._rows.items() if t < cutoff]:
+            del self._rows[k]
+
+
 # -- sanity, slop, the helper ----------------------------------------------------------
 
 def epoch_is_sane(t) -> bool:
@@ -143,7 +244,8 @@ def parse_ntp_synchronized(text: str) -> Optional[bool]:
 
 def ntp_synchronized(run: Callable = run_argv) -> Optional[bool]:
     """timedatectl's own word; None when it could not be read (which is
-    NOT "synchronised" — the asker keeps asking)."""
+    NOT "synchronised" — the asker keeps asking). A shell call: run it on
+    a worker thread, never on the packet callback or the heartbeat."""
     try:
         code, out = run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"])
     except Exception:                                              # noqa: BLE001
@@ -153,40 +255,85 @@ def ntp_synchronized(run: Callable = run_argv) -> Optional[bool]:
     return parse_ntp_synchronized(out)
 
 
+# -- the ask schedule ----------------------------------------------------------------------
+
+def ask_interval_s(last_set_at: Optional[float], consecutive_refusals: int) -> float:
+    """How long between asks: hourly once ASK_BACKOFF_AFTER identical
+    refusals are in a row; RE_ASK_S once a TIME was applied; ASK_EVERY_S
+    before that."""
+    if int(consecutive_refusals or 0) >= ASK_BACKOFF_AFTER:
+        return float(ASK_BACKOFF_S)
+    if last_set_at is not None:
+        return float(RE_ASK_S)
+    return float(ASK_EVERY_S)
+
+
 def should_ask(now: float, started_at: float, last_ask_at: Optional[float],
-               clock_set: bool, ntp_synced: Optional[bool]) -> bool:
-    """Ask after the grace, then every ASK_EVERY_S, until the clock was set
-    over the mesh or NTP reports synchronised. An unreadable NTP state
-    does not count as synchronised."""
-    if clock_set or ntp_synced is True:
+               last_set_at: Optional[float], ntp_synced: Optional[bool],
+               consecutive_refusals: int = 0) -> bool:
+    """Ask after the grace, then on ask_interval_s, while NTP is not
+    synchronised. No latch: a set clock re-asks after RE_ASK_S. An
+    unreadable NTP state does not count as synchronised. All stamps are
+    the SAME monotonic clock — a backwards wall-clock set must never
+    silence the asker (review, 2026-09-23)."""
+    if ntp_synced is True:
         return False
     if now - started_at < ASK_GRACE_S:
         return False
     if last_ask_at is None:
         return True
-    return now - last_ask_at >= ASK_EVERY_S
+    return now - last_ask_at >= ask_interval_s(last_set_at, consecutive_refusals)
 
 
 class TimeState:
-    """What the reporter remembers between the asker and the 0x05 handler:
-    whether the clock was set by the medic (stop asking) and when it last
-    asked."""
+    """What the reporter remembers between the asker and the 0x05 handler.
+    Every stamp is time.monotonic() — never a wall-clock deadline (a
+    backwards set once silenced the heartbeat for the size of the jump)."""
     def __init__(self):
-        self.clock_set = False
-        self.last_ask_at: Optional[float] = None
+        self.last_set_at: Optional[float] = None     # monotonic, when a TIME was applied
+        self.last_ask_at: Optional[float] = None     # monotonic
+        self.ntp_synced: Optional[bool] = None       # last reading, for the log
+        self.consecutive_refusals = 0
+        self.last_refusal: Optional[str] = None
+        self.issued = IssuedNonces()
+        #: (nonce, before, status) of an ack that could not be sent: retried
+        #: once after the next announce (review item 12).
+        self.pending_ack: Optional[Tuple[bytes, int, int]] = None
+        self._lock = threading.Lock()
+
+    def note_refusal(self, reason: str) -> None:
+        """Identical reasons in a row count towards the backoff; a new
+        reason starts the count again."""
+        with self._lock:
+            if reason == self.last_refusal:
+                self.consecutive_refusals += 1
+            else:
+                self.last_refusal, self.consecutive_refusals = reason, 1
+
+    def note_success(self) -> None:
+        with self._lock:
+            self.last_refusal, self.consecutive_refusals = None, 0
 
 
 # -- a TIME arrived ----------------------------------------------------------------
 
 def handle_time(node_dest: bytes, payload: bytes, rns, trust_path: str = TRUST_PATH,
                 now: Callable[[], float] = None, run: Callable = run_argv,
-                log: Callable[[str], None] = None
-                ) -> Optional[Tuple[bytes, int, bool]]:
+                log: Callable[[str], None] = None, ntp_synced: Optional[bool] = None,
+                state_path: str = TIME_STATE_PATH, issued: Optional[IssuedNonces] = None
+                ) -> Optional[Tuple[bytes, int, int]]:
     """A 0x05 landed on the node's health destination. Returns (nonce,
-    before_s, applied) for the TIME_ACK, or None when nothing should be
+    before_s, status) for the TIME_ACK, or None when nothing should be
     acknowledged: no trust file, the medic's identity not recalled yet,
-    another signer, a malformed packet, or an insane epoch. Every outcome
-    is said in *log* (the reporter puts it in the journal at NOTICE)."""
+    another signer, a malformed packet, or an insane epoch. The order of
+    the checks, each said in *log* (the reporter puts it in the journal
+    at NOTICE):
+
+      trust → signature → sanity → floor (status 4) → NTP (status 3) →
+      slop (status 0) → helper (status 1 / 2).
+
+    *ntp_synced* is timedatectl's word as read by the caller on a worker
+    thread; True means the clock is NEVER moved by a TIME."""
     import time as _time
     _now = now or _time.time
     _log = log or (lambda m: None)
@@ -205,19 +352,32 @@ def handle_time(node_dest: bytes, payload: bytes, rns, trust_path: str = TRUST_P
         _log("TIME ignored: not signed by the trusted medic for this node")
         return None
     medic_time, nonce = got
+    medic = trust["identity_hash"][:8]
     if not epoch_is_sane(medic_time):
         _log("TIME ignored: epoch %d outside 2026-01-01..2100-01-01" % medic_time)
         return None
+    kind = "asked" if (issued is not None and issued.was_issued(nonce)) else "pushed"
     before = int(_now())
+    floor = load_last_applied(state_path)
+    if not passes_floor(medic_time, floor):
+        _log("TIME (%s) from medic %s refused: epoch %d is not newer than the last "
+             "applied (%d) - a replay or a stale medic" % (kind, medic, medic_time, floor))
+        return (nonce, before, TIME_STATUS_REFUSED_STALE)
+    if ntp_synced is True:
+        _log("TIME (%s) from medic %s refused: this clock is NTP-synchronised "
+             "(medic says %+d s) - not moved" % (kind, medic, medic_time - before))
+        return (nonce, before, TIME_STATUS_REFUSED_NTP)
     if not should_apply(medic_time, before):
-        _log("TIME from medic %s: clock already within %d s (delta %+d s) - not moved"
-             % (trust["identity_hash"][:8], CLOCK_SLOP_S, medic_time - before))
-        return (nonce, before, False)
+        _log("TIME (%s) from medic %s: clock already within %d s (delta %+d s) - not moved"
+             % (kind, medic, CLOCK_SLOP_S, medic_time - before))
+        return (nonce, before, TIME_STATUS_NOT_NEEDED)
     ok, out = apply_time(medic_time, run)
     if ok:
-        _log("TIME from medic %s: clock set to %d (was %+d s off); helper says: %s"
-             % (trust["identity_hash"][:8], medic_time, before - medic_time, out))
-    else:
-        _log("TIME from medic %s: clock NOT set - helper failed: %s"
-             % (trust["identity_hash"][:8], out or "no output"))
-    return (nonce, before, bool(ok))
+        remembered = save_last_applied(medic_time, state_path)
+        _log("TIME (%s) from medic %s: clock set to %d (was %+d s off); helper says: %s%s"
+             % (kind, medic, medic_time, before - medic_time, out,
+                "" if remembered else " (floor NOT persisted: %s unwritable)" % state_path))
+        return (nonce, before, TIME_STATUS_SET)
+    _log("TIME (%s) from medic %s: clock NOT set - helper failed: %s"
+         % (kind, medic, out or "no output"))
+    return (nonce, before, TIME_STATUS_HELPER_FAILED)

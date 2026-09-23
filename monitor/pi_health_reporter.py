@@ -316,9 +316,48 @@ def _load_or_create_identity(RNS, path: str):
     return ident
 
 
+def send_time_ack(rns, identity, dest, nonce, before, status, trust_path=None,
+                  log=None, warm_wait_s: float = 10.0) -> bool:
+    """One signed TIME_ACK to the trusted medic's reply destination. True
+    when .send() returned; False (said why) when the medic's identity is
+    not recalled, no path could be warmed, or the send raised. Shared by
+    the 0x05 handler and the once-after-the-next-announce retry (review
+    item 12, 2026-09-23)."""
+    from monitor import node_time
+    from monitor.health_poll import warm_path
+    from monitor.health_reply import REPLY_APP, REPLY_ASPECTS, build_time_ack
+    _log = log or (lambda m, lvl=None: None)
+    trust_path = trust_path or node_time.TRUST_PATH
+    try:
+        trust = node_time.load_trust(trust_path)
+        medic = node_time.recall_trusted_medic(rns, trust) if trust else None
+        if trust is None or medic is None:
+            _log("TIME_ACK not sent: no %s for the medic's reply destination" % (
+                "trust file" if trust is None else "identity"))
+            return False
+        reply_dest = bytes.fromhex(trust["reply_dest"])
+        has_path = warm_path(reply_dest, rns.Transport.has_path,
+                             rns.Transport.request_path, wait_s=warm_wait_s)
+        if not has_path:
+            _log("TIME_ACK not sent: no path to the medic's reply destination "
+                 "(path requested)")
+            return False
+        out = rns.Destination(medic, rns.Destination.OUT,
+                              rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
+        rns.Packet(out, build_time_ack(bytes(dest.hash), nonce, before, status,
+                                       identity.sign)).send()
+        _log("TIME_ACK sent to medic %s: status=%d before=%d" % (
+            trust["identity_hash"][:8], int(status), before))
+        return True
+    except Exception as e:                                         # noqa: BLE001
+        _log("TIME_ACK failed: %s" % e)
+        return False
+
+
 def make_command_handler(rns, identity, dest, announce, current_beacon,
                          log=None, spawn=None, warm_wait_s: float = 10.0,
-                         trust_path=None, run=None, now=None, time_state=None):
+                         trust_path=None, run=None, now=None, time_state=None,
+                         ntp=None, state_path=None, monotonic=None):
     """The packet callback for the health destination — the same contract
     the firmware implements (docs/HEALTH_REPLY_UNICAST.md, 2026-09-21):
 
@@ -332,21 +371,26 @@ def make_command_handler(rns, identity, dest, announce, current_beacon,
       0x05 | time | nonce | sig
                           -> the TIME (2026-09-23, "Time over the mesh"):
                              accepted ONLY from the trusted medic on file,
-                             applied through the root helper when the clock
-                             is more than 30 s off, and answered with a
-                             signed TIME_ACK to the medic's reply
-                             destination — asked for or not.
+                             refused when it is not newer than the last
+                             applied (the floor) or when this clock is
+                             NTP-synchronised, applied through the root
+                             helper when more than 30 s off, and answered
+                             with a signed TIME_ACK carrying a status byte
+                             — asked for or not. An ack that cannot be sent
+                             is kept for one retry after the next announce.
       anything else       -> ignored, like the firmware.
 
     *rns* is the RNS module (injected so tests use a fake); *spawn* runs the
     reply work (a daemon thread by default; tests run it inline); *run*,
-    *now* and *trust_path* are the clock's outside world (tests inject);
-    *time_state* is shared with the asker so a set clock stops the asking."""
+    *now*, *ntp*, *state_path* and *trust_path* are the clock's outside
+    world (tests inject); *time_state* is shared with the asker (the
+    issued nonces, the last set, the ack to retry)."""
     import threading
+    import time as _time
     from monitor import node_time
     from monitor.health_poll import warm_path
     from monitor.health_reply import (OPCODE_HEALTH_TO, OPCODE_TIME, REPLY_APP,
-                                      REPLY_ASPECTS, build_time_ack, make_reply,
+                                      REPLY_ASPECTS, TIME_STATUS_SET, make_reply,
                                       node_reply_mode, parse_request)
     _log = log or (lambda m, lvl=None: None)
     if spawn is None:
@@ -354,34 +398,29 @@ def make_command_handler(rns, identity, dest, announce, current_beacon,
             threading.Thread(target=fn, args=a, daemon=True).start()
     trust_path = trust_path or node_time.TRUST_PATH
     run = run or node_time.run_argv
+    ntp = ntp or node_time.ntp_synchronized
+    state_path = state_path or node_time.TIME_STATE_PATH
+    _mono = monotonic or _time.monotonic
     state = time_state if time_state is not None else node_time.TimeState()
 
     def handle_time(data):
+        # Fresh NTP word for THIS packet, on this worker thread (never the
+        # callback thread): a node whose internet came back since the last
+        # ask must not have its clock moved by a TIME (review item 9).
+        synced = ntp()
+        state.ntp_synced = synced
         got = node_time.handle_time(bytes(dest.hash), data, rns, trust_path=trust_path,
-                                    now=now, run=run, log=_log)
+                                    now=now, run=run, log=_log, ntp_synced=synced,
+                                    state_path=state_path, issued=state.issued)
         if got is None:
             return                       # said why already; nothing to ack
-        nonce, before, applied = got
-        if applied:
-            state.clock_set = True       # the asker stops
-        try:
-            trust = node_time.load_trust(trust_path)
-            medic = node_time.recall_trusted_medic(rns, trust)
-            reply_dest = bytes.fromhex(trust["reply_dest"])
-            has_path = warm_path(reply_dest, rns.Transport.has_path,
-                                 rns.Transport.request_path, wait_s=warm_wait_s)
-            if medic is None or not has_path:
-                _log("TIME_ACK not sent: no %s to the medic's reply destination" % (
-                    "identity" if medic is None else "path"))
-                return
-            out = rns.Destination(medic, rns.Destination.OUT,
-                                  rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
-            rns.Packet(out, build_time_ack(bytes(dest.hash), nonce, before, applied,
-                                           identity.sign)).send()
-            _log("TIME_ACK sent to medic %s: applied=%d before=%d" % (
-                trust["identity_hash"][:8], 1 if applied else 0, before))
-        except Exception as e:                                     # noqa: BLE001
-            _log("TIME_ACK failed: %s" % e)
+        nonce, before, status = got
+        if status == TIME_STATUS_SET:
+            state.last_set_at = _mono()  # re-ask after RE_ASK_S, no latch
+        if not send_time_ack(rns, identity, dest, nonce, before, status,
+                             trust_path=trust_path, log=_log, warm_wait_s=warm_wait_s):
+            state.pending_ack = (nonce, before, status)
+            _log("TIME_ACK kept for one retry after the next announce")
 
     def reply_unicast(reply_dest, nonce):
         try:
@@ -419,46 +458,115 @@ def make_command_handler(rns, identity, dest, announce, current_beacon,
     return on_command
 
 
-def make_time_asker(rns, dest, trust_path=None, log=None, warm_wait_s: float = 10.0):
+def retry_pending_ack(rns, identity, dest, time_state, trust_path=None, log=None,
+                      warm_wait_s: float = 10.0) -> bool:
+    """After an announce: send the one ack that could not go out earlier,
+    once. The announce is what makes the medic learn a road to this node
+    — and request one back — so the retry has its best chance right
+    after it. Whether it goes or not, the slot is cleared: ONE retry."""
+    pending = getattr(time_state, "pending_ack", None)
+    if pending is None:
+        return False
+    time_state.pending_ack = None
+    nonce, before, status = pending
+    return send_time_ack(rns, identity, dest, nonce, before, status,
+                         trust_path=trust_path, log=log, warm_wait_s=warm_wait_s)
+
+
+def make_time_asker(rns, dest, trust_path=None, log=None, warm_wait_s: float = 10.0,
+                    time_state=None):
     """The TIME_REQ sender (2026-09-23): returns ``ask()`` -> True when a
     request went out. Sends ONLY when the trust file exists, the trusted
     medic's identity is recalled (an announce from its reply destination
     was heard) and a path exists or can be warmed — the same predicate
-    the unicast reply uses. Every refusal is said in *log*."""
+    the unicast reply uses. Every refusal is said in *log* and counted in
+    *time_state* (identical refusals in a row back the schedule off); the
+    nonce of a sent request is remembered so the answer reads "asked"."""
     from monitor import node_time
     from monitor.health_poll import warm_path
-    from monitor.health_reply import REPLY_APP, REPLY_ASPECTS, build_time_req
+    from monitor.health_reply import NONCE_LEN, REPLY_APP, REPLY_ASPECTS, build_time_req
     _log = log or (lambda m, lvl=None: None)
     trust_path = trust_path or node_time.TRUST_PATH
+    state = time_state if time_state is not None else node_time.TimeState()
+
+    def _refuse(reason: str, msg: str) -> bool:
+        state.note_refusal(reason)
+        _log(msg)
+        return False
 
     def ask() -> bool:
         try:
             trust = node_time.load_trust(trust_path)
             if trust is None:
-                _log("TIME_REQ not sent: no trusted medic on file (%s)" % trust_path)
-                return False
+                return _refuse("no_trust", "TIME_REQ not sent: no trusted medic on file (%s)"
+                               % trust_path)
             medic = node_time.recall_trusted_medic(rns, trust)
             if medic is None:
-                _log("TIME_REQ not sent: trusted medic %s not recalled yet (no announce "
-                     "heard from %s)" % (trust["identity_hash"][:8], trust["reply_dest"][:8]))
-                return False
+                return _refuse("not_recalled", "TIME_REQ not sent: trusted medic %s not "
+                               "recalled yet (no announce heard from %s)"
+                               % (trust["identity_hash"][:8], trust["reply_dest"][:8]))
             reply_dest = bytes.fromhex(trust["reply_dest"])
             has_path = warm_path(reply_dest, rns.Transport.has_path,
                                  rns.Transport.request_path, wait_s=warm_wait_s)
             if not has_path:
-                _log("TIME_REQ not sent: no path to the medic's reply destination %s "
-                     "(path requested)" % trust["reply_dest"][:8])
-                return False
+                return _refuse("no_path", "TIME_REQ not sent: no path to the medic's reply "
+                               "destination %s (path requested)" % trust["reply_dest"][:8])
             out = rns.Destination(medic, rns.Destination.OUT,
                                   rns.Destination.SINGLE, REPLY_APP, *REPLY_ASPECTS)
-            rns.Packet(out, build_time_req(bytes(dest.hash))).send()
+            import os as _os
+            nonce = _os.urandom(NONCE_LEN)
+            state.issued.issue(nonce)
+            rns.Packet(out, build_time_req(bytes(dest.hash), nonce)).send()
+            state.note_success()
             _log("TIME_REQ sent to medic %s (%s)" % (trust["identity_hash"][:8],
                                                      trust.get("name") or "unnamed"))
             return True
         except Exception as e:                                     # noqa: BLE001
-            _log("TIME_REQ failed: %s" % e)
-            return False
+            return _refuse("error", "TIME_REQ failed: %s" % e)
     return ask
+
+
+def run_time_asker(ask, time_state, log=None, ntp=None, monotonic=None,
+                   sleep=None, stop=None) -> None:
+    """The asker's own loop, for its own daemon thread (never the
+    heartbeat's): every second, if node_time.should_ask says so, re-read
+    timedatectl (a shell call — a node that lost its internet at sunset
+    must start asking again), then ask. All stamps monotonic. *stop* is
+    a callable that ends the loop (tests)."""
+    import time as _time
+    from monitor import node_time
+    _log = log or (lambda m, lvl=None: None)
+    ntp = ntp or node_time.ntp_synchronized
+    _mono = monotonic or _time.monotonic
+    _sleep = sleep or _time.sleep
+    started_at = _mono()
+    last_ntp_read_at = None
+    while not (stop and stop()):
+        _sleep(1)
+        now = _mono()
+        if now - started_at < node_time.ASK_GRACE_S:
+            continue
+        # timedatectl is re-read on ITS OWN cadence (every ASK_EVERY_S),
+        # never gated on the last answer: a node whose internet went with
+        # the sun said "yes" at noon and must be asked again at dusk.
+        if last_ntp_read_at is not None and now - last_ntp_read_at < node_time.ASK_EVERY_S:
+            continue
+        synced = ntp()
+        time_state.ntp_synced = synced
+        last_ntp_read_at = now
+        if synced is True:
+            _log("clock is NTP-synchronised - not asking the medic for time")
+            continue
+        if not node_time.should_ask(now, started_at, time_state.last_ask_at,
+                                    time_state.last_set_at, synced,
+                                    time_state.consecutive_refusals):
+            continue
+        time_state.last_ask_at = now
+        _log("clock not NTP-synchronised (timedatectl says %s)%s - asking the medic"
+             % ("no" if synced is False else "unreadable",
+                " again, %d h after the last set" % (node_time.RE_ASK_S // 3600)
+                if time_state.last_set_at is not None else ""))
+        ask()
 
 
 def serve(power_source: str = "battery",
@@ -501,7 +609,8 @@ def serve(power_source: str = "battery",
     dest.set_packet_callback(make_command_handler(
         RNS, identity, dest, announce, current_beacon, log=_nlog,
         trust_path=node_time.TRUST_PATH, time_state=time_state))
-    ask_time = make_time_asker(RNS, dest, trust_path=node_time.TRUST_PATH, log=_nlog)
+    ask_time = make_time_asker(RNS, dest, trust_path=node_time.TRUST_PATH, log=_nlog,
+                               time_state=time_state)
 
     # EVERY ANNOUNCE CARRIES A BEACON, not just the ones this loop makes.
     #
@@ -525,31 +634,29 @@ def serve(power_source: str = "battery",
     except Exception as e:           # older RNS without the callable form
         RNS.log(f"Pi health: default app_data unavailable: {e}", RNS.LOG_ERROR)
 
+    # TIME OVER THE MESH (2026-09-23): the asker on its OWN daemon thread —
+    # it shells out to timedatectl and warms paths (seconds), neither of
+    # which belongs on the heartbeat. See run_time_asker.
+    threading.Thread(target=run_time_asker, args=(ask_time, time_state),
+                     kwargs={"log": _nlog}, daemon=True).start()
+
     announce()                       # beacon once on startup
-    next_at = time.time() + heartbeat_s
-    # TIME OVER THE MESH (2026-09-23): a solar node that died overnight has
-    # no clock at boot. After a 90 s grace (NTP may still fix it on a node
-    # with internet) ask the trusted medic, and keep asking every 10 min
-    # while timedatectl says NTP is not synchronised — until the medic's
-    # TIME was applied (time_state.clock_set) or NTP reports synchronised.
-    # The ask warms a path (seconds), so it runs off this heartbeat loop.
-    started_at = time.time()
-    ntp_synced = None
+    # MONOTONIC deadlines, never time.time(): the whole point of this node
+    # is that its wall clock gets SET — a backwards set once silenced the
+    # beacon for the size of the jump (review, 2026-09-23).
+    next_at = time.monotonic() + heartbeat_s
     while True:
         time.sleep(1)
-        if time.time() >= next_at:
+        if time.monotonic() >= next_at:
             announce()
-            next_at = time.time() + heartbeat_s
-        if node_time.should_ask(time.time(), started_at, time_state.last_ask_at,
-                                time_state.clock_set, ntp_synced):
-            ntp_synced = node_time.ntp_synchronized()
-            if ntp_synced is True:
-                _nlog("clock is NTP-synchronised - not asking the medic for time")
-                continue
-            time_state.last_ask_at = time.time()
-            _nlog("clock not NTP-synchronised (timedatectl says %s) - asking the medic"
-                  % ("no" if ntp_synced is False else "unreadable"))
-            threading.Thread(target=ask_time, daemon=True).start()
+            next_at = time.monotonic() + heartbeat_s
+            # an ack that could not go out earlier gets its one retry now
+            # (the announce is what gives both sides a road)
+            if time_state.pending_ack is not None:
+                threading.Thread(target=retry_pending_ack,
+                                 args=(RNS, identity, dest, time_state),
+                                 kwargs={"trust_path": node_time.TRUST_PATH, "log": _nlog},
+                                 daemon=True).start()
 
 
 if __name__ == "__main__":          # pragma: no cover

@@ -31,12 +31,21 @@ class FakeConn:
             return (0, self._who, "")
         if cmd == "echo $HOME":
             return (0, "/home/pi", "")
+        if cmd.startswith("systemctl show rnm-health"):
+            # the unit runs as the login user here (2026-09-23: the push
+            # derives user/HOME from the unit, not from who logged in)
+            return (0, "User=%s\nEnvironment=HOME=%s\n" % (
+                self._who, "/root" if self._who == "root" else "/home/pi"), "")
+        if "stat -c '%U:%G %a' /usr/local/sbin/nm-settime" in cmd:
+            return (0, "root:root 755", "")
+        if "stat -c '%U:%G %a' /etc/sudoers.d/nm-settime" in cmd:
+            return (0, "root:root 440", "")
         if cmd.startswith("grep -c"):
             return (0, self._marker, "")
         if cmd.startswith("systemctl is-active"):
             return (0, self._active, "")
         # the time trust's three read-backs answer as written
-        if cmd.startswith("cat /home/pi/.rnm-health/trusted_medic.json"):
+        if "trusted_medic.json" in cmd and cmd.startswith("cat "):
             return (0, nt.trust_anchor_json(_ANCHOR), "")
         if cmd.startswith("cat /usr/local/sbin/nm-settime"):
             return (0, build.NM_SETTIME_SCRIPT, "")
@@ -84,7 +93,10 @@ def test_a_failed_copy_stops_early():
 
 def test_the_action_is_reachable_from_a_pi_nodes_page():
     src = open("ui/screens/node_detail_screen.py").read()
-    assert "Update health reporter" in src and 'node_type == "pi"' in src
+    # startswith("pi") via is_pi_node: the registry's Pi type is
+    # "pi_propagation", so `== "pi"` never matched a real record (2026-09-23)
+    assert "Update health reporter" in src and "is_pi_node(record.node_type)" in src
+    assert 'node_type == "pi"' not in src
     assert "_on_push_reporter(" in src
     app = open("ui/app.py").read()
     assert "on_push_reporter=self._push_reporter" in app

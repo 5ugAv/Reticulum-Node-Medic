@@ -17,6 +17,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from monitor.time_service import is_pi_node
 from ui.clock_line import clock_line
 from ui.i18n import tr  # i18n: wrapped — node detail section headers/labels/buttons
 from ui.widgets.hex_status import HexStatus
@@ -174,13 +175,15 @@ class NodeDetailScreen(BoxLayout):
             self.add_widget(_line(tr("Signal: not measured"),
                                   color="text_secondary"))
 
-        if record.node_type == "pi":
+        if is_pi_node(record.node_type):
             # THE NODE'S CLOCK (docs/HEALTH_REPLY_UNICAST.md, "Time over the
             # mesh", 2026-09-23): a Pi node with no RTC boots with no time;
             # the medic feeds it one over LoRa. One line, from the medic's
             # ledger, and only what the node ACKED — a TIME sent and never
-            # answered reads "not yet given". Pi nodes only: an RTNode has
-            # no OS clock to keep.
+            # answered reads "not yet confirmed". Pi nodes only: an RTNode
+            # has no OS clock to keep. The registry's Pi type is
+            # "pi_propagation" (kin_roster.type_for_cert) — `== "pi"` never
+            # matched a real record (review, 2026-09-23).
             self.add_widget(_line(clock_line(clock_entry), color="text_secondary",
                                   size="13sp"))
 
@@ -399,7 +402,7 @@ class NodeDetailScreen(BoxLayout):
                 walk_row = col
             self._walk_row = walk_row
 
-        if self._on_push_reporter is not None and record.node_type == "pi":
+        if self._on_push_reporter is not None and is_pi_node(record.node_type):
             # A Pi node's health reporter is software the medic can update
             # over the same SSH road birth used — no cable, no rebirth
             # (docs/HEALTH_REPLY_UNICAST.md, 2026-09-22: the unicast reply

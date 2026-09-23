@@ -352,7 +352,9 @@ class NodeRecord:
     dst_hash: str
     name: str = ""
     location: str = ""
-    node_type: str = "rtnode2400"          # "rtnode2400" | "pi"
+    #: "rtnode2400" | "pi_propagation" (kin_roster.type_for_cert; older
+    #: rows may say "pi"). Anything that wants "a Pi" tests startswith("pi").
+    node_type: str = "rtnode2400"
     latest_beacon: Optional[HealthBeacon] = None
     latest_http: Optional[NodeStatus] = None   # last HTTP /status poll (LAN)
     mesh_hops: Optional[int] = None            # reachable via the LoRa mesh

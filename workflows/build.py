@@ -9,11 +9,13 @@ as success and the run continues.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
+from monitor.health_reply import REPLY_IDENTITY_PATH
 from node_profile import NodeHardware, NodeProfile, NodeRole, RadioConfig
 from transport.connection import Connection
 from workflows.rnode_boards import get_board
@@ -1227,9 +1229,13 @@ NM_SETTIME_SUDOERS_PATH = "/etc/sudoers.d/nm-settime"
 #: sudoers.d skips names containing a '.', so a staged file is inert until
 #: visudo has accepted it and it is moved into place.
 _NM_SETTIME_SUDOERS_STAGE = "/etc/sudoers.d/nm-settime.tmp"
-#: The medic's own health-reply identity file; a module name so a test can
-#: point it at a temp dir instead of the developer's real home.
-_REPLY_IDENTITY_PATH = "~/.reticulum-node-medic/health_reply_identity"
+#: The medic's own health-reply identity file — monitor.health_reply owns
+#: the literal; a module name here so a test can point it at a temp dir
+#: instead of the developer's real home.
+_REPLY_IDENTITY_PATH = REPLY_IDENTITY_PATH
+#: What the three artefacts must read back as (`stat -c '%U:%G %a'`).
+NM_SETTIME_OWNER_MODE = "root:root 755"
+NM_SETTIME_SUDOERS_OWNER_MODE = "root:root 440"
 
 #: The helper, verbatim. One argument — a 10-digit epoch inside
 #: 2026-01-01..2100-01-01 (monitor.node_time.EPOCH_MIN/EPOCH_MAX) — then it
@@ -1272,19 +1278,27 @@ def nm_settime_sudoers(user: str) -> str:
 def medic_time_anchor(name: Optional[str] = None) -> dict:
     """What a node must trust to take the time from THIS medic: the hash of
     the medic's health-reply identity and the hash of the reply destination
-    it announces (the node recalls the identity from that announce). Computed
-    with RNS from the real identity file — never guessed: without RNS this
-    raises and the build step fails saying so."""
+    it announces (the node recalls the identity from that announce). LOAD-
+    ONLY (review, 2026-09-23): the identity is created by the UI's
+    _setup_health_reply and nowhere else — a build run on a machine that
+    is not the medic must not mint a fresh identity and hand nodes an
+    anchor nothing will ever announce. Without RNS, or without the file,
+    this raises and the caller says so."""
     try:
         import RNS
     except Exception as e:                                         # noqa: BLE001
         raise RuntimeError("RNS is not importable on this medic, so its time-trust "
                            "anchor cannot be computed: %s" % e)
     import datetime
+    import os as _os
     import socket
-    from monitor.health_reply import REPLY_APP, REPLY_ASPECTS, load_or_create_identity
+    from monitor.health_reply import REPLY_APP, REPLY_ASPECTS
     from monitor.node_time import trust_anchor
-    ident = load_or_create_identity(RNS, _REPLY_IDENTITY_PATH)
+    path = _os.path.expanduser(_REPLY_IDENTITY_PATH)
+    ident = RNS.Identity.from_file(path) if _os.path.isfile(path) else None
+    if ident is None:
+        raise RuntimeError("this machine holds no Node Medic health-reply identity — "
+                           "run this from the medic")
     reply_dest = RNS.Destination.hash(ident, REPLY_APP, *REPLY_ASPECTS)
     return trust_anchor(ident.hash.hex(), reply_dest.hex(),
                         name or socket.gethostname(), datetime.date.today().isoformat())
@@ -1302,18 +1316,100 @@ def _b64_write_cmd(content: str, path: str, priv=None) -> str:
     return f"echo {shlex.quote(b64)} | base64 -d | {tee} >/dev/null"
 
 
+def _owner_mode(conn, priv, path: str) -> str:
+    """`user:group mode` of *path* as the node reports it, "" if unreadable."""
+    try:
+        code, out, _err = conn.run(priv(f"stat -c '%U:%G %a' {path}"))
+    except Exception:                                                  # noqa: BLE001
+        return ""
+    return (out or "").strip() if code == 0 else ""
+
+
+def time_trust_readback(conn, priv, user: str, home: str, anchor: Optional[dict]
+                        ) -> "tuple[list, list, list]":
+    """Read the three time-trust artefacts back — content AND owner/mode —
+    and say which are right, which are wrong, and which could not be
+    checked. Shared by the installer, final_verification and the reporter
+    push, so all three claim the same thing from the same evidence.
+    Returns (verified, problems, unchecked) as lists of sentences. *anchor*
+    None = the medic's anchor is unavailable here: the trust file is then
+    checked for being a valid anchor, not for naming THIS medic."""
+    from monitor.node_time import trust_anchor, trust_anchor_json
+    verified, problems, unchecked = [], [], []
+    trust_path = f"{home}/.rnm-health/trusted_medic.json"
+    code, out, _ = conn.run(f"cat {trust_path}")
+    if code != 0 or not (out or "").strip():
+        problems.append("trust file missing (%s)" % trust_path)
+    elif anchor is not None:
+        if out == trust_anchor_json(anchor):
+            verified.append("trust file names this medic")
+        else:
+            problems.append("trust file does not read back as this medic's anchor")
+    else:
+        try:
+            data = json.loads(out)
+            trust_anchor(data.get("identity_hash"), data.get("reply_dest"),
+                         data.get("name"), data.get("since"))
+            unchecked.append("trust file is a valid anchor but this machine cannot "
+                             "say whether it names the medic")
+        except (ValueError, AttributeError, TypeError):
+            problems.append("trust file is not a valid anchor")
+    code, out, _ = conn.run(f"cat {NM_SETTIME_PATH}")
+    if code != 0 or out != NM_SETTIME_SCRIPT:
+        problems.append("clock helper %s" % ("missing" if code != 0 or not out
+                                              else "does not read back as written"))
+    else:
+        om = _owner_mode(conn, priv, NM_SETTIME_PATH)
+        if om == NM_SETTIME_OWNER_MODE:
+            verified.append("clock helper in place (%s)" % om)
+        elif om:
+            problems.append("clock helper is %s, not %s" % (om, NM_SETTIME_OWNER_MODE))
+        else:
+            unchecked.append("clock helper owner/mode could not be read")
+    try:
+        want = nm_settime_sudoers(user)
+    except ValueError:
+        want = None
+    code, out, _ = conn.run(priv(f"cat {NM_SETTIME_SUDOERS_PATH}"))
+    if code != 0 or not (out or "").strip():
+        problems.append("sudoers line missing (%s)" % NM_SETTIME_SUDOERS_PATH)
+    elif want is not None and out != want:
+        problems.append("sudoers line does not read back as written")
+    else:
+        om = _owner_mode(conn, priv, NM_SETTIME_SUDOERS_PATH)
+        if om == NM_SETTIME_SUDOERS_OWNER_MODE:
+            verified.append("sudoers line in place (%s)" % om)
+        elif om:
+            problems.append("sudoers file is %s, not %s" % (om, NM_SETTIME_SUDOERS_OWNER_MODE))
+        else:
+            unchecked.append("sudoers owner/mode could not be read")
+    return verified, problems, unchecked
+
+
+def _unwind_time_trust(conn, priv, home: str, what: list) -> None:
+    """Remove what earlier stages wrote, so the node never holds a trust
+    file with no road to the clock (or a helper nobody may run)."""
+    if "trust" in what:
+        conn.run(f"rm -f {home}/.rnm-health/trusted_medic.json")
+    if "helper" in what:
+        conn.run(priv(f"rm -f {NM_SETTIME_PATH}"))
+    conn.run(priv(f"rm -f {_NM_SETTIME_SUDOERS_STAGE}"))
+
+
 def install_node_time_trust(conn, priv, user: str, home: str, anchor: dict
                             ) -> "tuple[bool, str]":
     """Put the trust file, the helper and the sudoers line on a node and READ
-    ALL THREE BACK. Shared by birth (install_time_trust) and the reporter
-    push (workflows.pi_reporter_push). *priv* wraps a command in sudo when
-    needed. The sudoers line is staged, held to `visudo -c -f`, and only
-    then moved in; a rejected file is removed, and the call fails."""
+    ALL THREE BACK (content, owner and mode). Shared by birth
+    (install_time_trust) and the reporter push (workflows.pi_reporter_push).
+    *priv* wraps a command in sudo when needed. The sudoers line is staged,
+    held to `visudo -c -f`, and only then moved in. Any failure UNWINDS the
+    earlier stages — a node must never hold a trust file with no road to
+    the clock — and the message names exactly what did not land."""
     from monitor.node_time import trust_anchor_json
     try:
         sudoers = nm_settime_sudoers(user)
     except ValueError as e:
-        return False, f"Cannot write a sudoers line: {e}"
+        return False, f"Cannot write a sudoers line: {e}; nothing was written."
     trust_text = trust_anchor_json(anchor)
     trust_dir = f"{home}/.rnm-health"
     trust_path = f"{trust_dir}/trusted_medic.json"
@@ -1322,14 +1418,18 @@ def install_node_time_trust(conn, priv, user: str, home: str, anchor: dict
     conn.run(f"mkdir -p {trust_dir}")
     conn.run(_b64_write_cmd(trust_text, trust_path))
     if conn.run(f"cat {trust_path}")[1] != trust_text:
-        return False, f"The trust file did not read back as written ({trust_path})."
+        _unwind_time_trust(conn, priv, home, ["trust"])
+        return False, (f"The trust file did not read back as written ({trust_path}) "
+                       "and was removed; the helper and sudoers line were not written.")
 
     # 2. the helper — root, 0755
     conn.run(_b64_write_cmd(NM_SETTIME_SCRIPT, NM_SETTIME_PATH, priv))
     conn.run(priv(f"chown root:root {NM_SETTIME_PATH}"))
     conn.run(priv(f"chmod 0755 {NM_SETTIME_PATH}"))
     if conn.run(f"cat {NM_SETTIME_PATH}")[1] != NM_SETTIME_SCRIPT:
-        return False, f"The clock helper did not read back as written ({NM_SETTIME_PATH})."
+        _unwind_time_trust(conn, priv, home, ["trust", "helper"])
+        return False, (f"The clock helper did not read back as written ({NM_SETTIME_PATH}); "
+                       "it and the trust file were removed; the sudoers line was not written.")
 
     # 3. the sudoers line — staged, checked, then moved in; root, 0440
     stage = _NM_SETTIME_SUDOERS_STAGE
@@ -1338,17 +1438,28 @@ def install_node_time_trust(conn, priv, user: str, home: str, anchor: dict
     conn.run(priv(f"chmod 0440 {stage}"))
     code, out, err = conn.run(priv(f"visudo -c -f {stage}"))
     if code != 0:
-        conn.run(priv(f"rm -f {stage}"))
-        return False, ("visudo rejected the sudoers line, so it was removed and the "
-                       "node cannot take the time: %s" % ((err or out or "").strip()
-                                                          or "no output"))
+        _unwind_time_trust(conn, priv, home, ["trust", "helper"])
+        if code == 127:
+            # Not a rejection: the check itself could not run. Without
+            # visudo's word a sudoers file is never moved in (a bad one
+            # locks sudo for every operator on the node).
+            return False, ("The sudoers line could not be checked (visudo not found), so "
+                           "it was not installed; the trust file and helper were removed.")
+        return False, ("visudo rejected the sudoers line, so it was removed — and the "
+                       "trust file and helper with it: %s" % ((err or out or "").strip()
+                                                              or "no output"))
     conn.run(priv(f"mv {stage} {NM_SETTIME_SUDOERS_PATH}"))
-    if conn.run(priv(f"cat {NM_SETTIME_SUDOERS_PATH}"))[1] != sudoers:
-        return False, (f"The sudoers line did not read back as written "
-                       f"({NM_SETTIME_SUDOERS_PATH}).")
-    return True, ("Trust file, clock helper and sudoers line written and read back: "
-                  "the node takes the time only from this medic (reply destination "
-                  f"{anchor['reply_dest'][:8]}…, identity {anchor['identity_hash'][:8]}…).")
+    verified, problems, unchecked = time_trust_readback(conn, priv, user, home, anchor)
+    if problems:
+        conn.run(priv(f"rm -f {NM_SETTIME_SUDOERS_PATH}"))
+        _unwind_time_trust(conn, priv, home, ["trust", "helper"])
+        return False, ("Read-back after install disagreed (%s); all three were removed."
+                       % "; ".join(problems))
+    tail = (" Not checked: " + "; ".join(unchecked) + "." if unchecked else "")
+    return True, ("Trust file, clock helper and sudoers line written and read back "
+                  "(%s): the node takes the time only from this medic (reply destination "
+                  "%s…, identity %s…).%s" % ("; ".join(verified), anchor["reply_dest"][:8],
+                                            anchor["identity_hash"][:8], tail))
 
 
 @build_step
@@ -1356,12 +1467,17 @@ def install_time_trust(wf: "BuildWorkflow") -> StepResult:
     """Tell the node which medic to believe about the time, and open its one
     road to the clock (docs/HEALTH_REPLY_UNICAST.md, "Time over the mesh").
 
-    Its own step rather than a tail on install_health_reporter, on purpose:
-    that step deliberately never fails (a failed step strands the USB
-    hand-back), whereas this one MUST — a sudoers line visudo rejects, or a
-    medic that cannot compute its own anchor, is not something to carry on
-    past with a green row. The reporter, already running, loads the trust
-    file lazily on each ask, so no restart is needed here.
+    Its own step, and one that NEVER FAILS THE BUILD (review, 2026-09-23):
+    the birth's step 10 sits before hand_the_usb_port_back, and a failed
+    step stops run_all — a node born with a working radio but no time
+    trust is a node; a node that cannot see its own radio is not
+    (WORKING_METHOD Part 3). So every failure returns success with a
+    message naming exactly what did not land and that the node will not
+    take the time from this medic; the installer has already unwound the
+    stages that did land, and final_verification reads the three artefacts
+    back so the certificate cannot claim them. The reporter, already
+    running, loads the trust file lazily on each ask, so no restart is
+    needed here.
     """
     if wf.profile.role != NodeRole.PROPAGATION:
         return StepResult("install_time_trust", True,
@@ -1369,14 +1485,22 @@ def install_time_trust(wf: "BuildWorkflow") -> StepResult:
     try:
         anchor = medic_time_anchor()
     except Exception as e:                                         # noqa: BLE001
-        return StepResult("install_time_trust", False,
-                          f"Node Medic could not compute its own time-trust anchor, so "
-                          f"nothing was written to the node: {e}")
+        return StepResult("install_time_trust", True,
+                          f"NOT installed: Node Medic could not load its own time-trust "
+                          f"anchor, so nothing was written to the node and the node will "
+                          f"not take the time from this medic: {e}")
     user = wf.run_user()
     home = (wf.connection.run("echo $HOME")[1].strip()
             or ("/root" if user == "root" else f"/home/{user}"))
-    ok, msg = install_node_time_trust(wf.connection, wf.priv, user, home, anchor)
-    return StepResult("install_time_trust", ok, msg)
+    try:
+        ok, msg = install_node_time_trust(wf.connection, wf.priv, user, home, anchor)
+    except Exception as e:                                         # noqa: BLE001
+        ok, msg = False, f"the installer raised: {e}"
+    if ok:
+        return StepResult("install_time_trust", True, msg)
+    return StepResult("install_time_trust", True,
+                      "NOT installed — the node will not take the time from this medic. "
+                      + msg)
 
 
 @build_step
@@ -1714,6 +1838,27 @@ def final_verification(wf: "BuildWorkflow") -> StepResult:
         unchecked.append("the radio was NOT checked — it is not attached "
                          "during a Pi build; its link is proven when the "
                          "assembled node first boots")
+
+    # THE TIME TRUST (2026-09-23): install_time_trust never fails the build,
+    # so THIS is where a Pi node's missing trust file / helper / sudoers
+    # line becomes a stated problem rather than a green row. Content and
+    # owner:mode, read from the node; the medic's anchor when it can be
+    # loaded here, else the file is checked for being an anchor at all.
+    if wf.profile.role == NodeRole.PROPAGATION:
+        try:
+            anchor = medic_time_anchor()
+        except Exception:                                          # noqa: BLE001
+            anchor = None
+        user = wf.run_user()
+        home = (wf.connection.run("echo $HOME")[1].strip()
+                or ("/root" if user == "root" else f"/home/{user}"))
+        t_ok, t_bad, t_unchecked = time_trust_readback(
+            wf.connection, wf.priv, user, home, anchor)
+        verified.extend(t_ok)
+        unchecked.extend(t_unchecked)
+        if t_bad:
+            problems.append("node will not take the time from Node Medic ("
+                            + "; ".join(t_bad) + ")")
 
     tail = ("  Not checked: " + "; ".join(unchecked) + "." if unchecked else "")
     if problems:

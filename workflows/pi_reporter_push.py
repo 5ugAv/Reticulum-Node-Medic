@@ -11,7 +11,11 @@ medic (which holds the key) or from any machine that can log in.
 Since 2026-09-23 it also carries time over the mesh: the trust file naming
 this medic, the clock helper and its sudoers line — the same three things
 birth's install_time_trust writes, through the same installer, read back
-the same way.
+the same way (content, owner and mode). The user and HOME the trust is
+written for are the ones the rnm-health UNIT runs as (`systemctl show`),
+not whoever logged in to push — the two differ on a node built as one
+account and administered from another (review, 2026-09-23); `id -un` /
+`$HOME` are the fallback only when the unit is absent.
 
 Pure over a connection object (``run`` -> ``(code, stdout, stderr)``,
 ``push_file`` -> bool — transport.connection's contract), so it is tested
@@ -45,18 +49,52 @@ def _priv(conn, command: str) -> str:
     return command if who == "root" else f"sudo -n {command}"
 
 
+def parse_unit_user_home(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """(User, HOME) from `systemctl show rnm-health -p User -p Environment`:
+    ``User=pi`` and ``Environment=HOME=/home/pi FOO=bar``. None for either
+    the unit does not state."""
+    user = home = None
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.startswith("User="):
+            user = line[len("User="):].strip() or None
+        elif line.startswith("Environment="):
+            for kv in line[len("Environment="):].split():
+                if kv.startswith("HOME="):
+                    home = kv[len("HOME="):].strip() or None
+    return user, home
+
+
+def reporter_user_home(conn) -> Tuple[str, str, str]:
+    """(user, home, how): from the unit when it exists, else the login
+    user's own — and *how* says which, so the message can."""
+    try:
+        code, out, _ = conn.run(f"systemctl show {SERVICE} -p User -p Environment")
+    except Exception:                                                  # noqa: BLE001
+        code, out = 1, ""
+    user, home = parse_unit_user_home(out) if code == 0 else (None, None)
+    if user:
+        if not home:
+            home = "/root" if user == "root" else f"/home/{user}"
+        return user, home, "from the %s unit" % SERVICE
+    login = (conn.run("id -un")[1] or "").strip() or "pi"
+    home = (conn.run("echo $HOME")[1] or "").strip() or f"/home/{login}"
+    return login, home, "from the login user (no %s unit found)" % SERVICE
+
+
 def push_health_reporter(conn, monitor_dir: Optional[str] = None,
                          log: Optional[Callable[[str], None]] = None
                          ) -> Tuple[bool, str]:
     """Copy the reporter package, install the time trust, restart the
     service, and PROVE each: the marker lines are on the node, the three
-    trust files read back, the service reports active. Returns (ok,
-    message); nothing is claimed that was not read back."""
+    trust files read back (content, owner, mode), the service reports
+    active. Returns (ok, message); nothing is claimed that was not read
+    back."""
     _log = log or (lambda m: None)
     mon_dir = monitor_dir or os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "monitor")
-    home = (conn.run("echo $HOME")[1] or "").strip() or "/home/pi"
-    user = (conn.run("id -un")[1] or "").strip() or "pi"
+    user, home, how = reporter_user_home(conn)
+    _log("reporter runs as %s with HOME %s (%s)" % (user, home, how))
     pkg_dir = f"{home}/.rnm-health/monitor"
     conn.run(f"mkdir -p {pkg_dir}")
     conn.run(f"touch {pkg_dir}/__init__.py")
@@ -75,13 +113,14 @@ def push_health_reporter(conn, monitor_dir: Optional[str] = None,
         got = conn.run(f"grep -c '{marker}' {pkg_dir}/pi_health_reporter.py")
         if (got[1] or "").strip() != "1":
             return False, f"the new reporter did not land ({what} missing on the node)"
-    # The time trust — the medic's OWN anchor, computed with RNS or not at all.
+    # The time trust — the medic's OWN anchor, loaded with RNS or not at all.
     # Through the module so a test can stand in for the real medic.
     try:
         anchor = build.medic_time_anchor()
     except Exception as e:                                             # noqa: BLE001
-        return False, f"could not compute this medic's time-trust anchor: {e}"
-    ok, msg = install_node_time_trust(conn, lambda c: _priv(conn, c), user, home, anchor)
+        return False, f"could not load this medic's time-trust anchor: {e}"
+    priv = lambda c: _priv(conn, c)                                    # noqa: E731
+    ok, msg = install_node_time_trust(conn, priv, user, home, anchor)
     if not ok:
         return False, msg
     _log("time trust installed and read back")
@@ -90,6 +129,12 @@ def push_health_reporter(conn, monitor_dir: Optional[str] = None,
     if state != "active":
         return False, f"{SERVICE} is '{state or 'unknown'}' after restart — check journalctl -u {SERVICE}"
     _log("%s restarted and active" % SERVICE)
-    return True, ("reporter updated (%d files) — %s active; the node now answers health "
-                  "requests by unicast and takes the time from this medic over the mesh"
-                  % (len(pushed), SERVICE))
+    verified, problems, unchecked = build.time_trust_readback(conn, priv, user, home, anchor)
+    if problems:
+        return False, ("reporter updated and %s active, but the time trust did not read "
+                       "back after the restart: %s" % (SERVICE, "; ".join(problems)))
+    tail = (" Not checked: " + "; ".join(unchecked) + "." if unchecked else "")
+    return True, ("reporter updated (%d files, unicast handler and time asker read back) — "
+                  "%s active as %s; time trust read back (%s): the node takes the time "
+                  "only from this medic.%s" % (len(pushed), SERVICE, user,
+                                               "; ".join(verified), tail))

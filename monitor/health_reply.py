@@ -19,8 +19,10 @@ Time over the mesh (2026-09-23, same doc, section "Time over the mesh"):
   TIME_REQ = 0x06 | node_dest[16] | nonce[8]                   node -> medic reply dest
   TIME     = 0x05 | time_s u64be[8] | nonce[8] | sig[64]        medic -> node health dest
              sig = medic reply identity over (node_dest | 0x05 | time | nonce)
-  TIME_ACK = 0x07 | node_dest[16] | nonce[8] | before u64be[8] | applied[1] | sig[64]
-             sig = node identity over (node_dest | 0x07 | nonce | before | applied)
+  TIME_ACK = 0x07 | node_dest[16] | nonce[8] | before u64be[8] | status[1] | sig[64]
+             sig = node identity over (node_dest | 0x07 | nonce | before | status)
+             status: 0 not needed (within slop), 1 set, 2 helper failed,
+                     3 refused (NTP-synchronised), 4 refused (stale epoch)
 """
 from __future__ import annotations
 
@@ -83,6 +85,18 @@ TIME_LEN_FIELD = 8
 TIME_REQ_LEN = 1 + DEST_HASH_LEN + NONCE_LEN                       # 25
 TIME_LEN = 1 + TIME_LEN_FIELD + NONCE_LEN + SIG_LEN                # 81
 TIME_ACK_LEN = 1 + DEST_HASH_LEN + NONCE_LEN + TIME_LEN_FIELD + 1 + SIG_LEN   # 98
+#: The TIME_ACK's status byte (review, 2026-09-23: "applied" was a bool and
+#: could not say WHY a clock was not moved — a failed helper and a clock
+#: that was already right both read applied=0). Signed raw, one byte, so
+#: the length stays 98. Old nodes send only 0 and 1; an old medic reading a
+#: new node's 2/3/4 sees "not applied", which is true as far as it goes.
+TIME_STATUS_NOT_NEEDED = 0      # within CLOCK_SLOP_S: nothing to do
+TIME_STATUS_SET = 1             # the clock was set
+TIME_STATUS_HELPER_FAILED = 2   # the root helper refused or failed
+TIME_STATUS_REFUSED_NTP = 3     # the node's own clock is NTP-synchronised
+TIME_STATUS_REFUSED_STALE = 4   # epoch not newer than the last one applied
+TIME_STATUSES = (TIME_STATUS_NOT_NEEDED, TIME_STATUS_SET, TIME_STATUS_HELPER_FAILED,
+                 TIME_STATUS_REFUSED_NTP, TIME_STATUS_REFUSED_STALE)
 #: The shortest health reply the medic could ever verify AND decode: a
 #: beacon is at least PAYLOAD_LEN (14) bytes, so 16 + 8 + 14 + 64 = 102.
 #: Both time packets that share the reply destination (25 and 98 bytes)
@@ -278,27 +292,38 @@ def verify_time(node_dest: bytes, data: bytes, ident) -> Optional[Tuple[int, byt
     return (t, nonce) if ok else None
 
 
-def ack_signed_bytes(node_dest: bytes, nonce: bytes, before_s: int, applied: bool) -> bytes:
+def _status_byte(status) -> int:
+    """One raw byte. A bool still works (True -> 1) so the two old callers'
+    meaning is preserved; anything outside 0..255 is a programming error."""
+    s = int(status)
+    if not 0 <= s <= 255:
+        raise ValueError("status must fit one byte")
+    return s
+
+
+def ack_signed_bytes(node_dest: bytes, nonce: bytes, before_s: int, status) -> bytes:
     return (bytes(node_dest) + bytes([OPCODE_TIME_ACK]) + bytes(nonce)
-            + _u64(before_s) + bytes([1 if applied else 0]))
+            + _u64(before_s) + bytes([_status_byte(status)]))
 
 
-def build_time_ack(node_dest: bytes, nonce: bytes, before_s: int, applied: bool,
+def build_time_ack(node_dest: bytes, nonce: bytes, before_s: int, status,
                    sign) -> bytes:
-    """0x07 | node_dest | nonce | before u64be | applied | sig — 98 bytes,
-    *sign* being the node's health identity's."""
+    """0x07 | node_dest | nonce | before u64be | status | sig — 98 bytes,
+    *sign* being the node's health identity's. *status* is one of
+    TIME_STATUSES (2026-09-23)."""
     if len(node_dest) != DEST_HASH_LEN or len(nonce) != NONCE_LEN:
         raise ValueError("bad destination or nonce length")
-    sig = bytes(sign(ack_signed_bytes(node_dest, nonce, before_s, applied)))
+    sig = bytes(sign(ack_signed_bytes(node_dest, nonce, before_s, status)))
     if len(sig) != SIG_LEN:
         raise ValueError("signature must be 64 bytes")
     return (bytes([OPCODE_TIME_ACK]) + bytes(node_dest) + bytes(nonce)
-            + _u64(before_s) + bytes([1 if applied else 0]) + sig)
+            + _u64(before_s) + bytes([_status_byte(status)]) + sig)
 
 
-def parse_time_ack(data: bytes) -> Optional[Tuple[bytes, bytes, int, bool, bytes]]:
-    """(node_dest, nonce, before_s, applied, sig) or None unless it is
-    exactly a 98-byte 0x07."""
+def parse_time_ack(data: bytes) -> Optional[Tuple[bytes, bytes, int, int, bytes]]:
+    """(node_dest, nonce, before_s, status, sig) or None unless it is
+    exactly a 98-byte 0x07. The status byte is returned raw — a status this
+    medic does not know is still the node's signed word."""
     b = bytes(data or b"")
     if len(b) != TIME_ACK_LEN or b[0] != OPCODE_TIME_ACK:
         return None
@@ -306,53 +331,76 @@ def parse_time_ack(data: bytes) -> Optional[Tuple[bytes, bytes, int, bool, bytes
     dest = b[i:i + DEST_HASH_LEN]; i += DEST_HASH_LEN
     nonce = b[i:i + NONCE_LEN]; i += NONCE_LEN
     before = struct.unpack(">Q", b[i:i + TIME_LEN_FIELD])[0]; i += TIME_LEN_FIELD
-    applied = b[i] == 1; i += 1
-    return (dest, nonce, before, applied, b[i:])
+    status = b[i]; i += 1
+    return (dest, nonce, before, status, b[i:])
 
 
 def verify_time_ack(data: bytes, recall: Callable[[bytes], object]
-                    ) -> Optional[Tuple[bytes, bytes, int, bool]]:
-    """(node_dest, nonce, before_s, applied) under the named node's own
+                    ) -> Optional[Tuple[bytes, bytes, int, int]]:
+    """(node_dest, nonce, before_s, status) under the named node's own
     recalled identity; None otherwise. As with the reply: the hash names
     the key, the signature is the authority."""
     parts = parse_time_ack(data)
     if parts is None:
         return None
-    dest, nonce, before, applied, sig = parts
+    dest, nonce, before, status, sig = parts
     try:
         ident = recall(dest)
         ok = ident is not None and bool(
-            ident.validate(sig, ack_signed_bytes(dest, nonce, before, applied)))
+            ident.validate(sig, ack_signed_bytes(dest, nonce, before, status)))
     except Exception:                                              # noqa: BLE001
         ok = False
-    return (dest, nonce, before, applied) if ok else None
+    return (dest, nonce, before, status) if ok else None
 
 
-def classify_inbound(data: bytes, time_nonce_pending: Callable[[bytes], bool]) -> str:
-    """What landed on the medic's reply destination: "time_req", "time_ack"
-    or "reply" — decided BEFORE any verification, in this order:
+def time_ack_nonce(data: bytes) -> Optional[bytes]:
+    """The nonce field of a 98-byte 0x07, read without verifying — for the
+    dispatcher's 'do I remember this send' question."""
+    b = bytes(data or b"")
+    if len(b) != TIME_ACK_LEN or b[0] != OPCODE_TIME_ACK:
+        return None
+    return b[1 + DEST_HASH_LEN:1 + DEST_HASH_LEN + NONCE_LEN]
 
-      1. exactly 25 bytes, first byte 0x06  -> TIME_REQ (no reply is 25 bytes);
-      2. exactly 98 bytes, first byte 0x07 AND its nonce is a TIME the medic
-         is still waiting on                -> TIME_ACK;
-      3. anything else                      -> the health reply path.
 
-    Step 2's nonce check runs before the reply path so a real ack is never
-    fed to the reply verifier; a 98-byte 0x07 with an unknown nonce is
-    handed to the reply path, where it fails verification like any other
-    stranger's bytes (design, 2026-09-23). MIN_REPLY_LEN says no valid
-    reply is that short anyway."""
+#: What classify_inbound can answer (2026-09-23, revised after review).
+KIND_TIME_REQ = "time_req"
+KIND_TIME_ACK = "time_ack"
+KIND_TIME_ACK_UNKNOWN = "time_ack_unknown"   # a 0x07 for a send nobody remembers
+KIND_SHORT = "short"                         # below MIN_REPLY_LEN, not a time packet
+KIND_REPLY = "reply"
+
+
+def classify_inbound(data: bytes, time_nonce_known: Callable[[bytes], bool]) -> str:
+    """What landed on the medic's reply destination, decided BEFORE any
+    verification, in this order:
+
+      1. exactly 25 bytes, first byte 0x06  -> "time_req" (no reply is 25 bytes);
+      2. exactly 98 bytes, first byte 0x07:
+           nonce is a send this medic remembers (pending, or the ledger's
+           last send to any node)          -> "time_ack";
+           otherwise                        -> "time_ack_unknown" — its OWN
+           answer, so the log says "an ack for a send this medic does not
+           remember" and never "unverifiable health reply" (review, 2026-09-23);
+      3. shorter than MIN_REPLY_LEN         -> "short": no reply the medic
+           could verify AND decode is that short, so it is said as such;
+      4. anything else                      -> "reply", the health reply path.
+
+    *time_nonce_known* is the caller's memory (an exception in it counts as
+    "not known": the packet is free for a stranger to send)."""
     b = bytes(data or b"")
     if len(b) == TIME_REQ_LEN and b[0] == OPCODE_TIME_REQ:
-        return "time_req"
-    if len(b) == TIME_ACK_LEN and b[0] == OPCODE_TIME_ACK:
-        nonce = b[1 + DEST_HASH_LEN:1 + DEST_HASH_LEN + NONCE_LEN]
+        return KIND_TIME_REQ
+    nonce = time_ack_nonce(b)
+    if nonce is not None:
         try:
-            if time_nonce_pending(nonce):
-                return "time_ack"
+            if time_nonce_known(nonce):
+                return KIND_TIME_ACK
         except Exception:                                          # noqa: BLE001
             pass
-    return "reply"
+        return KIND_TIME_ACK_UNKNOWN
+    if len(b) < MIN_REPLY_LEN:
+        return KIND_SHORT
+    return KIND_REPLY
 
 
 # -- the node's decision -------------------------------------------------------
