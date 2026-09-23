@@ -273,6 +273,20 @@ def set_location(rns_hash: str, lat: float, lon: float,
     return roster
 
 
+def clear_location(rns_hash: str, path: str = KIN_ROSTER_PATH) -> dict:
+    """Forget where a fleet node was placed (operator, 2026-09-23: two test
+    nodes on one spot made the map confusing — the one that stays keeps the
+    spot, the other leaves the map). The medic's own knowledge only; what
+    the node publishes is location_share's business, untouched here."""
+    roster = load_roster(path)
+    entry = roster.get(rns_hash)
+    if isinstance(entry, dict) and ("lat" in entry or "lon" in entry):
+        entry.pop("lat", None)
+        entry.pop("lon", None)
+        _save(roster, path)
+    return roster
+
+
 def set_share_location(rns_hash: str, policy: str,
                        path: str = KIN_ROSTER_PATH) -> dict:
     """Record whether this fleet node publishes a position to the public map.
