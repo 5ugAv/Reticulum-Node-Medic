@@ -399,67 +399,29 @@ class BirthGuideScreen(BoxLayout):
             self._go("home")               # same fallback the done screen uses
 
     def _confirm_exit_popup(self):
-        """'Leave this build?' — the requirement_popup card, with two roads.
+        """'Leave this build?' — the house leave card (ui.confirm
+        .confirm_leave), the safe choice first (same rule as the power
+        verdict's row). ONE card for the whole tool since 2026-09-23: this
+        used to be its own copy of the same drawing, and the walk's copy
+        gained a scrolling body the build's never would have.
 
-        Same caution-yellow card and red outline as ui.requirement_popup so
-        every warning in the tool reads the same; two buttons instead of its
-        one, the safe choice first (same rule as the power verdict's row).
+        Say what is true and what it costs. The build DOES keep running —
+        it is the app's activity, not this screen's, and its warning strip
+        stays over every screen until it finishes. What leaving spends is
+        the return point: cancel_resume means the walkthrough will not pull
+        you back in when the build lands. RED leave button: leaving here
+        throws the walkthrough's return point away (the walk's, which
+        saves, is not red).
         """
-        from kivy.graphics import Color, Line, RoundedRectangle
-        from kivy.uix.modalview import ModalView
-        yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
-        red = theme.hex_to_rgba(theme.COLORS["red"])
-        green = theme.hex_to_rgba(theme.COLORS["green"])
-        dark = theme.hex_to_rgba(theme.COLORS["background"])
-        view = ModalView(size_hint=(0.9, 0.5), background="",
-                         background_color=(0, 0, 0, 0.55), auto_dismiss=True)
-        card = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(12))
-        radius = dp(20)
-
-        def _redraw(*_):
-            card.canvas.before.clear()
-            with card.canvas.before:
-                Color(*yellow)
-                RoundedRectangle(pos=card.pos, size=card.size,
-                                 radius=[radius] * 4)
-                Color(*red)
-                Line(width=dp(2.5), rounded_rectangle=(
-                    card.x + dp(1), card.y + dp(1),
-                    card.width - dp(2), card.height - dp(2), radius))
-        card.bind(pos=_redraw, size=_redraw)
-        head = Label(text=tr("Leave this build?"), font_size="23sp", bold=True,
-                     size_hint_y=None, height=dp(36), color=dark,
-                     halign="center", valign="middle")
-        head.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
-        card.add_widget(head)
-        # Say what is true and what it costs. The build DOES keep running —
-        # it is the app's activity, not this screen's, and its warning strip
-        # stays over every screen until it finishes. What leaving spends is
-        # the return point: cancel_resume means the walkthrough will not pull
-        # you back in when the build lands.
-        body = Label(text=tr(
-            "The build keeps running in the background — the warning strip at "
-            "the top stays up until it finishes. Leaving closes this "
-            "walkthrough, so it won't bring you back here when the build is "
-            "done."), font_size="16.5sp", color=dark, halign="center",
-            valign="top")
-        body.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
-        card.add_widget(body)
-        row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                        height=dp(56), spacing=dp(10))
-        stay = Button(text=tr("Cancel — stay"), bold=True, font_size="17sp",
-                      background_normal="", background_color=green, color=dark)
-        stay.bind(on_release=lambda *_: view.dismiss())
-        go = Button(text=tr("OK — go home"), bold=True, font_size="17sp",
-                    background_normal="", background_color=red,
-                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        go.bind(on_release=lambda *_: (view.dismiss(), self._exit_to_home()))
-        row.add_widget(stay)                   # the safe choice reads first
-        row.add_widget(go)
-        card.add_widget(row)
-        view.add_widget(card)
-        view.open()
-        return view
+        from ui.confirm import confirm_leave
+        return confirm_leave(
+            tr("The build keeps running in the background — the warning "
+               "strip at the top stays up until it finishes. Leaving closes "
+               "this walkthrough, so it won't bring you back here when the "
+               "build is done."),
+            tr("Leave this build?"), self._exit_to_home,
+            stay_text=tr("Cancel — stay"), leave_text=tr("OK — go home"),
+            leave_color="red")
 
     # -- detect-first landing ---------------------------------------------
     def _render_detect(self):

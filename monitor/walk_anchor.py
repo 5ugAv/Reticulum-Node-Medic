@@ -9,40 +9,141 @@ on disk per node, so a second walk against the same node can begin from
 anywhere, measured from the same spot.
 
 One JSON file, ``~/.reticulum-node-medic/walk_anchors.json``: a map of
-node key -> ``{lat, lon, at, name}``. Written atomically (a power cut
-mid-write leaves the old file, never half a new one); read tolerantly (a
-corrupt file reads as empty, never raises — the operator is standing
-outside in the weather).
+node key -> ``{lat, lon, at, sats, accuracy_m}``. Written atomically (a
+power cut mid-write leaves the old file, never half a new one); read
+tolerantly (a corrupt file reads as empty, never raises — the operator is
+standing outside in the weather).
 
-The record carries the node's NAME as well as its key because the two
-doors into a walk do not key one device identically: VITALS rewrites the
-key to ``probe_hash_for`` (the first hex destination), ANTENNA's picker
-keeps the freshest destination (``walkable_nodes``). A T114 has sat in the
-registry under four (2026-09-19). ``load_anchor`` therefore matches by key
-first and by case-folded name second — the same rule ``latest_diagnosis``
-already uses for the walk's verdicts.
+KEYED BY THE DEVICE, NEVER BY A NAME (review, 2026-09-23). The first cut
+matched a case-folded name as a second road because the two doors into a
+walk key one device differently (VITALS by ``probe_hash_for``, ANTENNA's
+picker by the freshest destination; a T114 has sat under four). But the
+registry's own law (monitor/registry.py, "NO NAME FOLD ACROSS
+IDENTITIES", 2026-08-22) is that the operator reuses names across
+DIFFERENT boards — a spare birthed "A2" after the first "A2" was deployed
+— so a name road would have measured the new A2's first walk from the old
+A2's doorstep. The key is ``anchor_key``: the roster's device id, else the
+announced identity, else the destination; and ``load_anchor`` takes every
+key the device has ever been known by (``candidate_keys``, read off the
+registry's one device fold) so both doors find the same anchor without a
+name anywhere in the file.
 
-Pure: injected clock nowhere needed (``at`` is handed in), file path
-injectable, no Kivy.
+Pure: the clock is handed in (``at``), the file path is injectable, no Kivy.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import time
-from typing import Dict, Optional
+from typing import Dict, Iterable, List, Optional, Sequence, Union
+
+from monitor.geo import valid_position
 
 _WALK_DIR = "~/.reticulum-node-medic"
 _ANCHOR_FILE = "walk_anchors.json"
 
 
-def _path(base_dir: str) -> str:
-    return os.path.join(os.path.expanduser(base_dir), _ANCHOR_FILE)
+def _dir(base_dir: Optional[str]) -> str:
+    """Resolved at CALL time, not at def time, so a test (or a deploy) can
+    point the whole module elsewhere by rebinding ``_WALK_DIR``."""
+    return base_dir or _WALK_DIR
 
 
-def _read_all(base_dir: str) -> Dict[str, dict]:
-    """Every anchor on disk. Missing, unreadable or corrupt -> ``{}``."""
+def _path(base_dir: Optional[str] = None) -> str:
+    return os.path.join(os.path.expanduser(_dir(base_dir)), _ANCHOR_FILE)
+
+
+# -- keys ------------------------------------------------------------------------
+
+def anchor_key(rec) -> str:
+    """The DEVICE a record belongs to: ``device_id`` (what birth saw with its
+    own hands), else ``identity_hash`` (what it announces), else
+    ``dst_hash``. Empty string for a record with none — the caller refuses
+    to save under an empty key (save_anchor raises)."""
+    for attr in ("device_id", "identity_hash", "dst_hash"):
+        v = getattr(rec, attr, None)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
+def _keys_of(rec) -> List[str]:
+    out = []
+    for attr in ("device_id", "identity_hash", "dst_hash"):
+        v = getattr(rec, attr, None)
+        if isinstance(v, str) and v.strip() and v.strip() not in out:
+            out.append(v.strip())
+    return out
+
+
+def candidate_keys(rec, registry=None, now: float = 0.0) -> List[str]:
+    """Every key the record's device has been known by, primary first: the
+    record's own three, then every ``dst_hash`` / ``identity_hash`` /
+    ``device_id`` of every member of its device group in
+    ``registry.consolidated_records`` — the ONE fold every screen shares
+    (2026-09-23), so the VITALS door and the ANTENNA door, keying the same
+    machine by different destinations, land on one anchor. A registry that
+    cannot answer (None, raises) leaves the record's own keys; an anchor is
+    then still found by whichever of them it was saved under."""
+    primary = anchor_key(rec)
+    keys = [primary] if primary else []
+    for k in _keys_of(rec):
+        if k not in keys:
+            keys.append(k)
+    own = set(keys)
+    if registry is None or not own:
+        return keys
+    try:
+        groups = registry.consolidated_records(now)
+    except Exception:                                              # noqa: BLE001
+        return keys
+    for _consolidated, members in groups:
+        member_keys = []
+        for m in members:
+            member_keys.extend(_keys_of(m))
+        if own & set(member_keys):
+            for k in member_keys:
+                if k not in keys:
+                    keys.append(k)
+            break
+    return keys
+
+
+# -- the file --------------------------------------------------------------------
+
+def _clean(rec) -> Optional[dict]:
+    """One record as stored, or None if it is not one the walk may trust:
+    lat/lon/at must parse and the position must be somewhere on Earth
+    (monitor.geo.valid_position — NaN, inf, (0,0) and ±91 all read as NO
+    anchor, said in the log by the caller). ``sats``/``accuracy_m`` are
+    kept when present and numeric, else None: they describe the fix the
+    anchor was taken on and are shown, never used to decide."""
+    if not isinstance(rec, dict):
+        return None
+    lat, lon, at = rec.get("lat"), rec.get("lon"), rec.get("at")
+    # Numbers only — a "12.3" in the file is a record something else wrote,
+    # and parsing it would be guessing at what that something meant.
+    if any(isinstance(v, bool) or not isinstance(v, (int, float))
+           for v in (lat, lon, at)):
+        return None
+    lat, lon, at = float(lat), float(lon), float(at)
+    if not valid_position(lat, lon) or at != at or at in (float("inf"),
+                                                           float("-inf")):
+        return None
+    sats = rec.get("sats")
+    acc = rec.get("accuracy_m")
+    return {"lat": lat, "lon": lon, "at": at,
+            "sats": sats if isinstance(sats, int) and not isinstance(sats, bool)
+            else None,
+            "accuracy_m": (float(acc) if isinstance(acc, (int, float))
+                           and not isinstance(acc, bool) and acc == acc
+                           else None)}
+
+
+def _read_all(base_dir: Optional[str] = None) -> Dict[str, dict]:
+    """Every USABLE anchor on disk. Missing, unreadable or corrupt -> ``{}``.
+    A record that fails validation is dropped and named in the log, so a
+    node that "has no anchor" on the gate can be traced to the file."""
     try:
         with open(_path(base_dir), encoding="utf-8") as fh:
             data = json.load(fh)
@@ -52,87 +153,87 @@ def _read_all(base_dir: str) -> Dict[str, dict]:
         return {}
     out: Dict[str, dict] = {}
     for key, rec in data.items():
-        if not isinstance(key, str) or not isinstance(rec, dict):
+        if not isinstance(key, str):
             continue
-        try:
-            lat, lon = float(rec["lat"]), float(rec["lon"])
-            at = float(rec["at"])
-        except (KeyError, TypeError, ValueError):
+        clean = _clean(rec)
+        if clean is None:
+            print(f"[walk] anchor for {key[:8]} is not a usable position; "
+                  "ignored", flush=True)
             continue                      # one bad record, not a lost file
-        out[key] = {"lat": lat, "lon": lon, "at": at,
-                    "name": str(rec.get("name") or "")}
+        out[key] = clean
     return out
 
 
-def _write_all(anchors: Dict[str, dict], base_dir: str) -> None:
+def _write_all(anchors: Dict[str, dict], base_dir: Optional[str] = None) -> None:
     """Atomic: write beside, fsync, rename over. A half-written file would
-    read as corrupt and forget EVERY node's anchor at once."""
-    base = os.path.expanduser(base_dir)
+    read as corrupt and forget EVERY node's anchor at once. ``allow_nan``
+    off: json would otherwise write ``NaN``, which is not JSON, and the
+    whole file would read back as corrupt on the next walk."""
+    base = os.path.expanduser(_dir(base_dir))
     os.makedirs(base, exist_ok=True)
     final = _path(base_dir)
     tmp = final + ".tmp"
+    text = json.dumps(anchors, sort_keys=True, indent=2, allow_nan=False)
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(anchors, fh, sort_keys=True, indent=2)
+        fh.write(text)
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, final)
 
 
-def _fold(name: Optional[str]) -> str:
-    return (name or "").strip().lower()
-
-
 def save_anchor(node_key: str, lat: float, lon: float, at: float,
-                name: str = "", base_dir: str = _WALK_DIR) -> dict:
+                sats: Optional[int] = None,
+                accuracy_m: Optional[float] = None,
+                base_dir: Optional[str] = None) -> dict:
     """Lock *node_key*'s anchor at (*lat*, *lon*), stood on at *at* (epoch
-    seconds). Replaces any earlier anchor for the key — and any earlier
-    anchor for the same NAME under another key, so a node re-keyed by the
-    other door does not keep two."""
+    seconds), on a fix of *sats* satellites and an estimated *accuracy_m*.
+    Replaces any earlier anchor for the key. Refuses (ValueError) an empty
+    key or a position that is not on Earth — a bad anchor saved is a bad
+    distance on every sample of the next walk."""
     node_key = (node_key or "").strip()
     if not node_key:
         raise ValueError("an anchor needs a node key")
+    if not valid_position(lat, lon):
+        raise ValueError(f"not a usable position: {lat!r}, {lon!r}")
     anchors = _read_all(base_dir)
-    folded = _fold(name)
-    if folded:
-        for k in [k for k, r in anchors.items()
-                  if k != node_key and _fold(r.get("name")) == folded]:
-            del anchors[k]
-    rec = {"lat": float(lat), "lon": float(lon), "at": float(at),
-           "name": name or ""}
+    rec = _clean({"lat": lat, "lon": lon, "at": at, "sats": sats,
+                  "accuracy_m": accuracy_m})
+    if rec is None:
+        raise ValueError(f"not a usable anchor: at={at!r}")
     anchors[node_key] = rec
     _write_all(anchors, base_dir)
     return dict(rec)
 
 
-def load_anchor(node_key: str, name: str = "",
-                base_dir: str = _WALK_DIR) -> Optional[dict]:
-    """``{lat, lon, at, name}`` for the node, or None. Key first; then the
-    case-folded name, newest wins (see the module docstring for why a
-    name is an acceptable second road here)."""
+def load_anchor(keys: Union[str, Sequence[str]],
+                base_dir: Optional[str] = None) -> Optional[dict]:
+    """``{lat, lon, at, sats, accuracy_m}`` for the node, or None. *keys* is
+    one key or the device's candidate list (``candidate_keys``); the FIRST
+    key with an anchor wins, so the primary (device id) is tried before an
+    older destination-keyed one. No name road — see the module docstring."""
+    if isinstance(keys, str):
+        keys = [keys]
     anchors = _read_all(base_dir)
-    rec = anchors.get((node_key or "").strip())
-    if rec is not None:
-        return dict(rec)
-    folded = _fold(name)
-    if not folded:
-        return None
-    best = None
-    for r in anchors.values():
-        if _fold(r.get("name")) == folded and (best is None or r["at"] > best["at"]):
-            best = r
-    return dict(best) if best is not None else None
+    for k in keys or ():
+        rec = anchors.get((k or "").strip())
+        if rec is not None:
+            return dict(rec)
+    return None
 
 
-def forget_anchor(node_key: str = "", name: str = "",
-                  base_dir: str = _WALK_DIR) -> int:
-    """Drop every anchor matching the key or the case-folded name. Returns
-    how many went; 0 is an honest answer for an unknown node, never an
-    error — and nothing is written when nothing matched."""
+def forget_anchor(keys: Union[str, Iterable[str]],
+                  base_dir: Optional[str] = None) -> int:
+    """Drop the anchor under every key given. Returns how many went; 0 is an
+    honest answer for an unknown node, never an error — and nothing is
+    written when nothing matched. Rebirth and Delete-this-node both pass
+    every key the machine was ever known by."""
+    if isinstance(keys, str):
+        keys = [keys]
+    wanted = {(k or "").strip() for k in keys or ()} - {""}
+    if not wanted:
+        return 0
     anchors = _read_all(base_dir)
-    key = (node_key or "").strip()
-    folded = _fold(name)
-    doomed = [k for k, r in anchors.items()
-              if (key and k == key) or (folded and _fold(r.get("name")) == folded)]
+    doomed = [k for k in anchors if k in wanted]
     for k in doomed:
         del anchors[k]
     if doomed:
@@ -140,10 +241,20 @@ def forget_anchor(node_key: str = "", name: str = "",
     return len(doomed)
 
 
-def anchor_stamp(at: float) -> str:
-    """The saved-on date as the screen shows it — local time, to the
-    minute. One place, so the gate button and the HUD cannot disagree."""
+# -- what the screen says about an anchor -------------------------------------
+# (Its AGE is monitor.formatting.format_age_fine on (now - at) / 3600 — the
+# house scale VITALS already speaks; no second one here.)
+
+def anchor_gap_m(a, b) -> Optional[float]:
+    """Metres between two ``(lat, lon)`` pairs, or None when either is not
+    a usable position. ONE helper for both the overwrite guard (live fix vs
+    saved anchor) and the disagreement line (saved anchor vs the position
+    the node reports), so the two cannot measure differently."""
+    from monitor.movement import haversine_m
     try:
-        return time.strftime("%Y-%m-%d %H:%M", time.localtime(float(at)))
-    except (TypeError, ValueError, OverflowError, OSError):
-        return "?"
+        (lat1, lon1), (lat2, lon2) = a, b
+    except (TypeError, ValueError):
+        return None
+    if not (valid_position(lat1, lon1) and valid_position(lat2, lon2)):
+        return None
+    return haversine_m(lat1, lon1, lat2, lon2)

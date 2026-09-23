@@ -432,7 +432,16 @@ class ReticulumNodeMedicApp(App):
         def on_home():
             h = getattr(widget, "handle_home", None)
             if callable(h):
-                h()                         # the screen's own exit road
+                # A screen's own exit road that RAISES leaves the operator
+                # where they are: on this tool that screen is guarding a
+                # build or a walk, and "could not ask" must never become
+                # "left without asking" (review, 2026-09-23). on_back has
+                # the same guard; it was missing here.
+                try:
+                    h()                     # the screen's own exit road
+                except Exception as e:                             # noqa: BLE001
+                    print(f"[nav] NOTICE: {type(widget).__name__}.handle_home "
+                          f"raised {e!r}; staying put", flush=True)
                 return
             self.switch_mode("home")
         wrap = _BackSwipeWrap(on_back=on_back, on_home=on_home)
@@ -1842,6 +1851,19 @@ class ReticulumNodeMedicApp(App):
                       or h == rec.dst_hash]
         except Exception:                                          # noqa: BLE001
             reg, hashes = None, [rec.dst_hash]
+        # The walk anchor's keys are read BEFORE the rows go: candidate_keys
+        # walks the registry's device fold, which forgets this machine the
+        # moment forget_node runs below (2026-09-23).
+        anchor_keys = set(hashes) | {rec.dst_hash}
+        try:
+            from monitor.walk_anchor import candidate_keys
+            anchor_keys |= set(candidate_keys(rec, registry=reg))
+            for h in hashes:
+                row = reg.nodes.get(h) if reg is not None else None
+                if row is not None:
+                    anchor_keys |= set(candidate_keys(row, registry=reg))
+        except Exception:                                          # noqa: BLE001
+            pass
         removed = 0
         if reg is not None:
             try:
@@ -1854,15 +1876,16 @@ class ReticulumNodeMedicApp(App):
             removed += delete_by_name(name)
         except Exception:                                          # noqa: BLE001
             pass
-        try:                              # the walk anchor: by hash and by name
+        try:                              # the walk anchor: by every device key
             # Where the operator stood to start a boundary walk against
             # this node (monitor/walk_anchor.py, 2026-09-23). A reborn node
             # under the same name is a new machine in a new place — a kept
-            # anchor would measure its first walk from the old one.
+            # anchor would measure its first walk from the old one. Keys
+            # only, never a name (the anchor file holds none): the tapped
+            # record's device keys plus every row swept above, and each
+            # row's own identity/device ids — collected before the rows went.
             from monitor.walk_anchor import forget_anchor
-            for h in set(hashes) | {rec.dst_hash}:
-                forget_anchor(node_key=h or "")
-            forget_anchor(name=name)
+            forget_anchor(anchor_keys)
         except Exception:                                          # noqa: BLE001
             pass
         try:                              # kin roster: by hash and by name
@@ -2141,13 +2164,23 @@ class ReticulumNodeMedicApp(App):
         pop.open()
 
     def _walk_from_pick(self, node):
-        """Start the walk against a picked candidate. The walk engine wants a
-        record-shaped thing (key, name, position); a dict from the picker is
-        adapted here rather than teaching the engine two shapes."""
+        """Start the walk against a picked candidate. The picker's dict names
+        a destination the registry knows; the walk is handed the registry's
+        OWN record for it (2026-09-23), so this door carries the same
+        identity_hash / device_id as the VITALS door and the anchor lands
+        under the same device key. A destination the registry has since
+        forgotten (pruned between the sweep and the tap) falls back to a
+        record-shaped stand-in, as before — keyed by its destination."""
         import types
-        rec = types.SimpleNamespace(
-            dst_hash=node["dst_hash"], name=node["name"],
-            lat=node.get("lat"), lon=node.get("lon"))
+        rec = None
+        try:
+            rec = self.monitor_service.registry.get(node["dst_hash"])
+        except Exception:                                          # noqa: BLE001
+            rec = None
+        if rec is None:
+            rec = types.SimpleNamespace(
+                dst_hash=node["dst_hash"], name=node["name"],
+                lat=node.get("lat"), lon=node.get("lon"))
         self._start_boundary_walk(rec)
 
     def _start_boundary_walk(self, record):
@@ -2163,19 +2196,29 @@ class ReticulumNodeMedicApp(App):
         because a cached path is not a sighting.
         """
         try:
-            # Evidence is keyed by the MESH address. A VITALS row can be keyed
-            # "rtnode:<name>"; pings resolve it, but the evidence would then be
-            # a different link from the same device's hex-keyed sightings.
-            import dataclasses
-            probe = self.monitor_service.registry.probe_hash_for(
-                getattr(record, "dst_hash", "") or "")
-            if (probe and probe != getattr(record, "dst_hash", None)
-                    and dataclasses.is_dataclass(record)):
-                record = dataclasses.replace(record, dst_hash=probe)
+            # The PING goes to a mesh address. A VITALS row can be keyed
+            # "rtnode:<name>"; pings resolve it, but the walk engine is
+            # handed the hex destination outright. Rewritten the same way
+            # for BOTH doors — a shallow copy, whatever shape the record
+            # is (the old dataclass-only rewrite silently skipped the
+            # picker's stand-in; review, 2026-09-23).
+            import copy
+            import time as _t
+            from monitor.walk_anchor import candidate_keys
+            reg = self.monitor_service.registry
+            probe = reg.probe_hash_for(getattr(record, "dst_hash", "") or "")
+            if probe and probe != getattr(record, "dst_hash", None):
+                record = copy.copy(record)
+                record.dst_hash = probe
+            # The ANCHOR (and the banked evidence) are keyed by the DEVICE:
+            # every key the registry's one device fold knows this machine by,
+            # primary first — so the two doors converge on one anchor.
+            keys = candidate_keys(record, registry=reg, now=_t.time())
             self.switch_mode("scan")
             self.scan_screen.begin_walk(
                 record, self._walk_probe,
-                reach_probe=lambda d: self._mesh_reachable(d, wait=10))
+                reach_probe=lambda d: self._mesh_reachable(d, wait=10),
+                anchor_keys=keys)
         except Exception as e:                                     # noqa: BLE001
             print(f"[walk] could not start: {e}", flush=True)
 

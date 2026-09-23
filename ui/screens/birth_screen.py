@@ -3763,9 +3763,31 @@ class BirthScreen(BoxLayout):
             # this board used to be. Left in place, replayed announces keep the
             # old row green forever (one T114, two "live" rows, 2026-08-21).
             # Roster entry and registry rows go together; no serial, no-op.
+            # THE WALK ANCHOR GOES WITH EVERY RETIRED ROW (2026-09-23): where
+            # the operator stood to start a boundary walk against the OLD
+            # machine. A rebirth is a new machine, often in a new place, and
+            # the anchor file is keyed by device — so each sweep below reads
+            # every key its rows were known by (destination, identity,
+            # device) BEFORE forget_node takes them, and one forget_anchor
+            # at the end drops them all. Names are never a key.
+            _anchor_keys = set()
+
+            def _note_retired(_hashes):
+                for _h in _hashes:
+                    _anchor_keys.add(_h)
+                    try:
+                        from monitor.walk_anchor import candidate_keys
+                        _row = _reg.get(_h) if _reg is not None else None
+                        if _row is not None:
+                            _anchor_keys.update(
+                                candidate_keys(_row, registry=_reg))
+                    except Exception:
+                        pass
             try:
-                for _old in kin_roster.retire_previous_lives(
-                        cert.get("hw_serial"), hashes):
+                _prev = list(kin_roster.retire_previous_lives(
+                    cert.get("hw_serial"), hashes))
+                _note_retired(_prev)
+                for _old in _prev:
                     if _reg is not None:
                         _reg.forget_node(_old)
             except Exception:
@@ -3782,6 +3804,7 @@ class BirthScreen(BoxLayout):
             try:
                 _replaced = kin_roster.retire_same_name(
                     _node_name, hashes, hw_serial=cert.get("hw_serial"))
+                _note_retired(_replaced)
                 for _old in _replaced:
                     if _reg is not None:
                         _reg.forget_node(_old)
@@ -3807,6 +3830,7 @@ class BirthScreen(BoxLayout):
                 except Exception:
                     pass
                 if _dead:
+                    _note_retired(_dead)
                     for _old in _dead:
                         if _reg is not None:
                             _reg.forget_node(_old)
@@ -3817,6 +3841,14 @@ class BirthScreen(BoxLayout):
                           f"hash(es) for {_node_name!r}")
             except Exception as _e:
                 print(f"[kin] predecessor retire skipped: {_e}")
+            try:
+                from monitor.walk_anchor import forget_anchor
+                _gone = forget_anchor(_anchor_keys)
+                if _gone:
+                    print(f"[kin] rebirth forgot {_gone} walk anchor(s) "
+                          f"for {_node_name!r}")
+            except Exception as _e:
+                print(f"[kin] walk anchor not forgotten: {_e}")
             kin_roster.register_device(
                 hashes, _node_name,
                 # NOT a default — a lookup. See kin_roster.type_for_cert:

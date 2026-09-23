@@ -61,6 +61,15 @@ class BoundaryWalkSession:
     state: str = "linked"          # linked | lost — hopeful until proven not
     samples: List[dict] = field(default_factory=list)
     max_linked_km: float = 0.0
+    #: What the evidence is banked AS (``LinkObservation.heard_from``).
+    #: ``node_key`` is the mesh destination that is PINGED; a device
+    #: announces several, and the two doors into a walk pick different
+    #: ones — so two walks against one T114 counted as two "distinct
+    #: links" in estimate_range (review, 2026-09-23). The screen passes
+    #: the device key the anchor is locked under (monitor.walk_anchor
+    #: .anchor_key); None keeps the old behaviour of banking under the
+    #: pinged destination.
+    evidence_key: Optional[str] = None
     _misses: int = 0
     _last_ping_at: Optional[float] = None
     _pinging: bool = False
@@ -183,7 +192,8 @@ class BoundaryWalkSession:
         # A relayed answer (direct False) is the mesh's reach, not this
         # radio's — never a link observation between medic and node.
         obs = [LinkObservation(
-                   heard_by=medic_id, heard_from=self.node_key,
+                   heard_by=medic_id,
+                   heard_from=self.evidence_key or self.node_key,
                    observed_at=s["t"], snr_db=s["snr_db"],
                    rssi_dbm=s.get("rssi_dbm"),
                    distance_km=s["km"],
@@ -221,8 +231,13 @@ def walk_position(fix) -> Optional[Tuple[float, float]]:
     every indoor ping would land on the anchor — a silent one there is a
     0 km loss the range model is built to trust. The gate's rule, applied to
     every ping."""
-    from monitor.geo import classify_fix
+    from monitor.geo import classify_fix, valid_position
     if classify_fix(fix) != "live":
+        return None
+    # The gate's other rule too (2026-09-23): a live flag on a position
+    # that is not on Earth (NaN, (0,0)) places nothing. Unplaced, not
+    # banked — and never a NaN in walk_observations.jsonl.
+    if not valid_position(fix.lat, fix.lon):
         return None
     return (fix.lat, fix.lon)
 
@@ -260,14 +275,20 @@ def gps_gate(fix, waited_s: float = 0.0) -> dict:
     Anchoring a range measurement on a remembered position would put a wrong
     number on every sample in the walk, and a wrong number is worse than none.
 
-    Returns ``{ready, stage, sats, anchor}`` where *stage* is one of
-    ``searching`` | ``slow`` | ``held`` | ``ready`` and *anchor* is the
-    ``(lat, lon)`` to measure from, present only when ready.
+    Returns ``{ready, stage, sats, accuracy_m, anchor}`` where *stage* is one
+    of ``searching`` | ``slow`` | ``held`` | ``invalid`` | ``ready`` and
+    *anchor* is the ``(lat, lon)`` to measure from, present only when ready.
+    ``invalid`` (2026-09-23) is a LIVE fix whose position is not on Earth —
+    NaN, (0, 0), a latitude of 91 — which the screen names as its own
+    state: the sky is fine, the receiver's numbers are not, and the walk
+    must not start on them. *accuracy_m* is the fix's own estimate
+    (GpsFix.accuracy_m, HDOP-derived, or None), carried so the anchor
+    record can say how good the fix it was taken on was.
 
     Pure, like the rest of this module: the words live in the screen, wrapped
     for translation. This decides, it does not speak.
     """
-    from monitor.geo import classify_fix
+    from monitor.geo import classify_fix, valid_position
     try:
         level = classify_fix(fix)
     except Exception:                                              # noqa: BLE001
@@ -276,18 +297,27 @@ def gps_gate(fix, waited_s: float = 0.0) -> dict:
         # with the operator standing outside in the weather.
         level = "none"
     sats = getattr(fix, "sats", None)
-    if not isinstance(sats, int):
+    if isinstance(sats, bool) or not isinstance(sats, int):
         sats = None
+    acc = getattr(fix, "accuracy_m", None)
+    if (isinstance(acc, bool) or not isinstance(acc, (int, float))
+            or not math.isfinite(acc)):
+        acc = None
+    base = {"ready": False, "sats": sats, "accuracy_m": acc, "anchor": None}
     if level == "live":
-        return {"ready": True, "stage": "ready", "sats": sats,
+        if not valid_position(getattr(fix, "lat", None),
+                              getattr(fix, "lon", None)):
+            return {**base, "stage": "invalid"}
+        return {**base, "ready": True, "stage": "ready",
                 "anchor": (fix.lat, fix.lon)}
     if level == "held":
-        return {"ready": False, "stage": "held", "sats": sats, "anchor": None}
-    return {"ready": False, "sats": sats, "anchor": None,
+        return {**base, "stage": "held"}
+    return {**base,
             "stage": "slow" if waited_s >= GPS_COLD_START_S else "searching"}
 
 
-def leave_plan(walk_live: bool, gate_up: bool) -> dict:
+def leave_plan(walk_live: bool, gate_up: bool, has_samples: bool = False
+               ) -> dict:
     """What the bottom bar's arrow or Home does to a walk (operator,
     2026-09-23, mid-walk on the roof node: "I just accidentally exited the
     boundary walk halfway through it").
@@ -300,16 +330,33 @@ def leave_plan(walk_live: bool, gate_up: bool) -> dict:
     session with samples (begin_walk). The gate's clock likewise kept
     looking at the sky on a screen nobody was on.
 
-    Returns ``{ask, persist, then}``: *ask* — open the confirmation first;
-    *persist* — what end_walk should be told when the operator confirms
-    (a live walk is banked; a gate that never became a walk has nothing to
-    bank); *then* — where the screen goes afterwards. SCAN has no inner
-    page, so back and home both end at home; the caller passes which
-    button was pressed so the map of "what happens" stays in one place.
+    ONE RULE FOR PERSIST (review, 2026-09-23), three cases:
+
+    * a live walk WITH samples — ask; on yes, bank it (``persist`` True,
+      ``reason`` "save"): "End the walk and save";
+    * a live walk with NO samples — ask; nothing to bank (``persist``
+      False, ``reason`` "empty"): "Leave — nothing recorded yet", and no
+      green "finished" card for a walk that measured nothing;
+    * a gate that is DOING something (the GPS clock running, the pre-check
+      probe in flight) — ask; ``persist`` False, ``reason`` "gate": "Leave
+      — nothing to save". A refusal card or a finished check panel is NOT
+      a gate up: those have their own Close, and the caller just tears them
+      down and lets the bar go home.
+
+    Returns ``{ask, persist, then, reason}``; *then* — where the screen goes
+    afterwards. SCAN has no inner page, so back and home both end at home.
     Pure: this decides, the screen asks and moves.
     """
-    ask = bool(walk_live or gate_up)
-    return {"ask": ask, "persist": bool(walk_live), "then": "home"}
+    if walk_live:
+        if has_samples:
+            return {"ask": True, "persist": True, "then": "home",
+                    "reason": "save"}
+        return {"ask": True, "persist": False, "then": "home",
+                "reason": "empty"}
+    if gate_up:
+        return {"ask": True, "persist": False, "then": "home",
+                "reason": "gate"}
+    return {"ask": False, "persist": False, "then": "home", "reason": None}
 
 
 #: How recently a node must have been heard to be worth PROBING. Deliberately
@@ -389,15 +436,24 @@ def answers_now(node: dict, probe) -> Optional[dict]:
 
 def append_evidence(obs: List[LinkObservation], fails: List[LinkFailure],
                     base_dir: str = _WALK_DIR) -> None:
-    """JSONL, append-only: a walk's truth survives the process that saw it."""
+    """JSONL, append-only: a walk's truth survives the process that saw it.
+
+    Every line is serialised BEFORE anything is written, with ``allow_nan``
+    off (2026-09-23): a NaN distance or RSSI would otherwise land in the
+    file as ``NaN`` — not JSON — and _load_jsonl would skip that line for
+    ever, silently. Refusing raises ValueError out of here, which end_walk
+    says on the glass ("Could not save the walk"); and because nothing has
+    been opened yet, a refused walk leaves the files exactly as they were.
+    """
+    obs_lines = [json.dumps(o.to_dict(), allow_nan=False) + "\n" for o in obs]
+    fail_lines = [json.dumps(f.to_dict(), allow_nan=False) + "\n"
+                  for f in fails]
     base = os.path.expanduser(base_dir)
     os.makedirs(base, exist_ok=True)
     with open(os.path.join(base, _OBS_FILE), "a") as fh:
-        for o in obs:
-            fh.write(json.dumps(o.to_dict()) + "\n")
+        fh.writelines(obs_lines)
     with open(os.path.join(base, _FAIL_FILE), "a") as fh:
-        for f in fails:
-            fh.write(json.dumps(f.to_dict()) + "\n")
+        fh.writelines(fail_lines)
 
 
 def _load_jsonl(path: str) -> List[dict]:

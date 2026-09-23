@@ -2141,7 +2141,8 @@ class ScanScreen(BoxLayout):
 
     # -- the boundary walk (operator spec 2026-08-13; built 2026-09-15) -----
 
-    def begin_walk(self, record, ping_fn, on_finished=None, reach_probe=None):
+    def begin_walk(self, record, ping_fn, on_finished=None, reach_probe=None,
+                   anchor_keys=None):
         """Walk-away range truth for ONE node, folded into MAPS as ordered
         ("fold it into the map view", 2026-08-13 — no seventh mode).
 
@@ -2163,13 +2164,22 @@ class ScanScreen(BoxLayout):
         *reach_probe* is ``(dst_hash) -> bool``, injected — the app supplies
         ``_mesh_reachable``, the same primitive the ANTENNA picker uses, so
         the two doors cannot drift apart on what "online" means.
+
+        *anchor_keys* (2026-09-23): every key this node's DEVICE has been
+        known by, primary first (monitor.walk_anchor.candidate_keys, read
+        off the registry's one device fold by the app). The anchor is
+        saved under the first and looked for under all of them, so the
+        two doors — which key one T114 by different destinations — find
+        one anchor. None falls back to the record's own keys.
         """
+        from monitor.walk_anchor import candidate_keys
         # One walk (or gate) at a time — but a walk with samples is BANKED,
         # not thrown away: the plausible path here is an accidental edge-swipe
         # home mid-walk and a second press on a door (audit, 2026-09-21).
         running = getattr(self, "_walk_session", None)
         self.end_walk(persist=bool(running is not None and running.samples))
         self._walk_record = record
+        self._walk_anchor_keys = list(anchor_keys or candidate_keys(record))
         self._walk_ping_fn = ping_fn
         self._walk_done_cb = on_finished
         self._walk_reach_probe = reach_probe
@@ -2289,6 +2299,11 @@ class ScanScreen(BoxLayout):
             # exists to prevent, so a missing probe refuses like a silent one.
             self._show_walk_unavailable(checked=False)
             return
+        # A probe in flight is a gate DOING something — leaving asks first
+        # (leave_plan's gate_up, 2026-09-23). Cleared when the verdict lands
+        # or the panel is torn down; the refusal card that may follow is not
+        # in flight and has its own Close.
+        self._walk_check_inflight = True
         node = {"dst_hash": getattr(self._walk_record, "dst_hash", "")}
         seen = {}
 
@@ -2312,6 +2327,7 @@ class ScanScreen(BoxLayout):
         if token is not None and token is not getattr(
                 self, "_walk_check_token", None):
             return
+        self._walk_check_inflight = False
         if getattr(self, "_walk_gate", None) is None:
             return                          # cancelled while the probe ran
         if ok:
@@ -2377,7 +2393,6 @@ class ScanScreen(BoxLayout):
         nothing here offers a start that would measure nothing.
         """
         import time as _t
-        from kivy.uix.button import Button
         from kivy.clock import Clock as _Clock
         name = self._walk_node_name()
         self._tear_down_walk_gate()
@@ -2399,28 +2414,28 @@ class ScanScreen(BoxLayout):
         # other — and BOTH still wait for a steady live fix, because every
         # sample is placed by the live fix, not by the anchor (the two-gate
         # rule stays: a walk started away from the node with no fix would
-        # place nothing).
-        from monitor.walk_anchor import anchor_stamp, load_anchor
+        # place nothing). The anchor is looked for under EVERY key the
+        # device has been known by (begin_walk's anchor_keys) — never by
+        # name, the registry's own law.
+        from monitor.walk_anchor import anchor_gap_m, load_anchor
         saved = None
         try:
-            saved = load_anchor(getattr(self._walk_record, "dst_hash", "") or "",
-                                name=name)
+            saved = load_anchor(getattr(self, "_walk_anchor_keys", None) or [])
         except Exception:                                          # noqa: BLE001
             saved = None                    # a corrupt file is "no anchor"
         self._walk_saved_anchor = saved
-        when = anchor_stamp(saved["at"]) if saved else ""
+        age = self._walk_age_text(saved["at"]) if saved else ""
         if saved:
             head = self._walk_text(
                 tr("Stand next to {name} — or start from where you "
                    "are.").format(name=name),
                 "19sp", "warning_yellow", bold=True)
             why = self._walk_text(
-                tr("{name} already has a start position, saved on {date}: "
-                   "where you stood when that walk began. Standing at the "
-                   "node again sets a fresh one; away from it, the saved one "
-                   "is used. Either way, wait for a satellite fix first — "
-                   "every ping is placed by the live fix.").format(
-                       name=name, date=when),
+                tr("{name} has a start position saved {age} ago — where you "
+                   "stood when that walk began. Standing at the node again "
+                   "saves a fresh one; away from it, the saved one is used. "
+                   "Either way, wait for a satellite fix first — every ping "
+                   "is placed by the live fix.").format(name=name, age=age),
                 "14sp", "text_secondary")
         else:
             head = self._walk_text(
@@ -2432,35 +2447,50 @@ class ScanScreen(BoxLayout):
                    "started. Wait here until it has a satellite fix, then "
                    "press the button and walk away."),
                 "14sp", "text_secondary")
+        # DISAGREEMENT (2026-09-23): the registry may know where the node
+        # says it is (its certificate, its own announce). When that sits far
+        # from the saved start position, one of the two has moved — say so,
+        # amber, and let the operator decide; never silently pick one.
+        rec = self._walk_record
+        gap = None
+        if saved:
+            gap = anchor_gap_m((saved["lat"], saved["lon"]),
+                               (getattr(rec, "lat", None),
+                                getattr(rec, "lon", None)))
+        from monitor.movement import DEFAULT_MOVE_THRESHOLD_M
+        disagree = None
+        if gap is not None and gap > DEFAULT_MOVE_THRESHOLD_M:
+            disagree = self._walk_text(
+                tr("The saved start position is {m} m from where {name} "
+                   "reports itself — if it has been moved, start at the "
+                   "node.").format(m=int(round(gap)), name=name),
+                "14sp", "amber", bold=True)
         self._walk_gate_badge = _FixBadge()
         self._walk_gate_state = self._walk_text("", "14.5sp", "text_secondary")
 
         roads = BoxLayout(orientation="vertical", size_hint=(1, None),
                           spacing=dp(8))
         roads.bind(minimum_height=roads.setter("height"))
-        # LARGE and unmistakable, as ordered — and it says WHY it has appeared,
-        # because a button that materialises without explanation is a button
-        # people press without reading.
-        self._walk_go = Button(
-            text=(tr("GPS found — I'm standing at the node (set its "
-                     "position again)") if saved
-                  else tr("GPS found — start the walk")),
-            bold=True, size_hint_y=None, height=dp(58),
-            font_size=theme.font_sp("17sp" if saved else "19sp"),
-            background_normal="",
-            background_color=theme.hex_to_rgba(theme.COLORS["green"]),
-            color=theme.hex_to_rgba(theme.COLORS["background"]))
+        # LARGE and unmistakable, as ordered — and worded as what the press
+        # DOES to the file: the medic records where the OPERATOR stood, not
+        # the node's position (review, 2026-09-23). Both grow to their words
+        # (_walk_button) so no catalog clips the age off the end.
+        self._walk_go = self._walk_button(
+            tr("Start here — save this as {name}'s start position").format(
+                name=name),
+            "green", "background")
         self._walk_go.bind(on_release=lambda *_: self._walk_gate_go())
         roads.add_widget(self._walk_go)
         self._walk_go_saved = None
         if saved:
-            self._walk_go_saved = Button(
-                text=tr("GPS found — I'm away from it (use the position "
-                        "saved on {date})").format(date=when),
-                bold=True, size_hint_y=None, height=dp(58),
-                font_size=theme.font_sp("17sp"), background_normal="",
-                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
-                color=theme.hex_to_rgba(theme.COLORS["background"]))
+            acc = saved.get("accuracy_m")
+            self._walk_go_saved = self._walk_button(
+                (tr("Start away — use the start position saved {age} ago "
+                    "(~±{acc}m)").format(age=age, acc=int(round(acc)))
+                 if acc is not None
+                 else tr("Start away — use the start position saved {age} "
+                         "ago").format(age=age)),
+                "accent", "background")
             self._walk_go_saved.bind(
                 on_release=lambda *_: self._walk_gate_go(use_saved=True))
             roads.add_widget(self._walk_go_saved)
@@ -2478,15 +2508,51 @@ class ScanScreen(BoxLayout):
         # and an operator taps it and learns the medic ignores them.
         self._walk_show_roads(False)
 
-        for w in (done, head, why, self._walk_gate_badge,
+        for w in (done, head, why, disagree, self._walk_gate_badge,
                   self._walk_gate_state, roads, row):
-            gate.add_widget(w)
+            if w is not None:
+                gate.add_widget(w)
         self._walk_gate = gate
         self._walk_gate_since = _t.time()
         self._walk_anchor = None
+        self._walk_fix_meta = {"sats": None, "accuracy_m": None}
         self.add_widget(gate, index=len(self.children))   # top of the screen
         self._walk_gate_tick(0)
         self._walk_gate_ev = _Clock.schedule_interval(self._walk_gate_tick, 1.0)
+
+    @staticmethod
+    def _walk_button(text, bg, fg):
+        """A start button that GROWS to its words — the _walk_text rule
+        applied to a Button (2026-09-23). text_size follows the width and
+        the height follows the texture, so "use the start position saved
+        3.2h ago (~±4m)" wraps in German or Russian instead of losing the
+        age off the right edge; and a wrapped button is never a clipped
+        one."""
+        from kivy.uix.button import Button
+        btn = Button(text=text, bold=True, size_hint_y=None, height=dp(58),
+                     font_size=theme.font_sp("17sp"), background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS[bg]),
+                     color=theme.hex_to_rgba(theme.COLORS[fg]),
+                     halign="center", valign="middle")
+
+        def _sync(*_):
+            btn.text_size = (max(btn.width - dp(16), 0), None)
+            btn.texture_update()
+            btn.height = max(dp(58), btn.texture_size[1] + dp(20))
+        btn.bind(width=_sync, text=_sync)
+        return btn
+
+    @staticmethod
+    def _walk_age_text(at):
+        """How long ago an anchor was taken, on the house scale VITALS
+        speaks (format_age_fine: "12m", "3.2h", "2d 4h"). "?" for a time
+        that cannot be read — never an invented age."""
+        import time as _t
+        from monitor.formatting import format_age_fine
+        try:
+            return format_age_fine((_t.time() - float(at)) / 3600.0)
+        except (TypeError, ValueError):
+            return "?"
 
     def _walk_gate_tick(self, _dt):
         """One look at the sky. The verdict is monitor.boundary_walk.gps_gate's
@@ -2504,6 +2570,9 @@ class ScanScreen(BoxLayout):
         g = gps_gate(fix, waited_s=waited)
         self._walk_gate_badge.set_sats(g["sats"])
         self._walk_anchor = g["anchor"]
+        # What the fix was made of, kept with the anchor so the next gate can
+        # say "(~±4m)" honestly — the fix's own estimate, never invented.
+        self._walk_fix_meta = {"sats": g["sats"], "accuracy_m": g["accuracy_m"]}
         # A canopy hovering at 0<->1 satellites made the button blink every
         # second. It appears after two consecutive ready looks (audit,
         # 2026-09-21) and stays for as long as the fix holds.
@@ -2514,6 +2583,14 @@ class ScanScreen(BoxLayout):
         # — never a bare spinner. Each stage has a different answer.
         if g["ready"]:
             words, tone = tr("Satellite fix — ready to start."), "green"
+        elif g["stage"] == "invalid":
+            # A live flag on a position that is not on Earth (NaN, 0,0):
+            # the sky is fine, the receiver's numbers are not. Said as its
+            # own state, and the walk does not start on them.
+            words, tone = (tr("The GPS reports a fix but its position is "
+                              "not usable (not a place on Earth). Wait for "
+                              "the next fix; if it stays, run Self-check "
+                              "under VITALS."), "amber")
         elif g["stage"] == "held":
             words, tone = (tr("The GPS is coasting on an old position, not "
                               "tracking. Step into the open and wait."), "amber")
@@ -2545,18 +2622,49 @@ class ScanScreen(BoxLayout):
         """The press. Anchor HERE — see _start_walk_now — or, on the second
         road, at the anchor saved for this node (2026-09-23). Either way a
         live fix must be on the glass right now: the saved road is not a
-        way around the sky, only around standing at the node."""
+        way around the sky, only around standing at the node.
+
+        THE OVERWRITE GUARD (review, 2026-09-23): the green road with an
+        anchor already saved and the live fix more than
+        DEFAULT_MOVE_THRESHOLD_M from it asks first — the operator may be
+        standing at the node's NEW place, or may have pressed the wrong
+        button from the far end of the yard, and the file cannot tell.
+        Within the threshold it is the same spot and re-saves silently.
+        The gate stays up until the answer: a "keep" must leave the
+        operator exactly where they were.
+        """
+        from monitor.movement import DEFAULT_MOVE_THRESHOLD_M
+        from monitor.walk_anchor import anchor_gap_m
         live = getattr(self, "_walk_anchor", None)
         if live is None:                   # the fix died between paint and tap
             self._walk_gate_tick(0)
             return
         saved = getattr(self, "_walk_saved_anchor", None)
-        self._tear_down_walk_gate()
         if use_saved and saved:
+            self._tear_down_walk_gate()
             self._start_walk_now((saved["lat"], saved["lon"]),
                                  saved_at=saved["at"])
-        else:
-            self._start_walk_now(live)
+            return
+        gap = (anchor_gap_m(live, (saved["lat"], saved["lon"]))
+               if saved else None)
+        if gap is not None and gap > DEFAULT_MOVE_THRESHOLD_M:
+            from ui.confirm import confirm_leave
+            name = self._walk_node_name()
+
+            def _replace():
+                self._tear_down_walk_gate()
+                self._start_walk_now(live)
+            confirm_leave(
+                tr("You are {m} m from the start position saved for {name} "
+                   "{age} ago. Replace it?").format(
+                       m=int(round(gap)), name=name,
+                       age=self._walk_age_text(saved["at"])),
+                tr("Replace the start position?"), _replace,
+                stay_text=tr("Keep the saved position"),
+                leave_text=tr("Replace it"), auto_dismiss=False)
+            return
+        self._tear_down_walk_gate()
+        self._start_walk_now(live)
 
     def _tear_down_walk_gate(self):
         """Remove whichever pre-walk panel is up (check / refusal / GPS gate)
@@ -2568,6 +2676,12 @@ class ScanScreen(BoxLayout):
         self._walk_gate_ev = None
         self._walk_go = None                 # gate 2 is no longer on screen
         self._walk_go_saved = None
+        # The steady-fix counter belongs to the gate that is going: left
+        # over, the next gate's button would appear on its FIRST look
+        # (review, 2026-09-23). The probe flag likewise — a torn-down check
+        # is not in flight whatever its thread is still doing.
+        self._walk_ready_ticks = 0
+        self._walk_check_inflight = False
         gate = getattr(self, "_walk_gate", None)
         if gate is not None and gate.parent is not None:
             self.remove_widget(gate)
@@ -2593,25 +2707,59 @@ class ScanScreen(BoxLayout):
         the gate's second road: *anchor* is the one saved at that time, and
         nothing is re-saved — a walk started away from the node must never
         move where zero is.
+
+        THE SAVE IS READ BACK (2026-09-23). The HUD says "saved as {name}'s
+        start position" only after load_anchor returns the same numbers;
+        a save that raised, or read back different, is said on the HUD as
+        NOT saved — the walk itself does not need the file, but the next
+        one does, and an operator told it was saved would walk away from
+        the roof node trusting a file that has nothing in it.
+
+        A position that is not on Earth never starts a walk, whichever
+        road — the gate already refuses such a fix (gps_gate "invalid")
+        and load_anchor drops such a record, so this is the last line:
+        refused, said in the log, and the gate is put back so its own
+        words say what the sky is doing.
         """
         import time as _t
         from kivy.clock import Clock as _Clock
         from monitor.boundary_walk import BoundaryWalkSession
+        from monitor.geo import valid_position
         rec = self._walk_record
         lat, lon = anchor
-        name = rec.name or rec.dst_hash[:8]
+        name = self._walk_node_name()
+        if not valid_position(lat, lon):
+            print(f"[walk] refused to start on an unusable anchor "
+                  f"{lat!r},{lon!r}", flush=True)
+            self._show_walk_gate()
+            return
+        keys = list(getattr(self, "_walk_anchor_keys", None) or [])
+        key = keys[0] if keys else (getattr(rec, "dst_hash", "") or "")
+        save_ok = None
         if saved_at is None:
+            meta = getattr(self, "_walk_fix_meta", None) or {}
             try:
-                from monitor.walk_anchor import save_anchor
-                save_anchor(rec.dst_hash, lat, lon, _t.time(), name=name)
+                from monitor.walk_anchor import load_anchor, save_anchor
+                save_anchor(key, lat, lon, _t.time(),
+                            sats=meta.get("sats"),
+                            accuracy_m=meta.get("accuracy_m"))
+                back = load_anchor([key])
+                save_ok = bool(back and back["lat"] == float(lat)
+                               and back["lon"] == float(lon))
+                if not save_ok:
+                    print(f"[walk] anchor read-back for {key[:8]} did not "
+                          f"match: {back}", flush=True)
             except Exception as e:                                 # noqa: BLE001
-                # The walk itself does not need the file; the NEXT walk
-                # does. Said in the log, never a crash at the press.
+                # Said in the log AND on the HUD (below), never a crash at
+                # the press.
+                save_ok = False
                 print(f"[walk] anchor not saved: {e}", flush=True)
         self._walk_anchor_saved_at = saved_at
+        self._walk_anchor_save_ok = save_ok
         self._walk_session = BoundaryWalkSession(
             node_key=rec.dst_hash, node_name=name,
-            node_lat=lat, node_lon=lon, now=_t.time())
+            node_lat=lat, node_lon=lon, now=_t.time(),
+            evidence_key=key or None)
         self._show_walk_hud()
         self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
         self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
@@ -2651,18 +2799,27 @@ class ScanScreen(BoxLayout):
         stop.bind(on_release=lambda *_: self.end_walk())
         top.add_widget(self._walk_lbl)
         top.add_widget(stop)
-        # FIRST LINE: which anchor the distances are measured from
+        # FIRST LINE: which start position the distances are measured from
         # (2026-09-23). A walk started away from the node reads "0 km" as
         # the saved spot, not the operator's feet — said, so the numbers
-        # that follow cannot be misread.
-        from monitor.walk_anchor import anchor_stamp
+        # that follow cannot be misread. "Saved as {name}'s start position"
+        # is said ONLY after the save was read back (_start_walk_now); a
+        # save that failed is said as such, amber, because the next walk
+        # will look for it.
         saved_at = getattr(self, "_walk_anchor_saved_at", None)
-        self._walk_anchor_lbl = self._walk_text(
-            (tr("Anchored at {name} — position saved {date}.").format(
-                name=self._walk_session.node_name,
-                date=anchor_stamp(saved_at)) if saved_at is not None
-             else tr("Anchored here — where you pressed start.")),
-            "13sp", "text_secondary")
+        save_ok = getattr(self, "_walk_anchor_save_ok", None)
+        name = self._walk_session.node_name
+        if saved_at is not None:
+            words, tone = (tr("Measuring from the start position saved {age} "
+                              "ago.").format(age=self._walk_age_text(saved_at)),
+                           "text_secondary")
+        elif save_ok:
+            words, tone = (tr("Measuring from here — saved as {name}'s start "
+                              "position.").format(name=name), "text_secondary")
+        else:
+            words, tone = (tr("Measuring from here — the start position "
+                              "could NOT be saved"), "amber")
+        self._walk_anchor_lbl = self._walk_text(words, "13sp", tone)
         self._walk_hint = self._walk_text("", "14sp", "text_secondary")
         hud.add_widget(self._walk_anchor_lbl)
         hud.add_widget(top)
@@ -2886,6 +3043,21 @@ class ScanScreen(BoxLayout):
 
     # -- leaving: the bottom bar's arrow and Home ask first (2026-09-23) -----
 
+    def _walk_leave_plan(self):
+        """leave_plan, fed from what is actually on the screen right now.
+
+        ``gate_up`` is a gate DOING something — the GPS clock running or the
+        pre-check probe in flight. The refusal card and a finished check
+        panel are NOT: they have their own Close, and Back there just tears
+        them down (handle_back) and lets the bar go home.
+        """
+        from monitor.boundary_walk import leave_plan
+        w = getattr(self, "_walk_session", None)
+        gate_up = (getattr(self, "_walk_gate_ev", None) is not None
+                   or bool(getattr(self, "_walk_check_inflight", False)))
+        return leave_plan(w is not None, gate_up,
+                          has_samples=bool(w is not None and w.samples))
+
     def handle_back(self):
         """The bottom bar's '←' (and the left-edge swipe), via App._with_back.
 
@@ -2902,59 +3074,112 @@ class ScanScreen(BoxLayout):
         Now: with a walk live or a gate up, ONE confirmation. Returns True
         (handled — the popup owns what happens next) so the app stays put;
         with nothing running, False, and the app goes home as before. SCAN
-        has no inner page, so 'back' with no walk IS home."""
-        from monitor.boundary_walk import leave_plan
-        plan = leave_plan(getattr(self, "_walk_session", None) is not None,
-                          getattr(self, "_walk_gate", None) is not None)
-        if not plan["ask"]:
-            return False
-        self._confirm_leave_walk(plan)
+        has no inner page, so 'back' with no walk IS home.
+
+        NEVER RAISES, AND NEVER LEAVES BY ACCIDENT (review, 2026-09-23): if
+        asking fails for any reason the safe fallback is to STAY — True,
+        the walk untouched, and why at NOTICE in the log. A second press
+        while the card is open is ignored (the open-once fuse,
+        _walk_leave_popup). A refusal card or finished check panel is not a
+        walk: torn down, and False so the bar goes home."""
+        try:
+            plan = self._walk_leave_plan()
+            if not plan["ask"]:
+                if getattr(self, "_walk_gate", None) is not None:
+                    self.end_walk(persist=False)   # a panel with nothing live
+                return False
+            if getattr(self, "_walk_leave_popup", None) is not None:
+                return True                 # already asking — one card
+            self._confirm_leave_walk(plan)
+        except Exception as e:                                     # noqa: BLE001
+            print(f"[walk] NOTICE: could not ask before leaving ({e!r}); "
+                  "staying on the walk", flush=True)
         return True
 
     def handle_home(self):
         """The bottom bar's Home. Same confirmation as the arrow; a plain
         switch to home when nothing is running (what _with_back would have
-        done on its own)."""
-        from monitor.boundary_walk import leave_plan
-        plan = leave_plan(getattr(self, "_walk_session", None) is not None,
-                          getattr(self, "_walk_gate", None) is not None)
-        if not plan["ask"]:
-            self._go_home()
-            return
-        self._confirm_leave_walk(plan)
+        done on its own). Same fallback: a failed ask stays put."""
+        try:
+            plan = self._walk_leave_plan()
+            if not plan["ask"]:
+                if getattr(self, "_walk_gate", None) is not None:
+                    self.end_walk(persist=False)
+                self._go_home()
+                return
+            if getattr(self, "_walk_leave_popup", None) is not None:
+                return
+            self._confirm_leave_walk(plan)
+        except Exception as e:                                     # noqa: BLE001
+            print(f"[walk] NOTICE: could not ask before leaving ({e!r}); "
+                  "staying on the walk", flush=True)
 
     def _confirm_leave_walk(self, plan):
         """'Leave the walk?' — the house card (ui.confirm.confirm_leave),
-        safe choice first. The body says the truth for the state: a live
-        walk is banked whole and its anchor stays, so another walk against
-        the same node can start from here; a gate that never became a walk
+        safe choice first, auto_dismiss OFF (a stray tap does nothing — the
+        confirm_danger rule). The body says the truth for the state: a live
+        walk with samples is banked whole and its start position stays, so
+        another walk against the same node can start from here; a walk
+        that has not recorded a ping, or a gate that never became a walk,
         has measured nothing and has nothing to save."""
         from ui.confirm import confirm_leave
         name = self._walk_node_name()
-        if plan["persist"]:
+        reason = plan.get("reason")
+        if reason == "save":
             body = tr("Leaving ends this walk. Everything it has recorded so "
                       "far is saved and counts; you can start another walk "
-                      "against {name} from here — its anchor is "
+                      "against {name} from here — its start position is "
                       "kept.").format(name=name)
             go = tr("End the walk and save")
+        elif reason == "empty":
+            body = tr("Leaving ends this walk before its first ping, so "
+                      "there is nothing to save. You can start another walk "
+                      "against {name} from here — its start position is "
+                      "kept.").format(name=name)
+            go = tr("Leave — nothing recorded yet")
         else:
             body = tr("Leaving cancels the wait at the gate — nothing has "
                       "been measured yet, so there is nothing to save. You "
                       "can start another walk against {name} from "
                       "here.").format(name=name)
             go = tr("Leave — nothing to save")
+
+        def _closed():
+            self._walk_leave_popup = None   # the fuse resets on any close
         self._walk_leave_popup = confirm_leave(
             body, tr("Leave the walk?"),
             lambda: self._leave_walk(plan),
-            stay_text=tr("Keep walking"), leave_text=go)
+            stay_text=tr("Keep walking"), leave_text=go,
+            auto_dismiss=False, on_dismiss=_closed)
 
     def _leave_walk(self, plan):
         """The confirmed exit: bank (or drop) the walk, then go where the
         operator asked. end_walk's summary card is a ModalView on the
-        Window, so it stays readable over home."""
-        self.end_walk(persist=bool(plan["persist"]))
-        if plan["then"] == "home":
-            self._go_home()
+        Window, so it stays readable over home.
+
+        The plan is RE-READ at the press (review, 2026-09-23): the card was
+        opened on a walk with no samples, and a ping may have answered while
+        it stood — what is banked is what is true now. And home happens
+        WHATEVER end_walk does: a raise inside it (its own road says the
+        failure) must not strand the operator on a screen they confirmed
+        leaving."""
+        try:
+            now_plan = self._walk_leave_plan()
+            persist = bool(now_plan["persist"] if now_plan["ask"]
+                           else plan.get("persist"))
+        except Exception:                                          # noqa: BLE001
+            persist = bool(plan.get("persist"))
+        try:
+            self.end_walk(persist=persist)
+        except Exception as e:                                     # noqa: BLE001
+            # end_walk says its own save failures on a card; anything past
+            # that is said here, in the log, and the walk is NOT claimed
+            # banked. The session is left as end_walk left it.
+            print(f"[walk] NOTICE: end_walk failed on leave ({e!r}); the "
+                  "walk may not be banked", flush=True)
+        finally:
+            if plan.get("then", "home") == "home":
+                self._go_home()
 
     def _go_home(self):
         """switch_mode("home") through the running app — what _with_back
@@ -2968,10 +3193,31 @@ class ScanScreen(BoxLayout):
         except Exception:                                          # noqa: BLE001
             pass
 
+    def _walk_busy_heartbeat(self):
+        """Tell the app the busy marker may clear NOW (2026-09-23): the
+        heartbeat runs every 30 s, and a walk ended in between left the
+        marker saying "a boundary walk" for up to half a minute after it
+        was over — long enough for restart_ui.sh to refuse an operator who
+        had just pressed Stop & save."""
+        try:
+            from kivy.app import App
+            fn = getattr(App.get_running_app(), "_busy_heartbeat", None)
+            if callable(fn):
+                fn()
+        except Exception:                                          # noqa: BLE001
+            pass
+
     def end_walk(self, persist=True):
         """Stop, bank the evidence, tell the story. Safe to call idle — and
         it also cancels a GPS gate that never got as far as a walk, which is
-        what the gate's Cancel button calls."""
+        what the gate's Cancel button calls.
+
+        THE SESSION IS LET GO OF LAST (review, 2026-09-23): evidence is
+        built and written INSIDE the try, and ``_walk_session`` is nulled
+        only once it is banked or the failure has been said (the
+        2026-09-21 not-saved card). A raise before that leaves the
+        session in place, so the leave road still sees a live walk rather
+        than a walk that silently ceased to exist."""
         w = getattr(self, "_walk_session", None)
         self._tear_down_walk_gate()
         for ev in ("_walk_ev", "_walk_flash_ev"):
@@ -2985,21 +3231,24 @@ class ScanScreen(BoxLayout):
         self._walk_hud = None
         self._walk_hint = None
         self.plot.set_walk_trail([])
-        self._walk_session = None
         self._show_placement(True)
         if w is None or not persist:
+            self._walk_session = None
+            self._walk_busy_heartbeat()
             return
         from monitor.topology import MEDIC_ID
-        obs, fails = w.evidence(medic_id=MEDIC_ID)
         # The save and the story are separate tries: a write that fails
-        # (disk full, unwritable dir) used to end the walk with no popup at
-        # all — "a step that cannot fail is not a check" (audit, 2026-09-21).
-        save_err = None
+        # (disk full, unwritable dir, a NaN the writer refuses) used to end
+        # the walk with no popup at all — "a step that cannot fail is not a
+        # check" (audit, 2026-09-21).
+        obs, fails, save_err = [], [], None
         try:
             from monitor.boundary_walk import append_evidence
+            obs, fails = w.evidence(medic_id=MEDIC_ID)
             append_evidence(obs, fails)
         except Exception as e:                                     # noqa: BLE001
             save_err = e
+            print(f"[walk] not saved: {e!r}", flush=True)
         try:
             from ui.requirement_popup import requirement_popup
             c = w.counts()
@@ -3035,6 +3284,8 @@ class ScanScreen(BoxLayout):
                     tr("Boundary walk finished"), False, tone="success")
         except Exception:                                          # noqa: BLE001
             pass
+        self._walk_session = None
+        self._walk_busy_heartbeat()
         cb = getattr(self, "_walk_done_cb", None)
         if cb is not None:
             try:

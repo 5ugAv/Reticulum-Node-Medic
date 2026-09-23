@@ -300,7 +300,9 @@ def test_the_gate_tells_the_operator_where_to_stand():
     show = func_source("ui/screens/scan_screen.py", "_show_walk_gate",
                        cls="ScanScreen")
     assert "Stand next to" in show
-    assert "GPS found" in show, "the big button says why it appeared"
+    # Since 2026-09-23 the button says what the press DOES to the file —
+    # the medic records where the OPERATOR stood, not the node's position.
+    assert "Start here — save this as {name}'s start position" in show
 
 
 def test_the_walk_anchors_where_the_operator_pressed_start():

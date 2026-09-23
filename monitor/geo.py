@@ -174,6 +174,29 @@ def accuracy_label(fix: Optional[GpsFix]) -> Optional[str]:
     return f"~±{fix.accuracy_m:.0f}m (est. from HDOP)"
 
 
+def valid_position(lat, lon) -> bool:
+    """Is (*lat*, *lon*) a place on Earth a measurement may be taken from?
+
+    Finite numbers (not bool — ``True`` is ``1`` to ``float``), |lat| <= 90,
+    |lon| <= 180, and not (0, 0): "null island" is what an unset receiver
+    and an all-zero splitter frame both read as, and a range walk anchored
+    there would put a false distance of thousands of km on every sample
+    (review, 2026-09-23). Strings are refused even when numeric — a value
+    that arrives as text has not been parsed, and the caller should know.
+    """
+    import math
+    for v in (lat, lon):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return False
+        if not math.isfinite(v):
+            return False
+    if abs(lat) > 90.0 or abs(lon) > 180.0:
+        return False
+    if lat == 0 and lon == 0:
+        return False
+    return True
+
+
 def classify_fix(fix: Optional[GpsFix]) -> str:
     """How much to TRUST a fix before stamping a node's location:
       ``live`` — actively tracking satellites; this is where the medic is NOW.
