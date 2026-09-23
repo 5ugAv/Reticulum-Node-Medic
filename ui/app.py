@@ -289,7 +289,9 @@ class _NavBar(BoxLayout):
     would take touches from those same bottom-edge buttons.
     """
 
-    HEIGHT_DP = 28
+    # dp(28) on the first night; "works, but could be a fraction bigger"
+    # (operator, on the glass, 2026-09-23) — dp(34), fonts up one step.
+    HEIGHT_DP = 34
     BACK_W_DP = 64        # the arrow's touch target; the bar is too short to be tall
     HOME_W_DP = 132
 
@@ -308,7 +310,7 @@ class _NavBar(BoxLayout):
         flat = dict(background_normal="", background_down="",
                     background_color=(0, 0, 0, 0), size_hint=(None, 1),
                     color=theme.hex_to_rgba(theme.COLORS["accent"]))
-        self.back_button = Button(text="←", font_size="20sp",
+        self.back_button = Button(text="←", font_size="22sp",
                                   width=dp(self.BACK_W_DP), **flat)
         if glyph_font:
             self.back_button.font_name = glyph_font
@@ -317,7 +319,7 @@ class _NavBar(BoxLayout):
         # language's font (Japanese would otherwise lose its own characters).
         house = f"[font={glyph_font}]⌂[/font]  " if glyph_font else ""
         self.home_button = Button(text=house + tr("Home"), markup=True,
-                                  font_size="14sp", bold=True,
+                                  font_size="15.5sp", bold=True,
                                   width=dp(self.HOME_W_DP), **flat)
         self.home_button.bind(on_release=lambda *_: on_home())
         self.add_widget(self.back_button)

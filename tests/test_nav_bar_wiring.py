@@ -116,7 +116,7 @@ def test_the_bar_is_a_layout_row_under_the_content_not_an_overlay(monkeypatch):
     # last) is the bottom row and the content is above it.
     assert column.children == [w._bar, content]
     assert content.size_hint == (1, 1)
-    assert w._bar.size_hint_y is None and 26 <= w._bar.height <= 30, "a sliver"
+    assert w._bar.size_hint_y is None and 26 <= w._bar.height <= 40, "a sliver — dp(34) since 2026-09-23 (operator: a fraction bigger); still under 40"
 
 
 def test_the_bar_has_a_back_control_far_left_and_a_home_control_centred(monkeypatch):
