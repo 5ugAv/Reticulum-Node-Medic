@@ -566,7 +566,7 @@
   "Not one of these?  Show me what you got": "Inget av dessa?  Visa vad du har",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Läser ingen signal – kontrollera antenn och kabel, och att en bakon-nod är påslagen och sänder.",
   "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
-  "Not sure which is which? Tap the  ?  above.": "Osäker på vilket som är vilket? Tryck på  ?  ovan.",
+  "Not sure which is which? Tap the ?": "Osäker på vilket som är vilket? Tryck på ?",
   "Not yet — show me the key": "Inte än – visa mig nyckeln",
   "Not yet — take me back": "Inte än — ta mig tillbaka",
   "Note: Node Medic was powering the {board} during the build. Once it runs off the {pi} the pairing's own limits apply - {why}": "Obs: Node Medic försörjde {board} under bygget. När den körs från {pi} gäller parningens egna gränser - {why}",

@@ -566,7 +566,7 @@
   "Not one of these?  Show me what you got": "Ни одна из них?  Покажите, что у вас есть",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Сигнал не читается — проверьте антенну и кабель, а также что узел-маяк включён и передаёт.",
   "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
-  "Not sure which is which? Tap the  ?  above.": "Не знаете, что есть что? Нажмите  ?  выше.",
+  "Not sure which is which? Tap the ?": "Не знаете, что есть что? Нажмите ?",
   "Not yet — show me the key": "Ещё нет — покажите ключ",
   "Not yet — take me back": "Ещё нет — вернуться",
   "Note: Node Medic was powering the {board} during the build. Once it runs off the {pi} the pairing's own limits apply - {why}": "Примечание: во время сборки {board} питал Node Medic. Когда она будет работать от {pi}, действуют ограничения самого сочетания - {why}",

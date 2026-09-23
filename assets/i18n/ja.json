@@ -566,7 +566,7 @@
   "Not one of these?  Show me what you got": "どれでもない？ 持っているものを見せてください",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "信号をまったく読み取れません — アンテナとケーブル、そしてビーコンノードが電源オンで送信中か確認してください。",
   "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
-  "Not sure which is which? Tap the  ?  above.": "どれがどれか分かりませんか？ 上の  ?  をタップしてください。",
+  "Not sure which is which? Tap the ?": "どれがどれか分かりませんか？ ? をタップしてください",
   "Not yet — show me the key": "まだです — キーを表示",
   "Not yet — take me back": "まだ — 戻る",
   "Note: Node Medic was powering the {board} during the build. Once it runs off the {pi} the pairing's own limits apply - {why}": "注意：ビルド中は Node Medic が {board} に給電していました。{pi} から動かすようになると、この組み合わせ自体の制限が適用されます - {why}",

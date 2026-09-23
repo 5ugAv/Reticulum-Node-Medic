@@ -566,7 +566,7 @@
   "Not one of these?  Show me what you got": "Aucune de celles-ci ?  Montrez-moi ce que vous avez",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Aucun signal lu : vérifiez l'antenne et le câble, et qu'un nœud balise est allumé et émet.",
   "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Non enregistré — le GPS fonctionne sur un ancien verrouillage (aucun satellite actuellement), donc cette position peut être là où Node Medic ÉTAIT, pas où il est. Dégagez la vue du ciel et réessayez.",
-  "Not sure which is which? Tap the  ?  above.": "Vous ne savez pas lequel est lequel ? Touchez le  ?  ci-dessus.",
+  "Not sure which is which? Tap the ?": "Vous ne savez pas lequel est lequel ? Touchez le ?",
   "Not yet — show me the key": "Pas encore — montrez-moi la clé",
   "Not yet — take me back": "Pas encore — ramenez-moi",
   "Note: Node Medic was powering the {board} during the build. Once it runs off the {pi} the pairing's own limits apply - {why}": "Remarque : Node Medic alimentait la {board} pendant la construction. Une fois qu'elle tourne sur le {pi}, les limites propres de l'appairage s'appliquent - {why}",

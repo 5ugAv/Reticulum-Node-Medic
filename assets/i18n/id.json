@@ -566,7 +566,7 @@
   "Not one of these?  Show me what you got": "Bukan salah satunya?  Tunjukkan apa yang Anda punya",
   "Not reading any signal - check the antenna and cable, and that a beacon node is powered on and transmitting.": "Tidak membaca sinyal apa pun - periksa antena dan kabel, serta pastikan node beacon menyala dan memancar.",
   "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.": "Not saved — the GPS is coasting on an old lock (no satellites right now), so this position may be where Node Medic WAS, not where it is. Give the antenna a clear view of the sky and try again.",
-  "Not sure which is which? Tap the  ?  above.": "Belum yakin yang mana? Ketuk  ?  di atas.",
+  "Not sure which is which? Tap the ?": "Belum yakin yang mana? Ketuk ?",
   "Not yet — show me the key": "Belum — tunjukkan kuncinya",
   "Not yet — take me back": "Belum — bawa saya kembali",
   "Note: Node Medic was powering the {board} during the build. Once it runs off the {pi} the pairing's own limits apply - {why}": "Catatan: Node Medic memberi daya {board} selama build. Begitu berjalan dari {pi}, batas pasangan itu sendiri berlaku - {why}",

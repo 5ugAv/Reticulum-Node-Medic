@@ -1407,14 +1407,28 @@ class BirthGuideScreen(BoxLayout):
         self._current = None
         self._back_action = None   # the chooser is the birth root now -> home
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
+        from kivy.uix.scrollview import ScrollView
         from ui.widgets.help_button import HelpButton
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                          spacing=dp(8))
         head.add_widget(_line(tr("What are you building?"), "26sp", bold=True))
-        head.add_widget(HelpButton())
         wrap.add_widget(head)
-        wrap.add_widget(_line(tr("Not sure which is which? Tap the  ?  above."),
-                              "16sp", color="text_secondary", h=32))
+        # THE ? SITS IN THE SENTENCE THAT NAMES IT. It used to live in the
+        # title row, and the sentence said "Tap the ? above" — then the
+        # bottom bar (2026-09-22) took its 34 dp, the stack overflowed, and
+        # the title row with the ? was pushed off the top of the glass while
+        # the sentence still promised it (operator photo, 2026-09-23). Now
+        # the button is right after the words, and the cards below scroll,
+        # so no height can ever push a promise off the screen again.
+        hint = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
+                         spacing=dp(8))
+        hint.add_widget(_line(tr("Not sure which is which? Tap the ?"),
+                              "16sp", color="text_secondary", h=40))
+        hint.add_widget(HelpButton())
+        wrap.add_widget(hint)
+        cards = ScrollView(do_scroll_x=False)
+        col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(16))
+        col.bind(minimum_height=col.setter("height"))
         # Once the board has been READ, drop the builds it cannot do. RTNode-2400
         # needs an ESP32-S3; a classic ESP32 (LoRa32, T-Beam, Heltec V2) can only
         # ever be an RNode. Offering an impossible choice and failing later
@@ -1428,11 +1442,11 @@ class BirthGuideScreen(BoxLayout):
             # height has to move with the title box or the description loses
             # exactly what the title gained.
             h = 192 if key == "pi" else 126
-            wrap.add_widget(self._path_button(key, title, subtitle, height=h))
+            col.add_widget(self._path_button(key, title, subtitle, height=h))
         if dropped:
             # Say WHY it is missing. An option that silently disappears between
             # one visit and the next reads as a glitch.
-            wrap.add_widget(_line(dropped, "13.5sp", color="text_secondary", h=40))
+            col.add_widget(_line(dropped, "13.5sp", color="text_secondary", h=40))
         # After a WIPE the operator is answering a narrower question: this board,
         # in my hand, blank — what shall it become? Cloning the Node Medic and
         # adopting a node over the air are neither of those, and offering them
@@ -1442,12 +1456,12 @@ class BirthGuideScreen(BoxLayout):
             # Mitosis is a different KIND of action — not building a node but
             # cloning the Node Medic itself — so it sits at the end, styled
             # apart, and routes straight to the MITOSIS screen.
-            wrap.add_widget(self._mitosis_button())
+            col.add_widget(self._mitosis_button())
             # Adopt a node the medic HEARS over LoRa (no USB) — field enrolment.
             if self._heard_fn is not None:
-                wrap.add_widget(self._over_air_button())
-        from kivy.uix.widget import Widget
-        wrap.add_widget(Widget())
+                col.add_widget(self._over_air_button())
+        cards.add_widget(col)
+        wrap.add_widget(cards)
         self.add_widget(wrap)
 
     def _paths_for_connected_board(self):
