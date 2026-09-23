@@ -1164,6 +1164,13 @@ def install_health_reporter(wf: "BuildWorkflow") -> StepResult:
         f"User={user}\n"
         f"Environment=HOME={home}\n"
         f"Environment=PYTHONPATH={home}/.rnm-health\n"
+        # UNBUFFERED, or the journal lies by omission: under systemd the
+        # reporter's stdout is a pipe, Python block-buffers it, and its
+        # NOTICE lines reached journald in 8 KB batches a minute or more
+        # late — the bench proof of the time exchange (2026-09-23) showed
+        # sudo's line for nm-settime and NOT the reporter's own account of
+        # it. "Visible in its journal" means now, not on the next flush.
+        "Environment=PYTHONUNBUFFERED=1\n"
         f"WorkingDirectory={home}/.rnm-health\n"
         f"ExecStart={py} -m monitor.pi_health_reporter --power-source {src}\n"
         "Restart=always\n"

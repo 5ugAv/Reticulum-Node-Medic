@@ -348,6 +348,20 @@ class FakeConn:
 
     def run(self, cmd, timeout=30):
         self.cmds.append(cmd)
+        # The push's unbuffered drop-in (2026-09-23): answered as written,
+        # and the unit's environment shows it after the reload.
+        if "10-unbuffered.conf" in cmd and "tee" in cmd:
+            self._unb_written = True
+            return (0, "", "")
+        if cmd.startswith("cat ") and "10-unbuffered.conf" in cmd:
+            from workflows.pi_reporter_push import UNBUFFERED_DROPIN
+            return (0, UNBUFFERED_DROPIN if getattr(self, "_unb_written", False) else "", "")
+        if cmd.endswith("systemctl daemon-reload"):
+            self._unb = getattr(self, "_unb_written", False)
+            return (0, "", "")
+        if cmd == "systemctl show rnm-health -p Environment":
+            return (0, "Environment=HOME=/home/pi%s\n" % (
+                " PYTHONUNBUFFERED=1" if getattr(self, "_unb", False) else ""), "")
         if cmd == "id -un":
             return (0, self._who, "")
         if cmd == "echo $HOME":

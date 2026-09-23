@@ -28,6 +28,7 @@ not the author's guess.)
 from __future__ import annotations
 
 import os
+import shlex
 from typing import Callable, List, Optional, Tuple
 
 from workflows import build
@@ -38,6 +39,43 @@ SERVICE = "rnm-health"
 MARKER = "def make_command_handler("
 #: ...and the one that proves the time asker landed (2026-09-23).
 TIME_MARKER = "def make_time_asker("
+
+
+#: A drop-in beside the unit, for nodes born before the unit itself carried
+#: PYTHONUNBUFFERED (2026-09-23). systemd merges it; the unit file is not
+#: rewritten by this road, so the fix rides as a drop-in.
+UNBUFFERED_DROPIN_PATH = f"/etc/systemd/system/{SERVICE}.service.d/10-unbuffered.conf"
+UNBUFFERED_DROPIN = "[Service]\nEnvironment=PYTHONUNBUFFERED=1\n"
+
+
+def ensure_unbuffered(conn, priv) -> Tuple[bool, str]:
+    """Make the reporter's stdout unbuffered under systemd, and prove it.
+
+    Block-buffered stdout meant the reporter's NOTICE lines reached the
+    journal in 8 KB batches, a minute or more late — the bench proof of the
+    time exchange (2026-09-23) showed sudo's record of nm-settime and not
+    the reporter's own. Nodes born from now on carry the line in the unit;
+    an older node gets a drop-in, daemon-reloaded and read back. Returns
+    (ok, what was done).
+    """
+    env = conn.run(f"systemctl show {SERVICE} -p Environment")[1] or ""
+    if "PYTHONUNBUFFERED=1" in env:
+        return True, "reporter already unbuffered (unit environment)"
+    d = os.path.dirname(UNBUFFERED_DROPIN_PATH)
+    conn.run(priv(f"mkdir -p {d}"))
+    code, out, err = conn.run(
+        f"printf %s {shlex.quote(UNBUFFERED_DROPIN)} | {priv(f'tee {UNBUFFERED_DROPIN_PATH}')} >/dev/null")
+    if code != 0:
+        return False, f"could not write the unbuffered drop-in: {err or out}"
+    got = conn.run(f"cat {UNBUFFERED_DROPIN_PATH}")[1] or ""
+    if got != UNBUFFERED_DROPIN:
+        return False, "the unbuffered drop-in did not read back as written"
+    conn.run(priv("systemctl daemon-reload"))
+    env = conn.run(f"systemctl show {SERVICE} -p Environment")[1] or ""
+    if "PYTHONUNBUFFERED=1" not in env:
+        return False, ("wrote the unbuffered drop-in and reloaded, but the unit's "
+                       "environment does not show it")
+    return True, "reporter made unbuffered (drop-in written, reloaded, read back)"
 
 
 def _priv(conn, command: str) -> str:
@@ -124,6 +162,10 @@ def push_health_reporter(conn, monitor_dir: Optional[str] = None,
     if not ok:
         return False, msg
     _log("time trust installed and read back")
+    ok, msg = ensure_unbuffered(conn, priv)
+    if not ok:
+        return False, msg
+    _log(msg)
     conn.run(_priv(conn, f"systemctl restart {SERVICE}"))
     state = (conn.run(f"systemctl is-active {SERVICE}")[1] or "").strip()
     if state != "active":

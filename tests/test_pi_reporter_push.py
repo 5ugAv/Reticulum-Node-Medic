@@ -34,8 +34,18 @@ class FakeConn:
         if cmd.startswith("systemctl show rnm-health"):
             # the unit runs as the login user here (2026-09-23: the push
             # derives user/HOME from the unit, not from who logged in)
-            return (0, "User=%s\nEnvironment=HOME=%s\n" % (
-                self._who, "/root" if self._who == "root" else "/home/pi"), "")
+            unb = " PYTHONUNBUFFERED=1" if getattr(self, "_unbuffered", False) else ""
+            return (0, "User=%s\nEnvironment=HOME=%s%s\n" % (
+                self._who, "/root" if self._who == "root" else "/home/pi", unb), "")
+        if "10-unbuffered.conf" in cmd and "tee" in cmd:
+            self._unbuffered_written = True
+            return (0, "", "")
+        if cmd.startswith("cat ") and "10-unbuffered.conf" in cmd:
+            from workflows.pi_reporter_push import UNBUFFERED_DROPIN
+            return (0, UNBUFFERED_DROPIN if getattr(self, "_unbuffered_written", False) else "", "")
+        if cmd.endswith("systemctl daemon-reload"):
+            self._unbuffered = getattr(self, "_unbuffered_written", False)
+            return (0, "", "")
         if "stat -c '%U:%G %a' /usr/local/sbin/nm-settime" in cmd:
             return (0, "root:root 755", "")
         if "stat -c '%U:%G %a' /etc/sudoers.d/nm-settime" in cmd:
@@ -112,3 +122,48 @@ def test_the_fake_matches_the_real_connection_contract():
     assert isinstance(r, tuple) and len(r) == 3
     src = open("workflows/pi_reporter_push.py").read()
     assert not any(".stdout" in l for l in src.splitlines() if "conn.run" in l)
+
+
+def test_the_push_makes_an_older_reporter_unbuffered_and_proves_it():
+    """Bench proof 2026-09-23: the node's journal showed sudo's nm-settime
+    line and not the reporter's own NOTICE lines — Python block-buffers a
+    pipe. An older unit gets a drop-in, reloaded and read back through the
+    unit's environment; a unit that already carries it is left alone."""
+    from workflows import pi_reporter_push as prp
+    c = FakeConn()
+    ok, msg = prp.push_health_reporter(c, log=lambda m: None)
+    assert ok, msg
+    assert any("10-unbuffered.conf" in cmd and "tee" in cmd for cmd in c.cmds)
+    reload_i = next(i for i, cmd in enumerate(c.cmds) if cmd.endswith("systemctl daemon-reload"))
+    restart_i = next(i for i, cmd in enumerate(c.cmds) if cmd.endswith("systemctl restart rnm-health"))
+    assert reload_i < restart_i, "reload before the restart, or the restart runs the old unit"
+    c2 = FakeConn(); c2._unbuffered = True
+    ok, msg = prp.push_health_reporter(c2, log=lambda m: None)
+    assert ok, msg
+    assert not any("10-unbuffered.conf" in cmd for cmd in c2.cmds)
+
+
+def test_a_drop_in_that_does_not_read_back_fails_the_push():
+    from workflows import pi_reporter_push as prp
+    c = FakeConn()
+    real = c.run
+    def run(cmd, timeout=30):
+        if cmd.startswith("cat ") and "10-unbuffered.conf" in cmd:
+            c.cmds.append(cmd); return (0, "garbage", "")
+        return real(cmd, timeout)
+    c.run = run
+    ok, msg = prp.push_health_reporter(c, log=lambda m: None)
+    assert not ok and "did not read back" in msg
+
+
+def test_a_new_birth_writes_the_reporter_unit_unbuffered():
+    from tests.test_build_workflow import build_conn, wf, _run_step
+    from node_profile import NodeProfile, NodeRole
+    conn = build_conn(rnode=True)
+    conn.rules.insert(0, ("RNS.Destination.IN", 0, "aa" * 16, ""))
+    p = NodeProfile(); p.role = NodeRole.PROPAGATION
+    w = wf(conn, p); w.steps[0][1](w)
+    r = _run_step(w, "install_health_reporter")
+    assert r.success
+    unit = [c for c in conn.history if "tee /etc/systemd/system/rnm-health.service" in c]
+    assert unit and "PYTHONUNBUFFERED=1" in unit[-1]
