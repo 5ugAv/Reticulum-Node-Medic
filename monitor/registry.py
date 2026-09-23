@@ -1078,23 +1078,6 @@ class NodeRegistry:
         return rec
 
     @_locked
-    def clear_location(self, dst_hash: str) -> List[str]:
-        """Forget the placed position of the DEVICE *dst_hash* belongs to —
-        every aspect row, so no other destination of the same machine keeps
-        drawing the pin (2026-09-23). Returns the hashes cleared, for the
-        roster. A hash the registry does not know clears nothing."""
-        rec = self.nodes.get(dst_hash)
-        if rec is None:
-            return []
-        members = next((g for g in self._device_groups() if rec in g), [rec])
-        cleared = []
-        for m in members:
-            if m.lat is not None or m.lon is not None:
-                m.lat, m.lon = None, None
-            cleared.append(m.dst_hash)
-        return cleared
-
-    @_locked
     def mark_share_applied(self, dst_hash: str, now: float
                            ) -> Optional[NodeRecord]:
         """Record that the decision is now ON THE NODE — called only after a

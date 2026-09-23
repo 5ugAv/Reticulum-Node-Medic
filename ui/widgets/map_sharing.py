@@ -77,15 +77,9 @@ class MapSharingPopup(Popup):
                              bold=True, h=24))
         self._where = _lbl("", "14sp", "text_secondary", h=44)
         body.add_widget(self._where)
-        # FORGET THE PIN (operator, 2026-09-23): two nodes placed on one spot
-        # made the map confusing; the one that stays keeps it. Confirmed
-        # first — it is the medic's only record of where the node is.
-        self._remove_btn = _btn(tr("Remove from the map"), "surface", "red",
-                                self._confirm_remove)
         body.add_widget(_btn(tr("Set location on the map…"), "surface",
                              "text_primary", self._pick_location))
 
-        body.add_widget(self._remove_btn)
         body.add_widget(_lbl(tr("The public map"), "16sp", "text_primary",
                              bold=True, h=24))
         # THE SAME SWITCH AS THE BIRTH STEP, and it means the same thing here:
@@ -139,9 +133,6 @@ class MapSharingPopup(Popup):
         else:
             self._where.text = tr("Not known. Set one before sharing — there "
                                   "is nothing to publish without it.")
-        btn = getattr(self, "_remove_btn", None)
-        if btn is not None:
-            btn.disabled = not rec.has_location()
         self._status.text = location_share.status_line(
             rec.share_location, rec.share_applied_at is not None,
             rec.lat, rec.lon)
@@ -189,38 +180,6 @@ class MapSharingPopup(Popup):
         ConfirmLocationPopup(lat, lon, node_name=rec.name,
                              on_confirm=self._location_confirmed,
                              gps_reader=reader).open()
-
-    def _confirm_remove(self):
-        rec = self.record
-        if not rec.has_location():
-            return
-        from ui.confirm import confirm_danger
-        name = rec.name or rec.dst_hash[:8]
-        confirm_danger(
-            tr("Node Medic will forget where you placed {name}, and its pin "
-               "leaves the map. What the node publishes is not changed here. "
-               "If the node ever sends its own GPS fix, it will place itself "
-               "again.").format(name=name),
-            tr("Remove {name} from the map?").format(name=name),
-            self._remove_from_map, proceed_text=tr("Remove it"))
-
-    def _remove_from_map(self):
-        rec = self.record
-        hashes = [rec.dst_hash]
-        if self._registry is not None:
-            try:
-                hashes = self._registry.clear_location(rec.dst_hash) or hashes
-            except Exception:                                      # noqa: BLE001
-                pass
-        rec.lat, rec.lon = None, None
-        try:
-            from monitor import kin_roster
-            for h in hashes:
-                kin_roster.clear_location(h)
-        except Exception:                                          # noqa: BLE001
-            pass
-        self._persist()
-        self._refresh()
 
     def _location_confirmed(self, lat, lon):
         rec = self.record
