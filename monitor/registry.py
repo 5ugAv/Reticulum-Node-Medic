@@ -47,6 +47,14 @@ def _capabilities(members) -> dict:
     """{lora, wifi, bluetooth, internet}: True = seen working, False = the
     node itself reports it down, None = unknowable from here (renders grey)."""
     lora = wifi = internet = bluetooth = None
+    # A MESH PROBE THAT WENT UNANSWERED, with nothing heard over the mesh
+    # since, paints LoRa amber whatever the node says about its own radio
+    # (operator, 2026-09-24: "make sure the LoRa goes away from green if it's
+    # not working"). Decided first; the self-reports below cannot lift it.
+    mesh = [r.seen.observed_at for r in members
+            if r.seen is not None and r.seen.source != "http"]
+    failed = [r.poll_failed_at for r in members if r.poll_failed_at is not None]
+    mesh_silent = bool(failed) and (not mesh or max(failed) > max(mesh))
     for r in members:
         iface = r.mesh_interface or ""
         if "RNode" in iface:
@@ -82,6 +90,8 @@ def _capabilities(members) -> dict:
             # stay honestly grey instead of falsely amber (SolarLove rule).
             if bluetooth is None and getattr(beacon, "bt_up", None) is not None:
                 bluetooth = beacon.bt_up
+    if mesh_silent:
+        lora = False                          # not answering over the mesh
     # NOTHING IS ADDED HERE. Everything above came from the node itself — heard
     # over an interface, or self-reported in its own health beacon or /status.
     #
@@ -641,6 +651,11 @@ class NodeRecord:
 
             "signal_dbm": sig,                      # None = never measured
             "last_seen_hours": lsh if lsh is not None else 0.0,
+            # The road of the freshest sighting, and the mesh road on its own
+            # (None = never heard over the mesh) — so a page can say "Wi-Fi
+            # 0.0h · mesh 1.9h" instead of one number that hides the gap.
+            "seen_source": self.seen.source if self.seen is not None else None,
+            "mesh_seen_hours": self.mesh_seen_hours(now),
             # ...but 0.0 is a lie for a never-heard or clock-stepped row, so
             # these flags carry the truth the number can't (rendered as
             # "SEEN never" / "SEEN ?" grey, never "0.0h" green).
@@ -681,13 +696,37 @@ class NodeRecord:
                 return "battery"
         return "battery"
 
+    def mesh_seen_at(self) -> Optional[float]:
+        """When this node was last heard OVER THE MESH — a beacon, a reply, an
+        announce or a path — never the Wi-Fi status road. On a consolidated
+        device it is pooled across every aspect row (_consolidate).
+
+        Operator, 2026-09-24 01:1x: SKYFINGER stayed green with "seen 0.0h"
+        while its mesh ping went unanswered, because the Wi-Fi status
+        answered three minutes earlier and the fold took the freshest road.
+        The rule now: "Wi-Fi on, LoRa off should show orange"."""
+        pooled = getattr(self, "_mesh_seen_at", None)
+        if pooled is not None:
+            return pooled
+        if self.seen is not None and self.seen.source != "http":
+            return self.seen.observed_at
+        return None
+
+    def mesh_seen_hours(self, now: float) -> Optional[float]:
+        at = self.mesh_seen_at()
+        if at is None:
+            return None
+        return max(0.0, (now - at) / 3600.0)
+
     @property
     def probe_unanswered(self) -> bool:
-        """The freshest DIRECT evidence about this node is a failed
-        interrogation — nothing heard from it since a probe went unanswered."""
+        """The freshest MESH evidence about this node is a failed
+        interrogation — nothing heard from it over the mesh since a probe
+        went unanswered. A fresh Wi-Fi status does NOT clear it: the node is
+        reachable, but not over the road this tool exists for."""
+        mesh = self.mesh_seen_at()
         return (self.poll_failed_at is not None
-                and (self.last_seen is None
-                     or self.poll_failed_at > self.last_seen))
+                and (mesh is None or self.poll_failed_at > mesh))
 
     def status(self, now: float) -> str:
         base = self._status_base(now)
@@ -1517,6 +1556,15 @@ class NodeRegistry:
         seen_obs = [r.seen for r in members if r.seen is not None]
         if seen_obs:
             merged.seen = max(seen_obs, key=lambda o: o.observed_at)
+        # THE MESH ROAD AND THE PROBE, POOLED (2026-09-24): the freshest
+        # non-Wi-Fi sighting across the device, and the latest unanswered
+        # probe, so a failed mesh ping on one aspect row is not hidden by a
+        # Wi-Fi status answer on another.
+        mesh = [r.seen.observed_at for r in members
+                if r.seen is not None and r.seen.source != "http"]
+        merged._mesh_seen_at = max(mesh) if mesh else None
+        failed = [r.poll_failed_at for r in members if r.poll_failed_at is not None]
+        merged.poll_failed_at = max(failed) if failed else None
         # Pooled like the health fields above: a device is a propagation
         # relay if ANY of its aspect-destinations announces as one — the
         # lxmd aspect must not lose the label just because a beacon-carrying

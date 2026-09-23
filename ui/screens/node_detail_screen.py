@@ -24,6 +24,18 @@ from ui.widgets.hex_status import HexStatus
 from monitor.formatting import beacon_lines, format_age, seen_and_echo
 
 
+def _para(text, color="text_secondary", size="13sp"):
+    """A label that GROWS with its text — for sentences that wrap. A one-line
+    _line box clipped the "card drawn …" note and the clock line to their
+    first line on the glass (operator photo, 2026-09-24 01:2x)."""
+    lbl = Label(text=text, halign="left", valign="top",
+                font_size=theme.font_sp(size),
+                color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
+    lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+             texture_size=lambda i, ts: setattr(i, "height", ts[1]))
+    return lbl
+
+
 def _line(text, color="text_primary", size="15sp", bold=False):
     # *size* is the DESIGN size; theme.font_sp maps it onto the readable type
     # scale (ui/theme.py). The row height has to follow it in the SAME edit: at
@@ -120,11 +132,21 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(head)
 
         seen = record.last_seen_hours(now)
-        self.add_widget(_line(
-            tr("Last heard: {when}").format(
-                when=tr("never") if seen is None
-                else tr("{age} ago").format(age=format_age(seen))),
-            color="text_secondary"))
+        when = (tr("never") if seen is None
+                else tr("{age} ago").format(age=format_age(seen)))
+        # TWO ROADS, TWO NUMBERS (2026-09-24): when the freshest sighting came
+        # over Wi-Fi, say so, and say when the mesh last heard it — "0.0h ago"
+        # alone hid a roof node whose mesh ping had just gone unanswered.
+        src = getattr(getattr(record, "seen", None), "source", None)
+        mesh = record.mesh_seen_hours(now) if hasattr(record, "mesh_seen_hours") else None
+        if src == "http" and mesh is None:
+            text = tr("Last heard: {when} over Wi-Fi · never over the mesh").format(when=when)
+        elif src == "http" and seen is not None and mesh - seen > 0.05:
+            text = tr("Last heard: {when} over Wi-Fi · over the mesh {mesh} ago").format(
+                when=when, mesh=format_age(mesh))
+        else:
+            text = tr("Last heard: {when}").format(when=when)
+        self.add_widget(_para(text, color="text_secondary", size="15sp"))
         # Same muted annotation as the VITALS row, one line, from the SAME
         # composer (formatting.seen_and_echo), which enforces the rules in one
         # tested place: shown only while the replay is FRESHER than the node's
@@ -149,7 +171,7 @@ class NodeDetailScreen(BoxLayout):
         # cannot dress as live.
         import time as _t
         answering = record.status(now) == "ok"
-        self.add_widget(_line(
+        self.add_widget(_para(
             tr("Figures below are the node's last report — card drawn "
                "{clock}.").format(clock=_t.strftime("%H:%M")) +
             ("" if answering else tr(" The node is NOT answering right now.")),
@@ -184,7 +206,7 @@ class NodeDetailScreen(BoxLayout):
             # has no OS clock to keep. The registry's Pi type is
             # "pi_propagation" (kin_roster.type_for_cert) — `== "pi"` never
             # matched a real record (review, 2026-09-23).
-            self.add_widget(_line(clock_line(clock_entry), color="text_secondary",
+            self.add_widget(_para(clock_line(clock_entry), color="text_secondary",
                                   size="13sp"))
 
         # SELF-REPORTED POSITION (v3 beacon, 2026-08-27): the node's OWN live

@@ -454,6 +454,8 @@
   "Last heard under an hour ago.": "Senast hörd för mindre än en timme sedan.",
   "Last heard {age} ago.": "Last heard {age} ago.",
   "Last heard: {when}": "Senast hörd: {when}",
+  "Last heard: {when} over Wi-Fi · never over the mesh": "Senast hörd: {when} via Wi-Fi · aldrig via meshen",
+  "Last heard: {when} over Wi-Fi · over the mesh {mesh} ago": "Senast hörd: {when} via Wi-Fi · via meshen för {mesh} sedan",
   "Last step - join them together": "Sista steget - koppla ihop dem",
   "Last walk: {verdict}": "Senaste vandring: {verdict}",
   "Last walk: {verdict} at {m} m, last answer {rssi} dBm": "Senaste vandring: {verdict} vid {m} m, senaste svar {rssi} dBm",

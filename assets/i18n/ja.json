@@ -454,6 +454,8 @@
   "Last heard under an hour ago.": "最後に受信したのは 1 時間以内です。",
   "Last heard {age} ago.": "Last heard {age} ago.",
   "Last heard: {when}": "最終受信: {when}",
+  "Last heard: {when} over Wi-Fi · never over the mesh": "最後に受信: {when}（Wi-Fi）· メッシュ経由は未受信",
+  "Last heard: {when} over Wi-Fi · over the mesh {mesh} ago": "最後に受信: {when}（Wi-Fi）· メッシュ経由は {mesh} 前",
   "Last step - join them together": "最後のステップ - 2 つをつなぐ",
   "Last walk: {verdict}": "前回のウォーク: {verdict}",
   "Last walk: {verdict} at {m} m, last answer {rssi} dBm": "前回のウォーク: {m} m で{verdict}、最後の応答 {rssi} dBm",

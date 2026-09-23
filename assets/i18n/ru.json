@@ -454,6 +454,8 @@
   "Last heard under an hour ago.": "Последний раз слышен менее часа назад.",
   "Last heard {age} ago.": "Last heard {age} ago.",
   "Last heard: {when}": "Последний раз слышно: {when}",
+  "Last heard: {when} over Wi-Fi · never over the mesh": "Последний раз слышен: {when} по Wi-Fi · по mesh — никогда",
+  "Last heard: {when} over Wi-Fi · over the mesh {mesh} ago": "Последний раз слышен: {when} по Wi-Fi · по mesh {mesh} назад",
   "Last step - join them together": "Последний шаг - соедините их",
   "Last walk: {verdict}": "Последний обход: {verdict}",
   "Last walk: {verdict} at {m} m, last answer {rssi} dBm": "Последний обход: {verdict} на {m} м, последний ответ {rssi} дБм",

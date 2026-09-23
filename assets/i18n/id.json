@@ -454,6 +454,8 @@
   "Last heard under an hour ago.": "Terakhir terdengar kurang dari sejam lalu.",
   "Last heard {age} ago.": "Last heard {age} ago.",
   "Last heard: {when}": "Terakhir terdengar: {when}",
+  "Last heard: {when} over Wi-Fi · never over the mesh": "Terakhir terdengar: {when} lewat Wi-Fi · belum pernah lewat mesh",
+  "Last heard: {when} over Wi-Fi · over the mesh {mesh} ago": "Terakhir terdengar: {when} lewat Wi-Fi · lewat mesh {mesh} lalu",
   "Last step - join them together": "Langkah terakhir - satukan keduanya",
   "Last walk: {verdict}": "Jalan terakhir: {verdict}",
   "Last walk: {verdict} at {m} m, last answer {rssi} dBm": "Jalan terakhir: {verdict} pada {m} m, jawaban terakhir {rssi} dBm",

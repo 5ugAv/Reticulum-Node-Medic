@@ -454,6 +454,8 @@
   "Last heard under an hour ago.": "Entendu il y a moins d'une heure.",
   "Last heard {age} ago.": "Entendu pour la dernière fois il y a {age}.",
   "Last heard: {when}": "Entendu pour la dernière fois : {when}",
+  "Last heard: {when} over Wi-Fi · never over the mesh": "Entendu pour la dernière fois : {when} en Wi-Fi · jamais sur le maillage",
+  "Last heard: {when} over Wi-Fi · over the mesh {mesh} ago": "Entendu pour la dernière fois : {when} en Wi-Fi · sur le maillage il y a {mesh}",
   "Last step - join them together": "Dernière étape - assemblez-les",
   "Last walk: {verdict}": "Dernière marche : {verdict}",
   "Last walk: {verdict} at {m} m, last answer {rssi} dBm": "Dernière marche : {verdict} à {m} m, dernière réponse {rssi} dBm",
