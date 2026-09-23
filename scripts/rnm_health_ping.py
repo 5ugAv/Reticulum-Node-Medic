@@ -15,6 +15,7 @@ bench instrument, not the medic.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import threading
@@ -23,10 +24,87 @@ import time
 # Run from anywhere: the repo root, not scripts/, is the import root.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from monitor import health_beacon
+from monitor.formatting import format_age
 from monitor.health_reply import (announce_wait_s, build_fallback_request,
                                   build_request_to, load_or_create_identity,
                                   unicast_wait_s, verify_reply,
                                   PING_TOOL_IDENTITY_PATH, REPLY_APP, REPLY_ASPECTS)
+
+
+def rebooted_since(prev_uptime_s, now_uptime_s, jitter_s: int = 30) -> bool:
+    """True when *now_uptime_s* is not just a fresh reading of the same run —
+    the node RESTARTED between the two pings (lost power and came back).
+
+    No sensor reports a Pi node's battery (2026-09-24: checked, none of the
+    chain from cells to charger to Pi carries one). Repeated pings give one
+    honest fact instead: uptime always counts UP within a run, so a drop of
+    more than a few seconds of jitter means the clock started over — a
+    reboot, whatever caused it. *prev_uptime_s* of None (first ping, or a
+    beacon that could not be decoded) is never called a reboot."""
+    if prev_uptime_s is None or now_uptime_s is None:
+        return False
+    return now_uptime_s < prev_uptime_s - jitter_s
+
+
+#: This tool's own memory of the last uptime it read from each node — the
+#: no-sensor battery watch (2026-09-24). Local to the BENCH TOOL, not the
+#: medic's registry (this script writes nothing there, on purpose).
+PING_STATE_PATH = os.path.expanduser("~/.reticulum-node-medic/health_ping_state.json")
+
+
+def load_last_uptime(node_dest_hex: str, path: str = PING_STATE_PATH):
+    """The uptime this tool last read from *node_dest_hex*, or None (never
+    pinged, or the file is missing/corrupt — never raises)."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        v = data.get(node_dest_hex)
+        return int(v) if v is not None else None
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def save_last_uptime(node_dest_hex: str, uptime_s: int, path: str = PING_STATE_PATH) -> None:
+    try:
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        data[node_dest_hex] = int(uptime_s)
+        from monitor.atomic_json import write_json
+        write_json(path, data)
+    except Exception:                                              # noqa: BLE001
+        pass                     # the ping's own answer is what matters; state is a bonus
+
+
+def describe_beacon(raw: bytes) -> str:
+    """One line from the reply beacon's own bytes — uptime is the field that
+    matters for the no-sensor battery watch: a small number means the node
+    restarted since it was last seen running."""
+    try:
+        b = health_beacon.decode(raw)
+    except Exception as e:                                          # noqa: BLE001
+        return f"beacon {len(raw)} bytes (could not decode: {e})"
+    return f"beacon {len(raw)} bytes, uptime {format_age(b.uptime_s / 3600.0)}"
+
+
+def _note_uptime(node_dest_hex: str, raw_beacon: bytes) -> None:
+    """The no-sensor battery watch: compare this reply's uptime against the
+    last one this tool saw from the same node, and say plainly if it
+    rebooted in between (2026-09-24 — repeated pings are the one honest
+    signal available; nothing in a Pi node's chain reports its battery)."""
+    try:
+        uptime_s = health_beacon.decode(raw_beacon).uptime_s
+    except Exception:                                              # noqa: BLE001
+        return
+    prev = load_last_uptime(node_dest_hex)
+    if rebooted_since(prev, uptime_s):
+        print(f"NOTE: uptime fell since the last ping ({format_age(prev / 3600.0)} -> "
+              f"{format_age(uptime_s / 3600.0)}) — the node restarted in between "
+              "(power loss and recovery, or a manual reboot).")
+    save_last_uptime(node_dest_hex, uptime_s)
 
 
 def main(argv=None) -> int:
@@ -105,7 +183,8 @@ def main(argv=None) -> int:
         extra = (f"; an announce also arrived at +{got['announce_at'] - sent:.1f} s"
                  if got["announce_at"] else "")
         print(f"ANSWERED by unicast in {got['unicast_at'] - sent:.1f} s: nonce echoed={nonce == req[-8:]}, "
-              f"beacon {len(beacon)} bytes{extra}")
+              f"{describe_beacon(beacon)}{extra}")
+        _note_uptime(args.dest, beacon)
         return 0
     if got["announce"]:
         print(f"no unicast reply in {w1:.0f} s; an announce arrived at +{got['announce_at'] - sent:.1f} s "
