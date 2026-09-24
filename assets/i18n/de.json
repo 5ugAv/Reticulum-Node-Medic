@@ -129,6 +129,8 @@
   "Born / saved on this Node Medic — {when}": "Geboren / gespeichert auf diesem Node Medic — {when}",
   "Born: {born}": "Geboren: {born}",
   "Both warnings are normal: they appear for any app not from the Play Store. This one came from the medic in front of you.": "Beide Warnungen sind normal: Sie erscheinen bei jeder App außerhalb des Play Store. Diese stammt vom Medic vor dir.",
+  "Boundary  off": "Grenze  aus",
+  "Boundary  on": "Grenze  an",
   "Boundary test": "Grenztest",
   "Boundary walk finished": "Grenzgang beendet",
   "Boundary walk not saved": "Grenzgang nicht gespeichert",

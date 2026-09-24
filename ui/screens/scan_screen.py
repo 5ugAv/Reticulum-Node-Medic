@@ -263,7 +263,7 @@ class MapPlot(Widget):
 
     def __init__(self, nodes=None, tiles=None, interactive=True, on_pick=None,
                  on_node_pick=None, links_provider=None, suggestions_provider=None,
-                 on_view=None, **kwargs):
+                 boundary_provider=None, on_view=None, **kwargs):
         super().__init__(**kwargs)
         self._nodes = list(nodes or [])
         self._tiles = tiles                      # MBTiles | None
@@ -278,9 +278,14 @@ class MapPlot(Widget):
         # Optional data feeds (default None -> nothing extra drawn, map unchanged):
         #   links_provider()      -> [(lat1,lon1,lat2,lon2), ...] mesh connections
         #   suggestions_provider()-> [obj/dict with lat/lon/reason/kind] placements
+        #   boundary_provider()   -> [{"lat","lon","status","segments":
+        #                             [(lat1,lon1,lat2,lon2), ...]}, ...] per node
+        #                             boundary-walk rings (operator, 2026-09-24)
         self._links_provider = links_provider
         self._suggestions_provider = suggestions_provider
+        self._boundary_provider = boundary_provider
         self._show_links = False                 # mesh-lines toggle (default OFF)
+        self._show_boundary = False               # boundary-ring toggle (default OFF)
         self._suggestions = []                   # last-drawn markers (for hit-test)
         self._last_view = None                   # current MercatorView (for taps)
         self._zooms = self._cache_zooms(tiles)   # zoom levels the cache actually has
@@ -521,6 +526,27 @@ class MapPlot(Widget):
         except Exception:
             return []
 
+    def set_show_boundary(self, on):
+        """Toggle the boundary-walk rings (operator, 2026-09-24). No-op
+        visual change unless a ``boundary_provider`` was supplied — same
+        default-OFF, silent-until-wired house rule as Links/Terrain."""
+        on = bool(on)
+        if on == self._show_boundary:
+            return
+        self._show_boundary = on
+        self._redraw()
+
+    def _fetch_boundary(self):
+        """Current per-node boundary rings to draw, or [] (toggle off / no
+        provider / it raised) — the same defensive shape as _fetch_links, so
+        a provider's exception never breaks the draw pass."""
+        if not self._show_boundary or self._boundary_provider is None:
+            return []
+        try:
+            return list(self._boundary_provider() or [])
+        except Exception:
+            return []
+
     def _fetch_suggestions(self):
         if self._suggestions_provider is None:
             return []
@@ -561,6 +587,28 @@ class MapPlot(Widget):
             x2, y2 = view.to_screen(lat2, lon2)
             Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],
                  width=max(1.0, dp(0.45) * w))
+
+    def _draw_boundary(self, view):
+        """Boundary-walk rings UNDER the node dots, same layer as _draw_links
+        — drawn inside an open canvas context by _draw_tiled. Each ring's
+        colour is that NODE'S OWN live status colour (operator, 2026-09-24:
+        "whatever colour the node is, the line around it should be the same
+        colour as the node"), never a fixed hue — a red node's edge reads
+        red, not the green a first draft assumed. THIN (dp(1.2), about half
+        _draw_links' thinnest line): this is a boundary, not a connection."""
+        rings = self._fetch_boundary()
+        if not rings:
+            return
+        for ring in rings:
+            segs = ring.get("segments") or []
+            if not segs:
+                continue
+            Color(*theme.status_rgba(ring.get("status"), 0.85))
+            for lat1, lon1, lat2, lon2 in segs:
+                x1, y1 = view.to_screen(lat1, lon1)
+                x2, y2 = view.to_screen(lat2, lon2)
+                Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],
+                     width=dp(1.2))
 
     def _draw_suggestions(self, view):
         """A hollow accent ring + small '+' at each placement suggestion —
@@ -1023,6 +1071,7 @@ class MapPlot(Widget):
                 d = dp(7) if good else dp(9)
                 Ellipse(pos=(sx - d / 2, sy - d / 2), size=(d, d))
             self._draw_links(view)                # faint connection lines UNDER dots
+            self._draw_boundary(view)             # boundary-walk rings, UNDER dots too
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
                 Color(*theme.status_rgba(p.status))
@@ -1196,7 +1245,7 @@ class ScanScreen(BoxLayout):
     def __init__(self, nodes=None, tiles=None, gps_reader=None, fix_reader=None,
                  radius_km=DEFAULT_RADIUS_KM, on_place=None, on_node_pick=None,
                  links_provider=None, suggestions_provider=None,
-                 recommendations_provider=None,
+                 recommendations_provider=None, boundary_provider=None,
                  poll=True, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
@@ -1208,6 +1257,7 @@ class ScanScreen(BoxLayout):
         self._on_place = on_place
         self._on_node_pick = on_node_pick
         self._links_on = False                    # mesh-lines toggle state
+        self._boundary_on = False                 # boundary-ring toggle state
         self._nodes: List[dict] = []
         self._downloading = False
         # placement state — mirrors the old GPS-confirm page, now inline
@@ -1235,9 +1285,17 @@ class ScanScreen(BoxLayout):
         self.terrain_btn = Button(text=tr("Terrain  off"), size_hint=(None, 1),
                                   width=dp(104))
         self.terrain_btn.bind(on_release=lambda *_: self._toggle_terrain())
+        # Boundary-walk ring toggle (operator, 2026-09-24): the thin line a
+        # finished walk draws around a node, in that node's own status
+        # colour. Default OFF, silent unless a boundary_provider was wired —
+        # the same house rule as Links/Terrain.
+        self.boundary_btn = Button(text=tr("Boundary  off"), size_hint=(None, 1),
+                                   width=dp(110))
+        self.boundary_btn.bind(on_release=lambda *_: self._toggle_boundary())
         header_row.add_widget(self.header)
         header_row.add_widget(self.links_btn)
         header_row.add_widget(self.terrain_btn)
+        header_row.add_widget(self.boundary_btn)
         header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
@@ -1303,6 +1361,7 @@ class ScanScreen(BoxLayout):
                             on_node_pick=self._on_node_pick,
                             links_provider=links_provider,
                             suggestions_provider=suggestions_provider,
+                            boundary_provider=boundary_provider,
                             size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
         map_wrap.add_widget(self.plot)
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
@@ -1503,6 +1562,15 @@ class ScanScreen(BoxLayout):
         self._links_on = not self._links_on
         self.plot.set_show_links(self._links_on)
         self.links_btn.text = tr("Links  on") if self._links_on else tr("Links  off")
+
+    def _toggle_boundary(self):
+        """Flip the boundary-walk rings on/off (header button, operator
+        2026-09-24) — mirrors _toggle_links exactly; no refusal message,
+        same house rule as Links: silent until a provider is wired."""
+        self._boundary_on = not self._boundary_on
+        self.plot.set_show_boundary(self._boundary_on)
+        self.boundary_btn.text = (tr("Boundary  on") if self._boundary_on
+                                  else tr("Boundary  off"))
 
     def _toggle_terrain(self):
         """Flip the terrain shading on/off.

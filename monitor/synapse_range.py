@@ -127,6 +127,16 @@ class LinkFailure:
     lon: Optional[float] = None
     snr_db: Optional[float] = None     # last heard before the loss, if any
     note: str = ""
+    #: Which node's boundary this loss belongs to — the SAME key a walk's
+    #: LinkObservations are banked under (monitor.boundary_walk
+    #: .BoundaryWalkSession.evidence: ``evidence_key or node_key``, itself
+    #: monitor.walk_anchor.anchor_key's convention: device_id, else
+    #: identity_hash, else dst_hash). Added 2026-09-24 for the boundary-ring
+    #: feature (monitor.boundary_shape), which needs to know WHOSE edge each
+    #: loss draws — estimate_range never needed one, so every failure banked
+    #: before this date reads ``None`` here: real evidence, un-attributable
+    #: to one node's ring, same honesty rule as every other absent field.
+    node_key: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -136,17 +146,22 @@ class LinkFailure:
         return cls(distance_km=data["distance_km"],
                    observed_at=data["observed_at"],
                    lat=data.get("lat"), lon=data.get("lon"),
-                   snr_db=data.get("snr_db"), note=data.get("note", ""))
+                   snr_db=data.get("snr_db"), note=data.get("note", ""),
+                   node_key=data.get("node_key"))
 
 
 def walk_failures(attempts: Iterable[dict], observed_at: float,
-                  note: str = "boundary walk") -> List[LinkFailure]:
+                  note: str = "boundary walk",
+                  node_key: Optional[str] = None) -> List[LinkFailure]:
     """Adapt a walk protocol's samples (first_link / boundary walk shape:
     ``{lat, lon, km, connected, snr_db}``) into failures. Only the samples
-    that did NOT connect are failures — a weak connection is still a link."""
+    that did NOT connect are failures — a weak connection is still a link.
+    *node_key* is stamped onto every failure produced (default None for a
+    caller that does not know, or does not need, whose node this was —
+    estimate_range pools failures mesh-wide and never asked)."""
     return [LinkFailure(distance_km=a["km"], observed_at=observed_at,
                         lat=a.get("lat"), lon=a.get("lon"),
-                        snr_db=a.get("snr_db"), note=note)
+                        snr_db=a.get("snr_db"), note=note, node_key=node_key)
             for a in attempts if not a.get("connected")]
 
 

@@ -129,6 +129,8 @@
   "Born / saved on this Node Medic — {when}": "Lahir / disimpan di Node Medic ini — {when}",
   "Born: {born}": "Lahir: {born}",
   "Both warnings are normal: they appear for any app not from the Play Store. This one came from the medic in front of you.": "Kedua peringatan itu normal: muncul untuk aplikasi apa pun di luar Play Store. Yang ini berasal dari medic di depan Anda.",
+  "Boundary  off": "Batas  mati",
+  "Boundary  on": "Batas  hidup",
   "Boundary test": "Uji batas",
   "Boundary walk finished": "Jalan batas selesai",
   "Boundary walk not saved": "Jalan batas tidak tersimpan",

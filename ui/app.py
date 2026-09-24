@@ -931,6 +931,60 @@ class ReticulumNodeMedicApp(App):
             self._scan_recs_cache = (topo, markers)
             return markers
 
+        def _boundary_provider():
+            # The boundary-walk ring (operator, 2026-09-24): one per node
+            # with a KNOWN position, built from the registry's live status
+            # (NodeRegistry.all — the same "own identity/destination
+            # excluded" fold located_nodes uses) joined against the walk's
+            # banked losses. LinkFailure carried no node identity before
+            # this feature (read carefully, see monitor/synapse_range.py's
+            # LinkFailure.node_key and monitor/boundary_walk.py's evidence())
+            # — a loss is matched to a node via monitor.walk_anchor
+            # .candidate_keys, the SAME device-key fold the anchor file
+            # already uses to let two doors into a walk find one anchor, so
+            # this join invents no second convention.
+            import time as _t
+            registry = self.monitor_service.registry
+            now = _t.time()
+            try:
+                from monitor.boundary_shape import boundary_segments, node_boundary
+                from monitor.boundary_walk import load_walk_failures
+                from monitor.walk_anchor import candidate_keys
+            except Exception:                                      # noqa: BLE001
+                return []
+            try:
+                fails = load_walk_failures()
+            except Exception:                                      # noqa: BLE001
+                fails = []
+            if not fails:
+                return []
+            try:
+                records = list(registry.all(now))
+            except Exception:                                      # noqa: BLE001
+                return []
+            out = []
+            for rec in records:
+                lat, lon = rec.lat, rec.lon
+                b = getattr(rec, "latest_beacon", None)
+                if b is not None and getattr(b, "has_position", False):
+                    lat, lon = b.lat, b.lng          # a live GPS claim outranks the cert
+                if lat is None or lon is None:
+                    continue
+                try:
+                    keys = set(candidate_keys(rec, registry, now))
+                except Exception:                                  # noqa: BLE001
+                    keys = {rec.dst_hash}
+                node_fails = [f for f in fails if f.node_key and f.node_key in keys]
+                if not node_fails:
+                    continue
+                shape = node_boundary(lat, lon, node_fails)
+                segs = boundary_segments(shape, lat, lon)
+                if not segs:
+                    continue
+                out.append({"lat": lat, "lon": lon, "status": rec.status(now),
+                           "segments": segs})
+            return out
+
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),
             gps_reader=splitter_gps_reader(),     # the Tracker's live "you are here"
@@ -943,7 +997,8 @@ class ReticulumNodeMedicApp(App):
                 transports=self.scan_screen.visible_transports())
                 if self._scan_topo else []),
             suggestions_provider=_scan_markers,
-            recommendations_provider=_scan_markers)
+            recommendations_provider=_scan_markers,
+            boundary_provider=_boundary_provider)
         scan.add_widget(self._with_back(self.scan_screen))
         self.sm.add_widget(scan)
 

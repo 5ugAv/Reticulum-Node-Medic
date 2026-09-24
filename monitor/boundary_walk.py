@@ -208,9 +208,15 @@ class BoundaryWalkSession:
         # the loss" (agents' audit, 2026-09-21). Observations already drop
         # co-located samples (synapse_range CO_LOCATED_KM); same rule here.
         # Each loss keeps its own time, not the walk's last one.
+        # node_key mirrors the obs line above exactly (evidence_key or
+        # node_key) — one convention, both currencies (2026-09-24, added so
+        # the boundary-ring feature can tell whose edge a loss draws;
+        # LinkFailure carried no node identity before this).
         fails = [f for s in self.samples
                  if s["km"] is not None and s["km"] > CO_LOCATED_KM
-                 for f in walk_failures([s], observed_at=s["t"])]
+                 for f in walk_failures([s], observed_at=s["t"],
+                                        node_key=self.evidence_key
+                                        or self.node_key)]
         return obs, fails
 
 

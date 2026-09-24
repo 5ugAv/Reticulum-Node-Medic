@@ -79,6 +79,23 @@ def test_evidence_splits_hits_from_misses_and_skips_unlocated():
     assert fails[0].note == "boundary walk"
 
 
+def test_evidence_stamps_failures_with_the_same_key_observations_use():
+    """LinkFailure carried no node identity before 2026-09-24 (the boundary
+    ring feature needed to know whose loss each was) — node_key must follow
+    the EXACT same rule as heard_from: evidence_key if set, else node_key."""
+    s = _s()                                # no evidence_key -> falls back
+    s.begin_ping(1000.0); s.ping_result(1001.0, ok=False, gps=(0.0, 0.012))
+    obs, fails = s.evidence(medic_id="MEDIC")
+    assert fails[0].node_key == "ab" * 16 == s.node_key
+
+    s2 = BoundaryWalkSession(node_key="cd" * 16, node_name="Y",
+                             node_lat=0.0, node_lon=0.0, now=1000.0,
+                             evidence_key="ef" * 16)
+    s2.begin_ping(1000.0); s2.ping_result(1001.0, ok=False, gps=(0.0, 0.012))
+    _, fails2 = s2.evidence(medic_id="MEDIC")
+    assert fails2[0].node_key == "ef" * 16          # evidence_key wins
+
+
 def test_a_node_without_coordinates_anchors_at_the_first_fix():
     """The walk starts AT the node, so the first GPS fix is the anchor when
     the registry holds no position — the spec's walk-away still measures."""

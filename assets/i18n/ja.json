@@ -129,6 +129,8 @@
   "Born / saved on this Node Medic — {when}": "この Node Medic で誕生・保存 — {when}",
   "Born: {born}": "誕生: {born}",
   "Both warnings are normal: they appear for any app not from the Play Store. This one came from the medic in front of you.": "どちらの警告も通常のものです。Play ストア以外のアプリすべてに表示されます。これは目の前のメディックから届いたものです。",
+  "Boundary  off": "境界  オフ",
+  "Boundary  on": "境界  オン",
   "Boundary test": "境界テスト",
   "Boundary walk finished": "境界ウォーク完了",
   "Boundary walk not saved": "境界ウォークは保存されませんでした",
