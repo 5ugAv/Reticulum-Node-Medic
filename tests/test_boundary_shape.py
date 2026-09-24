@@ -29,7 +29,7 @@ NOW = 2_000_000_000.0
 
 
 def _fail(bearing, distance_km, observed_at=NOW, node_key=None,
-         wrong_distance_km=999.0):
+         wrong_distance_km=999.0, confirmed=True):
     """A LinkFailure sitting exactly *distance_km* out from NODE on
     *bearing*, built via destination_point — so tests exercise the same
     geometry the module ships, not a hand-typed lat/lon.
@@ -38,10 +38,17 @@ def _fail(bearing, distance_km, observed_at=NOW, node_key=None,
     (*wrong_distance_km*): node_boundary must re-derive distance from the
     positions, never trust the stored field (see its docstring) — a test
     that fed the true distance in both places could not catch a regression
-    to "just read f.distance_km"."""
+    to "just read f.distance_km".
+
+    ``confirmed`` defaults True: this helper builds geometry fixtures, not
+    confirmation fixtures — node_boundary now ignores unconfirmed failures
+    entirely (2026-09-24 review), so every geometry test needs a confirmed
+    failure to exercise the bucketing at all. The dedicated confirmed-vs-
+    unconfirmed behaviour has its own tests below."""
     lat, lon = destination_point(NODE[0], NODE[1], bearing, distance_km)
     return LinkFailure(distance_km=wrong_distance_km, observed_at=observed_at,
-                       lat=lat, lon=lon, node_key=node_key)
+                       lat=lat, lon=lon, node_key=node_key,
+                       confirmed=confirmed)
 
 
 # ---- bearing_deg / destination_point -----------------------------------------
@@ -125,10 +132,14 @@ def test_nearer_failure_wins_within_one_sector():
 
 def test_invalid_positions_are_skipped_not_crashed():
     bad = [
-        LinkFailure(distance_km=3.0, observed_at=NOW, lat=None, lon=None),
-        LinkFailure(distance_km=3.0, observed_at=NOW, lat=float("nan"), lon=0.0),
-        LinkFailure(distance_km=3.0, observed_at=NOW, lat=0.0, lon=0.0),  # null island
-        LinkFailure(distance_km=3.0, observed_at=NOW, lat=999.0, lon=0.0),  # out of range
+        LinkFailure(distance_km=3.0, observed_at=NOW, lat=None, lon=None,
+                   confirmed=True),
+        LinkFailure(distance_km=3.0, observed_at=NOW, lat=float("nan"), lon=0.0,
+                   confirmed=True),
+        LinkFailure(distance_km=3.0, observed_at=NOW, lat=0.0, lon=0.0,
+                   confirmed=True),  # null island
+        LinkFailure(distance_km=3.0, observed_at=NOW, lat=999.0, lon=0.0,
+                   confirmed=True),  # out of range
     ]
     good = _fail(45.0, 1.5)
     shape = node_boundary(NODE[0], NODE[1], bad + [good])
@@ -173,6 +184,57 @@ def test_custom_sector_count():
     filled = [s for s in shape["sectors"] if s["radius_km"] is not None]
     assert len(filled) == 1
     assert filled[0]["bearing_from"] == 90.0 and filled[0]["bearing_to"] == 180.0
+
+
+# ---- confirmed-only radius (2026-09-24 review fix #5) ----------------------
+
+def test_unconfirmed_failure_never_sets_a_sector_radius():
+    """A single isolated miss (confirmed=False, the dataclass default) is a
+    gap, not a radius — same as no data at all."""
+    shape = node_boundary(NODE[0], NODE[1], [_fail(20.0, 3.0, confirmed=False)])
+    assert all(s["radius_km"] is None for s in shape["sectors"])
+    assert shape["total_failures_used"] == 0
+    assert shape["coverage_frac"] == 0.0
+
+
+def test_confirmed_failure_among_unconfirmed_ones_still_sets_the_radius():
+    fails = [_fail(20.0, 9.0, confirmed=False),
+            _fail(21.0, 3.0, confirmed=True),
+            _fail(22.0, 9.5, confirmed=False)]
+    shape = node_boundary(NODE[0], NODE[1], fails)
+    filled = [s for s in shape["sectors"] if s["radius_km"] is not None]
+    assert len(filled) == 1
+    # only the confirmed sample (3.0 km) counted — the nearer-looking
+    # unconfirmed ones must not win, and must not even be counted.
+    assert filled[0]["radius_km"] == pytest.approx(3.0, abs=0.01)
+    assert filled[0]["sample_count"] == 1
+    assert shape["total_failures_used"] == 1
+
+
+# ---- n_sectors validation (2026-09-24 review fix #10) -----------------------
+
+@pytest.mark.parametrize("bad", [0, 1, -1, -24, 2.5, "24", None, True])
+def test_node_boundary_refuses_a_bad_n_sectors(bad):
+    with pytest.raises(ValueError):
+        node_boundary(NODE[0], NODE[1], [], n_sectors=bad)
+
+
+# ---- sector-boundary exact-bearing off-by-one (2026-09-24 review fix #8) ---
+
+@pytest.mark.parametrize("bearing", [0.0, 15.0, 45.0, 90.0, 180.0])
+def test_exact_sector_boundary_bearing_lands_in_the_expected_sector(bearing):
+    """A loss placed at EXACTLY a sector-line bearing (via destination_point,
+    the module's own geometry) must bucket into the sector a person would
+    expect — the sector that STARTS at that bearing — even though
+    bearing_deg's trig can hand back a value a hair under the exact degree."""
+    width = 360.0 / DEFAULT_SECTORS
+    shape = node_boundary(NODE[0], NODE[1], [_fail(bearing, 2.0)])
+    expected_idx = int(round(bearing / width)) % DEFAULT_SECTORS
+    filled = [i for i, s in enumerate(shape["sectors"])
+             if s["radius_km"] is not None]
+    assert filled == [expected_idx], (
+        f"bearing {bearing} landed in sector(s) {filled}, expected "
+        f"[{expected_idx}]")
 
 
 # ---- boundary_segments -----------------------------------------------------
@@ -235,3 +297,50 @@ def test_boundary_segments_on_a_shape_with_fewer_than_two_sectors():
     assert boundary_segments({"sectors": [{"bearing_from": 0, "bearing_to": 360,
                                           "radius_km": 1.0, "sample_count": 1}]},
                              NODE[0], NODE[1]) == []
+
+
+def test_boundary_segments_uses_the_winning_bearing_not_the_midpoint():
+    """A sector's vertex sits at the winning SAMPLE's own bearing, never
+    the sector's arithmetic mid-bearing (2026-09-24 review fix #7)."""
+    fails = [_fail(3.0, 2.0), _fail(20.0, 2.5)]     # adjacent sectors 0 & 1
+    shape = node_boundary(NODE[0], NODE[1], fails)
+    segs = boundary_segments(shape, NODE[0], NODE[1])
+    assert len(segs) == 1
+    expected_a = destination_point(NODE[0], NODE[1], 3.0, 2.0)
+    expected_b = destination_point(NODE[0], NODE[1], 20.0, 2.5)
+    lat1, lon1, lat2, lon2 = segs[0]
+    assert (lat1, lon1) == pytest.approx(expected_a, abs=1e-9)
+    assert (lat2, lon2) == pytest.approx(expected_b, abs=1e-9)
+    # the OLD (wrong) behaviour would have used the sector midpoints 7.5/22.5
+    wrong_a = destination_point(NODE[0], NODE[1], 7.5, 2.0)
+    assert (lat1, lon1) != pytest.approx(wrong_a, abs=1e-6)
+
+
+def test_boundary_segments_omits_a_segment_that_wraps_the_antimeridian():
+    """Two adjacent sectors whose destination points sit on opposite sides
+    of the antimeridian must not be joined by a line across the whole map
+    — the segment is simply omitted, the same honest-gap rule as any other
+    missing data (2026-09-24 review fix #9)."""
+    node_lat, node_lon = 0.0, 179.9
+    shape = {"sectors": [
+        {"bearing_from": 0.0, "bearing_to": 180.0, "radius_km": 50.0,
+         "bearing_deg": 90.0, "sample_count": 1},
+        {"bearing_from": 180.0, "bearing_to": 360.0, "radius_km": 50.0,
+         "bearing_deg": 270.0, "sample_count": 1},
+    ]}
+    # Sanity: these two points really do sit on opposite sides of the line.
+    a = destination_point(node_lat, node_lon, 90.0, 50.0)
+    b = destination_point(node_lat, node_lon, 270.0, 50.0)
+    assert abs(a[1] - b[1]) > 180.0
+    assert boundary_segments(shape, node_lat, node_lon) == []
+
+
+def test_n_sectors_equal_two_emits_only_one_segment_not_two():
+    """The n=2 double-segment bug (2026-09-24 review fix #10): with only two
+    sectors there is exactly ONE edge between them (0->1 and 1->0 are the
+    same pair), never the same segment twice."""
+    fails = [_fail(30.0, 2.0), _fail(200.0, 3.0)]
+    shape = node_boundary(NODE[0], NODE[1], fails, n_sectors=2)
+    assert len([s for s in shape["sectors"] if s["radius_km"] is not None]) == 2
+    segs = boundary_segments(shape, NODE[0], NODE[1])
+    assert len(segs) == 1

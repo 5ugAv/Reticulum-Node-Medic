@@ -279,8 +279,19 @@ class MapPlot(Widget):
         #   links_provider()      -> [(lat1,lon1,lat2,lon2), ...] mesh connections
         #   suggestions_provider()-> [obj/dict with lat/lon/reason/kind] placements
         #   boundary_provider()   -> [{"lat","lon","status","segments":
-        #                             [(lat1,lon1,lat2,lon2), ...]}, ...] per node
-        #                             boundary-walk rings (operator, 2026-09-24)
+        #                             [(lat1,lon1,lat2,lon2), ...],
+        #                             "coverage_frac","total_failures_used"},
+        #                             ...] per DEVICE boundary-walk rings
+        #                             (operator, 2026-09-24). One entry per
+        #                             physical device (ui/app.py's
+        #                             boundary_rings_for), centred on its own
+        #                             stamped position, never a fuzzed
+        #                             beacon. The last two keys are drawn by
+        #                             nothing here yet (only "segments" and
+        #                             "status" feed _draw_boundary) — they
+        #                             ride along so the toggle button's own
+        #                             coverage suffix (_toggle_boundary) can
+        #                             read them without a second fetch.
         self._links_provider = links_provider
         self._suggestions_provider = suggestions_provider
         self._boundary_provider = boundary_provider
@@ -1563,14 +1574,53 @@ class ScanScreen(BoxLayout):
         self.plot.set_show_links(self._links_on)
         self.links_btn.text = tr("Links  on") if self._links_on else tr("Links  off")
 
+    def _boundary_coverage_suffix(self):
+        """" (x/y)" appended to the ON label — x = confirmed-loss sectors
+        filled, y = total sectors, SUMMED across every ring currently on
+        the glass (2026-09-24 review, fix #13). "" when nothing is drawn
+        yet, never a fabricated "0/0": the toggle's on-screen honesty must
+        match what _fetch_boundary actually returned, not decoration.
+
+        Aggregate rather than per-node on purpose: there is no existing
+        "node the operator most recently interacted with" state on this
+        screen to key a single-node figure off, and inventing one just for
+        this label would be more UI state than the ask needs (judgement
+        call — see the review report). coverage_frac/total_failures_used
+        already ride along on each ring dict (ui/app.py.boundary_rings_for)
+        specifically so this — or a future per-node readout — has real
+        numbers to draw on."""
+        try:
+            rings = self.plot._fetch_boundary()
+        except Exception:                                          # noqa: BLE001
+            return ""
+        if not rings:
+            return ""
+        from monitor.boundary_shape import DEFAULT_SECTORS
+        filled = total = 0
+        for ring in rings:
+            cov = ring.get("coverage_frac")
+            if cov is None:
+                continue
+            total += DEFAULT_SECTORS
+            filled += round(cov * DEFAULT_SECTORS)
+        if total == 0:
+            return ""
+        return f" ({filled}/{total})"
+
     def _toggle_boundary(self):
         """Flip the boundary-walk rings on/off (header button, operator
         2026-09-24) — mirrors _toggle_links exactly; no refusal message,
-        same house rule as Links: silent until a provider is wired."""
+        same house rule as Links: silent until a provider is wired. ON also
+        appends a coverage readout (fix #13, 2026-09-24 review): the shape
+        data used to be computed and thrown away, so the toggle is the one
+        place it can surface without new per-node UI."""
         self._boundary_on = not self._boundary_on
         self.plot.set_show_boundary(self._boundary_on)
-        self.boundary_btn.text = (tr("Boundary  on") if self._boundary_on
-                                  else tr("Boundary  off"))
+        if self._boundary_on:
+            self.boundary_btn.text = tr("Boundary  on") \
+                + self._boundary_coverage_suffix()
+        else:
+            self.boundary_btn.text = tr("Boundary  off")
 
     def _toggle_terrain(self):
         """Flip the terrain shading on/off.

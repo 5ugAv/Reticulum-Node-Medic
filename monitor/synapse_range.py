@@ -137,6 +137,18 @@ class LinkFailure:
     #: before this date reads ``None`` here: real evidence, un-attributable
     #: to one node's ring, same honesty rule as every other absent field.
     node_key: Optional[str] = None
+    #: Was this loss part of a run of >= monitor.boundary_walk
+    #: .LOST_AFTER_MISSES CONSECUTIVE misses in its own walk session — the
+    #: SAME threshold the live "MESH CONNECTION LOST" banner waits for?
+    #: Added 2026-09-24 review (boundary-ring feature): a single isolated
+    #: dropped packet is recorded as a LinkFailure (the model wants the
+    #: whole truth) but must never by itself set a ring sector's radius —
+    #: only a run the operator's own banner would have called "lost"
+    #: counts as confirmed evidence of an edge. Defaults False so every
+    #: failure banked before this field existed (no way to recompute a run
+    #: length after the fact — the raw consecutive-sample sequence is not
+    #: retained per-failure) reads honestly "not confirmed", not a guess.
+    confirmed: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -147,7 +159,8 @@ class LinkFailure:
                    observed_at=data["observed_at"],
                    lat=data.get("lat"), lon=data.get("lon"),
                    snr_db=data.get("snr_db"), note=data.get("note", ""),
-                   node_key=data.get("node_key"))
+                   node_key=data.get("node_key"),
+                   confirmed=bool(data.get("confirmed", False)))
 
 
 def walk_failures(attempts: Iterable[dict], observed_at: float,

@@ -185,6 +185,31 @@ class BoundaryWalkSession:
 
     # -- evidence ------------------------------------------------------------
 
+    def _confirmed_sample_indices(self) -> set:
+        """Indices into ``self.samples`` that belong to a run of >=
+        LOST_AFTER_MISSES CONSECUTIVE misses, in the walk's own sample
+        sequence, by time — the exact same run the "MESH CONNECTION LOST"
+        banner is already waiting for (ping_result's ``self._misses``
+        counter, recomputed here from the finished sample list rather than
+        re-run live). A run counts EVERY miss in it, including the ones
+        before the threshold was crossed — once a run proves itself a real
+        loss and not one dropped frame, the whole run is the same evidence.
+        A miss with no GPS fix still counts toward the run length (the
+        banner does not care whether a miss was placeable), it just never
+        becomes a LinkFailure of its own (see ``evidence``)."""
+        confirmed: set = set()
+        run: List[int] = []
+        for i, s in enumerate(self.samples):
+            if s["connected"]:
+                if len(run) >= LOST_AFTER_MISSES:
+                    confirmed.update(run)
+                run = []
+            else:
+                run.append(i)
+        if len(run) >= LOST_AFTER_MISSES:
+            confirmed.update(run)
+        return confirmed
+
     def evidence(self, medic_id: str = "MEDIC"
                  ) -> Tuple[List[LinkObservation], List[LinkFailure]]:
         """Everything the walk proved, in the range model's two currencies.
@@ -212,11 +237,22 @@ class BoundaryWalkSession:
         # node_key) — one convention, both currencies (2026-09-24, added so
         # the boundary-ring feature can tell whose edge a loss draws;
         # LinkFailure carried no node identity before this).
-        fails = [f for s in self.samples
-                 if s["km"] is not None and s["km"] > CO_LOCATED_KM
-                 for f in walk_failures([s], observed_at=s["t"],
-                                        node_key=self.evidence_key
-                                        or self.node_key)]
+        # confirmed (2026-09-24 review): True only for a loss that belongs
+        # to a run of >= LOST_AFTER_MISSES consecutive misses — see
+        # ``_confirmed_sample_indices``. monitor.boundary_shape.node_boundary
+        # trusts only confirmed losses for a ring's radius; an isolated miss
+        # is still banked (the model wants the whole truth) but never draws
+        # a line by itself.
+        confirmed_idx = self._confirmed_sample_indices()
+        fails: List[LinkFailure] = []
+        for i, s in enumerate(self.samples):
+            if s["km"] is None or s["km"] <= CO_LOCATED_KM:
+                continue
+            for f in walk_failures([s], observed_at=s["t"],
+                                   node_key=self.evidence_key
+                                   or self.node_key):
+                f.confirmed = i in confirmed_idx
+                fails.append(f)
         return obs, fails
 
 

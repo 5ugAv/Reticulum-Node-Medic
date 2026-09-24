@@ -55,18 +55,24 @@ def test_boundary_toggle_strings_are_in_every_catalog():
 # ---- MapPlot: pure toggle/fetch logic ---------------------------------------
 
 class _Plot:
-    """Only what set_show_boundary / _fetch_boundary touch."""
+    """Only what set_show_boundary / _fetch_boundary touch. set_show_boundary
+    is the SHIPPED MapPlot.set_show_boundary, bound onto the stub (2026-09-24
+    review fix #16) rather than reimplemented here — the same
+    test_terrain_toggle_20260814 / test_port_moves_after_flash pattern
+    (``real_method.__get__(self)``). A stub's own diverging copy could drift
+    from production (this one had: it never called ``_redraw``) and every
+    test that goes through it — including ``ScanScreen._toggle_boundary``,
+    below — would keep passing while the real method broke."""
 
     def __init__(self, provider=None, show=False):
         self._boundary_provider = provider
         self._show_boundary = show
         self.redraws = 0
+        self.set_show_boundary = scan.MapPlot.set_show_boundary.__get__(self)
+        self._fetch_boundary = scan.MapPlot._fetch_boundary.__get__(self)
 
     def _redraw(self, *_a, **_k):
         self.redraws += 1
-
-    def set_show_boundary(self, on):
-        self._show_boundary = bool(on)
 
 
 def test_set_show_boundary_flips_state_and_redraws():
@@ -116,12 +122,17 @@ class _Btn:
 
 
 class _Screen:
-    """Only what _toggle_boundary touches."""
+    """Only what _toggle_boundary touches. _boundary_coverage_suffix is the
+    SHIPPED ScanScreen method, bound on the same way (2026-09-24 review):
+    it reads self.plot._fetch_boundary(), which is itself now the real
+    MapPlot method bound onto _Plot above."""
 
-    def __init__(self):
+    def __init__(self, provider=None):
         self._boundary_on = False
-        self.plot = _Plot()
+        self.plot = _Plot(provider=provider)
         self.boundary_btn = _Btn("Boundary  off")
+        self._boundary_coverage_suffix = \
+            scan.ScanScreen._boundary_coverage_suffix.__get__(self)
 
 
 def test_toggle_boundary_flips_state_label_and_the_plot():
@@ -129,11 +140,40 @@ def test_toggle_boundary_flips_state_label_and_the_plot():
     scan.ScanScreen._toggle_boundary(s)
     assert s._boundary_on is True
     assert s.plot._show_boundary is True
-    assert s.boundary_btn.text == "Boundary  on"
+    assert s.boundary_btn.text == "Boundary  on"          # no provider -> no suffix
     scan.ScanScreen._toggle_boundary(s)
     assert s._boundary_on is False
     assert s.plot._show_boundary is False
     assert s.boundary_btn.text == "Boundary  off"
+
+
+def test_toggle_boundary_on_appends_real_coverage_when_a_provider_is_wired():
+    """fix #13: the coverage data must stop being computed and thrown away
+    — the toggle button reads it straight off what the provider returns."""
+    rings = [{"lat": 1.0, "lon": 1.0, "status": "ok",
+              "segments": [(1.0, 1.0, 1.1, 1.1)], "coverage_frac": 0.125,
+              "total_failures_used": 3}]
+    s = _Screen(provider=lambda: rings)
+    scan.ScanScreen._toggle_boundary(s)
+    assert s.boundary_btn.text == "Boundary  on (3/24)"
+    scan.ScanScreen._toggle_boundary(s)
+    assert s.boundary_btn.text == "Boundary  off"
+
+
+def test_boundary_coverage_suffix_is_empty_when_nothing_is_drawn():
+    s = _Screen(provider=lambda: [])
+    s._boundary_on = True
+    s.plot._show_boundary = True
+    assert s._boundary_coverage_suffix() == ""
+
+
+def test_boundary_coverage_suffix_swallows_a_raising_provider():
+    def _boom():
+        raise RuntimeError("no data yet")
+    s = _Screen(provider=_boom)
+    s._boundary_on = True
+    s.plot._show_boundary = True
+    assert s._boundary_coverage_suffix() == ""
 
 
 # ---- source pins -------------------------------------------------------------
@@ -191,12 +231,20 @@ def test_draw_boundary_skips_rings_with_no_segments():
 # ---- ui/app.py wiring --------------------------------------------------------
 
 def test_app_wires_a_real_boundary_provider():
+    """The closure in build() is now a thin shim (2026-09-24 review restructure
+    — see tests/test_boundary_rings_20260924.py for the real behavioural
+    coverage of the pure logic, monitor.boundary_rings.boundary_rings_for)."""
     body = func_source("ui/app.py", "build", cls="ReticulumNodeMedicApp")
     assert "boundary_provider=_boundary_provider" in body
     assert "load_walk_failures" in body
-    assert "candidate_keys" in body
-    assert "node_boundary" in body
-    assert "boundary_segments" in body
-    # Joined against the registry's own device fold, the SAME one the
-    # anchor file already uses — not a second convention.
-    assert "monitor.walk_anchor import candidate_keys" in body
+    assert "monitor.boundary_rings import boundary_rings_for" in body
+    assert "boundary_rings_for(self.monitor_service.registry" in body
+
+
+def test_boundary_rings_for_does_the_geometry_not_the_app_closure():
+    from monitor.boundary_rings import boundary_rings_for
+    import inspect
+    src = inspect.getsource(boundary_rings_for)
+    assert "node_boundary" in src
+    assert "boundary_segments" in src
+    assert "consolidated_records" in src

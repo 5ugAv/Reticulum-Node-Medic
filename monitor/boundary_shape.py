@@ -84,6 +84,19 @@ def destination_point(lat: float, lon: float, bearing: float,
     return (math.degrees(phi2), lon2)
 
 
+#: A floating-point bearing that lands exactly on a sector boundary (0.0,
+#: 15.0, 45.0, 90.0, 180.0 degrees...) can come back from bearing_deg's trig
+#: a hair UNDER the exact degree — a dozen-9s float-noise shortfall, not a
+#: real different bearing — which would floor-divide into the sector below
+#: the one a person would expect. This epsilon (2026-09-24 review fix) is
+#: nudged in before the floor-divide — far smaller than any real sector
+#: width (DEFAULT_SECTORS' narrowest is 15 degrees, and node_boundary
+#: refuses fewer than 2 sectors i.e. widths under 180 degrees), so it only
+#: ever catches float noise, never reclassifies a genuinely different
+#: bearing.
+_SECTOR_EPSILON_DEG = 1e-6
+
+
 def node_boundary(node_lat: float, node_lon: float,
                   failures: List[LinkFailure],
                   n_sectors: int = DEFAULT_SECTORS,
@@ -105,6 +118,15 @@ def node_boundary(node_lat: float, node_lon: float,
     every sample here is re-derived from the centre this call was actually
     asked about.
 
+    Only CONFIRMED losses count (2026-09-24 review): ``LinkFailure.confirmed``
+    must be True — set by monitor.boundary_walk.BoundaryWalkSession.evidence()
+    for a loss that belongs to a run of >= LOST_AFTER_MISSES consecutive
+    misses, the same threshold the walk's own live "MESH CONNECTION LOST"
+    banner waits for. A single isolated missed ping is real evidence (the
+    model banks it) but must never by itself set a sector's boundary
+    distance — a sector with only unconfirmed misses is a gap, the same as
+    no data, never a guessed radius.
+
     *max_age_days* / *now*: when BOTH given, a failure older than
     *max_age_days* is dropped — a node's surroundings change (new foliage,
     a parked truck, a season), and a year-old loss is not evidence of
@@ -115,15 +137,32 @@ def node_boundary(node_lat: float, node_lon: float,
     NaN/inf/None/out-of-range/(0,0)) is skipped, never crashes this — the
     only geometry input this function actually trusts from the record.
 
+    *n_sectors* must be an integer >= 2 — refused (``ValueError``) rather
+    than guessed, the same rule workflows.radio_repair.plan_radio_repair
+    uses for an unknown board key.
+
     Returns ``{"sectors": [{"bearing_from", "bearing_to", "radius_km",
-    "sample_count"}, ...], "coverage_frac", "total_failures_used"}``. A
-    sector nothing landed in reads ``radius_km: None`` — never guessed."""
+    "bearing_deg", "sample_count"}, ...], "coverage_frac",
+    "total_failures_used"}``. A sector nothing landed in reads
+    ``radius_km: None`` (and ``bearing_deg: None``) — never guessed.
+    ``bearing_deg`` is the WINNING sample's own exact bearing (the nearest
+    confirmed failure in that sector), never the sector's arithmetic
+    midpoint — a real measured direction, not a compass average nobody
+    actually stood at."""
+    if isinstance(n_sectors, bool) or not isinstance(n_sectors, int) \
+            or n_sectors < 2:
+        raise ValueError(
+            f"node_boundary: n_sectors must be an integer >= 2, got "
+            f"{n_sectors!r}")
     width = 360.0 / n_sectors
     best_km: List[Optional[float]] = [None] * n_sectors
+    best_bearing: List[Optional[float]] = [None] * n_sectors
     counts = [0] * n_sectors
     used = 0
     for f in failures or ():
         if f is None:
+            continue
+        if not getattr(f, "confirmed", False):
             continue
         if not valid_position(getattr(f, "lat", None), getattr(f, "lon", None)):
             continue
@@ -133,13 +172,15 @@ def node_boundary(node_lat: float, node_lon: float,
                 continue
         brg = bearing_deg(node_lat, node_lon, f.lat, f.lon)
         dist_km = haversine_m(node_lat, node_lon, f.lat, f.lon) / 1000.0
-        idx = min(int(brg // width), n_sectors - 1)
+        idx = min(int((brg + _SECTOR_EPSILON_DEG) // width), n_sectors - 1)
         counts[idx] += 1
         used += 1
         if best_km[idx] is None or dist_km < best_km[idx]:
             best_km[idx] = dist_km
+            best_bearing[idx] = brg
     sectors = [{"bearing_from": i * width, "bearing_to": (i + 1) * width,
-               "radius_km": best_km[i], "sample_count": counts[i]}
+               "radius_km": best_km[i], "bearing_deg": best_bearing[i],
+               "sample_count": counts[i]}
                for i in range(n_sectors)]
     with_data = sum(1 for s in sectors if s["radius_km"] is not None)
     coverage = (with_data / n_sectors) if n_sectors else 0.0
@@ -151,14 +192,27 @@ def boundary_segments(shape: dict, node_lat: float, node_lon: float
                       ) -> List[Tuple[float, float, float, float]]:
     """Turn a :func:`node_boundary` shape into line segments around the
     node: one per pair of ADJACENT sectors that BOTH have data, connecting
-    the destination points at each sector's mid-bearing and radius.
+    the destination points at each sector's own WINNING BEARING (its
+    ``bearing_deg`` — the exact bearing of the nearest confirmed failure in
+    that sector) and radius. Never the sector's arithmetic mid-bearing —
+    that would draw a vertex at a compass direction nobody actually stood
+    at (2026-09-24 review fix).
 
     A sector with ``radius_km: None`` breaks the chain on both sides — no
     segment is drawn across the gap, and none from/to the None sector
     itself. So a walk done on three sides of a node draws three short arcs,
     never a shape closed by a guess across the side never walked; only a
     sector filled all the way round produces the full closed loop of
-    ``n_sectors`` segments."""
+    ``n_sectors`` segments.
+
+    A segment whose two endpoints' longitudes differ by more than 180
+    degrees is an antimeridian wrap — drawing it as a straight line would
+    cross the whole map. That one segment is omitted, never mis-drawn; the
+    same honest-gap rule as any other missing data (2026-09-24 review fix).
+
+    ``n_sectors == 2`` is a special case: there is only ONE distinct edge
+    between the two sectors (0->1 and 1->0 are the same pair), so exactly
+    one segment is emitted, not the same segment twice."""
     sectors = shape.get("sectors") or []
     n = len(sectors)
     if n < 2:
@@ -166,16 +220,19 @@ def boundary_segments(shape: dict, node_lat: float, node_lon: float
     points: List[Optional[Tuple[float, float]]] = []
     for s in sectors:
         r = s.get("radius_km")
-        if r is None:
+        brg = s.get("bearing_deg")
+        if r is None or brg is None:
             points.append(None)
             continue
-        mid = (s["bearing_from"] + s["bearing_to"]) / 2.0
-        points.append(destination_point(node_lat, node_lon, mid, r))
+        points.append(destination_point(node_lat, node_lon, brg, r))
     segments: List[Tuple[float, float, float, float]] = []
-    for i in range(n):
+    edge_count = n if n > 2 else 1
+    for i in range(edge_count):
         a = points[i]
         b = points[(i + 1) % n]
         if a is None or b is None:
             continue
+        if abs(a[1] - b[1]) > 180.0:
+            continue        # antimeridian wrap — an honest gap, not a false chord
         segments.append((a[0], a[1], b[0], b[1]))
     return segments

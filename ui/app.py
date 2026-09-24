@@ -932,58 +932,24 @@ class ReticulumNodeMedicApp(App):
             return markers
 
         def _boundary_provider():
-            # The boundary-walk ring (operator, 2026-09-24): one per node
-            # with a KNOWN position, built from the registry's live status
-            # (NodeRegistry.all — the same "own identity/destination
-            # excluded" fold located_nodes uses) joined against the walk's
-            # banked losses. LinkFailure carried no node identity before
-            # this feature (read carefully, see monitor/synapse_range.py's
-            # LinkFailure.node_key and monitor/boundary_walk.py's evidence())
-            # — a loss is matched to a node via monitor.walk_anchor
-            # .candidate_keys, the SAME device-key fold the anchor file
-            # already uses to let two doors into a walk find one anchor, so
-            # this join invents no second convention.
+            # The boundary-walk ring (operator, 2026-09-24; restructured on
+            # 2026-09-24 review): the real logic is monitor.boundary_rings
+            # .boundary_rings_for — pure, no Kivy, unit-tested directly —
+            # one ring per PHYSICAL DEVICE, centred on that device's own
+            # stamped lat/lon, never a fuzzed beacon. This closure is a
+            # thin shim supplying the live registry, the banked failures
+            # and the clock, matching the house rule that SCAN's other
+            # providers (_scan_markers above) keep their pure core
+            # separate from the Kivy wiring.
             import time as _t
-            registry = self.monitor_service.registry
-            now = _t.time()
-            try:
-                from monitor.boundary_shape import boundary_segments, node_boundary
-                from monitor.boundary_walk import load_walk_failures
-                from monitor.walk_anchor import candidate_keys
-            except Exception:                                      # noqa: BLE001
-                return []
+            from monitor.boundary_rings import boundary_rings_for
+            from monitor.boundary_walk import load_walk_failures
             try:
                 fails = load_walk_failures()
             except Exception:                                      # noqa: BLE001
                 fails = []
-            if not fails:
-                return []
-            try:
-                records = list(registry.all(now))
-            except Exception:                                      # noqa: BLE001
-                return []
-            out = []
-            for rec in records:
-                lat, lon = rec.lat, rec.lon
-                b = getattr(rec, "latest_beacon", None)
-                if b is not None and getattr(b, "has_position", False):
-                    lat, lon = b.lat, b.lng          # a live GPS claim outranks the cert
-                if lat is None or lon is None:
-                    continue
-                try:
-                    keys = set(candidate_keys(rec, registry, now))
-                except Exception:                                  # noqa: BLE001
-                    keys = {rec.dst_hash}
-                node_fails = [f for f in fails if f.node_key and f.node_key in keys]
-                if not node_fails:
-                    continue
-                shape = node_boundary(lat, lon, node_fails)
-                segs = boundary_segments(shape, lat, lon)
-                if not segs:
-                    continue
-                out.append({"lat": lat, "lon": lon, "status": rec.status(now),
-                           "segments": segs})
-            return out
+            return boundary_rings_for(self.monitor_service.registry, fails,
+                                      _t.time())
 
         self.scan_screen = ScanScreen(
             nodes=self.monitor_service.located_nodes(),

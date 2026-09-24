@@ -107,6 +107,56 @@ def test_a_node_without_coordinates_anchors_at_the_first_fix():
     assert 0.9 < s.samples[-1]["km"] < 1.1
 
 
+def test_an_isolated_miss_is_evidence_but_not_confirmed():
+    """A single dropped packet sandwiched between hits is banked (the model
+    wants the whole truth) but must read confirmed=False — monitor.
+    boundary_shape.node_boundary refuses to draw a ring off one unconfirmed
+    miss (2026-09-24 review fix #5)."""
+    s = _s()
+    for t, ok in ((1000, True), (1020, False), (1040, True)):
+        s.begin_ping(t); s.ping_result(t + 1, ok=ok, gps=(0.0, 0.012))
+    _, fails = s.evidence(medic_id="MEDIC")
+    assert len(fails) == 1
+    assert fails[0].confirmed is False
+
+
+def test_a_confirmed_run_of_misses_marks_every_member_confirmed():
+    """LOST_AFTER_MISSES consecutive misses is what the live banner itself
+    treats as a real loss — every failure in that run reads confirmed=True,
+    including the first one (the one that, alone, would not yet have
+    flashed the banner)."""
+    s = _s()
+    for t, ok in ((1000, True), (1020, False), (1040, False), (1060, False),
+                  (1080, True)):
+        s.begin_ping(t); s.ping_result(t + 1, ok=ok, gps=(0.0, 0.012))
+    _, fails = s.evidence(medic_id="MEDIC")
+    assert len(fails) == 3
+    assert all(f.confirmed for f in fails)
+
+
+def test_a_run_shorter_than_lost_after_misses_stays_unconfirmed():
+    s = _s()
+    assert bw.LOST_AFTER_MISSES == 2       # this test assumes the current threshold
+    for t, ok in ((1000, True), (1020, False), (1040, True), (1060, False),
+                  (1080, True)):
+        s.begin_ping(t); s.ping_result(t + 1, ok=ok, gps=(0.0, 0.012))
+    _, fails = s.evidence(medic_id="MEDIC")
+    assert len(fails) == 2
+    assert all(not f.confirmed for f in fails)
+
+
+def test_a_run_still_open_at_the_end_of_the_walk_is_confirmed():
+    """The walk can end mid-run (the operator stops right after the loss) —
+    a trailing run of >= LOST_AFTER_MISSES misses with no hit afterwards is
+    still confirmed; evidence() must not require a hit to close the run."""
+    s = _s()
+    for t, ok in ((1000, True), (1020, False), (1040, False)):
+        s.begin_ping(t); s.ping_result(t + 1, ok=ok, gps=(0.0, 0.012))
+    _, fails = s.evidence(medic_id="MEDIC")
+    assert len(fails) == 2
+    assert all(f.confirmed for f in fails)
+
+
 def test_persist_and_load_round_trip(tmp_path):
     s = _s()
     s.begin_ping(1000.0); s.ping_result(1001.0, ok=True, gps=(0.0, 0.005))
