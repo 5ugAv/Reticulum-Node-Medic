@@ -29,11 +29,33 @@ of where the tool actually is.
 
 Five things. Nothing else blocks the handover, and no more get added.
 
-- [ ] **Birth** — a node built end to end, on the boards already working
-- [ ] **Monitoring** — nodes appear, and their health comes back over the mesh
+- [x] **Birth** — a node built end to end, on the boards already working
+- [x] **Monitoring** — nodes appear, and their health comes back over the mesh
 - [ ] **Maps** — placement and the node map
 - [ ] **Antenna guide** — the choosing and testing path
 - [ ] **Chat / communication** — messages actually move
+
+### What the two ticks rest on (checked 2026-09-27, not remembered)
+
+Ticked against the live medic, because a list nobody has verified is worse
+than no list — this one had been carrying three problems that were already
+solved, and planning off it wasted a session.
+
+* **Birth.** ELSEWHERE and skyfinger both exist as Pi propagation nodes and
+  both answer. skyfinger was built after 2026-09-11, i.e. through the flow as
+  it now stands.
+* **Monitoring.** Health beacons arriving OVER THE AIR on cadence —
+  `announce 5a1f001f len=20 beacon=yes` at 07:24 and `5a170017 … beacon=yes`
+  at 03:30 on 2026-09-27 — ingested, and folded to one row per device
+  (14 raw records -> 4 VITALS rows; ELSEWHERE's five destinations are one
+  row). The LoRa interface shows ↓424 KB received while the LAN AutoInterface
+  sits at **0 peers, 0 bytes**, so none of it came over the network.
+* The medic's own ear was proven in both directions on 2026-09-11 — see
+  the memory note `ear-test-passed-both-ways`.
+
+The remaining three need a person at the bench, not more code: a clean walk
+of the antenna path, a two-way message that actually moves, and the map's
+placement flow end to end.
 
 Plus the one comprehension blocker, which is artwork and has a lead time:
 
