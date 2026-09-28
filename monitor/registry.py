@@ -1662,22 +1662,34 @@ class NodeRegistry:
         node that was never stamped but SAYS where it stands still gets its
         dot (the self-locating T114 was invisible on the map while its
         detail page proudly showed its position). Nodes with neither are
-        omitted (nothing to plot). Sorted by name for stable rendering."""
+        omitted (nothing to plot). Sorted by name for stable rendering.
+
+        ONE DOT PER DEVICE — the same fold VITALS draws. This walked the RAW
+        records until 2026-09-28, so a node with several located aspects got
+        several dots stacked on one spot: ELSEWHERE drew FOUR and skyfinger
+        FOUR, their labels printed over each other into an unreadable smear,
+        and each dot carried THAT ASPECT's status rather than the device's.
+        Since an aspect that has never been heard is "unknown", the grey dot
+        drawn last won — so the map showed grey while VITALS showed green for
+        the same machine, on the same screen-full (operator, 2026-09-28).
+
+        consolidated_records() calls itself "the single fold every screen must
+        share"; the map was the screen not sharing it. The merged record
+        already carries the location from the best-known member and the health
+        pooled across all of them, so both faults close together."""
         out = []
-        for rec in sorted(self.nodes.values(), key=lambda r: r.name.lower()):
-            if self._is_own_identity(rec):
-                continue                     # not a node on the map — it's us
-            lat, lon, self_located = rec.lat, rec.lon, False
-            b = getattr(rec, "latest_beacon", None)
+        for merged, _members in self.consolidated_records(now):
+            lat, lon, self_located = merged.lat, merged.lon, False
+            b = getattr(merged, "latest_beacon", None)
             if b is not None and getattr(b, "has_position", False):
                 lat, lon, self_located = b.lat, b.lng, True
             if lat is None or lon is None:
                 continue
             out.append({"lat": lat, "lon": lon,
-                        "name": rec.name or "(unnamed)",
-                        "status": rec.status(now),
+                        "name": merged.name or "(unnamed)",
+                        "status": merged.status(now),
                         "self_located": self_located})
-        return out
+        return sorted(out, key=lambda d: d["name"].lower())
 
     def visible(self, now: float, status: Optional[str] = None,
                 search: str = "") -> List[NodeRecord]:
