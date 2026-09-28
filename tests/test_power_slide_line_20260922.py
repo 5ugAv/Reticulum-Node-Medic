@@ -93,3 +93,32 @@ def test_the_widget_draws_from_the_shared_geometry_in_black():
     assert 'COLORS["black"' in src, "the line is black, from the theme"
     theme = open(os.path.join(ROOT, "ui/theme.py"), encoding="utf-8").read()
     assert '"black": "#000000"' in theme
+
+
+def test_the_hint_never_escapes_the_capsule():
+    """OFF is the place the knob travels TO, so it must sit inside the thing
+    the knob travels along. Checked across the sizes the front page and a
+    future wider panel would give it."""
+    for w, h in ((234.0, 84.0), (156.0, 52.0), (400.0, 96.0)):
+        tx, _ty, tw, _th, _r = L.track_rect(14, 0, w, h, "neon")
+        hx, _hy, hw, _hh = L.hint_rect(14, 0, w, h, h, "neon")
+        assert hx >= tx + h, "OFF overlaps the resting knob"
+        assert hx + hw <= tx + tw, (
+            f"OFF runs {hx + hw - tx - tw:.0f}px past the end of the capsule "
+            f"at {w:.0f}x{h:.0f}")
+
+
+def test_the_hint_label_is_not_stretched_by_the_layout():
+    """The bug behind the escaping OFF (operator photo, 2026-09-29).
+
+    A Kivy Label defaults to size_hint (1, 1), so FloatLayout's own pass
+    overwrote the box _layout had computed — the label kept its left edge and
+    was stretched to the full control width, moving the centred text right by
+    half the difference. Geometry alone cannot fix that; the label has to opt
+    out of the layout.
+    """
+    src = open(os.path.join(ROOT, "ui/widgets/slide_to_power.py"), encoding="utf-8").read()
+    i = src.index("self.hint = Label(")
+    assert "size_hint=(None, None)" in src[i:i + 400], (
+        "the hint label is size-hinted again — its computed box will be "
+        "overwritten and the word will drift out of the track")

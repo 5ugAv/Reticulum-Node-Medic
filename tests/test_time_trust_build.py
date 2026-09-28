@@ -23,7 +23,6 @@ import monitor.node_time as nt
 from node_profile import NodeProfile, NodeRole
 from tests.test_build_workflow import build_conn, wf, _run_step
 from workflows import build
-from workflows import pi_reporter_push as prp
 
 ANCHOR = {"identity_hash": "ab" * 16, "reply_dest": "cd" * 16,
           "name": "nodemedic", "since": "2026-09-23"}
@@ -334,123 +333,16 @@ def test_the_sudoers_line_passes_visudo_here_too(tmp_path):
         build.nm_settime_sudoers("pi ALL")            # a user name, nothing else
 
 
-# -- the push road for nodes already in the field ---------------------------------
-
-class FakeConn:
-    """transport.connection's real shape: (code, stdout, stderr)."""
-    def __init__(self, who="pi", visudo_rc=0, read_back=True, trust_ok=True,
-                 unit_user="pi", unit_home="/home/pi", helper_stat="root:root 755",
-                 sudoers_stat="root:root 440"):
-        self.cmds, self.pushed = [], []
-        self._who, self._visudo_rc, self._read_back, self._trust_ok = who, visudo_rc, read_back, trust_ok
-        self._unit_user, self._unit_home = unit_user, unit_home
-        self._helper_stat, self._sudoers_stat = helper_stat, sudoers_stat
-
-    def run(self, cmd, timeout=30):
-        self.cmds.append(cmd)
-        # The push's unbuffered drop-in (2026-09-23): answered as written,
-        # and the unit's environment shows it after the reload.
-        if "10-unbuffered.conf" in cmd and "tee" in cmd:
-            self._unb_written = True
-            return (0, "", "")
-        if cmd.startswith("cat ") and "10-unbuffered.conf" in cmd:
-            from workflows.pi_reporter_push import UNBUFFERED_DROPIN
-            return (0, UNBUFFERED_DROPIN if getattr(self, "_unb_written", False) else "", "")
-        if cmd.endswith("systemctl daemon-reload"):
-            self._unb = getattr(self, "_unb_written", False)
-            return (0, "", "")
-        if cmd == "systemctl show rnm-health -p Environment":
-            return (0, "Environment=HOME=/home/pi%s\n" % (
-                " PYTHONUNBUFFERED=1" if getattr(self, "_unb", False) else ""), "")
-        if cmd == "id -un":
-            return (0, self._who, "")
-        if cmd == "echo $HOME":
-            return (0, "/home/user", "")
-        if cmd.startswith("systemctl show rnm-health"):
-            if self._unit_user is None:
-                return (0, "User=\nEnvironment=\n", "")
-            return (0, "User=%s\nEnvironment=HOME=%s FOO=bar\n" % (self._unit_user, self._unit_home), "")
-        if cmd.startswith("grep -c"):
-            return (0, "1", "")
-        if cmd.startswith("systemctl is-active"):
-            return (0, "active", "")
-        if "visudo -c -f" in cmd:
-            return (self._visudo_rc, "", "syntax error" if self._visudo_rc else "")
-        if HELPER_STAT in cmd:
-            return (0, self._helper_stat, "")
-        if SUDOERS_STAT in cmd:
-            return (0, self._sudoers_stat, "")
-        if self._read_back:
-            if "trusted_medic.json" in cmd and cmd.startswith("cat "):
-                return (0, nt.trust_anchor_json(ANCHOR) if self._trust_ok else "{}", "")
-            if cmd.startswith("cat /usr/local/sbin/nm-settime"):
-                return (0, build.NM_SETTIME_SCRIPT, "")
-            if "cat /etc/sudoers.d/nm-settime" in cmd:
-                return (0, build.nm_settime_sudoers(self._unit_user or self._who), "")
-        return (0, "", "")
-
-    def push_file(self, local, remote):
-        self.pushed.append(remote)
-        return True
-
-
-def test_push_ships_the_time_module_and_the_trust_and_reads_back(anchor):
-    c = FakeConn()
-    ok, msg = prp.push_health_reporter(c)
-    assert ok, msg
-    assert any(r.endswith("/node_time.py") for r in c.pushed)
-    assert any("trusted_medic.json" in cmd and "base64 -d" in cmd for cmd in c.cmds)
-    assert any("visudo -c -f" in cmd for cmd in c.cmds)
-    assert any(cmd.startswith("cat /home/pi/.rnm-health/trusted_medic.json") for cmd in c.cmds)
-    assert any(cmd == "sudo -n systemctl restart rnm-health" for cmd in c.cmds)
-    assert any(HELPER_STAT in cmd for cmd in c.cmds) and any(SUDOERS_STAT in cmd for cmd in c.cmds)
-    assert "time" in msg and "root:root 755" in msg and "root:root 440" in msg
-    assert "as pi" in msg
-
-
-def test_push_takes_user_and_home_from_the_unit_not_the_login(anchor):
-    c = FakeConn(who="admin", unit_user="nodeuser", unit_home="/srv/node")
-    ok, msg = prp.push_health_reporter(c)
-    assert ok, msg
-    assert any(cmd.startswith("mkdir -p /srv/node/.rnm-health") for cmd in c.cmds)
-    assert any("/srv/node/.rnm-health/trusted_medic.json" in cmd for cmd in c.cmds)
-    sud = [cmd for cmd in c.cmds if "/etc/sudoers.d/nm-settime.tmp" in cmd and "base64 -d" in cmd]
-    assert sud and _decoded(sud[0]).startswith("nodeuser ALL=(root)")
-    assert "as nodeuser" in msg
-    assert not any("/home/user" in cmd for cmd in c.cmds), "the login home is never used"
-
-
-def test_push_falls_back_to_the_login_user_only_when_the_unit_is_absent(anchor):
-    c = FakeConn(unit_user=None)
-    user, home, how = prp.reporter_user_home(c)
-    assert (user, home) == ("pi", "/home/user") and "no rnm-health unit" in how
-    assert prp.parse_unit_user_home("User=pi\nEnvironment=HOME=/home/pi A=b\n") == ("pi", "/home/pi")
-    assert prp.parse_unit_user_home("User=root\n") == ("root", None)
-    assert prp.parse_unit_user_home("") == (None, None)
-    c = FakeConn(unit_user="root", unit_home=None)
-    c._unit_home = ""
-    assert prp.reporter_user_home(c)[:2] == ("root", "/root")
-
-
-def test_push_fails_before_restart_when_the_trust_does_not_land(anchor):
-    c = FakeConn(trust_ok=False)
-    ok, msg = prp.push_health_reporter(c)
-    assert not ok and "read back" in msg
-    assert not any("restart" in cmd for cmd in c.cmds)
-    assert any("rm -f" in cmd and "trusted_medic.json" in cmd for cmd in c.cmds), "unwound"
-    c = FakeConn(visudo_rc=1)
-    ok, msg = prp.push_health_reporter(c)
-    assert not ok and "visudo" in msg
-    c = FakeConn(sudoers_stat="root:root 644")
-    ok, msg = prp.push_health_reporter(c)
-    assert not ok and "644" in msg
-
-
-def test_push_fails_without_an_anchor(monkeypatch):
-    def boom():
-        raise RuntimeError("this machine holds no Node Medic health-reply identity")
-    monkeypatch.setattr(build, "medic_time_anchor", boom)
-    c = FakeConn()
-    ok, msg = prp.push_health_reporter(c)
-    assert not ok and "health-reply identity" in msg
-    assert not any("restart" in cmd for cmd in c.cmds)
+# -- THE PUSH ROAD IS GONE (2026-09-29) -------------------------------------
+# workflows/pi_reporter_push.py, and the ~120 lines of tests that lived here
+# exercising it, were deleted with the feature. Operator: "any boards that were
+# birthed before the health updater will be reflashed... and anybody who uses
+# the Node Medic once it's been released won't have to worry about that issue
+# either." Birth installs the current reporter, so the population that
+# migration served is empty, and the wiring guards (test_wiring,
+# test_dead_functions) correctly refuse to let a complete, tested, never-run
+# module sit in the tree. It is in git history if a stale reporter is ever
+# found in the field.
+#
+# What stays above is BIRTH's own time trust — install_node_time_trust and the
+# nm-settime helper — which the push merely reused.

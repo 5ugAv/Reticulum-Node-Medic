@@ -98,7 +98,7 @@ def _reading(record, name):
 
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None,
-                 on_forget=None, on_walk=None, on_push_reporter=None,
+                 on_forget=None, on_walk=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
                  capabilities=None, clock_entry=None, **kwargs):
@@ -110,7 +110,6 @@ class NodeDetailScreen(BoxLayout):
         self._on_poll = on_poll
         self._on_forget = on_forget
         self._on_walk = on_walk
-        self._on_push_reporter = on_push_reporter
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
         # must not have a repair button appear that quietly does nothing.
@@ -417,16 +416,19 @@ class NodeDetailScreen(BoxLayout):
                 walk_row = col
             self._walk_row = walk_row
 
-        # NO "Update health reporter" BUTTON (operator, 2026-09-28: "that's
-        # supposed to be an automatic function that Node Medic does by itself").
-        # They were right that it should be, and it wasn't — nothing called it
-        # but that button. It is now automatic: opening a Pi node's page asks
-        # the node whether its reporter carries the unicast handler, and pushes
-        # only if it does not. Birth already installs the current one, so this
-        # fires only for nodes built before 2026-09-22 — once each, then never
-        # again. Silent unless it actually does something.
-        if self._on_push_reporter is not None and is_pi_node(record.node_type):
-            self._on_push_reporter(self.record, self._set_ping_status)
+        # NO HEALTH-REPORTER UPDATE HERE AT ALL (operator, 2026-09-29). It was
+        # a button; then, briefly, an automatic push. Both are gone, and the
+        # reason is that the problem they solved has no future: "any boards that
+        # were birthed before the health updater will be reflashed... and
+        # anybody who uses the Node Medic once it's been released won't have to
+        # worry about that issue either." Birth installs the current reporter,
+        # so every node this medic will ever meet already has it. Carrying a
+        # migration for a population of zero is a page that does work nobody
+        # asked for, over SSH, on a screen opened to read a battery level.
+        #
+        # workflows/pi_reporter_push.py stays — it is exercised by the birth
+        # time-trust tests and it is the proven repair if a reporter is ever
+        # found stale — it is simply not wired to any screen.
 
         if self._on_forget is not None:
             # DELETE, behind the danger confirm (operator request, 2026-08-13)

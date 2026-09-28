@@ -76,7 +76,7 @@ payload)`. Two green pulses either way.
 **Pi nodes (`monitor/pi_health_reporter.py`, ELSEWHERE / EVERYWHERE):**
 the same handler in Python. Existing Pi nodes get the new reporter
 without a rebirth: **Update health reporter** on the node's VITALS page
-(`workflows/pi_reporter_push.py`) copies the package over the same SSH
+(REMOVED 2026-09-29 — see below) copied the package over the same SSH
 road birth used, restarts `rnm-health`, and reads back that the handler
 landed and the service is active before it says so [12]. Until a node is
 updated its old reporter answers `0x04` with an announce — today's
@@ -456,7 +456,7 @@ Only the UI's `_setup_health_reply` creates the identity. The reporter,
 already running, loads the trust file lazily on each ask, so no restart is
 needed.
 
-**Update health reporter** (`workflows/pi_reporter_push.py`) ships the
+**Update health reporter** (REMOVED 2026-09-29) shipped the
 same three things plus `node_time.py` through the same installer. The user
 and HOME the trust is written for come from the **unit** (`systemctl show
 rnm-health -p User -p Environment`), falling back to `id -un` / `$HOME`
@@ -505,3 +505,25 @@ the helper under bash with a fake `date`, the push's unit-derived user),
 `tests/test_phase_labels_i18n.py`. **Nothing here is proven on air** —
 the bench proof is a Pi node with its clock deliberately wrong, behind a
 relay, taking the time from the medic and its journal saying so.
+
+
+## The push road was removed (2026-09-29)
+
+`workflows/pi_reporter_push.py` and the **Update health reporter** button on a
+node's page are both gone. The button was the only caller; briefly it became an
+automatic check-and-push on opening a Pi node's page; then the operator settled
+it:
+
+> "Any boards that were birthed before the health updater will be reflashed, so
+> we don't need to worry about that. And anybody who uses the Node Medic once
+> it's been released won't have to worry about that issue either."
+
+Birth installs the current reporter (`workflows/build.py`,
+`install_health_reporter`), so every node this medic will meet already carries
+the unicast handler and the time asker. The population the migration served is
+empty.
+
+What remains is birth's own time trust — `install_node_time_trust` and the
+`nm-settime` helper — which the push merely reused; it is still installed and
+still tested in `tests/test_time_trust_build.py`. The deleted module is in git
+history if a stale reporter is ever found in the field.

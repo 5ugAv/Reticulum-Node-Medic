@@ -50,9 +50,12 @@ def hint_rect(x, y, w, h, knob, style="pill"):
     off = knob * 0.35
     tx, ty, tw, th, _ = track_rect(x, y, w, h, style)
     if style == "neon":
-        # OFF sits at the FAR end of the capsule — the place the knob has to
-        # reach — not just clear of the resting knob.
-        return x + knob, ty, w - knob * 1.15, th
+        # OFF sits between the resting knob and the capsule's far cap, INSIDE
+        # the capsule: it is the place the knob has to reach, so it must not
+        # spill past the end of the thing the knob travels along. The right
+        # margin is half the cap's radius, which keeps the word clear of the
+        # curve rather than touching it.
+        return x + knob, ty, max(1.0, w - knob - th * 0.28), th
     if style == "line":
         band = hint_font_px(h, style) * 1.6
         return x + off, ty + th / 2.0 - band / 2.0, w - off, band

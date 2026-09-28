@@ -2032,7 +2032,6 @@ class ReticulumNodeMedicApp(App):
         scr.add_widget(self._with_back(NodeDetailScreen(
             rec, now, on_poll=self._ping_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
-            on_push_reporter=self._push_reporter,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps, clock_entry=clock_entry)))
         self.switch_mode("node_detail")
@@ -2485,59 +2484,6 @@ class ReticulumNodeMedicApp(App):
         except Exception:                                          # noqa: BLE001
             ntp = None
         return _clock_disciplined(time.time(), gps_clock.last_disciplined_at, ntp)
-
-    def _push_reporter(self, record, report):
-        """Keep a Pi node's health reporter current, BY ITSELF.
-
-        This used to be a button on the node's page. It was the only caller —
-        nothing updated a field node unless a person thought to press it — and
-        the operator's reading of that (2026-09-28) was simply that it should
-        never have been their job: "that's supposed to be an automatic function
-        that Node Medic does by itself".
-
-        So it now runs when a Pi node's page is opened, and it is QUIET. It asks
-        the node whether its reporter already carries the unicast handler and
-        does nothing if it does; birth installs the current one, so in practice
-        this fires only for nodes built before 2026-09-22, once each. Failure is
-        reported only once the medic has decided to act — a node that is simply
-        asleep must not paint an error across a page opened to read a battery
-        level.
-
-        Once per node per session: the page is rebuilt on every visit and on
-        every registry tick, and an SSH per rebuild would hammer a node that is
-        already current.
-        """
-        import threading
-        from transport.connection import SSHConnection
-        from workflows.pi_reporter_push import (push_health_reporter,
-                                                reporter_is_current)
-        name = (getattr(record, "name", "") or "").strip()
-        if not name:
-            return                      # nothing to reach, and nothing to say
-        seen = getattr(self, "_reporter_checked", None)
-        if seen is None:
-            seen = self._reporter_checked = set()
-        if name.lower() in seen:
-            return
-        seen.add(name.lower())
-        host = f"{name.lower()}.local"
-
-        def work():
-            try:
-                conn = SSHConnection(host, user="pi")
-                if reporter_is_current(conn):
-                    return                      # nothing to do, nothing to say
-            except Exception:                                      # noqa: BLE001
-                return                          # asleep or unreachable: quiet
-            Clock.schedule_once(lambda dt: report(
-                "Updating this node's health reporter…", None), 0)
-            try:
-                ok, msg = push_health_reporter(conn, log=lambda m: print(
-                    "[reporter] %s: %s" % (host, m), flush=True))
-            except Exception as e:                                 # noqa: BLE001
-                ok, msg = False, "could not update the health reporter: %s" % e
-            Clock.schedule_once(lambda dt: report(msg, ok), 0)
-        threading.Thread(target=work, daemon=True).start()
 
     def _ping_node(self, dst_hash, report):
         """Live mesh reachability check. Drop the (possibly stale) cached path —

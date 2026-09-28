@@ -72,7 +72,15 @@ class SlideToPowerOff(FloatLayout):
         # The word takes the capsule's own colour: grey secondary text inside a
         # lit green capsule reads as a disabled control rather than the place
         # the knob is going.
+        # size_hint (None, None) IS THE FIX, not a detail. A Label defaults to
+        # size_hint (1, 1), so FloatLayout's own pass overwrote the box that
+        # _layout had just computed: the label kept its left edge and was
+        # stretched to the full control width, which moved the centred text
+        # right by half the difference. On the front page that pushed OFF out
+        # past the end of the capsule (operator photo, 2026-09-29). Every style
+        # was affected; only the capsule made it obvious.
         self.hint = Label(text=hint_text, bold=True,
+                          size_hint=(None, None),
                           color=theme.hex_to_rgba(theme.COLORS[
                               "green" if track == "neon" else "text_secondary"]))
         self.add_widget(self.hint)
