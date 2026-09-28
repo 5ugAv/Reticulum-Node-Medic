@@ -97,6 +97,9 @@ class BoardCard(FloatLayout):
         self._name_lbl.text_size = (w, h)
         self._name_lbl.pos = (ix + x0 * iw, iy + ih - y1 * ih)   # y is from the top
         self._name_lbl.font_size = max(dp(9), h * 0.42)
+        # White on a dark OLED for most boards; the MeshPocket's panel is a pale
+        # LCD and white on it cannot be read at all.
+        self._name_lbl.color = self._meta.get("screen_ink") or (1, 1, 1, 1)
         self._name_lbl.opacity = 1
 
     def on_touch_down(self, touch):

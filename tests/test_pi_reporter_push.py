@@ -101,18 +101,65 @@ def test_a_failed_copy_stops_early():
     assert not ok and "could not copy" in msg
 
 
-def test_the_action_is_reachable_from_a_pi_nodes_page():
+def test_the_reporter_updates_itself_on_a_pi_nodes_page():
+    """No button. The medic keeps a field node current by itself.
+
+    It was a button until 2026-09-29, and that button was the ONLY caller —
+    nothing updated a node in the field unless a person remembered to press it.
+    The operator's reading was that it should never have been their job, and
+    they were right. Opening a Pi node's page now does it.
+
+    startswith("pi") via is_pi_node: the registry's Pi type is
+    "pi_propagation", so `== "pi"` never matched a real record (2026-09-23).
+    """
     src = open("ui/screens/node_detail_screen.py").read()
-    # startswith("pi") via is_pi_node: the registry's Pi type is
-    # "pi_propagation", so `== "pi"` never matched a real record (2026-09-23)
-    assert "Update health reporter" in src and "is_pi_node(record.node_type)" in src
+    assert "is_pi_node(record.node_type)" in src
     assert 'node_type == "pi"' not in src
     assert "_on_push_reporter(" in src
+    assert 'tr("Update health reporter")' not in src, (
+        "the manual button is back — the push is supposed to be automatic")
     app = open("ui/app.py").read()
     assert "on_push_reporter=self._push_reporter" in app
     i = app.index("def _push_reporter(self, record, report):")
-    body = app[i:i + 2000]
+    body = app[i:i + 3200]
     assert "push_health_reporter(conn" in body and "SSHConnection(host" in body
+
+
+def test_it_asks_before_it_pushes_and_only_once_per_node():
+    """Two guards, because this now runs without anybody asking for it.
+
+    The page is rebuilt on every visit and on every registry tick, so without
+    the once-per-session set a healthy node would get an SSH per rebuild. And
+    without the currency check every Pi node would be re-pushed every session
+    for the rest of its life.
+    """
+    app = open("ui/app.py").read()
+    i = app.index("def _push_reporter(self, record, report):")
+    body = app[i:i + 3200]
+    assert "reporter_is_current(conn)" in body, "it pushes without asking first"
+    assert "_reporter_checked" in body, "it will re-push on every page rebuild"
+
+
+def test_a_sleeping_node_says_nothing():
+    """An automatic action must not paint an error across a page the operator
+    opened to read a battery level. Unreachable is not a failure to report."""
+    app = open("ui/app.py").read()
+    i = app.index("def _push_reporter(self, record, report):")
+    body = app[i:i + 3200]
+    probe = body[body.index("def work():"):]
+    first_report = probe.index("report(")
+    first_return = probe.index("return")
+    assert first_return < first_report, (
+        "the unreachable path reports before it gives up — a sleeping node "
+        "would put an error on the page")
+
+
+def test_the_currency_check_fails_closed():
+    """A node that will not answer is not evidence that it is up to date."""
+    class Mute:
+        def run(self, cmd):
+            raise OSError("no route to host")
+    assert prp.reporter_is_current(Mute()) is False
 
 
 def test_the_fake_matches_the_real_connection_contract():

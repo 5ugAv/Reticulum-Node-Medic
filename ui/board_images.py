@@ -10,6 +10,10 @@ with y measured from the TOP — so the name overlay lands on the little screen 
 any display size. ``has_screen`` is False for boards with no display (then the
 name is shown in a band above the photo instead).
 
+``screen_ink`` is the name's colour on THAT board's screen, default white. Most
+of these boards carry a dark OLED and white is right; the MeshPocket's panel is
+a pale monochrome LCD, and white on it is invisible.
+
 Pure data + path helpers, no Kivy. Images live in assets/boards (tracked in git).
 """
 
@@ -21,7 +25,8 @@ from typing import Dict, Optional
 _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "assets", "boards")
 
-def _b(key: str, label: str, has_screen: bool = True, oled=None) -> dict:
+def _b(key: str, label: str, has_screen: bool = True, oled=None,
+       screen_ink=None) -> dict:
     """A board entry whose photo lives at assets/boards/<key>.png. Entries are
     PLACEHOLDERS until the file exists — image_for() checks the filesystem, so
     dropping the PNG in upgrades that board from a text button to a photo card
@@ -31,6 +36,8 @@ def _b(key: str, label: str, has_screen: bool = True, oled=None) -> dict:
          "has_screen": has_screen}
     if oled:
         d["oled"] = oled
+    if screen_ink:
+        d["screen_ink"] = screen_ink
     return d
 
 
@@ -49,6 +56,13 @@ BOARDS: Dict[str, dict] = {
     "lora32_v10": _b("lora32_v10", "LilyGO LoRa32 v1.0"),
     "tbeam": _b("tbeam", "LilyGO T-Beam"),
     "heltec32_v2": _b("heltec32_v2", "Heltec LoRa32 v2"),
+    # Artwork supplied by the operator 2026-09-29. Its screen was blanked to an
+    # unlit panel: the render arrived showing a meshtastic.org splash, which is
+    # a third-party mark we have no permission for AND a claim about firmware
+    # this board has not been given yet. No ``oled`` box — the module is mounted
+    # across the board's short axis, so the glass is far taller than it is wide
+    # and a name set in it would be cramped. The board's silhouette is unlike
+    # anything else in the list, so nothing needs disambiguating.
     "t3s3": _b("t3s3", "LilyGO LoRa T3S3"),
     "rak4631": _b("rak4631", "RAK4631", has_screen=False),
     "techo": _b("techo", "LilyGO T-Echo"),
@@ -65,6 +79,20 @@ BOARDS: Dict[str, dict] = {
     # off the artwork rather than eyeballed (largest light blob, plus margin).
     "eora_s3": _b("eora_s3", "Ebyte EoRa-S3",
                   oled=(0.269, 0.630, 0.646, 0.840)),
+    # Artwork supplied by the operator 2026-09-29. The MeshPocket shares its USB
+    # identity with the T114 (both HT-n5262), so a PICTURE is the only thing
+    # that tells an operator which of the two is in their hand — see
+    # ui/board_detect.py, where offering T114 firmware for a MeshPocket is
+    # called out as exactly the wrong-board flash that left two of them
+    # boot-looping on Heltec's own forum.
+    #
+    # Its screen was blanked and the "Powered" badge taken off the case (the
+    # standing rule: no proprietary marks we have no permission for). HELTEC
+    # stays — it names the board being flashed. The panel is a PALE monochrome
+    # LCD, so the node name is set in dark ink rather than the usual white.
+    "heltec_meshpocket": _b("heltec_meshpocket", "Heltec MeshPocket",
+                            oled=(0.172, 0.296, 0.769, 0.538),
+                            screen_ink=(0.10, 0.11, 0.10, 1)),
 }
 
 

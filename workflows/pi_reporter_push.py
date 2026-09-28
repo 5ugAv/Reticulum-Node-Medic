@@ -180,3 +180,29 @@ def push_health_reporter(conn, monitor_dir: Optional[str] = None,
                   "%s active as %s; time trust read back (%s): the node takes the time "
                   "only from this medic.%s" % (len(pushed), SERVICE, user,
                                                "; ".join(verified), tail))
+
+
+def reporter_is_current(conn) -> bool:
+    """Does this node already carry the unicast reporter?
+
+    Asked before pushing anything, so the medic can keep a field node up to
+    date on its own instead of waiting for somebody to press a button
+    (operator, 2026-09-28: "that's supposed to be an automatic function that
+    Node Medic does by itself"). Two greps over the SSH road birth already
+    uses — cheap enough to ask every time a Pi node's page is opened.
+
+    Answers FALSE when it cannot tell. A node that does not respond is not
+    evidence that it is current, and the push itself is idempotent: the worst
+    case of a wrong "no" is work already done being done again, while the worst
+    case of a wrong "yes" is a node left mute on the unicast road for good.
+    """
+    try:
+        user, home, _how = reporter_user_home(conn)
+        pkg_dir = f"{home}/.rnm-health/monitor"
+        for marker in (MARKER, TIME_MARKER):
+            got = conn.run(f"grep -c '{marker}' {pkg_dir}/pi_health_reporter.py")
+            if (got[1] or "").strip() != "1":
+                return False
+        return True
+    except Exception:                                                  # noqa: BLE001
+        return False

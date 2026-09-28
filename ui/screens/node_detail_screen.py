@@ -97,7 +97,7 @@ def _reading(record, name):
 
 
 class NodeDetailScreen(BoxLayout):
-    def __init__(self, record, now, on_poll=None, on_navigate=None,
+    def __init__(self, record, now, on_poll=None,
                  on_forget=None, on_walk=None, on_push_reporter=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
@@ -109,7 +109,6 @@ class NodeDetailScreen(BoxLayout):
         self.record = record
         self._on_poll = on_poll
         self._on_forget = on_forget
-        self._on_navigate = on_navigate
         self._on_walk = on_walk
         self._on_push_reporter = on_push_reporter
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
@@ -372,28 +371,22 @@ class NodeDetailScreen(BoxLayout):
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         ping.bind(on_release=lambda *_: self._ping())
         actions.add_widget(ping)
-        # THE WAY TO CHANGE YOUR MIND. A node's map-sharing decision is made at
-        # birth, but the reason to revisit it arrives afterwards — a node moves,
-        # a neighbourhood changes, an operator reads the announce back and
-        # thinks better of it. Requiring a rebirth to withdraw a position would
-        # mean climbing to a roof to stop publishing where that roof is.
+        # ONE LOCATION BUTTON, not two (operator, 2026-09-28). "Location &
+        # map" and "Navigate" read as the same question asked twice, and the
+        # operator's reasoning for which to keep is the right one: Navigate
+        # never navigated. It put MAPS on the node's recorded pin — no route,
+        # no directions — and the location panel already opens a map with that
+        # pin on it AND lets you move it. The poorer of the two is gone.
         #
-        # It is also the screen where a node's location is SET: this panel is
-        # the only place a node that is already deployed can be given one.
-        share = Button(text=tr("Location & map"),
-                       font_size=theme.font_sp("18sp"), background_normal="",
-                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        share.bind(on_release=lambda *_: self._map_sharing())
-        actions.add_widget(share)
-        if record.has_location():
-            nav_btn = Button(text=tr("Navigate"), font_size=theme.font_sp("18sp"),
-                             background_normal="",
-                             background_color=theme.hex_to_rgba(
-                                 theme.COLORS["green"]),
-                             color=theme.hex_to_rgba(theme.COLORS["background"]))
-            nav_btn.bind(on_release=lambda *_: self._navigate())
-            actions.add_widget(nav_btn)
+        # The panel is also the only way to give a deployed node a position or
+        # to stop it publishing one; a rebirth to withdraw a position would
+        # mean climbing to a roof.
+        loc = Button(text=tr("Location"), font_size=theme.font_sp("18sp"),
+                     background_normal="",
+                     background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                     color=theme.hex_to_rgba(theme.COLORS["background"]))
+        loc.bind(on_release=lambda *_: self._map_sharing())
+        actions.add_widget(loc)
         if self._on_walk is not None:
             # BOUNDARY WALK (spec 2026-08-13, built 2026-09-15): walk away
             # from this node with the medic; MAPS pings it every 20 s and
@@ -424,22 +417,16 @@ class NodeDetailScreen(BoxLayout):
                 walk_row = col
             self._walk_row = walk_row
 
+        # NO "Update health reporter" BUTTON (operator, 2026-09-28: "that's
+        # supposed to be an automatic function that Node Medic does by itself").
+        # They were right that it should be, and it wasn't — nothing called it
+        # but that button. It is now automatic: opening a Pi node's page asks
+        # the node whether its reporter carries the unicast handler, and pushes
+        # only if it does not. Birth already installs the current one, so this
+        # fires only for nodes built before 2026-09-22 — once each, then never
+        # again. Silent unless it actually does something.
         if self._on_push_reporter is not None and is_pi_node(record.node_type):
-            # A Pi node's health reporter is software the medic can update
-            # over the same SSH road birth used — no cable, no rebirth
-            # (docs/HEALTH_REPLY_UNICAST.md, 2026-09-22: the unicast reply
-            # needs the new reporter on every Pi node already in the field).
-            upd_row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                                height=dp(52), spacing=dp(8))
-            upd = Button(text=tr("Update health reporter"),
-                         font_size=theme.font_sp("16sp"), bold=True,
-                         background_normal="",
-                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            upd.bind(on_release=lambda *_: self._on_push_reporter(
-                self.record, self._set_ping_status))
-            upd_row.add_widget(upd)
-            self._upd_row = upd_row
+            self._on_push_reporter(self.record, self._set_ping_status)
 
         if self._on_forget is not None:
             # DELETE, behind the danger confirm (operator request, 2026-08-13)
@@ -475,8 +462,6 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(actions)
         if getattr(self, "_walk_row", None) is not None:
             self.add_widget(self._walk_row)
-            if getattr(self, '_upd_row', None) is not None:
-                self.add_widget(self._upd_row)
             self._walk_row = None
         if getattr(self, "_danger_row", None) is not None:
             self.add_widget(self._danger_row)
@@ -585,10 +570,6 @@ class NodeDetailScreen(BoxLayout):
                 m=last.get("m", 0), rssi=int(round(last.get("rssi_dbm") or 0)))
         return tr("Last walk: {verdict}").format(
             verdict=words.get(d.get("verdict"), d.get("verdict", "")))
-
-    def _navigate(self):
-        if self._on_navigate:
-            self._on_navigate(self.record)
 
     def _confirm_forget(self):
         """The medic forgets a node only past the red confirm. What is deleted

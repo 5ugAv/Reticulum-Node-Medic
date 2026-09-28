@@ -1,7 +1,15 @@
-"""Slide-to-power-off — drag the red power knob across the track to shut down.
+"""Slide-to-power-off — drag the power knob across the track to shut down.
 
 A deliberate gesture (not a tap) so the medic can't be powered off by accident.
 Releasing before the end snaps back; reaching the end fires ``on_power_off``.
+
+The knob is the green button the operator supplied on 2026-09-29, cut out of
+their artwork; it replaced the old red one, which was the last thing on the
+front page still speaking the pre-2026-09-28 visual language. The capsule it
+rides in ("neon") is DRAWN rather than photographed: every text-free strip in
+that artwork sits too close to the "ON" glyph, so filling the hole the knob
+left behind streaked, and a drawn capsule also scales to any panel without
+resampling.
 """
 
 from __future__ import annotations
@@ -9,7 +17,7 @@ from __future__ import annotations
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics import Color, Line, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
@@ -18,16 +26,20 @@ from kivy.uix.label import Label
 from ui import theme
 from ui.power_slide_layout import STYLES, hint_font_px, hint_rect, track_rect
 
-POWER = os.path.normpath(os.path.join(
+_ASSETS = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    os.pardir, "assets", "ui", "power.png"))
+    os.pardir, "assets", "ui"))
+POWER = os.path.join(_ASSETS, "power_knob.png")
+#: The red button this replaced, kept on disk: it is still the right knob for
+#: the imager's "slide to wipe", which is a destructive act and says so in red.
+POWER_RED = os.path.join(_ASSETS, "power.png")
 
 _TRIGGER = 0.92          # fraction of the track that counts as "powered off"
 
 
 class SlideToPowerOff(FloatLayout):
     def __init__(self, on_power_off=None, hint_text="slide to power off  →",
-                 track="pill", **kwargs):
+                 track="pill", knob_image=None, **kwargs):
         """*track*: "pill" (a rounded bar that carries a sentence — the
         imager's "slide to wipe") or "line" (a thin BLACK line the unchanged
         red knob rides along — the front page's OFF, operator 2026-09-22:
@@ -35,6 +47,10 @@ class SlideToPowerOff(FloatLayout):
         slides across ... it will just slide on a thin black line")."""
         if track not in STYLES:
             raise ValueError(track)
+        # The green knob everywhere except the destructive slides, which keep
+        # the red one — the colour is the warning, and a green button that
+        # wipes a card would be the wrong picture.
+        knob_src = knob_image or (POWER if track == "neon" else POWER_RED)
         kwargs.setdefault("size_hint_y", None)
         kwargs.setdefault("height", dp(84))
         super().__init__(**kwargs)
@@ -42,17 +58,22 @@ class SlideToPowerOff(FloatLayout):
         self._style = track
         self._pad = dp(6)
         self._grab = False
+        self._slid = "green" if track == "neon" else "red"
         with self.canvas.before:
             self._track_c = Color(*theme.hex_to_rgba(
-                theme.COLORS["black" if track == "line" else "surface"]))
+                theme.COLORS["black" if track in ("line", "neon") else "surface"]))
             self._track = RoundedRectangle()
-            self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS["red"], 0))
+            self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS[self._slid], 0))
             self._fill = RoundedRectangle()
+            # the capsule's lit rim — drawn, so it holds at any panel size
+            self._rim_c = Color(*theme.hex_to_rgba(
+                theme.COLORS["green"], 1 if track == "neon" else 0))
+            self._rim = Line(width=dp(1.6))
         self.hint = Label(text=hint_text, bold=True,
                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         self.add_widget(self.hint)
-        self.knob = Image(source=POWER, size_hint=(None, None), allow_stretch=True,
-                          keep_ratio=True)
+        self.knob = Image(source=knob_src, size_hint=(None, None),
+                          allow_stretch=True, keep_ratio=True)
         self.knob.bind(pos=lambda *a: self._refresh())
         self.add_widget(self.knob)
         self.bind(pos=self._layout, size=self._layout)
@@ -92,6 +113,9 @@ class SlideToPowerOff(FloatLayout):
         th, ty = self._th(), self._ty()
         r = th / 2.0
         self._track.pos, self._track.size, self._track.radius = (self.x, ty), (self.width, th), [r] * 4
+        self._rim.rounded_rectangle = (self.x + dp(1), ty + dp(1),
+                                       max(dp(2), self.width - dp(2)),
+                                       max(dp(2), th - dp(2)), r)
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
             self.knob.pos = (self._left(), self.y)
@@ -111,7 +135,8 @@ class SlideToPowerOff(FloatLayout):
         w = max(th, self.knob.center_x - self.x)
         self._fill.pos, self._fill.size, self._fill.radius = (self.x, ty), (w, th), [r] * 4
         p = self._progress()
-        self._fill_c.rgba = theme.hex_to_rgba(theme.COLORS["red"], min(1.0, p * 1.1))
+        self._fill_c.rgba = theme.hex_to_rgba(theme.COLORS[self._slid],
+                                              min(1.0, p * 1.1))
         self.hint.opacity = max(0.0, 1.0 - p * 1.4)
 
     # -- drag ---------------------------------------------------------------

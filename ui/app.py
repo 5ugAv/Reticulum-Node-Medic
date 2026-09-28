@@ -2030,7 +2030,7 @@ class ReticulumNodeMedicApp(App):
         scr = self.sm.get_screen("node_detail")
         scr.clear_widgets()
         scr.add_widget(self._with_back(NodeDetailScreen(
-            rec, now, on_poll=self._ping_node, on_navigate=self._navigate_to_node,
+            rec, now, on_poll=self._ping_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
             on_push_reporter=self._push_reporter,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
@@ -2487,27 +2487,55 @@ class ReticulumNodeMedicApp(App):
         return _clock_disciplined(time.time(), gps_clock.last_disciplined_at, ntp)
 
     def _push_reporter(self, record, report):
-        """Update a Pi node's health reporter in place (the unicast reply
-        needs it on every Pi already in the field). Over the medic's own
-        key, to the node's mDNS name — the same road birth used. Off-thread;
-        the page's status line carries the outcome, read back, never claimed."""
+        """Keep a Pi node's health reporter current, BY ITSELF.
+
+        This used to be a button on the node's page. It was the only caller —
+        nothing updated a field node unless a person thought to press it — and
+        the operator's reading of that (2026-09-28) was simply that it should
+        never have been their job: "that's supposed to be an automatic function
+        that Node Medic does by itself".
+
+        So it now runs when a Pi node's page is opened, and it is QUIET. It asks
+        the node whether its reporter already carries the unicast handler and
+        does nothing if it does; birth installs the current one, so in practice
+        this fires only for nodes built before 2026-09-22, once each. Failure is
+        reported only once the medic has decided to act — a node that is simply
+        asleep must not paint an error across a page opened to read a battery
+        level.
+
+        Once per node per session: the page is rebuilt on every visit and on
+        every registry tick, and an SSH per rebuild would hammer a node that is
+        already current.
+        """
         import threading
         from transport.connection import SSHConnection
-        from workflows.pi_reporter_push import push_health_reporter
+        from workflows.pi_reporter_push import (push_health_reporter,
+                                                reporter_is_current)
         name = (getattr(record, "name", "") or "").strip()
         if not name:
-            report("This node has no name on record — cannot find it on the network.", False)
+            return                      # nothing to reach, and nothing to say
+        seen = getattr(self, "_reporter_checked", None)
+        if seen is None:
+            seen = self._reporter_checked = set()
+        if name.lower() in seen:
             return
+        seen.add(name.lower())
         host = f"{name.lower()}.local"
-        report("Updating the health reporter on %s…" % host, None)
 
         def work():
             try:
                 conn = SSHConnection(host, user="pi")
+                if reporter_is_current(conn):
+                    return                      # nothing to do, nothing to say
+            except Exception:                                      # noqa: BLE001
+                return                          # asleep or unreachable: quiet
+            Clock.schedule_once(lambda dt: report(
+                "Updating this node's health reporter…", None), 0)
+            try:
                 ok, msg = push_health_reporter(conn, log=lambda m: print(
                     "[reporter] %s: %s" % (host, m), flush=True))
             except Exception as e:                                 # noqa: BLE001
-                ok, msg = False, "could not reach %s: %s" % (host, e)
+                ok, msg = False, "could not update the health reporter: %s" % e
             Clock.schedule_once(lambda dt: report(msg, ok), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -2741,14 +2769,6 @@ class ReticulumNodeMedicApp(App):
                     False), 0)
 
         threading.Thread(target=work, daemon=True).start()
-
-    def _navigate_to_node(self, record):
-        """Show a node on the SCAN map at its recorded location."""
-        lat = getattr(record, "lat", None)
-        lon = getattr(record, "lon", None)
-        if lat is not None and lon is not None:
-            self.switch_mode("scan")
-            Clock.schedule_once(lambda dt: self.scan_screen.show_location(lat, lon), 0)
 
     def _open_cert(self, cert):
         from ui.screens.cert_view_screen import CertViewScreen
