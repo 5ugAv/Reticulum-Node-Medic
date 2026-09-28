@@ -10,10 +10,11 @@ would be square again. So the rule is applied to the CLASS: a Button installs a
 rounded background when it is built, and every call site keeps working
 unchanged — including the ones written after this.
 
-HOW. Kivy paints a Button's background as a ``BorderImage`` in ``canvas.before``,
-tinted by ``background_color``; with no source it renders a hard-cornered quad.
-That instruction is REMOVED rather than hidden, and a ``RoundedRectangle`` takes
-its place. ``background_color`` stays the single source of truth — code that
+HOW. Kivy paints a Button's background as a ``BorderImage`` tinted by
+``background_color``; with no source it renders a hard-cornered quad against
+the default white texture. That instruction is REMOVED rather than hidden, and
+a ``RoundedRectangle`` takes its place in ``canvas.before``, underneath the
+label. ``background_color`` stays the single source of truth — code that
 re-tints a button later still works, and the rounded shape follows it — which is
 why this is a swap rather than a transparent overlay.
 
@@ -92,10 +93,21 @@ def _install(btn, radius_dp: float) -> None:
 
     radius_px = dp(radius_dp)
 
+    # The square lives in ``canvas``, NOT ``canvas.before``, on Kivy 2.3 — the
+    # rule that paints it is part of the Button's own canvas group. Stripping
+    # only canvas.before (as the first cut of this did) leaves the square
+    # drawing straight over the rounded rectangle, and the corners stay hard
+    # while every instruction says radius 10. Walk both, and one level into any
+    # nested group.
+    for group in (btn.canvas.before, btn.canvas):
+        for instr in list(group.children):
+            if isinstance(instr, BorderImage):
+                group.remove(instr)
+            elif hasattr(instr, "children"):
+                for inner in list(instr.children):
+                    if isinstance(inner, BorderImage):
+                        instr.remove(inner)
     before = btn.canvas.before
-    for instr in list(before.children):
-        if isinstance(instr, BorderImage):
-            before.remove(instr)
 
     # An unstyled button carries Kivy's default white tint over the atlas it
     # has just lost. White is not a colour in this palette, so give it the
