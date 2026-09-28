@@ -23,7 +23,8 @@ from kivy.uix.image import Image
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — power slider hint + flash-warning title
-from ui.home_zones import screen_for, zone_at
+from ui.home_zones import (CARD_ORDER, card_rect, press_fires, rect_to_widget,
+                           screen_for, zone_at)
 
 POSTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       os.pardir, "assets", "ui", "front_page.png")
@@ -40,6 +41,10 @@ class HomeScreen(FloatLayout):
                  poster: str = None, **kwargs):
         super().__init__(**kwargs)
         self._on_select = on_select
+        self._down_zone = None        # card the finger went down on
+        self._pressed_zone = None     # card currently drawn pressed
+        self._press_group = None      # its canvas instructions
+        self._press_at = 0.0          # when it went down (minimum hold)
         self.poster = Image(source=poster or os.path.normpath(POSTER),
                             allow_stretch=True, keep_ratio=True,
                             size_hint=(1, 1))
@@ -227,6 +232,104 @@ class HomeScreen(FloatLayout):
             pass
         do_off()
 
+    # ---- the keys answer when you press them ------------------------------
+    # The five cards are PAINTED as raised, bevelled plates, which is a promise
+    # that they can be pressed. Until now nothing answered it: the front page is
+    # a flat image, and a tap changed screens with no acknowledgement at all. On
+    # a touchscreen that reads as a missed tap, and the operator presses again.
+    #
+    # So the key is drawn going DOWN into its well while the finger is on it —
+    # the face falls out of the light, and the lower lip of the well catches it.
+    # The geometry comes from home_zones.card_rect, the same numbers zone_at
+    # divides the row by, so the highlight can never land on the card next door.
+
+    MIN_PRESS = 0.10          # seconds — a flick still shows a visible press
+
+    def _card_press_rect(self, zone):
+        """Where that card is on the screen right now, in Kivy pixels, or None
+        when the poster hasn't been laid out (or measured) yet."""
+        rect = card_rect(zone)
+        if rect is None:
+            return None
+        iw, ih = self.poster.norm_image_size
+        if iw < 1 or ih < 1:
+            return None
+        return rect_to_widget(rect,
+                              self.poster.center_x - iw / 2.0,
+                              self.poster.center_y - ih / 2.0, iw, ih)
+
+    def _press_card(self, zone):
+        if zone == self._pressed_zone:
+            return
+        self._release_card()
+        rect = self._card_press_rect(zone)
+        if rect is None:
+            return
+        from kivy.clock import Clock
+        from kivy.graphics import Color, Line, Rectangle
+        from kivy.graphics.instructions import InstructionGroup
+        x, y, w, h = rect
+        inset = max(dp(2), w * 0.022)
+        g = InstructionGroup()
+        g.add(Color(0, 0, 0, 0.38))                  # the face drops out of the light
+        g.add(Rectangle(pos=(x, y), size=(w, h)))
+        g.add(Color(0.60, 1.0, 0.45, 0.90))          # the well's lower lip catches it
+        g.add(Line(width=dp(1.4), points=[x + inset, y + h - inset,
+                                          x + inset, y + inset,
+                                          x + w - inset, y + inset,
+                                          x + w - inset, y + h - inset]))
+        self.canvas.after.add(g)
+        self._press_group = g
+        self._pressed_zone = zone
+        self._press_at = Clock.get_boottime()
+
+    def _release_card(self, _dt=None):
+        if self._press_group is not None:
+            try:
+                self.canvas.after.remove(self._press_group)
+            except Exception:      # noqa: BLE001 — already gone; never cost a tap
+                pass
+        self._press_group = None
+        self._pressed_zone = None
+
+    def _release_card_soon(self):
+        """Let go, but never before MIN_PRESS — a quick tap that goes down and
+        up inside one frame would otherwise show the operator nothing at all."""
+        if self._press_group is None:
+            return
+        from kivy.clock import Clock
+        held = Clock.get_boottime() - self._press_at
+        if held >= self.MIN_PRESS:
+            self._release_card()
+        else:
+            Clock.schedule_once(self._release_card, self.MIN_PRESS - held)
+
+    def _corner_control(self, pos) -> bool:
+        """True while the touch belongs to the gear, the power slide or the
+        Home/Backpack toggle, which handle themselves."""
+        return bool(self.settings_btn.collide_point(*pos)
+                    or self.power_slider.collide_point(*pos)
+                    or self.mode_toggle.collide_point(*pos))
+
+    def on_touch_down(self, touch):
+        self._down_zone = None
+        if not self._corner_control(touch.pos):
+            frac = self._image_fraction(*touch.pos)
+            if frac:
+                zone = zone_at(*frac)
+                if zone in CARD_ORDER:
+                    self._down_zone = zone
+                    self._press_card(zone)
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        # Slide off a key and it comes back up, the way a physical one does.
+        if self._pressed_zone is not None:
+            frac = self._image_fraction(*touch.pos)
+            if not frac or zone_at(*frac) != self._pressed_zone:
+                self._release_card()
+        return super().on_touch_move(touch)
+
     def _image_fraction(self, tx: float, ty: float):
         """Touch (window coords) -> image-fraction (x right, y DOWN), or None
         when the touch lands in the letterbox."""
@@ -242,14 +345,20 @@ class HomeScreen(FloatLayout):
         return fx, 1.0 - fy_up            # zones use top-down y
 
     def on_touch_up(self, touch):
-        if (self.settings_btn.collide_point(*touch.pos)
-                or self.power_slider.collide_point(*touch.pos)
-                or self.mode_toggle.collide_point(*touch.pos)):
+        down_zone, self._down_zone = self._down_zone, None
+        self._release_card_soon()
+        if self._corner_control(touch.pos):
             return super().on_touch_up(touch)      # let the corner controls handle it
         frac = self._image_fraction(*touch.pos)
         if frac:
             mode = zone_at(*frac)
             if mode and self._on_select:
+                # A key only fires if the finger went down AND came up on the
+                # same one — sliding off cancels, the way a physical key does.
+                # The rule itself lives in home_zones so it can be tested; a
+                # Kivy screen cannot be built without a display.
+                if not press_fires(mode, down_zone):
+                    return super().on_touch_up(touch)
                 # The painted word is not always the screen's internal name —
                 # CHAT opens "comms", which has been called that since it was
                 # built. One translation, stated in home_zones.

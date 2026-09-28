@@ -23,11 +23,19 @@ Five cards, left to right, unchanged in order and position:
 
 | Position | Now | Becomes | Subtitle |
 |---|---|---|---|
-| 1 | VITALS | **VITALS** (keep) | CHECK NODE HEALTH |
-| 2 | SCAN | **MAPS** | VIEW NODES & TOPOLOGY |
-| 3 | BIRTH | **BUILD** | NEW NODES & LINKS |
-| 4 | TRIAGE | **ANTENNA** | SIGNAL & PLACEMENT |
-| 5 | CHAT | **CHAT** (keep) | CONNECT & DISCUSS |
+| 1 | VITALS | **VITALS** (keep) | NODE HEALTH |
+| 2 | SCAN | **MAPS** | SEE THE MESH |
+| 3 | BIRTH | **BUILD** | MAKE A NODE |
+| 4 | TRIAGE | **ANTENNA** | CHECK SIGNAL |
+| 5 | CHAT | **CHAT** (keep) | SEND MESSAGES |
+
+Subtitles are capped at ~13 characters so each one holds a SINGLE line at 19 px
+in a 144 px column. This is not a style preference. The 2026-09-26 revision used
+longer wording ("VIEW NODES & TOPOLOGY", "SIGNAL & PLACEMENT"); three of the five
+broke to two lines, the point size dropped to 15.3 px to fit, and under glance
+blur those three smeared to unreadable grey while the two single-line captions
+stayed legible. Shorter caption, bigger type, readable card. Any rewording that
+pushes a subtitle onto a second line undoes that, so count the characters first.
 
 Two words do NOT get a card:
 

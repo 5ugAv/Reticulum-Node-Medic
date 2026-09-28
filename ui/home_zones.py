@@ -123,3 +123,47 @@ def card_rect(zone: str):
     span = (CARDS_RIGHT - CARDS_LEFT) / len(CARD_ORDER)
     left = CARDS_LEFT + span * CARD_ORDER.index(zone)
     return (left, CARDS_TOP, span, 1.0 - CARDS_TOP)
+
+
+def rect_to_widget(rect, img_x: float, img_y: float, img_w: float, img_h: float):
+    """An image-fraction rect -> on-screen pixels, in Kivy's bottom-up space.
+
+    ``rect`` is ``(left, top, w, h)`` as ``card_rect`` returns it, with *top*
+    measured DOWNWARD from the image's top edge. ``img_*`` describe where the
+    poster actually landed on screen — the letterboxed box, not the widget.
+
+    Returns ``(x, y, w, h)`` with *y* measured UP from the bottom, which is what
+    every Kivy canvas instruction wants. The single flip lives here rather than
+    in the screen so the pressed-key highlight and the tour's crop cannot
+    disagree about which way up the poster is.
+    """
+    left, top, w, h = rect
+    return (img_x + left * img_w,
+            img_y + (1.0 - top - h) * img_h,
+            w * img_w,
+            h * img_h)
+
+
+def press_fires(mode, down_zone) -> bool:
+    """Should releasing on ``mode`` open it?
+
+    ``down_zone`` is the card the finger went DOWN on, or None when no press was
+    seen. A card only fires when press and release are on the same one, so
+    sliding off cancels the way a physical key does.
+
+    The None case is the important one and it is deliberately permissive. If the
+    press is never seen — ``on_touch_down`` didn't reach the screen, or the
+    poster hasn't been measured yet — the old behaviour stands and the tap
+    opens. A front page that quietly stops navigating is a dead medic; a stray
+    tap is an annoyance. The failure has to fall on the annoying side.
+
+    Zones with no painted card (the credits emblem, the WI-FI shortcut) have no
+    pressed state to match against, so they always fire.
+    """
+    if not mode:
+        return False
+    if mode not in CARD_ORDER:
+        return True
+    if down_zone is None:
+        return True
+    return down_zone == mode

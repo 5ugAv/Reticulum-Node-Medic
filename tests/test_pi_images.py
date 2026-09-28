@@ -309,3 +309,18 @@ def test_a_state_the_operator_is_about_to_change_keeps_the_poll_alive():
     assert pin.Situation(state=pin.PI_ALIVE).is_settled
     assert pin.Situation(state=pin.PI_WONT_BOOT).is_settled
     assert pin.Situation(state=pin.SEVERAL_CARDS).is_settled
+
+
+# --- the front page is the interface, so its canvas is load-bearing --------
+
+def test_the_front_page_is_the_panels_native_size():
+    """The poster is displayed full-screen and taps are converted against the
+    rectangle it is actually drawn in. At any other aspect it letterboxes: the
+    art shrinks, dark bands appear top and bottom, and a painted corner
+    control separates from the app's own button drawn over it. A 2026-09-28
+    redesign arrived at 1018x1545 and would have shown two gears."""
+    import os
+    from PIL import Image
+    p = os.path.join("assets", "ui", "front_page.png")
+    assert Image.open(p).size == (720, 1280), (
+        "front_page.png must be the panel's native 720x1280")
