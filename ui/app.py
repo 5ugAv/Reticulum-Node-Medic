@@ -64,6 +64,15 @@ from monitor.medic_clock import disciplined as _clock_disciplined
 from monitor.time_ledger import TimeLedger
 from monitor.time_service import TimeService
 
+# EVERY PRESSABLE THING GETS ROUNDED CORNERS, applied to the Button class once,
+# here, before any screen is built (operator, 2026-09-28: "anywhere there's
+# something to be pressed, let's make sure the corners are rounded so it looks
+# like a button"). 196 call sites keep working untouched, and the 197th is
+# rounded the day it is written — see ui/rounded.py for what it leaves alone.
+from ui import rounded as _rounded
+
+_rounded.enable()
+
 
 def _local_run(command: str) -> str:
     """Run a shell command on the medic itself (LAN + mesh discovery). Login

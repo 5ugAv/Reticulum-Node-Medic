@@ -1403,7 +1403,14 @@ class BirthGuideScreen(BoxLayout):
             # Both grew by the 22dp the title gained (2026-08-05) — the card
             # height has to move with the title box or the description loses
             # exactly what the title gained.
-            h = 192 if key == "pi" else 126
+            # Heights are per card, measured against the wrapped text on the
+            # 5" panel, not a single number for all three. On 2026-09-28 the
+            # RTNode card was 126 and its description ran THREE lines under a
+            # two-line title: the first line sat behind "(RTNode-2400)" and the
+            # last word was cut off by the card's bottom edge (operator photo).
+            # The Pi card, with five description lines, was already given its
+            # own number for exactly this reason.
+            h = {"pi": 192, "radio": 168}.get(key, 132)
             col.add_widget(self._path_button(key, title, subtitle, height=h))
         if dropped:
             # Say WHY it is missing. An option that silently disappears between
@@ -1689,7 +1696,10 @@ class BirthGuideScreen(BoxLayout):
         btn = Button(size_hint_y=None, height=dp(height), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
-        inner.add_widget(_line(title, "21sp", bold=True, h=52))
+        # 56, not 52: two lines of 21sp bold measure 52 exactly, so the second
+        # line sat on the box's own edge and the description started underneath
+        # it rather than below it.
+        inner.add_widget(_line(title, "21sp", bold=True, h=56))
         sub = _line(subtitle, "14sp", color="text_secondary")
         inner.add_widget(sub)
         inner.size = btn.size
