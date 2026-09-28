@@ -63,22 +63,22 @@ POSTER_WORD_FOR = {"vitals": "VITALS", "scan": "MAPS", "birth": "BUILD",
                    "triage": "ANTENNA", "chat": "CHAT"}
 
 # The LORA trunk node — the Easter egg (credits). Measured: the filled disc
-# centres at (359.5, 217.5) of 720x1280. The tap radius is deliberately wider than
+# centres at (359.5, 224) of 720x1280 (2026-09-29 repaint). The tap radius is deliberately wider than
 # the painted disc (0.075 vs the disc's own 0.042) so it is a thumb-sized
 # target, and it still clears the WI-FI box below by 61 px.
 CROSS_CX = 0.499
-CROSS_CY = 0.170          # y-fraction, top-down
+CROSS_CY = 0.175          # y-fraction, top-down
 CROSS_R = 0.075           # radius in x-fractions (aspect-corrected below)
 IMAGE_ASPECT = 720 / 1280
 
 # The WI-FI marker (ring + label, second down the meridian) is a second Easter
 # egg: a shortcut into WiFi settings, mirroring the gear icon. Measured: the
-# ring and its label span x 0.472-0.618, y 0.262-0.300; the box below pads that
+# ring and its label span x 0.472-0.621, y 0.258-0.308; the box below pads that
 # a little without reaching the BLUETOOTH marker beneath it.
 WIFI_LEFT = 0.465
 WIFI_RIGHT = 0.625
 WIFI_TOP = 0.255          # y-fraction, top-down
-WIFI_BOTTOM = 0.308
+WIFI_BOTTOM = 0.312
 
 
 def zone_at(fx: float, fy: float) -> Optional[str]:

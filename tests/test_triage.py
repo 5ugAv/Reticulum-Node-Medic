@@ -311,3 +311,22 @@ def test_normalize_stays_cheap_under_a_long_survey():
         m.normalize(50.0)
     per_call_ms = (time.time() - start) / 5000 * 1000
     assert per_call_ms < 1.0, f"{per_call_ms:.3f} ms per normalize() call"
+
+
+def test_the_antenna_screen_never_claims_to_save_a_location():
+    """It had a "Save GPS coordinates" button that saved nothing.
+
+    Removed 2026-09-29. _save() read a GPS fix, wrote "Location saved: <lat>,
+    <lon>. This node is now on the map." into the guidance line, pinned it for
+    ten seconds and returned — no registry write, no node write, no map pin. The
+    operator found it by asking what the coordinates were being saved TO.
+
+    A node's position is set where it is actually written: at birth, and
+    afterwards on the node's own page under Location. This test forbids the
+    claim coming back to a screen that cannot make it true.
+    """
+    src = open("ui/screens/triage_screen.py").read()
+    assert 'tr("Save GPS coordinates")' not in src
+    assert 'tr("Location saved' not in src, (
+        "the ANTENNA screen is claiming a save again — it writes nothing")
+    assert "def _save(" not in src

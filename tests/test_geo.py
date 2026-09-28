@@ -231,17 +231,23 @@ def test_the_coasting_case_is_classified_held_not_live():
     assert classify_fix(None) == "none"
 
 
-def test_triage_refuses_to_stamp_a_node_from_a_coasting_fix():
-    """Writing a frozen position onto a node puts it on the map in the wrong
-    place — which is how a repair crew is sent to where the medic USED to be."""
+def test_the_antenna_screen_stamps_no_position_at_all():
+    """It used to offer "Save GPS coordinates", guarded against a coasting fix
+    so a frozen position could not be written onto a node — which is how a
+    repair crew gets sent to where the medic USED to be.
+
+    The guard was correct and the button was not: it wrote nothing anywhere, it
+    only SAID it had saved (removed 2026-09-29). So the strongest version of
+    this test is now that the screen stamps no position at all. The coasting
+    guard still protects the places a position is genuinely written — see the
+    movement tests below, which pin classify_fix on both of them.
+    """
     src = open("ui/screens/triage_screen.py").read()
-    save = src[src.index("def _save(self"):]
-    save = save[:save.index("\n    def ")]
-    assert "classify_fix" in save
-    assert 'trust == "held"' in save
-    idx_guard = save.index('trust == "held"')
-    idx_save = save.index("Location saved")
-    assert idx_guard < idx_save, "the held check must come before the save copy"
+    assert "def _save(self" not in src
+    assert 'tr("Location saved' not in src
+    assert "read_splitter_fix" not in src, (
+        "the ANTENNA screen is reading a fix again — if it writes one, guard "
+        "it with classify_fix the way the movement detector does")
 
 
 def test_the_movement_detector_ignores_a_frozen_position():

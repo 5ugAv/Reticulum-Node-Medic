@@ -98,18 +98,18 @@ class TriageScreen(FloatLayout):
         self._goal_flash.bind(size=lambda i, v: setattr(i, "text_size", v))
         self.add_widget(self._goal_flash)
 
-        # The location button saves the node's GPS COORDINATES for this mount
-        # point (map pin + navigation). The signal baseline is captured
-        # automatically as the goal above — no manual save needed.
-        self._button = Button(
-            text=tr("Save GPS coordinates"), font_size="15sp",
-            size_hint=(0.6, None), height=dp(56),
-            pos_hint={"center_x": 0.5, "y": 0.03},
-            background_normal="", background_down="",
-            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
-            color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        self._button.bind(on_release=self._save)
-        self.add_widget(self._button)
+        # NO "SAVE GPS COORDINATES" BUTTON. It was removed on 2026-09-29 after
+        # the operator asked the obvious question — "what is the user saving the
+        # GPS coordinates TO?" — and the answer was: nothing. _save() read a
+        # fix, wrote the sentence "Location saved: <lat>, <lon>. This node is
+        # now on the map." into the guidance line, and returned. No registry
+        # write, no node write, no map pin. A screen that says it saved
+        # something and saved nothing is the worst failure this project has, and
+        # it had been sitting one tap away from a page about placement.
+        #
+        # A node's position is set where it is actually written: at birth
+        # (the location confirm gate) and afterwards on the node's own page
+        # under Location, which writes the registry and can push to the node.
 
         # Antenna test — compare real antennas with the node's own ear
         # (bench campaign 2026-08-27; docs/ANTENNA_BENCH_2026-08-27.md).
@@ -413,44 +413,6 @@ class TriageScreen(FloatLayout):
         r, g, b = thermal_color(snap["score"])
         col = "%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
         self._write_guidance(f"[color={col}]{snap['guidance']}[/color]", markup=True)
-
-    def _save(self, *a) -> None:
-        """Save this mount point's GPS coordinates (the signal baseline is
-        captured automatically as the goal). Pin the confirmation ~10s so the
-        live guidance loop doesn't wipe it before it can be read."""
-        try:
-            from monitor.geo import classify_fix, read_splitter_fix
-            fix = read_splitter_fix()
-        except Exception:
-            fix = None
-        # A FIX IS NOT AUTOMATICALLY A PLACE. A GPS that has lost the sky keeps
-        # asserting fix=1 and keeps reporting its LAST position — it coasts. So
-        # `fix is not None` was never the right question: it accepts a frozen
-        # reading and writes it onto a node and onto the map, which is how a
-        # repair crew gets sent to where the medic used to be.
-        #
-        # Demonstrated live on 2026-08-07 by turning the Tracker's patch antenna
-        # to face the ground: satellites 10 -> 0 within a minute, while fix
-        # stayed 1 and the position kept being served. classify_fix() calls that
-        # "held" and it exists for exactly this.
-        trust = classify_fix(fix) if fix is not None else "none"
-        if fix is not None and trust == "held":
-            msg = tr("Not saved — the GPS is coasting on an old lock (no "
-                     "satellites right now), so this position may be where Node "
-                     "Medic WAS, not where it is. Give the antenna a clear view "
-                     "of the sky and try again.")
-        elif fix is not None:
-            best = self._session.best_reading
-            extra = (tr(", best clarity {snr} dB").format(snr=f"{best['snr']:+.1f}")
-                     if best else "")
-            msg = tr("Location saved: {lat}, {lon}{extra}. This node is now on the map."
-                     ).format(lat=f"{fix.lat:.5f}", lon=f"{fix.lon:.5f}", extra=extra)
-        else:
-            msg = tr("No GPS fix yet - connect the GPS antenna and give it a clear "
-                     "view of the sky to save this node's location.")
-        self._guidance.markup = False
-        self._guidance.text = msg
-        self._pin_guidance(10.0)
 
     def start(self) -> None:
         """Begin sampling. Idempotent — re-entering the screen must not leave
