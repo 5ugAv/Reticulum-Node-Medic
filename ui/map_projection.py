@@ -89,3 +89,43 @@ def project(points: List[GeoPoint], width: float, height: float,
         y = off_y + (p.lat - min_lat) * scale
         placed.append(Placed(x, y, p))
     return placed
+
+
+def boxes_overlap(a, b) -> bool:
+    """Do two ``(x, y, w, h)`` rectangles share any area? Touching edges do
+    not count — two labels sitting exactly shoulder to shoulder are readable."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return not (ax + aw <= bx or bx + bw <= ax
+                or ay + ah <= by or by + bh <= ay)
+
+
+def place_label(desired, size, taken, step, tries: int = 6):
+    """Where to actually put a map label so it can be read.
+
+    Returns ``(x, y)`` — the first candidate that clears everything already
+    placed, starting at *desired* and stepping alternately DOWN then UP.
+
+    THE DOT NEVER MOVES; only the name does. A node's position is a fact and
+    the map must not lie about it, but the text beside it is just a name, so
+    the name is what gives way. Two nodes a few metres apart land on one pixel
+    at street zoom — skyfinger sits a few metres from ELSEWHERE — and their
+    names printed over each other into an unreadable smear (operator,
+    2026-09-28).
+
+    Down first, because a label below its dot still reads as belonging to it;
+    the eye follows the column. Alternating keeps a pair symmetrical about
+    their shared point instead of marching one direction off the screen.
+
+    Gives up after *tries* steps and returns the desired spot: a label that
+    has wandered half a screen from its dot is worse than one that overlaps,
+    and at that point the map is too crowded for labels to solve it anyway.
+    """
+    dx, dy = desired
+    w, h = size
+    for k in range(tries + 1):
+        for sign in ((0,) if k == 0 else (-1, 1)):
+            cand_y = dy + sign * k * step
+            if not any(boxes_overlap((dx, cand_y, w, h), t) for t in taken):
+                return (dx, cand_y)
+    return (dx, dy)

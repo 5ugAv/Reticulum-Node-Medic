@@ -46,7 +46,7 @@ PINCH_STEP = 1.7
 #: few px apart — without this floor a single-finger drag reads as a pinch and
 #: the map zooms instead of scrolling (observed on the medic's 5" panel).
 PINCH_MIN_SEP = 120
-from ui.map_projection import geo_points, project
+from ui.map_projection import geo_points, place_label, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
     DEFAULT_MAX_ZOOM, DEFAULT_MIN_ZOOM, DEFAULT_RADIUS_KM, RADIUS_STEPS,
@@ -946,6 +946,9 @@ class MapPlot(Widget):
         self._redraw()
 
     def _clear_labels(self):
+        # The occupied-rectangle list dies with the labels it describes, or the
+        # next redraw pushes every name down past ghosts that are gone.
+        self._label_boxes = []
         for lbl in self._labels:
             self.remove_widget(lbl)
         self._labels = []
@@ -1145,7 +1148,19 @@ class MapPlot(Widget):
                     size_hint=(None, None))
         lbl.texture_update()
         lbl.size = lbl.texture_size
-        lbl.pos = (self.x + sx + r + dp(3), self.y + sy - lbl.height / 2)
+        # NAMES GIVE WAY, DOTS DO NOT. Two nodes a few metres apart share a
+        # pixel at street zoom, and their names printed over each other into
+        # an unreadable smear (operator, 2026-09-28: skyfinger sits a few metres from
+        # ELSEWHERE). The dot stays on the truth; the label steps aside by
+        # about its own height — a few millimetres on the panel — until it can
+        # be read. See ui.map_projection.place_label.
+        boxes = getattr(self, "_label_boxes", None)
+        if boxes is None:
+            boxes = self._label_boxes = []
+        desired = (self.x + sx + r + dp(3), self.y + sy - lbl.height / 2)
+        lbl.pos = place_label(desired, (lbl.width, lbl.height), boxes,
+                              lbl.height + dp(3))
+        boxes.append((lbl.x, lbl.y, lbl.width, lbl.height))
         self.add_widget(lbl)
         self._labels.append(lbl)
 

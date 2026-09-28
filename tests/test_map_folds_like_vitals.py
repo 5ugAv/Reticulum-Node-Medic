@@ -59,3 +59,55 @@ def test_the_map_reads_the_shared_fold():
     assert "consolidated_records" in src
     assert "self.nodes.values()" not in src, \
         "walking raw records is exactly the bug"
+
+
+# --- two nodes on one pixel must still be readable (2026-09-28) ------------
+
+def test_a_second_label_on_the_same_spot_steps_aside():
+    """skyfinger sits a few metres from ELSEWHERE, which is one pixel at street
+    zoom. Their names printed over each other into an unreadable smear."""
+    from ui.map_projection import boxes_overlap, place_label
+    size, step = (90.0, 20.0), 23.0
+    first = place_label((100.0, 300.0), size, [], step)
+    taken = [(first[0], first[1], size[0], size[1])]
+    second = place_label((100.0, 300.0), size, taken, step)
+    assert second != first
+    assert not boxes_overlap((second[0], second[1], size[0], size[1]), taken[0])
+
+
+def test_a_label_with_room_is_left_where_it_belongs():
+    """De-collision must not nudge labels that were never colliding — the name
+    belongs beside its dot."""
+    from ui.map_projection import place_label
+    taken = [(500.0, 900.0, 90.0, 20.0)]
+    assert place_label((100.0, 300.0), (90.0, 20.0), taken, 23.0) == (100.0, 300.0)
+
+
+def test_three_on_one_spot_all_stay_clear_of_each_other():
+    from ui.map_projection import boxes_overlap, place_label
+    size, step = (90.0, 20.0), 23.0
+    taken = []
+    for _ in range(3):
+        x, y = place_label((100.0, 300.0), size, taken, step)
+        box = (x, y, size[0], size[1])
+        assert not any(boxes_overlap(box, t) for t in taken)
+        taken.append(box)
+    assert len({(round(b[0]), round(b[1])) for b in taken}) == 3
+
+
+def test_the_dot_never_moves_only_the_name():
+    """A node's position is a fact. If crowding ever moved the DOT the map
+    would be lying about where the hardware is."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/scan_screen.py", "_add_label",
+                      cls="MapPlot")
+    assert "place_label" in src
+    assert "Ellipse" not in src, "the label placer must not touch the dot"
+
+
+def test_the_occupied_list_is_cleared_with_the_labels():
+    """Or the next redraw pushes every name down past ghosts that are gone."""
+    from tests.srcutil import func_source
+    src = func_source("ui/screens/scan_screen.py", "_clear_labels",
+                      cls="MapPlot")
+    assert "_label_boxes" in src
