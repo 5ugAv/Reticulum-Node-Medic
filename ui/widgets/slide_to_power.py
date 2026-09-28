@@ -69,8 +69,12 @@ class SlideToPowerOff(FloatLayout):
             self._rim_c = Color(*theme.hex_to_rgba(
                 theme.COLORS["green"], 1 if track == "neon" else 0))
             self._rim = Line(width=dp(1.6))
+        # The word takes the capsule's own colour: grey secondary text inside a
+        # lit green capsule reads as a disabled control rather than the place
+        # the knob is going.
         self.hint = Label(text=hint_text, bold=True,
-                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+                          color=theme.hex_to_rgba(theme.COLORS[
+                              "green" if track == "neon" else "text_secondary"]))
         self.add_widget(self.hint)
         self.knob = Image(source=knob_src, size_hint=(None, None),
                           allow_stretch=True, keep_ratio=True)
