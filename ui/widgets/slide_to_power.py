@@ -17,19 +17,26 @@ from __future__ import annotations
 import os
 
 from kivy.animation import Animation
-from kivy.graphics import Color, Line, RoundedRectangle
+from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 
 from ui import theme
-from ui.power_slide_layout import STYLES, hint_font_px, hint_rect, track_rect
+from ui.power_slide_layout import (NEON_ART_ASPECT, STYLES, hint_font_px,
+                                   hint_rect, neon_knob_rect,
+                                   neon_progress, track_rect)
 
 _ASSETS = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     os.pardir, "assets", "ui"))
 POWER = os.path.join(_ASSETS, "power_knob.png")
+#: The painted capsule the knob rides, supplied by the operator 2026-09-29.
+#: ON and OFF are PART OF THE PICTURE, so the neon style draws neither a
+#: capsule nor a hint of its own — the first attempt drew both and the word
+#: kept fighting the art it was sitting on.
+TRACK = os.path.join(_ASSETS, "power_track.png")
 #: The red button this replaced, kept on disk: it is still the right knob for
 #: the imager's "slide to wipe", which is a destructive act and says so in red.
 POWER_RED = os.path.join(_ASSETS, "power.png")
@@ -52,23 +59,34 @@ class SlideToPowerOff(FloatLayout):
         # wipes a card would be the wrong picture.
         knob_src = knob_image or (POWER if track == "neon" else POWER_RED)
         kwargs.setdefault("size_hint_y", None)
-        kwargs.setdefault("height", dp(84))
+        # ONLY default the height when the caller gave neither height NOR size.
+        # Kivy applies kwargs in order, and setdefault put "height" AFTER the
+        # caller's "size", so a caller asking for (156, 52) silently got
+        # (156, 84). The knob is the full height, so it then ate more than half
+        # its own track and left the hint a 51px box — which is why OFF wrapped
+        # to two lines on the front page (operator, 2026-09-29).
+        if "size" not in kwargs and "height" not in kwargs:
+            kwargs["height"] = dp(84)
         super().__init__(**kwargs)
         self._cb = on_power_off
         self._style = track
         self._pad = dp(6)
         self._grab = False
-        self._slid = "green" if track == "neon" else "red"
+        self._slid = "red"
+        self._art = None
         with self.canvas.before:
-            self._track_c = Color(*theme.hex_to_rgba(
-                theme.COLORS["black" if track in ("line", "neon") else "surface"]))
-            self._track = RoundedRectangle()
-            self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS[self._slid], 0))
-            self._fill = RoundedRectangle()
-            # the capsule's lit rim — drawn, so it holds at any panel size
-            self._rim_c = Color(*theme.hex_to_rgba(
-                theme.COLORS["green"], 1 if track == "neon" else 0))
-            self._rim = Line(width=dp(1.6))
+            if track == "neon":
+                from kivy.core.image import Image as CoreImage
+                self._track_c = Color(1, 1, 1, 1)
+                self._art = Rectangle(texture=CoreImage(TRACK).texture)
+                self._fill_c = Color(0, 0, 0, 0)   # the art carries its own channel
+                self._fill = RoundedRectangle(size=(0, 0))
+            else:
+                self._track_c = Color(*theme.hex_to_rgba(
+                    theme.COLORS["black" if track == "line" else "surface"]))
+                self._track = RoundedRectangle()
+                self._fill_c = Color(*theme.hex_to_rgba(theme.COLORS[self._slid], 0))
+                self._fill = RoundedRectangle()
         # The word takes the capsule's own colour: grey secondary text inside a
         # lit green capsule reads as a disabled control rather than the place
         # the knob is going.
@@ -79,10 +97,9 @@ class SlideToPowerOff(FloatLayout):
         # right by half the difference. On the front page that pushed OFF out
         # past the end of the capsule (operator photo, 2026-09-29). Every style
         # was affected; only the capsule made it obvious.
-        self.hint = Label(text=hint_text, bold=True,
+        self.hint = Label(text="" if track == "neon" else hint_text, bold=True,
                           size_hint=(None, None),
-                          color=theme.hex_to_rgba(theme.COLORS[
-                              "green" if track == "neon" else "text_secondary"]))
+                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         self.add_widget(self.hint)
         self.knob = Image(source=knob_src, size_hint=(None, None),
                           allow_stretch=True, keep_ratio=True)
@@ -112,22 +129,41 @@ class SlideToPowerOff(FloatLayout):
         return self._track_geom()[1]
 
     def _left(self):
+        if self._style == "neon":
+            return neon_knob_rect(self.x, self.y, self.width, self.height, 0.0)[0]
         return self.x
 
     def _right(self):
+        if self._style == "neon":
+            return neon_knob_rect(self.x, self.y, self.width, self.height, 1.0)[0]
         return self.right - self._ks()
 
     def _progress(self):
+        if self._style == "neon":
+            return neon_progress(self.x, self.y, self.width, self.height,
+                                 self.knob.center_x)
         span = self._right() - self._left()
         return 0.0 if span <= 0 else max(0.0, min(1.0, (self.knob.x - self._left()) / span))
 
     def _layout(self, *_):
+        if self._style == "neon":
+            # The picture IS the track: the capsule, ON and OFF are painted, so
+            # nothing here draws them. Only the knob is placed, and it is placed
+            # against the PAINTED capsule rather than the widget, because the
+            # art carries a glow margin the capsule does not fill.
+            self._art.pos, self._art.size = self.pos, self.size
+            kx, ky, ks = neon_knob_rect(self.x, self.y, self.width, self.height,
+                                        0.0 if not self._grab else self._progress())
+            self.knob.size = (ks, ks)
+            if not self._grab:
+                self.knob.pos = (kx, ky)
+            else:
+                self.knob.pos = (self.knob.x, ky)
+            self._refresh()
+            return
         th, ty = self._th(), self._ty()
         r = th / 2.0
         self._track.pos, self._track.size, self._track.radius = (self.x, ty), (self.width, th), [r] * 4
-        self._rim.rounded_rectangle = (self.x + dp(1), ty + dp(1),
-                                       max(dp(2), self.width - dp(2)),
-                                       max(dp(2), th - dp(2)), r)
         self.knob.size = (self._ks(), self._ks())
         if not self._grab:
             self.knob.pos = (self._left(), self.y)
@@ -142,6 +178,8 @@ class SlideToPowerOff(FloatLayout):
         self._refresh()
 
     def _refresh(self, *_):
+        if self._style == "neon":
+            return                     # no fill, no hint — both are painted
         th, ty = self._th(), self._ty()
         r = th / 2.0
         w = max(th, self.knob.center_x - self.x)
@@ -161,8 +199,11 @@ class SlideToPowerOff(FloatLayout):
 
     def on_touch_move(self, touch):
         if touch.grab_current is self:
-            x = max(self._left(), min(self._right(), touch.x - self._ks() / 2.0))
-            self.knob.pos = (x, self.y)
+            ks = self.knob.width
+            x = max(self._left(), min(self._right(), touch.x - ks / 2.0))
+            y = self.knob.y if self._style == "neon" else self.y
+            self.knob.pos = (x, y)
+            self._refresh()
             return True
         return super().on_touch_move(touch)
 
@@ -172,13 +213,16 @@ class SlideToPowerOff(FloatLayout):
             self._grab = False
             if self._progress() >= _TRIGGER:
                 self.knob.x = self._right()
-                self.hint.text = "powering off…"
-                self.hint.opacity = 1
-                self.hint.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
+                if self._style != "neon":      # the painted track carries no hint
+                    self.hint.text = "powering off…"
+                    self.hint.opacity = 1
+                    self.hint.color = theme.hex_to_rgba(
+                        theme.COLORS["text_primary"])
                 if self._cb:
                     self._cb()
             else:
-                Animation(x=self._left(), y=self.y, d=0.22,
+                y = self.knob.y if self._style == "neon" else self.y
+                Animation(x=self._left(), y=y, d=0.22,
                           t="out_quad").start(self.knob)
             return True
         return super().on_touch_up(touch)

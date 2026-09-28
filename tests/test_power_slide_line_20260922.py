@@ -95,19 +95,6 @@ def test_the_widget_draws_from_the_shared_geometry_in_black():
     assert '"black": "#000000"' in theme
 
 
-def test_the_hint_never_escapes_the_capsule():
-    """OFF is the place the knob travels TO, so it must sit inside the thing
-    the knob travels along. Checked across the sizes the front page and a
-    future wider panel would give it."""
-    for w, h in ((234.0, 84.0), (156.0, 52.0), (400.0, 96.0)):
-        tx, _ty, tw, _th, _r = L.track_rect(14, 0, w, h, "neon")
-        hx, _hy, hw, _hh = L.hint_rect(14, 0, w, h, h, "neon")
-        assert hx >= tx + h, "OFF overlaps the resting knob"
-        assert hx + hw <= tx + tw, (
-            f"OFF runs {hx + hw - tx - tw:.0f}px past the end of the capsule "
-            f"at {w:.0f}x{h:.0f}")
-
-
 def test_the_hint_label_is_not_stretched_by_the_layout():
     """The bug behind the escaping OFF (operator photo, 2026-09-29).
 
@@ -122,3 +109,79 @@ def test_the_hint_label_is_not_stretched_by_the_layout():
     assert "size_hint=(None, None)" in src[i:i + 400], (
         "the hint label is size-hinted again — its computed box will be "
         "overwritten and the word will drift out of the track")
+
+
+def test_the_caller_gets_the_size_it_asked_for():
+    """The knob is the full height of the control, so the height decides how
+    much track is left to slide along. Kivy applies kwargs in order and the
+    widget's own ``setdefault("height", ...)`` landed AFTER the caller's
+    ``size``, so the front page asked for 156x52 and got 156x84: the knob grew
+    to 84, ate more than half its own track, and left the hint a 51px box that
+    wrapped OFF onto two lines.
+    """
+    src = open(os.path.join(ROOT, "ui/widgets/slide_to_power.py"), encoding="utf-8").read()
+    i = src.index("def __init__(self")
+    head = src[i:i + 2000]
+    assert 'setdefault("height"' not in head, (
+        "the height default is back as a setdefault — it will override a "
+        "caller's explicit size again")
+    assert '"size" not in kwargs' in head
+
+
+# --- the capsule is a PICTURE now (operator artwork, 2026-09-29) -------------
+# ON and OFF are painted on it, so the neon style draws no capsule and no hint.
+# The first attempt drew both: OFF escaped the end of the drawn capsule, then
+# wrapped onto two lines when the box was tightened. The word was always going
+# to fight art it was sitting on.
+
+def test_the_knob_rides_the_painted_channel_and_stops_before_off():
+    """Every number here was measured off the artwork, so this is a claim about
+    the PNG: the knob must start over ON and finish where the inner channel
+    does, short of the painted OFF."""
+    w = 200.0
+    h = w / L.NEON_ART_ASPECT
+    px, _py, pw, _ph = L.neon_pill_rect(0, 0, w, h)
+    for progress, name in ((0.0, "at rest"), (1.0, "at full travel")):
+        kx, _ky, ks = L.neon_knob_rect(0, 0, w, h, progress)
+        assert kx >= px, f"the knob is off the left of the capsule {name}"
+        right_frac = (kx + ks - px) / pw
+        assert right_frac <= 0.81, (
+            f"the knob overlaps the painted OFF {name} (reaches {right_frac:.3f})")
+    rest = L.neon_knob_rect(0, 0, w, h, 0.0)[0]
+    end = L.neon_knob_rect(0, 0, w, h, 1.0)[0]
+    assert end > rest, "there is no travel"
+
+
+def test_the_knob_fits_inside_the_capsule_not_over_its_rim():
+    w = 200.0
+    h = w / L.NEON_ART_ASPECT
+    _px, py, _pw, ph = L.neon_pill_rect(0, 0, w, h)
+    _kx, ky, ks = L.neon_knob_rect(0, 0, w, h, 0.0)
+    assert ks < ph, "the knob is taller than the capsule it rides in"
+    assert ky >= py - 0.01 and ky + ks <= py + ph + 0.01
+
+
+def test_progress_round_trips_through_the_knob_position():
+    """The drag reads progress back out of where the knob ended up, so the two
+    have to be exact inverses or a full slide would not fire the shutdown."""
+    w = 240.0
+    h = w / L.NEON_ART_ASPECT
+    for want in (0.0, 0.25, 0.5, 0.92, 1.0):
+        kx, _ky, ks = L.neon_knob_rect(0, 0, w, h, want)
+        got = L.neon_progress(0, 0, w, h, kx + ks / 2.0)
+        assert abs(got - want) < 1e-9, f"{want} came back as {got}"
+
+
+def test_the_neon_style_draws_no_capsule_and_no_word():
+    src = open(os.path.join(ROOT, "ui/widgets/slide_to_power.py"), encoding="utf-8").read()
+    assert "power_track.png" in src, "the painted capsule is not loaded"
+    assert 'text="" if track == "neon"' in src, (
+        "the neon style is writing a hint over art that already says OFF")
+
+
+def test_the_front_page_box_matches_the_artworks_aspect():
+    """A picture in a box of the wrong shape either stretches or floats in a
+    letterbox, and then the knob stops lining up with the channel."""
+    home = open(os.path.join(ROOT, "ui/screens/home_screen.py"), encoding="utf-8").read()
+    i = home.index("SlideToPowerOff(")
+    assert "NEON_ART_ASPECT" in home[i - 600:i + 500]

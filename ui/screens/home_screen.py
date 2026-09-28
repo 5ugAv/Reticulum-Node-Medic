@@ -66,10 +66,16 @@ class HomeScreen(FloatLayout):
         # artwork): the old red button was the last thing on this page still
         # speaking the visual language the poster left behind.
         from ui.widgets.slide_to_power import SlideToPowerOff
-        knob = dp(52)
+        from ui.power_slide_layout import NEON_ART_ASPECT
+        # SIZED TO THE ARTWORK'S OWN ASPECT. The track is a picture now; give it
+        # a box of the wrong shape and the painted capsule either stretches or
+        # floats in a letterbox, and the knob stops lining up with the channel
+        # it is supposed to ride.
+        slide_w = dp(52) * 3.4
         self.power_slider = SlideToPowerOff(
-            on_power_off=self._power_off, hint_text=tr("OFF"), track="neon",
-            size_hint=(None, None), size=(knob * 3, knob),
+            on_power_off=self._power_off, track="neon",
+            size_hint=(None, None),
+            size=(slide_w, slide_w / NEON_ART_ASPECT),
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
 
