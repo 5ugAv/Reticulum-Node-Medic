@@ -144,3 +144,95 @@ def test_sidebar_speaks_the_painted_words():
             assert label == POSTER_WORD_FOR[key], (
                 f"sidebar labels {key!r} as {label!r}; the poster paints "
                 f"{POSTER_WORD_FOR[key]!r}")
+
+
+# --- the two emblem zones must sit on their painted emblems -----------------
+# These drifted silently through five repaints between 2026-09-13 and
+# 2026-09-28. By the end the credits circle had wandered off the retired leaf
+# onto blank mesh, and then — once the bearers moved onto the centre meridian —
+# onto the INTERNET marker, so tapping "INTERNET" opened the credits screen.
+# Nothing caught it but a human looking at a picture.
+#
+# The card labels have been pinned against the artwork since 2026-08-07. These
+# do the same for the two emblems: assert that the zone lands on lit ink where
+# the emblem is painted, and NOT on the markers either side of it. It is a
+# claim about the shipped PNG, so a repaint that moves an emblem fails here
+# instead of shipping a tap that opens the wrong screen.
+
+def _poster_gray():
+    from PIL import Image                       # pillow is a test-only dep here
+    path = os.path.join(REPO, "assets", "ui", "front_page.png")
+    if not os.path.exists(path):                # gitignored on CI
+        return None
+    im = Image.open(path).convert("L")
+    assert im.size == (720, 1280), "the zones are fractions of a 720x1280 cut"
+    return im
+
+
+def test_the_credits_zone_sits_on_the_lora_trunk_node():
+    """The Easter egg opens the credits; it must land on the painted disc."""
+    from ui.home_zones import CROSS_CX, CROSS_CY, zone_at
+    assert zone_at(CROSS_CX, CROSS_CY) == "credits"
+    im = _poster_gray()
+    if im is None:
+        return
+    # Sample the DISC, not one pixel: the tower mark is knocked out in dark at
+    # the disc's centre, so the middle pixel is legitimately black.
+    import numpy as np
+    cx, cy = int(CROSS_CX * 720), int(CROSS_CY * 1280)
+    disc = np.asarray(im, dtype=float)[cy - 20:cy + 20, cx - 20:cx + 20]
+    lit = (disc > 150).mean()
+    assert lit > 0.35, (
+        f"only {lit:.0%} of the credits zone centre is lit — it has drifted "
+        "off the LORA trunk node again")
+
+
+def test_the_wifi_zone_sits_on_the_wifi_marker():
+    from ui.home_zones import (WIFI_BOTTOM, WIFI_LEFT, WIFI_RIGHT, WIFI_TOP,
+                               zone_at)
+    cx, cy = (WIFI_LEFT + WIFI_RIGHT) / 2, (WIFI_TOP + WIFI_BOTTOM) / 2
+    assert zone_at(cx, cy) == "wifi"
+    im = _poster_gray()
+    if im is None:
+        return
+    import numpy as np
+    box = np.asarray(im, dtype=float)[int(WIFI_TOP * 1280):int(WIFI_BOTTOM * 1280),
+                                      int(WIFI_LEFT * 720):int(WIFI_RIGHT * 720)]
+    assert (box > 150).mean() > 0.04, (
+        "the WI-FI zone is mostly empty globe — it has drifted off the marker")
+
+
+def test_no_other_bearer_marker_is_tappable():
+    """BLUETOOTH and INTERNET are painted, labelled and inert.
+
+    This is the assertion that would have caught the 2026-09-28 bug: with the
+    old credits circle at (0.50, 0.46) the INTERNET marker opened the credits.
+    A marker that looks exactly like the two that DO something, and silently
+    does something unrelated, is the wrong-picture failure at its worst.
+    """
+    from ui.home_zones import zone_at
+    for name, (fx, fy) in {"BLUETOOTH": (0.500, 0.3445),
+                           "INTERNET": (0.500, 0.4688)}.items():
+        assert zone_at(fx, fy) is None, (
+            f"the {name} marker now opens {zone_at(fx, fy)} — a painted label "
+            "that silently does something else")
+
+
+def test_the_card_row_zone_meets_the_drawn_keys():
+    """CARDS_TOP is measured off the painting, not chosen.
+
+    The drawn key tops wandered 1006 / 1003 / 1005 across three repaints while
+    the zone sat at 1011, leaving the top 0.6 mm of every key drawn but dead.
+    The zone was moved to meet the art; this checks it still does — the row
+    immediately below CARDS_TOP must carry key ink, and the row well above it
+    must not.
+    """
+    from ui.home_zones import CARDS_TOP
+    im = _poster_gray()
+    if im is None:
+        return
+    import numpy as np
+    a = np.asarray(im, dtype=float)
+    y = int(CARDS_TOP * 1280)
+    assert (a[y + 2] > 60).sum() > 150, "the card zone starts above the keys"
+    assert (a[y - 25] > 60).sum() < 150, "the card zone has eaten into the title"

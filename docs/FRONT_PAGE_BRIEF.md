@@ -37,6 +37,16 @@ blur those three smeared to unreadable grey while the two single-line captions
 stayed legible. Shorter caption, bigger type, readable card. Any rewording that
 pushes a subtitle onto a second line undoes that, so count the characters first.
 
+## The title block, as painted 2026-09-28
+
+    RETICULUM
+    NODE MEDIC
+    COMMUNICATION NETWORK BUILDING TOOL
+
+The subtitle gained "COMMUNICATION" on the operator's call: a stranger reading
+"NETWORK BUILDING TOOL" on a green screen can reasonably think routers and
+switches. The word says which kind of network before anyone has to guess.
+
 Two words do NOT get a card:
 
 * **PROBE** — per-node repair is reached by tapping a node in VITALS, so it

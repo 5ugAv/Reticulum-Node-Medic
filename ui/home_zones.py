@@ -2,14 +2,24 @@
 
 The designed front page (assets/ui/front_page.png, 720x1280 — native panel
 size) carries five full-bleed mode cards along the bottom (VITALS / MAPS /
-BUILD / ANTENNA / CHAT since the 2026-09-13 repaint — POSTER_CARD_LABELS below
-is the tested claim) and the red cross emblem at its heart. Zones are expressed in image-fraction coordinates
-(x rightward, y DOWNWARD from the top-left, 0..1) so they survive any scaling;
-the Kivy screen converts touches into this space and asks ``zone_at``.
+BUILD / ANTENNA / CHAT — POSTER_CARD_LABELS below is the tested claim) and,
+on the globe above them, four connection markers standing on the centre
+meridian: LORA, WI-FI, BLUETOOTH, INTERNET, top to bottom by reach. Zones are
+expressed in image-fraction coordinates (x rightward, y DOWNWARD from the
+top-left, 0..1) so they survive any scaling; the Kivy screen converts touches
+into this space and asks ``zone_at``.
 
-The red cross is the Easter egg: it opens the credits screen (the people who
-made the tool, and why Reticulum matters to communities). Mitosis lives under
-BIRTH now.
+The LORA trunk node — the filled disc the whole mesh grows out of — is the
+Easter egg: it opens the credits screen (the people who made the tool, and why
+Reticulum matters to communities). Mitosis lives under BIRTH now.
+
+EVERY COORDINATE BELOW WAS MEASURED OFF THE PAINTING, not chosen. The two
+emblem zones drifted silently through five repaints between 2026-09-13 and
+2026-09-28 — at the end of that the credits circle had wandered onto blank
+mesh and then onto the INTERNET marker, so tapping "INTERNET" opened the
+credits. test_front_page_vocabulary.py now pins both against the shipped PNG
+the same way it pins the card labels, which is the only thing that stops a
+sixth drift.
 """
 
 from __future__ import annotations
@@ -17,7 +27,11 @@ from __future__ import annotations
 from typing import Optional
 
 # Bottom card row: five equal columns between the side margins.
-CARDS_TOP = 0.79          # y-fraction where the card row begins
+# Measured off the 2026-09-28 painting: the drawn key tops sit at y 1004 of
+# 1280. The zone meets the ART rather than the other way round — the artist
+# was asked three times for 1011 and the row wandered 1006 / 1003 / 1005, so
+# the 0.6 mm was closed from this side instead.
+CARDS_TOP = 0.784         # y-fraction where the card row begins
 CARDS_LEFT = 0.0
 CARDS_RIGHT = 1.0   # the 720x1280 cut runs the cards full-bleed
 CARD_ORDER = ["vitals", "scan", "birth", "triage", "chat"]
@@ -48,19 +62,23 @@ POSTER_CARD_LABELS = ["VITALS", "MAPS", "BUILD", "ANTENNA", "CHAT"]
 POSTER_WORD_FOR = {"vitals": "VITALS", "scan": "MAPS", "birth": "BUILD",
                    "triage": "ANTENNA", "chat": "CHAT"}
 
-# The red-cross emblem — the Easter egg (credits).
-CROSS_CX = 0.50
-CROSS_CY = 0.46           # y-fraction, top-down
-CROSS_R = 0.13            # radius in x-fractions (aspect-corrected below)
+# The LORA trunk node — the Easter egg (credits). Measured: the filled disc
+# centres at (359.5, 217.5) of 720x1280. The tap radius is deliberately wider than
+# the painted disc (0.075 vs the disc's own 0.042) so it is a thumb-sized
+# target, and it still clears the WI-FI box below by 61 px.
+CROSS_CX = 0.499
+CROSS_CY = 0.170          # y-fraction, top-down
+CROSS_R = 0.075           # radius in x-fractions (aspect-corrected below)
 IMAGE_ASPECT = 720 / 1280
 
-# The WI-FI emblem (the red fan icon + label in the connectivity stack) is a
-# second Easter egg: a shortcut into WiFi settings, mirroring the gear icon.
-# Its box sits between the LORA and BLUETOOTH labels, clear of the cross circle.
-WIFI_LEFT = 0.42
-WIFI_RIGHT = 0.58
-WIFI_TOP = 0.25           # y-fraction, top-down
-WIFI_BOTTOM = 0.335
+# The WI-FI marker (ring + label, second down the meridian) is a second Easter
+# egg: a shortcut into WiFi settings, mirroring the gear icon. Measured: the
+# ring and its label span x 0.472-0.618, y 0.262-0.300; the box below pads that
+# a little without reaching the BLUETOOTH marker beneath it.
+WIFI_LEFT = 0.465
+WIFI_RIGHT = 0.625
+WIFI_TOP = 0.255          # y-fraction, top-down
+WIFI_BOTTOM = 0.308
 
 
 def zone_at(fx: float, fy: float) -> Optional[str]:

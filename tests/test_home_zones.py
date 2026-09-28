@@ -17,18 +17,22 @@ def test_card_row_edges_full_bleed():
     assert zone_at(0.5, CARDS_TOP - 0.02) is None   # just above the cards
 
 
-def test_red_cross_opens_the_credits_easter_egg():
-    assert zone_at(0.50, 0.46) == "credits"    # dead centre of the emblem
-    assert zone_at(0.44, 0.42) == "credits"    # inside the circle
-    assert zone_at(0.50, 0.10) is None         # up in the mesh art
-    assert zone_at(0.15, 0.46) is None         # off to the side
+def test_lora_trunk_node_opens_the_credits_easter_egg():
+    """The egg moved with the artwork (2026-09-28): the leaf that carried it was
+    retired, and the credits now live on the LORA trunk node — the filled disc
+    the whole mesh grows out of. The network's origin opening the credits for
+    the people who built the network."""
+    assert zone_at(0.499, 0.170) == "credits"  # dead centre of the disc
+    assert zone_at(0.46, 0.155) == "credits"   # inside the circle
+    assert zone_at(0.50, 0.47) is None         # the INTERNET marker — inert
+    assert zone_at(0.15, 0.17) is None         # off to the side, blank mesh
 
 
-def test_wifi_emblem_opens_wifi_settings():
-    assert zone_at(0.50, 0.29) == "wifi"       # on the WI-FI fan icon + label
-    assert zone_at(0.50, 0.46) == "credits"    # still lands on the cross below it
-    assert zone_at(0.50, 0.20) is None         # up on the LORA icon — not WiFi
-    assert zone_at(0.50, 0.36) is None         # BLUETOOTH gap, above the cross
+def test_wifi_marker_opens_wifi_settings():
+    assert zone_at(0.545, 0.281) == "wifi"     # on the WI-FI ring + label
+    assert zone_at(0.499, 0.170) == "credits"  # the LORA disc above it
+    assert zone_at(0.50, 0.345) is None        # BLUETOOTH — painted, inert
+    assert zone_at(0.50, 0.469) is None        # INTERNET — painted, inert
 
 
 def test_out_of_image_taps_are_none():
