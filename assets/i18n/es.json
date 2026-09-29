@@ -932,7 +932,6 @@
   "This needs a decision from you — it will not fill itself.": "Esto necesita una decisión tuya — no se completará solo.",
   "This node": "Este nodo",
   "This node is already running our config — adopt it as kin (no flashing, keeps its settings).": "Este nodo ya usa nuestra configuración: adóptalo como Kin (sin grabar, mantiene sus ajustes).",
-  "This picture is {n} bytes — {p} LoRa packets. Four bits a cell, {c} across: a nod to how pictures may travel the mesh.": "Esta imagen ocupa {n} bytes — {p} paquetes LoRa. Cuatro bits por celda, {c} de ancho: un guiño a cómo podrían viajar las imágenes por la malla.",
   "This radio hasn't been flashed and verified yet. Finish it here first.": "Esta radio todavía no se ha grabado ni verificado. Termínala aquí primero.",
   "To aim an antenna, the medic needs a distant beacon.\n\nConnect (or build) an RTNode-2400 and leave it powered on at a distance - it becomes the signal you tune against.": "Para orientar una antena, el medic necesita una baliza lejana.\n\nConecta (o construye) un RTNode-2400 y déjalo encendido a distancia: será la señal contra la que ajustas.",
   "To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT": "Para apagar igualmente: mueve el control  DERECHA, luego ABAJO, luego DERECHA",

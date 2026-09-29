@@ -932,7 +932,6 @@
   "This needs a decision from you — it will not fill itself.": "Det här kräver ett beslut från dig — det fylls inte i av sig självt.",
   "This node": "Denna nod",
   "This node is already running our config — adopt it as kin (no flashing, keeps its settings).": "Denna nod kör redan vår konfiguration – adoptera den som kin (ingen flashning, behåller sina inställningar).",
-  "This picture is {n} bytes — {p} LoRa packets. Four bits a cell, {c} across: a nod to how pictures may travel the mesh.": "Den här bilden är {n} byte — {p} LoRa-paket. Fyra bitar per cell, {c} bred: en blinkning till hur bilder kan komma att färdas över meshen.",
   "This radio hasn't been flashed and verified yet. Finish it here first.": "Den här radion är ännu inte flashad och verifierad. Slutför det här först.",
   "To aim an antenna, the medic needs a distant beacon.\n\nConnect (or build) an RTNode-2400 and leave it powered on at a distance - it becomes the signal you tune against.": "För att rikta en antenn behöver medicen en avlägsen bakon.\n\nAnslut (eller bygg) en RTNode-2400 och lämna den påslagen på avstånd – den blir signalen du ställer in mot.",
   "To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT": "För att stänga av ändå: för ratten  HÖGER, sedan NER, sedan HÖGER",

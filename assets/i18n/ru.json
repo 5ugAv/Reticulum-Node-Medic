@@ -932,7 +932,6 @@
   "This needs a decision from you — it will not fill itself.": "Здесь нужно ваше решение — само не заполнится.",
   "This node": "Этот узел",
   "This node is already running our config — adopt it as kin (no flashing, keeps its settings).": "Этот узел уже работает с нашей конфигурацией — примите его как kin (без прошивки, настройки сохраняются).",
-  "This picture is {n} bytes — {p} LoRa packets. Four bits a cell, {c} across: a nod to how pictures may travel the mesh.": "Эта картинка — {n} байт, {p} пакетов LoRa. Четыре бита на ячейку, {c} в ширину: дань тому, как картинки могут путешествовать по mesh-сети.",
   "This radio hasn't been flashed and verified yet. Finish it here first.": "Это радио ещё не прошито и не проверено. Сначала завершите это здесь.",
   "To aim an antenna, the medic needs a distant beacon.\n\nConnect (or build) an RTNode-2400 and leave it powered on at a distance - it becomes the signal you tune against.": "Чтобы навести антенну, медику нужен удалённый маяк.\n\nПодключите (или соберите) RTNode-2400 и оставьте включённым на расстоянии — он станет сигналом, по которому вы настраиваете.",
   "To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT": "Чтобы всё же выключить: сдвиньте ручку  ВПРАВО, затем ВНИЗ, затем ВПРАВО",

@@ -932,7 +932,6 @@
   "This needs a decision from you — it will not fill itself.": "Ini butuh keputusan dari Anda — tidak akan terisi sendiri.",
   "This node": "Node ini",
   "This node is already running our config — adopt it as kin (no flashing, keeps its settings).": "Node ini sudah menjalankan konfigurasi kita — adopsi sebagai kin (tanpa flashing, pengaturannya tetap).",
-  "This picture is {n} bytes — {p} LoRa packets. Four bits a cell, {c} across: a nod to how pictures may travel the mesh.": "Gambar ini {n} byte — {p} paket LoRa. Empat bit per sel, {c} lebar: penghormatan pada cara gambar mungkin berkelana di mesh.",
   "This radio hasn't been flashed and verified yet. Finish it here first.": "Radio ini belum di-flash dan diverifikasi. Selesaikan dulu di sini.",
   "To aim an antenna, the medic needs a distant beacon.\n\nConnect (or build) an RTNode-2400 and leave it powered on at a distance - it becomes the signal you tune against.": "Untuk mengarahkan antena, medic memerlukan beacon yang jauh.\n\nHubungkan (atau bangun) sebuah RTNode-2400 dan biarkan menyala di kejauhan - ia menjadi sinyal yang Anda gunakan untuk menyetel.",
   "To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT": "Untuk tetap mematikan: geser kenop  KANAN, lalu BAWAH, lalu KANAN",
