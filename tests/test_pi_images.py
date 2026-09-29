@@ -324,3 +324,26 @@ def test_the_front_page_is_the_panels_native_size():
     p = os.path.join("assets", "ui", "front_page.png")
     assert Image.open(p).size == (720, 1280), (
         "front_page.png must be the panel's native 720x1280")
+
+
+def test_the_build_chooser_art_is_actually_tracked():
+    """.gitignore carries a bare "build/" rule, which matches a directory of
+    that name ANYWHERE in the tree. The chooser's three illustrations were
+    first put in assets/ui/build/ and were silently never committed — the
+    deploy landed a chooser whose pictures did not exist on the medic
+    ([[ci-gitignored-assets]]). This asserts the files are where the code looks
+    AND that git will carry them.
+    """
+    import os
+    import subprocess
+    import ui.screens.birth_guide_screen as bg
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for key, name in bg._BUILD_ART.items():
+        path = os.path.normpath(os.path.join(bg._BUILD_ART_DIR, name))
+        assert os.path.exists(path), f"{key}: no art at {path}"
+        rel = os.path.relpath(path, root)
+        ignored = subprocess.run(["git", "check-ignore", "-q", rel],
+                                 cwd=root).returncode == 0
+        assert not ignored, (
+            f"{rel} is gitignored — it will never reach a medic. Do not put "
+            "assets in a directory called 'build'.")

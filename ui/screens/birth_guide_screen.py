@@ -112,10 +112,15 @@ def _line(text, size, color="text_primary", bold=False, h=None):
 #: The chooser's illustrations, cut from the operator's own layout
 #: (2026-09-29). Keyed by BIRTH_PATHS key, so a path without art simply gets a
 #: text card — the same rule board photos follow in ui.board_images.
+#:
+#: NOT assets/ui/build/. .gitignore carries a bare "build/" rule, which matches
+#: a directory of that name ANYWHERE in the tree — so the three PNGs were
+#: silently never committed, and the first deploy landed a chooser whose art
+#: did not exist on the medic ([[ci-gitignored-assets]] again).
 _BUILD_ART = {"host": "rnode.png", "radio": "rtnode.png", "pi": "pi.png"}
 _BUILD_ART_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    os.pardir, "assets", "ui", "build")
+    os.pardir, "assets", "ui", "build_art")
 
 
 def _build_art(key):
