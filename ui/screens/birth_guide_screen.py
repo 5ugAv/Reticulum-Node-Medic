@@ -12,6 +12,8 @@ without Kivy; the screen is just the presentation over them.
 
 from __future__ import annotations
 
+import os
+
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -105,6 +107,36 @@ def _line(text, size, color="text_primary", bold=False, h=None):
     else:
         lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     return lbl
+
+
+#: The chooser's illustrations, cut from the operator's own layout
+#: (2026-09-29). Keyed by BIRTH_PATHS key, so a path without art simply gets a
+#: text card — the same rule board photos follow in ui.board_images.
+_BUILD_ART = {"host": "rnode.png", "radio": "rtnode.png", "pi": "pi.png"}
+_BUILD_ART_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.pardir, "assets", "ui", "build")
+
+
+def _build_art(key):
+    """An Image of this build's illustration, or None.
+
+    Best-effort and silent: a missing or unreadable asset must cost a picture,
+    never the chooser. This screen is the first thing a stranger meets, and it
+    has to work on a medic whose assets were trimmed.
+    """
+    try:
+        from kivy.uix.image import Image as UIImage
+        name = _BUILD_ART.get(key)
+        if not name:
+            return None
+        path = os.path.normpath(os.path.join(_BUILD_ART_DIR, name))
+        if not os.path.exists(path):
+            return None
+        return UIImage(source=path, allow_stretch=True, keep_ratio=True,
+                       size_hint_x=0.42)
+    except Exception:                                              # noqa: BLE001
+        return None
 
 
 class BirthGuideScreen(BoxLayout):
@@ -1410,7 +1442,11 @@ class BirthGuideScreen(BoxLayout):
             # last word was cut off by the card's bottom edge (operator photo).
             # The Pi card, with five description lines, was already given its
             # own number for exactly this reason.
-            h = {"pi": 192, "radio": 168}.get(key, 132)
+            # Taller since the cards carry a picture (2026-09-29). Still fixed
+            # and still generous — the note in _path_button holds: a card that
+            # sizes itself to its content overflowed, and a fixed box can only
+            # ever waste a little whitespace.
+            h = {"pi": 216, "radio": 198}.get(key, 186)
             col.add_widget(self._path_button(key, title, subtitle, height=h))
         if dropped:
             # Say WHY it is missing. An option that silently disappears between
@@ -1695,13 +1731,23 @@ class BirthGuideScreen(BoxLayout):
         """
         btn = Button(size_hint_y=None, height=dp(height), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
-        inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
+        # PICTURE LEFT, WORDS RIGHT (operator, 2026-09-29, with a layout).
+        # [[show-dont-tell-ux]]: a stranger deciding between three builds is
+        # comparing THINGS, and a photograph of the thing settles in a glance
+        # what a paragraph settles in twenty seconds. The picture is offered,
+        # never required — an absent asset costs the picture, not the card.
+        inner = BoxLayout(orientation="horizontal", padding=[dp(14), dp(10)],
+                          spacing=dp(12))
+        art = _build_art(key)
+        if art is not None:
+            inner.add_widget(art)
+        words = BoxLayout(orientation="vertical", spacing=dp(4))
         # 56, not 52: two lines of 21sp bold measure 52 exactly, so the second
         # line sat on the box's own edge and the description started underneath
         # it rather than below it.
-        inner.add_widget(_line(title, "21sp", bold=True, h=56))
-        sub = _line(subtitle, "14sp", color="text_secondary")
-        inner.add_widget(sub)
+        words.add_widget(_line(title, "21sp", bold=True, h=56))
+        words.add_widget(_line(subtitle, "14sp", color="text_secondary"))
+        inner.add_widget(words)
         inner.size = btn.size
         btn.bind(size=lambda _b, v: setattr(inner, "size", v),
                  pos=lambda _b, v: setattr(inner, "pos", v))
