@@ -1252,6 +1252,15 @@ class ReticulumNodeMedicApp(App):
         self.keyboard = OnScreenKeyboard(pan_target=self.sm,
                                          pos_hint={"x": 0, "y": 0})
         root.add_widget(self.keyboard)
+        # THE CONTROL SOCKET (ui/remote.py, 2026-09-29): open any screen by name
+        # from a shell, on this app, on the main thread — so a walkthrough of
+        # every screen is a loop with grim, not a person at the panel.
+        try:
+            from ui.remote import ControlServer
+            self._control = ControlServer(self)
+            self._control.start()
+        except Exception:                                              # noqa: BLE001
+            self._control = None          # a missing socket must never cost the UI
         return root
 
     def _opening_screen(self):
@@ -1750,6 +1759,12 @@ class ReticulumNodeMedicApp(App):
             _t.sleep(2)
 
     def on_stop(self):
+        try:
+            ctl = getattr(self, "_control", None)
+            if ctl is not None:
+                ctl.stop()
+        except Exception:                                              # noqa: BLE001
+            pass
         try:
             self.scan_screen.end_walk()       # bank a walk the exit would lose
         except Exception:                                          # noqa: BLE001
