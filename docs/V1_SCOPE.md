@@ -59,10 +59,11 @@ placement flow end to end.
 
 Plus the one comprehension blocker, which is artwork and has a lead time:
 
-- [ ] **A front page a stranger can read.** BIRTH / TRIAGE / MITOSIS is a
+- [x] **A front page a stranger can read.** BIRTH / TRIAGE / MITOSIS is a
       private language. This is the single largest barrier to anyone but the
       builder using the tool, and it cannot be fixed in code — the words are
       painted into `assets/ui/front_page.png`.
+  _Ticked 2026-09-29._ The poster shipped through thirteen revisions with two reviewers (final verdict: "finished — stop"); the five cards read VITALS / MAPS / BUILD / ANTENNA / CHAT with one-line captions; the tap-map's card labels and both emblem zones are pinned against the painted pixels in tests/test_front_page_vocabulary.py; the setup tour opens every screen with the painted word (test_tour_titles_open_with_the_painted_word). Verified on the glass by capture, not by reading the code.
 
 ## The hardware question v1 has to answer
 
