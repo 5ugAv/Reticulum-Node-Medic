@@ -1045,6 +1045,7 @@ class ReticulumNodeMedicApp(App):
                       on_leave=lambda *_: self.chat_screen.leave())
         self.sm.add_widget(chat_scr)
         Clock.schedule_interval(lambda dt: self._chat.tick(), 60)
+        Clock.schedule_interval(self._chat_start_poll, 3)
 
         # Field readiness — the caller workflows.carry has never had. It shipped
         # complete and tested (d9b29ca) and reachable by nobody, which is the
@@ -1525,6 +1526,49 @@ class ReticulumNodeMedicApp(App):
 
         Clock.schedule_interval(tick, 2)
 
+    #: set by the mesh listener once RNS is attached (see _start_chat_if_ready)
+    _rns_attached = False
+    _chat_starting = False
+
+    def _start_chat_if_ready(self, log=None):
+        """Start the chat service exactly once, on a thread, when BOTH the
+        service exists and RNS is attached — from whichever side got there
+        last. start() announces and asks the post office, so never on the
+        Kivy main thread."""
+        chat = getattr(self, "_chat", None)
+        if chat is None or not self._rns_attached or chat.running or self._chat_starting:
+            return False
+        self._chat_starting = True
+        _log = log or (lambda m: None)
+
+        def _go():
+            try:
+                chat._log = _log
+                chat.start()
+            except Exception as e:                                     # noqa: BLE001
+                _log("chat service failed to start: %r" % (e,))
+            finally:
+                self._chat_starting = False
+
+        threading.Thread(target=_go, daemon=True).start()
+        return True
+
+    def _chat_start_poll(self, dt):
+        """build()'s side of the race: poll until the listener has attached,
+        then stop polling (returning False cancels a Clock interval)."""
+        chat = getattr(self, "_chat", None)
+        if chat is not None and chat.running:
+            return False
+        self._start_chat_if_ready(self._chat_log)
+        return True
+
+    def _chat_log(self, msg):
+        try:
+            import RNS
+            RNS.log("Node Medic: " + msg)
+        except Exception:                                              # noqa: BLE001
+            print("Node Medic: " + msg, flush=True)
+
     def _start_announce_listener(self):
         """Hear announces live (via the shared rnsd): each carries the device
         IDENTITY (collapses its aspect-destinations into one VITALS row) and
@@ -1603,12 +1647,13 @@ class ReticulumNodeMedicApp(App):
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
                 app._setup_health_reply(RNS, _log)
-                try:
-                    chat = getattr(app, "_chat", None)
-                    if chat is not None:
-                        chat.start()
-                except Exception as e:                             # noqa: BLE001
-                    _log("chat service failed to start: %r" % (e,))
+                # CHAT comes up on top of this attach — but the listener starts
+                # (build(), ~line 879) BEFORE the chat service exists (~1039),
+                # and on the first live restart the attach won the race and
+                # the hook found nothing (2026-09-29 23:49). So: flag here,
+                # start from whichever side is last.
+                app._rns_attached = True
+                app._start_chat_if_ready(_log)
                 # Positive proof of registration (first-try attach was silent
                 # before, making "attached" and "thread died" indistinguishable).
                 _log("mesh listener attached — announce handlers registered")
