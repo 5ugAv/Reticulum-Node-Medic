@@ -11,7 +11,6 @@ Edit CREDITS and SPIEL freely — they're plain data.
 from __future__ import annotations
 
 import os
-import tempfile
 
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -71,11 +70,6 @@ _MESH_PICTURE_SRC = os.path.normpath(os.path.join(
     os.pardir, "assets", "ui", "anim", "node_medic_cable.png"))
 
 
-#: Where the rendered tile is written. /tmp on purpose: it is regenerated in
-#: 0.15 s after a reboot, and nothing about it deserves a place in the records.
-_MESH_PICTURE_OUT = os.path.join(tempfile.gettempdir(), "nodemedic-mesh-picture.png")
-
-
 def _mesh_picture():
     """(Image widget, caption) for the block-art tile, or (None, None).
 
@@ -85,16 +79,11 @@ def _mesh_picture():
     poster work settled on ONE green, and a full-colour tile here would be the
     only multicolour thing on the glass. DB16 is a one-word switch if the
     operator wants the post's own look.
-
-    RENDERED TO A FILE AND LOADED BY PATH, never handed to Kivy as bytes. The
-    first cut built the texture from a BytesIO with kivy.core.image, and that
-    path SEGFAULTED on the medic's own Python under the offscreen harness — a
-    segfault is not an Exception, the guard below cannot catch it, and this
-    screen is built at app start. Image(source=path) is the loader every board
-    photo and the poster already go through; nothing here is a new road.
     """
     try:
+        import io
         from PIL import Image as PILImage
+        from kivy.core.image import Image as CoreImage
         from ui import blockart
         if not os.path.exists(_MESH_PICTURE_SRC):
             return None, None
@@ -107,9 +96,13 @@ def _mesh_picture():
                                  blockart.PHOSPHOR16, by_luma=True)
         nbytes = blockart.payload_bytes(grid)
         npk = blockart.packets(nbytes)
-        blockart.render(grid, blockart.PHOSPHOR16, cell=8, gap=2,
-                        ground=ground).save(_MESH_PICTURE_OUT, format="PNG")
-        widget = Image(source=_MESH_PICTURE_OUT, size_hint_y=None, height=dp(260),
+        rendered = blockart.render(grid, blockart.PHOSPHOR16, cell=8, gap=2,
+                                   ground=ground)
+        buf = io.BytesIO()
+        rendered.save(buf, format="PNG")
+        buf.seek(0)
+        tex = CoreImage(buf, ext="png").texture
+        widget = Image(texture=tex, size_hint_y=None, height=dp(260),
                        allow_stretch=True, keep_ratio=True)
         caption = tr("This picture is {n} bytes — {p} LoRa packets. Four bits a "
                      "cell, {c} across: a nod to how pictures may travel the "
