@@ -374,3 +374,56 @@ class ModePair:
         """True over EITHER picture — the home screen uses this to keep corner
         controls out of the poster's tap-map."""
         return any(i.collide_point(*pos) for i in self.icons.values())
+
+
+class ModeSwapArrow(Widget):
+    """A small curved arrow, headed at both ends, drawn between the two mode
+    pictures (operator, 2026-09-29 — and it is on their sketch too, looping
+    from the cottage to the hiker and back).
+
+    It says the one thing two lit-or-grey pictures cannot: that these are the
+    SAME control, and pressing either swaps you to it. Without it they read as
+    two unrelated buttons that happen to sit near each other.
+
+    Purely decorative — no touch handling, so a tap here falls through to the
+    poster underneath rather than being quietly eaten by a decoration.
+    """
+
+    #: How far the curve bows away from the straight line between the two
+    #: pictures, as a fraction of the box. A straight line between two icons
+    #: reads as a join; a bowed one reads as a movement.
+    BOW = 0.42
+    HEAD = 0.30          # arrowhead length, as a fraction of the box
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self._redraw, size=self._redraw)
+        self._redraw()
+
+    def _redraw(self, *_):
+        import math
+        from kivy.graphics import Color, Line
+        self.canvas.before.clear()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if w < 4 or h < 4:
+            return
+        # The cottage sits up-left of this box and the hiker down-right, so the
+        # arrow runs corner to corner and bows away from the globe.
+        ax, ay = x + w * 0.10, y + h * 0.90          # toward the cottage
+        bx, by = x + w * 0.90, y + h * 0.10          # toward the hiker
+        cx = x + w * (0.5 + self.BOW)                 # control point, bowed right
+        cy = y + h * (0.5 + self.BOW)
+        head = min(w, h) * self.HEAD
+        with self.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.85))
+            Line(bezier=[ax, ay, cx, cy, bx, by], width=dp(1.6))
+            # A head at each end, angled off the curve's tangent there — which
+            # at a quadratic Bezier's ends is simply the line to the control
+            # point, so the heads sit on the curve instead of beside it.
+            for (px, py, qx, qy) in ((ax, ay, cx, cy), (bx, by, cx, cy)):
+                ang = math.atan2(py - qy, px - qx)
+                for spread in (+2.6, -2.6):
+                    Line(points=[px, py,
+                                 px + head * math.cos(ang + spread),
+                                 py + head * math.sin(ang + spread)],
+                         width=dp(1.6))

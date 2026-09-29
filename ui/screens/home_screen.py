@@ -95,7 +95,8 @@ class HomeScreen(FloatLayout):
         # while the other greys out. The old switch showed only the current
         # mode, so the alternative was invisible — you had to already know that
         # tapping a cottage would hand you a hiker.
-        from ui.widgets.mode_toggle import BACKPACK, HOME, ModeIcon, ModePair
+        from ui.widgets.mode_toggle import (BACKPACK, HOME, ModeIcon, ModePair,
+                                            ModeSwapArrow)
         pick = on_mode or (lambda m: None)
         icon = dp(62)
         self.mode_home = ModeIcon(
@@ -108,6 +109,11 @@ class HomeScreen(FloatLayout):
             pos_hint={"right": 0.985, "top": 0.878})     # below the gear
         self.add_widget(self.mode_home)
         self.add_widget(self.mode_backpack)
+        # The double-headed arrow between them. Two lit-or-grey pictures do not
+        # say they are the same control; this does.
+        self.add_widget(ModeSwapArrow(
+            size_hint=(None, None), size=(dp(44), dp(44)),
+            pos_hint={"right": 0.910, "top": 0.925}))
         #: The app drives the mode from three places through this handle; the
         #: pair answers to the same calls the single switch did.
         self.mode_toggle = ModePair(self.mode_home, self.mode_backpack)
