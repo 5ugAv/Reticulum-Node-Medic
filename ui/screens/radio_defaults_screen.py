@@ -18,6 +18,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — radio-defaults labels/warnings/popups
 from ui.onscreen_keyboard import bind_field
 from provisioning import radio_defaults as rd
@@ -65,11 +66,11 @@ class RadioDefaultsScreen(BoxLayout):
             self._wr = RoundedRectangle(radius=[dp(8)] * 4)
         warn.bind(pos=lambda *_: setattr(self._wr, "pos", warn.pos),
                   size=lambda *_: setattr(self._wr, "size", warn.size))
-        warn.add_widget(_line(tr(
+        warn.add_widget(grow_to_text(_line(tr(
             "These are the tool-wide defaults every BUILD pre-fills. Leave them "
             "alone unless you know exactly why — mismatched parameters keep a node "
             "off the mesh, and a different frequency band builds a SEPARATE mesh."),
-            size="13.5sp", color="warning_yellow", h=78))
+            size="13.5sp", color="warning_yellow")))
         col.add_widget(warn)
 
         # regional presets
@@ -77,7 +78,7 @@ class RadioDefaultsScreen(BoxLayout):
                              color="accent", h=26))
         for key in rd.preset_keys():
             b = Button(text=rd.preset_label(key), size_hint_y=None, height=dp(46),
-                       halign="left", font_size="14.5sp", background_normal="",
+                       halign="left", valign="middle", font_size="14.5sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             b.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(20), v[1])))

@@ -23,6 +23,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from monitor import trust
 
 _STATUS = {
@@ -55,11 +56,10 @@ class TrustedOperatorsScreen(BoxLayout):
         self.spacing = dp(8)
         self._on_change = on_change
         self.add_widget(_line("Trusted operators", bold=True, size="22sp", h=40))
-        self.add_widget(_line(
+        self.add_widget(grow_to_text(_line(
             "Node Medic units and the trust between them. Trust is per-unit and "
             "never inherited — a clone of a clone must be approved by you.",
-            # two lines at the enlarged size; dp(40) held one and would clip
-            size="13sp", color="text_secondary", h=2 * theme.line_dp("13sp")))
+            size="13sp", color="text_secondary")))
         body = ScrollView()
         self._list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         self._list.bind(minimum_height=self._list.setter("height"))
@@ -71,9 +71,9 @@ class TrustedOperatorsScreen(BoxLayout):
         self._list.clear_widgets()
         us = trust.units()
         if not us:
-            self._list.add_widget(_line(
+            self._list.add_widget(grow_to_text(_line(
                 "No other units yet. When you clone this medic (the Clone button "
-                "under BUILD), the new unit appears here.", size="13.5sp", color="text_secondary", h=44))
+                "under BUILD), the new unit appears here.", size="13.5sp", color="text_secondary")))
             return
         for u in us:
             self._list.add_widget(self._card(u))
@@ -107,7 +107,8 @@ class TrustedOperatorsScreen(BoxLayout):
         when = ""
         if u.get("established_at"):
             when = "  ·  " + datetime.fromtimestamp(u["established_at"]).strftime("%d %b %Y")
-        card.add_widget(_line(f"{via}{when}", size="12.5sp", color="text_secondary", h=20))
+        card.add_widget(grow_to_text(_line(f"{via}{when}", size="12.5sp",
+                                           color="text_secondary")))
 
         if u["status"] == "trusted":
             card.add_widget(self._btn("Revoke trust", "red",

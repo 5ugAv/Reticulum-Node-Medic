@@ -36,6 +36,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — stage titles/bodies/buttons; step rows
                         # translate at render (STEP_TITLES stays English source)
 
@@ -244,8 +245,7 @@ class MitosisScreen(BoxLayout):
         # the text grew - so the Raspberry Pi and its 5V/5A supply, the first
         # and most important items, vanished off-screen while every other line
         # stayed. A parts list that hides parts is worse than no parts list.
-        body.size_hint_y = None
-        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(body)
         _scroll = ScrollView(size_hint=(1, 1))
         _scroll.add_widget(body)
         self.add_widget(_scroll)
@@ -327,8 +327,7 @@ class MitosisScreen(BoxLayout):
             color="text_secondary", size="16sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
-        body.size_hint_y = None
-        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(body)
         self._insert_body = body
         self.add_widget(body)
         try:
@@ -857,9 +856,7 @@ class MitosisScreen(BoxLayout):
         self.add_widget(title)
         body = _label(msg, color="text_primary", size="15sp")
         body.valign = "top"
-        body.size_hint_y = None
-        body.size_hint_y = None
-        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(body)
         self.add_widget(body)
         again = Button(text=tr("Try again →"), size_hint_y=None, height=dp(56),
                        font_size="20sp", background_normal="",
@@ -928,8 +925,7 @@ class MitosisScreen(BoxLayout):
                       color="text_secondary", size="14sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
-        hint.size_hint_y = None
-        hint.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(hint)
         self.add_widget(hint)
 
         def tick(_dt):
@@ -991,8 +987,7 @@ class MitosisScreen(BoxLayout):
             color="text_primary", size="16sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
-        body.size_hint_y = None
-        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(body)
         self.add_widget(body)
         stuck = _small_btn(tr("Nothing is happening"))
         stuck.bind(on_release=lambda *_: self._show_power_help())
@@ -1058,8 +1053,7 @@ class MitosisScreen(BoxLayout):
             color="text_primary", size="15sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
-        body.size_hint_y = None
-        body.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(body)
         self.add_widget(body)
         wifi = _small_btn(tr("No cable - it joins my WiFi instead"))
         wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
@@ -1147,8 +1141,7 @@ class MitosisScreen(BoxLayout):
         _wait = self._while_you_wait()
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
-        _wait.size_hint_y = None
-        _wait.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+        grow_to_text(_wait)
         self.add_widget(_wait)
 
         self._rows = {}
@@ -1345,9 +1338,7 @@ class MitosisScreen(BoxLayout):
                        name=name, ident=(f" ({ident[:8]})" if ident else "")),
                 color="text_primary", size="15sp")
             done.markup = True
-            done.size_hint_y = None
-            # bind to the wrapped text, not a fixed 80px that clipped it
-            done.bind(texture_size=lambda w, v: setattr(w, "height", v[1]))
+            grow_to_text(done)
             # Into the SCROLLED list, not onto the screen. As a sibling of the
             # ladder it had to share 480px with eighteen rows, so the closing
             # message - the part saying what you now have and what to do next -

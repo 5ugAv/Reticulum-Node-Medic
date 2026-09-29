@@ -24,6 +24,7 @@ from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.onscreen_keyboard import bind_field
 from provisioning import tool_datetime as td
 
@@ -60,7 +61,7 @@ class DateTimeScreen(BoxLayout):
         row.add_widget(self._auto)
         col.add_widget(row)
 
-        self._sync_status = _line("", size="13sp", color="text_secondary", h=24)
+        self._sync_status = grow_to_text(_line("", size="13sp", color="text_secondary"))
         col.add_widget(self._sync_status)
 
         # -- manual fields ----------------------------------------------------
@@ -96,7 +97,7 @@ class DateTimeScreen(BoxLayout):
         self._sync_now.bind(on_release=lambda *_: self._do_sync_now())
         col.add_widget(self._sync_now)
 
-        self._status = _line("", size="13sp", color="green", h=24)
+        self._status = grow_to_text(_line("", size="13sp", color="green"))
         col.add_widget(self._status)
 
         body.add_widget(col)

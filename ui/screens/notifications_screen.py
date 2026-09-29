@@ -16,6 +16,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — Notifications labels/buttons/status
 from ui.onscreen_keyboard import bind_field
 from monitor.operator_alert import (
@@ -26,11 +27,11 @@ def _lbl(text, size="14sp", color="text_secondary", h=None, bold=False):
     lbl = Label(text=text, font_size=theme.font_sp(size), halign="left",
                 valign="top", bold=bold,
                 color=theme.hex_to_rgba(theme.COLORS[color]), size_hint_y=None)
-    lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
     if h:
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
         lbl.height = dp(max(h, theme.line_dp(size)))
     else:
-        lbl.bind(texture_size=lambda i, v: setattr(i, "height", v[1]))
+        grow_to_text(lbl)
     return lbl
 
 
@@ -47,7 +48,7 @@ class NotificationsScreen(BoxLayout):
             "The Node Medic always alerts on its own screen. It can ALSO message you "
             "when a node has been unreachable for 3 days and needs a physical check — "
             "sent to your Reticulum address, so it reaches Sideband, Columba, or any "
-            "LXMF app on your phone. This is optional."), h=120))
+            "LXMF app on your phone. This is optional.")))
         self.add_widget(_lbl(tr("Your Reticulum / LXMF address"), size="13sp",
                              color="accent", h=24))
 

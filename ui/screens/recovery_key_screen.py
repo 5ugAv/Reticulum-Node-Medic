@@ -23,6 +23,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — recovery-key ceremony
 from provisioning import recovery_key
 
@@ -87,10 +88,10 @@ class RecoveryKeyScreen(BoxLayout):
         if self.medic_name:
             self.add_widget(_line(tr("for {name}").format(name=self.medic_name),
                                   "18sp", bold=True, h=26, color="accent"))
-        self.add_widget(_line(
+        self.add_widget(grow_to_text(_line(
             tr("This is your recovery key — the ONLY way into this Node Medic "
                "if you forget your password. It is shown once and never again."),
-            "14.5sp", color="text_secondary", h=48))
+            "14.5sp", color="text_secondary")))
 
         # the key itself, big, in two rows of four groups
         gs = recovery_key.groups(self.key)
@@ -101,9 +102,9 @@ class RecoveryKeyScreen(BoxLayout):
                 row.add_widget(_line(g, "28sp", bold=True, color="accent"))
             self.add_widget(row)
 
-        self.add_widget(_line(
+        self.add_widget(grow_to_text(_line(
             tr("Keep it away from the medic — a key taped to the case "
-               "protects nothing."), "13sp", color="text_secondary", h=24))
+               "protects nothing."), "13sp", color="text_secondary")))
 
         qr = self._qr_widget()
         if qr is not None:
@@ -142,7 +143,8 @@ class RecoveryKeyScreen(BoxLayout):
             return
         title_fn, body_fn = CONFIRMATIONS[step]
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(14))
-        box.add_widget(_line(body_fn(), "16sp", h=110))
+        box.add_widget(grow_to_text(_line(body_fn(), "16sp")))
+        box.add_widget(Widget())  # the buttons stay at the foot, whatever the text
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(54), spacing=dp(10))
         popup = Popup(title=title_fn(), content=box, size_hint=(0.9, 0.55),

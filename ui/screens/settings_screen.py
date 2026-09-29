@@ -22,6 +22,7 @@ from kivy.uix.switch import Switch
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr
 from ui.widgets.slide_to_power import SlideToPowerOff
 from provisioning.power import power_off
@@ -130,7 +131,7 @@ class SettingsScreen(BoxLayout):
         # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
         body.add_widget(_line(tr("Power"), bold=True, size="15sp", color="accent", h=28))
         body.add_widget(SlideToPowerOff(on_power_off=self._power_off))
-        self._power_note = _line("", size="12.5sp", color="text_secondary", h=24)
+        self._power_note = grow_to_text(_line("", size="12.5sp", color="text_secondary"))
         body.add_widget(self._power_note)
 
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, bar_width=dp(4))
@@ -168,12 +169,10 @@ class SettingsScreen(BoxLayout):
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         box.bind(minimum_height=box.setter("height"))
         box.add_widget(_line(tr("Home mode"), bold=True, size="15sp", color="accent", h=26))
-        box.add_widget(_line(
+        box.add_widget(grow_to_text(_line(
             "What the medic does at HOME (the front-page toggle). Backpack always "
             "turns transport OFF so moving it can't disturb the mesh.",
-            # two lines at the enlarged size — measured, this sentence wraps onto
-            # a second line once the type scale lifts it, and dp(34) held one
-            size="12.5sp", color="text_secondary", h=2 * theme.line_dp("12.5sp")))
+            size="12.5sp", color="text_secondary")))
         current = load_home_profile()
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
@@ -186,7 +185,7 @@ class SettingsScreen(BoxLayout):
             self._hp_buttons[val] = b
             row.add_widget(b)
         box.add_widget(row)
-        self._hp_note = _line("", size="12sp", color="text_secondary", h=32)
+        self._hp_note = grow_to_text(_line("", size="12sp", color="text_secondary"))
         box.add_widget(self._hp_note)
         self._paint_home_profile(current)
 
@@ -200,11 +199,11 @@ class SettingsScreen(BoxLayout):
         ab_sw.bind(active=lambda _s, v: save_auto_backpack(v))
         ab_row.add_widget(ab_sw)
         box.add_widget(ab_row)
-        box.add_widget(_line(
+        box.add_widget(grow_to_text(_line(
             "Uses the medic's GPS: when it senses it's on the move it switches to "
             "Backpack automatically. It never switches back on its own — tap the "
             "home icon to resume Home mode once you've settled.",
-            size="12sp", color="text_secondary", h=46))
+            size="12sp", color="text_secondary")))
         return box
 
     def _paint_home_profile(self, current):
@@ -270,10 +269,10 @@ class SettingsScreen(BoxLayout):
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         self._fix_btn.bind(on_release=lambda *_: self._fix_screen())
         box.add_widget(self._fix_btn)
-        self._fix_status = _line(
+        self._fix_status = grow_to_text(_line(
             "If the screen shifts or shows wrong colours, this re-starts the "
             "panel (screen blanks ~2 s).",
-            size="12.5sp", color="text_secondary", h=24)
+            size="12.5sp", color="text_secondary"))
         box.add_widget(self._fix_status)
 
     def _fix_screen(self):
@@ -367,11 +366,10 @@ class SettingsScreen(BoxLayout):
         sw.bind(active=lambda _i, v: alerts.set_enabled(bool(v)))
         row.add_widget(sw)
         box.add_widget(row)
-        box.add_widget(_line(
+        box.add_widget(grow_to_text(_line(
             "Visual for now — a banner on VITALS and the affected nodes pushed to "
             "the top. (An audible option can be added later.)",
-            # two lines at the enlarged size (see _home_mode_section)
-            size="12sp", color="text_secondary", h=2 * theme.line_dp("12sp")))
+            size="12sp", color="text_secondary")))
         return box
 
     # -- beacon history retention -------------------------------------------

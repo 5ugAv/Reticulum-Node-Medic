@@ -29,6 +29,7 @@ from kivy.uix.widget import Widget
 
 from node_profile import RadioConfig
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — screen chrome/buttons/popups; the birth
                         # certificate PAYLOAD (fields, radio-proof verdicts) is a
                         # DOCUMENT and stays in English
@@ -335,7 +336,7 @@ class BirthScreen(BoxLayout):
     def _sel_button(self, label, on_tap):
         """A wide tappable selector showing the current pick (or a prompt)."""
         btn = Button(text=label, size_hint_y=None, height=dp(52), halign="left",
-                     font_size="16sp", background_normal="",
+                     valign="middle", font_size="16sp", background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         btn.bind(size=lambda i, v: setattr(i, "text_size",
