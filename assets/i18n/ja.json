@@ -932,6 +932,7 @@
   "This needs a decision from you — it will not fill itself.": "これはあなたの判断が必要です — 自動では埋まりません。",
   "This node": "このノード",
   "This node is already running our config — adopt it as kin (no flashing, keeps its settings).": "このノードはすでに当方の設定で動作しています — kin として引き取ってください（書き込みなし、設定は保持）。",
+  "This picture is {n} bytes — {p} LoRa packets. Four bits a cell, {c} across: a nod to how pictures may travel the mesh.": "この画像は {n} バイト — LoRa パケット {p} 個。1 セル 4 ビット、横 {c} 列。メッシュを画像が旅する未来へのオマージュ。",
   "This radio hasn't been flashed and verified yet. Finish it here first.": "この無線機はまだ書き込みと検証が済んでいません。まずここで終わらせてください。",
   "To aim an antenna, the medic needs a distant beacon.\n\nConnect (or build) an RTNode-2400 and leave it powered on at a distance - it becomes the signal you tune against.": "アンテナを調整するには、medic に遠方のビーコンが必要です。\n\nRTNode-2400 を接続（または作成）し、離れた場所で電源を入れたままにしてください — それが調整の基準となる信号になります。",
   "To power off anyway: shift the knob  RIGHT, then DOWN, then RIGHT": "それでも電源を切るには: つまみを 右、次に 下、次に 右 へ動かす",

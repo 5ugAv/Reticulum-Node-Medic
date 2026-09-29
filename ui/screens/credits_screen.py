@@ -65,6 +65,53 @@ SPIEL = (
 )
 
 
+_MESH_PICTURE_SRC = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.pardir, "assets", "ui", "anim", "node_medic_cable.png"))
+
+
+def _mesh_picture():
+    """(Image widget, caption) for the block-art tile, or (None, None).
+
+    The medic's own artwork, quantised to the tool's 16-step green and drawn
+    as blocks; the caption carries the size ui.blockart measured. The green
+    ramp rather than DawnBringer's palette on purpose: thirteen revisions of
+    poster work settled on ONE green, and a full-colour tile here would be the
+    only multicolour thing on the glass. DB16 is a one-word switch if the
+    operator wants the post's own look.
+    """
+    try:
+        import io
+        from PIL import Image as PILImage
+        from kivy.core.image import Image as CoreImage
+        from ui import blockart
+        if not os.path.exists(_MESH_PICTURE_SRC):
+            return None, None
+        src = PILImage.open(_MESH_PICTURE_SRC).convert("RGBA")
+        ground = tuple(int(round(v * 255)) for v in
+                       theme.hex_to_rgba(theme.COLORS["background"])[:3])
+        flat = PILImage.new("RGBA", src.size, ground + (255,))
+        flat.alpha_composite(src)
+        grid = blockart.quantise(flat.convert("RGB"), blockart.DEFAULT_COLS,
+                                 blockart.PHOSPHOR16, by_luma=True)
+        nbytes = blockart.payload_bytes(grid)
+        npk = blockart.packets(nbytes)
+        rendered = blockart.render(grid, blockart.PHOSPHOR16, cell=8, gap=2,
+                                   ground=ground)
+        buf = io.BytesIO()
+        rendered.save(buf, format="PNG")
+        buf.seek(0)
+        tex = CoreImage(buf, ext="png").texture
+        widget = Image(texture=tex, size_hint_y=None, height=dp(260),
+                       allow_stretch=True, keep_ratio=True)
+        caption = tr("This picture is {n} bytes — {p} LoRa packets. Four bits a "
+                     "cell, {c} across: a nod to how pictures may travel the "
+                     "mesh.").format(n=f"{nbytes:,}", p=npk, c=blockart.DEFAULT_COLS)
+        return widget, caption
+    except Exception:                                              # noqa: BLE001
+        return None, None
+
+
 class CreditsScreen(BoxLayout):
     def __init__(self, on_select=None, on_back=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
@@ -98,6 +145,24 @@ class CreditsScreen(BoxLayout):
         spiel.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
         spiel.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(16)))
         body.add_widget(spiel)
+
+        # --- a picture that fits in a few mesh packets ------------------------
+        # Homage (operator, 2026-09-29) to a technique from the Reticulum
+        # community: 48 columns, 16 colours, rounded blocks — a picture small
+        # enough to send over LoRa. COMPUTED HERE, not pre-baked: the caption's
+        # byte and packet count come from ui.blockart on the same image, so the
+        # screen says what it measured rather than what somebody once claimed.
+        # Best-effort: no PIL, no asset, no caption — never a broken credits
+        # page over an ornament.
+        pic, caption = _mesh_picture()
+        if pic is not None:
+            body.add_widget(pic)
+            cap = Label(text=caption, halign="center", valign="top",
+                        font_size="13sp", size_hint_y=None,
+                        color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            cap.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+            cap.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(12)))
+            body.add_widget(cap)
 
         # --- Support this work: ETH address + scannable QR ---
         sup_title = Label(text=tr("Support this work"), bold=True, font_size="18sp",
