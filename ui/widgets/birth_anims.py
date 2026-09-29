@@ -117,7 +117,13 @@ SD_ENDURANCE_PNG = os.path.join(_ANIM_DIR, "sd_card_endurance.png")
 
 #: The medic's USB plug tip within node_medic_cable.png (normalised, from top-left).
 #: The board's bottom USB port descends onto this point.
-_PLUG_TIP = (0.041, 0.583)
+#:
+#: RE-MEASURED 2026-09-29 when the operator supplied new medic artwork. The
+#: sprite changed aspect (0.697 -> 0.676) and the plug moved, so the old
+#: (0.041, 0.583) would have landed the board on empty canvas beside the plug.
+#: A normalised anchor is measured against ONE picture; swapping the picture
+#: without re-measuring is how an animation quietly starts pointing at nothing.
+_PLUG_TIP = (0.074, 0.509)
 
 _TEX_CACHE: dict = {}
 

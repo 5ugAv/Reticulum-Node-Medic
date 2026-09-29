@@ -120,3 +120,30 @@ def test_the_app_turns_the_rule_on():
 def test_one_radius_for_the_whole_tool():
     """Buttons that disagree about their corners read as different apps."""
     assert RADIUS_DP == 10
+
+
+# --- the phosphor rim (2026-09-29) ------------------------------------------
+
+def test_dark_plates_wear_the_rim():
+    """The operator's map mockup draws every button as a green outline around a
+    dark plate. That is one rule, applied here, not 196 edits."""
+    from ui import theme
+    from ui.rounded import wants_rim
+    for name in ("surface", "background", "sidebar", "black"):
+        assert wants_rim(theme.hex_to_rgba(theme.COLORS[name])) is True, name
+
+
+def test_a_warning_button_is_never_ringed_in_green():
+    """Red is the warning. A phosphor rim around the delete button argues with
+    the one thing it exists to say — and amber and the status green are bright
+    enough that a rim would only muddy their edge."""
+    from ui import theme
+    from ui.rounded import wants_rim
+    for name in ("red", "amber", "green", "warning_yellow", "accent"):
+        assert wants_rim(theme.hex_to_rgba(theme.COLORS[name])) is False, name
+
+
+def test_a_transparent_button_has_no_rim_to_draw():
+    """The nav bar's Back and Home are text on the bar, not plates."""
+    from ui.rounded import wants_rim
+    assert wants_rim((0, 0, 0, 0)) is False

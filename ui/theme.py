@@ -10,16 +10,38 @@ from __future__ import annotations
 import math
 from typing import Tuple
 
-#: 1280x720 landscape dark theme palette.
+#: The palette. GREEN PHOSPHOR since 2026-09-29, on the operator's call: "we're
+#: going to change the feel of all the working pages to try and match the front
+#: screen with that green old computer style text."
+#:
+#: The three chrome colours were sampled off the shipped poster rather than
+#: invented — background from its ground, text_primary from the ink its key
+#: labels are drawn in. Everything downstream reads these names, so the whole
+#: tool changes here and nowhere else.
+#:
+#: WHAT DELIBERATELY DID NOT GO GREEN:
+#:
+#:  * the STATUS triad (green / amber / red). A healthy node has meant green
+#:    since the first screen; if the chrome is also green, the signal stops
+#:    being a signal. Status green stays the saturated #00c853 while chrome
+#:    text is a paler, yellower phosphor, so the two never read as the same ink.
+#:  * anything drawn on the SCAN basemap. That map is a PALE street raster and
+#:    green on it is unreadable — the operator said so on 2026-09-09 ("the green
+#:    text is hard to read on the map"). The blue that used to be `accent` now
+#:    lives on as `map_accent` and keeps the link lines and the engine's
+#:    suggestion markers legible over pale tiles.
 COLORS = {
-    "background": "#1a1a1a",
-    "surface": "#242424",
-    "sidebar": "#141414",
+    "background": "#041004",
+    "surface": "#0b1c0b",
+    "sidebar": "#020802",
     "black": "#000000",      # the front page's power line (2026-09-22)
-    "green": "#00c853",
+    "green": "#00c853",      # STATUS: healthy. NOT the chrome green.
     "amber": "#ff6d00",
     "red": "#d50000",
-    "accent": "#4fc3f7",
+    "accent": "#8ef04a",
+    # What `accent` was before the phosphor palette. Kept for everything drawn
+    # ON the pale basemap, where a green would disappear.
+    "map_accent": "#4fc3f7",
     # Node NAME text on the SCAN map. The dot still carries the health
     # colour (that is the signal); the name only has to be legible on a
     # pale basemap, and status green was not (operator, 2026-09-09:
@@ -32,8 +54,8 @@ COLORS = {
     "link_wifi": "#9ccc65",
     "link_internet": "#ffd54f",
     "link_bt": "#b388ff",
-    "text_primary": "#f0f0f0",
-    "text_secondary": "#9e9e9e",
+    "text_primary": "#b0f66c",     # the poster's own ink
+    "text_secondary": "#6f9a4a",
     "warning_yellow": "#ffd21e",   # requirement/hazard popups (dark text on this)
 }
 

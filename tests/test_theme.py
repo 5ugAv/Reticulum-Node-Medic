@@ -64,3 +64,41 @@ def test_status_color_maps_to_palette():
 def test_status_rgba_returns_tuple():
     rgba = theme.status_rgba("ok")
     assert len(rgba) == 4
+
+
+# --- the phosphor palette (2026-09-29) --------------------------------------
+
+def test_status_green_is_not_the_chrome_green():
+    """A healthy node has meant green since the first screen. With the chrome
+    now green too, the two must never be the same ink or the signal stops being
+    a signal."""
+    from ui import theme
+    assert theme.COLORS["green"] != theme.COLORS["accent"]
+    assert theme.COLORS["green"] != theme.COLORS["text_primary"]
+
+
+def test_the_basemap_keeps_a_colour_that_reads_on_pale_tiles():
+    """SCAN draws over a PALE street raster, and the operator said on
+    2026-09-09 that green on it is unreadable. The blue that used to be
+    `accent` survives as `map_accent` for everything drawn on those tiles."""
+    from ui import theme
+    from ui.screens import scan_screen          # noqa: F401 — import-time check
+    assert "map_accent" in theme.COLORS
+    src = open("ui/screens/scan_screen.py").read()
+    i = src.index("LINK_COLOURS = {")
+    block = src[i:i + 300]
+    assert '"lora": "map_accent"' in block, (
+        "the LoRa link lane went green — it is drawn on the pale basemap")
+    assert '"accent"' not in block
+
+
+def test_chrome_text_reads_on_the_chrome_ground():
+    """The palette is sampled off the poster, but the pairing still has to
+    work: the commonest text colour on the commonest surface."""
+    from ui import theme
+    def luma(h):
+        r, g, b, _a = theme.hex_to_rgba(h)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    for ground in ("background", "surface", "sidebar"):
+        assert luma(theme.COLORS["text_primary"]) - luma(theme.COLORS[ground]) > 0.45, (
+            f"text_primary is too close to {ground}")

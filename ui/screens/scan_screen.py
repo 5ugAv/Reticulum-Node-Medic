@@ -569,7 +569,8 @@ class MapPlot(Widget):
     #: One colour per transport, so a line's hue says what carried it. LoRa
     #: keeps the accent (the standard view); the overlays each get their own
     #: lane; "unknown"/"local" draw with LoRa (path-implied mesh links).
-    LINK_COLOURS = {"lora": "accent", "unknown": "accent", "local": "accent",
+    LINK_COLOURS = {"lora": "map_accent", "unknown": "map_accent",
+                    "local": "map_accent",
                     "wifi": "link_wifi", "internet": "link_internet",
                     "bluetooth": "link_bt"}
 
@@ -629,7 +630,8 @@ class MapPlot(Widget):
         for s in self._suggestions:
             sx, sy = view.to_screen(s["lat"], s["lon"])
             cx, cy = self.x + sx, self.y + sy
-            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.95))
+            # map_accent, not accent: these are drawn ON the pale basemap.
+            Color(*theme.hex_to_rgba(theme.COLORS["map_accent"], 0.95))
             if s.get("action") == "raise_antenna":
                 # A small up-arrow AT the kin node: raise what already
                 # stands here. Distinct from the new-node ring — same accent

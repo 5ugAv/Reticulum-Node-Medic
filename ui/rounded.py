@@ -42,6 +42,20 @@ RADIUS_DP = 10
 PRESS_DARKEN = 0.72
 DISABLED_ALPHA = 0.45
 
+#: The lit rim every button wears in the phosphor palette (operator artwork,
+#: 2026-09-29). Drawn here rather than per screen for the same reason the
+#: corners are: 196 call sites, and the 197th would be the plain one.
+RIM_WIDTH_DP = 1.2
+RIM_ALPHA = 0.55
+#: A rim on a button that is ALREADY bright would fight its own fill, so it is
+#: drawn only on the dark plates. Measured against the fill's own luminance.
+RIM_MAX_FILL_LUMA = 0.42
+#: ...and never on a SATURATED fill, however dark. The delete button is red
+#: because red is the warning; ringing it in phosphor green would argue with
+#: the one thing it is there to say. Chrome greys and near-blacks sit well
+#: under this; every status colour sits well above it.
+RIM_MAX_FILL_CHROMA = 0.25
+
 #: Kivy's own theme atlas. A button still pointing at it was never styled.
 _DEFAULT_ATLAS = "atlas://data/images/defaulttheme/"
 
@@ -73,6 +87,29 @@ def corner_radius(width: float, height: float, radius_px: float) -> float:
     if width <= 0 or height <= 0:
         return 0.0
     return max(0.0, min(radius_px, min(width, height) / 2.0))
+
+
+def fill_luma(rgba) -> float:
+    """Perceived brightness of a button's fill, 0..1. Used to decide whether a
+    lit rim would frame the plate or fight it."""
+    r, g, b = rgba[0], rgba[1], rgba[2]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def wants_rim(rgba) -> bool:
+    """Should this button wear the phosphor rim?
+
+    Only the dark plates. An accent or status-coloured button is already the
+    brightest thing in its row — outlining it in green would either vanish into
+    the fill or read as a second, contradictory state. A transparent button
+    (the nav bar's Back and Home) gets nothing to outline.
+    """
+    if len(rgba) > 3 and rgba[3] <= 0.05:
+        return False
+    r, g, b = rgba[0], rgba[1], rgba[2]
+    if max(r, g, b) - min(r, g, b) > RIM_MAX_FILL_CHROMA:
+        return False
+    return fill_luma(rgba) <= RIM_MAX_FILL_LUMA
 
 
 def press_tint(rgba, state: str = "normal", disabled: bool = False):
@@ -118,17 +155,30 @@ def _install(btn, radius_dp: float) -> None:
     btn.background_normal = ""
     btn.background_down = ""
 
+    from kivy.graphics import Line
+    rim_rgba = theme.hex_to_rgba(theme.COLORS["accent"], RIM_ALPHA)
     with before:
         btn._rb_color = Color(*press_tint(btn.background_color, btn.state, btn.disabled))
         btn._rb_rect = RoundedRectangle(
             pos=btn.pos, size=btn.size,
             radius=[corner_radius(btn.width, btn.height, radius_px)] * 4)
+        btn._rb_rim_c = Color(*rim_rgba)
+        btn._rb_rim = Line(width=dp(RIM_WIDTH_DP))
 
     def repaint(*_):
         btn._rb_color.rgba = press_tint(btn.background_color, btn.state, btn.disabled)
         btn._rb_rect.pos = btn.pos
         btn._rb_rect.size = btn.size
-        btn._rb_rect.radius = [corner_radius(btn.width, btn.height, radius_px)] * 4
+        r = corner_radius(btn.width, btn.height, radius_px)
+        btn._rb_rect.radius = [r] * 4
+        show = wants_rim(btn.background_color) and not btn.disabled
+        btn._rb_rim_c.rgba = rim_rgba if show else (0, 0, 0, 0)
+        if show:
+            inset = dp(RIM_WIDTH_DP)
+            btn._rb_rim.rounded_rectangle = (
+                btn.x + inset, btn.y + inset,
+                max(dp(2), btn.width - inset * 2),
+                max(dp(2), btn.height - inset * 2), max(0.0, r - inset))
 
     btn.bind(pos=repaint, size=repaint, state=repaint, disabled=repaint,
              background_color=repaint)
