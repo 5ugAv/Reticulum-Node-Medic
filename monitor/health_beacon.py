@@ -401,7 +401,15 @@ class HealthBeacon:
             on_solar=self.on_solar, on_mains=self.on_mains,
             lora_snr_db=self.lora_snr_db, lora_rssi_dbm=self.lora_rssi_dbm,
             lat=self.lat, lng=self.lng, position_sats=self.position_sats,
-            position_fuzzed=self.position_fuzzed)
+            position_fuzzed=self.position_fuzzed,
+            # THE v4 TAIL RIDES ALONG. Without this line every registry save
+            # re-encoded the beacon WITHOUT its neighbours, and the report a
+            # node had just made was gone by the next autosave (2026-09-29).
+            # A decoded entry carries only the 2-byte short hash; pack_
+            # neighbours accepts an int for exactly this round-trip, and the
+            # age (a bucket's upper bound) re-buckets to the same bucket.
+            neighbours=[(n["short_hash"], n["snr_db"], n["age_s"])
+                        for n in (self.neighbours or [])])
 
 
 def encode(
@@ -461,7 +469,12 @@ def encode(
         or on_battery or charging or on_solar or on_mains
         or lora_snr_db is not None or lora_rssi_dbm is not None
     )
-    version = (FORMAT_VERSION_V3 if has_pos
+    # THE HEADER BYTE MUST SAY V4 WHEN THE CALLER ASKED FOR V4. It used to top
+    # out at V3, so a v4 beacon was stamped 0x03, decoded as v3, and re-encoded
+    # by to_bytes() WITHOUT its neighbours — the report survived the radio and
+    # died in the registry (2026-09-29, caught by the round-trip test).
+    version = (FORMAT_VERSION_V4 if format_version >= FORMAT_VERSION_V4
+               else FORMAT_VERSION_V3 if has_pos
                else FORMAT_VERSION_V2 if has_tail else format_version)
     head = struct.pack(
         ">BIHbBBBBBB",
@@ -493,6 +506,16 @@ def encode(
         (LORA_LINK_UNKNOWN if lora_rssi_dbm is None else max(-127, min(127, lora_rssi_dbm))),
     )
     if not has_pos:
+        if format_version >= FORMAT_VERSION_V4:
+            # A v4 beacon WITHOUT a position still carries its neighbours.
+            # This early return used to drop them: the tail is appended after
+            # the position block, so a node with no GPS — every Pi node, whose
+            # reporter sends no position — silently lost its whole report, on
+            # first encode and on every registry round-trip (2026-09-29). The
+            # position block is written as "unknown" (the decoder already
+            # treats POSITION_UNKNOWN as no place) so the tail has its slot.
+            pos = struct.pack(">iiB", POSITION_UNKNOWN, POSITION_UNKNOWN, 0)
+            return head + tail + pos + pack_neighbours(neighbours)
         return head + tail
     # v3 position tail: int32 microdegrees + [flags|sats] byte. A v3 beacon
     # with no fix carries the sentinel — "I can know my position but don't

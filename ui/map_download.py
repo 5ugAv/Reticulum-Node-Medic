@@ -598,3 +598,35 @@ def carried_of(tiles, dest_path: str) -> int:
         return have
     except Exception:                     # noqa: BLE001
         return 0
+
+
+def carried_summary(dest_path: Optional[str] = None) -> dict:
+    """What this medic carries, for a sentence a stranger can read.
+
+    ``{"tiles": int, "zmin": int|None, "zmax": int|None, "terrain": bool}``;
+    tiles 0 means no basemap at all. Read straight off the SQLite so it can
+    never disagree with what the map will actually draw. Used by the setup
+    wizard's maps step (operator, 2026-09-29: "if someone's building a Node
+    Medic from the GitHub repo, they'll need to download all the resources —
+    that should happen during setup").
+    """
+    import os
+    import sqlite3
+    from ui.map_tiles import MAPS_DIR       # the one place the maps folder is named
+    path = dest_path or os.path.join(MAPS_DIR, "offline.mbtiles")
+    out = {"tiles": 0, "zmin": None, "zmax": None,
+           "terrain": os.path.exists(terrain_dest(path))}
+    if not os.path.exists(path):
+        return out
+    try:
+        con = sqlite3.connect(path)
+        try:
+            n, zmin, zmax = con.execute(
+                "SELECT COUNT(*), MIN(zoom_level), MAX(zoom_level) FROM tiles"
+            ).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return out
+    out.update(tiles=int(n or 0), zmin=zmin, zmax=zmax)
+    return out

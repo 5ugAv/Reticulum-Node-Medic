@@ -22,13 +22,13 @@ periodic heartbeat, plus an immediate beacon when the medic commands one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from monitor.health_beacon import (
     HealthBeacon,
     BOARD_PI_PROPAGATION,
-    FORMAT_VERSION_V2,
+    FORMAT_VERSION_V2, FORMAT_VERSION_V4,
 )
 
 #: Disk usage (percent) at/above which the node flags a fault — a propagation
@@ -66,6 +66,54 @@ class PiHealthInputs:
     # the node's own view of its LoRa link (from RNS/RNode packet stats)
     lora_snr_db: Optional[int] = None
     lora_rssi_dbm: Optional[int] = None
+    #: Who THIS node hears: ``[(dest_hash_bytes_or_hex, snr_db|None, age_s)]``.
+    #: Empty means "heard nobody worth reporting" AND "not gathered" alike —
+    #: see collect_pi_health for why the beacon stays v2 then.
+    neighbours: list = field(default_factory=list)
+
+
+def _short(dest_hash):
+    """The 16-bit pointer a neighbour entry carries — see health_beacon.short_hash."""
+    from monitor.health_beacon import short_hash
+    return short_hash(dest_hash)
+
+
+def gather_neighbours(now=None, run=None, timeout_s: float = 30.0) -> list:
+    """Who this node hears, from ITS OWN path table: ``rnpath -t --json`` rows
+    at one hop, with how long ago each was last updated. One hop is the
+    honest bar — a node this one reaches only through another is that other
+    node's neighbour, not ours. No SNR: the path table does not carry one, and
+    a guessed figure is worse than none. Empty on any failure (no rnpath, no
+    RNS, a parse error): a missing report costs a line on a map, a wrong one
+    draws a link that is not there.
+    """
+    import json
+    import subprocess
+    import time as _time
+    now = _time.time() if now is None else now
+    try:
+        if run is None:
+            raw = subprocess.run(["bash", "-lc", "rnpath -t --json 2>/dev/null"],
+                                 capture_output=True, text=True,
+                                 timeout=timeout_s).stdout
+        else:
+            raw = run("rnpath -t --json")
+        rows = json.loads(raw or "[]")
+    except Exception:                                              # noqa: BLE001
+        return []
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        try:
+            if int(r.get("hops", 99)) != 1:
+                continue
+            h = str(r.get("hash", "")).strip()
+            ts = float(r.get("timestamp", 0) or 0)
+            if len(h) < 4 or ts <= 0:
+                continue
+            out.append((h, None, max(0.0, now - ts)))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 def collect_pi_health(inp: PiHealthInputs) -> HealthBeacon:
@@ -84,8 +132,15 @@ def collect_pi_health(inp: PiHealthInputs) -> HealthBeacon:
       * fault              -> disk critically full
     """
     fault = inp.disk_used_pct >= DISK_FAULT_PCT
+    # v4 ONLY WHEN THERE IS SOMETHING TO SAY. A v4 beacon with an empty
+    # neighbour list is 10 bytes longer than v2 (the position slot plus the
+    # count byte) on every beacon, forever, to say "nobody" — and LoRa airtime
+    # is the scarcest shared thing this tool spends. So a node that hears
+    # nobody keeps sending v2, and the medic reads that as "not reported"
+    # rather than "isolated", which is the safe reading either way.
+    version = FORMAT_VERSION_V4 if inp.neighbours else FORMAT_VERSION_V2
     return HealthBeacon(
-        format_version=FORMAT_VERSION_V2,
+        format_version=version,
         uptime_s=max(0, inp.uptime_s),
         free_heap_kb=max(0, min(FREE_KB_CAP, inp.free_ram_kb)),
         wifi_rssi_dbm=0,                     # Pi wifi RSSI not carried here
@@ -109,6 +164,10 @@ def collect_pi_health(inp: PiHealthInputs) -> HealthBeacon:
         bt_up=inp.bt_up,
         lora_snr_db=inp.lora_snr_db,
         lora_rssi_dbm=inp.lora_rssi_dbm,
+        neighbours=[{"short_hash": _short(h), "snr_db": snr,
+                     "age_s": age}
+                    for (h, snr, age) in inp.neighbours
+                    if _short(h) is not None],
     )
 
 
@@ -193,7 +252,9 @@ def read_os_inputs(power_source: str = "battery",
         pass
 
     src = (power_source or "").lower()
+    neighbours = gather_neighbours()
     return PiHealthInputs(
+        neighbours=neighbours,
         uptime_s=uptime_s,
         free_ram_kb=free_ram_kb,
         disk_used_pct=disk_pct,

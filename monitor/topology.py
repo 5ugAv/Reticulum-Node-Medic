@@ -67,7 +67,11 @@ class TopoEdge:
     #: The rssi above may only ever be a measurement OF this transport —
     #: a Wi-Fi number on a LoRa edge is assumption dressed as data.
     transport: str = "unknown"
-    kind: str = "direct"             # "direct" (medic heard) | "relayed" (path-implied)
+    #: "direct" (medic heard) | "relayed" (path-implied) | "reported" (a NODE
+    #: said it hears the other end — the one kind the medic did not witness;
+    #: see monitor.neighbours).
+    kind: str = "direct"
+    snr: Optional[int] = None        # dB, only on reported edges (the node's own figure)
 
     def key(self) -> Tuple[str, str]:
         return tuple(sorted((self.a, self.b)))
@@ -262,6 +266,20 @@ def build_topology(registry, paths: List[dict], now: float,
                 add_edge(TopoEdge(_f(via), _f(dst), kind="relayed",
                                   transport="unknown"))
 
+    # WHAT THE NODES SAY THEY HEAR (2026-09-29). Every edge above starts at
+    # the medic; these are the node-to-node links, from each node's own v4
+    # beacon report, matched strictly and folded the same way. add_edge's
+    # rule holds: a measured edge on the same pair still wins, and a reported
+    # one never evicts a witnessed one.
+    try:
+        from monitor.neighbours import reported_edges
+        for e in reported_edges(getattr(registry, "nodes", {}) or {}, now):
+            if _f(e.a) == _f(e.b):
+                continue                 # two aspects of one device: not a link
+            add_edge(TopoEdge(_f(e.a), _f(e.b), rssi=None, transport="lora",
+                              kind="reported", snr=e.snr))
+    except Exception:                                              # noqa: BLE001
+        pass                             # a bad report must never cost the map
     topo.edges = list(seen_edges.values())
     return topo
 

@@ -88,7 +88,11 @@ def test_link_segments_draws_line_between_two_located_nodes():
     # LoRa is the standard view, overlays filterable (typed-edges decision).
     # Since 2026-08-27 the heard RSSI rides sixth, so the map can draw
     # thickness = strength (None here: this link is path-implied).
-    lat1, lon1, lat2, lon2, transport, rssi = segs[0]
+    # seven since 2026-09-29: the edge's KIND rides along so the map can draw
+    # a node-REPORTED link (a node said it hears the other end) a touch firmer
+    # than a path-implied one — the one line the medic did not witness itself.
+    lat1, lon1, lat2, lon2, transport, rssi, kind = segs[0]
+    assert kind in ("direct", "relayed", "reported")
     assert rssi is None
     assert transport in ("lora", "wifi", "internet", "bluetooth",
                          "local", "unknown")

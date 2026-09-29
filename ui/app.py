@@ -409,7 +409,7 @@ class _BackSwipeWrap(FloatLayout):
 class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
-    def _with_back(self, widget):
+    def _with_back(self, widget, back_to="home"):
         """A mode screen with the bottom sliver ('←' left, 'Home' centre) and the
         LEFT-EDGE SWIPE. Arrow and swipe are ONE action: for a MULTI-PAGE flow
         it steps back ONE page first — if the wrapped screen has
@@ -436,7 +436,13 @@ class ReticulumNodeMedicApp(App):
                         return              # the screen stepped back a page
                 except Exception:
                     pass
-            self.switch_mode("home")
+            # WHERE THE ARROW GOES. It used to be home, always. From a node's
+            # detail page — reached by tapping a row in VITALS — that threw
+            # the operator out of the list they were reading (2026-09-29:
+            # "when I press back, it takes me back to the home page instead of
+            # back to the list of nodes that I just came from"). A screen
+            # opened FROM another screen now names it as back_to.
+            self.switch_mode(back_to)
 
         def on_home():
             h = getattr(widget, "handle_home", None)
@@ -2029,7 +2035,12 @@ class ReticulumNodeMedicApp(App):
         from ui.screens.node_detail_screen import NodeDetailScreen
         scr = self.sm.get_screen("node_detail")
         scr.clear_widgets()
-        scr.add_widget(self._with_back(NodeDetailScreen(
+        # Back returns to whatever opened this page (VITALS' list, or the map's
+        # node pick) — never to home over the operator's head. Home is still
+        # one tap away in the bar. Fall back to vitals when the origin is a
+        # transient screen that will not exist to return to.
+        origin = self.sm.current if self.sm.current not in ("node_detail", "home", "") else "vitals"
+        scr.add_widget(self._with_back(back_to=origin, widget=NodeDetailScreen(
             rec, now, on_poll=self._ping_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,

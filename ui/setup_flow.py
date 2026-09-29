@@ -75,6 +75,7 @@ TOUR_BIRTH = "tour_birth"
 TOUR_FIRSTBORN = "tour_firstborn"
 TOUR_VITALS = "tour_vitals"
 TOUR_SCAN = "tour_scan"
+TOUR_MAPS_DOWNLOAD = "tour_maps_download"
 TOUR_TRIAGE = "tour_triage"
 TOUR_PROBE = "tour_probe"
 TOUR_MITOSIS = "tour_mitosis"
@@ -357,6 +358,25 @@ _TOUR_STEPS = [
              "It is also the front door to placing one: pick a spot, and the "
              "build starts from there with the position already stamped in."},
 
+    # THE MAPS LIVE ON THE MEDIC, AND SOMEBODY HAS TO PUT THEM THERE (operator,
+    # 2026-09-29: "if someone's building a Node Medic from the GitHub repo,
+    # they'll need to download all the resources — that should happen during
+    # setup, not on the screen"). A clone arrives carrying its builder's area;
+    # a fresh build carries nothing. Either way this is the moment to say so.
+    # The body's {summary} is filled in by setup_steps() from the SQLite the
+    # map actually draws from, so the sentence can never disagree with the map.
+    {"key": TOUR_MAPS_DOWNLOAD, "part": TOUR, "poster_card": "scan", "opens": "scan",
+     "opens_label": "Open MAPS to download an area",
+     "title": "MAPS — carried, not fetched",
+     "body": "Node Medic keeps its maps on the SD card so the mesh can be built "
+             "with no internet at all.\n\n"
+             "{summary}\n\n"
+             "To add an area you need Wi-Fi once: open MAPS, look at the place, "
+             "and the Offline maps control appears — it only shows itself when "
+             "the map is looking at somewhere this medic does not carry. "
+             "Terrain for that area downloads in the same pass, so the map can "
+             "tell you whether two nodes can see each other."},
+
     {"key": TOUR_TRIAGE, "part": TOUR, "poster_card": "triage", "opens": "triage",
      "title": "ANTENNA — aim it on site",
      "body": "For when you are standing at the node with it in your hands. "
@@ -439,7 +459,38 @@ def setup_steps(state: Optional[SetupState] = None,
                 continue
             steps.append(dict(s))
     steps.extend(dict(s) for s in _TOUR_STEPS)
+    for st_ in steps:
+        if st_["key"] == TOUR_MAPS_DOWNLOAD:
+            st_["body"] = st_["body"].format(summary=maps_summary_sentence())
     return steps
+
+
+def maps_summary_sentence(summary: Optional[dict] = None) -> str:
+    """One honest sentence about what this medic carries.
+
+    Read from the map's own SQLite (ui.map_download.carried_summary) unless a
+    summary is handed in for a test. Three cases, and the words differ because
+    the situations do: nothing (a fresh build — the download is the next
+    thing to do), a basemap without terrain, or both.
+    """
+    if summary is None:
+        try:
+            from ui.map_download import carried_summary
+            summary = carried_summary()
+        except Exception:                                          # noqa: BLE001
+            summary = {"tiles": 0, "zmin": None, "zmax": None, "terrain": False}
+    n = int(summary.get("tiles") or 0)
+    if n <= 0:
+        return ("This medic carries NO maps yet, so the map will be blank until "
+                "an area is downloaded.")
+    zr = ""
+    if summary.get("zmin") is not None and summary.get("zmax") is not None:
+        zr = f" (zoom {summary['zmin']}–{summary['zmax']})"
+    if summary.get("terrain"):
+        return (f"This medic already carries an area — {n:,} map tiles{zr}, "
+                "with terrain.")
+    return (f"This medic already carries an area — {n:,} map tiles{zr} — but "
+            "no terrain for it yet.")
 
 
 def _level_wants(state: SetupState, factor: str) -> bool:

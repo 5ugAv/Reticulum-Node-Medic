@@ -111,7 +111,7 @@ def link_segments(topo, transports=None):
         # strength (edge_width was built for exactly this and sat unwired
         # until 2026-08-27); None = path-implied, minimum weight.
         out.append((a.lat, a.lon, b.lat, b.lon, t,
-                    getattr(e, "rssi", None)))
+                    getattr(e, "rssi", None), getattr(e, "kind", "direct")))
     return out
 
 
@@ -590,15 +590,23 @@ class MapPlot(Widget):
                 lat1, lon1, lat2, lon2 = seg[0], seg[1], seg[2], seg[3]
                 t = seg[4] if len(seg) > 4 else "unknown"
                 rssi = seg[5] if len(seg) > 5 else None
+                kind = seg[6] if len(seg) > 6 else "direct"
             except (TypeError, ValueError, IndexError):
                 continue
             # thickness = heard strength (operator vision: "line THICKNESS =
             # connection strength"); a strong link also draws a little more
             # opaque so weight reads even when zoomed out.
             w = edge_width(rssi)
+            # A node-REPORTED link (kind="reported") is the one line here the
+            # medic did not witness itself — a node said it hears the other
+            # end. Drawn a touch firmer than a path-implied one so the two
+            # read as different evidence, in the same lane colour because it
+            # is the same transport.
+            alpha = 0.30 + 0.08 * (w - 1.0)
+            if kind == "reported":
+                alpha = 0.55
             Color(*theme.hex_to_rgba(
-                theme.COLORS[self.LINK_COLOURS.get(t, "accent")],
-                0.30 + 0.08 * (w - 1.0)))
+                theme.COLORS[self.LINK_COLOURS.get(t, "map_accent")], alpha))
             x1, y1 = view.to_screen(lat1, lon1)
             x2, y2 = view.to_screen(lat2, lon2)
             Line(points=[self.x + x1, self.y + y1, self.x + x2, self.y + y2],

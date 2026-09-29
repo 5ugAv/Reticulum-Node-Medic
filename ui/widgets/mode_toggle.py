@@ -419,9 +419,18 @@ class ModeSwapArrow(Widget):
         cx = x + w * (0.5 + self.BOW)                 # control point, bowed right
         cy = y + h * (0.5 + self.BOW)
         head = min(w, h) * self.HEAD
+        # THE BODY IS A POLYLINE, computed here. Line(bezier=...) drew nothing
+        # on the panel — the two heads floated with no curve between them
+        # (operator photo, 2026-09-29). A quadratic Bezier sampled at 24 steps
+        # is the same curve and cannot fail to draw.
+        pts = []
+        for i in range(25):
+            u = i / 24.0
+            pts += [(1 - u) ** 2 * ax + 2 * (1 - u) * u * cx + u ** 2 * bx,
+                    (1 - u) ** 2 * ay + 2 * (1 - u) * u * cy + u ** 2 * by]
         with self.canvas.before:
             Color(*theme.hex_to_rgba(theme.COLORS["accent"], self.ALPHA))
-            Line(bezier=[ax, ay, cx, cy, bx, by], width=dp(1.6))
+            Line(points=pts, width=dp(1.6))
             # A head at each end, angled off the curve's tangent there — which
             # at a quadratic Bezier's ends is simply the line to the control
             # point, so the heads sit on the curve instead of beside it.
