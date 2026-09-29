@@ -507,10 +507,13 @@ class BirthGuideScreen(BoxLayout):
         self._detect_shown_at = _t.monotonic()
         step.start()
         # 'Choose manually' is an ADVANCED escape, not the primary action (the
-        # primary path is just plugging a node in) — muted khaki-green so it doesn't
-        # invite like the usual green Next.
-        step.next_btn.background_color = theme.hex_to_rgba("#78866b")
-        step.next_btn.color = theme.hex_to_rgba("#f0f0f0")
+        # primary path is just plugging a node in) — muted so it doesn't invite
+        # like the usual accent Next. "Muted" is spelled in the THEME: a surface
+        # plate with primary text, the same plate every secondary button wears.
+        # It was a hardcoded khaki (#78866b) with white text, which stayed
+        # khaki when the palette went green on 2026-09-29.
+        step.next_btn.background_color = theme.hex_to_rgba(theme.COLORS["surface"])
+        step.next_btn.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
         self._start_board_poll(anim, on_present=self._on_detect)
         self._start_detect_pi_poll()
         self._start_detect_nudge(step)

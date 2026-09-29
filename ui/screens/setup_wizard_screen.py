@@ -402,8 +402,10 @@ class SetupWizardScreen(BoxLayout):
         b = Button(text=step.get("opens_label") or tr("Open it now"),
                    size_hint_y=None, height=dp(48),
                    bold=True, font_size="15sp", background_normal="",
-                   background_color=theme.hex_to_rgba("#78866b"),
-                   color=theme.hex_to_rgba("#f0f0f0"))
+                   # secondary action: the theme's surface plate, not a khaki
+                   # of its own (it stayed khaki through the green repaint)
+                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                   color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         b.bind(on_release=lambda *_: self._leave_for(step["opens"]))
         return b
 

@@ -593,7 +593,7 @@ class PiImagerScreen(BoxLayout):
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         msg = Label(halign="center", valign="middle", markup=True, text=tr(
             "Write Pi OS to [b]{model} ({size})[/b] at [b]{path}[/b]?\n\n"
-            "[color=ff5555]This ERASES everything on that card.[/color] It cannot be "
+            "[color=" + theme.COLORS["red"].lstrip("#") + "]This ERASES everything on that card.[/color] It cannot be "
             "the medic's own storage — only a removable USB card is allowed.").format(
                 model=self._target["model"] or tr("the USB card"),
                 size=self._target["size"], path=self._target["path"]))

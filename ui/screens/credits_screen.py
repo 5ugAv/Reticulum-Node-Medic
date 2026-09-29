@@ -86,7 +86,12 @@ class CreditsScreen(BoxLayout):
         for role, name in CREDITS:
             # tr() falls straight through for the entries that are pure proper
             # nouns — only the prose roles/lines carry catalog keys.
-            row = Label(text=f"[color=9e9e9e]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
+            # The role in text_secondary FROM THE THEME. It was a hardcoded
+            # "9e9e9e" in the markup, so when the palette went green on
+            # 2026-09-29 these were the one thing on the page that stayed
+            # grey — a colour that no longer exists anywhere else in the tool.
+            role_hex = theme.COLORS["text_secondary"].lstrip("#")
+            row = Label(text=f"[color={role_hex}]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
                         markup=True, halign="center", valign="middle",
                         size_hint_y=None, height=dp(52),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))

@@ -146,7 +146,10 @@ class TriageScreen(FloatLayout):
         from kivy.graphics import Color as _C, Line as _Ln, RoundedRectangle as _RR
         self._nr_overlay = Label(
             text=tr("NOT READING") + "\n"
-                 "[size=13sp][color=e8c9c9]"
+                 # amber: this overlay is a WARNING state, and amber is the
+                 # warning colour the green repaint kept out of the green on
+                 # purpose. It was a pink of its own (e8c9c9).
+                 "[size=13sp][color=" + theme.COLORS["amber"].lstrip("#") + "]"
                  + tr("No signal from the antenna") + "[/color][/size]",
             markup=True, halign="center", valign="middle", bold=True,
             font_size="27sp", size_hint=(None, None), opacity=0,
@@ -363,8 +366,14 @@ class TriageScreen(FloatLayout):
         self._set_not_reading(False)      # a real sample (full or partial) resumed
         if sample.get("partial"):
             # live noise, but nothing heard yet — scoring needs a transmission
-            self._noise.text = ("[color=9e9e9e]" + tr("Background noise") + "[/color]\n"
-                                f"[color=f0f0f0][b]{sample['noise']:.0f} dBm[/b][/color]")
+            # Theme colours, not the literal old grey/white: when the palette
+            # went green (2026-09-29) this readout was still wearing 9e9e9e
+            # and f0f0f0 by name — two colours that no longer exist anywhere
+            # else on the glass.
+            sec = theme.COLORS["text_secondary"].lstrip("#")
+            pri = theme.COLORS["text_primary"].lstrip("#")
+            self._noise.text = (f"[color={sec}]" + tr("Background noise") + "[/color]\n"
+                                f"[color={pri}][b]{sample['noise']:.0f} dBm[/b][/color]")
             self._write_guidance(tr(
                 "Listening... noise floor is live. To begin scoring, another "
                 "node must transmit - send an announce from your phone or a node."))
