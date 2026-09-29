@@ -631,7 +631,7 @@ def test_confirming_mid_walk_banks_the_walk_then_goes_home(monkeypatch,
     assert ended == [True], "end_walk(persist=True): the evidence is banked"
     assert banked and banked[0][0][0].heard_from == DEV
     assert switched == ["home"]
-    assert popups and popups[0][0] == "Boundary walk finished"
+    assert popups and popups[0][0] == "Range test finished"
     assert s._walk_session is None
 
 
@@ -765,7 +765,7 @@ def test_end_walk_banks_inside_the_try_and_says_a_failed_save(monkeypatch,
     monkeypatch.setattr(bw, "append_evidence", boom)
     s, ended, switched, popups = _screen(monkeypatch, walk=_live_walk(2))
     s.end_walk(persist=True)
-    assert popups and popups[0][0] == "Boundary walk not saved"
+    assert popups and popups[0][0] == "Range test not saved"
     assert "Could not save the walk" in popups[0][1]
     assert s._walk_session is None, "let go of AFTER the failure was said"
     assert "not saved" in capsys.readouterr().out

@@ -131,7 +131,7 @@ class TriageScreen(FloatLayout):
         # their own instinct, and this screen is titled SIGNAL & PLACEMENT).
         if on_boundary_walk is not None:
             bwk = Button(
-                text=tr("Boundary test"), font_size="13sp",
+                text=tr("Range test"), font_size="13sp",
                 size_hint=(None, None), size=(dp(120), dp(40)),
                 pos_hint={"right": 0.98, "y": 0.035},
                 background_normal="", background_down="",

@@ -239,7 +239,7 @@ def test_the_gate_survives_a_reader_that_hands_back_rubbish():
 def test_the_walk_is_reachable_and_feeds_placement():
     from tests.srcutil import func_source, src
     detail = src("ui/screens/node_detail_screen.py")
-    assert "Boundary walk" in detail and "_on_walk" in detail
+    assert "Range test" in detail and "_on_walk" in detail
     app = src("ui/app.py")
     assert "_start_boundary_walk" in app and "_walk_probe" in app
     assert "load_walk_failures" in app, (

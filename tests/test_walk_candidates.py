@@ -67,9 +67,9 @@ def test_the_window_is_a_declared_number_not_a_magic_one():
 def test_antenna_offers_the_walk_and_vitals_keeps_its_button():
     from tests.srcutil import src
     tri = src("ui/screens/triage_screen.py")
-    assert "on_boundary_walk" in tri and "Boundary test" in tri
+    assert "on_boundary_walk" in tri and "Range test" in tri
     detail = src("ui/screens/node_detail_screen.py")
-    assert "Boundary walk" in detail, (
+    assert "Range test" in detail, (
         "the node's own page keeps its direct button (operator, 2026-09-19: "
         "'leave the boundary walk button inside vitals ... but ALSO under "
         "antenna')")

@@ -45,11 +45,11 @@ def test_boundary_toggle_strings_are_in_every_catalog():
     for lang in _CATALOGS:
         d = json.load(open(os.path.join(ROOT, f"assets/i18n/{lang}.json"),
                            encoding="utf-8"))
-        assert "Boundary  off" in d, lang
-        assert "Boundary  on" in d, lang
+        assert "Range  off" in d, lang
+        assert "Range  on" in d, lang
         # Two-space-before-off/on, the same style "Links  off"/"Terrain  off"
         # already use in every one of these catalogs.
-        assert "  " in d["Boundary  off"] or d["Boundary  off"] != "Boundary  off", lang
+        assert "  " in d["Range  off"] or d["Range  off"] != "Range  off", lang
 
 
 # ---- MapPlot: pure toggle/fetch logic ---------------------------------------
@@ -130,7 +130,7 @@ class _Screen:
     def __init__(self, provider=None):
         self._boundary_on = False
         self.plot = _Plot(provider=provider)
-        self.boundary_btn = _Btn("Boundary  off")
+        self.boundary_btn = _Btn("Range  off")
         self._boundary_coverage_suffix = \
             scan.ScanScreen._boundary_coverage_suffix.__get__(self)
 
@@ -140,11 +140,11 @@ def test_toggle_boundary_flips_state_label_and_the_plot():
     scan.ScanScreen._toggle_boundary(s)
     assert s._boundary_on is True
     assert s.plot._show_boundary is True
-    assert s.boundary_btn.text == "Boundary  on"          # no provider -> no suffix
+    assert s.boundary_btn.text == "Range  on"          # no provider -> no suffix
     scan.ScanScreen._toggle_boundary(s)
     assert s._boundary_on is False
     assert s.plot._show_boundary is False
-    assert s.boundary_btn.text == "Boundary  off"
+    assert s.boundary_btn.text == "Range  off"
 
 
 def test_toggle_boundary_on_appends_real_coverage_when_a_provider_is_wired():
@@ -155,9 +155,9 @@ def test_toggle_boundary_on_appends_real_coverage_when_a_provider_is_wired():
               "total_failures_used": 3}]
     s = _Screen(provider=lambda: rings)
     scan.ScanScreen._toggle_boundary(s)
-    assert s.boundary_btn.text == "Boundary  on (3/24)"
+    assert s.boundary_btn.text == "Range  on (3/24)"
     scan.ScanScreen._toggle_boundary(s)
-    assert s.boundary_btn.text == "Boundary  off"
+    assert s.boundary_btn.text == "Range  off"
 
 
 def test_boundary_coverage_suffix_is_empty_when_nothing_is_drawn():
@@ -180,7 +180,7 @@ def test_boundary_coverage_suffix_swallows_a_raising_provider():
 
 def test_boundary_button_exists_and_is_bound_to_the_toggle():
     body = func_source(SCREEN, "__init__", cls="ScanScreen")
-    assert 'tr("Boundary  off")' in body
+    assert 'tr("Range  off")' in body
     assert "boundary_btn.bind" in body
     assert "_toggle_boundary" in body
     # Sits in the same header row as Links/Terrain, not a separate row.

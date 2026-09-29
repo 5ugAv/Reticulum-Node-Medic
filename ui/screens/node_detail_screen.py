@@ -393,7 +393,7 @@ class NodeDetailScreen(BoxLayout):
             # above once squeezed two buttons into "mapelete" (2026-08-14).
             walk_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                                  height=dp(52), spacing=dp(8))
-            walk = Button(text=tr("Boundary walk — find this node's reach"),
+            walk = Button(text=tr("Range test — how far this node reaches"),
                           font_size=theme.font_sp("16sp"), bold=True,
                           background_normal="",
                           background_color=theme.hex_to_rgba(

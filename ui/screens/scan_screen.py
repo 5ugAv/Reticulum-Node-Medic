@@ -1315,7 +1315,7 @@ class ScanScreen(BoxLayout):
         # finished walk draws around a node, in that node's own status
         # colour. Default OFF, silent unless a boundary_provider was wired —
         # the same house rule as Links/Terrain.
-        self.boundary_btn = Button(text=tr("Boundary  off"), size_hint=(None, 1),
+        self.boundary_btn = Button(text=tr("Range  off"), size_hint=(None, 1),
                                    width=dp(110))
         self.boundary_btn.bind(on_release=lambda *_: self._toggle_boundary())
         header_row.add_widget(self.header)
@@ -1632,10 +1632,10 @@ class ScanScreen(BoxLayout):
         self._boundary_on = not self._boundary_on
         self.plot.set_show_boundary(self._boundary_on)
         if self._boundary_on:
-            self.boundary_btn.text = tr("Boundary  on") \
+            self.boundary_btn.text = tr("Range  on") \
                 + self._boundary_coverage_suffix()
         else:
-            self.boundary_btn.text = tr("Boundary  off")
+            self.boundary_btn.text = tr("Range  off")
 
     def _toggle_terrain(self):
         """Flip the terrain shading on/off.
@@ -2912,7 +2912,7 @@ class ScanScreen(BoxLayout):
         hud.bind(minimum_height=hud.setter("height"))
         top = BoxLayout(orientation="horizontal", size_hint=(1, None),
                         height=dp(54), spacing=dp(8))
-        self._walk_lbl = Label(text=tr("Boundary walk — walk away from "
+        self._walk_lbl = Label(text=tr("Range test — walk away from "
                                        "{name}. Pinging…").format(
                                            name=self._walk_session.node_name),
                                bold=True, font_size=theme.font_sp("16sp"),
@@ -3399,14 +3399,14 @@ class ScanScreen(BoxLayout):
                     + tr("Could not save the walk: {err}").format(err=save_err)
                     + "\n\n" + tr("Nothing was banked. Check the medic's "
                                     "storage, then walk again."),
-                    tr("Boundary walk not saved"), False, tone="warning")
+                    tr("Range test not saved"), False, tone="warning")
             else:
                 # "banked as range evidence" is a sentence for someone who
                 # already knows this tool. SAY WHAT READS IT — and that one
                 # walk does not move the range number (operator, 2026-09-21).
                 requirement_popup(
                     story + "\n\n" + tr(
-                        "{o} link sightings and {f} boundary losses banked as "
+                        "{o} link sightings and {f} drop-outs banked as "
                         "range evidence.").format(o=len(obs), f=len(fails))
                     + "\n\n" + tr(
                         "Node Medic uses this to work out how far your nodes "
@@ -3414,7 +3414,7 @@ class ScanScreen(BoxLayout):
                         "Build next on this map.")
                     + " " + tr("The range number only moves once several "
                                "different nodes have evidence."),
-                    tr("Boundary walk finished"), False, tone="success")
+                    tr("Range test finished"), False, tone="success")
         except Exception:                                          # noqa: BLE001
             pass
         self._walk_session = None

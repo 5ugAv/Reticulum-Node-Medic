@@ -2079,7 +2079,7 @@ class ReticulumNodeMedicApp(App):
         # ANTENNA calls the button "Boundary test", everything downstream calls
         # it a boundary walk.
         intro = Label(
-            text=tr("A boundary walk finds how far a node really reaches: you "
+            text=tr("A range test finds how far a node really reaches: you "
                     "walk away from it on foot while Node Medic pings it, and "
                     "it flashes when the mesh drops. Pick the node you will "
                     "walk away from — you need to be standing at it."),
@@ -2100,7 +2100,7 @@ class ReticulumNodeMedicApp(App):
             msg = Label(
                 text=tr("No node has been heard in the last {h:.0f} hours, so "
                         "there is nothing to walk against yet. Power a node "
-                        "(or your boundary probe) and wait for it to "
+                        "(or your range probe) and wait for it to "
                         "announce.").format(h=WALK_CANDIDATE_MAX_AGE_H),
                 halign="center", valign="middle",
                 color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
@@ -2187,7 +2187,7 @@ class ReticulumNodeMedicApp(App):
                            theme.COLORS["surface"]),
                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         body.add_widget(close)
-        pop = Popup(title=tr("Boundary test"), content=body,
+        pop = Popup(title=tr("Range test"), content=body,
                     size_hint=(0.92, 0.8), auto_dismiss=True)
         close.bind(on_release=lambda *_: pop.dismiss())
         pop.open()
