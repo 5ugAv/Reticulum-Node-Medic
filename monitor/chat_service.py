@@ -101,7 +101,7 @@ class ChatService:
                 os.makedirs(os.path.dirname(self.identity_path), exist_ok=True)
                 ident.to_file(self.identity_path)
             self._identity = ident
-            router = LXMF.LXMRouter(storagepath=self.storage_path)
+            router = self._make_router(LXMF)
             self._dest = router.register_delivery_identity(
                 ident, display_name=self.display_name)
             router.register_delivery_callback(self._on_delivery)
@@ -144,6 +144,20 @@ class ChatService:
         import random
         now = time.time() if now is None else now
         self._next_announce = now + random.uniform(ANNOUNCE_MIN_S, ANNOUNCE_MAX_S)
+
+    def _make_router(self, LXMF):
+        """LXMRouter.__init__ installs SIGINT/SIGTERM handlers — Python allows
+        that on the main thread only, and this starts on the mesh-listener
+        thread (live, 2026-09-29 23:58: "signal only works in main thread").
+        Kivy owns the process signals in any case; the router never gets
+        them. atexit still runs its exit_handler."""
+        import signal as _signal
+        orig = _signal.signal
+        _signal.signal = lambda *a, **k: None
+        try:
+            return LXMF.LXMRouter(storagepath=self.storage_path)
+        finally:
+            _signal.signal = orig
 
     def tick(self, force: bool = False, now: float = None) -> bool:
         """Periodic (the app calls it once a minute): re-announce when the

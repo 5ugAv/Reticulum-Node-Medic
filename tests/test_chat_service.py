@@ -312,3 +312,27 @@ def test_last_post_office_check_is_timestamped(svc):
     t = svc.last_sync_at
     svc.tick(force=True)
     assert svc.last_sync_at >= t
+
+
+def test_router_is_built_on_a_worker_thread_despite_its_signal_handlers(tmp_path):
+    """LXMRouter.__init__ calls signal.signal(); off the main thread Python
+    raises. The service starts on the mesh-listener thread — live failure
+    2026-09-29 23:58."""
+    import signal, threading
+
+    class SignalRouter(FakeRouter):
+        def __init__(self, storagepath=None):
+            signal.signal(signal.SIGTERM, lambda *_: None)   # what LXMF does
+            super().__init__(storagepath)
+
+    class L(FakeLXMF):
+        LXMRouter = SignalRouter
+
+    s = ChatService(MessageStore(str(tmp_path / "c")), identity_path=str(tmp_path / "id"),
+                    storage_path=str(tmp_path / "r"), lxmd_identity_path=str(tmp_path / "none"),
+                    rns=FakeRNS, lxmf=L)
+    out = {}
+    t = threading.Thread(target=lambda: out.setdefault("ok", s.start()))
+    t.start(); t.join(5)
+    assert out["ok"] is True and s.running, s.last_error
+    assert signal.getsignal(signal.SIGTERM) is not None     # module left intact
