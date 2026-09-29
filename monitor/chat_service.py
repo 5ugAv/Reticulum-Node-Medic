@@ -136,8 +136,12 @@ class ChatService:
             self.tick(force=True)
             return True
         except Exception as e:                                         # noqa: BLE001
+            import traceback
             self.last_error = str(e)
-            self._log("chat failed to start: %r" % (e,))
+            tb = traceback.extract_tb(e.__traceback__)
+            where = ("%s:%d in %s" % (tb[-1].filename.split("/")[-1], tb[-1].lineno,
+                                      tb[-1].name)) if tb else "?"
+            self._log("chat failed to start: %r (raised at %s)" % (e, where))
             return False
 
     def _schedule_announce(self, now: float = None):

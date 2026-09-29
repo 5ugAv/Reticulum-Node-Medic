@@ -1560,11 +1560,11 @@ class ReticulumNodeMedicApp(App):
         if chat is not None and chat.running:
             return False
         if chat is not None and chat.last_error:
-            # It tried and failed; a few more goes (rnsd may be settling),
+            # It tried and failed; more goes (a minute — rnsd may be settling),
             # then stop — the screen shows last_error in words. Not a
             # 3-second retry storm in the log (live, 2026-09-29 23:58).
             self._chat_attempts = getattr(self, "_chat_attempts", 0) + 1
-            if self._chat_attempts > 5:
+            if self._chat_attempts > 20:
                 self._chat_log("chat: giving up after %d attempts: %s"
                                % (self._chat_attempts, chat.last_error))
                 return False
