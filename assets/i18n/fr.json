@@ -842,6 +842,7 @@
   "Terrain  off": "Relief  non",
   "Terrain  on": "Relief  oui",
   "Terrain could not be downloaded this time — try again later.": "Le relief n'a pas pu être téléchargé cette fois — réessayez plus tard.",
+  "Terrain is cached but could not be read: {why}": "Le relief est en cache mais n'a pas pu être lu : {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Cette construction ne s'est pas terminée. Corrigez l'étape ci-dessus puis touchez Réessayer — rien n'est perdu ici.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Cette construction n'a pas abouti. L'étape en échec et sa raison figurent dans le journal. Corrigez-la, puis touchez Réessayer — rien n'est perdu ici.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Cela ne ressemble pas à une clé de récupération (32 caractères, en huit groupes de quatre).",

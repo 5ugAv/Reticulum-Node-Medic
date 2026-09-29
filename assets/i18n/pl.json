@@ -842,6 +842,7 @@
   "Terrain  off": "Teren  wył.",
   "Terrain  on": "Teren  wł.",
   "Terrain could not be downloaded this time — try again later.": "Nie udało się pobrać ukształtowania terenu tym razem — spróbuj ponownie później.",
+  "Terrain is cached but could not be read: {why}": "Teren jest w pamięci podręcznej, ale nie udało się go odczytać: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Ta kompilacja się nie zakończyła. Napraw powyższy krok i stuknij Spróbuj ponownie — nic tu nie przepada.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Ta budowa się nie zakończyła. Nieudany krok i jego przyczyna są w dzienniku budowy. Napraw to i dotknij Spróbuj ponownie — nic tu nie ginie.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "To nie wygląda na klucz odzyskiwania (32 znaki, w ośmiu grupach po cztery).",

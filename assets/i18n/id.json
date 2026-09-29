@@ -842,6 +842,7 @@
   "Terrain  off": "Medan  mati",
   "Terrain  on": "Medan  hidup",
   "Terrain could not be downloaded this time — try again later.": "Data medan tidak bisa diunduh kali ini — coba lagi nanti.",
+  "Terrain is cached but could not be read: {why}": "Data medan tersimpan tetapi tidak bisa dibaca: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Build itu tidak selesai. Perbaiki langkah di atas, lalu ketuk Coba lagi — tidak ada yang hilang di sini.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Pembuatan itu tidak selesai. Langkah yang gagal dan alasannya ada di log pembuatan. Perbaiki, lalu ketuk Coba lagi — tidak ada yang hilang di sini.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Itu tidak tampak seperti kunci pemulihan (32 karakter, dalam delapan kelompok berisi empat).",

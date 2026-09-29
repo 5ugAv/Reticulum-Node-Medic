@@ -842,6 +842,7 @@
   "Terrain  off": "Gelände  aus",
   "Terrain  on": "Gelände  an",
   "Terrain could not be downloaded this time — try again later.": "Das Gelände konnte diesmal nicht heruntergeladen werden — versuche es später erneut.",
+  "Terrain is cached but could not be read: {why}": "Gelände ist zwischengespeichert, konnte aber nicht gelesen werden: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Dieser Build wurde nicht fertig. Behebe den Schritt oben und tippe auf Erneut versuchen — hier geht nichts verloren.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Dieser Aufbau wurde nicht fertig. Der fehlgeschlagene Schritt und sein Grund stehen im Build-Log. Beheben Sie das und tippen Sie auf Erneut versuchen — hier geht nichts verloren.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Das sieht nicht nach einem Wiederherstellungsschlüssel aus (32 Zeichen in acht Vierergruppen).",

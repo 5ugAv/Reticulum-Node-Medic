@@ -295,7 +295,11 @@ class MapPlot(Widget):
         self._links_provider = links_provider
         self._suggestions_provider = suggestions_provider
         self._boundary_provider = boundary_provider
-        self._show_links = False                 # mesh-lines toggle (default OFF)
+        # DEFAULT ON since 2026-09-29 (operator: "links should be default set
+        # to on so the user can turn them off if they want"). Seeing which
+        # nodes reach each other was always the point of this screen, and a
+        # layer that starts off is a layer most people never find.
+        self._show_links = True                  # mesh-lines toggle (default ON)
         self._show_boundary = False               # boundary-ring toggle (default OFF)
         self._suggestions = []                   # last-drawn markers (for hit-test)
         self._last_view = None                   # current MercatorView (for taps)
@@ -1284,7 +1288,7 @@ class ScanScreen(BoxLayout):
         self._radius_km = radius_km
         self._on_place = on_place
         self._on_node_pick = on_node_pick
-        self._links_on = False                    # mesh-lines toggle state
+        self._links_on = True                     # mesh-lines toggle state (default ON)
         self._boundary_on = False                 # boundary-ring toggle state
         self._nodes: List[dict] = []
         self._downloading = False
@@ -1304,7 +1308,7 @@ class ScanScreen(BoxLayout):
         self.recenter_btn.bind(on_release=lambda *_: self._recenter())
         # Mesh-lines toggle: draw the who-hears-whom connection lines. Default OFF;
         # does nothing visible unless a links_provider was wired.
-        self.links_btn = Button(text=tr("Links  off"), size_hint=(None, 1), width=dp(92))
+        self.links_btn = Button(text=tr("Links  on"), size_hint=(None, 1), width=dp(104))
         self.links_btn.bind(on_release=lambda *_: self._toggle_links())
         # Terrain overlay: high ground shaded light, low ground dark. Default
         # OFF and silent when no terrain has been cached — the map download
@@ -1589,7 +1593,8 @@ class ScanScreen(BoxLayout):
         """Flip the mesh connection lines on/off (header button)."""
         self._links_on = not self._links_on
         self.plot.set_show_links(self._links_on)
-        self.links_btn.text = tr("Links  on") if self._links_on else tr("Links  off")
+        self.links_btn.text = (tr("Links  on") + self._links_count_suffix()
+                               if self._links_on else tr("Links  off"))
 
     def _boundary_coverage_suffix(self):
         """" (x/y)" appended to the ON label — x = confirmed-loss sectors
@@ -1623,6 +1628,22 @@ class ScanScreen(BoxLayout):
         if total == 0:
             return ""
         return f" ({filled}/{total})"
+
+    def _links_count_suffix(self):
+        """" (0)" when the layer is on and there is nothing it can draw.
+
+        A toggle that flips to "on" and changes nothing on the glass reads as a
+        broken button — the operator said exactly that on 2026-09-29. It is not
+        broken: a line needs BOTH ends located, and on a medic with no GPS fix
+        every edge in the path table starts at the medic, which then has no
+        position of its own. The count says so in the one place the operator is
+        already looking.
+        """
+        try:
+            n = len(self.plot._fetch_links())
+        except Exception:                                          # noqa: BLE001
+            return ""
+        return "  (%d)" % n
 
     def _toggle_boundary(self):
         """Flip the boundary-walk rings on/off (header button, operator
@@ -1664,7 +1685,17 @@ class ScanScreen(BoxLayout):
             # medic ever tried terrain, or where the terrain fetch failed
             # silently on the day (it never fails the base map for it), ends
             # up in exactly this state: streets carried, terrain not.
-            if self._tiles is not None:
+            # AND SAY WHY IT COULD NOT BE READ, when the reason is not
+            # "absent". For a month this branch told the operator their terrain
+            # was not downloaded while 2104 tiles of it sat beside the basemap:
+            # the lookup was raising AttributeError into a bare except. A
+            # refusal that can only say one thing will eventually say the wrong
+            # one, so it now repeats what actually failed.
+            why = getattr(self, "_terrain_why", None)
+            if why and not why.startswith("no terrain file"):
+                self._set_status(tr("Terrain is cached but could not be read: "
+                                    "{why}").format(why=why), "alert")
+            elif self._tiles is not None:
                 self._set_status(tr(
                     "This area's streets are carried, but not its terrain — "
                     "download this area again to try adding it."), "alert")
@@ -1678,21 +1709,36 @@ class ScanScreen(BoxLayout):
                                  else tr("Terrain  off"))
 
     def _terrain_store(self):
-        """The cached terrain beside the current basemap, or None."""
+        """The cached terrain beside the current basemap, or None.
+
+        ``self._tiles`` is an MBTiles OBJECT, not a path — terrain_dest wants
+        the path, and handing it the object raised AttributeError straight into
+        the bare except below. The store came back None, and the toggle said
+        "terrain is not downloaded" while 58 MB of it sat next to the basemap
+        (2026-09-29). The reason is now recorded rather than swallowed, so the
+        refusal can say what actually went wrong instead of guessing.
+        """
         cached = getattr(self, "_terrain_cache", "unset")
         if cached != "unset":
             return cached
         store = None
+        self._terrain_why = None
         try:
             import os
             from ui.map_download import TERRAIN_ZOOM, terrain_dest
             from monitor.terrain import TerrariumStore
-            if self._tiles:
-                path = terrain_dest(self._tiles)
+            if not self._tiles:
+                self._terrain_why = "no basemap is loaded"
+            else:
+                base = getattr(self._tiles, "path", self._tiles)
+                path = terrain_dest(base)
                 if os.path.exists(path):
                     store = TerrariumStore(path, zoom=TERRAIN_ZOOM)
-        except Exception:
+                else:
+                    self._terrain_why = "no terrain file beside %s" % base
+        except Exception as exc:                                   # noqa: BLE001
             store = None
+            self._terrain_why = "%s: %s" % (type(exc).__name__, exc)
         self._terrain_cache = store
         return store
 

@@ -842,6 +842,7 @@
   "Terrain  off": "Terräng  av",
   "Terrain  on": "Terräng  på",
   "Terrain could not be downloaded this time — try again later.": "Terrängen kunde inte laddas ner den här gången — försök igen senare.",
+  "Terrain is cached but could not be read: {why}": "Terrängen finns cachad men kunde inte läsas: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Bygget blev inte klart. Åtgärda steget ovan och tryck på Försök igen — inget går förlorat här.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Bygget blev inte klart. Det misslyckade steget och orsaken finns i bygg-loggen. Åtgärda det och tryck sedan Försök igen – inget här går förlorat.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Det ser inte ut som en återställningsnyckel (32 tecken, i åtta grupper om fyra).",

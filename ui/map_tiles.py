@@ -207,6 +207,13 @@ class MBTiles:
     (y flipped vs the XYZ/slippy scheme this module uses), so get_tile flips."""
 
     def __init__(self, path: str):
+        #: WHERE THIS CAME FROM. Kept because callers need to find files that
+        #: live BESIDE the basemap — the terrain cache is written to
+        #: "<basemap>.terrain.mbtiles". Without it, ui.map_download.terrain_dest
+        #: was handed this object instead of a path, raised AttributeError into
+        #: a bare except, and SCAN told the operator terrain was not downloaded
+        #: for a month while 2104 tiles of it sat on the disk (2026-09-29).
+        self.path = path
         self.conn = sqlite3.connect(path)
         self.conn.execute("PRAGMA busy_timeout=30000")
 

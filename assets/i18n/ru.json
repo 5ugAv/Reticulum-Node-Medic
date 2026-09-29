@@ -842,6 +842,7 @@
   "Terrain  off": "Рельеф  выкл.",
   "Terrain  on": "Рельеф  вкл.",
   "Terrain could not be downloaded this time — try again later.": "Не удалось загрузить рельеф в этот раз — попробуйте позже.",
+  "Terrain is cached but could not be read: {why}": "Рельеф закэширован, но не читается: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "Сборка не завершилась. Исправьте шаг выше и нажмите «Повторить» — здесь ничего не теряется.",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "Эта сборка не завершилась. Неудавшийся шаг и его причина записаны в журнале сборки. Исправьте и нажмите «Try again» — здесь ничего не потеряно.",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "Это не похоже на ключ восстановления (32 символа, восемью группами по четыре).",

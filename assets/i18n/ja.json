@@ -842,6 +842,7 @@
   "Terrain  off": "地形  オフ",
   "Terrain  on": "地形  オン",
   "Terrain could not be downloaded this time — try again later.": "今回は地形をダウンロードできませんでした — 後でもう一度お試しください。",
+  "Terrain is cached but could not be read: {why}": "地形データはキャッシュされていますが読み込めませんでした: {why}",
   "That build didn't finish. Fix the step above, then tap Try again — nothing here is lost.": "ビルドが完了しませんでした。上のステップを修正して「再試行」をタップしてください — ここで失われるものはありません。",
   "That build didn't finish. The failed step and its reason are in the build log. Fix it, then tap Try again — nothing here is lost.": "このビルドは完了しませんでした。失敗した手順とその理由はビルドログにあります。直してから「Try again」を押してください — ここまでの作業は失われません。",
   "That doesn't look like a recovery key (32 characters, in eight groups of four).": "復旧キーの形式ではないようです（4 文字を 8 組、計 32 文字）。",

@@ -245,3 +245,132 @@ class ModeToggle(TwoStateToggle):
     # Input is the base class's: this switch FLIPS on a tap anywhere on it,
     # which is TwoStateToggle.target_state's default. It can, because neither of
     # its ends publishes anything about the physical world.
+
+
+class ModeIcon(Widget):
+    """ONE mode's illustration, shown whether or not it is the chosen one.
+
+    Operator, 2026-09-29, with a sketch: both pictures on the front page — the
+    cottage to the left of the gear, the hiker below it — "and when one is
+    pressed, it will go into colour and the other one will go grey and vice
+    versa. So the coloured one will show that it's selected through colour and
+    the non-selected one will be greyed out."
+
+    That is a different idea from the switch it replaces. ``ModeToggle`` showed
+    only the CURRENT mode, so the picture was the state and the other mode was
+    invisible — you had to know that tapping a cottage would give you a hiker.
+    Two pictures, one lit, says the same thing without the knowledge.
+
+    No caption and no outline. The operator asked for "just the existing
+    pictures", and the orange ring the old switch drew round the plate was the
+    last non-green thing on the poster.
+    """
+
+    #: How the unchosen mode is drawn: dimmed toward grey rather than hidden.
+    #: Kivy multiplies the texture by this colour, so equal channels desaturate
+    #: it as they darken it — which is what "greyed out" means here.
+    DIM = (0.42, 0.42, 0.42, 0.62)
+
+    def __init__(self, mode: str, selected: bool = False, on_select=None, **kwargs):
+        super().__init__(**kwargs)
+        self.mode = ModeToggle.normalise(mode)
+        self._selected = bool(selected)
+        self._on_select = on_select
+        self._busy = False
+        self.bind(pos=self._redraw, size=self._redraw)
+        self._redraw()
+
+    # -- state --------------------------------------------------------------
+    @property
+    def selected(self) -> bool:
+        return self._selected
+
+    def set_selected(self, on: bool) -> None:
+        on = bool(on)
+        if on != self._selected:
+            self._selected = on
+            self._redraw()
+
+    def set_busy(self, busy: bool) -> None:
+        """Mid-switch. Both icons dim, so a tap is never left looking ignored
+        while rnsd restarts."""
+        busy = bool(busy)
+        if busy != self._busy:
+            self._busy = busy
+            self._redraw()
+
+    # -- drawing ------------------------------------------------------------
+    def _redraw(self, *_):
+        from kivy.graphics import Color, Line, Rectangle
+        self.canvas.before.clear()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        tex = _mode_texture(self.mode)
+        lit = self._selected and not self._busy
+        with self.canvas.before:
+            if tex is not None:
+                tw, th = tex.size
+                scale = min(w / tw, h / th) if tw and th else 1.0
+                dw, dh = tw * scale, th * scale
+                Color(1, 1, 1, 1) if lit else Color(*self.DIM)
+                Rectangle(texture=tex, pos=(x + (w - dw) / 2.0, y + (h - dh) / 2.0),
+                          size=(dw, dh))
+            else:
+                # no asset (CI): line-art, in the palette rather than the old
+                # green/amber pair — the colour cue is now lit-vs-dim, not hue.
+                col = theme.hex_to_rgba(
+                    theme.COLORS["accent" if lit else "text_secondary"])
+                Color(*col)
+                s = min(w, h)
+                ox, oy = x + (w - s) / 2.0, y + (h - s) / 2.0
+                if self.mode == HOME:
+                    ModeToggle._draw_house(Line, ox, oy, s)
+                else:
+                    ModeToggle._draw_backpack(Line, ox, oy, s)
+
+    # -- touch --------------------------------------------------------------
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos) and not self._busy:
+            if self._on_select and not self._selected:
+                self._on_select(self.mode)
+            return True
+        return super().on_touch_down(touch)
+
+
+class ModePair:
+    """The two ModeIcons as one switch, so the app keeps its old handle.
+
+    ui/app.py drives the front page's mode control through ``mode_toggle`` —
+    ``.mode``, ``.set_state()``, ``.set_busy()`` — from three places, including
+    the movement detector that flips the medic to Backpack on its own. Splitting
+    one widget into two pictures must not require any of that to change, so the
+    pair answers to the same four calls and forwards them.
+
+    Not a Widget: the two icons sit at different corners of the screen, and a
+    container spanning both would be an invisible box over the globe swallowing
+    taps meant for the poster.
+    """
+
+    def __init__(self, home_icon, backpack_icon):
+        self.icons = {HOME: home_icon, BACKPACK: backpack_icon}
+
+    @property
+    def mode(self):
+        return HOME if self.icons[HOME].selected else BACKPACK
+
+    def set_state(self, mode):
+        mode = ModeToggle.normalise(mode)
+        for key, icon in self.icons.items():
+            icon.set_selected(key == mode)
+            icon.set_busy(False)
+
+    #: ``ModeToggle`` spelled it both ways; keep both so no caller has to care.
+    set_mode = set_state
+
+    def set_busy(self, busy):
+        for icon in self.icons.values():
+            icon.set_busy(busy)
+
+    def collide_point(self, *pos):
+        """True over EITHER picture — the home screen uses this to keep corner
+        controls out of the poster's tap-map."""
+        return any(i.collide_point(*pos) for i in self.icons.values())

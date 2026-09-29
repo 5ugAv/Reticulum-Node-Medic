@@ -407,3 +407,60 @@ def test_the_medics_own_map_really_ignores_the_share_answer():
     assert "shy" in names, (
         "a hidden node vanished from the medic's OWN map — the birth screen "
         "now promises the opposite")
+
+
+# --- both mode pictures, one lit (operator sketch, 2026-09-29) --------------
+
+def test_the_pair_answers_everything_the_single_switch_did():
+    """ui/app.py drives the front page's mode from three places — including the
+    movement detector that flips to Backpack on its own. Splitting one widget
+    into two pictures must not require any of that to change."""
+    from ui.widgets.mode_toggle import BACKPACK, HOME, ModePair
+
+    class FakeIcon:
+        def __init__(self, mode):
+            self.mode, self.selected, self.busy = mode, mode == HOME, False
+        def set_selected(self, on): self.selected = on
+        def set_busy(self, on): self.busy = on
+        def collide_point(self, *_pos): return False
+
+    home, pack = FakeIcon(HOME), FakeIcon(BACKPACK)
+    pair = ModePair(home, pack)
+    assert pair.mode == HOME
+    pair.set_state(BACKPACK)
+    assert pair.mode == BACKPACK and pack.selected and not home.selected
+    pair.set_mode(HOME)                       # the other spelling the app uses
+    assert pair.mode == HOME
+    pair.set_busy(True)
+    assert home.busy and pack.busy, "a tap must not look ignored while rnsd restarts"
+
+
+def test_an_unreadable_mode_still_settles_on_the_safe_end():
+    """set_mode() returns an empty mode when a switch fails, and that has to
+    land on the mobile leaf — the end that disturbs nothing."""
+    from ui.widgets.mode_toggle import BACKPACK, HOME, ModePair
+
+    class FakeIcon:
+        def __init__(self, mode): self.mode, self.selected = mode, False
+        def set_selected(self, on): self.selected = on
+        def set_busy(self, on): pass
+        def collide_point(self, *_pos): return False
+
+    pair = ModePair(FakeIcon(HOME), FakeIcon(BACKPACK))
+    pair.set_state("")
+    assert pair.mode == BACKPACK
+
+
+def test_the_front_page_shows_both_pictures_and_no_orange_ring():
+    """The operator asked for both, with the unchosen one greyed — and for the
+    orange outline to go, it being the last non-green thing on the poster."""
+    src = open("ui/screens/home_screen.py").read()
+    assert "ModeIcon(" in src and "ModePair(" in src
+    assert "ModeToggle(" not in src, "the single-picture switch is back"
+    assert src.count("ModeIcon(") == 2, "both modes must be on the page"
+    icons = open("ui/widgets/mode_toggle.py").read()
+    i = icons.index("class ModeIcon")
+    body = icons[i:]
+    assert 'COLORS["amber"]' not in body, (
+        "the backpack icon is drawing the old amber cue — the mode is shown by "
+        "lit-versus-grey now, not by hue")

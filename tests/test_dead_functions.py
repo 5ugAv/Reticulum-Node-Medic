@@ -35,7 +35,6 @@ CALLED_INVISIBLY = {
     "makefile": "socket stub, called by http.server internals.",
     "pytest_configure": "pytest hook.",
     "set_data": "Kivy widget method, called on instances built in a screen.",
-    "set_selected": "Kivy widget method, called on instances built in a screen.",
     "is_connected": "Connection protocol method, called on transport instances.",
     "on_start": "preview script entry point, run by hand.",
     # Built and deliberately dormant — each has a note where it lives.

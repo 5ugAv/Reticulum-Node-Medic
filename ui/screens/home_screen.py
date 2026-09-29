@@ -90,11 +90,27 @@ class HomeScreen(FloatLayout):
         # gear) — flips the medic's network role: HOME = propagation node (routing +
         # store-and-forward), BACKPACK = mobile leaf (transport off, won't disturb
         # the mesh while it moves).
-        from ui.widgets.mode_toggle import ModeToggle
-        self.mode_toggle = ModeToggle(
-            mode=initial_mode, on_toggle=(on_mode or (lambda m: None)),
-            pos_hint={"right": 0.85, "top": 0.99})   # top-right, just left of the gear
-        self.add_widget(self.mode_toggle)
+        # BOTH PICTURES, one lit (operator sketch, 2026-09-29): the cottage to
+        # the LEFT of the gear, the hiker BELOW it, and the chosen one in colour
+        # while the other greys out. The old switch showed only the current
+        # mode, so the alternative was invisible — you had to already know that
+        # tapping a cottage would hand you a hiker.
+        from ui.widgets.mode_toggle import BACKPACK, HOME, ModeIcon, ModePair
+        pick = on_mode or (lambda m: None)
+        icon = dp(62)
+        self.mode_home = ModeIcon(
+            HOME, selected=(initial_mode == HOME), on_select=pick,
+            size_hint=(None, None), size=(icon, icon),
+            pos_hint={"right": 0.862, "top": 0.985})     # left of the gear
+        self.mode_backpack = ModeIcon(
+            BACKPACK, selected=(initial_mode != HOME), on_select=pick,
+            size_hint=(None, None), size=(icon, icon),
+            pos_hint={"right": 0.985, "top": 0.878})     # below the gear
+        self.add_widget(self.mode_home)
+        self.add_widget(self.mode_backpack)
+        #: The app drives the mode from three places through this handle; the
+        #: pair answers to the same calls the single switch did.
+        self.mode_toggle = ModePair(self.mode_home, self.mode_backpack)
 
         # Battery gauge — hidden until a UPS HAT is present (opacity 0). Sits under
         # the power slide on the left. Tune pos_hint on-device once the HAT is on.
