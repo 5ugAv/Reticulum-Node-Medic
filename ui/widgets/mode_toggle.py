@@ -392,8 +392,13 @@ class ModeSwapArrow(Widget):
     #: How far the curve bows away from the straight line between the two
     #: pictures, as a fraction of the box. A straight line between two icons
     #: reads as a join; a bowed one reads as a movement.
-    BOW = 0.42
+    #: Negative bows the curve the OTHER way — toward the globe rather than
+    #: away from it (operator, 2026-09-29, looking at it on the glass).
+    BOW = -0.42
     HEAD = 0.30          # arrowhead length, as a fraction of the box
+    #: Half brightness: at full accent it competed with the two pictures it is
+    #: only there to relate (operator, same look).
+    ALPHA = 0.42
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -415,7 +420,7 @@ class ModeSwapArrow(Widget):
         cy = y + h * (0.5 + self.BOW)
         head = min(w, h) * self.HEAD
         with self.canvas.before:
-            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.85))
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"], self.ALPHA))
             Line(bezier=[ax, ay, cx, cy, bx, by], width=dp(1.6))
             # A head at each end, angled off the curve's tangent there — which
             # at a quadratic Bezier's ends is simply the line to the control

@@ -1447,11 +1447,15 @@ class BirthGuideScreen(BoxLayout):
             # last word was cut off by the card's bottom edge (operator photo).
             # The Pi card, with five description lines, was already given its
             # own number for exactly this reason.
-            # Taller since the cards carry a picture (2026-09-29). Still fixed
-            # and still generous — the note in _path_button holds: a card that
-            # sizes itself to its content overflowed, and a fixed box can only
-            # ever waste a little whitespace.
-            h = {"pi": 216, "radio": 198}.get(key, 186)
+            # Taller again (operator photo, 2026-09-29: the Pi card's
+            # description was clipped top and bottom). Two things ate the room
+            # at once — the picture takes 42% of the width, so every line of
+            # description wraps sooner, AND theme.font_sp pulls small text up
+            # hard (a "14sp" caption lands nearer 18sp on the panel). More
+            # lines in a narrower column needs a taller box, and the box stays
+            # FIXED: the note in _path_button holds, a self-sizing card
+            # overflowed once and a fixed one can only waste whitespace.
+            h = {"pi": 320, "radio": 260}.get(key, 236)
             col.add_widget(self._path_button(key, title, subtitle, height=h))
         if dropped:
             # Say WHY it is missing. An option that silently disappears between
@@ -1536,7 +1540,10 @@ class BirthGuideScreen(BoxLayout):
             return list(BIRTH_PATHS), ""
 
     def _over_air_button(self):
-        btn = Button(size_hint_y=None, height=dp(104), background_normal="",
+        # 104 -> 168: its two-line description was cut off mid-word on the
+        # panel (operator photo, 2026-09-29), for the same reason the chooser
+        # cards were — font_sp lifts the caption well above its nominal 14sp.
+        btn = Button(size_hint_y=None, height=dp(168), background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["green"]))
         inner = BoxLayout(orientation="vertical", padding=[dp(18), dp(12)], spacing=dp(4))
         inner.add_widget(_line(tr("Adopt over the air (LoRa)"), "21sp", bold=True,

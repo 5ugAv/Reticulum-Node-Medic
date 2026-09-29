@@ -43,15 +43,56 @@ its link.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 PAYLOAD_LEN = 14           # v1 payload / shared prefix length
 PAYLOAD_LEN_V2 = 20        # v1 prefix (14) + power+link tail (6)
 PAYLOAD_LEN_V3 = 29        # v2 (20) + position tail (9)
+PAYLOAD_LEN_V4_HEAD = 30   # v3 (29) + the neighbour count byte
 FORMAT_VERSION = 0x01
 FORMAT_VERSION_V2 = 0x02
 FORMAT_VERSION_V3 = 0x03   # + self-reported position (GPS-capable nodes)
+FORMAT_VERSION_V4 = 0x04   # + who this node can hear (2026-09-29)
+
+# --- v4: WHO THIS NODE CAN HEAR ---------------------------------------------
+#
+# The map could only ever draw what the MEDIC hears. Every edge in its topology
+# starts at the medic, because the medic's path table is the only evidence it
+# has — so two nodes that talk to each other all day are drawn as two unrelated
+# dots. The operator asked for the missing half: "the nodes will report back to
+# Medic which other nodes they're in contact with."
+#
+# They also asked whether overlapping range-test rings could stand in for it.
+# They cannot, and the reason is worth keeping here: a range test measures how
+# far the MEDIC, on foot, could walk from a node while still hearing it. That
+# is a node-to-handheld reach in the directions somebody actually walked. B may
+# be on a roof with a better antenna, or behind a hill on a bearing nobody
+# walked. Treating that as a link puts an INFERRED edge on the map wearing the
+# same clothes as an observed one, which is the failure this project keeps
+# digging out. Rings are a fine hint; they are not evidence.
+#
+# BYTE BUDGET, because LoRa airtime is the scarcest shared thing we spend:
+# one count byte, then 4 bytes per neighbour —
+#
+#   uint16  short hash   the first 2 bytes of the neighbour's dest hash
+#   int8    best SNR     dB, LORA_LINK_UNKNOWN when not measured
+#   uint8   age bucket   how long ago it was last heard (see AGE_BUCKETS_S)
+#
+# Capped at NEIGHBOURS_MAX, so the tail can never exceed 1 + 6*4 = 25 bytes on
+# a beacon that is already ~29. A node with more neighbours sends its best
+# ones: freshest first, then strongest.
+NEIGHBOUR_LEN = 4
+NEIGHBOURS_MAX = 6
+NEIGHBOUR_HASH_LEN = 2
+
+#: Age buckets, in seconds, for the 1-byte "when did you last hear it" field.
+#: Buckets rather than a timestamp: the medic only needs to know whether a
+#: claim is fresh enough to draw, and a bucket costs 1 byte where an epoch
+#: costs 4. The index is what travels; the value is the bucket's UPPER bound.
+AGE_BUCKETS_S = (60, 300, 900, 3600, 10800, 43200, 172800)
+#: Anything older than the last bucket, or never heard: do not draw it.
+AGE_BUCKET_STALE = len(AGE_BUCKETS_S)
 
 #: v2 tail sentinels for "field not reported".
 BATTERY_MV_UNKNOWN = 0
@@ -134,6 +175,117 @@ WIFI_WARN_DBM = -75
 WIFI_ALERT_DBM = -85
 
 
+def age_bucket(age_s) -> int:
+    """Seconds-since-last-heard -> the 1-byte bucket index that travels.
+
+    Returns AGE_BUCKET_STALE for None, for a negative age (a clock that went
+    backwards is not evidence of freshness), and for anything past the last
+    bucket.
+    """
+    if age_s is None:
+        return AGE_BUCKET_STALE
+    try:
+        age = float(age_s)
+    except (TypeError, ValueError):
+        return AGE_BUCKET_STALE
+    if age < 0:
+        return AGE_BUCKET_STALE
+    for i, upper in enumerate(AGE_BUCKETS_S):
+        if age <= upper:
+            return i
+    return AGE_BUCKET_STALE
+
+
+def bucket_seconds(index) -> Optional[int]:
+    """A bucket index back to its UPPER bound in seconds, or None when the
+    bucket says stale. Upper bound, never a midpoint: the honest reading of
+    "bucket 2" is "no older than 900 s", and the medic must not invent a
+    precision the node never sent."""
+    if not isinstance(index, int) or index < 0 or index >= len(AGE_BUCKETS_S):
+        return None
+    return AGE_BUCKETS_S[index]
+
+
+def short_hash(dest_hash) -> Optional[int]:
+    """The 2 bytes of a destination hash that travel in a neighbour entry.
+
+    Two bytes is 65536 buckets, which WILL collide on a big enough mesh — so
+    the medic treats this as a POINTER to a node it already knows, never as an
+    identity. encode/decode keep it dumb; monitor.neighbours owns the matching
+    and what to do when two known nodes share a prefix.
+    """
+    if dest_hash is None:
+        return None
+    if isinstance(dest_hash, int):
+        return dest_hash & 0xFFFF
+    if isinstance(dest_hash, str):
+        try:
+            dest_hash = bytes.fromhex(dest_hash)
+        except ValueError:
+            return None
+    if not isinstance(dest_hash, (bytes, bytearray)) or len(dest_hash) < NEIGHBOUR_HASH_LEN:
+        return None
+    return int.from_bytes(bytes(dest_hash[:NEIGHBOUR_HASH_LEN]), "big")
+
+
+def pack_neighbours(neighbours) -> bytes:
+    """``[(dest_hash, snr_db, age_s), ...]`` -> the v4 tail.
+
+    Freshest first, then strongest, then capped at NEIGHBOURS_MAX: when a node
+    hears more than it can afford to report, the ones worth the airtime are the
+    ones it heard recently and heard well. Entries with no usable hash are
+    dropped rather than sent as zeros — a zero hash would match a real node.
+    """
+    rows = []
+    for entry in neighbours or ():
+        try:
+            dest, snr, age = entry
+        except (TypeError, ValueError):
+            continue
+        h = short_hash(dest)
+        if h is None:
+            continue
+        bucket = age_bucket(age)
+        if bucket >= AGE_BUCKET_STALE:
+            continue                      # nothing to say about it
+        if snr is None:
+            snr_b = LORA_LINK_UNKNOWN
+        else:
+            snr_b = max(-127, min(127, int(round(float(snr)))))
+        rows.append((bucket, -(snr_b if snr_b != LORA_LINK_UNKNOWN else -128), h, snr_b))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    rows = rows[:NEIGHBOURS_MAX]
+    out = bytearray([len(rows)])
+    for bucket, _rank, h, snr_b in rows:
+        out += struct.pack(">HbB", h, snr_b, bucket)
+    return bytes(out)
+
+
+def unpack_neighbours(app_data: bytes):
+    """The v4 tail -> ``[{"short_hash", "snr_db", "age_s"}, ...]``.
+
+    Length-gated like every other tail: a truncated payload yields the entries
+    that are wholly present and drops the rest, rather than over-reading or
+    raising. A beacon that claims 6 neighbours and carries 2 is a damaged
+    beacon, not a reason to lose the 2.
+    """
+    if len(app_data) < PAYLOAD_LEN_V4_HEAD:
+        return []
+    count = app_data[PAYLOAD_LEN_V3]
+    out = []
+    for i in range(min(count, NEIGHBOURS_MAX)):
+        off = PAYLOAD_LEN_V4_HEAD + i * NEIGHBOUR_LEN
+        if off + NEIGHBOUR_LEN > len(app_data):
+            break
+        h, snr, bucket = struct.unpack_from(">HbB", app_data, off)
+        out.append({
+            "short_hash": h,
+            "snr_db": None if snr == LORA_LINK_UNKNOWN else snr,
+            "age_s": bucket_seconds(bucket),
+        })
+    return out
+
+
 @dataclass
 class HealthBeacon:
     format_version: int
@@ -174,6 +326,13 @@ class HealthBeacon:
     lng: Optional[float] = None
     position_sats: Optional[int] = None
     position_fuzzed: bool = False
+
+    # -- v4 neighbours tail: who this node can hear -------------------------
+    #: ``[{"short_hash", "snr_db", "age_s"}, ...]`` — empty on any beacon older
+    #: than v4, which is not the same as "hears nobody". A node that has never
+    #: reported neighbours must never be DRAWN as isolated; the medic's
+    #: topology only adds edges, it never removes one for silence here.
+    neighbours: list = field(default_factory=list)
 
     @property
     def reset_reason_label(self) -> str:
@@ -273,6 +432,7 @@ def encode(
     lora_rssi_dbm: Optional[int] = None,
     lat: Optional[float] = None,
     lng: Optional[float] = None,
+    neighbours=None,
     position_sats: Optional[int] = None,
     position_fuzzed: bool = False,
 ) -> bytes:
@@ -346,6 +506,11 @@ def encode(
         pflags = 0
     pflags |= (min(63, position_sats or 0) << 2)
     pos = struct.pack(">iiB", lat_u, lng_u, pflags & 0xFF)
+    # v4 tail only when the node has something to say AND declares the version.
+    # A v4 beacon with an empty list still carries its count byte (0), which is
+    # how "asked and heard nobody" differs from "too old to be asked".
+    if format_version >= FORMAT_VERSION_V4:
+        return head + tail + pos + pack_neighbours(neighbours)
     return head + tail + pos
 
 
@@ -411,6 +576,10 @@ def decode(app_data: bytes) -> HealthBeacon:
             b.lat = lat_u / 1e6
             b.lng = lng_u / 1e6
             b.position_fuzzed = bool(pflags & 0x02)
+    # v4 neighbours tail — length-gated like the rest, so a v3 beacon simply
+    # has none and a truncated v4 yields the entries that are wholly present.
+    if len(app_data) >= PAYLOAD_LEN_V4_HEAD:
+        b.neighbours = unpack_neighbours(app_data)
     return b
 
 

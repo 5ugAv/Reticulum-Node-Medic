@@ -1,5 +1,6 @@
 import pytest
 
+from monitor import health_beacon as hb
 from monitor.health_beacon import (
     HealthBeacon,
     decode,
@@ -467,3 +468,104 @@ def test_v2_reader_still_reads_a_v3_beacon_prefix():
     assert b.battery_pct == 78 and b.lat is None
     full = decode(raw)
     assert full.battery_pct == 78 and full.has_position
+
+
+def _h(prefix_hex):
+    """A 16-byte destination hash beginning with these 4 hex digits."""
+    return bytes.fromhex(prefix_hex) + b"\x00" * 12
+
+
+_BEACON_KW = dict(uptime_s=120, heap_kb=44, wifi_rssi_dbm=-60, reset_reason=1,
+                  wifi_up=True, lora_up=True, tcp_backbone_up=False,
+                  local_tcp_server_up=False, wdt_armed=True, psram=True,
+                  fault=False, board_id=9, airtime_lock=False, fw=(1, 2, 3))
+
+
+def _v3(**over):
+    kw = dict(_BEACON_KW); kw.update(over)
+    return hb.encode(format_version=hb.FORMAT_VERSION_V3, **kw)
+
+
+def _v4(**over):
+    kw = dict(_BEACON_KW); kw.update(over)
+    return hb.encode(format_version=hb.FORMAT_VERSION_V4, **kw)
+
+
+# --- v4: who this node can hear (2026-09-29) --------------------------------
+# The map could only ever draw what the MEDIC hears: every edge in its topology
+# starts at the medic, because the medic's path table is its only evidence. Two
+# nodes that talk to each other all day were drawn as two unrelated dots.
+
+def test_a_v3_reader_still_reads_a_v4_beacon():
+    """The whole point of the length-gated tails: an older tool must keep
+    everything it understood. A v4 beacon carries position exactly as before."""
+    b = hb.decode(_v4(lat=-37.7, lng=145.0, neighbours=[(_h("5a110011"), 9, 45)]))
+    assert (b.lat, b.lng) == (-37.7, 145.0)
+    assert b.uptime_s == 120 and b.board_id == 9
+
+
+def test_a_v3_beacon_reports_no_neighbours_rather_than_none_heard():
+    """Empty, because it was never asked. A node that has never reported
+    neighbours must not be drawn as isolated — silence is not evidence."""
+    assert hb.decode(_v3()).neighbours == []
+
+
+def test_a_v4_node_that_hears_nobody_says_so():
+    """Distinct from the case above, and the count byte is what distinguishes
+    them: this node WAS asked and heard nothing."""
+    data = _v4(neighbours=[])
+    assert len(data) == hb.PAYLOAD_LEN_V4_HEAD
+    assert hb.decode(data).neighbours == []
+
+
+def test_the_tail_is_cheap_enough_for_lora():
+    """Airtime is the scarcest thing we spend. Six neighbours is the cap and
+    the whole tail must stay inside 25 bytes."""
+    many = [(_h("%08x" % (0x11110000 + i)), 5, 30) for i in range(20)]
+    data = _v4(neighbours=many)
+    assert len(data) - hb.PAYLOAD_LEN_V3 <= 1 + hb.NEIGHBOURS_MAX * hb.NEIGHBOUR_LEN
+    assert len(hb.decode(data).neighbours) == hb.NEIGHBOURS_MAX
+
+
+def test_the_freshest_neighbours_are_the_ones_that_get_the_airtime():
+    """When a node hears more than it can afford to report, the ones worth the
+    bytes are the ones it heard recently — then the ones it heard well."""
+    entries = [(_h("aaaa0000"), 10, 40000),      # strong but stale
+               (_h("bbbb0000"), -5, 30),         # fresh, weak
+               (_h("cccc0000"), 9, 30)]          # fresh and strong
+    got = hb.decode(_v4(neighbours=entries)).neighbours
+    assert [n["short_hash"] for n in got][:2] == [0xcccc, 0xbbbb]
+
+
+def test_a_neighbour_with_no_usable_hash_is_dropped_not_zeroed():
+    """A zero short hash would match a real node. Sending nothing is the only
+    safe way to say 'I could not identify this one'."""
+    got = hb.decode(_v4(neighbours=[(None, 5, 30), (_h("5a110011"), 5, 30)])).neighbours
+    assert [n["short_hash"] for n in got] == [0xc627]
+
+
+def test_a_stale_neighbour_is_not_reported_at_all():
+    """Past the last bucket there is nothing useful to say, and a link the node
+    last heard three days ago is not a link to draw today."""
+    assert hb.decode(_v4(neighbours=[(_h("5a110011"), 5, 10 * 86400)])).neighbours == []
+
+
+def test_the_age_is_an_upper_bound_never_a_midpoint():
+    """The honest reading of a bucket is 'no older than X'. Inventing a
+    midpoint would be a precision the node never sent."""
+    assert hb.bucket_seconds(0) == hb.AGE_BUCKETS_S[0]
+    assert hb.bucket_seconds(hb.AGE_BUCKET_STALE) is None
+    assert hb.bucket_seconds(-1) is None
+    assert hb.age_bucket(None) == hb.AGE_BUCKET_STALE
+    assert hb.age_bucket(-5) == hb.AGE_BUCKET_STALE, "a backwards clock is not freshness"
+
+
+def test_a_truncated_v4_tail_keeps_the_entries_that_arrived():
+    """A beacon claiming six neighbours and carrying two is damaged, not a
+    reason to lose the two."""
+    full = _v4(neighbours=[(_h("aaaa0000"), 5, 30), (_h("bbbb0000"), 5, 30),
+                           (_h("cccc0000"), 5, 30)])
+    chopped = full[:-hb.NEIGHBOUR_LEN]            # the third entry never arrives
+    got = hb.decode(chopped).neighbours
+    assert len(got) == 2
+    assert {n["short_hash"] for n in got} == {0xaaaa, 0xbbbb}

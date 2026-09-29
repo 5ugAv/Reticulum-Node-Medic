@@ -331,15 +331,27 @@ def test_the_build_chooser_art_is_actually_tracked():
     that name ANYWHERE in the tree. The chooser's three illustrations were
     first put in assets/ui/build/ and were silently never committed — the
     deploy landed a chooser whose pictures did not exist on the medic
-    ([[ci-gitignored-assets]]). This asserts the files are where the code looks
-    AND that git will carry them.
+    ([[ci-gitignored-assets]]).
+
+    Read from the SOURCE, not by importing the screen: no test in this suite
+    may import a Kivy screen ([[module-level-name-guard]]), and the first cut
+    of this one did — which blew up only under the full run, where another
+    test had already put a stand-in in sys.modules.
     """
+    import ast
     import os
     import subprocess
-    import ui.screens.birth_guide_screen as bg
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for key, name in bg._BUILD_ART.items():
-        path = os.path.normpath(os.path.join(bg._BUILD_ART_DIR, name))
+    src = open(os.path.join(root, "ui", "screens", "birth_guide_screen.py")).read()
+    art = None
+    for node in ast.walk(ast.parse(src)):
+        if (isinstance(node, ast.Assign)
+                and any(getattr(t, "id", "") == "_BUILD_ART" for t in node.targets)):
+            art = ast.literal_eval(node.value)
+            break
+    assert art, "_BUILD_ART is gone — the chooser has lost its pictures"
+    for key, name in art.items():
+        path = os.path.join(root, "assets", "ui", "build_art", name)
         assert os.path.exists(path), f"{key}: no art at {path}"
         rel = os.path.relpath(path, root)
         ignored = subprocess.run(["git", "check-ignore", "-q", rel],
