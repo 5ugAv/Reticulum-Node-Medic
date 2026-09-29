@@ -492,7 +492,6 @@
   "Make another Node Medic": "Сделать ещё один Node Medic",
   "Make sure the new medic is switched OFF first, then push the little card into its slot until it clicks. Node Medic sees the card leave here and carries on by itself.": "Сначала убедитесь, что новый медик ВЫКЛЮЧЕН, затем вставьте маленькую карту в его слот до щелчка. Node Medic увидит, что карта исчезла отсюда, и продолжит сам.",
   "Map server is rate-limiting — try again shortly": "Сервер карт ограничивает частоту — повторите вскоре",
-  "Map — coverage & placement": "Карта — покрытие и размещение",
   "Maps": "Карты",
   "Measuring from here — saved as {name}'s start position.": "Измерение отсюда — сохранено как стартовая позиция {name}.",
   "Measuring from here — the start position could NOT be saved": "Измерение отсюда — стартовую позицию НЕ удалось сохранить",

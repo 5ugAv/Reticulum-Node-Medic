@@ -492,7 +492,6 @@
   "Make another Node Medic": "Gör en till Node Medic",
   "Make sure the new medic is switched OFF first, then push the little card into its slot until it clicks. Node Medic sees the card leave here and carries on by itself.": "Se först till att den nya medicen är AV, tryck sedan in det lilla kortet i dess plats tills det klickar. Node Medic ser kortet lämna här och fortsätter av sig själv.",
   "Map server is rate-limiting — try again shortly": "Kartservern begränsar – försök igen strax",
-  "Map — coverage & placement": "Karta – täckning och placering",
   "Maps": "Kartor",
   "Measuring from here — saved as {name}'s start position.": "Mäter härifrån — sparad som startposition för {name}.",
   "Measuring from here — the start position could NOT be saved": "Mäter härifrån — startpositionen kunde INTE sparas",

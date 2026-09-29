@@ -492,7 +492,6 @@
   "Make another Node Medic": "もう 1 台の Node Medic を作る",
   "Make sure the new medic is switched OFF first, then push the little card into its slot until it clicks. Node Medic sees the card leave here and carries on by itself.": "まず新しいメディックの電源が「切」になっていることを確認し、小さなカードをカチッと鳴るまでスロットに押し込んでください。Node Medic はカードがここから抜かれたのを見て、自動で先へ進みます。",
   "Map server is rate-limiting — try again shortly": "地図サーバーが速度制限中 — しばらくして再試行",
-  "Map — coverage & placement": "地図 — 通信範囲と配置",
   "Maps": "地図",
   "Measuring from here — saved as {name}'s start position.": "ここから測定中 — {name} の開始位置として保存しました。",
   "Measuring from here — the start position could NOT be saved": "ここから測定中 — 開始位置を保存できませんでした",

@@ -492,7 +492,6 @@
   "Make another Node Medic": "Zrób kolejnego Node Medica",
   "Make sure the new medic is switched OFF first, then push the little card into its slot until it clicks. Node Medic sees the card leave here and carries on by itself.": "Najpierw upewnij się, że nowy medic jest WYŁĄCZONY, potem wciśnij małą kartę do jego gniazda, aż kliknie. Node Medic zauważy, że karta stąd znikła, i sam pójdzie dalej.",
   "Map server is rate-limiting — try again shortly": "Serwer map ogranicza tempo – spróbuj wkrótce ponownie",
-  "Map — coverage & placement": "Mapa – zasięg i rozmieszczenie",
   "Maps": "Mapy",
   "Measuring from here — saved as {name}'s start position.": "Pomiar stąd — zapisano jako pozycję startową {name}.",
   "Measuring from here — the start position could NOT be saved": "Pomiar stąd — NIE udało się zapisać pozycji startowej",
