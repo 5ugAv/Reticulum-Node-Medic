@@ -1176,6 +1176,36 @@ _LEVEL_FILL = {"live": "green", "held": "warning_yellow", "none": "red",
                "info": "accent"}
 
 
+class _TargetButton(Button):
+    """The recenter control: a drawn target — ring and crosshair — on the
+    same plate as the zoom buttons above it. DRAWN, not a glyph: the Pi has
+    no emoji font and the DejaVu the app switches to is not guaranteed to
+    carry a target character; a tofu box for the one button that finds the
+    medic again would be a poor trade."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("background_normal", "")
+        kwargs.setdefault("background_color",
+                          theme.hex_to_rgba(theme.COLORS["surface"], 0.92))
+        kwargs.setdefault("text", "")
+        super().__init__(**kwargs)
+        self.bind(pos=self._draw, size=self._draw)
+        self._draw()
+
+    def _draw(self, *_):
+        self.canvas.after.clear()
+        cx, cy = self.center_x, self.center_y
+        r = min(self.width, self.height) * 0.28
+        with self.canvas.after:
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            Line(circle=(cx, cy, r), width=dp(1.6))
+            Line(points=[cx - r * 1.5, cy, cx - r * 0.55, cy], width=dp(1.6))
+            Line(points=[cx + r * 0.55, cy, cx + r * 1.5, cy], width=dp(1.6))
+            Line(points=[cx, cy - r * 1.5, cx, cy - r * 0.55], width=dp(1.6))
+            Line(points=[cx, cy + r * 0.55, cx, cy + r * 1.5], width=dp(1.6))
+            Line(circle=(cx, cy, dp(1.5)), width=dp(1.5))
+
+
 class _FixBadge(BoxLayout):
     """Left: transient placement guidance text. Right: the compact satellite
     pill — a DRAWN satellite (no emoji fonts on the Pi) beside the
@@ -1301,10 +1331,10 @@ class ScanScreen(BoxLayout):
         self._tiles = tiles if tiles is not None else find_mbtiles()
         header_row = BoxLayout(orientation="horizontal", size_hint=(1, None),
                                height=dp(30), spacing=dp(6))
-        self.header = Label(halign="left", valign="middle", bold=True)
-        self.header.bind(size=lambda i, v: setattr(i, "text_size", v))
-        self.recenter_btn = Button(text=tr("Recenter"), size_hint=(None, 1),
-                                   width=dp(100))
+        # Recenter is a TARGET on the map (built with the zoom column below),
+        # not a word in the header. Same attribute name so nothing that drives
+        # it has to change.
+        self.recenter_btn = _TargetButton()
         self.recenter_btn.bind(on_release=lambda *_: self._recenter())
         # Mesh-lines toggle: draw the who-hears-whom connection lines. Default OFF;
         # does nothing visible unless a links_provider was wired.
@@ -1324,11 +1354,17 @@ class ScanScreen(BoxLayout):
         self.boundary_btn = Button(text=tr("Range  off"), size_hint=(None, 1),
                                    width=dp(110))
         self.boundary_btn.bind(on_release=lambda *_: self._toggle_boundary())
-        header_row.add_widget(self.header)
+        # THREE TOGGLES, SHARING THE ROW (operator layout, 2026-09-29). The title
+        # "Map — coverage & placement" used to sit here too and was crushed to
+        # a two-letter fragment by four fixed-width buttons; it is gone — you
+        # reached this screen by pressing a card that says MAPS. Recenter left
+        # the row for the map itself, a target under the +/- where the thing it
+        # recentres actually is.
+        for b in (self.links_btn, self.terrain_btn, self.boundary_btn):
+            b.size_hint = (1, 1)
         header_row.add_widget(self.links_btn)
         header_row.add_widget(self.terrain_btn)
         header_row.add_widget(self.boundary_btn)
-        header_row.add_widget(self.recenter_btn)
         self.add_widget(header_row)
 
         # --- connections row (operator layout, 2026-08-13): a second header
@@ -1396,8 +1432,9 @@ class ScanScreen(BoxLayout):
                             boundary_provider=boundary_provider,
                             size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
         map_wrap.add_widget(self.plot)
+        # +, −, and under them the recenter target (operator layout, 2026-09-29).
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
-                         size=(dp(50), dp(104)), spacing=dp(6),
+                         size=(dp(50), dp(160)), spacing=dp(6),
                          pos_hint={"right": 0.98, "top": 0.98})
         for sym, d in (("+", +1), ("−", -1)):
             zb = Button(text=sym, font_size="26sp", bold=True, background_normal="",
@@ -1405,6 +1442,7 @@ class ScanScreen(BoxLayout):
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             zb.bind(on_release=lambda _b, dd=d: self.plot.zoom_by(dd))
             zbox.add_widget(zb)
+        zbox.add_widget(self.recenter_btn)
         map_wrap.add_widget(zbox)
         self.add_widget(map_wrap)
 
@@ -1412,10 +1450,17 @@ class ScanScreen(BoxLayout):
         if on_place is not None:
             self.badge = _FixBadge()
             self.add_widget(self.badge)
+            # HEIGHT FOLLOWS THE TEXT. This line carries a full sentence when
+            # there is no fix ("Tap the map to drop the pin, or recalibrate
+            # outside..."), and at a fixed dp(26) its second line was cut off
+            # under "No GPS fix" (operator photo, 2026-09-29). The rule from the
+            # node page applies: any label carrying a SENTENCE sizes itself.
             self.coords = Label(text="", font_size="16sp", halign="left",
-                                valign="middle", size_hint=(1, None), height=dp(26),
+                                valign="top", size_hint=(1, None), height=dp(26),
                                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            self.coords.bind(size=lambda i, v: setattr(i, "text_size", v))
+            self.coords.bind(
+                width=lambda i, w: setattr(i, "text_size", (w, None)),
+                texture_size=lambda i, ts: setattr(i, "height", max(dp(26), ts[1] + dp(4))))
             self.add_widget(self.coords)
 
             act = BoxLayout(orientation="horizontal", size_hint=(1, None),
@@ -1439,6 +1484,11 @@ class ScanScreen(BoxLayout):
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
             self.detail_btn.bind(on_release=lambda *_: self._load_detail())
             self.add_widget(self.detail_btn)
+            # CONTEXTUAL, like the offline-maps control (operator, 2026-09-29):
+            # offered only while the spot's street zooms are NOT carried. A
+            # button that would download nothing is a lie, and a keeper whose
+            # area is fully cached should never see it.
+            self._detail_visible = True
 
             # Manual entry: an address (geocoded) OR raw lat/lon — collapsed until asked.
             # Starts DISABLED (as well as height 0 / opacity 0): a collapsed row's
@@ -1578,7 +1628,55 @@ class ScanScreen(BoxLayout):
         self.plot.center_on((lat, lon))
 
     # -- offline-map panel (collapsible) -----------------------------------
+    def _refresh_detail_visibility(self, center=None):
+        """Show the street-names button only when it would fetch something.
+
+        Same hinge as the offline panel, at the SPOT's own zooms and radius —
+        the exact tiles _load_detail would ask for. Silent on any failure:
+        when the check cannot run the button stays, because a missing button
+        costs a download and a stray one costs a tap.
+        """
+        btn = getattr(self, "detail_btn", None)
+        if btn is None:
+            return
+        want = True
+        try:
+            from ui.map_download import (SPOT_MAX_ZOOM, SPOT_MIN_ZOOM,
+                                         SPOT_RADIUS_KM, carried_of,
+                                         tiles_in_radius)
+            pt = center or self._current_point()
+            if pt is not None:
+                tiles = tiles_in_radius(pt[0], pt[1], SPOT_RADIUS_KM,
+                                        zmin=SPOT_MIN_ZOOM, zmax=SPOT_MAX_ZOOM)
+                path = os.path.join(MAPS_DIR, "offline.mbtiles")
+                want = carried_of(tiles, path) < len(tiles)
+        except Exception:                                          # noqa: BLE001
+            want = True
+        if want == getattr(self, "_detail_visible", True):
+            return
+        self._detail_visible = want
+        btn.height = dp(46) if want else 0
+        btn.opacity = 1 if want else 0
+        btn.disabled = not want
+
+    def _set_offline_visible(self, show):
+        """Show or hide the whole offline-maps control (toggle AND panel)."""
+        show = bool(show)
+        if getattr(self, "_offline_visible", True) == show:
+            return
+        self._offline_visible = show
+        self.offline_toggle.height = dp(34) if show else 0
+        self.offline_toggle.opacity = 1 if show else 0
+        self.offline_toggle.disabled = not show
+        if not show and self._offline_open:
+            self._toggle_offline()                  # collapse the panel too
+
     def _toggle_offline(self):
+        # Opening always makes the control visible again: the terrain refusal
+        # opens this panel to explain itself, and an explanation in a panel
+        # whose toggle is hidden would be a message with no door.
+        if not self._offline_open:
+            self._set_offline_visible(True)
         self._offline_open = not self._offline_open
         self._offline_panel.opacity = 1 if self._offline_open else 0
         self.offline_toggle.text = (tr("Offline maps  ▲") if self._offline_open
@@ -1982,6 +2080,8 @@ class ScanScreen(BoxLayout):
             self.badge.set(tr("Map server is rate-limiting — try again shortly"), "none")
         elif summary.get("fetched") or summary.get("skipped"):
             self.badge.set(tr("Street detail loaded — use +/− to zoom in"), "info")
+            # the spot is carried now, so the button that fetches it goes away
+            self._refresh_detail_visibility()
         else:
             self.badge.set(tr("Couldn't fetch detail (check the connection)"), "none")
 
@@ -2000,7 +2100,7 @@ class ScanScreen(BoxLayout):
         # Keep the header a clean one-liner. Basemap attribution is a licence
         # condition, so it lives in its own small footer (self.attribution) where
         # it's readable, rather than crammed into the header where it wrapped/cut.
-        self.header.text = tr("Map — coverage & placement")
+        pass   # the title is gone (2026-09-29) — the MAPS card already names this
         self.attribution.text = ATTRIBUTION if self._tiles is not None else ""
 
     def set_nodes(self, nodes):
@@ -2133,7 +2233,16 @@ class ScanScreen(BoxLayout):
                 self._set_status(
                     tr("This area is already on the medic - nothing to "
                        "download."), "ok")
+                # CONTEXTUAL (operator, 2026-09-29): an area the medic already
+                # carries needs no download control at all. The expander
+                # disappears; it comes back the moment the map looks at
+                # somewhere the medic does not have — a clone carried to a new
+                # town sees it first thing, the keeper at home never does.
+                self._set_offline_visible(False)
+                self._refresh_detail_visibility(center)
                 return
+            self._set_offline_visible(True)
+            self._refresh_detail_visibility(center)
         except Exception:                                  # noqa: BLE001
             pass
         self._set_status(tr("Centred on {source}.").format(source=source)
