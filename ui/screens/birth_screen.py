@@ -272,7 +272,7 @@ class BirthScreen(BoxLayout):
         # rebuild so a typed name survives board changes. (Existing nodes are reached
         # from VITALS/SCAN -> their certificate card, which offers Triage.) Notes are
         # asked at the END (after the cert).
-        self._name_in = TextInput(hint_text=tr("Name this node  (e.g. Rooftop-East)"),
+        self._name_in = TextInput(hint_text=tr("Name this node (e.g. Rooftop)"),
                                   multiline=False, size_hint_y=None, height=dp(46),
                                   font_size="26sp")
         self._end_notes_in = TextInput(

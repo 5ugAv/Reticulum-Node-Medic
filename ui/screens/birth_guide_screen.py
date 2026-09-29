@@ -1929,7 +1929,7 @@ class BirthGuideScreen(BoxLayout):
         # Only the screens that will actually be shown — see _counter().
         total = self._counter()[1]
         ti = TextInput(text=self._node_name, multiline=False,
-                       hint_text=tr("Name this node  (e.g. Rooftop-East)"),
+                       hint_text=tr("Name this node (e.g. Rooftop)"),
                        size_hint_y=None, height=dp(58), font_size="33sp")
         bind_field(ti)
         self._name_input = ti

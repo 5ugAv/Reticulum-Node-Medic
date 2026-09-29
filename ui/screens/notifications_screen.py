@@ -54,7 +54,7 @@ class NotificationsScreen(BoxLayout):
 
         self.field = TextInput(
             text=load_operator_address(), multiline=False,
-            hint_text=tr("32-character address (leave blank for medic-only)"),
+            hint_text=tr("32-character address or blank"),
             size_hint_y=None, height=dp(48), font_size="27sp")
         bind_field(self.field)
         self.add_widget(self.field)

@@ -52,7 +52,9 @@ def _button(text, on_press, color="accent"):
     b = Button(text=text, size_hint_y=None, height=dp(62), font_size="18sp",
                bold=True, background_normal="", background_down="",
                background_color=theme.hex_to_rgba(theme.COLORS[color]),
-               color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+               # dark ink on the bright key — text_primary on accent was two
+               # greens a shade apart, invisible on the glass (walk 2026-09-29)
+               color=theme.hex_to_rgba(theme.COLORS["background"]))
     b.bind(on_release=lambda *_: on_press())
     return b
 
