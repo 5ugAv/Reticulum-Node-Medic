@@ -728,7 +728,7 @@
   "Run again": "もう一度実行",
   "Run full diagnostic": "完全診断を実行",
   "Run self-diagnose": "自己診断を実行",
-  "Runs the mesh on its own — no phone, computer or Pi. Reports its health; repairable remotely.": "携帯もパソコンも Pi もなしで、単独でメッシュを動かします。健康状態を報告し、遠隔で修理できます。",
+  "Runs the mesh on its own — no phone, computer or Pi. Reports its health.": "携帯もパソコンも Pi もなしで、単独でメッシュを動かします。健康状態を報告します。",
   "SSH": "SSH",
   "SSID": "SSID",
   "SSID the Pi should join": "Pi が参加すべき SSID",

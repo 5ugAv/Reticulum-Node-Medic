@@ -728,7 +728,7 @@
   "Run again": "Jalankan lagi",
   "Run full diagnostic": "Jalankan diagnostik penuh",
   "Run self-diagnose": "Jalankan diagnosis mandiri",
-  "Runs the mesh on its own — no phone, computer or Pi. Reports its health; repairable remotely.": "Menjalankan mesh sendiri — tanpa ponsel, komputer, atau Pi. Melaporkan kesehatannya; bisa diperbaiki dari jauh.",
+  "Runs the mesh on its own — no phone, computer or Pi. Reports its health.": "Menjalankan mesh sendiri — tanpa ponsel, komputer, atau Pi. Melaporkan kesehatannya.",
   "SSH": "SSH",
   "SSID": "SSID",
   "SSID the Pi should join": "SSID yang harus digabungi Pi",

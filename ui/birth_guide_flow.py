@@ -17,9 +17,14 @@ BIRTH_PATHS = [
      tr("Plugs into a phone or computer you've already set up.")),
     # NOT "standalone radio" — operators wanting a plain RNode read that as
     # "just the radio" and walked into an RTNode build (2026-07-31).
+    # NOT "repairable remotely" (operator, 2026-09-29). It is a promise the
+    # chooser cannot keep at the moment of choosing: what a node can be
+    # repaired from, and over what road, depends on how it ends up deployed.
+    # The card has one job — say what this build IS — and "reports its health"
+    # is the part that is true of every RTNode the medic makes.
     ("radio", tr("A mesh transport node (RTNode-2400)"),
      tr("Runs the mesh on its own — no phone, computer or Pi. Reports its "
-        "health; repairable remotely.")),
+        "health.")),
     # A RASPBERRY PI, NOT "a Pi + radio" (operator, 2026-09-06). The coupled
     # label forced every Pi build through a radio flash, so an operator who
     # ALREADY HAS an RNode — the common case for anyone who has built one

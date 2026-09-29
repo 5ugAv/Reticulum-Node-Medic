@@ -728,7 +728,7 @@
   "Run again": "Erneut ausführen",
   "Run full diagnostic": "Vollständige Diagnose ausführen",
   "Run self-diagnose": "Selbstdiagnose ausführen",
-  "Runs the mesh on its own — no phone, computer or Pi. Reports its health; repairable remotely.": "Betreibt das Mesh allein — ohne Telefon, Computer oder Pi. Meldet seinen Zustand und ist aus der Ferne reparierbar.",
+  "Runs the mesh on its own — no phone, computer or Pi. Reports its health.": "Betreibt das Mesh allein — ohne Telefon, Computer oder Pi. Meldet seinen Zustand.",
   "SSH": "SSH",
   "SSID": "SSID",
   "SSID the Pi should join": "SSID, der der Pi beitreten soll",

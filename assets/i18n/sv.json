@@ -728,7 +728,7 @@
   "Run again": "Kör igen",
   "Run full diagnostic": "Kör fullständig diagnostik",
   "Run self-diagnose": "Kör självdiagnos",
-  "Runs the mesh on its own — no phone, computer or Pi. Reports its health; repairable remotely.": "Driver mesh-nätet på egen hand – ingen telefon, dator eller Pi. Rapporterar sin hälsa och kan repareras på distans.",
+  "Runs the mesh on its own — no phone, computer or Pi. Reports its health.": "Driver mesh-nätet på egen hand – ingen telefon, dator eller Pi. Rapporterar sin hälsa.",
   "SSH": "SSH",
   "SSID": "SSID",
   "SSID the Pi should join": "SSID som Pi:n ska gå med i",
