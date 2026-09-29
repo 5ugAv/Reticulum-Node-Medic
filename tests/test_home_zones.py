@@ -102,16 +102,16 @@ def test_chat_opens_a_screen_that_actually_exists():
     does nothing. switch_mode silently ignores an unknown screen name, so a
     wrong mapping here fails INVISIBLY."""
     from ui.home_zones import screen_for
-    assert screen_for("chat") == "comms"
+    assert screen_for("chat") == "chat"
     import os
-    assert os.path.exists("ui/screens/comms_screen.py")
+    assert os.path.exists("ui/screens/chat_screen.py")
 
 
 def test_every_card_maps_to_a_real_screen_name():
     """Guard for the next card that gets renamed on the art."""
     import os
     from ui.home_zones import CARD_ORDER, screen_for
-    known = {"vitals", "scan", "birth", "triage", "probe", "comms", "mitosis"}
+    known = {"vitals", "scan", "birth", "triage", "probe", "comms", "mitosis", "chat"}
     for zone in CARD_ORDER:
         target = screen_for(zone)
         assert target in known, f"{zone} -> {target}, which no screen answers"

@@ -1028,6 +1028,23 @@ class ReticulumNodeMedicApp(App):
         comms_scr.add_widget(self._with_back(self.comms_screen))
         comms_scr.bind(on_enter=lambda *_: self.comms_screen.enter())
         self.sm.add_widget(comms_scr)
+        # CHAT — the medic's own messenger (docs/CHAT.md, 2026-09-29). The
+        # store is the on-disk truth; the service comes up on the mesh
+        # listener thread once RNS is attached (see _start_announce_listener).
+        from monitor.lxmf_chat import MessageStore
+        from monitor.chat_service import ChatService
+        from provisioning.tool_identity import tool_name
+        from ui.screens.chat_screen import ChatScreen
+        self.chat_store = MessageStore()
+        self._chat = ChatService(self.chat_store, display_name=tool_name())
+        chat_scr = Screen(name="chat")
+        self.chat_screen = ChatScreen(self.chat_store, lambda: self._chat,
+                                      open_phone_apps=lambda: self.switch_mode("comms"))
+        chat_scr.add_widget(self._with_back(self.chat_screen))
+        chat_scr.bind(on_enter=lambda *_: self.chat_screen.enter(),
+                      on_leave=lambda *_: self.chat_screen.leave())
+        self.sm.add_widget(chat_scr)
+        Clock.schedule_interval(lambda dt: self._chat.tick(), 60)
 
         # Field readiness — the caller workflows.carry has never had. It shipped
         # complete and tested (d9b29ca) and reachable by nobody, which is the
@@ -1586,6 +1603,12 @@ class ReticulumNodeMedicApp(App):
                 RNS.Transport.register_announce_handler(_Handler())
                 RNS.Transport.register_announce_handler(_HealthHandler())
                 app._setup_health_reply(RNS, _log)
+                try:
+                    chat = getattr(app, "_chat", None)
+                    if chat is not None:
+                        chat.start()
+                except Exception as e:                             # noqa: BLE001
+                    _log("chat service failed to start: %r" % (e,))
                 # Positive proof of registration (first-try attach was silent
                 # before, making "attached" and "thread died" indistinguishable).
                 _log("mesh listener attached — announce handlers registered")
@@ -3282,7 +3305,10 @@ class ReticulumNodeMedicApp(App):
         self._mode_toast(msg, ok=False)
         import threading
         from monitor.operator_alert import send_operator_alert
-        threading.Thread(target=lambda: send_operator_alert("Node Medic — " + msg),
+        chat = getattr(self, "_chat", None)
+        sender = chat.send_plain if (chat is not None and chat.running) else None
+        threading.Thread(target=lambda: send_operator_alert("Node Medic — " + msg,
+                                                            sender=sender),
                          daemon=True).start()
 
     def _save_node_watch(self):

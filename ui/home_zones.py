@@ -107,7 +107,7 @@ def zone_at(fx: float, fy: float) -> Optional[str]:
 #: was built (ui/screens/comms_screen.py — "the mesh messenger for your
 #: pocket"). Renaming the screen would have churned every reference for a label;
 #: this states the translation in one place instead.
-ZONE_SCREEN = {"chat": "comms"}
+ZONE_SCREEN = {"chat": "chat"}
 
 
 def screen_for(zone: str) -> str:

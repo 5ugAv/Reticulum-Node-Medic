@@ -390,8 +390,9 @@ class HomeScreen(FloatLayout):
                 if not press_fires(mode, down_zone):
                     return super().on_touch_up(touch)
                 # The painted word is not always the screen's internal name —
-                # CHAT opens "comms", which has been called that since it was
-                # built. One translation, stated in home_zones.
+                # one translation table, stated in home_zones (CHAT opened
+                # the phone hand-off "comms" until the medic got its own
+                # messenger, 2026-09-29).
                 self._on_select(screen_for(mode))
                 return True
         return super().on_touch_up(touch)
