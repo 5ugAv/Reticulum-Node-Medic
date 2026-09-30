@@ -207,6 +207,12 @@ class ChatScreen(BoxLayout):
         new = _btn(tr("New message"), color="green", ink="background", h=52)
         new.bind(on_release=lambda *_: self._show(NEW))
         self._foot.add_widget(new)
+        # The phone hand-off, in words, full width. A 13 sp "Phone apps" in
+        # the corner read as "the APKs are gone" on a quick look (operator,
+        # 2026-09-30). Both stay: the medic's own chat AND the phone's.
+        apk = _btn(tr("Put Columba or Sideband on a phone  →"), h=48, size="14sp")
+        apk.bind(on_release=lambda *_: self._open_phone_apps and self._open_phone_apps())
+        self._foot.add_widget(apk)
 
     def _open_thread(self, peer):
         self._store.mark_read(peer)

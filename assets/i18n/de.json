@@ -671,6 +671,7 @@
   "Preparing…": "Wird vorbereitet…",
   "Probing over the mesh…": "Prüfung über das Mesh…",
   "Proceed anyway": "Trotzdem fortfahren",
+  "Put Columba or Sideband on a phone  →": "Columba oder Sideband auf ein Telefon bringen  →",
   "Put the Pi's microSD into a USB card reader and plug it into Node Medic (it has no built-in card slot).": "Leg die microSD des Pi in einen USB-Kartenleser und steck ihn an Node Medic (es hat keinen eingebauten Kartenschacht).",
   "Put the SD card in the reader": "Lege die SD-Karte in das Lesegerät",
   "Put the card into your card reader, then plug the reader into any USB socket on Node Medic. Don't touch the card inside Node Medic — that one is running the tool.": "Steck die Karte in dein Kartenlesegerät und dann das Lesegerät in einen beliebigen USB-Anschluss am Node Medic. Fass die Karte IM Node Medic nicht an — auf der läuft das Werkzeug.",

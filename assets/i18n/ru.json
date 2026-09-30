@@ -671,6 +671,7 @@
   "Preparing…": "Подготовка…",
   "Probing over the mesh…": "Опрос через mesh-сеть…",
   "Proceed anyway": "Всё равно продолжить",
+  "Put Columba or Sideband on a phone  →": "Поставить Columba или Sideband на телефон  →",
   "Put the Pi's microSD into a USB card reader and plug it into Node Medic (it has no built-in card slot).": "Вставьте microSD от Pi в USB-считыватель и подключите его к Node Medic (встроенного слота для карты у него нет).",
   "Put the SD card in the reader": "Вставьте карту SD в картридер",
   "Put the card into your card reader, then plug the reader into any USB socket on Node Medic. Don't touch the card inside Node Medic — that one is running the tool.": "Вставьте карту в картридер, а сам картридер — в любой USB-разъём Node Medic. Не трогайте карту ВНУТРИ Node Medic: на ней работает сама программа.",

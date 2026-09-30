@@ -121,3 +121,14 @@ def test_unmapped_zones_pass_straight_through():
     from ui.home_zones import screen_for
     assert screen_for("vitals") == "vitals"
     assert screen_for("credits") == "credits"
+
+
+def test_chat_keeps_the_phone_handoff_in_plain_words():
+    """Both messengers stay: the medic's own chat AND the phone's. A quick look
+    on 2026-09-30 read the corner 'Phone apps' button as 'the APKs are gone'."""
+    src = open("ui/screens/chat_screen.py").read()
+    assert 'tr("Put Columba or Sideband on a phone  →")' in src
+    assert src.count("self._open_phone_apps()") >= 2          # corner button + full-width row
+    app = open("ui/app.py").read()
+    assert 'open_phone_apps=lambda: self.switch_mode("comms")' in app
+    assert 'Screen(name="comms")' in app                        # the APK page itself still exists
