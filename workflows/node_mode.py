@@ -131,6 +131,26 @@ def normalise(mode: str) -> str:
     return HOME if str(mode).strip().lower() == HOME else BACKPACK
 
 
+def propagation_running(connection: Connection) -> bool:
+    """Is the LXMF propagation node actually RUNNING — not what the mode
+    intends. lxmd started with ``-p`` / ``--propagation-node`` propagates
+    whatever ``enable_node`` says (the medic's unit runs ``lxmd -p -s``, so
+    Backpack has never switched it off — found 2026-09-30 when the phone-apps
+    note said OFF while lxmd's log said started). Falls back to the config
+    line when no lxmd process is visible."""
+    out = connection.run("pgrep -af '[l]xmd' 2>/dev/null")[1]
+    for line in out.splitlines():
+        if "lxmd" in line:
+            args = line.split()
+            return "-p" in args or "--propagation-node" in args or _config_says_yes(connection)
+    return _config_says_yes(connection)
+
+
+def _config_says_yes(connection: Connection) -> bool:
+    out = connection.run(f"grep -iE '^[[:space:]]*enable_node' {LXMD_CONFIG} 2>/dev/null")[1]
+    return "yes" in out.lower()
+
+
 def current_mode(connection: Connection) -> str:
     """The medic's current mode — from the persisted marker, else inferred from
     ``enable_transport`` in the RNS config (defaults to backpack if unreadable)."""

@@ -72,18 +72,26 @@ class CommsScreen(BoxLayout):
         def work():
             from transport.connection import LocalConnection
             from workflows.phone_apps import cached_apps
-            from workflows.node_mode import current_mode, load_home_profile
+            from workflows.node_mode import (current_mode, load_home_profile,
+                                             propagation_running)
             conn = LocalConnection()
             apps = cached_apps(conn, self._cache_dir)
+            # What lxmd IS doing, not what the mode meant: the medic's unit
+            # runs lxmd -p, which propagates whatever Backpack wrote to the
+            # config. The note said OFF over a running post office (2026-09-30).
             try:
-                store_on = (current_mode(conn) == "home"
-                            and load_home_profile() == "propagation")
+                store_on = propagation_running(conn)
             except Exception:
                 store_on = False
-            Clock.schedule_once(lambda dt: self._render(apps, store_on), 0)
+            try:
+                intended = (current_mode(conn) == "home"
+                            and load_home_profile() == "propagation")
+            except Exception:
+                intended = store_on
+            Clock.schedule_once(lambda dt: self._render(apps, store_on, intended), 0)
         threading.Thread(target=work, daemon=True).start()
 
-    def _render(self, apps, store_on):
+    def _render(self, apps, store_on, intended=None):
         banner = getattr(self, "_banner", None)
         self._banner = None
         if banner:
@@ -93,11 +101,18 @@ class CommsScreen(BoxLayout):
             for app in apps:
                 self.list.add_widget(self._card(app))
             return
-        self.status.text = (
-            tr("Store-and-forward is ON — the medic holds messages for phones that are "
-               "offline.") if store_on else
-            tr("Note: message store-and-forward is OFF. Switch to Home ▸ full "
-               "propagation node so the medic can hold messages for offline phones."))
+        if store_on and intended is False:
+            self.status.text = tr(
+                "Store-and-forward is ON — lxmd is started with -p, so the "
+                "Home/Backpack switch cannot turn it off (see docs/CHAT.md).")
+        elif store_on:
+            self.status.text = tr(
+                "Store-and-forward is ON — the medic holds messages for phones that are "
+                "offline.")
+        else:
+            self.status.text = tr(
+                "Note: message store-and-forward is OFF. Switch to Home ▸ full "
+                "propagation node so the medic can hold messages for offline phones.")
         self.status.color = theme.hex_to_rgba(
             theme.COLORS["green" if store_on else "warning_yellow"])
         self.list.clear_widgets()

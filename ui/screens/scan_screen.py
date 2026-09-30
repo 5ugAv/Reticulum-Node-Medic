@@ -1607,6 +1607,10 @@ class ScanScreen(BoxLayout):
         if poll:
             self._poll_gps(0)
             Clock.schedule_interval(self._poll_gps, 3)
+            # The "(n)" count on the Links toggle only ever appeared after a
+            # toggle (2026-09-29); the layer is on by default, so keep the
+            # label current from the start.
+            Clock.schedule_interval(self._refresh_links_label, 5)
 
     def _poll_gps(self, _dt):
         # Prefer the full fix (has trust/source) so the badge and marker agree; fall
@@ -1699,8 +1703,13 @@ class ScanScreen(BoxLayout):
         """Flip the mesh connection lines on/off (header button)."""
         self._links_on = not self._links_on
         self.plot.set_show_links(self._links_on)
-        self.links_btn.text = (tr("Links  on") + self._links_count_suffix()
-                               if self._links_on else tr("Links  off"))
+        self._refresh_links_label()
+
+    def _refresh_links_label(self, *_):
+        text = (tr("Links  on") + self._links_count_suffix()
+                if self._links_on else tr("Links  off"))
+        if self.links_btn.text != text:
+            self.links_btn.text = text
 
     def _boundary_coverage_suffix(self):
         """" (x/y)" appended to the ON label — x = confirmed-loss sectors

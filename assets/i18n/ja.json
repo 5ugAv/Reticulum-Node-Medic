@@ -831,6 +831,7 @@
   "Stock": "純正",
   "Stop & save": "停止して保存",
   "Storage usage": "ストレージ使用量",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "ストア＆フォワードはオンです — lxmd は -p 付きで起動しているため、Home/Backpack の切替では止められません（docs/CHAT.md 参照）。",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "蓄積転送がオンです — medic はオフラインのスマホのメッセージを保持します。",
   "Street detail loaded — use +/− to zoom in": "街路詳細を読み込みました — +/− で拡大",
   "Street detail… {done}/{total} tiles": "街路詳細… {done}/{total} タイル",

@@ -65,3 +65,28 @@ never touches the radio. See [[bandwidth-economy-ethos]].
 
 Attachments, read receipts, group chat, trust/tickets, deleting conversations.
 The two-phone test (Sideband ↔ medic ↔ Columba) is on the bench list.
+
+## The post office and the Home/Backpack switch (found 2026-09-30)
+
+The medic's `lxmd.service` runs `lxmd -p -s`. `-p` forces the propagation
+node on **whatever `enable_node` says** — so `workflows/node_mode.set_mode`,
+which writes `enable_node = no` for Backpack and Home▸transport-only, has
+never actually switched propagation off. The install page now reports what
+lxmd is *doing* (`node_mode.propagation_running`, which reads the `-p` off
+the live process) and says so when that disagrees with the switch.
+
+Today this is *good for chat* — the post office is always there. It is wrong
+for the design (a roving Backpack medic should not be a propagation node
+peers try to sync with). The fix is root, so it is a bench job — one paste on
+the medic:
+
+```
+sudo sed -i 's|lxmd -p -s|lxmd -s|' /etc/systemd/system/lxmd.service && sudo systemctl daemon-reload && sudo systemctl restart lxmd && sleep 3 && tail -3 ~/.lxmd/logfile
+```
+
+After it: in Home▸propagation the log says "LXMF Propagation Node started";
+in Backpack it does not, and CHAT's "held at the post office" road is closed
+until the medic is home again — which is the truth, and the screen says it
+(`peer_route` → *no path right now*; the message fails in words rather than
+waiting on a post office that is not open). Success line: the last log line
+names the node (Home) or does not (Backpack), matching the front-page toggle.

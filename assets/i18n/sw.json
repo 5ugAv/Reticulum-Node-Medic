@@ -85,6 +85,7 @@
   "Standard:": "Ya kawaida:",
   "Start now  →": "Anza sasa  →",
   "Storage usage": "Matumizi ya hifadhi",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Hifadhi-na-tuma IMEWASHWA — lxmd huanzishwa na -p, kwa hivyo swichi ya Home/Backpack haiwezi kuizima (angalia docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Kuhifadhi na kupeleka kumeWASHWA — medic inashika ujumbe wa simu zilizozimwa.",
   "Terrain could not be downloaded this time — try again later.": "Ardhi haikuweza kupakuliwa wakati huu — jaribu tena baadaye.",
   "The medic is offline — connect it to the internet, then try again.": "Medic haina intaneti — iunganishe kwenye intaneti, kisha jaribu tena.",

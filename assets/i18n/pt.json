@@ -85,6 +85,7 @@
   "Standard:": "Padrão:",
   "Start now  →": "Começar agora  →",
   "Storage usage": "Uso do armazenamento",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Armazenar e encaminhar está LIGADO — o lxmd é iniciado com -p, por isso o interruptor Home/Backpack não consegue desligá-lo (ver docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Guardar e encaminhar está LIGADO — o medic guarda mensagens dos telefones desligados.",
   "Terrain could not be downloaded this time — try again later.": "O relevo não pôde ser baixado desta vez — tente novamente mais tarde.",
   "The medic is offline — connect it to the internet, then try again.": "O medic está sem internet — conecte-o e tente de novo.",

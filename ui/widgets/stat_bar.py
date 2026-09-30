@@ -77,7 +77,12 @@ class StatBar(BoxLayout):
             self.add_widget(_StatIcon("AC", "ok"))
         if self.show_signal:
             self.add_widget(_StatIcon(
-                f"SIG {int(self.signal_dbm)}dBm",
+                # WIFI, not SIG: this is the node's Wi-Fi RSSI (a Pi's
+                # wlan, an ESP32's STA link), never LoRa. "SIG" read as radio
+                # signal and sent the operator looking for skyfinger's missing
+                # LoRa strength (2026-09-29). One char wider; see the budget
+                # note below (≈299 of 315 px on an RTNode row).
+                f"WIFI {int(self.signal_dbm)}dBm",
                 theme.signal_status(self.signal_dbm)))
         # DAYS ONCE IT IS DAYS. "SEEN 268h" makes the reader do the division,
         # and the thing they are dividing towards — is this node overdue? — is
@@ -112,9 +117,9 @@ class StatBar(BoxLayout):
             # the name column at 320), and a fifth equal-width child would
             # shove every icon into its neighbour. At 10sp with no "· " prefix
             # the tag is its narrowest honest self: on an RTNode row at
-            # density 1.5 (315 px strip), "SIG -64dBm" + "SEEN 3.1h" at 14sp
-            # (~21 px/em Roboto, ≈110+100 px) + "echo 4m" at 10sp (≈55 px)
-            # + 2×12 spacing ≈ 289 px — it fits. Battery rows were already
+            # density 1.5 (315 px strip), "WIFI -64dBm" + "SEEN 3.1h" at 14sp
+            # (~21 px/em Roboto, ≈120+100 px) + "echo 4m" at 10sp (≈55 px)
+            # + 2×12 spacing ≈ 299 px — it fits. Battery rows were already
             # over budget before this label existed; it adds only its texture.
             muted = Label(text=echo_tag, font_size="10sp",
                           size_hint_x=None, width=0)

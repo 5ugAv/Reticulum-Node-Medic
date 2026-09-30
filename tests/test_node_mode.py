@@ -100,3 +100,25 @@ def test_current_mode_inferred_from_config_when_no_marker():
 def test_normalise_defaults_unknown_to_backpack():
     assert normalise("HOME") == HOME
     assert normalise("weird") == BACKPACK
+
+
+# -- what lxmd is DOING, not what the mode meant (2026-09-30) -----------------
+
+def test_propagation_running_reads_the_p_flag_off_the_live_process():
+    from workflows.node_mode import propagation_running
+    c = EmulatedConnection(default_code=0, default_stdout="")
+    c.rule("pgrep", 0, "35673 /usr/bin/python3 /home/nodemedic/.local/bin/lxmd -p -s\n")
+    c.rule("grep -iE '^[[:space:]]*enable_node'", 0, "enable_node = no\n")
+    assert propagation_running(c) is True          # -p wins over the config
+
+
+def test_propagation_running_falls_back_to_the_config_without_p():
+    from workflows.node_mode import propagation_running
+    c = EmulatedConnection(default_code=0, default_stdout="")
+    c.rule("pgrep", 0, "35673 /usr/bin/python3 /home/nodemedic/.local/bin/lxmd -s\n")
+    c.rule("grep -iE '^[[:space:]]*enable_node'", 0, "enable_node = no\n")
+    assert propagation_running(c) is False
+    c2 = EmulatedConnection(default_code=0, default_stdout="")
+    c2.rule("pgrep", 0, "")                         # no process visible
+    c2.rule("grep -iE '^[[:space:]]*enable_node'", 0, "enable_node = yes\n")
+    assert propagation_running(c2) is True

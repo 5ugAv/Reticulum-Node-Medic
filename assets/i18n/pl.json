@@ -831,6 +831,7 @@
   "Stock": "Fabryczna",
   "Stop & save": "Zatrzymaj i zapisz",
   "Storage usage": "Wykorzystanie pamięci",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Store-and-forward jest WŁĄCZONE — lxmd startuje z -p, więc przełącznik Home/Backpack nie może go wyłączyć (zob. docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Przechowywanie i przekazywanie jest WŁĄCZONE – medic przechowuje wiadomości dla telefonów offline.",
   "Street detail loaded — use +/− to zoom in": "Wczytano szczegóły ulic – użyj +/−, aby przybliżyć",
   "Street detail… {done}/{total} tiles": "Szczegóły ulic… {done}/{total} kafelków",

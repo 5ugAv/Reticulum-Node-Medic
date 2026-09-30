@@ -831,6 +831,7 @@
   "Stock": "Original",
   "Stop & save": "Stoppa och spara",
   "Storage usage": "Lagringsanvändning",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Store-and-forward är PÅ — lxmd startas med -p, så Home/Backpack-omkopplaren kan inte stänga av det (se docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Lagra-och-vidarebefordra är PÅ – medicen lagrar meddelanden för telefoner som är offline.",
   "Street detail loaded — use +/− to zoom in": "Gatudetaljer laddade – använd +/− för att zooma in",
   "Street detail… {done}/{total} tiles": "Gatudetaljer… {done}/{total} rutor",

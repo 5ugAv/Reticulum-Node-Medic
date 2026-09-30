@@ -831,6 +831,7 @@
   "Stock": "Штатная",
   "Stop & save": "Стоп и сохранить",
   "Storage usage": "Использование хранилища",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Store-and-forward ВКЛЮЧЁН — lxmd запущен с -p, поэтому переключатель Home/Backpack не может его выключить (см. docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Хранение и пересылка ВКЛ — medic хранит сообщения для телефонов, которые не в сети.",
   "Street detail loaded — use +/− to zoom in": "Улицы загружены — используйте +/− для увеличения",
   "Street detail… {done}/{total} tiles": "Улицы… {done}/{total} плиток",

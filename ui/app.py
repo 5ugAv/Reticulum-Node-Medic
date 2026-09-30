@@ -1046,6 +1046,7 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(chat_scr)
         Clock.schedule_interval(lambda dt: self._chat.tick(), 60)
         Clock.schedule_interval(self._chat_start_poll, 3)
+        Clock.schedule_interval(self._refresh_chat_badge, 3)
 
         # Field readiness — the caller workflows.carry has never had. It shipped
         # complete and tested (d9b29ca) and reachable by nobody, which is the
@@ -1570,6 +1571,19 @@ class ReticulumNodeMedicApp(App):
                 return False
         self._start_chat_if_ready(self._chat_log)
         return True
+
+    _chat_badge_version = -1
+
+    def _refresh_chat_badge(self, dt):
+        """The unread count on the front-page CHAT card follows the store."""
+        store = getattr(self, "chat_store", None)
+        if store is None or store.version == self._chat_badge_version:
+            return
+        self._chat_badge_version = store.version
+        try:
+            self.home_screen.set_unread(store.unread_total())
+        except Exception:                                              # noqa: BLE001
+            pass
 
     def _chat_log(self, msg):
         try:

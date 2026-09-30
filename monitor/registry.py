@@ -606,6 +606,22 @@ class NodeRecord:
                 or bool(self.name) or self.lat is not None)
         return "kin" if ours else "neighbour"
 
+    def _nameless_label(self) -> str:
+        """A kin node with no name still has a board and a hash. "(unnamed)"
+        sat at the top of VITALS for a fortnight before the operator asked what
+        it was (2026-09-29: an RTNode-2400 on a RAK4631, 5a110011). Say that."""
+        b = self.latest_beacon
+        board = ""
+        if b is not None:
+            try:
+                board = b.board_label()
+            except Exception:                                          # noqa: BLE001
+                board = ""
+            if board.startswith("unknown("):
+                board = ""
+        tag = (self.dst_hash or "")[:8]
+        return f"{board} · {tag}" if board else f"(unnamed) {tag}"
+
     def to_dashboard(self, now: float) -> dict:
         """The node dict the VITALS screen (ui.screens.vitals_screen) renders.
         Pure + testable; the Kivy view just reads these keys. Honest: no
@@ -629,7 +645,7 @@ class NodeRecord:
             status = "unknown"           # heard != healthy; we know nothing yet
         display = self.name or (
             (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
-            if neighbour else "(unnamed)")
+            if neighbour else self._nameless_label())
         where = self.location or (HEARD_ON_MESH if neighbour else "")
         # A nameless neighbour whose announces carry the LXMF propagation
         # payload gets called what the format PROVES it is — a propagation

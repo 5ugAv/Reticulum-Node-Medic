@@ -85,6 +85,7 @@
   "Standard:": "Nomol:",
   "Start now  →": "Statim nau  →",
   "Storage usage": "Hamas spes i pulap",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Store-and-forward i ON — lxmd i stat wantaim -p, olsem na switch Home/Backpack i no inap ofim (lukim docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Holim na salim i OPIM — medic i holim ol mesij bilong ol fon i dai.",
   "Terrain could not be downloaded this time — try again later.": "I no inap daunlodim graun long dispela taim — traim gen bihain.",
   "The medic is offline — connect it to the internet, then try again.": "Medic i nogat intanet — joinim long intanet, na traim gen.",

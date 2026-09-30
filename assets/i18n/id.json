@@ -831,6 +831,7 @@
   "Stock": "Bawaan",
   "Stop & save": "Hentikan & simpan",
   "Storage usage": "Penggunaan penyimpanan",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Simpan-dan-teruskan AKTIF — lxmd dijalankan dengan -p, jadi sakelar Home/Backpack tidak bisa mematikannya (lihat docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Simpan-dan-teruskan NYALA — medic menyimpan pesan untuk ponsel yang offline.",
   "Street detail loaded — use +/− to zoom in": "Detail jalan dimuat — gunakan +/− untuk memperbesar",
   "Street detail… {done}/{total} tiles": "Detail jalan… {done}/{total} tile",

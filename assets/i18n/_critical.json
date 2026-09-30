@@ -56,6 +56,7 @@
   "Settings",
   "Standard:",
   "Storage usage",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.",
   "The medic is offline — connect it to the internet, then try again.",
   "This can take several minutes. Leave the screen open.",

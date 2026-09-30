@@ -831,6 +831,7 @@
   "Stock": "D'origine",
   "Stop & save": "Arrêter et enregistrer",
   "Storage usage": "Utilisation du stockage",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Le stockage-retransmission est ACTIVÉ — lxmd est lancé avec -p, l'interrupteur Home/Backpack ne peut pas l'éteindre (voir docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "Le stockage-et-retransmission est ACTIVÉ : le medic conserve les messages des téléphones hors ligne.",
   "Street detail loaded — use +/− to zoom in": "Détail des rues chargé : utilisez +/− pour zoomer",
   "Street detail… {done}/{total} tiles": "Détail des rues… {done}/{total} tuiles",

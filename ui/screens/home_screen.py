@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 
 from kivy.metrics import dp
+from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
@@ -34,6 +35,28 @@ GEAR = os.path.normpath(os.path.join(
 POWER = os.path.normpath(os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     os.pardir, "assets", "ui", "power.png"))
+
+
+class _UnreadBadge(Label):
+    """A count in an accent disc. Opacity 0 at zero — never a "0" on the art."""
+
+    def __init__(self, **kw):
+        super().__init__(text="", bold=True, font_size=theme.font_sp("13sp"),
+                         size_hint=(None, None), size=(dp(26), dp(26)),
+                         color=theme.hex_to_rgba(theme.COLORS["background"]), **kw)
+        from kivy.graphics import Color, Ellipse
+        with self.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            self._disc = Ellipse()
+        self.bind(pos=self._paint, size=self._paint)
+        self.opacity = 0
+
+    def _paint(self, *_):
+        self._disc.pos, self._disc.size = self.pos, self.size
+
+    def set_count(self, n: int):
+        self.text = str(n) if n < 100 else "99+"
+        self.opacity = 1 if n > 0 else 0
 
 
 class HomeScreen(FloatLayout):
@@ -117,6 +140,14 @@ class HomeScreen(FloatLayout):
         #: The app drives the mode from three places through this handle; the
         #: pair answers to the same calls the single switch did.
         self.mode_toggle = ModePair(self.mode_home, self.mode_backpack)
+
+        # Unread count on the CHAT card (2026-09-30): the medic is a messenger
+        # now, and a message that arrives while the poster is up must show.
+        # Sits in the card's top-right corner, hidden at zero; placed off the
+        # same card_rect the tap-map uses, so it moves with the artwork.
+        self.chat_badge = _UnreadBadge()
+        self.add_widget(self.chat_badge)
+        self.poster.bind(size=self._place_badge, pos=self._place_badge)
 
         # Battery gauge — hidden until a UPS HAT is present (opacity 0). Sits under
         # the power slide on the left. Tune pos_hint on-device once the HAT is on.
@@ -274,6 +305,19 @@ class HomeScreen(FloatLayout):
     # divides the row by, so the highlight can never land on the card next door.
 
     MIN_PRESS = 0.10          # seconds — a flick still shows a visible press
+
+    def set_unread(self, n: int):
+        """Called by the app when the chat store changes."""
+        self.chat_badge.set_count(int(n or 0))
+        self._place_badge()
+
+    def _place_badge(self, *_):
+        r = self._card_press_rect("chat")
+        if r is None:
+            return
+        x, y, w, h = r
+        d = self.chat_badge.width
+        self.chat_badge.pos = (x + w - d - dp(6), y + h - d - dp(6))
 
     def _card_press_rect(self, zone):
         """Where that card is on the screen right now, in Kivy pixels, or None

@@ -831,6 +831,7 @@
   "Stock": "De serie",
   "Stop & save": "Parar y guardar",
   "Storage usage": "Uso de almacenamiento",
+  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).": "Almacenar y reenviar está ACTIVADO — lxmd se inicia con -p, así que el interruptor Home/Backpack no puede apagarlo (ver docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.": "El almacenar y reenviar está ACTIVO: el medic guarda mensajes para teléfonos sin conexión.",
   "Street detail loaded — use +/− to zoom in": "Detalle de calles cargado: usa +/− para acercar",
   "Street detail… {done}/{total} tiles": "Detalle de calles… {done}/{total} teselas",
