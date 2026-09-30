@@ -98,3 +98,25 @@ def test_a_write_from_another_process_is_seen(tmp_path):
     assert app.unread_total() == 1
     assert app.conversations()[0].name == "Shell"
     assert app.version > v                             # the screen gets told
+
+
+def test_poll_notices_a_foreign_write_before_any_read(tmp_path):
+    import os, time
+    app = MessageStore(str(tmp_path / "chat"))
+    v0 = app.poll()                                    # loads (empty)
+    shell = MessageStore(str(tmp_path / "chat"))
+    shell.add_incoming(PEER, "planted", ts=1.0, msg_id="p1")
+    f = tmp_path / "chat" / "messages.json"
+    os.utime(f, (time.time() + 2, time.time() + 2))
+    assert app.poll() > v0                             # no read in between
+    assert app.unread_total() == 1
+
+
+def test_preview_is_one_line_cut_on_a_word():
+    from monitor.lxmf_chat import preview as _preview
+    assert _preview("short") == "short"
+    assert _preview("line one\nline two") == "line one line two"
+    long = "Test message planted by the walkthrough — proves the badge and the thread."
+    p = _preview(long)
+    assert p.endswith("…") and len(p) <= 45 and not p[:-1].endswith(" ")
+    assert p == "Test message planted by the walkthrough —…"

@@ -63,6 +63,18 @@ class Conversation:
     unread: int
 
 
+def preview(text: str, limit: int = 44) -> str:
+    """One line of the last message for a conversation row: newlines folded,
+    cut on a word with an ellipsis — the row is a fixed-height key and a
+    wrapped preview was cut mid-word on the glass ("proves the badge a",
+    2026-09-30)."""
+    t = " ".join((text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit].rsplit(" ", 1)[0] or t[:limit]
+    return cut + "…"
+
+
 def short_hash(peer: str) -> str:
     return (peer or "")[:8]
 
@@ -125,6 +137,15 @@ class MessageStore:
         os.makedirs(self.path, exist_ok=True)
         write_json(self._peer_file, self._peers, mode=0o600)
         self.version += 1
+
+    def poll(self) -> int:
+        """Look at the disk, then say the version. The screen and the badge
+        compare versions to decide whether to redraw — but a file another
+        process wrote is only noticed INSIDE a read, so a version compared
+        before any read never moved (the front-page badge, 2026-09-30)."""
+        with self._lock:
+            self._ensure_loaded()
+            return self.version
 
     # -- messages ------------------------------------------------------------
 

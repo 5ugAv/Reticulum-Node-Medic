@@ -1577,9 +1577,12 @@ class ReticulumNodeMedicApp(App):
     def _refresh_chat_badge(self, dt):
         """The unread count on the front-page CHAT card follows the store."""
         store = getattr(self, "chat_store", None)
-        if store is None or store.version == self._chat_badge_version:
+        if store is None:
             return
-        self._chat_badge_version = store.version
+        v = store.poll()                       # looks at the disk first
+        if v == self._chat_badge_version:
+            return
+        self._chat_badge_version = v
         try:
             self.home_screen.set_unread(store.unread_total())
         except Exception:                                              # noqa: BLE001

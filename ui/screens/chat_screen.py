@@ -29,6 +29,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from monitor import lxmf_chat as lc
+from monitor.lxmf_chat import preview as _preview
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — chat labels, buttons, hints
 from ui.onscreen_keyboard import bind_field
@@ -145,7 +146,7 @@ class ChatScreen(BoxLayout):
         return False
 
     def _maybe_refresh(self, *_):
-        if self._store.version != self._seen_version:
+        if self._store.poll() != self._seen_version:
             self._render()
 
     def _show(self, view, peer=None):
@@ -195,7 +196,7 @@ class ChatScreen(BoxLayout):
                         f"[color={theme.COLORS['text_secondary']}]{tag}[/color]{unread}   "
                         f"[color={theme.COLORS['text_secondary']}]{when(c.last_ts)}[/color]\n"
                         f"[color={theme.COLORS['text_secondary']}]"
-                        f"{c.last_text[:60]}[/color]")
+                        f"{_preview(c.last_text)}[/color]")
             row.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), v[1])))
             row.bind(on_release=lambda _b, p=c.peer: self._open_thread(p))
             self._body.add_widget(row)
