@@ -78,6 +78,52 @@ def _short(dest_hash):
     return short_hash(dest_hash)
 
 
+#: rnstatus interface types that ARE an internet backbone. AutoInterface (the
+#: LAN) and the RNode are not; a TCP server counts only once somebody is on it.
+_BACKBONE_TYPES = ("TCPClientInterface", "I2PInterface", "BackboneInterface",
+                   "BackboneClientInterface")
+
+
+def gather_link_state(run=None, timeout_s: float = 15.0) -> dict:
+    """What this node's OWN rnsd says its links are, from ``rnstatus --json``:
+    ``radio_up`` = an RNodeInterface with status true; ``backbone_up`` = an
+    internet backbone interface with status true. Both False on any failure.
+
+    These two used to be hardcoded True ("refined by the runtime that owns
+    RNS" — nothing ever did). Every Pi node reported NET green whatever its
+    links, which is how skyfinger, with no network interface up at all,
+    showed internet on VITALS (operator, 2026-09-30: "how is it possible
+    that Skyfinger has internet but no Wi-Fi?"). It was not possible; it was
+    declared. Now it is measured, and False when it cannot be — a Pi whose
+    rnstatus fails has a fault worth an amber pill.
+    """
+    import json
+    import subprocess
+    out = {"radio_up": False, "backbone_up": False}
+    try:
+        if run is None:
+            raw = subprocess.run(["bash", "-lc", "rnstatus --json 2>/dev/null"],
+                                 capture_output=True, text=True,
+                                 timeout=timeout_s).stdout
+        else:
+            raw = run("rnstatus --json")
+        doc = json.loads(raw or "{}")
+        ifs = doc.get("interfaces", []) if isinstance(doc, dict) else []
+    except Exception:                                              # noqa: BLE001
+        return out
+    for i in ifs if isinstance(ifs, list) else []:
+        if not isinstance(i, dict) or not i.get("status"):
+            continue
+        t = str(i.get("type", ""))
+        if t == "RNodeInterface":
+            out["radio_up"] = True
+        elif t in _BACKBONE_TYPES:
+            out["backbone_up"] = True
+        elif t == "TCPServerInterface" and int(i.get("clients") or 0) > 0:
+            out["backbone_up"] = True
+    return out
+
+
 def gather_neighbours(now=None, run=None, timeout_s: float = 30.0) -> list:
     """Who this node hears, from ITS OWN path table: ``rnpath -t --json`` rows
     at one hop, with how long ago each was last updated. One hop is the
@@ -253,14 +299,15 @@ def read_os_inputs(power_source: str = "battery",
 
     src = (power_source or "").lower()
     neighbours = gather_neighbours()
+    links = gather_link_state()
     return PiHealthInputs(
         neighbours=neighbours,
         uptime_s=uptime_s,
         free_ram_kb=free_ram_kb,
         disk_used_pct=disk_pct,
         net_up=_net_up(os),
-        radio_up=True,           # refined by the runtime that owns the RNode
-        rns_transport_up=True,   # refined by the runtime that owns RNS
+        radio_up=links["radio_up"],            # measured: rnstatus RNodeInterface
+        rns_transport_up=links["backbone_up"],  # measured: an internet backbone
         firmware_version=firmware_version,
         battery_mv=battery_mv,
         battery_pct=battery_pct,
