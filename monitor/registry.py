@@ -613,11 +613,10 @@ class NodeRecord:
         b = self.latest_beacon
         board = ""
         if b is not None:
-            try:
-                board = b.board_label()
-            except Exception:                                          # noqa: BLE001
-                board = ""
-            if board.startswith("unknown("):
+            board = getattr(b, "board_label", "") or ""       # a property
+            if callable(board):
+                board = board()
+            if str(board).startswith("unknown("):
                 board = ""
         tag = (self.dst_hash or "")[:8]
         return f"{board} · {tag}" if board else f"(unnamed) {tag}"

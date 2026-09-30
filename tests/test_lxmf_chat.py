@@ -79,3 +79,22 @@ def test_a_corrupt_file_is_an_empty_store_not_a_crash(tmp_path):
     (d / "peers.json").write_text(json.dumps([1, 2]))
     s = MessageStore(str(d))
     assert s.conversations() == [] and s.peers() == []
+
+
+def test_a_write_from_another_process_is_seen(tmp_path):
+    """The app's store and a shell's store on the same directory: the app
+    must notice what the shell wrote (2026-09-30: a planted message never
+    showed because the running store never re-read the file)."""
+    import os, time
+    app = MessageStore(str(tmp_path / "chat"))
+    assert app.conversations() == []                  # loaded, empty
+    v = app.version
+    shell = MessageStore(str(tmp_path / "chat"))
+    shell.remember_peer(PEER, name="Shell")
+    shell.add_incoming(PEER, "planted", ts=1.0, msg_id="p1")
+    # make the mtime unambiguously newer on coarse filesystems
+    f = tmp_path / "chat" / "messages.json"
+    os.utime(f, (time.time() + 2, time.time() + 2))
+    assert app.unread_total() == 1
+    assert app.conversations()[0].name == "Shell"
+    assert app.version > v                             # the screen gets told

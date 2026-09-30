@@ -85,14 +85,29 @@ class MessageStore:
         self._messages: List[dict] = []
         self._peers: Dict[str, dict] = {}
         self._loaded = False
+        #: mtime of messages.json as last read or written by THIS instance —
+        #: a newer one on disk means another process wrote (a CLI, a
+        #: walkthrough plant, a future importer) and we re-read. Without it
+        #: the running app sat on an empty cache while a message planted
+        #: from a shell never showed (2026-09-30).
+        self._disk_mtime = 0.0
         #: bumped on every change; the screen compares, never re-reads
         self.version = 0
 
     # -- persistence ---------------------------------------------------------
 
+    def _mtime(self) -> float:
+        try:
+            return os.stat(self._msg_file).st_mtime
+        except OSError:
+            return 0.0
+
     def _ensure_loaded(self):
-        if self._loaded:
+        if self._loaded and self._mtime() <= self._disk_mtime:
             return
+        if self._loaded:
+            self.version += 1          # someone else wrote; the screen must look
+        self._disk_mtime = self._mtime()
         raw = _load(self._msg_file, [])
         self._messages = [m for m in raw if isinstance(m, dict) and m.get("id")]
         raw_p = _load(self._peer_file, {})
@@ -103,6 +118,7 @@ class MessageStore:
     def _save_messages(self):
         os.makedirs(self.path, exist_ok=True)
         write_json(self._msg_file, self._messages, mode=0o600)
+        self._disk_mtime = self._mtime()
         self.version += 1
 
     def _save_peers(self):
