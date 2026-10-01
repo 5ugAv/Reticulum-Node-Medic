@@ -27,8 +27,39 @@ _installed = False
 _seen = 0
 
 
+class _Storage:
+    """Stands in for the window's SDL storage: everything delegates to the
+    real one; ``poll`` is ours. The storage is a Cython extension type whose
+    attributes are read-only (live, 2026-10-02 00:48: "'poll' is read-only"),
+    but the window keeps it in a plain Python attribute ``_win``."""
+
+    def __init__(self, real, provider, log):
+        object.__setattr__(self, "_real", real)
+        object.__setattr__(self, "_provider", provider)
+        object.__setattr__(self, "_log", log)
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_real"), name)
+
+    def __setattr__(self, name, value):
+        setattr(object.__getattribute__(self, "_real"), name, value)
+
+    def poll(self):
+        global _seen
+        ev = object.__getattribute__(self, "_real").poll()
+        if ev and ev[0] in FINGER_EVENTS:
+            object.__getattribute__(self, "_provider").q.appendleft(ev)
+            _seen += 1
+            if _seen == 1:
+                log = object.__getattribute__(self, "_log")
+                if log is not None:
+                    log("touch: SDL finger events are reaching Kivy (multitouch on)")
+            return None                        # the main loop skips None
+        return ev
+
+
 def install(window, log=None) -> bool:
-    """Wrap *window*._win.poll once. Returns True when installed."""
+    """Replace *window*._win with the proxy once. Returns True when installed."""
     global _installed
     if _installed:
         return True
@@ -39,20 +70,6 @@ def install(window, log=None) -> bool:
     win = getattr(window, "_win", None)
     if win is None or not hasattr(win, "poll"):
         return False
-    orig = win.poll
-
-    def poll():
-        global _seen
-        ev = orig()
-        if ev and ev[0] in FINGER_EVENTS:
-            SDL2MotionEventProvider.q.appendleft(ev)
-            _seen += 1
-            if _seen == 1 and log is not None:
-                log("touch: SDL finger events are reaching Kivy (multitouch on)")
-            return None                        # the main loop skips None
-        return ev
-
-    win.poll = poll
+    window._win = _Storage(win, SDL2MotionEventProvider, log)
     _installed = True
     return True
-

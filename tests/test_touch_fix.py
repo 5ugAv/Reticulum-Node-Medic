@@ -20,16 +20,22 @@ def test_finger_events_go_to_the_provider_and_the_rest_pass_through(monkeypatch)
     prov = _fake_kivy(monkeypatch)
     events = [("mousemotion", 1, 2), ("fingerdown", 7, 0.1, 0.2, 1.0), ("fingermotion", 7, 0.2, 0.2, 1.0),
               ("fingerdown", 8, 0.5, 0.5, 1.0), ("quit",), False]
-    win = types.SimpleNamespace(poll=lambda: events.pop(0))
+    class _Cython:                                  # attributes read-only, like the real one
+        __slots__ = ("other",)
+        def poll(self): return events.pop(0)
+        def resize_window(self, w, h): return ("resized", w, h)
+    win = _Cython()
     window = types.SimpleNamespace(_win=win)
     logs = []
     assert touch_fix.install(window, log=logs.append) is True
-    got = [win.poll() for _ in range(6)]
+    assert window._win is not win and window._win.resize_window(1, 2) == ("resized", 1, 2)
+    got = [window._win.poll() for _ in range(6)]
     assert got == [("mousemotion", 1, 2), None, None, None, ("quit",), False]
     assert [e[0] for e in prov.q] == ["fingerdown", "fingermotion", "fingerdown"][::-1]
     assert prov.q.pop()[0] == "fingerdown"                   # FIFO, as Kivy's provider pops
     assert touch_fix._seen == 3 and len(logs) == 1
     assert touch_fix.install(window) is True                 # idempotent
+    window._win.other = 5; assert win.other == 5             # writes reach the real one
 
 
 def test_without_an_sdl_window_it_declines(monkeypatch):
