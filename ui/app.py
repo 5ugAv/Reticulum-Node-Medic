@@ -1275,6 +1275,14 @@ class ReticulumNodeMedicApp(App):
         self.keyboard = OnScreenKeyboard(pan_target=self.sm,
                                          pos_hint={"x": 0, "y": 0})
         root.add_widget(self.keyboard)
+        # TWO FINGERS (ui/touch_fix.py, 2026-10-02): Kivy drops SDL finger
+        # events on Linux; the map's pinch never saw a second finger.
+        try:
+            from ui import touch_fix
+            if not touch_fix.install(Window, log=self._chat_log):
+                self._chat_log("touch: finger bridge NOT installed (no SDL window?)")
+        except Exception as e:                                         # noqa: BLE001
+            self._chat_log("touch: finger bridge failed: %r" % (e,))
         # THE CONTROL SOCKET (ui/remote.py, 2026-09-29): open any screen by name
         # from a shell, on this app, on the main thread — so a walkthrough of
         # every screen is a loop with grim, not a person at the panel.

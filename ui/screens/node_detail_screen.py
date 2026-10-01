@@ -159,7 +159,9 @@ class NodeDetailScreen(BoxLayout):
             "last_direct_hours": record.last_direct_hours(now),
         })
         if echo_tag is not None:
-            self.add_widget(_line(
+            # _para, not _line: two lines of text in a one-line box lost
+            # "the node speaking" off the bottom (operator photo, 2026-10-02).
+            self.add_widget(_para(
                 f"· {echo_tag} — a relay repeating its last announce, "
                 "not the node speaking", color="text_secondary", size="12.5sp"))
         # THE SNAPSHOT IS STAMPED (briefing Task 10): a powered-off node
