@@ -129,3 +129,19 @@ def test_one_dot_per_name_when_the_roster_could_not_fold():
         rec.identity_hash = h
     dots = reg.located_nodes(now)
     assert [d["name"] for d in dots] == ["skyfinger"]
+
+
+def test_a_folded_device_keeps_its_place_when_the_base_row_has_none():
+    """skyfinger, 2026-10-02: the roster folds the rnsd, beacon and HTTP rows
+    into one device; the HTTP row sorts first (kin, named, ok) and has no
+    coordinates, so the device had none and fell off the map."""
+    reg = NodeRegistry()
+    now = time.time()
+    for h in ("aa" * 16, "bb" * 16):
+        reg.ingest_announce(bytes.fromhex(h), b"", now)
+    reg.register("rtnode:skyfinger")
+    entry = {"name": "skyfinger", "type": "pi_propagation", "device": "bb" * 16}
+    located = dict(entry, lat=-37.512345, lon=145.523456)
+    reg.set_kin_roster({"aa" * 16: located, "bb" * 16: located, "rtnode:skyfinger": entry})
+    dots = reg.located_nodes(now)
+    assert [(d["name"], d["lat"]) for d in dots] == [("skyfinger", -37.512345)]

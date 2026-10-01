@@ -1547,6 +1547,18 @@ class NodeRegistry:
             key=lambda r: (r.provenance != "kin", not r.name,
                            _STATUS_RANK.get(r.status(now), 3)))[0]
         merged = copy.copy(base)
+        # THE PLACE COMES FROM WHOEVER KNOWS IT. The base is the kin member
+        # with the best status — for a Pi node that is its HTTP ``rtnode:``
+        # row, which has no coordinates — and the copy inherited its None.
+        # Once the roster folded skyfinger's three rows into one device, the
+        # device had no place and fell off the map (2026-10-02). Same order
+        # of preference as the base, then "has a location".
+        if merged.lat is None or merged.lon is None:
+            for r in sorted(members, key=lambda r: (r.provenance != "kin", not r.name,
+                                                    _STATUS_RANK.get(r.status(now), 3))):
+                if r.lat is not None and r.lon is not None:
+                    merged.lat, merged.lon = r.lat, r.lon
+                    break
 
         def _recency(r: NodeRecord) -> float:
             return r.last_seen if r.last_seen is not None else float("-inf")

@@ -39,13 +39,13 @@ from ui.onscreen_keyboard import bind_field
 #: How far a pinch must spread (or close) before it steps one zoom level. Higher
 #: = subtler / needs more of a pinch, which also throttles tile loading. A step
 #: fires at PINCH_STEP-x apart and again each further PINCH_STEP-x.
-PINCH_STEP = 1.7
+PINCH_STEP = 1.3        # was 1.7: a 70 % spread per level felt like no pinch at all (operator, 2026-10-02)
 
 #: Two touch points must be at least this far apart (window px) to count as a
 #: real two-finger pinch. Some panels report ONE finger as two contact points a
 #: few px apart — without this floor a single-finger drag reads as a pinch and
 #: the map zooms instead of scrolling (observed on the medic's 5" panel).
-PINCH_MIN_SEP = 120
+PINCH_MIN_SEP = 80
 from ui.map_projection import geo_points, place_label, project
 from ui.map_tiles import MAPS_DIR, TILE_SIZE, build_view, find_mbtiles, tiles_for_view
 from ui.map_download import (
