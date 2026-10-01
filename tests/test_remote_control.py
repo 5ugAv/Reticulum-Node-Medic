@@ -32,7 +32,7 @@ def test_a_node_prefix_must_be_unambiguous_and_long_enough():
 def test_it_can_only_move_between_screens():
     """The verb list IS the capability list. Nothing here flashes, wipes or
     deletes; adding such a verb is a security decision, not a convenience."""
-    assert set(R.VERBS) == {"ping", "list", "open", "node", "home", "current"}
+    assert set(R.VERBS) == {"ping", "list", "open", "node", "home", "current", "map"}
 
 
 def test_the_socket_is_private_to_the_ui_user():

@@ -34,7 +34,7 @@ import threading
 from typing import Iterable, Optional, Tuple
 
 SOCKET_PATH = "/tmp/nodemedic-control.sock"
-VERBS = ("ping", "list", "open", "node", "home", "current")
+VERBS = ("ping", "list", "open", "node", "home", "current", "map")
 REPLY_TIMEOUT_S = 8.0
 
 
@@ -141,7 +141,7 @@ class ControlServer:
         screen actually did rather than what was asked."""
         verb, arg = parse_command(line)
         if not verb:
-            return "err usage: ping | list | open <screen> | node <hash-prefix> | home | current"
+            return "err usage: ping | list | open <screen> | node <hash-prefix> | home | current | map"
         if verb == "ping":
             return "ok"
         return self._on_main(verb, arg)
@@ -169,6 +169,15 @@ class ControlServer:
             return "ok " + " ".join(sorted(names))
         if verb == "current":
             return "ok " + (app.sm.current or "")
+        if verb == "map":
+            # READ-ONLY: what the map screen is holding right now — the one
+            # question a walkthrough could not answer from the saved registry
+            # ("Skyfinger isn't on the map", 2026-10-02).
+            scr = getattr(app, "scan_screen", None)
+            nodes = list(getattr(scr, "_nodes", None) or [])
+            rows = ["%s@%s,%s:%s" % (n.get("name"), n.get("lat"), n.get("lon"), n.get("status"))
+                    for n in nodes]
+            return "ok %d %s" % (len(nodes), " ".join(rows))
         if verb == "home":
             app.switch_mode("home")
             return "ok home"
