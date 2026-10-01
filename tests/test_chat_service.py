@@ -336,3 +336,25 @@ def test_router_is_built_on_a_worker_thread_despite_its_signal_handlers(tmp_path
     t.start(); t.join(5)
     assert out["ok"] is True and s.running, s.last_error
     assert signal.getsignal(signal.SIGTERM) is not None     # module left intact
+
+
+def test_peer_route_names_rnsds_road_not_the_shared_instance(svc):
+    """The UI is a client of rnsd: Transport says the next hop is the local
+    shared instance. The first live exchange showed exactly that (2026-10-01).
+    rnsd's path table names the real interface."""
+    import json
+    class _If:
+        name = "LocalInterface[rns/default]"
+    FakeTransport.hops_to = classmethod(lambda cls, dh: 1)
+    FakeTransport.next_hop_interface = classmethod(lambda cls, dh: _If())
+    FakeIdentity.known[PEER_BYTES] = FakeIdentity("pe")
+    FakeTransport.paths.add(PEER_BYTES)
+    table = json.dumps([{"hash": PEER, "hops": 1, "via": PEER, "timestamp": 1.0,
+                         "expires": 2.0, "interface": "RNodeInterface[RNode LoRa Interface]"}])
+    svc._run = lambda cmd: table
+    try:
+        assert svc.peer_route(PEER) == {"hops": 1, "interface": "RNode LoRa Interface", "known": True}
+        svc._run = lambda cmd: "not json"                 # table unreadable: keep what we had
+        assert svc.peer_route(PEER)["interface"] == "LocalInterface[rns/default]"
+    finally:
+        del FakeTransport.hops_to, FakeTransport.next_hop_interface

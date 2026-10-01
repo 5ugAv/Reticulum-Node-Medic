@@ -128,7 +128,8 @@ def test_chat_keeps_the_phone_handoff_in_plain_words():
     on 2026-09-30 read the corner 'Phone apps' button as 'the APKs are gone'."""
     src = open("ui/screens/chat_screen.py").read()
     assert 'tr("Put Columba or Sideband on a phone  →")' in src
-    assert src.count("self._open_phone_apps()") >= 2          # corner button + full-width row
+    assert src.count("self._open_phone_apps()") == 1          # the full-width row, only
+    assert 'tr("Phone apps")' not in src                          # the corner twin is gone (2026-10-01)
     app = open("ui/app.py").read()
     assert 'open_phone_apps=lambda: self.switch_mode("comms")' in app
     assert 'Screen(name="comms")' in app                        # the APK page itself still exists

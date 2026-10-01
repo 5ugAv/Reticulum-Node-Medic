@@ -48,13 +48,25 @@ SYNC_EVERY_S = 20 * 60
 ANNOUNCE_MIN_S, ANNOUNCE_MAX_S = 90 * 60, 300 * 60
 
 
+def _is_local_road(name: str) -> bool:
+    n = (name or "").lower()
+    return "local" in n or "shared instance" in n
+
+
+def _short_iface(name: str) -> str:
+    """'RNodeInterface[RNode LoRa Interface]' -> 'RNode LoRa Interface'."""
+    if "[" in name and name.endswith("]"):
+        return name[name.index("[") + 1:-1]
+    return name
+
+
 class ChatService:
     def __init__(self, store: MessageStore, display_name: str = "Node Medic",
                  identity_path: str = IDENTITY_PATH,
                  storage_path: str = ROUTER_STORAGE,
                  lxmd_identity_path: str = LXMD_IDENTITY,
                  rns=None, lxmf=None, log: Optional[Callable[[str], None]] = None,
-                 path_wait_s: float = PATH_WAIT_S):
+                 path_wait_s: float = PATH_WAIT_S, run: Optional[Callable[[str], str]] = None):
         self.store = store
         self.display_name = display_name
         self.identity_path = identity_path
@@ -64,6 +76,7 @@ class ChatService:
         self._lxmf = lxmf
         self._log = log or (lambda m: None)
         self._path_wait_s = path_wait_s
+        self._run = run                 # shell runner for rnpath (tests inject)
         self._router = None
         self._identity = None
         self._dest = None
@@ -184,6 +197,7 @@ class ChatService:
         try:
             self._router.request_messages_from_propagation_node(self._identity)
             self.last_sync_at = now
+            self._log("chat: asked the post office for held messages")
             return True
         except Exception as e:                                         # noqa: BLE001
             self._log("post-office sync failed: %r" % (e,))
@@ -245,7 +259,32 @@ class ChatService:
                 out["interface"] = str(getattr(iface, "name", iface) or "")
         except Exception:                                              # noqa: BLE001
             pass
+        if out["hops"] is not None and _is_local_road(out["interface"]):
+            # This process is a CLIENT of rnsd: its own next hop is the shared
+            # instance, so the first live exchange read "1 hop via Local shared
+            # instance" (2026-10-01). rnsd's path table names the real road.
+            real = self._rnsd_road(dh)
+            if real is not None:
+                out["hops"], out["interface"] = real
         return out
+
+    def _rnsd_road(self, dh: bytes):
+        """(hops, interface) from rnsd's own path table, or None."""
+        import subprocess
+        from monitor.mesh import parse_rnpath
+        try:
+            if self._run is None:
+                raw = subprocess.run(["bash", "-lc", "rnpath -t --json 2>/dev/null"],
+                                     capture_output=True, text=True, timeout=10).stdout
+            else:
+                raw = self._run("rnpath -t --json")
+        except Exception:                                              # noqa: BLE001
+            return None
+        want = dh.hex()
+        for n in parse_rnpath(raw or "[]"):
+            if n.dst_hash == want:
+                return n.hops, _short_iface(n.interface)
+        return None
 
     # -- outbound ------------------------------------------------------------
 

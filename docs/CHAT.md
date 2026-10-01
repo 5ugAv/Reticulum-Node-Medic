@@ -90,3 +90,23 @@ until the medic is home again — which is the truth, and the screen says it
 (`peer_route` → *no path right now*; the message fails in words rather than
 waiting on a post office that is not open). Success line: the last log line
 names the node (Home) or does not (Backpack), matching the front-page toggle.
+
+## Proven (2026-10-01)
+
+First live exchange, over LoRa. Phone: Columba on Android, a Heltec
+MeshPocket as its RNode over Bluetooth, fleet radio parameters. The phone's
+announce arrived as `5a15001500000000000000000000000f` / display name
+"5ugAv" and the medic listed it under *Heard on the mesh*; medic → phone
+"your node medic pal" 23:28:28 → `delivered` (double tick in Columba);
+phone → medic "It works!" 23:29:27, in the store as `in … delivered`.
+rnsd: 1 hop via RNodeInterface.
+
+Two lessons from it, both fixed the same night:
+
+* The address Columba shows most prominently was NOT the LXMF delivery
+  address (the operator typed `5a9abc75…`; nothing answers to it). The one
+  that matters is the one the phone ANNOUNCES — so "Heard on the mesh" is
+  the road to use, and a typed address is no longer listed as "heard".
+* The thread's route line said "1 hop via Local shared instance": the UI is
+  a client of rnsd and sees only its own next hop. `peer_route` now reads
+  rnsd's path table for the real interface.

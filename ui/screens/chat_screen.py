@@ -105,11 +105,9 @@ class ChatScreen(BoxLayout):
                          spacing=dp(8))
         self._title = _lbl(tr("Chat"), size="22sp", bold=True)
         head.add_widget(self._title)
-        apps = _btn(tr("Phone apps"), h=40, size="13sp")
-        apps.size_hint_x = None
-        apps.width = dp(120)
-        apps.bind(on_release=lambda *_: self._open_phone_apps and self._open_phone_apps())
-        head.add_widget(apps)
+        # One road to the phone apps, not two: the corner "Phone apps" key
+        # and the full-width row at the foot were the same thing on the same
+        # screen (operator, 2026-10-01). The row stays.
         self.add_widget(head)
 
         self._addr = _lbl("", size="11.5sp", color="text_secondary")
@@ -220,6 +218,9 @@ class ChatScreen(BoxLayout):
         self._show(THREAD, peer=peer)
 
     def _render_thread(self):
+        # Read means seen: a message that arrives while this thread is open
+        # was staying unread (badge "1" over the very words, 2026-10-01).
+        self._store.mark_read(self._peer)
         self._title.text = self._store.peer_name(self._peer)
         back = _btn(tr("← All chats"), h=40, size="13sp")
         back.bind(on_release=lambda *_: self._show(LIST))
@@ -315,7 +316,9 @@ class ChatScreen(BoxLayout):
         from monitor.operator_alert import normalize_address, valid_address
         a = normalize_address(self._to.text or "")
         if valid_address(a):
-            self._store.remember_peer(a)
+            # Not added to the peer list: a typed address was not heard on the mesh,
+            # and the first one typed (a wrong one) sat under "Heard on the
+            # mesh" as if it had been (2026-10-01).
             self._open_thread(a)
         else:
             self._to.hint_text = tr("That isn't a 32-character address")

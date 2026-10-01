@@ -33,7 +33,8 @@ Five things. Nothing else blocks the handover, and no more get added.
 - [x] **Monitoring** — nodes appear, and their health comes back over the mesh
 - [ ] **Maps** — placement and the node map
 - [ ] **Antenna guide** — the choosing and testing path
-- [ ] **Chat / communication** — messages actually move
+- [x] **Chat / communication** — messages actually move
+  _Ticked 2026-10-01._ First live exchange, over LoRa: the operator's phone (Columba, Heltec MeshPocket over Bluetooth) announced as `5a150015…` and the medic listed it by name under Heard on the mesh; medic → phone "your node medic pal" 23:28:28 `delivered` (double tick on the phone); phone → medic "It works!" 23:29:27 on the medic's own screen and in its store (`~/.reticulum-node-medic/chat/messages.json`). 1 hop via the RNode. Both directions read back from disk, not from the photo.
 
 ### What the two ticks rest on (checked 2026-09-27, not remembered)
 

@@ -1044,7 +1044,11 @@ class ReticulumNodeMedicApp(App):
         chat_scr.bind(on_enter=lambda *_: self.chat_screen.enter(),
                       on_leave=lambda *_: self.chat_screen.leave())
         self.sm.add_widget(chat_scr)
-        Clock.schedule_interval(lambda dt: self._chat.tick(), 60)
+        # NOT a bare lambda around tick(): Kivy CANCELS an interval whose
+        # callback returns False, and tick() returns False whenever it is
+        # rate-limited — so the post office was asked once, a minute after
+        # start, and never again ("checked 30 Sep 17:11" a day later).
+        Clock.schedule_interval(self._chat_tick, 60)
         Clock.schedule_interval(self._chat_start_poll, 3)
         Clock.schedule_interval(self._refresh_chat_badge, 3)
 
@@ -1573,6 +1577,14 @@ class ReticulumNodeMedicApp(App):
         return True
 
     _chat_badge_version = -1
+
+    def _chat_tick(self, dt):
+        """Once a minute: re-announce when due, ask the post office every 20
+        min. Returns None on purpose — see the schedule_interval note."""
+        try:
+            self._chat.tick()
+        except Exception as e:                                         # noqa: BLE001
+            self._chat_log("chat tick failed: %r" % (e,))
 
     def _refresh_chat_badge(self, dt):
         """The unread count on the front-page CHAT card follows the store."""

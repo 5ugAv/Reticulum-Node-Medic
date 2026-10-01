@@ -38,3 +38,14 @@ def test_it_can_only_move_between_screens():
 def test_the_socket_is_private_to_the_ui_user():
     src = open("ui/remote.py").read()
     assert "0o600" in src and "AF_UNIX" in src
+
+
+def test_chat_tick_is_not_scheduled_as_a_lambda_that_returns_false():
+    """Kivy cancels an interval whose callback returns False; tick() returns
+    False when rate-limited. The post office was asked once and never again
+    (2026-10-01)."""
+    src = open("ui/app.py").read()
+    assert "lambda dt: self._chat.tick()" not in src
+    assert "Clock.schedule_interval(self._chat_tick, 60)" in src
+    body = src[src.index("def _chat_tick"):src.index("def _refresh_chat_badge")]
+    assert not any(l.strip().startswith("return") for l in body.splitlines())

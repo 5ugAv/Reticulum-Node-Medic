@@ -115,8 +115,8 @@ class MessageStore:
             return 0.0
 
     def _ensure_loaded(self):
-        if self._loaded and self._mtime() <= self._disk_mtime:
-            return
+        if self._loaded and self._mtime() == self._disk_mtime:
+            return                     # a DELETED file (mtime 0) is a change too
         if self._loaded:
             self.version += 1          # someone else wrote; the screen must look
         self._disk_mtime = self._mtime()

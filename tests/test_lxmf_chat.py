@@ -120,3 +120,23 @@ def test_preview_is_one_line_cut_on_a_word():
     p = _preview(long)
     assert p.endswith("…") and len(p) <= 45 and not p[:-1].endswith(" ")
     assert p == "Test message planted by the walkthrough —…"
+
+
+def test_a_deleted_file_is_noticed_too(tmp_path):
+    """The planted test peer stayed on the screen after its files were
+    deleted (2026-10-01): a missing file has mtime 0, which was 'not newer'."""
+    import os
+    s = MessageStore(str(tmp_path / "chat"))
+    s.remember_peer(PEER, name="Gone soon")
+    s.add_incoming(PEER, "x", ts=1.0, msg_id="1")
+    assert s.peer_name(PEER) == "Gone soon"
+    os.remove(tmp_path / "chat" / "messages.json")
+    os.remove(tmp_path / "chat" / "peers.json")
+    assert s.conversations() == [] and s.peers() == []
+
+
+def test_a_typed_address_is_not_called_heard():
+    src = open("ui/screens/chat_screen.py").read()
+    i = src.index("def _open_typed")
+    assert "remember_peer" not in src[i:]
+    assert "self._store.mark_read(self._peer)" in src[src.index("def _render_thread"):src.index("def _route_line")]
