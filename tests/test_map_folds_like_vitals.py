@@ -141,7 +141,7 @@ def test_a_folded_device_keeps_its_place_when_the_base_row_has_none():
         reg.ingest_announce(bytes.fromhex(h), b"", now)
     reg.register("rtnode:skyfinger")
     entry = {"name": "skyfinger", "type": "pi_propagation", "device": "bb" * 16}
-    located = dict(entry, lat=-37.512345, lon=145.523456)
+    located = dict(entry, lat=-37.7, lon=145.0)
     reg.set_kin_roster({"aa" * 16: located, "bb" * 16: located, "rtnode:skyfinger": entry})
     dots = reg.located_nodes(now)
-    assert [(d["name"], d["lat"]) for d in dots] == [("skyfinger", -37.512345)]
+    assert [(d["name"], d["lat"]) for d in dots] == [("skyfinger", -37.7)]
