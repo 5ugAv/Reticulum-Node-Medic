@@ -1542,3 +1542,26 @@ def test_rebase_keeps_stage2_sources_through_a_clock_step():
     assert rec.last_echo_at_obs.source == "echo"
     assert rec.mesh_heard_obs.source == "path-table"
     assert rec.mesh_heard == NOW - HOUR + 3 * HOUR
+
+
+def test_chats_heard_names_become_the_rows_announced_name():
+    """An LXMF announce carries its display name in a msgpack array, which
+    _printable_name rightly refuses — so the operator's phone sat in VITALS as
+    "Neighbour 5a150015" while CHAT called it 5ugAv (2026-10-02). The chat
+    service decodes it; the registry takes the hand-over by hash."""
+    r = NodeRegistry()
+    phone = b"\xdf\x26" + b"\x11" * 14
+    rec = r.ingest_announce(phone, b"\x92\xa55ugAv\x08", NOW)     # msgpack [name, cost]
+    assert rec.announced_name == ""                               # refused, as it must be
+    assert "Neighbour df26" in rec.to_dashboard(NOW)["name"]
+    assert r.set_peer_names({phone.hex(): "5ugAv", "zz": "", "": "x"}) == 1
+    assert rec.announced_name == "5ugAv"
+    assert rec.to_dashboard(NOW)["name"] == "5ugAv"
+    # the operator's own name always wins, and residue is still refused
+    rec.name = "Marnie's phone"
+    assert rec.to_dashboard(NOW)["name"] == "Marnie's phone"
+    assert r.set_peer_names({phone.hex(): "j("}) == 0
+    # a hash heard AFTER the hand-over gets the name on its first announce
+    later = b"\xab" * 16
+    r.set_peer_names({later.hex(): "Late phone"})
+    assert r.ingest_announce(later, b"\x92\xaaLate phone\x08", NOW).announced_name == "Late phone"

@@ -1607,6 +1607,12 @@ class ReticulumNodeMedicApp(App):
             self.home_screen.set_unread(store.unread_total())
         except Exception:                                              # noqa: BLE001
             pass
+        # The names chat heard become VITALS' names for the same hashes.
+        try:
+            self.monitor_service.registry.set_peer_names(
+                {p["hash"]: p["name"] for p in store.peers() if p.get("name")})
+        except Exception:                                              # noqa: BLE001
+            pass
 
     def _chat_log(self, msg):
         try:

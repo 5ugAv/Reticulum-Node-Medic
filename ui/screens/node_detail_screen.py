@@ -124,7 +124,11 @@ class NodeDetailScreen(BoxLayout):
         title = BoxLayout(orientation="vertical")
         title.add_widget(_line(record.name or record.dst_hash[:12], bold=True,
                                size="20sp"))
-        title.add_widget(_line(record.location or record.node_type,
+        # A stranger is not an RTNode: node_type defaults to "rtnode2400" for
+        # every record, and the operator's own phone wore it (2026-10-02).
+        kind = (record.node_type if record.provenance != "neighbour"
+                else "heard announcing — device unknown")
+        title.add_widget(_line(record.location or kind,
                                color="text_secondary", size="13sp"))
         head.add_widget(title)
         self.add_widget(head)

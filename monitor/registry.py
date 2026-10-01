@@ -802,6 +802,7 @@ def _locked(fn):
 
 class NodeRegistry:
     def __init__(self):
+        self._peer_names: Dict[str, str] = {}   # chat's heard names, by dst hash
         # ONE lock guards nodes + history. Three threads touch this registry:
         # the RNS announce handler (inserts new keys), the monitor poll thread
         # (saves/dashboards) and the Kivy main thread (VITALS/SCAN/TRIAGE
@@ -1272,10 +1273,31 @@ class NodeRegistry:
         # ever resurrect the "j(" ghosts (2026-08-14) from THIS payload.
         if propagation:
             return rec
-        name = _printable_name(app_data)
+        name = _printable_name(app_data) or self._peer_names.get(rec.dst_hash, "")
         if name and not rec.announced_name:
             rec.announced_name = name
         return rec
+
+    @_locked
+    def set_peer_names(self, names: Dict[str, str]) -> int:
+        """Names CHAT heard — LXMF announces carry the display name in a
+        msgpack array, which _printable_name rightly refuses (the "j(" ghosts
+        of 2026-08-14), so a phone sat in VITALS as "Neighbour 5a150015"
+        while the chat screen called it 5ugAv (operator, 2026-10-02: "transfer
+        that name to the node it refers to"). The chat service decodes the
+        name with LXMF's own function; this hands it across, keyed by the
+        same destination hash. It fills announced_name — never ``name``, which
+        is the operator's — and only where nothing was announced in clear.
+        Returns how many rows gained a name."""
+        self._peer_names = {h: n for h, n in (names or {}).items()
+                            if h and n and _valid_display_name(n)}
+        n = 0
+        for h, name in self._peer_names.items():
+            rec = self.nodes.get(h)
+            if rec is not None and not rec.announced_name:
+                rec.announced_name = name
+                n += 1
+        return n
 
     @_locked
     def ingest_mesh(self, node, now: float) -> Optional[NodeRecord]:
