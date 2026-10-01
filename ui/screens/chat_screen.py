@@ -36,6 +36,48 @@ from ui.onscreen_keyboard import bind_field
 from ui.text_fit import grow_to_text
 
 LIST, THREAD, NEW = "list", "thread", "new"
+#: Press-and-hold this long on a conversation row to get "Delete this chat".
+HOLD_S = 0.6
+
+
+class _HoldRow(Button):
+    """A list row that fires ``on_hold`` after HOLD_S of a steady press, and
+    then swallows the release so a hold is never also a tap."""
+
+    def __init__(self, on_hold, **kw):
+        super().__init__(**kw)
+        self._on_hold = on_hold
+        self._ev = None
+        self._held = False
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self._held = False
+            self._ev = Clock.schedule_once(lambda dt: self._fire(touch), HOLD_S)
+        return super().on_touch_down(touch)
+
+    def _cancel(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+
+    def on_touch_move(self, touch):
+        if self._ev is not None and not self.collide_point(*touch.pos):
+            self._cancel()                       # slid off: not a hold
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        self._cancel()
+        if self._held:
+            self._held = False
+            self.state = "normal"
+            return True                          # the hold already acted
+        return super().on_touch_up(touch)
+
+    def _fire(self, touch):
+        self._ev = None
+        self._held = True
+        self._on_hold()
 
 
 def _lbl(text, size="15sp", color="text_primary", bold=False, halign="left"):
@@ -184,7 +226,12 @@ class ChatScreen(BoxLayout):
                 "writes to this address appears here."),
                 size="14sp", color="text_secondary"))
         for c in convs:
-            row = _btn("", h=64)
+            row = _HoldRow(lambda p=c.peer: self._ask_delete(p), text="",
+                           size_hint_y=None, height=dp(64), bold=True,
+                           font_size=theme.font_sp("15sp"), background_normal="",
+                           background_down="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             row.halign, row.valign = "left", "middle"
             row.markup = True
             unread = f"  [color={theme.COLORS['accent']}]●{c.unread}[/color]" if c.unread else ""
@@ -212,6 +259,22 @@ class ChatScreen(BoxLayout):
         apk = _btn(tr("Put Columba or Sideband on a phone  →"), h=48, size="14sp")
         apk.bind(on_release=lambda *_: self._open_phone_apps and self._open_phone_apps())
         self._foot.add_widget(apk)
+
+    def _ask_delete(self, peer):
+        from ui.confirm import confirm_leave
+        name = self._store.peer_name(peer)
+        confirm_leave(
+            tr("Delete the chat with {name}? The messages go from this medic. "
+               "{name} stays on the mesh and can write again.").format(name=name),
+            tr("Delete this chat"),
+            on_leave=lambda *_: self._delete(peer),
+            stay_text=tr("Keep it"), leave_text=tr("Delete"), leave_color="red")
+
+    def _delete(self, peer):
+        self._store.delete_conversation(peer)
+        if self._peer == peer:
+            self._peer = None
+        self._show(LIST)
 
     def _open_thread(self, peer):
         self._store.mark_read(peer)

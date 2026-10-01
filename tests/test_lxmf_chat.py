@@ -140,3 +140,26 @@ def test_a_typed_address_is_not_called_heard():
     i = src.index("def _open_typed")
     assert "remember_peer" not in src[i:]
     assert "self._store.mark_read(self._peer)" in src[src.index("def _render_thread"):src.index("def _route_line")]
+
+
+def test_delete_conversation_removes_the_messages_and_keeps_the_peer(store):
+    store.remember_peer(PEER, name="Marnie")
+    store.add_incoming(PEER, "one", ts=1.0, msg_id="1")
+    store.add_outgoing(PEER, "two", ts=2.0)
+    store.add_incoming(OTHER, "other", ts=3.0, msg_id="3")
+    v = store.version
+    assert store.delete_conversation(PEER) == 2
+    assert store.version > v
+    assert store.thread(PEER) == [] and [c.peer for c in store.conversations()] == [OTHER]
+    assert store.peer_name(PEER) == "Marnie"          # still known on the mesh
+    assert store.delete_conversation(PEER) == 0       # nothing to do, no write
+
+
+def test_press_and_hold_on_a_row_offers_delete():
+    src = open("ui/screens/chat_screen.py").read()
+    assert "class _HoldRow(Button)" in src and "HOLD_S = 0.6" in src
+    assert 'leave_text=tr("Delete"), leave_color="red"' in src
+    assert "self._store.delete_conversation(peer)" in src
+    # a hold is never also a tap
+    body = src[src.index("def on_touch_up"):src.index("def _fire")]
+    assert "return True" in body

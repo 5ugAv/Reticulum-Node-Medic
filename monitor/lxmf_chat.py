@@ -219,6 +219,19 @@ class MessageStore:
                            if m["peer"] == peer and m.get("dir") == OUT
                            and m.get("state") == FAILED), key=lambda m: m["ts"])
 
+    def delete_conversation(self, peer: str) -> int:
+        """Remove every message with *peer* (press-and-hold → Delete on the
+        list, operator 2026-10-01). The peer itself stays known: deleting a
+        chat is not forgetting who is on the mesh. Returns how many went."""
+        with self._lock:
+            self._ensure_loaded()
+            before = len(self._messages)
+            self._messages = [m for m in self._messages if m["peer"] != peer]
+            n = before - len(self._messages)
+            if n:
+                self._save_messages()
+            return n
+
     def thread(self, peer: str) -> List[dict]:
         with self._lock:
             self._ensure_loaded()
