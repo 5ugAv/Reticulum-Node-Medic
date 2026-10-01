@@ -223,7 +223,8 @@ def set_mode(mode: str, connection: Connection, restart: bool = True,
             res.message = ("Home mode — full propagation node (routing + message "
                            "store-and-forward). Stable infrastructure.")
         elif mode == HOME:
-            res.message = "Home mode — transport node (routing only)."
+            res.message = ("Home mode — transport node (routing only). "
+                           "Settings ▸ Home mode makes it a full propagation node.")
         else:
             res.message = ("Backpack mode — transport OFF. Safe to move without "
                            "disturbing the network.")

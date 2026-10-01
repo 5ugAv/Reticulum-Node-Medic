@@ -111,3 +111,21 @@ def test_the_occupied_list_is_cleared_with_the_labels():
     src = func_source("ui/screens/scan_screen.py", "_clear_labels",
                       cls="MapPlot")
     assert "_label_boxes" in src
+
+
+def test_one_dot_per_name_when_the_roster_could_not_fold():
+    """Births before the roster recorded every address leave one node as
+    three identity groups; the map drew three stacked dots and skyfinger's
+    label fell off the bottom (operator, 2026-10-01)."""
+    reg = NodeRegistry()
+    now = time.time()
+    for h in ("aa" * 16, "bb" * 16, "cc" * 16):
+        reg.ingest_announce(bytes.fromhex(h), b"", now)
+        reg.set_location(h, -37.512, 145.523) if hasattr(reg, "set_location") else None
+    for h in ("aa" * 16, "bb" * 16, "cc" * 16):
+        rec = reg.nodes[h]
+        rec.name = "skyfinger"
+        rec.lat, rec.lon = -37.512, 145.523
+        rec.identity_hash = h
+    dots = reg.located_nodes(now)
+    assert [d["name"] for d in dots] == ["skyfinger"]

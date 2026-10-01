@@ -115,7 +115,7 @@ class _Bubble(BoxLayout):
             Color(*theme.hex_to_rgba(ground))
             self._bg = RoundedRectangle(radius=[dp(12)] * 4)
         self.bind(pos=self._paint, size=self._paint)
-        body = _lbl(rec.get("text", ""), size="15.5sp", color=ink)
+        body = _lbl(lc.readable(rec.get("text", "")), size="15.5sp", color=ink)
         meta = when(rec.get("ts", 0))
         if ours:
             meta += "  ·  " + tr(lc.STATE_WORDS.get(rec.get("state"), ""))

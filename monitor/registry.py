@@ -1704,7 +1704,24 @@ class NodeRegistry:
                         "name": merged.name or "(unnamed)",
                         "status": merged.status(now),
                         "self_located": self_located})
-        return sorted(out, key=lambda d: d["name"].lower())
+        # ONE DOT PER NAME. A node the roster could not fold (births before
+        # the roster recorded every address) is three devices here — rnsd,
+        # beacon, lxmd — and drew three stacked dots with three stacked
+        # labels; at the house, four labels stacked under ELSEWHERE's and
+        # skyfinger's name was the one that fell off (operator, 2026-10-01:
+        # "Skyfinger isn't on the map anymore"). VITALS keeps the groups
+        # apart on purpose (a dead namesake must not hide); the map wants the
+        # PLACE, so it keeps the entry with the best status, self-located
+        # first, and lets the rest go.
+        best: Dict[str, dict] = {}
+        for d in out:
+            k = name_key(d["name"]) or d["name"]
+            cur = best.get(k)
+            rank = (not d["self_located"], _STATUS_RANK.get(d["status"], 3))
+            if cur is None or rank < (not cur["self_located"],
+                                      _STATUS_RANK.get(cur["status"], 3)):
+                best[k] = d
+        return sorted(best.values(), key=lambda d: d["name"].lower())
 
     def visible(self, now: float, status: Optional[str] = None,
                 search: str = "") -> List[NodeRecord]:

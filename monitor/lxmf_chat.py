@@ -63,12 +63,88 @@ class Conversation:
     unread: int
 
 
+#: LXMF field numbers (LXMF/LXMF.py). Known so a textless message can be
+#: named in words; anything else is shown by number.
+FIELD_NAMES = {0x01: "embedded messages", 0x02: "telemetry", 0x03: "telemetry stream",
+               0x04: "icon", 0x05: "file", 0x06: "image", 0x07: "audio",
+               0x08: "thread", 0x09: "commands", 0x0A: "results", 0x0B: "group",
+               0x0C: "ticket", 0x0D: "event", 0x0E: "RNR refs", 0x0F: "renderer"}
+
+
+def readable(text: str) -> str:
+    """Text the medic's fonts can draw. Roboto and DejaVu carry no emoji;
+    Kivy draws a missing glyph as NOTHING, so a 👍 arrived as a blank. Each
+    emoji becomes its Unicode name in brackets — "[thumbs up sign]" — which
+    is honest, offline, and needs no new font."""
+    import unicodedata
+    out = []
+    for ch in text or "":
+        cp = ord(ch)
+        if cp >= 0x1F000 or 0x2600 <= cp <= 0x27BF or 0x1F1E6 <= cp <= 0x1F1FF:
+            name = unicodedata.name(ch, "").lower()
+            out.append("[%s]" % name if name else "[?]")
+        elif cp in (0xFE0F, 0x200D):
+            continue                           # variation selector / joiner
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+#: LXMF/LXMF.py (1.0.1): the reply and reaction fields and their dict keys.
+FIELD_REPLY_TO, FIELD_REPLY_QUOTE, FIELD_REACTION = 0x30, 0x31, 0x40
+REACTION_TO, REACTION_CONTENT = 0x00, 0x01
+
+
+def _utf8(v) -> Optional[str]:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (bytes, bytearray)):
+        try:
+            return bytes(v).decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    return None
+
+
+def describe_fields(fields: dict, title: str = "", text_of=None) -> str:
+    """Words for a message that has no text: a reaction, an attachment.
+
+    A Columba thumbs-up is FIELD_REACTION {REACTION_TO: hash, REACTION_CONTENT:
+    b"\xf0\x9f\x91\x8d"} and nothing else; it drew as an empty bubble
+    (2026-10-01). *text_of* (msg_id hex → text, or None) lets the reaction
+    name the message it was on."""
+    if title and title.strip():
+        return readable(title.strip())
+    if not fields:
+        return "(an empty message)"
+    parts = []
+    for k, v in fields.items():
+        if k == FIELD_REACTION and isinstance(v, dict):
+            emoji = readable(_utf8(v.get(REACTION_CONTENT)) or "?")
+            target = v.get(REACTION_TO)
+            quoted = None
+            if text_of is not None and isinstance(target, (bytes, bytearray)):
+                quoted = text_of(bytes(target).hex())
+            if quoted:
+                parts.append("%s to \u201c%s\u201d" % (emoji, preview(quoted, 40)))
+            else:
+                parts.append("%s to an earlier message" % emoji)
+        elif k in (FIELD_REPLY_TO, FIELD_REPLY_QUOTE):
+            continue                          # context for a text, not content
+        elif k in FIELD_NAMES:
+            parts.append(FIELD_NAMES[k])
+        else:
+            u = _utf8(v)
+            parts.append(readable(u) if (u and len(u) <= 64) else "field %s" % k)
+    return "(" + ", ".join(parts) + ")" if parts else "(an empty message)"
+
+
 def preview(text: str, limit: int = 44) -> str:
     """One line of the last message for a conversation row: newlines folded,
     cut on a word with an ellipsis — the row is a fixed-height key and a
     wrapped preview was cut mid-word on the glass ("proves the badge a",
     2026-09-30)."""
-    t = " ".join((text or "").split())
+    t = " ".join(readable(text or "").split())
     if len(t) <= limit:
         return t
     cut = t[:limit].rsplit(" ", 1)[0] or t[:limit]
@@ -154,6 +230,13 @@ class MessageStore:
             if m["id"] == msg_id:
                 return m
         return None
+
+    def text_of(self, msg_id: str) -> Optional[str]:
+        """The text of a stored message by its id (LXMF hash hex), or None."""
+        with self._lock:
+            self._ensure_loaded()
+            rec = self._find(msg_id)
+            return rec.get("text") if rec else None
 
     def add_incoming(self, peer: str, text: str, ts: Optional[float] = None,
                      msg_id: Optional[str] = None) -> Optional[dict]:

@@ -48,6 +48,11 @@ SYNC_EVERY_S = 20 * 60
 ANNOUNCE_MIN_S, ANNOUNCE_MAX_S = 90 * 60, 300 * 60
 
 
+def _trunc(v, n: int = 80) -> str:
+    s = repr(v)
+    return s if len(s) <= n else s[:n] + "…"
+
+
 def _is_local_road(name: str) -> bool:
     n = (name or "").lower()
     return "local" in n or "shared instance" in n
@@ -211,6 +216,23 @@ class ChatService:
             mid = message.hash.hex() if getattr(message, "hash", None) else None
             text = message.content_as_string()
             ts = float(getattr(message, "timestamp", None) or time.time())
+            title = ""
+            try:
+                title = message.title_as_string() or ""
+            except Exception:                                          # noqa: BLE001
+                title = ""
+            fields = {}
+            try:
+                fields = dict(getattr(message, "fields", None) or {})
+            except Exception:                                          # noqa: BLE001
+                fields = {}
+            if not text.strip():
+                # Columba's emoji REACTION is an LXMF message with no text
+                # and the reaction in a field; it drew as an empty bubble
+                # (operator, 2026-10-01). Say what the fields carried.
+                text = store_mod.describe_fields(fields, title, text_of=self.store.text_of)
+                self._log("chat: textless message from %s: title=%r fields=%s"
+                          % (peer[:8], title, {k: _trunc(v) for k, v in fields.items()}))
             rec = self.store.add_incoming(peer, text, ts=ts, msg_id=mid)
             if rec is not None:
                 self._log("chat: message from %s" % peer[:8])

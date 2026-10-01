@@ -163,3 +163,33 @@ def test_press_and_hold_on_a_row_offers_delete():
     # a hold is never also a tap
     body = src[src.index("def on_touch_up"):src.index("def _fire")]
     assert "return True" in body
+
+
+def test_emoji_become_words_the_medics_fonts_can_draw():
+    from monitor.lxmf_chat import readable, describe_fields
+    assert readable("👍") == "[thumbs up sign]"
+    assert readable("ok 👍🏽 then") == "ok [thumbs up sign][emoji modifier fitzpatrick type-4] then"
+    assert readable("plain text") == "plain text"
+    assert readable("❤️") == "[heavy black heart]"           # FE0F dropped
+    assert describe_fields({}, "") == "(an empty message)"
+    assert describe_fields({}, "👍") == "[thumbs up sign]"
+    assert describe_fields({0x06: b"\x89PNG" + b"\x00" * 200}) == "(image)"
+    assert describe_fields({0x77: b"\xf0\x9f\x91\x8d"}) == "([thumbs up sign])"
+    assert describe_fields({0x77: "x" * 100}) == "(field 119)"
+
+
+def test_a_columba_reaction_names_the_emoji_and_the_message_it_was_on():
+    """FIELD_REACTION 0x40 = {0x00: target hash, 0x01: utf-8 emoji} — what
+    the phone sent at 23:54 on 2026-10-01, drawn as an empty bubble."""
+    from monitor.lxmf_chat import describe_fields
+    target = bytes.fromhex("ab" * 32)
+    f = {0x40: {0x00: target, 0x01: "👍".encode()}}
+    assert describe_fields(f, text_of=lambda h: "testinf in home mode" if h == "ab" * 32 else None) \
+        == "([thumbs up sign] to \u201ctestinf in home mode\u201d)"
+    assert describe_fields(f, text_of=lambda h: None) == "([thumbs up sign] to an earlier message)"
+    assert describe_fields({0x30: target, 0x31: b"quoted"}) == "(an empty message)"
+
+
+def test_store_text_of(store):
+    store.add_outgoing(PEER, "hello", msg_id="ab" * 32)
+    assert store.text_of("ab" * 32) == "hello" and store.text_of("ff" * 32) is None
