@@ -38,8 +38,6 @@ CALLED_INVISIBLY = {
     "is_connected": "Connection protocol method, called on transport instances.",
     "on_start": "preview script entry point, run by hand.",
     # Built and deliberately dormant — each has a note where it lives.
-    "cache_debs": "Refreshes the carried .deb cache while online; no screen "
-                  "reaches it yet, same as cache_wheels.",
     "build_unlock_screen": "The boot-unlock screen, built ahead of the vault "
                            "being switched on.",
     "connect_uart": "UART fallback for boards that cannot do USB gadget.",

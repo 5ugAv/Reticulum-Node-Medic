@@ -2008,9 +2008,10 @@ class ReticulumNodeMedicApp(App):
         name = rec.name or ""
         try:
             reg = self.monitor_service.registry
-            hashes = [h for h, v in reg.nodes.items()
-                      if (v.name or "").lower() == (name or "").lower()
-                      or h == rec.dst_hash]
+            # THE SAME MACHINE, by the registry's one rule — never "every row
+            # with my name" computed here: for an unnamed neighbour that
+            # matched every unnamed row and buried them all (2026-10-03).
+            hashes = sorted(reg.machine_hashes(name or rec.dst_hash)) or [rec.dst_hash]
         except Exception:                                          # noqa: BLE001
             reg, hashes = None, [rec.dst_hash]
         # The walk anchor's keys are read BEFORE the rows go: candidate_keys

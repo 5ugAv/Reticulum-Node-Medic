@@ -33,6 +33,8 @@ EXPECTED_STEPS = [
     "record_child_trust",
     "configure_autostart",
     "bake_recovery_bootorder",
+    "install_card_helper",
+    "ensure_ssh_keypair",
     "final_verification",
     "restart_into_tool",
 ]

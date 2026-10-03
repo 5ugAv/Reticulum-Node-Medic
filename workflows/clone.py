@@ -507,6 +507,47 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def install_card_helper(wf: "CloneWorkflow") -> StepResult:
+    """The root card-writing helper. Without it the new medic cannot image
+    a card — so cannot clone itself, cannot birth a Pi node. This medic had
+    it only because the operator installed it by hand; a clone never did
+    (readiness sweep, 2026-10-03). The imaged user carries NOPASSWD sudo
+    (card bake), so an install is one privileged copy, read back."""
+    from provisioning.pi_imager import PREPARE_CARD, PREPARE_CARD_SOURCE
+    if not os.path.isfile(PREPARE_CARD_SOURCE):
+        return StepResult("install_card_helper", False,
+                          "The tool's own prepare_card.py is missing — the card "
+                          "helper could not be installed on the clone.")
+    if not wf.connection.push_file(PREPARE_CARD_SOURCE, "/tmp/nm-prepare-card"):
+        return StepResult("install_card_helper", False,
+                          "Could not copy the card helper to the clone.")
+    wf.connection.run(wf.priv(f"install -D -m 755 -o root -g root "
+                              f"/tmp/nm-prepare-card {PREPARE_CARD}"))
+    if wf.connection.run(f"test -x {PREPARE_CARD}")[0] != 0:
+        return StepResult("install_card_helper", False,
+                          f"The card helper did not land at {PREPARE_CARD}.")
+    return StepResult("install_card_helper", True,
+                      "Card-writing helper installed and read back.")
+
+
+@clone_step
+def ensure_ssh_keypair(wf: "CloneWorkflow") -> StepResult:
+    """Pi births reach the new node over SSH with the medic's own key. A
+    fresh clone has none, so its first Pi birth would fail at the first
+    hop (readiness sweep, 2026-10-03). Made once, kept."""
+    if wf.connection.run("test -f ~/.ssh/id_ed25519")[0] == 0:
+        return StepResult("ensure_ssh_keypair", True,
+                          "SSH key already present.", skipped=True)
+    wf.connection.run("mkdir -p ~/.ssh")
+    wf.connection.run("chmod 700 ~/.ssh")
+    wf.connection.run("ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519 -C nodemedic")
+    if wf.connection.run("test -f ~/.ssh/id_ed25519.pub")[0] != 0:
+        return StepResult("ensure_ssh_keypair", False,
+                          "Could not create the clone's SSH key.")
+    return StepResult("ensure_ssh_keypair", True, "SSH key created for the clone.")
+
+
+@clone_step
 def final_verification(wf: "CloneWorkflow") -> StepResult:
     problems = []
     if wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] != 0:
@@ -640,15 +681,22 @@ def install_display_stack(wf: "CloneWorkflow") -> StepResult:
     if wf.connection.run("command -v cage")[0] == 0:
         return StepResult("install_display_stack", True,
                           "Display stack already present.", skipped=True)
-    debs_local = os.path.join(TOOL_ROOT, "assets", "debs")
-    have = (os.path.isdir(debs_local)
-            and any(f.endswith(".deb") for f in os.listdir(debs_local)))
-    if not have:
+    # THE ONE DEB CACHE (workflows.wheelhouse.DEB_CACHE, refreshed by
+    # scripts/refresh_deb_cache.py on an online medic), with the old
+    # gitignored assets/debs accepted if a medic still has it filled.
+    from workflows.wheelhouse import DEB_CACHE
+    debs_local = os.path.expanduser(DEB_CACHE)
+    legacy = os.path.join(TOOL_ROOT, "assets", "debs")
+    def _has_debs(d):
+        return os.path.isdir(d) and any(f.endswith(".deb") for f in os.listdir(d))
+    if not _has_debs(debs_local) and _has_debs(legacy):
+        debs_local = legacy
+    if not _has_debs(debs_local):
         return StepResult(
             "install_display_stack", False,
-            "No carried display debs (assets/debs is empty) and the clone "
-            "has no cage. On an online medic: run the deb cache refresh, "
-            "then retry.")
+            "No carried display debs and the clone has no cage. On an "
+            "online medic run: python3 scripts/refresh_deb_cache.py — then "
+            "retry.")
     wf.connection.run("mkdir -p /tmp/nm-debs")
     ok = wf.connection.push_tree(debs_local, "/tmp/nm-debs")
     if not ok:

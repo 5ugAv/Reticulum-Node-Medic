@@ -98,6 +98,15 @@ APT_PACKAGES = (
     "alsa-utils",
 )
 
+#: The clone's display stack. A Lite image cannot open a window (the Kivy
+#: wheel's SDL has no kmsdrm driver); the proven cure is the `cage` Wayland
+#: kiosk, ferried as .debs over the clone link because the field has no apt.
+#: Those debs lived in a gitignored assets/debs that a medic built from
+#: GitHub never has — so MITOSIS could not finish on such a medic (readiness
+#: sweep, 2026-10-03). They are part of the one deb cache now.
+DISPLAY_PACKAGES = ("cage",)
+ALL_PACKAGES = APT_PACKAGES + DISPLAY_PACKAGES
+
 DEB_CACHE = "~/reticulum-tool/assets/packages/debs"
 
 
@@ -124,7 +133,7 @@ def _uri_lines(packages) -> str:
             " | grep -E '^https?://'")
 
 
-def apt_download_command(packages=APT_PACKAGES, dest: str = DEB_CACHE) -> str:
+def apt_download_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
     """Fetch *packages* AND THEIR DEPENDENCIES as .deb, WITHOUT root.
 
     ``apt-get -d install`` needs root — it locks apt's lists — and this medic's
@@ -147,7 +156,7 @@ def apt_download_command(packages=APT_PACKAGES, dest: str = DEB_CACHE) -> str:
             '[ -s "$f" ] || wget -q -O "$f" "$u"; done < .uris')
 
 
-def verify_debs_command(packages=APT_PACKAGES, dest: str = DEB_CACHE) -> str:
+def verify_debs_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
     """Check every cached .deb against the digest apt published for it.
 
     A truncated download would otherwise surface on a clone in the field, with
@@ -166,7 +175,7 @@ def deb_count(connection: Connection, dest: str = DEB_CACHE) -> int:
         return 0
 
 
-def cache_debs(connection, packages=APT_PACKAGES, dest: str = DEB_CACHE,
+def cache_debs(connection, packages=ALL_PACKAGES, dest: str = DEB_CACHE,
                timeout: int = 900):
     """Cache the apt packages a clone cannot fetch for itself.
 

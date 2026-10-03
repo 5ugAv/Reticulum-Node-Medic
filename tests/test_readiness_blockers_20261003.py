@@ -65,3 +65,67 @@ def test_the_fork_flasher_never_hardcodes_the_trackers_directory_or_size():
     assert "fork_image_for(self.board" in ensure
     assert "Tracker fork build is missing" not in ensure
     assert "RNode_Firmware.ino" not in flash and "RNode_Firmware.ino" not in ensure
+
+
+# -- 4. Self Diagnose could never say the GPS was healthy ---------------------
+
+def test_gps_check_reads_without_a_pipe_or_chain():
+    src = open("monitor/self_diagnose_runtime.py").read()
+    body = src[src.index("def gather"):]
+    gps = body[body.index("gps_text"):body.index("check_gps_fresh(gps_text")]
+    assert "||" not in gps and "|" not in gps.replace("||", "")
+
+
+def test_gps_fresh_from_the_primary_state_file(monkeypatch):
+    import monitor.self_diagnose_runtime as rt
+    from monitor.self_diagnose import SEV_OK
+    now = 1_704_070_000.0
+    seen = []
+    def run(cmd):
+        seen.append(cmd)
+        if "nodemedic-gps.json" in cmd:
+            return '{"updated": %s, "has_fix": true, "sats": 7, "gps_frames": 120}' % (now - 5)
+        return ""
+    monkeypatch.setattr(rt, "onboard_radio_serial", lambda *a, **k: "X")
+    findings = rt.gather(run=run, now_fn=lambda: now)
+    gps = [f for f in findings if f.check == "gps"][0]
+    # before the fix: "gps_state.json unreadable." — the refusal text parsed as the file
+    assert gps.detail != "gps_state.json unreadable.", gps.detail
+    assert "stale" not in gps.detail.lower()
+    assert not any("gps_state.json" in c for c in seen)      # primary answered; no fallback
+
+
+# -- 7. deleting one unnamed node buried every unnamed node ---------------------
+
+def test_forgetting_an_unnamed_neighbour_touches_only_that_machine():
+    from monitor.registry import NodeRegistry
+    r = NodeRegistry()
+    a, b, c = "aa" * 16, "bb" * 16, "cc" * 16
+    for h in (a, b, c):
+        r.ingest_announce(bytes.fromhex(h), b"", 1.0)
+    r.nodes[a].identity_hash = "ia" * 16; r.nodes[b].identity_hash = "ib" * 16
+    r.nodes[c].identity_hash = "ia" * 16                      # c is the same machine as a
+    assert r.machine_hashes(a) == {a, c}
+    assert r.machine_hashes("") == set()
+    assert r.forget_node(a) == 2 and b in r.nodes and a not in r.nodes
+    assert "reg.machine_hashes(name or rec.dst_hash)" in open("ui/app.py").read()
+
+
+# -- 5 + 6. a clone that can open a window, image a card and reach a node ------
+
+def test_clone_ladder_installs_the_card_helper_and_an_ssh_key_before_verifying():
+    from workflows.clone import _CLONE_STEPS
+    names = [n for n, _ in _CLONE_STEPS]
+    assert names.index("install_card_helper") < names.index("final_verification")
+    assert names.index("ensure_ssh_keypair") < names.index("final_verification")
+    assert names.index("configure_autostart") < names.index("install_card_helper")
+
+
+def test_display_debs_come_from_the_one_cache():
+    from workflows.wheelhouse import ALL_PACKAGES, DISPLAY_PACKAGES, apt_download_command
+    assert "cage" in DISPLAY_PACKAGES and "cage" in ALL_PACKAGES and "direwolf" in ALL_PACKAGES
+    assert "cage" in apt_download_command()
+    src = open("workflows/clone.py").read()
+    body = src[src.index("def install_display_stack"):src.index("def configure_autostart")] if src.index("def install_display_stack") < src.index("def configure_autostart") else src[src.index("def install_display_stack"):]
+    assert "DEB_CACHE" in body and "refresh_deb_cache.py" in body
+    assert os.path.exists("scripts/refresh_deb_cache.py")

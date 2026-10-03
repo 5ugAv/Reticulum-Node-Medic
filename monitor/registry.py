@@ -1936,6 +1936,31 @@ class NodeRegistry:
     # -- disk persistence (so history/activity survives an app restart) --------
 
     @_locked
+    def machine_hashes(self, name_or_hash: str) -> set:
+        """Every registry key that is the SAME MACHINE as *name_or_hash*: rows
+        carrying that name (case-insensitive), the placeholder key, the hash
+        itself, and every row sharing an identity with any of those. Empty
+        for an empty key — an unnamed node is matched by its HASH, never by
+        its blank name. The app once built this list itself as "every row
+        whose name equals mine": deleting one anonymous neighbour deleted and
+        tombstoned every unnamed node for seven days (readiness sweep,
+        2026-10-03)."""
+        want = (name_or_hash or "").strip()
+        if not want:
+            return set()
+        low = want.lower()
+        doomed = set()
+        for h, rec in self.nodes.items():
+            if ((rec.name or "").lower() == low or h == want
+                    or h == f"rtnode:{low}"):
+                doomed.add(h)
+        idents = {self.nodes[h].identity_hash
+                  for h in doomed if self.nodes[h].identity_hash}
+        for h, rec in self.nodes.items():
+            if rec.identity_hash and rec.identity_hash in idents:
+                doomed.add(h)
+        return doomed
+
     def forget_node(self, name_or_hash: str) -> int:
         """Remove EVERYTHING this registry knows about one machine, so its
         name can be reused by a new birth (operator request, 2026-08-13).
@@ -1951,20 +1976,7 @@ class NodeRegistry:
         the rows. Returns how many rows were removed; 0 is an honest answer
         for an unknown name, never an error.
         """
-        want = (name_or_hash or "").strip()
-        if not want:
-            return 0
-        low = want.lower()
-        doomed = set()
-        for h, rec in self.nodes.items():
-            if ((rec.name or "").lower() == low or h == want
-                    or h == f"rtnode:{low}"):
-                doomed.add(h)
-        idents = {self.nodes[h].identity_hash
-                  for h in doomed if self.nodes[h].identity_hash}
-        for h, rec in self.nodes.items():
-            if rec.identity_hash and rec.identity_hash in idents:
-                doomed.add(h)
+        doomed = self.machine_hashes(name_or_hash)
         for h in doomed:
             self.nodes.pop(h, None)
             try:

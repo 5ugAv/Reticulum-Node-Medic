@@ -88,8 +88,14 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     cpu, up = _splitter_cpu_uptime(run)
     log = run("journalctl -u rnode-splitter -n 12 --no-pager 2>/dev/null")
     findings.append(sd.check_splitter(active, cpu, up, log))
-    findings.append(sd.check_gps_fresh(run("cat /dev/shm/nodemedic-gps.json 2>/dev/null || cat $HOME/gps_state.json 2>/dev/null"),
-                                       now_fn()))
+    # TWO plain reads, never "a || b": safe_shell refuses pipes and chained
+    # commands, so the one-liner this used to be came back as the refusal's
+    # own text and the GPS row could never say healthy — from 2026-08-07
+    # until the readiness sweep read it (2026-10-03).
+    gps_text = run("cat /dev/shm/nodemedic-gps.json 2>/dev/null")
+    if not gps_text.strip().startswith("{"):
+        gps_text = run("cat $HOME/gps_state.json 2>/dev/null")
+    findings.append(sd.check_gps_fresh(gps_text, now_fn()))
     # medic system health (safe reads — no board reset, no port steal)
     findings.append(sd.check_disk_space(run("df -P / 2>/dev/null")))
     findings.append(sd.check_service(
