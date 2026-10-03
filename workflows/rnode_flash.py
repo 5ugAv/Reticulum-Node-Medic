@@ -13,6 +13,7 @@ verify the board reports as a provisioned RNode.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 from typing import Callable, List, Optional
 
@@ -260,6 +261,25 @@ TRACKER_BUILD_DIR = "~/overlay_test/RNode_Firmware/build/esp32.esp32.esp32s3"
 TRACKER_BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
                      "tools/partitions/boot_app0.bin")
 TRACKER_ESPTOOL = "~/.arduino15/packages/esp32/tools/esptool_py/4.5.1/esptool.py"
+
+
+def fork_build_dir_for(board) -> str:
+    """Where THIS board's fork image lives. The Tracker is flashed from the
+    medic's own overlay build (TRACKER_BUILD_DIR); a board that names its own
+    ``build_dir`` in the catalogue (the EoRa-S3) is flashed from that. Until
+    2026-10-03 every custom board took the Tracker's directory — an EoRa-S3
+    picked in BIRTH would have been written the Tracker's image (readiness
+    sweep)."""
+    return getattr(board, "build_dir", "") or TRACKER_BUILD_DIR
+
+
+def fork_flash_size_for(board) -> str:
+    """esptool ``--flash_size`` for this board: from the catalogue FQBN
+    (``FlashSize=4M`` -> ``4MB``), else the Tracker's proven ``8MB``. A full
+    image (bootloader included) written at the wrong size boot-loops
+    ([[v4-rgb-flash-size-detect]])."""
+    m = re.search(r"FlashSize=(\d+)M\b", getattr(board, "fqbn", "") or "")
+    return f"{m.group(1)}MB" if m else "8MB"
 
 
 def usb_id_for_port(connection: Connection, port: str):
@@ -524,16 +544,16 @@ class RNodeFlashWorkflow:
                               f"{self.board.display_name} firmware ready "
                               "(the medic's own build).")
         if self.board.flash_method != "autoinstall":
-            # custom fork: the medic's own build is the firmware source
-            if self.connection.run(
-                    f"test -f {TRACKER_BUILD_DIR}/RNode_Firmware.ino.bin")[0] != 0:
+            # custom fork: THIS board's build is the firmware source
+            d = fork_build_dir_for(self.board)
+            if self.connection.run(f"test -f {d}/RNode_Firmware.ino.bin")[0] != 0:
                 return StepResult(
                     "ensure_firmware", False,
-                    "The medic's Tracker fork build is missing — rebuild it "
-                    "before flashing this board.")
+                    f"The medic's {self.board.display_name} build is missing "
+                    f"({d}) — build it before flashing this board.")
             return StepResult("ensure_firmware", True,
-                              "Custom fork firmware ready (the medic's own "
-                              "proven build).")
+                              f"{self.board.display_name} firmware ready "
+                              "(the medic's own build).")
         if has_connectivity(self.connection):
             res = sync_firmware(self.connection)
             if res.failed:
@@ -679,7 +699,8 @@ class RNodeFlashWorkflow:
                 assert_flashable(self.port)   # have no radio to protect
         except Exception as e:            # noqa: BLE001
             return StepResult("flash", False, f"Refusing to flash: {e}")
-        d = TRACKER_BUILD_DIR
+        d = fork_build_dir_for(self.board)
+        size = fork_flash_size_for(self.board)
         # Capture the board's USB fingerprint BEFORE the flash: the S3 hard-
         # resets afterwards, its CDC identity vanishes and returns (sometimes
         # on a NEW ttyACM number), and the old "sleep 4 then talk to the old
@@ -690,7 +711,7 @@ class RNodeFlashWorkflow:
         pre_serial = by_id_serial(pre_byid) if pre_byid else None
         code, out, err = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
-            f"--baud 115200 --no-stub write_flash -z --flash_size 8MB "
+            f"--baud 115200 --no-stub write_flash -z --flash_size {size} "
             f"0x0 {d}/RNode_Firmware.ino.bootloader.bin "
             f"0x8000 {d}/RNode_Firmware.ino.partitions.bin "
             f"0xe000 {TRACKER_BOOT_APP0} "

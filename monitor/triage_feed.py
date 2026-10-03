@@ -24,6 +24,28 @@ from typing import Callable, Optional
 from monitor.geo import SPLITTER_STATE  # noqa: F401  (re-exported)
 
 
+def feed_choice(mode: str, demo_ok: bool, state_present: bool) -> str:
+    """Which feed the ANTENNA bullseye reads: ``"live"`` or ``"demo"``.
+
+    On the deployed medic (``demo_ok`` False — see ui.hw_factories.demo_allowed)
+    the answer is live, full stop: the live feed yields None while the radio
+    is silent, which is what drives the honest NOT READING cover. Until
+    2026-10-03 the choice was "live if the splitter's state file exists at
+    app start, else demo" — on a medic the file lives on tmpfs, so after
+    every reboot ANTENNA opened on a wandering fake signal with "Peers 2
+    heard" and stayed on it for the session (readiness sweep). A dev box with
+    no radio keeps the demo so the screen is explorable; RNM_TRIAGE=live|demo
+    overrides, demo only where demos are allowed.
+    """
+    if mode == "live":
+        return "live"
+    if not demo_ok:
+        return "live"
+    if mode == "demo":
+        return "demo"
+    return "live" if state_present else "demo"
+
+
 def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
                      now: Callable[[], float] = time.time
                      ) -> Callable[[], Optional[dict]]:

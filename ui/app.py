@@ -230,16 +230,15 @@ def _triage_feed():
     """Live splitter feed when the medic's radio state file exists (real
     RSSI/SNR/noise recorded by monitor.serial_splitter), else the demo feed.
     RNM_TRIAGE=demo|live overrides the choice."""
-    from monitor.triage_feed import live_triage_feed
+    from monitor.triage_feed import live_triage_feed, feed_choice
     from monitor.geo import read_splitter_state
+    from ui.hw_factories import demo_allowed
     mode = os.environ.get("RNM_TRIAGE", "")
-    if mode == "demo":
+    # The rule lives in feed_choice (tested): on the medic, LIVE whatever the
+    # state file says — the live feed's None is the honest NOT READING.
+    if feed_choice(mode, demo_allowed(), read_splitter_state() is not None) == "demo":
         return _demo_triage_feed()
-    # live only when the splitter is actually feeding NOW (a stale file left
-    # over from an old run must not select a frozen live feed)
-    if mode == "live" or read_splitter_state() is not None:
-        return live_triage_feed()
-    return _demo_triage_feed()
+    return live_triage_feed()
 
 
 def _demo_triage_feed():

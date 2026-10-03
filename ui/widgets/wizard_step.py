@@ -214,7 +214,12 @@ class WizardStep(BoxLayout):
         """
         if self.next_btn.parent is not None:
             self._nav.remove_widget(self.next_btn)
-        self.back_btn.size_hint_x = 1        # Back takes the row on its own
+        # The guided birth builds every step with show_back=False (the bottom
+        # bar's arrow is Back), so back_btn is None there — and this line
+        # killed the whole app on the first self-advancing Pi step (readiness
+        # sweep, 2026-10-03).
+        if self.back_btn is not None:
+            self.back_btn.size_hint_x = 1    # Back takes the row on its own
         self._start_heartbeat()
 
     def _start_heartbeat(self):
@@ -265,7 +270,8 @@ class WizardStep(BoxLayout):
         clearly is not.
         """
         if self.next_btn.parent is None:
-            self.back_btn.size_hint_x = 0.4
+            if self.back_btn is not None:
+                self.back_btn.size_hint_x = 0.4
             self._nav.add_widget(self.next_btn)
 
     def set_next_enabled(self, on: bool):
