@@ -44,6 +44,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         faulthandler.enable()        # fall back to stderr
 
     # Import the UI lazily so headless environments never require Kivy.
+    # THE PANEL'S ONE TOUCH PROVIDER (ui/touch_input.py, 2026-10-03): mtdev
+    # on the Goodix, mouse provider off — decided here, before any window or
+    # font import pulls kivy.core in, because Kivy reads [input] at window
+    # creation. Logged so the road taken is in ui.log.
+    from kivy.config import Config as _KivyConfig
+    from kivy.logger import Logger as _KivyLogger
+    from ui import touch_input
+    touch_input.choose(_KivyConfig, log=lambda m: _KivyLogger.info("Node Medic: " + m))
     # Pick the global display font from the saved language BEFORE any screen is
     # built (DejaVu for Latin/Cyrillic, Noto Sans JP for Japanese).
     from ui.fonts import configure_fonts
