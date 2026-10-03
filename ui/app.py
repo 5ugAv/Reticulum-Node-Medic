@@ -1107,7 +1107,9 @@ class ReticulumNodeMedicApp(App):
 
         datetime_scr = Screen(name="datetime")
         from ui.screens.datetime_screen import DateTimeScreen
-        datetime_scr.add_widget(self._with_back(DateTimeScreen()))
+        self.datetime_screen = DateTimeScreen()
+        datetime_scr.add_widget(self._with_back(self.datetime_screen))
+        datetime_scr.bind(on_enter=lambda *_: self.datetime_screen.enter())
         self.sm.add_widget(datetime_scr)
 
         about_scr = Screen(name="about")
@@ -1308,19 +1310,15 @@ class ReticulumNodeMedicApp(App):
             return "home"
 
     def _vault_exists(self) -> bool:
-        """Is there an encrypt-at-rest container on this card, right now?
-
-        Asked of the disk, never inferred. The setup wizard's summary prints
-        what this returns, and the standing rule is that nothing is stated
-        unless it is what the thing reported NOW — so a failure to look is
-        reported as "no", which is also the true answer today: the container has
-        been built and reviewed and has never been created on a real medic
-        ([[encrypt-at-rest]]).
-        """
+        """Are this medic's records encrypted, right now? Asked of the disk:
+        the per-file records vault that Settings ▸ Encrypt actually builds.
+        This used to look for the dead LUKS container, so the wizard's
+        summary said NOT ENCRYPTED over encrypted records (readiness sweep,
+        2026-10-03)."""
         try:
-            from provisioning.vault import CONTAINER_PATH
-            return os.path.exists(os.path.expanduser(CONTAINER_PATH))
-        except Exception:
+            from provisioning.records_vault import is_vault, records_root
+            return bool(is_vault(records_root()))
+        except Exception:                                          # noqa: BLE001
             return False
 
     def _start_monitor_polling(self, interval: float = 30.0):
@@ -1336,9 +1334,10 @@ class ReticulumNodeMedicApp(App):
                     self.monitor_service.cycle(rediscover=(i % 10 == 0))
                     self._resolve_identities()   # collapse a device's dests to 1 row
                     dicts = self.monitor_service.dashboard_dicts()
-                    if dicts:
-                        Clock.schedule_once(
-                            lambda dt, d=dicts: self.vitals_screen.set_nodes(d), 0)
+                    # an EMPTY list is a valid dashboard: with "if dicts" the
+                    # last deleted node stayed on VITALS forever (2026-10-03)
+                    Clock.schedule_once(
+                        lambda dt, d=dicts: self.vitals_screen.set_nodes(d), 0)
                     located = self.monitor_service.located_nodes()
                     Clock.schedule_once(
                         lambda dt, n=located: self.scan_screen.set_nodes(n), 0)
@@ -2095,6 +2094,10 @@ class ReticulumNodeMedicApp(App):
             self.monitor_service.registry.set_tombstones(tombs)
         except Exception:                                          # noqa: BLE001
             pass
+        try:
+            self.vitals_screen.set_nodes(self.monitor_service.dashboard_dicts())
+        except Exception:                                          # noqa: BLE001
+            pass
         self.switch_mode("vitals")
         print("[vitals] forgot node %r: %d records removed" % (name, removed))
 
@@ -2145,7 +2148,10 @@ class ReticulumNodeMedicApp(App):
         caps = None
         try:
             for d in self.monitor_service.registry.devices(now=now):
-                if d.get("dst_hash") == rec.dst_hash:
+                # the dashboard dict's key is "identity" — this compared a key
+                # it never carried, so the Connections section never drew
+                # (readiness sweep, 2026-10-03)
+                if d.get("identity") == rec.dst_hash:
                     caps = d.get("capabilities")
                     break
         except Exception:                                      # noqa: BLE001
@@ -3010,13 +3016,18 @@ class ReticulumNodeMedicApp(App):
             res = set_mode(new_mode, LocalConnection())
 
             def done(dt):
-                tog.set_state(res.mode)
+                if res.ok:
+                    tog.set_state(res.mode)
+                else:
+                    # a failed switch must not light the mode it failed to
+                    # reach: show what the medic is actually in (2026-10-03)
+                    self._refresh_node_mode()
                 msg = res.message
                 if auto and res.ok and res.mode == "backpack":
                     msg = ("On the move — switched to Backpack automatically so this "
                            "node won't disturb the mesh while it travels. Tap the "
                            "home icon to resume Home mode once you've settled.")
-                self._mode_toast(msg, ok=res.ok)
+                self._mode_toast(msg, ok=res.ok, mode=res.mode if res.ok else None)
             Clock.schedule_once(done, 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -3422,14 +3433,15 @@ class ReticulumNodeMedicApp(App):
         if tog is not None and tog.mode == "home":
             self._set_node_mode("home")            # re-applies with the new profile
 
-    def _mode_toast(self, message, ok=True):
+    def _mode_toast(self, message, ok=True, mode=None):
         """A brief, auto-dismissing message after a mode switch."""
         from kivy.uix.popup import Popup
         from kivy.uix.label import Label
         lbl = Label(text=message, halign="center", valign="middle",
                     padding=(dp(16), dp(16)))
         lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
-        p = Popup(title=("Home mode" if ok else "Mode change"), content=lbl,
+        from monitor.formatting import toast_title
+        p = Popup(title=toast_title(message, ok, mode), content=lbl,
                   size_hint=(0.82, 0.32), auto_dismiss=True)
         p.open()
         Clock.schedule_once(lambda dt: p.dismiss(), 4.0)

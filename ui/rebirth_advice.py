@@ -115,7 +115,7 @@ def advise(status: str, board_attached: bool = False, name: str = "",
     steps = [
         tr("Try 'Ping node now' first — the mesh path may simply be stale."),
         tr("If it runs on solar, it may be waiting for sun rather than broken."),
-        tr("Check this medic's own radio is healthy (PROBE ▸ Self Diagnose) — "
+        tr("Check this medic's own radio is healthy (Settings ▸ Self Diagnose) — "
            "a deaf medic makes every node look dead."),
     ]
     if board_attached:

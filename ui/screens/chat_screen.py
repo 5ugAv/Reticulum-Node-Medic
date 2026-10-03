@@ -200,6 +200,7 @@ class ChatScreen(BoxLayout):
     def _render(self):
         self._seen_version = self._store.version
         svc = self._svc() if self._svc else None
+        self._svc_now = svc
         addr = getattr(svc, "address", "") if svc else ""
         if addr:
             self._addr.text = tr("Your address") + ":  " + addr
@@ -237,11 +238,12 @@ class ChatScreen(BoxLayout):
             unread = f"  [color={theme.COLORS['accent']}]●{c.unread}[/color]" if c.unread else ""
             # name AND hash (NomadNet's rule): two phones can both say "Marnie"
             tag = "" if c.name == lc.short_hash(c.peer) else f"  {lc.short_hash(c.peer)}"
-            row.text = (f"[b]{c.name}[/b]"
-                        f"[color={theme.COLORS['text_secondary']}]{tag}[/color]{unread}   "
+            esc = lc.escape_markup
+            row.text = (f"[b]{esc(c.name)}[/b]"
+                        f"[color={theme.COLORS['text_secondary']}]{esc(tag)}[/color]{unread}   "
                         f"[color={theme.COLORS['text_secondary']}]{when(c.last_ts)}[/color]\n"
                         f"[color={theme.COLORS['text_secondary']}]"
-                        f"{_preview(c.last_text)}[/color]")
+                        f"{esc(_preview(c.last_text))}[/color]")
             row.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), v[1])))
             row.bind(on_release=lambda _b, p=c.peer: self._open_thread(p))
             self._body.add_widget(row)
@@ -301,15 +303,28 @@ class ChatScreen(BoxLayout):
             self._body.add_widget(wrap)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        self._compose = TextInput(hint_text=tr("Write a message…"), multiline=False,
-                                  size_hint_y=None, height=dp(52), font_size="20sp")
-        bind_field(self._compose)
-        self._compose.bind(on_text_validate=lambda *_: self._send())
+        # ONE compose field for the life of the screen. It was rebuilt empty
+        # on every store change — a reply or a delivery tick wiped the
+        # half-typed sentence and left the keyboard writing into a detached
+        # widget (readiness sweep, 2026-10-03).
+        if getattr(self, "_compose", None) is None:
+            self._compose = TextInput(hint_text=tr("Write a message…"), multiline=False,
+                                      size_hint_y=None, height=dp(52), font_size="20sp")
+            bind_field(self._compose)
+            self._compose.bind(on_text_validate=lambda *_: self._send())
+        if self._compose.parent is not None:
+            self._compose.parent.remove_widget(self._compose)
         row.add_widget(self._compose)
         send = _btn(tr("Send"), color="green", ink="background", h=52)
         send.size_hint_x = None
         send.width = dp(96)
         send.bind(on_release=lambda *_: self._send())
+        svc = getattr(self, "_svc_now", None)
+        running = bool(getattr(svc, "running", False)) if svc is not None else False
+        send.disabled = not running
+        self._compose.disabled = not running
+        if not running:
+            self._compose.hint_text = tr("Chat isn't up yet — see the line at the top")
         row.add_widget(send)
         self._foot.add_widget(row)
         Clock.schedule_once(lambda *_: setattr(self._scroll, "scroll_y", 0), 0)
@@ -343,6 +358,11 @@ class ChatScreen(BoxLayout):
             return
         if svc.send(self._peer, text) is not None:
             self._compose.text = ""
+        else:
+            # say WHY nothing happened, in the field itself
+            self._compose.hint_text = (tr("Chat isn't up yet — see the line at the top")
+                                       if not getattr(svc, "running", False)
+                                       else tr("That isn't a 32-character address"))
 
     def _render_new(self):
         self._title.text = tr("New message")
@@ -351,9 +371,12 @@ class ChatScreen(BoxLayout):
         self._body.add_widget(back)
         self._body.add_widget(_lbl(tr("To: paste a 32-character address, or pick a name below"),
                                    size="13.5sp", color="text_secondary"))
-        self._to = TextInput(hint_text=tr("32-character address"), multiline=False,
-                             size_hint_y=None, height=dp(48), font_size="22sp")
-        bind_field(self._to)
+        if getattr(self, "_to", None) is None:          # kept across refreshes, like compose
+            self._to = TextInput(hint_text=tr("32-character address"), multiline=False,
+                                 size_hint_y=None, height=dp(48), font_size="22sp")
+            bind_field(self._to)
+        if self._to.parent is not None:
+            self._to.parent.remove_widget(self._to)
         self._body.add_widget(self._to)
         go = _btn(tr("Open"), color="green", ink="background", h=48)
         go.bind(on_release=lambda *_: self._open_typed())
@@ -369,8 +392,8 @@ class ChatScreen(BoxLayout):
         for p in peers:
             b = _btn("", h=54)
             b.halign, b.valign, b.markup = "left", "middle", True
-            b.text = (f"[b]{p['name'] or lc.short_hash(p['hash'])}[/b]   "
-                      f"[color={theme.COLORS['text_secondary']}]{p['hash']}[/color]")
+            b.text = (f"[b]{lc.escape_markup(p['name'] or lc.short_hash(p['hash']))}[/b]   "
+                      f"[color={theme.COLORS['text_secondary']}]{lc.escape_markup(p['hash'])}[/color]")
             b.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), v[1])))
             b.bind(on_release=lambda _b, h=p["hash"]: self._open_thread(h))
             self._body.add_widget(b)

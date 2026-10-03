@@ -241,7 +241,8 @@ class EncryptionScreen(BoxLayout):
     def _show_recovery_key(self):
         """Generated, shown, and copied back. It is the only door the operator
         cannot choose, so the medic has to be sure it left the screen."""
-        self._recovery = ef.new_recovery_key()
+        if not getattr(self, "_recovery", None):
+            self._recovery = ef.new_recovery_key()   # generated once; shown as often as asked
         # NAME THE MEDIC on this screen. Operator, 2026-09-01: an owner with
         # several medics photographs these keys to keep them, and a photo of a
         # bare key does not say which unit it opens.

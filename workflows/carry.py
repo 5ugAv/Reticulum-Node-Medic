@@ -99,8 +99,13 @@ def audit(connection: Connection) -> List[CarryStatus]:
     # --- Map tiles -----------------------------------------------------------
     # Cannot be topped up unattended: which area to cache is a human decision,
     # and guessing wrong wastes hours and gigabytes.
-    nmb = _count(connection, "~/reticulum-tool/assets/maps/*.mbtiles")
-    mb = _bytes(connection, "~/reticulum-tool/assets/maps")
+    # WHERE THE MAP LIVES NOW: ~/.reticulum-node-medic/maps since 2026-08-27
+    # (ui.map_tiles.MAPS_DIR). This counted the old assets/maps and told the
+    # operator the map they had just watched download was MISSING.
+    from ui.map_tiles import MAPS_DIR, LEGACY_MAPS_DIR
+    nmb = (_count(connection, f"{MAPS_DIR}/*.mbtiles")
+           or _count(connection, f"{LEGACY_MAPS_DIR}/*.mbtiles"))
+    mb = _bytes(connection, MAPS_DIR) or _bytes(connection, LEGACY_MAPS_DIR)
     out.append(CarryStatus(
         "map_tiles", "Offline map",
         "Without it placing and finding nodes has no map to work against.",

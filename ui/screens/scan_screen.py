@@ -864,6 +864,12 @@ class MapPlot(Widget):
         self._nodes = list(nodes or [])
         self._redraw()
 
+    def refresh(self):
+        """Redraw now. The Wi-Fi/Bluetooth/Internet toggles called this for
+        weeks and it did not exist — the AttributeError was swallowed and the
+        lines only moved on the next pan (readiness sweep, 2026-10-03)."""
+        self._redraw()
+
     def set_tiles(self, tiles):
         self._tiles = tiles
         self._zooms = self._cache_zooms(tiles)

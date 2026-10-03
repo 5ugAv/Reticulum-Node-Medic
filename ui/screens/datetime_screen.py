@@ -70,7 +70,8 @@ class DateTimeScreen(BoxLayout):
 
         col.add_widget(_line("Date & time  (YYYY-MM-DD HH:MM:SS)",
                              size="13sp", color="text_secondary", h=22))
-        self._dt = TextInput(text=td.now_string(), multiline=False,
+        self._dt_shown = td.now_string()
+        self._dt = TextInput(text=self._dt_shown, multiline=False,
                              size_hint_y=None, height=dp(46), font_size="26sp")
         bind_field(self._dt)
         col.add_widget(self._dt)
@@ -181,13 +182,25 @@ class DateTimeScreen(BoxLayout):
                 tz_ok, tz_msg = td.set_timezone(tz_val)
                 ok = ok and tz_ok
                 msgs.append(tz_msg)
-            if dt_val:
+            # only a date the operator actually EDITED sets the clock: the
+            # field held the app-start time, so saving a timezone two days
+            # later wound the clock back two days (readiness sweep, 2026-10-03)
+            if dt_val and dt_val != getattr(self, "_dt_shown", None):
                 dt_ok, dt_msg = td.set_datetime(dt_val)
                 ok = ok and dt_ok
                 msgs.append(dt_msg)
             Clock.schedule_once(
                 lambda dt: self._report(ok, "  ".join(msgs) or "Nothing to set."), 0)
         threading.Thread(target=work, daemon=True).start()
+
+    def enter(self):
+        """Called when the screen is shown: the date field shows NOW, not the
+        moment the app started."""
+        try:
+            self._dt_shown = td.now_string()
+            self._dt.text = self._dt_shown
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _do_sync_now(self):
         self._status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])

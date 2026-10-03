@@ -298,7 +298,15 @@ class SettingsScreen(BoxLayout):
         self._bright_ev = Clock.schedule_once(lambda dt: self._apply_brightness(pct), 0.15)
 
     def _apply_brightness(self, pct):
-        threading.Thread(target=lambda: bright.set_brightness(pct), daemon=True).start()
+        def work():
+            ok, msg = bright.set_brightness(pct)
+            if not ok:
+                # the slider moved and nothing happened, silently — on any
+                # panel but the developer's (readiness sweep, 2026-10-03)
+                Clock.schedule_once(lambda dt: setattr(
+                    self._fix_status, "text",
+                    tr("Brightness isn't controllable on this display: ") + str(msg)), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     # -- screen saver -------------------------------------------------------
     def _screensaver_section(self):

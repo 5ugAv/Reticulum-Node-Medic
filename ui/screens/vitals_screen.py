@@ -326,6 +326,19 @@ class VitalsScreen(BoxLayout):
         # the top while a merely-dormant node settles quietly underneath.
         active, quiet = partition_quiet(rows)
         self.grid.clear_widgets()
+        if not rows:
+            # SAY SOMETHING on an empty list: a new owner's first VITALS was
+            # four zero counters over dark space (readiness sweep, 2026-10-03)
+            from ui.text_fit import grow_to_text
+            total = len(getattr(self, "nodes", None) or [])
+            words = (tr("No nodes yet. Build one in BUILD, or wait — anything "
+                        "announcing on the mesh appears here.") if not total
+                     else tr("No node matches this filter."))
+            empty = Label(text=words, halign="left", valign="middle",
+                          font_size=theme.font_sp("14sp"),
+                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]),
+                          padding=(dp(12), dp(12)))
+            self.grid.add_widget(grow_to_text(empty))
         for node in active:
             self.grid.add_widget(NodeRow(node, on_open=self._on_open))
         if quiet:

@@ -6,6 +6,25 @@ from __future__ import annotations
 from typing import List
 
 
+def toast_title(message: str, ok: bool, mode: str = None) -> str:
+    """The title of a front-page toast, from what it is ABOUT. Every toast
+    used to be "Home mode" when ok and "Mode change" otherwise — so a switch
+    to Backpack opened a popup titled Home mode, and a low-battery warning one
+    titled Mode change (readiness sweep, 2026-10-03)."""
+    m = (message or "").lower()
+    if "batter" in m:
+        return "Battery"
+    if "suppl" in m or "power" in m[:20]:
+        return "Power"
+    if "unreachable" in m or "needs a physical check" in m:
+        return "Node down"
+    if mode == "backpack" or m.startswith("backpack") or "switched to backpack" in m:
+        return "Backpack mode"
+    if mode == "home" or m.startswith("home mode"):
+        return "Home mode"
+    return "Mode change" if not ok else "Node Medic"
+
+
 def format_duration(seconds) -> str:
     """Seconds as people read them: 42s · 12m 30s · 6h 2m · 3d 2h.
 

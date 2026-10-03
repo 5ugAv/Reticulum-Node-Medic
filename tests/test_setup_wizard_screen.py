@@ -725,7 +725,9 @@ def test_the_summary_asks_the_disk_rather_than_the_wizard():
     that inferred it from the operator's own choices would report their
     intentions back to them as facts."""
     src = func_source("ui/app.py", "_vault_exists")
-    assert "os.path.exists" in src and "CONTAINER_PATH" in src
+    # the per-file records vault that Settings actually builds — not the dead
+    # LUKS container, which said NOT ENCRYPTED over encrypted records (2026-10-03)
+    assert "is_vault(records_root())" in src and "CONTAINER_PATH" not in src
     assert "return False" in src, "a failure to look must not read as yes"
 
 

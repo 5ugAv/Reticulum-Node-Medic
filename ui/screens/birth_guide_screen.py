@@ -561,7 +561,11 @@ class BirthGuideScreen(BoxLayout):
         # or Raspberry Pi node"). The build was answered one screen ago;
         # what the medic could not do is read the board. Cold (no build
         # chosen) the chooser is still the right home for it.
-        if self._path in ("radio", "host"):
+        if self._path in ("radio", "host") or (
+                self._path == "pi" and getattr(self, "_pi_flash_radio", False)):
+            # the Pi path that flashes its radio here answered "what are you
+            # building" one screen ago — the catalogue is its next step too,
+            # not the chooser (readiness sweep, 2026-10-03)
             self._trace("choose manually: the whole catalogue")
             self._render_pick_board(manual=True)
             return
@@ -982,7 +986,7 @@ class BirthGuideScreen(BoxLayout):
         alive just now (arms the radio gate), and its USB hardware serial
         (pins /dev/rnode to this exact radio, not any tty from five vendors).
         """
-        port = c.get("port") or ""
+        port = c.get("_port") or c.get("port") or ""   # the reader stores "_port"
         serial = ""
         try:
             from ui.hw_factories import LocalConnection

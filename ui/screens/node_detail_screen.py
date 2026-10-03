@@ -174,7 +174,11 @@ class NodeDetailScreen(BoxLayout):
         # both. Amber when the node is not currently answering, so stale
         # cannot dress as live.
         import time as _t
-        answering = record.status(now) == "ok"
+        # ANSWERING is about freshness, not health: a node heard two minutes
+        # ago with a low battery is answering, unhappily — the page said "NOT
+        # answering" six lines above "is answering, but not happily" (2026-10-03)
+        _seen_h = record.last_seen_hours(now)
+        answering = _seen_h is not None and _seen_h <= theme.NOT_HEARD_ALERT_HOURS
         self.add_widget(_para(
             tr("Figures below are the node's last report — card drawn "
                "{clock}.").format(clock=_t.strftime("%H:%M")) +

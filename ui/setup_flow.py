@@ -339,7 +339,8 @@ _TOUR_STEPS = [
              "time. Every node you place gets a real location and date from it.",
      "hint": "Plug in ONLY the Tracker — the medic's own radio looks alike on "
              "USB and is told apart by its satellite stream, not the socket. No "
-             "Tracker on hand? Skip for now and run it later from PROBE.",
+             "Tracker on hand? Skip for now — run 'Set up this Node Medic' "
+             "again from Settings when you have it.",
      "next": "Skip for now  →"},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
@@ -399,12 +400,12 @@ _TOUR_STEPS = [
      "title": "PROBE — find out what is wrong",
      "body": "Plug in a board that is misbehaving and the medic reads it: what "
              "it is, what firmware it carries, whether it answers at all.\n\n"
-             "PROBE ▸ Self Diagnose turns the same attention on the medic "
-             "itself — its own radio, its GPS, its clock, its services — and "
-             "repairs what it can. Run it when the medic is the thing behaving "
-             "oddly.",
-     "hint": "PROBE is in Settings and on the front page's toolbox. Self "
-             "Diagnose is the first thing to try before suspecting a node."},
+             "Self Diagnose (in Settings, and on this screen) turns the same "
+             "attention on the medic itself — its own radio, its GPS, its "
+             "clock, its services — and repairs what it can. Run it when the "
+             "medic is the thing behaving oddly.",
+     "hint": "Self Diagnose is behind the gear: Settings. It is the first "
+             "thing to try before suspecting a node."},
 
     {"key": TOUR_MITOSIS, "part": TOUR, "opens": "mitosis",
      "title": "CLONE — make another medic",

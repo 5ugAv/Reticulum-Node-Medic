@@ -447,7 +447,10 @@ class SetupWizardScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         wrap = BoxLayout(orientation="vertical")
-        wrap.add_widget(RecoveryKeyScreen(on_done=self._key_written))
+        # the SAME key when shown again — a fresh one each time left the
+        # operator's paper a mix of two keys (readiness sweep, 2026-10-03)
+        wrap.add_widget(RecoveryKeyScreen(key=getattr(self, "_recovery", None) or None,
+                                          on_done=self._key_written))
         # A WAY OUT, even here. The ceremony has none of its own, and a screen
         # with no exit was reported as a trap twice in the guided birth and had
         # to be recovered by restarting the UI over SSH — which a field operator

@@ -139,6 +139,15 @@ def describe_fields(fields: dict, title: str = "", text_of=None) -> str:
     return "(" + ", ".join(parts) + ")" if parts else "(an empty message)"
 
 
+def escape_markup(text) -> str:
+    """Kivy markup-safe text — the same three substitutions Kivy's own
+    ``escape_markup`` makes. A peer name or message containing "[size=x]"
+    reached a markup Label raw and Kivy raised while drawing the CHAT list,
+    on every open, forever (readiness sweep, 2026-10-03)."""
+    return (str(text or "").replace("&", "&amp;").replace("[", "&bl;")
+            .replace("]", "&br;"))
+
+
 def preview(text: str, limit: int = 44) -> str:
     """One line of the last message for a conversation row: newlines folded,
     cut on a word with an ellipsis — the row is a fixed-height key and a
