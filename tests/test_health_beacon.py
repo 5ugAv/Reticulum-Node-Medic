@@ -499,7 +499,7 @@ def _v4(**over):
 def test_a_v3_reader_still_reads_a_v4_beacon():
     """The whole point of the length-gated tails: an older tool must keep
     everything it understood. A v4 beacon carries position exactly as before."""
-    b = hb.decode(_v4(lat=-37.7, lng=145.0, neighbours=[(_h("5a110011"), 9, 45)]))
+    b = hb.decode(_v4(lat=-37.7, lng=145.0, neighbours=[(_h("a1b2c3d4"), 9, 45)]))
     assert (b.lat, b.lng) == (-37.7, 145.0)
     assert b.uptime_s == 120 and b.board_id == 9
 
@@ -540,14 +540,14 @@ def test_the_freshest_neighbours_are_the_ones_that_get_the_airtime():
 def test_a_neighbour_with_no_usable_hash_is_dropped_not_zeroed():
     """A zero short hash would match a real node. Sending nothing is the only
     safe way to say 'I could not identify this one'."""
-    got = hb.decode(_v4(neighbours=[(None, 5, 30), (_h("5a110011"), 5, 30)])).neighbours
-    assert [n["short_hash"] for n in got] == [0xc627]
+    got = hb.decode(_v4(neighbours=[(None, 5, 30), (_h("a1b2c3d4"), 5, 30)])).neighbours
+    assert [n["short_hash"] for n in got] == [0xa1b2]
 
 
 def test_a_stale_neighbour_is_not_reported_at_all():
     """Past the last bucket there is nothing useful to say, and a link the node
     last heard three days ago is not a link to draw today."""
-    assert hb.decode(_v4(neighbours=[(_h("5a110011"), 5, 10 * 86400)])).neighbours == []
+    assert hb.decode(_v4(neighbours=[(_h("a1b2c3d4"), 5, 10 * 86400)])).neighbours == []
 
 
 def test_the_age_is_an_upper_bound_never_a_midpoint():

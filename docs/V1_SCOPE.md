@@ -98,6 +98,20 @@ build X next?" at the end of a turn. Ideas go to the list below.
 
 ## Ideas parked (not v1)
 
+- **Our own RNode firmware releases as BIRTH's source (operator, 2026-10-03).**
+  Today the official OLED boards (V3, LoRa32, T3-S3, T-Beam) are flashed by
+  `rnodeconf --autoinstall` from Mark's cached upstream release, so they get
+  the stock face and none of the fork's work; only the V4 is compiled from
+  `5ugAv/RNode_Firmware` (`medic-cross`). The clean version: build every
+  target from the fork (`make release-all` + `release-hashes` already exist),
+  publish them as GitHub Releases on the fork, and point
+  `workflows/updater.py`'s FIRMWARE_URL at the fork — autoinstall and the
+  offline cache stay exactly as they are, only the source changes. Needs the
+  release hash files rnodeconf verifies, and one proof per board on glass.
+  Note: a host-attached RNode does not itself beacon health — the Pi reporter
+  does — so the gain here is the face, the NeoPixel and Tracker work, and one
+  source of truth, not the beacon.
+
 - Text to speech — the medic has no speaker; revisit if hardware changes
 - Arabic and right-to-left layout — needs RTL work first
 - More boards past the current 16

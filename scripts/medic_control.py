@@ -3,7 +3,7 @@
 
     python3 scripts/medic_control.py list
     python3 scripts/medic_control.py open vitals
-    python3 scripts/medic_control.py node 5a110011
+    python3 scripts/medic_control.py node a1b2c3d4
     python3 scripts/medic_control.py home
 
 Run ON the medic (or over ssh). Prints the app's reply; exit 0 on "ok".

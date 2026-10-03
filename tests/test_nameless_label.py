@@ -4,24 +4,24 @@ from monitor.registry import NodeRecord
 
 
 def test_nameless_record_without_a_beacon_shows_its_hash():
-    r = NodeRecord(dst_hash="5a110011" + "0" * 24)
-    assert r._nameless_label() == "(unnamed) 5a110011"
+    r = NodeRecord(dst_hash="a1b2c3d4" + "0" * 24)
+    assert r._nameless_label() == "(unnamed) a1b2c3d4"
 
 
 def test_nameless_record_with_a_beacon_shows_its_board(monkeypatch):
     class _B:
         board_label = "RAK4631"                       # a property on the real beacon
-    r = NodeRecord(dst_hash="5a110011" + "0" * 24)
+    r = NodeRecord(dst_hash="a1b2c3d4" + "0" * 24)
     monkeypatch.setattr(NodeRecord, "latest_beacon", property(lambda self: _B()), raising=False)
-    assert r._nameless_label() == "RAK4631 · 5a110011"
+    assert r._nameless_label() == "RAK4631 · a1b2c3d4"
 
 
 def test_an_unknown_board_id_does_not_leak_into_the_label(monkeypatch):
     class _B:
         board_label = "unknown(0xff)"
-    r = NodeRecord(dst_hash="5a110011" + "0" * 24)
+    r = NodeRecord(dst_hash="a1b2c3d4" + "0" * 24)
     monkeypatch.setattr(NodeRecord, "latest_beacon", property(lambda self: _B()), raising=False)
-    assert r._nameless_label() == "(unnamed) 5a110011"
+    assert r._nameless_label() == "(unnamed) a1b2c3d4"
 
 
 def test_the_row_uses_it():
@@ -48,10 +48,10 @@ def test_front_page_carries_an_unread_badge_fed_by_the_store():
 
 
 def test_the_live_ghost_beacon_names_its_board():
-    """5a110011's actual beacon off the medic, 2026-09-30."""
+    """a real RAK4631 beacon captured on the medic, 2026-09-30 (hash prefix synthetic)."""
     from monitor.health_beacon import decode
     b = decode(bytes.fromhex("0200049d6c0013000552510007000000ff308080"))
     assert b.board_label == "RAK4631"
-    r = NodeRecord(dst_hash="5a110011" + "0" * 24)
+    r = NodeRecord(dst_hash="a1b2c3d4" + "0" * 24)
     r.latest_beacon = b
-    assert r._nameless_label() == "RAK4631 · 5a110011"
+    assert r._nameless_label() == "RAK4631 · a1b2c3d4"

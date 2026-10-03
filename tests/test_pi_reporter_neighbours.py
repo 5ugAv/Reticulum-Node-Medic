@@ -7,8 +7,8 @@ from monitor.pi_health_reporter import (PiHealthInputs, build_beacon_bytes,
 
 BASE = dict(uptime_s=100, free_ram_kb=200_000, disk_used_pct=10, net_up=True,
             radio_up=True, rns_transport_up=True)
-A = "5a11001100000000000000000000000b"
-B = "5a120012000000000000000000000012"
+A = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+B = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
 
 
 def test_a_node_that_hears_nobody_keeps_sending_v2():
@@ -23,7 +23,7 @@ def test_a_node_with_neighbours_sends_v4_and_the_medic_reads_them():
     raw = build_beacon_bytes(PiHealthInputs(neighbours=[(A, None, 30), (B, None, 700)], **BASE))
     assert raw[0] == hb.FORMAT_VERSION_V4
     got = hb.decode(raw).neighbours
-    assert [n["short_hash"] for n in got] == [0xc627, 0xf7b0]
+    assert [n["short_hash"] for n in got] == [0xa1b2, 0x0f1e]
     assert got[0]["snr_db"] is None, "the path table carries no SNR; none is claimed"
     assert got[0]["age_s"] == 60 and got[1]["age_s"] == 900, "bucket upper bounds"
 

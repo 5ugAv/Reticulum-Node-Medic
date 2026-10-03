@@ -22,15 +22,15 @@ class _Rec:
         self.seen = _Obs(seen_at) if seen_at is not None else None
 
 
-A = "5a11001100000000000000000000000b"
-B = "5a120012000000000000000000000012"
-C = "f7b0aaaa000000000000000000000000"       # shares B's 16-bit prefix
+A = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+B = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+C = "0f1eaaaa000000000000000000000000"       # shares B's 16-bit prefix
 SELF = "5a0a000a00000000000000000000000e"
 
 
 def test_a_short_hash_resolves_to_exactly_one_known_node():
-    assert N.resolve_short_hash(0xf7b0, [A, B]) == B
-    assert N.resolve_short_hash(0xc627, [A, B]) == A
+    assert N.resolve_short_hash(0x0f1e, [A, B]) == B
+    assert N.resolve_short_hash(0xa1b2, [A, B]) == A
 
 
 def test_an_unknown_short_hash_draws_nothing():
@@ -41,16 +41,16 @@ def test_an_unknown_short_hash_draws_nothing():
 def test_an_ambiguous_short_hash_draws_nothing():
     """Two bytes WILL collide on a big enough mesh. Two known nodes sharing a
     prefix: refuse, rather than draw a line to the wrong one."""
-    assert N.resolve_short_hash(0xf7b0, [A, B, C]) is None
+    assert N.resolve_short_hash(0x0f1e, [A, B, C]) is None
 
 
 def test_a_node_is_never_its_own_neighbour():
-    assert N.resolve_short_hash(0xc627, [A, B], exclude=(A,)) is None
+    assert N.resolve_short_hash(0xa1b2, [A, B], exclude=(A,)) is None
 
 
 def test_a_fresh_report_becomes_a_reported_edge():
     now = time.time()
-    recs = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 7, "age_s": 60}], seen_at=now - 30),
+    recs = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 7, "age_s": 60}], seen_at=now - 30),
             B: _Rec(B)}
     edges = N.reported_edges(recs, now)
     assert len(edges) == 1
@@ -62,29 +62,29 @@ def test_a_fresh_report_becomes_a_reported_edge():
 def test_freshness_is_the_nodes_claim_plus_our_clock():
     """'No older than 900 s' heard 3 hours ago is a 3h15m-old link: not drawn."""
     now = time.time()
-    recs = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 7, "age_s": 900}], seen_at=now - 3 * 3600),
+    recs = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 7, "age_s": 900}], seen_at=now - 3 * 3600),
             B: _Rec(B)}
     assert N.reported_edges(recs, now) == []
 
 
 def test_the_stale_bucket_is_never_drawn():
     now = time.time()
-    recs = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 7, "age_s": None}], seen_at=now),
+    recs = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 7, "age_s": None}], seen_at=now),
             B: _Rec(B)}
     assert N.reported_edges(recs, now) == []
 
 
 def test_a_report_with_no_time_is_no_report():
     now = time.time()
-    recs = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 7, "age_s": 60}], seen_at=None),
+    recs = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 7, "age_s": 60}], seen_at=None),
             B: _Rec(B)}
     assert N.reported_edges(recs, now) == []
 
 
 def test_both_directions_collapse_to_one_link_keeping_the_stronger_snr():
     now = time.time()
-    recs = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 3, "age_s": 60}], seen_at=now),
-            B: _Rec(B, [{"short_hash": 0xc627, "snr_db": 9, "age_s": 60}], seen_at=now)}
+    recs = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 3, "age_s": 60}], seen_at=now),
+            B: _Rec(B, [{"short_hash": 0xa1b2, "snr_db": 9, "age_s": 60}], seen_at=now)}
     edges = N.reported_edges(recs, now)
     assert len(edges) == 1 and edges[0].snr == 9
 
@@ -116,7 +116,7 @@ def test_build_topology_adds_reported_edges_between_nodes():
 
     class Reg:
         def __init__(self):
-            self.nodes = {A: _Rec(A, [{"short_hash": 0xf7b0, "snr_db": 5, "age_s": 60}], seen_at=now),
+            self.nodes = {A: _Rec(A, [{"short_hash": 0x0f1e, "snr_db": 5, "age_s": 60}], seen_at=now),
                           B: _Rec(B)}
             for r in self.nodes.values():
                 r.name, r.lat, r.lon, r.node_type = "n", None, None, "pi"

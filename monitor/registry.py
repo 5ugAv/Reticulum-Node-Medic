@@ -609,7 +609,7 @@ class NodeRecord:
     def _nameless_label(self) -> str:
         """A kin node with no name still has a board and a hash. "(unnamed)"
         sat at the top of VITALS for a fortnight before the operator asked what
-        it was (2026-09-29: an RTNode-2400 on a RAK4631, 5a110011). Say that."""
+        it was (2026-09-29: an RTNode-2400 on a RAK4631). Say that."""
         b = self.latest_beacon
         board = ""
         if b is not None:

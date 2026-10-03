@@ -17,11 +17,11 @@ def test_junk_and_half_commands_are_refused():
 
 
 def test_a_node_prefix_must_be_unambiguous_and_long_enough():
-    hashes = ["5a11001100000000000000000000000b", "5a119999" + "0" * 24, "5a120012" + "0" * 24]
-    assert R.resolve_node("f7b0", hashes) == (hashes[2], "")
-    h, why = R.resolve_node("c627", hashes)
+    hashes = ["a1b2c3d4e5f60718293a4b5c6d7e8f90", "a1b29999" + "0" * 24, "0f1e2d3c" + "0" * 24]
+    assert R.resolve_node("0f1e", hashes) == (hashes[2], "")
+    h, why = R.resolve_node("a1b2", hashes)
     assert h is None and "2 nodes" in why
-    h, why = R.resolve_node("c62", hashes)
+    h, why = R.resolve_node("a1b", hashes)
     assert h is None and "4 hex" in why
     h, why = R.resolve_node("zzzz", hashes)
     assert h is None
