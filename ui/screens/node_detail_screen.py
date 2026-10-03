@@ -195,7 +195,7 @@ class NodeDetailScreen(BoxLayout):
         sig = _reading(record, "signal_dbm")
         if sig is not None:
             self.add_widget(_line(
-                tr("Signal when last heard: {dbm} dBm").format(dbm=sig),
+                tr("Wi-Fi signal when last heard: {dbm} dBm").format(dbm=sig),
                 color=("green" if sig > -90 else "amber" if sig > -110 else "red")))
         else:
             self.add_widget(_line(tr("Signal: not measured"),

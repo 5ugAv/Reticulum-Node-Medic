@@ -198,3 +198,44 @@ def test_missing_has_seen_is_not_a_never_claim():
     assert seen_and_echo({}) == ("SEEN ?", None)
     assert seen_is_known({}) is True
     assert seen_and_echo({"last_seen_hours": 3.1}) == ("SEEN 3.1h", None)
+
+
+# -- 2026-10-03: uptime people can read; a Pi says only what a Pi measured ----
+
+def test_format_duration_rolls_units():
+    from monitor.formatting import format_duration
+    assert format_duration(42) == "42s"
+    assert format_duration(60) == "1m 0s"
+    assert format_duration(750) == "12m 30s"
+    assert format_duration(21631) == "6h 0m"
+    assert format_duration(3 * 86400 + 2 * 3600 + 56) == "3d 2h"
+    assert format_duration(-5) == "0s" and format_duration("x") == "?"
+
+
+def test_uptime_line_is_human():
+    lines = beacon_lines(_reg_with_beacon(uptime_s=21631))
+    assert any("Uptime: 6h 0m" in ln for ln in lines)
+    assert not any("21631s" in ln for ln in lines)
+
+
+def test_a_zero_rssi_is_no_reading_even_when_wifi_is_up():
+    joined = "\n".join(beacon_lines(_reg_with_beacon(wifi_up=True, wifi_rssi_dbm=0)))
+    assert "WiFi: up" in joined and "0 dBm" not in joined
+
+
+def test_a_pi_node_shows_only_what_a_pi_measured():
+    """skyfinger's page (2026-10-03): 'WiFi: up (0 dBm)', 'Free heap 65535 KB',
+    'PSRAM: no', 'Last reset: poweron', 'Watchdog: armed' — all declared by
+    the reporter, none read."""
+    from monitor.health_beacon import BOARD_PI_PROPAGATION
+    lines = beacon_lines(_reg_with_beacon(board_id=BOARD_PI_PROPAGATION, uptime_s=37931,
+                                          heap_kb=0xFFFF, wifi_rssi_dbm=0, psram=False,
+                                          local_tcp_server_up=False, tcp_backbone_up=False))
+    joined = "\n".join(lines)
+    assert "Board: RPi propagation" in joined
+    assert "Uptime: 10h 32m" in joined
+    assert "Free RAM (min): \u226564 MB" in joined and "65535" not in joined
+    assert "WiFi: up" in joined and "dBm" not in joined.split("LoRa")[0]
+    assert "Internet: down" in joined and "Disk: ok" in joined
+    for absent in ("PSRAM", "Last reset", "Watchdog", "Airtime lock", "Local TCP", "Backbone TCP"):
+        assert absent not in joined, absent

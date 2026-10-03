@@ -6,18 +6,65 @@ from __future__ import annotations
 from typing import List
 
 
+def format_duration(seconds) -> str:
+    """Seconds as people read them: 42s · 12m 30s · 6h 2m · 3d 2h.
+
+    "Uptime: 21631s" made the reader do the division (operator, 2026-10-03);
+    sixty seconds is a minute, sixty minutes an hour, twenty-four hours a
+    day. Two units at most — the third is noise at that scale."""
+    try:
+        s = int(seconds)
+    except (TypeError, ValueError):
+        return "?"
+    if s < 0:
+        s = 0
+    d, rem = divmod(s, 86400)
+    h, rem = divmod(rem, 3600)
+    m, sec = divmod(rem, 60)
+    if d:
+        return f"{d}d {h}h"
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {sec}s"
+    return f"{sec}s"
+
+
 def beacon_lines(record) -> List[str]:
-    """Plain-English health rows for a node's latest decoded beacon."""
+    """Plain-English health rows for a node's latest decoded beacon.
+
+    A Pi propagation node fills the ESP32-shaped beacon with what a Pi has:
+    its reporter sends Wi-Fi RSSI 0 (not read), PSRAM False, reset 0,
+    airtime-lock False and watchdog True BY DECLARATION, and clamps free RAM
+    at the 16-bit cap. Printing those as readings — "WiFi: up (0 dBm)",
+    "PSRAM: no", "Last reset: poweron", "Free heap 65535 KB" — was the
+    medic stating things it never measured (skyfinger's page, 2026-10-03).
+    A Pi gets the rows a Pi can answer; nothing declared is shown as read.
+    """
+    from monitor.health_beacon import BOARD_PI_PROPAGATION
     b = record.latest_beacon
     if b is None:
         return ["No health beacon received yet."]
-    lines = [
-        f"Firmware: {b.firmware_version}   Board: {b.board_label}",
-        f"Uptime: {b.uptime_s}s   Free heap (min): {b.free_heap_kb} KB",
-        f"WiFi: {'up' if b.wifi_up else 'down'}"
-        + (f" ({b.wifi_rssi_dbm} dBm)" if b.wifi_up else "")
-        + f"   LoRa: {'up' if b.lora_up else 'down'}",
-    ]
+    is_pi = b.board_id == BOARD_PI_PROPAGATION
+    up = format_duration(b.uptime_s)
+    # 0 on the wire is "no reading", never a real 0 dBm (2026-08-01 bug hunt)
+    wifi = "WiFi: " + ("up" if b.wifi_up else "down")
+    if b.wifi_up and b.wifi_rssi_dbm:
+        wifi += f" ({b.wifi_rssi_dbm} dBm)"
+    if is_pi:
+        ram = (f"\u2265{(0xFFFF + 1) // 1024} MB" if b.free_heap_kb >= 0xFFFF
+               else f"{b.free_heap_kb} KB")
+        lines = [
+            f"Firmware: {b.firmware_version}   Board: {b.board_label}",
+            f"Uptime: {up}   Free RAM (min): {ram}",
+            f"{wifi}   LoRa: {'up' if b.lora_up else 'down'}",
+        ]
+    else:
+        lines = [
+            f"Firmware: {b.firmware_version}   Board: {b.board_label}",
+            f"Uptime: {up}   Free heap (min): {b.free_heap_kb} KB",
+            f"{wifi}   LoRa: {'up' if b.lora_up else 'down'}",
+        ]
     # Battery + power source (v2 nodes only — v1 nodes never reported it, so we
     # stay silent rather than print a misleading 'not reported').
     if b.has_power_telemetry:
@@ -30,15 +77,25 @@ def beacon_lines(record) -> List[str]:
         if b.lora_snr_db is not None:
             link.append(f"SNR {b.lora_snr_db} dB")
         lines.append("LoRa link (node's view): " + "  ".join(link))
-    lines += [
-        f"Backbone TCP: {'up' if b.tcp_backbone_up else 'down'}   "
-        f"Local TCP: {'up' if b.local_tcp_server_up else 'down'}",
-        f"Watchdog: {'armed' if b.wdt_armed else 'NOT armed'}   "
-        f"PSRAM: {'yes' if b.psram else 'no'}",
-        f"Fault: {'YES' if b.fault else 'no'}   "
-        f"Airtime lock: {'yes' if b.airtime_lock else 'no'}   "
-        f"Last reset: {b.reset_reason_label}",
-    ]
+    if is_pi:
+        # What the Pi reporter measures: an internet backbone interface in
+        # its own rnstatus (2026-09-30) and the disk. Watchdog, PSRAM, reset
+        # reason, airtime lock and the local TCP server are declared, not
+        # read, on a Pi — so they are not shown as readings.
+        lines += [
+            f"Internet: {'up' if b.tcp_backbone_up else 'down'}",
+            f"Disk: {'critically full' if b.fault else 'ok'}",
+        ]
+    else:
+        lines += [
+            f"Backbone TCP: {'up' if b.tcp_backbone_up else 'down'}   "
+            f"Local TCP: {'up' if b.local_tcp_server_up else 'down'}",
+            f"Watchdog: {'armed' if b.wdt_armed else 'NOT armed'}   "
+            f"PSRAM: {'yes' if b.psram else 'no'}",
+            f"Fault: {'YES' if b.fault else 'no'}   "
+            f"Airtime lock: {'yes' if b.airtime_lock else 'no'}   "
+            f"Last reset: {b.reset_reason_label}",
+        ]
     return lines
 
 

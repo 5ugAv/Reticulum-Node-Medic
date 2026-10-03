@@ -848,7 +848,7 @@ def test_consolidated_record_carries_beacon_from_health_bearing_member():
         assert view is not None
         assert view.latest_beacon is not None
         assert view.latest_beacon.uptime_s == 999
-        assert any("Uptime: 999s" in ln for ln in beacon_lines(view))
+        assert any("Uptime: 16m 39s" in ln for ln in beacon_lines(view))
 
 
 def test_consolidated_record_status_matches_dashboard_dot():

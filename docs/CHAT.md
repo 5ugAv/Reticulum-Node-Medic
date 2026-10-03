@@ -95,7 +95,7 @@ names the node (Home) or does not (Backpack), matching the front-page toggle.
 
 First live exchange, over LoRa. Phone: Columba on Android, a Heltec
 MeshPocket as its RNode over Bluetooth, fleet radio parameters. The phone's
-announce arrived as `5a15001500000000000000000000000f` / display name
+announce arrived as `5a150015…` / display name
 "5ugAv" and the medic listed it under *Heard on the mesh*; medic → phone
 "your node medic pal" 23:28:28 → `delivered` (double tick in Columba);
 phone → medic "It works!" 23:29:27, in the store as `in … delivered`.
