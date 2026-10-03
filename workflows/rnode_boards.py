@@ -92,6 +92,12 @@ class RNodeBoard:
     #: Tracker's path is already a hardcoded TRACKER_BUILD_DIR, and a second
     #: hardcoded path is how the wrong board's binary gets flashed.
     build_dir: str = ""
+    #: The artefact base name arduino-cli gave this board's build — the sketch
+    #: folder's name plus ".ino" ("RNode_Firmware_CE.ino" in a CE tree). ""
+    #: means the upstream tree's "RNode_Firmware.ino". Found 2026-10-03: the
+    #: EoRa-S3's proven image was on the medic all along under the CE name,
+    #: and the flasher only ever looked for the Tracker's.
+    sketch: str = ""
     dfu_package: str = ""                    # signed .zip for adafruit-nrfutil
 
     @property
@@ -406,6 +412,7 @@ _CUSTOM = [
         ],
         provision={"product": "d3", "model": "cf", "hwrev": "1"},
         build_dir="~/EoRa-S3/RNode_Firmware_CE/build/esp32.esp32.esp32s3",
+        sketch="RNode_Firmware_CE.ino",
         bootloader_instructions=(
             "Attach the 915 MHz antenna FIRST — running the radio without one "
             "can damage it. Native ESP32-S3 USB, no UART chip: if flashing "

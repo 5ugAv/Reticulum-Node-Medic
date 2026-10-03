@@ -273,6 +273,15 @@ def fork_build_dir_for(board) -> str:
     return getattr(board, "build_dir", "") or TRACKER_BUILD_DIR
 
 
+def fork_image_for(board, suffix: str) -> str:
+    """Path of one artefact of this board's fork build: ``<build_dir>/<sketch>.<suffix>``
+    — ``bin``, ``bootloader.bin``, ``partitions.bin``. The sketch name comes
+    from the catalogue (a CE tree builds ``RNode_Firmware_CE.ino.*``); the
+    upstream tree's ``RNode_Firmware.ino`` is the default."""
+    base = getattr(board, "sketch", "") or "RNode_Firmware.ino"
+    return f"{fork_build_dir_for(board)}/{base}.{suffix}"
+
+
 def fork_flash_size_for(board) -> str:
     """esptool ``--flash_size`` for this board: from the catalogue FQBN
     (``FlashSize=4M`` -> ``4MB``), else the Tracker's proven ``8MB``. A full
@@ -546,7 +555,7 @@ class RNodeFlashWorkflow:
         if self.board.flash_method != "autoinstall":
             # custom fork: THIS board's build is the firmware source
             d = fork_build_dir_for(self.board)
-            if self.connection.run(f"test -f {d}/RNode_Firmware.ino.bin")[0] != 0:
+            if self.connection.run(f"test -f {fork_image_for(self.board, 'bin')}")[0] != 0:
                 return StepResult(
                     "ensure_firmware", False,
                     f"The medic's {self.board.display_name} build is missing "
@@ -712,10 +721,10 @@ class RNodeFlashWorkflow:
         code, out, err = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
             f"--baud 115200 --no-stub write_flash -z --flash_size {size} "
-            f"0x0 {d}/RNode_Firmware.ino.bootloader.bin "
-            f"0x8000 {d}/RNode_Firmware.ino.partitions.bin "
+            f"0x0 {fork_image_for(self.board, 'bootloader.bin')} "
+            f"0x8000 {fork_image_for(self.board, 'partitions.bin')} "
             f"0xe000 {TRACKER_BOOT_APP0} "
-            f"0x10000 {d}/RNode_Firmware.ino.bin",
+            f"0x10000 {fork_image_for(self.board, 'bin')}",
             timeout=self.flash_timeout)
         low = (out or "").lower()
         if code != 0 and "hash of data verified" not in low:
@@ -772,7 +781,7 @@ class RNodeFlashWorkflow:
         # firmware hash = the app image's embedded SHA (validates, not corrupt)
         from workflows.rnode_v4_rgb import embedded_hash_command
         self.connection.run(
-            embedded_hash_command(self.port, f"{d}/RNode_Firmware.ino.bin"),
+            embedded_hash_command(self.port, fork_image_for(self.board, "bin")),
             timeout=120)
         return StepResult(
             "flash", True,

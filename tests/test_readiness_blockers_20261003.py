@@ -49,6 +49,11 @@ def test_each_custom_board_flashes_its_own_build_at_its_own_size():
     assert fork_flash_size_for(eora) == "4MB"
     assert fork_build_dir_for(tracker) == TRACKER_BUILD_DIR
     assert fork_flash_size_for(tracker) == "8MB"
+    # and each board's own SKETCH name: the CE tree builds RNode_Firmware_CE.ino.*
+    from workflows.rnode_flash import fork_image_for
+    assert fork_image_for(eora, "bin").endswith("/RNode_Firmware_CE.ino.bin")
+    assert fork_image_for(eora, "bootloader.bin").startswith(eora.build_dir)
+    assert fork_image_for(tracker, "bin") == TRACKER_BUILD_DIR + "/RNode_Firmware.ino.bin"
 
 
 def test_the_fork_flasher_never_hardcodes_the_trackers_directory_or_size():
@@ -57,5 +62,6 @@ def test_the_fork_flasher_never_hardcodes_the_trackers_directory_or_size():
     assert "d = TRACKER_BUILD_DIR" not in flash
     assert "--flash_size 8MB" not in flash
     ensure = src[src.index("def _ensure_firmware"):src.index("def _flash_custom_fork")]
-    assert "fork_build_dir_for(self.board)" in ensure
+    assert "fork_image_for(self.board" in ensure
     assert "Tracker fork build is missing" not in ensure
+    assert "RNode_Firmware.ino" not in flash and "RNode_Firmware.ino" not in ensure
