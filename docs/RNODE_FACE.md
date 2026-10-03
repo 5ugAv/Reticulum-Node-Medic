@@ -54,10 +54,17 @@ Other official OLED boards (V3, LoRa32, T3-S3, T-Beam) are flashed by
 `rnodeconf --autoinstall` from the cached upstream release and still show
 the stock strip; giving them the cross means a compiled path per board.
 
+## Seen on glass
+
+2026-10-03, Heltec V4 **5AC3**, born through BIRTH after the rebuild: the
+strip reads NODE MEDIC with the cross, RNODE and the hash tail below, the
+version card and the instrument panel exactly as upstream. The first
+Node-Medic-faced RNode.
+
 ## Not yet
 
-* Seen on a physical OLED — reflash 5A59 (the V4 born 2026-10-03 19:22 with
-  the stock face) and photograph it.
+* 5A59 (born 19:22 that day, before the rebuild) still wears the stock
+  face until it is reflashed.
 * Pushed to GitHub (`git push origin medic-cross` from `~/RNode_Firmware`;
   the commit already carries the noreply author).
 * The **MeshPocket** and **EoRa-S3** builds come from separate CE trees
