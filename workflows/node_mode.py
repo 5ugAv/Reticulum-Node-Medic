@@ -134,10 +134,11 @@ def normalise(mode: str) -> str:
 def propagation_running(connection: Connection) -> bool:
     """Is the LXMF propagation node actually RUNNING — not what the mode
     intends. lxmd started with ``-p`` / ``--propagation-node`` propagates
-    whatever ``enable_node`` says (the medic's unit runs ``lxmd -p -s``, so
-    Backpack has never switched it off — found 2026-09-30 when the phone-apps
-    note said OFF while lxmd's log said started). Falls back to the config
-    line when no lxmd process is visible."""
+    whatever ``enable_node`` says (the medic's unit DID run ``lxmd -p -s``
+    until 2026-10-03, so Backpack never switched it off — found 2026-09-30
+    when the phone-apps note said OFF while lxmd's log said started). The
+    ``-p`` check stays as a guard for any medic whose unit still carries it.
+    Falls back to the config line when no lxmd process is visible."""
     out = connection.run("pgrep -af '[l]xmd' 2>/dev/null")[1]
     for line in out.splitlines():
         if "lxmd" in line:

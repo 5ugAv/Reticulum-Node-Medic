@@ -49,3 +49,12 @@ def test_chat_tick_is_not_scheduled_as_a_lambda_that_returns_false():
     assert "Clock.schedule_interval(self._chat_tick, 60)" in src
     body = src[src.index("def _chat_tick"):src.index("def _refresh_chat_badge")]
     assert not any(l.strip().startswith("return") for l in body.splitlines())
+
+
+def test_a_socket_navigation_wakes_the_screensaver_first():
+    """Three walkthrough captures were the screensaver's rings: `open` changed
+    the screen under the saver (2026-10-03)."""
+    src = open("ui/remote.py").read()
+    i = src.index("def _apply")
+    body = src[i:src.index('if verb == "list"')]
+    assert "_dismiss_screensaver()" in body and "_reset_idle()" in body

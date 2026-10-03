@@ -165,6 +165,18 @@ class ControlServer:
     def _apply(self, verb: str, arg: Optional[str]) -> str:
         app = self.app
         names = [s.name for s in app.sm.screens]
+        if verb in ("open", "node", "home"):
+            # WAKE THE PANEL FIRST. The screensaver is a layer over the
+            # ScreenManager; "open comms" changed the screen underneath it
+            # and three captures in a row were concentric rings (2026-10-03).
+            # A navigation from the socket counts as a touch.
+            try:
+                saver = getattr(app, "_screensaver", None)
+                if saver is not None and getattr(saver, "active", False):
+                    app._dismiss_screensaver()
+                app._reset_idle()
+            except Exception:                                          # noqa: BLE001
+                pass
         if verb == "list":
             return "ok " + " ".join(sorted(names))
         if verb == "current":

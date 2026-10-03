@@ -77,8 +77,10 @@ class CommsScreen(BoxLayout):
             conn = LocalConnection()
             apps = cached_apps(conn, self._cache_dir)
             # What lxmd IS doing, not what the mode meant: the medic's unit
-            # runs lxmd -p, which propagates whatever Backpack wrote to the
-            # config. The note said OFF over a running post office (2026-09-30).
+            # ran lxmd -p until 2026-10-03, propagating whatever Backpack wrote
+            # to the config — the note said OFF over a running post office
+            # (2026-09-30). Reading the process keeps the note honest on any
+            # medic whose unit still carries -p.
             try:
                 store_on = propagation_running(conn)
             except Exception:
