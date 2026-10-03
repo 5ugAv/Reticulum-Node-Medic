@@ -33,9 +33,31 @@ glyphs, x 53–63 a dark pocket with a lit 2-px-arm plus. No `Display.h`
 change. Compiles for `heltec32_v4` at 69 % of flash. The upstream credit
 remains in every source header and on the medic's credits screen.
 
+## How the bytes reach a board — and the trap that cost a birth
+
+A Heltec V4 is NOT flashed from the fork by `make`. BIRTH flashes the
+tool's own compiled image, `~/RNode_Firmware/build/rnm-board-0x3F/`
+(`workflows/rnode_v4_rgb.py`, the NeoPixel build, provisioned as the vendor
+V4). `make firmware-heltec32_v4` writes to arduino-cli's default directory,
+which birth never reads — so on 2026-10-03 the strip was committed, built
+twice that way, and 5A59 was born with the stock face. Two fixes:
+
+* `scripts/rebuild_rnode_firmware.py` compiles into the right directory and
+  PROVES the committed strip bytes are in the result. Run it on the medic
+  after any change to the fork.
+* The tool's `compile_command()` quoted an unexpanded `~` in `--build-path`
+  (bash does not expand it there), so even the tool's recipe built into a
+  literal `./~/` directory. Absolute paths now; a test pins it. BIRTH also
+  says in its flash step when the image is older than the tree's last commit.
+
+Other official OLED boards (V3, LoRa32, T3-S3, T-Beam) are flashed by
+`rnodeconf --autoinstall` from the cached upstream release and still show
+the stock strip; giving them the cross means a compiled path per board.
+
 ## Not yet
 
-* Seen on a physical OLED — the bench step (birth a V3/V4, photograph it).
+* Seen on a physical OLED — reflash 5A59 (the V4 born 2026-10-03 19:22 with
+  the stock face) and photograph it.
 * Pushed to GitHub (`git push origin medic-cross` from `~/RNode_Firmware`;
   the commit already carries the noreply author).
 * The **MeshPocket** and **EoRa-S3** builds come from separate CE trees

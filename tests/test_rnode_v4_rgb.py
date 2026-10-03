@@ -419,3 +419,39 @@ def test_detect_port_fingerprints_the_board_for_the_hand_back():
     w = HeltecV4RGBWorkflow(c, port="/dev/ttyACM1")
     w._detect_port()
     assert w._usb_serial == "02:00:00:02:00:02"
+
+
+def test_staleness_compares_the_commit_time_with_the_image(tmp_path):
+    """2026-10-03: the strip was committed, `make`d into the wrong directory,
+    and a V4 was born with the old face. The image birth flashes must say
+    when its source has moved on."""
+    import os, time
+    from workflows.rnode_v4_rgb import rgb_firmware_staleness
+    b = tmp_path / "RNode_Firmware.ino.bin"; b.write_bytes(b"x")
+    os.utime(b, (1_000_000, 1_000_000))
+    newer = {"log": "1003600\n", "status": ""}
+    def run(cmd): return newer["log"] if "log -1" in cmd else newer["status"]
+    assert rgb_firmware_staleness(str(b), "/x", run=run) == "source committed 1 h after the image was compiled"
+    newer["log"] = "900000\n"
+    assert rgb_firmware_staleness(str(b), "/x", run=run) is None
+    newer["status"] = " M Graphics.h\n?? build/\n"
+    assert rgb_firmware_staleness(str(b), "/x", run=run) == "uncommitted source changes: Graphics.h"
+    assert rgb_firmware_staleness(str(tmp_path / "none.bin"), "/x", run=run) == "no compiled image"
+
+
+def test_birth_logs_a_stale_image_instead_of_flashing_it_silently():
+    import os
+    src = open("workflows/build.py").read()
+    i = src.index("rgb_firmware_available():")
+    assert "rgb_firmware_staleness()" in src[i:i + 600]
+    assert os.path.exists("scripts/rebuild_rnode_firmware.py")
+
+
+def test_compile_command_never_quotes_a_tilde():
+    """A quoted "~/..." does not expand under bash; the compile landed in a
+    literal ./~/ directory inside the tree while birth flashed the old image
+    (2026-10-03)."""
+    from workflows.rnode_v4_rgb import compile_command
+    cmd = compile_command()
+    assert "~" not in cmd
+    assert '--build-path "/' in cmd

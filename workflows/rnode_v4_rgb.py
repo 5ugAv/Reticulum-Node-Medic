@@ -197,6 +197,49 @@ def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
     return os.path.isfile(bin_path) and os.path.isfile(hasher_path)
 
 
+def rgb_firmware_staleness(bin_path: str = RGB_LOCAL_BIN,
+                           firmware_dir: str = FIRMWARE_DIR,
+                           run=None) -> Optional[str]:
+    """Why the compiled image may NOT be what the source tree says — or None.
+
+    The image birth flashes lives in ONE build directory; a `make` in the
+    same tree writes to arduino-cli's default and changes nothing birth
+    reads. On 2026-10-03 the NODE MEDIC strip was committed, compiled twice
+    that way, and a V4 was born with the old face: the binary was three
+    weeks older than the tree and nothing said so. This compares the tree's
+    last commit time (and its dirty files) with the binary's mtime.
+    """
+    import subprocess
+    bp = os.path.expanduser(bin_path); fd = os.path.expanduser(firmware_dir)
+    if not os.path.isfile(bp):
+        return "no compiled image"
+    def _run(cmd):
+        if run is not None:
+            return run(cmd)
+        return subprocess.run(["bash", "-lc", cmd], capture_output=True,
+                              text=True, timeout=20).stdout
+    try:
+        commit_ts = int((_run(f"git -C {fd} log -1 --format=%ct") or "0").strip() or 0)
+        dirty = [l for l in (_run(f"git -C {fd} status --short") or "").splitlines()
+                 if l.strip() and not l.strip().startswith("?? build")]
+    except Exception:                                                  # noqa: BLE001
+        return None                                  # cannot tell; do not alarm
+    bin_ts = os.path.getmtime(bp)
+    if commit_ts and commit_ts > bin_ts:
+        return ("source committed %s after the image was compiled"
+                % _ago(commit_ts - bin_ts))
+    if dirty:
+        return "uncommitted source changes: " + ", ".join(d.split()[-1] for d in dirty[:3])
+    return None
+
+
+def _ago(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 3600: return "%d min" % (seconds // 60)
+    if seconds < 86400: return "%d h" % (seconds // 3600)
+    return "%d d" % (seconds // 86400)
+
+
 def _board_usb_serial(connection: Connection, port: str):
     """The ESP32 USB serial (a MAC, e.g. A1:B2:C3:D4:E5:F6) for the board on
     *port*, so RobustFlasher can target its USB hub port for a uhubctl power-
@@ -316,9 +359,14 @@ def compile_command(firmware_dir: str = FIRMWARE_DIR,
     (no_ota partitions, 2 MB app, -DBOARD_MODEL), with one addition:
     --build-path, so this board model's binaries cannot be overwritten by a
     build for a different board in the same tree (see BUILD_SUBDIR)."""
+    # ABSOLUTE paths: a quoted "~/..." does not expand under bash, and the
+    # compile then lands in a literal ./~/ directory inside the tree while
+    # birth keeps flashing the old image (2026-10-03 — the V4 born with the
+    # stock face after the NODE MEDIC strip was committed).
+    fd = os.path.expanduser(firmware_dir)
     return (
-        f"cd {firmware_dir} && arduino-cli compile --fqbn {FQBN} -e "
-        f'--build-path "{build_dir_for(board_model, firmware_dir)}" '
+        f"cd {fd} && arduino-cli compile --fqbn {FQBN} -e "
+        f'--build-path "{os.path.expanduser(build_dir_for(board_model, firmware_dir))}" '
         f'--build-property "build.partitions=no_ota" '
         f'--build-property "upload.maximum_size=2097152" '
         f'--build-property "compiler.cpp.extra_flags=-DBOARD_MODEL=0x{board_model:02X}"')

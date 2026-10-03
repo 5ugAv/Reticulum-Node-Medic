@@ -572,8 +572,15 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
     # Pi+RNode radios get the status LED too. Fall back to stock when the RGB
     # firmware isn't built here, so the build never blocks on it.
     if wf.profile.rnode_board_key == V4_BOARD_KEY and rgb_firmware_available():
+        from workflows.rnode_v4_rgb import rgb_firmware_staleness
+        stale = rgb_firmware_staleness()
         ok, detail, rgb_applied = flash_rgb_carried(
             wf.connection, port, wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
+        if stale:
+            # Said in the step's own message, never a block: a stale face is
+            # still a working radio. scripts/rebuild_rnode_firmware.py cures it.
+            detail = (f"{detail} — NOTE the RNode image may be behind its source "
+                      f"({stale}); run scripts/rebuild_rnode_firmware.py on the medic")
         if ok:
             wf.profile.has_rnode = True
             if rgb_applied:
