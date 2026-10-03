@@ -137,7 +137,7 @@ def test_the_wipe_path_no_longer_carries_the_old_name_forward():
     src = open("ui/screens/birth_guide_screen.py").read()
     assert "self._node_name = old_name" not in src, (
         "the old name is being carried into the name step again")
-    assert "next_free_name(old_name" in src
+    assert "rebirth_default_name(old_name" in src
 
 
 def test_the_naming_step_shows_what_the_board_WAS():
@@ -146,3 +146,26 @@ def test_the_naming_step_shows_what_the_board_WAS():
     src = open("ui/screens/birth_guide_screen.py").read()
     assert "_rebirth_of" in src
     assert "This board was {old}" in src
+
+
+# -- a board's own hash tail is kept (operator, 2026-10-03) -------------------
+
+def test_a_hash_tail_name_is_the_boards_own_and_is_kept(tmp_path):
+    """5A59 is what the RNode prints on its screen; bumping it to 5A60 made a
+    node whose screen and certificate disagreed."""
+    from ui.node_names import is_hash_tail_name
+    assert is_hash_tail_name("5A59") and is_hash_tail_name("5ac3 ")
+    assert not is_hash_tail_name("rak3") and not is_hash_tail_name("8B5") \
+        and not is_hash_tail_name("5A59X") and not is_hash_tail_name("")
+    d = str(tmp_path)
+    assert cs.rebirth_default_name("5A59", cert_dir=d) == "5A59"
+    assert cs.rebirth_default_name("5ac3", cert_dir=d) == "5AC3"
+    assert cs.rebirth_default_name("rak3", cert_dir=d) == cs.next_free_name("rak3", cert_dir=d)
+    assert cs.rebirth_default_name("", cert_dir=d) == ""
+
+
+def test_keeping_the_boards_own_name_is_not_a_clash():
+    src = open("ui/screens/birth_guide_screen.py").read()
+    i = src.index("def _name_next")
+    assert "same_board" in src[i:i + 2500] and "and not same_board" in src[i:i + 2500]
+    assert "so it keeps the name" in src

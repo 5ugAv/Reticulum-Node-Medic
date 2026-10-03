@@ -24,6 +24,7 @@ wrong. See ``ui/screens/birth_guide_screen.py``.
 
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional
 
 
@@ -69,6 +70,15 @@ def existing_names(cert_dir: Optional[str] = None,
         pass
 
     return found
+
+
+def is_hash_tail_name(name) -> bool:
+    """True when *name* is a board's OWN hash tail — the four hex digits an
+    RNode prints on its screen (5A59, 5AC3). That is an identity, not a
+    choice: a board rebirthed under it is the same board under the same
+    name, and bumping it to 5A60 made a node whose screen and certificate
+    disagreed (operator, 2026-10-03)."""
+    return bool(re.fullmatch(r"[0-9A-Fa-f]{4}", str(name or "").strip()))
 
 
 def clash(name, cert_dir: Optional[str] = None,

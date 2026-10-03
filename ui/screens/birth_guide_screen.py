@@ -1192,9 +1192,12 @@ class BirthGuideScreen(BoxLayout):
                     # The old name is still shown on the way past as history, and
                     # the operator can type anything they like — this only
                     # decides what is already there.
+                    # ...unless the old name is the board's OWN hash tail
+                    # (5A59, printed on its screen): that is kept — see
+                    # cert_store.rebirth_default_name (operator, 2026-10-03).
                     try:
-                        from ui.cert_store import next_free_name
-                        self._node_name = next_free_name(old_name or "")
+                        from ui.cert_store import rebirth_default_name
+                        self._node_name = rebirth_default_name(old_name or "")
                     except Exception:
                         self._node_name = ""      # rather than the old name
                     self._rebirth_of = old_name or ""   # shown as history
@@ -1940,8 +1943,14 @@ class BirthGuideScreen(BoxLayout):
         # offer them "rak3" with nothing marking it as a decision still to make.
         was = getattr(self, "_rebirth_of", "")
         if was:
-            body = tr("This board was {old}. It's blank now — we've suggested "
-                      "a name, and you can change it to anything.").format(old=was)
+            from ui.node_names import is_hash_tail_name
+            if is_hash_tail_name(was) and (self._node_name or "").upper() == was.upper():
+                body = tr("This board was {old} — that is its own hash, the one "
+                          "on its screen, so it keeps the name. Change it if "
+                          "you like.").format(old=was)
+            else:
+                body = tr("This board was {old}. It's blank now — we've suggested "
+                          "a name, and you can change it to anything.").format(old=was)
         # A name already in the family is warned about ONCE, then allowed —
         # see _name_next. Re-rendering with the warning is what puts it on
         # screen, so the button changes with it. A BLOCKED name (one that
@@ -2001,7 +2010,11 @@ class BirthGuideScreen(BoxLayout):
         # tell apart on the map and in a repair months from now, when whoever
         # built them may be long gone. Warn once per name; a second tap on the
         # (now differently-labelled) button goes ahead.
-        if name != getattr(self, "_name_warned", None):
+        same_board = (name.strip().lower()
+                      == (getattr(self, "_rebirth_of", "") or "").strip().lower())
+        if name != getattr(self, "_name_warned", None) and not same_board:
+            # The only node called 5A59 is the one in the port being
+            # rebirthed as 5A59: no clash to warn about.
             try:
                 from ui.node_names import clash
                 msg = clash(name)

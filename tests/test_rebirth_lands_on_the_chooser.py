@@ -65,7 +65,7 @@ def test_the_old_name_is_NOT_carried_to_the_name_step():
     src = _wipe_done_source()
     flat = src.replace(" ", "")
     assert "_node_name=old_name" not in flat, "the old name is back as the default"
-    assert "next_free_name(old_name" in flat
+    assert "rebirth_default_name(old_name" in flat
     assert "_rebirth_of=old_name" in flat, "the old name must survive as history"
 
 

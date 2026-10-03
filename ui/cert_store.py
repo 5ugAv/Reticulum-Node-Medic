@@ -183,6 +183,21 @@ def delete_by_usb_serial(usb_serial: str, cert_dir: str = CERT_DIR,
     return removed
 
 
+def rebirth_default_name(previous: str, cert_dir: str = CERT_DIR) -> str:
+    """What the name box holds when a board is rebirthed.
+
+    A CHOSEN name is bumped (rak3 -> rak4, see next_free_name) so a rebirth
+    cannot silently overwrite the previous certificate. A board's OWN hash
+    tail (5A59 — what its screen prints) is kept: it is the same board, and
+    the name is the one thing on it that cannot change (operator,
+    2026-10-03: "if a board has got a hard-coded number and letter
+    combination on it, we should call it the same name")."""
+    from ui.node_names import is_hash_tail_name
+    if is_hash_tail_name(previous):
+        return str(previous).strip().upper()
+    return next_free_name(previous, cert_dir)
+
+
 def next_free_name(previous: str, cert_dir: str = CERT_DIR) -> str:
     """A safe default name for a board being rebirthed: ``rak3`` -> ``rak4``.
 
