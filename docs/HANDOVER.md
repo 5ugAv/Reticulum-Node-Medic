@@ -96,7 +96,7 @@ python3 main.py --version
   are compile-verified; their logic lives in the tested core, which is the whole
   point of §3.
 - **Emulated demos are opt-in.** On Linux — the deployed medic — flash, build,
-  PROBE and MITOSIS either do real work or fail with a stated reason. They never
+  PROBE and Clone either do real work or fail with a stated reason. They never
   report a fake success. `RNM_DEMO=1` opts into emulated hardware and seeded demo
   nodes (`ui/hw_factories.py`, `ui/app.py`). SD imaging and both adoption paths
   are never emulated.
@@ -109,8 +109,11 @@ python3 main.py --version
   `transport/connection.py` but is not in that file** — worth reconciling before
   a field clone needs the PTY flash path.
 - **Deploy is rsync**, so `git log` on the medic reports the last commit and not
-  what is running — use `git status --porcelain` there. `.git/hooks/` holds the
-  airlock (`pre-commit`, `airlock-check.sh`, `deploy-medic.sh`). See
+  what is running — use `git status --porcelain` there. The airlock hooks
+  (`pre-commit`, `airlock-check.sh`, `deploy-medic.sh`) live under `.git/hooks/`
+  of one checkout and are **not tracked** — a fresh clone has none of them
+  (noted 2026-10-04). The tracked route is `README.md` ▸ *Updating the tool*:
+  sync all of `git ls-files`, never a subset, then `scripts/restart_ui.sh`. See
   `WORKING_METHOD.md`; do not route around it.
 
 ---
@@ -665,28 +668,18 @@ touch the same files. F (the location fuzz, §4.5) is the most urgent: it is the
 only place the tool currently tells an operator something false about their own
 safety.
 
-Current state, offline roadblocks and what is deployed-versus-committed are in
-`docs/HANDOVER_NEXT_SESSION.md`. Known feature gaps — MITOSIS, pre-staged tiles
-and OS image, partial translations, uneven board coverage — are listed in
-`README.md` under Status.
+Current state and the deploy/verify mechanics are in
+`docs/HANDOVER_NEXT_SESSION.md` (rewritten 2026-10-04). Known gaps are
+summarised in `README.md` under *Status* and itemised, with status, in
+`docs/READINESS_LEDGER.md`.
 
 Carried forward as **UNVERIFIED** in this document: §4.8 (the three firmware-side
 issues) and the log-source contradiction at the end of §5.
 
-**README counts are behind the code** — checked in this worktree on 2026-08-15,
-and this is exactly how a document rots, so it is written down rather than
-quietly fixed in one place:
-
-| README says | Actually |
-|---|---|
-| 1776 tests | 3295 collected, 3284 passed |
-| 4 languages | 8 catalogues in `assets/i18n/` + English |
-| 9 of 15 boards have a band map | 12 of 15 |
-| 10 of 15 boards have a photograph | 15 |
-
-The check totals (94 across 8 modules; 83 in the Pi chain, 11 for RTNode-2400)
-and the board catalogue size (15, 14 by autoinstall) **did** match. Counts belong
-in the README, so fix them there — not by copying a second set into this file.
+**README counts** were recomputed on 2026-10-04 and the README now lists, under
+*Counts*, the exact commands that produced each number. Re-run those rather
+than copying a second set into this file — the 2026-08-15 table that used to
+sit here is how a document rots.
 
 ---
 
