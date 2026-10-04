@@ -214,6 +214,12 @@ class ProbeScreen(BoxLayout):
     def _on_event(self, event):
         if event.type == "category_start":
             self._add_category(event.category)
+        elif event.type == "check_start":
+            # a long check (an RTNode listen is up to a minute) is SEEN running
+            self.summary_lbl.text = tr("Checking {name}...").format(
+                name=event.check_name.replace("_", " "))
+            self.summary_lbl.color = theme.hex_to_rgba(theme.COLORS["accent"])
+            self._set_summary(hidden=False)
         elif event.type == "check_done":
             self._add_check(event.category, event.check_name, event.issue)
         elif event.type == "category_done":

@@ -53,6 +53,13 @@ MODULE_ORDER = [
 #: then really does inspect that node.
 BOARD_MODULES = [RadioFirmwareCheck]
 
+#: What PROBE runs when the board on USB is an RTNode-2400 this medic built.
+#: Its USB serial is a LOG stream, not an RNode console (bench, 2026-10-04):
+#: rnodeconf gets nothing, a reset pulse and a listen get the boot log and
+#: the health beacon. ui.hw_factories hands the module the real capture.
+from diagnostics.rtnode_2400 import RTNode2400Check  # noqa: E402
+RTNODE_MODULES = [RTNode2400Check]
+
 
 @dataclass
 class CategoryResult:

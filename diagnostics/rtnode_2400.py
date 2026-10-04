@@ -41,8 +41,16 @@ ABNORMAL_RESETS = {1, 2, 3}  # panic, brownout, task_wdt
 class RTNode2400Check(DiagnosticCheck):
     category_name = "RTNode-2400"
 
+    #: The shell command that returns the board's recent serial output. The
+    #: default is the emulated transport's pseudo-command; a real PROBE sets
+    #: ``workflows.rtnode_build.serial_capture_cmd(port)`` — a reset pulse
+    #: and a listen, the way every V4 birth is verified. Bench, 2026-10-04:
+    #: 5A59 printed its boot log at 1 s and its health beacon at 6 s, and
+    #: never sent a KISS frame — rnodeconf cannot read this firmware; this can.
+    capture_cmd: Optional[str] = None
+
     def _serial_log(self) -> str:
-        return self._cmd_output(CAPTURE_COMMAND)
+        return self._cmd_output(self.capture_cmd or CAPTURE_COMMAND, timeout=120)
 
     def _parse_beacon(self, log: str) -> Optional[HealthBeacon]:
         m = _BEACON_RE.search(log)
@@ -54,15 +62,32 @@ class RTNode2400Check(DiagnosticCheck):
             return None
 
     def run(self) -> List[Issue]:
-        log = self._serial_log()
+        got = {}
+
+        def _capture() -> bool:
+            # Inside the check, so the screen's check_start fires BEFORE the
+            # listen (up to a minute), not after it.
+            got["log"] = self._serial_log()
+            return bool(got["log"].strip())
+
+        first = self._check(
+            "boot_log_captured", _capture,
+            "Nothing came from the board's USB serial after a reset pulse. "
+            "The USB cable may carry power only, or the board is not running "
+            "this firmware.",
+            severity="critical")
+        if first is not None:
+            return [first]
+        log = got.get("log", "")
         beacon = self._parse_beacon(log)
         issues: List[Optional[Issue]] = []
 
         # From the passive log (independent of the beacon).
         issues.append(self._check(
             "beacon_received", beacon is not None,
-            "No decodable health beacon on serial — the node may not be "
-            "beaconing, or the USB cable is charge-only.",
+            "No decodable health beacon in the boot log — the node may not "
+            "have announced yet (it does so within a minute of boot), or it "
+            "runs other firmware.",
             severity="critical"))
         # Real firmware markers: a startup "FATAL" assertion, or the watchdog's
         # heap-floor reboot line "[WATCHDOG] CRITICAL: ... REBOOTING".

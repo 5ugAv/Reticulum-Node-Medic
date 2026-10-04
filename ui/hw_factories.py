@@ -29,7 +29,7 @@ from typing import Callable
 from node_profile import NodeProfile
 from transport.connection import LocalConnection
 from workflows.build import StepResult
-from workflows.repair import BOARD_MODULES, RepairWorkflow
+from workflows.repair import BOARD_MODULES, RTNODE_MODULES, RepairWorkflow
 from workflows.rnode_boards import RNodeBoard
 from workflows.rnode_flash import RNodeFlashWorkflow
 from workflows.rnode_v4_rgb import (
@@ -270,11 +270,57 @@ def port_label(port: str) -> str:
     return port
 
 
+def board_identity(port: str) -> dict:
+    """What the medic knows about the board on *port* from its own records:
+    ``{"hw_serial", "name", "type", "known"}``. Birth writes a board's USB
+    serial into the kin roster, so a node this medic built is recognised the
+    moment it is plugged back in."""
+    from ui.onboard_roster import serial_for_port
+    from monitor.kin_roster import node_for_hw_serial
+    out = {"hw_serial": None, "name": "", "type": "", "known": False}
+    hit = None
+    try:
+        out["hw_serial"] = serial_for_port(port)
+        if out["hw_serial"]:
+            hit = node_for_hw_serial(out["hw_serial"])
+    except Exception:                                              # noqa: BLE001
+        hit = None
+    if hit:
+        out.update(name=str(hit.get("name") or ""), type=str(hit.get("type") or ""),
+                   known=True)
+    return out
+
+
+_KIND_WORDS = {"rtnode2400": "RTNode-2400", "pi_propagation": "Pi propagation node",
+               "pi": "Pi node"}
+
+#: How long PROBE listens to an RTNode's serial after the reset pulse: the
+#: boot log comes within seconds and the first health beacon within a minute
+#: (6 s on the bench, 2026-10-04; the firmware's documented ~30 s elsewhere).
+RTNODE_LISTEN_S = 40
+
+
+def board_label(port: str) -> str:
+    """The PROBE header's name for the board on *port*: the node's own name
+    when the roster knows it ("5A59 — RTNode-2400 built by this medic, on
+    Port 3 (/dev/ttyACM1)"), else the chip's product string and the port."""
+    ident = board_identity(port)
+    if ident["known"] and ident["name"]:
+        try:
+            from ui.usb_ports import describe_port
+            where = describe_port(port)
+        except Exception:                                          # noqa: BLE001
+            where = port
+        kind = _KIND_WORDS.get(ident["type"], ident["type"] or "node")
+        return f"{ident['name']} — {kind} built by this medic, on {where}"
+    return port_label(port)
+
+
 def probe_target_label(ports_fn: Callable[[], list] = local_board_ports) -> tuple:
     """``(state, label)`` for the PROBE header: the named board when there is
     exactly one, else an empty label and the state for the screen to word."""
     state, ports = probe_target(ports_fn)
-    return state, (port_label(ports[0]) if state == "one" else "")
+    return state, (board_label(ports[0]) if state == "one" else "")
 
 
 def make_repair_workflow(demo_factory: Callable, connection=None,
@@ -324,7 +370,20 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
         pass
     if free:
         profile.radio.serial_port = free[0]      # the attached work board
-    wf = RepairWorkflow(connection, profile,
-                        modules=BOARD_MODULES if board_only else None)
-    wf.target_label = port_label(free[0]) if free else ""
+    modules, capture = None, None
+    if board_only:
+        modules = BOARD_MODULES
+        if board_identity(free[0])["type"] == "rtnode2400":
+            # The board's own birth record says RTNode-2400: its USB serial
+            # carries a log, never KISS, so the RNode radio check (rnodeconf)
+            # can only ever say "couldn't read it". Listen instead.
+            from workflows.rtnode_build import serial_capture_cmd
+            modules = RTNODE_MODULES
+            capture = serial_capture_cmd(free[0], seconds=RTNODE_LISTEN_S)
+    wf = RepairWorkflow(connection, profile, modules=modules)
+    if capture:
+        for m in wf.modules:
+            if hasattr(m, "capture_cmd"):
+                m.capture_cmd = capture
+    wf.target_label = board_label(free[0]) if free else ""
     return wf

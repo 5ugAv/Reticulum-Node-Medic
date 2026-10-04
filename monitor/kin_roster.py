@@ -37,6 +37,25 @@ def load_roster(path: str = KIN_ROSTER_PATH) -> dict:
         return {}
 
 
+def _norm_serial(value) -> str:
+    return str(value or "").strip().upper().replace("-", ":")
+
+
+def node_for_hw_serial(hw_serial, path: str = KIN_ROSTER_PATH) -> Optional[dict]:
+    """The roster entry for the board with this hardware (USB) serial, with
+    its hash added as ``rns_hash`` — or None. Birth records the USB serial of
+    every RTNode it flashes, so a board plugged back into the medic can be
+    greeted by name instead of by its chip's product string (PROBE,
+    2026-10-04)."""
+    key = _norm_serial(hw_serial)
+    if not key:
+        return None
+    for rns_hash, entry in load_roster(path).items():
+        if isinstance(entry, dict) and _norm_serial(entry.get("hw_serial")) == key:
+            return dict(entry, rns_hash=rns_hash)
+    return None
+
+
 def _save(roster: dict, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     # atomic: the roster is the medic's memory of its whole fleet
