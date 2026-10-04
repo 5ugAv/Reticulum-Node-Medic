@@ -92,6 +92,9 @@ class NotificationsScreen(BoxLayout):
         self.add_widget(_lbl(tr("Or pick an address Chat already knows:"),
                              size="13sp", color="accent", h=24))
         self._pick_note = _lbl("", size="12.5sp")
+        # an EMPTY label never fires texture_size, so grow_to_text leaves it at
+        # Kivy's default 100 px — a blank band above the list (glass, 2026-10-04)
+        self._pick_note.height = 0
         self.add_widget(self._pick_note)
         scroll = ScrollView()
         self._picks = BoxLayout(orientation="vertical", size_hint_y=None,
@@ -120,6 +123,7 @@ class NotificationsScreen(BoxLayout):
                 "once, or type the address above.")
             return
         self._pick_note.text = ""
+        self._pick_note.height = 0
         for r in rows:
             h = str(r.get("hash", ""))
             name = str(r.get("name") or h[:8])

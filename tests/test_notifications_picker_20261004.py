@@ -59,6 +59,9 @@ def test_the_screen_builds_the_picker_on_enter_and_fills_the_field():
     enter = func_source("ui/screens/notifications_screen.py", "enter",
                         cls="NotificationsScreen")
     assert "self._contacts()" in enter and "self._picks.clear_widgets()" in enter
+    # the empty note must not keep Kivy's default 100 px (a blank band above the list)
+    assert "self._pick_note.height = 0" in enter
+    assert s.count("self._pick_note.height = 0") == 2
     assert "Chat knows no addresses yet" in enter
     pick = func_source("ui/screens/notifications_screen.py", "_pick",
                        cls="NotificationsScreen")
