@@ -26,13 +26,18 @@ flashes or resets the board, and the medic's own radios are never offered
 from __future__ import annotations
 
 import threading
+import time
 
 from kivy.clock import Clock
+from kivy.graphics import Color, RoundedRectangle
+from kivy.logger import Logger
 from kivy.metrics import dp
+from kivy.properties import NumericProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.widget import Widget
 
 from monitor import antenna_test as at
 from ui import theme
@@ -61,6 +66,30 @@ def _label(text="", size="15sp", bold=False, color="text_secondary"):
     return lbl
 
 
+class _Bar(Widget):
+    """A plain filled bar: 0..1, drawn in the screen's own colours."""
+
+    value = NumericProperty(0.0)
+
+    def __init__(self, **kwargs):
+        super().__init__(size_hint_y=None, height=0, opacity=0, **kwargs)
+        with self.canvas:
+            Color(*theme.hex_to_rgba(theme.COLORS["sidebar"]))
+            self._track = RoundedRectangle(radius=[dp(7)])
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            self._fill = RoundedRectangle(radius=[dp(7)])
+        self.bind(pos=self._redraw, size=self._redraw, value=self._redraw)
+
+    def _redraw(self, *_):
+        self._track.pos, self._track.size = self.pos, self.size
+        w = max(dp(14), self.width * max(0.0, min(1.0, self.value)))
+        self._fill.pos, self._fill.size = self.pos, (w, self.height)
+
+    def show(self, on: bool) -> None:
+        self.height = dp(16) if on else 0
+        self.opacity = 1 if on else 0
+
+
 class AntennaTestScreen(BoxLayout):
     """State machine: detect -> ready(name chips) -> reading -> swap -> ...
     -> results whenever two or more antennas have real readings."""
@@ -80,6 +109,11 @@ class AntennaTestScreen(BoxLayout):
         self._board_gone = False    # the enforced unplug was seen
         self._running = False
         self._watch = None
+        self._ticker = None         # drives the bar between samples
+        self._progress_n = 0
+        self._progress_floor = None
+        self._progress_at = time.monotonic()
+        self._shown = None
 
         self._title = _label(tr("Antenna test"), size="20sp", bold=True,
                              color="text_primary")
@@ -93,6 +127,9 @@ class AntennaTestScreen(BoxLayout):
                                        "is HIGHER than -105 dBm.)"),
                             size="13sp", color="text_secondary")
         self.add_widget(self._rule)
+
+        self._bar = _Bar()      # only visible while a reading runs
+        self.add_widget(self._bar)
 
         self._scroll = ScrollView()
         self._body = _label()
@@ -125,6 +162,7 @@ class AntennaTestScreen(BoxLayout):
         if self._watch is not None:
             self._watch.cancel()
             self._watch = None
+        self._stop_ticker()
 
     # ------------------------------------------------------------- detection
 
@@ -134,7 +172,10 @@ class AntennaTestScreen(BoxLayout):
         port, problem = self._find_board()
         # SAY WHY when the backend has a reason (two boards plugged in, or
         # none) — the screen used to drop it and show the generic sentence
-        why = tr(problem[1]) if (port is None and problem) else ""
+        # "no board" is not shown: the instructions above it already say
+        # exactly that, and it read as the same sentence twice (2026-10-04)
+        why = (tr(problem[1]) if (port is None and problem
+                                  and problem[0] != "no_board") else "")
         if why != self._problem and self._stage == "detect":
             self._problem = why
             self._render()
@@ -169,6 +210,8 @@ class AntennaTestScreen(BoxLayout):
         self._running = True
         self._stage = "reading"
         self._progress_n = 0
+        self._progress_floor = None
+        self._progress_at = time.monotonic()
         self._render()
 
         port = self._port
@@ -180,7 +223,12 @@ class AntennaTestScreen(BoxLayout):
             try:
                 reading = self._poll(port, progress=progress)
             except Exception as exc:            # noqa: BLE001 — honest fail
-                Clock.schedule_once(lambda *_: self._on_read_failed(str(exc)))
+                # Python deletes `exc` when this block ends; the lambda runs
+                # later, on the UI thread, so it must hold a copy. It did not,
+                # and the NameError took the whole app down (2026-10-04).
+                why = str(exc)
+                Logger.warning("AntennaTest: reading failed: %s", why)
+                Clock.schedule_once(lambda *_, w=why: self._on_read_failed(w))
                 return
             Clock.schedule_once(lambda *_: self._on_read_done(label, reading))
 
@@ -188,10 +236,48 @@ class AntennaTestScreen(BoxLayout):
 
     def _on_progress(self, i, floor) -> None:
         self._progress_n = i
+        self._progress_floor = floor
+        self._progress_at = time.monotonic()
         if self._stage == "reading":
-            self._body.text = (tr("Listening through the antenna...")
-                               + f"\n\n[b]{floor} dBm[/b]\n"
-                               + tr("sample") + f" {i}")
+            self._paint_progress()
+
+    def _start_ticker(self) -> None:
+        if self._ticker is None:
+            self._ticker = Clock.schedule_interval(
+                lambda _dt: self._paint_progress(), 0.1)
+
+    def _stop_ticker(self) -> None:
+        if self._ticker is not None:
+            self._ticker.cancel()
+            self._ticker = None
+
+    def _paint_progress(self) -> None:
+        """The bar and the 'sample 3 of 8' line - redrawn 10x a second, the
+        text only when what it says has changed."""
+        if self._stage != "reading":
+            return
+        n, total = self._progress_n, at.EAR_SAMPLES
+        since = time.monotonic() - self._progress_at
+        self._bar.value = at.progress_fraction(n, total, since)
+        left = at.seconds_left(n, total, since)
+        shown = (n, self._progress_floor, left)
+        if shown == self._shown:
+            return
+        self._shown = shown
+        lines = [tr("Listening through the antenna..."),
+                 tr("Hold the node steady and upright. Do not touch the "
+                    "antenna.")]
+        if n == 0:
+            lines.append(tr("Waiting for the first reading..."))
+        else:
+            if self._progress_floor is not None:
+                lines.append(f"[size=30sp][b]{self._progress_floor} dBm[/b]"
+                             "[/size]")
+            when = (tr("Almost done...") if n >= total else
+                    tr("about {s} seconds left").format(s=left))
+            lines.append(tr("Sample {n} of {total}").format(n=n, total=total)
+                         + "  -  " + when)
+        self._body.text = "\n\n".join(lines)
 
     def _on_read_failed(self, why: str) -> None:
         self._running = False
@@ -217,6 +303,13 @@ class AntennaTestScreen(BoxLayout):
     def _render(self, extra: str = "") -> None:
         for child in list(self._buttons.children):
             self._buttons.remove_widget(child)
+        if self._stage == "reading":
+            self._bar.show(True)
+            self._start_ticker()
+        else:
+            self._bar.show(False)
+            self._bar.value = 0.0
+            self._stop_ticker()
         n = self.session.count
         if extra:
             self._notice = extra
@@ -224,9 +317,14 @@ class AntennaTestScreen(BoxLayout):
 
         if self._stage == "detect":
             self._body.text = (
-                tr("Plug the node whose antennas you are comparing into a "
+                "\u2022 " + tr("Plug the node whose antennas you are comparing into a "
                    "spare USB port. Only that one board - the medic's own "
                    "radio never counts.")
+                + "\n\u2022 " + tr("A long USB cable lets you hold the node clear "
+                                  "of the medic.")
+                + "\n\u2022 " + tr("Keep it upright in the same spot for every "
+                                  "antenna. Each reading takes about half a "
+                                  "minute.")
                 + ("\n\n[b]" + self._problem + "[/b]" if self._problem else "")
                 + ("\n\n" + notice if notice else "")
                 + ("\n\n" + self._ranking_markup() if n else ""))
@@ -243,7 +341,8 @@ class AntennaTestScreen(BoxLayout):
                 b.bind(on_release=lambda w, lab=auto: self._start_reading(lab))
                 self._buttons.add_widget(b)
         elif self._stage == "reading":
-            self._body.text = tr("Listening through the antenna...")
+            self._shown = None
+            self._paint_progress()
         elif self._stage == "swap":
             if not self._board_gone:
                 self._body.text = (

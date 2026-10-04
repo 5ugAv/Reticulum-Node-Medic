@@ -123,7 +123,33 @@ def _read_frame(ser, want: int, deadline: float) -> Optional[bytes]:
     return None
 
 
-def poll_ear(port: str, samples: int = 8, gap_s: float = 3.0,
+#: One reading = this many kept samples, this far apart. The screen's progress
+#: bar is drawn from the same two numbers, so it can never disagree with poll_ear.
+EAR_SAMPLES = 8
+EAR_GAP_S = 3.0
+
+
+def progress_fraction(done: int, total: int = EAR_SAMPLES,
+                      since_last_s: float = 0.0, gap_s: float = EAR_GAP_S) -> float:
+    """How full the bar is: samples kept, plus a creep toward the next one so it
+    keeps moving between samples (never past 90% of the next step - it only
+    jumps when a sample really lands)."""
+    if total <= 0 or done >= total:
+        return 1.0
+    creep = min(max(since_last_s, 0.0) / gap_s, 0.9) if gap_s > 0 else 0.0
+    return min((max(done, 0) + creep) / total, 1.0)
+
+
+def seconds_left(done: int, total: int = EAR_SAMPLES,
+                 since_last_s: float = 0.0, gap_s: float = EAR_GAP_S) -> int:
+    """A rounded 'about N seconds' for the screen; never below 1 until done."""
+    if done >= total:
+        return 0
+    left = (total - max(done, 0)) * gap_s - min(max(since_last_s, 0.0), gap_s * 0.9)
+    return max(1, int(round(left)))
+
+
+def poll_ear(port: str, samples: int = EAR_SAMPLES, gap_s: float = EAR_GAP_S,
              reply_timeout_s: float = 3.0, serial_factory=None,
              progress: Optional[Callable[[int, Optional[int]], None]] = None
              ) -> EarReading:
@@ -171,7 +197,8 @@ def poll_ear(port: str, samples: int = 8, gap_s: float = 3.0,
             kept += 1
             if progress is not None:
                 progress(kept, floor)
-            time.sleep(gap_s)
+            if kept < samples:       # nothing left to wait for after the last one
+                time.sleep(gap_s)
     finally:
         try:
             ser.close()
