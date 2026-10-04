@@ -18,6 +18,17 @@ from kivy.uix.textinput import TextInput
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — filter labels + Search hint
+from monitor.registry import HEARD_ON_MESH, PROPAGATION_SUBTITLE
+
+
+def _location_words(loc: str) -> str:
+    """The two registry placeholders are English constants (they are compared
+    by value elsewhere); the row translates them at the glass (ledger #64)."""
+    if loc == HEARD_ON_MESH:
+        return tr("heard on the mesh")
+    if loc == PROPAGATION_SUBTITLE:
+        return tr("LXMF propagation announces")
+    return loc
 from ui.onscreen_keyboard import bind_field
 from ui.widgets.hex_status import HexStatus
 from ui.widgets.stat_bar import StatBar
@@ -48,7 +59,8 @@ class QuietDivider(BoxLayout):
         self.size_hint_y = None
         self.height = dp(30)
         self.padding = (dp(12), dp(6))
-        lbl = Label(text=f"Quiet · not heard in {theme.QUIET_AFTER_HOURS}h+   ({count})",
+        lbl = Label(text=tr("Quiet · not heard in {h}h+   ({count})").format(
+                        h=theme.QUIET_AFTER_HOURS, count=count),
                     halign="center", valign="middle", font_size="12sp", bold=True,
                     color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
@@ -101,7 +113,7 @@ class NodeRow(BoxLayout):
                      shorten=True, shorten_from="right",
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         name.bind(size=lambda i, v: setattr(i, "text_size", v))
-        loc = Label(text=node.get("location", ""), halign="left",
+        loc = Label(text=_location_words(node.get("location", "")), halign="left",
                     valign="middle", font_size="13sp",
                     size_hint_y=None, height=dp(20),
                     shorten=True, shorten_from="right",
@@ -141,7 +153,7 @@ class NodeRow(BoxLayout):
                 chip.bind(size=lambda i, v: setattr(i, "text_size", v))
                 chips.add_widget(chip)
             if node.get("aspects", 1) > 1:
-                more = Label(text=f"x{node['aspects']} services",
+                more = Label(text=tr("x{n} services").format(n=node["aspects"]),
                              font_size="11sp", halign="left", valign="middle",
                              color=theme.hex_to_rgba(
                                  theme.COLORS["text_secondary"], 0.6))

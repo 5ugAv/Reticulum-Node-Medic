@@ -209,14 +209,17 @@ def storage_summary(est_mb: float, free_mb: float,
     ``{ok, text}``. The budget keeps maps from ever crowding the tool's own
     storage."""
     budget_mb = free_mb * budget_fraction
+    # ``key`` + ``args`` let the screen say it in the medic's language;
+    # ``text`` stays for callers that only log it (readiness ledger #10).
     if est_mb <= budget_mb:
-        return {"ok": True, "text":
-                f"Uses about {_fmt_size(est_mb)} of your "
-                f"{_fmt_size(free_mb)} free space."}
-    return {"ok": False, "text":
-            f"Too big: about {_fmt_size(est_mb)}, but only "
-            f"{_fmt_size(budget_mb)} is safely available for maps - "
-            "reduce the radius."}
+        key, args = ("Uses about {size} of your {free} free space.",
+                     {"size": _fmt_size(est_mb), "free": _fmt_size(free_mb)})
+    else:
+        key, args = ("Too big: about {size}, but only {budget} is safely available "
+                     "for maps - reduce the radius.",
+                     {"size": _fmt_size(est_mb), "budget": _fmt_size(budget_mb)})
+    return {"ok": est_mb <= budget_mb, "key": key, "args": args,
+            "text": key.format(**args)}
 
 
 def ip_geolocate(fetch: Optional[Callable[[str], str]] = None,

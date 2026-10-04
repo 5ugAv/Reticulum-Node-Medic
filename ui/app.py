@@ -2190,9 +2190,10 @@ class ReticulumNodeMedicApp(App):
         if w is not None and w.is_watching(node):
             rem = w.watch_remaining_hours(node) or 0.0
             days = max(1, round(rem / 24.0))
-            watch_line = ("Unreachable — the medic is watching it. If it's still down "
-                          f"in about {days} day{'s' if days != 1 else ''}, you'll be "
-                          "told to go and check it.")
+            from ui.i18n import tr
+            watch_line = tr("Unreachable — the medic is watching it. If it's still "
+                            "down in about {days} more day(s), you'll be told to go "
+                            "and check it.").format(days=days)
         # activity rhythm + history insights from the persisted per-node time series
         activity_text, by_hour, insights = None, None, None
         try:

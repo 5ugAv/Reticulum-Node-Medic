@@ -2296,7 +2296,7 @@ class ScanScreen(BoxLayout):
             done = tr(" {n} already carried.").format(n=carried) if carried else ""
             self._set_status(
                 tr("The whole world at overview zoom (~{count} tiles - hours, "
-                   "resumable).").format(count=count) + done + " " + verdict['text'],
+                   "resumable).").format(count=count) + done + " " + tr(verdict["key"]).format(**verdict["args"]),
                 "ok" if verdict["ok"] else "alert")
             return
         self.dl_button.text = tr("Download offline map ({km} km)").format(
@@ -2357,7 +2357,7 @@ class ScanScreen(BoxLayout):
         except Exception:                                  # noqa: BLE001
             pass
         self._set_status(tr("Centred on {source}.").format(source=source)
-                         + " " + verdict['text'],
+                         + " " + tr(verdict["key"]).format(**verdict["args"]),
                          "ok" if verdict["ok"] else "alert")
 
     def _on_download(self):

@@ -32,6 +32,7 @@ from kivy.uix.widget import Widget
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — unlock screen prompts/buttons
+from ui.text_fit import grow_to_text
 from provisioning import recovery_key
 
 
@@ -213,12 +214,12 @@ class VaultUnlockScreen(BoxLayout):
 
         wrap.add_widget(_line(tr("Lost the password AND the recovery key?"),
                               "15sp", bold=True, color="red", h=26))
-        wrap.add_widget(_line(
+        wrap.add_widget(grow_to_text(_line(
             tr("Resetting erases this medic's records for good: every node's "
                "saved location, its birth certificates and your notes. It "
                "does NOT harm your mesh — the nodes keep running, and you can "
                "adopt them again. There is no undo."),
-            "13sp", color="text_secondary", h=76))
+            "13sp", color="text_secondary")))        # grows: six translations need four lines (#210)
         from ui.widgets.slide_to_power import SlideToPowerOff
         wrap.add_widget(SlideToPowerOff(
             on_power_off=self._do_reset,
