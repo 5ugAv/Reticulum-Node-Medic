@@ -4,6 +4,8 @@ from ui import remote as R
 
 def test_commands_parse_exactly():
     assert R.parse_command("ping") == ("ping", None)
+    assert R.parse_command("probe") == ("probe", None)
+    assert R.parse_command("probe now") == ("", None)
     assert R.parse_command("  OPEN  vitals ") == ("open", "vitals")
     assert R.parse_command("node c627") == ("node", "c627")
     assert R.parse_command("list") == ("list", None)
@@ -29,10 +31,36 @@ def test_a_node_prefix_must_be_unambiguous_and_long_enough():
     assert h is None and "no node" in why
 
 
-def test_it_can_only_move_between_screens():
+def test_it_can_only_move_between_screens_or_press_probe():
     """The verb list IS the capability list. Nothing here flashes, wipes or
-    deletes; adding such a verb is a security decision, not a convenience."""
-    assert set(R.VERBS) == {"ping", "list", "open", "node", "home", "current", "map"}
+    deletes; adding such a verb is a security decision, not a convenience.
+    "probe" (operator's call, 2026-10-04) presses PROBE's Run button — a
+    read-only diagnostic of the board on USB — and nothing more."""
+    assert set(R.VERBS) == {"ping", "list", "open", "node", "home", "current",
+                            "map", "probe"}
+    src = open("ui/remote.py").read()
+    body = src[src.index('if verb == "probe"'):src.index('return "err unreachable"')]
+    assert "scr.start()" in body and "already running" in body
+    for forbidden in ("fix_all", "_fix_one", "flash", "wipe", "delete"):
+        assert forbidden not in body
+
+
+def test_probe_verb_presses_run_once_and_refuses_while_busy():
+    import types
+    calls = []
+    scr = types.SimpleNamespace(run_btn=types.SimpleNamespace(disabled=False),
+                                _busy=False, header=types.SimpleNamespace(text="Checking: X"),
+                                start=lambda: calls.append("start"))
+    app = types.SimpleNamespace(sm=types.SimpleNamespace(screens=[], current="home"),
+                                probe_screen=scr, switch_mode=lambda m: calls.append(m),
+                                _reset_idle=lambda: None)
+    sock = R.ControlServer.__new__(R.ControlServer)
+    sock.app = app
+    assert sock._apply("probe", None) == "ok probe Checking: X"
+    assert calls == ["probe", "start"]
+    scr.run_btn.disabled = True
+    assert sock._apply("probe", None) == "err probe already running"
+    assert calls == ["probe", "start"]
 
 
 def test_the_socket_is_private_to_the_ui_user():

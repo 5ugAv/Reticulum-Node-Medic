@@ -1236,6 +1236,7 @@ class ReticulumNodeMedicApp(App):
             target_fn=hw.probe_target_label,
             on_self_diagnose=lambda: self.switch_mode("self_diagnose"),
             on_birth_tracker=lambda: self.switch_mode("firstborn"))
+        self.probe_screen = _probe_screen          # the control socket's "probe"
         probe.add_widget(self._with_back(_probe_screen))
         probe.bind(on_pre_enter=lambda *_: _probe_screen.enter(),
                    on_leave=lambda *_: _probe_screen.leave())

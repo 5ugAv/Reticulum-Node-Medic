@@ -269,7 +269,11 @@ class ProbeScreen(BoxLayout):
 
     def _render_summary(self, session):
         issues = session.all_issues
-        n = len(issues)
+        # An "info" row is a note (the RTNode's backbone link being down in
+        # standalone use, a V3's PSRAM limit) — listed below, never counted
+        # as a fault: "1 fault found" over a note sent the operator looking
+        # for a defect that was not there (2026-10-04).
+        n = len([i for i in issues if i.severity in ("critical", "warning")])
         fixable = session.auto_fixable_issues
         if n == 0:
             self.summary_lbl.text = tr(":)   All clear - no faults found")

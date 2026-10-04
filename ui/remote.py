@@ -34,7 +34,12 @@ import threading
 from typing import Iterable, Optional, Tuple
 
 SOCKET_PATH = "/tmp/nodemedic-control.sock"
-VERBS = ("ping", "list", "open", "node", "home", "current", "map")
+#: The verb list IS the capability list. "probe" (2026-10-04, operator away
+#: from the bench: "can you do this from your end and catch the screens as
+#: you go?") presses PROBE's Run button: a READ-ONLY diagnostic of the board
+#: on USB — it never fixes, flashes or wipes, and it refuses while a run is
+#: already going.
+VERBS = ("ping", "list", "open", "node", "home", "current", "map", "probe")
 REPLY_TIMEOUT_S = 8.0
 
 
@@ -141,7 +146,8 @@ class ControlServer:
         screen actually did rather than what was asked."""
         verb, arg = parse_command(line)
         if not verb:
-            return "err usage: ping | list | open <screen> | node <hash-prefix> | home | current | map"
+            return ("err usage: ping | list | open <screen> | node <hash-prefix> | "
+                    "home | current | map | probe")
         if verb == "ping":
             return "ok"
         return self._on_main(verb, arg)
@@ -165,7 +171,7 @@ class ControlServer:
     def _apply(self, verb: str, arg: Optional[str]) -> str:
         app = self.app
         names = [s.name for s in app.sm.screens]
-        if verb in ("open", "node", "home"):
+        if verb in ("open", "node", "home", "probe"):
             # WAKE THE PANEL FIRST. The screensaver is a layer over the
             # ScreenManager; "open comms" changed the screen underneath it
             # and three captures in a row were concentric rings (2026-10-03).
@@ -205,4 +211,13 @@ class ControlServer:
                 return "err " + why
             app._open_node_detail({"identity": h})
             return f"ok node {h}"
+        if verb == "probe":
+            scr = getattr(app, "probe_screen", None)
+            if scr is None:
+                return "err no probe screen"
+            if getattr(scr.run_btn, "disabled", False) or getattr(scr, "_busy", False):
+                return "err probe already running"
+            app.switch_mode("probe")
+            scr.start()
+            return "ok probe " + (scr.header.text or "")
         return "err unreachable"
