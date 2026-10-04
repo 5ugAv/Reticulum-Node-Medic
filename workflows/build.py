@@ -712,7 +712,8 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
             return StepResult(
                 "install_software_stack", False,
                 f"Cannot install {pkgs}: no wheels in assets/packages and the "
-                f"node has no internet. Carry the wheels for a field build.")
+                f"node has no internet. Connect the medic to Wi-Fi once and press Settings ▸ Field "
+                f"readiness ▸ Prepare for the field, then build again.")
         code, out, err = wf.connection.run(cmd, timeout=600)
         if code != 0 and have_wheels and                 wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
             # An INCOMPLETE wheelhouse (e.g. rns carried, lxmf not) must not

@@ -1778,8 +1778,12 @@ class NodeRegistry:
                 lat, lon, self_located = b.lat, b.lng, True
             if lat is None or lon is None:
                 continue
+            # The same label VITALS gives a nameless board ("Heltec T114 ·
+            # aaaaaaaa"), never a shared "(unnamed)": the fold below is by
+            # name, so one placeholder collapsed EVERY nameless located
+            # device into a single dot (readiness ledger #135).
             out.append({"lat": lat, "lon": lon,
-                        "name": merged.name or "(unnamed)",
+                        "name": merged.name or merged._nameless_label(),
                         "status": merged.status(now),
                         "self_located": self_located})
         # ONE DOT PER NAME. A node the roster could not fold (births before

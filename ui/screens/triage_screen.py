@@ -245,6 +245,11 @@ class TriageScreen(FloatLayout):
         """Called when the Triage screen opens: auto-activate the beacon and
         show the right prompt (aim / power-on / build)."""
         self._beacon_answered = False
+        # Only a packet heard from NOW on answers the beacon watchdog; a packet
+        # heard up to two minutes before this screen opened used to silence
+        # "isn't answering" for a node that was already off (ledger #26).
+        import time as _time
+        self._beacon_started = _time.time()
         # Publish this survey as the active triage session so a subsequent BIRTH
         # consumes + auto-clears it (no stale session pins the next build).
         try:
@@ -396,7 +401,9 @@ class TriageScreen(FloatLayout):
                 "Listening... noise floor is live. To begin scoring, another "
                 "node must transmit - send an announce from your phone or a node."))
             return
-        self._beacon_answered = True      # a real packet arrived (beacon works)
+        heard_at = sample.get("heard_at")
+        if heard_at is None or heard_at > getattr(self, "_beacon_started", 0.0):
+            self._beacon_answered = True  # a real packet arrived SINCE we asked
         snap = self._session.feed(sample["snr"], sample["rssi"], sample["noise"],
                                   self._clock())
         self._bullseye.update(snap)

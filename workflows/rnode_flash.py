@@ -536,6 +536,18 @@ class RNodeFlashWorkflow:
 
     def _detect_port(self) -> StepResult:
         why = self.board.cannot_flash_reason(self.band_mhz)
+        if not why:
+            # The same gate the pickers use: a custom-fork / DFU board whose
+            # build this medic does not carry is refused HERE, before a port
+            # is opened, so the gate holds for every caller of the workflow
+            # and not only for the two pickers (readiness ledger #168, #43).
+            try:
+                from ui.usb_ports import connection_is_local
+                if connection_is_local(self.connection):
+                    from ui.birth import board_blocker
+                    why = board_blocker(self.board, self.band_mhz)
+            except Exception:                                      # noqa: BLE001
+                why = ""
         if why:
             # Said FIRST, before any port is opened: this used to come out
             # after three green steps and a chip erase (2026-10-03).
@@ -596,8 +608,11 @@ class RNodeFlashWorkflow:
             if self.connection.run(f"test -f {pkg}")[0] != 0:
                 return StepResult(
                     "ensure_firmware", False,
-                    f"The medic's {self.board.display_name} build is missing "
-                    f"({pkg}) — build it before flashing this board.")
+                    f"This Node Medic has no {self.board.display_name} firmware "
+                    f"on it ({pkg}). That board's firmware is built from source "
+                    f"and this medic doesn't carry the build — choose a board "
+                    f"the medic has firmware for, or ask for a release that "
+                    f"carries this one.")
             return StepResult("ensure_firmware", True,
                               f"{self.board.display_name} firmware ready "
                               "(the medic's own build).")

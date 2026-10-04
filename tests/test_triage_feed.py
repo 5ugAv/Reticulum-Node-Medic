@@ -16,7 +16,8 @@ def test_yields_a_sample_once_a_packet_was_heard(tmp_path):
     p = _write(tmp_path, last_rssi=-80, last_snr=10.5, noise_floor=-107,
                packet_heard_at=995.0, updated=1000.0)
     sample = live_triage_feed(p, max_age_s=30, now=lambda: 1005.0)()
-    assert sample == {"snr": 10.5, "rssi": -80, "noise": -107, "peers": 0}
+    assert sample == {"snr": 10.5, "rssi": -80, "noise": -107, "peers": 0,
+                      "heard_at": 995.0}          # when (ledger #26)
 
 
 def test_silent_radio_now_yields_partial_not_none(tmp_path):

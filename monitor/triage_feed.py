@@ -85,5 +85,9 @@ def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
             return {"noise": noise, "rssi": None, "snr": None,
                     "peers": 0, "partial": True}
         return {"snr": snr, "rssi": rssi, "noise": noise,
-                "peers": st.get("peers", 0)}
+                "peers": st.get("peers", 0),
+                # WHEN the packet was heard, so the screen can tell a packet
+                # that arrived after it asked for the beacon from one heard
+                # before it opened (readiness ledger #26)
+                "heard_at": heard if isinstance(heard, (int, float)) else None}
     return reader
