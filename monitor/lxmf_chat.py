@@ -41,7 +41,11 @@ FAILED = "failed"          # nothing on the mesh answered to that address
 #: message to it was built for a DIFFERENT destination and reported "held"
 #: forever (readiness ledger #186). Never dispatched, never re-sent.
 NOT_AN_ADDRESS = "not_an_address"
-STATES = (SENDING, SENT, DELIVERED, POSTED, FAILED, NOT_AN_ADDRESS)
+#: No path, and this medic's propagation node is OFF (Backpack mode): nothing
+#: holds the message. Said instead of "held here" (readiness ledger #76, #185).
+#: Re-sent like FAILED the moment the peer is heard.
+UNHELD = "unheld"
+STATES = (SENDING, SENT, DELIVERED, POSTED, FAILED, NOT_AN_ADDRESS, UNHELD)
 
 #: What the screen prints beside each state. Plain words — the person at the
 #: panel is not an LXMF developer.
@@ -54,6 +58,8 @@ STATE_WORDS = {
             "It goes again the moment they are heard.",
     NOT_AN_ADDRESS: "not sent - that is not a messaging address. Pick a name "
                     "under Heard on the mesh, or ask them for their Chat address.",
+    UNHELD: "not sent - nothing holds it while this medic is in Backpack. "
+            "Switch to Home to hold messages; it goes the moment they are heard.",
 }
 
 IN = "in"
@@ -260,6 +266,16 @@ class MessageStore:
 
     # -- messages ------------------------------------------------------------
 
+    def _next_seq(self) -> int:
+        """A monotonic arrival number. Threads used to be ordered by ``ts``
+        alone — the sender's phone clock for inbound, this RTC-less Pi's for
+        outbound — so two clocks decided who spoke first (ledger #190)."""
+        return 1 + max((int(m.get("seq") or 0) for m in self._messages), default=0)
+
+    @staticmethod
+    def _order(m: dict):
+        return (int(m.get("seq") or 0), float(m.get("ts") or 0.0))
+
     def _find(self, msg_id: str) -> Optional[dict]:
         for m in self._messages:
             if m["id"] == msg_id or m.get("lxmf") == msg_id:
@@ -296,6 +312,7 @@ class MessageStore:
             if self._find(mid) is not None:
                 return None
             rec = {"id": mid, "peer": peer, "dir": IN, "text": text,
+                   "seq": self._next_seq(),          # arrival order (ledger #190)
                    "ts": float(ts if ts is not None else time.time()),
                    "state": DELIVERED, "read": False}
             self._messages.append(rec)
@@ -308,6 +325,7 @@ class MessageStore:
         with self._lock:
             self._ensure_loaded()
             rec = {"id": msg_id or uuid.uuid4().hex, "peer": peer, "dir": OUT,
+                   "seq": self._next_seq(),          # arrival order (ledger #190)
                    "text": text, "ts": float(ts if ts is not None else time.time()),
                    "state": SENDING, "read": True}
             self._messages.append(rec)
@@ -356,7 +374,7 @@ class MessageStore:
             self._ensure_loaded()
             return sorted((dict(m) for m in self._messages
                            if m["peer"] == peer and m.get("dir") == OUT
-                           and m.get("state") == FAILED), key=lambda m: m["ts"])
+                           and m.get("state") in (FAILED, UNHELD)), key=self._order)
 
     def delete_conversation(self, peer: str) -> int:
         """Remove every message with *peer* (press-and-hold → Delete on the
@@ -375,7 +393,7 @@ class MessageStore:
         with self._lock:
             self._ensure_loaded()
             return sorted((dict(m) for m in self._messages if m["peer"] == peer),
-                          key=lambda m: m["ts"])
+                          key=self._order)
 
     def mark_read(self, peer: str) -> int:
         with self._lock:
@@ -401,15 +419,16 @@ class MessageStore:
             unread: Dict[str, int] = {}
             for m in self._messages:
                 p = m["peer"]
-                if p not in by_peer or m["ts"] >= by_peer[p]["ts"]:
-                    by_peer[p] = m
+                if p not in by_peer or self._order(m) >= self._order(by_peer[p]):
+                    by_peer[p] = m             # the latest by ARRIVAL (#190)
                 if not m.get("read"):
                     unread[p] = unread.get(p, 0) + 1
             convs = [Conversation(peer=p, name=self.peer_name(p),
                                   last_text=m["text"], last_ts=m["ts"],
                                   unread=unread.get(p, 0))
                      for p, m in by_peer.items()]
-            return sorted(convs, key=lambda c: c.last_ts, reverse=True)
+            last = {p: self._order(m) for p, m in by_peer.items()}
+            return sorted(convs, key=lambda c: last[c.peer], reverse=True)
 
     # -- peers ---------------------------------------------------------------
 

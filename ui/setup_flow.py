@@ -77,6 +77,7 @@ TOUR_VITALS = "tour_vitals"
 TOUR_SCAN = "tour_scan"
 TOUR_MAPS_DOWNLOAD = "tour_maps_download"
 TOUR_TRIAGE = "tour_triage"
+TOUR_CHAT = "tour_chat"
 TOUR_PROBE = "tour_probe"
 TOUR_MITOSIS = "tour_mitosis"
 TOUR_SETTINGS = "tour_settings"
@@ -192,7 +193,8 @@ _SECURITY_STEPS = [
      "title": "Set up this Node Medic",
      "body": "Two things, and then you are done. First how this medic locks its "
              "own records — the recovery key, a passphrase, and how you unlock "
-             "it day to day. Then a screen each on what its six modes are for.\n\n"
+             "it day to day. Then a screen each on what the front page's cards "
+             "are for.\n\n"
              "If you stop part-way, the walkthrough starts again from the "
              "beginning — nothing is kept until the summary screen.",
      "next": "Start  →"},
@@ -396,6 +398,18 @@ _TOUR_STEPS = [
              "It is also where a BOUNDARY TEST starts — you walk away from a "
              "node on foot and the medic tells you where its signal stops. "
              "The \"?\" in the corner explains that one."},
+
+    # The fifth painted card. The tour never mentioned it, and it is the one
+    # a stranger taps first (readiness ledger #151).
+    {"key": TOUR_CHAT, "part": TOUR, "poster_card": "chat", "opens": "chat",
+     "title": "CHAT — talk over the mesh",
+     "body": "The medic's own messenger: type a message, send it over the mesh, "
+             "read replies.\n\n"
+             "A message with no path right now is held by this medic's "
+             "propagation node until the other side is back online — in Home "
+             "mode. In Backpack mode nothing holds it, and the screen says so.\n\n"
+             "The same screen hands a phone the Columba or Sideband app over "
+             "Wi-Fi, for messaging from your pocket."},
 
     {"key": TOUR_PROBE, "part": TOUR, "opens": "probe",
      "title": "PROBE — find out what is wrong",

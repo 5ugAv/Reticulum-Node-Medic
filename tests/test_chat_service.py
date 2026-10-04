@@ -126,6 +126,7 @@ def svc(tmp_path):
     FakeIdentity.known.clear(); FakeLXM.instances.clear()
     lxmd = tmp_path / "lxmd_identity"; lxmd.write_text("lx")
     s = ChatService(MessageStore(str(tmp_path / "chat")), display_name="Bench medic",
+                    propagation_probe=lambda: True,   # Home mode unless a test says otherwise
                     identity_path=str(tmp_path / "lxmf_identity"),
                     storage_path=str(tmp_path / "router"),
                     lxmd_identity_path=str(lxmd), rns=FakeRNS, lxmf=FakeLXMF,

@@ -59,6 +59,17 @@ def _is_local_road(name: str) -> bool:
     return "local" in n or "shared instance" in n
 
 
+def _propagation_probe() -> Optional[bool]:
+    """Is the medic's own LXMF propagation node running? Asks node_mode over a
+    LocalConnection (a pgrep and a config line); None when it cannot tell."""
+    try:
+        from transport.connection import LocalConnection
+        from workflows.node_mode import propagation_running
+        return bool(propagation_running(LocalConnection()))
+    except Exception:                                                  # noqa: BLE001
+        return None
+
+
 def _rnpath_bin() -> str:
     """rnpath as the app's PATH sees it, else the medic's ~/.local/bin — a
     direct call, not `bash -lc` (a login shell per redraw)."""
@@ -80,8 +91,14 @@ class ChatService:
                  storage_path: str = ROUTER_STORAGE,
                  lxmd_identity_path: str = LXMD_IDENTITY,
                  rns=None, lxmf=None, log: Optional[Callable[[str], None]] = None,
-                 path_wait_s: float = PATH_WAIT_S, run: Optional[Callable[[str], str]] = None):
+                 path_wait_s: float = PATH_WAIT_S, run: Optional[Callable[[str], str]] = None,
+                 propagation_probe: Optional[Callable[[], Optional[bool]]] = None):
         self.store = store
+        #: Is this medic's propagation node RUNNING right now (Home mode)? None
+        #: = not checked yet / could not check. Every "held here" sentence
+        #: assumed yes; in Backpack nothing holds a message (ledger #76, #185).
+        self.propagation_on: Optional[bool] = None
+        self._propagation_probe = propagation_probe or _propagation_probe
         self.display_name = display_name
         self.identity_path = identity_path
         self.storage_path = storage_path
@@ -149,6 +166,7 @@ class ChatService:
                 lx = RNS.Identity.from_file(self.lxmd_identity_path)
                 self._propagation_hash = RNS.Destination.hash(lx, "lxmf", "propagation")
                 router.set_outbound_propagation_node(self._propagation_hash)
+            self._refresh_propagation()
             # One announce so phones can find this address; LXMF's own
             # cadence takes it from here.
             router.announce(self._dest.hash)
@@ -203,8 +221,9 @@ class ChatService:
             except Exception as e:                                     # noqa: BLE001
                 self._log("chat: announce failed: %r" % (e,))
             self._schedule_announce(now)
-        if self._propagation_hash is None:
-            return False
+        self._refresh_propagation()           # Home/Backpack can flip any minute
+        if self._propagation_hash is None or self.propagation_on is False:
+            return False                      # nothing to ask in Backpack
         if not force and now - self._last_sync < SYNC_EVERY_S:
             return False
         self._last_sync = now
@@ -410,10 +429,21 @@ class ChatService:
             return LXMF.LXMessage.OPPORTUNISTIC
         return LXMF.LXMessage.DIRECT
 
+    def _refresh_propagation(self) -> None:
+        try:
+            self.propagation_on = self._propagation_probe()
+        except Exception:                                              # noqa: BLE001
+            self.propagation_on = None
+
     def _dispatch(self, msg_id: str, dest, text: str, method):
         LXMF = self._lxmf
         if method == LXMF.LXMessage.PROPAGATED and self._propagation_hash is None:
             self.store.set_state(msg_id, store_mod.FAILED)
+            return
+        if method == LXMF.LXMessage.PROPAGATED and self.propagation_on is False:
+            # Backpack mode: the propagation node is off, so handing the
+            # message to it would be a lie about where it is (ledger #76)
+            self.store.set_state(msg_id, store_mod.UNHELD)
             return
         lxm = LXMF.LXMessage(dest, self._dest, text, self.display_name,
                              desired_method=method)

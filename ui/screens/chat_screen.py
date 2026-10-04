@@ -274,10 +274,13 @@ class ChatScreen(BoxLayout):
                                        color="text_secondary"))
         svc = self._svc() if self._svc else None
         checked = getattr(svc, "last_sync_at", 0.0) if svc else 0.0
-        self._foot.add_widget(_lbl(
-            tr("Propagation node checked {when}").format(when=when(checked)) if checked
-            else tr("Propagation node not checked yet"), size="11.5sp",
-            color="text_secondary"))
+        if getattr(svc, "propagation_on", None) is False:
+            foot = tr("Propagation node off — Backpack mode holds no messages")
+        elif checked:
+            foot = tr("Propagation node checked {when}").format(when=when(checked))
+        else:
+            foot = tr("Propagation node not checked yet")
+        self._foot.add_widget(_lbl(foot, size="11.5sp", color="text_secondary"))
         new = _btn(tr("New message"), color="green", ink="background", h=52)
         new.bind(on_release=lambda *_: self._show(NEW))
         self._foot.add_widget(new)
@@ -407,6 +410,11 @@ class ChatScreen(BoxLayout):
                      ).format(n=hops, iface=via) if via else tr("{n} hops away").format(n=hops)
         elif r.get("known") and r.get("is_lxmf") is False:
             route = tr("that is not a messaging address - nothing sent here will arrive")
+        elif r.get("known") and getattr(svc, "propagation_on", None) is False:
+            # Backpack: the propagation node is off, so "held here" is false
+            # (readiness ledger #76, #185)
+            route = tr("no path right now — and nothing holds it in Backpack mode; "
+                       "switch to Home to hold messages")
         elif r.get("known"):
             route = tr("no path right now — held here until they're back online")
         else:
