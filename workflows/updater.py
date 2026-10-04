@@ -47,8 +47,23 @@ def _safe_path_segment(value) -> bool:
             and "\n" not in value and "\r" not in value
             and _SAFE_SEGMENT.fullmatch(value) is not None)
 
-#: Official RNode firmware release manifest + download base (markqvist).
+#: THE RNode firmware release the medic carries and flashes — and the ONLY
+#: one sync_firmware will fetch. Pinned by the operator (2026-10-04): "a lot
+#: of work was done on 1.86 — the health data, the RGB lights. If it ain't
+#: broke, don't fix it. Lock it down." A newer upstream release is REPORTED
+#: (``SyncResult.newer_available``), never fetched, until it has been through
+#: the bench; moving the pin is a bench job, not an update.
+#: diagnostics.radio_firmware.LATEST_FIRMWARE must say the same version — a
+#: test holds the two together.
+PINNED_FIRMWARE = "1.86"
+#: Official RNode firmware release manifest + download base (markqvist) —
+#: the PINNED release's manifest, not /latest/.
 FIRMWARE_VERSION_URL = (
+    "https://github.com/markqvist/RNode_Firmware/releases/download/"
+    f"{PINNED_FIRMWARE}/release.json")
+#: Upstream's newest release manifest — read only to SAY whether something
+#: newer than the pin exists.
+FIRMWARE_LATEST_URL = (
     "https://github.com/markqvist/RNode_Firmware/releases/latest/download/"
     "release.json")
 FIRMWARE_DL_BASE = (
@@ -74,6 +89,8 @@ class SyncResult:
     unverified: List[str] = field(default_factory=list)
     version: Optional[str] = None
     message: str = ""
+    #: upstream's newest release when it is newer than the pin — reported, not fetched
+    newer_available: Optional[str] = None
 
 
 def has_connectivity(connection: Connection, url: str = CONNECTIVITY_URL) -> bool:
@@ -81,7 +98,7 @@ def has_connectivity(connection: Connection, url: str = CONNECTIVITY_URL) -> boo
     return connection.run(f"curl -fsI -m 5 {url}")[0] == 0
 
 
-def _fetch_manifest(connection: Connection) -> dict:
+def _fetch_manifest(connection: Connection, url: str = FIRMWARE_VERSION_URL) -> dict:
     """The release.json map ``{filename: {hash, version}}``, or {} on failure.
 
     TODO(security, needs key decision): this manifest is fetched over plain HTTPS
@@ -95,7 +112,7 @@ def _fetch_manifest(connection: Connection) -> dict:
     interpolated value is shell-quoted so a hostile manifest cannot inject a
     command or escape the cache directory — but it is not yet authenticated.
     """
-    code, out, _ = connection.run(f"curl -fsSL -m 20 {FIRMWARE_VERSION_URL}")
+    code, out, _ = connection.run(f"curl -fsSL -m 20 {url}")
     if code != 0:
         return {}
     try:
@@ -133,13 +150,7 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             online=True,
             message="Online, but could not read the firmware manifest.")
 
-    # A malformed manifest (entries that aren't dicts) must fail HONESTLY,
-    # not raise AttributeError out of a background sync (2026-08-01 bug hunt).
-    try:
-        first = next(iter(manifest.values()))
-        version = first.get("version") if isinstance(first, dict) else None
-    except Exception:                      # noqa: BLE001
-        version = None
+    version = _manifest_version(manifest)
     if not version:
         return SyncResult(
             online=True,
@@ -158,6 +169,15 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
             failed=[f"version {version[:64]!r} (unsafe — possible path traversal)"],
             message="Online, but the firmware manifest's version is not a safe "
                     "path component — refusing to sync.")
+    if version != PINNED_FIRMWARE:
+        # The pinned release's own manifest must name the pin. Anything else
+        # is a served surprise (a moved tag, a MITM) — nothing is written.
+        return SyncResult(
+            online=True,
+            failed=[f"manifest reports {version}, pinned {PINNED_FIRMWARE}"],
+            message=f"Online, but the pinned release's manifest reports "
+                    f"version {version}, not {PINNED_FIRMWARE} — refusing to "
+                    "sync.")
     # Coerce done; quote everywhere it is still interpolated (defence in depth).
     # RNODE_UPDATE_DIR stays UNQUOTED on purpose so its leading ``~`` expands.
     dest = f"{RNODE_UPDATE_DIR}/{_shq(version)}"
@@ -201,6 +221,12 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
     connection.run(
         f"printf '%s' {_shq(version)} > {RNODE_UPDATE_DIR}/.rnm_bundle_version")
 
+    # Is there something newer upstream? Said, never fetched (the pin).
+    latest = _manifest_version(_fetch_manifest(connection, FIRMWARE_LATEST_URL))
+    if (latest and _safe_path_segment(latest)
+            and _ver_key(latest) > _ver_key(PINNED_FIRMWARE)):
+        res.newer_available = latest
+
     parts = []
     if res.changed:
         parts.append(f"{len(res.changed)} updated")
@@ -210,7 +236,28 @@ def sync_firmware(connection: Connection, force: bool = False) -> SyncResult:
         parts.append(f"{len(res.failed)} failed")
     res.message = (f"Firmware {version}: " + ", ".join(parts) if parts
                    else f"Firmware {version}: nothing to do.")
+    if res.newer_available:
+        res.message += (f" Upstream has {res.newer_available} — not fetched; "
+                        f"{PINNED_FIRMWARE} stays pinned until the newer "
+                        "release is benched.")
     return res
+
+
+def _manifest_version(manifest: dict) -> Optional[str]:
+    """The version a release.json names, or None. A malformed manifest
+    (entries that aren't dicts) must fail HONESTLY, not raise AttributeError
+    out of a background sync (2026-08-01 bug hunt)."""
+    try:
+        first = next(iter(manifest.values()))
+        version = first.get("version") if isinstance(first, dict) else None
+    except Exception:                      # noqa: BLE001
+        return None
+    return str(version) if version else None
+
+
+def _ver_key(version: str) -> tuple:
+    """"1.86" -> (1, 86): numeric, so 1.9 does not outrank 1.86 as text would."""
+    return tuple(int(p) for p in re.findall(r"\d+", version or ""))
 
 
 def autoinstall_command(port: str, version: Optional[str] = None,

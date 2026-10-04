@@ -45,7 +45,7 @@
   "Needs the internet. It is a large download — do it before you leave.",
   "New nodes are built with the CURRENT settings — they can only talk to nodes on the same settings. Revert to standard so every node can communicate, or keep them if this is a deliberate separate mesh.",
   "No Wi-Fi you both can join? Turn on your phone's hotspot, then connect this medic to it in Settings ▸ Wi-Fi.",
-  "Node Medic hands a Reticulum messaging app to your phone — the medic is the mesh's post office, your phone is the messenger.",
+  "Node Medic hands a Reticulum messaging app to your phone — the medic is the mesh's propagation node, your phone is the messenger.",
   "Not carried yet.",
   "Note: message store-and-forward is OFF. Switch to Home ▸ full propagation node so the medic can hold messages for offline phones.",
   "Nothing downloaded.",

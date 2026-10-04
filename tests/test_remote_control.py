@@ -42,7 +42,7 @@ def test_the_socket_is_private_to_the_ui_user():
 
 def test_chat_tick_is_not_scheduled_as_a_lambda_that_returns_false():
     """Kivy cancels an interval whose callback returns False; tick() returns
-    False when rate-limited. The post office was asked once and never again
+    False when rate-limited. The propagation node was asked once and never again
     (2026-10-01)."""
     src = open("ui/app.py").read()
     assert "lambda dt: self._chat.tick()" not in src

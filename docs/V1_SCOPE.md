@@ -96,6 +96,13 @@ these before the handover.
 This applies to the assistant as much as the operator: no more "want me to
 build X next?" at the end of a turn. Ideas go to the list below.
 
+**RNode firmware is pinned at 1.86** (operator, 2026-10-04: "a lot of work
+was done on 1.86 — the health data, the RGB lights. If it ain't broke, don't
+fix it. Lock it down."). Field readiness repairs that bundle and reports a
+newer upstream release without fetching it (`workflows/updater.py`
+`PINNED_FIRMWARE`); moving the pin is a bench job — every board through both
+births again — not an update.
+
 ## Ideas parked (not v1)
 
 - **Our own RNode firmware releases as BIRTH's source (operator, 2026-10-03).**

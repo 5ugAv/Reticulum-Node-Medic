@@ -103,12 +103,13 @@ def when(ts: float, now: float = None) -> str:
 
 
 def _state_words(rec: dict) -> str:
-    """The words beside an outgoing message's time. One waiting at a
-    propagation node says WHICH node is holding it."""
-    state = rec.get("state")
-    if state == lc.POSTED and rec.get("via"):
-        return tr("waiting at propagation node ({name})").format(name=rec["via"])
-    return tr(lc.STATE_WORDS.get(state, ""))
+    """The words beside an outgoing message's time. A message nobody answered
+    for is held by THIS medic's own propagation node until the person is back
+    on the mesh — said in the fewest words that are still true (operator,
+    2026-10-04: "waiting for the user to come online, something simpler").
+    The holding node's name stays on the record (``via``) for the day there
+    is more than one to choose from."""
+    return tr(lc.STATE_WORDS.get(rec.get("state"), ""))
 
 
 class _Bubble(BoxLayout):
@@ -259,8 +260,9 @@ class ChatScreen(BoxLayout):
         svc = self._svc() if self._svc else None
         checked = getattr(svc, "last_sync_at", 0.0) if svc else 0.0
         self._foot.add_widget(_lbl(
-            tr("Post office checked {when}").format(when=when(checked)) if checked
-            else tr("Post office not checked yet"), size="11.5sp", color="text_secondary"))
+            tr("Propagation node checked {when}").format(when=when(checked)) if checked
+            else tr("Propagation node not checked yet"), size="11.5sp",
+            color="text_secondary"))
         new = _btn(tr("New message"), color="green", ink="background", h=52)
         new.bind(on_release=lambda *_: self._show(NEW))
         self._foot.add_widget(new)
@@ -355,7 +357,7 @@ class ChatScreen(BoxLayout):
             route = (tr("{n} hop via {iface}") if hops == 1 else tr("{n} hops via {iface}")
                      ).format(n=hops, iface=via) if via else tr("{n} hops away").format(n=hops)
         elif r.get("known"):
-            route = tr("no path right now — messages wait at the propagation node")
+            route = tr("no path right now — held here until they're back online")
         else:
             route = tr("not reachable yet — nothing on the mesh has announced this address")
         return f"{route}  ·  {heard}"

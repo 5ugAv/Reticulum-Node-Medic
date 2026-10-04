@@ -1,6 +1,6 @@
 # Getting a Reticulum messenger onto a phone
 
-The Node Medic is the mesh's post office, not the messenger. The messaging
+The Node Medic is the mesh's propagation node, not the messenger. The messaging
 happens on a **phone**, running an app the medic hands over. This is how that
 works, what to do when the app the medic carries will not install, and the one
 answer people ask for most.

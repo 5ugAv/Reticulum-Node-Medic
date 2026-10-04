@@ -1,6 +1,6 @@
 """Communication apps — the medic hands a Reticulum messenger to a phone.
 
-The medic is the mesh's post office (a propagation node); the messaging happens on
+The medic is the mesh's propagation node; the messaging happens on
 a PHONE running Columba or Sideband. This screen lists both carried apps and, on
 "Send to my phone", serves the chosen APK over Wi-Fi behind a QR the phone scans.
 It also shows whether store-and-forward is on (Home ▸ propagation), since that's
@@ -52,7 +52,7 @@ class CommsScreen(BoxLayout):
         self.add_widget(_line(tr("Communication apps"), bold=True, size="24sp", h=42))
         self.add_widget(_line(tr(
             "Node Medic hands a Reticulum messaging app to your phone — the medic is "
-            "the mesh's post office, your phone is the messenger."),
+            "the mesh's propagation node, your phone is the messenger."),
             size="13.5sp", color="text_secondary", h=44))
         self.status = _line("", size="13sp", color="accent", h=40)
         self.add_widget(self.status)
@@ -78,7 +78,7 @@ class CommsScreen(BoxLayout):
             apps = cached_apps(conn, self._cache_dir)
             # What lxmd IS doing, not what the mode meant: the medic's unit
             # ran lxmd -p until 2026-10-03, propagating whatever Backpack wrote
-            # to the config — the note said OFF over a running post office
+            # to the config — the note said OFF over a running propagation node
             # (2026-09-30). Reading the process keeps the note honest on any
             # medic whose unit still carries -p.
             try:

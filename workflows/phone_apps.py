@@ -1,6 +1,6 @@
 """Offline-first cache of the Reticulum PHONE apps + opportunistic GitHub sync.
 
-The medic is the mesh's post office (a propagation node); the messaging happens on
+The medic is the mesh's propagation node; the messaging happens on
 PHONES running a Reticulum app. So the medic carries those apps' APKs offline and
 hands them to phones in the field — no Play Store, no internet. A medic-flashed
 RNode + one of these apps = a complete pocket mesh node, onboarded fully offline.
@@ -375,7 +375,7 @@ AUTOSYNC_INTERVAL_DAYS = 7.0
 
 def should_autosync(all_carried: bool, age_days: float, online: bool,
                     interval_days: float = AUTOSYNC_INTERVAL_DAYS):
-    """Should the medic stock its own post office right now? -> (bool, why).
+    """Should the medic stock its own app shelf right now? -> (bool, why).
 
     Operator, 2026-09-13: "the user shouldn't have to download these
     communication apps" — so the medic does it itself, the moment it is

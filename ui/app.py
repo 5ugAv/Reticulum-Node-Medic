@@ -1050,7 +1050,7 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(chat_scr)
         # NOT a bare lambda around tick(): Kivy CANCELS an interval whose
         # callback returns False, and tick() returns False whenever it is
-        # rate-limited — so the post office was asked once, a minute after
+        # rate-limited — so the propagation node was asked once, a minute after
         # start, and never again ("checked 30 Sep 17:11" a day later).
         Clock.schedule_interval(self._chat_tick, 60)
         Clock.schedule_interval(self._chat_start_poll, 3)
@@ -1365,7 +1365,7 @@ class ReticulumNodeMedicApp(App):
                 stop.wait(interval)
 
         threading.Thread(target=loop, daemon=True).start()
-        # THE POST OFFICE STOCKS ITSELF (operator, 2026-09-13: "the user
+        # THE MEDIC STOCKS ITS OWN APP SHELF (operator, 2026-09-13: "the user
         # shouldn't have to download these communication apps"). A medic
         # online with an empty APK shelf fetches Columba + Sideband itself —
         # same sha256-verified downloader the Comms screen uses — and
@@ -1542,7 +1542,7 @@ class ReticulumNodeMedicApp(App):
     def _start_chat_if_ready(self, log=None):
         """Start the chat service exactly once, on a thread, when BOTH the
         service exists and RNS is attached — from whichever side got there
-        last. start() announces and asks the post office, so never on the
+        last. start() announces and asks the propagation node, so never on the
         Kivy main thread."""
         chat = getattr(self, "_chat", None)
         if chat is None or not self._rns_attached or chat.running or self._chat_starting:
@@ -1583,7 +1583,7 @@ class ReticulumNodeMedicApp(App):
     _chat_badge_version = -1
 
     def _chat_tick(self, dt):
-        """Once a minute: re-announce when due, ask the post office every 20
+        """Once a minute: re-announce when due, ask the propagation node every 20
         min. Returns None on purpose — see the schedule_interval note."""
         try:
             self._chat.tick()

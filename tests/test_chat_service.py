@@ -131,7 +131,7 @@ def test_start_makes_one_identity_registers_and_announces_once(svc, tmp_path):
     assert svc._router.display_name == "Bench medic"
     assert svc._router.announced == [b"\x4f" * 16]
     assert svc._router.prop_node == b"lxmfpropagation"[:16]
-    assert svc._router.syncs == 1                            # asked the post office at start
+    assert svc._router.syncs == 1                            # asked the propagation node at start
     assert any(h.aspect_filter == "lxmf.delivery" for h in FakeTransport.handlers)
     assert svc.start() is True and svc._router.announced == [b"\x4f" * 16]
 
@@ -288,7 +288,7 @@ def test_leftover_sending_from_last_session_is_marked_failed(tmp_path):
                     lxmd_identity_path=str(tmp_path / "none"), rns=FakeRNS, lxmf=FakeLXMF)
     assert s.start()
     assert store.thread(PEER)[0]["state"] == lc.FAILED
-    assert s.tick() is False                       # no post office configured
+    assert s.tick() is False                       # no propagation node configured
 
 
 def test_reannounce_inside_sidebands_window(svc):

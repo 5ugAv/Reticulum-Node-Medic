@@ -34,13 +34,13 @@ from monitor.operator_alert import normalize_address, valid_address
 
 IDENTITY_PATH = os.path.expanduser("~/.reticulum-node-medic/lxmf_identity")
 ROUTER_STORAGE = os.path.expanduser("~/.reticulum-node-medic/lxmf")
-#: The post office next door: lxmd's identity, from which its propagation
+#: The propagation node next door: lxmd's identity, from which its propagation
 #: destination hash follows.
 LXMD_IDENTITY = os.path.expanduser("~/.lxmd/identity")
 
 #: How long to wait for the mesh to find a path before falling back.
 PATH_WAIT_S = 12.0
-#: Ask our own post office for anything held for us this often. It is a
+#: Ask our own propagation node for anything held for us this often. It is a
 #: local request over the shared instance — nothing goes over LoRa for it.
 SYNC_EVERY_S = 20 * 60
 #: Re-announce our address now and then so a phone that missed the first
@@ -88,7 +88,7 @@ class ChatService:
         self._dest = None
         self._propagation_hash: Optional[bytes] = None
         self._last_sync = 0.0
-        #: when the post office was last asked — the screen prints it, so "no
+        #: when the propagation node was last asked — the screen prints it, so "no
         #: new messages" is a statement with a time on it (the thing people
         #: could not tell in Reticulum discussion #991)
         self.last_sync_at = 0.0
@@ -184,7 +184,7 @@ class ChatService:
 
     def tick(self, force: bool = False, now: float = None) -> bool:
         """Periodic (the app calls it once a minute): re-announce when the
-        window is up, and ask our post office for held messages. Returns True
+        window is up, and ask our propagation node for held messages. Returns True
         when a sync was requested this call."""
         if not self.running:
             return False
@@ -203,7 +203,7 @@ class ChatService:
         try:
             self._router.request_messages_from_propagation_node(self._identity)
             self.last_sync_at = now
-            self._log("chat: asked the post office for held messages")
+            self._log("chat: asked the propagation node for held messages")
             return True
         except Exception as e:                                         # noqa: BLE001
             self._log("post-office sync failed: %r" % (e,))
@@ -331,7 +331,7 @@ class ChatService:
     def _peer_identity(self, dh: bytes):
         """Ask the mesh for a path first (Sideband's order), THEN look the
         identity up: a known identity with no path still wants the path
-        request, or every message to it goes to the post office even when
+        request, or every message to it goes to the propagation node even when
         the peer is one hop away and awake."""
         RNS = self._rns
         if not RNS.Transport.has_path(dh):
@@ -358,7 +358,7 @@ class ChatService:
             self.store.set_state(msg_id, store_mod.FAILED)
 
     def _method_for(self, dh: bytes):
-        """No path → the post office. A path but no link up, and a ratchet
+        """No path → the propagation node. A path but no link up, and a ratchet
         known → OPPORTUNISTIC: one packet, no link handshake — the cheapest
         thing that can carry a short message over LoRa (Sideband's rule; the
         router falls back to a link by itself if the message won't fit a
@@ -392,7 +392,7 @@ class ChatService:
 
         def _failed(message):
             if not propagated and self._propagation_hash is not None:
-                # Nothing answered on a link — leave it with the post office.
+                # Nothing answered on a link — leave it with the propagation node.
                 self._dispatch(msg_id, dest, text, LXMF.LXMessage.PROPAGATED)
             else:
                 self.store.set_state(msg_id, store_mod.FAILED)

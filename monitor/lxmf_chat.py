@@ -1,6 +1,6 @@
 """In-medic chat — the message store (pure, no Kivy, no RNS).
 
-The medic has always been the mesh's post office; from 2026-09-29 it is also a
+The medic has always been the mesh's propagation node; from 2026-09-29 it is also a
 messenger of its own (operator: "a section that is chat, like functional
 chat — typing messages and receiving messages"). Sideband was weighed and
 turned down: a second full Kivy app with its own window, identity and pip
@@ -45,7 +45,7 @@ STATE_WORDS = {
     SENDING: "sending",
     SENT: "sent",
     DELIVERED: "delivered",
-    POSTED: "waiting at propagation node",
+    POSTED: "held here until they're back online",
     FAILED: "not delivered — nobody on the mesh answered to that address. "
             "It goes again the moment they are heard.",
 }

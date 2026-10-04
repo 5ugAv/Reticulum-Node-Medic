@@ -11,7 +11,7 @@ Weighed and turned down. Sideband is a second full Kivy app: its own window,
 its own identity, a large pip tree the medic does not carry offline, and a
 layout that assumes a phone. One Kivy app already fills the five-inch panel.
 LXMF — the protocol under Sideband, Columba and NomadNet — is already on the
-medic (`lxmd` runs beside the UI as the post office), so CHAT is built on it
+medic (`lxmd` runs beside the UI as the propagation node), so CHAT is built on it
 directly, in the medic's own theme, with the medic's own keyboard.
 
 What was borrowed from the others, by reading their code:
@@ -53,7 +53,7 @@ What was borrowed from the others, by reading their code:
 
 Inbound: the router's delivery callback → store (deduplicated by LXMF hash —
 a post-office sync can re-deliver what a link already brought). The medic asks
-its own post office for held messages at start and every 20 min; that request
+its own propagation node for held messages at start and every 20 min; that request
 is local.
 
 ## Airtime
@@ -67,25 +67,25 @@ never touches the radio. See [[bandwidth-economy-ethos]].
 Attachments, read receipts, group chat, trust/tickets, deleting conversations.
 The two-phone test (Sideband ↔ medic ↔ Columba) is on the bench list.
 
-## The post office and the Home/Backpack switch
+## The propagation node and the Home/Backpack switch
 
 Found 2026-09-30, fixed 2026-10-03. The medic's `lxmd.service` used to run
 `lxmd -p -s`; `-p` forces the propagation node on **whatever `enable_node`
 says**, so `workflows/node_mode.set_mode` — which writes `enable_node = no`
 for Backpack and Home▸Transport-only — had never actually switched
-propagation off. Until then that was convenient for chat (the post office
+propagation off. Until then that was convenient for chat (the propagation node
 was always there) and wrong for the design (a roving Backpack medic should
 not be a propagation node peers try to sync with).
 
 **Done 2026-10-03 ~21:45 (operator paste, root):** the unit now runs
 `lxmd -s`; `enable_node` — and so the front-page switch and the Home
-profile — govern the post office. The install page reports what lxmd is
+profile — govern the propagation node. The install page reports what lxmd is
 *doing* (`node_mode.propagation_running`), not what the mode meant.
 
 **Home's default profile is Full propagation node** (Settings ▸ Home mode);
 *Transport only* is an explicit choice, saved only when tapped. With
 nothing saved, a fresh or cloned medic in Home mode is a propagation node:
-routing on, store-and-forward on. In Backpack the post office is off and
+routing on, store-and-forward on. In Backpack the propagation node is off and
 CHAT's "waiting at propagation node" road is closed until the medic is home
 again — the screen says so (*no path right now*).
 

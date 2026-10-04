@@ -22,6 +22,8 @@ FW_HASH_PROBE_REMOTE = "/tmp/rnm_fw_hash_probe.py"
 
 #: Latest RNode firmware version this tool ships / expects (verified on real
 #: hardware — rnodeconf --info reports e.g. "Firmware version   : 1.86").
+#: The version PROBE calls current — the release the medic carries, flashes
+#: and is pinned to (workflows.updater.PINNED_FIRMWARE; a test keeps them equal).
 LATEST_FIRMWARE = "1.86"
 
 #: Settle-retry budget for the firmware-blessing read (-K -L). A board that

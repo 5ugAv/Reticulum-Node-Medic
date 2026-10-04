@@ -76,18 +76,20 @@ def audit(connection: Connection) -> List[CarryStatus]:
 
     # --- RNode firmware ------------------------------------------------------
     # Without this the medic cannot flash a radio, which is its first job.
+    from workflows.updater import PINNED_FIRMWARE
     ver = _first_line(connection, f"cat {RNODE_UPDATE_DIR}/.rnm_bundle_version 2>/dev/null")
     nver = _count(connection, f"{RNODE_UPDATE_DIR}/*/")
     out.append(CarryStatus(
         "rnode_firmware", "RNode firmware",
         "Without it the medic cannot flash a radio — its first job.",
         carried=bool(ver) or nver > 0,
-        detail=(f"bundle {ver}" if ver else (f"{nver} version(s), no bundle marker"
-                                             if nver else "nothing cached")),
+        detail=((f"bundle {ver} (pinned)" if ver == PINNED_FIRMWARE else f"bundle {ver}")
+                if ver else (f"{nver} version(s), no bundle marker"
+                             if nver else "nothing cached")),
         nbytes=_bytes(connection, RNODE_UPDATE_DIR)))
 
     # --- Phone apps ----------------------------------------------------------
-    # The medic is the post office; the messaging happens on a phone. With no
+    # The medic is the propagation node; the messaging happens on a phone. With no
     # APK aboard, a phone in the field cannot be given a messenger at all.
     napk = _count(connection, f"{APPS_CACHE_DIR}/*.apk")
     out.append(CarryStatus(
@@ -179,6 +181,7 @@ class CarryReport:
     topped_up: List[str] = field(default_factory=list)     #: fetched this run
     checked: List[str] = field(default_factory=list)       #: already current
     failed: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)         #: e.g. a newer firmware NOT fetched
     online: bool = False
     message: str = ""
 
@@ -240,6 +243,11 @@ def carry_all(connection: Connection, force: bool = False,
                                  + (f" {fw.version}" if fw.version else ""))
         else:
             rep.checked.append("RNode firmware")
+        if getattr(fw, "newer_available", None):
+            # The pin (operator, 2026-10-04): said plainly, never acted on here.
+            rep.notes.append(f"RNode firmware stays at {fw.version}: upstream "
+                             f"has {fw.newer_available}, not fetched until it "
+                             "has been benched.")
     except Exception as exc:                                      # noqa: BLE001
         rep.failed.append(f"RNode firmware ({exc})")
 
@@ -281,5 +289,6 @@ def carry_all(connection: Connection, force: bool = False,
                      "nothing new to fetch.")
     else:
         parts.append("STILL MISSING: " + ", ".join(gaps))
+    parts.extend(rep.notes)
     rep.message = " ".join(parts)
     return rep

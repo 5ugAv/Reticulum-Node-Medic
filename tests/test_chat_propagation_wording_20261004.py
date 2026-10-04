@@ -1,9 +1,11 @@
 """A message sent to someone out of reach says WHERE it is waiting.
 
 2026-10-04: the bubble said "held at the post office", which tells a keeper
-nothing they can act on. It now reads "waiting at propagation node (<name>)",
-the name being the node that holds the message - this medic, whose own lxmd is
-the propagation node every no-path send is handed to.
+nothing they can act on. It read "waiting at propagation node (<name>)" for an
+afternoon; the name was always this medic's own (its lxmd is the propagation
+node every no-path send is handed to), so the operator asked for the plainest
+true words: "held here until they're back online". The holding node's name is
+still kept on the record (``via``) for the day there is more than one.
 """
 import ast
 import json
@@ -18,11 +20,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CODES = ["es", "fr", "de", "ja", "ru", "pl", "id", "sv"]
 PEER = "d" * 32
 
-NEW_STATE = "waiting at propagation node"
-NEW_NAMED = "waiting at propagation node ({name})"
-NEW_ROUTE = "no path right now — messages wait at the propagation node"
+NEW_STATE = "held here until they're back online"
+NEW_ROUTE = "no path right now — held here until they're back online"
 OLD = ("held at the post office",
-       "no path right now — messages wait at the post office")
+       "no path right now — messages wait at the post office",
+       "waiting at propagation node",
+       "waiting at propagation node ({name})",
+       "no path right now — messages wait at the propagation node",
+       "waiting at this medic's propagation node",
+       "no path right now — messages wait at this medic's propagation node")
 
 
 def _catalog(code):
@@ -85,22 +91,14 @@ def test_the_state_words_say_propagation_node_not_post_office():
         assert "post office" not in words
 
 
-def test_a_waiting_message_names_the_node_holding_it():
+def test_a_waiting_message_says_held_here_named_or_not():
+    """The name on the record is this medic's own, every time — so the words
+    say "held here" and leave the name out (operator, 2026-10-04)."""
     words = _state_words_fn(lambda s: s)
-    rec = {"state": lc.POSTED, "via": "Bench medic"}
-    assert words(rec) == "waiting at propagation node (Bench medic)"
-
-
-def test_a_message_posted_before_this_change_has_no_name_to_show():
-    words = _state_words_fn(lambda s: s)
+    assert words({"state": lc.POSTED, "via": "Bench medic"}) == NEW_STATE
     assert words({"state": lc.POSTED}) == NEW_STATE
     assert words({"state": lc.POSTED, "via": ""}) == NEW_STATE
-
-
-def test_a_node_name_with_braces_is_shown_as_typed():
-    words = _state_words_fn(lambda s: s)
-    assert words({"state": lc.POSTED, "via": "a{b}c"}) == \
-        "waiting at propagation node (a{b}c)"
+    assert words({"state": lc.POSTED, "via": "a{b}c"}) == NEW_STATE
 
 
 def test_every_other_state_reads_as_before():
@@ -109,20 +107,19 @@ def test_every_other_state_reads_as_before():
         assert words({"state": state, "via": "ignored"}) == lc.STATE_WORDS[state]
 
 
-def test_the_name_is_translated_around_not_into(tmp_path):
+def test_the_waiting_words_translate(tmp_path):
     es = _catalog("es")
     words = _state_words_fn(lambda s: es.get(s, s))
     got = words({"state": lc.POSTED, "via": "Bench medic"})
-    assert got == "esperando en el nodo de propagación (Bench medic)"
+    assert got == "retenido aquí hasta que vuelvan a estar en línea"
 
 
 # ---- the screen ----
 
 def test_the_screen_builds_the_bubble_words_through_the_helper():
     s = _src("ui/screens/chat_screen.py")
-    assert 'tr("waiting at propagation node ({name})")' in s
     assert 'meta += "  ·  " + _state_words(rec)' in s
-    assert "tr(lc.STATE_WORDS.get(rec.get(\"state\"), \"\"))" not in s
+    assert "waiting at propagation node ({name})" not in s
     assert 'tr("' + NEW_ROUTE + '")' in s
 
 
@@ -136,10 +133,9 @@ def test_the_service_hands_its_own_name_with_the_posted_state():
 @pytest.mark.parametrize("code", CODES)
 def test_every_language_has_the_new_words_and_none_of_the_old(code):
     d = _catalog(code)
-    for key in (NEW_STATE, NEW_NAMED, NEW_ROUTE):
+    for key in (NEW_STATE, NEW_ROUTE):
         assert d.get(key), (code, key)
         assert d[key] != key, (code, key)                  # translated, not echoed
-    assert "{name}" in d[NEW_NAMED], code
     for old in OLD:
         assert old not in d, (code, old)
 

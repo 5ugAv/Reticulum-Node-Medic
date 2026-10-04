@@ -1,4 +1,4 @@
-"""The post office stocks itself (operator, 2026-09-13).
+"""The medic stocks its own app shelf (operator, 2026-09-13).
 
 "This should be part of the initial build — the user shouldn't have to
 download these communication apps. And if a device is cloned, they're
@@ -39,7 +39,7 @@ def test_the_app_wires_the_autosync_at_startup():
     from tests.srcutil import src
     s = src("ui/app.py")
     assert "should_autosync" in s and "sync_all" in s, (
-        "the medic must stock its own post office — no user download step")
+        "the medic must stock its own app shelf — no user download step")
 
 
 def test_the_clone_never_excludes_the_app_cache():
