@@ -194,7 +194,8 @@ def test_a_failed_direct_send_is_retried_through_the_post_office(svc):
     assert _wait(lambda: svc._router.outbound)
     first = svc._router.outbound[0]
     first.on_failed(first)
-    assert len(svc._router.outbound) == 2
+    # the retry is handed off the callback thread, so it lands a beat later
+    assert _wait(lambda: len(svc._router.outbound) == 2)
     assert svc._router.outbound[1].desired_method == "propagated"
     svc._router.outbound[1].on_delivered(None)
     assert svc.store.thread(PEER)[0]["state"] == lc.POSTED
@@ -371,3 +372,45 @@ def test_peer_route_names_rnsds_road_not_the_shared_instance(svc):
         assert svc.peer_route(PEER)["interface"] == "LocalInterface[rns/default]"
     finally:
         del FakeTransport.hops_to, FakeTransport.next_hop_interface
+
+
+def test_the_fallback_is_never_sent_from_inside_the_routers_locked_callback(svc):
+    """LXMF fires the failed-callback while holding its own lock. A router
+    that takes that lock in handle_outbound deadlocks if the retry is sent
+    from inside the callback — outbound chat froze for the rest of the
+    session (readiness ledger #183). The retry must come from another
+    thread, after the callback has returned."""
+    import threading as _th
+    lock = _th.RLock()
+    router = svc._router
+    plain_outbound = router.handle_outbound
+
+    def locked_outbound(lxm):
+        # a re-entrant call from the callback thread would pass an RLock, so
+        # a plain Lock is what models LXMF here — acquire with a timeout and
+        # record a deadlock instead of hanging the suite
+        got = plain_lock.acquire(timeout=2.0)
+        try:
+            plain_outbound(lxm)
+        finally:
+            if got:
+                plain_lock.release()
+        if not got:
+            deadlocks.append(lxm)
+
+    plain_lock = _th.Lock()
+    deadlocks = []
+    router.handle_outbound = locked_outbound
+    FakeIdentity.known[PEER_BYTES] = FakeIdentity("pe")
+    FakeTransport.paths.add(PEER_BYTES)
+    svc.send(PEER, "hold the lock")
+    assert _wait(lambda: router.outbound)
+    first = router.outbound[0]
+    # LXMF's thread: holds the lock, fires the callback, releases afterwards
+    with plain_lock:
+        first.on_failed(first)
+        callback_returned = True
+    assert callback_returned
+    assert _wait(lambda: len(router.outbound) == 2), "the retry never arrived"
+    assert deadlocks == [], "the retry tried to send from inside the locked callback"
+    assert router.outbound[1].desired_method == "propagated"

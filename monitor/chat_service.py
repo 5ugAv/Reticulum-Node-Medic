@@ -392,8 +392,15 @@ class ChatService:
 
         def _failed(message):
             if not propagated and self._propagation_hash is not None:
-                # Nothing answered on a link — leave it with the propagation node.
-                self._dispatch(msg_id, dest, text, LXMF.LXMessage.PROPAGATED)
+                # Nothing answered on a link — leave it with the propagation
+                # node. OFF this thread: LXMF fires the failure callback while
+                # holding its own lock, and handing the retry straight back to
+                # router.handle_outbound from inside it deadlocked outbound
+                # chat for the rest of the session (readiness ledger #183).
+                threading.Thread(
+                    target=self._dispatch,
+                    args=(msg_id, dest, text, LXMF.LXMessage.PROPAGATED),
+                    daemon=True).start()
             else:
                 self.store.set_state(msg_id, store_mod.FAILED)
 
