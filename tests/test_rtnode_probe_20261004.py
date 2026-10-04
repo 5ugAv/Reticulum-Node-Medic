@@ -128,3 +128,4 @@ def test_notes_are_not_faults_on_the_screen_and_the_button_stays_short():
     start = func_source("ui/screens/probe_screen.py", "start", cls="ProbeScreen")
     assert 'split(" — ")[0]' in start          # "5A59", not the whole header
     assert "shorten=True" in s                 # and never off the button's ends
+    assert 'shorten_from="right", halign="center"' in s   # shortened, still centred

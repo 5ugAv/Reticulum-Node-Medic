@@ -74,7 +74,7 @@ class ProbeScreen(BoxLayout):
         self.run_btn = Button(
             text=tr("Run full diagnostic"), size_hint_y=None, height=dp(56),
             font_size="20sp", background_normal="", shorten=True,
-            shorten_from="right",
+            shorten_from="right", halign="center", valign="middle",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
         self.run_btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), None)))
