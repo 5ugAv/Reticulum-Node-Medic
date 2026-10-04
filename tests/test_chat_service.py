@@ -56,7 +56,16 @@ class FakeDestination:
         self.hash = ident.hash
 
     @staticmethod
-    def hash(ident, app, aspect): return (app + aspect).encode()[:16]
+    def hash(ident, app, aspect):
+        # The identity's LXMF delivery address — what the service compares the
+        # TYPED hash against (readiness ledger #186). A fake identity may carry
+        # its own; otherwise it is the key it is known under.
+        if getattr(ident, "delivery", None):
+            return ident.delivery
+        for k, v in FakeIdentity.known.items():
+            if v is ident:
+                return k
+        return (app + aspect).encode()[:16]
 
 
 class FakeRNS:
@@ -194,8 +203,9 @@ def test_a_failed_direct_send_is_retried_through_the_post_office(svc):
     assert _wait(lambda: svc._router.outbound)
     first = svc._router.outbound[0]
     first.on_failed(first)
-    # the retry is handed off the callback thread, so it lands a beat later
-    assert _wait(lambda: len(svc._router.outbound) == 2)
+    # the retry is handed off the callback thread, so it lands a beat later —
+    # and under a loaded full-suite run that beat has been seen to pass 2 s
+    assert _wait(lambda: len(svc._router.outbound) == 2, t=6.0)
     assert svc._router.outbound[1].desired_method == "propagated"
     svc._router.outbound[1].on_delivered(None)
     assert svc.store.thread(PEER)[0]["state"] == lc.POSTED
@@ -311,11 +321,13 @@ def test_peer_route_says_hops_interface_and_whether_known(svc):
     FakeTransport.hops_to = classmethod(lambda cls, dh: 2)
     FakeTransport.next_hop_interface = classmethod(lambda cls, dh: _If())
     try:
-        assert svc.peer_route(PEER) == {"hops": None, "interface": "", "known": False}
+        assert svc.peer_route(PEER) == {"hops": None, "interface": "", "known": False,
+                                        "is_lxmf": None}
         FakeIdentity.known[PEER_BYTES] = FakeIdentity("pe")
         assert svc.peer_route(PEER)["known"] is True and svc.peer_route(PEER)["hops"] is None
         FakeTransport.paths.add(PEER_BYTES)
-        assert svc.peer_route("<" + PEER + ">") == {"hops": 2, "interface": "RNode LoRa Interface", "known": True}
+        assert svc.peer_route("<" + PEER + ">") == {"hops": 2, "interface": "RNode LoRa Interface",
+                                                    "known": True, "is_lxmf": True}
         assert svc.peer_route("junk")["hops"] is None
     finally:
         del FakeTransport.hops_to, FakeTransport.next_hop_interface
@@ -367,7 +379,8 @@ def test_peer_route_names_rnsds_road_not_the_shared_instance(svc):
                          "expires": 2.0, "interface": "RNodeInterface[RNode LoRa Interface]"}])
     svc._run = lambda cmd: table
     try:
-        assert svc.peer_route(PEER) == {"hops": 1, "interface": "RNode LoRa Interface", "known": True}
+        assert svc.peer_route(PEER) == {"hops": 1, "interface": "RNode LoRa Interface",
+                                        "known": True, "is_lxmf": True}
         svc._run = lambda cmd: "not json"                 # table unreadable: keep what we had
         assert svc.peer_route(PEER)["interface"] == "LocalInterface[rns/default]"
     finally:
@@ -414,3 +427,37 @@ def test_the_fallback_is_never_sent_from_inside_the_routers_locked_callback(svc)
     assert _wait(lambda: len(router.outbound) == 2), "the retry never arrived"
     assert deadlocks == [], "the retry tried to send from inside the locked callback"
     assert router.outbound[1].desired_method == "propagated"
+
+
+# -- #186: a node's hash is not a messaging address ---------------------------
+
+NODE = "d" * 32
+NODE_BYTES = bytes.fromhex(NODE)
+
+
+def test_a_nodes_hash_is_not_a_messaging_address_and_is_never_sent(svc):
+    """recall() answers for ANY destination an identity announced — a node's
+    beacon aspect, say. A message typed to that hash used to be built for the
+    identity's LXMF destination (a different hash), dispatched, and reported
+    'held' for ever (readiness ledger #186). Now it gets its own state word,
+    is never dispatched, and an announce from the node does not resend it."""
+    node_ident = FakeIdentity("nd")
+    node_ident.delivery = bytes.fromhex("e" * 32)      # its real LXMF address
+    FakeIdentity.known[NODE_BYTES] = node_ident
+    FakeTransport.paths.add(NODE_BYTES)
+    assert svc.send(NODE, "hello?") is not None
+    assert _wait(lambda: svc.store.thread(NODE)[0]["state"] == lc.NOT_AN_ADDRESS)
+    assert svc._router.outbound == []                 # never dispatched
+    assert lc.STATE_WORDS[lc.NOT_AN_ADDRESS].startswith("not sent")
+    svc._on_peer_announce(NODE_BYTES, b"")
+    assert svc.store.failed_to(NODE) == []            # not a FAILED message
+    assert svc._router.outbound == []
+    assert svc.peer_route(NODE)["is_lxmf"] is False
+
+
+def test_a_real_messaging_address_still_goes(svc):
+    FakeIdentity.known[PEER_BYTES] = FakeIdentity("pe")
+    FakeTransport.paths.add(PEER_BYTES)
+    assert svc.send(PEER, "hi") is not None
+    assert _wait(lambda: svc._router.outbound)
+    assert svc.peer_route(PEER)["is_lxmf"] is True

@@ -140,7 +140,8 @@ class _Bubble(BoxLayout):
 
 
 class ChatScreen(BoxLayout):
-    def __init__(self, store, service_getter, open_phone_apps=None, **kwargs):
+    def __init__(self, store, service_getter, open_phone_apps=None, retry=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(12)
@@ -148,6 +149,10 @@ class ChatScreen(BoxLayout):
         self._store = store
         self._svc = service_getter
         self._open_phone_apps = open_phone_apps
+        #: ``retry()`` asks the app to start the chat service again after it
+        #: gave up — the Send button is dead until it is up, and a dead button
+        #: with no door is the thing this screen must not be (ledger #187).
+        self._retry = retry
         self._view = LIST
         self._peer = None
         self._seen_version = -1
@@ -212,14 +217,20 @@ class ChatScreen(BoxLayout):
         svc = self._svc() if self._svc else None
         self._svc_now = svc
         addr = getattr(svc, "address", "") if svc else ""
+        err = getattr(svc, "last_error", "") if svc is not None else ""
+        running = bool(getattr(svc, "running", False)) if svc is not None else False
         if addr:
             self._addr.text = tr("Your address") + ":  " + addr
-        elif svc is not None and getattr(svc, "last_error", ""):
-            self._addr.text = tr("Chat isn't up — the medic hasn't reached its own radio yet.")
+        elif err:
+            # the service's own words, not a guess that blames the radio for
+            # every failure (readiness ledger #187)
+            self._addr.text = tr("Chat isn't up: {error}").format(error=err)
         else:
-            self._addr.text = tr("Chat is starting…")
+            self._addr.text = tr("Chat is waiting for the mesh service (rnsd)…")
         self._body.clear_widgets()
         self._foot.clear_widgets()
+        if err and not running and self._retry is not None:
+            self._body.add_widget(self._retry_row())
         if self._view == THREAD and self._peer:
             self._render_thread()
         elif self._view == NEW:
@@ -340,6 +351,19 @@ class ChatScreen(BoxLayout):
         self._foot.add_widget(row)
         Clock.schedule_once(lambda *_: setattr(self._scroll, "scroll_y", 0), 0)
 
+    def _retry_row(self):
+        """What to do about a chat that is not up: where to look, and a button
+        that starts it again (the app had given up polling)."""
+        box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_lbl(tr("Settings ▸ Self Diagnose checks this medic's own "
+                               "radio and services."), size="12.5sp",
+                            color="text_secondary"))
+        again = _btn(tr("Try again"), color="accent", ink="background", h=44)
+        again.bind(on_release=lambda *_: self._retry and self._retry())
+        box.add_widget(again)
+        return box
+
     def _route_line(self) -> str:
         """Where a message to this peer goes RIGHT NOW, and when they were
         last heard — so a dead address shows before you type into it."""
@@ -356,6 +380,8 @@ class ChatScreen(BoxLayout):
             hops = r["hops"]
             route = (tr("{n} hop via {iface}") if hops == 1 else tr("{n} hops via {iface}")
                      ).format(n=hops, iface=via) if via else tr("{n} hops away").format(n=hops)
+        elif r.get("known") and r.get("is_lxmf") is False:
+            route = tr("that is not a messaging address - nothing sent here will arrive")
         elif r.get("known"):
             route = tr("no path right now — held here until they're back online")
         else:

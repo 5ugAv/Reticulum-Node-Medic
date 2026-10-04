@@ -92,6 +92,12 @@ def detect_rnode_port(connection) -> Optional[str]:
         2026-08-01 — the PROBE mis-target). Best-effort: a remote/dev host
         has no roster and nothing to protect."""
         try:
+            from ui.usb_ports import connection_is_local
+            if not connection_is_local(connection):
+                # /dev on an SSH'd Pi is that Pi's: its /dev/ttyACM0 is the
+                # radio plugged into IT, whatever name the medic's own radio
+                # happens to wear here (readiness ledger #47).
+                return False
             from ui.onboard_roster import is_onboard
             return bool(is_onboard(port))
         except Exception:

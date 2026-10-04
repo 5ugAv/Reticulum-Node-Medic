@@ -250,10 +250,40 @@ class MBTiles:
         self.conn.close()
 
 
+#: The last basemap file that could not be used — ``(path, reason)`` — or
+#: None. A corrupt or empty .mbtiles used to open "fine" (sqlite connects
+#: lazily) and give the Map a silent black pane with dead +/− and the
+#: attribution drawn as if a map existed (readiness ledger #177). The screen
+#: reads this to name the file to move aside.
+LAST_OPEN_PROBLEM = None
+
+
 def find_mbtiles(maps_dir: str = MAPS_DIR) -> Optional["MBTiles"]:
     """Open the first carried .mbtiles basemap — the durable data home
-    first, then the legacy in-repo location — or None if none is
-    present (the Map screen then falls back to the coord plot)."""
+    first, then the legacy in-repo location — or None if none is present
+    OR the file cannot be read as a tile set (the Map screen then falls
+    back to the coord plot and says which file is unusable)."""
+    global LAST_OPEN_PROBLEM
     hits = (sorted(glob.glob(os.path.join(maps_dir, "*.mbtiles")))
             or sorted(glob.glob(os.path.join(LEGACY_MAPS_DIR, "*.mbtiles"))))
-    return MBTiles(hits[0]) if hits else None
+    if not hits:
+        LAST_OPEN_PROBLEM = None
+        return None
+    path, tiles = hits[0], None
+    try:
+        tiles = MBTiles(path)
+        if not tiles.zoom_levels():
+            raise sqlite3.DatabaseError("the file holds no tiles")
+    except sqlite3.Error as e:
+        LAST_OPEN_PROBLEM = (path, str(e) or type(e).__name__)
+        if tiles is not None:
+            try:
+                tiles.close()
+            except Exception:                                      # noqa: BLE001
+                pass
+        import logging
+        logging.getLogger(__name__).warning(
+            "map file %s could not be read: %s", path, LAST_OPEN_PROBLEM[1])
+        return None
+    LAST_OPEN_PROBLEM = None
+    return tiles

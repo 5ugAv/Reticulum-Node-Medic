@@ -37,7 +37,11 @@ SENT = "sent"              # left this medic (direct link accepted it)
 DELIVERED = "delivered"    # the peer's LXMF confirmed receipt
 POSTED = "posted"          # no path — waiting at a propagation node for the peer
 FAILED = "failed"          # nothing on the mesh answered to that address
-STATES = (SENDING, SENT, DELIVERED, POSTED, FAILED)
+#: The typed hash is a node's destination, not an LXMF delivery address: a
+#: message to it was built for a DIFFERENT destination and reported "held"
+#: forever (readiness ledger #186). Never dispatched, never re-sent.
+NOT_AN_ADDRESS = "not_an_address"
+STATES = (SENDING, SENT, DELIVERED, POSTED, FAILED, NOT_AN_ADDRESS)
 
 #: What the screen prints beside each state. Plain words — the person at the
 #: panel is not an LXMF developer.
@@ -48,6 +52,8 @@ STATE_WORDS = {
     POSTED: "held here until they're back online",
     FAILED: "not delivered — nobody on the mesh answered to that address. "
             "It goes again the moment they are heard.",
+    NOT_AN_ADDRESS: "not sent - that is not a messaging address. Pick a name "
+                    "under Heard on the mesh, or ask them for their Chat address.",
 }
 
 IN = "in"

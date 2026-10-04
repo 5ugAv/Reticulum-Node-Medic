@@ -1221,6 +1221,21 @@ class MitosisScreen(BoxLayout):
             return up
 
         self._cable_already_up = _live_ports()
+        if self._cable_already_up:
+            # Both medics may already share a switch or a desk LAN: with every
+            # wired port up before this page was drawn there is no transition
+            # to see, and the page had no way forward (readiness ledger #117).
+            note = _label(tr("This medic's network socket is already in use - if "
+                             "the new medic is on the same network, carry on."),
+                          color="text_secondary", size="14sp")
+            grow_to_text(note)
+            self.add_widget(note, index=1)            # above the WiFi button
+            go = Button(text=tr("It's plugged in - carry on →"), size_hint_y=None,
+                        height=dp(52), font_size="18sp", background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+            go.bind(on_release=lambda *_: self._on_cable_seen(gen))
+            self.add_widget(go, index=1)
 
         def tick(_dt):
             def work():

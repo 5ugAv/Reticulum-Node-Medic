@@ -266,7 +266,7 @@ class ChatService:
         bolting on as "message path" toasts, and the first question anyone
         asks when a message sits at "sent": {hops: int|None, interface: str,
         known: bool}. hops None = no path; known = the identity is on hand."""
-        out = {"hops": None, "interface": "", "known": False}
+        out = {"hops": None, "interface": "", "known": False, "is_lxmf": None}
         if not self.running:
             return out
         RNS = self._rns
@@ -275,7 +275,11 @@ class ChatService:
         except ValueError:
             return out
         try:
-            out["known"] = RNS.Identity.recall(dh) is not None
+            ident = RNS.Identity.recall(dh)
+            out["known"] = ident is not None
+            if ident is not None:
+                # known, but is it a MESSAGING address? (ledger #186)
+                out["is_lxmf"] = (RNS.Destination.hash(ident, "lxmf", "delivery") == dh)
             if RNS.Transport.has_path(dh):
                 out["hops"] = int(RNS.Transport.hops_to(dh))
                 iface = RNS.Transport.next_hop_interface(dh)
@@ -349,6 +353,14 @@ class ChatService:
             ident = self._peer_identity(dh)
             if ident is None:
                 self.store.set_state(msg_id, store_mod.FAILED)
+                return
+            # The typed hash must BE this identity's LXMF delivery address.
+            # recall() answers for ANY destination the identity ever announced
+            # (a node's beacon aspect, say), and a message built from it went
+            # to a destination the person never typed and sat "held" for ever
+            # (readiness ledger #186).
+            if RNS.Destination.hash(ident, "lxmf", "delivery") != dh:
+                self.store.set_state(msg_id, store_mod.NOT_AN_ADDRESS)
                 return
             dest = RNS.Destination(ident, RNS.Destination.OUT,
                                    RNS.Destination.SINGLE, "lxmf", "delivery")

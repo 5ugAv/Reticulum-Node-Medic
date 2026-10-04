@@ -1043,7 +1043,8 @@ class ReticulumNodeMedicApp(App):
         self._chat = ChatService(self.chat_store, display_name=tool_name())
         chat_scr = Screen(name="chat")
         self.chat_screen = ChatScreen(self.chat_store, lambda: self._chat,
-                                      open_phone_apps=lambda: self.switch_mode("comms"))
+                                      open_phone_apps=lambda: self.switch_mode("comms"),
+                                      retry=self.retry_chat)
         chat_scr.add_widget(self._with_back(self.chat_screen))
         chat_scr.bind(on_enter=lambda *_: self.chat_screen.enter(),
                       on_leave=lambda *_: self.chat_screen.leave())
@@ -1053,7 +1054,7 @@ class ReticulumNodeMedicApp(App):
         # rate-limited — so the propagation node was asked once, a minute after
         # start, and never again ("checked 30 Sep 17:11" a day later).
         Clock.schedule_interval(self._chat_tick, 60)
-        Clock.schedule_interval(self._chat_start_poll, 3)
+        self._chat_poll_ev = Clock.schedule_interval(self._chat_start_poll, 3)
         Clock.schedule_interval(self._refresh_chat_badge, 3)
 
         # Field readiness — the caller workflows.carry has never had. It shipped
@@ -1578,9 +1579,26 @@ class ReticulumNodeMedicApp(App):
             if self._chat_attempts > 20:
                 self._chat_log("chat: giving up after %d attempts: %s"
                                % (self._chat_attempts, chat.last_error))
+                # the screen shows last_error and offers Try again (ledger #187)
                 return False
         self._start_chat_if_ready(self._chat_log)
         return True
+
+    def retry_chat(self):
+        """The chat screen's Try again: forget the give-up and poll afresh
+        (readiness ledger #187 — Send was a dead button with no door)."""
+        self._chat_attempts = 0
+        chat = getattr(self, "_chat", None)
+        if chat is not None and not chat.running:
+            chat.last_error = ""
+        ev = getattr(self, "_chat_poll_ev", None)
+        if ev is not None:
+            try:
+                ev.cancel()
+            except Exception:                                      # noqa: BLE001
+                pass
+        self._chat_poll_ev = Clock.schedule_interval(self._chat_start_poll, 3)
+        self._start_chat_if_ready(self._chat_log)
 
     _chat_badge_version = -1
 

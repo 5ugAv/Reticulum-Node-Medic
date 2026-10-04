@@ -1649,11 +1649,27 @@ class ScanScreen(BoxLayout):
         have = self._tiles is not None
         for b in getattr(self, "_zoom_btns", []):
             b.disabled = not have
+        rb = getattr(self, "recenter_btn", None)
+        if rb is not None:
+            rb.disabled = not have            # the target button zooms nothing either
         if not have:
             try:
-                self._set_status(tr("No offline map on this medic yet — download "
-                                    "one below (needs WiFi once). Nodes still "
-                                    "appear under VITALS."), "warn")
+                from ui import map_tiles as _mt
+                problem = getattr(_mt, "LAST_OPEN_PROBLEM", None)
+                if problem:
+                    import os as _os
+                    self._set_status(tr("Map file could not be read: {name} - move "
+                                        "it aside and download the map again.").format(
+                                            name=_os.path.basename(problem[0])), "alert")
+                else:
+                    self._set_status(tr("No offline map on this medic yet — download "
+                                        "one below (needs WiFi once). Nodes still "
+                                        "appear under VITALS."), "warn")
+                # The sentence lives INSIDE the Offline-maps panel, which starts
+                # collapsed: an explanation nobody can see is no explanation
+                # (readiness ledger #2, #178) — open the panel.
+                if not getattr(self, "_offline_open", False):
+                    self._toggle_offline()
             except Exception:                                      # noqa: BLE001
                 pass
 

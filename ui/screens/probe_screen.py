@@ -23,6 +23,7 @@ from kivy.uix.label import Label
 from kivy.uix.progressbar import ProgressBar
 from kivy.uix.scrollview import ScrollView
 
+from diagnostics.labels import label_for
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — PROBE buttons/headers/summaries
 from ui.text_fit import grow_to_text
@@ -223,7 +224,7 @@ class ProbeScreen(BoxLayout):
         elif event.type == "check_start":
             # a long check (an RTNode listen is up to a minute) is SEEN running
             self.summary_lbl.text = tr("Checking {name}...").format(
-                name=event.check_name.replace("_", " "))
+                name=label_for(event.check_name))
             self.summary_lbl.color = theme.hex_to_rgba(theme.COLORS["accent"])
             self._set_summary(hidden=False)
         elif event.type == "check_done":
@@ -251,7 +252,8 @@ class ProbeScreen(BoxLayout):
         _, checks = box
         mark = "OK" if issue is None else "X"
         color = "green" if issue is None else _SEV_COLOR.get(issue.severity, "amber")
-        row = _label(f"  {mark} {check_name}", color=color, size="14sp")
+        # plain words, not the developer's identifier (readiness ledger #87)
+        row = _label(f"  {mark} {label_for(check_name)}", color=color, size="14sp")
         row.size_hint_y = None
         row.height = dp(24)
         checks.add_widget(row)
@@ -305,7 +307,10 @@ class ProbeScreen(BoxLayout):
     def _issue_row(self, issue):
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(46), spacing=dp(6))
-        text = _label(f"[{issue.severity}] {issue.description}",
+        sev_word = {"critical": tr("Critical"), "warning": tr("Warning"),
+                    "info": tr("Note")}.get(issue.severity,
+                                            str(issue.severity).capitalize())
+        text = _label(f"{sev_word}: {issue.description}",
                       color=_SEV_COLOR.get(issue.severity, "amber"),
                       size="14sp")
         # A three-line description ("Couldn't read this board, so none of
