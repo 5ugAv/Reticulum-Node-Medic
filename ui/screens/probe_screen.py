@@ -73,9 +73,11 @@ class ProbeScreen(BoxLayout):
 
         self.run_btn = Button(
             text=tr("Run full diagnostic"), size_hint_y=None, height=dp(56),
-            font_size="20sp", background_normal="",
+            font_size="20sp", background_normal="", shorten=True,
+            shorten_from="right",
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
+        self.run_btn.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), None)))
         self.run_btn.bind(on_release=lambda *_: self.start())
         self.add_widget(self.run_btn)
 
@@ -174,7 +176,11 @@ class ProbeScreen(BoxLayout):
         self.run_btn.disabled = True
         self._workflow = self._workflow_factory()
         self._refresh_target(self._workflow)
-        self.run_btn.text = tr("Checking {name}...").format(name=self._target)
+        # The header carries the full name; the button gets the short one
+        # ("5A59", or the chip's product string) — the full label ran off
+        # both ends of the button on the glass (2026-10-04).
+        short = self._target.split(" — ")[0].split(" on /dev/")[0].strip()
+        self.run_btn.text = tr("Checking {name}...").format(name=short)
         # No board attached (or path not wired): plain popup, don't run/fake it.
         if getattr(self._workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
@@ -255,10 +261,12 @@ class ProbeScreen(BoxLayout):
         if not box:
             return
         header, _ = box
-        mark = "OK" if result.passed else f"X {len(result.issues)}"
+        # the same rule as the summary: info rows are notes, not faults
+        faults = [i for i in result.issues if i.severity in ("critical", "warning")]
+        mark = "OK" if not faults else f"X {len(faults)}"
         header.text = f"{name}   {mark}"
         header.color = theme.hex_to_rgba(
-            theme.COLORS["green" if result.passed else "amber"])
+            theme.COLORS["green" if not faults else "amber"])
 
     # -- summary + outcome --------------------------------------------------
 

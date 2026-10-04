@@ -117,3 +117,14 @@ def test_the_listen_happens_inside_the_first_check_so_the_screen_sees_it():
     screen = src("ui/screens/probe_screen.py")
     assert 'event.type == "check_start"' in screen
     assert 'tr("Checking {name}...").format(' in screen
+
+
+def test_notes_are_not_faults_on_the_screen_and_the_button_stays_short():
+    s = src("ui/screens/probe_screen.py")
+    summary = func_source("ui/screens/probe_screen.py", "_render_summary", cls="ProbeScreen")
+    mark = func_source("ui/screens/probe_screen.py", "_mark_category", cls="ProbeScreen")
+    for body in (summary, mark):
+        assert 'i.severity in ("critical", "warning")' in body
+    start = func_source("ui/screens/probe_screen.py", "start", cls="ProbeScreen")
+    assert 'split(" — ")[0]' in start          # "5A59", not the whole header
+    assert "shorten=True" in s                 # and never off the button's ends
