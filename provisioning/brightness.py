@@ -24,6 +24,9 @@ Runner = Callable[..., Tuple[int, str]]
 BACKLIGHT_GLOB = "/sys/class/backlight/*"
 MIN_PCT = 6                                    # never let it go fully dark
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/brightness")
+#: Resolved at CALL time (``path or CONFIG``) by save_pct/load_pct, so a test
+#: that points CONFIG at a scratch file really is hermetic — the suite used to
+#: leave the operator's saved brightness at 6% (readiness ledger #192).
 
 
 def _default_run(argv: list, stdin: Optional[str] = None) -> Tuple[int, str]:
@@ -97,16 +100,18 @@ def set_brightness(pct: int, device: Optional[str] = None,
     return False, (out.strip().splitlines() or ["Couldn't set brightness."])[-1]
 
 
-def save_pct(pct: int, path: str = CONFIG) -> None:
+def save_pct(pct: int, path: Optional[str] = None) -> None:
     """Remember the chosen level so it can be restored after a reboot (the backlight
     resets to default on boot). Best-effort — never raises."""
+    path = path or CONFIG
     # Atomic write so a field power-cut can't truncate the saved level (see
     # monitor.atomic_json); best-effort, never raises.
     from monitor.atomic_json import write_text
     write_text(path, str(int(pct)), mode=0o644)
 
 
-def load_pct(path: str = CONFIG) -> Optional[int]:
+def load_pct(path: Optional[str] = None) -> Optional[int]:
+    path = path or CONFIG
     try:
         with open(path) as f:
             return int(f.read().strip())

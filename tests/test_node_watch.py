@@ -74,6 +74,24 @@ def test_is_watching_and_remaining_hours():
     assert w.is_watching(dev("a", status="ok", lsh=1.0)) is False
 
 
+def test_a_fault_red_node_heard_an_hour_ago_is_not_watched():
+    """Red INSIDE the silence window means the node is talking and its own
+    beacon reported a fault (lora_up=False, undervoltage...). There is no
+    outage to time, so the detail page must not say "unreachable — the medic
+    is watching it, will warn in 3 days" about a node heard an hour ago
+    (readiness ledger #137)."""
+    from monitor.node_watch import SILENCE_RED_H
+    w = NodeWatcher()
+    fault_red = dev("f", status="alert", lsh=1.0)
+    assert w.is_watching(fault_red) is False
+    assert w.watch_remaining_hours(fault_red) is None
+    # right at the silence line it is still the beacon talking, not silence
+    assert w.is_watching(dev("f", lsh=SILENCE_RED_H)) is False
+    # just past it the red is silence, and the watch begins
+    assert w.is_watching(dev("f", lsh=SILENCE_RED_H + 0.1)) is True
+    assert w.watch_remaining_hours(dev("f", lsh=SILENCE_RED_H + 0.1)) > 0
+
+
 def test_state_roundtrip_persists_notified():
     w = NodeWatcher()
     w.tick([dev("a", lsh=80.0)])

@@ -18,18 +18,43 @@ names its own allowlist so an intentional exception is visible rather than
 silent.
 """
 
+import os
 import re
 import subprocess
 
-REPO_FILES = subprocess.run(["git", "ls-files"], capture_output=True,
-                            text=True).stdout.split()
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _tracked_files():
+    """Every tracked path, relative to ROOT — from git, run IN the repo, so the
+    guard means the same thing from any cwd. It used to run `git ls-files` in
+    whatever directory pytest happened to start in and open the paths
+    relatively: from anywhere else (or a .git-less export) it scanned nothing
+    and every check passed vacuously (readiness ledger #196). Without git
+    the tree is walked instead, skipping the usual untracked noise."""
+    try:
+        p = subprocess.run(["git", "ls-files"], cwd=ROOT, check=True,
+                           capture_output=True, text=True)
+        files = p.stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        files = []
+    if files:
+        return files
+    skip = {".git", "__pycache__", ".venv", "venv", "node_modules", ".pytest_cache"}
+    for d, dirs, names in os.walk(ROOT):
+        dirs[:] = [x for x in dirs if x not in skip]
+        files += [os.path.relpath(os.path.join(d, n), ROOT) for n in names]
+    return files
+
+
+REPO_FILES = _tracked_files()
 
 
 def _tracked_text():
     """(path, text) for every tracked text file."""
     for path in REPO_FILES:
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(os.path.join(ROOT, path), encoding="utf-8") as f:
                 yield path, f.read()
         except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
             continue
@@ -128,3 +153,12 @@ def test_no_personal_email():
             line = text[:m.start()].count("\n") + 1
             leaks.append(f"{path}:{line}: {addr}")
     assert not leaks, "email addresses in tracked files:\n" + "\n".join(leaks)
+
+
+def test_the_guard_scanned_the_tree_and_not_nothing():
+    """The four checks above pass trivially over an empty list — this one is
+    what makes a silent `git ls-files` failure a red test instead of a pass."""
+    assert REPO_FILES, "privacy guard scanned nothing"
+    assert "tests/test_privacy_tree.py" in REPO_FILES
+    scanned = sum(1 for _ in _tracked_text())
+    assert scanned > 100, scanned

@@ -33,7 +33,8 @@ from workflows.repair import BOARD_MODULES, RTNODE_MODULES, RepairWorkflow
 from workflows.rnode_boards import RNodeBoard
 from workflows.rnode_flash import RNodeFlashWorkflow
 from workflows.rnode_v4_rgb import (
-    V4_BOARD_KEY, HeltecV4RGBWorkflow, rgb_firmware_available)
+    V4_BOARD_KEY, HeltecV4RGBWorkflow, rgb_firmware_available,
+    rgb_build_possible)
 from workflows.rtnode_build import RTNodeBuildWorkflow
 
 
@@ -147,8 +148,9 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
                      connection=None, ports_fn: Callable[[], list] = local_board_ports):
     """Flash a board attached to the medic. Targets a FREE port only (never the
     medic's own busy radio — see local_board_ports). A Heltec V4 is forced to the
-    RGB NeoPixel firmware (never stock). Falls back to *demo_factory(board)* when
-    no free board is attached."""
+    RGB NeoPixel firmware (never stock) — built first on a medic that hasn't
+    yet, or an honest refusal when it can't be built here. Falls back to
+    *demo_factory(board)* when no free board is attached."""
     free = ports_fn()
     if not free:
         # No FREE port. Only an explicit opt-in (RNM_DEMO on a dev box) may show
@@ -181,10 +183,27 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
             "More than one board is plugged into the medic. Unplug all but the "
             "one you want to flash, then start again.", "Two boards plugged in")
     port = free[0]                         # the freshly-plugged board, not Jonesey
-    if board.key == V4_BOARD_KEY and rgb_firmware_available():
-        # RGB is imperative for a boxed V4 — the dedicated build+flash workflow
-        # (run_all skips the compile when the firmware is already built).
-        return HeltecV4RGBWorkflow(connection, port=port)
+    if board.key == V4_BOARD_KEY:
+        # RGB is imperative for a boxed V4 — never stock. The dedicated
+        # workflow flashes the built firmware, or COMPILES it first when the
+        # toolchain and source are aboard or the medic is online to fetch them
+        # (run_all skips the compile once the .bin exists). A fresh medic used
+        # to be sent to the stock flash here, because the only workflow that
+        # builds the colour firmware was only ever chosen once it was already
+        # built (readiness ledger #44).
+        if rgb_firmware_available():
+            return HeltecV4RGBWorkflow(connection, port=port)
+        from workflows.updater import has_connectivity
+        if rgb_build_possible(online=lambda: has_connectivity(connection)):
+            return HeltecV4RGBWorkflow(connection, port=port)
+        return _HonestFailWorkflow(
+            "build_firmware",
+            "This medic hasn't built the Heltec V4 colour firmware yet, and "
+            "the tools to build it aren't aboard (arduino-cli, its ESP32 core "
+            "and the RNode firmware source) — with no internet to fetch them. "
+            "Put the medic on Wi-Fi and try again (the first build fetches "
+            "them), or clone this medic from one that has them.",
+            "V4 colour firmware not built")
     return RNodeFlashWorkflow(connection, board, port=port,
                               work_ports_fn=ports_fn)
 

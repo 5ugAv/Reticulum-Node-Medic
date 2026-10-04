@@ -640,8 +640,12 @@ class NodeRecord:
         sig = self.signal_dbm()
         neighbour = self.provenance == "neighbour"
         status = self.status(now)
-        if neighbour and status == "ok":
-            status = "unknown"           # heard != healthy; we know nothing yet
+        if neighbour and status in ("ok", "alert"):
+            # heard != healthy, and silent != broken: a stranger's row is
+            # grey either way. A phone heard once turned RED after 18 h and
+            # stayed red forever (readiness ledger #136); only a probe the
+            # medic itself sent and got no answer to keeps its warning.
+            status = "warn" if self.probe_unanswered else "unknown"
         display = self.name or (
             (self.announced_name or f"Neighbour {self.dst_hash[:8]}")
             if neighbour else self._nameless_label())
@@ -1424,6 +1428,7 @@ class NodeRegistry:
 
     # -- dashboard views ---------------------------------------------------
 
+    @_locked                 # walks nodes while the announce thread inserts
     def all(self, now: float) -> List[NodeRecord]:
         """Every node: the operator's OWN nodes first (kin above neighbours),
         alert-first within each group, then by name."""
@@ -1796,6 +1801,7 @@ class NodeRegistry:
                 best[k] = d
         return sorted(best.values(), key=lambda d: d["name"].lower())
 
+    @_locked                 # (readiness ledger #133: both were unlocked)
     def visible(self, now: float, status: Optional[str] = None,
                 search: str = "") -> List[NodeRecord]:
         result = []

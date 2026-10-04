@@ -197,6 +197,39 @@ def rgb_firmware_available(bin_path: str = RGB_LOCAL_BIN,
     return os.path.isfile(bin_path) and os.path.isfile(hasher_path)
 
 
+#: The arduino-cli ESP32 core the build needs (carry.py audits the same dir).
+ARDUINO_ESP32_CORE_DIR = "~/.arduino15/packages/esp32"
+
+
+#: Where the medic's own arduino-cli lives when it is not on the app's PATH
+#: (checked live 2026-10-04: ~/.local/bin/arduino-cli).
+ARDUINO_CLI_PATHS = ("~/.local/bin/arduino-cli", "~/bin/arduino-cli")
+
+
+def rgb_build_possible(firmware_dir: str = FIRMWARE_DIR,
+                       core_dir: str = ARDUINO_ESP32_CORE_DIR,
+                       which=None, online=None,
+                       cli_paths=ARDUINO_CLI_PATHS) -> bool:
+    """True when this host can COMPILE the RGB firmware: arduino-cli, its ESP32
+    core and the firmware source are all aboard — or *online* says the medic
+    has internet, in which case HeltecV4RGBWorkflow fetches what it lacks
+    itself (_ensure_toolchain / _ensure_source). The factory asks this when the
+    firmware isn't built yet, instead of quietly sending a boxed V4 to the
+    stock flash (readiness ledger #44)."""
+    import shutil
+    which = which or shutil.which
+    cli = bool(which("arduino-cli")) or any(
+        os.path.isfile(os.path.expanduser(p)) for p in cli_paths)
+    aboard = (cli and os.path.isdir(os.path.expanduser(core_dir))
+              and os.path.isdir(os.path.expanduser(firmware_dir)))
+    if aboard:
+        return True
+    try:
+        return bool(online()) if online is not None else False
+    except Exception:
+        return False
+
+
 def rgb_firmware_staleness(bin_path: str = RGB_LOCAL_BIN,
                            firmware_dir: str = FIRMWARE_DIR,
                            run=None) -> Optional[str]:

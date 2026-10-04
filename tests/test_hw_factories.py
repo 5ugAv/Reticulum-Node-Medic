@@ -109,13 +109,32 @@ def test_rnode_flash_v4_forces_rgb_on_hardware(monkeypatch):
     assert isinstance(wf, HeltecV4RGBWorkflow)     # never stock for a boxed V4
 
 
-def test_rnode_flash_v4_stock_when_rgb_not_built(monkeypatch):
-    # if the RGB firmware isn't compiled on this medic, fall to the stock flow
+def test_rnode_flash_v4_builds_first_when_not_yet_built_but_buildable(monkeypatch):
+    """A fresh medic: no .bin yet, but the toolchain + source are aboard (or it
+    is online). The same workflow compiles then flashes — never the stock
+    flash, which is where a boxed V4 used to be sent (readiness ledger #44)."""
     monkeypatch.setattr(hw, "rgb_firmware_available", lambda *a, **k: False)
+    asked = {}
+    def possible(online=None):
+        asked["online"] = online
+        return True
+    monkeypatch.setattr(hw, "rgb_build_possible", possible)
     conn = EmulatedConnection(default_code=0, default_stdout="ok")
     wf = hw.make_rnode_flash(V4, _demo_flash, connection=conn,
                              ports_fn=lambda: ["/dev/ttyACM0"])
-    assert isinstance(wf, RNodeFlashWorkflow)
+    assert isinstance(wf, HeltecV4RGBWorkflow)
+    assert callable(asked["online"])          # it may fetch the toolchain online
+
+
+def test_rnode_flash_v4_refuses_honestly_when_it_cannot_be_built(monkeypatch):
+    monkeypatch.setattr(hw, "rgb_firmware_available", lambda *a, **k: False)
+    monkeypatch.setattr(hw, "rgb_build_possible", lambda **k: False)
+    conn = EmulatedConnection(default_code=0, default_stdout="ok")
+    wf = hw.make_rnode_flash(V4, _demo_flash, connection=conn,
+                             ports_fn=lambda: ["/dev/ttyACM0"])
+    assert getattr(wf, "is_blocked", False) is True
+    assert not isinstance(wf, RNodeFlashWorkflow)        # no silent stock flash
+    assert "Wi-Fi" in wf.message and "clone" in wf.message.lower()
 
 
 def test_rtnode_and_repair_are_real_on_hardware():

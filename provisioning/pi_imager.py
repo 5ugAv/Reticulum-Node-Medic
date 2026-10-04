@@ -751,7 +751,8 @@ def prepare_card_commands(device_path: str,
 
 
 def flash(device_path: str, hostname: str, username: str, password: str,
-          wifi_ssid: str = "", wifi_password: str = "", wifi_country: str = "AU",
+          wifi_ssid: str = "", wifi_password: str = "",
+          wifi_country: Optional[str] = None,
           enable_ssh: bool = True, image_path: Optional[str] = None,
           run: Runner = _run,
           run_shell: Optional[Callable[[str], Tuple[int, str]]] = None,
@@ -761,7 +762,10 @@ def flash(device_path: str, hostname: str, username: str, password: str,
           medic: bool = False, timezone: str = "") -> Tuple[bool, str]:
     """Image + configure a Pi SD card. HARD SAFETY: refuses unless *device_path* is
     a present removable USB disk (never the medic's system disk). Returns (ok, msg).
-    ``run_shell`` executes the dd/mount shell strings (injected in tests)."""
+    ``run_shell`` executes the dd/mount shell strings (injected in tests).
+    ``wifi_country`` None = the MEDIC'S own regulatory country (provisioning.
+    wifi.medic_country); when that can't be read the card gets the old default
+    and the result message says so."""
     if not is_safe_target(device_path, run):
         return (False, f"Refusing to write to {device_path}: it isn't a removable "
                        "USB card (or it's the medic's own system disk).")
@@ -782,6 +786,19 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     code, out = run_shell(write_image_command(image, device_path))
     if code != 0:
         return (False, f"Writing the image failed: {out[-200:]}")
+    # THE WI-FI COUNTRY: the medic's own regulatory domain, so a node lives
+    # under the rules of the place that built it — not the developer's (every
+    # card was baked AU with no detection, readiness ledger #123). When the
+    # medic's can't be read the old default stands and the result SAYS so.
+    country_note = ""
+    if wifi_country is None:
+        from provisioning.wifi import medic_country, DEFAULT_COUNTRY
+        wifi_country = medic_country()
+        if not wifi_country:
+            wifi_country = DEFAULT_COUNTRY
+            country_note = (f"Wi-Fi country set to {DEFAULT_COUNTRY} because the "
+                            "medic's own couldn't be read — if the node lives "
+                            "elsewhere, set it on the Pi with raspi-config.")
     # The MEDIC'S timezone for first boot (2026-09-23): a stock image is
     # Europe/London, and NTP fixes the clock but never the zone.
     toml = build_custom_toml(hostname, username, password,
@@ -847,6 +864,8 @@ def flash(device_path: str, hostname: str, username: str, password: str,
     # never baked, and a screen that then promises a USB-cable birth that cannot
     # happen. Diagnosing that from the far end costs a bench night (2026-08-06).
     warnings: List[str] = []
+    if country_note:
+        warnings.append(country_note)
     # Record hostname AND the card's birth token HERE, where both are in
     # scope — the imaging choke point. First contact proves identity against
     # this record (operator, 2026-08-14).

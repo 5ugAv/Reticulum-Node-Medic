@@ -26,6 +26,9 @@ from typing import Dict, List, Optional
 from monitor import trust_integrity
 
 CONFIG = os.path.expanduser("~/.reticulum-node-medic/trust.json")
+#: Every function below takes ``path=None`` and resolves ``path or CONFIG`` at
+#: CALL time, so a test that points CONFIG at a scratch file really is hermetic
+#: — test_clone used to plant a fake trusted clone in the REAL store (ledger #193).
 
 log = logging.getLogger(__name__)
 
@@ -51,13 +54,14 @@ def _sign_store(store: Dict, key: bytes) -> str:
     return trust_integrity.sign(key, trust_integrity.canonical_bytes(store))
 
 
-def load(path: str = CONFIG) -> Dict:
+def load(path: Optional[str] = None) -> Dict:
     """Load the trust store, verifying its HMAC integrity sidecar (audit C8).
 
     On a TAMPERED or unverifiable store, log a warning and return an EMPTY,
     all-untrusted store rather than honouring possibly-forged records. A legacy
     store with no sidecar (first run after this change) is accepted ONCE and
     immediately re-signed (migration). Never raises."""
+    path = path or CONFIG
     try:
         with open(path, "rb") as f:
             raw = f.read()
@@ -110,7 +114,7 @@ def load(path: str = CONFIG) -> Dict:
     return {"units": units if isinstance(units, dict) else {}}
 
 
-def save(store: Dict, path: str = CONFIG) -> Dict:
+def save(store: Dict, path: Optional[str] = None) -> Dict:
     """Persist the trust store with its HMAC integrity FOLDED IN (audit C8).
 
     A field power-cut used to be able to un-kin the whole fleet: the old save
@@ -126,6 +130,7 @@ def save(store: Dict, path: str = CONFIG) -> Dict:
     detached ``.sig`` sidecar is still written (atomically, best-effort) for
     backward compatibility, but ``load`` treats the folded field as the
     authority, so a torn sidecar can no longer un-kin anyone."""
+    path = path or CONFIG
     from monitor.atomic_json import write_json, write_text
     key = trust_integrity.load_or_create_key(_key_path(path))
     signature = _sign_store(store, key)           # sign FIRST, before any write
@@ -148,8 +153,9 @@ def _now(now: Optional[float]) -> float:
 
 
 def set_self(unit_hash: str, name: str, parent: Optional[str] = None,
-             now: Optional[float] = None, path: str = CONFIG) -> Dict:
+             now: Optional[float] = None, path: Optional[str] = None) -> Dict:
     """Register THIS medic's own unit — always trusted, flagged self. Idempotent."""
+    path = path or CONFIG
     store = load(path)
     u = store["units"].get(unit_hash, {})
     u.update({"name": name or u.get("name") or "This Node Medic",
@@ -161,9 +167,10 @@ def set_self(unit_hash: str, name: str, parent: Optional[str] = None,
 
 
 def record_child_clone(unit_hash: str, name: str, parent_hash: str,
-                       now: Optional[float] = None, path: str = CONFIG) -> Dict:
+                       now: Optional[float] = None, path: Optional[str] = None) -> Dict:
     """A DIRECT clone this medic made — trusted (you made it), via 'cloned from
     this unit'. Its own future clones are NOT covered (non-transitive)."""
+    path = path or CONFIG
     store = load(path)
     u = store["units"].get(unit_hash, {})
     u.update({"name": name or u.get("name") or unit_hash[:12],
@@ -174,9 +181,10 @@ def record_child_clone(unit_hash: str, name: str, parent_hash: str,
 
 
 def note_descendant(unit_hash: str, name: str, parent_hash: str,
-                    path: str = CONFIG) -> Dict:
+                    path: Optional[str] = None) -> Dict:
     """A DISCOVERED unit descended from a known one — recorded UNTRUSTED by default
     (awaiting manual approval). No-op if already known (won't downgrade)."""
+    path = path or CONFIG
     store = load(path)
     if unit_hash in store["units"]:
         return store
@@ -186,8 +194,9 @@ def note_descendant(unit_hash: str, name: str, parent_hash: str,
     return save(store, path)
 
 
-def trust(unit_hash: str, now: Optional[float] = None, path: str = CONFIG) -> Dict:
+def trust(unit_hash: str, now: Optional[float] = None, path: Optional[str] = None) -> Dict:
     """Manually grant trust to a known unit (approve a descendant)."""
+    path = path or CONFIG
     store = load(path)
     u = store["units"].get(unit_hash)
     if u is None:
@@ -199,9 +208,10 @@ def trust(unit_hash: str, now: Optional[float] = None, path: str = CONFIG) -> Di
     return save(store, path)
 
 
-def revoke(unit_hash: str, path: str = CONFIG) -> Dict:
+def revoke(unit_hash: str, path: Optional[str] = None) -> Dict:
     """Revoke trust — its birthed nodes drop from kin to neighbour. Never the self
     unit. The record stays (shown as untrusted)."""
+    path = path or CONFIG
     store = load(path)
     u = store["units"].get(unit_hash)
     if u is None or u.get("self"):
@@ -211,12 +221,13 @@ def revoke(unit_hash: str, path: str = CONFIG) -> Dict:
     return save(store, path)
 
 
-def forget(unit_hash: str, path: str = CONFIG) -> Dict:
+def forget(unit_hash: str, path: Optional[str] = None) -> Dict:
     """Remove a unit's record entirely — for a clone that no longer exists (a
     test card written over). Never the self unit. Forgetting is not trusting:
     a forgotten unit heard again comes back as an untrusted descendant needing
     approval (operator, 2026-09-21: revoking left four dead clones on the
     list with only an Approve button)."""
+    path = path or CONFIG
     store = load(path)
     u = store["units"].get(unit_hash)
     if u is None or u.get("self"):
@@ -225,15 +236,17 @@ def forget(unit_hash: str, path: str = CONFIG) -> Dict:
     return save(store, path)
 
 
-def is_trusted(unit_hash: Optional[str], path: str = CONFIG) -> bool:
+def is_trusted(unit_hash: Optional[str], path: Optional[str] = None) -> bool:
     """Is this exact unit trusted? NEVER walks the parent chain (non-transitive)."""
+    path = path or CONFIG
     if not unit_hash:
         return False
     return bool(load(path)["units"].get(unit_hash, {}).get("trusted"))
 
 
-def classify(unit_hash: str, path: str = CONFIG) -> str:
+def classify(unit_hash: str, path: Optional[str] = None) -> str:
     """'self' | 'trusted' | 'untrusted' | 'unknown'."""
+    path = path or CONFIG
     u = load(path)["units"].get(unit_hash)
     if u is None:
         return "unknown"
@@ -242,16 +255,18 @@ def classify(unit_hash: str, path: str = CONFIG) -> str:
     return "trusted" if u.get("trusted") else "untrusted"
 
 
-def node_provenance(builder_hash: Optional[str], path: str = CONFIG) -> str:
+def node_provenance(builder_hash: Optional[str], path: Optional[str] = None) -> str:
     """A node's kin/neighbour status FROM its birthing unit's trust: 'kin' if that
     unit is trusted (incl. this medic's own), else 'neighbour'. Revoking the unit
     flips its nodes to neighbour."""
+    path = path or CONFIG
     return "kin" if is_trusted(builder_hash, path) else "neighbour"
 
 
-def units(path: str = CONFIG) -> List[Dict]:
+def units(path: Optional[str] = None) -> List[Dict]:
     """All known units for the Settings family-tree list, each with its computed
     status and its parent's display name. Self first, then trusted, then untrusted."""
+    path = path or CONFIG
     store = load(path)["units"]
     out = []
     for h, u in store.items():

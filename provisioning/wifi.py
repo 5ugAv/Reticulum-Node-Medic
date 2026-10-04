@@ -243,3 +243,36 @@ def current_connection(run: Runner = _default_run) -> Optional[dict]:
     if not ssid or ssid in ("", "--"):
         return None
     return {"ssid": ssid, "ip": ip}
+
+
+# -- the medic's OWN regulatory country ---------------------------------------
+#: Where the kernel keeps the active Wi-Fi regulatory domain (cfg80211).
+REGDOM_SYSFS = "/sys/module/cfg80211/parameters/ieee80211_regdom"
+#: Used for a card only when the medic's own country can't be read — and the
+#: imaging result then SAYS so. Every card used to be baked AU, the developer's
+#: country, with no detection at all (readiness ledger #123).
+DEFAULT_COUNTRY = "AU"
+
+
+def _is_country(code: str) -> bool:
+    return len(code) == 2 and code.isalpha() and code != "00"   # 00 = world/unset
+
+
+def medic_country(run: Runner = _default_run, sysfs: str = REGDOM_SYSFS) -> str:
+    """The medic's own Wi-Fi regulatory country ("AU"), so a node is baked with
+    the rules of the place that built it. Two sources, both checked on the live
+    medic (2026-10-04): the kernel's cfg80211 regdom, then raspi-config's saved
+    wifi country (``iw`` isn't installed there; NetworkManager carries none).
+    Returns "" when neither has one — the caller falls back and says so."""
+    try:
+        with open(sysfs, encoding="utf-8") as f:
+            code = f.read().strip().upper()
+        if _is_country(code):
+            return code
+    except OSError:
+        pass
+    rc, out = run(["raspi-config", "nonint", "get_wifi_country"])
+    code = (out or "").strip().upper()
+    if rc == 0 and _is_country(code):
+        return code
+    return ""

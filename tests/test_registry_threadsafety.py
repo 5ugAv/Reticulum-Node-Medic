@@ -35,6 +35,11 @@ def test_concurrent_announces_and_reads_never_raise():
                 reg.devices(time.time())
                 reg.to_dict()
                 reg.summary(time.time())
+                # the BIRTH "use an existing node" search and the VITALS
+                # filter walk nodes through these two (readiness ledger #133:
+                # both were unlocked, so a live announce mid-walk raised)
+                reg.all(time.time())
+                reg.visible(time.time(), search="n")
             except Exception as e:            # noqa: BLE001
                 errors.append(("reader", repr(e)))
 

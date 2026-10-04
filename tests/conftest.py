@@ -113,7 +113,44 @@ def _hermetic_imaged_pi(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_language(monkeypatch):
+def _hermetic_medic_prefs(monkeypatch, tmp_path):
+    """No test may write the medic's real screen brightness or trust store.
+    The suite used to leave the operator's saved brightness at 6% and plant a
+    fake trusted clone in the real trust store (readiness ledger #192, #193).
+    Both modules resolve their default path at CALL time now, so pointing
+    the module constants at scratch files is enough."""
+    try:
+        from provisioning import brightness
+        monkeypatch.setattr(brightness, "CONFIG", str(tmp_path / "brightness"),
+                            raising=False)
+    except Exception:
+        pass
+    try:
+        from monitor import trust
+        monkeypatch.setattr(trust, "CONFIG", str(tmp_path / "trust.json"),
+                            raising=False)
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_medic_country(monkeypatch):
+    """Every card a test images is baked for the SAME country, whatever the
+    machine running the suite has for a Wi-Fi regulatory domain. pi_imager.
+    flash() asks provisioning.wifi.medic_country() at call time (readiness
+    ledger #123); unstubbed, a dev box with no regdom made every imaging
+    message carry the AU-fallback note and a Linux box would bake its own
+    country. Tests of medic_country() itself bind the real function at
+    import time (tests/test_ledger_hygiene_20261004.py) and so bypass this."""
+    try:
+        from provisioning import wifi
+    except Exception:
+        return
+    monkeypatch.setattr(wifi, "medic_country", lambda *a, **k: "AU", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_language(monkeypatch, tmp_path):
     """Every test starts and ends in English.
 
     ``ui.i18n`` caches the active language in a module-level global
@@ -128,13 +165,19 @@ def _hermetic_language(monkeypatch):
     Also points ``LANGUAGE_FILE`` at a scratch path so a test cannot read or
     write the real on-disk preference — the persistence layer belongs to
     test_i18n.py's own fixtures, not to every other test that happens to
-    import a module which calls ``tr()``.
+    import a module which calls ``tr()``. (This paragraph was a promise the
+    body did not keep until 2026-10-04: a saved non-English preference on
+    the medic turned 66 tests red — readiness ledger #195.)
     """
     try:
         import ui.i18n as i18n
     except Exception:
         yield
         return
-    monkeypatch.setattr(i18n, "_current", None, raising=False)
+    monkeypatch.setattr(i18n, "LANGUAGE_FILE", str(tmp_path / "language"),
+                        raising=False)
+    # English, cached: tr() never consults the disk unless a test asks it to
+    # (test_i18n's own fixture clears the cache again for the round-trips).
+    monkeypatch.setattr(i18n, "_current", i18n.DEFAULT_LANGUAGE, raising=False)
     yield
     i18n._current = None

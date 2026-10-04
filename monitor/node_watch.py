@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
+from ui import theme
+
 #: Default grace before escalating a continuously-silent node — 3 days (solar
 #: recharge grace). The safe default applied to every node today.
 DEFAULT_GRACE_H = 72.0
@@ -39,6 +41,13 @@ COOLDOWN_TICKS = 3
 #: until then every real node reads "battery" -> the safe 3-day default. A mains
 #: node can't recharge from sun, so it's flagged sooner when the source is known.
 GRACE_BY_POWER = {"solar": 72.0, "battery": 72.0, "mains": 24.0}
+
+#: A node is red for SILENCE once unheard this long (the SEEN rule, ui.theme —
+#: the same number the registry colours by). Red INSIDE that window means the
+#: node is talking and its own beacon reported a fault: there is no outage to
+#: time, and "unreachable — the medic is watching it" was a false sentence
+#: about a node heard an hour ago (readiness ledger #137).
+SILENCE_RED_H = float(theme.NOT_HEARD_ALERT_HOURS)
 
 
 def grace_hours(powered_by: Optional[str], override_h: Optional[float] = None) -> float:
@@ -122,13 +131,15 @@ class NodeWatcher:
         lsh = device.get("last_seen_hours")
         if lsh is None:
             return False
+        if lsh <= SILENCE_RED_H:
+            return False                      # heard recently: a fault, not an outage
         return lsh < grace_hours(device.get("powered_by"), self.grace_override_h)
 
     def watch_remaining_hours(self, device: dict) -> Optional[float]:
         """Hours left before this red node escalates (for the tap message). None if
         it's not a timeable outage."""
         lsh = device.get("last_seen_hours")
-        if device.get("status") != "alert" or lsh is None:
+        if device.get("status") != "alert" or lsh is None or lsh <= SILENCE_RED_H:
             return None
         return max(0.0, grace_hours(device.get("powered_by"), self.grace_override_h) - lsh)
 
