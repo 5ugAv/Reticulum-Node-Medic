@@ -558,14 +558,21 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
             "the board and run the build again."
             if not wf.profile.rnode_board_key else
             f"Unknown RNode board '{wf.profile.rnode_board_key}'.")
+    why = board.cannot_flash_reason(wf.profile.rnode_band_mhz)
+    if why:
+        return StepResult("flash_rnode_firmware", False, why)   # before ANY write
+    from workflows.rnode_flash import cached_firmware_version
+    version = FIRMWARE_VERSION
     if has_connectivity(wf.connection):
-        sync_firmware(wf.connection)
-    elif wf.connection.run(
-            f"ls {RNODE_UPDATE_DIR}/{FIRMWARE_VERSION}/*.zip")[0] != 0:
-        return StepResult(
-            "flash_rnode_firmware", False,
-            f"Blank board attached but offline with no cached firmware "
-            f"{FIRMWARE_VERSION}. Connect WiFi once to seed the cache.")
+        res = sync_firmware(wf.connection)
+        version = getattr(res, "version", "") or FIRMWARE_VERSION
+    else:
+        version = cached_firmware_version(wf.connection, FIRMWARE_VERSION)
+        if not version:
+            return StepResult(
+                "flash_rnode_firmware", False,
+                "Blank board attached but offline with no cached firmware for "
+                "RNodes. Connect WiFi once to seed the cache.")
 
     # Prefer the RGB NeoPixel build for a V4 whenever the medic has it compiled
     # (build() run once): carry the .bin to the target and overlay it, so
@@ -575,7 +582,7 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
         from workflows.rnode_v4_rgb import rgb_firmware_staleness
         stale = rgb_firmware_staleness()
         ok, detail, rgb_applied = flash_rgb_carried(
-            wf.connection, port, wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
+            wf.connection, port, wf.profile.rnode_band_mhz, version)
         if stale:
             # Said in the step's own message, never a block: a stale face is
             # still a working radio. scripts/rebuild_rnode_firmware.py cures it.
@@ -594,7 +601,7 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
 
     # birth_flash makes the fresh-board second pass part of the process.
     ok, msg, _already = birth_flash(wf.connection, board, port,
-                                    wf.profile.rnode_band_mhz, FIRMWARE_VERSION)
+                                    wf.profile.rnode_band_mhz, version)
     if ok:
         wf.profile.has_rnode = True
     note = (" (stock — RGB firmware not built on this medic; run the V4 RGB "

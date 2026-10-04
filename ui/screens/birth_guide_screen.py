@@ -3266,6 +3266,8 @@ class BirthGuideScreen(BoxLayout):
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
+        from ui.birth import board_blocker
+        from workflows.rnode_boards import get_board
         for key, name in cands:
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(96), spacing=dp(10))
@@ -3274,6 +3276,9 @@ class BirthGuideScreen(BoxLayout):
                                          size_hint_x=None, width=dp(150)))
             except Exception:
                 pass
+            _bd = get_board(key)
+            if _bd is not None and board_blocker(_bd):
+                name = name + "\n" + tr("(not yet)")   # tapping it says why
             b = Button(text=name, font_size="17sp", bold=True,
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -3338,6 +3343,18 @@ class BirthGuideScreen(BoxLayout):
             return []
 
     def _board_picked(self, key):
+        try:
+            from ui.birth import board_blocker
+            from workflows.rnode_boards import get_board
+            _bd = get_board(key)
+            why = board_blocker(_bd) if _bd is not None else ""
+        except Exception:                                          # noqa: BLE001
+            why = ""
+        if why and getattr(self, "_pi_flash_radio", True):
+            # the radio IS going to be flashed on this bench — and this medic
+            # cannot flash this one. Say so here, not three steps later.
+            self._render_blocked_board(_bd, why)
+            return
         self._board_key = key
         if getattr(self, "_manual_board", False):
             # Named from the catalogue on the detect screen's "Choose
@@ -3363,6 +3380,27 @@ class BirthGuideScreen(BoxLayout):
         self._board_source = "usb"
         self._remember_board(key)
         self._render_pick_pi()
+
+    def _render_blocked_board(self, board, why):
+        """A board this medic can't finish: the reason, and Back to the
+        catalogue. Nothing to confirm (readiness sweep, 2026-10-03)."""
+        from kivy.uix.widget import Widget
+        self._stop_current()
+        self.clear_widgets()
+        self._back_action = lambda: self._render_pick_board(
+            force_ask=True, manual=getattr(self, "_manual_board", False))
+        wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(14))
+        wrap.add_widget(_line(board.display_name, "24sp", bold=True, h=40))
+        wrap.add_widget(_line(why, "17sp", color="text_secondary"))
+        wrap.add_widget(Widget())
+        b = Button(text=tr("Back — choose another board"), font_size="17sp",
+                   bold=True, size_hint_y=None, height=dp(60),
+                   background_normal="",
+                   background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                   color=theme.hex_to_rgba(theme.COLORS["background"]))
+        b.bind(on_release=lambda *_: self._back_action())
+        wrap.add_widget(b)
+        self.add_widget(wrap)
 
     def _board_display_name(self, key):
         """The catalogue name for a board key, or "this radio". From the

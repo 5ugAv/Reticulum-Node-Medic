@@ -105,6 +105,7 @@ class EncryptionScreen(BoxLayout):
     # -- overview -----------------------------------------------------------
 
     def show_overview(self):
+        self._stop_keyfile_poll()        # leaving the key screen by any road
         st = ef.state(self._home)
         rows = [_line(ef.headline(st), "19sp",
                       color="green" if st["on"] else "warning_yellow", bold=True)]
@@ -195,15 +196,52 @@ class EncryptionScreen(BoxLayout):
         self._ask_next()
 
     def _ask_keyfile(self):
-        """Reading the stick needs the same code the unlock screen uses. Until
-        that is shared, say so rather than pretend."""
+        """Read the USB key the walkthrough wrote, the way unlock does: find
+        the key file on a mounted stick and hash it into the key-file part.
+        Until 2026-10-04 this screen said USB keys were "not wired yet" — a
+        dead end for anyone who chose a USB-key level in the walkthrough and
+        then came here to switch encryption on (readiness sweep)."""
+        self._kf_status = _line("Looking for the USB key…", "15sp",
+                                color="text_secondary")
         self._stage(
-            _line("USB key unlock is not wired to this switch yet.", "19sp",
-                  bold=True, color="warning_yellow"),
-            _line("Your daily unlock uses a USB key, and turning encryption on "
-                  "from here cannot read it yet. Nothing has been changed.",
-                  "15sp", color="text_secondary"),
-            _button("Back", self.show_overview, color="surface"))
+            _line("Plug in your USB key.", "19sp", bold=True),
+            _line("The stick the walkthrough wrote your key to. It becomes one "
+                  "of the doors to your records.", "15sp", color="text_secondary"),
+            self._kf_status,
+            _button("Back", self._cancel_keyfile, color="surface"))
+        self._stop_keyfile_poll()
+        self._kf_poll = Clock.schedule_interval(self._poll_keyfile, 1.0)
+        self._poll_keyfile(0)
+
+    def _cancel_keyfile(self):
+        self._stop_keyfile_poll()
+        self.show_overview()
+
+    def _stop_keyfile_poll(self):
+        ev = getattr(self, "_kf_poll", None)
+        if ev is not None:
+            ev.cancel()
+            self._kf_poll = None
+
+    def _poll_keyfile(self, _dt):
+        try:
+            path = vf.find_keyfile()
+        except Exception:                                          # noqa: BLE001
+            path = None
+        if not path:
+            self._kf_status.text = ("No key file found yet — plug the stick in "
+                                    "and give it a moment.")
+            return
+        try:
+            with open(path, "rb") as fh:
+                secret = vf.keyfile_secret(fh.read())
+        except Exception as exc:                                   # noqa: BLE001
+            self._kf_status.text = f"That stick's key file can't be used: {exc}"
+            return
+        self._stop_keyfile_poll()
+        self._parts[vf.KEYFILE] = secret
+        self._kf_status.text = f"Key read from {path}"
+        Clock.schedule_once(lambda _d: self._ask_next(), 0.6)
 
     def _text_field(self, hint=""):
         f = TextInput(multiline=False, password=True, hint_text=hint,

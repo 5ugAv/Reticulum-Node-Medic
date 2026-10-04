@@ -263,6 +263,50 @@ TRACKER_BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
 TRACKER_ESPTOOL = "~/.arduino15/packages/esp32/tools/esptool_py/4.5.1/esptool.py"
 
 
+def refused_before_write(message: str) -> bool:
+    """Did birth_flash refuse BEFORE touching the board? Such a message means
+    nothing was written and nothing foreign is in the way — so a chip erase
+    is never the right follow-up."""
+    m = (message or "").lstrip()
+    return m.startswith(("Refusing to flash", "Node Medic can't flash",
+                         "Node Medic hasn't verified", "Cannot pick",
+                         "Autoinstall band"))
+
+
+def cached_firmware_version(connection, preferred: str = "") -> str:
+    """The firmware version the offline cache can actually flash, or "".
+
+    *preferred* (the pin) wins when its directory holds release zips; else
+    the version the last sync recorded in ``.rnm_bundle_version``; else the
+    newest directory that holds zips. Pure shell listings, no network."""
+    import re as _re
+
+    def looks_like_version(v):
+        # "1.86", "1.90.2" — never a stray word from a shell that answered
+        # something else, and never a path component with teeth in it
+        return bool(v) and _re.fullmatch(r"\d+(\.\d+)+", v) is not None
+
+    def has_zips(v):
+        return (looks_like_version(v)
+                and connection.run(f"ls {RNODE_UPDATE_DIR}/{v}/*.zip")[0] == 0)
+    if has_zips(preferred):
+        return preferred
+    code, out, _ = connection.run(f"cat {RNODE_UPDATE_DIR}/.rnm_bundle_version")
+    synced = (out or "").strip().splitlines()[0].strip() if code == 0 and (out or "").strip() else ""
+    if has_zips(synced):
+        return synced
+    code, out, _ = connection.run(f"ls {RNODE_UPDATE_DIR}")
+    if code != 0:
+        return ""
+    vers = sorted((v.strip() for v in (out or "").splitlines()
+                   if looks_like_version(v.strip())),
+                  key=lambda v: [int(x) for x in v.split(".")], reverse=True)
+    for v in vers:
+        if has_zips(v):
+            return v
+    return ""
+
+
 def fork_build_dir_for(board) -> str:
     """Where THIS board's fork image lives. The Tracker is flashed from the
     medic's own overlay build (TRACKER_BUILD_DIR); a board that names its own
@@ -491,6 +535,11 @@ class RNodeFlashWorkflow:
     # -- steps -------------------------------------------------------------
 
     def _detect_port(self) -> StepResult:
+        why = self.board.cannot_flash_reason(self.band_mhz)
+        if why:
+            # Said FIRST, before any port is opened: this used to come out
+            # after three green steps and a chip erase (2026-10-03).
+            return StepResult("detect_port", False, why)
         port = self.port or detect_rnode_port(self.connection)
         if not port:
             return StepResult("detect_port", False,
@@ -558,8 +607,11 @@ class RNodeFlashWorkflow:
             if self.connection.run(f"test -f {fork_image_for(self.board, 'bin')}")[0] != 0:
                 return StepResult(
                     "ensure_firmware", False,
-                    f"The medic's {self.board.display_name} build is missing "
-                    f"({d}) — build it before flashing this board.")
+                    f"This Node Medic has no {self.board.display_name} firmware "
+                    f"on it ({d}). That board's firmware is built from source "
+                    f"and this medic doesn't carry the build — choose a board "
+                    f"the medic has firmware for, or ask for a release that "
+                    f"carries this one.")
             return StepResult("ensure_firmware", True,
                               f"{self.board.display_name} firmware ready "
                               "(the medic's own build).")
@@ -569,15 +621,23 @@ class RNodeFlashWorkflow:
                 return StepResult("ensure_firmware", False,
                                   f"Firmware sync failed for "
                                   f"{', '.join(res.failed[:3])}.")
+            if getattr(res, "version", ""):
+                self.version = res.version          # flash what was fetched
             return StepResult("ensure_firmware", True,
                               f"Firmware ready ({res.message}).")
-        # Offline: the carried cache must already hold this version.
-        if self.connection.run(f"ls {RNODE_UPDATE_DIR}/{self.version}/*.zip")[0] != 0:
+        # Offline: the carried cache must hold SOME complete version. The
+        # online sync fetches whatever release is current, so the cache can
+        # hold 1.87 while the pin says 1.86 — and this step used to look for
+        # the pin alone and refuse with "connect WiFi" on a medic that had
+        # just been online (readiness sweep, 2026-10-03).
+        cached = cached_firmware_version(self.connection, self.version)
+        if not cached:
             return StepResult("ensure_firmware", False,
-                              f"Offline and no firmware {self.version} cached. "
-                              f"Connect WiFi once to seed the cache.")
+                              f"Offline and no RNode firmware is cached on this "
+                              f"medic. Connect WiFi once to seed the cache.")
+        self.version = cached
         return StepResult("ensure_firmware", True,
-                          f"Offline — using cached firmware {self.version}.")
+                          f"Offline — using cached firmware {cached}.")
 
     def _reacquire_port(self) -> str:
         """Re-find the board after a flash, because the tty can MOVE.
@@ -631,6 +691,12 @@ class RNodeFlashWorkflow:
         ok, msg, already = birth_flash(self.connection, self.board, self.port,
                                        self.band_mhz, self.version,
                                        self.flash_timeout)
+        if not ok and not already and refused_before_write(msg):
+            # birth_flash refused before touching the board (the onboard guard,
+            # an unanswerable band): there is no foreign firmware to blame and
+            # nothing to erase. Erasing here wiped a newcomer's working T-Beam
+            # and then told them to use a terminal (readiness sweep, 2026-10-03).
+            return StepResult("flash", False, msg)
         if not ok and not already:
             # A board that arrives carrying FOREIGN firmware (factory image,
             # Meshtastic, a half-written flash) can present a USB serial port

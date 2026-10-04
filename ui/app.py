@@ -1827,24 +1827,27 @@ class ReticulumNodeMedicApp(App):
             threading.Thread(target=self._beacon_loop, args=(gen,),
                              daemon=True).start()
             names = self._target_names(targets)
+            from ui.i18n import tr
             return {"state": "active", "names": names,
-                    "text": f"Beacon on - commanding {names} to transmit. Aim "
-                            "the antenna and watch the triangle."}
+                    "text": tr("Beacon on - commanding {names} to transmit. Aim "
+                               "the antenna and watch the triangle.").format(names=names)}
         reg = self.monitor_service.registry
         rtnodes = [r.name for r in reg.nodes.values()
                    if r.node_type == "rtnode2400" and r.provenance == "kin"
                    and r.name]
         if rtnodes:
             nm = ", ".join(rtnodes)
+            from ui.i18n import tr
             return {"state": "need_power", "names": nm,
                     # This text shows ON the antenna screen itself, so it says
                     # "the medic", not the screen's own painted word
                     # (repaint 2026-09-13, docs/FRONT_PAGE_BRIEF.md).
-                    "text": f"Power on your beacon node ({nm}) so the medic can "
-                            "command it to transmit for aiming."}
+                    "text": tr("Power on your beacon node ({nm}) so the medic can "
+                               "command it to transmit for aiming.").format(nm=nm)}
+        from ui.i18n import tr
         return {"state": "need_build",
-                "text": "Aiming needs a distant RTNode to work against. Build "
-                        "one to pair as your lighthouse beacon."}
+                "text": tr("Aiming needs a distant RTNode to work against. Build "
+                           "one to pair as your lighthouse beacon.")}
 
     def _beacon_loop(self, gen=None):
         import time as _t
@@ -2759,13 +2762,14 @@ class ReticulumNodeMedicApp(App):
                     lm = link_margin(sent_at[0]) if sent_at[0] else None
                     sig = ""
                     if lm is not None:
+                        from ui.i18n import tr
                         words = {
-                            "strong": "strong link",
-                            "ok": "workable link",
-                            "thin": "thin link — antenna or placement "
-                                    "deserves a look",
-                            "edge": "AT THE EDGE — barely decoding; expect "
-                                    "drop-outs",
+                            "strong": tr("strong link"),
+                            "ok": tr("workable link"),
+                            "thin": tr("thin link — antenna or placement "
+                                       "deserves a look"),
+                            "edge": tr("AT THE EDGE — barely decoding; expect "
+                                       "drop-outs"),
                         }
                         parts = ["%d dBm" % lm.rssi_dbm]
                         if lm.snr_db is not None:
@@ -2775,9 +2779,9 @@ class ReticulumNodeMedicApp(App):
                         # Relayed: the RF the medic heard is the RELAY's
                         # transmission, not this node's — say so, or the
                         # operator re-aims the wrong antenna (review, 2026-09-21).
-                        whose = ("Signal of the relay's transmission as heard "
-                                 "by the medic: " if (hops or 1) >= 2
-                                 else "Signal as heard by the medic: ")
+                        whose = (tr("Signal of the relay's transmission as heard "
+                                    "by the medic: ") if (hops or 1) >= 2
+                                 else tr("Signal as heard by the medic: "))
                         sig = ("\n" + whose + ", ".join(parts) + " — "
                                + words[lm.verdict] + ".")
                     Clock.schedule_once(lambda dt: report(

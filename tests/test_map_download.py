@@ -34,7 +34,11 @@ def test_tiles_in_radius_all_within_the_circle():
     assert tiles
     for z, x, y in tiles:
         clat, clon = _tile_center(x, y, z)
-        assert _km_between(lat, lon, clat, clon) <= 80.0
+        # inside the circle — or the one tile the centre itself stands on,
+        # which every zoom carries so a zoomed-out view is never blank
+        from ui.map_download import tile_of
+        assert (_km_between(lat, lon, clat, clon) <= 80.0
+                or (x, y) == tile_of(lat, lon, z))
         assert 0 <= x < 2 ** z and 0 <= y < 2 ** z
 
 

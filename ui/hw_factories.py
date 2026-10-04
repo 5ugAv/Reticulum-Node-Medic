@@ -171,6 +171,14 @@ def make_rnode_flash(board: RNodeBoard, demo_factory: Callable,
         if demo_allowed():
             return demo_factory(board)
         connection = LocalConnection()
+    if len(free) > 1:
+        # TWO work boards: the V4 colour build and the RTNode build took
+        # free[0] with no count, so a V3 beside a V4 was a coin toss — and
+        # mixing their images boot-loops the board (readiness sweep, 2026-10-03).
+        return _HonestFailWorkflow(
+            "detect_port",
+            "More than one board is plugged into the medic. Unplug all but the "
+            "one you want to flash, then start again.", "Two boards plugged in")
     port = free[0]                         # the freshly-plugged board, not Jonesey
     if board.key == V4_BOARD_KEY and rgb_firmware_available():
         # RGB is imperative for a boxed V4 — the dedicated build+flash workflow
@@ -199,6 +207,12 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
                 "Building an RTNode-2400 needs the board plugged into the "
                 "medic. Connect it with a known-good USB DATA cable, then start "
                 "the build again.", "No board attached")
+        if len(ports) > 1:
+            return _HonestFailWorkflow(
+                "detect_board",
+                "More than one board is plugged into the medic. Unplug all but "
+                "the one you want to build on, then start again.",
+                "Two boards plugged in")
         board_port = ports[0]             # pin to the work board, never the radio
         connection = LocalConnection()
     # On a REAL medic build, auto-provision over the RTNode-Setup AP with live

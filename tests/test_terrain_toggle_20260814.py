@@ -105,6 +105,9 @@ class _Screen:
     def _refresh_header(self):
         pass
 
+    def _reflect_tiles(self):
+        pass
+
 
 def _use_real_terrain_store(s):
     """Swap the stand-in's stub for the real memoising lookup."""

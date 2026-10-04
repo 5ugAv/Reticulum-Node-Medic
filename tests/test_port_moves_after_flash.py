@@ -178,9 +178,11 @@ def test_detect_port_records_the_fingerprint_so_later_steps_can_re_find_it():
         def run(self, cmd, timeout=None):
             return (0, RUN, "")
 
+    from workflows.rnode_boards import get_board
     wf = rf.RNodeFlashWorkflow.__new__(rf.RNodeFlashWorkflow)
     wf.connection = C()
     wf.port = "/dev/ttyACM2"
+    wf.board, wf.band_mhz = get_board("heltec32_v4"), 915
     res = rf.RNodeFlashWorkflow._detect_port(wf)
     assert res.success
     assert wf._usb_serial == "4631000000000002"

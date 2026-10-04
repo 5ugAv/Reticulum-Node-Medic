@@ -10,8 +10,8 @@ selecting one shows a toast saying it takes effect after a restart. The manager
 restarts the app on deploy.
 
 The list of languages + the font/script gating all live in ``ui.i18n`` — this
-module is a thin view. It only lists LATIN-SCRIPT languages today because the
-bundled font can't render other scripts (see ``ui.i18n`` for the caveat).
+module is a thin view. It lists what the bundled font can draw (Latin and
+Cyrillic today) AND what has a catalog covering the critical path.
 
 # i18n: wrapped
 """
@@ -74,10 +74,12 @@ class LanguageScreen(BoxLayout):
         scroll.add_widget(body)
         self.add_widget(scroll)
 
+        # TRUE of the list above it, whatever it holds: the old footer named
+        # Italian (not offered), omitted four languages that are, and claimed
+        # Latin-only under a Russian row (readiness sweep, 2026-10-03).
         self.add_widget(_line(
-            tr("More languages will follow. The current display font renders Latin "
-               "scripts only (Spanish, French, German, Portuguese, Italian, "
-               "Indonesian)."),
+            tr("Listed here: every language the display font can draw that has "
+               "a full translation. More follow as translations land."),
             size="12sp", color="text_secondary", h=52))
 
         self._paint(current)
@@ -95,7 +97,9 @@ class LanguageScreen(BoxLayout):
         self._paint(saved)
         if self._on_selected:
             self._on_selected(saved)
-        self._toast(tr("Language set — it applies when Node Medic restarts."))
+        # there is no restart button anywhere: say how (2026-10-03)
+        self._toast(tr("Language set — it applies when Node Medic next starts. "
+                       "Slide to power off on the front page, then power back on."))
 
     def _toast(self, message):
         """Brief, auto-dismissing confirmation (mirrors the app's mode toast)."""

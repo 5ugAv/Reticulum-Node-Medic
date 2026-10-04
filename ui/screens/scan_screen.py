@@ -362,12 +362,33 @@ class MapPlot(Widget):
             return
         self._step_zoom(direction, view)
 
+    def _defer_pick(self, latlon):
+        """Place the pin after the double-tap window. Kivy only marks the
+        SECOND tap of a double-tap, so the first used to drop the pin and
+        light "Picked from map" before the zoom (readiness sweep, 2026-10-03)."""
+        self._cancel_pending_pick()
+
+        def place(_dt):
+            self._pending_pick = None
+            self._me = latlon
+            self._trigger()
+            if self._on_pick:
+                self._on_pick(latlon)
+        self._pending_pick = Clock.schedule_once(place, 0.3)
+
+    def _cancel_pending_pick(self):
+        ev = getattr(self, "_pending_pick", None)
+        if ev is not None:
+            ev.cancel()
+            self._pending_pick = None
+
     def on_touch_down(self, touch):
         if (not self._interactive or not self.collide_point(*touch.pos)
                 or self._tiles is None):
             return super().on_touch_down(touch)
         try:
             if touch.is_double_tap:               # double-tap = zoom in on the spot
+                self._cancel_pending_pick()       # its first tap was not a placement
                 self._zoom_at(touch.pos, +1)
                 return True
             touch.grab(self)
@@ -450,9 +471,7 @@ class MapPlot(Widget):
                         self._show_suggestion(sugg)
                     elif self._on_pick:
                         latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
-                        self._me = latlon
-                        self._trigger()
-                        self._on_pick(latlon)
+                        self._defer_pick(latlon)
             except Exception:
                 _record_map_error("on_touch_up")
             return True
@@ -1450,12 +1469,14 @@ class ScanScreen(BoxLayout):
         zbox = BoxLayout(orientation="vertical", size_hint=(None, None),
                          size=(dp(50), dp(160)), spacing=dp(6),
                          pos_hint={"right": 0.98, "top": 0.98})
+        self._zoom_btns = []
         for sym, d in (("+", +1), ("−", -1)):
             zb = Button(text=sym, font_size="26sp", bold=True, background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"], 0.92),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             zb.bind(on_release=lambda _b, dd=d: self.plot.zoom_by(dd))
             zbox.add_widget(zb)
+            self._zoom_btns.append(zb)
         zbox.add_widget(self.recenter_btn)
         map_wrap.add_widget(zbox)
         self.add_widget(map_wrap)
@@ -1610,6 +1631,7 @@ class ScanScreen(BoxLayout):
 
         # Live "you are here" + placement badge: poll the Tracker's fix, mark it on
         # the map, and (in placement mode) keep the fix-trust badge current.
+        self._reflect_tiles()
         if poll:
             self._poll_gps(0)
             Clock.schedule_interval(self._poll_gps, 3)
@@ -1617,6 +1639,23 @@ class ScanScreen(BoxLayout):
             # toggle (2026-09-29); the layer is on by default, so keep the
             # label current from the start.
             Clock.schedule_interval(self._refresh_links_label, 5)
+
+    def _reflect_tiles(self):
+        """What the screen can do depends on whether a basemap exists. With
+        none, every control on a fresh medic was live and did nothing:
+        +/- zoomed nothing, taps placed nothing, the badge said "Tap the
+        map" (readiness sweep, 2026-10-03). Now the status line says the
+        one true thing and the dead controls are greyed."""
+        have = self._tiles is not None
+        for b in getattr(self, "_zoom_btns", []):
+            b.disabled = not have
+        if not have:
+            try:
+                self._set_status(tr("No offline map on this medic yet — download "
+                                    "one below (needs WiFi once). Nodes still "
+                                    "appear under VITALS."), "warn")
+            except Exception:                                      # noqa: BLE001
+                pass
 
     def _poll_gps(self, _dt):
         # Prefer the full fix (has trust/source) so the badge and marker agree; fall
@@ -1626,7 +1665,11 @@ class ScanScreen(BoxLayout):
             fix = self._fix_reader() if self._fix_reader else None
         except Exception:
             fix = None
-        if fix is not None and getattr(fix, "has_fix", False):
+        placed = (getattr(self, "_picked", None) is not None
+                  or getattr(self, "_manual", False))
+        if placed:
+            pass            # the operator put the pin there; the GPS does not take it back
+        elif fix is not None and getattr(fix, "has_fix", False):
             self.plot.set_me((fix.lat, fix.lon))
         else:
             try:
@@ -1776,8 +1819,16 @@ class ScanScreen(BoxLayout):
         self._boundary_on = not self._boundary_on
         self.plot.set_show_boundary(self._boundary_on)
         if self._boundary_on:
-            self.boundary_btn.text = tr("Range  on") \
-                + self._boundary_coverage_suffix()
+            suffix = self._boundary_coverage_suffix()
+            self.boundary_btn.text = tr("Range  on") + suffix
+            if not suffix:
+                # ON with nothing to draw: say so instead of flipping a word
+                # (readiness sweep, 2026-10-03)
+                try:
+                    self._set_status(tr("No range rings yet — finish a boundary "
+                                        "walk around a node to draw one."), "warn")
+                except Exception:                                  # noqa: BLE001
+                    pass
         else:
             self.boundary_btn.text = tr("Range  off")
 
@@ -1813,7 +1864,10 @@ class ScanScreen(BoxLayout):
             # refusal that can only say one thing will eventually say the wrong
             # one, so it now repeats what actually failed.
             why = getattr(self, "_terrain_why", None)
-            if why and not why.startswith("no terrain file"):
+            if self._tiles is None:
+                self._set_status(tr("No offline map is loaded yet, so there is no "
+                                    "terrain to show — download a map below."), "alert")
+            elif why and not why.startswith("no terrain file"):
                 self._set_status(tr("Terrain is cached but could not be read: "
                                     "{why}").format(why=why), "alert")
             elif self._tiles is not None:
@@ -1887,8 +1941,10 @@ class ScanScreen(BoxLayout):
         hint = t["detail"]
         walking = (getattr(self, "_walk_session", None) is not None
                    or getattr(self, "_walk_gate", None) is not None)
-        if t["level"] != "live" and not walking:   # no placement words mid-walk
+        if t["level"] != "live" and not walking and self._tiles is not None:
             hint = tr("Tap the map to drop the pin, or ") + hint[0].lower() + hint[1:]
+        elif t["level"] != "live" and not walking:          # no map to tap yet
+            hint = tr("Enter the position manually, or ") + hint[0].lower() + hint[1:]
         if self._fix is not None and getattr(self._fix, "has_fix", False):
             # Show the HDOP-estimated accuracy when we have one, so the operator
             # can judge the fix — always self-labelled "(est. from HDOP)" so it
@@ -2098,6 +2154,7 @@ class ScanScreen(BoxLayout):
             return
         self._tiles = find_mbtiles()
         self.plot.set_tiles(self._tiles)
+        self._reflect_tiles()
         self.plot.focus(pt, zoom=17)                # land close; +/- to fine-tune
         if summary.get("blocked"):
             self.badge.set(tr("Map server is rate-limiting — try again shortly"), "none")
@@ -2290,6 +2347,16 @@ class ScanScreen(BoxLayout):
                 count=count))
             dest = os.path.join(MAPS_DIR, "offline.mbtiles")
             os.makedirs(MAPS_DIR, exist_ok=True)
+            # THE WORLD ALREADY HAS AN OWNER: the boot-resuming fill service
+            # (2026-08-30). A second fetcher starves against it on the SQLite
+            # lock and freezes its own counter — so when the service is
+            # running, the button becomes a live WINDOW onto its progress.
+            # This check sat below the early return for a month and never ran
+            # (readiness sweep, 2026-10-03).
+            from ui.map_download import world_fill_service_active
+            if world_fill_service_active():
+                self._watch_world_fill(dest)
+                return
             threading.Thread(target=self._run_download,
                              args=(None, None, dest), daemon=True).start()
             return
@@ -2309,16 +2376,6 @@ class ScanScreen(BoxLayout):
             count=count, mb=f"{mb:g}", source=source))
         dest = os.path.join(MAPS_DIR, "offline.mbtiles")
         os.makedirs(MAPS_DIR, exist_ok=True)
-        # THE WORLD ALREADY HAS AN OWNER: the boot-resuming fill service
-        # (2026-08-30). A second fetcher just starves against it on the
-        # SQLite lock and freezes its own counter on glass — so when the
-        # service is running, the button becomes a live WINDOW onto its
-        # progress instead of a competitor.
-        if self._radius_km == WORLD:
-            from ui.map_download import world_fill_service_active
-            if world_fill_service_active():
-                self._watch_world_fill(dest)
-                return
         threading.Thread(target=self._run_download, args=(lat, lon, dest),
                          daemon=True).start()
 
@@ -2404,6 +2461,7 @@ class ScanScreen(BoxLayout):
         self.dl_button.disabled = False
         self._tiles = find_mbtiles()
         self.plot.set_tiles(self._tiles)
+        self._reflect_tiles()
         # _terrain_store memoises its answer — None included — and this
         # download may have just created the terrain file (or moved which
         # basemap it sits beside). Forget the memo, or a pre-download tap's

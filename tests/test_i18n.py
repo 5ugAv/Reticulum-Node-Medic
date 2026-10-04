@@ -158,9 +158,10 @@ WRAPPED_SLICE_STRINGS = [
     "All", "OK", "Warn", "Alert", "Search",
     # language_screen copy
     "Choose the language Node Medic runs in.",
-    "Language set — it applies when Node Medic restarts.",
-    ("More languages will follow. The current display font renders Latin scripts "
-     "only (Spanish, French, German, Portuguese, Italian, Indonesian)."),
+    ("Language set — it applies when Node Medic next starts. Slide to power off "
+     "on the front page, then power back on."),
+    ("Listed here: every language the display font can draw that has a full "
+     "translation. More follow as translations land."),
 ]
 
 

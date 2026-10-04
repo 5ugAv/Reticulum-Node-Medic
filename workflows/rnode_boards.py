@@ -77,6 +77,21 @@ class RNodeBoard:
     #: generic "not yet verified" (which reads as a to-do, not a fact).
     band_ambiguity: str = ""
     experimental: bool = True                # upstream marks dev-board installs so
+
+    def cannot_flash_reason(self, band_mhz: int = 915) -> str:
+        """Why Node Medic must NOT start flashing this board for *band_mhz* —
+        or "" when it can. Asked BEFORE any step touches the board: the
+        T-Beam/T3S3 refusal used to surface after three green steps and,
+        worse, after a real chip erase (readiness sweep, 2026-10-03)."""
+        if self.flash_method != "autoinstall":
+            return ""
+        if band_mhz in self.autoinstall_bands:
+            return ""
+        if self.band_ambiguity:
+            return (f"Node Medic can't flash a {self.display_name} yet: "
+                    f"{self.band_ambiguity}")
+        return (f"Node Medic hasn't verified the {band_mhz} MHz flash sequence "
+                f"for the {self.display_name} yet, so it won't guess.")
     recovery_key: str = ""                   # key into ui.safety.recovery_text
     bootloader_instructions: str = ""
     notes: str = ""
@@ -230,10 +245,9 @@ _OFFICIAL = [
               "410-525 / 850-950 MHz", recovery_key="LilyGO T-Beam v1.1",
               band_ambiguity=(
                   "the T-Beam ships with either an SX1276 or an SX1262 radio "
-                  "chip under the same name, and rnodeconf's band menu answer "
-                  "differs by chip — the tool cannot see which chip this board "
-                  "carries. Check the silkscreen near the radio can, then "
-                  "flash with rnodeconf by hand.")),
+                  "chip under the same name, the firmware differs by chip, and "
+                  "nothing on this side of the USB cable can see which chip "
+                  "this board carries. Support for it is on the way.")),
     # Band menu transcribed from the rnodeconf 2.5.0 source on the medic
     # (RNS/Utilities/rnodeconf.py, PRODUCT_H32_V2, read 2026-08-14): plain
     # "[1] 433 [2] 868 [3] 915 [4] 923", single chip, no variant question.
@@ -263,10 +277,9 @@ _OFFICIAL = [
               "410-525 / 850-950 MHz / 2.4 GHz", recovery_key="T3S3",
               band_ambiguity=(
                   "the T3S3 ships with SX1276, SX1262 or SX1280 radio chips "
-                  "under the same name, and rnodeconf's band menu answer "
-                  "differs by chip — the tool cannot see which chip this "
-                  "board carries. Check the silkscreen near the radio can, "
-                  "then flash with rnodeconf by hand.")),
+                  "under the same name, the firmware differs by chip, and "
+                  "nothing on this side of the USB cable can see which chip "
+                  "this board carries. Support for it is on the way.")),
     # The three nRF52 boards share one band menu, transcribed from the
     # rnodeconf 2.5.0 source on the medic (RNS/Utilities/rnodeconf.py) rather
     # than guessed: "[1] 433  [2] 868  [3] 915  [4] 923".

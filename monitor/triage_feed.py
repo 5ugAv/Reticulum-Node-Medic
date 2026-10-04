@@ -47,11 +47,20 @@ def feed_choice(mode: str, demo_ok: bool, state_present: bool) -> str:
 
 
 def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
-                     now: Callable[[], float] = time.time
+                     now: Callable[[], float] = time.time,
+                     max_packet_age_s: float = 120.0,
                      ) -> Callable[[], Optional[dict]]:
     """A TriageScreen feed sourced from the splitter's state file. Yields a
     sample once at least one packet has been heard; ``None`` while the radio is
-    silent-from-birth, the file is missing/stale, or fields are absent."""
+    silent-from-birth, the file is missing/stale, or fields are absent.
+
+    A full sample HOLDS the last packet's RSSI/SNR only while that packet is
+    recent (*max_packet_age_s*). The splitter refreshes ``updated`` on every
+    channel-stats frame, so a node that went quiet an hour ago used to keep
+    scoring as if it were still transmitting, and the "isn't answering"
+    watchdog could never fire once anything had ever been heard (readiness
+    sweep, 2026-10-03). Past that age the sample is partial: live noise, no
+    packet."""
     def reader() -> Optional[dict]:
         try:
             with open(path) as f:
@@ -65,10 +74,14 @@ def live_triage_feed(path: str = SPLITTER_STATE, max_age_s: float = 30.0,
         noise = st.get("noise_floor")
         if noise is None:
             return None                              # radio not reporting at all
-        if rssi is None or snr is None:
-            # no packet heard yet: the noise floor is still LIVE (it moves as
-            # the antenna is handled) — a partial sample keeps the screen alive
-            # and honest while it waits to hear another node
+        heard = st.get("packet_heard_at")
+        stale_packet = (isinstance(heard, (int, float))
+                        and (now() - heard) > max_packet_age_s)
+        if rssi is None or snr is None or stale_packet:
+            # no packet heard yet (or none for a while): the noise floor is
+            # still LIVE (it moves as the antenna is handled) — a partial
+            # sample keeps the screen alive and honest while it waits to hear
+            # another node
             return {"noise": noise, "rssi": None, "snr": None,
                     "peers": 0, "partial": True}
         return {"snr": snr, "rssi": rssi, "noise": noise,

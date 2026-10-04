@@ -983,18 +983,41 @@ class BirthScreen(BoxLayout):
         official = [b for b in self._boards if b.flash_method == "autoinstall"]
         next_custom = max((b.autoinstall_index for b in official), default=0) + 1
         entries = []
+        from ui.birth import board_blocker
         for board in self._boards:
             if board.flash_method == "autoinstall":
                 num, tag = board.autoinstall_index, ""
             else:
                 num, tag = next_custom, "  " + tr("(custom)")
                 next_custom += 1
+            if board_blocker(board):
+                tag += "  " + tr("(not yet)")       # the gate says why
             # picker_label, not display_name: it carries the silkscreen marking
             # for boards sold under a name that is printed nowhere on them
             # (LoRa32 v2.1 = T3 v1.6.1) — the row IS the moment of choice.
             entries.append((num, f"{board.picker_label}{tag}",
                             lambda b=board: self._confirm_rnode_board_gate(b)))
         self._picker_popup(tr("Select the board"), entries)
+
+    def _blocked_board_popup(self, board, why):
+        """One honest card: the board's name, why this medic can't flash it,
+        and Back. Nothing else to press."""
+        from kivy.uix.popup import Popup
+        body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        lbl = Label(text=why, font_size="17sp", halign="center", valign="middle",
+                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
+        body.add_widget(lbl)
+        back = Button(text=tr("Back — choose another board"), bold=True,
+                      font_size="16sp", size_hint_y=None, height=dp(56),
+                      background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        body.add_widget(back)
+        pop = Popup(title=board.display_name, content=body, size_hint=(0.9, 0.5),
+                    auto_dismiss=True)
+        back.bind(on_release=lambda *_: pop.dismiss())
+        pop.open()
 
     def _pick_board(self, board):
         self._sel_board = board
@@ -2076,6 +2099,14 @@ class BirthScreen(BoxLayout):
         board comes up enlarged with the brick warning and an explicit
         confirm — only then on to the radio-params form."""
         if getattr(self, "_gate_pop", None) is not None:   # doubled-tap guard
+            return
+        from ui.birth import board_blocker
+        why = board_blocker(board)
+        if why:
+            # No confirm for a board this medic cannot finish. The T-Beam used
+            # to pass this gate, run three green steps, get its working
+            # firmware ERASED and then be told to use a terminal (2026-10-03).
+            self._blocked_board_popup(board, why)
             return
         from ui.widgets.board_card import BoardCard
         from ui import board_images

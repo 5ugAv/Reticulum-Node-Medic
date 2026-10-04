@@ -64,48 +64,34 @@ class SettingsScreen(BoxLayout):
         body.bind(minimum_height=body.setter("height"))
 
         body.add_widget(_line(tr("Settings"), bold=True, size="24sp", h=44))
-        body.add_widget(self._entry(tr("Language"),
-                                    "Run Node Medic in your own language", "language"))
-        body.add_widget(self._entry(tr("Default radio parameters"),
-                                    "Frequency, bandwidth, SF, CR, TX power that BUILD "
-                                    "pre-fills — includes regional presets", "radio_defaults"))
-        body.add_widget(self._entry(tr("Tool identity"),
-                                    "This medic's Reticulum identity, name, born date "
-                                    "and lineage", "tool_identity"))
-        body.add_widget(self._entry(tr("Storage usage"),
-                                    "SD card space and what's using it", "storage"))
-        body.add_widget(self._entry(tr("Trusted operators"),
-                                    "Trust between cloned Node Medic units — the "
-                                    "family tree", "trusted_operators"))
-        body.add_widget(self._entry(tr("Date & time"),
-                                    "System clock and timezone — set manually or keep "
-                                    "it synced from GPS", "datetime"))
-        body.add_widget(self._entry(tr("WiFi & Network"),
-                                    "Connect to a hotspot or venue WiFi", "wifi"))
-        body.add_widget(self._entry(tr("Communication apps"),
-                                    "Hand Columba or Sideband to a phone over WiFi — "
-                                    "the mesh messenger for your pocket", "comms"))
-        body.add_widget(self._entry(tr("Field readiness"),
-                                    "Is this medic ready to be taken somewhere with "
+        body.add_widget(self._entry(tr("Language"), tr("Run Node Medic in your own language"), "language"))
+        body.add_widget(self._entry(tr("Default radio parameters"), tr("Frequency, bandwidth, SF, CR, TX power that BUILD "
+                                    "pre-fills — includes regional presets"), "radio_defaults"))
+        body.add_widget(self._entry(tr("Tool identity"), tr("This medic's Reticulum identity, name, born date "
+                                    "and lineage"), "tool_identity"))
+        body.add_widget(self._entry(tr("Storage usage"), tr("SD card space and what's using it"), "storage"))
+        body.add_widget(self._entry(tr("Trusted operators"), tr("Trust between cloned Node Medic units — the "
+                                    "family tree"), "trusted_operators"))
+        body.add_widget(self._entry(tr("Date & time"), tr("System clock and timezone — set manually or keep "
+                                    "it synced from GPS"), "datetime"))
+        body.add_widget(self._entry(tr("WiFi & Network"), tr("Connect to a hotspot or venue WiFi"), "wifi"))
+        body.add_widget(self._entry(tr("Communication apps"), tr("Hand Columba or Sideband to a phone over WiFi — "
+                                    "the mesh messenger for your pocket"), "comms"))
+        body.add_widget(self._entry(tr("Field readiness"), tr("Is this medic ready to be taken somewhere with "
                                     "no signal — firmware, apps, maps, wheels, "
-                                    "toolchain", "carry"))
+                                    "toolchain"), "carry"))
         body.add_widget(self._home_mode_section())
         body.add_widget(self._brightness_section())
         body.add_widget(self._screensaver_section())
         body.add_widget(self._alerts_section())
-        body.add_widget(self._entry(tr("Notifications"),
-                                    "Get a message on your phone (Sideband/Columba) "
+        body.add_widget(self._entry(tr("Notifications"), tr("Get a message on your phone (Sideband/Columba) "
                                     "when a node needs checking — add your Reticulum "
-                                    "address", "notifications"))
+                                    "address"), "notifications"))
         body.add_widget(self._retention_section())
-        body.add_widget(self._entry(tr("Reticulum & radio guide"),
-                                    "What RNode / transport / propagation nodes are, "
-                                    "where to place them, and the radio settings",
-                                    "guide"))
-        body.add_widget(self._entry(tr("Self Diagnose — this medic's radio & GPS"),
-                                    "Check & heal this medic's OWN onboard radio + GPS "
-                                    "board (11 live checks + auto-repairs)",
-                                    "self_diagnose"))
+        body.add_widget(self._entry(tr("Reticulum & radio guide"), tr("What RNode / transport / propagation nodes are, "
+                                    "where to place them, and the radio settings"), "guide"))
+        body.add_widget(self._entry(tr("Self Diagnose — this medic's radio & GPS"), tr("Check & heal this medic's OWN onboard radio + GPS "
+                                    "board (11 live checks + auto-repairs)"), "self_diagnose"))
         # THE WAY BACK TO THE FIRST-USE WALKTHROUGH, and the way to hand this
         # medic on. It sits directly above the security preview because that is
         # what it mostly leads to, and its subtitle CHANGES when the security
@@ -119,13 +105,10 @@ class SettingsScreen(BoxLayout):
         # operator opens to find out whether their records are locked, so it
         # has to answer that before they tap it.
         body.add_widget(self._encryption_entry())
-        body.add_widget(self._entry(tr("Security preview  (walkthrough)"),
-                                    "Walk the lock screen, recovery key and "
-                                    "reset without changing anything",
-                                    "security_preview"))
-        body.add_widget(self._entry(tr("About"),
-                                    "Software version, test-suite status, uptime, "
-                                    "and licence", "about"))
+        body.add_widget(self._entry(tr("Security preview  (walkthrough)"), tr("Walk the lock screen, recovery key and "
+                                    "reset without changing anything"), "security_preview"))
+        body.add_widget(self._entry(tr("About"), tr("Software version, test-suite status, uptime, "
+                                    "and licence"), "about"))
 
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
         # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
@@ -477,9 +460,8 @@ class SettingsScreen(BoxLayout):
         """
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(self._entry(tr("Encrypt my records"),
-                                   "Lock the registry, certificates and "
-                                   "messages on this card", "encryption"))
+        box.add_widget(self._entry(tr("Encrypt my records"), tr("Lock the registry, certificates and "
+                                   "messages on this card"), "encryption"))
         try:
             from provisioning import encryption_flow as ef
             st = ef.state()
@@ -516,8 +498,15 @@ class SettingsScreen(BoxLayout):
         parent.add_widget(self._encryption_entry(), index=index)
 
     def _entry(self, title, subtitle, target):
-        row = Button(text=title, size_hint_y=None, height=dp(62), halign="left",
-                     valign="middle", font_size="18sp", bold=True,
+        # THE SUBTITLE IS DRAWN. Every row passed one and none was rendered,
+        # so a stranger saw sixteen bold titles and no idea what "Tool
+        # identity" or "Field readiness" did (readiness sweep, 2026-10-03).
+        sec = theme.COLORS["text_secondary"].lstrip("#")
+        text = (f"[b]{title}[/b]\n[size=13sp][color={sec}]{subtitle}[/color][/size]"
+                if subtitle else title)
+        row = Button(text=text, markup=True, size_hint_y=None,
+                     height=dp(74) if subtitle else dp(62), halign="left",
+                     valign="middle", font_size="18sp",
                      background_normal="", background_down="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                      color=theme.hex_to_rgba(theme.COLORS["text_primary"]))

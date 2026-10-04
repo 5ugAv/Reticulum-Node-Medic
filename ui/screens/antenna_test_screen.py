@@ -74,6 +74,8 @@ class AntennaTestScreen(BoxLayout):
         self._find_board = find_board
         self.session = at.AntennaSession()
         self._stage = "idle"
+        self._problem = ""          # why no board can be read right now (from the backend)
+        self._notice = ""           # the last failure, kept until the next reading starts
         self._port = None           # the board we read through last
         self._board_gone = False    # the enforced unplug was seen
         self._running = False
@@ -86,7 +88,9 @@ class AntennaTestScreen(BoxLayout):
         # the one rule, always on screen — the whole point of the feature
         self._rule = _label(tr("Higher is better: a good antenna hears MORE "
                                "of everything, noise included. The quiet one "
-                               "is usually the deaf one."),
+                               "is usually the deaf one.")
+                            + " " + tr("(These are negative numbers: -95 dBm "
+                                       "is HIGHER than -105 dBm.)"),
                             size="13sp", color="text_secondary")
         self.add_widget(self._rule)
 
@@ -107,6 +111,10 @@ class AntennaTestScreen(BoxLayout):
         the hidden-screen poll trap (MITOSIS, 2026-08) must not recur."""
         if self._watch is None:
             self._watch = Clock.schedule_interval(self._tick_detect, 2.0)
+        if self._stage == "done":
+            # a finished verdict belongs to the last visit; a new visit is a
+            # new comparison (readiness sweep, 2026-10-03)
+            self.session = at.AntennaSession()
         self._stage = "detect"
         self._render()
         self._tick_detect(0)
@@ -124,6 +132,14 @@ class AntennaTestScreen(BoxLayout):
         if self._stage not in ("detect", "swap"):
             return
         port, problem = self._find_board()
+        # SAY WHY when the backend has a reason (two boards plugged in, or
+        # none) — the screen used to drop it and show the generic sentence
+        why = tr(problem[1]) if (port is None and problem) else ""
+        if why != self._problem and self._stage == "detect":
+            self._problem = why
+            self._render()
+        elif why != self._problem:
+            self._problem = why
         if self._stage == "swap":
             # the enforced unplug: the port must VANISH before a new reading
             # can belong to a new antenna...
@@ -147,6 +163,7 @@ class AntennaTestScreen(BoxLayout):
     # --------------------------------------------------------------- reading
 
     def _start_reading(self, label: str) -> None:
+        self._notice = ""            # a new reading clears the last failure
         if self._running:
             return
         self._running = True
@@ -179,6 +196,8 @@ class AntennaTestScreen(BoxLayout):
     def _on_read_failed(self, why: str) -> None:
         self._running = False
         self._stage = "detect"
+        # kept in _notice until the next reading starts: the detect watch
+        # re-rendered 0-2 s later and the reason vanished (2026-10-03)
         self._render(extra=tr("The board did not answer. Check it is plugged "
                               "in and running node firmware, then try again.")
                      + f"\n[size=12sp]{why}[/size]")
@@ -199,18 +218,23 @@ class AntennaTestScreen(BoxLayout):
         for child in list(self._buttons.children):
             self._buttons.remove_widget(child)
         n = self.session.count
+        if extra:
+            self._notice = extra
+        notice = self._notice
 
         if self._stage == "detect":
             self._body.text = (
                 tr("Plug the node whose antennas you are comparing into a "
                    "spare USB port. Only that one board - the medic's own "
                    "radio never counts.")
-                + ("\n\n" + extra if extra else "")
+                + ("\n\n[b]" + self._problem + "[/b]" if self._problem else "")
+                + ("\n\n" + notice if notice else "")
                 + ("\n\n" + self._ranking_markup() if n else ""))
         elif self._stage == "ready":
             self._body.text = (
                 tr("Board found. Which antenna is on it right now? Hold it "
                    "upright, the same way every round.")
+                + ("\n\n" + notice if notice else "")
                 + ("\n\n" + self._ranking_markup() if n else ""))
             for name in _PRESETS:
                 auto = f"{tr(name)} {n + 1}" if name == "Other" else tr(name)
@@ -239,13 +263,30 @@ class AntennaTestScreen(BoxLayout):
                 self._buttons.add_widget(done)
 
     def _finish(self) -> None:
-        self._stage = "detect"
+        # "done", not "detect": the 2 s watch used to see the board, flip to
+        # "ready" and overwrite the verdict with "Board found…" (2026-10-03)
+        self._stage = "done"
+        for child in list(self._buttons.children):
+            self._buttons.remove_widget(child)
         body = self._ranking_markup(final=True)
         self._body.text = body + "\n\n" + tr(
             "Suspects can look PERFECT on an impedance meter - a lossy "
             "antenna absorbs power instead of radiating it, and the meter "
             "cannot tell the difference. Trust the ear, and never deploy a "
             "folding antenna folded.")
+        again = Button(text=tr("Start again - a new comparison"),
+                       size_hint_y=None, height=dp(44),
+                       font_size=theme.font_sp("15sp"))
+        again.bind(on_release=lambda *_: self._start_again())
+        self._buttons.add_widget(again)
+
+    def _start_again(self) -> None:
+        """Forget the finished comparison and look for a board afresh."""
+        self.session = at.AntennaSession()
+        self._notice = ""
+        self._stage = "detect"
+        self._render()
+        self._tick_detect(0)
 
     def _ranking_markup(self, final: bool = False) -> str:
         ranked = self.session.rank()

@@ -159,6 +159,13 @@ class SlideToPowerOff(FloatLayout):
                 self.knob.pos = (kx, ky)
             else:
                 self.knob.pos = (self.knob.x, ky)
+            # The capsule paints its own word, so the hint is normally empty —
+            # but the home page writes a power-off FAILURE into it. Unplaced,
+            # that label sat at the screen's bottom-left corner (2026-10-03).
+            self.hint.pos, self.hint.size = (self.x, self.y), (self.width, self.height)
+            self.hint.text_size = (self.width, self.height)
+            self.hint.halign, self.hint.valign = "center", "middle"
+            self.hint.font_size = hint_font_px(self.height, "pill", dp(9.5))
             self._refresh()
             return
         th, ty = self._th(), self._ty()

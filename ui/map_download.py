@@ -120,8 +120,16 @@ def tiles_in_radius(lat: float, lon: float, radius_km: float = DEFAULT_RADIUS_KM
         x0, y0 = tile_of(north, west, z)          # NW corner -> min x, min y
         x1, y1 = tile_of(south, east, z)          # SE corner -> max x, max y
         span = 2 ** z
+        # ALWAYS the tile the centre stands on. At low zooms a tile is wider
+        # than the circle, so by the centre-in-circle rule a 25 km region got
+        # NO z8/z9 tile at all and the map had nothing to show when zoomed
+        # out (readiness sweep, 2026-10-03).
+        cx, cy = tile_of(lat, lon, z)
+        out.append((z, cx, cy))
         for x in range(max(0, x0), min(span - 1, x1) + 1):
             for y in range(max(0, y0), min(span - 1, y1) + 1):
+                if (x, y) == (cx, cy):
+                    continue
                 clat, clon = _tile_center(x, y, z)
                 if _km_between(lat, lon, clat, clon) <= radius_km:
                     out.append((z, x, y))
@@ -388,10 +396,20 @@ def download_region(lat: float, lon: float, dest_path: str,
     """
     fetch = fetch or osm_fetch
     tiles = tiles_in_radius(lat, lon, radius_km, zmin, zmax)
-    bounds = radius_bounds(lat, lon, radius_km)
+    # MERGE with what the file already covers. A second region used to
+    # REPLACE the metadata bounds, so the first region's tiles stayed on disk
+    # while the map clamped every pan to the new circle — "See on map" landed
+    # on the home node and the first drag snapped 500 km away (2026-10-03).
+    prev = _read_metadata(dest_path)
+    bounds = _union_bounds(prev.get("bounds"), radius_bounds(lat, lon, radius_km))
+    try:
+        minz = min(int(prev.get("minzoom", zmin)), zmin)
+        maxz = max(int(prev.get("maxzoom", zmax)), zmax)
+    except (TypeError, ValueError):
+        minz, maxz = zmin, zmax
     writer = MBTilesWriter(
-        dest_path, name or f"offline {radius_km:g}km @ {lat:.3f},{lon:.3f}",
-        bounds, zmin, zmax, center=f"{lon},{lat},{zmin}")
+        dest_path, prev.get("name") or name or f"offline {radius_km:g}km @ {lat:.3f},{lon:.3f}",
+        bounds, minz, maxz, center=prev.get("center") or f"{lon},{lat},{zmin}")
     return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
 
 

@@ -105,7 +105,11 @@ class StorageScreen(BoxLayout):
                 ("Beacon history", hist),
                 ("Firmware assets",
                  storage.paths_size([_FIRMWARE_ASSETS, RNODE_UPDATE_DIR])),
-                ("Registry & fleet", storage.path_size(_MEDIC_DIR)),
+                # the maps live INSIDE the medic dir and have their own row
+                # above — counted twice, "Registry & fleet" was the biggest bar
+                # on every medic with an offline map (readiness sweep, 2026-10-03)
+                ("Registry & fleet", max(0, storage.path_size(_MEDIC_DIR)
+                                         - storage.path_size(MAPS_DIR))),
                 ("Logs", storage.path_size(_KIVY_LOGS)),
             ]
             Clock.schedule_once(lambda dt: self._show(disk, cats), 0)

@@ -38,6 +38,7 @@ class TriageScreen(FloatLayout):
         super().__init__(**kwargs)
         self._reader = feed_factory()
         self._lighthouse = lighthouse     # (active: bool) -> status dict
+        self._on_antenna_test = on_antenna_test   # the modal offers it too
         self._on_build = on_build
         # Cancel's way home. Referenced at the empty-triage prompt since
         # birth but NEVER SET — every fresh medic crashed the whole UI on
@@ -189,7 +190,8 @@ class TriageScreen(FloatLayout):
                      pos=lambda *a: setattr(self._modal_bg, "pos", overlay.pos))
         from kivy.uix.boxlayout import BoxLayout
         card = BoxLayout(orientation="vertical", spacing=dp(14), padding=dp(20),
-                         size_hint=(0.86, None), height=dp(280),
+                         size_hint=(0.86, None),
+                         height=dp(340) if self._on_antenna_test else dp(280),
                          pos_hint={"center_x": 0.5, "center_y": 0.5})
         with card.canvas.before:
             Color(*theme.hex_to_rgba(theme.COLORS["surface"]))
@@ -218,6 +220,16 @@ class TriageScreen(FloatLayout):
         row.add_widget(cancel)
         row.add_widget(cont)
         card.add_widget(row)
+        if self._on_antenna_test:
+            # the one thing on this screen that needs NO beacon — it was
+            # hidden under the modal's dark wash (readiness sweep, 2026-10-03)
+            alt = Button(text=tr("Antenna test instead (no beacon needed)"),
+                         font_size="15sp", size_hint_y=None, height=dp(48),
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            alt.bind(on_release=lambda *a: self._on_antenna_test())
+            card.add_widget(alt)
         overlay.add_widget(card)
         self.add_widget(overlay)
         self._modal = overlay
@@ -267,6 +279,11 @@ class TriageScreen(FloatLayout):
         self._beacon_names = result.get("names", "")
         self._guidance.markup = False
         self._guidance.text = result.get("text", "")
+        if result.get("text"):
+            # HOLD the sentence. The 0.5 s tick wrote "Listening..." over it
+            # within half a second, so "Power on your beacon node" — the one
+            # thing that unblocks a new user — was never readable (2026-10-03).
+            self._pin_guidance(45.0 if state == "need_power" else 8.0)
         if state == "active":
             self._beacon_on = True
             # if the commanded node stays silent, it's probably powered off
@@ -281,6 +298,7 @@ class TriageScreen(FloatLayout):
             self._guidance.markup = False
             self._guidance.text = tr("{who} isn't answering - is it powered on "
                                      "and within range?").format(who=who)
+            self._pin_guidance(20.0)
 
     def stop_lighthouse(self, *a) -> None:
         """Stop the beacon — called automatically whenever Triage is left."""
@@ -310,7 +328,7 @@ class TriageScreen(FloatLayout):
         for key, _label, x, y in self._bullseye.spoke_label_positions():
             lbl = self._spoke_labels.get(key)
             if lbl is not None:
-                lbl.text = _label
+                lbl.text = tr(_label)
                 lbl.center = (x, y)
         # the "Not Reading" cover tracks the bullseye's central reading area
         self._nr_overlay.size = (side * 0.86, side * 0.44)
@@ -421,7 +439,8 @@ class TriageScreen(FloatLayout):
             return
         r, g, b = thermal_color(snap["score"])
         col = "%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
-        self._write_guidance(f"[color={col}]{snap['guidance']}[/color]", markup=True)
+        # the scorer speaks English constants; the screen translates them
+        self._write_guidance(f"[color={col}]{tr(snap['guidance'])}[/color]", markup=True)
 
     def start(self) -> None:
         """Begin sampling. Idempotent — re-entering the screen must not leave

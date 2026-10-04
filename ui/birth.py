@@ -34,3 +34,32 @@ def rnode_board_choices() -> List[RNodeBoard]:
     """Boards shown after choosing RNode — official boards first (by rnodeconf
     menu order), the custom board(s) last."""
     return official_boards() + custom_boards()
+
+
+def board_blocker(board: RNodeBoard, band_mhz: int = 915) -> str:
+    """Why THIS medic cannot flash *board* right now, or "" — the sentence the
+    pickers tag a row with and the gate shows instead of a confirm.
+
+    Two causes, both found by the 2026-10-03 readiness sweep: a board whose
+    flash sequence cannot be answered from here (T-Beam/T3S3 chip variants),
+    and a custom-fork board whose image this medic simply does not carry.
+    Both used to be offered as plain rows and refused — or erased — later."""
+    why = board.cannot_flash_reason(band_mhz)
+    if why:
+        return why
+    if board.flash_method == "autoinstall":
+        return ""
+    import os
+    try:
+        if board.flash_method == "serial_dfu":
+            path = os.path.expanduser(f"{board.build_dir}/{board.dfu_package}")
+        else:
+            from workflows.rnode_flash import fork_image_for
+            path = os.path.expanduser(fork_image_for(board, "bin"))
+    except Exception:                                              # noqa: BLE001
+        return ""
+    if os.path.exists(path):
+        return ""
+    return (f"This Node Medic has no {board.display_name} firmware on it. That "
+            f"board's firmware is built from source and this medic doesn't carry "
+            f"the build — ask for a release that carries it.")

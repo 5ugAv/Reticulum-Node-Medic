@@ -45,6 +45,21 @@ def test_holds_last_packet_values_while_splitter_fresh(tmp_path):
     assert sample is not None and sample["rssi"] == -88
 
 
+def test_a_packet_heard_long_ago_no_longer_scores(tmp_path):
+    """The splitter keeps `updated` fresh with channel stats even when no
+    packet has arrived for an hour; the last packet's RSSI/SNR used to be
+    served as live forever, so the beacon watchdog could never say "isn't
+    answering" (readiness sweep, 2026-10-03)."""
+    p = _write(tmp_path, last_rssi=-88, last_snr=6.0, noise_floor=-105,
+               packet_heard_at=1000.0, updated=4599.0)
+    s = live_triage_feed(p, max_age_s=30, now=lambda: 4600.0)()
+    assert s is not None and s.get("partial") is True and s["rssi"] is None
+    # ...but a recent one still holds
+    p2 = _write(tmp_path, last_rssi=-88, last_snr=6.0, noise_floor=-105,
+                packet_heard_at=4500.0, updated=4599.0)
+    assert live_triage_feed(p2, max_age_s=30, now=lambda: 4600.0)()["rssi"] == -88
+
+
 def test_noise_only_state_yields_a_partial_live_sample(tmp_path):
     # no packet heard since boot: noise floor still flows (it responds to
     # antenna handling) — the screen must show life, not freeze

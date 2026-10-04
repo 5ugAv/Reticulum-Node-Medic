@@ -370,6 +370,13 @@ class DrivenGuide:
                           "pick_board_absent" if absent else "pick_board")
         self._board_picked(self.sc_board)
 
+    def _render_blocked_board(self, board, why):
+        # A board this medic cannot flash stops the walk HERE, before the Pi
+        # question, any physical step or any hand-off (readiness sweep,
+        # 2026-10-03). The real one draws the reason and a Back button.
+        self.asked.append("blocked_board")
+        self.ended = ("blocked_board", board.key)
+
     def _remember_board(self, key):
         pass                            # board memory is a real-USB concern
 
@@ -667,6 +674,21 @@ def test_every_pi_walkthrough_flows_to_the_end(rig, pi, board, state):
     env, clock = rig
     g = walk_pi(env, clock, pi=pi, board=board, state=state)
     label = f"[pi={pi or 'unknown'} board={board} radio={state}]"
+
+    # LAW 0 — A BOARD THIS MEDIC CANNOT FLASH IS TOLD SO AT THE PICK. Asked of
+    # the shipped blocker in this same environment (a custom-fork board's
+    # image is a file on disk), so both outcomes are pinned wherever it runs:
+    # blocked -> stop at once, nothing flashed or handed off; free -> the
+    # laws below.
+    from ui.birth import board_blocker
+    # (Not on the "already have one" road: that radio is never flashed here,
+    # so nothing about this medic's flashing can block it.)
+    if state != "have_one" and board_blocker(RNODE_BOARDS[board]):
+        assert g.ended == ("blocked_board", board), \
+            f"{label} a board this medic cannot flash was not stopped at the pick: {g.ended}"
+        assert not g.renders and not g.navigations and not g.flashed, \
+            f"{label} the blocked board got past the pick: {g.renders}"
+        return
 
     # LAW 1 — TERMINATION. The one legitimate early ender: a Pi 3B+ cannot do
     # a cable birth (LAN7515 hub between the SoC and every port — physics,

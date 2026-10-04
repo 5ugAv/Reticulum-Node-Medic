@@ -328,12 +328,30 @@ class ModeIcon(Widget):
                     ModeToggle._draw_backpack(Line, ox, oy, s)
 
     # -- touch --------------------------------------------------------------
+    #: A finger that travels further than this before lifting is a drag,
+    #: not a tap — the same slop the poster cards and the old switch use.
+    _tap_slop = 14
+
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos) and not self._busy:
-            if self._on_select and not self._selected:
-                self._on_select(self.mode)
+            # fire on RELEASE, like every other control on the front page:
+            # firing on finger-down gave the mode switch no cancel gesture and
+            # a brush past the icons restarted rnsd (readiness sweep, 2026-10-03)
+            touch.grab(self)
+            touch.ud["mode_icon_down"] = tuple(touch.pos)
             return True
         return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            ox, oy = touch.ud.get("mode_icon_down", touch.pos)
+            moved = abs(touch.x - ox) + abs(touch.y - oy)
+            if (moved <= dp(self._tap_slop) and self.collide_point(*touch.pos)
+                    and not self._busy and self._on_select and not self._selected):
+                self._on_select(self.mode)
+            return True
+        return super().on_touch_up(touch)
 
 
 class ModePair:

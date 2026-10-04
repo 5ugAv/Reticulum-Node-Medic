@@ -238,19 +238,38 @@ def parse_gps_time(text: str) -> Optional[datetime]:
 GPS_TIME_CMD = "gpspipe -w -n 5 2>/dev/null"
 
 
-def gps_time(run: Optional[ShellRunner] = None) -> Optional[datetime]:
-    """The current GPS (satellite UTC) time as an aware UTC datetime, or None if
-    there's no fix / no GPS."""
+def gps_time_or_reason(run: Optional[ShellRunner] = None):
+    """``(datetime, "")`` on a fix, else ``(None, reason)`` — and the reason
+    tells the three failures apart. A missing gpspipe, a gpsd that never
+    answered and a sky with no satellites all used to collapse into "take the
+    medic outside" (readiness sweep, 2026-10-03)."""
     run = run or _default_run
     try:
         code, out = run(GPS_TIME_CMD)
-    except Exception:
-        return None
-    if code not in (0, None):
-        # gpspipe returns non-zero on some timeouts even with usable output
-        if not out:
-            return None
-    return parse_gps_time(out or "")
+    except Exception as exc:                                       # noqa: BLE001
+        return None, f"GPS could not be read: {exc}"
+    low = (out or "").lower()
+    if code == 127 or "not found" in low or "no such file" in low:
+        return None, ("GPS tools aren't installed on this medic (gpspipe is "
+                      "missing), so the clock can't be set from GPS.")
+    if "timed out" in low or "timeout" in low:
+        return None, ("GPS didn't answer within 15 seconds — is gpsd running and "
+                      "the GPS plugged in? Try again, or set the time manually.")
+    if code not in (0, None) and not out:
+        return None, ("GPS gave no answer (exit code %s) — is gpsd running? Set "
+                      "the time manually if this persists." % code)
+    dt = parse_gps_time(out or "")
+    if dt is None:
+        return None, ("No GPS fix — the clock was left unchanged. Take the medic "
+                      "outside for clear sky, then try again (or set the time "
+                      "manually).")
+    return dt, ""
+
+
+def gps_time(run: Optional[ShellRunner] = None) -> Optional[datetime]:
+    """The current GPS (satellite UTC) time as an aware UTC datetime, or None if
+    there's no fix / no GPS."""
+    return gps_time_or_reason(run)[0]
 
 
 def sync_from_gps(run: Optional[ShellRunner] = None,
@@ -262,11 +281,9 @@ def sync_from_gps(run: Optional[ShellRunner] = None,
     Returns ``(ok, message)`` and stamps the last-sync time on success.
     GPS time is UTC; ``timedatectl set-time`` receives it as ``UTC`` below."""
     run = run or _default_run
-    dt = gps_time(run)
+    dt, why = gps_time_or_reason(run)
     if dt is None:
-        return False, ("No GPS fix — the clock was left unchanged. Take the medic "
-                       "outside for clear sky, then try again (or set the time "
-                       "manually).")
+        return False, why
     stamp = dt.strftime(FMT)  # UTC wall-clock
     run("sudo -n timedatectl set-ntp false")
     code, out = run(f'sudo -n timedatectl set-time "{stamp} UTC"')
