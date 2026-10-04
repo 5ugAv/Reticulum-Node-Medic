@@ -633,9 +633,21 @@ class RNodeFlashWorkflow:
         if has_connectivity(self.connection):
             res = sync_firmware(self.connection)
             if res.failed:
+                # Being online must never make a flash LESS reliable than
+                # being offline: a failed download falls back to whatever the
+                # cache already holds (readiness ledger #50).
+                cached = cached_firmware_version(self.connection, self.version)
+                if cached:
+                    self.version = cached
+                    return StepResult("ensure_firmware", True,
+                                      f"Online sync failed for "
+                                      f"{', '.join(res.failed[:3])} — flashing the "
+                                      f"carried {cached} instead.")
                 return StepResult("ensure_firmware", False,
                                   f"Firmware sync failed for "
-                                  f"{', '.join(res.failed[:3])}.")
+                                  f"{', '.join(res.failed[:3])} and nothing is "
+                                  f"cached for this board yet — try again with a "
+                                  f"better connection.")
             if getattr(res, "version", ""):
                 self.version = res.version          # flash what was fetched
             return StepResult("ensure_firmware", True,

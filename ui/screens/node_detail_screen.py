@@ -96,6 +96,9 @@ def _reading(record, name):
     return value
 
 
+#: status word -> colour name, shared with the VITALS row via ui.theme (#60)
+_TONE = {"ok": "green", "warn": "amber", "alert": "red", "unknown": "text_secondary"}
+
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None,
                  on_forget=None, on_walk=None,
@@ -203,7 +206,7 @@ class NodeDetailScreen(BoxLayout):
             tr("Battery: {status}").format(
                 status=f"{batt}%" if batt is not None else tr("not reported")),
             color=("text_secondary" if batt is None else
-                   "green" if batt > 50 else "amber" if batt > 20 else "red")))
+                   _TONE[theme.battery_status(batt)])))      # the row's scale (#60)
 
         # SIGNAL, and WHEN it was measured. A dBm figure with no timestamp is a
         # trap on a node that has since moved, gone quiet or lost its antenna —
@@ -213,7 +216,7 @@ class NodeDetailScreen(BoxLayout):
         if sig is not None:
             self.add_widget(_line(
                 tr("Wi-Fi signal when last heard: {dbm} dBm").format(dbm=sig),
-                color=("green" if sig > -90 else "amber" if sig > -110 else "red")))
+                color=_TONE[theme.signal_status(sig)]))     # the row's scale (#60)
         else:
             self.add_widget(_line(tr("Signal: not measured"),
                                   color="text_secondary"))

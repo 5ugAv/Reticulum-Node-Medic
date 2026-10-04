@@ -148,6 +148,7 @@ class RadioDefaultsScreen(BoxLayout):
     def _commit(self, vals, verb):
         stored = rd.save_defaults(vals)
         self._fill_fields(stored)                    # reflect coercion
+        self._status.color = theme.hex_to_rgba(theme.COLORS["green"])   # a new save starts clean (#24)
         self._status.text = tr("{verb} — BUILD pre-fills {summary}").format(
             verb=verb, summary=rd.summary(stored))
         try:                                          # home badge follows

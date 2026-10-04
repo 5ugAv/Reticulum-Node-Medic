@@ -526,8 +526,8 @@ class PiImagerScreen(BoxLayout):
                 ssid, psk = self._wifi_credentials()
             except Exception:
                 ssid, psk = ("", "")
-        self._field("WiFi network", "SSID the Pi should join", "ssid").text = ssid
-        self._field("WiFi password", "WiFi password", "psk", password=True).text = psk
+        self._field("Wi-Fi network", "SSID the Pi should join", "ssid").text = ssid
+        self._field("Wi-Fi password", "Wi-Fi password", "psk", password=True).text = psk
         self._field("Set a login password", "for user 'pi' (SSH login)", "pw",
                     password=True)
         # WRITE IT DOWN. This name and password are how anyone reaches this node

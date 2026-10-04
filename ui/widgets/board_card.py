@@ -15,6 +15,7 @@ from kivy.uix.image import Image
 from kivy.uix.label import Label
 
 from ui import board_images
+from ui import theme
 
 
 class BoardCard(FloatLayout):
@@ -27,10 +28,19 @@ class BoardCard(FloatLayout):
         self._meta = board_images.get(board_key) or {}
         self._on_select = on_select
         self._selected = selected
-        self._img = Image(source=self._meta.get("image", ""), allow_stretch=True,
+        # image_for() answers only for a photo that EXISTS; two catalogue
+        # boards have none and drew a blank tile (readiness ledger #72)
+        photo = board_images.image_for(board_key)
+        self._img = Image(source=photo or "", allow_stretch=True,
                           keep_ratio=True, size_hint=(1, 1),
                           pos_hint={"x": 0, "y": 0})
         self.add_widget(self._img)
+        if not photo:
+            ph = Label(text=name or board_key, halign="center", valign="middle",
+                       size_hint=(1, 1), pos_hint={"x": 0, "y": 0}, bold=True,
+                       color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+            ph.bind(size=lambda i, v: setattr(i, "text_size", v))
+            self.add_widget(ph)
         # The on-screen name. White + bold so it reads as pixels lit on the OLED.
         self._name_lbl = Label(text=name or "", bold=True, color=(1, 1, 1, 1),
                                halign="center", valign="middle",

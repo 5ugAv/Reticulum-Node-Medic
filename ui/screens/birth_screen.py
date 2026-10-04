@@ -115,8 +115,8 @@ _PHASE_LABELS = {
     "flash": "Flashing… keep the board plugged in.",
     "set_firmware_radio_parameters": "Setting radio parameters…",
     "set_params": "Setting radio parameters…",
-    "wifi_onboarding": "Configuring the node over its setup WiFi… the medic "
-                       "may briefly leave your WiFi and rejoin.",
+    "wifi_onboarding": "Configuring the node over its setup Wi-Fi… the medic "
+                       "may briefly leave your Wi-Fi and rejoin.",
     "verify_beacon": "Verifying… listening for the node's first health beacon "
                      "(up to a minute of quiet is normal — wait for the green "
                      "confirmation).",
@@ -908,7 +908,7 @@ class BirthScreen(BoxLayout):
             if self._rtnode_target:
                 self.list.add_widget(_line(tr(
                     "Flashes the attached board with RTNode-2400 and provisions it "
-                    "on the standard channel. WiFi/LoRa details are entered on the "
+                    "on the standard channel. Wi-Fi/LoRa details are entered on the "
                     "node's setup portal after flashing."), size="12.5sp",
                     color="text_secondary"))
             else:
@@ -1151,7 +1151,7 @@ class BirthScreen(BoxLayout):
             status.text = (
                 f"{how}: {cands}" if cands else
                 (how or tr("Couldn't find the Pi yet — is it powered on and "
-                           "joined to your WiFi? It can take a minute or two.")))
+                           "joined to your Wi-Fi? It can take a minute or two.")))
 
     def _add_rnode_board_pick(self):
         """The RNode board pick, RTNode-style: detection narrows the catalogue
@@ -3102,7 +3102,7 @@ class BirthScreen(BoxLayout):
                 except Exception:                                  # noqa: BLE001
                     _screened = False
                 _setup = (tr("The setup details are printed in the build log — "
-                             "join the 'RTNode-Setup' WiFi and enter them at "
+                             "join the 'RTNode-Setup' Wi-Fi and enter them at "
                              "http://10.0.0.1."))
                 if _screened:
                     _how = tr("If its screen still says CONFIG MODE, it still "

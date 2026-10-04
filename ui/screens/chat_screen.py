@@ -286,7 +286,7 @@ class ChatScreen(BoxLayout):
 
     def _ask_delete(self, peer):
         from ui.confirm import confirm_leave
-        name = self._store.peer_name(peer)
+        name = self._store.peer_label(peer)          # name + short hash (#85)
         confirm_leave(
             tr("Delete the chat with {name}? The messages go from this medic. "
                "{name} stays on the mesh and can write again.").format(name=name),
@@ -308,7 +308,7 @@ class ChatScreen(BoxLayout):
         # Read means seen: a message that arrives while this thread is open
         # was staying unread (badge "1" over the very words, 2026-10-01).
         self._store.mark_read(self._peer)
-        self._title.text = self._store.peer_name(self._peer)
+        self._title.text = self._store.peer_label(self._peer)    # (#85)
         back = _btn(tr("← All chats"), h=40, size="13sp")
         back.bind(on_release=lambda *_: self._show(LIST))
         self._body.add_widget(back)

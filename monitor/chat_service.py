@@ -441,5 +441,8 @@ class ChatService:
 
         lxm.register_delivery_callback(_delivered)
         lxm.register_failed_callback(_failed)
-        self._router.handle_outbound(lxm)
+        # SENDING before the hand-off: a delivery callback can fire before
+        # handle_outbound returns (a local peer, a fast link), and writing
+        # SENDING afterwards overwrote the POSTED/DELIVERED it had just set.
         self.store.set_state(msg_id, store_mod.SENDING)
+        self._router.handle_outbound(lxm)

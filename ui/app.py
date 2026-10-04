@@ -412,6 +412,18 @@ NO_FIX_NOTE = ("No GPS fix and no placed nodes yet — type an address, or tap t
 class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
+    _comms_back = "home"
+
+    def _open_comms_from_chat(self):
+        """Chat's 'Put Columba or Sideband on a phone' button: Back from the
+        apps screen must land on Chat, not Home (readiness ledger #83)."""
+        self._comms_back = "chat"
+        self.switch_mode("comms")
+
+    def _comms_back_target(self):
+        back, self._comms_back = self._comms_back, "home"     # one-shot
+        return back
+
     def _with_back(self, widget, back_to="home"):
         """A mode screen with the bottom sliver ('←' left, 'Home' centre) and the
         LEFT-EDGE SWIPE. Arrow and swipe are ONE action: for a MULTI-PAGE flow
@@ -444,8 +456,9 @@ class ReticulumNodeMedicApp(App):
             # the operator out of the list they were reading (2026-09-29:
             # "when I press back, it takes me back to the home page instead of
             # back to the list of nodes that I just came from"). A screen
-            # opened FROM another screen now names it as back_to.
-            self.switch_mode(back_to)
+            # opened FROM another screen now names it as back_to — a callable
+            # answers at press time (Communication apps opened from Chat, #83).
+            self.switch_mode(back_to() if callable(back_to) else back_to)
 
         def on_home():
             h = getattr(widget, "handle_home", None)
@@ -1033,7 +1046,8 @@ class ReticulumNodeMedicApp(App):
         comms_scr = Screen(name="comms")
         from ui.screens.comms_screen import CommsScreen
         self.comms_screen = CommsScreen()
-        comms_scr.add_widget(self._with_back(self.comms_screen))
+        comms_scr.add_widget(self._with_back(self.comms_screen,
+                                             back_to=self._comms_back_target))
         comms_scr.bind(on_enter=lambda *_: self.comms_screen.enter())
         self.sm.add_widget(comms_scr)
         # CHAT — the medic's own messenger (docs/CHAT.md, 2026-09-29). The
@@ -1047,7 +1061,7 @@ class ReticulumNodeMedicApp(App):
         self._chat = ChatService(self.chat_store, display_name=tool_name())
         chat_scr = Screen(name="chat")
         self.chat_screen = ChatScreen(self.chat_store, lambda: self._chat,
-                                      open_phone_apps=lambda: self.switch_mode("comms"),
+                                      open_phone_apps=self._open_comms_from_chat,
                                       retry=self.retry_chat)
         chat_scr.add_widget(self._with_back(self.chat_screen))
         chat_scr.bind(on_enter=lambda *_: self.chat_screen.enter(),
@@ -2948,7 +2962,7 @@ class ReticulumNodeMedicApp(App):
                                + words[lm.verdict] + ".")
                     Clock.schedule_once(lambda dt: report(
                         "Answered%s. Fresh health heard — this page shows the "
-                        "new readings on its next refresh.%s" % (hops_txt, sig),
+                        "new readings when you open it again.%s" % (hops_txt, sig),
                         True), 0)
                 elif outcome == DELIVERY_NO_ROUTE:
                     # rnpath saw a path but OUR stack never resolved one, so

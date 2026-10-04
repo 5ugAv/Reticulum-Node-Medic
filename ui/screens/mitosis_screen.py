@@ -627,7 +627,7 @@ class MitosisScreen(BoxLayout):
     def _show_stage_wifi(self):
         self._clear()
         self._stage_header("wifi")
-        title = _label(tr("Share your WiFi with it?"), bold=True, size="22sp")
+        title = _label(tr("Share your Wi-Fi with it?"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         from workflows.mitosis_card import medic_wifi_credentials
@@ -640,7 +640,7 @@ class MitosisScreen(BoxLayout):
             (tr("This medic is on '{ssid}'. Type that network's password and "
                 "the new medic joins it by itself — or skip, and it lives on "
                 "the cable.").format(ssid=ssid)) if ssid else
-            tr("Type your WiFi network's name and password, or skip and the "
+            tr("Type your Wi-Fi network's name and password, or skip and the "
                "new medic lives on the cable."),
             color="text_secondary", size="14sp")
         grow_to_text(body)
@@ -653,7 +653,7 @@ class MitosisScreen(BoxLayout):
                                           size_hint_y=None, height=dp(48))
         bind_field(self._wifi_ssid_input)
         self.add_widget(self._wifi_ssid_input)
-        self._wifi_psk_input = TextInput(hint_text=tr("WiFi password"),
+        self._wifi_psk_input = TextInput(hint_text=tr("Wi-Fi password"),
                                          password=True, multiline=False,
                                          font_size=theme.font_sp("18sp"),
                                          size_hint_y=None, height=dp(48))
@@ -668,7 +668,7 @@ class MitosisScreen(BoxLayout):
                            else tr("Show the password"))
         reveal.bind(on_release=_toggle)
         self.add_widget(reveal)
-        share = Button(text=tr("Share WiFi and write the card →"),
+        share = Button(text=tr("Share Wi-Fi and write the card →"),
                        size_hint_y=None, height=dp(56), font_size="19sp",
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -678,7 +678,7 @@ class MitosisScreen(BoxLayout):
         self._wifi_warn = _label("", color="text_secondary", size="13sp")
         self._wifi_warn.size_hint_y, self._wifi_warn.height = None, dp(20)
         self.add_widget(self._wifi_warn)
-        skip = _small_btn(tr("No WiFi — write the card now →"))
+        skip = _small_btn(tr("No Wi-Fi — write the card now →"))
         skip.bind(on_release=lambda *_: self._wifi_continue(False))
         self.add_widget(skip)
         from kivy.uix.widget import Widget
@@ -691,11 +691,11 @@ class MitosisScreen(BoxLayout):
             # Was a hint_text change on a field the eye is not on, so the big
             # green button appeared to do nothing at all: tap, nothing, tap
             # harder, conclude it is broken. Say it where the person is looking.
-            self._wifi_psk_input.hint_text = tr("Type the WiFi password first")
+            self._wifi_psk_input.hint_text = tr("Type the Wi-Fi password first")
             warn = getattr(self, "_wifi_warn", None)
             if warn is not None:
-                warn.text = tr("Type the WiFi password before you carry on - or "
-                               "choose 'No WiFi' below.")
+                warn.text = tr("Type the Wi-Fi password before you carry on - or "
+                               "choose 'No Wi-Fi' below.")
                 warn.color = theme.hex_to_rgba(theme.COLORS["amber"])
             return
         self._wifi = (ssid, psk)
@@ -1188,7 +1188,7 @@ class MitosisScreen(BoxLayout):
         # clips silently from the top the moment the copy grows.
         grow_to_text(body)
         self.add_widget(body)
-        wifi = _small_btn(tr("No cable - it joins my WiFi instead"))
+        wifi = _small_btn(tr("No cable - it joins my Wi-Fi instead"))
         wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
         self.add_widget(wifi)
 

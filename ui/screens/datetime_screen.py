@@ -11,6 +11,7 @@ thread and post results back via ``Clock``.
 
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 
@@ -56,7 +57,11 @@ class DateTimeScreen(BoxLayout):
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
                         spacing=dp(10))
         row.add_widget(_line("Keep the clock synced from GPS", size="15sp"))
-        self._auto = Switch(active=td.is_autosync(), size_hint_x=None, width=dp(90))
+        # No gpspipe = nothing to sync from: the switch defaulted ON and greyed
+        # the manual fields on a medic with no GPS at all (ledger #19)
+        self._has_gps_tools = shutil.which("gpspipe") is not None
+        self._auto = Switch(active=td.is_autosync() and self._has_gps_tools,
+                            size_hint_x=None, width=dp(90))
         self._auto.bind(active=lambda _i, v: self._on_autosync(bool(v)))
         row.add_widget(self._auto)
         col.add_widget(row)
@@ -144,7 +149,10 @@ class DateTimeScreen(BoxLayout):
             if td.last_sync_source() == "GPS" and td.last_sync():
                 ago = ago.replace("synced", "GPS-synced", 1)
             live = ago
-        if self._auto.active:
+        if not getattr(self, "_has_gps_tools", True) and not self._auto.active:
+            self._sync_status.text = ("No GPS tools on this medic (gpspipe is not "
+                                      "installed) — set the clock by hand below.")
+        elif self._auto.active:
             self._sync_status.text = f"Auto-sync ON — {live}. Manual entry is disabled."
         else:
             self._sync_status.text = "Auto-sync OFF — set the clock by hand below."

@@ -132,5 +132,5 @@ def test_chat_keeps_the_phone_handoff_in_plain_words():
     assert src.count("self._open_phone_apps()") == 1          # the full-width row, only
     assert 'tr("Phone apps")' not in src                          # the corner twin is gone (2026-10-01)
     app = open("ui/app.py").read()
-    assert 'open_phone_apps=lambda: self.switch_mode("comms")' in app
+    assert 'open_phone_apps=self._open_comms_from_chat' in app
     assert 'Screen(name="comms")' in app                        # the APK page itself still exists

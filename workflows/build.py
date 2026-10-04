@@ -730,8 +730,12 @@ def install_software_stack(wf: "BuildWorkflow") -> StepResult:
     else:
         installed = "Reticulum and LXMF already installed."
 
-    # lrzsz is only needed for the serial file-push path; best-effort.
-    wf.connection.run(wf.priv("apt-get install -y lrzsz") + " || true", timeout=300)
+    # lrzsz is only needed for the serial file-push path; best-effort — and only
+    # when it is missing AND the node can reach a mirror: an unconditional
+    # apt-get sat for up to 300 s on every offline build (ledger #165).
+    if (wf.connection.run("dpkg -s lrzsz")[0] != 0
+            and wf.connection.run("curl -fsI -m 5 https://deb.debian.org")[0] == 0):
+        wf.connection.run(wf.priv("apt-get install -y lrzsz") + " || true", timeout=300)
     return StepResult("install_software_stack", True, installed)
 
 

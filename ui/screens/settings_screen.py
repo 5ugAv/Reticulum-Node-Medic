@@ -74,8 +74,8 @@ class SettingsScreen(BoxLayout):
                                     "family tree"), "trusted_operators"))
         body.add_widget(self._entry(tr("Date & time"), tr("System clock and timezone — set manually or keep "
                                     "it synced from GPS"), "datetime"))
-        body.add_widget(self._entry(tr("WiFi & Network"), tr("Connect to a hotspot or venue WiFi"), "wifi"))
-        body.add_widget(self._entry(tr("Communication apps"), tr("Hand Columba or Sideband to a phone over WiFi — "
+        body.add_widget(self._entry(tr("Wi-Fi & Network"), tr("Connect to a hotspot or venue Wi-Fi"), "wifi"))
+        body.add_widget(self._entry(tr("Communication apps"), tr("Hand Columba or Sideband to a phone over Wi-Fi — "
                                     "the mesh messenger for your pocket"), "comms"))
         body.add_widget(self._entry(tr("Field readiness"), tr("Is this medic ready to be taken somewhere with "
                                     "no signal — firmware, apps, maps, wheels, "

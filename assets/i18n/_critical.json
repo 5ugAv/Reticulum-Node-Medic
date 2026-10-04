@@ -15,7 +15,7 @@
   "Checking what's carried…",
   "Choose the language Node Medic runs in.",
   "Communication apps",
-  "Connect to a hotspot or venue WiFi",
+  "Connect to a hotspot or venue Wi-Fi",
   "Couldn't power off: ",
   "Current:",
   "Date & time",
@@ -33,7 +33,7 @@
   "Frequency, bandwidth, SF, CR, TX power that BUILD pre-fills — includes regional presets",
   "Get a message on your phone (Sideband/Columba) when a node needs checking — add your Reticulum address",
   "Get the medic and the phone on the SAME Wi-Fi first (or the medic's hotspot), then try again.",
-  "Hand Columba or Sideband to a phone over WiFi — the mesh messenger for your pocket",
+  "Hand Columba or Sideband to a phone over Wi-Fi — the mesh messenger for your pocket",
   "Home mode",
   "Is this medic ready to be taken somewhere with no signal — firmware, apps, maps, wheels, toolchain",
   "Keep changed",
@@ -79,6 +79,6 @@
   "Trusted operators",
   "Walk the lock screen, recovery key and reset without changing anything",
   "What RNode / transport / propagation nodes are, where to place them, and the radio settings",
-  "WiFi & Network",
+  "Wi-Fi & Network",
   "{pct}% translated — the rest shows in English"
 ]

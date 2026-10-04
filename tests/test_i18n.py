@@ -148,7 +148,7 @@ def test_available_languages_rows_are_triples_with_names():
 WRAPPED_SLICE_STRINGS = [
     # Settings screen — title, entry titles, section headers
     "Settings", "Language", "Default radio parameters", "Tool identity",
-    "Storage usage", "Trusted operators", "Date & time", "WiFi & Network",
+    "Storage usage", "Trusted operators", "Date & time", "Wi-Fi & Network",
     "Communication apps", "Reticulum & radio guide", "About",
     "Home mode", "Display", "Screen saver", "Alerts",
     "Beacon history retention", "Power",

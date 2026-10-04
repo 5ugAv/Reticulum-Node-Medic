@@ -299,7 +299,8 @@ class MessageStore:
                    "text": text, "ts": float(ts if ts is not None else time.time()),
                    "state": SENDING, "read": True}
             self._messages.append(rec)
-            self._touch_peer(peer)
+            # NOT _touch_peer(): a typed, never-heard address is not 'Heard on the
+            # mesh' because one message was sent to it (readiness ledger #79)
             self._save_messages()
             return rec
 
@@ -421,6 +422,14 @@ class MessageStore:
             self._ensure_loaded()
             n = (self._peers.get(peer) or {}).get("name") or ""
             return n or short_hash(peer)
+
+    def peer_label(self, peer: str) -> str:
+        """The name AND the short hash when there is a name — two phones both
+        called the same thing were told apart by nothing on the delete confirm
+        or the thread title (readiness ledger #85)."""
+        name = self.peer_name(peer)
+        tag = short_hash(peer)
+        return name if name == tag else f"{name}  {tag}"
 
     def peers(self) -> List[dict]:
         """Every peer heard, newest first: {hash, name, seen}."""

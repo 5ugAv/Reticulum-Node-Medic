@@ -479,7 +479,8 @@ class MapPlot(Widget):
         # confirm screen), a tap drops the pin at that spot — offline location entry.
         try:
             if (self._on_pick and self._last_view is not None
-                    and not self._touches and self.collide_point(*touch.pos)):
+                    and not self._touches and self.collide_point(*touch.pos)
+                    and not getattr(touch, "is_double_tap", False)):   # zoom, not place (#8)
                 latlon = self._last_view.to_latlon(touch.x - self.x, touch.y - self.y)
                 self._me = latlon
                 self._trigger()                  # move the pin to the tapped point
@@ -1512,7 +1513,7 @@ class ScanScreen(BoxLayout):
             self._place_row = act
 
             self.detail_btn = Button(
-                text=tr("Load street names for this spot  (needs WiFi)"),
+                text=tr("Load street names for this spot  (needs Wi-Fi)"),
                 size_hint=(1, None), height=dp(46), font_size="15.5sp", bold=True,
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
@@ -1666,7 +1667,7 @@ class ScanScreen(BoxLayout):
                                             name=_os.path.basename(problem[0])), "alert")
                 else:
                     self._set_status(tr("No offline map on this medic yet — download "
-                                        "one below (needs WiFi once). Nodes still "
+                                        "one below (needs Wi-Fi once). Nodes still "
                                         "appear under VITALS."), "warn")
                 # The sentence lives INSIDE the Offline-maps panel, which starts
                 # collapsed: an explanation nobody can see is no explanation
@@ -1846,6 +1847,8 @@ class ScanScreen(BoxLayout):
                 try:
                     self._set_status(tr("No range rings yet — finish a boundary "
                                         "walk around a node to draw one."), "warn")
+                    if not getattr(self, "_offline_open", False):
+                        self._toggle_offline()       # the sentence lives in there (#7)
                 except Exception:                                  # noqa: BLE001
                     pass
         else:
@@ -2135,7 +2138,7 @@ class ScanScreen(BoxLayout):
             self.badge.set(tr("Pick or find a location first, then load its streets"), "info")
             return
         if not is_online():
-            self.badge.set(tr("No internet — join WiFi to load street names"), "none")
+            self.badge.set(tr("No internet — join Wi-Fi to load street names"), "none")
             return
         self._dl_busy = True
         self.detail_btn.disabled = True
@@ -2166,9 +2169,9 @@ class ScanScreen(BoxLayout):
     def _detail_done(self, summary, pt):
         self._dl_busy = False
         self.detail_btn.disabled = False
-        self.detail_btn.text = tr("Load street names for this spot  (needs WiFi)")
+        self.detail_btn.text = tr("Load street names for this spot  (needs Wi-Fi)")
         if summary.get("error"):
-            self.badge.set(tr("Couldn't load street names — check WiFi and try again"),
+            self.badge.set(tr("Couldn't load street names — check Wi-Fi and try again"),
                            "none")
             return
         self._tiles = find_mbtiles()
@@ -2368,7 +2371,7 @@ class ScanScreen(BoxLayout):
             threading.Thread(target=self._locate_self, daemon=True).start()
             return
         if not is_online():
-            self._set_status(tr("No internet — connect to WiFi to download maps."),
+            self._set_status(tr("No internet — connect to Wi-Fi to download maps."),
                              "warn")
             return
         if self._radius_km == WORLD:

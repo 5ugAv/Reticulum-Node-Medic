@@ -39,6 +39,7 @@ class TriageScreen(FloatLayout):
         self._reader = feed_factory()
         self._lighthouse = lighthouse     # (active: bool) -> status dict
         self._on_antenna_test = on_antenna_test   # the modal offers it too
+        self._on_boundary_walk = on_boundary_walk # ...and the range test (#32)
         self._on_build = on_build
         # Cancel's way home. Referenced at the empty-triage prompt since
         # birth but NEVER SET — every fresh medic crashed the whole UI on
@@ -230,6 +231,14 @@ class TriageScreen(FloatLayout):
                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
             alt.bind(on_release=lambda *a: self._on_antenna_test())
             card.add_widget(alt)
+        if self._on_boundary_walk:
+            rng = Button(text=tr("Range test instead (needs a reachable node)"),
+                         font_size="15sp", size_hint_y=None, height=dp(48),
+                         background_normal="",
+                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            rng.bind(on_release=lambda *a: self._on_boundary_walk())
+            card.add_widget(rng)
         overlay.add_widget(card)
         self.add_widget(overlay)
         self._modal = overlay

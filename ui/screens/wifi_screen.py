@@ -58,11 +58,11 @@ class WifiScreen(BoxLayout):
         self._busy = False
         self._selected = None
 
-        self.add_widget(_line(tr("WiFi"), bold=True, size="22sp"))
+        self.add_widget(_line(tr("Wi-Fi"), bold=True, size="22sp"))
         self.status = _line("", size="14sp", color="text_secondary", h=24)
         self.add_widget(self.status)
 
-        self.scan_btn = Button(text=tr("Search for WiFi networks"), size_hint_y=None,
+        self.scan_btn = Button(text=tr("Search for Wi-Fi networks"), size_hint_y=None,
                                height=dp(48), bold=True, background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -161,7 +161,7 @@ class WifiScreen(BoxLayout):
 
     def _show_networks(self, nets):
         self._busy = False
-        self.scan_btn.text = tr("Search for WiFi networks")
+        self.scan_btn.text = tr("Search for Wi-Fi networks")
         self._rows = []
         if not nets:
             self.list.add_widget(_line(tr("No networks found."), color="amber"))

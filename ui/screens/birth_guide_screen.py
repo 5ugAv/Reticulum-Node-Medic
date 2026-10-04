@@ -1059,7 +1059,7 @@ class BirthGuideScreen(BoxLayout):
         body.add_widget(_line(tr("This ERASES the node completely:"), "16sp",
                               bold=True, color="amber", h=28))
         body.add_widget(_line(tr("• its identity is wiped — it becomes a brand-new "
-                                 "node (old history detaches)\n• its name, WiFi and "
+                                 "node (old history detaches)\n• its name, Wi-Fi and "
                                  "radio settings are wiped\n• then the normal birth "
                                  "runs: flash, name it, auto-setup"),
                               "14sp", color="text_secondary", h=96))
@@ -3267,9 +3267,9 @@ class BirthGuideScreen(BoxLayout):
                                   bold=True, h=40))
             wrap.add_widget(_line(tr(
                 "Tap the one in front of you — check the name printed on the "
-                "board. Node Medic looks at the USB again before it flashes "
-                "and says if they disagree."), "15sp", color="text_secondary",
-                h=52))
+                "board carefully. Node Medic can only tell chip families apart, "
+                "so it cannot catch a wrong pick within one family."), "15sp",
+                color="text_secondary", h=52))
         else:
             cands = self._board_candidates(ignore_memory=force_ask)
             if len(cands) == 1 and not force_ask:
@@ -3278,12 +3278,21 @@ class BirthGuideScreen(BoxLayout):
                 return
             wrap.add_widget(_line(tr("Which radio board is this?"), "24sp",
                                   bold=True, h=40))
-            wrap.add_widget(_line(
-                tr("Same chip, same USB — only you can see which one you're "
-                   "holding."), "15sp", color="text_secondary", h=32))
-            wrap.add_widget(_line(
-                tr("Answer once; Node Medic remembers this board."),
-                "13.5sp", color="green", h=24))
+            if getattr(self, "_cands_narrowed", False):
+                wrap.add_widget(_line(
+                    tr("Same chip, same USB — only you can see which one you're "
+                       "holding."), "15sp", color="text_secondary", h=32))
+                wrap.add_widget(_line(
+                    tr("Answer once; Node Medic remembers this board."),
+                    "13.5sp", color="green", h=24))
+            else:
+                # nothing was read from the USB: the whole catalogue is on
+                # offer, so no claim about chips or memory (ledger #73)
+                wrap.add_widget(_line(tr(
+                    "Tap the one in front of you — check the name printed on the "
+                    "board carefully. Node Medic can only tell chip families apart, "
+                    "so it cannot catch a wrong pick within one family."), "15sp",
+                    color="text_secondary", h=52))
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
@@ -3354,9 +3363,11 @@ class BirthGuideScreen(BoxLayout):
         try:
             out = [(b.key, b.display_name) for b in (det.get("boards") or [])]
             if out:
+                self._cands_narrowed = True          # the USB read did narrow it
                 return out
         except Exception:
             pass
+        self._cands_narrowed = False                 # the whole catalogue (#73)
         try:
             from ui.birth import rnode_board_choices
             return [(b.key, b.display_name) for b in rnode_board_choices()]
@@ -3830,7 +3841,7 @@ class BirthGuideScreen(BoxLayout):
                       bold=True, background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
-        back.bind(on_release=lambda *_: self._render_pick_board())
+        back.bind(on_release=lambda *_: self._render_pick_board(absent=absent))   # (#70)
         on = Button(text=tr("Continue anyway  →"), font_size="15sp",
                     size_hint_x=0.55, background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
