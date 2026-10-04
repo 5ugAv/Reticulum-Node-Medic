@@ -26,7 +26,7 @@ field confident.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from transport.connection import Connection
 
@@ -41,6 +41,7 @@ class CarryStatus:
     detail: str = ""               #: what was actually found
     nbytes: int = 0
     toppable: bool = True          #: can carry_all() fill this unattended?
+    how: str = ""                  #: if not: the exact way to get it aboard
 
 
 def _count(connection: Connection, pattern: str) -> int:
@@ -110,16 +111,19 @@ def audit(connection: Connection) -> List[CarryStatus]:
         "map_tiles", "Offline map",
         "Without it placing and finding nodes has no map to work against.",
         carried=nmb > 0, toppable=False,
-        detail=(f"{nmb} mbtiles" if nmb else "no offline map"), nbytes=mb))
+        detail=(f"{nmb} mbtiles" if nmb else "no offline map"), nbytes=mb,
+        how="Open MAPS with Wi-Fi on, go to the area the nodes will be in, "
+            "and tap Download offline map."))
 
     # --- Python wheels -------------------------------------------------------
     # These build a NODE's software stack with no PyPI. Version-matched to the
-    # medic's own Python; they are shipped in the repo, not downloaded here.
+    # medic's own Python, so pip downloads them ON the medic when the
+    # wheelhouse is empty (workflows.wheelhouse, from carry_all).
     nwhl = _count(connection, "~/reticulum-tool/assets/packages/*.whl")
     out.append(CarryStatus(
         "wheels", "Python wheels",
         "Without them a node cannot be built offline — no PyPI in the field.",
-        carried=nwhl > 0, toppable=False,
+        carried=nwhl > 0,
         detail=f"{nwhl} wheel(s)" if nwhl else "none",
         nbytes=_bytes(connection, "~/reticulum-tool/assets/packages")))
 
@@ -142,17 +146,28 @@ def audit(connection: Connection) -> List[CarryStatus]:
         "Without it no SD card can be written — no node can be built at all.",
         carried=bool(img), toppable=False,
         detail=(img.rsplit("/", 1)[-1] if img else "no image carried"),
-        nbytes=_bytes(connection, img) if img else 0))
+        nbytes=_bytes(connection, img) if img else 0,
+        how="Download Raspberry Pi OS Lite (64-bit) on any computer and copy "
+            "it onto the medic as ~/pi_os_lite.img.xz."))
 
     # --- Firmware build toolchain -------------------------------------------
-    # RTNode firmware is COMPILED on the medic, so the toolchain must be aboard.
+    # RTNode firmware is COMPILED on the medic, so the toolchain must be aboard
+    # — BOTH halves of it: the Arduino esp32 core and PlatformIO's packages
+    # (the RTNode build is a pio run). Checking only the first called a medic
+    # ready that could not build (2026-10-04).
     esp = _count(connection, "~/.arduino15/packages/esp32")
+    pio = _count(connection, "~/.platformio/packages/*/")
+    have = [n for n, ok in (("esp32 Arduino core", esp), ("PlatformIO packages", pio)) if ok]
+    lack = [n for n, ok in (("esp32 Arduino core", esp), ("PlatformIO packages", pio)) if not ok]
     out.append(CarryStatus(
         "build_toolchain", "Firmware build toolchain",
         "Without it the medic cannot compile RTNode firmware for a new board.",
-        carried=esp > 0, toppable=False,
-        detail="esp32 core present" if esp else "no esp32 core",
-        nbytes=_bytes(connection, "~/.arduino15/packages")))
+        carried=not lack, toppable=False,
+        detail=(", ".join(have) + " present") if not lack else "missing: " + ", ".join(lack),
+        nbytes=(_bytes(connection, "~/.arduino15/packages")
+                + _bytes(connection, "~/.platformio/packages")),
+        how="Fetched by the first firmware build the medic does while online "
+            "— BUILD an RTNode board once with Wi-Fi on."))
 
     return out
 
@@ -161,7 +176,8 @@ def audit(connection: Connection) -> List[CarryStatus]:
 class CarryReport:
     """The result of a provisioning run or audit."""
     statuses: List[CarryStatus] = field(default_factory=list)
-    topped_up: List[str] = field(default_factory=list)
+    topped_up: List[str] = field(default_factory=list)     #: fetched this run
+    checked: List[str] = field(default_factory=list)       #: already current
     failed: List[str] = field(default_factory=list)
     online: bool = False
     message: str = ""
@@ -177,20 +193,36 @@ class CarryReport:
         return [s for s in self.statuses if not s.carried]
 
 
-def carry_all(connection: Connection, force: bool = False) -> CarryReport:
+def carry_all(connection: Connection, force: bool = False,
+              progress: Optional[Callable[[str], None]] = None) -> CarryReport:
     """Fill every cache that can be filled unattended, then re-audit.
 
-    Only firmware and phone apps are topped up here. The map area and the wheel
-    set are human decisions — this reports them as gaps rather than guessing,
-    because a wrong guess costs gigabytes and still leaves the operator without
-    what they needed.
+    Topped up here: RNode firmware, the phone apps, and — when the wheelhouse
+    is empty — the Python wheels (operator, 2026-10-04: the medic must be
+    able to collect what it needs for itself while it is on Wi-Fi). The map
+    area, the OS image and the build toolchain still need a human's hand or a
+    different screen; each status says exactly where (``how``) rather than
+    guessing. *progress* is told what is being fetched, step by step — a
+    "Preparing…" button with nothing moving behind it reads as broken.
 
     The final statuses come from a FRESH audit after the downloads, so the
-    report reflects the disk, not what the downloaders claimed.
+    report reflects the disk, not what the downloaders claimed. ``topped_up``
+    is what was fetched, ``checked`` what was already current, ``failed`` what
+    could not be fetched — and the message says which of the three happened,
+    so a press with everything already aboard is not a silent no-op.
     """
     from workflows.updater import has_connectivity, sync_firmware
     from workflows.phone_apps import sync_all as sync_apps
+    from workflows.wheelhouse import cache_wheels, wheel_count
 
+    def say(text: str) -> None:
+        if progress is not None:
+            try:
+                progress(text)
+            except Exception:                                      # noqa: BLE001
+                pass
+
+    say("Checking for an internet connection…")
     rep = CarryReport(online=has_connectivity(connection))
     if not rep.online:
         rep.statuses = audit(connection)
@@ -198,20 +230,56 @@ def carry_all(connection: Connection, force: bool = False) -> CarryReport:
                        "and run this again BEFORE it goes anywhere.")
         return rep
 
+    say("Checking RNode firmware against the latest release…")
     try:
         fw = sync_firmware(connection, force=force)
-        (rep.topped_up if not fw.failed else rep.failed).append("RNode firmware")
+        if fw.failed:
+            rep.failed.append("RNode firmware")
+        elif fw.changed:
+            rep.topped_up.append("RNode firmware"
+                                 + (f" {fw.version}" if fw.version else ""))
+        else:
+            rep.checked.append("RNode firmware")
     except Exception as exc:                                      # noqa: BLE001
         rep.failed.append(f"RNode firmware ({exc})")
 
+    say("Checking the phone messaging apps for newer releases…")
     try:
         for key, res in sync_apps(connection).items():
-            (rep.topped_up if not res.failed else rep.failed).append(f"app:{key}")
+            if res.failed:
+                rep.failed.append(f"{key} app")
+            elif res.changed:
+                rep.topped_up.append(f"{key} app")
+            else:
+                rep.checked.append(f"{key} app")
     except Exception as exc:                                      # noqa: BLE001
         rep.failed.append(f"phone apps ({exc})")
 
+    try:
+        if wheel_count(connection) == 0:
+            say("Fetching the Python wheels a node is built from — a few minutes…")
+            ok, msg = cache_wheels(connection)
+            (rep.topped_up if ok else rep.failed).append(
+                "Python wheels" if ok else f"Python wheels ({msg})")
+        else:
+            rep.checked.append("Python wheels")
+    except Exception as exc:                                      # noqa: BLE001
+        rep.failed.append(f"Python wheels ({exc})")
+
+    say("Checking the disk again…")
     rep.statuses = audit(connection)
     gaps = [s.name for s in rep.missing]
-    rep.message = ("Ready to go — everything is aboard." if rep.ready else
-                   "STILL MISSING: " + ", ".join(gaps))
+    parts = []
+    if rep.topped_up:
+        parts.append("Fetched: " + ", ".join(rep.topped_up) + ".")
+    if rep.failed:
+        parts.append("Could not fetch: " + ", ".join(rep.failed) + ".")
+    if rep.ready:
+        parts.append("Ready to go — everything is aboard."
+                     if (rep.topped_up or rep.failed) else
+                     "Checked online just now — everything aboard is current; "
+                     "nothing new to fetch.")
+    else:
+        parts.append("STILL MISSING: " + ", ".join(gaps))
+    rep.message = " ".join(parts)
     return rep

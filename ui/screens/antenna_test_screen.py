@@ -29,7 +29,7 @@ import threading
 import time
 
 from kivy.clock import Clock
-from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics import Color, Line, RoundedRectangle
 from kivy.logger import Logger
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
@@ -90,6 +90,38 @@ class _Bar(Widget):
         self.opacity = 1 if on else 0
 
 
+class _StepBox(BoxLayout):
+    """The ONE thing to do first, in its own highlighted box. The detect
+    screen "reads just as a box of text" (operator, 2026-10-04): the step a
+    first-time user must not miss is boxed, the tips stay as bullets."""
+
+    def __init__(self, text, **kwargs):
+        super().__init__(orientation="vertical", size_hint_y=None,
+                         padding=[dp(14), dp(12)], **kwargs)
+        self._visible = True
+        self.add_widget(_label(text, size="16sp", bold=True,
+                               color="text_primary"))
+        with self.canvas.before:
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"], 0.14))
+            self._fill = RoundedRectangle(radius=[dp(12)] * 4)
+            Color(*theme.hex_to_rgba(theme.COLORS["accent"]))
+            self._ring = Line(width=dp(1.6))
+        self.bind(pos=self._sync, size=self._sync, minimum_height=self._fit)
+
+    def _sync(self, *_):
+        self._fill.pos, self._fill.size = self.pos, self.size
+        self._ring.rounded_rectangle = (self.x, self.y, self.width,
+                                        self.height, dp(12))
+
+    def _fit(self, *_):
+        self.height = self.minimum_height if self._visible else 0
+
+    def show(self, on: bool) -> None:
+        self._visible = on
+        self.opacity = 1 if on else 0
+        self._fit()
+
+
 class AntennaTestScreen(BoxLayout):
     """State machine: detect -> ready(name chips) -> reading -> swap -> ...
     -> results whenever two or more antennas have real readings."""
@@ -127,6 +159,11 @@ class AntennaTestScreen(BoxLayout):
                                        "is HIGHER than -105 dBm.)"),
                             size="13sp", color="text_secondary")
         self.add_widget(self._rule)
+
+        # step one, boxed; shown while the medic is waiting for a board
+        self._step = _StepBox(tr("Plug the node whose antenna you are testing "
+                                 "into a spare USB port in the Node Medic."))
+        self.add_widget(self._step)
 
         self._bar = _Bar()      # only visible while a reading runs
         self.add_widget(self._bar)
@@ -314,17 +351,15 @@ class AntennaTestScreen(BoxLayout):
         if extra:
             self._notice = extra
         notice = self._notice
+        self._step.show(self._stage == "detect")
 
         if self._stage == "detect":
             self._body.text = (
-                "\u2022 " + tr("Plug the node whose antennas you are comparing into a "
-                   "spare USB port. Only that one board - the medic's own "
-                   "radio never counts.")
-                + "\n\u2022 " + tr("A long USB cable lets you hold the node clear "
-                                  "of the medic.")
+                "\u2022 " + tr("A long USB cable lets you hold the node clear "
+                              "of the medic.")
                 + "\n\u2022 " + tr("Keep it upright in the same spot for every "
-                                  "antenna. Each reading takes about half a "
-                                  "minute.")
+                                  "antenna.")
+                + "\n\u2022 " + tr("Each reading takes about half a minute.")
                 + ("\n\n[b]" + self._problem + "[/b]" if self._problem else "")
                 + ("\n\n" + notice if notice else "")
                 + ("\n\n" + self._ranking_markup() if n else ""))

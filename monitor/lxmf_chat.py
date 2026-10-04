@@ -403,3 +403,24 @@ class MessageStore:
             rows = [{"hash": h, "name": v.get("name", ""), "seen": v.get("seen", 0.0)}
                     for h, v in self._peers.items()]
             return sorted(rows, key=lambda r: r["seen"], reverse=True)
+
+    def contacts(self, limit: int = 40, exclude=()) -> List[dict]:
+        """Addresses this medic already knows, most useful first: the peer of
+        every conversation (newest first), then every other peer heard
+        announcing. ``{hash, name}`` rows; *name* falls back to the short
+        hash. Settings ▸ Notifications offers these so the operator's own
+        phone can be picked instead of typed (operator, 2026-10-04)."""
+        skip = {str(x).lower() for x in exclude if x}
+        out, seen = [], set()
+        for c in self.conversations():
+            if c.peer in seen or c.peer.lower() in skip:
+                continue
+            seen.add(c.peer)
+            out.append({"hash": c.peer, "name": c.name})
+        for p in self.peers():
+            h = p["hash"]
+            if h in seen or h.lower() in skip:
+                continue
+            seen.add(h)
+            out.append({"hash": h, "name": p.get("name") or short_hash(h)})
+        return out[:limit]

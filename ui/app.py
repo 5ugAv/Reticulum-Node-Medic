@@ -1000,7 +1000,12 @@ class ReticulumNodeMedicApp(App):
 
         notif_scr = Screen(name="notifications")
         from ui.screens.notifications_screen import NotificationsScreen
-        notif_scr.add_widget(self._with_back(NotificationsScreen()))
+        # CHAT's known addresses are offered as a picker; the chat store is
+        # built further down, so they are looked up when the screen opens.
+        self.notifications_screen = NotificationsScreen(
+            contacts=lambda: self._chat_contacts())
+        notif_scr.add_widget(self._with_back(self.notifications_screen))
+        notif_scr.bind(on_enter=lambda *_: self.notifications_screen.enter())
         self.sm.add_widget(notif_scr)
 
         self.sm.add_widget(Screen(name="node_detail"))   # filled on a VITALS tap
@@ -1224,14 +1229,15 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(ant)
 
         probe = Screen(name="probe")
-        _probe_real = hw.hardware_present()
-        probe.add_widget(self._with_back(ProbeScreen(
+        # The header names the board on USB at the moment the screen opens
+        # and again when a run starts — never a label frozen at app start.
+        _probe_screen = ProbeScreen(
             workflow_factory=lambda: hw.make_repair_workflow(_demo_repair_workflow),
-            target_name="This node + attached board" if _probe_real
-                        else ("Demo node - emulated" if hw.demo_allowed()
-                              else "No board — plug one in to PROBE"),
+            target_fn=hw.probe_target_label,
             on_self_diagnose=lambda: self.switch_mode("self_diagnose"),
-            on_birth_tracker=lambda: self.switch_mode("firstborn"))))
+            on_birth_tracker=lambda: self.switch_mode("firstborn"))
+        probe.add_widget(self._with_back(_probe_screen))
+        probe.bind(on_pre_enter=lambda *_: _probe_screen.enter())
         self.sm.add_widget(probe)
 
         # Self Diagnose — the medic checks & heals its OWN onboard radio/GPS board.
@@ -2182,6 +2188,21 @@ class ReticulumNodeMedicApp(App):
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps, clock_entry=clock_entry)))
         self.switch_mode("node_detail")
+
+    def _chat_contacts(self):
+        """Addresses CHAT already knows, for Settings ▸ Notifications' picker —
+        minus the medic's own address, which is never the operator's phone."""
+        store = getattr(self, "chat_store", None)
+        if store is None:
+            return []
+        try:
+            own = self._chat.address if getattr(self, "_chat", None) else ""
+        except Exception:                                      # noqa: BLE001
+            own = ""
+        try:
+            return store.contacts(exclude=(own,))
+        except Exception:                                      # noqa: BLE001
+            return []
 
     def _local_tz_offset_hours(self):
         """The medic's UTC offset in hours, so 'usually active 6pm-11pm' reads in

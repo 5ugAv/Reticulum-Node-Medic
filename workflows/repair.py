@@ -44,6 +44,15 @@ MODULE_ORDER = [
     GnssCheck,
 ]
 
+#: What PROBE runs when it is pointed at ONE board plugged into the medic. The
+#: other six modules inspect and can repair the HOST they run on — over the
+#: medic's own LocalConnection that host is the medic, not the board — so a
+#: board-only PROBE must not run them (a "fix all" would restart the medic's
+#: rnsd, rewrite its config or mask its services in the name of a plugged-in
+#: node). Run against a remote node, ``modules`` is left unset: every module
+#: then really does inspect that node.
+BOARD_MODULES = [RadioFirmwareCheck]
+
 
 @dataclass
 class CategoryResult:
@@ -111,11 +120,12 @@ class _InstrumentedModule:
 
 
 class RepairWorkflow:
-    def __init__(self, connection: Connection, profile: NodeProfile):
+    def __init__(self, connection: Connection, profile: NodeProfile,
+                 modules: Optional[List[type]] = None):
         self.connection = connection
         self.profile = profile
         self.modules: List[DiagnosticCheck] = [
-            cls(connection, profile) for cls in MODULE_ORDER
+            cls(connection, profile) for cls in (modules or MODULE_ORDER)
         ]
         self.session: Optional[RepairSession] = None
 

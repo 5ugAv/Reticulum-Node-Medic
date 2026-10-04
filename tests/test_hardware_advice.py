@@ -41,11 +41,13 @@ def test_the_expensive_trap_is_named_loudly():
 
 def test_pi_solar_is_not_pretended_to_be_the_same_as_radio_solar():
     # "mains/solar" hid a real difference (operator's catch): a Pi on solar
-    # needs a 20W panel, ~45Wh of battery and a charge controller
+    # needs a 20W panel, three cloudy days of USABLE battery and a charge
+    # controller (60 Wh usable since the 2026-10-04 price-and-arithmetic check:
+    # the old 45 Wh was the load alone, with no depth-of-discharge allowance)
     text = _all_text()
     assert "20 W panel minimum" in text
     assert "charge controller" in text
-    assert "45 Wh of battery" in text
+    assert "60 Wh of USABLE battery" in text
     assert "Pi Zero 2 W" in text           # the only Pi to use for solar
 
 
@@ -64,5 +66,13 @@ def test_it_lives_behind_the_EXISTING_help_icon():
 
 
 def test_the_costs_are_present_so_it_can_be_planned_against():
+    """Australian dollars, checked 2026-10-04: the everyday kit at AU$21 (the
+    maker's "$15" is USD before postage), the RAK4631 kit at about AU$40, a
+    Pi message-holder from AU$100 on mains. The old AU$7 / AU$30 / AU$60 were
+    a build the medic cannot flash, and a Pi price with no Pi in it."""
     text = _all_text()
-    assert "AU$7" in text and "AU$30" in text and "AU$60" in text
+    assert "AU$21" in text and "AU$40" in text and "AU$100" in text
+    assert "checked October 2026" in text
+    # the honest caveats the operator asked for
+    assert "cannot flash that build" in text
+    assert "US$11 from the maker" in text

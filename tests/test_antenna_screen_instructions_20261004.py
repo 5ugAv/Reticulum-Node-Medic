@@ -2,9 +2,11 @@
 import json
 import os
 
+STEP_ONE = ("Plug the node whose antenna you are testing into a spare USB "
+            "port in the Node Medic.")
 LONG_CABLE = "A long USB cable lets you hold the node clear of the medic."
-HALF_MINUTE = ("Keep it upright in the same spot for every antenna. "
-               "Each reading takes about half a minute.")
+UPRIGHT = "Keep it upright in the same spot for every antenna."
+HALF_MINUTE = "Each reading takes about half a minute."
 LANGS = ("es", "fr", "de", "ja", "ru", "pl", "id", "sv")
 
 
@@ -12,11 +14,19 @@ def _src():
     return open("ui/screens/antenna_test_screen.py").read()
 
 
-def test_the_detect_screen_gives_the_three_instructions():
+def test_step_one_is_boxed_and_the_tips_are_one_action_bullets():
+    """Operator, 2026-10-04: "this section reads just as a box of text" —
+    step one in its own highlighted box, the tips as separate dot points,
+    and no "only if that board is the medic's own radio" confusion."""
     s = _src()
+    assert "class _StepBox" in s
+    assert 'tr("Plug the node whose antenna you are testing "' in s
+    assert 'self._step.show(self._stage == "detect")' in s
     assert 'tr("A long USB cable lets you hold the node clear "' in s
     assert 'tr("Keep it upright in the same spot for every "' in s
-    assert "Plug the node whose antennas you are comparing into a" in s
+    assert 'tr("Each reading takes about half a minute.")' in s
+    assert "antennas you are comparing" not in s
+    assert "radio never counts" not in s
 
 
 def test_no_board_is_not_repeated_under_the_instructions():
@@ -29,8 +39,9 @@ def test_the_new_lines_are_translated_in_every_language():
     for code in LANGS:
         d = json.load(open(os.path.join("assets", "i18n", code + ".json"),
                            encoding="utf-8"))
-        for key in (LONG_CABLE, HALF_MINUTE):
+        for key in (STEP_ONE, LONG_CABLE, UPRIGHT, HALF_MINUTE):
             assert d.get(key) and d[key] != key, (code, key)
+        assert "Node Medic" in d[STEP_ONE], code      # the tool's name stays
 
 
 # ---- the reading stage shows that something is happening -------------------

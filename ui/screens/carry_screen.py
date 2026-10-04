@@ -128,9 +128,12 @@ class CarryScreen(BoxLayout):
             card.add_widget(_line(s.why, size="12.5sp",
                                   color="text_secondary", h=32))
             if not s.toppable:
-                card.add_widget(_line(tr(
+                # HOW to get it aboard — the exact move, not "needs a
+                # decision" (operator, 2026-10-04); the generic line only
+                # when the workflow has no better answer.
+                card.add_widget(_line(s.how or tr(
                     "This needs a decision from you — it will not fill itself."),
-                    size="11.5sp", color="warning_yellow", h=22))
+                    size="12.5sp", color="warning_yellow", h=22))
         return card
 
     def _prepare(self):
@@ -147,7 +150,12 @@ class CarryScreen(BoxLayout):
         def work():
             from transport.connection import LocalConnection
             from workflows.carry import carry_all
-            report = carry_all(LocalConnection())
+
+            def progress(text):
+                # each step named as it runs, so "Preparing…" is seen working
+                Clock.schedule_once(
+                    lambda dt, t=text: setattr(self.status, "text", t), 0)
+            report = carry_all(LocalConnection(), progress=progress)
             Clock.schedule_once(lambda dt: self._prepared(report), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -159,4 +167,10 @@ class CarryScreen(BoxLayout):
         # downloaders claimed — so the cards reflect the disk, same discipline
         # as comms_screen's _fetched().
         self._render(report.statuses)
+        # The report says which of fetched / already current / failed
+        # happened; a press with everything aboard used to look like nothing
+        # (operator, 2026-10-04). Red only for a fetch that failed.
         self.status.text = report.message or self.status.text
+        colour = ("red" if report.failed else
+                  "green" if report.ready else "warning_yellow")
+        self.status.color = theme.hex_to_rgba(theme.COLORS[colour])

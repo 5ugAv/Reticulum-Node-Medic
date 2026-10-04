@@ -7,6 +7,31 @@ once per store. Every link was fetched, not guessed.
 
 ---
 
+## Australian prices, checked 2026-10-04 (AU$ inc GST, before postage)
+
+The boards the medic has actually built, and what a sealed node around them
+costs locally. Tick what you are ordering.
+
+* [ ] RAK4631 WisBlock kit, base board + 2 dBi antenna, pre-flashed  -A$39.30-  Core Electronics, in stock (A$49.30 with the OLED base; bare RAK4631 A$38.50 IOT Store / A$30.62 Digi-Key AU)
+* [ ] XIAO ESP32-S3 + Wio-SX1262 kit, no antenna, no case  -A$21.20-  Core Electronics, in stock (US$10.90 ≈ A$15.70 from Seeed before postage; A$34–38 with the 3D case)
+* [ ] Heltec Mesh Node T114  -US$17.90–33.70 ≈ A$26–49-  Heltec store only; no Australian shop stocks it
+* [ ] 2.6 dBi SMA whip, 902–928 MHz  -A$8.55-  Core Electronics
+* [ ] 5.8 dBi outdoor fibreglass, N-type  -A$80.80-  Core Electronics (8 dBi A$114.95)
+* [ ] 18650 cell 2600 mAh  -A$11.45-  + wire-lead holder  -A$2.65-  Core Electronics
+* [ ] 6 W 5.5 V panel  -A$34.90-  + 1S solar Li-ion charger  -A$8.20-  Core Electronics
+* [ ] Pi Zero 2 W  -A$26.40–32.75-  OUT OF STOCK at four Australian shops on the day; Pi 4 2 GB A$109, Pi 5 4 GB A$178
+* [ ] 32 GB high-endurance microSD  -A$34–64-
+
+Not in Australian stock on the day: LilyGO T-Echo and T-Beam Supreme (maker
+sold out), Heltec V3 (local seller sold out; the V4 is A$70 with a case).
+
+Power, for the record: nothing published shows the XIAO ESP32-S3 drawing less
+than a RAK4631. The nRF52840 idles around 1–2 µA against the ESP32-S3's ~7 µA,
+and a 20-node Meshtastic battery test ran a RAK4631 for ~155 h on an 1100 mAh
+cell against ~10 h for a Heltec V3 (ESP32-S3) on the same cell.
+
+---
+
 ## Heltec (heltec.org) — one order, ~$52 for the three in stock
 
 * Heltec Wireless Stick Lite V3  -$14.90-  https://heltec.org/project/wireless-stick-lite-v2/

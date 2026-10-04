@@ -29,9 +29,9 @@ solder a second 8.2 cm wire to the module's ground pad pointing the opposite
 way — that makes a dipole, which works far better than a lone wire.
 
 **This is not a poor-man's substitute.** On this bench on 2026-08-27 we
-measured seven antennas against each other, and the winner — better than a
-40 cm whip and a $40 branded one — was an **8 cm stub**, because 8 cm *is* the
-right length for this band. A wire cut to the same length is the same antenna.
+measured seven antennas against each other, and the best ear — a decibel ahead
+of a 40 cm whip, tied with the best bought whip — was an **8 cm stub**, because
+8 cm *is* the right length for this band. A wire cut to the same length is the same antenna.
 See `docs/ANTENNA_BENCH_2026-08-27.md`.
 
     antenna wire   ────────── 8.2 cm ──────────  → to the module's ANT pad

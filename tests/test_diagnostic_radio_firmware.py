@@ -118,7 +118,8 @@ def test_maintenance_mode_dead_board_still_flags():
 
 
 def test_firmware_not_present():
-    info = "[Device] RNode\nno version line here"
+    # the board DID answer ("Device connected") but names no firmware version
+    info = "Device connected\nno version line here"
     assert "firmware_present" in names(run(conn_with(info=info)))
 
 
@@ -195,9 +196,97 @@ def test_coding_rate_mismatch():
     assert "coding_rate" in names(run(conn_with(info=info)))
 
 
-def test_radio_loopback_fails():
-    # rnodeconf has no --loop; L1 fails when the board returns no info at all
-    assert "radio_loopback" in names(run(conn_with(info="")))
+# ---- a board we could not READ is not a board with wrong settings ----------
+# 2026-10-04: an RTNode plugged in for PROBE came back "14 faults found, fix
+# all 6" — "The radio frequency is None MHz, not 915.125 MHz", bandwidth None,
+# SF?, ... — every one of them a comparison of NOTHING against the defaults.
+# The reading failed; the board's settings were never seen. One honest
+# "couldn't read it" replaces the cascade.
+
+CASCADE = {
+    "frequency", "bandwidth", "spreading_factor", "coding_rate", "tx_power",
+    "firmware_present", "firmware_version_current", "eeprom_valid",
+    "firmware_blessing", "firmware_hash_valid", "radio_parked_frequency",
+}
+
+
+def test_unreadable_board_is_one_honest_issue_not_a_cascade():
+    conn = conn_with(info="")
+    conn.rules.insert(0, ("^test -c", 0, "", ""))     # the tty node is there
+    issues = run(conn)
+    assert [i.check_name for i in issues] == ["serial_responsive"]
+    only = issues[0]
+    assert only.severity == "warning"          # not a claimed fault
+    assert only.auto_fixable is False          # nothing here for Fix all to run
+    assert "None" not in only.description      # no "frequency is None MHz"
+    assert "Couldn't read this board" in only.description
+
+
+def test_unreadable_board_names_no_wrong_value_and_no_fix():
+    n = names(run(conn_with(info="")))
+    assert not (CASCADE & n)
+    assert "radio_loopback" not in n and "serial_data_capable" not in n
+
+
+def test_unreadable_board_never_touches_the_port_again():
+    # nothing past the failed read may open the board: no -K -L, no hash probe
+    conn = conn_with(info="")
+    run(conn)
+    assert kl_count(conn) == 0
+    assert not probe_ran(conn)
+
+
+def test_unreadable_board_keeps_what_rnodeconf_said():
+    # rnodeconf exits 0 even on a port it could not open; the text is evidence
+    conn = conn_with(info="Could not open port /dev/ttyACM1: busy")
+    only = next(i for i in run(conn) if i.check_name == "serial_responsive")
+    assert "Could not open port" in only.raw_detail
+
+
+def test_unreadable_board_says_cable_and_port_when_the_device_node_exists():
+    conn = conn_with(info="")
+    conn.rules.insert(0, ("^test -c", 0, "", ""))     # the tty node is there
+    only = next(i for i in run(conn) if i.check_name == "serial_responsive")
+    assert "cable" in only.description
+    assert "another program" in only.description
+    assert "no serial device" not in only.description
+
+
+def test_unreadable_board_with_no_device_node_says_so():
+    conn = conn_with(info="")
+    conn.rules.insert(0, ("^test -c", 1, "", ""))     # no such tty
+    only = next(i for i in run(conn) if i.check_name == "serial_responsive")
+    assert "no serial device" in only.description.lower()
+
+
+def test_unreadable_board_still_reports_an_active_modemmanager():
+    # the one host-side fault that can genuinely make a port go silent
+    conn = conn_with(info="")
+    conn.rules.insert(0, ("^systemctl is-active ModemManager", 0, "active", ""))
+    issues = run(conn)
+    assert {i.check_name for i in issues} == {"serial_responsive",
+                                              "modemmanager_interference"}
+    mm = next(i for i in issues if i.check_name == "modemmanager_interference")
+    assert mm.auto_fixable is True
+
+
+def test_readable_board_never_reports_serial_responsive():
+    assert "serial_responsive" not in names(run(conn_with()))
+
+
+def test_serial_responsive_streams_live_in_both_outcomes():
+    # the screen builds its live check rows from check_done events: a board
+    # that answered ticks OK, one that did not shows the X — both must stream
+    from workflows.repair import _InstrumentedModule
+    for info, expect_issue in ((GOOD_INFO, False), ("", True)):
+        events = []
+        _InstrumentedModule(RadioFirmwareCheck(conn_with(info=info),
+                                               NodeProfile()),
+                            events.append).run()
+        done = [e for e in events if e.type == "check_done"
+                and e.check_name == "serial_responsive"]
+        assert len(done) == 1
+        assert (done[0].issue is not None) is expect_issue
 
 
 def test_tx_power_ignores_max_tx_power_header():
@@ -270,18 +359,13 @@ def test_healthy_frequency_no_parked_signal():
     assert "radio_parked_frequency" not in names(run(conn_with()))
 
 
-def test_all_broken_reports_core_faults():
-    # A fully unresponsive board: the firmware-hash-mismatch check is correctly
-    # SKIPPED (it needs a responsive, provisioned board), so it isn't listed here.
+def test_all_broken_reports_one_honest_unreadable_issue():
+    # A fully unresponsive board (every command fails): no wrong-value cascade,
+    # no firmware-hash claim — one "couldn't read it" and nothing to auto-fix.
     conn = EmulatedConnection(default_code=1, default_stdout="")
     issues = run(conn)
-    core = {
-        "serial_responsive", "firmware_present",
-        "firmware_version_current", "frequency", "bandwidth",
-        "spreading_factor", "coding_rate", "tx_power", "radio_loopback",
-    }
-    assert core <= names(issues)
-    assert "firmware_hash_valid" not in names(issues)   # guarded off when no info
+    assert names(issues) == {"serial_responsive"}
+    assert not any(i.auto_fixable for i in issues)
 
 
 # ---- extended checks 57-60, 86-88 ----------------------------------------
@@ -309,13 +393,6 @@ def test_modemmanager_interference_critical():
 def test_heltec_baud_mismatch():
     info = GOOD_INFO + "\n\tSerial baud rate: 9600"
     assert "heltec_baud" in names(run(conn_with(info=info)))
-
-
-def test_serial_data_capable_charge_only_cable():
-    # the serial device node exists but the board returns no --info data
-    conn = conn_with(info="")
-    conn.rules.insert(0, ("^test -c", 0, "", ""))
-    assert "serial_data_capable" in names(run(conn))
 
 
 def test_antenna_rssi_anomalous_noise_floor():

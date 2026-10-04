@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List
+from typing import List, Optional
 
 from node_profile import NodeHardware
 from diagnostics.base import DiagnosticCheck, Fix, Issue
@@ -157,6 +157,30 @@ class RadioFirmwareCheck(DiagnosticCheck):
         m = re.search(pattern, info)
         return m.group(1) if m else None
 
+    def _modemmanager_check(self) -> Optional[Issue]:
+        return self._check(
+            "modemmanager_interference",
+            not self._service_is_active("ModemManager"),
+            "ModemManager is running and will grab the radio serial port, "
+            "corrupting communication.",
+            severity="critical", auto_fixable=True,
+            fix_description="Mask ModemManager so it cannot claim the port.")
+
+    def _unreadable_text(self, port: str) -> str:
+        """Plain English for a board that never replied to rnodeconf.
+
+        Worded as "couldn't read", never "wrong": silence has several innocent
+        causes (firmware that does not answer this check, a charge-only cable —
+        the port exists but no data flows — another program holding the port)
+        and one real one (a board that needs re-flashing)."""
+        if self._run_cmd(f"test -c {port}")[0] == 0:
+            return ("Couldn't read this board, so none of its radio settings "
+                    "were checked. It may run firmware that doesn't answer, "
+                    "the USB cable may carry power only, or another program "
+                    "may be using the port.")
+        return (f"There is no serial device at {port}, so nothing about this "
+                "board could be read. Check the USB cable and port.")
+
     def run(self) -> List[Issue]:
         r = self.profile.radio
         info = self._rnode_info()          # may auto-correct r.serial_port
@@ -186,11 +210,22 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 "& mesh checks.",
                 severity="info")]
 
-        # 12
-        issues.append(self._check(
+        # 12 can the board be READ at all? A board that never answered is a
+        # board we could not read — that says nothing about its radio. Judging
+        # the empty reading against the defaults used to report ten "faults"
+        # for it ("The radio frequency is None MHz, not 915.125 MHz"), half of
+        # them auto-fixable and none of them true: there was nothing to
+        # compare. So this is a warning with no fix, and when it fails the run
+        # stops here — apart from the host-side check that can genuinely make
+        # a port go silent. *info* is kept as the evidence.
+        unreadable = self._check(
             "serial_responsive", has_info,
-            "The RNode board is not responding over serial.",
-            severity="critical"))
+            lambda: self._unreadable_text(port),
+            severity="warning", raw_detail=(info or "").strip()[:200])
+        if unreadable is not None:
+            return [i for i in (unreadable, self._modemmanager_check())
+                    if i is not None]
+
         # 13 firmware present. Case-insensitive: a board with a corrupt EEPROM
         # still reports "Current firmware version: 1.86" (lowercase f) even though
         # the "Firmware version : ..." device-info line is hidden. Keying off the
@@ -238,7 +273,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # check_start fires before the first (possibly slow) serial command
         # (C7) — see DiagnosticCheck._check.
         blessing: dict = {}
-        gated_on = has_info and "EEPROM is invalid" not in info
+        gated_on = "EEPROM is invalid" not in info
         if gated_on:
             def _bless_verdict():
                 # Jonesey gate FIRST — before anything touches the port (C6).
@@ -275,8 +310,8 @@ class RadioFirmwareCheck(DiagnosticCheck):
                 fix_description="Re-flash the firmware and restamp its hash."))
         # 15 firmware version current (real: "Firmware version   : 1.86")
         fw = self._info_str(info, r"Firmware version\s*:\s*([\d.]+)")
-        cur_ok = has_info and (fw is None
-                               or _ver_tuple(fw) >= _ver_tuple(LATEST_FIRMWARE))
+        cur_ok = (fw is None
+                  or _ver_tuple(fw) >= _ver_tuple(LATEST_FIRMWARE))
         issues.append(self._check(
             "firmware_version_current", cur_ok,
             f"The RNode firmware is out of date (have {fw}, latest "
@@ -322,12 +357,11 @@ class RadioFirmwareCheck(DiagnosticCheck):
         # authoritative diagnosis. A genuine wrong-but-nonzero frequency (868
         # vs 915.125) still trips the generic check as before.
         eeprom_ok = "EEPROM is invalid" not in info
-        parked_freq = (has_info and eeprom_ok and freq is not None
+        parked_freq = (eeprom_ok and freq is not None
                        and abs(freq) < 0.001)
         issues.append(self._check(
             "frequency",
-            has_info and (parked_freq or freq is None
-                          or freq == r.frequency_mhz),
+            parked_freq or freq is None or freq == r.frequency_mhz,
             f"The radio frequency is {freq} MHz, not {r.frequency_mhz} MHz.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
@@ -346,14 +380,14 @@ class RadioFirmwareCheck(DiagnosticCheck):
             severity="warning"))
         bw = _num(r"Bandwidth\s*:\s*([\d.]+)\s*KHz")
         issues.append(self._check(
-            "bandwidth", has_info and (bw is None or bw == r.bandwidth_khz),
+            "bandwidth", bw is None or bw == r.bandwidth_khz,
             f"The radio bandwidth is {bw} kHz, not {r.bandwidth_khz} kHz.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
         sf = _num(r"Spreading factor\s*:\s*(\d+)")
         issues.append(self._check(
             "spreading_factor",
-            has_info and (sf is None or int(sf) == r.spreading_factor),
+            sf is None or int(sf) == r.spreading_factor,
             f"The spreading factor is SF{int(sf) if sf else '?'}, not "
             f"SF{r.spreading_factor}.",
             severity="critical", auto_fixable=True,
@@ -361,7 +395,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
         cr = _num(r"Coding rate\s*:\s*(\d+)")
         issues.append(self._check(
             "coding_rate",
-            has_info and (cr is None or int(cr) == r.coding_rate),
+            cr is None or int(cr) == r.coding_rate,
             f"The coding rate is CR{int(cr) if cr else '?'}, not "
             f"CR{r.coding_rate}.",
             severity="critical", auto_fixable=True,
@@ -369,17 +403,13 @@ class RadioFirmwareCheck(DiagnosticCheck):
         txp = _num(r"(?<!Max )TX power\s*:\s*(\d+)\s*dBm")
         issues.append(self._check(
             "tx_power",
-            has_info and (txp is None or int(txp) == r.tx_power_dbm),
+            txp is None or int(txp) == r.tx_power_dbm,
             f"The TX power is {int(txp) if txp else '?'} dBm, not "
             f"{r.tx_power_dbm} dBm.",
             severity="critical", auto_fixable=True,
             fix_description="Re-apply the radio parameters with rnodeconf."))
-        # 21 L1 serial link — the board responded to rnodeconf with a populated
-        # info block. rnodeconf has no --loop flag.
-        issues.append(self._check(
-            "radio_loopback", has_info,
-            "The radio did not respond over serial (L1).",
-            severity="critical"))
+        # L1 (the serial link answering at all) is the unreadable-board return
+        # above; rnodeconf has no --loop flag to test it any other way.
 
         # --- extended checks (57-60, 86-88) ------------------------------
         hw = self.profile.hardware
@@ -393,13 +423,7 @@ class RadioFirmwareCheck(DiagnosticCheck):
             fix_description="Enable flow control with rnodeconf."))
 
         # 58 ModemManager interference
-        issues.append(self._check(
-            "modemmanager_interference",
-            not self._service_is_active("ModemManager"),
-            "ModemManager is running and will grab the radio serial port, "
-            "corrupting communication.",
-            severity="critical", auto_fixable=True,
-            fix_description="Mask ModemManager so it cannot claim the port."))
+        issues.append(self._modemmanager_check())
 
         # 59 Heltec V3 vs V4 baud rate
         issues.append(self._check(
@@ -415,19 +439,6 @@ class RadioFirmwareCheck(DiagnosticCheck):
             hw is not NodeHardware.HELTEC_V4 or "Hardware revision" in info,
             "Could not read the Heltec hardware revision (V4.2 and V4.3 differ).",
             severity="info"))
-
-        # 86 serial data-capable. A charge-only USB cable (or wrong port) lets
-        # the device node exist but no device data flows. rnodeconf has no
-        # --version device probe, so the real signal is: the port node is
-        # present yet --info came back empty. If the node is absent entirely,
-        # serial_port_exists/serial_responsive own that — don't double-report.
-        port_node = self._run_cmd(f"test -c {port}")[0] == 0
-        issues.append(self._check(
-            "serial_data_capable",
-            (not port_node) or has_info,
-            "The serial port exists but the device returned no data — likely a "
-            "charge-only USB cable or the wrong port.",
-            severity="critical"))
 
         # 87 antenna pre-transmit warning (anomalous noise floor). The live
         # noise floor comes from rnstatus --json (RNodeInterface.noise_floor);

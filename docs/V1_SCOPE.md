@@ -112,6 +112,34 @@ build X next?" at the end of a turn. Ideas go to the list below.
   does — so the gain here is the face, the NeoPixel and Tracker work, and one
   source of truth, not the beacon.
 
+- **More to show while the antenna test reads (operator question, 2026-10-04).**
+  The screen shows the dBm and nothing else. What the same polls already carry,
+  best first: the **running median** (the figure that actually ranks, shown as
+  it settles instead of only at the end); **steadiness** (the spread across the
+  samples — a wobbling reading means the antenna or the keeper's hand is moving,
+  not that the antenna is bad); the **difference to the best antenna so far**
+  this session ("+3 dB on Antenna A"); the **interference flag**
+  (`EarReading.interference_dbm`, collected today, never shown mid-read); and a
+  small **sparkline** of the samples. Deliberately left out: airtime and channel
+  load (they describe the neighbours, not the antenna) and reply rate (the
+  board answers about one poll in three by design, so it would read as a fault).
+
+- **The medic fetches everything itself (operator, 2026-10-04).** Field
+  readiness tops up RNode firmware, the phone apps and (since 2026-10-04) the
+  Python wheels while on Wi-Fi; the offline map is fetched from MAPS, the Pi OS
+  image is copied on by hand (`~/pi_os_lite.img.xz`), and the build toolchain
+  arrives with the first online firmware build. The full version: a Pi OS
+  image downloader (official URL + published sha256, ~450 MB, behind a
+  size-and-consent gate), an explicit toolchain pre-install step (arduino-cli
+  esp32 core + the PlatformIO platform), an offline-map "around my nodes"
+  auto-area (the roster's positions plus the medic's own fix), and the apt
+  .deb cache (cage, direwolf) in the readiness audit so a clone can finish.
+
+- **A distance-aware "too close" hint on Ping (2026-10-04).** The two-hop
+  "a radio within a couple of metres is too loud to decode" line is a guess;
+  with the medic's GPS fix and the node's recorded position it can be said
+  only when they really are within a few metres, and dropped otherwise.
+
 - Text to speech — the medic has no speaker; revisit if hardware changes
 - Arabic and right-to-left layout — needs RTL work first
 - More boards past the current 16

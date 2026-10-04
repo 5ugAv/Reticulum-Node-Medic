@@ -65,6 +65,65 @@ SPIEL = (
 )
 
 
+class CreditsBody(BoxLayout):
+    """The thanks, the spiel and the support section — one column that grows
+    to its content. Built here once and shown through two doors: the front
+    page's cross (CreditsScreen) and Settings ▸ About (operator, 2026-10-04:
+    "the same page that is found if the user presses the Easter egg")."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("orientation", "vertical")
+        super().__init__(size_hint_y=None, spacing=dp(4), **kwargs)
+        self.bind(minimum_height=self.setter("height"))
+        for role, name in CREDITS:
+            # tr() falls straight through for the entries that are pure proper
+            # nouns — only the prose roles/lines carry catalog keys.
+            # The role in text_secondary FROM THE THEME. It was a hardcoded
+            # "9e9e9e" in the markup, so when the palette went green on
+            # 2026-09-29 these were the one thing on the page that stayed
+            # grey — a colour that no longer exists anywhere else in the tool.
+            role_hex = theme.COLORS["text_secondary"].lstrip("#")
+            row = Label(text=f"[color={role_hex}]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
+                        markup=True, halign="center", valign="middle",
+                        size_hint_y=None, height=dp(52),
+                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            row.bind(size=lambda i, v: setattr(i, "text_size", v))
+            self.add_widget(row)
+        spiel = Label(text=tr(SPIEL), halign="center", valign="top",
+                      font_size="15sp", size_hint_y=None,
+                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        spiel.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        spiel.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(16)))
+        self.add_widget(spiel)
+
+        # --- Support this work: ETH address + scannable QR ---
+        sup_title = Label(text=tr("Support this work"), bold=True, font_size="18sp",
+                          size_hint_y=None, height=dp(40),
+                          color=theme.hex_to_rgba(theme.COLORS["red"]))
+        self.add_widget(sup_title)
+        sup_line = Label(
+            text=tr("Node Medic is built and field-tested by one person. If it helps "
+                    "you build the mesh, you can chip in with Ethereum — scan the code "
+                    "with a phone wallet, or send to the address below."),
+            halign="center", valign="top", font_size="14sp", size_hint_y=None,
+            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+        sup_line.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        sup_line.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(10)))
+        self.add_widget(sup_line)
+        qr = Image(source=DONATE_QR, size_hint_y=None, height=dp(190),
+                   allow_stretch=True, keep_ratio=True)
+        self.add_widget(qr)
+        addr = Label(text=ETH_ADDR, halign="center", valign="middle",
+                     font_size="13sp", size_hint_y=None, height=dp(30),
+                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        addr.bind(size=lambda i, v: setattr(i, "text_size", v))
+        self.add_widget(addr)
+        addr_note = Label(text=tr("ETH / EVM address"), font_size="11sp",
+                          size_hint_y=None, height=dp(22),
+                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
+        self.add_widget(addr_note)
+
+
 class CreditsScreen(BoxLayout):
     def __init__(self, on_select=None, on_back=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
@@ -83,54 +142,7 @@ class CreditsScreen(BoxLayout):
         body = BoxLayout(orientation="vertical", size_hint_y=None,
                          spacing=dp(4))
         body.bind(minimum_height=body.setter("height"))
-        for role, name in CREDITS:
-            # tr() falls straight through for the entries that are pure proper
-            # nouns — only the prose roles/lines carry catalog keys.
-            # The role in text_secondary FROM THE THEME. It was a hardcoded
-            # "9e9e9e" in the markup, so when the palette went green on
-            # 2026-09-29 these were the one thing on the page that stayed
-            # grey — a colour that no longer exists anywhere else in the tool.
-            role_hex = theme.COLORS["text_secondary"].lstrip("#")
-            row = Label(text=f"[color={role_hex}]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
-                        markup=True, halign="center", valign="middle",
-                        size_hint_y=None, height=dp(52),
-                        color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            row.bind(size=lambda i, v: setattr(i, "text_size", v))
-            body.add_widget(row)
-        spiel = Label(text=tr(SPIEL), halign="center", valign="top",
-                      font_size="15sp", size_hint_y=None,
-                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        spiel.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
-        spiel.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(16)))
-        body.add_widget(spiel)
-
-        # --- Support this work: ETH address + scannable QR ---
-        sup_title = Label(text=tr("Support this work"), bold=True, font_size="18sp",
-                          size_hint_y=None, height=dp(40),
-                          color=theme.hex_to_rgba(theme.COLORS["red"]))
-        body.add_widget(sup_title)
-        sup_line = Label(
-            text=tr("Node Medic is built and field-tested by one person. If it helps "
-                    "you build the mesh, you can chip in with Ethereum — scan the code "
-                    "with a phone wallet, or send to the address below."),
-            halign="center", valign="top", font_size="14sp", size_hint_y=None,
-            color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-        sup_line.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
-        sup_line.bind(texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(10)))
-        body.add_widget(sup_line)
-        qr = Image(source=DONATE_QR, size_hint_y=None, height=dp(190),
-                   allow_stretch=True, keep_ratio=True)
-        body.add_widget(qr)
-        addr = Label(text=ETH_ADDR, halign="center", valign="middle",
-                     font_size="13sp", size_hint_y=None, height=dp(30),
-                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        addr.bind(size=lambda i, v: setattr(i, "text_size", v))
-        body.add_widget(addr)
-        addr_note = Label(text=tr("ETH / EVM address"), font_size="11sp",
-                          size_hint_y=None, height=dp(22),
-                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))
-        body.add_widget(addr_note)
-
+        body.add_widget(CreditsBody())
         hint = Label(text=tr("tap anywhere to go back"),
                      font_size="12sp", size_hint_y=None, height=dp(24),
                      color=theme.hex_to_rgba(theme.COLORS["text_secondary"], 0.7))

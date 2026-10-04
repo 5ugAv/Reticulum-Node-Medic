@@ -22,13 +22,14 @@ from __future__ import annotations
 import glob
 import os
 import platform
+import re
 import subprocess
 from typing import Callable
 
 from node_profile import NodeProfile
 from transport.connection import LocalConnection
 from workflows.build import StepResult
-from workflows.repair import RepairWorkflow
+from workflows.repair import BOARD_MODULES, RepairWorkflow
 from workflows.rnode_boards import RNodeBoard
 from workflows.rnode_flash import RNodeFlashWorkflow
 from workflows.rnode_v4_rgb import (
@@ -239,14 +240,65 @@ def make_rtnode_build(demo_factory: Callable, connection=None,
                                board_port=board_port, **kw)
 
 
+def probe_target(ports_fn: Callable[[], list] = local_board_ports) -> tuple:
+    """What PROBE would be pointed at RIGHT NOW: ``("none" | "one" | "many",
+    ports)``. Two free boards is a state of its own — PROBE must say so and
+    refuse, never check whichever happens to sort first (operator,
+    2026-10-04: "perhaps the user might have two boards plugged in at once")."""
+    free = list(ports_fn() or [])
+    state = "none" if not free else ("one" if len(free) == 1 else "many")
+    return state, free
+
+
+def port_label(port: str) -> str:
+    """A human name for a USB serial port — the product string the device
+    announces (from its /dev/serial/by-id link), then the port itself:
+    "Espressif USB JTAG serial debug unit on /dev/ttyACM1". The device's
+    serial number is dropped; the port alone when there is no by-id link."""
+    try:
+        for link in glob.glob("/dev/serial/by-id/*"):
+            if os.path.realpath(link) != os.path.realpath(port):
+                continue
+            base = os.path.basename(link)
+            m = re.match(r"usb-(.+?)-if\d+", base)
+            words = (m.group(1) if m else base).split("_")
+            if len(words) > 1 and re.fullmatch(r"[0-9A-Fa-f:]+", words[-1]):
+                words = words[:-1]
+            return " ".join(w for w in words if w) + f" on {port}"
+    except Exception:                                              # noqa: BLE001
+        pass
+    return port
+
+
+def probe_target_label(ports_fn: Callable[[], list] = local_board_ports) -> tuple:
+    """``(state, label)`` for the PROBE header: the named board when there is
+    exactly one, else an empty label and the state for the screen to word."""
+    state, ports = probe_target(ports_fn)
+    return state, (port_label(ports[0]) if state == "one" else "")
+
+
 def make_repair_workflow(demo_factory: Callable, connection=None,
                          ports_fn: Callable[[], list] = local_board_ports):
     """PROBE the attached WORK board over a real LocalConnection. The profile's
     serial port is pinned to the free work board (never the medic's own radio),
     so PROBE diagnoses the plugged-in board directly instead of auto-detecting
-    onto — and gating on — the medic's own live rnsd radio (Jonesey)."""
-    free = ports_fn()
+    onto — and gating on — the medic's own live rnsd radio (Jonesey).
+
+    Pointed at a board on the medic's own USB, the workflow runs the BOARD
+    module only (workflows.repair.BOARD_MODULES): the other six inspect the
+    host they run on, which over LocalConnection is the medic itself, and on
+    2026-10-04 that charged an RTNode with fourteen "faults" that were the
+    medic's own. Two free boards is a refusal, not a guess. The workflow
+    carries ``target_label`` so the screen can say which board it is on."""
+    state, free = probe_target(ports_fn)
+    board_only = False
     if connection is None:
+        if state == "many" and platform.system() == "Linux":
+            return _HonestFailWorkflow("detect_board",
+                "Two boards are plugged in, so PROBE cannot tell which one you "
+                "mean. Leave just the one you want checked on the medic, then "
+                "run PROBE again.",
+                "Which board?")
         if not free or platform.system() != "Linux":
             if demo_allowed():
                 return demo_factory()
@@ -256,6 +308,7 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
                 "known-good USB DATA cable, then run PROBE again.",
                 "No board to PROBE")
         connection = LocalConnection()
+        board_only = True
     profile = NodeProfile()
     # PROBE compares the board's params against this profile and its auto-fix
     # REWRITES the board to match — so it must carry the operator's SAVED
@@ -271,4 +324,7 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
         pass
     if free:
         profile.radio.serial_port = free[0]      # the attached work board
-    return RepairWorkflow(connection, profile)
+    wf = RepairWorkflow(connection, profile,
+                        modules=BOARD_MODULES if board_only else None)
+    wf.target_label = port_label(free[0]) if free else ""
+    return wf

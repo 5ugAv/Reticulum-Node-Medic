@@ -61,16 +61,24 @@ class RadioDefaultsScreen(BoxLayout):
         warn = BoxLayout(orientation="vertical", size_hint_y=None, padding=dp(10))
         warn.bind(minimum_height=warn.setter("height"))
         with warn.canvas.before:
-            from kivy.graphics import Color, RoundedRectangle
+            from kivy.graphics import Color, Line, RoundedRectangle
             self._wc = Color(*theme.hex_to_rgba(theme.COLORS["warning_yellow"], 0.16))
             self._wr = RoundedRectangle(radius=[dp(8)] * 4)
-        warn.bind(pos=lambda *_: setattr(self._wr, "pos", warn.pos),
-                  size=lambda *_: setattr(self._wr, "size", warn.size))
+            # a red ring, and bigger bold text below: the warning has to
+            # stand out from the settings under it (operator, 2026-10-04)
+            Color(*theme.hex_to_rgba(theme.COLORS["red"]))
+            self._wo = Line(width=dp(2.2))
+
+        def _sync_warn(*_):
+            self._wr.pos, self._wr.size = warn.pos, warn.size
+            self._wo.rounded_rectangle = (warn.x, warn.y, warn.width,
+                                          warn.height, dp(8))
+        warn.bind(pos=_sync_warn, size=_sync_warn)
         warn.add_widget(grow_to_text(_line(tr(
             "These are the tool-wide defaults every BUILD pre-fills. Leave them "
             "alone unless you know exactly why — mismatched parameters keep a node "
             "off the mesh, and a different frequency band builds a SEPARATE mesh."),
-            size="13.5sp", color="warning_yellow")))
+            size="15.5sp", color="warning_yellow", bold=True)))
         col.add_widget(warn)
 
         # regional presets

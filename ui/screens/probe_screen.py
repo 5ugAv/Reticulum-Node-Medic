@@ -25,6 +25,7 @@ from kivy.uix.scrollview import ScrollView
 
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — PROBE buttons/headers/summaries
+from ui.text_fit import grow_to_text
 
 _SEV_COLOR = {"critical": "red", "warning": "amber", "info": "text_secondary"}
 
@@ -39,13 +40,19 @@ def _label(text, color="text_primary", bold=False, size="16sp"):
 
 class ProbeScreen(BoxLayout):
     def __init__(self, workflow_factory, target_name="this node",
-                 on_self_diagnose=None, on_birth_tracker=None, **kwargs):
+                 on_self_diagnose=None, on_birth_tracker=None, target_fn=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.padding = dp(10)
         self.spacing = dp(6)
         self._workflow_factory = workflow_factory
         self._target = target_name
+        #: () -> (state, label): which board is on the medic's USB right now,
+        #: asked on every entry and every run — the header used to be frozen
+        #: at app start ("This node + attached board", operator 2026-10-04:
+        #: "nothing here showing me which board I'm actually fixing").
+        self._target_fn = target_fn
         self._on_self_diagnose = on_self_diagnose
         self._on_birth_tracker = on_birth_tracker
         self._workflow = None
@@ -55,9 +62,14 @@ class ProbeScreen(BoxLayout):
 
         self.header = _label(tr("Checking: {name}").format(name=target_name),
                              bold=True, size="18sp")
-        self.header.size_hint_y = None
-        self.header.height = dp(30)
+        grow_to_text(self.header)            # a board's full name wraps
         self.add_widget(self.header)
+        # What PROBE will and will not touch, said before the first tap.
+        self.scope = _label(tr("Only the plugged-in board is checked. The "
+                               "medic's own radio is never touched."),
+                            size="13sp", color="text_secondary")
+        grow_to_text(self.scope)
+        self.add_widget(self.scope)
 
         self.run_btn = Button(
             text=tr("Run full diagnostic"), size_hint_y=None, height=dp(56),
@@ -113,6 +125,27 @@ class ProbeScreen(BoxLayout):
         self.scroll.add_widget(self.list)
         self.add_widget(self.scroll)
 
+    # -- the target -----------------------------------------------------------
+
+    def enter(self):
+        """on_pre_enter: name the board PROBE is pointed at RIGHT NOW."""
+        self._refresh_target()
+
+    def _refresh_target(self, workflow=None):
+        label = getattr(workflow, "target_label", "") if workflow is not None else ""
+        if not label and callable(self._target_fn):
+            try:
+                state, label = self._target_fn()
+            except Exception:                                      # noqa: BLE001
+                state, label = "none", ""
+            if state == "none":
+                label = tr("no board on USB yet — plug one in")
+            elif state == "many":
+                label = tr("two boards on USB — leave just the one to check")
+        if label:
+            self._target = label
+        self.header.text = tr("Checking: {name}").format(name=self._target)
+
     # -- run ----------------------------------------------------------------
 
     def start(self):
@@ -120,8 +153,9 @@ class ProbeScreen(BoxLayout):
             return
         orig_label = self.run_btn.text
         self.run_btn.disabled = True
-        self.run_btn.text = tr("Checking {name}...").format(name=self._target)
         self._workflow = self._workflow_factory()
+        self._refresh_target(self._workflow)
+        self.run_btn.text = tr("Checking {name}...").format(name=self._target)
         # No board attached (or path not wired): plain popup, don't run/fake it.
         if getattr(self._workflow, "is_blocked", False):
             from ui.requirement_popup import requirement_popup
@@ -234,9 +268,15 @@ class ProbeScreen(BoxLayout):
     def _issue_row(self, issue):
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
                         height=dp(46), spacing=dp(6))
-        row.add_widget(_label(f"[{issue.severity}] {issue.description}",
-                              color=_SEV_COLOR.get(issue.severity, "amber"),
-                              size="14sp"))
+        text = _label(f"[{issue.severity}] {issue.description}",
+                      color=_SEV_COLOR.get(issue.severity, "amber"),
+                      size="14sp")
+        # A three-line description ("Couldn't read this board, so none of
+        # its radio settings were checked…") was cut to one in a fixed row.
+        grow_to_text(text)
+        text.bind(height=lambda i, h: setattr(row, "height",
+                                              max(dp(46), h + dp(12))))
+        row.add_widget(text)
         if issue.auto_fixable:
             btn = Button(text=tr("Fix"), size_hint_x=None, width=dp(96),
                          background_normal="",

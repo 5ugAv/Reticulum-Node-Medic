@@ -107,39 +107,55 @@ REACH_BODY: List[str] = [
 BUILD_TITLE = "What should I build?"
 BUILD_SECTIONS: List[Tuple[str, str, List[str]]] = [
     ("1. The everyday node — as many as you can make",
-     "About AU$7 each (AU$5 in tens)",
-     ["Classic ESP32 devkit + RFM95/SX1276 radio module.",
+     "About AU$21 each (US$11 from the maker, before postage)",
+     ["The tiny XIAO ESP32-S3 + Wio-SX1262 kit. The medic builds it "
+      "(RTNode-2400). No antenna or case in the box.",
       "Most of a network should be made of these — they route and relay "
-      "as well as a $60 board. What you give up is battery life, a screen, "
-      "a case and GPS; not networking.",
+      "as well as a AU$60 board. What you give up is battery life, a "
+      "screen, a case and GPS; not networking.",
       "The antenna is FREE: 8.2 cm of wire is a quarter-wave at 915 MHz. "
-      "On our own bench an 8 cm stub beat a 40 cm whip and a $40 branded "
-      "antenna — 8 cm simply IS the right length for this band.",
+      "On our own bench an 8 cm stub beat a 40 cm whip by a decibel and "
+      "tied the best bought whip — 8 cm simply IS the right length for "
+      "this band. What you pay for is weatherproofing, not reach.",
       "Power: mains, a USB power bank, or solar with a real panel — the "
-      "ESP32 is not a low-power part."]),
+      "ESP32 is not a low-power part.",
+      "For people who solder: a bare ESP32 devkit + RFM95 module is about "
+      "AU$7 in parts (docs/CHEAPEST_NODE.md) — but the medic cannot flash "
+      "that build for you today."]),
     ("2. The remote node — put it somewhere and leave it",
-     "AU$30–60",
-     ["An nRF52840 + SX1262 board ON ITS OWN, as a transport node: "
-      "RAK4631, Heltec T114, Heltec Mesh Solar, Seeed SenseCAP Solar Node.",
+     "About AU$40 (AU$26–60 across boards)",
+     ["An nRF52840 + SX1262 board ON ITS OWN, as a transport node. The "
+      "RAK4631 kit (base board and antenna in the box) is the one to buy: "
+      "an nRF52 — the lowest-power class of board the medic builds — and "
+      "proven here. The Heltec T114 is the other one the medic has built; "
+      "it is an import.",
       "The radio board IS the node — it needs no computer attached. It "
       "sleeps at microamps and wakes for packets; listening costs about "
-      "5–10 mA. Weeks on one 18650, indefinitely with a 2 W panel.",
+      "5–10 mA. Weeks on one 18650, indefinitely with a small panel: an "
+      "18650 and holder are about AU$14, a 6 W panel and a 1S solar "
+      "charger about AU$43.",
       "DO NOT bolt a Raspberry Pi to one of these to save battery. A Pi "
       "draws 10–20× what the radio does — that pairing is the dearest "
       "build AND the shortest-lived.",
-      "The purpose-built solar ones arrive with panel, battery and "
-      "weatherproofing already solved."]),
+      "The purpose-built solar ones (Heltec Mesh Solar, Seeed SenseCAP "
+      "Solar Node) arrive with panel, battery and weatherproofing already "
+      "solved — the medic has not built either yet."]),
     ("3. The message-holder — for people who are offline",
-     "AU$60+ on mains; AU$120–200 done properly on solar",
-     ["A Raspberry Pi + any supported radio.",
+     "About AU$100–155 on mains (Pi Zero 2 W); AU$265–470 done properly "
+     "on solar",
+     ["A Raspberry Pi + an nRF52 radio board — the RAK4631 is the pairing "
+      "we have proven. The Pi Zero 2 W is the one to use, and it is often "
+      "sold out; a Pi 4 or 5 works on mains from about AU$230 all up.",
       "ONLY this kind of node can hold messages for someone whose device "
       "is switched off. A transport node cannot.",
       "A network wants a few of these, not many — one in a hall, a shop, "
       "a home with power.",
-      "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 15 Wh a "
-      "day), a 20 W panel minimum, about 45 Wh of battery for three "
-      "cloudy days, and a proper charge controller. A 5 W panel matches a "
-      "perfect day and dies on the first cloudy one.",
+      "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 17 Wh a "
+      "day, measured), a 20 W panel minimum (40 W in Sampleton or Hobart), "
+      "about 60 Wh of USABLE battery for three cloudy days (a 10–12 Ah "
+      "sealed lead-acid, or 6 Ah of LiFePO4), and a proper charge "
+      "controller. A 5 W panel matches a perfect day and dies on the first "
+      "cloudy one.",
       "If mains power is anywhere nearby, use it — the money is better "
       "spent on more everyday nodes."]),
 ]
@@ -149,7 +165,11 @@ BUILD_ALWAYS: List[str] = [
     "Fit an antenna BEFORE powering it — transmitting with none damages "
     "the radio.",
     "3.3 V to the radio. Never 5 V.",
+    "Prices are Australian dollars before postage, checked October 2026. "
+    "Raspberry Pi prices are rising and stock is patchy — check before you "
+    "plan.",
 ]
+
 
 RADIO_TITLE = "Radio parameters (every node, same mesh)"
 #: Human labels + units for the five modem params, in the order operators type them.
