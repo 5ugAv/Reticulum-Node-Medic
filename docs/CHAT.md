@@ -47,7 +47,8 @@ What was borrowed from the others, by reading their code:
    packet), else a **DIRECT** link. Delivered → *delivered*.
 3. No path, identity known: **PROPAGATED** to the medic's own `lxmd`
    (`~/.lxmd/identity` → its propagation hash), over the shared instance — no
-   LoRa airtime. Shown as *held at the post office*.
+   LoRa airtime. Shown as *waiting at propagation node (this medic's name)* —
+   the name is the node holding the message.
 4. A DIRECT/OPPORTUNISTIC failure falls back to step 3.
 
 Inbound: the router's delivery callback → store (deduplicated by LXMF hash —
@@ -85,7 +86,7 @@ profile — govern the post office. The install page reports what lxmd is
 *Transport only* is an explicit choice, saved only when tapped. With
 nothing saved, a fresh or cloned medic in Home mode is a propagation node:
 routing on, store-and-forward on. In Backpack the post office is off and
-CHAT's "held at the post office" road is closed until the medic is home
+CHAT's "waiting at propagation node" road is closed until the medic is home
 again — the screen says so (*no path right now*).
 
 ## Proven (2026-10-01)

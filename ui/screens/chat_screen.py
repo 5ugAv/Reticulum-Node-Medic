@@ -102,6 +102,15 @@ def when(ts: float, now: float = None) -> str:
     return d.strftime("%H:%M") if d.date() == n.date() else d.strftime("%-d %b %H:%M")
 
 
+def _state_words(rec: dict) -> str:
+    """The words beside an outgoing message's time. One waiting at a
+    propagation node says WHICH node is holding it."""
+    state = rec.get("state")
+    if state == lc.POSTED and rec.get("via"):
+        return tr("waiting at propagation node ({name})").format(name=rec["via"])
+    return tr(lc.STATE_WORDS.get(state, ""))
+
+
 class _Bubble(BoxLayout):
     """One message. Ours: accent ground, dark ink, right. Theirs: surface, left."""
 
@@ -118,7 +127,7 @@ class _Bubble(BoxLayout):
         body = _lbl(lc.readable(rec.get("text", "")), size="15.5sp", color=ink)
         meta = when(rec.get("ts", 0))
         if ours:
-            meta += "  ·  " + tr(lc.STATE_WORDS.get(rec.get("state"), ""))
+            meta += "  ·  " + _state_words(rec)
         foot = _lbl(meta, size="11sp", color=ink)
         foot.opacity = 0.75
         self.add_widget(body)
@@ -346,7 +355,7 @@ class ChatScreen(BoxLayout):
             route = (tr("{n} hop via {iface}") if hops == 1 else tr("{n} hops via {iface}")
                      ).format(n=hops, iface=via) if via else tr("{n} hops away").format(n=hops)
         elif r.get("known"):
-            route = tr("no path right now — messages wait at the post office")
+            route = tr("no path right now — messages wait at the propagation node")
         else:
             route = tr("not reachable yet — nothing on the mesh has announced this address")
         return f"{route}  ·  {heard}"

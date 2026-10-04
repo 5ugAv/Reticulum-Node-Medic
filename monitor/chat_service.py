@@ -12,7 +12,8 @@ How a message travels:
   path. That is the byte-frugal path ([[bandwidth-economy-ethos]]).
 * If nothing answers, PROPAGATED — handed to this medic's own lxmd (the post
   office next door, over the shared instance, no LoRa airtime) which holds it
-  until the peer syncs. The store shows it as "held at the post office".
+  until the peer syncs. The store shows it as "waiting at propagation node",
+  with this medic's name beside it: the node that is holding it.
 * Either way the peer's IDENTITY must be known: LXMF encrypts to it. An
   address nobody on the mesh has announced cannot be written to, and the
   store says so in words rather than spinning.
@@ -384,8 +385,10 @@ class ChatService:
         propagated = method == LXMF.LXMessage.PROPAGATED
 
         def _delivered(message):
-            self.store.set_state(
-                msg_id, store_mod.POSTED if propagated else store_mod.DELIVERED)
+            if propagated:
+                self.store.set_state(msg_id, store_mod.POSTED, via=self.display_name)
+            else:
+                self.store.set_state(msg_id, store_mod.DELIVERED)
 
         def _failed(message):
             if not propagated and self._propagation_hash is not None:

@@ -35,7 +35,7 @@ CHAT_DIR = os.path.expanduser("~/.reticulum-node-medic/chat")
 SENDING = "sending"        # handed to the router, on its way
 SENT = "sent"              # left this medic (direct link accepted it)
 DELIVERED = "delivered"    # the peer's LXMF confirmed receipt
-POSTED = "posted"          # no path — held at the post office for the peer
+POSTED = "posted"          # no path — waiting at a propagation node for the peer
 FAILED = "failed"          # nothing on the mesh answered to that address
 STATES = (SENDING, SENT, DELIVERED, POSTED, FAILED)
 
@@ -45,7 +45,7 @@ STATE_WORDS = {
     SENDING: "sending",
     SENT: "sent",
     DELIVERED: "delivered",
-    POSTED: "held at the post office",
+    POSTED: "waiting at propagation node",
     FAILED: "not delivered — nobody on the mesh answered to that address. "
             "It goes again the moment they are heard.",
 }
@@ -277,13 +277,21 @@ class MessageStore:
             self._save_messages()
             return rec
 
-    def set_state(self, msg_id: str, state: str) -> bool:
+    def set_state(self, msg_id: str, state: str, via: Optional[str] = None) -> bool:
+        """Move a message to *state*. *via* names the node now holding it (a
+        POSTED message), kept on the record so the screen can say which one."""
         if state not in STATES:
             raise ValueError(state)
         with self._lock:
             self._ensure_loaded()
             rec = self._find(msg_id)
-            if rec is None or rec.get("state") == state:
+            if rec is None:
+                return False
+            changed = rec.get("state") != state
+            if via is not None and rec.get("via") != via:
+                rec["via"] = via
+                changed = True
+            if not changed:
                 return False
             rec["state"] = state
             self._save_messages()

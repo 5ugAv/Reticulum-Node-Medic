@@ -183,6 +183,8 @@ def test_no_path_but_known_identity_goes_to_the_post_office(svc):
     assert lxm.desired_method == "propagated"
     lxm.on_delivered(lxm)
     assert svc.store.thread(PEER)[0]["state"] == lc.POSTED
+    # the node holding it is this medic's own lxmd — the record names it
+    assert svc.store.thread(PEER)[0]["via"] == "Bench medic"
 
 
 def test_a_failed_direct_send_is_retried_through_the_post_office(svc):
@@ -196,6 +198,17 @@ def test_a_failed_direct_send_is_retried_through_the_post_office(svc):
     assert svc._router.outbound[1].desired_method == "propagated"
     svc._router.outbound[1].on_delivered(None)
     assert svc.store.thread(PEER)[0]["state"] == lc.POSTED
+    assert svc.store.thread(PEER)[0]["via"] == "Bench medic"
+
+
+def test_a_direct_delivery_names_no_holding_node(svc):
+    FakeIdentity.known[PEER_BYTES] = FakeIdentity("pe")
+    FakeTransport.paths.add(PEER_BYTES)
+    svc.send(PEER, "straight there")
+    assert _wait(lambda: svc._router.outbound)
+    svc._router.outbound[0].on_delivered(None)
+    rec = svc.store.thread(PEER)[0]
+    assert rec["state"] == lc.DELIVERED and "via" not in rec
 
 
 def test_an_address_nobody_announced_fails_in_words(svc):
