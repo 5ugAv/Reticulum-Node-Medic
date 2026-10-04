@@ -352,7 +352,9 @@ class SetupWizardScreen(BoxLayout):
                        next_text=next_text or step.get("next"),
                        on_next=on_next or self._next, on_back=self._back)
         if step.get("self_advancing"):
-            w.hide_next()
+            # No "keeping watch" pulse: these steps advance when the OPERATOR
+            # types, chooses or draws — nothing is being waited on (ledger #175).
+            w.hide_next(heartbeat=False)
         self.add_widget(w)
         self._current = w
         if hasattr(w, "start"):

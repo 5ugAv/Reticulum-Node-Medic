@@ -113,7 +113,8 @@ class SettingsScreen(BoxLayout):
         # Clean shutdown — a SLIDE (not a tap) so it can't fire by accident. Protects
         # the SD card from the hard-power-cut corruption risk (hit 2026-07-22).
         body.add_widget(_line(tr("Power"), bold=True, size="15sp", color="accent", h=28))
-        body.add_widget(SlideToPowerOff(on_power_off=self._power_off))
+        self._power_slider = SlideToPowerOff(on_power_off=self._power_off)
+        body.add_widget(self._power_slider)
         self._power_note = grow_to_text(_line("", size="12.5sp", color="text_secondary"))
         body.add_widget(self._power_note)
 
@@ -125,7 +126,15 @@ class SettingsScreen(BoxLayout):
         def do_off():
             def work():
                 ok, msg = power_off()
-                Clock.schedule_once(lambda dt: setattr(self._power_note, "text", msg), 0)
+
+                def land(_dt):
+                    self._power_note.text = msg
+                    if not ok:
+                        try:
+                            self._power_slider.reset()     # back to ON (ledger #36)
+                        except Exception:                  # noqa: BLE001
+                            pass
+                Clock.schedule_once(land, 0)
             threading.Thread(target=work, daemon=True).start()
 
         # During a flash, WARN but let the operator override — a stuck flash must not

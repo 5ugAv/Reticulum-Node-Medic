@@ -173,6 +173,28 @@ def password_hash(password: str, run: Runner = _run) -> str:
 MIN_PASSWORD_LEN = 6
 
 
+#: The three refusals, as TEMPLATES the screen can translate: tr() needs the
+#: exact English text as its key, and the old f-string ("Use at least 8
+#: characters.") could never be a catalog key (readiness ledger #207).
+PASSWORD_EMPTY = "Enter a login password."
+PASSWORD_MISMATCH = "The two passwords don't match — retype them."
+PASSWORD_SHORT = "Use at least {n} characters."
+
+
+def password_problem(pw1: str, pw2: Optional[str] = None,
+                     min_len: int = MIN_PASSWORD_LEN) -> Optional[str]:
+    """The unformatted template naming what is wrong with *pw1* (one of the
+    PASSWORD_* constants, ``{n}`` = *min_len*), or None when it is acceptable.
+    The screen does ``tr(template).format(n=MIN_PASSWORD_LEN)``."""
+    if not pw1:
+        return PASSWORD_EMPTY
+    if pw2 is not None and pw1 != pw2:
+        return PASSWORD_MISMATCH
+    if len(pw1) < min_len:
+        return PASSWORD_SHORT
+    return None
+
+
 def validate_new_password(pw1: str, pw2: Optional[str] = None,
                           min_len: int = MIN_PASSWORD_LEN) -> Tuple[bool, str]:
     """Gate for the imaging screen's login-password field. Returns (ok, message);
@@ -188,13 +210,10 @@ def validate_new_password(pw1: str, pw2: Optional[str] = None,
     the same risk with a Show/Hide reveal instead of a second field, so it calls
     this with pw2 omitted and only the empty/length rules bite. Pass both when a
     confirm field is in play and the match is checked too."""
-    if not pw1:
-        return (False, "Enter a login password.")
-    if pw2 is not None and pw1 != pw2:
-        return (False, "The two passwords don't match — retype them.")
-    if len(pw1) < min_len:
-        return (False, f"Use at least {min_len} characters.")
-    return (True, "")
+    problem = password_problem(pw1, pw2, min_len)
+    if problem is None:
+        return (True, "")
+    return (False, problem.format(n=min_len))
 
 
 def _toml_escape(s: str) -> str:

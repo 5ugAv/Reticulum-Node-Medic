@@ -271,9 +271,9 @@ class HomeScreen(FloatLayout):
 
                     def show(_dt):
                         try:
-                            self.power_slider.hint.text = (
+                            # knob back to ON, reason in red on the slider
+                            self.power_slider.reset(
                                 tr("Couldn't power off: ") + msg)
-                            self.power_slider.hint.opacity = 1.0
                         except Exception:      # noqa: BLE001
                             pass
                     Clock.schedule_once(show, 0)

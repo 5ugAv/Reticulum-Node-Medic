@@ -214,6 +214,19 @@ class SlideToPowerOff(FloatLayout):
             return True
         return super().on_touch_move(touch)
 
+    def reset(self, message: str = ""):
+        """Put the knob back at ON and say why. A power-off that was refused or
+        failed used to leave the knob parked on OFF under a label that could not
+        be read (readiness ledger #36); now the slider itself carries the reason,
+        in red, and is ready to be slid again. Call from the UI thread."""
+        self._grab = False
+        self.knob.x = self._left()
+        if message:
+            self.hint.text = message
+            self.hint.opacity = 1
+            self.hint.color = theme.hex_to_rgba(theme.COLORS["red"])
+        self._refresh()
+
     def on_touch_up(self, touch):
         if touch.grab_current is self:
             touch.ungrab(self)

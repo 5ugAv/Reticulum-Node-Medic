@@ -185,9 +185,15 @@ class AntennaTestScreen(BoxLayout):
         the hidden-screen poll trap (MITOSIS, 2026-08) must not recur."""
         if self._watch is None:
             self._watch = Clock.schedule_interval(self._tick_detect, 2.0)
-        if self._stage == "done":
-            # a finished verdict belongs to the last visit; a new visit is a
-            # new comparison (readiness sweep, 2026-10-03)
+        if self._stage == "done" or self.session.count > 0:
+            # A finished verdict belongs to the last visit — and so does a
+            # comparison abandoned halfway: left in place, yesterday's (or
+            # another node's) readings seeded the next comparison's SUSPECT
+            # baseline (readiness ledger #29). A new visit is a new comparison;
+            # the notice says so, so the cleared readings are not a mystery.
+            if self.session.count > 0 and self._stage != "done":
+                self._notice = tr("The unfinished comparison from last time was "
+                                  "cleared - this is a new one.")
             self.session = at.AntennaSession()
         self._stage = "detect"
         self._render()

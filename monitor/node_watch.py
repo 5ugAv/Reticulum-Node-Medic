@@ -49,6 +49,11 @@ GRACE_BY_POWER = {"solar": 72.0, "battery": 72.0, "mains": 24.0}
 #: about a node heard an hour ago (readiness ledger #137).
 SILENCE_RED_H = float(theme.NOT_HEARD_ALERT_HOURS)
 
+#: A restart gap no longer than this keeps the listening clock (the state is
+#: saved about every five minutes with the registry; a deploy restarts the UI
+#: in under a minute). Longer = the medic was off: it witnessed no silence.
+RESUME_GAP_S = 15 * 60.0
+
 
 def grace_hours(powered_by: Optional[str], override_h: Optional[float] = None) -> float:
     """The escalation window for a node. ``override_h`` (a Settings value) wins;
@@ -65,6 +70,31 @@ class NodeWatcher:
     line (to alert on). ``grace_override_h`` comes from Settings (None = defaults)."""
     grace_override_h: Optional[float] = None
     _notified: Set[str] = field(default_factory=set)
+    #: When this watcher started hearing the mesh (monotonic seconds) — silence
+    #: the medic did not witness is not silence it can act on. A medic powered
+    #: off for four days used to escalate EVERY kin node on its first tick after
+    #: boot: the rows said "4 days", and nobody had been listening (readiness
+    #: ledger #134). Only the overlap of "unheard" and "listening" counts.
+    _listening_since_mono: Optional[float] = None
+    _listening_since_wall: Optional[float] = None
+    _last_tick_wall: Optional[float] = None
+
+    def _witnessed_h(self, monotonic: Optional[float] = None) -> float:
+        """Hours this watcher has been listening (0 before its first tick)."""
+        if self._listening_since_mono is None:
+            return 0.0
+        import time as _t
+        mono = _t.monotonic() if monotonic is None else monotonic
+        return max(0.0, (mono - self._listening_since_mono) / 3600.0)
+
+    def silence_hours(self, device: dict,
+                      monotonic: Optional[float] = None) -> Optional[float]:
+        """The silence this medic can vouch for: the node's unheard hours,
+        capped at how long the medic itself has been listening."""
+        lsh = device.get("last_seen_hours")
+        if lsh is None:
+            return None
+        return min(float(lsh), self._witnessed_h(monotonic))
 
     def tick(self, devices: List[dict], now: Optional[float] = None,
              monotonic: Optional[float] = None) -> List[dict]:
@@ -82,6 +112,10 @@ class NodeWatcher:
         mono = _t.monotonic() if monotonic is None else monotonic
         prev_w = getattr(self, "_last_wall", None)
         prev_m = getattr(self, "_last_mono", None)
+        if self._listening_since_mono is None:
+            self._listening_since_mono = mono
+            self._listening_since_wall = wall
+        self._last_tick_wall = wall
         self._last_wall, self._last_mono = wall, mono
         # Cooldown from a prior detected/notified clock step — the stamps were
         # rebased, but suppress escalations for a few ticks while ages settle.
@@ -104,7 +138,7 @@ class NodeWatcher:
             if d.get("status") != "alert":
                 self._notified.discard(nid)      # healthy/known/recovered -> re-arm
                 continue
-            lsh = d.get("last_seen_hours")
+            lsh = self.silence_hours(d, mono)
             if lsh is None:
                 continue                          # never heard -> no outage to time
             grace = grace_hours(d.get("powered_by"), self.grace_override_h)
@@ -120,7 +154,7 @@ class NodeWatcher:
         catches jumps the watcher didn't cause; this catches the ones it did."""
         self._cooldown_ticks = COOLDOWN_TICKS
 
-    def is_watching(self, device: dict) -> bool:
+    def is_watching(self, device: dict, monotonic: Optional[float] = None) -> bool:
         """True if this node is red but still inside its grace window — i.e. the
         medic is watching it and hasn't escalated yet. Drives the 'unreachable —
         waiting, will warn in N days' message when the operator taps a red node."""
@@ -133,22 +167,47 @@ class NodeWatcher:
             return False
         if lsh <= SILENCE_RED_H:
             return False                      # heard recently: a fault, not an outage
-        return lsh < grace_hours(device.get("powered_by"), self.grace_override_h)
+        witnessed = self.silence_hours(device, monotonic)
+        return witnessed < grace_hours(device.get("powered_by"), self.grace_override_h)
 
-    def watch_remaining_hours(self, device: dict) -> Optional[float]:
+    def watch_remaining_hours(self, device: dict,
+                              monotonic: Optional[float] = None) -> Optional[float]:
         """Hours left before this red node escalates (for the tap message). None if
-        it's not a timeable outage."""
+        it's not a timeable outage. Counted from the silence the medic has
+        WITNESSED, so right after a boot it is the whole grace window again."""
         lsh = device.get("last_seen_hours")
         if device.get("status") != "alert" or lsh is None or lsh <= SILENCE_RED_H:
             return None
-        return max(0.0, grace_hours(device.get("powered_by"), self.grace_override_h) - lsh)
+        witnessed = self.silence_hours(device, monotonic) or 0.0
+        return max(0.0, grace_hours(device.get("powered_by"), self.grace_override_h)
+                   - witnessed)
 
     # -- persistence (app saves alongside the registry) ---------------------
     def to_state(self) -> dict:
-        return {"notified": sorted(self._notified)}
+        return {"notified": sorted(self._notified),
+                "listening_since": self._listening_since_wall,
+                "last_tick": self._last_tick_wall}
 
-    def load_state(self, state: dict) -> None:
+    def load_state(self, state: dict, now: Optional[float] = None,
+                   monotonic: Optional[float] = None) -> None:
+        """Restore the warned set, and the listening clock IF the medic was only
+        away briefly (a UI restart, a deploy): the gap since the last saved tick
+        must be under RESUME_GAP_S. A longer gap is a real power-off — the medic
+        heard nothing in it, so listening starts again now."""
+        import time as _t
         try:
             self._notified = set(state.get("notified", []))
         except (AttributeError, TypeError):
             self._notified = set()
+            return
+        try:
+            since, last = state.get("listening_since"), state.get("last_tick")
+            wall = _t.time() if now is None else now
+            mono = _t.monotonic() if monotonic is None else monotonic
+            if (since is not None and last is not None
+                    and 0.0 <= wall - float(last) <= RESUME_GAP_S
+                    and float(since) <= wall):
+                self._listening_since_wall = float(since)
+                self._listening_since_mono = mono - (wall - float(since))
+        except (TypeError, ValueError):
+            pass

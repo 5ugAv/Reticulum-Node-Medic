@@ -1315,7 +1315,7 @@ NEW_STRINGS = {
         {"age": "3.2h", "acc": 4},
     "Start away — use the start position saved {age} ago": {"age": "3.2h"},
     "The GPS reports a fix but its position is not usable (not a place on "
-    "Earth). Wait for the next fix; if it stays, run Self-check under VITALS.":
+    "Earth). Wait for the next fix; if it stays, run Self Diagnose under VITALS.":
         {},
     "You are {m} m from the start position saved for {name} {age} ago. "
     "Replace it?": {"m": 210, "name": "Roof", "age": "3.2h"},

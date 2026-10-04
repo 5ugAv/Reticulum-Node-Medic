@@ -28,7 +28,7 @@ from ui.widgets.birth_anims import InsertSdAnim
 from ui.widgets.callout import Callout
 from ui.widgets.surgery_anim import SurgeryAnim
 from provisioning import pi_imager
-from provisioning.pi_imager import hostnameify, validate_new_password
+from provisioning.pi_imager import hostnameify, password_problem, MIN_PASSWORD_LEN
 
 
 def _medic_timezone() -> str:
@@ -585,16 +585,22 @@ class PiImagerScreen(BoxLayout):
         # A too-short password is as unrecoverable as a mistyped one: it is
         # hashed onto the card and can never be read back. Empty was already
         # refused here; the length floor was not.
-        pw_ok, pw_msg = validate_new_password(v.get("pw", ""))
-        if not pw_ok:
-            self._status.text = pw_msg
+        pw_problem = password_problem(v.get("pw", ""))
+        if pw_problem is not None:
+            # a template, so it can be translated (readiness ledger #207)
+            self._status.text = tr(pw_problem).format(n=MIN_PASSWORD_LEN)
             self._status.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        # A STATIC literal: the colour rides in as a placeholder. Built at
+        # runtime, this string was never a catalog key, so the one sentence that
+        # warns about ERASING a card showed in English in every language
+        # (readiness ledger #207).
         msg = Label(halign="center", valign="middle", markup=True, text=tr(
             "Write Pi OS to [b]{model} ({size})[/b] at [b]{path}[/b]?\n\n"
-            "[color=" + theme.COLORS["red"].lstrip("#") + "]This ERASES everything on that card.[/color] It cannot be "
+            "[color={red}]This ERASES everything on that card.[/color] It cannot be "
             "the medic's own storage — only a removable USB card is allowed.").format(
+                red=theme.COLORS["red"].lstrip("#"),
                 model=self._target["model"] or tr("the USB card"),
                 size=self._target["size"], path=self._target["path"]))
         msg.bind(size=lambda i, val: setattr(i, "text_size", val))

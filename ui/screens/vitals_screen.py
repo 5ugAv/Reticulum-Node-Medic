@@ -220,7 +220,9 @@ class VitalsScreen(BoxLayout):
         # VITALS is mesh health and the medic is the vantage point, so a quick
         # self-test lives here as well as in Settings). Opens self_diagnose.
         if on_self_diagnose is not None:
-            self_btn = Button(text=tr("Self-check"), size_hint_x=None, width=dp(110),
+            # ONE name for one feature: Settings, PROBE and the screen itself
+            # say "Self Diagnose"; this chip said "Self-check" (ledger #204).
+            self_btn = Button(text=tr("Self Diagnose"), size_hint_x=None, width=dp(110),
                               bold=True, background_normal="",
                               background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                               color=theme.hex_to_rgba(theme.COLORS["background"]))

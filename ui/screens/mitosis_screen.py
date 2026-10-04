@@ -457,6 +457,15 @@ class MitosisScreen(BoxLayout):
                                     size_hint_y=None, height=dp(52))
         bind_field(self.name_input)
         self.add_widget(self.name_input)
+        # What the network will call it, shown as it is typed — and the refusal
+        # for a name that reduces to nothing (Cyrillic, Japanese, emoji) HERE,
+        # not after the password and Wi-Fi stages, where "Try again" could never
+        # get back to the name (readiness ledger #122).
+        self._name_note = _label("", color="text_secondary", size="13.5sp")
+        self._name_note.size_hint_y, self._name_note.height = None, dp(24)
+        self.add_widget(self._name_note)
+        self.name_input.bind(text=lambda *_: self._refresh_name_note())
+        self._refresh_name_note()
 
         nxt = Button(
             text=(tr("Find and clone →") if skip_mode else tr("Continue →")),
@@ -473,8 +482,30 @@ class MitosisScreen(BoxLayout):
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
 
+    def _hostname_for(self, name):
+        from provisioning import pi_imager
+        return pi_imager.hostnameify(name or "")
+
+    def _refresh_name_note(self):
+        note = getattr(self, "_name_note", None)
+        if note is None:
+            return
+        typed = (self.name_input.text or "").strip()
+        host = self._hostname_for(typed)
+        if typed and not host:
+            note.text = tr("Use letters a-z or digits - this becomes its network name.")
+            note.color = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
+        elif host and host != typed.lower():
+            note.text = tr("On the network it will be called {host}").format(host=host)
+            note.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
+        else:
+            note.text = ""
+
     def _name_continue(self):
         self._name = (self.name_input.text or "").strip()
+        if not self._hostname_for(self._name):
+            self._refresh_name_note()          # the refusal is already on screen
+            return
         if self._skip_mode:
             self._show_stage_clone()
         else:
@@ -489,8 +520,9 @@ class MitosisScreen(BoxLayout):
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         body = _label(tr(
-            "You will type this to log in on the new medic's own screen "
-            "(user 'pi'). Choose one you can remember — a lost password "
+            "The new medic never asks for this on its own screen - it starts "
+            "straight into Node Medic. It is the password for its user 'pi' if "
+            "a keyboard is ever plugged in. Write it down: a lost password "
             "means re-imaging the card."),
             color="text_secondary", size="14sp")
         grow_to_text(body)
@@ -958,7 +990,12 @@ class MitosisScreen(BoxLayout):
                        font_size="20sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
-        again.bind(on_release=lambda *_: self._show_stage_password())
+        # A name fault goes back to the NAME, not to the password it never
+        # concerned (readiness ledger #122); everything else retries from the
+        # password stage as before.
+        back_to = (self._show_stage_name if "hostname" in (msg or "")
+                   else self._show_stage_password)
+        again.bind(on_release=lambda *_: back_to())
         self.add_widget(again)
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
@@ -1424,8 +1461,8 @@ class MitosisScreen(BoxLayout):
                    "with the whole tool, the offline maps, the firmware store "
                    "and the list of your other nodes.\n\n"
                    "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
-                   "1.  It walks you through its own setup - log in as 'pi' with "
-                   "the password you typed here.\n"
+                   "1.  It starts straight into Node Medic and walks you through "
+                   "its own setup - no login, nothing to type from here.\n"
                    "2.  Then it fits its radio - that is the Tracker, its USB "
                    "cable, the aerial and the little pigtail lead from the list "
                    "at the start.\n\n"

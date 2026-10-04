@@ -205,9 +205,6 @@ def set_mode(mode: str, connection: Connection, restart: bool = True,
     else:
         res.steps.append("propagation edit skipped (no lxmd config)")
 
-    connection.run(f"mkdir -p $(dirname {MODE_FILE})")
-    connection.run(f"printf '%s' {mode} > {MODE_FILE}")
-
     if restart:
         if connection.run("sudo -n systemctl restart rnsd")[0] == 0:
             res.steps.append("rnsd restarted")
@@ -218,6 +215,14 @@ def set_mode(mode: str, connection: Connection, restart: bool = True,
             res.steps.append("lxmd restarted")
         else:
             res.steps.append("lxmd restart skipped")
+
+    # The marker is what current_mode() reads FIRST, so it is written only once
+    # the switch really happened. Written before the restart, a failed switch
+    # still lit the requested mode on the next re-read and persisted it as the
+    # truth (readiness ledger #34).
+    if res.ok:
+        connection.run(f"mkdir -p $(dirname {MODE_FILE})")
+        connection.run(f"printf '%s' {mode} > {MODE_FILE}")
 
     if res.ok:
         if mode == HOME and home_profile == PROPAGATION:

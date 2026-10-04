@@ -203,8 +203,14 @@ class WizardStep(BoxLayout):
         if self._status_lbl.text != text:
             self._status_lbl.text = text
 
-    def hide_next(self):
+    def hide_next(self, heartbeat: bool = True):
         """Drop the Next button entirely — for steps the medic advances itself.
+
+        ``heartbeat=False`` for a step the OPERATOR advances by typing, choosing
+        or drawing (the setup wizard's type-it-back, level and pattern steps):
+        there the "keeping watch — you don't need to press anything" pulse was
+        a false sentence over a keypad waiting to be used (readiness ledger
+        #175). The pulse belongs only to hardware waits.
 
         On a "plug the thing in" step, detection drives the flow: the animation
         fires its Connected! burst and the wizard moves on by itself. The button
@@ -220,7 +226,8 @@ class WizardStep(BoxLayout):
         # sweep, 2026-10-03).
         if self.back_btn is not None:
             self.back_btn.size_hint_x = 1    # Back takes the row on its own
-        self._start_heartbeat()
+        if heartbeat:
+            self._start_heartbeat()
 
     def _start_heartbeat(self):
         """A self-advancing step has no button, so a keeper waiting on the medic

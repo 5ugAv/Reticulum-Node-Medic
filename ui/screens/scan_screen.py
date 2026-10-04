@@ -2977,7 +2977,7 @@ class ScanScreen(BoxLayout):
             # own state, and the walk does not start on them.
             words, tone = (tr("The GPS reports a fix but its position is "
                               "not usable (not a place on Earth). Wait for "
-                              "the next fix; if it stays, run Self-check "
+                              "the next fix; if it stays, run Self Diagnose "
                               "under VITALS."), "amber")
         elif g["stage"] == "held":
             words, tone = (tr("The GPS is coasting on an old position, not "
@@ -2985,7 +2985,7 @@ class ScanScreen(BoxLayout):
         elif g["stage"] == "slow":
             words, tone = (tr("Still no fix after two minutes. Find open sky "
                               "for the fix, then come back to the node before "
-                              "pressing — or run Self-check under VITALS to "
+                              "pressing — or run Self Diagnose under VITALS to "
                               "check the GPS itself."), "amber")
         else:
             words, tone = (tr("Looking for satellites — this can take a couple "
