@@ -1,5 +1,6 @@
 """Front-page poster tap zones — pure geometry."""
 
+import pytest
 from ui.home_zones import zone_at, CARD_ORDER, CARDS_TOP
 
 
@@ -70,7 +71,7 @@ def test_the_poster_is_still_the_size_the_zones_assume():
     """Fractions survive scaling, but the card row's y-cut (0.79) was measured
     on the 720x1280 art. A re-crop moves it."""
     import os
-    from PIL import Image                       # pillow is a test-only dep here
+    Image = pytest.importorskip("PIL.Image")
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "assets", "ui", "front_page.png")
     if not os.path.exists(path):                # gitignored on CI

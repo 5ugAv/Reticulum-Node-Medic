@@ -40,7 +40,7 @@
   "Language",
   "Language set — it applies when Node Medic next starts. Slide to power off on the front page, then power back on.",
   "Licence: {lic}",
-  "Listed here: every language the display font can draw that has a full translation. More follow as translations land.",
+  "Listed here: every language the display font can draw. A row that names a percentage is partly translated — the rest shows in English. More follow as translations land.",
   "Lock the registry, certificates and messages on this card",
   "Needs the internet. It is a large download — do it before you leave.",
   "New nodes are built with the CURRENT settings — they can only talk to nodes on the same settings. Revert to standard so every node can communicate, or keep them if this is a deliberate separate mesh.",
@@ -67,8 +67,8 @@
   "Software version, test-suite status, uptime, and licence",
   "Standard:",
   "Storage usage",
-  "Store-and-forward is ON — lxmd is started with -p, so the Home/Backpack switch cannot turn it off (see docs/CHAT.md).",
   "Store-and-forward is ON — the medic holds messages for phones that are offline.",
+  "Store-and-forward is ON — this medic was set up to always hold messages, so the Home/Backpack switch does not change it.",
   "System clock and timezone — set manually or keep it synced from GPS",
   "The medic is offline — connect it to the internet, then try again.",
   "This can take several minutes. Leave the screen open.",
@@ -79,5 +79,6 @@
   "Trusted operators",
   "Walk the lock screen, recovery key and reset without changing anything",
   "What RNode / transport / propagation nodes are, where to place them, and the radio settings",
-  "WiFi & Network"
+  "WiFi & Network",
+  "{pct}% translated — the rest shows in English"
 ]

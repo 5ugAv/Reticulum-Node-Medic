@@ -23,6 +23,7 @@ Deliberately NOT policed, to keep the grep quiet enough to trust:
   orphan every certificate printed before 2026-09-13.
 """
 
+import pytest
 import ast
 import json
 import os
@@ -160,7 +161,7 @@ def test_sidebar_speaks_the_painted_words():
 # instead of shipping a tap that opens the wrong screen.
 
 def _poster_gray():
-    from PIL import Image                       # pillow is a test-only dep here
+    Image = pytest.importorskip("PIL.Image")
     path = os.path.join(REPO, "assets", "ui", "front_page.png")
     if not os.path.exists(path):                # gitignored on CI
         return None
@@ -178,7 +179,7 @@ def test_the_credits_zone_sits_on_the_lora_trunk_node():
         return
     # Sample the DISC, not one pixel: the tower mark is knocked out in dark at
     # the disc's centre, so the middle pixel is legitimately black.
-    import numpy as np
+    np = pytest.importorskip("numpy")
     cx, cy = int(CROSS_CX * 720), int(CROSS_CY * 1280)
     disc = np.asarray(im, dtype=float)[cy - 20:cy + 20, cx - 20:cx + 20]
     lit = (disc > 150).mean()
@@ -195,7 +196,7 @@ def test_the_wifi_zone_sits_on_the_wifi_marker():
     im = _poster_gray()
     if im is None:
         return
-    import numpy as np
+    np = pytest.importorskip("numpy")
     box = np.asarray(im, dtype=float)[int(WIFI_TOP * 1280):int(WIFI_BOTTOM * 1280),
                                       int(WIFI_LEFT * 720):int(WIFI_RIGHT * 720)]
     assert (box > 150).mean() > 0.04, (
@@ -231,7 +232,7 @@ def test_the_card_row_zone_meets_the_drawn_keys():
     im = _poster_gray()
     if im is None:
         return
-    import numpy as np
+    np = pytest.importorskip("numpy")
     a = np.asarray(im, dtype=float)
     y = int(CARDS_TOP * 1280)
     assert (a[y + 2] > 60).sum() > 150, "the card zone starts above the keys"

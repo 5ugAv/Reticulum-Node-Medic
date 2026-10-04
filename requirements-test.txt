@@ -1,0 +1,8 @@
+# What the test suite needs beyond the standard library. The tested core has
+# no third-party RUNTIME dependency (Kivy is the UI only); these are test-only:
+pytest
+PyYAML        # test_cloud_init_seed parses the generated user-data independently
+Pillow        # terrain tiles, front-page art and board photos are read back
+numpy         # pixel checks on the front-page art
+cryptography  # the records vault's AES-GCM
+rns           # the mesh / time-over-mesh tests importorskip("RNS") — carried so they RUN

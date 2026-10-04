@@ -27,7 +27,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
-from ui.i18n import available_languages, current_language, set_language, tr
+from ui.i18n import available_languages, current_language, set_language, tr, coverage
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=30):
@@ -64,6 +64,11 @@ class LanguageScreen(BoxLayout):
             # native name is the headline; the English name orients an operator
             # who doesn't yet read the native one. English rows just say "English".
             label = native if native == english else f"{native}  ·  {english}"
+            cov = coverage(code)
+            if cov < 0.9:
+                # say it on the row, before the tap (readiness ledger #149)
+                label += "   " + tr("{pct}% translated — the rest shows in English"
+                                    ).format(pct=int(cov * 100))
             row = Button(text=label, size_hint_y=None, height=dp(60), halign="left",
                          valign="middle", font_size="18sp", bold=True,
                          background_normal="", background_down="")
@@ -78,8 +83,9 @@ class LanguageScreen(BoxLayout):
         # Italian (not offered), omitted four languages that are, and claimed
         # Latin-only under a Russian row (readiness sweep, 2026-10-03).
         self.add_widget(_line(
-            tr("Listed here: every language the display font can draw that has "
-               "a full translation. More follow as translations land."),
+            tr("Listed here: every language the display font can draw. A row "
+               "that names a percentage is partly translated — the rest shows "
+               "in English. More follow as translations land."),
             size="12sp", color="text_secondary", h=52))
 
         self._paint(current)

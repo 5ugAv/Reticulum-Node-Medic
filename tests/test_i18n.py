@@ -160,8 +160,9 @@ WRAPPED_SLICE_STRINGS = [
     "Choose the language Node Medic runs in.",
     ("Language set — it applies when Node Medic next starts. Slide to power off "
      "on the front page, then power back on."),
-    ("Listed here: every language the display font can draw that has a full "
-     "translation. More follow as translations land."),
+    ("Listed here: every language the display font can draw. A row that names "
+     "a percentage is partly translated — the rest shows in English. More "
+     "follow as translations land."),
 ]
 
 

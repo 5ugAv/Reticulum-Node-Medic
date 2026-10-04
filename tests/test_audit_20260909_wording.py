@@ -5,6 +5,7 @@ Each test names the finding. The rule throughout is the project's oldest one:
 the screen says only what has actually happened, and names only a test the
 operator can actually run.
 """
+import pytest
 from tests.srcutil import func_source
 from ui.birth_guide_flow import guide_steps
 
@@ -243,7 +244,7 @@ def test_no_board_photo_ships_as_an_opaque_white_rectangle():
     silkscreen, white shells and white text ON it."""
     import glob
     import os
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
     bad = []
     files = glob.glob("assets/boards/*.png")
     files.append("assets/ui/anim/pi_zero_2w.png")
@@ -259,8 +260,8 @@ def test_the_cutter_leaves_white_that_is_part_of_the_board():
     """The T-Echo is a WHITE-CASED device and the RAK is covered in white
     labels. A colour-key would have eaten both; flooding from the edges must
     not."""
-    from PIL import Image
-    import numpy as np
+    Image = pytest.importorskip("PIL.Image")
+    np = pytest.importorskip("numpy")
     for name, want in (("techo", 0.25), ("rak4631", 0.10)):
         a = np.asarray(Image.open(f"assets/boards/{name}.png").convert("RGBA"))
         opaque = a[..., 3] > 200
@@ -281,7 +282,7 @@ def test_board_art_is_sized_by_its_longest_side():
                      if not l.strip().startswith("#"))
     assert code.count("if ba >= 1.0") + code.count("_na >= 1.0") >= 3, \
         "the board-drawing scenes must all fit the longest side"
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
     im = Image.open("assets/boards/rak4631.png")
     assert im.size[1] > im.size[0], "the RAK art is portrait — that is the case"
 

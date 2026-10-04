@@ -105,8 +105,8 @@ class CommsScreen(BoxLayout):
             return
         if store_on and intended is False:
             self.status.text = tr(
-                "Store-and-forward is ON — lxmd is started with -p, so the "
-                "Home/Backpack switch cannot turn it off (see docs/CHAT.md).")
+                "Store-and-forward is ON — this medic was set up to always hold "
+                "messages, so the Home/Backpack switch does not change it.")
         elif store_on:
             self.status.text = tr(
                 "Store-and-forward is ON — the medic holds messages for phones that are "
@@ -136,7 +136,9 @@ class CommsScreen(BoxLayout):
         if app.get("carried") and app.get("version"):
             head += f"   {app['version']}"
         card.add_widget(_line(head, bold=True, size="19sp", h=28))
-        card.add_widget(_line(app["blurb"], size="13.5sp", color="text_secondary", h=44))
+        # the blurbs live in workflows.phone_apps and are carried by the
+        # catalogs as keys (readiness ledger #212, #80)
+        card.add_widget(_line(tr(app["blurb"]), size="13.5sp", color="text_secondary", h=44))
         card.add_widget(_line(tr("Licence: {lic}").format(lic=app['license']),
                               size="11.5sp", color="text_secondary", h=20))
         # An app that a modern phone will refuse says so BEFORE the operator

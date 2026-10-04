@@ -438,6 +438,7 @@ Test-first throughout. The whole tested core runs headless with no hardware via
 an in-memory `EmulatedConnection`, and never imports Kivy.
 
 ```bash
+pip3 install -r requirements-test.txt   # test-only deps (incl. rns, so the mesh tests run rather than skip)
 python3 -m pytest        # the suite (pytest.ini already passes -q)
 python3 main.py          # launch the touchscreen app (needs Kivy + a display)
 python3 main.py --version

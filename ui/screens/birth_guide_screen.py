@@ -584,10 +584,10 @@ class BirthGuideScreen(BoxLayout):
             if self._detected_something:
                 return
             try:
-                step.set_status(
+                step.set_status(tr(
                     "Still not seeing anything. This is almost always the USB "
                     "cable — many are charge-only. Try a different cable, or "
-                    "another socket on Node Medic.")
+                    "another socket on Node Medic."))
             except Exception:                              # noqa: BLE001
                 pass
         # ~18s: long enough not to nag during a normal plug-in, short enough to
@@ -1110,7 +1110,8 @@ class BirthGuideScreen(BoxLayout):
             # flash_in_progress() (false 'Board disconnected!' otherwise).
             from kivy.app import App
             App.get_running_app().begin_activity(
-                "Wiping " + (old_name or "the board") + " — keep it plugged in")
+                tr("Wiping {name} — keep it plugged in").format(
+                    name=old_name or tr("the board")))
         except Exception:
             pass
 
@@ -3409,9 +3410,9 @@ class BirthGuideScreen(BoxLayout):
         try:
             from workflows.rnode_boards import get_board
             b = get_board(key or "")
-            return b.display_name if b else "this radio"
+            return b.display_name if b else tr("this radio")
         except Exception:                                          # noqa: BLE001
-            return "this radio"
+            return tr("this radio")
 
     def _remember_board(self, key):
         """Tie the operator's answer to THIS chip, so it is never asked twice.

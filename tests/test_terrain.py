@@ -229,7 +229,7 @@ def test_terrain_survives_a_round_trip_through_the_map_cache(tmp_path):
     """End to end: write a terrarium tile the way download_terrain would, then
     read a known height back out of it."""
     import io, sqlite3
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
     from monitor.terrain import TerrariumStore
 
     z, lat, lon = 12, -37.50, 145.50
@@ -260,7 +260,7 @@ def test_terrain_survives_a_round_trip_through_the_map_cache(tmp_path):
 def test_the_whole_chain_works_off_terrarium_tiles(tmp_path):
     """line_of_sight does not care which store it is given."""
     import io, sqlite3
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
     from monitor.terrain import TerrariumStore, line_of_sight
 
     z = 12

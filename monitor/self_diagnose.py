@@ -60,8 +60,10 @@ def check_usb_present(by_id_listing: str, serial: str = ONBOARD_SERIAL) -> Findi
     if not serial:
         return Finding("usb_present", SEV_WARN,
                        "This medic has not recorded which board is its own, so "
-                       "I cannot tell whether it is on USB. Commission it from "
-                       "Settings and this check starts working.")
+                       "I cannot tell whether it is on USB. It learns its own "
+                       "boards from the ones its services are bound to: run "
+                       "scripts/setup_boot.sh with the medic's radio plugged in, "
+                       "then restart Node Medic.")
     if serial.lower() in (by_id_listing or "").lower():
         return Finding("usb_present", SEV_OK, f"Onboard radio present on USB ({serial}).")
     return Finding("usb_present", SEV_CRIT,
@@ -366,7 +368,10 @@ def check_wifi(nmcli_output: str, warn_pct: int = 40) -> Finding:
 
 
 def check_clock_sync(timedatectl_output: str, now: float,
-                     min_epoch: float = 1704067200.0) -> Finding:
+                     min_epoch: float = 1704067200.0,
+                     last_sync: "Optional[float]" = None,
+                     last_sync_source: str = "",
+                     fresh_s: float = 24 * 3600.0) -> Finding:
     """System-clock health. A field medic with no RTC battery boots to a bogus time
     after a power loss — which breaks certificate dates, LXMF timestamps, TLS, and
     the outage-watch/beacon timing. Critical if the clock reads before 2024 (never
@@ -378,11 +383,27 @@ def check_clock_sync(timedatectl_output: str, now: float,
                        "after boot. Set it in Settings > Date & time (GPS or NTP). "
                        "A wrong clock breaks certs, messaging and mesh timing.",
                        fix="sync_clock", data={"epoch": now})
-    if not re.search(r"NTPSynchronized=yes", timedatectl_output or ""):
+    out = timedatectl_output or ""
+    if re.search(r"NTPSynchronized=yes", out):
+        return Finding("clock", SEV_OK, "System clock synced (NTP).")
+    # OFFLINE IS NORMAL for this medic: with no server in reach NTPSynchronized
+    # stays "no" for ever and the GPS is the clock's source, so a fresh sync
+    # stamp (GPS or a manual set) is a synced clock — "NTP off" was a false
+    # warning on every healthy field medic (readiness ledger #92).
+    if last_sync is not None and 0 <= now - last_sync <= fresh_s:
+        age_min = int((now - last_sync) // 60)
+        src = last_sync_source or "GPS"
+        return Finding("clock", SEV_OK,
+                       f"Clock set from {src} {age_min} min ago (offline — no NTP needed).")
+    if re.search(r"(^|\n)NTP=no", out):
         return Finding("clock", SEV_WARN,
-                       "Clock isn't auto-syncing (NTP off). If it drifts, timestamps "
-                       "and certs can break — sync via NTP (online) or GPS.")
-    return Finding("clock", SEV_OK, "System clock synced.")
+                       "Clock isn't auto-syncing (NTP off) and the GPS hasn't set it. "
+                       "If it drifts, timestamps and certs can break — turn auto-sync "
+                       "on in Settings > Date & time, or give the GPS a view of the sky.")
+    return Finding("clock", SEV_WARN,
+                   "No time source has reached the clock yet: NTP is on but no server "
+                   "has answered, and the GPS hasn't set it. Give the GPS a view of the "
+                   "sky, or get online once.")
 
 
 def check_rns_responding(rnstatus_output: str) -> Finding:

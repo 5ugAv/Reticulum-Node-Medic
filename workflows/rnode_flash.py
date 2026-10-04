@@ -721,6 +721,13 @@ class RNodeFlashWorkflow:
             # 2026-08-01). The RTNode path never hits this because it ERASES
             # first. Do the same here, once, then retry: on a truly blank chip
             # autoinstall has nothing to be confused by.
+            if self.connection.run(f"test -e {self.port}")[0] != 0:
+                # The board left the bus mid-flash (cable, brown-out). Erasing
+                # "it" now trips the onboard guard and blames the medic's own
+                # radio (readiness ledger #169) — say what happened instead.
+                return StepResult("flash", False,
+                                  "The board left USB during the flash — check the "
+                                  "cable, plug it back in, then try again.")
             erased, emsg = self._erase_chip()
             if erased:
                 ok, msg, already = birth_flash(

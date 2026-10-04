@@ -105,6 +105,10 @@ class SelfDiagnoseScreen(BoxLayout):
             self.summary.color = theme.hex_to_rgba(theme.COLORS["red"])
             return
         s = summarize(findings)
+        # "tap Fix below" only when a Fix BUTTON will be drawn — guided
+        # findings get notes, not buttons (readiness ledger #88)
+        has_button = any(f.fix and not f.ok and rt.repair_kind(f.fix) == "auto"
+                         for f in findings)
         if s["healthy"]:
             self.summary.text = tr(":)  Radio & GPS healthy")
             self.summary.color = theme.hex_to_rgba(theme.COLORS["green"])
@@ -112,7 +116,8 @@ class SelfDiagnoseScreen(BoxLayout):
             self.summary.text = (
                 tr("{crit} critical, {warn} warning").format(
                     crit=s["critical"], warn=s["warning"])
-                + (tr("  ·  tap Fix below") if s["fixes"] else ""))
+                + (tr("  ·  tap Fix below") if has_button
+                   else (tr("  ·  see the notes below") if s["fixes"] else "")))
             self.summary.color = theme.hex_to_rgba(
                 theme.COLORS["red" if s["critical"] else "amber"])
         for f in findings:
@@ -153,8 +158,15 @@ class SelfDiagnoseScreen(BoxLayout):
 
     def _fix_done(self, button, ok, msg):
         self._busy = False
-        button.text = tr("Fixed — re-checking") if ok else tr("Failed")
+        button.text = tr("Fixed — re-checking") if ok else tr("Failed — try again")
         button.background_color = theme.hex_to_rgba(
             theme.COLORS["green" if ok else "red"])
         if ok:
             Clock.schedule_once(lambda dt: self.start(), 1.2)   # re-run to confirm
+            return
+        # The reason, in sudo's or systemd's own words, and a live button:
+        # "Failed" alone with the button dead left nothing to act on (#89).
+        button.disabled = False
+        row = button.parent
+        if row is not None and msg:
+            row.add_widget(_line(str(msg).strip()[-300:], color="red", size="12sp"))

@@ -76,7 +76,7 @@ def test_test_status_reports_count_when_collected():
 
 def test_test_status_falls_back_to_run_in_ci():
     run = _run_map({"pytest --collect-only": (0, "no tests ran\n")})
-    assert about.test_status(run) == "run in CI"
+    assert about.test_status(run) == "not measured on this device"
     # never fabricates a passing badge
     assert "passing" not in about.test_status(run).lower()
 
@@ -127,7 +127,7 @@ def test_summary_all_commands_fail_is_graceful(tmp_path):
     run = _run_map({}, default=(1, "boom"))
     s = about.summary(run, uptime_path=str(tmp_path / "nope"))
     assert s["version"] == "unknown"
-    assert s["test_status"] == "run in CI"
+    assert s["test_status"] == "not measured on this device"
     assert s["uptime"] == "unknown"
     assert s["license"] == "MIT"
     assert s["repo"] == ""

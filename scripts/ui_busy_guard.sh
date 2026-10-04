@@ -8,12 +8,16 @@
 # FORCE=1 overrides — for when the running instance is the thing that is broken.
 if [ "${FORCE:-0}" = "1" ]; then exit 0; fi
 busy=""
-pgrep -f "[x]zcat" >/dev/null 2>&1 && busy="an SD card image write"
-pgrep -f "[d]d .*of=/dev/sd" >/dev/null 2>&1 && busy="an SD card write"
-pgrep -f "[e]sptool" >/dev/null 2>&1 && busy="a board firmware flash"
-pgrep -f "[r]nodeconf" >/dev/null 2>&1 && busy="an RNode provisioning run"
-pgrep -f "[a]dafruit-nrfutil" >/dev/null 2>&1 && busy="an nRF52 serial DFU flash"
-pgrep -f "[a]rduino-cli upload" >/dev/null 2>&1 && busy="a board firmware upload"
+# UI_BUSY_NO_PGREP=1 skips the process scan — for the marker test, which used
+# to fail whenever ANY process on the host mentioned esptool (ledger #200).
+if [ "${UI_BUSY_NO_PGREP:-0}" != "1" ]; then
+    pgrep -f "[x]zcat" >/dev/null 2>&1 && busy="an SD card image write"
+    pgrep -f "[d]d .*of=/dev/sd" >/dev/null 2>&1 && busy="an SD card write"
+    pgrep -f "[e]sptool" >/dev/null 2>&1 && busy="a board firmware flash"
+    pgrep -f "[r]nodeconf" >/dev/null 2>&1 && busy="an RNode provisioning run"
+    pgrep -f "[a]dafruit-nrfutil" >/dev/null 2>&1 && busy="an nRF52 serial DFU flash"
+    pgrep -f "[a]rduino-cli upload" >/dev/null 2>&1 && busy="a board firmware upload"
+fi
 marker="${UI_BUSY_MARKER:-$HOME/.reticulum-node-medic/ui_busy}"
 if [ -z "$busy" ] && [ -f "$marker" ]; then
     now=$(date +%s); mt=$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)

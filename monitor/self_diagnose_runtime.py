@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Callable, List, Tuple
+from typing import Callable, Optional, List, Tuple
 
 import safe_shell
 from monitor import self_diagnose as sd
@@ -28,6 +28,26 @@ def _default_run(cmd: str) -> str:
         return out
     except Exception as e:
         return str(e)
+
+
+def _default_run_rc(cmd: str) -> Tuple[int, str]:
+    """The repair runner: the exit code travels with the output, because
+    "sudo: a password is required" matched none of the words the old scan
+    looked for and a refused repair was reported "Fixed" (ledger #90)."""
+    try:
+        return safe_shell.run(cmd, timeout=15)
+    except Exception as e:
+        return 1, str(e)
+
+
+def _clock_stamp() -> Tuple[Optional[float], str]:
+    """When the clock was last set, and by what (GPS / manual), from the
+    Date & time settings — None when never (readiness ledger #92)."""
+    try:
+        from provisioning import tool_datetime as td
+        return td.last_sync(), (td.last_sync_source() or "")
+    except Exception:
+        return None, ""
 
 
 def _splitter_cpu_uptime(run: Runner) -> Tuple[float, float]:
@@ -105,7 +125,9 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_throttled(run("vcgencmd get_throttled 2>/dev/null")))
     findings.append(sd.check_wifi(
         run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
-    findings.append(sd.check_clock_sync(run("timedatectl show 2>/dev/null"), now_fn()))
+    last_sync, sync_src = _clock_stamp()
+    findings.append(sd.check_clock_sync(run("timedatectl show 2>/dev/null"), now_fn(),
+                                        last_sync=last_sync, last_sync_source=sync_src))
     # BY ABSOLUTE PATH. safe_shell runs without a shell and a non-login
     # subprocess gets PATH=/usr/local/bin:/usr/bin:/bin:/usr/games — which does
     # not include ~/.local/bin, where pip --user puts every RNS console script.
@@ -138,20 +160,14 @@ _AUTO_REPAIRS = {
     "restart_splitter": {
         "label": "Restart the radio splitter",
         "cmd": "sudo -n systemctl restart rnode-splitter 2>&1",
-        "ok": lambda out: not any(w in out.lower()
-                                  for w in ("fail", "error", "not loaded", "authentication")),
     },
     "restart_rnsd": {
         "label": "Restart the Reticulum service (rnsd)",
         "cmd": "sudo -n systemctl restart rnsd 2>&1",
-        "ok": lambda out: not any(w in out.lower()
-                                  for w in ("fail", "error", "not loaded", "authentication")),
     },
     "restart_lxmd": {
         "label": "Restart the message store-and-forward (lxmd)",
         "cmd": "sudo -n systemctl restart lxmd 2>&1",
-        "ok": lambda out: not any(w in out.lower()
-                                  for w in ("fail", "error", "not loaded", "authentication")),
     },
 }
 
@@ -184,11 +200,24 @@ def guidance(key: str) -> str:
     return _GUIDANCE.get(key, "")
 
 
-def run_repair(key: str, run: Runner = _default_run) -> Tuple[bool, str]:
+#: Words in a repair's output that mean it did not happen, whatever the code.
+_REFUSAL_WORDS = ("fail", "error", "not loaded", "authentication", "password is required")
+
+
+def run_repair(key: str, run: Optional[Runner] = None,
+               run_rc: Callable[[str], Tuple[int, str]] = _default_run_rc) -> Tuple[bool, str]:
     """Execute an auto repair. Returns (ok, message). Guided/unknown keys return
-    False with their guidance text (the UI shows it rather than running anything)."""
+    False with their guidance text (the UI shows it rather than running anything).
+    ``ok`` is the command's exit code (0) AND an output free of refusal words;
+    a bare-string *run* (tests, older callers) can only offer the words."""
     r = _AUTO_REPAIRS.get(key)
     if r is None:
         return False, guidance(key) or f"No automatic repair for '{key}'."
-    out = run(r["cmd"])
-    return r["ok"](out), (out.strip() or "Done.")
+    if run is not None:
+        code, out = None, run(r["cmd"])
+    else:
+        code, out = run_rc(r["cmd"])
+    out = out or ""
+    said_no = any(w in out.lower() for w in _REFUSAL_WORDS)
+    ok = (code in (None, 0)) and not said_no
+    return ok, (out.strip() or "Done.")

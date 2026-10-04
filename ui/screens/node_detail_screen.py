@@ -119,10 +119,19 @@ class NodeDetailScreen(BoxLayout):
         # header: hex status + name + location
         head = BoxLayout(orientation="horizontal", size_hint_y=None,
                          height=dp(56), spacing=dp(10))
-        head.add_widget(HexStatus(status=record.status(now),
+        # ONE source for the page and its VITALS row — the dashboard view,
+        # where a stranger's row is grey and its announced name stands in for
+        # a hash (readiness ledger #59).
+        try:
+            dash = record.to_dashboard(now)
+        except Exception:                                          # noqa: BLE001
+            dash = {"status": record.status(now),
+                    "name": record.name or record.dst_hash[:12]}
+        self._dash = dash
+        head.add_widget(HexStatus(status=dash["status"],
                                   size_hint_x=None, width=dp(48)))
         title = BoxLayout(orientation="vertical")
-        title.add_widget(_line(record.name or record.dst_hash[:12], bold=True,
+        title.add_widget(_line(dash["name"] or record.dst_hash[:12], bold=True,
                                size="20sp"))
         # A stranger is not an RTNode: node_type defaults to "rtnode2400" for
         # every record, and the operator's own phone wore it (2026-10-02).
@@ -285,8 +294,14 @@ class NodeDetailScreen(BoxLayout):
         # 2026-09-21: "we know what board this is").
         birth = self._birth_lines(record)
         if birth:
-            col.add_widget(_line(tr("Built by this medic"), bold=True,
-                                 size="17sp"))
+            # an adopted node was never built here (readiness ledger #61)
+            if getattr(self, "_cert_adopted", False):
+                header = (tr("Adopted by this medic (over the air)")
+                          if getattr(self, "_cert_ota", False)
+                          else tr("Adopted by this medic"))
+            else:
+                header = tr("Built by this medic")
+            col.add_widget(_line(header, bold=True, size="17sp"))
             for ln in birth:
                 col.add_widget(_line("  " + ln, size="14sp"))
 
@@ -313,7 +328,7 @@ class NodeDetailScreen(BoxLayout):
         # rebirth destroys the node's identity, and a solar node waiting for sun
         # is not a node that needs wiping.
         from ui.rebirth_advice import advise
-        adv = advise(record.status(now), board_attached=self._board_attached,
+        adv = advise(self._dash["status"], board_attached=self._board_attached,
                      name=record.name or "", hours_quiet=None,
                      # The SAME evidence the header above uses for "Last
                      # heard" — or the advice contradicts the page it sits on.
@@ -509,6 +524,8 @@ class NodeDetailScreen(BoxLayout):
             return []
         if not cert:
             return []
+        self._cert_adopted = bool(cert.get("adopted"))
+        self._cert_ota = bool(cert.get("over_the_air"))
         fact = classify_cert(cert)
         out = []
         # THE BOARD, from the certificate's codes — never its English prose
@@ -540,7 +557,8 @@ class NodeDetailScreen(BoxLayout):
                           "certificate does not say").format(
                               version=fact.firmware))
         if fact.born:
-            out.append(tr("Born: {born}").format(born=fact.born))
+            out.append((tr("Adopted: {born}") if cert.get("adopted")
+                        else tr("Born: {born}")).format(born=fact.born))
         # THE PORT, composed from install_radio_rule's own record of the
         # udev rule it wrote and read back (from 2026-09-22). An older
         # certificate's bare "/dev/ttyUSB0" is the NodeProfile default, a
@@ -588,7 +606,8 @@ class NodeDetailScreen(BoxLayout):
         is the MEDIC'S record — rows, history, certificates, roster — never
         anything on the node itself; the name becomes free for a new birth."""
         from ui.confirm import confirm_danger
-        name = self.record.name or self.record.dst_hash[:8]
+        name = (getattr(self, "_dash", {}).get("name")
+                or self.record.name or self.record.dst_hash[:8])
         confirm_danger(
             tr("Delete everything Node Medic knows about {name}?\n\n"
                "Its rows, history, certificates and roster entry all go — "

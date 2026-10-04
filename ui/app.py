@@ -1591,6 +1591,14 @@ class ReticulumNodeMedicApp(App):
                                % (self._chat_attempts, chat.last_error))
                 # the screen shows last_error and offers Try again (ledger #187)
                 return False
+        # Waiting for rnsd that never comes: after ~2 minutes say so and stop,
+        # instead of "waiting…" for ever over a dead Send (ledger #78); the
+        # screen's Try again starts this poll afresh.
+        self._chat_waits = getattr(self, "_chat_waits", 0) + 1
+        if chat is not None and not self._rns_attached and self._chat_waits > 40:
+            chat.last_error = "the mesh service (rnsd) did not come up"
+            self._chat_log("chat: gave up waiting for the mesh service (rnsd)")
+            return False
         self._start_chat_if_ready(self._chat_log)
         return True
 
@@ -1598,6 +1606,7 @@ class ReticulumNodeMedicApp(App):
         """The chat screen's Try again: forget the give-up and poll afresh
         (readiness ledger #187 — Send was a dead button with no door)."""
         self._chat_attempts = 0
+        self._chat_waits = 0
         chat = getattr(self, "_chat", None)
         if chat is not None and not chat.running:
             chat.last_error = ""
@@ -3171,6 +3180,9 @@ class ReticulumNodeMedicApp(App):
             try:
                 m = current_mode(LocalConnection())
             except Exception:
+                # un-dim the toggle even when the mode cannot be read (#40)
+                Clock.schedule_once(
+                    lambda dt: self.home_screen.mode_toggle.set_busy(False), 0)
                 return
             Clock.schedule_once(
                 lambda dt: self.home_screen.mode_toggle.set_state(m), 0)
@@ -3193,8 +3205,23 @@ class ReticulumNodeMedicApp(App):
         from transport.connection import LocalConnection
         from workflows.node_mode import set_mode
 
+        prev = getattr(tog, "mode", None)
+
         def work():
-            res = set_mode(new_mode, LocalConnection())
+            try:
+                res = set_mode(new_mode, LocalConnection())
+            except Exception as e:                                 # noqa: BLE001
+                # the toggle must never stay dimmed and deaf (ledger #40)
+                def failed(_dt):
+                    tog.set_busy(False)
+                    if prev:
+                        tog.set_state(prev)
+                    try:
+                        self._mode_toast(f"Couldn't switch: {e}", ok=False)
+                    except Exception:                              # noqa: BLE001
+                        pass
+                Clock.schedule_once(failed, 0)
+                return
 
             def done(dt):
                 if res.ok:

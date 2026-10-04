@@ -23,7 +23,9 @@ def test_marker_is_fresh_then_stale(tmp_path):
 
 def test_the_shell_guard_refuses_on_a_fresh_marker_and_not_on_a_stale_one(tmp_path):
     p = str(tmp_path / "ui_busy")
-    env = dict(os.environ, UI_BUSY_MARKER=p)
+    # the marker branch only: the process scan is covered below with a stub
+    # pgrep, so a stray esptool on the dev box cannot fail this (ledger #200)
+    env = dict(os.environ, UI_BUSY_MARKER=p, UI_BUSY_NO_PGREP="1")
     bm.write("a boundary walk", path=p)
     r = subprocess.run(["bash", "scripts/ui_busy_guard.sh"], env=env,
                        capture_output=True, text=True)
@@ -74,3 +76,17 @@ def test_start_ui_logs_to_the_same_file_whoever_starts_it():
     execs = [l for l in src.splitlines() if l.strip().startswith("exec ")]
     assert len(execs) == 1 and 'main.py >> "$HOME/ui.log" 2>&1' in execs[0], execs
     assert subprocess.run(["bash", "-n", path]).returncode == 0
+
+
+def test_the_shell_guard_refuses_while_a_flash_process_runs(tmp_path):
+    """The process branch, with a stub pgrep first on PATH that 'finds' esptool
+    and nothing else — deterministic whatever the host is running."""
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "pgrep").write_text("#!/bin/bash\ncase \"$*\" in *sptool*) exit 0;; *) exit 1;; esac\n")
+    os.chmod(str(stub / "pgrep"), 0o755)
+    env = dict(os.environ, PATH=f"{stub}:{os.environ.get('PATH', '')}",
+               UI_BUSY_MARKER=str(tmp_path / "no_marker"))
+    r = subprocess.run(["bash", "scripts/ui_busy_guard.sh"], env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 3 and "a board firmware flash" in r.stderr

@@ -5,6 +5,7 @@ matching what's on screen to what's in their hands is the point. A photo of the
 WRONG board is worse than no photo, because the check silently passes.
 """
 
+import pytest
 import os
 
 from ui.board_images import image_for, image_for_pi, pi_art_status
@@ -320,7 +321,7 @@ def test_the_front_page_is_the_panels_native_size():
     control separates from the app's own button drawn over it. A 2026-09-28
     redesign arrived at 1018x1545 and would have shown two gears."""
     import os
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
     p = os.path.join("assets", "ui", "front_page.png")
     assert Image.open(p).size == (720, 1280), (
         "front_page.png must be the panel's native 720x1280")

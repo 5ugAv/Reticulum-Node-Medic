@@ -34,7 +34,9 @@ _REMOTE_CMD = "git remote get-url origin"
 #: collected" tally off the last non-empty line, so no shell ``| tail -1`` is
 #: needed — we filter in Python (audit C5). ``2>/dev/null`` keeps collection
 #: warnings out of the parsed output.
-_COLLECT_CMD = "python3 -m pytest --collect-only -q 2>/dev/null"
+#: ``-o addopts=`` drops pytest.ini's own ``-q``: doubled, the two ate the
+#: summary line and About read "run in CI" on every medic (ledger #111).
+_COLLECT_CMD = "python3 -m pytest --collect-only -q -o addopts= 2>/dev/null"
 
 
 def _default_run(cmd: str) -> Tuple[int, str]:
@@ -107,10 +109,10 @@ def parse_test_count(output: str) -> Optional[int]:
 
 def test_status(run: Optional[ShellRunner] = None) -> str:
     """Honest, non-blocking test indicator: ``"N tests"`` from a collect-only
-    pass, else ``"run in CI"`` (never a fabricated "passing")."""
+    pass, else ``"not measured on this device"`` (never a fabricated "passing")."""
     _code, out = (run or _default_run)(_COLLECT_CMD)
     n = parse_test_count(out)
-    return f"{n} tests" if n else "run in CI"
+    return f"{n} tests" if n else "not measured on this device"
 
 
 def uptime_seconds(path: str = UPTIME_PATH) -> Optional[float]:

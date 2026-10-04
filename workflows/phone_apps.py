@@ -71,8 +71,8 @@ APPS = {
         "repo": "markqvist/Sideband",
         "license": "CC-BY-NC-SA-4.0 (free binary redistribution granted)",
         "free_redistribution": True,
-        "blurb": "The original Reticulum LXMF client — messaging, voice calls, maps "
-                 "and telemetry. More features; by Reticulum's author.",
+        "blurb": "The original Reticulum messaging app — messaging, voice calls, "
+                 "maps and telemetry. More features; by Reticulum's author.",
         # SEEN ON A REAL PHONE, 2026-08-19: Google Play Protect refused this APK
         # with "Unsafe app blocked — this app was built for an older version of
         # Android and doesn't include the latest privacy protections". The APK

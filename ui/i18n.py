@@ -301,6 +301,20 @@ def tr(text: str) -> str:
 _ = tr
 
 
+def coverage(code: str) -> float:
+    """How much of the full key set *code*'s catalog carries (1.0 = complete;
+    English is 1.0). The full set is the largest catalog shipped. Portuguese,
+    Swahili and Tok Pisin cover the first-contact path and little else, and
+    the picker offered them with no hint (readiness ledger #149)."""
+    if code == DEFAULT_LANGUAGE:
+        return 1.0
+    full = max((len(_load_catalog(c)) for c, _n, _e in _LANGUAGES
+                if c != DEFAULT_LANGUAGE), default=0)
+    if not full:
+        return 0.0
+    return min(1.0, len(_load_catalog(code)) / float(full))
+
+
 def available_languages() -> List[Tuple[str, str, str]]:
     """Ordered (code, native_name, english_name) for every language that (a) is
     Latin-script renderable by the bundled font AND (b) English, or ships a
