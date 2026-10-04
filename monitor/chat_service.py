@@ -59,6 +59,14 @@ def _is_local_road(name: str) -> bool:
     return "local" in n or "shared instance" in n
 
 
+def _rnpath_bin() -> str:
+    """rnpath as the app's PATH sees it, else the medic's ~/.local/bin — a
+    direct call, not `bash -lc` (a login shell per redraw)."""
+    import os, shutil
+    return (shutil.which("rnpath")
+            or os.path.expanduser("~/.local/bin/rnpath"))
+
+
 def _short_iface(name: str) -> str:
     """'RNodeInterface[RNode LoRa Interface]' -> 'RNode LoRa Interface'."""
     if "[" in name and name.endswith("]"):
@@ -295,23 +303,38 @@ class ChatService:
                 out["hops"], out["interface"] = real
         return out
 
+    #: How long one rnpath answer stands for a peer. The thread view asked
+    #: rnpath on EVERY redraw, on the Kivy main thread — 0.2 s typical, 10 s
+    #: worst case, with the glass frozen meanwhile (readiness ledger #81, #188).
+    ROAD_CACHE_S = 30.0
+
     def _rnsd_road(self, dh: bytes):
-        """(hops, interface) from rnsd's own path table, or None."""
+        """(hops, interface) from rnsd's own path table, or None — cached per
+        peer for ROAD_CACHE_S, and rnpath is run directly (no login shell)."""
         import subprocess
         from monitor.mesh import parse_rnpath
+        cache = getattr(self, "_road_cache", None)
+        if cache is None:
+            cache = self._road_cache = {}
+        hit = cache.get(dh)
+        if hit is not None and time.time() - hit[0] < self.ROAD_CACHE_S:
+            return hit[1]
         try:
             if self._run is None:
-                raw = subprocess.run(["bash", "-lc", "rnpath -t --json 2>/dev/null"],
+                raw = subprocess.run([_rnpath_bin(), "-t", "--json"],
                                      capture_output=True, text=True, timeout=10).stdout
             else:
                 raw = self._run("rnpath -t --json")
         except Exception:                                              # noqa: BLE001
             return None
         want = dh.hex()
+        road = None
         for n in parse_rnpath(raw or "[]"):
             if n.dst_hash == want:
-                return n.hops, _short_iface(n.interface)
-        return None
+                road = (n.hops, _short_iface(n.interface))
+                break
+        cache[dh] = (time.time(), road)
+        return road
 
     # -- outbound ------------------------------------------------------------
 

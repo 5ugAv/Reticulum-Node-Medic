@@ -313,7 +313,11 @@ class ChatScreen(BoxLayout):
         back.bind(on_release=lambda *_: self._show(LIST))
         self._body.add_widget(back)
         self._body.add_widget(_lbl(self._peer, size="11sp", color="text_secondary"))
-        self._body.add_widget(_lbl(self._route_line(), size="12.5sp", color="text_secondary"))
+        # The route line asks rnsd (rnpath) — never on the Kivy thread: a
+        # placeholder is drawn, the answer lands when it comes (ledger #81, #188).
+        route_lbl = _lbl(tr("finding the route…"), size="12.5sp", color="text_secondary")
+        self._body.add_widget(route_lbl)
+        self._fill_route_line(route_lbl)
         for rec in self._store.thread(self._peer):
             ours = rec.get("dir") == lc.OUT
             wrap = AnchorLayout(anchor_x="right" if ours else "left",
@@ -363,6 +367,23 @@ class ChatScreen(BoxLayout):
         again.bind(on_release=lambda *_: self._retry and self._retry())
         box.add_widget(again)
         return box
+
+    def _fill_route_line(self, label):
+        """Compute _route_line() off-thread and set *label* on the Kivy thread —
+        only if the label is still on screen when the answer arrives."""
+        import threading as _th
+
+        def work():
+            try:
+                text = self._route_line()
+            except Exception:                                          # noqa: BLE001
+                return
+
+            def land(_dt):
+                if label.parent is not None:
+                    label.text = text
+            Clock.schedule_once(land, 0)
+        _th.Thread(target=work, daemon=True).start()
 
     def _route_line(self) -> str:
         """Where a message to this peer goes RIGHT NOW, and when they were

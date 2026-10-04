@@ -52,9 +52,12 @@ class SelfDiagnoseScreen(BoxLayout):
 
         self.add_widget(_line(tr("Self Diagnose — this medic's radio & GPS"), bold=True,
                               size="19sp", h=32))
-        self.add_widget(_line(tr("Checks the medic's own onboard board (Jonesey) and "
+        # No pinned height: five translations wrap to two lines and were
+        # clipped at h=36; and the medic's radio is "this medic's own", not
+        # the developer's pet name (readiness ledger #95, #107, #209).
+        self.add_widget(_line(tr("Checks this medic's own radio and GPS board and "
                                  "fixes what it safely can."), color="text_secondary",
-                              size="12.5sp", h=36))
+                              size="12.5sp"))
 
         self.run_btn = Button(text=tr("Run self-diagnose"), size_hint_y=None, height=dp(52),
                               bold=True, font_size="18sp", background_normal="",

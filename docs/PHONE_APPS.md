@@ -135,5 +135,11 @@ download the arch-split APKs too and keep them beside the carried one.
 - It **carries** APKs so a phone can be given one with no internet present.
 - It **serves** the chosen APK over Wi-Fi behind a QR code the phone scans.
 - It **does not** install anything on the phone; the person does that.
-- It **cannot** refresh what it carries without a connection. Top up before you
-  leave — a cache discovered stale in the field is a cache that is not there.
+- It **refreshes** what it carries by itself: two minutes after boot, when the
+  medic is online on an **unmetered** connection (never a phone hotspot or
+  other metered link) and the shelf is empty or more than a week old, it
+  fetches the current Columba and Sideband APKs — the same sha256-checked
+  downloader as the Communication apps screen — and logs one line to
+  `~/ui.log`. Settings ▸ Field readiness does the same on demand.
+- It **cannot** refresh without a connection. Top up before you leave — a cache
+  discovered stale in the field is a cache that is not there.

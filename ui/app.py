@@ -1394,6 +1394,16 @@ class ReticulumNodeMedicApp(App):
                                           has_connectivity(conn))
                 if not ok:
                     return
+                # Never on a phone hotspot or other METERED link: ~100 MB of
+                # APKs two minutes after boot, on someone's data plan, with no
+                # dialog (readiness ledger #160). NetworkManager knows.
+                metered = conn.run("nmcli -g GENERAL.METERED connection show "
+                                   "--active 2>/dev/null")[1]
+                if any(line.strip().lower().startswith("yes")
+                       for line in (metered or "").splitlines()):
+                    print("[apps] shelf sync skipped: the connection is metered",
+                          flush=True)
+                    return
                 print(f"[apps] self-stocking the phone-app shelf: {why}",
                       flush=True)
                 res = sync_all(conn)
@@ -1960,7 +1970,9 @@ class ReticulumNodeMedicApp(App):
         BIRTH and drop the operator into the build flow (Name the node, or search an
         existing one), where it rides onto the birth certificate."""
         self._confirmed_location = (lat, lon, source)
-        print(f"[gps] location for node: {lat:.6f}, {lon:.6f} ({source}) -> BIRTH")
+        # the source only — a confirmed position is a house, and ~/ui.log is
+        # not a place for one (readiness ledger #162)
+        print(f"[gps] location confirmed ({source}) -> BIRTH")
         bs = getattr(self, "birth_screen", None)
         if bs is not None:
             bs.set_prefill_location(lat, lon, source)

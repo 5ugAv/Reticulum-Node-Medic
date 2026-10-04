@@ -1,3 +1,7 @@
+> **History.** A roadmap checkpoint from July 2026, kept for the record. The
+> live list of what is open is `docs/READINESS_LEDGER.md`; what version 1 is
+> and is not is `docs/V1_SCOPE.md`.
+
 # Node Medic — roadmap checkpoint (2026-07-16)
 
 State: the medic is a **boot-to-working appliance** — power on → radio via the

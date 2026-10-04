@@ -14,7 +14,7 @@ lives in the siblings below and is deliberately **not** repeated here.
 | `docs/NEXT_BRIEFS.md` | Six specified open jobs, A–F, ordered because they conflict. |
 | **this file** | Architecture, the firmware contracts, the testing model, the reasons behind the design. |
 | `README.md` | The feature tour — modes, screens, board catalogue, languages, current known gaps. Counts live there, not here. |
-| `SPEC.md` | The original specification and the "say only what you have checked" build rule. |
+| `docs/history/SPEC.md` | The original specification (historical) and the "say only what you have checked" build rule. |
 | `docs/RTNODE2400_INTEGRATION.md` | The firmware author's own answers, with `file:line` refs. The **source** for §4. |
 
 Repo: `github.com/5ugAv/Reticulum-Node-Medic` · `main` · public · MIT.

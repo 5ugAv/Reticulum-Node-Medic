@@ -33,7 +33,7 @@ and clones Reticulum LoRa mesh nodes**, and now also **messages** over the mesh.
 Carried, not installed. Founding principle: *nodes stay useful and repairable
 when their keeper moves away or dies.* It must WORK with no internet — carry, do
 not fetch. Nothing on any screen may say something unverified: **true = what the
-thing reported NOW** (this rule is in `SPEC.md`).
+thing reported NOW** (this rule is in `docs/history/SPEC.md` and `docs/WORKING_METHOD.md`).
 
 Vocabulary that must hold in anything a user reads: the self-copy feature is
 **Clone** (the code keeps `mitosis` as an identifier); the messenger is

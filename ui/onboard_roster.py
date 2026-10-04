@@ -123,7 +123,7 @@ def assert_flashable(port: str, path: str = ROSTER_PATH, service_serials=None):
     if is_onboard(port, path, service_serials):
         raise ProtectedBoardError(
             f"{port} (serial {serial}) is one of the medic's OWN onboard boards "
-            "(Jonesey / GPS) — never a flash, adopt or PROBE target.")
+            "(its own radio / GPS) — never a flash, adopt or PROBE target.")
     return True
 
 

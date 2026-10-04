@@ -214,16 +214,16 @@ def test_ip_geolocate_parses_ipinfo():
     assert ip_geolocate(fetch=fetch) == (-37.79, 144.96, "Sampleton")
 
 
-def test_ip_geolocate_falls_back_to_ip_api():
+def test_ip_geolocate_has_no_plaintext_fallback():
+    """One HTTPS service. The second, plain-HTTP service showed the medic's
+    internet address to a second party in the clear (readiness ledger #161)."""
     from ui.map_download import ip_geolocate
     calls = []
     def fetch(url):
         calls.append(url)
-        if "ipinfo" in url:
-            raise OSError("down")
-        return '{"lat": -37.8, "lon": 144.9, "city": "Wrenhill"}'
-    assert ip_geolocate(fetch=fetch) == (-37.8, 144.9, "Wrenhill")
-    assert len(calls) == 2
+        raise OSError("down")
+    assert ip_geolocate(fetch=fetch) is None
+    assert calls == ["https://ipinfo.io/json"]
 
 
 def test_ip_geolocate_none_when_all_fail():

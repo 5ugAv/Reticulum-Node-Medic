@@ -1627,7 +1627,10 @@ class ScanScreen(BoxLayout):
         # presses download; typing coordinates is the fallback of last resort.
         self._ip_center = None            # (lat, lon, place) once found
         self._ip_tried = False
-        threading.Thread(target=self._locate_self, daemon=True).start()
+        # Not at start-up: finding the area by internet address shows this
+        # medic's address to a third party, so it happens only when the
+        # download needs a centre, nothing else can give one, and the keeper
+        # presses the button that says so (readiness ledger #161).
 
         # Live "you are here" + placement badge: poll the Tracker's fix, mark it on
         # the map, and (in placement mode) keep the fix-trust badge current.
@@ -2297,13 +2300,22 @@ class ScanScreen(BoxLayout):
             km=f"{self._radius_km:g}")
         center, source = self._download_center()
         if center is None:
-            self.dl_button.disabled = True
             if not getattr(self, "_ip_tried", False):
-                self._set_status(tr("Finding your location…"), "unknown")
+                # ASK before the medic's internet address leaves the medic:
+                # the button names the service and what it sees (#161).
+                self._dl_mode = "locate"
+                self.dl_button.disabled = False
+                self.dl_button.text = tr("Find my area from the internet")
+                self._set_status(tr("No GPS fix and no placed nodes. Finding your "
+                                    "area asks ipinfo.io, which sees this medic's "
+                                    "internet address - or type home base below."),
+                                 "unknown")
             else:
+                self.dl_button.disabled = True
                 self._set_status(tr("Couldn't find your location automatically - "
                                     "type home base below."), "warn")
             return
+        self._dl_mode = "download"
         count, mb = estimate_download(center[0], center[1], self._radius_km,
                                       DEFAULT_MIN_ZOOM, DEFAULT_MAX_ZOOM)
         verdict = storage_summary(mb, disk_free_mb(MAPS_DIR
@@ -2347,6 +2359,13 @@ class ScanScreen(BoxLayout):
 
     def _on_download(self):
         if self._downloading:
+            return
+        if getattr(self, "_dl_mode", "download") == "locate":
+            # the keeper pressed "Find my area from the internet" (#161)
+            self._dl_mode = "download"
+            self.dl_button.disabled = True
+            self._set_status(tr("Asking ipinfo.io for your area…"), "unknown")
+            threading.Thread(target=self._locate_self, daemon=True).start()
             return
         if not is_online():
             self._set_status(tr("No internet — connect to WiFi to download maps."),

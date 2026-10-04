@@ -381,6 +381,10 @@ def test_peer_route_names_rnsds_road_not_the_shared_instance(svc):
     try:
         assert svc.peer_route(PEER) == {"hops": 1, "interface": "RNode LoRa Interface",
                                         "known": True, "is_lxmf": True}
+        # within the cache window the road is served without asking rnpath again
+        svc._run = lambda cmd: (_ for _ in ()).throw(AssertionError("rnpath re-run"))
+        assert svc.peer_route(PEER)["interface"] == "RNode LoRa Interface"
+        svc._road_cache.clear()
         svc._run = lambda cmd: "not json"                 # table unreadable: keep what we had
         assert svc.peer_route(PEER)["interface"] == "LocalInterface[rns/default]"
     finally:

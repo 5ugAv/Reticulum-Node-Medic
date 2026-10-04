@@ -363,7 +363,10 @@ def test_carry_fails_when_a_required_tree_is_missing(monkeypatch):
     w = wf()
     r = _run(w, "carry_the_toolchain")
     assert r.success is False
-    assert "arduino15" in r.message or "build firmware" in r.message
+    # only the OS image is required now (readiness ledger #126): a parent
+    # built from GitHub has no toolchains yet and must still be able to clone
+    assert "pi_os_lite" in r.message
+    assert [p for p, _w, req in clone.CARRIED_TREES if req] == ["~/pi_os_lite.img.xz"]
 
 
 def test_optional_trees_are_skipped_not_fatal(monkeypatch):

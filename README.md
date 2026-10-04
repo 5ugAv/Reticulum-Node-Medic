@@ -515,7 +515,7 @@ Start here if you are new:
 - [`docs/WORKING_METHOD.md`](docs/WORKING_METHOD.md) — the working rules that were paid for.
 - [`docs/READINESS_LEDGER.md`](docs/READINESS_LEDGER.md) — everything known to be wrong, with status.
 - [`docs/V1_SCOPE.md`](docs/V1_SCOPE.md) — what version 1 is and is not.
-- [`SPEC.md`](SPEC.md) — the original specification.
+- [`docs/history/SPEC.md`](docs/history/SPEC.md) — the original July 2026 specification, kept for the record.
 
 Using the medic:
 

@@ -231,20 +231,15 @@ def ip_geolocate(fetch: Optional[Callable[[str], str]] = None,
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.read().decode("utf-8", "ignore")
     import json as _json
-    # two independent no-key services; first answer wins
+    # ONE service, over HTTPS, and only when the Map screen is asked to find
+    # the area (never at start-up): this call shows the medic's internet
+    # address to a third party, and the plain-HTTP fallback showed it to a
+    # second one in the clear (readiness ledger #161).
     try:
         data = _json.loads(fetch("https://ipinfo.io/json"))
         loc = parse_latlon(data.get("loc", ""))
         if loc:
             return (loc[0], loc[1], data.get("city") or "your internet location")
-    except Exception:
-        pass
-    try:
-        data = _json.loads(fetch("http://ip-api.com/json/"))
-        lat, lon = data.get("lat"), data.get("lon")
-        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
-            return (float(lat), float(lon),
-                    data.get("city") or "your internet location")
     except Exception:
         pass
     return None

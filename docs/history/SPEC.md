@@ -1,4 +1,11 @@
-# Reticulum Node Medic — Specification
+# Reticulum Node Medic — Specification (original, July 2026)
+
+> **History.** This is the original specification the tool was built from.
+> It is superseded by `README.md` (what the medic does today) and
+> `docs/V1_SCOPE.md` (what version 1 is); its "true = what the thing reported
+> NOW" rule still stands and is restated in `docs/WORKING_METHOD.md`. The
+> hardware line below describes the first prototype (the shipped panel is
+> 720 × 1280 portrait) and the mode list predates the painted front page.
 
 Easy to use Reticulum network **building / monitoring / maintenance** tool,
 on a portable Raspberry Pi 5 device.
@@ -6,8 +13,8 @@ on a portable Raspberry Pi 5 device.
 - **Hardware:** Raspberry Pi 5, 5-inch touchscreen (1280×720 landscape), Anker
   Prime 26K power bank.
 - **Connects to nodes** via USB-C serial or SSH over the network.
-- **Operator:** Suga (GitHub `5ugAv`), Sampleton — building a community mesh on
-  Heltec WiFi LoRa32 V4 boards and Raspberry Pi nodes.
+- **Built for** a community mesh on Heltec WiFi LoRa32 V4 boards and Raspberry
+  Pi nodes.
 
 This project is the **tool**, kept entirely separate from the node firmware
 (RNode / RTNode-2400).

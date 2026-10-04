@@ -32,7 +32,11 @@ REMOTE_TOOL_DIR = "~/reticulum-tool"
 FIRMWARE_CACHE_LOCAL = os.path.expanduser("~/.config/rnodeconf/update")
 FIRMWARE_CACHE_REMOTE = "~/.config/rnodeconf/update"
 #: Excluded from the tool-tree copy — history, caches, scratch.
-TOOL_EXCLUDES = (".git", "__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
+TOOL_EXCLUDES = (".git", "__pycache__", "*.pyc", ".pytest_cache", "*.egg-info",
+                 # a developer's scratch is not the tool (readiness ledger #127)
+                 ".claude", ".local-backups", "docs/previews", "*.log", "typescript",
+                 ".kivy", ".DS_Store", ".venv", "venv", "htmlcov", ".coverage",
+                 "build", "dist")
 #: Where the clone keeps its copied monitoring DB.
 CLONE_DIR = "~/.reticulum-node-medic"
 #: The tool's Python stack is pinned in this manifest; wheels for it live in the
@@ -51,12 +55,19 @@ REMOTE_WHEELS = f"{REMOTE_TOOL_DIR}/assets/packages"
 #: TOOL_ROOT - and nothing installed a toolchain.
 #:
 #: (path, why it travels, required)
+#:
+#: Only the OS image is REQUIRED: without it the clone cannot make the next
+#: card, which is the one thing a medic must be able to do. The toolchains
+#: and firmware trees travel when the parent has them and are NAMED when it
+#: does not — a parent built from GitHub has none of them yet, and the
+#: whole clone used to stop at that step (readiness ledger #126).
 CARRIED_TREES = (
-    ("~/.arduino15", "the ESP32 and nRF52 toolchains arduino-cli installs", True),
-    ("~/.local/bin", "arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio", True),
-    ("~/Arduino", "Arduino libraries the firmware builds include", True),
+    ("~/.arduino15", "the ESP32 and nRF52 toolchains arduino-cli installs", False),
+    ("~/.platformio", "the PlatformIO toolchain and package cache, so pio builds offline", False),
+    ("~/.local/bin", "arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio", False),
+    ("~/Arduino", "Arduino libraries the firmware builds include", False),
     ("~/pi_os_lite.img.xz", "the Pi OS image, so the clone can image the NEXT card", True),
-    ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", True),
+    ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", False),
     ("~/RNode_Firmware", "the RNode firmware fork", False),
     ("~/MeshPocket", "the MeshPocket RNode port", False),
     ("~/RTNode-2400", "the RTNode-2400 firmware", False),
