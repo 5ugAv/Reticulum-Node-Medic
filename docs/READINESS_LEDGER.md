@@ -12,7 +12,7 @@ The sweep (70 finder/verifier agents on 2026-10-03) raised 214 findings. On 2026
 
 Open by severity at the re-verification: blocker 4, major 64, minor 70, polish 25.
 
-Closed since (2026-10-04 evening, same session): #97 #116 #118 #119 #125 #176 #194 #203, then #183 #133 #192 #193 #195 #196 #44 #123 #137 #115 #134 #204 #175 #34 #207 #29 #122 #121 #36 (#136 partial; #144 needs a call) — ticked in place below; **136 still open** (1 blockers, 43 majors, 68 minors, 24 polish).
+Closed since (2026-10-04 evening, same session): #97 #116 #118 #119 #125 #176 #194 #203, then #183 #133 #192 #193 #195 #196 #44 #123 #137 #115 #134 #204 #175 #34 #207 #29 #122 #121 #36 (#136 partial; #144 needs a call); docs pass: #100 #101 #102 #103 #104 #105 #106 #124 #156 #158 — ticked in place below; **126 still open** (1 blockers, 33 majors, 68 minors, 24 polish).
 
 ## Blocks the clone test (8)
 

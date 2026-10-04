@@ -38,7 +38,7 @@ painted labels. Five cards along the bottom open the five modes:
    recently, fed by a live Reticulum announce listener and a 30-second poll
    cycle. Tapping a node opens its detail page (ping, location sharing, range
    test, rebirth, delete).
-   The filter row carries a **Self-check** button — the medic diagnosing its own
+   The filter row carries a **Self Diagnose** button — the medic diagnosing its own
    radio, GPS and services (see *Self Diagnose* below).
 2. **MAPS** — a geographic map of located nodes over offline raster tiles, with
    pan/pinch, a mesh-lines overlay, a terrain toggle, the medic's own GPS fix,
@@ -192,7 +192,7 @@ the splitter, `rnsd`, or `lxmd`; four more offer written guidance instead; the
 rest are read-only. Deeper chip
 and firmware probes exist in the module but are deliberately not run here,
 because they would reset the board and steal its serial port. Reached from
-VITALS (**Self-check**), Settings, and PROBE.
+VITALS (**Self Diagnose**), Settings, and PROBE.
 
 ## Type B health beacons
 
@@ -259,8 +259,9 @@ rest of the app runs.
   medic its **own fresh identity** (never a key copy), stamp its lineage,
   install its card helper and SSH key, and set it to boot into the tool. What
   the parent must carry for all that is listed in
-  [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). Items that still block the
-  clone test are the first section of the readiness ledger.
+  [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). The readiness ledger's
+  first section lists what stood in the way of the clone test; all of it was
+  closed on 2026-10-04, and the test itself is still to be run.
 
 ## Map and placement
 

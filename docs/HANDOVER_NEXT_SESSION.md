@@ -52,14 +52,16 @@ at the bench. The front page a stranger can read is done and pinned by tests.
 
 **The readiness ledger** (`docs/READINESS_LEDGER.md`) is the honest map. A
 2026-10-03 sweep raised 214 findings; on 2026-10-04 every one was re-verified
-against the code. At the time of this rewrite its header read 136 open, 27
-partial, 41 fixed, with two open **blockers**:
+against the code. Its header line carries the live count (read it, do not
+quote this file); on the evening of 2026-10-04 one **blocker** was left:
 
-- `#115` — a clone cannot finish on a medic built from GitHub until the kiosk
-  `.deb`s have been fetched; the deb cache and its refresher exist now, and
-  the ledger line itself says what is still owed.
 - `#174` — the setup walkthrough verifies a recovery key and passphrase and
-  then throws them away; its summary says they will open the vault.
+  then throws them away; its summary says they will open the vault. The
+  operator was asked to choose: drop those steps for v1 (Settings ▸ Encrypt
+  my records is the one real path) or wire them to the vault.
+- `#115` (the clone's kiosk `.deb`s) was closed the same evening: a preflight
+  before the card is erased, a Field-readiness top-up, and `--reinstall` in
+  the deb fetch.
 
 The sections of the ledger are, in order: *Blocks the clone test*, *Blocks
 going public*, *A first-time user meets it*, *Everything else*. Work them in

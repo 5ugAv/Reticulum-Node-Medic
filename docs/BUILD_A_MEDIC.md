@@ -195,8 +195,9 @@ corresponding step fails with a message rather than faking it:
 - a **fresh Reticulum identity** generated on the child — the parent's is never
   copied — plus a lineage stamp and a trust record for the child.
 
-What still blocks the clone test is the first section of
-`docs/READINESS_LEDGER.md`.
+What stood in the way of the clone test is the first section of
+`docs/READINESS_LEDGER.md` — closed on 2026-10-04; the test itself is still
+to be run.
 
 ## Updating a medic
 
