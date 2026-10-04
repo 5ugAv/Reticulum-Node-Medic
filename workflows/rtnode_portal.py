@@ -17,6 +17,7 @@ without the Pi having to join the AP). The default poster uses the stdlib.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 import urllib.parse
@@ -244,28 +245,79 @@ def medic_wifi_credentials(run: Callable[[list], str] = _nmcli) -> Tuple[str, st
 _5GHZ_FLOOR_MHZ = 5000
 
 
-def ssid_bands_mhz(ssid: str, run: Callable[[list], str] = _nmcli):
-    """Every frequency (MHz) the medic can see *this SSID* broadcasting on.
+def _wifi_iface(run: Callable[[list], str]) -> str:
+    for line in (run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"])
+                 or "").splitlines():
+        parts = line.rsplit(":", 1)
+        if len(parts) == 2 and parts[1].strip() == "wifi":
+            return parts[0].strip()
+    return "wlan0"
 
-    Per-SSID, deliberately — NOT the band the medic happens to be associated
-    on. Most home routers put both bands behind ONE name, and the name is no
-    guide: the network this was found on is called "..._5g" and carries three
-    2.4 GHz BSSes plus one at 5 GHz (operator, 2026-09-08: "it's actually
-    split, it has both 2.4 and 5G on it, the name is deceiving").
 
-    Asking "what band is the medic on?" would have refused that network and
-    blocked a birth that works perfectly.
+_IW_ESCAPES = re.compile(r"(?:\\x[0-9a-fA-F]{2})+")
+
+
+def _iw_ssid(raw: str) -> str:
+    return _IW_ESCAPES.sub(
+        lambda m: bytes.fromhex(m.group().replace("\\x", "")).decode("utf-8", "replace"),
+        raw.strip())
+
+
+def _parse_iw_bss(out: str):
+    """``iw dev <if> scan`` -> [(ssid, MHz)], one per BSS (hidden ones have no name)."""
+    rows, freq = [], None
+    for raw in out.splitlines():
+        line = raw.strip()
+        if raw.startswith("BSS "):
+            freq = None
+        elif line.startswith("freq:"):
+            try:
+                freq = int(float(line.split()[1]))
+            except (IndexError, ValueError):
+                freq = None
+        elif line.startswith("SSID:") and freq is not None:
+            rows.append((_iw_ssid(line[len("SSID:"):]), freq))
+            freq = None
+    return rows
+
+
+def _bss_rows(run: Callable[[list], str]):
+    """Every (ssid, MHz) the medic can hear RIGHT NOW.
+
+    Asks the driver (``iw`` scans and waits). NetworkManager's list is only a
+    snapshot: while the medic is associated it thins out to the connected AP, and a
+    split-band network then reads as 5 GHz-only (2026-10-04: a good 2.4 GHz network
+    refused mid-build). NM's list is the fallback when ``iw`` is unusable.
     """
-    out = []
+    iface = _wifi_iface(run)
+    for _ in range(2):
+        out = run(["sudo", "-n", "iw", "dev", iface, "scan"]) or ""
+        rows = _parse_iw_bss(out)
+        if rows:
+            return rows
+        if "busy" not in out.lower():
+            break
+        time.sleep(2)
+    rows = []
     for line in (run(["nmcli", "-t", "-f", "SSID,FREQ", "device", "wifi"])
                  or "").splitlines():
         parts = line.rsplit(":", 1)
-        if len(parts) != 2 or parts[0].strip() != ssid:
+        if len(parts) != 2:
             continue
         digits = "".join(c for c in parts[1] if c.isdigit())
         if digits:
-            out.append(int(digits))
-    return out
+            rows.append((parts[0].replace("\\:", ":").strip(), int(digits)))
+    return rows
+
+
+def ssid_bands_mhz(ssid: str, run: Callable[[list], str] = _nmcli):
+    """Every frequency (MHz) the medic can hear *this SSID* on.
+
+    Per-SSID, deliberately — NOT the band the medic happens to be associated on.
+    Most routers put both bands behind ONE name, and the name is no guide (operator,
+    2026-09-08: a network called "..._5g" that "has both 2.4 and 5G on it").
+    """
+    return [f for s, f in _bss_rows(run) if s == ssid.strip()]
 
 
 def esp32_can_join(ssid: str, run: Callable[[list], str] = _nmcli) -> bool:
@@ -281,20 +333,11 @@ def esp32_can_join(ssid: str, run: Callable[[list], str] = _nmcli) -> bool:
 
 
 def visible_24ghz_ssids(run: Callable[[list], str] = _nmcli):
-    """SSIDs on 2.4 GHz the medic can currently see, best-effort, de-duplicated.
-
-    Used to make the 5 GHz refusal ACTIONABLE — naming the networks that would
-    actually work beats telling the operator their Wi-Fi is wrong.
-    """
+    """SSIDs on 2.4 GHz the medic can hear now, de-duplicated — what the 5 GHz
+    refusal offers instead, so the operator is told what WOULD work."""
     out = []
-    for line in (run(["nmcli", "-t", "-f", "SSID,FREQ", "device", "wifi"])
-                 or "").splitlines():
-        parts = line.rsplit(":", 1)
-        if len(parts) != 2:
-            continue
-        ssid = parts[0].strip()
-        digits = "".join(c for c in parts[1] if c.isdigit())
-        if ssid and digits and int(digits) < _5GHZ_FLOOR_MHZ and ssid not in out:
+    for ssid, freq in _bss_rows(run):
+        if ssid and freq < _5GHZ_FLOOR_MHZ and ssid not in out:
             out.append(ssid)
     return out
 
