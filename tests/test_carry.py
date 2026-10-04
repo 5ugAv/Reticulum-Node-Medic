@@ -40,7 +40,7 @@ def test_audit_reports_every_item_even_when_all_are_missing():
     st = audit(_Disk(present=[]))
     keys = {s.key for s in st}
     assert keys == {"rnode_firmware", "phone_apps", "map_tiles", "wheels",
-                    "build_toolchain", "os_image"}
+                    "build_toolchain", "os_image", "debs"}
     assert all(not s.carried for s in st)
     # Every gap must explain what it costs in the field, or the report is a
     # checklist nobody can act on.
@@ -117,6 +117,8 @@ def _canned(monkeypatch, fw_changed=(), fw_failed=(), apps=None):
     fetched = []
     monkeypatch.setattr(wheelhouse, "cache_wheels",
                         lambda c, **k: (fetched.append("wheels"), (True, "ok"))[1])
+    monkeypatch.setattr(wheelhouse, "cache_debs",
+                        lambda c, **k: (fetched.append("debs"), (True, "ok"))[1])
     return fetched
 
 
@@ -128,6 +130,7 @@ def test_everything_current_says_nothing_new_to_fetch(monkeypatch):
     assert rep.ready and rep.online
     assert rep.topped_up == [] and rep.failed == []
     assert "RNode firmware" in rep.checked and "Python wheels" in rep.checked
+    assert "clone's screen packages" in rep.checked
     assert "nothing new to fetch" in rep.message
     assert wheels == [], "a full wheelhouse is not downloaded again"
 
@@ -149,8 +152,8 @@ def test_an_empty_wheelhouse_is_fetched_online(monkeypatch):
     disk = _Disk(present=[p for p in ALL if p != "packages"])
     steps = []
     rep = carry_all(disk, progress=steps.append)
-    assert wheels == ["wheels"]
-    assert "Python wheels" in rep.topped_up
+    assert "wheels" in wheels and "debs" in wheels
+    assert "Python wheels" in rep.topped_up and "clone's screen packages" in rep.topped_up
     assert any("wheels" in t.lower() for t in steps)
     assert any("firmware" in t.lower() for t in steps)
 

@@ -54,10 +54,11 @@ def _run(argv: List[str], timeout: int = 8) -> str:
 # --------------------------------------------------------------------------- #
 
 def record_imaged_pi(hostname: str, username: str = "pi",
-                     model: str = "", path: str = STATE_PATH,
+                     model: str = "", path: Optional[str] = None,
                      birth_token: str = "") -> bool:
     """Remember the card we just wrote, so the birth screen can offer its
     address instead of asking. Best-effort."""
+    path = path or STATE_PATH
     if not hostname:
         return False
     # The card just written IS a new identity — forget the old one's host
@@ -82,8 +83,9 @@ def record_imaged_pi(hostname: str, username: str = "pi",
         return False
 
 
-def last_imaged_pi(path: str = STATE_PATH) -> Dict[str, str]:
+def last_imaged_pi(path: Optional[str] = None) -> Dict[str, str]:
     """The last card this medic imaged ({hostname, username, model}), or {}."""
+    path = path or STATE_PATH
     try:
         with open(path) as f:
             d = json.load(f)
@@ -92,8 +94,9 @@ def last_imaged_pi(path: str = STATE_PATH) -> Dict[str, str]:
         return {}
 
 
-def suggested_address(path: str = STATE_PATH) -> str:
+def suggested_address(path: Optional[str] = None) -> str:
     """The address BIRTH should pre-fill: the imaged hostname as an mDNS name."""
+    path = path or STATE_PATH
     host = (last_imaged_pi(path).get("hostname") or "").strip()
     return f"{host}.local" if host else ""
 
@@ -142,6 +145,7 @@ def known_kin_names(path: str = "") -> Dict[str, str]:
     something to build over — the medic knows their names, it just wasn't
     looking (2026-08-02).
     """
+    path = path or STATE_PATH
     try:
         from monitor.kin_roster import load_roster
         roster = load_roster(path) if path else load_roster()
@@ -211,7 +215,7 @@ def cable_address(timeout: float = 6.0) -> str:
         return ""
 
 
-def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
+def find_pi(hostname: str = "", path: Optional[str] = None) -> Dict[str, str]:
     """Best effort at locating the Pi.
 
     Returns ``{address, ip, how, confirmed}``. ``confirmed`` is the important
@@ -222,6 +226,7 @@ def find_pi(hostname: str = "", path: str = STATE_PATH) -> Dict[str, str]:
     not auto-fill an unconfirmed answer: the build rewrites the target's
     services and config.
     """
+    path = path or STATE_PATH
     # The cable first — no network, no name, nothing to type.
     if not hostname:
         cable = cable_address()
@@ -391,7 +396,7 @@ def read_birth_token(addr: str, user: str = "pi",
         return None
 
 
-def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
+def imaged_pi_answers(hostname: str, path: Optional[str] = None,
                       _token_at=None, _cable=None, _resolve=None):
     """Walk both roads to *hostname*'s Pi and ask each answering machine for
     the birth token of the card the medic just wrote. ``(proven, imposter)``:
@@ -413,6 +418,7 @@ def imaged_pi_answers(hostname: str, path: str = STATE_PATH,
     being replaced, still powered). The screen narrates it; a silent
     refusal reads as a hang (operator, 2026-08-14).
     """
+    path = path or STATE_PATH
     rec = last_imaged_pi(path)
     want = (hostname or "").strip().lower()
     expected = ""

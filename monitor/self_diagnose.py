@@ -198,6 +198,24 @@ def check_gps_fresh(gps_state_text: str, now: float, max_age_s: float = 600.0) -
                    data=data)
 
 
+def check_touch(verdict: str) -> Finding:
+    """Which touch provider the start-up chose (ui.touch_input.choose, kept in
+    /dev/shm/nodemedic-touch by main.py). "mtdev …" is the multitouch panel;
+    any "mouse (…)" is the one-finger fallback — pinch-zoom and two-finger
+    gestures do not work, and a clone with a different panel lands here
+    silently unless it is said (ledger #97)."""
+    v = (verdict or "").strip()
+    if v.startswith("mtdev"):
+        return Finding("touch", SEV_OK, f"Touch: multitouch ({v}).")
+    if v.startswith("mouse"):
+        reason = v[len("mouse"):].strip(" ()") or "fallback"
+        return Finding("touch", SEV_WARN,
+                       f"Touch: single-finger fallback — {reason}. Pinch-zoom "
+                       "and two-finger gestures won't work on this panel.")
+    return Finding("touch", SEV_WARN,
+                   "Touch: no record of which input provider was chosen.")
+
+
 def check_disk_space(df_output: str, warn_pct: int = 85, crit_pct: int = 95) -> Finding:
     """SD/root filesystem fullness from ``df -P /``. A full card fails writes and can
     corrupt the SD; parses the Use% column of the last data line."""

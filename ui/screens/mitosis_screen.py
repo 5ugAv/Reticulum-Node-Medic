@@ -53,6 +53,8 @@ STEP_TITLES = [
     ("install_dependencies", "Installing the software stack (offline, from carried wheels)"),
     ("carry_touch_cure", "Carrying the touch settings across"),
     ("install_display_stack", "Installing the screen stack (carried, offline)"),
+    ("install_carried_packages",
+     "Installing the carried radio-modem packages (offline)"),
     ("copy_monitoring_db", "Copying the monitoring records"),
     ("copy_offline_maps", "Handing down the offline maps"),
     ("copy_kin_roster", "Carrying the fleet roster (who and where)"),
@@ -60,6 +62,8 @@ STEP_TITLES = [
     ("stamp_lineage", "Stamping the family line (child knows its parent)"),
     ("record_child_trust", "Trusting the new medic as this unit's child"),
     ("configure_autostart", "Setting the tool to start on boot"),
+    ("install_card_helper", "Installing the card-writing helper (so it can clone itself)"),
+    ("ensure_ssh_keypair", "Giving it its own SSH key"),
     ("bake_recovery_bootorder", "Teaching its boot chip to ask for help"),
     ("final_verification", "Final check-over"),
     ("restart_into_tool", "Waking the new medic into the tool"),
@@ -80,6 +84,7 @@ STEP_EST_S = {
     "copy_monitoring_db": 12, "copy_kin_roster": 6,
     "generate_fresh_identity": 12, "stamp_lineage": 6,
     "record_child_trust": 4, "configure_autostart": 12, "bake_recovery_bootorder": 15,
+    "install_carried_packages": 120, "install_card_helper": 8, "ensure_ssh_keypair": 8,
     # Both of these were missing, so _run fell back to 30s: install_display_stack
     # unpacks 72 carried debs, so its bar sprinted to 95% in half a minute and
     # then sat there for minutes - the exact "looks frozen" the write ring was
@@ -180,7 +185,9 @@ class MitosisScreen(BoxLayout):
     # -- lifecycle (dormant until shown) -------------------------------------
 
     def begin(self):
-        if self._cloning:
+        # A write is as unabandonable as a clone: re-entering mid-write used
+        # to rebuild the pre-flight page over a live dd (2026-10-04).
+        if self._cloning or getattr(self, "_writing", False):
             return
         self._card_written = False
         self._retry_workflow = None
@@ -280,6 +287,24 @@ class MitosisScreen(BoxLayout):
         if self._cloning or getattr(self, "_writing", False):
             return True
         return False
+
+    def handle_home(self):
+        """Home during a write or a clone: say why, stay put. The wrapper only
+        calls this when it exists — before 2026-10-04 Home left the page
+        while dd carried on invisibly, and the write button came back dead
+        until a restart. When nothing is running, Home is plain Home."""
+        if self._cloning or getattr(self, "_writing", False):
+            from ui.requirement_popup import requirement_popup
+            requirement_popup(
+                tr("The new medic's card is still being written. Leave it in "
+                   "and wait for the finish page — then Home.")
+                if getattr(self, "_writing", False) else
+                tr("The clone is still running. Wait for the ladder to finish "
+                   "— then Home."),
+                tr("Not yet"), False)
+            return
+        from kivy.app import App
+        App.get_running_app().switch_mode("home")
 
     def _clear(self):
         self._stage_gen += 1
@@ -421,7 +446,7 @@ class MitosisScreen(BoxLayout):
             "NodeMedic2 is a perfectly good answer - just tap Continue.\n"
             "The name becomes its address on the cable and its place in the "
             "family line."), color="text_secondary", size="14sp")
-        body.size_hint_y, body.height = None, dp(40)
+        grow_to_text(body)
         self.add_widget(body)
 
         from kivy.uix.textinput import TextInput
@@ -468,7 +493,7 @@ class MitosisScreen(BoxLayout):
             "(user 'pi'). Choose one you can remember — a lost password "
             "means re-imaging the card."),
             color="text_secondary", size="14sp")
-        body.size_hint_y, body.height = None, dp(56)
+        grow_to_text(body)
         self.add_widget(body)
 
         from kivy.uix.textinput import TextInput
@@ -586,7 +611,7 @@ class MitosisScreen(BoxLayout):
             tr("Type your WiFi network's name and password, or skip and the "
                "new medic lives on the cable."),
             color="text_secondary", size="14sp")
-        body.size_hint_y, body.height = None, dp(56)
+        grow_to_text(body)
         self.add_widget(body)
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
@@ -642,7 +667,73 @@ class MitosisScreen(BoxLayout):
                 warn.color = theme.hex_to_rgba(theme.COLORS["amber"])
             return
         self._wifi = (ssid, psk)
-        self._show_stage_write(self._chosen_password)
+        self._confirm_write(self._chosen_password)
+
+    # -- the last word before anything is erased ------------------------------
+
+    def _confirm_write(self, password):
+        """Name the card and ask once. Until 2026-10-04 the flow erased
+        whichever single disk was present with no word of which — including
+        the vault's own key stick the setup wizard had told the keeper to
+        plug in. That stick is refused outright; everything else is named."""
+        from kivy.uix.popup import Popup
+        from kivy.uix.label import Label
+        from kivy.uix.button import Button
+        from ui.requirement_popup import requirement_popup
+        from provisioning import pi_imager
+        from workflows import mitosis_card
+        try:
+            st = pi_imager.card_status()
+        except Exception:                                  # noqa: BLE001
+            st = {"state": "none", "path": "", "label": "", "detail": ""}
+        if st.get("state") != "one" or not st.get("path"):
+            requirement_popup(st.get("detail") or tr(
+                "No card to write — put the new medic's card in the reader."),
+                tr("Which card?"), False)
+            return
+        try:
+            if mitosis_card.holds_vault_key(st["path"]):
+                requirement_popup(tr(
+                    "That drive holds this medic's vault key — it must not be "
+                    "erased. Take it out and put the new medic's card in the "
+                    "reader."), tr("Not that one"), False)
+                return
+        except Exception:                                  # noqa: BLE001
+            pass
+        missing = ""
+        try:
+            missing = mitosis_card.debs_missing()
+        except Exception:                                  # noqa: BLE001
+            missing = ""
+        if missing:
+            requirement_popup(missing, tr("Can't write yet"), False)
+            return
+        box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        msg = Label(halign="center", valign="middle", markup=True, text=(
+            tr("Erase [b]{label}[/b] at [b]{path}[/b] and write the new "
+               "medic's card to it?").format(label=st.get("label") or tr("the USB card"),
+                                             path=st["path"])
+            + "\n\n" + tr("Everything on it will be lost. It cannot be the "
+                          "medic's own storage — only a removable USB card is "
+                          "allowed.")))
+        msg.bind(size=lambda i, val: setattr(i, "text_size", val))
+        box.add_widget(msg)
+        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
+                        spacing=dp(8))
+        popup = Popup(title=tr("Confirm — this erases the card"), content=box,
+                      size_hint=(0.9, 0.6))
+        cancel = Button(text=tr("Cancel"), background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
+        cancel.bind(on_release=popup.dismiss)
+        go = Button(text=tr("Erase & write"), bold=True, background_normal="",
+                    background_color=theme.hex_to_rgba(theme.COLORS["red"]),
+                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+        go.bind(on_release=lambda *_: (popup.dismiss(),
+                                       self._show_stage_write(password)))
+        row.add_widget(cancel)
+        row.add_widget(go)
+        box.add_widget(row)
+        popup.open()
 
     # -- stage 4: WRITE (the BIRTH progress ring) ------------------------------
 
@@ -666,6 +757,7 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("write")
         gen = self._stage_gen
+        self._write_gen = gen          # the write that may let go of the flag
         title = _label(tr("Writing the new medic's card"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
@@ -781,10 +873,12 @@ class MitosisScreen(BoxLayout):
                 else:
                     from workflows.mitosis_card import (image_medic_card,
                                                         verify_medic_card)
+                    from workflows.mitosis_card import debs_missing
                     ok, msg, _pw = image_medic_card(
                         target["path"], self._name or "NodeMedic2",
                         password=password,
-                        wifi=getattr(self, "_wifi", ("", "")))
+                        wifi=getattr(self, "_wifi", ("", "")),
+                        deb_check=debs_missing)
                     # Read the card back before calling it done. The image can
                     # write perfectly while the configuration silently does
                     # not, and without this the first anyone knows is a medic
@@ -826,14 +920,16 @@ class MitosisScreen(BoxLayout):
 
             def done(_dt, g=gen):
                 print(f"[mitosis] card write ok={ok}: {msg}")
+                # The LATEST write always lets go of the flag and the activity
+                # counter, generation or not: a stale flag left the page with
+                # a dead write button until a restart (2026-10-04). An OLDER
+                # write's thread — a newer one in flight — still touches
+                # neither, the hazard _mark_activity exists for.
+                if g == getattr(self, "_write_gen", g):
+                    self._writing = False
+                    self._mark_activity(False)
                 if g != self._stage_gen:
                     return
-                # BELOW the generation check: an abandoned run's thread used to
-                # decrement the activity counter while a NEW write was in
-                # flight, and one stray end is enough to let the screensaver
-                # cover a live dd - the exact hazard _mark_activity exists for.
-                self._writing = False
-                self._mark_activity(False)
                 if self._write_ev is not None:
                     self._write_ev.cancel()
                     self._write_ev = None

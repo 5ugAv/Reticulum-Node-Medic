@@ -2405,6 +2405,17 @@ class ScanScreen(BoxLayout):
         ev_holder["ev"] = Clock.schedule_interval(tick, 5)
 
     def _run_download(self, lat, lon, dest):
+        # Any error in the worker used to kill the thread silently and leave
+        # "Downloading…" with a dead button until a restart (2026-10-04).
+        try:
+            summary = self._download_all(lat, lon, dest)
+        except Exception as e:                                     # noqa: BLE001
+            print(f"[map] download failed: {e!r}", flush=True)
+            summary = {"error": str(e)[:160], "fetched": 0, "skipped": 0,
+                       "failed": 0}
+        Clock.schedule_once(lambda dt: self._download_done(summary), 0)
+
+    def _download_all(self, lat, lon, dest):
         def progress(s):
             if "cancelled" in s:
                 return
@@ -2454,7 +2465,7 @@ class ScanScreen(BoxLayout):
                 summary["fetched"] += detail["fetched"]
                 if detail.get("blocked"):
                     summary["blocked"] = True
-        Clock.schedule_once(lambda dt: self._download_done(summary), 0)
+        return summary
 
     def _download_done(self, summary):
         self._downloading = False
@@ -2477,6 +2488,12 @@ class ScanScreen(BoxLayout):
                 self._terrain_on = False
                 self.terrain_btn.text = tr("Terrain  off")
         self._refresh_header()
+        if summary.get("error"):
+            self._set_status(tr("Download failed — {why}. Nothing was changed; "
+                                "check the connection and the card's free "
+                                "space, then try again.").format(
+                                    why=summary["error"]), "alert")
+            return
         got, failed = summary["fetched"] + summary["skipped"], summary["failed"]
         if summary.get("blocked"):
             self._set_status(tr("The tile server started refusing us (bulk "

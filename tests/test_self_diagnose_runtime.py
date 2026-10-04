@@ -45,11 +45,13 @@ def test_gather_all_healthy(monkeypatch):
         # Its CONTENT is what is checked — a `test -f` through safe_shell (no
         # shell, so "&&" becomes an argument) silently reported it missing.
         "99-nodemedic-usb0.conf": "[keyfile]\nunmanaged-devices=interface-name:usb0",
+        # the touch provider main.py recorded at start-up (ledger #97)
+        "nodemedic-touch": "mtdev /dev/input/event5",
     })
     findings = rt.gather(run=run, now_fn=lambda: now)
     assert all(f.severity == SEV_OK for f in findings), \
         [f"{f.check}: {f.detail}" for f in findings if f.severity != SEV_OK]
-    assert len(findings) == 12                       # 3 radio/gps + 9 system health
+    assert len(findings) == 13                       # 3 radio/gps + 10 system health
 
 
 def test_gather_catches_the_jonesey_incident(monkeypatch):

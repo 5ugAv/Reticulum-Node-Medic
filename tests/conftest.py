@@ -98,6 +98,21 @@ def _hermetic_onboard_guard(request, monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_imaged_pi(monkeypatch, tmp_path):
+    """No test may touch the medic's real last-imaged-Pi record — the birth
+    flow's memory of the card it just wrote (readiness ledger #194:
+    test_pi_imager overwrote it). provisioning.pi_discover resolves its
+    default path at CALL time, so pointing the module constant at a scratch
+    file is enough; the record's own tests pass explicit paths."""
+    try:
+        from provisioning import pi_discover
+    except Exception:
+        return
+    monkeypatch.setattr(pi_discover, "STATE_PATH",
+                        str(tmp_path / "last_imaged_pi.json"), raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_language(monkeypatch):
     """Every test starts and ends in English.
 

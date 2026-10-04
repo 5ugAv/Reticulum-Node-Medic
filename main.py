@@ -51,7 +51,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     from kivy.config import Config as _KivyConfig
     from kivy.logger import Logger as _KivyLogger
     from ui import touch_input
-    touch_input.choose(_KivyConfig, log=lambda m: _KivyLogger.info("Node Medic: " + m))
+    _touch = touch_input.choose(_KivyConfig,
+                                log=lambda m: _KivyLogger.info("Node Medic: " + m))
+    # The verdict is kept where Self Diagnose can read it: a clone with a
+    # different panel used to fall back to one finger in silence (ledger #97).
+    try:
+        with open("/dev/shm/nodemedic-touch", "w") as _fh:
+            _fh.write(str(_touch or ""))
+    except OSError:
+        pass
     # Pick the global display font from the saved language BEFORE any screen is
     # built (DejaVu for Latin/Cyrillic, Noto Sans JP for Japanese).
     from ui.fonts import configure_fonts

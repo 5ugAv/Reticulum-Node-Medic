@@ -64,12 +64,67 @@ def medic_wifi_credentials(runner: Optional[Callable] = None) -> Tuple[str, str]
         return "", ""
 
 
+def _mount_source(mnt: str) -> str:
+    """The block device behind a mount point, via findmnt (argv, no shell)."""
+    import subprocess
+    return subprocess.run(["findmnt", "-n", "-o", "SOURCE", mnt],
+                          capture_output=True, text=True, timeout=10).stdout
+
+
+def holds_vault_key(device_path: str, mounts: Optional[Callable] = None,
+                    key_exists: Optional[Callable] = None,
+                    source_of: Optional[Callable] = None) -> bool:
+    """True when the disk at *device_path* is the one carrying this medic's
+    vault key file (provisioning.usb_key) — the stick the setup wizard told
+    the keeper to plug in. The clone flow must never erase it (2026-10-04:
+    it erased whichever single disk was present, unnamed)."""
+    from provisioning import usb_key
+    mounts = mounts or usb_key.mount_points
+    key_exists = key_exists or (lambda d: usb_key.existing_key(d) is not None)
+    source_of = source_of or _mount_source
+
+    def base(dev: str) -> str:
+        return (dev or "").rstrip("0123456789").rstrip("p")
+
+    want = base(device_path)
+    if not want:
+        return False
+    for mnt in mounts() or []:
+        try:
+            if not key_exists(mnt):
+                continue
+            src = (source_of(mnt) or "").strip()
+        except Exception:                                          # noqa: BLE001
+            continue
+        if src and base(src) == want:
+            return True
+    return False
+
+
+def debs_missing() -> str:
+    """'' when the clone's screen packages (.deb) are cached on this medic,
+    else the sentence that stops the write before the card is erased: a new
+    medic without them cannot finish its install (readiness ledger #115)."""
+    try:
+        from transport.connection import LocalConnection
+        from workflows.wheelhouse import DEB_CACHE, deb_count
+        if deb_count(LocalConnection(), DEB_CACHE) > 0:
+            return ""
+    except Exception:                                              # noqa: BLE001
+        return ""                       # cannot tell — never refuse on a guess
+    return ("The clone's screen packages (.deb) are not carried on this medic, "
+            "so the new medic could not finish its install. Settings > Field "
+            "readiness > Prepare for the field fetches them while on Wi-Fi; "
+            "then write the card.")
+
+
 def image_medic_card(device_path: str, display_name: str,
                      username: str = "pi",
                      password: Optional[str] = None,
                      flash: Callable = pi_imager.flash,
                      wifi: Optional[Tuple[str, str]] = None,
                      helper_check: Callable = pi_imager.helper_out_of_date,
+                     deb_check: Optional[Callable] = None,
                      ) -> Tuple[bool, str, str]:
     """Write + configure the new medic's card. Returns (ok, message, password).
 
@@ -84,6 +139,10 @@ def image_medic_card(device_path: str, display_name: str,
     stale = helper_check()
     if stale:
         return False, stale, ""
+    if deb_check is not None:
+        missing = deb_check()
+        if missing:
+            return False, missing, ""
     hostname = pi_imager.hostnameify(display_name)
     if not hostname:
         return False, "That name doesn't reduce to a usable hostname.", ""

@@ -561,6 +561,13 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
     if wf.connection.run(
             "systemctl is-enabled reticulum-node-medic.service")[0] != 0:
         problems.append("autostart not enabled")
+    # What a medic needs to clone ITSELF and to birth a Pi (ledger #116):
+    # the two steps above land these; the verification now says if not.
+    from provisioning.pi_imager import PREPARE_CARD
+    if wf.connection.run(f"test -x {PREPARE_CARD}")[0] != 0:
+        problems.append("card-writing helper missing")
+    if wf.connection.run("test -f ~/.ssh/id_ed25519.pub")[0] != 0:
+        problems.append("SSH keypair missing")
     ok = not problems
     return StepResult("final_verification", ok,
                       "Clone verified — a fresh medic is ready." if ok

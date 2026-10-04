@@ -98,6 +98,7 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
     findings.append(sd.check_gps_fresh(gps_text, now_fn()))
     # medic system health (safe reads — no board reset, no port steal)
     findings.append(sd.check_disk_space(run("df -P / 2>/dev/null")))
+    findings.append(sd.check_touch(run("cat /dev/shm/nodemedic-touch 2>/dev/null")))
     findings.append(sd.check_service(
         "rnsd", run("systemctl is-active rnsd 2>/dev/null").strip() == "active"))
     findings.append(sd.check_cpu_temp(run("vcgencmd measure_temp 2>/dev/null")))

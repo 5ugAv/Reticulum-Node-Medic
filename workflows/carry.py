@@ -129,6 +129,19 @@ def audit(connection: Connection) -> List[CarryStatus]:
         detail=f"{nwhl} wheel(s)" if nwhl else "none",
         nbytes=_bytes(connection, "~/reticulum-tool/assets/packages")))
 
+    # --- The clone's screen packages ----------------------------------------
+    # A new medic installs its screen stack from carried .debs (the field has
+    # no apt); without them the clone cannot finish (ledger #115).
+    from workflows.wheelhouse import DEB_CACHE
+    ndeb = _count(connection, f"{DEB_CACHE}/*.deb")
+    out.append(CarryStatus(
+        "debs", "Clone's screen packages (.deb)",
+        "Without them a new medic cannot install its screen — the clone "
+        "cannot finish.",
+        carried=ndeb > 0,
+        detail=f"{ndeb} package(s)" if ndeb else "none cached",
+        nbytes=_bytes(connection, DEB_CACHE)))
+
     # --- The Pi OS image -----------------------------------------------------
     # THE MODULE'S OWN BLIND SPOT, found by an adversarial review 2026-08-16: this
     # audit checked five things and not the one without which no node can be built
@@ -200,7 +213,8 @@ def carry_all(connection: Connection, force: bool = False,
               progress: Optional[Callable[[str], None]] = None) -> CarryReport:
     """Fill every cache that can be filled unattended, then re-audit.
 
-    Topped up here: RNode firmware, the phone apps, and — when the wheelhouse
+    Topped up here: RNode firmware, the phone apps, the clone's screen
+    packages (.deb) when none are cached, and — when the wheelhouse
     is empty — the Python wheels (operator, 2026-10-04: the medic must be
     able to collect what it needs for itself while it is on Wi-Fi). The map
     area, the OS image and the build toolchain still need a human's hand or a
@@ -273,6 +287,19 @@ def carry_all(connection: Connection, force: bool = False,
             rep.checked.append("Python wheels")
     except Exception as exc:                                      # noqa: BLE001
         rep.failed.append(f"Python wheels ({exc})")
+
+    try:
+        from workflows.wheelhouse import DEB_CACHE, cache_debs, deb_count
+        if deb_count(connection, DEB_CACHE) == 0:
+            say("Fetching the clone's screen packages (.deb) — a minute or two…")
+            ok, msg = cache_debs(connection)
+            (rep.topped_up if ok else rep.failed).append(
+                "clone's screen packages" if ok
+                else f"clone's screen packages ({msg})")
+        else:
+            rep.checked.append("clone's screen packages")
+    except Exception as exc:                                      # noqa: BLE001
+        rep.failed.append(f"clone's screen packages ({exc})")
 
     say("Checking the disk again…")
     rep.statuses = audit(connection)

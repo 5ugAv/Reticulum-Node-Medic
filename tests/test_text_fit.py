@@ -32,7 +32,10 @@ def test_helper_re_holds_text_size_width_only():
 def test_mitosis_paragraphs_grow_through_the_helper():
     src = _src("mitosis")
     assert FROZEN_IDIOM not in src
-    assert src.count("grow_to_text(") >= 8
+    assert src.count("grow_to_text(") >= 11
+    # the pinned-body idiom clipped the name/password/WiFi explainers to one
+    # line (readiness ledger #203, 2026-10-04)
+    assert "body.size_hint_y, body.height = None, dp(" not in src
 
 
 def test_notifications_explainer_is_not_pinned():

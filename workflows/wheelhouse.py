@@ -127,7 +127,10 @@ def _uri_lines(packages) -> str:
     The algorithm is therefore read from the line rather than assumed.
     """
     names = " ".join(packages)
-    return (f"apt-get install --print-uris -qq {names} 2>/dev/null"
+    # --reinstall: a package the PARENT medic already has installed is
+    # otherwise left out of the list, and a fresh clone would then lack it
+    # (alsa-utils on the bench, 2026-10-04: 7 URIs without, 8 with).
+    return (f"apt-get install --reinstall --print-uris -qq {names} 2>/dev/null"
             " | tr -d \"'\""
             ' | awk \'{split($4, a, ":"); print $1, $2, a[1], a[2]}\''
             " | grep -E '^https?://'")
