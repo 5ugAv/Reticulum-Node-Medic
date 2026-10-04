@@ -268,6 +268,10 @@ class ChatScreen(BoxLayout):
             row.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), v[1])))
             row.bind(on_release=lambda _b, p=c.peer: self._open_thread(p))
             self._body.add_widget(row)
+        if convs:
+            # the only way to delete is a hold, and nothing said so (ledger #82)
+            self._body.add_widget(_lbl(tr("Hold a chat to delete it"), size="11.5sp",
+                                       color="text_secondary"))
         svc = self._svc() if self._svc else None
         checked = getattr(svc, "last_sync_at", 0.0) if svc else 0.0
         self._foot.add_widget(_lbl(

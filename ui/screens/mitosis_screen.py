@@ -607,7 +607,7 @@ class MitosisScreen(BoxLayout):
                 theme.COLORS["amber"])
             self.pw_status.text = why
             return
-        self.pw_btn.text = tr("Write the card →")
+        self.pw_btn.text = tr("Next →")          # the Wi-Fi question comes first (#131)
         self.pw_btn.disabled = False
         self.pw_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
         self.pw_status.text = tr("Passwords match.")
@@ -681,6 +681,9 @@ class MitosisScreen(BoxLayout):
         skip = _small_btn(tr("No Wi-Fi — write the card now →"))
         skip.bind(on_release=lambda *_: self._wifi_continue(False))
         self.add_widget(skip)
+        back = _small_btn(tr("← Back"))                       # (#131)
+        back.bind(on_release=lambda *_: self._show_stage_password())
+        self.add_widget(back)
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
 

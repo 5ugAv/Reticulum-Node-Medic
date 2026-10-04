@@ -262,9 +262,21 @@ class MessageStore:
 
     def _find(self, msg_id: str) -> Optional[dict]:
         for m in self._messages:
-            if m["id"] == msg_id:
+            if m["id"] == msg_id or m.get("lxmf") == msg_id:
                 return m
         return None
+
+    def set_lxmf_hash(self, msg_id: str, lxmf_hash: str) -> bool:
+        """Record the LXMF hash the router gave an OUTGOING message, so a
+        reaction that quotes it can find the text (ledger #84, #189)."""
+        with self._lock:
+            self._ensure_loaded()
+            rec = self._find(msg_id)
+            if rec is None or rec.get("lxmf") == lxmf_hash:
+                return False
+            rec["lxmf"] = lxmf_hash
+            self._save_messages()
+            return True
 
     def text_of(self, msg_id: str) -> Optional[str]:
         """The text of a stored message by its id (LXMF hash hex), or None."""

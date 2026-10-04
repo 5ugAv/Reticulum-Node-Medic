@@ -791,6 +791,9 @@ class SetupWizardScreen(BoxLayout):
     # -- the pattern -------------------------------------------------------
 
     def _render_pattern(self, step):
+        # Back into this step after confirming: nothing is drawn THIS visit, so
+        # it must not open on "Now draw it again to confirm." (ledger #182)
+        self._pattern_first = None
         stage = BoxLayout(orientation="vertical", spacing=dp(8))
         note = self._notice_widget()
         if note is not None:

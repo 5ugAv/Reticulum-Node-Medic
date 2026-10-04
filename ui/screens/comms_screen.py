@@ -225,7 +225,6 @@ class CommsScreen(BoxLayout):
         """Start the local server and show a QR of the download URL under the card."""
         if getattr(card, "_qr_open", False):
             return
-        card._qr_open = True
         from workflows.phone_serve import AppServer
         if self._server is None:
             self._server = AppServer(self._cache_dir)
@@ -238,10 +237,23 @@ class CommsScreen(BoxLayout):
         panel = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         panel.bind(minimum_height=panel.setter("height"))
         if not url:
+            # The button stays LIVE (no _qr_open) so "try again" is possible,
+            # the previous notice is replaced rather than stacked, and the
+            # medic raises no hotspot of its own — the phone's is the answer
+            # (readiness ledger #77).
+            old = getattr(card, "_notice", None)
+            if old is not None and old.parent is not None:
+                old.parent.remove_widget(old)
+            card._notice = panel
             panel.add_widget(_line(tr(
-                "Get the medic and the phone on the SAME Wi-Fi first (or the medic's "
-                "hotspot), then try again."), size="13sp", color="warning_yellow", h=44))
+                "No Wi-Fi you both can join? Turn on your phone's hotspot, connect "
+                "this medic to it in Settings ▸ Wi-Fi, then tap again."),
+                size="13sp", color="warning_yellow", h=44))
         else:
+            card._qr_open = True
+            old = getattr(card, "_notice", None)
+            if old is not None and old.parent is not None:
+                old.parent.remove_widget(old)
             # ANDROID REFUSES TWICE, and neither refusal explains itself. The
             # old one-liner said "allow install from unknown sources", which
             # assumes the operator knows how — and on Android 8+ there is no

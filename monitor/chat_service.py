@@ -446,3 +446,11 @@ class ChatService:
         # SENDING afterwards overwrote the POSTED/DELIVERED it had just set.
         self.store.set_state(msg_id, store_mod.SENDING)
         self._router.handle_outbound(lxm)
+        # The LXMF hash is only known after the hand-off; without it a phone's
+        # reaction to a medic message could never name it (ledger #84, #189).
+        h = getattr(lxm, "hash", None)
+        if isinstance(h, (bytes, bytearray)) and h:
+            try:
+                self.store.set_lxmf_hash(msg_id, bytes(h).hex())
+            except Exception:                                          # noqa: BLE001
+                pass

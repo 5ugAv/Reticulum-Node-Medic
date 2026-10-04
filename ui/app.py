@@ -3787,6 +3787,12 @@ class ReticulumNodeMedicApp(App):
         g = getattr(self, "birth_guide_screen", None)
         if g is None or not g.has_pending_resume():
             return False
+        # Only from the hand-off screen itself. A flash finishing while the
+        # operator had gone Home used to pull them back into the walkthrough
+        # (readiness ledger #66, #171); the result stays pending for their
+        # next deliberate visit instead.
+        if getattr(self.sm, "current", "") not in ("birth", "pi_imager"):
+            return False
         self.switch_mode("birth_guide")
         g.resume(result or {})
         return True

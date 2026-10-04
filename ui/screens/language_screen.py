@@ -112,7 +112,9 @@ class LanguageScreen(BoxLayout):
         lbl = Label(text=message, halign="center", valign="middle",
                     padding=(dp(16), dp(16)))
         lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        # Not a 3.5 s toast: the restart instruction is the one thing the
+        # keeper must read, and the only way to restart is to power off and on
+        # (readiness ledger #22) — it stays until tapped.
         p = Popup(title=tr("Language"), content=lbl, size_hint=(0.82, 0.3),
                   auto_dismiss=True)
         p.open()
-        Clock.schedule_once(lambda dt: p.dismiss(), 3.5)

@@ -804,7 +804,9 @@ def test_a_failed_pi_build_gets_pi_advice_not_board_advice():
     assert "power" in pi_branch.lower()
     assert "PRG" not in pi_branch and "cable" not in pi_branch.lower() or \
         "brown out" in pi_branch.lower()
-    assert "reader" in pi_branch, "point at the card check, which now exists"
+    # provisioning/card_forensics.py exists but NO screen runs it on a card:
+    # the popup must not send anyone to the reader (readiness ledger #166)
+    assert "reader" not in pi_branch, "promises a card check no screen performs"
 
 
 def test_a_proved_address_is_not_re_litigated_by_a_weaker_search():

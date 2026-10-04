@@ -3021,10 +3021,7 @@ class BirthScreen(BoxLayout):
                         "If it failed at the first step, the Pi "
                         "stopped answering. Check its power light, and that "
                         "it is still plugged in — a Pi drawing its power "
-                        "from Node Medic can brown out part-way through. "
-                        "Its card can be checked too: put it in Node "
-                        "Medic's reader and it will say whether the card "
-                        "needs writing again.")
+                        "from Node Medic can brown out part-way through.")
                 elif _ONBOARDING_FAILURE.search(fail_line or ""):
                     # ADVICE FOR THE FAILURE WE ACTUALLY HAD. wifi_onboarding
                     # fails for reasons that have nothing to do with the board

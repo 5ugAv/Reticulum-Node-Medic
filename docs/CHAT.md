@@ -2,8 +2,9 @@
 
 *2026-09-29.* The front-page CHAT card opens a working messenger on the medic
 itself: type a message, send it, read replies. Before this the card only
-handed a phone the Columba/Sideband APK (that hand-off is still there —
-"Phone apps", top right — and under Settings ▸ Communication apps).
+handed a phone the Columba/Sideband APK (that hand-off is still there — the
+full-width "Put Columba or Sideband on a phone →" button under the chat list —
+and under Settings ▸ Communication apps).
 
 ## Why not Sideband on the medic
 
@@ -64,7 +65,8 @@ never touches the radio. See [[bandwidth-economy-ethos]].
 
 ## Not yet
 
-Attachments, read receipts, group chat, trust/tickets, deleting conversations.
+Attachments, read receipts, group chat, trust/tickets. (Deleting a conversation:
+hold its row in the list.)
 The two-phone test (Sideband ↔ medic ↔ Columba) is on the bench list.
 
 ## The propagation node and the Home/Backpack switch

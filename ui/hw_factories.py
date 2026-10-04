@@ -36,6 +36,7 @@ from workflows.rnode_v4_rgb import (
     V4_BOARD_KEY, HeltecV4RGBWorkflow, rgb_firmware_available,
     rgb_build_possible)
 from workflows.rtnode_build import RTNodeBuildWorkflow
+from ui.i18n import tr  # i18n: PROBE's refusals (ledger #93)
 
 
 class _HonestFailWorkflow:
@@ -360,18 +361,18 @@ def make_repair_workflow(demo_factory: Callable, connection=None,
     if connection is None:
         if state == "many" and platform.system() == "Linux":
             return _HonestFailWorkflow("detect_board",
-                "Two boards are plugged in, so PROBE cannot tell which one you "
-                "mean. Leave just the one you want checked on the medic, then "
-                "run PROBE again.",
-                "Which board?")
+                tr("Two boards are plugged in, so PROBE cannot tell which one you "
+                   "mean. Leave just the one you want checked on the medic, then "
+                   "run PROBE again."),
+                tr("Which board?"))
         if not free or platform.system() != "Linux":
             if demo_allowed():
                 return demo_factory()
             return _HonestFailWorkflow("detect_board",
-                "PROBE checks a real board's firmware and radio, so it needs one "
-                "attached. Plug the RNode/node board into the medic with a "
-                "known-good USB DATA cable, then run PROBE again.",
-                "No board to PROBE")
+                tr("PROBE checks a real board's firmware and radio, so it needs one "
+                   "attached. Plug the RNode/node board into the medic with a "
+                   "known-good USB DATA cable, then run PROBE again."),
+                tr("No board to PROBE"))
         connection = LocalConnection()
         board_only = True
     profile = NodeProfile()

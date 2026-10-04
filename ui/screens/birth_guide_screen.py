@@ -755,6 +755,9 @@ class BirthGuideScreen(BoxLayout):
         import threading
         gen, chose = self._read_gen, self._read_path
 
+        class _ManyBoards(Exception):
+            """Two work boards on USB: reading ports[0] would pick one at random."""
+
         def work():
             c = {"kind": "birth", "reason": "Couldn't read the board."}
             try:
@@ -762,6 +765,8 @@ class BirthGuideScreen(BoxLayout):
                 from ui.adopt_live import read_board_banner, read_status_via_mdns
                 from monitor.node_classifier import classify
                 ports = local_board_ports()
+                if len(ports) > 1:
+                    raise _ManyBoards()          # named below, nothing read (#173)
                 port = ports[0] if ports else None
                 status = read_status_via_mdns(port)      # name, pre-reset
                 banner = read_board_banner(port)         # identity + params
@@ -821,6 +826,12 @@ class BirthGuideScreen(BoxLayout):
                             c["_our_signature"] = "Validated" in info
                     except Exception:
                         pass
+            except _ManyBoards:
+                # Reading ports[0] in silence picked one of two boards at
+                # random (readiness ledger #173): say so instead.
+                c = {"kind": "birth", "_port": None,
+                     "reason": tr("Two boards are plugged in — unplug one "
+                                  "and read again.")}
             except Exception as e:      # noqa: BLE001
                 c = {"kind": "birth", "reason": f"Couldn't read the board: {e}"}
             from kivy.clock import Clock
@@ -3395,6 +3406,9 @@ class BirthGuideScreen(BoxLayout):
             # will read both. On to the name, as a detected board would be.
             self._board_source = "operator"
             self._radio_usb_serial, self._radio_usb_serial_source = "", ""
+            # The Pi pairing gate asks "what are you building?" again unless
+            # the board is pre-known — a manual pick IS known (ledger #67)
+            self._board_preknown = True
             self._trace(f"board named '{key}' by hand on the detect screen")
             self._render_name()
             return
