@@ -18,6 +18,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
+from kivy.uix.widget import Widget
 
 from ui import theme
 from ui.text_fit import grow_to_text
@@ -131,6 +132,9 @@ class NotificationsScreen(BoxLayout):
             b.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(20), v[1])))
             b.bind(on_release=lambda _b, addr=h: self._pick(addr))
             self._picks.add_widget(b)
+        # a vertical BoxLayout stacks fixed rows from the BOTTOM of any spare
+        # room; this spacer takes the spare room so the rows start at the top
+        self._picks.add_widget(Widget())
 
     def _pick(self, addr):
         self.field.text = addr
