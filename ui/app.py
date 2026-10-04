@@ -1237,7 +1237,8 @@ class ReticulumNodeMedicApp(App):
             on_self_diagnose=lambda: self.switch_mode("self_diagnose"),
             on_birth_tracker=lambda: self.switch_mode("firstborn"))
         probe.add_widget(self._with_back(_probe_screen))
-        probe.bind(on_pre_enter=lambda *_: _probe_screen.enter())
+        probe.bind(on_pre_enter=lambda *_: _probe_screen.enter(),
+                   on_leave=lambda *_: _probe_screen.leave())
         self.sm.add_widget(probe)
 
         # Self Diagnose — the medic checks & heals its OWN onboard radio/GPS board.

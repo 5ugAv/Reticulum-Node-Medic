@@ -73,6 +73,13 @@ def test_the_screen_names_the_target_on_entry_and_on_every_run():
     assert "target_fn=None" in s
     enter = func_source("ui/screens/probe_screen.py", "enter", cls="ProbeScreen")
     assert "_refresh_target" in enter
+    # ...and keeps watching the bus while the page is open, stopping on leave
+    # (a board plugged in with PROBE already showing, 2026-10-04)
+    assert "Clock.schedule_interval(self._tick_target, 2.0)" in enter
+    leave = func_source("ui/screens/probe_screen.py", "leave", cls="ProbeScreen")
+    assert "cancel()" in leave
+    tick = func_source("ui/screens/probe_screen.py", "_tick_target", cls="ProbeScreen")
+    assert "self._refresh_target()" in tick and "run_btn.disabled" in tick
     start = func_source("ui/screens/probe_screen.py", "start", cls="ProbeScreen")
     assert "self._refresh_target(self._workflow)" in start
     assert start.index("self._workflow_factory()") < start.index('tr("Checking {name}...")')
@@ -97,6 +104,7 @@ def test_the_app_no_longer_freezes_the_target_name():
     assert "This node + attached board" not in app
     assert "target_fn=hw.probe_target_label" in app
     assert "on_pre_enter=lambda *_: _probe_screen.enter()" in app
+    assert "on_leave=lambda *_: _probe_screen.leave()" in app
 
 
 def test_the_new_strings_are_translated_in_every_language():

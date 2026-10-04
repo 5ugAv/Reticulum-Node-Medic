@@ -128,8 +128,27 @@ class ProbeScreen(BoxLayout):
     # -- the target -----------------------------------------------------------
 
     def enter(self):
-        """on_pre_enter: name the board PROBE is pointed at RIGHT NOW."""
+        """on_pre_enter: name the board PROBE is pointed at RIGHT NOW — and
+        keep naming it while the page is open. The header used to read only
+        on entry, so a board plugged in with the page already showing stayed
+        "no board on USB yet" until Run was pressed (operator, 2026-10-04,
+        an RTNode on the bench). Two seconds, like the antenna screen's
+        board watch; stopped by leave()."""
         self._refresh_target()
+        if getattr(self, "_target_ev", None) is None:
+            self._target_ev = Clock.schedule_interval(self._tick_target, 2.0)
+
+    def leave(self):
+        """on_leave: stop watching the USB bus (the hidden-screen poll trap)."""
+        ev = getattr(self, "_target_ev", None)
+        if ev is not None:
+            ev.cancel()
+        self._target_ev = None
+
+    def _tick_target(self, _dt):
+        # a run's header names the workflow's own target; leave it alone
+        if not self.run_btn.disabled and not self._busy:
+            self._refresh_target()
 
     def _refresh_target(self, workflow=None):
         label = getattr(workflow, "target_label", "") if workflow is not None else ""
