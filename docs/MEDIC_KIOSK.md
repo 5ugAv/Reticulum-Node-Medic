@@ -39,7 +39,10 @@ Now:
 ```
 
 **What it costs.** With the app stopped, the desktop shows wallpaper and
-no menu bar — recovery is over SSH. The panel's own tray bubbles
+no menu bar — recovery is over SSH; the recipe is in `README.md` ▸ *If
+something goes wrong* (`bash scripts/restart_ui.sh`, which refuses while the
+medic is writing hardware; Settings ▸ Display ▸ **Fix screen colours** for a
+scrambled panel; where the logs are). The panel's own tray bubbles
 (Wi-Fi, Bluetooth, volume, the under-voltage warning, USB eject) are
 gone; all of them drew under the fullscreen app anyway. Connectivity is
 unaffected (NetworkManager, rnsd, the reporter and SSH do not involve

@@ -2,92 +2,146 @@
 
 **Easy to use Reticulum network building/monitoring/maintenance tool.**
 
-For [Reticulum](https://reticulum.network) meshes. It runs on a Raspberry Pi 5
-with a 5-inch touchscreen, powered from a battery
-bank, and reaches nodes over USB serial, SSH, a USB-gadget cable link, or by
-running commands on the medic itself. Built for a community LoRa mesh on Heltec
-WiFi LoRa32 boards and Raspberry Pi nodes. It is designed to work with no
-internet in the field: firmware, Python wheels, Reticulum config templates and
-board images are all carried on disk.
+Node Medic is a Raspberry Pi 5 touchscreen tool for
+[Reticulum](https://reticulum.network) LoRa meshes. It **builds** nodes from bare
+boards, **monitors** them over the air, **diagnoses and repairs** them,
+**messages** over the mesh, and can **clone** itself onto a fresh Pi so the next
+keeper has a medic too. It reaches nodes over USB serial, SSH, a cable link
+(USB gadget to a Pi node, ethernet to another medic), or by running commands on
+the medic itself.
 
-Two things must be staged while online, and the tool says so rather than
-pretending otherwise: **map tiles** (downloaded per-region, see [Map and
-placement](#map-and-placement)) and the **Raspberry Pi OS image** used for SD
-imaging.
+It is designed to work with no internet in the field — carry, don't fetch.
+Firmware, Python wheels, Debian packages, Reticulum config templates, board
+photographs and map tiles are all carried on disk. What has to be fetched while
+online is fetched from one screen (Settings ▸ **Field readiness**), which reads
+the disk and says what is still missing rather than calling the medic ready.
+Three things it cannot fetch for you: the **offline map** for your area (MAPS ▸
+Download offline map), the **Raspberry Pi OS image** used for SD imaging (copied
+onto the medic as `~/pi_os_lite.img.xz`), and the **firmware build toolchain**
+(fetched by the first RTNode build done with Wi-Fi on).
 
-> This is the **tool**. It is kept separate from the node firmware (RNode / the
-> RTNode-2400 5ugAv fork) that it inspects and repairs. Only the health-beacon
-> wire format is vendored here, so the two cannot drift — see
-> [`firmware/`](firmware/).
+> This is the **tool**. It is kept separate from the node firmware (RNode, and
+> the RTNode-2400 fork the medic builds as **RTNode-2400-NM**) that it inspects
+> and repairs. Only the health-beacon wire format is vendored here, so the two
+> cannot drift — see [`firmware/`](firmware/) and
+> [`docs/FIRMWARE_NAMING.md`](docs/FIRMWARE_NAMING.md).
 
-## Operating modes
+## The front page
 
-The front page is an image with a tap map ([`ui/home_zones.py`](ui/home_zones.py)).
-It offers **five** modes:
+The front page is a painted poster with a tap map over it
+([`ui/home_zones.py`](ui/home_zones.py), artwork `assets/ui/front_page.png`).
+The words on the picture are the interface; a test pins the tap map to the
+painted labels. Five cards along the bottom open the five modes:
 
-1. **VITALS** 🫀 — the node dashboard. A filterable list (All / OK / Warn /
-   Alert) of every node the medic knows about, with hex status indicators,
-   capability chips and a "quiet — not heard in *N* h" divider. Fed by a live
-   Reticulum announce listener and a 30-second poll cycle. It will not invent a
-   reading: a stat is drawn only when it was actually measured. Tapping a node
-   opens its detail page.
-2. **SCAN** 🧫 — a geographic map of located nodes over offline raster tiles,
-   with pan/pinch, a mesh-lines overlay, the medic's own GPS fix, and
-   "Use this position" to hand a location straight to BIRTH.
-3. **BIRTH** 🥚 — provisions a node from bare hardware. Entering BIRTH starts a
-   step-by-step guided walkthrough that detects what is plugged in and decides
-   whether the board should be **born** (flashed and provisioned) or **adopted**
-   (enrolled as kin without reflashing).
-4. **TRIAGE** 🩺 — antenna aiming and site assessment. A thermal bullseye scores
-   RSSI / SNR / noise / headroom live while you move the antenna, with a
-   screen-edge glow that brightens toward the best spot found. A "NOT READING"
-   cover drops over the score after 2 seconds of silence so a stale reading
-   cannot be mistaken for a live one.
-5. **PROBE** 🩻 — diagnoses and repairs. One button runs the full diagnostic with
-   streaming per-category progress, then offers "Fix all" or individual fixes.
-   A fix is only reported as fixed after the original check is re-run and
-   passes. A second button opens **Self Diagnose**, which points the same idea
-   at the medic itself.
+1. **VITALS** — the node dashboard. A filterable list (All / OK / Warn / Alert)
+   of every node the medic knows about, with a quiet divider for nodes not heard
+   recently, fed by a live Reticulum announce listener and a 30-second poll
+   cycle. Tapping a node opens its detail page (ping, location sharing, range
+   test, rebirth, delete).
+   The filter row carries a **Self-check** button — the medic diagnosing its own
+   radio, GPS and services (see *Self Diagnose* below).
+2. **MAPS** — a geographic map of located nodes over offline raster tiles, with
+   pan/pinch, a mesh-lines overlay, a terrain toggle, the medic's own GPS fix,
+   placement suggestions, and "Use this position →" to hand a location straight
+   to BUILD. The screen's internal name is still `scan`.
+3. **BUILD** — makes a node from bare hardware. A step-by-step guided
+   walkthrough detects what is plugged in and decides whether the board should
+   be **born** (flashed and provisioned) or **adopted** (enrolled as kin without
+   reflashing), then offers the paths: an RNode radio, a standalone
+   RTNode-2400-NM, a Raspberry Pi plus radio, or **Clone this device** (a new
+   medic). "Not one of these? Show me what you got" opens the salvage screen
+   for second-hand hardware. Internal name `birth`.
+4. **ANTENNA** — antenna aiming and site assessment. A thermal bullseye scores
+   the signal live while you move the antenna; a "Not Reading" cover is meant
+   to drop over the score after a few seconds of radio silence so a stale
+   reading cannot be mistaken for a live one (the readiness ledger, #26,
+   records that it does not yet fire reliably). From here the **Antenna test**
+   ranks antennas against each other on a plugged-in node. Internal name
+   `triage`.
+5. **CHAT** — the medic's own LXMF messenger: type a message, send it over the
+   mesh, read replies. A message with no path right now is handed to the
+   medic's own propagation node to hold; one addressed to a peer the mesh has
+   never heard is marked failed and goes again the moment that peer announces.
+   The "Phone apps" button hands a phone the carried Columba or Sideband APK
+   over Wi-Fi instead. See [`docs/CHAT.md`](docs/CHAT.md).
 
-Behind those five, the app registers **26 screens** in total
-([`ui/app.py`](ui/app.py)) — node detail, certificate view, settings and its
-sub-pages (WiFi, language, storage, date/time, radio defaults, trusted
-operators, tool identity), notifications, comms, the SD-card imager, and the
-credits page hidden under the red cross.
+Also on the front page: the **gear** opens Settings; the **Home / Backpack**
+toggle sets the medic's network role (Home = routes for the mesh and, by
+default, runs the propagation node that stores messages for offline users;
+Backpack = transport off, so a medic on the move cannot disturb the mesh;
+unless that is switched off in Settings, the medic puts itself in Backpack when
+its GPS sees it moving); a
+**slide-to-power-off** control; a battery gauge when a UPS is fitted. On the
+globe, the **LoRa trunk node** — the filled disc the mesh grows out of — opens
+the credits screen, and the **Wi-Fi marker** is a shortcut into Wi-Fi settings.
 
-**MITOSIS** 🧬 — cloning the medic onto a fresh Pi — has a screen and a
-workflow, but the target-Pi flow is **not wired**. On the medic it refuses with
-"still under construction" rather than faking a clone.
+Two things deliberately have no card:
+
+- **PROBE** — per-node diagnose-and-repair. One button runs the full diagnostic
+  with streaming per-category progress, then offers "Fix all" or individual
+  fixes; a fix is reported as fixed only after the original check is re-run and
+  passes. Today PROBE is reached from the first-use tour, from the credits
+  screen's mode row, and from the control socket (`scripts/medic_control.py
+  probe`). That it has no everyday door is an open item in the
+  [readiness ledger](docs/READINESS_LEDGER.md) (#204, #144).
+- **Clone** — once in a device's life, not a weekly mode, so it lives inside
+  BUILD's guided walkthrough. (The screen and workflow keep the code name
+  `mitosis`.)
+
+The first time a medic is powered on it opens a **setup walkthrough** — the
+security choices, then a tour that opens each mode by its painted word — and
+goes to the front page when that is finished. Settings can run it again for the
+next keeper. As of 2026-10-04, `ui/app.py` registers **33 screens** in total
+(node detail, certificate view, Settings and its sub-pages, notifications, the
+guide, the SD-card imager, the clone, the firstborn ceremony, Self Diagnose,
+credits — see *Counts* below for how that was computed).
 
 ## Node types
 
-- **Type A — Raspberry Pi transport node** (`rnsd` + `lxmd`, attached RNode).
-- **Type B — Standalone RTNode-2400** (5ugAv microReticulum fork; no Pi; health
-  via RNS announce beacons — see below).
-- **Type C — RNode only** (a LoRa32 board as a Pi node's radio interface).
+- **Type A — Raspberry Pi transport / propagation node** (`rnsd` + `lxmd`,
+  attached RNode).
+- **Type B — standalone RTNode-2400-NM** (the Node Medic build of the
+  RTNode-2400 microReticulum firmware; no Pi; health arrives as RNS announce
+  beacons — see below).
+- **Type C — RNode only** (a LoRa board as a Pi node's radio interface).
 
 `node_profile.py` models five node roles: transport, LXMF propagation, gateway,
 Meshtastic bridge, and unknown.
 
 ### Board catalogue
 
-[`workflows/rnode_boards.py`](workflows/rnode_boards.py) carries **15 boards** —
-14 flashed through `rnodeconf --autoinstall` (LilyGO LoRa32 v1.0/v2.0/v2.1,
-T-Beam, T-Beam Supreme, T3S3, T-Deck, T-Echo, Heltec LoRa32 v2/v3/v4, Heltec
-Mesh Node T114, RAK4631, Seeed XIAO ESP32S3) plus the Heltec Wireless Tracker,
-which is not in official RNode firmware and is built from a patched tree.
+Counted from the code on 2026-10-04 (commands under *Counts* below):
 
-**9 of the 15** have a verified autoinstall band map. The other five official
-boards refuse to flash rather than guess at the answers their device menu
-expects. **10 of the 15** have a photograph in `assets/boards/`, shown to the
-operator so an identification made from silicon they cannot see has a visual
-check. Only Heltec V3 and V4 are hardware-verified end to end.
+- [`workflows/rnode_boards.py`](workflows/rnode_boards.py) carries **17 boards**.
+  14 are flashed through `rnodeconf --autoinstall` from the offline firmware
+  cache (LilyGO LoRa32 v1.0 / v2.0 / v2.1, T-Beam, T-Beam Supreme, T3S3, T-Deck,
+  T-Echo, Heltec LoRa32 v2 / v3 / v4, Heltec Mesh Node T114, RAK4631, Seeed XIAO
+  ESP32S3); three are built on the medic — the Heltec Wireless Tracker and the
+  Ebyte EoRa-S3 through arduino-cli, the Heltec MeshPocket through nRF52 serial
+  DFU.
+- **12 of the 14** autoinstall boards have a verified 915 MHz band map. The
+  T-Beam and the T3S3 refuse to flash, with the reason: each ships with
+  different radio chips under one name and nothing on the USB side can tell
+  which is in your hand.
+- **15 of the 17** have a photograph in `assets/boards/` (the LoRa32 v1.0 and
+  v2.0 do not), shown to the operator so an identification made from silicon
+  they cannot see has a visual check.
+- **8 boards** can be built as a standalone RTNode-2400-NM
+  ([`workflows/rtnode_build.py`](workflows/rtnode_build.py)): Heltec V3, Heltec
+  V4, T-Beam Supreme, T-Echo, RAK4631, Heltec Mesh Node T114, Seeed XIAO ESP32S3
+  and Ebyte EoRa-S3.
+- Which boards have actually been born on real hardware, and as what, is in
+  [`docs/BOARD_COVERAGE.md`](docs/BOARD_COVERAGE.md) — generated from the
+  medic's own birth certificates, not hand-written.
+- RNode firmware is **pinned at 1.86** (`PINNED_FIRMWARE` in
+  [`workflows/updater.py`](workflows/updater.py)); a newer upstream release is
+  reported by Field readiness, never fetched.
 
-Three boards can be built as a standalone RTNode-2400
-([`workflows/rtnode_build.py`](workflows/rtnode_build.py)): Heltec V3, Heltec V4
-and T-Beam Supreme.
+Caveat, stated plainly: the three built-here boards compile from firmware trees
+that live in the developer's home directory, not in this repository (ledger
+#43, #168). A medic built from this repo alone cannot birth them yet.
 
-## Australian deployment defaults (all overridable)
+## Deployment defaults (all overridable)
 
 | Frequency | Bandwidth | SF | Coding rate | TX power |
 |---|---|---|---|---|
@@ -96,28 +150,29 @@ and T-Beam Supreme.
 Regulatory basis: Australian LIPD Class Licence, 915 MHz band.
 
 These are a mesh-wide invariant: nodes can only hear nodes on the same
-settings. Every node is built with them baked in. If the tool's defaults are
-changed, the home screen shows a persistent badge until they are reverted, with
-a one-tap revert that also retunes the medic's own radio.
+settings, and every node is built with them baked in. If the tool's defaults are
+changed (Settings ▸ Default radio parameters), the home screen shows a
+persistent badge until they are reverted, and the medic's own radio is retuned
+to match ([`provisioning/medic_radio.py`](provisioning/medic_radio.py)).
 
 ## Diagnostics
 
-**94 checks** across 8 modules, each with a plain-English description, a
-severity (`critical` / `warning` / `info`) and, where possible, an auto-fix.
-Checks never short-circuit — one failure cannot hide a later one.
+Eight category modules in [`diagnostics/`](diagnostics/); counting the distinct
+check names declared in them gives **96** (2026-10-04 — 82 across the seven
+Pi-side modules, 14 in the RTNode-2400 module). Each check has a plain-English
+description, a severity and, where possible, an auto-fix. Checks never
+short-circuit — one failure cannot hide a later one.
 
-The Pi repair chain runs 7 modules in operator-visible order (83 checks):
+The Pi repair chain ([`workflows/repair.py`](workflows/repair.py)) runs seven
+modules in a fixed, operator-visible order:
 
 Power & hardware → Reticulum software → Radio & firmware → System health →
 Network & mesh → Client connectivity → GNSS.
 
-The eighth module covers standalone RTNode-2400 boards (11 checks). The **same**
-Pi diagnostic code runs in all three self-healing tiers — on-node systemd timer,
-remote over SSH, or physical serial — only the `Connection` differs.
-
-The three-level ping lives here as checks, not as a separate screen: L1 serial
-loopback (`radio_loopback`), L2 mesh ping via `rnping` (`mesh_ping_l2`), L3
-announce heard by the tool (`announce_heard_l3`).
+The same code runs whether the target is reached over SSH or over a serial
+cable — only the `Connection` differs. A fix is only reported as fixed after the
+original check is re-run and passes (`verify_fixed`): a fix command exiting 0
+does not prove the fault is gone.
 
 The RTNode-2400 module is **beacon-driven**: those boards have no text console,
 so on a physical visit the tool captures the passive serial `[HealthBeacon]`
@@ -126,71 +181,97 @@ fields (plus a boot-log FATAL scan) — the same wire contract used over the mes
 
 ### Self Diagnose (the medic itself)
 
-**11 checks** on the tool's own health
-([`monitor/self_diagnose_runtime.py`](monitor/self_diagnose_runtime.py)): USB
-devices present, serial splitter, GPS telemetry freshness, disk space, `rnsd`
-service, CPU temperature, power throttling, WiFi signal, clock sync, Reticulum
-responding (`rnstatus`), and `lxmd` (only expected when the medic is in home
-propagation mode). Three have one-tap automatic repairs — restart the splitter,
-`rnsd`, or `lxmd`; four offer written guidance instead. Deeper chip and firmware
-probes exist in the module but are deliberately not run here, because they would
-reset the board and steal its serial port.
+[`monitor/self_diagnose_runtime.py`](monitor/self_diagnose_runtime.py) gathers
+**13 findings** about the tool's own health (2026-10-04): onboard radio present
+on USB, the serial splitter, GPS telemetry freshness, disk space, the touch
+provider, `rnsd`, CPU temperature, power throttling, Wi-Fi signal, clock sync,
+Reticulum responding (`rnstatus`), `lxmd` (only expected when the medic is in
+Home mode as a propagation node), and whether NetworkManager has been told to
+leave the cable-birth link alone. Three findings have one-tap repairs — restart
+the splitter, `rnsd`, or `lxmd`; four more offer written guidance instead; the
+rest are read-only. Deeper chip
+and firmware probes exist in the module but are deliberately not run here,
+because they would reset the board and steal its serial port. Reached from
+VITALS (**Self-check**), Settings, and PROBE.
 
 ## Type B health beacons
 
-RTNode-2400 nodes can't run LXMF (embedded C++ Reticulum is core RNS only), so
-they carry health in the `app_data` of a periodic RNS **announce** on the
-`rtnode.health` aspect — a compact 14-byte, big-endian payload decoded by
-[`monitor/health_beacon.py`](monitor/health_beacon.py). An **on-demand poll**
-([`monitor/health_poll.py`](monitor/health_poll.py)) sends a 1-byte request
-(`0x01`) to the node's destination; the node replies with an immediate beacon,
-and a clean reply clears a node's warning back to green.
+RTNode-2400 nodes carry health in the `app_data` of a periodic RNS **announce**
+on the `rtnode.health` aspect — a compact big-endian payload decoded by
+[`monitor/health_beacon.py`](monitor/health_beacon.py): 14 bytes in version 1,
+with later versions appending a battery/link tail, a self-reported position
+(GPS-fitted nodes) and the list of neighbours the node can hear. An
+**on-demand poll** ([`monitor/health_poll.py`](monitor/health_poll.py)) sends a
+1-byte request (`0x01`) to the node's destination and the node answers with an
+immediate beacon.
 
 The encoder is pinned to the firmware by contract: `firmware/rtnode-2400/`
-vendors the C++ headers, and a test compiles them with `g++` and asserts
-byte-equality with the Python implementation.
+vendors the C++ packer header, and
+[`tests/test_firmware_beacon_contract.py`](tests/test_firmware_beacon_contract.py)
+compiles it with `g++` and asserts byte-equality with the Python encoder against
+golden vectors.
 
 ## Monitoring
 
-`ui/app.py` starts two things at launch: a 30-second poll cycle
-(LAN `/status` discovery, `rnpath` mesh discovery) and an **RNS announce
-listener** registered against the shared `rnsd`. One handler ingests every
-announce into a persisted node registry, collapsing a device's several aspect
-destinations into a single row by identity. A second collects `rtnode.health`
-nodes as poll targets. Every announce heard is logged — that line is the ground
-truth for "is the app deaf?", a question that once took hours to answer.
+`ui/app.py` starts two things at launch: a 30-second poll cycle (LAN `/status`
+discovery and `rnpath` mesh discovery, with the registry saved about every ten
+cycles) and an **RNS announce listener** registered against the shared `rnsd`.
+One handler ingests every announce into a persisted node registry, collapsing a
+device's several aspect destinations into a single row by identity; a second
+collects `rtnode.health` beacons. Every announce heard is logged — that line is
+the ground truth for "is the app deaf?".
 
 On a dev box with no RNS library installed, the listener returns quietly and the
 rest of the app runs.
 
-## Building and adopting nodes
+## Building, adopting and cloning
 
 - **SD-card imaging** ([`provisioning/pi_imager.py`](provisioning/pi_imager.py))
-  writes a carried Raspberry Pi OS image to a USB card reader with `dd`, then
-  mounts the boot partition and writes `custom.toml`, enables SSH and injects the
-  medic's public key so the build workflow can log in afterwards. It refuses any
-  target that is not a present, removable USB disk, and requires a typed
-  confirmation. The image is expected at `~/pi_os_lite.img.xz`; there is no
-  download path, and it fails with that message if absent.
-- **Guided birth** walks the operator one instruction per screen: antenna first
-  (never power a radio without one), then detect the board, read and classify it,
-  then either adopt it or choose a path — host RNode, RTNode-2400, or Pi + radio.
-  The Pi path hands off to the SD imager and back.
-- **Adoption** enrols an already-provisioned node as kin without reflashing or
-  renaming it: identify, certificate, enroll. It works over USB, and over the air
-  for a node heard on the mesh but never plugged in.
-- **Birth certificates** are photographable cards. Their QR payload is anonymous
-  by construction — no location, builder, LAN details, mesh identity hash or
-  notes.
+  writes the carried Raspberry Pi OS image to a USB card reader with `dd`, then
+  hands the card to a root-owned helper
+  (`/usr/local/lib/nodemedic/prepare-card`, installed from
+  [`assets/scripts/prepare_card.py`](assets/scripts/prepare_card.py)) which
+  activates the account, bakes the cable link and Wi-Fi onto the root
+  filesystem and grows it — because `custom.toml` and cloud-init are both
+  inert on the carried image. It refuses any target that is not a present,
+  removable USB disk, and requires a typed confirmation. The image is expected
+  at `~/pi_os_lite.img.xz`; there is no download path, and it fails with that
+  message if absent.
+- **Guided birth** walks the operator one instruction per screen: antenna
+  first (never power a radio without one), then detect the board, read and
+  classify it, then either adopt it or choose a path. The Pi path hands off to
+  the SD imager and back.
+- **Adoption** ([`workflows/adopt_node.py`](workflows/adopt_node.py)) enrols an
+  already-provisioned node as kin without reflashing or renaming it. It works
+  over USB, and over the air for a node heard on the mesh but never plugged in.
+- **Birth certificates** are photographable cards. Their QR payload
+  ([`ui/qr.py`](ui/qr.py)) says what the node *is* — name, type, board, radio
+  settings, the board's own hardware ID — never where it is or whose it is; the
+  full certificate stays on the medic.
+- **Clone** ([`workflows/clone.py`](workflows/clone.py), screen
+  [`ui/screens/mitosis_screen.py`](ui/screens/mitosis_screen.py)) has been the
+  real flow since 2026-08-25. The medic images a card for the new Pi 5 from its
+  own reader, finds the new machine over an ethernet cable or Wi-Fi, logs in
+  with its own key, and runs a ladder of named steps shown one row each on
+  screen: copy the tool, the firmware cache, the toolchains and OS image;
+  install the Python stack from carried wheels and the screen stack from
+  carried `.deb`s; hand down the maps, records and fleet roster; give the new
+  medic its **own fresh identity** (never a key copy), stamp its lineage,
+  install its card helper and SSH key, and set it to boot into the tool. What
+  the parent must carry for all that is listed in
+  [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). Items that still block the
+  clone test are the first section of the readiness ledger.
 
 ## Map and placement
 
-SCAN renders Web Mercator raster tiles from a local MBTiles file. Tiles are
-**not shipped** — `assets/maps/` is empty and gitignored. They are downloaded
-per-region while online (from the Carto CDN, never by bulk-fetching OSM), after
-which the map is fully offline. With no tiles present the screen falls back to a
-plain coordinate plot, and nodes without coordinates are listed below the map
-rather than dropped.
+MAPS renders Web Mercator raster tiles from a local MBTiles file in
+`~/.reticulum-node-medic/maps/` (outside the repo tree, so a deploy cannot
+delete a downloaded map). Tiles are **not shipped**; they are downloaded
+per-region while online from Esri's keyless World Street Map tile service
+([`ui/map_download.py`](ui/map_download.py) — never by bulk-fetching
+`tile.openstreetmap.org`), with attribution drawn on the screen, after which the
+map is fully offline. A resumable world-overview download can run as a systemd
+unit ([`scripts/world-map-fill.service`](scripts/world-map-fill.service)).
 
 Placement suggestions ([`monitor/placement.py`](monitor/placement.py)) mark
 where a node would extend the mesh, from an `rnpath`-derived topology and a
@@ -198,8 +279,8 @@ log-distance path-loss model self-calibrated against this mesh's observed reach.
 Suggestions appear only once `rnpath` returns edges between located nodes.
 
 Distance alone is a poor predictor, and this mesh has the scar to prove it: a
-sub-kilometre link failed because the path ran through houses, at a distance the model
-called comfortable. So a suggestion is also checked against the ground
+sub-kilometre link failed because the path ran through houses, at a distance the
+model called comfortable. So a suggestion is also checked against the ground
 ([`monitor/terrain.py`](monitor/terrain.py)) — it walks the elevation profile
 between the candidate and each partner, adds the earth's curve at the standard
 4/3 effective radius, and reports the tightest squeeze against the first Fresnel
@@ -207,87 +288,148 @@ zone. A blocked path becomes a caution naming the node it cannot see.
 
 Three limits, stated in the code and worth repeating here:
 
-- **Terrain is not buildings.** SRTM is bare earth, so a clear profile through a
-  suburb is still a suburb. "Clear" means the ground does not block it, never
-  that the link will work.
+- **Terrain is not buildings.** The elevation data is bare earth, so a clear
+  profile through a suburb is still a suburb. "Clear" means the ground does not
+  block it, never that the link will work.
 - A missing tile reads as **unknown**, never as sea level — otherwise a mountain
   looks like clear air.
 - With no terrain cached at all, suggestions are returned unchanged with a note
-  that they are distance-only. A field tool that withheld advice for want of a
-  map would be worse than one that gives advice with a stated limit.
+  that they are distance-only.
 
 Terrain rides along with the map download — one button, one region, both
-datasets — as z/x/y elevation tiles in the same scheme as the basemap, cached
-beside it. It is a few dozen tiles against the basemap's thousands. A **Terrain**
-toggle on SCAN shades high ground light and low dark, scaled to the range in
-view rather than to absolute altitude, because what helps a radio is standing
-above its surroundings: a 40 m rise in a flat suburb matters as much as a peak
-does in the Alps.
+datasets — as Tilezen "terrarium" elevation tiles (SRTM-derived, from AWS Open
+Data) in the same z/x/y scheme as the basemap. A **Terrain** toggle on MAPS
+shades high ground light and low dark, scaled to the range in view, because what
+helps a radio is standing above its surroundings.
 
 ## Privacy
 
-Exact node locations are meant to stay on the builder's medic. Today that holds
-in two places, and it is worth being precise about where it does not:
+Exact node locations are meant to stay on the builder's medic.
 
-- Coordinates written into an RTNode-2400 over its setup portal are **fuzzed by
-  800 m** first ([`monitor/geo.py`](monitor/geo.py)), deterministically per node
-  and never centred on the true point, so repeated announces cannot be averaged
-  back and the circle's centre is not the answer.
+- **The default is silence.** Whether a node tells the world roughly where it is
+  is asked during birth — *Hidden* or *Show on map* — and is *Hidden* until
+  someone answers ([`monitor/location_share.py`](monitor/location_share.py)).
+  The node's detail page shows the same switch, though a change made there
+  does not yet stick (ledger #57).
+- When sharing is on, coordinates written into an RTNode-2400 over its setup
+  portal are **fuzzed by 800 m** first ([`monitor/geo.py`](monitor/geo.py)),
+  deterministically per node and salted with a secret kept only on this medic,
+  so repeated announces cannot be averaged back and the circle's centre is not
+  the answer. The firmware then applies **its own** deterministic ~500 m offset
+  on top, so a public pin sits up to ~1.3 km from the hardware
+  (`monitor.geo.public_pin_radius_m`).
 - The birth-certificate QR omits location entirely.
-- The firmware then applies **its own** deterministic ~500 m offset on top, so a
-  public pin sits up to ~1.3 km from the hardware
-  ([`monitor.geo.public_pin_radius_m`](monitor/geo.py)). Both layers are
-  deterministic, which is the property that matters — an offset re-rolled per
-  announce could be averaged away by a patient observer.
-- The exact fix **is** kept in the birth certificate on the medic, and the SCAN
-  map and the navigation links plot it at full precision. There is no user-facing
-  privacy toggle; the fuzz radius is a constant on one workflow.
+- The exact fix **is** kept in the birth certificate on the medic; the
+  certificate view offers the builder a navigation link to it.
+
+Known hole, from the readiness ledger (#157): a GPS-fitted RTNode's health
+beacon carries its live position unfuzzed, whatever was answered at birth. That
+is a firmware-side fix that has not shipped.
 
 ## Languages
 
 The UI is translatable ([`ui/i18n.py`](ui/i18n.py)) with offline, source-keyed
-catalogues. **Four languages** are selectable — English (the source) plus
-Spanish, French and German, **363 keys** each, kept at parity by a test. Settings
-▸ Language stores the choice; it applies when Node Medic restarts, not live.
+catalogues in `assets/i18n/`. Counted 2026-10-04: **14 languages are declared**
+(English plus Spanish, French, German, Portuguese, Italian, Indonesian, Swedish,
+Polish, Russian, Japanese, Swahili, Tok Pisin, Hindi) and **11 ship a
+catalogue**; Italian and Hindi are declared without one and so are never
+offered. Eight catalogues are full (the same key count as each other); the
+Portuguese, Swahili and Tok Pisin ones are small — 124 keys against 1,295 —
+but cover the first-contact path, which is the minimum the picker demands
+before it will list a language. Japanese is
+offered only when a carried font that can draw it is present. Settings ▸
+Language stores the choice; it applies when Node Medic restarts, not live.
 
-Coverage is partial and honest about it: roughly 344 wrapped call sites across 18
-UI modules. Several screens (WiFi, storage, about, certificate view, the imager)
-are still English-only, as are the descriptions under the Settings rows. An
+Coverage is partial and honest about it: several Settings sub-screens and the
+reference guide are still English in every language (ledger #205, #206). An
 AST-walking test asserts that every string that *is* wrapped has a translation,
 so coverage cannot silently regress.
+
+## Install — building your own medic
+
+The full path from a blank Pi 5 to a running medic, with what each step
+actually installs and what the repository does **not** yet provide, is in
+**[`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)**. In short: Raspberry Pi OS
+(64-bit, with desktop) with a user named `nodemedic`; this repository cloned to
+`/home/nodemedic/reticulum-tool` (the path is hard-coded by the boot scripts);
+the Python stack from `assets/requirements.txt`; the root card helper and the
+scoped sudoers; `sudo bash scripts/setup_boot.sh` with the medic's own radio
+plugged in; reboot into the setup walkthrough; then Settings ▸ Field readiness
+while on Wi-Fi.
+
+## If something goes wrong
+
+- **Scrambled or shifted colours on the panel** (typically after a USB device
+  is plugged in): Settings ▸ **Display** ▸ **Fix screen colours**. It switches
+  the DSI output off with `wlr-randr`, waits two seconds and switches it back on
+  (three attempts), re-running the panel's init sequence
+  ([`provisioning/screen_fix.py`](provisioning/screen_fix.py)). The screen goes
+  black for about two seconds. Software cannot see the panel's true state, so
+  the status line only reports that the re-init ran; if the colours are still
+  wrong, power the medic off, wait ten seconds, and power back on. The same
+  re-init works from SSH:
+  `cd ~/reticulum-tool && python3 -c "from provisioning import screen_fix; print(screen_fix.reinit_panel())"`.
+- **The app has died** (wallpaper and no menu bar — the desktop panel is
+  removed on a kiosk medic, see [`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md)):
+  from another machine,
+  `ssh nodemedic@<medic-hostname>.local 'cd ~/reticulum-tool && bash scripts/restart_ui.sh'`.
+  The script **refuses** (exit 3) while the medic is writing hardware — an SD
+  image write, a board flash, an `rnodeconf` run, an nRF52 DFU, an arduino-cli
+  upload — or while the UI's own busy marker is fresh (a birth over SSH, a
+  download, a self-check); wait, or re-run with `FORCE=1` only when the running
+  instance is the thing that is broken. `STOP_ONLY=1` stops without restarting.
+- **Read the logs**: `~/ui.log` (every launch road appends here, unbuffered)
+  and `~/ui_crash.log` (`faulthandler` output for native crashes in Kivy / SDL /
+  GL / serial code, which otherwise leave no traceback).
+- **Drive the running app from a shell** without touching the glass:
+  `python3 scripts/medic_control.py list | open <screen> | home | probe`
+  ([`ui/remote.py`](ui/remote.py)).
+
+## Updating the tool
+
+- **On the medic**: `cd ~/reticulum-tool && git pull && bash scripts/restart_ui.sh`.
+- **From a laptop**, when the medic's checkout is not what runs: copy exactly
+  the tracked files and nothing else, e.g.
+  `cd <repo> && rsync -a --files-from=<(git ls-files) . nodemedic@<medic-hostname>.local:~/reticulum-tool/`,
+  then restart as above. A partial sync has taken the UI down before — sync all
+  of `git ls-files`, never a subset. After an rsync, `git log` **on the medic**
+  does not describe what is running; `git status --porcelain` there, or a grep
+  for the code itself, does.
+- **The test gate**: `python3 -m pytest` before anything is deployed; the same
+  suite runs on every push in GitHub Actions
+  ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), Python 3.11 and 3.12).
 
 ## Architecture
 
 ```
-node_profile.py   dataclasses / enums — node roles, hardware, connection methods
+node_profile.py   dataclasses / enums — node roles, hardware, radio, connection methods
 transport/        how a command reaches a target: SSH, Local (on the medic,
                   incl. a PTY runner for rnodeconf), Serial, Emulated
-diagnostics/      the check library — base classes + 8 category modules, 94 checks
+diagnostics/      the check library — base classes + 8 category modules
 workflows/        operations performed ON a node: build, flash, repair, adopt,
-                  RTNode-2400 build, offline firmware/wheel caches, board catalogue
-monitor/          the observation layer behind VITALS/SCAN: beacon codec, poll,
-                  registry, history, alerts, topology, placement, triage feed,
-                  the medic's own self-diagnosis
+                  RTNode-2400 build, clone, field readiness (carry), offline
+                  firmware / wheel / deb caches, board catalogue, phone apps
+monitor/          the observation layer behind VITALS / MAPS: beacon codec, poll,
+                  registry, history, alerts, topology, placement, terrain,
+                  location sharing, the chat service, the medic's own self-diagnosis
 provisioning/     the medic's OWN configuration and the link it uses to reach a
-                  node: display, power, storage, clock, identity, encrypt-at-rest
-                  vault, SSH pinning, radio defaults, SD imaging, USB gadget, UART
-ui/               the Kivy touchscreen app — shell, theme, widgets, 26 screens,
-                  plus non-Kivy helpers (board detection, QR, i18n, geometry)
+                  node: display, power, storage, clock, identity, records vault,
+                  SSH pinning, radio defaults, SD imaging, USB gadget, UART,
+                  the security hardening runbook
+ui/               the Kivy touchscreen app — shell, theme, widgets, screens,
+                  plus non-Kivy helpers (board detection, QR, i18n, tap map,
+                  control socket)
 firmware/         vendored RTNode-2400 C++ headers, so the health-beacon wire
                   format sits beside its Python counterpart and is contract-tested
-sandbox/          a Lima VM mirroring the medic's software surface, so sudo
-                  scoping, SSH hardening and the vault can be broken safely
-scripts/          systemd units, the boot/autostart installer, vault operator scripts
-docs/             long-form notes — see below
-tests/            1776 tests, headless
-assets/           4 Reticulum config templates, 3 translation catalogues,
-                  10 board photographs, UI artwork
+sandbox/          a Lima VM mirroring the medic's software surface
+scripts/          systemd units, the boot/autostart installer, restart + busy
+                  guard, cache refreshers, vault operator scripts, previews
+assets/           Reticulum config templates, translation catalogues, board
+                  photographs, UI artwork, the root card helper; gitignored
+                  carried caches (firmware, wheels, debs, maps, apps, fonts)
+tests/            the suite — headless, never imports Kivy
+docs/             long-form notes — index below
 ```
-
-Further reading in [`docs/`](docs/): [`RTNODE2400_INTEGRATION.md`](docs/RTNODE2400_INTEGRATION.md)
-(the verified firmware↔tool contract), [`encrypt-at-rest.md`](docs/encrypt-at-rest.md),
-[`TRACKER_GNSS.md`](docs/TRACKER_GNSS.md), and [`HANDOVER.md`](docs/HANDOVER.md)
-(running project context).
 
 ## Development
 
@@ -295,47 +437,109 @@ Test-first throughout. The whole tested core runs headless with no hardware via
 an in-memory `EmulatedConnection`, and never imports Kivy.
 
 ```bash
-python3 -m pytest        # 1776 tests (2 skipped without hardware)
-```
-
-```bash
+python3 -m pytest        # the suite (pytest.ini already passes -q)
 python3 main.py          # launch the touchscreen app (needs Kivy + a display)
 python3 main.py --version
 ```
 
-`main.py` enables `faulthandler` to `~/ui_crash.log` before starting the UI:
-segfaults in Kivy/SDL/GL/serial C code kill the app with no Python traceback,
-and a field crash has to be diagnosable after the fact.
+`main.py` enables `faulthandler` to `~/ui_crash.log` before starting the UI.
 
 **Emulated demos are opt-in.** On Linux — the deployed medic — flash, build,
-Pi-build, PROBE and MITOSIS either do real work or fail with a stated reason;
+Pi-build, PROBE and Clone either do real work or fail with a stated reason;
 they never report a fake success. Set `RNM_DEMO=1` to explore the flows with
-emulated hardware and seeded demo nodes. SD imaging and both adoption paths are
-never emulated.
+emulated hardware and seeded demo nodes.
+
+### Counts
+
+Every number in this file was computed on 2026-10-04 from the commit it
+describes, with the commands below. Re-run them before quoting a count; the
+sentences are written so that the drift is in the number, not the claim.
+
+```bash
+python3 -m pytest --collect-only -o addopts= -q | tail -1          # tests (6735 collected)
+grep -o 'Screen(name="[^"]*"' ui/app.py | sort -u | wc -l            # screens (33)
+python3 -c "from workflows.rnode_boards import RNODE_BOARDS as b; print(len(b))"   # boards (17)
+python3 -c "from workflows.rtnode_build import RTNODE_TARGETS as t; print(len(t))" # RTNode targets (8)
+ls assets/boards/*.png | wc -l                                       # board + Pi photographs (18)
+grep -c '^    ("' ui/i18n.py                                         # declared languages (14, the _LANGUAGES rows)
+ls assets/i18n/*.json | grep -v _critical | wc -l                    # catalogues (11)
+ls diagnostics/*.py | grep -v 'base\|__init__' | wc -l               # diagnostic modules (8)
+```
 
 ## Status
 
 Working and used in the field: the medic boots to the UI, hears the mesh live
 through its own attached RNode, and monitors, maps, diagnoses and repairs real
-nodes. Node building is proven end to end for Heltec V3/V4 RNodes, standalone
-RTNode-2400 boards, and Pi transport nodes over a cable — including SD imaging,
-guided birth and adoption.
+nodes. The project's own records say messages have moved both ways over LoRa
+between the medic and a phone (2026-10-01,
+[`docs/V1_SCOPE.md`](docs/V1_SCOPE.md)) and that a clone has been produced and
+booted into the tool on its own screen (2026-08-25,
+[`docs/MITOSIS_READINESS.md`](docs/MITOSIS_READINESS.md)). Which boards have
+been born as what is in [`docs/BOARD_COVERAGE.md`](docs/BOARD_COVERAGE.md). The
+operator's own definition of "done" for version 1 is
+[`docs/V1_SCOPE.md`](docs/V1_SCOPE.md).
 
-Known gaps, stated plainly:
+Everything known to be wrong is in **[`docs/READINESS_LEDGER.md`](docs/READINESS_LEDGER.md)**
+— every finding of a 2026-10-03 readiness sweep, re-verified against the code
+and ticked as it is closed. The largest open items, summarised honestly:
 
-- **MITOSIS is not enabled.** Cloning the medic onto a fresh Pi refuses rather
-  than faking it.
-- **Map tiles and the Pi OS image must be pre-staged** while online.
-- **Terrain is bare earth.** Line of sight is checked against ground only;
-  buildings and trees are not modelled, and a clear profile through a suburb
-  is still a suburb.
-- **Translations are partial** and apply on restart.
-- **Board coverage is uneven** — 9 of 15 boards have verified flash answers,
-  10 of 15 have photographs, and only Heltec V3/V4 are hardware-verified.
-- Location privacy is enforced on the node-provisioning path, not on the map.
-- **GPS is not installed.** `gpsd`/`gpspipe` are absent, so "sync from GPS"
-  cannot succeed; the workflow that would install them has no button yet.
+- **The clone test has not been passed from a GitHub checkout.** The clone
+  needs carried `.deb`s, wheels, a Pi OS image and firmware trees that are
+  gitignored or outside the repo; a fresh checkout has none of them until it
+  has been online (ledger #115, #154).
+- **The setup walkthrough's recovery key and passphrase are verified and then
+  discarded**; the summary says they will open the records vault, and they do
+  not yet (ledger #174, #139).
+- **Custom-board RNode births** (Wireless Tracker, MeshPocket, EoRa-S3) and the
+  **firstborn** (the new medic's own Tracker radio) depend on firmware trees
+  that exist only on the developer's medic (ledger #43, #168, #120).
+- **A medic with no map carried shows a black pane** with inert controls
+  rather than saying a map is missing (ledger #2, #178, #177).
+- **GPS-fitted RTNodes beacon their exact position** unfuzzed (ledger #157).
+- **PROBE has no everyday door** and the same feature carries three names
+  across the UI (ledger #204, #144).
+- **Translations are partial**: Settings body copy, five sub-screens and the
+  reference guide are English in every language (ledger #205, #206).
+- **In Backpack mode CHAT still promises the propagation node** that Backpack
+  has switched off (ledger #76, #185).
+- **Terrain is bare earth** — buildings and trees are not modelled.
 
-## License
+## Documentation
 
-MIT — see [LICENSE](LICENSE).
+Start here if you are new:
+
+- [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) — blank Pi 5 to running medic, and the known gaps in that path.
+- [`docs/HANDOVER_NEXT_SESSION.md`](docs/HANDOVER_NEXT_SESSION.md) — read-this-first for whoever picks the project up: state, deploy and test mechanics, method.
+- [`docs/HANDOVER.md`](docs/HANDOVER.md) — the durable reference: architecture, the firmware contracts, the testing model.
+- [`docs/WORKING_METHOD.md`](docs/WORKING_METHOD.md) — the working rules that were paid for.
+- [`docs/READINESS_LEDGER.md`](docs/READINESS_LEDGER.md) — everything known to be wrong, with status.
+- [`docs/V1_SCOPE.md`](docs/V1_SCOPE.md) — what version 1 is and is not.
+- [`SPEC.md`](SPEC.md) — the original specification.
+
+Using the medic:
+
+- [`docs/CHAT.md`](docs/CHAT.md) — the messenger and the propagation node.
+- [`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md) — the on-device desktop changes that make it a kiosk, and how to undo them.
+- [`docs/PHONE_APPS.md`](docs/PHONE_APPS.md) — getting a Reticulum messenger onto a phone.
+- [`docs/WHICH_NODE_TO_BUILD.md`](docs/WHICH_NODE_TO_BUILD.md), [`docs/CHEAPEST_NODE.md`](docs/CHEAPEST_NODE.md), [`docs/BOARD_SHOPPING_LIST.md`](docs/BOARD_SHOPPING_LIST.md) — choosing and buying hardware.
+- [`docs/BOARD_COVERAGE.md`](docs/BOARD_COVERAGE.md) — which boards have been proven, generated from the certificate ledger.
+- [`docs/TRACKER_GNSS.md`](docs/TRACKER_GNSS.md) — the medic's own radio and GPS board.
+- [`docs/encrypt-at-rest.md`](docs/encrypt-at-rest.md) — the records vault (built, not enabled by default).
+
+Firmware and contracts:
+
+- [`docs/RTNODE2400_INTEGRATION.md`](docs/RTNODE2400_INTEGRATION.md) — the verified firmware ↔ tool contract.
+- [`docs/FIRMWARE_NAMING.md`](docs/FIRMWARE_NAMING.md) — why the build is called RTNode-2400-NM.
+- [`docs/HEALTH_REPLY_UNICAST.md`](docs/HEALTH_REPLY_UNICAST.md) — health replies through the mesh.
+- [`docs/RNODE_FACE.md`](docs/RNODE_FACE.md) and [`docs/RNODE_SALE_CARD.md`](docs/RNODE_SALE_CARD.md) — how a medic-built RNode looks, and the card that ships with one.
+
+## Credits and licence
+
+The people and projects this tool stands on are thanked on the medic's own
+credits screen (tap the LoRa trunk node on the front page): Reticulum and RNode,
+microReticulum, RNode Firmware CE, the RTNode and RTNode-2400 firmware this
+fork grew from, the map and terrain data providers, and every neighbour who puts
+a node on a roof. The firmware forks are GPL-3.0 and this tool is downstream of
+all of them.
+
+The tool itself is MIT — see [LICENSE](LICENSE).
