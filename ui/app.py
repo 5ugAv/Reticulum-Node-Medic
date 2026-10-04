@@ -2347,6 +2347,7 @@ class ReticulumNodeMedicApp(App):
         under the same device key. A destination the registry has since
         forgotten (pruned between the sweep and the tap) falls back to a
         record-shaped stand-in, as before — keyed by its destination."""
+        import copy
         import types
         rec = None
         try:
@@ -2357,6 +2358,14 @@ class ReticulumNodeMedicApp(App):
             rec = types.SimpleNamespace(
                 dst_hash=node["dst_hash"], name=node["name"],
                 lat=node.get("lat"), lon=node.get("lon"))
+        elif not getattr(rec, "name", "") and node.get("name"):
+            # The picker's address is the destination the node was last
+            # heard speaking on, which may be a nameless aspect row of a
+            # named device; the walk's header must still say the node's
+            # name, not a hash prefix (operator, 2026-10-04). A copy — the
+            # registry's own record is never renamed from here.
+            rec = copy.copy(rec)
+            rec.name = node["name"]
         self._start_boundary_walk(rec)
 
     def _start_boundary_walk(self, record):
@@ -2647,12 +2656,68 @@ class ReticulumNodeMedicApp(App):
         import time
         from monitor.mesh import parse_path_probe
 
+        def _ago(seconds):
+            s = max(0.0, float(seconds))
+            if s < 90:
+                return "a minute ago"
+            if s < 7200:
+                return "%d min ago" % round(s / 60)
+            if s < 172800:
+                return "%.1f h ago" % (s / 3600)
+            return "%d days ago" % round(s / 86400)
+
+        def _silence_context(now):
+            """What the medic DOES know about a node it cannot raise: when it
+            last heard the node itself over the mesh (an announce or a
+            beacon — a route in the path table is not a sighting), and
+            whether the node answered over Wi-Fi just now (then it is on,
+            and the radio road is what is missing)."""
+            try:
+                reg = self.monitor_service.registry
+                rec = (reg.consolidated_record(dst_hash or "", now)
+                       or reg.get(dst_hash or ""))
+            except Exception:                                      # noqa: BLE001
+                rec = None
+            silent = ("The medic is not hearing it from here — too far, in a "
+                      "radio shadow, or asleep or off.")
+            if rec is None:
+                return silent
+            spoke = []
+            for attr in ("last_heard_announce_at_obs", "last_direct_obs"):
+                o = getattr(rec, attr, None)
+                if o is not None and getattr(o, "source", "") != "http":
+                    spoke.append(o.observed_at)
+            if spoke:
+                parts = ["It last spoke over the mesh %s."
+                         % _ago(now - max(spoke))]
+            else:
+                parts = ["The medic has never heard it speak over the mesh — "
+                         "it only knew a route to it, learned from another "
+                         "node."]
+            seen = getattr(rec, "seen", None)
+            if (seen is not None and getattr(seen, "source", "") == "http"
+                    and now - seen.observed_at < 900):
+                parts.append("It answered over Wi-Fi %s, so it is on — the "
+                             "medic just cannot hear it over the radio from "
+                             "here." % _ago(now - seen.observed_at))
+            else:
+                parts.append(silent)
+            return " ".join(parts)
+
         def work():
             # The row's dst_hash can be a non-hex display key (an HTTP-discovery
-            # 'rtnode:<name>' record leading a merged device). rnpath errors on
-            # that -> looks unreachable. Resolve a real hex mesh dest for the same
-            # device first (its health/mesh aspect).
-            probe = self.monitor_service.registry.probe_hash_for(dst_hash or "")
+            # 'rtnode:<name>' record leading a merged device), or — just as
+            # fatal — a hex destination the node has never been heard
+            # announcing on (skyfinger, 2026-10-04: "No route" to a healthy
+            # node heard 90 s earlier). The registry ranks the device's
+            # destinations by the node's own word; the best is asked first.
+            registry = self.monitor_service.registry
+            try:
+                targets = [t for t in registry.probe_targets_for(dst_hash or "")
+                           if t]
+            except Exception:                                      # noqa: BLE001
+                targets = []
+            probe = targets[0] if targets else None
             if not probe:
                 Clock.schedule_once(lambda dt: report(
                     "No mesh address on record — can't probe this one.", False), 0)
@@ -2660,6 +2725,37 @@ class ReticulumNodeMedicApp(App):
             _local_run(f"rnpath --drop {probe} 2>/dev/null")
             out = _local_run(f"rnpath -w 20 {probe} 2>/dev/null")
             reachable, hops = parse_path_probe(out)
+            other_answered = None
+            if not reachable:
+                # ONE lost broadcast is not a verdict. Ask once more — the
+                # same destination again and, alongside it, the device's
+                # next-best one (a Pi's health reporter can be quiet while
+                # its rnsd still answers; either answer is worth knowing).
+                others = [t for t in targets if t != probe][:1]
+                Clock.schedule_once(lambda dt: report(
+                    "No answer to the path request in 20 s — asking once "
+                    "more…", None), 0)
+                answers = {}
+
+                def _ask(t):
+                    answers[t] = parse_path_probe(
+                        _local_run(f"rnpath -w 20 {t} 2>/dev/null"))
+
+                for t in others:
+                    _local_run(f"rnpath --drop {t} 2>/dev/null")
+                asks = [threading.Thread(target=_ask, args=(t,), daemon=True)
+                        for t in [probe] + others]
+                for th in asks:
+                    th.start()
+                for th in asks:
+                    th.join(timeout=45)
+                reachable, hops = answers.get(probe, (False, None))
+                if not reachable:
+                    for t in others:
+                        ok2, hops2 = answers.get(t, (False, None))
+                        if ok2:
+                            other_answered = (t, hops2)
+                            break
             if reachable:
                 # PING = INSTANT HEALTH READOUT (the vision, task #26): with a
                 # fresh path proven at the daemon, command a health beacon
@@ -2819,7 +2915,19 @@ class ReticulumNodeMedicApp(App):
                     # verdict, until the node itself speaks.
                     self.monitor_service.registry.record_probe(
                         probe, ok=False, now=time.time())
-                    if hops and hops >= 2:
+                    if hops and hops >= 3:
+                        # Three hops or more is a road through OTHER nodes;
+                        # the two-hop bench hint below (a radio within a
+                        # couple of metres) is not a sensible thing to say
+                        # about it (ELSEWHERE at 3 hops, 2026-10-04).
+                        why = ("Health requested, but the medic did not hear "
+                               "a reply. The road to it runs through %d other "
+                               "nodes (%d hops), so the medic is not hearing "
+                               "this node directly and the reply had to come "
+                               "back the same way — a relay may have dropped "
+                               "or delayed it. Not proof it is down. Amber "
+                               "until it is heard." % (hops - 1, hops))
+                    elif hops and hops >= 2:
                         # The road ran through a relay and the reply never
                         # reached us: the medic is not hearing this node
                         # DIRECTLY. Too far — or too close: on the bench
@@ -2848,19 +2956,35 @@ class ReticulumNodeMedicApp(App):
                         "Ping finished with an unrecognised result (%r) — "
                         "a Node Medic bug, not a node state." % (outcome,),
                         None), 0)
+            elif other_answered is not None:
+                # The node's OTHER destination answered — the machine is on
+                # the mesh, but the address its health beacons come from did
+                # not raise a path, so a health request would go nowhere (a
+                # Pi's reporter keeps its own identity). Said as exactly
+                # that; the answering destination is recorded as live.
+                other, other_hops = other_answered
+                registry.record_probe(other, ok=True, now=time.time())
+                where = (" (%d hop(s) away)" % other_hops) if other_hops else ""
+                Clock.schedule_once(lambda dt: report(
+                    "Reachable — its other mesh address answered%s, but the "
+                    "address its health beacons come from did not, so no "
+                    "health was requested. The node is up; its health "
+                    "reporter may be quiet, or that address is not announced "
+                    "where the medic can hear it." % where, True), 0)
             else:
                 # The registry hears about the SILENCE too — an unanswered
                 # probe is the freshest evidence there is, and it demotes the
                 # node's green face to amber until the node itself speaks
-                # (seed: powered off but green, 2026-08-20).
-                self.monitor_service.registry.record_probe(
-                    probe, ok=False, now=time.time())
+                # (seed: powered off but green, 2026-08-20). What the medic
+                # DOES know is said beside the silence: on 2026-10-04 a node
+                # heard 90 s earlier was called "off".
+                now = time.time()
+                registry.record_probe(probe, ok=False, now=now)
+                context = _silence_context(now)
                 Clock.schedule_once(lambda dt: report(
-                    "No route over the mesh right now — the path request went "
-                    "unanswered, so no health request was sent. It may be "
-                    "off, out of range, or beyond a sleeping relay. Its "
-                    "VITALS row shows amber until it is heard again.",
-                    False), 0)
+                    "No road to it over the mesh right now: two path requests "
+                    "in 40 s went unanswered, so no health request was sent. "
+                    "%s Amber until it is heard again." % context, False), 0)
 
         threading.Thread(target=work, daemon=True).start()
 

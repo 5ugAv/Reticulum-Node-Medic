@@ -1408,6 +1408,16 @@ class NodeRegistry:
             return None
         if ok:
             rec.poll_failed_at = None
+            # The DEVICE answered. A failed ask on one of its other
+            # destinations (the one it never speaks on, 2026-10-04) is pooled
+            # into the row's face by _consolidate and would keep a node that
+            # just answered amber until its next beacon — cleared with the
+            # answer, device-wide.
+            for group in self._device_groups():
+                if any(m.dst_hash == dst_hash for m in group):
+                    for m in group:
+                        m.poll_failed_at = None
+                    break
         else:
             rec.poll_failed_at = now
         return rec
@@ -1424,37 +1434,66 @@ class NodeRegistry:
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
+    @staticmethod
+    def _probe_rank(r: "NodeRecord") -> tuple:
+        """Sort key for WHICH of a device's destinations to probe — higher is
+        better. Skyfinger, 2026-10-04: Ping asked for a path to the one
+        destination the medic had never heard it announce (a route learned
+        from another node's table) and said "No route" about a node whose
+        beacon destination had been heard 90 s earlier. Ranked by the node's
+        OWN word: carries its health beacons and has been heard from (the
+        health request is built from THAT identity — a Pi's reporter keeps
+        its own); heard from at all; most recently; then most recently in
+        the path table. A Wi-Fi sighting says nothing about which mesh
+        destination answers, so it does not count."""
+        own = []
+        a = getattr(r, "last_heard_announce_at_obs", None)
+        if a is not None:
+            own.append(a.observed_at)
+        d = getattr(r, "last_direct_obs", None)
+        if d is not None and getattr(d, "source", "") != "http":
+            own.append(d.observed_at)
+        own_at = max(own) if own else None
+        return (r.latest_beacon is not None and own_at is not None,
+                own_at is not None, own_at or 0.0,
+                getattr(r, "mesh_heard", None) or 0.0)
+
     @_locked
-    def probe_hash_for(self, key: str) -> Optional[str]:
-        """A probeable 32-hex mesh destination for the DEVICE that record *key*
-        belongs to, or None. A consolidated VITALS row can be LED by a non-hex
-        key — e.g. an HTTP-discovery record keyed ``rtnode:<name>`` — while the
-        same device also has a real hex mesh dest (its health-beacon aspect).
-        'Ping node now' must probe the hex dest, not the unprobeable HTTP key, or
-        rnpath errors and the node looks unreachable when it isn't. Groups the
-        same way ``devices()`` does: by identity, else by (case-folded) name."""
+    def probe_targets_for(self, key: str) -> List[str]:
+        """Every probeable 32-hex mesh destination of the DEVICE that record
+        *key* belongs to, best first (``_probe_rank``): the Ping's first ask
+        and its second. *key* may be any member's dst_hash, hex or not (an
+        HTTP-discovery row is keyed ``rtnode:<name>``). A hex key the registry
+        has never seen is its own only target; the medic's own destinations
+        are never offered. Groups the way ``devices()`` does."""
         from monitor.mesh import is_hex_hash
-        if is_hex_hash(key):
-            return key                      # already a real dest — probe it directly
         rec = self.nodes.get(key)
         if rec is None:
-            return None
+            return [key] if is_hex_hash(key) else []
+        members = [rec]
+        for group in self._device_groups():
+            if any(m.dst_hash == key for m in group):
+                members = group
+                break
+        ranked = sorted((m for m in members
+                         if is_hex_hash(m.dst_hash)
+                         and not self._is_own_destination(m.dst_hash)),
+                        key=self._probe_rank, reverse=True)
+        out = [m.dst_hash for m in ranked]
+        if not out and is_hex_hash(key):
+            out = [key]
+        return out
 
-        def _name(r) -> str:
-            return name_key(getattr(r, "name", "") or
-                            getattr(r, "announced_name", "") or "")
-
-        ident = getattr(rec, "identity_hash", None)
-        device = getattr(rec, "device_id", None)
-        name = _name(rec)
-        for h, r in self.nodes.items():
-            if not is_hex_hash(h):
-                continue
-            if (ident and getattr(r, "identity_hash", None) == ident) or \
-               (device and getattr(r, "device_id", None) == device) or \
-               (name and _name(r) == name):
-                return h                    # a real hex dest for the same device
-        return None
+    @_locked
+    def probe_hash_for(self, key: str) -> Optional[str]:
+        """THE destination to probe for the device record *key* belongs to —
+        the best of ``probe_targets_for`` — or None when the device has no hex
+        mesh destination at all. A consolidated VITALS row can be LED by a
+        non-hex key (``rtnode:<name>``) or by a hex destination the node never
+        speaks on; 'Ping node now', the range-test picker and the walk all
+        resolve through here, so they ask the same, answering address."""
+        targets = self.probe_targets_for(key)
+        return targets[0] if targets else None
 
     @_locked
     def _device_groups(self) -> List[List[NodeRecord]]:

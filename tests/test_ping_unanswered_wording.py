@@ -10,8 +10,11 @@ import re
 def test_relayed_silence_names_the_relay_and_the_near_field():
     src = open("ui/app.py").read()
     i = src.index("elif outcome == DELIVERY_UNANSWERED:")
-    branch = src[i:i + 2500]
+    branch = src[i:i + 4000]
     assert "hops >= 2" in branch
+    # three hops or more is a road through OTHER nodes — the near-field hint
+    # is for the two-hop bench case only (ELSEWHERE at 3 hops, 2026-10-04)
+    assert "hops >= 3" in branch and branch.index("hops >= 3") < branch.index("hops >= 2")
     # the sentences are split across source lines; pin contiguous fragments
     assert "is not hearing" in branch and "this node directly" in branch
     assert "too loud to" in branch and "decode. Move it" in branch

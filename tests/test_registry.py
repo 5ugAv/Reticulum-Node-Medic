@@ -820,6 +820,73 @@ def test_probe_hash_for_none_when_no_hex_dest():
     assert reg.probe_hash_for("no-such-key") is None
 
 
+# -- probe_targets_for: ask the address the node actually SPEAKS on ----------
+
+def test_probe_prefers_the_destination_the_node_was_heard_speaking_on():
+    """Skyfinger, 2026-10-04: the device's first-registered destination was a
+    route learned from another node's table (never heard announcing); its
+    beacon destination had been heard 90 s earlier. Ping asked the first and
+    reported "No route" about a healthy node."""
+    reg = NodeRegistry()
+    quiet, spoken = "11" * 16, "22" * 16
+    reg.register(quiet, name="SkyFinger")
+    reg.nodes[quiet].mesh_heard = NOW - 60            # in the table, never heard
+    reg.register(spoken, name="SkyFinger")
+    reg.ingest(spoken, beacon(), NOW - 90)            # its own word: a beacon
+    assert reg.probe_hash_for(quiet) == spoken, "a hex key is redirected too"
+    assert reg.probe_targets_for(quiet) == [spoken, quiet]
+    assert reg.probe_targets_for(spoken) == [spoken, quiet]
+
+
+def test_probe_prefers_the_beacon_aspect_over_a_fresher_other_voice():
+    """A Pi's health reporter keeps its own identity, and the health request
+    is built from the identity of the destination asked — so the destination
+    that carries the beacons comes first even when another aspect of the
+    same device announced more recently."""
+    reg = NodeRegistry()
+    health, rnsd = "aa" * 16, "bb" * 16
+    reg.register(health, name="SkyFinger")
+    reg.ingest(health, beacon(), NOW - 1800)
+    reg.register(rnsd, name="SkyFinger")
+    reg.nodes[rnsd].last_heard_announce_at = NOW - 60   # announced, no beacon
+    assert reg.probe_targets_for(rnsd) == [health, rnsd]
+
+
+def test_probe_ranks_a_path_table_row_below_any_voice_but_above_nothing():
+    reg = NodeRegistry()
+    spoken, table, mute = "33" * 16, "44" * 16, "55" * 16
+    for h in (spoken, table, mute):
+        reg.register(h, name="Roof")
+    reg.nodes[spoken].last_heard_announce_at = NOW - 7200
+    reg.nodes[table].mesh_heard = NOW - 10
+    assert reg.probe_targets_for(mute) == [spoken, table, mute]
+
+
+def test_an_unseen_hex_key_is_its_own_target_and_a_wifi_row_has_none():
+    reg = NodeRegistry()
+    h = "cd" * 16
+    assert reg.probe_targets_for(h) == [h]            # unknown, but probeable
+    reg.register("rtnode:Lonely", name="Lonely")
+    assert reg.probe_targets_for("rtnode:Lonely") == []
+    assert reg.probe_targets_for("no-such-key") == []
+
+
+def test_an_answered_probe_clears_a_failed_ask_on_the_devices_other_address():
+    """The failed ask landed on the address the node never speaks on; the
+    answer came from the one it does. Pooled by _consolidate, the stale
+    failure kept the device amber after it had just answered."""
+    reg = NodeRegistry()
+    quiet, spoken = "11" * 16, "22" * 16
+    reg.register(quiet, name="SkyFinger")
+    reg.register(spoken, name="SkyFinger")
+    reg.ingest(spoken, beacon(), NOW - 600)
+    reg.record_probe(quiet, ok=False, now=NOW - 300)
+    assert reg.consolidated_record(spoken, NOW).probe_unanswered
+    reg.record_probe(spoken, ok=True, now=NOW)
+    assert reg.nodes[quiet].poll_failed_at is None
+    assert not reg.consolidated_record(spoken, NOW).probe_unanswered
+
+
 # -- consolidated_record: device-level health for the node-detail screen ------
 
 def _faith_registry():

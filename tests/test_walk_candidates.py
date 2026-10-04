@@ -20,11 +20,18 @@ class _Rec:
 
 
 class _Reg:
+    """The registry's device fold in miniature: every record its own device
+    (``consolidated_records``), probeable at its own hex address
+    (``probe_targets_for``) — see test_walk_live_check for merged devices."""
+
     def __init__(self, recs):
         self._recs = recs
 
-    def all(self, now):
-        return list(self._recs)
+    def consolidated_records(self, now):
+        return [(r, [r]) for r in self._recs]
+
+    def probe_targets_for(self, key):
+        return [key] if len(key or "") == 32 else []
 
 
 def test_recently_heard_nodes_are_offered_newest_first():

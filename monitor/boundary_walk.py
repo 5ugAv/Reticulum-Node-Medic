@@ -413,47 +413,59 @@ WALK_CANDIDATE_MAX_AGE_H = 36.0
 WALK_PROBE_LIMIT = 8
 
 
+def _device_label(device, now: float, dst: str) -> str:
+    """What the picker calls a device: the SAME name VITALS shows for it."""
+    try:
+        name = (device.to_dashboard(now) or {}).get("name")
+        if name:
+            return name
+    except Exception:                                              # noqa: BLE001
+        pass
+    return (getattr(device, "name", "") or getattr(device, "announced_name", "")
+            or dst[:8])
+
+
 def walkable_nodes(registry, now: float,
                    max_age_h: float = WALK_CANDIDATE_MAX_AGE_H) -> List[dict]:
     """The nodes a boundary walk could be run against right now, freshest
-    first — each as ``{name, dst_hash, heard_hours, lat, lon}``.
+    first — ONE entry per physical device, each as
+    ``{name, dst_hash, heard_hours, lat, lon}``.
 
     A candidate needs two things and both are checked, never assumed: a mesh
     address to ping, and a sighting recent enough that pinging it is honest.
+
+    Built from the registry's device fold (``consolidated_records``), not its
+    raw rows: a node announces on several destinations, and on 2026-10-04
+    the picker listed the ones that answered under bare hash prefixes while
+    the named rows pointed at destinations the node never speaks on and went
+    unanswered — "2 of 6 answering", neither recognisable. The entry's name
+    is the device's (what VITALS shows); its address is the destination the
+    node was last heard speaking on (``probe_targets_for``).
     """
-    out = []
     try:
-        records = list(registry.all(now))
+        groups = list(registry.consolidated_records(now))
     except Exception:                                              # noqa: BLE001
         return []
-    for rec in records:
-        dst = (getattr(rec, "dst_hash", "") or "").strip()
-        if not dst:
-            continue                       # nothing to ping
+    out = []
+    for device, _members in groups:
         try:
-            hours = rec.last_seen_hours(now)
+            hours = device.last_seen_hours(now)
         except Exception:                                          # noqa: BLE001
             hours = None
         if hours is None or hours > max_age_h:
             continue                       # never heard, or long silent
-        out.append({"name": getattr(rec, "name", "") or dst[:8],
-                    "dst_hash": dst, "heard_hours": hours,
-                    "lat": getattr(rec, "lat", None),
-                    "lon": getattr(rec, "lon", None)})
+        try:
+            targets = list(registry.probe_targets_for(device.dst_hash))
+        except Exception:                                          # noqa: BLE001
+            targets = []
+        if not targets:
+            continue                       # nothing to ping
+        out.append({"name": _device_label(device, now, targets[0]),
+                    "dst_hash": targets[0], "heard_hours": hours,
+                    "lat": getattr(device, "lat", None),
+                    "lon": getattr(device, "lon", None)})
     out.sort(key=lambda n: n["heard_hours"])
-    # ONE PHYSICAL NODE, ONE ENTRY. A node announces on several destinations
-    # (identity, health, LXMF) — a T114 sat in the registry under four
-    # (2026-09-19). Listing it four times wastes the operator's attention and
-    # probing it four times wastes their daylight. Keep the freshest
-    # destination per device: it is the one likeliest to answer.
-    seen, deduped = set(), []
-    for n in out:
-        key = (n["name"] or "").strip().lower() or n["dst_hash"]
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(n)
-    return deduped
+    return out
 
 
 def answers_now(node: dict, probe) -> Optional[dict]:

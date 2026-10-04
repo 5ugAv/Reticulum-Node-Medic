@@ -14,8 +14,9 @@ from monitor.boundary_walk import answers_now, walkable_nodes
 
 
 class _Rec:
-    def __init__(self, name, dst, hours):
+    def __init__(self, name, dst, hours, announced_name=""):
         self.name, self.dst_hash, self._h = name, dst, hours
+        self.announced_name = announced_name
         self.lat = self.lon = None
 
     def last_seen_hours(self, now):
@@ -23,22 +24,54 @@ class _Rec:
 
 
 class _Reg:
-    def __init__(self, recs):
-        self._recs = recs
+    """The registry's device fold, in miniature: ``groups`` is the
+    ``consolidated_records`` answer — ``[(device, [members]), ...]`` — and
+    ``targets`` maps a device key to the ranked probe addresses the real
+    registry's ``probe_targets_for`` would return."""
 
-    def all(self, now):
-        return list(self._recs)
+    def __init__(self, groups, targets=None):
+        self._groups, self._targets = list(groups), dict(targets or {})
+
+    def consolidated_records(self, now):
+        return list(self._groups)
+
+    def probe_targets_for(self, key):
+        if key in self._targets:
+            return list(self._targets[key])
+        return [key] if len(key) == 32 else []
 
 
 def test_one_physical_node_is_offered_once_not_once_per_destination():
-    """The T114's four rows, exactly as the registry held them."""
-    reg = _Reg([_Rec("RTnodet114", "aa" * 16, 0.5),
-                _Rec("RTnodet114", "bb" * 16, 0.1),
-                _Rec("RTnodet114", "cc" * 16, 2.0)])
+    """The T114's four rows, exactly as the registry held them — one device,
+    offered once, at the address the registry ranks likeliest to answer."""
+    a, b, c = (_Rec("RTnodet114", "aa" * 16, 0.5),
+               _Rec("RTnodet114", "bb" * 16, 0.1),
+               _Rec("RTnodet114", "cc" * 16, 2.0))
+    reg = _Reg([(a, [a, b, c])],
+               targets={"aa" * 16: ["bb" * 16, "aa" * 16, "cc" * 16]})
     cands = walkable_nodes(reg, now=1000.0)
     assert len(cands) == 1, cands
-    # and it keeps the FRESHEST destination — the likeliest to answer
+    # and it keeps the destination the registry ranks first — the one the
+    # node was last heard SPEAKING on, the likeliest to answer
     assert cands[0]["dst_hash"] == "bb" * 16
+
+
+def test_the_picker_names_the_device_not_the_answering_address():
+    """2026-10-04: the picker offered the two nodes that answered as bare
+    hash prefixes — the answering rows were nameless aspect records, and the
+    named rows pointed at addresses the nodes never speak on. The entry
+    carries the DEVICE's name and the device's best address."""
+    http_row = _Rec("SkyFinger", "rtnode:skyfinger", 0.1)
+    voice = _Rec("", "ab" * 16, 0.2)
+    reg = _Reg([(http_row, [http_row, voice])],
+               targets={"rtnode:skyfinger": ["ab" * 16]})
+    cands = walkable_nodes(reg, now=1000.0)
+    assert [(n["name"], n["dst_hash"]) for n in cands] == [("SkyFinger", "ab" * 16)]
+
+
+def test_a_device_with_no_mesh_address_is_not_offered():
+    wifi_only = _Rec("Lonely", "rtnode:lonely", 0.1)
+    assert walkable_nodes(_Reg([(wifi_only, [wifi_only])]), now=1000.0) == []
 
 
 def test_only_the_nodes_that_answer_are_offered():
@@ -71,7 +104,8 @@ def test_every_offered_node_is_marked_as_live_proven():
 def test_the_prefilter_is_generous_because_the_probe_is_the_real_gate():
     """A node quiet for hours may still be perfectly alive — the registry
     window only decides who is worth a probe, not who is offered."""
-    reg = _Reg([_Rec("QUIET", "aa" * 16, 20.0)])
+    q = _Rec("QUIET", "aa" * 16, 20.0)
+    reg = _Reg([(q, [q])])
     assert [n["name"] for n in walkable_nodes(reg, now=1000.0)] == ["QUIET"]
 
 
