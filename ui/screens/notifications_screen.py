@@ -95,7 +95,14 @@ class NotificationsScreen(BoxLayout):
         scroll = ScrollView()
         self._picks = BoxLayout(orientation="vertical", size_hint_y=None,
                                 spacing=dp(6))
-        self._picks.bind(minimum_height=self._picks.setter("height"))
+
+        def _fit(*_):
+            # a column shorter than the viewport sits at the BOTTOM of a
+            # ScrollView (seen on the glass, 2026-10-04): keep it at least
+            # viewport-tall so the first address is right under the heading
+            self._picks.height = max(self._picks.minimum_height, scroll.height)
+        self._picks.bind(minimum_height=_fit)
+        scroll.bind(height=_fit)
         scroll.add_widget(self._picks)
         self.add_widget(scroll)
 
