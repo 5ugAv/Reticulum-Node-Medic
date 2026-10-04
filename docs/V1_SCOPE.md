@@ -96,6 +96,8 @@ these before the handover.
 This applies to the assistant as much as the operator: no more "want me to
 build X next?" at the end of a turn. Ideas go to the list below.
 
+**The sweep's ledger is `docs/READINESS_LEDGER.md`** — all 214 findings of the 2026-10-03 readiness sweep, re-verified against the code on 2026-10-04 (136 open, 27 partial, 41 fixed). The eight marked *Blocks the clone test* come before MITOSIS is tested; the sixty marked *Blocks going public* before the repository is offered to strangers.
+
 **RNode firmware is pinned at 1.86** (operator, 2026-10-04: "a lot of work
 was done on 1.86 — the health data, the RGB lights. If it ain't broke, don't
 fix it. Lock it down."). Field readiness repairs that bundle and reports a
