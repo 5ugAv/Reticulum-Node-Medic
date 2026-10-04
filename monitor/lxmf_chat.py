@@ -212,7 +212,27 @@ class MessageStore:
             self.version += 1          # someone else wrote; the screen must look
         self._disk_mtime = self._mtime()
         raw = _load(self._msg_file, [])
-        self._messages = [m for m in raw if isinstance(m, dict) and m.get("id")]
+        # Only whole records: {"id": "x"} alone used to pass this filter and
+        # raise KeyError on the Kivy thread the first time the screen read its
+        # peer or ts (readiness ledger #191). Dropped ones are counted aloud.
+        kept, dropped = [], 0
+        for m in (raw if isinstance(raw, list) else []):
+            if not (isinstance(m, dict) and m.get("id") and m.get("peer")
+                    and isinstance(m.get("text"), str) and m.get("dir") in (IN, OUT)):
+                dropped += 1
+                continue
+            try:
+                m["ts"] = float(m.get("ts"))
+            except (TypeError, ValueError):
+                dropped += 1
+                continue
+            m.setdefault("state", SENT if m["dir"] == OUT else "")
+            m.setdefault("read", m["dir"] == OUT)
+            kept.append(m)
+        if dropped:
+            print(f"[chat] dropped {dropped} unreadable message record(s) from "
+                  f"{self._msg_file}", flush=True)
+        self._messages = kept
         raw_p = _load(self._peer_file, {})
         self._peers = {k: v for k, v in raw_p.items()
                        if isinstance(v, dict)} if isinstance(raw_p, dict) else {}

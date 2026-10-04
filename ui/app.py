@@ -405,6 +405,10 @@ class _BackSwipeWrap(FloatLayout):
         return super().on_touch_up(touch)
 
 
+NO_FIX_NOTE = ("No GPS fix and no placed nodes yet — type an address, or tap the map "
+               "to put the pin where the node is.")
+
+
 class ReticulumNodeMedicApp(App):
     title = "Reticulum Node Medic"
 
@@ -3075,8 +3079,15 @@ class ReticulumNodeMedicApp(App):
                 ll = (f.lat, f.lon) if f else None
             except Exception:
                 ll = None
+        start_note = ""
         if ll is None:
-            ll = (-37.8136, 144.9631)          # Sampleton fallback centre
+            from monitor.geo import default_map_centre
+            ll = default_map_centre(getattr(self.monitor_service, "registry", None))
+        if ll is None:
+            # nothing known: the picker starts at 0,0 and SAYS why — never the
+            # developer's city (readiness ledger #113)
+            ll = (0.0, 0.0)
+            start_note = NO_FIX_NOTE
 
         def _ok(lat, lon):
             cert["location"] = f"{lat:.6f}, {lon:.6f} (confirmed)"
@@ -3096,7 +3107,7 @@ class ReticulumNodeMedicApp(App):
                 pass
             self._open_cert(cert)              # reopen so the new location shows
 
-        ConfirmLocationPopup(ll[0], ll[1], node_name=cert.get("node_name", ""),
+        ConfirmLocationPopup(ll[0], ll[1], start_note=start_note, node_name=cert.get("node_name", ""),
                              on_confirm=_ok, on_cancel=lambda: None,
                              gps_reader=splitter_gps_reader()).open()
 
@@ -3434,10 +3445,13 @@ class ReticulumNodeMedicApp(App):
         if w is None or not devices:
             return
         try:
-            for d in w.tick(devices):
-                Clock.schedule_once(lambda dt, dv=d: self._escalate_node(dv), 0)
+            down = list(w.tick(devices))
         except Exception:
-            pass
+            return
+        if down:
+            # ONE notice for everything that crossed the line this tick, held
+            # until tapped — not a 4-second toast per node (ledger #138)
+            Clock.schedule_once(lambda dt, ds=down: self._escalate_nodes(ds), 0)
 
     def _check_gps_clock(self):
         """Runs on the monitor thread each cycle: discipline the system clock from
@@ -3590,14 +3604,53 @@ class ReticulumNodeMedicApp(App):
             self._gps_disciplinarian.ntp_fallback = False
             self._gps_disciplinarian.ntp_synced = False
 
+    def _escalate_nodes(self, devices):
+        """Several nodes crossed their grace line on one tick: one notice that
+        stays on screen until tapped, naming each with its real silence; the
+        operator alert still goes per node."""
+        lines = [self._outage_sentence(d) for d in devices]
+        if not lines:
+            return
+        self._outage_notice(lines)
+        for line in lines:
+            self._push_outage_alert(line)
+
     def _escalate_node(self, device):
-        """A node has been down long enough to warrant a physical visit: alert on
-        the medic, and — if the operator saved a Reticulum address in Settings —
-        push it to their Sideband/Columba too (best-effort, off-thread)."""
+        """One node — the same notice and push as a batch of one."""
+        self._escalate_nodes([device])
+
+    def _outage_notice(self, lines):
+        from kivy.uix.popup import Popup
+        from kivy.uix.label import Label
+        lbl = Label(text="\n\n".join(lines), halign="center", valign="middle",
+                    padding=(dp(16), dp(16)))
+        lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        p = Popup(title="Node down" if len(lines) == 1 else f"{len(lines)} nodes down",
+                  content=lbl, size_hint=(0.86, 0.42 if len(lines) == 1 else 0.6),
+                  auto_dismiss=True)                 # stays until tapped
+        p.open()
+
+    def _push_outage_alert(self, msg):
+        import threading
+        from monitor.operator_alert import send_operator_alert
+        chat = getattr(self, "_chat", None)
+        sender = chat.send_plain if (chat is not None and chat.running) else None
+        threading.Thread(target=lambda: send_operator_alert("Node Medic — " + msg,
+                                                            sender=sender),
+                         daemon=True).start()
+
+    def _outage_sentence(self, device):
+        """'<name> at <place> has been unreachable for N days' — N from the
+        node's own silence, falling back to the grace window only when the
+        row carries no age (it always said 'for 3 days', ledger #138)."""
         from monitor.node_watch import grace_hours
         w = getattr(self, "_node_watcher", None)
-        gh = grace_hours(device.get("powered_by"), getattr(w, "grace_override_h", None))
-        days = max(1, round(gh / 24.0))
+        lsh = device.get("last_seen_hours")
+        if isinstance(lsh, (int, float)) and lsh > 0:
+            days = max(1, int(round(lsh / 24.0)))
+        else:
+            gh = grace_hours(device.get("powered_by"), getattr(w, "grace_override_h", None))
+            days = max(1, round(gh / 24.0))
         name = device.get("name") or "A node"
         loc = device.get("location") or ""
         # Placeholder subtitles are not places — neither of these may become
@@ -3608,16 +3661,8 @@ class ReticulumNodeMedicApp(App):
         from monitor.registry import HEARD_ON_MESH, PROPAGATION_SUBTITLE
         placeholder = loc in (HEARD_ON_MESH, PROPAGATION_SUBTITLE)
         where = f" at {loc}" if loc and not placeholder else ""
-        msg = (f"{name}{where} has been unreachable for {days} "
-               f"day{'s' if days != 1 else ''} — it likely needs a physical check.")
-        self._mode_toast(msg, ok=False)
-        import threading
-        from monitor.operator_alert import send_operator_alert
-        chat = getattr(self, "_chat", None)
-        sender = chat.send_plain if (chat is not None and chat.running) else None
-        threading.Thread(target=lambda: send_operator_alert("Node Medic — " + msg,
-                                                            sender=sender),
-                         daemon=True).start()
+        return (f"{name}{where} has been unreachable for {days} "
+                f"day{'s' if days != 1 else ''} — it likely needs a physical check.")
 
     def _save_node_watch(self):
         w = getattr(self, "_node_watcher", None)

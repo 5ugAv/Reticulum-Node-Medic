@@ -1,7 +1,15 @@
 # Encrypt-at-rest for the Node Medic
 
-Status: **built, not deployed.** Everything here is human-run and reversible.
-The manager must review before enabling anything on the live medic.
+> **Superseded (2026-09-03).** The LUKS container described below was never
+> deployable: `cryptsetup` is not installed on the medic and is not carried, it
+> needs root, and a locked container cannot open itself after a power cut. What
+> ships instead is `provisioning/records_vault.py` — per-file AES-256-GCM over
+> the records only (never the mesh identity), no root, offline — switched on and
+> off from Settings ▸ **Encrypt my records** (`ui/screens/encryption_screen.py`,
+> `provisioning/encryption_flow.py`). This file is kept as the design record of
+> the abandoned path; its commands are not to be run.
+
+Status of the LUKS design: **abandoned.** Everything below is historical.
 
 ## 1. Problem
 

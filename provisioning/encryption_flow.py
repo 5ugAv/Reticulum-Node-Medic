@@ -47,9 +47,8 @@ def covered_lines(home: Optional[str] = None) -> List[Tuple[bool, str]]:
         (False, "NOT your mesh identity (~/.reticulum, ~/.lxmd). It stays "
                 "readable on purpose, so this node comes back on the air by "
                 "itself after a power cut instead of waiting for you."),
-        (False, "NOT the offline map tiles. They are 714 MB of public "
-                "OpenStreetMap data — encrypting them would add twenty seconds "
-                "and protect nothing."),
+        (False, "NOT the offline map. It is public map data — encrypting it "
+                "would protect nothing."),
     ]
 
 

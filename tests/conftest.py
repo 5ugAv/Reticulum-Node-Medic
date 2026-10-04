@@ -27,10 +27,15 @@ paths and are exempted here via the ``onboard_guard`` marker.
 Without this the suite simply cannot be run where the tool actually lives,
 which is the one place its results mean anything.
 """
+import os
 import pytest
 
 
 def pytest_configure(config):
+    # Sixty-odd test files read sources and assets relative to the cwd; from
+    # any other directory they aborted at collection (readiness ledger #197).
+    # One chdir makes the whole suite location-independent.
+    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     config.addinivalue_line(
         "markers",
         "onboard_guard: test drives the onboard-board guard itself — do not "

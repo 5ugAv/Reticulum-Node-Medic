@@ -193,7 +193,8 @@ _SECURITY_STEPS = [
      "body": "Two things, and then you are done. First how this medic locks its "
              "own records — the recovery key, a passphrase, and how you unlock "
              "it day to day. Then a screen each on what its six modes are for.\n\n"
-             "You can stop anywhere and pick it up again from Settings.",
+             "If you stop part-way, the walkthrough starts again from the "
+             "beginning — nothing is kept until the summary screen.",
      "next": "Start  →"},
 
     # THE HONESTY STEP, and it goes BEFORE anything is chosen rather than in a

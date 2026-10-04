@@ -117,7 +117,10 @@ def _shq(s: str) -> str:
 #: one release — an ``EXPERIMENTAL-reticulum-kt`` line beside an ``official-rns-py``
 #: line — and the old "first name containing 'universal'" rule picked EXPERIMENTAL,
 #: because that is what sorts first. Nobody chose that; alphabetical order did.
-_APK_REJECT = ("experimental", "alpha", "beta", "nightly", "debug", "unsigned", "-rc")
+_APK_REJECT = ("experimental", "alpha", "beta", "nightly", "debug", "unsigned", "-rc",
+               # Sideband 2.1.1_pre_release sorted above 2.1.0 and was carried
+               # and labelled as the stable one (readiness ledger #159)
+               "pre_release", "prerelease", "pre-release")
 
 #: Any-CPU build. An arch-split APK installs on some phones and not others, and the
 #: medic cannot know which phone is about to walk up to it.

@@ -46,9 +46,13 @@ class AppServer:
     """Serves the APK cache dir over HTTP on all interfaces. Idempotent start;
     ``stop()`` shuts it down. Daemon thread, so it never blocks app exit."""
 
-    def __init__(self, cache_dir: str, port: int = DEFAULT_PORT):
+    def __init__(self, cache_dir: str, port: int = DEFAULT_PORT,
+                 bind_host: str = "0.0.0.0"):
         self.cache_dir = os.path.expanduser(cache_dir)
         self.port = port
+        #: where to listen; the test binds loopback on port 0 and reads the
+        #: port back instead of fighting over a fixed one (ledger #202)
+        self.bind_host = bind_host
         self._httpd = None
 
     def start(self) -> Optional[str]:
@@ -67,7 +71,8 @@ class AppServer:
                     pass
 
             TCPServer.allow_reuse_address = True
-            self._httpd = TCPServer(("0.0.0.0", self.port), _Handler)
+            self._httpd = TCPServer((self.bind_host, self.port), _Handler)
+            self.port = self._httpd.server_address[1]      # real port (0 = pick one)
             threading.Thread(target=self._httpd.serve_forever, daemon=True).start()
         ip = local_ip()
         return f"http://{ip}:{self.port}" if ip else None

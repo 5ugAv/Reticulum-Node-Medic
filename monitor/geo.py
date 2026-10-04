@@ -469,3 +469,23 @@ def navigation_links(lat: float, lon: float) -> dict:
         "apple": maps_url(lat, lon, "apple"),
         "raw": f"{format_coord(lat)}, {format_coord(lon)}",
     }
+
+
+def default_map_centre(registry=None, now=None):
+    """Where a location picker should start when there is no GPS fix: the
+    centroid of the nodes this medic has placed, or None when it has none.
+    It used to be a hard-coded city — the developer's — for every keeper on
+    earth (readiness ledger #113). None means: say so, and let the keeper
+    type an address or tap."""
+    try:
+        if registry is None:
+            return None
+        import time as _t
+        dots = registry.located_nodes(_t.time() if now is None else now)
+    except Exception:                                                  # noqa: BLE001
+        return None
+    pts = [(d.get("lat"), d.get("lon")) for d in (dots or [])
+           if isinstance(d.get("lat"), (int, float)) and isinstance(d.get("lon"), (int, float))]
+    if not pts:
+        return None
+    return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))

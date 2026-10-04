@@ -135,8 +135,12 @@ class NodeDetailScreen(BoxLayout):
                                size="20sp"))
         # A stranger is not an RTNode: node_type defaults to "rtnode2400" for
         # every record, and the operator's own phone wore it (2026-10-02).
-        kind = (record.node_type if record.provenance != "neighbour"
-                else "heard announcing — device unknown")
+        # words, not the type code ('rtnode2400', 'pi_propagation') — #63
+        kinds = {"rtnode2400": tr("RTNode-2400"), "pi_propagation": tr("Raspberry Pi propagation node"),
+                 "rnode": tr("RNode radio")}
+        kind = (kinds.get(record.node_type, record.node_type)
+                if record.provenance != "neighbour"
+                else tr("heard announcing — device unknown"))
         title.add_widget(_line(record.location or kind,
                                color="text_secondary", size="13sp"))
         head.add_widget(title)

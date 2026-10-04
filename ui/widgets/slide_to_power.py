@@ -97,6 +97,7 @@ class SlideToPowerOff(FloatLayout):
         # right by half the difference. On the front page that pushed OFF out
         # past the end of the capsule (operator photo, 2026-09-29). Every style
         # was affected; only the capsule made it obvious.
+        self._hint_rest = "" if track == "neon" else hint_text   # restored by reset()
         self.hint = Label(text="" if track == "neon" else hint_text, bold=True,
                           size_hint=(None, None),
                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
@@ -225,6 +226,11 @@ class SlideToPowerOff(FloatLayout):
             self.hint.text = message
             self.hint.opacity = 1
             self.hint.color = theme.hex_to_rgba(theme.COLORS["red"])
+        else:
+            # the painted track said "powering off…" and kept saying it after
+            # a refusal (readiness ledger #23) — back to the resting words
+            self.hint.text = getattr(self, "_hint_rest", self.hint.text)
+            self.hint.opacity = 1
         self._refresh()
 
     def on_touch_up(self, touch):

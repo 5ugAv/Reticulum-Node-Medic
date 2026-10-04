@@ -10,9 +10,11 @@ export PATH="$HOME/.local/bin:$PATH"
 # The 5" panel is ~295 DPI; Kivy assumes desktop DPI, rendering text half-size.
 # Density scales every sp (text) and dp (touch target) together, app-wide.
 export KIVY_METRICS_DENSITY=1.5
-# A finger is a finger, not also a mouse: ui/touch_fix.py feeds SDL finger
-# events to Kivy (multitouch); without this SDL would synthesise a mouse
-# pointer from the first finger as well and every tap would land twice.
+# A finger is a finger, not also a mouse. ui/touch_input.py picks ONE provider
+# for the panel — mtdev on the Goodix controller, with Kivy's mouse provider
+# off (2026-10-03). These two SDL switches only matter on the fallback road
+# (no libmtdev → sdl2 touch), where SDL would otherwise synthesise a mouse
+# pointer from the first finger and every tap would land twice.
 export SDL_TOUCH_MOUSE_EVENTS=0
 export SDL_MOUSE_TOUCH_EVENTS=0
 # Wait for rnsd's shared Reticulum instance BEFORE launching, so the app always

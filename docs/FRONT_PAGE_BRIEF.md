@@ -70,9 +70,13 @@ Taken from `ui/home_zones.py`, which is the tap-map the code uses:
 * **Card row: y 1011 to 1280** (the bottom 269 px), **full bleed** left to right
 * **Five equal columns, 144 px each.** The tap-map divides the row by five and
   nothing else — a card that drifts from its column becomes untappable.
-* **Red cross emblem: centre (360, 589), radius 94 px.** It is an Easter egg
-  (opens the credits). Keep it where it is or the egg moves.
-* **Wi-Fi emblem: x 302–418, y 320–429.** Also a tap target (Wi-Fi settings).
+* **LoRa trunk node (the filled disc the mesh grows from): centre (359, 224),
+  tap radius 54 px** — `CROSS_CX/CY/R` in `ui/home_zones.py`. It is the Easter
+  egg (opens the credits). Keep it where it is or the egg moves.
+* **Wi-Fi emblem: x 335–450, y 326–399** (`WIFI_*` fractions in
+  `ui/home_zones.py`). Also a tap target (Wi-Fi settings).
+* The numbers above are derived from `ui/home_zones.py`; when they disagree, the
+  code is right and this file is stale (readiness ledger #112, 2026-10-05).
 * Top-right and top-left corners carry the gear and the power slider, drawn by
   the app OVER the poster. Keep those corners clear of anything tappable.
 

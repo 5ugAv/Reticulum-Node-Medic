@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("host", help="the node's hostname or IP (e.g. elsewhere.local, 192.168.1.42)")
+    ap.add_argument("host", help="the node's hostname or IP (e.g. mynode.local or 192.168.1.50)")
     ap.add_argument("--user", default="pi")
     ap.add_argument("--force", action="store_true",
                     help="push even if the node already carries the current reporter")

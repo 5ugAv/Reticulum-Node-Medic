@@ -162,8 +162,11 @@ class ConfirmLocationPopup(Popup):
                  on_confirm: Optional[Callable[[float, float], None]] = None,
                  on_cancel: Optional[Callable[[], None]] = None,
                  gps_reader: Optional[Callable[[], Optional[tuple]]] = None,
-                 tiles=None, **kwargs):
+                 tiles=None, start_note: str = "", **kwargs):
         self._lat, self._lon = float(lat), float(lon)
+        #: shown in the caption when the start point is a guess (no fix, no
+        #: placed nodes) — the pin at 0,0 must not look like a place (#113)
+        self._start_note = start_note
         self._on_confirm = on_confirm
         self._on_cancel = on_cancel
         self._gps_reader = gps_reader
@@ -199,6 +202,8 @@ class ConfirmLocationPopup(Popup):
         self._addr = _lbl("Type an address and tap Find to look up the spot "
                           "online (optional).",
                           "12.5sp", color="text_secondary", h=30)
+        if self._start_note:
+            self._addr.text = self._start_note
         body.add_widget(self._addr)
         body.add_widget(_lbl(tr("or tap the map · pan under the crosshair and "
                                 "Select here · Use GPS"),

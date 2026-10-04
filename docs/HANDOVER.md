@@ -466,15 +466,14 @@ it rebroadcasting other destinations' announces. On the relay this mesh routes
 through, that trades the network for a dot on a website, quietly. The managed
 block therefore writes **`mode = gateway`** explicitly.
 
-**⚠ The fuzz is invertible, and this is the most urgent open item in the
-project.** Both offsets are seeded on values the same announce publishes — the
-destination hash in firmware, the node name on the medic — so anyone who has
-read either public repo recovers the true point exactly. Treat real protection
-as **0 m against an informed observer**. The operator's decision (2026-08-15) is
-to stop describing the fuzz on screen and ask for a deliberate operator-chosen
-offset instead. **Do not delete the fuzz machinery** — it is still correct
-wherever the tool holds a position the operator did not choose, and a
-secret-salt version would restore it as real protection. Full brief: `NEXT_BRIEFS.md` F.
+**Fixed 2026-09-09 — the medic's offset is now seeded with a per-medic secret**
+(`monitor/geo.py` `fuzz_salt`, a 0600 file; `fuzz_location` keys on it), so the
+~800 m offset can no longer be recomputed from the public name. What remains
+public-seeded is the **firmware's own ~500 m offset** on GPS-fitted RTNodes, and
+their health beacons still carry the live position unfuzzed (readiness ledger
+#157) — that is the open half, and it is a firmware reflash, not a tool change.
+(The 2026-08-15 wording "invertible … 0 m against an informed observer" described
+the state before the salt; it is kept only in git history.)
 
 ### 4.6 Board id byte == RNode `BOARD_MODEL`
 
@@ -664,9 +663,8 @@ re-checked in this session.
 ## 7. Open work
 
 The specified jobs are **A–F in `docs/NEXT_BRIEFS.md`**, ordered because they
-touch the same files. F (the location fuzz, §4.5) is the most urgent: it is the
-only place the tool currently tells an operator something false about their own
-safety.
+touch the same files. F (the location fuzz, §4.5) was closed on 2026-09-09 by the
+secret salt; the firmware beacon half (ledger #157) is what remains of it.
 
 Current state and the deploy/verify mechanics are in
 `docs/HANDOVER_NEXT_SESSION.md` (rewritten 2026-10-04). Known gaps are

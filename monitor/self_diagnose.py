@@ -288,7 +288,9 @@ def check_cable_link_unmanaged(conf_present: bool, nm_log_tail: str = "") -> Fin
          if saw_dhcp else
          "NetworkManager is not told to leave usb0 alone, so a cable birth can "
          "be dropped mid-build.")
-        + f" Install {NM_USB0_CONF} (scripts/nodemedic-usb0-unmanaged.conf).",
+        + f" Ask whoever set up this medic to install the NetworkManager drop-in "
+          f"{NM_USB0_CONF} (scripts/nodemedic-usb0-unmanaged.conf in the tool) — "
+          f"a cable birth will not work until then.",
         data={"conf": NM_USB0_CONF})
 
 

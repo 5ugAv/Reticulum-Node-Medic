@@ -1276,9 +1276,15 @@ class BirthGuideScreen(BoxLayout):
             self._adopt_name = ti
             self._adopt_name_value = ""
         p = c.get("params") or {}
+        # Only a radio line the node actually reported: with values missing
+        # this rendered "0.000 MHz SFNone 0k CRNone None dBm" (ledger #69).
+        if all(p.get(k) is not None for k in ("freq", "sf", "bw", "cr", "txp")):
+            radio = (f"Radio:  {(p['freq'] / 1e6):.3f} MHz   SF{p['sf']}   "
+                     f"{int(p['bw'] / 1000)}k   CR{p['cr']}   {p['txp']} dBm")
+        else:
+            radio = tr("Radio:  not reported — adopt keeps the node's own settings")
         det = (f"Board:  {c.get('board') or '—'}      Firmware:  {c.get('firmware') or '—'}\n"
-               f"Radio:  {(p.get('freq', 0) / 1e6):.3f} MHz   SF{p.get('sf')}   "
-               f"{int(p.get('bw', 0) / 1000)}k   CR{p.get('cr')}   {p.get('txp')} dBm\n"
+               f"{radio}\n"
                # NO [OK] HERE. Both were literals: nothing on this screen
                # checked the parameters, and nothing checked that the node is
                # beaconing — with values missing it rendered
@@ -2206,8 +2212,9 @@ class BirthGuideScreen(BoxLayout):
         self._begin_steps()
 
     def _pick_node_location(self):
-        """The prelude's map: seed from GPS (else the last pin, else the map's
-        Sampleton fallback — same as adopt), let the operator move it by tap
+        """The prelude's map: seed from GPS (else the last pin, else the
+        centroid of placed nodes, else 0,0 with a note — same as adopt; never a
+        hard-coded city, readiness ledger #113), let the operator move it by tap
         or typed address, and carry the committed pin into the hand-off. A
         broken map must not strand a birth: any failure just carries on
         without a pin, which is the pre-2026-08-14 behaviour."""
@@ -2219,15 +2226,28 @@ class BirthGuideScreen(BoxLayout):
                 fix = reader()
             except Exception:                                      # noqa: BLE001
                 fix = None
-            seed = (fix or getattr(self, "_node_location", None)
-                    or (-37.8136, 144.9631))
+            seed = fix or getattr(self, "_node_location", None)
+            start_note = ""
+            if not seed:
+                from monitor.geo import default_map_centre
+                try:
+                    from kivy.app import App
+                    reg = getattr(getattr(App.get_running_app(), "monitor_service", None),
+                                  "registry", None)
+                except Exception:                                  # noqa: BLE001
+                    reg = None
+                seed = default_map_centre(reg)
+            if not seed:
+                seed = (0.0, 0.0)
+                start_note = ("No GPS fix and no placed nodes yet — type an address, "
+                              "or tap the map to put the pin where the node is.")
 
             def _ok(lat, lon):
                 self._node_location = (lat, lon)
                 self._begin_steps()
 
             ConfirmLocationPopup(
-                seed[0], seed[1], node_name=self._node_name or "",
+                seed[0], seed[1], start_note=start_note, node_name=self._node_name or "",
                 on_confirm=_ok, on_cancel=lambda: None,
                 gps_reader=reader).open()
         except Exception:                                          # noqa: BLE001

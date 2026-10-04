@@ -175,10 +175,10 @@ _GUIDANCE = {
     "usb_recover": ("Onboard radio dropped off USB. Re-seat it (or power-cycle the "
                     "whole medic). If it stays gone, try a different USB port and a "
                     "known-good data cable."),
-    "reflash_provision": ("The onboard firmware is corrupt/unprovisioned. Recovery is "
-                          "reflash the Tracker firmware then provision it "
-                          "(autoinstall → homebrew → --firmware-hash). This runs at the "
-                          "bench — auto-recovery is coming."),
+    "reflash_provision": ("The onboard firmware is corrupt or unprovisioned. At the "
+                          "bench: PROBE ▸ 'Birth the GPS Tracker — this medic's "
+                          "firstborn' reflashes and provisions it; plug in only that "
+                          "board first."),
     "free_space": ("Storage is filling up. Safe things to clear: old journal logs "
                    "(journalctl --vacuum-size=50M), cached firmware/images you've "
                    "already flashed, and birth certificates you've exported."),

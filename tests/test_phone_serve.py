@@ -20,13 +20,13 @@ def test_build_url_none_without_ip_or_file():
 def test_server_serves_the_cache_dir(tmp_path):
     apk = tmp_path / "columba-test.apk"
     apk.write_bytes(b"PK\x03\x04 fake apk bytes")
-    srv = AppServer(str(tmp_path), port=8017)
+    srv = AppServer(str(tmp_path), port=0, bind_host="127.0.0.1")   # no fixed port (#202)
     try:
         base = srv.start()
-        assert srv.is_running()
+        assert srv.is_running() and srv.port > 0
         # base may be None on a CI box with no route; fetch via loopback regardless
         got = urllib.request.urlopen(
-            f"http://127.0.0.1:8017/columba-test.apk", timeout=3).read()
+            f"http://127.0.0.1:{srv.port}/columba-test.apk", timeout=3).read()
         assert got == b"PK\x03\x04 fake apk bytes"
     finally:
         srv.stop()

@@ -593,7 +593,9 @@ def flash_rnode_firmware(wf: "BuildWorkflow") -> StepResult:
             # Said in the step's own message, never a block: a stale face is
             # still a working radio. scripts/rebuild_rnode_firmware.py cures it.
             detail = (f"{detail} — NOTE the RNode image may be behind its source "
-                      f"({stale}); run scripts/rebuild_rnode_firmware.py on the medic")
+                      f"({stale}). It still works; rebuilding it needs the toolchain "
+                      f"and a terminal on the medic — ask whoever maintains it "
+                      f"(scripts/rebuild_rnode_firmware.py).")
         if ok:
             wf.profile.has_rnode = True
             if rgb_applied:

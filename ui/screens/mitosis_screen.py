@@ -443,7 +443,7 @@ class MitosisScreen(BoxLayout):
         self.add_widget(title)
         body = _label(tr(
             "This is the name you will see when you look for it later. "
-            "NodeMedic2 is a perfectly good answer - just tap Continue.\n"
+            "NodeMedic2 is a perfectly good answer.\n"
             "The name becomes its address on the cable and its place in the "
             "family line."), color="text_secondary", size="14sp")
         grow_to_text(body)
