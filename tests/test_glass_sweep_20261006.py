@@ -144,3 +144,9 @@ def test_the_activity_banner_takes_its_own_space():
     hide = a[a.index("def _hide_activity_banner"):a.index("def _reserve_banner_space")]
     assert "self._reserve_banner_space(bar.height)" in show
     assert "self._reserve_banner_space(0)" in hide
+
+
+
+def test_the_clone_gives_cage_an_empty_default_cursor():
+    s = _src("workflows/clone.py")
+    assert "~/.icons/default/cursors" in s and "ExecStart=/usr/bin/cage -s -- /bin/bash" in s

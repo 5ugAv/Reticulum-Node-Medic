@@ -360,19 +360,23 @@ _TOUR_STEPS = [
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",
-     "body": "Every node you have built or adopted — your kin — and when each was last heard from. "
-             "Battery, temperature, what it is carrying.\n\n"
+     "body": "VITALS watches every node you have built or adopted — your kin. It "
+             "shows when each was last heard from, its battery where the node "
+             "reports one, its signal, and which connections it says are "
+             "working: LoRa, Wi-Fi, Bluetooth, internet.\n\n"
              "Nodes go quiet for ordinary reasons — a cloudy week on a solar "
              "node is not a fault. VITALS is where you find out which ones have "
              "been quiet longer than that."},
 
     {"key": TOUR_SCAN, "part": TOUR, "poster_card": "scan", "opens": "scan",
-     "title": "MAPS — where the next node goes",
-     "body": "The map. Your nodes where they actually stand, the links the medic "
-             "has heard between them, and the gaps where the mesh does not "
-             "reach.\n\n"
-             "It is also the front door to placing one: pick a spot, and the "
-             "build starts from there with the position already stamped in."},
+     "title": "MAPS — see where nodes are placed",
+     "body": "The map shows where your nodes are. After a range test it shows "
+             "how far each node's signal reaches. Where nodes report hearing "
+             "each other, it draws the link between them. And it marks spots "
+             "where a new node would extend the network or join parts of it "
+             "together.\n\n"
+             "It is also where placing a node starts: pick a spot, and the build "
+             "begins with that position already filled in."},
 
     # THE MAPS LIVE ON THE MEDIC, AND SOMEBODY HAS TO PUT THEM THERE (operator,
     # 2026-09-29: "if someone's building a Node Medic from the GitHub repo,
@@ -396,8 +400,8 @@ _TOUR_STEPS = [
     {"key": TOUR_TRIAGE, "part": TOUR, "poster_card": "triage", "opens": "triage",
      "title": "ANTENNA — aim it on site",
      "body": "For when you are standing at the node with it in your hands. "
-             "Signal, noise and who can hear you, live, as you move the "
-             "antenna.\n\n"
+             "Signal strength, clarity and background noise update live as you "
+             "move the antenna.\n\n"
              "A node in the right place with a badly aimed antenna and a node in "
              "the wrong place look the same in VITALS. This is how you tell them "
              "apart, on site.\n\n"
@@ -407,9 +411,11 @@ _TOUR_STEPS = [
              # a card about measuring their reach would teach nothing it could
              # use. But ANTENNA carries the button, so the card that owns the
              # button names it, and the "?" guide carries the explanation.
-             "It is also where a RANGE TEST starts — you walk away from a "
-             "node on foot and the medic tells you where its signal stops. "
-             "The \"?\" in the corner explains that one."},
+             "It is also where a RANGE TEST starts. Stand next to a node and "
+             "press Range test: the medic pins the node's position. Then walk "
+             "away. The medic keeps asking the node to answer and records where "
+             "its signal reaches you and where it stops. The result is drawn on "
+             "MAPS as that node's reach."},
 
     # The fifth painted card. The tour never mentioned it, and it is the one
     # a stranger taps first (readiness ledger #151).
@@ -420,8 +426,8 @@ _TOUR_STEPS = [
              "A message with no path right now is held by this medic's "
              "propagation node until the other side is back online — in Home "
              "mode. In Backpack mode nothing holds it, and the screen says so.\n\n"
-             "The same screen hands a phone the Columba or Sideband app over "
-             "Wi-Fi, for messaging from your pocket."},
+             "The same screen can also install the Columba or Sideband app onto "
+             "a phone over Wi-Fi, straight from Node Medic."},
 
     {"key": TOUR_PROBE, "part": TOUR, "opens": "probe",
      "title": "PROBE — find out what is wrong",
@@ -429,12 +435,12 @@ _TOUR_STEPS = [
              "it is, what firmware it carries, whether it answers at all.\n\n"
              "After this tour, open it from a node's page: VITALS, tap the "
              "node, then Probe.\n\n"
-             "Self Diagnose (in Settings, and on this screen) turns the same "
+             "Self Diagnose (on VITALS, and in Settings) turns the same "
              "attention on the medic itself — its own radio, its GPS, its "
              "clock, its services — and repairs what it can. Run it when the "
              "medic is the thing behaving oddly.",
-     "hint": "Self Diagnose is behind the gear: Settings. It is the first "
-             "thing to try before suspecting a node."},
+     "hint": "Self Diagnose is on the VITALS screen and in Settings. It is the "
+             "first thing to try before suspecting a node."},
 
     {"key": TOUR_MITOSIS, "part": TOUR, "opens": "mitosis",
      "title": "CLONE — make another medic",
@@ -460,8 +466,7 @@ _TOUR_STEPS = [
     {"key": FINISH, "part": TOUR,
      "title": "That is the medic",
      "body": "Nothing here is finished by reading about it. Plug a board in and "
-             "press BUILD — the walkthrough will not let you damage anything, "
-             "and it says what it is about to do before it does it.\n\n"
+             "press BUILD — Node Medic walks you through the whole setup.\n\n"
              "When you want this medic's own records locked, that is Settings ▸ "
              "Encrypt my records.",
      "next": "Take me to the front page  →"},

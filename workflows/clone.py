@@ -513,6 +513,15 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
             "/usr/share/icons/nodemedic-empty/cursors/default && "
             + priv + "cp /tmp/nm-cursor/index.theme "
             "/usr/share/icons/nodemedic-empty/index.theme")
+        # CAGE IGNORES XCURSOR_THEME: it loads the theme named "default", so
+        # the arrow stayed on the first real clone (2026-10-06; noted on
+        # HAWKEYE in August). The kiosk user's own "default" theme is empty.
+        wf.connection.run(
+            "mkdir -p ~/.icons/default/cursors && "
+            "cp /tmp/nm-cursor/left_ptr ~/.icons/default/cursors/left_ptr && "
+            "for n in default arrow top_left_arrow pointer; do "
+            "ln -sf left_ptr ~/.icons/default/cursors/$n; done && "
+            "printf '[Icon Theme]\\nName=default\\n' > ~/.icons/default/index.theme")
     # /dev/i2c-1 for the UPS gauge needs the i2c-dev MODULE as well as the
     # dtparam — the half raspi-config does that the card bake missed.
     wf.connection.run(priv + "modprobe i2c-dev || true")
