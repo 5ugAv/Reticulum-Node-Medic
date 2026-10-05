@@ -367,10 +367,27 @@ class MitosisScreen(BoxLayout):
             self._anim.start()
         except Exception:                                  # noqa: BLE001
             self._anim = None
-        skip = _small_btn(tr("The new medic is already booted — skip to the clone"))
-        skip.bind(on_release=lambda *_: self._show_stage_name(skip_mode=True))
-        self.add_widget(skip)
+        # NOT A "SKIP". New keepers read "skip" as "skip the instructions"
+        # (the keeper, 2026-10-06). This road is only for a new medic whose card
+        # was ALREADY written by a clone and is running now — so it says that,
+        # in muted text, and asks once before leaving the card road.
+        retry = _small_btn(tr("Retry a clone: the new medic's card is already "
+                              "written and it is running"))
+        retry.opacity = 0.75
+        retry.bind(on_release=lambda *_: self._confirm_retry_road())
+        self.add_widget(retry)
         self._start_card_poll()
+
+    def _confirm_retry_road(self):
+        from ui.confirm import confirm_leave
+        confirm_leave(
+            tr("Only for a new medic whose card a clone ALREADY wrote, that is "
+               "now switched on and running. If you have a blank card for a new "
+               "medic, go back and put it in the reader instead."),
+            tr("Is the new medic already running?"),
+            on_leave=lambda *_: self._show_stage_name(skip_mode=True),
+            stay_text=tr("No — I have a blank card"),
+            leave_text=tr("Yes — it is running"))
 
     def _start_card_poll(self):
         self._card_greeted = False

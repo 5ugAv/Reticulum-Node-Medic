@@ -126,3 +126,12 @@ def test_the_already_booted_road_asks_the_fleet_question_too():
     assert "self._show_stage_fleet()" in nc and "self._show_stage_clone()" not in nc
     fc = s[s.index("def _fleet_continue"):s.index("def _show_stage_wifi")]
     assert "self._show_stage_clone()" in fc and "self._show_stage_wifi()" in fc
+
+
+
+def test_the_retry_road_is_not_called_skip_and_asks_first():
+    s = _src("ui/screens/mitosis_screen.py")
+    assert "skip to the clone" not in s
+    assert "retry.bind(on_release=lambda *_: self._confirm_retry_road())" in s
+    c = s[s.index("def _confirm_retry_road"):s.index("def _start_card_poll")]
+    assert "_show_stage_name(skip_mode=True)" in c and 'tr("No — I have a blank card")' in c
