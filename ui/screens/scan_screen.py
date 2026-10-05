@@ -3328,11 +3328,13 @@ class ScanScreen(BoxLayout):
                             "radio settings."))
         elif d["verdict"] == "slope":
             ex = d["predicted_extra_m"]
-            parts.append(tr("A slope: the link ran out of budget. SF10 would "
-                            "add about {sf10} m, SF12 about {sf12} m, 22 dBm "
-                            "at both ends about {txp} m.").format(
-                                sf10=ex.get("sf10", 0), sf12=ex.get("sf12", 0),
-                                txp=ex.get("txp22_both", 0)))
+            # NOT a radio-settings tip: a node on other settings cannot hear
+            # the rest of the mesh (review, 2026-10-06)
+            parts.append(tr("The signal faded out gradually — the natural edge "
+                            "of this node's range. A better antenna, a higher "
+                            "mount, or another node in between will reach "
+                            "further. Changing radio settings would cut it off "
+                            "from the rest of the mesh."))
         elif d["verdict"] == "open":
             parts.append(tr("The link never went silent — no edge to judge "
                             "yet. Walk further next time."))

@@ -410,8 +410,9 @@ class TriageScreen(FloatLayout):
             self._noise.text = (f"[color={sec}]" + tr("Background noise") + "[/color]\n"
                                 f"[color={pri}][b]{sample['noise']:.0f} dBm[/b][/color]")
             self._write_guidance(tr(
-                "Listening... noise floor is live. To begin scoring, another "
-                "node must transmit - send an announce from your phone or a node."))
+                "Listening... background noise is live. To begin scoring, another "
+                "node has to transmit — wait for one, or open a mesh app on "
+                "your phone so it says hello."))
             return
         heard_at = sample.get("heard_at")
         if heard_at is None or heard_at > getattr(self, "_beacon_started", 0.0):
@@ -452,8 +453,8 @@ class TriageScreen(FloatLayout):
         if sample["rssi"] >= -35:
             self._write_guidance(
                 tr("Signal is TOO CLOSE to aim against "
-                   "({rssi} dBm). Move the beacon/lighthouse further "
-                   "away - readings this hot look perfect in every direction.").format(
+                   "({rssi} dBm). Move the distant node further away — "
+                   "readings this strong look perfect in every direction.").format(
                        rssi=f"{sample['rssi']:.0f}"))
             return
         r, g, b = thermal_color(snap["score"])

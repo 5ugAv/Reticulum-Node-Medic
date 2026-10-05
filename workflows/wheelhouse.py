@@ -96,6 +96,11 @@ APT_PACKAGES = (
     # Dire Wolf needs a sound device; the medic has HDMI audio only, so the
     # keeper adds a USB adapter. These are what ALSA needs to drive one.
     "alsa-utils",
+    # The new medic's GPS: the Tracker streams NMEA and gpsd reads it. Pi OS
+    # Lite has neither, so a clone's first job (set up the Tracker) needed
+    # the internet (clone review, 2026-10-06).
+    "gpsd",
+    "gpsd-clients",
 )
 
 #: The clone's display stack. A Lite image cannot open a window (the Kivy

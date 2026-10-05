@@ -132,18 +132,21 @@ def test_final_step_is_bullets_not_a_title_that_repeats_them():
     for needle in ("unplug the Pi from Node Medic",
                    "plug in the radio you flashed",
                    "own power supply",
-                   "RGB LED"):
+                   "RGB light"):
         assert needle in body, f"missing bullet: {needle}"
 
 
 def test_the_led_line_matches_the_firmware_not_the_guess():
-    """rnode_v4_rgb's own state chart: slow WHITE BREATHE = radio alive and
-    idle; solid white = boot error. 'Stops pulsing white = ready' would be
-    the opposite of the truth — the screen says what the firmware does."""
+    """CORRECTED 2026-10-06. The firmware breathes white only while NO host
+    has opened the radio (RNode_Firmware.ino loop(): `else { ...
+    led_indicate_standby(); }` under `if (radio_online)`), and the operator
+    confirmed it on the bench 2026-09-11: power-cycle, pulse back. The
+    2026-08-14 reading ("white breathe = radio alive") was backwards — the
+    screen must say a pulse means the Pi has NOT opened it yet."""
     s = _step("radio_to_pi")
-    body = s["body"].lower()
-    assert "breathe" in body or "breathing" in body
-    assert "stops pulsing" not in body
+    body = " ".join(s["body"].lower().split())
+    assert "pulse" in body and "not opened the radio yet" in body
+    assert "radio alive" not in body
 
 
 # 2026-08-14, later the same bench: the write-these-down heading pulses

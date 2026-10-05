@@ -255,7 +255,7 @@ class ChatScreen(BoxLayout):
             # every failure (readiness ledger #187)
             self._addr.text = tr("Chat isn't up: {error}").format(error=err)
         else:
-            self._addr.text = tr("Chat is waiting for the mesh service (rnsd)…")
+            self._addr.text = tr("Chat is waiting for the mesh to start…")
         self._body.clear_widgets()
         self._foot.clear_widgets()
         if err and not running and self._retry is not None:

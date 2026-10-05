@@ -200,10 +200,9 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
         return StepResult(
             "install_dependencies", False,
             "The new medic needs its software, but this medic has no carried "
-            "copy and no internet to fetch it. Connect THIS medic to WiFi "
-            "(Settings \u25b8 WiFi) and press Retry — once it has been online "
-            "even once, it carries its own copy and later clones work offline. "
-            "(No carried wheelhouse and no internet.)")
+            "copy and no internet to fetch it. Put THIS medic online once "
+            "(Settings \u25b8 Field readiness \u25b8 Prepare for the field), "
+            "then start the clone again — after that, clones work offline.")
     code, out, err = wf.connection.run(cmd, timeout=1200)
     ok = code == 0
     # No apt step needed: the Kivy wheel vendors its own SDL2/SDL2_image/mixer/
@@ -254,10 +253,19 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
     icode, iout, ierr = wf.connection.run(
         wf.priv(offline_install_command(cache)), timeout=600)
     have = wf.connection.run("command -v direwolf")[0] == 0
-    if not have:
+    gps = wf.connection.run("command -v gpsd")[0] == 0
+    if not gps:
         return StepResult("install_carried_packages", False,
-                          f"Installed {count} carried packages but direwolf is "
-                          f"not on PATH: {(ierr or iout)[-160:]}")
+                          "The GPS software would not install from the carried "
+                          "packages, so the new medic could not use its Tracker. "
+                          "Press Retry; if it fails again, this medic needs "
+                          "Settings ▸ Field readiness while online.")
+    if not have:
+        # optional: the clone works; only voice-radio packet support is missing
+        return StepResult("install_carried_packages", True,
+                          "GPS software installed. Voice-radio packet support "
+                          "(Dire Wolf) did not install — the clone works without it.",
+                          skipped=True)
     return StepResult("install_carried_packages", True,
                       f"Installed {count} carried .deb packages offline "
                       f"(Dire Wolf is available for radio work).")
@@ -271,9 +279,14 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     overflows the kernel's single-argv ceiling and killed the whole thread
     — both found by adversarial review, 2026-08-25)."""
     if getattr(wf, "fresh_fleet", False):
+        # an EMPTY registry, not none: final_verification and the app both
+        # look for the file (a fresh clone failed verification forever)
+        wf.connection.run(f"mkdir -p {CLONE_DIR} && "
+                          f"[ -f {CLONE_DIR}/registry.json ] || "
+                          f"echo '{{}}' > {CLONE_DIR}/registry.json")
         return StepResult("copy_monitoring_db", True,
-                          "Fresh fleet — the keeper chose to start the new medic "
-                          "without the monitoring records.", skipped=True)
+                          "Fresh fleet — the new medic starts with no nodes.",
+                          skipped=True)
     import tempfile
     payload = json.dumps(wf.registry.to_dict())
     wf.monitoring_db_json = payload
@@ -634,6 +647,8 @@ def restart_into_tool(wf: "CloneWorkflow") -> StepResult:
     cleanly before the link drops; we can't verify past our own disconnect, so a
     dropped connection here is SUCCESS, not failure."""
     # sleep-then-reboot, detached, so ssh returns 0 before the box goes down.
+    _c, boot, _e = wf.connection.run("cat /proc/sys/kernel/random/boot_id")
+    wf.boot_id_before = (boot or "").strip()
     wf.connection.run(
         wf.priv("sh -c 'nohup sh -c \"sleep 3; reboot\" "
                 ">/dev/null 2>&1 &'"), timeout=15)
@@ -655,8 +670,13 @@ def confirm_tool_running(wf: "CloneWorkflow") -> StepResult:
     import time as _time
     _sleep = getattr(wf, "sleep", _time.sleep)          # tests pass a no-op
     deadline = _time.time() + 180
+    before = getattr(wf, "boot_id_before", "")
+    _sleep(10)                                   # the reboot is 3 s away
     while _time.time() < deadline:
-        if wf.connection.run("true", timeout=10)[0] == 0:
+        code, boot, _e = wf.connection.run("cat /proc/sys/kernel/random/boot_id",
+                                           timeout=10)
+        # back, AND a different boot: answering before the reboot is not "back"
+        if code == 0 and (not before or (boot or "").strip() != before):
             break
         _sleep(6)
     else:
@@ -668,15 +688,17 @@ def confirm_tool_running(wf: "CloneWorkflow") -> StepResult:
     _sleep(20)
     code, state, _e = wf.connection.run("systemctl is-active reticulum-node-medic")
     again = wf.connection.run("systemctl show -p NRestarts --value reticulum-node-medic")
-    restarting = (first[1] or "").strip() != (again[1] or "").strip()
+    a, b = (first[1] or "").strip(), (again[1] or "").strip()
+    restarting = bool(a and b and a != b)        # empty = not up yet, not a count
     if (state or "").strip() == "active" and not restarting:
         return StepResult("confirm_tool_running", True,
                           "The new medic is running Node Medic on its own screen.")
     _c, tail, _e = wf.connection.run(
         "grep -aE 'CRITICAL|Error|rror:' ~/ui.log | tail -2")
     return StepResult("confirm_tool_running", False,
-                      "The new medic's app keeps stopping: "
-                      + " ".join((tail or "").split())[-200:])
+                      "Node Medic is not staying open on the new medic. Look at "
+                      "its screen, then press Retry. ("
+                      + " ".join((tail or "").split())[-160:] + ")")
 
 
 def carry_the_time(wf: "CloneWorkflow") -> StepResult:
@@ -945,11 +967,14 @@ class CloneWorkflow:
         except ValueError:
             return
         words = self.STEP_WORDS.get(step_name, "Receiving Node Medic")
-        line = (f"\\n  NODE MEDIC — being cloned. Leave both medics plugged in.\\n"
-                f"  Step {idx} of {len(names)}: {words}...\\n")
+        import shlex
+        line = (f"\n  NODE MEDIC - being cloned. Leave both medics plugged in.\n"
+                f"  Step {idx} of {len(names)}: {words}...\n")
         try:
-            self.connection.run(self.priv(f"sh -c 'printf \"{line}\" > /dev/tty1'"),
-                                timeout=10)
+            # shlex.quote: an apostrophe ("medic's") ended the old quoting
+            self.connection.run(self.priv(
+                "sh -c " + shlex.quote("printf '%s' " + shlex.quote(line) + " > /dev/tty1")),
+                timeout=10)
         except Exception:                                          # noqa: BLE001
             pass
 

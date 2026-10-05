@@ -1568,8 +1568,11 @@ class BirthGuideScreen(BoxLayout):
             return paths, tr(
                 "A mesh transport node (RTNode-2400) isn't offered: there is "
                 "no RTNode-2400 build for {board} ({chip}). The boards that "
-                "have one: Heltec V3/V4, T-Beam Supreme, LilyGO T-Echo.").format(
-                    board=name, chip=(chip or "").upper())
+                "have one: {boards}.").format(
+                    board=name, chip=(chip or "").upper(),
+                    boards=", ".join(t.display for t in __import__(
+                        "workflows.rtnode_build", fromlist=["RTNODE_TARGETS"]
+                    ).RTNODE_TARGETS.values()))
         except Exception:
             return list(BIRTH_PATHS), ""
 

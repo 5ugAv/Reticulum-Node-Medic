@@ -40,7 +40,8 @@ CONCEPTS: List[Tuple[str, str]] = [
      "can repair. A node you can hear but did not build stays a stranger until "
      "you adopt it."),
     ("The Tracker",
-     "This medic's own Heltec Wireless Tracker: its GPS and clock, flashed and "
+     "This medic's own Heltec Wireless Tracker: its GPS (the clock can be set "
+     "from it by hand), flashed and "
      "adopted by Node Medic."),
 ]
 
@@ -152,8 +153,9 @@ BUILD_SECTIONS: List[Tuple[str, str, List[str]]] = [
     ("3. The message-holder — for people who are offline",
      "About AU$100–155 on mains (Pi Zero 2 W); AU$265–470 done properly "
      "on solar",
-     ["A Raspberry Pi + an nRF52 radio board — the RAK4631 is the pairing "
-      "Node Medic has proven. The Pi Zero 2 W is the one to use, and it is often "
+     ["A Raspberry Pi + an nRF52 radio board — the RAK4631 is the recommended "
+      "pairing (its power draw measured on a Pi Zero 2 W; the full build through "
+      "Node Medic is not yet bench-proven). The Pi Zero 2 W is the one to use, and it is often "
       "sold out; a Pi 4 or 5 works on mains from about AU$230 all up.",
       "ONLY this kind of node can hold messages for someone whose device "
       "is switched off. A transport node cannot.",

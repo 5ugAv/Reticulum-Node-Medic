@@ -65,8 +65,8 @@ class SettingsScreen(BoxLayout):
 
         body.add_widget(_line(tr("Settings"), bold=True, size="24sp", h=44))
         body.add_widget(self._entry(tr("Language"), tr("Run Node Medic in your own language"), "language"))
-        body.add_widget(self._entry(tr("Default radio parameters"), tr("Frequency, bandwidth, SF, CR, TX power that BUILD "
-                                    "pre-fills — includes regional presets"), "radio_defaults"))
+        body.add_widget(self._entry(tr("Default radio parameters"), tr("The radio settings every new node is built with. "
+                                    "Keep them the same everywhere, or nodes can't hear each other"), "radio_defaults"))
         body.add_widget(self._entry(tr("Tool identity"), tr("This medic's Reticulum identity, name, born date "
                                     "and lineage"), "tool_identity"))
         body.add_widget(self._entry(tr("Storage usage"), tr("SD card space and what's using it"), "storage"))
@@ -75,11 +75,10 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._entry(tr("Date & time"), tr("System clock and timezone — set manually or keep "
                                     "it synced from GPS"), "datetime"))
         body.add_widget(self._entry(tr("Wi-Fi & Network"), tr("Connect to a hotspot or venue Wi-Fi"), "wifi"))
-        body.add_widget(self._entry(tr("Communication apps"), tr("Hand Columba or Sideband to a phone over Wi-Fi — "
-                                    "the mesh messenger for your pocket"), "comms"))
-        body.add_widget(self._entry(tr("Field readiness"), tr("Is this medic ready to be taken somewhere with "
-                                    "no signal — firmware, apps, maps, wheels, "
-                                    "toolchain"), "carry"))
+        body.add_widget(self._entry(tr("Communication apps"), tr("Install Columba or Sideband onto a phone over Wi-Fi, "
+                                    "straight from Node Medic"), "comms"))
+        body.add_widget(self._entry(tr("Field readiness"), tr("Can this medic still build nodes, hand out apps and "
+                                    "show maps with no internet"), "carry"))
         body.add_widget(self._home_mode_section())
         body.add_widget(self._brightness_section())
         body.add_widget(self._screensaver_section())
@@ -90,8 +89,8 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._retention_section())
         body.add_widget(self._entry(tr("Reticulum & radio guide"), tr("What RNode / transport / propagation nodes are, "
                                     "where to place them, and the radio settings"), "guide"))
-        body.add_widget(self._entry(tr("Self Diagnose — this medic's radio & GPS"), tr("Check & heal this medic's OWN onboard radio + GPS "
-                                    "board (11 live checks + auto-repairs)"), "self_diagnose"))
+        body.add_widget(self._entry(tr("Self Diagnose — check this medic itself"), tr("Its radio, clock, services, disk, touch and "
+                                    "power — live checks and automatic fixes"), "self_diagnose"))
         # THE WAY BACK TO THE FIRST-USE WALKTHROUGH, and the way to hand this
         # medic on. It sits directly above the security preview because that is
         # what it mostly leads to, and its subtitle CHANGES when the security
@@ -378,8 +377,8 @@ class SettingsScreen(BoxLayout):
         row.add_widget(sw)
         box.add_widget(row)
         box.add_widget(grow_to_text(_line(
-            tr("Visual for now — a banner on VITALS and the affected nodes pushed to "
-               "the top. (An audible option can be added later.)"),
+            tr("Shows a banner on VITALS and moves the affected nodes to the "
+               "top. For a message on your phone, see Notifications."),
             size="12sp", color="text_secondary")))
         return box
 

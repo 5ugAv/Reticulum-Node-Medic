@@ -247,10 +247,10 @@ class MitosisScreen(BoxLayout):
             "  •  a Heltec Wireless Tracker — the new medic's GPS and clock\n"
             "  •  a USB-A to USB-C cable, for the Tracker\n"
             "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
-            "Two halves: this medic writes the card (~5 min), then you move "
-            "the card across and the two talk over the cable while the tool "
-            "is copied (~20 min). You are NOT finished when the card is "
-            "written. About half an hour in all, mostly waiting.\n\n"
+            "Two halves: this medic writes the card (about 10 min), then you "
+            "move the card across and the two talk over the cable while the "
+            "tool is copied (about 40 min). You are NOT finished when the card "
+            "is written. About an hour in all, mostly waiting.\n\n"
             "The new medic's own mesh radio is not set up by this flow yet — "
             "its Tracker gives it position and time."),
             color="text_primary", size="15sp")
@@ -1291,9 +1291,12 @@ class MitosisScreen(BoxLayout):
         # clips silently from the top the moment the copy grows.
         grow_to_text(body)
         self.add_widget(body)
-        wifi = _small_btn(tr("No cable - it joins my Wi-Fi instead"))
-        wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
-        self.add_widget(wifi)
+        if (getattr(self, "_wifi", None) or ("", ""))[0]:
+            # only when a Wi-Fi was written onto the card: otherwise the search
+            # can never find it and fails after five minutes
+            wifi = _small_btn(tr("No cable - it joins my Wi-Fi instead"))
+            wifi.bind(on_release=lambda *_: self._show_stage_clone(auto=True))
+            self.add_widget(wifi)
 
         # WATCH FOR COPPER: the wired port's carrier line flips to 1 the
         # moment a live cable connects both ends - readable with no
@@ -1415,13 +1418,29 @@ class MitosisScreen(BoxLayout):
         an aerial and a pigtail that the flow then never mentions again. This
         is real preparation, it closes that loop, and it hands them straight
         into the new medic's first job."""
-        return _label(tr(
+        lbl = _label(tr(
             "[b]While this runs:[/b] get the Tracker, its USB cable, the aerial "
             "and the little pigtail lead to hand. Screw the aerial onto the "
             "pigtail and clip the pigtail onto the Tracker. Never power the "
             "Tracker up without its aerial attached. The new medic will ask "
             "for it shortly after it wakes."),
-            color="text_secondary", size="13sp", markup=True)
+            color="text_secondary", size="13sp")
+        lbl.markup = True               # _label() takes no markup argument
+        return lbl
+
+    def _carried_words(self, workflow):
+        """What actually travelled — from the steps' own results and the
+        fleet choice, not a fixed promise (clone review, 2026-10-06)."""
+        done = {r.name for r in getattr(workflow, "results", [])
+                if r.success and not r.skipped}
+        parts = []
+        if "copy_offline_maps" in done:
+            parts.append(tr("the offline maps"))
+        if "transfer_firmware_cache" in done:
+            parts.append(tr("the firmware store"))
+        if "copy_kin_roster" in done:
+            parts.append(tr("the list of your other nodes"))
+        return (", " + ", ".join(parts)) if parts else ""
 
     def _build_rows(self, steps=None):
         titles = dict(STEP_TITLES)
@@ -1595,8 +1614,7 @@ class MitosisScreen(BoxLayout):
                 tr("[b]Done - you have made a Node Medic.[/b]\n\n"
                    "{name} is restarting now. It has its own place on the mesh"
                    "{ident} - a new one, not a copy of this medic's - along "
-                   "with the whole tool, the offline maps, the firmware store "
-                   "and the list of your other nodes.\n\n"
+                   "with the whole tool{carried}.\n\n"
                    "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
                    "1.  It starts straight into Node Medic and walks you through "
                    "its own setup - no login, nothing to type from here.\n"
@@ -1606,7 +1624,8 @@ class MitosisScreen(BoxLayout):
                    "to come.\n\n"
                    "Until its screen appears it may show start-up text. That is "
                    "normal, and there is nothing left to do on this screen.").format(
-                       name=name, ident=(f" ({ident[:8]})" if ident else "")),
+                       name=name, ident=(f" ({ident[:8]})" if ident else ""),
+                       carried=self._carried_words(workflow)),
                 color="text_primary", size="15sp")
             done.markup = True
             grow_to_text(done)

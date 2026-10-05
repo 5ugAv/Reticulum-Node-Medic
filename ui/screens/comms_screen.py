@@ -51,8 +51,9 @@ class CommsScreen(BoxLayout):
 
         self.add_widget(_line(tr("Communication apps"), bold=True, size="24sp", h=42))
         self.add_widget(_line(tr(
-            "Node Medic hands a Reticulum messaging app to your phone — the medic is "
-            "the mesh's propagation node, your phone is the messenger."),
+            "Node Medic installs a mesh messaging app onto your phone. Your phone "
+            "sends and reads the messages; in Home mode the medic can hold them "
+            "for phones that are offline."),
             size="13.5sp", color="text_secondary", h=44))
         self.status = _line("", size="13sp", color="accent", h=40)
         self.add_widget(self.status)
@@ -113,8 +114,8 @@ class CommsScreen(BoxLayout):
                 "offline.")
         else:
             self.status.text = tr(
-                "Note: message store-and-forward is OFF. Switch to Home ▸ full "
-                "propagation node so the medic can hold messages for offline phones.")
+                "Message holding is OFF. To turn it on: switch the front page to "
+                "Home, and in Settings ▸ Home mode choose Full propagation node.")
         self.status.color = theme.hex_to_rgba(
             theme.COLORS["green" if store_on else "warning_yellow"])
         self.list.clear_widgets()

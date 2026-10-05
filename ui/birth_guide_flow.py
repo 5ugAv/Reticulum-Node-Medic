@@ -32,10 +32,9 @@ BIRTH_PATHS = [
     # one. The radio is now an offer at the END of the Pi walkthrough: attach
     # one you already have, or go back to the menu and birth one.
     ("pi", tr("A Raspberry Pi propagation node"),
-     tr("Holds messages for users who are offline, and bridges LoRa to Wi-Fi, "
-        "Bluetooth and the internet. The best node to future-proof the "
-        "network. You can add a radio to it at the end — or attach one you "
-        "already have.")),
+     tr("Holds messages for people who are offline, and links the LoRa mesh "
+        "to your local Wi-Fi network. You can add a radio to it at the end — "
+        "or attach one you already have.")),
 ]
 
 #: The antenna-first step. It is NOT part of the guided lists — it's the very first
@@ -140,9 +139,9 @@ LOCATION_SHARE_STEP = {
 #: switch, left is off, left is where it rests.
 BLUETOOTH_STEP = {
     "title": tr("Should this node offer Bluetooth?"),
-    "body": tr("Bluetooth lets phones right next to the node connect to it "
-               "directly. It also draws power all day, whether anyone uses "
-               "it or not."),
+    "body": tr("This leaves the Pi's Bluetooth switched on. Node Medic does not "
+               "set up a phone connection over it yet, and it draws power all "
+               "day whether anyone uses it or not."),
     #: The operator's own advice, nearly verbatim (2026-08-12).
     "hint": tr("A solar node positioned at height is better with Bluetooth "
                "off — it will use more power."),
@@ -532,8 +531,9 @@ _STEPS = {
                     "socket\n"
                     "\u2022 plug in the radio you flashed at the start\n"
                     "\u2022 give the Pi its own power supply\n"
-                    "\u2022 optional RGB LED? Slow white breathe = radio "
-                    "alive \u2014 check VITALS"),
+                    "\u2022 RGB light fitted? A slow white pulse means the Pi has "
+                    "not opened the radio yet; once it has, the pulse stops "
+                    "\u2014 then check VITALS"),
          "hint": tr("A short DATA cable to the radio \u2014 the Pi's supply now "
                     "carries both."),
          # A BUTTON, unlike the connect-to-medic steps. Those hide Next because
@@ -663,32 +663,36 @@ def guide_steps(path, pi_key="", flash_radio=True, board_key="",
                 "socket\n"
                 "\u2022 plug in the radio you flashed at the start\n"
                 "\u2022 give the Pi its own power supply\n"
-                "\u2022 optional RGB LED? Slow white breathe = radio "
-                "alive \u2014 check VITALS")
+                "\u2022 RGB light fitted? A slow white pulse means the Pi has "
+                "not opened the radio yet; once it has, the pulse stops "
+                "\u2014 then check VITALS")
         elif takes_socket:
             _radio_body = tr(
                 "\u2022 unplug the Pi from Node Medic \u2014 the radio needs "
                 "that socket\n"
                 "\u2022 plug in your radio\n"
                 "\u2022 give the Pi its own power supply\n"
-                "\u2022 optional RGB LED? Slow white breathe = radio "
-                "alive \u2014 check VITALS")
+                "\u2022 RGB light fitted? A slow white pulse means the Pi has "
+                "not opened the radio yet; once it has, the pulse stops "
+                "\u2014 then check VITALS")
         elif flashed_here:
             _radio_body = tr(
                 "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
                 "own supply from here\n"
                 "\u2022 plug in the radio you flashed at the start\n"
                 "\u2022 give the Pi its own power supply\n"
-                "\u2022 optional RGB LED? Slow white breathe = radio "
-                "alive \u2014 check VITALS")
+                "\u2022 RGB light fitted? A slow white pulse means the Pi has "
+                "not opened the radio yet; once it has, the pulse stops "
+                "\u2014 then check VITALS")
         else:
             _radio_body = tr(
                 "\u2022 unplug Node Medic's cable \u2014 the Pi runs on its "
                 "own supply from here\n"
                 "\u2022 plug in your radio\n"
                 "\u2022 give the Pi its own power supply\n"
-                "\u2022 optional RGB LED? Slow white breathe = radio "
-                "alive \u2014 check VITALS")
+                "\u2022 RGB light fitted? A slow white pulse means the Pi has "
+                "not opened the radio yet; once it has, the pulse stops "
+                "\u2014 then check VITALS")
         for st in steps:
             if st.get("anim") == "radio_to_pi":
                 st["body"] = _radio_body

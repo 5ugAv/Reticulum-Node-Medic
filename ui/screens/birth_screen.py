@@ -198,8 +198,11 @@ _ONBOARDING_FAILURE = re.compile(
     re.I)
 
 
-def _line(text, color="text_primary", bold=False, size="15sp"):
-    # height follows the wrapped text — fixed heights made long lines overlap
+def _line(text, color="text_primary", bold=False, size="15sp", h=None):
+    # height follows the wrapped text — fixed heights made long lines overlap.
+    # *h* is accepted and ignored: the power-pairings popup passed it and the
+    # helper did not take it, so that popup raised TypeError and closed the app
+    # the moment a build was refused for power (guard test, 2026-10-06).
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
                 font_size=theme.font_sp(size),
                 color=theme.hex_to_rgba(theme.COLORS[color]),
@@ -4011,8 +4014,8 @@ class BirthScreen(BoxLayout):
         self._qr_widgets = []
         matrix = qr_matrix(birth_cert_payload(cert))
         if not matrix:
-            w = _line("    " + tr("(install 'segno' on the medic to show a "
-                                  "scannable QR)"),
+            w = _line("    " + tr("(no QR code on this medic — the certificate "
+                                  "above is saved)"),
                       color="text_secondary", size="12sp")
             self.list.add_widget(w)
             self._qr_widgets = [w]

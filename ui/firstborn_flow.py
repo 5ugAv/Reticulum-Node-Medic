@@ -90,10 +90,9 @@ def decide(gps_live: bool,
     if result is True:
         return FirstbornView(
             DONE, tr("The Tracker is set up"),
-            tr("The Tracker is flashed and adopted as this medic's GPS and clock. "
-               "As soon as it sees the sky, Node Medic knows where it stands and "
-               "what time it is, so every node you build from here carries a "
-               "true place and date."),
+            tr("The Tracker is flashed and adopted as this medic's GPS. As soon "
+               "as it sees the sky, Node Medic knows where it stands, and you can "
+               "set the clock from it in Settings ▸ Date & time."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
@@ -112,10 +111,9 @@ def decide(gps_live: bool,
         return FirstbornView(
             NEED_TRACKER, tr("Plug in the Tracker"),
             tr("No Tracker is connected yet. Plug the Heltec Wireless Tracker into "
-               "the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to "
-               "USB-C cable.\n\n"
-               "Plug in only the Tracker, so the medic doesn't mistake its own "
-               "radio for it — then tap Begin."),
+               "a free USB socket on this Node Medic with the USB-A to USB-C "
+               "cable, its aerial already attached.\n\n"
+               "This page moves on by itself when it sees the Tracker."),
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(
@@ -128,5 +126,5 @@ def decide(gps_live: bool,
         READY, tr("Ready to set up the Tracker"),
         tr("A board that could be the Tracker is plugged in. If it is the Heltec "
            "Wireless Tracker, press Begin: the medic flashes it, waits for it to "
-           "see satellites, and adopts it as this medic's GPS and clock."),
+           "see satellites, and adopts it as this medic's GPS."),
         can_begin=True)

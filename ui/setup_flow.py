@@ -334,12 +334,11 @@ _TOUR_STEPS = [
      "opens_label": "Set up the Tracker  →",
      "title": "The Tracker — this medic's GPS",
      "body": "The Heltec Wireless Tracker is part of Node Medic: it is the "
-             "medic's GPS and clock. Setting it up flashes the Tracker and adopts "
-             "it into this medic, so every node you place gets a real location "
-             "and time.\n\n"
-             "Plug in ONLY the Tracker — Node Medic's LoRa radio looks alike on "
-             "USB and is told apart by the Tracker's satellite stream, not the "
-             "socket.",
+             "medic's GPS. Setting it up flashes the Tracker and adopts it into "
+             "this medic. With a fix, you can stamp a node's position from it, "
+             "and set the medic's clock from it in Settings ▸ Date & time.\n\n"
+             "Plug in only the Tracker. Node Medic recognises its own radio and "
+             "leaves it alone.",
      # One line: the body scrolls, a hint does not, and this step carries the
      # Tracker's picture too (readiness ledger #146).
      "hint": "No Tracker on hand? Skip for now — run this again from Settings.",
@@ -356,14 +355,17 @@ _TOUR_STEPS = [
              "a birth certificate, and placed on the map.\n\n"
              "A radio for a phone or laptop, a transport node that runs the mesh "
              "on its own, or a Raspberry Pi and radio together. It tells you "
-             "which cable, which socket, and which board you are holding."},
+             "which cable and which socket. Some boards it recognises; for "
+             "others it asks you to pick — check the label, because the wrong "
+             "pick can leave a board unusable."},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",
      "body": "VITALS watches every node you have built or adopted — your kin. It "
-             "shows when each was last heard from, its battery where the node "
-             "reports one, its signal, and which connections it says are "
-             "working: LoRa, Wi-Fi, Bluetooth, internet.\n\n"
+             "shows when each was last heard from, its signal, and which "
+             "connections it says are working: LoRa, Wi-Fi, Bluetooth, "
+             "internet. Tap a node for its page, with its battery where the "
+             "node reports one.\n\n"
              "Nodes go quiet for ordinary reasons — a cloudy week on a solar "
              "node is not a fault. VITALS is where you find out which ones have "
              "been quiet longer than that."},
@@ -371,7 +373,8 @@ _TOUR_STEPS = [
     {"key": TOUR_SCAN, "part": TOUR, "poster_card": "scan", "opens": "scan",
      "title": "MAPS — see where nodes are placed",
      "body": "The map shows where your nodes are. After a range test it shows "
-             "how far each node's signal reaches. Where nodes report hearing "
+             "how far each node's signal reaches (turn on Range at the top of "
+             "MAPS). Where nodes report hearing "
              "each other, it draws the link between them. And it marks spots "
              "where a new node would extend the network or join parts of it "
              "together.\n\n"
@@ -395,13 +398,14 @@ _TOUR_STEPS = [
              "and the Offline maps control appears — it only shows itself when "
              "the map is looking at somewhere this medic does not carry. "
              "Terrain for that area downloads in the same pass, so the map can "
-             "tell you whether two nodes can see each other."},
+             "shade high and low ground."},
 
     {"key": TOUR_TRIAGE, "part": TOUR, "poster_card": "triage", "opens": "triage",
      "title": "ANTENNA — aim it on site",
      "body": "For when you are standing at the node with it in your hands. "
-             "Signal strength, clarity and background noise update live as you "
-             "move the antenna.\n\n"
+             "Signal strength, clarity and background noise update each time "
+             "the medic hears a packet; while this screen is open it asks your "
+             "RTNodes to send one every couple of seconds.\n\n"
              "A node in the right place with a badly aimed antenna and a node in "
              "the wrong place look the same in VITALS. This is how you tell them "
              "apart, on site.\n\n"
@@ -425,7 +429,8 @@ _TOUR_STEPS = [
              "read replies.\n\n"
              "A message with no path right now is held by this medic's "
              "propagation node until the other side is back online — in Home "
-             "mode. In Backpack mode nothing holds it, and the screen says so.\n\n"
+             "mode, with the propagation node on (the default). In Backpack "
+             "mode nothing holds it, and the screen says so.\n\n"
              "The same screen can also install the Columba or Sideband app onto "
              "a phone over Wi-Fi, straight from Node Medic."},
 
@@ -436,8 +441,8 @@ _TOUR_STEPS = [
              "After this tour, open it from a node's page: VITALS, tap the "
              "node, then Probe.\n\n"
              "Self Diagnose (on VITALS, and in Settings) turns the same "
-             "attention on the medic itself — its own radio, its GPS, its "
-             "clock, its services — and repairs what it can. Run it when the "
+             "attention on the medic itself — its own radio, its clock, its "
+             "services, its disk and touch — and repairs what it can. Run it when the "
              "medic is the thing behaving oddly.",
      "hint": "Self Diagnose is on the VITALS screen and in Settings. It is the "
              "first thing to try before suspecting a node."},
@@ -448,15 +453,16 @@ _TOUR_STEPS = [
              "person can build and repair nodes without you.\n\n"
              "That is the point of the whole tool. A mesh that only one person "
              "can maintain lasts exactly as long as that person stays.",
-     "hint": "The clone gets its own identity and its own vault. Trust between "
-             "medics is set up separately, in Settings ▸ Trusted operators."},
+     "hint": "The clone gets its own identity. Its records are not locked until "
+             "you turn on Encrypt my records on the clone. Trust between medics "
+             "is set up in Settings ▸ Trusted operators."},
 
     {"key": TOUR_SETTINGS, "part": TOUR, "opens": "settings",
      "title": "Settings — the medic's own dials",
      "body": "The gear at the top right. Language, screen brightness, the radio "
              "parameters every new node is born with, Wi-Fi, and whether this "
-             "medic acts as a full mesh node at home or stays quiet in a "
-             "backpack.\n\n"
+             "medic routes for the mesh at home, or stops routing and holding "
+             "messages for others in a backpack.\n\n"
              "Those two modes are the two pictures beside the gear: the cottage "
              "is Home, the hiker is Backpack. The one in colour is the mode the "
              "medic is in; tap the grey one to switch.\n\n"
@@ -477,9 +483,9 @@ _TOUR_STEPS = [
 _TOUR_INTRO = [
     {"key": WELCOME, "part": TOUR,
      "title": "Set up this Node Medic",
-     "body": "A short tour — one screen for each card on the front page, about "
-             "two minutes. Nothing here changes the medic; it only shows you "
-             "around.\n\n"
+     "body": "A short tour of what this Node Medic does — about two minutes. "
+             "Reading it changes nothing; only a button that says \"Set up\" "
+             "does.\n\n"
              "If you stop part-way, the tour starts again from the beginning "
              "next time. You can run it again whenever you like from Settings.",
      "next": "Start  →"},

@@ -115,7 +115,7 @@ def test_chat_shows_the_real_reason_and_offers_try_again():
     c = src("ui/screens/chat_screen.py")
     assert "retry=None" in c and "def _retry_row" in c
     assert 'tr("Chat isn\'t up: {error}").format(error=err)' in c
-    assert "Chat is waiting for the mesh service (rnsd)…" in c
+    assert "Chat is waiting for the mesh to start…" in c
     assert "the medic hasn't reached its own radio yet" not in c
     assert 'tr("Try again")' in c
     a = src("ui/app.py")

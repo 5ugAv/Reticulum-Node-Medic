@@ -62,6 +62,14 @@ def conn(cpuinfo=PI5_CPUINFO):
     c.rules.insert(0, ("test -f ~/.reticulum/storage/identity", 1, "", ""))
     c.rules.insert(0, ("systemctl is-active reticulum-node-medic", 0, "active", ""))
     c.rules.insert(0, ("NRestarts", 0, "0", ""))
+    boots = iter(["boot-a"] + ["boot-b"] * 50)   # the reboot changes the boot id
+    real = c.run
+
+    def run(cmd, *a, **k):
+        if "boot_id" in cmd:
+            return (0, next(boots, "boot-b"), "")
+        return real(cmd, *a, **k)
+    c.run = run
     return c
 
 
@@ -75,8 +83,8 @@ def test_the_last_step_fails_when_the_app_keeps_restarting():
     """The first real clone said "verified" over a crash-looping app (2026-10-06)."""
     c = conn()
     counts = iter(["3", "5"])
-    c.rules.insert(0, ("NRestarts", 0, "3", ""))
     w = CloneWorkflow(c, registry_with_node()); w.sleep = lambda _s: None
+    w.boot_id_before = "boot-a"
     real_run = c.run
     def run(cmd, *a, **k):
         if "NRestarts" in cmd:
@@ -84,7 +92,7 @@ def test_the_last_step_fails_when_the_app_keeps_restarting():
         return real_run(cmd, *a, **k)
     c.run = run
     r = _run(w, "confirm_tool_running")
-    assert not r.success and "keeps stopping" in r.message
+    assert not r.success and "not staying open" in r.message
 
 
 def _run(w, name):
