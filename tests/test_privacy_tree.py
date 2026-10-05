@@ -101,6 +101,10 @@ def test_no_house_precision_coordinates():
     for path, text in _tracked_text():
         if path.endswith("test_privacy_tree.py"):
             continue
+        # Debian package VERSIONS ("50.20220609"), not places: the fresh card's
+        # package list the clone cache is planned against (2026-10-06).
+        if path == "assets/clone_base/dpkg_status":
+            continue
         for m in pat.finditer(text):
             value = m.group(0)
             if value in synthetic:

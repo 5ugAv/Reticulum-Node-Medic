@@ -134,7 +134,7 @@ def test_the_clone_installs_only_what_it_needs_and_never_downloads(tmp_path):
     picked = debs_for(("cage", "libgl1"), str(tmp_path), run=lambda c: (0, "cage\nlibgl1\nlibc6\n"))
     names = sorted(p.rsplit("/", 1)[1] for p in picked)
     assert names == ["cage_1_arm64.deb", "libc6_2_arm64.deb", "libgl1_1_arm64.deb"]
-    assert "--no-download" in offline_install_command("/tmp/x")
+    assert offline_install_command("/tmp/x") == "dpkg -i /tmp/x/*.deb"
     for pkg in ("cage", "libgl1", "xwayland", "libsdl2-2.0-0"):
         assert pkg in DISPLAY_PACKAGES
 
@@ -170,7 +170,9 @@ def test_the_clone_installs_exactly_the_planned_files(tmp_path):
     assert w.debs_for(w.APT_PACKAGES, str(tmp_path)) == []        # short cache: say so
 
 
-def test_the_offline_install_ignores_the_cards_stale_sources():
+def test_the_offline_install_is_dpkg_not_apt():
+    """apt reached for the internet with its sources, and hit an internal error
+    without them; dpkg installs the planned set as files (node-medic-2)."""
     from workflows import wheelhouse as w
     cmd = w.offline_install_command("/tmp/nm-debs")
-    assert "Dir::Etc::SourceList=/dev/null" in cmd and "--no-download" in cmd
+    assert cmd == "dpkg -i /tmp/nm-debs/*.deb" and "apt" not in cmd

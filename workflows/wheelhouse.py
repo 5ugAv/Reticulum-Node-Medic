@@ -293,16 +293,17 @@ def debs_for(packages, deb_dir: str, run=None) -> list:
 
 
 def offline_install_command(remote_dir: str) -> str:
-    """Install the .debs in *remote_dir* and NOTHING from the network: a
-    missing dependency fails here, honestly, instead of apt reaching for an
-    internet the field does not have."""
-    # The clone's own package lists (from its card, months old) name the same
-    # versions as remote downloads and apt prefers those — "Unable to fetch
-    # some archives" with every file sitting right there. Ignoring the
-    # sources for this one install leaves the carried files as the only road.
-    return ("apt-get -o Dir::Etc::SourceList=/dev/null "
-            "-o Dir::Etc::SourceParts=/nonexistent "
-            f"install -y --no-install-recommends --no-download {remote_dir}/*.deb")
+    """Install the carried .debs in *remote_dir* with dpkg, no apt, no network.
+
+    The set is planned complete against the card's own package list (see
+    CLONE_BASE_STATUS), so dpkg has everything it needs and orders the unpack
+    and configure itself. apt was tried first and failed twice on the
+    Wi-Fi-off proof clone (2026-10-06): with its sources it reached for the
+    internet ("Unable to fetch some archives"); without them, apt 3 stopped
+    with "Internal Error, Pathname to install is not absolute" before
+    unpacking anything. ``dpkg -i`` installed all 85 screen packages cleanly
+    on node-medic-2, audit clean."""
+    return f"dpkg -i {remote_dir}/*.deb"
 
 
 def verify_debs_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:

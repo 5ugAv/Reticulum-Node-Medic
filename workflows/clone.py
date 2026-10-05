@@ -627,7 +627,8 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
     if wf.connection.run("dpkg -s " + " ".join(DISPLAY_PACKAGES)
                          + " >/dev/null 2>&1")[0] != 0:
         problems.append("screen packages incomplete")
-    if wf.connection.run("ldconfig -p | grep -q 'libGL.so.1 '")[0] != 0:
+    # full path: ldconfig lives in /sbin, not on a normal user's PATH
+    if wf.connection.run("/sbin/ldconfig -p | grep -q 'libGL.so.1 '")[0] != 0:
         problems.append("graphics library (libGL) missing")
     ok = not problems
     return StepResult("final_verification", ok,
