@@ -209,7 +209,7 @@ class SetupWizardScreen(BoxLayout):
     # -- navigation --------------------------------------------------------
 
     def _steps(self):
-        return sf.setup_steps(self._state)
+        return sf.setup_steps(self._state, translate=tr)
 
     def _step(self):
         steps = self._steps()
@@ -225,6 +225,9 @@ class SetupWizardScreen(BoxLayout):
 
     def _back(self):
         if self._i <= 0:
+            if not sf.SECURITY_HALF:
+                self._confirm_leave()
+                return
             # Backing off the FIRST screen skips the entire security half. Don't
             # do that silently — an impatient tap to "get out of this" would
             # otherwise leave a wide-open medic that never asks again
@@ -232,6 +235,38 @@ class SetupWizardScreen(BoxLayout):
             self._confirm_skip_security()
             return
         self._goto(self._i - 1)
+
+    def _confirm_leave(self):
+        """Back on the tour's first screen, with nothing to skip but the tour."""
+        from kivy.uix.boxlayout import BoxLayout as _Box
+        from kivy.uix.modalview import ModalView
+        view = ModalView(size_hint=(0.9, None), height=dp(210),
+                         auto_dismiss=False,
+                         background_color=theme.hex_to_rgba(
+                             theme.COLORS["background"]))
+        box = _Box(orientation="vertical", padding=dp(18), spacing=dp(12))
+        box.add_widget(_grow(
+            tr("Leave the tour? You can run it again whenever you like from "
+               "Settings."),
+            "16sp", color="text_primary"))
+        stay = Button(text=tr("No — keep going"), size_hint_y=None,
+                      height=dp(50), background_normal="",
+                      background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                      color=theme.hex_to_rgba(theme.COLORS["background"]))
+        stay.bind(on_release=lambda *_: view.dismiss())
+        leave = Button(text=tr("Leave the tour"), size_hint_y=None, height=dp(46),
+                       background_normal="",
+                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                       color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+
+        def _do_leave(*_):
+            view.dismiss()
+            self._finish(skipped=False)
+        leave.bind(on_release=_do_leave)
+        box.add_widget(stay)
+        box.add_widget(leave)
+        view.add_widget(box)
+        view.open()
 
     def _confirm_skip_security(self):
         from kivy.uix.boxlayout import BoxLayout as _Box
@@ -296,7 +331,8 @@ class SetupWizardScreen(BoxLayout):
         would read as the medic changing its mind.
         """
         if skipped is None:
-            skipped = not self._state.factors_ready
+            # Nothing was offered to skip while the security half is off.
+            skipped = (not self._state.factors_ready) if sf.SECURITY_HALF else False
         try:
             first_use.mark_completed(security_skipped=bool(skipped),
                                      path=self._marker_path)

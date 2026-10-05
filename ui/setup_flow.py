@@ -83,6 +83,13 @@ TOUR_MITOSIS = "tour_mitosis"
 TOUR_SETTINGS = "tour_settings"
 FINISH = "finish"
 
+#: v1 ships the tour alone. The lock-your-records half (recovery key,
+#: passphrase, level, pattern, USB key, summary) collected secrets its summary
+#: never enrolled (readiness ledger #174); it stays in this file, switched off,
+#: for the release that wires it to provisioning.encryption_flow. Settings ▸
+#: Encrypt my records is the one real path today.
+SECURITY_HALF = False
+
 
 # --------------------------------------------------------------------------- #
 # What the wizard offers.
@@ -350,7 +357,7 @@ _TOUR_STEPS = [
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",
-     "body": "Every node you have built, and when each was last heard from. "
+     "body": "Every node you have built or adopted — your kin — and when each was last heard from. "
              "Battery, temperature, what it is carrying.\n\n"
              "Nodes go quiet for ordinary reasons — a cloudy week on a solar "
              "node is not a fault. VITALS is where you find out which ones have "
@@ -397,7 +404,7 @@ _TOUR_STEPS = [
              # a card about measuring their reach would teach nothing it could
              # use. But ANTENNA carries the button, so the card that owns the
              # button names it, and the "?" guide carries the explanation.
-             "It is also where a BOUNDARY TEST starts — you walk away from a "
+             "It is also where a RANGE TEST starts — you walk away from a "
              "node on foot and the medic tells you where its signal stops. "
              "The \"?\" in the corner explains that one."},
 
@@ -451,14 +458,48 @@ _TOUR_STEPS = [
      "title": "That is the medic",
      "body": "Nothing here is finished by reading about it. Plug a board in and "
              "press BUILD — the walkthrough will not let you damage anything, "
-             "and it says what it is about to do before it does it.",
+             "and it says what it is about to do before it does it.\n\n"
+             "When you want this medic's own records locked, that is Settings ▸ "
+             "Encrypt my records.",
      "next": "Take me to the front page  →"},
 ]
 
 
+#: The first screen while the security half is off: one promise, kept.
+_TOUR_INTRO = [
+    {"key": WELCOME, "part": TOUR,
+     "title": "Set up this Node Medic",
+     "body": "A short tour — one screen for each card on the front page, about "
+             "two minutes. Nothing here changes the medic; it only shows you "
+             "around.\n\n"
+             "If you stop part-way, the tour starts again from the beginning "
+             "next time. You can run it again whenever you like from Settings.",
+     "next": "Start  →"},
+]
+
+#: What the MAPS card says about the area this medic carries (translated at
+#: render through ``maps_summary_sentence(translate=)``).
+_MAPS_NONE = ("This medic carries NO maps yet, so the map will be blank until "
+              "an area is downloaded.")
+_MAPS_ZOOM = " (zoom {zmin}–{zmax})"
+_MAPS_TERRAIN = "This medic already carries an area — {n} map tiles{zr}, with terrain."
+_MAPS_NO_TERRAIN = ("This medic already carries an area — {n} map tiles{zr} — but "
+                    "no terrain for it yet.")
+
+#: The step fields an operator reads; ``setup_steps(translate=)`` runs each
+#: through the catalog before the MAPS sentence is filled in.
+_SPOKEN_FIELDS = ("title", "body", "hint", "next", "opens_label")
+
+
 def setup_steps(state: Optional[SetupState] = None,
-                include_security: bool = True) -> List[dict]:
+                include_security: Optional[bool] = None,
+                translate=None) -> List[dict]:
     """The ordered steps for this operator, as copies.
+
+    ``include_security`` defaults to ``SECURITY_HALF`` (off in v1: the tour
+    with its own welcome). ``translate`` (the screen passes ``tr``) is applied
+    to every spoken field BEFORE the MAPS summary is formatted in, so the
+    catalog key is the template with its ``{summary}`` placeholder.
 
     The list DEPENDS ON STATE, and it has to. The pattern and USB-key steps
     exist only for levels that use them, and which level that is is not known
@@ -472,6 +513,8 @@ def setup_steps(state: Optional[SetupState] = None,
     it, immediately after a deliberate tap, which is the only place a moving
     progress counter is explicable. Showing a step that never comes is not.
     """
+    if include_security is None:
+        include_security = SECURITY_HALF
     st = state or SetupState()
     steps: List[dict] = []
     if include_security:
@@ -481,14 +524,22 @@ def setup_steps(state: Optional[SetupState] = None,
             if s["key"] == KEYFILE_STEP and not _level_wants(st, KEYFILE):
                 continue
             steps.append(dict(s))
+    else:
+        steps.extend(dict(s) for s in _TOUR_INTRO)
     steps.extend(dict(s) for s in _TOUR_STEPS)
+    if translate is not None:
+        for st_ in steps:
+            for field in _SPOKEN_FIELDS:
+                if st_.get(field):
+                    st_[field] = translate(st_[field])
     for st_ in steps:
         if st_["key"] == TOUR_MAPS_DOWNLOAD:
-            st_["body"] = st_["body"].format(summary=maps_summary_sentence())
+            st_["body"] = st_["body"].format(
+                summary=maps_summary_sentence(translate=translate))
     return steps
 
 
-def maps_summary_sentence(summary: Optional[dict] = None) -> str:
+def maps_summary_sentence(summary: Optional[dict] = None, translate=None) -> str:
     """One honest sentence about what this medic carries.
 
     Read from the map's own SQLite (ui.map_download.carried_summary) unless a
@@ -502,18 +553,16 @@ def maps_summary_sentence(summary: Optional[dict] = None) -> str:
             summary = carried_summary()
         except Exception:                                          # noqa: BLE001
             summary = {"tiles": 0, "zmin": None, "zmax": None, "terrain": False}
+    t = translate or (lambda text: text)
     n = int(summary.get("tiles") or 0)
     if n <= 0:
-        return ("This medic carries NO maps yet, so the map will be blank until "
-                "an area is downloaded.")
+        return t(_MAPS_NONE)
     zr = ""
     if summary.get("zmin") is not None and summary.get("zmax") is not None:
-        zr = f" (zoom {summary['zmin']}–{summary['zmax']})"
+        zr = t(_MAPS_ZOOM).format(zmin=summary["zmin"], zmax=summary["zmax"])
     if summary.get("terrain"):
-        return (f"This medic already carries an area — {n:,} map tiles{zr}, "
-                "with terrain.")
-    return (f"This medic already carries an area — {n:,} map tiles{zr} — but "
-            "no terrain for it yet.")
+        return t(_MAPS_TERRAIN).format(n=f"{n:,}", zr=zr)
+    return t(_MAPS_NO_TERRAIN).format(n=f"{n:,}", zr=zr)
 
 
 def _level_wants(state: SetupState, factor: str) -> bool:

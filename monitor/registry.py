@@ -1819,10 +1819,17 @@ class NodeRegistry:
         pooled across all of them, so both faults close together."""
         out = []
         for merged, _members in self.consolidated_records(now):
-            lat, lon, self_located = merged.lat, merged.lon, False
+            lat, lon, self_located, approximate = merged.lat, merged.lon, False, False
             b = getattr(merged, "latest_beacon", None)
             if b is not None and getattr(b, "has_position", False):
-                lat, lon, self_located = b.lat, b.lng, True
+                if not getattr(b, "position_fuzzed", False):
+                    lat, lon, self_located = b.lat, b.lng, True
+                elif lat is None or lon is None:
+                    # A deliberately imprecise claim (the node beacons the
+                    # fuzzed point it was told to announce, readiness ledger
+                    # #157) never displaces a confirmed location; with none
+                    # it is the best there is, and is drawn as a ring.
+                    lat, lon, approximate = b.lat, b.lng, True
             if lat is None or lon is None:
                 continue
             # The same label VITALS gives a nameless board ("Heltec T114 ·
@@ -1832,7 +1839,8 @@ class NodeRegistry:
             out.append({"lat": lat, "lon": lon,
                         "name": merged.name or merged._nameless_label(),
                         "status": merged.status(now),
-                        "self_located": self_located})
+                        "self_located": self_located,
+                        "approximate": approximate})
         # ONE DOT PER NAME. A node the roster could not fold (births before
         # the roster recorded every address) is three devices here — rnsd,
         # beacon, lxmd — and drew three stacked dots with three stacked

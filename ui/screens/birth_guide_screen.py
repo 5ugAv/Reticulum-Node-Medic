@@ -1975,7 +1975,7 @@ class BirthGuideScreen(BoxLayout):
         if was:
             from ui.node_names import is_hash_tail_name
             if is_hash_tail_name(was) and (self._node_name or "").upper() == was.upper():
-                body = tr("This board was {old} — that is its own hash, the one "
+                body = tr("This board was {old} — that is its own ID, the one "
                           "on its screen, so it keeps the name. Change it if "
                           "you like.").format(old=was)
             else:

@@ -104,6 +104,14 @@ def _boxes_self(shown_key="ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345-6789"):
     return obj
 
 
+
+@pytest.fixture
+def security_half(monkeypatch):
+    """The lock-your-records half is OFF in v1 (``setup_flow.SECURITY_HALF``,
+    readiness ledger #174); the tests that take this fixture describe it for
+    the release that turns it back on."""
+    monkeypatch.setattr(sf, "SECURITY_HALF", True)
+
 def test_a_full_group_moves_to_the_next_box():
     """Four characters IS the group — the operator's eyes are already on the
     next one, so the cursor should be too."""
@@ -365,7 +373,7 @@ def test_a_matching_pair_is_taken_verbatim():
 # The gate, on the way in to a step.
 # --------------------------------------------------------------------------- #
 
-def test_a_blocked_step_is_refused_and_the_reason_is_SHOWN():
+def test_a_blocked_step_is_refused_and_the_reason_is_SHOWN(security_half):
     """A wizard that silently stayed put looks like a dead button — the single
     hardest fault for an operator to report, and the one they blame themselves
     for."""
@@ -585,7 +593,7 @@ def test_the_marker_is_written_only_at_the_end(tmp_path):
             f"{other} records the setup as finished"
 
 
-def test_finishing_a_half_done_ceremony_records_it_as_skipped(tmp_path):
+def test_finishing_a_half_done_ceremony_records_it_as_skipped(tmp_path, security_half):
     from provisioning import first_use
     fin = _load("_finish", first_use=first_use)
     path = str(tmp_path / "m.json")
@@ -763,3 +771,18 @@ def test_every_level_card_carries_the_way_back_in():
     # ``if`` would indent it one level deeper.
     assert indent_of('d["fallback"]') == indent_of('d["field"]'), \
         "the fallback line is nested under a condition again"
+
+
+def test_finishing_the_tour_records_nothing_as_skipped_while_the_lock_half_is_off(tmp_path):
+    """v1 offers no lock steps, so nothing was skipped — Settings must not keep
+    an amber 'nobody has chosen how this medic locks itself' line for a choice
+    that was never put to the operator (readiness ledger #174)."""
+    from provisioning import first_use
+    fin = _load("_finish", first_use=first_use)
+    path = str(tmp_path / "m.json")
+    s = _self(_state=SetupState(), _marker_path=path,
+              _stop_stick_poll=lambda: None, _forget_secrets=lambda: None,
+              _on_finish=None)
+    fin(s)
+    assert first_use.load(path).completed
+    assert not first_use.load(path).security_skipped

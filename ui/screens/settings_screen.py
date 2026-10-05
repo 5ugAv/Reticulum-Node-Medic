@@ -105,8 +105,13 @@ class SettingsScreen(BoxLayout):
         # operator opens to find out whether their records are locked, so it
         # has to answer that before they tap it.
         body.add_widget(self._encryption_entry())
-        body.add_widget(self._entry(tr("Security preview  (walkthrough)"), tr("Walk the lock screen, recovery key and "
-                                    "reset without changing anything"), "security_preview"))
+        from ui import setup_flow as _sf
+        if _sf.SECURITY_HALF:
+            # The lock-screen preview belongs to the walkthrough's security half
+            # (off in v1, readiness ledger #174); a preview of a ceremony the
+            # medic does not run would be a demo dressed as a feature.
+            body.add_widget(self._entry(tr("Security preview  (walkthrough)"), tr("Walk the lock screen, recovery key and "
+                                        "reset without changing anything"), "security_preview"))
         body.add_widget(self._entry(tr("About"), tr("Software version, test-suite status, uptime, "
                                     "and licence"), "about"))
 
@@ -445,12 +450,14 @@ class SettingsScreen(BoxLayout):
         """
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         box.bind(minimum_height=box.setter("height"))
+        from ui import setup_flow as _sf
         box.add_widget(self._entry(
             tr("Set up this Node Medic"),
-            tr("The security setup, and what each mode is for"), "setup"))
+            tr("The security setup, and what each mode is for") if _sf.SECURITY_HALF
+            else tr("What each front-page card is for"), "setup"))
         try:
             from provisioning.first_use import security_outstanding
-            outstanding = security_outstanding()
+            outstanding = _sf.SECURITY_HALF and security_outstanding()
         except Exception:
             outstanding = False
         if outstanding:

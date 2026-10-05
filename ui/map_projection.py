@@ -26,6 +26,7 @@ class GeoPoint:
     lon: float
     label: str = ""
     status: str = "unknown"      # ok | warn | alert | unknown (drives dot colour)
+    approximate: bool = False    # a deliberately fuzzed claim: drawn as a ring
 
 
 @dataclass
@@ -44,7 +45,8 @@ def geo_points(nodes) -> List["GeoPoint"]:
         if n.get("lat") is not None and n.get("lon") is not None:
             out.append(GeoPoint(lat=n["lat"], lon=n["lon"],
                                 label=n.get("name", ""),
-                                status=n.get("status", "unknown")))
+                                status=n.get("status", "unknown"),
+                                approximate=bool(n.get("approximate"))))
     return out
 
 

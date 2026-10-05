@@ -1,0 +1,362 @@
+{
+  " (zoom {zmin}–{zmax})": {
+    "de": " (Zoom {zmin}–{zmax})",
+    "es": " (zoom {zmin}–{zmax})",
+    "fr": " (zoom {zmin}–{zmax})",
+    "id": " (zoom {zmin}–{zmax})",
+    "ja": "（ズーム {zmin}–{zmax}）",
+    "pl": " (zoom {zmin}–{zmax})",
+    "ru": " (зум {zmin}–{zmax})",
+    "sv": " (zoom {zmin}–{zmax})"
+  },
+  "A Raspberry Pi can't see the sky, so this medic has no position or clock of its own. Its first child fixes that: a Heltec Wireless Tracker, flashed here and adopted as the medic's GPS and time. Every node you place gets a real location and date from it.\n\nPlug in ONLY the Tracker — the medic's own radio looks alike on USB and is told apart by its satellite stream, not the socket.": {
+    "de": "Ein Raspberry Pi kann den Himmel nicht sehen, also hat dieser Medic weder eine eigene Position noch eine eigene Uhr. Sein erstes Kind ändert das: ein Heltec Wireless Tracker, hier geflasht und als GPS und Zeitquelle des Medic übernommen. Jeder Knoten, den du platzierst, bekommt von ihm einen echten Standort und ein echtes Datum.\n\nSteck NUR den Tracker ein — das eigene Funkmodul des Medic sieht am USB genauso aus und wird an seinem Satellitenstrom erkannt, nicht an der Buchse.",
+    "es": "Una Raspberry Pi no puede ver el cielo, así que este medic no tiene posición ni reloj propios. Su primer hijo lo arregla: un Heltec Wireless Tracker, flasheado aquí y adoptado como el GPS y la hora del medic. Cada nodo que coloques recibe de él una ubicación y una fecha reales.\n\nConecta SOLO el Tracker — la radio propia del medic se ve igual por USB y se distingue por su flujo de datos de satélite, no por el conector.",
+    "fr": "Un Raspberry Pi ne voit pas le ciel : ce medic n'a donc ni position ni horloge à lui. Son premier enfant y remédie : un Heltec Wireless Tracker, flashé ici et adopté comme GPS et horloge du medic. C'est de lui que chaque nœud que vous placez reçoit un lieu et une date véritables.\n\nNe branchez QUE le Tracker — la radio du medic lui-même lui ressemble sur l'USB ; on reconnaît le Tracker à son flux satellite, pas à sa prise.",
+    "id": "Raspberry Pi tidak bisa melihat langit, jadi medic ini tidak punya posisi maupun jam sendiri. Anak pertamanya yang membereskan itu: sebuah Heltec Wireless Tracker, di-flash di sini dan diadopsi sebagai GPS dan sumber waktu medic. Setiap node yang Anda tempatkan mendapat lokasi dan tanggal yang sesungguhnya darinya.\n\nColokkan HANYA Tracker — radio milik medic sendiri tampak serupa di USB; yang membedakannya adalah aliran data satelit, bukan soketnya.",
+    "ja": "Raspberry Pi は空を見ることができないため、このメディックには自分の位置も時計もありません。それを解決するのが最初の子です：Heltec Wireless Tracker をここで書き込み、メディックの GPS と時刻源として引き取ります。あなたが配置するすべてのノードは、そこから本当の位置と日付を受け取ります。\n\n接続するのは Tracker だけにしてください — メディック自身の無線機は USB 上では同じように見え、端子ではなく衛星データの流れで見分けられます。",
+    "pl": "Raspberry Pi nie widzi nieba, więc ten medic nie ma własnej pozycji ani zegara. Naprawia to jego pierwsze dziecko: Heltec Wireless Tracker, sflashowany tutaj i przyjęty jako GPS i zegar medica. Od niego każdy węzeł, który rozmieścisz, dostaje prawdziwe położenie i datę.\n\nPodłącz TYLKO Tracker — własne radio medica wygląda na USB identycznie; odróżnia je strumień danych z satelitów, nie gniazdo.",
+    "ru": "Raspberry Pi не видит неба, поэтому у этого medic нет ни собственного положения, ни собственных часов. Это исправляет его первый ребёнок: Heltec Wireless Tracker, прошитый здесь и принятый как GPS и часы medic. От него каждый размещённый вами узел получает настоящее место и дату.\n\nПодключите ТОЛЬКО Tracker — собственное радио medic выглядит на USB так же, и отличают их по потоку спутниковых данных, а не по разъёму.",
+    "sv": "En Raspberry Pi kan inte se himlen, så den här medicen har varken egen position eller egen klocka. Dess första barn löser det: en Heltec Wireless Tracker, flashad här och adopterad som medicens GPS och klocka. Varje nod du placerar får en riktig plats och ett riktigt datum från den.\n\nKoppla in ENDAST Trackern — medicens egen radio ser likadan ut på USB, och det är satellitströmmen som skiljer dem åt, inte uttaget."
+  },
+  "A short tour — one screen for each card on the front page, about two minutes. Nothing here changes the medic; it only shows you around.\n\nIf you stop part-way, the tour starts again from the beginning next time. You can run it again whenever you like from Settings.": {
+    "de": "Ein kurzer Rundgang — ein Bildschirm für jede Karte auf der Startseite, etwa zwei Minuten. Nichts hier verändert den Medic; er zeigt dir nur, wo was ist.\n\nWenn du mittendrin aufhörst, beginnt der Rundgang nächstes Mal wieder von vorn. Du kannst ihn jederzeit aus den Einstellungen erneut starten.",
+    "es": "Un recorrido corto — una pantalla por cada tarjeta de la portada, unos dos minutos. Nada de aquí cambia el medic; solo te enseña dónde está cada cosa.\n\nSi lo dejas a medias, la próxima vez el recorrido empieza otra vez desde el principio. Puedes repetirlo cuando quieras desde Ajustes.",
+    "fr": "Une courte visite guidée — un écran pour chaque carte de la page d'accueil, environ deux minutes. Rien ici ne modifie le medic ; elle ne fait que vous montrer les lieux.\n\nSi vous vous arrêtez en cours de route, la visite guidée recommence depuis le début la prochaine fois. Vous pourrez la relancer quand vous voulez depuis Réglages.",
+    "id": "Tur singkat — satu layar untuk setiap kartu di halaman depan, sekitar dua menit. Tidak ada yang mengubah medic di sini; tur ini hanya mengajak Anda berkeliling.\n\nJika Anda berhenti di tengah jalan, lain kali tur mulai lagi dari awal. Anda bisa menjalankannya lagi kapan saja dari Pengaturan.",
+    "ja": "短いツアーです — フロントページの各カードにつき 1 画面、約 2 分。ここではメディックに何も変更を加えません。中を案内するだけです。\n\n途中でやめた場合、次回はツアーが最初から始まります。設定からいつでもまた実行できます。",
+    "pl": "Krótki przewodnik — jeden ekran na każdą kartę strony głównej, około dwóch minut. Nic tutaj nie zmienia medica; to tylko oprowadzenie.\n\nJeśli przerwiesz w połowie, następnym razem przewodnik zacznie się od początku. Możesz go uruchomić ponownie, kiedy chcesz, z Ustawień.",
+    "ru": "Короткая экскурсия — по одному экрану на каждую карточку главной страницы, около двух минут. Здесь ничего в medic не меняется — вам просто показывают, что где находится.\n\nЕсли остановиться на полпути, в следующий раз экскурсия начнётся с начала. Запустить её снова можно в любой момент из Настроек.",
+    "sv": "En kort rundtur — en skärm för varje kort på startsidan, ungefär två minuter. Inget här ändrar medicen; den visar dig bara runt.\n\nOm du slutar halvvägs börjar rundturen om från början nästa gång. Du kan köra den igen när du vill från Inställningar."
+  },
+  "ANTENNA — aim it on site": {
+    "de": "ANTENNA — vor Ort ausrichten",
+    "es": "ANTENNA — apuntarla en el sitio",
+    "fr": "ANTENNA — l'orienter sur place",
+    "id": "ANTENNA — arahkan di lokasi",
+    "ja": "ANTENNA — 現地で向きを合わせる",
+    "pl": "ANTENNA — wyceluj ją na miejscu",
+    "ru": "ANTENNA — нацелить на месте",
+    "sv": "ANTENNA — rikta den på plats"
+  },
+  "BUILD — turn a board into a node": {
+    "de": "BUILD — aus einem Board einen Knoten machen",
+    "es": "BUILD — convertir una placa en un nodo",
+    "fr": "BUILD — transformer une carte en nœud",
+    "id": "BUILD — dari papan menjadi node",
+    "ja": "BUILD — ボードをノードにする",
+    "pl": "BUILD — zamień płytkę w węzeł",
+    "ru": "BUILD — превратить плату в узел",
+    "sv": "BUILD — gör ett kort till en nod"
+  },
+  "CLONE — make another medic": {
+    "de": "CLONE — einen weiteren Medic bauen",
+    "es": "CLONE — hacer otro medic",
+    "fr": "CLONE — fabriquer un autre medic",
+    "id": "CLONE — membuat medic lain",
+    "ja": "CLONE — もう 1 台のメディックを作る",
+    "pl": "CLONE — zrób drugiego medica",
+    "ru": "CLONE — сделать ещё один medic",
+    "sv": "CLONE — gör en medic till"
+  },
+  "Copies this Node Medic onto a fresh Raspberry Pi 5, so a second person can build and repair nodes without you.\n\nThat is the point of the whole tool. A mesh that only one person can maintain lasts exactly as long as that person stays.": {
+    "de": "Kopiert diesen Node Medic auf einen frischen Raspberry Pi 5, damit eine zweite Person Knoten bauen und reparieren kann — ohne dich.\n\nDarum geht es bei dem ganzen Werkzeug. Ein Mesh, das nur eine Person pflegen kann, hält genau so lange, wie diese Person bleibt.",
+    "es": "Copia este Node Medic en una Raspberry Pi 5 nueva, para que una segunda persona pueda construir y reparar nodos sin ti.\n\nEse es el sentido de toda la herramienta. Una malla que solo una persona puede mantener dura justo hasta que esa persona se va.",
+    "fr": "Copie ce Node Medic sur un Raspberry Pi 5 neuf, pour qu'une seconde personne puisse construire et réparer des nœuds sans vous.\n\nC'est tout le sens de cet outil. Un maillage qu'une seule personne sait entretenir dure exactement aussi longtemps que cette personne reste.",
+    "id": "Menyalin Node Medic ini ke Raspberry Pi 5 yang baru, supaya orang kedua bisa membangun dan memperbaiki node tanpa Anda.\n\nItulah inti seluruh alat ini. Mesh yang hanya bisa dirawat satu orang bertahan tepat selama orang itu masih ada.",
+    "ja": "この Node Medic を新しい Raspberry Pi 5 にコピーし、あなたがいなくても別の人がノードを作って修理できるようにします。\n\nそれがこのツール全体の目的です。一人しか保守できないメッシュは、その人がいる間しか続きません。",
+    "pl": "Kopiuje tego Node Medica na nowe Raspberry Pi 5, aby druga osoba mogła budować i naprawiać węzły bez ciebie.\n\nO to chodzi w całym narzędziu. Sieć mesh, którą potrafi utrzymać tylko jedna osoba, przetrwa dokładnie tak długo, jak ta osoba.",
+    "ru": "Копирует этот Node Medic на новый Raspberry Pi 5, чтобы второй человек мог собирать и чинить узлы без вас.\n\nВ этом и смысл всего инструмента. Сеть, которую может поддерживать только один человек, живёт ровно столько, сколько этот человек остаётся рядом.",
+    "sv": "Kopierar denna Node Medic till en ny Raspberry Pi 5, så att en andra person kan bygga och reparera noder utan dig.\n\nDet är hela poängen med verktyget. En mesh som bara en person kan underhålla varar exakt så länge som den personen stannar."
+  },
+  "Every node you have built or adopted — your kin — and when each was last heard from. Battery, temperature, what it is carrying.\n\nNodes go quiet for ordinary reasons — a cloudy week on a solar node is not a fault. VITALS is where you find out which ones have been quiet longer than that.": {
+    "de": "Jeder Knoten, den du gebaut oder übernommen hast — deine Kin — und wann jeder zuletzt gehört wurde. Akku, Temperatur, was er an Bord hat.\n\nKnoten werden aus ganz gewöhnlichen Gründen still — eine bewölkte Woche an einem Solarknoten ist kein Fehler. In VITALS findest du heraus, welche länger still sind als das.",
+    "es": "Cada nodo que has construido o adoptado — tus Kin — y cuándo se oyó cada uno por última vez. Batería, temperatura, qué lleva.\n\nLos nodos se quedan en silencio por motivos corrientes — una semana nublada en un nodo solar no es una avería. VITALS es donde descubres cuáles llevan en silencio más tiempo de lo normal.",
+    "fr": "Chaque nœud que vous avez construit ou adopté — vos Kin — et quand chacun a été entendu pour la dernière fois. Batterie, température, ce qu'il embarque.\n\nLes nœuds se taisent pour des raisons ordinaires — une semaine de nuages sur un nœud solaire n'est pas une panne. VITALS est là pour vous dire lesquels sont silencieux depuis plus longtemps que cela.",
+    "id": "Setiap node yang Anda bangun atau adopsi — kin Anda — dan kapan masing-masing terakhir terdengar. Baterai, suhu, apa yang dibawanya.\n\nNode bisa diam karena hal-hal biasa — seminggu berawan pada node bertenaga surya bukanlah kerusakan. Di VITALS Anda mengetahui node mana yang sudah diam lebih lama dari itu.",
+    "ja": "あなたが作ったり引き取ったりしたすべてのノード — あなたの kin — と、それぞれを最後に受信した時刻。バッテリー、温度、何を積んでいるか。\n\nノードが沈黙するのには普通の理由があります — ソーラーノードの曇り続きの 1 週間は故障ではありません。それより長く沈黙しているのはどれか、VITALS で分かります。",
+    "pl": "Każdy węzeł zbudowany lub przyjęty przez ciebie — twoi kin — i kiedy każdy z nich był ostatnio słyszany. Bateria, temperatura, co ma na pokładzie.\n\nWęzły milczą ze zwyczajnych powodów — pochmurny tydzień na węźle solarnym to nie usterka. W VITALS widzisz, które milczą już za długo.",
+    "ru": "Каждый узел, который вы собрали или приняли, — ваши kin — и когда каждого слышали в последний раз. Батарея, температура, какая на нём прошивка.\n\nУзлы замолкают и по обычным причинам — облачная неделя у солнечного узла не поломка. В VITALS видно, какие из них молчат уже дольше этого.",
+    "sv": "Varje nod du har byggt eller adopterat — dina kin — och när var och en senast hördes. Batteri, temperatur, vad den bär på.\n\nNoder tystnar av vanliga skäl — en molnig vecka för en solcellsnod är inget fel. I VITALS ser du vilka som har varit tysta längre än så."
+  },
+  "For when you are standing at the node with it in your hands. Signal, noise and who can hear you, live, as you move the antenna.\n\nA node in the right place with a badly aimed antenna and a node in the wrong place look the same in VITALS. This is how you tell them apart, on site.\n\nIt is also where a RANGE TEST starts — you walk away from a node on foot and the medic tells you where its signal stops. The \"?\" in the corner explains that one.": {
+    "de": "Für den Moment, in dem du am Knoten stehst und ihn in den Händen hältst. Signal, Rauschen und wer dich hört — live, während du die Antenne bewegst.\n\nEin Knoten am richtigen Platz mit schlecht ausgerichteter Antenne und ein Knoten am falschen Platz sehen in VITALS gleich aus. So unterscheidest du sie, vor Ort.\n\nHier beginnt auch ein REICHWEITENTEST — du gehst zu Fuß von einem Knoten weg, und der Medic sagt dir, wo sein Signal endet. Das „?“ in der Ecke erklärt das genauer.",
+    "es": "Para cuando estás junto al nodo, con él en las manos. Señal, ruido y quién te oye, en vivo, mientras mueves la antena.\n\nUn nodo bien situado con la antena mal apuntada y un nodo mal situado se ven iguales en VITALS. Así es como los distingues, en el sitio.\n\nTambién es donde empieza una PRUEBA DE ALCANCE — te alejas de un nodo a pie y el medic te dice dónde se acaba su señal. El «?» de la esquina explica esa parte.",
+    "fr": "Pour quand vous êtes sur place, le nœud en main. Signal, bruit et qui vous entend, en direct, pendant que vous orientez l'antenne.\n\nUn nœud bien placé avec une antenne mal orientée et un nœud mal placé se ressemblent dans VITALS. C'est ici qu'on les distingue, sur place.\n\nC'est aussi là que démarre un TEST DE PORTÉE — vous vous éloignez d'un nœud à pied et le medic vous dit où son signal s'arrête. Le « ? » dans le coin explique cela.",
+    "id": "Untuk saat Anda berada di lokasi node, dengan node itu di tangan. Sinyal, derau, dan siapa yang bisa mendengar Anda, langsung, sementara Anda menggerakkan antena.\n\nNode di tempat yang tepat dengan antena yang salah arah dan node di tempat yang salah tampak sama di VITALS. Di sinilah Anda membedakan keduanya, di lokasi.\n\nDi sini pula UJI JANGKAUAN dimulai — Anda berjalan kaki menjauh dari sebuah node dan medic memberi tahu di mana sinyalnya berhenti. Tanda \"?\" di pojok menjelaskan yang satu itu.",
+    "ja": "ノードのそばに立ち、それを手にしているときのためのものです。信号、ノイズ、誰があなたを受信できているかを、アンテナを動かしながらリアルタイムで見られます。\n\n正しい場所にあってもアンテナの向きが悪いノードと、間違った場所にあるノードは、VITALS では同じに見えます。現地でその二つを見分けるのがこの画面です。\n\n「到達範囲テスト」もここから始まります — ノードから徒歩で離れていくと、信号がどこで途切れるかをメディックが教えてくれます。隅の「?」がその説明です。",
+    "pl": "Na chwilę, gdy stoisz przy węźle i trzymasz go w rękach. Sygnał, szum i kto cię słyszy — na żywo, gdy poruszasz anteną.\n\nWęzeł w dobrym miejscu ze źle wycelowaną anteną i węzeł w złym miejscu wyglądają w VITALS tak samo. Tu je odróżnisz, na miejscu.\n\nTu też zaczyna się TEST ZASIĘGU, czyli obchód granicy — odchodzisz od węzła pieszo, a medic mówi ci, gdzie kończy się jego sygnał. Znak „?” w rogu objaśnia ten test.",
+    "ru": "Для тех случаев, когда вы стоите у узла и держите его в руках. Сигнал, шум и кто вас слышит — вживую, пока вы поворачиваете антенну.\n\nУзел на правильном месте с плохо нацеленной антенной и узел не на том месте выглядят в VITALS одинаково. Вот как их различить — на месте.\n\nОтсюда же начинается ТЕСТ ДАЛЬНОСТИ: вы пешком уходите от узла, а medic говорит, где кончается его сигнал. Знак «?» в углу объясняет, как это работает.",
+    "sv": "För när du står vid noden med den i händerna. Signal, brus och vem som hör dig, live, medan du flyttar antennen.\n\nEn nod på rätt plats med en dåligt riktad antenn och en nod på fel plats ser likadana ut i VITALS. Så här skiljer du dem åt, på plats.\n\nDet är också här en RÄCKVIDDSTEST börjar — du går till fots bort från en nod och medicen talar om var dess signal tar slut. \"?\"-knappen i hörnet förklarar den."
+  },
+  "Leave the tour": {
+    "de": "Rundgang verlassen",
+    "es": "Salir del recorrido",
+    "fr": "Quitter la visite",
+    "id": "Tinggalkan tur",
+    "ja": "ツアーを離れる",
+    "pl": "Opuść przewodnik",
+    "ru": "Выйти из экскурсии",
+    "sv": "Lämna rundturen"
+  },
+  "Leave the tour? You can run it again whenever you like from Settings.": {
+    "de": "Rundgang verlassen? Du kannst ihn jederzeit aus den Einstellungen erneut starten.",
+    "es": "¿Salir del recorrido? Puedes repetirlo cuando quieras desde Ajustes.",
+    "fr": "Quitter la visite ? Vous pourrez la relancer quand vous voulez depuis Réglages.",
+    "id": "Tinggalkan tur? Anda bisa menjalankannya lagi kapan saja dari Pengaturan.",
+    "ja": "ツアーを離れますか？設定からいつでもまた実行できます。",
+    "pl": "Opuścić przewodnik? Możesz go uruchomić ponownie, kiedy chcesz, z Ustawień.",
+    "ru": "Выйти из экскурсии? Её можно запустить снова в любой момент из Настроек.",
+    "sv": "Lämna rundturen? Du kan köra den igen när du vill från Inställningar."
+  },
+  "MAPS — carried, not fetched": {
+    "de": "MAPS — an Bord, nicht aus dem Netz",
+    "es": "MAPS — a bordo, no en internet",
+    "fr": "MAPS — embarquées, pas en ligne",
+    "id": "MAPS — dibawa, bukan diambil dari internet",
+    "ja": "MAPS — 地図は取りに行かず、持ち歩く",
+    "pl": "MAPS — na pokładzie, nie z internetu",
+    "ru": "MAPS — на борту, а не из сети",
+    "sv": "MAPS — medförda, inte hämtade"
+  },
+  "MAPS — where the next node goes": {
+    "de": "MAPS — wohin der nächste Knoten kommt",
+    "es": "MAPS — dónde va el siguiente nodo",
+    "fr": "MAPS — où placer le prochain nœud",
+    "id": "MAPS — tempat node berikutnya",
+    "ja": "MAPS — 次のノードをどこに置くか",
+    "pl": "MAPS — gdzie stanie kolejny węzeł",
+    "ru": "MAPS — куда ставить следующий узел",
+    "sv": "MAPS — var nästa nod ska stå"
+  },
+  "Meet the firstborn  →": {
+    "de": "Zum Erstgeborenen  →",
+    "es": "Conocer al primogénito  →",
+    "fr": "Voir le premier-né  →",
+    "id": "Temui anak pertama  →",
+    "ja": "長子と出会う  →",
+    "pl": "Poznaj pierworodnego  →",
+    "ru": "Встретить первенца  →",
+    "sv": "Möt den förstfödda  →"
+  },
+  "No Tracker on hand? Skip for now — run this again from Settings.": {
+    "de": "Kein Tracker zur Hand? Vorerst überspringen — später aus den Einstellungen nachholen.",
+    "es": "¿No tienes un Tracker a mano? Sáltalo por ahora — vuelve a ejecutarlo desde Ajustes.",
+    "fr": "Pas de Tracker sous la main ? Passez pour le moment — relancez ceci depuis Réglages.",
+    "id": "Belum ada Tracker? Lewati dulu — jalankan lagi dari Pengaturan.",
+    "ja": "Tracker が手元にない場合は、今はスキップ — 設定からあとでもう一度実行できます。",
+    "pl": "Nie masz Trackera pod ręką? Pomiń na razie — uruchomisz to ponownie z Ustawień.",
+    "ru": "Нет Tracker под рукой? Пока пропустите — это можно запустить снова из Настроек.",
+    "sv": "Ingen Tracker till hands? Hoppa över tills vidare — kör detta igen från Inställningar."
+  },
+  "No — keep going": {
+    "de": "Nein — weitermachen",
+    "es": "No — seguir",
+    "fr": "Non — continuer",
+    "id": "Tidak — lanjutkan",
+    "ja": "いいえ — 続ける",
+    "pl": "Nie — idź dalej",
+    "ru": "Нет — продолжить",
+    "sv": "Nej — fortsätt"
+  },
+  "Node Medic keeps its maps on the SD card so the mesh can be built with no internet at all.\n\n{summary}\n\nTo add an area you need Wi-Fi once: open MAPS, look at the place, and the Offline maps control appears — it only shows itself when the map is looking at somewhere this medic does not carry. Terrain for that area downloads in the same pass, so the map can tell you whether two nodes can see each other.": {
+    "de": "Node Medic bewahrt seine Landkarten auf der SD-Karte auf, damit das Mesh ganz ohne Internet gebaut werden kann.\n\n{summary}\n\nUm ein Gebiet hinzuzufügen, brauchst du einmal WLAN: MAPS öffnen, den Ort ansehen, und die Schaltfläche „Offline-Karten“ erscheint — sie zeigt sich nur, wenn die Karte auf eine Gegend schaut, die dieser Medic nicht an Bord hat. Das Gelände für dieses Gebiet wird im selben Durchgang geladen, damit die Karte dir sagen kann, ob zwei Knoten einander sehen können.",
+    "es": "Node Medic guarda sus mapas en la tarjeta SD para que la malla pueda construirse sin internet alguno.\n\n{summary}\n\nPara añadir una zona necesitas Wi-Fi una vez: abre MAPS, mira el lugar, y aparece el control Mapas sin conexión — solo se muestra cuando el mapa está mirando un sitio que este medic no lleva. El terreno de esa zona se descarga en la misma pasada, para que el mapa pueda decirte si dos nodos se ven entre sí.",
+    "fr": "Node Medic garde ses cartes sur sa carte SD, pour que le maillage puisse se construire sans aucun internet.\n\n{summary}\n\nPour ajouter une zone, il faut le Wi-Fi une fois : ouvrez MAPS, regardez l'endroit, et la commande Cartes hors ligne apparaît — elle ne se montre que quand la carte regarde un lieu que ce medic n'embarque pas. Le relief de cette zone se télécharge du même coup, pour que la carte puisse vous dire si deux nœuds se voient.",
+    "id": "Node Medic menyimpan petanya di kartu SD supaya mesh bisa dibangun tanpa internet sama sekali.\n\n{summary}\n\nUntuk menambah area Anda butuh Wi-Fi sekali saja: buka MAPS, arahkan ke tempat itu, dan kontrol Peta offline muncul — ia hanya tampil saat peta sedang menampilkan tempat yang belum dibawa medic ini. Data medan untuk area itu terunduh dalam proses yang sama, sehingga peta bisa memberi tahu apakah dua node bisa saling melihat.",
+    "ja": "Node Medic は地図を SD カードに保存しているので、インターネットがまったくなくてもメッシュを作れます。\n\n{summary}\n\n地域を追加するには一度だけ Wi-Fi が必要です：MAPS を開いてその場所を表示すると、「オフライン地図」の操作が現れます — このメディックが持っていない場所を地図が表示しているときだけ出てきます。その地域の地形も同時にダウンロードされるので、二つのノードが互いに見通せるかを地図が教えてくれます。",
+    "pl": "Node Medic trzyma mapy na karcie SD, więc sieć mesh da się budować zupełnie bez internetu.\n\n{summary}\n\nAby dodać obszar, potrzebujesz Wi-Fi tylko raz: otwórz MAPS, spójrz na to miejsce, a pojawi się przycisk „Mapy offline” — pokazuje się tylko wtedy, gdy mapa patrzy na miejsce, którego ten medic nie ma na pokładzie. Teren dla tego obszaru pobiera się za jednym razem, więc mapa potrafi powiedzieć, czy dwa węzły się widzą.",
+    "ru": "Node Medic хранит карты на SD-карте, чтобы сеть можно было строить совсем без интернета.\n\n{summary}\n\nЧтобы добавить область, один раз нужен Wi-Fi: откройте MAPS, наведите карту на нужное место — и появится кнопка «Офлайн-карты». Она показывается только тогда, когда карта смотрит на место, которого на этом medic нет. Рельеф этой области скачивается тем же заходом, чтобы карта могла сказать, видят ли два узла друг друга.",
+    "sv": "Node Medic har sina kartor på SD-kortet så att meshen kan byggas helt utan internet.\n\n{summary}\n\nFör att lägga till ett område behöver du Wi-Fi en gång: öppna MAPS, titta på platsen, så dyker kontrollen Offlinekartor upp — den visar sig bara när kartan tittar på någonstans som den här medicen inte har med sig. Terrängen för området laddas ner i samma svep, så att kartan kan tala om ifall två noder kan se varandra."
+  },
+  "Nothing here is finished by reading about it. Plug a board in and press BUILD — the walkthrough will not let you damage anything, and it says what it is about to do before it does it.\n\nWhen you want this medic's own records locked, that is Settings ▸ Encrypt my records.": {
+    "de": "Nichts davon wird fertig, indem man darüber liest. Steck ein Board ein und drück auf BUILD — die Schritt-für-Schritt-Anleitung lässt nicht zu, dass du etwas beschädigst, und sie sagt, was sie gleich tut, bevor sie es tut.\n\nWenn du die eigenen Aufzeichnungen dieses Medic verschlossen haben willst, geht das unter Einstellungen ▸ Meine Aufzeichnungen verschlüsseln.",
+    "es": "Nada de esto se hace leyéndolo. Conecta una placa y pulsa BUILD — su recorrido guiado no te dejará dañar nada, y te dice lo que va a hacer antes de hacerlo.\n\nCuando quieras bloquear los registros de este medic, eso está en Ajustes ▸ Cifrar mis registros.",
+    "fr": "Rien de tout cela ne se fait en lisant. Branchez une carte et appuyez sur BUILD — le guide pas à pas ne vous laissera rien abîmer, et il annonce ce qu'il va faire avant de le faire.\n\nQuand vous voudrez verrouiller les archives de ce medic, c'est dans Réglages ▸ Chiffrer mes archives.",
+    "id": "Tidak ada yang selesai hanya dengan membacanya. Colokkan sebuah papan dan tekan BUILD — panduannya tidak akan membiarkan Anda merusak apa pun, dan ia menyebutkan apa yang akan dilakukannya sebelum melakukannya.\n\nSaat Anda ingin catatan medic ini sendiri dikunci, itu ada di Pengaturan ▸ Enkripsi catatan saya.",
+    "ja": "読むだけで終わるものはここにはありません。ボードを接続して BUILD を押してください — 案内があなたに何かを壊させることはなく、何をするかは実行する前に伝えます。\n\nこのメディック自身の記録をロックしたくなったら、設定 ▸ 記録を暗号化する、です。",
+    "pl": "Czytaniem niczego tu nie skończysz. Podłącz płytkę i naciśnij BUILD — przewodnik nie pozwoli ci nic uszkodzić, a zanim coś zrobi, mówi, co zamierza.\n\nGdy zechcesz zablokować własne zapisy tego medica, to Ustawienia ▸ Zaszyfruj moje zapisy.",
+    "ru": "Одним чтением здесь ничего не сделаешь. Подключите плату и нажмите BUILD — пошаговое руководство не даст ничего испортить и говорит, что собирается сделать, прежде чем сделать это.\n\nКогда захотите запереть собственные записи этого medic — это Настройки ▸ Зашифровать мои записи.",
+    "sv": "Inget här blir gjort av att läsa om det. Koppla in ett kort och tryck på BUILD — guiden låter dig inte skada något, och den säger vad den ska göra innan den gör det.\n\nNär du vill låsa den här medicens egna uppgifter är det Inställningar ▸ Kryptera mina uppgifter."
+  },
+  "Open MAPS to download an area": {
+    "de": "MAPS öffnen, Gebiet laden",
+    "es": "Abrir MAPS para descargar una zona",
+    "fr": "MAPS : télécharger une zone",
+    "id": "Buka MAPS, unduh area",
+    "ja": "MAPS を開いて地域をダウンロード",
+    "pl": "Otwórz MAPS, by pobrać obszar",
+    "ru": "Скачать область в MAPS",
+    "sv": "Öppna MAPS, ladda ner ett område"
+  },
+  "PROBE — find out what is wrong": {
+    "de": "PROBE — herausfinden, was nicht stimmt",
+    "es": "PROBE — averiguar qué falla",
+    "fr": "PROBE — trouver ce qui ne va pas",
+    "id": "PROBE — cari tahu apa yang salah",
+    "ja": "PROBE — 何が悪いのかを調べる",
+    "pl": "PROBE — sprawdź, co jest nie tak",
+    "ru": "PROBE — выяснить, что не так",
+    "sv": "PROBE — ta reda på vad som är fel"
+  },
+  "Plug a bare board into Node Medic and it walks you through turning it into a node on your mesh: flashed, named, given a birth certificate, and placed on the map.\n\nA radio for a phone or laptop, a transport node that runs the mesh on its own, or a Raspberry Pi and radio together. It tells you which cable, which socket, and which board you are holding.": {
+    "de": "Steck ein leeres Board an Node Medic, und er führt dich Schritt für Schritt, bis daraus ein Knoten in deinem Mesh geworden ist: geflasht, benannt, mit Geburtsurkunde versehen und auf der Karte platziert.\n\nEin Funkgerät für Telefon oder Laptop, ein Transportknoten, der das Mesh eigenständig betreibt, oder ein Raspberry Pi mit Funkmodul zusammen. Er sagt dir, welches Kabel, welche Buchse und welches Board du in der Hand hältst.",
+    "es": "Conecta una placa virgen a Node Medic y te guía paso a paso hasta convertirla en un nodo de tu malla: flasheada, con nombre, con su certificado de nacimiento y colocada en el mapa.\n\nUna radio para un teléfono o un portátil, un nodo de transporte que sostiene la malla por sí solo, o una Raspberry Pi y una radio juntas. Te dice qué cable, qué conector y qué placa tienes en la mano.",
+    "fr": "Branchez une carte nue sur Node Medic et il vous guide pas à pas pour en faire un nœud de votre maillage : flashée, nommée, dotée d'un certificat de naissance et placée sur la carte.\n\nUne radio pour un téléphone ou un ordinateur portable, un nœud de transport qui fait tourner le maillage tout seul, ou un Raspberry Pi et une radio ensemble. Il vous dit quel câble, quelle prise, et quelle carte vous tenez en main.",
+    "id": "Colokkan papan polos ke Node Medic dan ia memandu Anda langkah demi langkah mengubahnya menjadi node di mesh Anda: di-flash, diberi nama, diberi akta kelahiran, dan ditempatkan di peta.\n\nRadio untuk ponsel atau laptop, node transport yang menjalankan mesh secara mandiri, atau Raspberry Pi bersama radionya. Ia memberi tahu kabel mana, soket mana, dan papan apa yang sedang Anda pegang.",
+    "ja": "まっさらなボードを Node Medic に接続すると、それをあなたのメッシュのノードにするまでを順に案内します：書き込み、名前付け、出生証明書の発行、地図への配置。\n\nスマートフォンやノートパソコン用の無線機、単独でメッシュを動かすトランスポートノード、あるいは Raspberry Pi と無線機の組み合わせ。どのケーブルか、どの端子か、いま手にしているのがどのボードかを教えてくれます。",
+    "pl": "Podłącz gołą płytkę do Node Medica, a on krok po kroku zrobi z niej węzeł twojej sieci mesh: wgra oprogramowanie, nada nazwę, wystawi akt urodzenia i umieści go na mapie.\n\nRadio do telefonu lub laptopa, węzeł transportowy, który sam prowadzi sieć mesh, albo Raspberry Pi razem z radiem. Medic mówi ci, który kabel, które gniazdo i jaką płytkę trzymasz w ręku.",
+    "ru": "Подключите к Node Medic чистую плату, и он проведёт вас по всем шагам: плата станет узлом вашей mesh-сети — прошитым, названным, со свидетельством о рождении и с местом на карте.\n\nРадио для телефона или ноутбука, транспортный узел, который сам держит mesh-сеть, или Raspberry Pi вместе с радио. Он подскажет, какой нужен кабель, какой разъём и какую плату вы держите в руках.",
+    "sv": "Koppla in ett tomt kort i Node Medic så leder den dig genom att göra det till en nod i din mesh: flashat, namngivet, försett med födelsebevis och placerat på kartan.\n\nEn radio för en telefon eller laptop, en transportnod som själv driver meshen, eller en Raspberry Pi och radio tillsammans. Den talar om vilken kabel, vilket uttag och vilket kort du håller i handen."
+  },
+  "Plug in a board that is misbehaving and the medic reads it: what it is, what firmware it carries, whether it answers at all.\n\nAfter this tour, open it from a node's page: VITALS, tap the node, then Probe.\n\nSelf Diagnose (in Settings, and on this screen) turns the same attention on the medic itself — its own radio, its GPS, its clock, its services — and repairs what it can. Run it when the medic is the thing behaving oddly.": {
+    "de": "Steck ein Board ein, das sich seltsam verhält, und der Medic liest es aus: was es ist, welche Firmware es trägt, ob es überhaupt antwortet.\n\nNach diesem Rundgang öffnest du das von der Seite eines Knotens aus: VITALS, den Knoten antippen, dann „Diesen Knoten prüfen“.\n\nSelbstdiagnose (in den Einstellungen und auf diesem Bildschirm) richtet dieselbe Aufmerksamkeit auf den Medic selbst — sein eigenes Funkmodul, sein GPS, seine Uhr, seine Dienste — und repariert, was sie kann. Starte sie, wenn der Medic derjenige ist, der sich seltsam verhält.",
+    "es": "Conecta una placa que se comporta mal y el medic la lee: qué es, qué firmware lleva, si siquiera responde.\n\nDespués de este recorrido, ábrelo desde la página de un nodo: VITALS, toca el nodo y luego Sondear.\n\nAutodiagnóstico (en Ajustes, y en esta pantalla) dirige la misma atención al propio medic — su radio, su GPS, su reloj, sus servicios — y repara lo que puede. Ejecútalo cuando sea el medic el que se comporta raro.",
+    "fr": "Branchez une carte qui se comporte mal et le medic la lit : ce qu'elle est, quel firmware elle embarque, si elle répond tout court.\n\nAprès cette visite, ouvrez PROBE depuis la page d'un nœud : VITALS, touchez le nœud, puis Sonder ce nœud.\n\nAutodiagnostic (dans Réglages, et sur cet écran) tourne la même attention vers le medic lui-même — sa propre radio, son GPS, son horloge, ses services — et répare ce qu'il peut. Lancez-le quand c'est le medic qui se comporte bizarrement.",
+    "id": "Colokkan papan yang bertingkah aneh dan medic membacanya: papan apa itu, firmware apa yang dibawanya, apakah ia menjawab sama sekali.\n\nSetelah tur ini, buka dari halaman sebuah node: VITALS, ketuk node itu, lalu tombol Periksa.\n\nDiagnosis Mandiri (di Pengaturan, dan di layar ini) mengarahkan perhatian yang sama ke medic itu sendiri — radionya, GPS-nya, jamnya, layanannya — dan memperbaiki apa yang bisa. Jalankan saat justru medic yang bertingkah aneh.",
+    "ja": "調子の悪いボードを接続すると、メディックがそれを読み取ります：何のボードか、どのファームウェアが入っているか、そもそも応答するか。\n\nこのツアーのあとは、ノードのページから開きます：VITALS でノードをタップし、次に「このノードを PROBE」。\n\n自己診断（設定にあり、この画面にもあります）は、同じ目をメディック自身に向けます — 自分の無線機、GPS、時計、サービス — そして直せるものを直します。おかしな動きをしているのがメディックの方なら、これを実行してください。",
+    "pl": "Podłącz płytkę, która sprawia kłopoty, a medic ją odczyta: czym jest, jaki firmware ma wgrany, czy w ogóle odpowiada.\n\nPo tym przewodniku otwierasz go ze strony węzła: VITALS, dotknij węzła, potem Zbadaj (PROBE).\n\nAutodiagnoza (w Ustawieniach i na tym ekranie) kieruje tę samą uwagę na samego medica — jego własne radio, GPS, zegar, usługi — i naprawia, co się da. Uruchom ją, gdy to medic zachowuje się dziwnie.",
+    "ru": "Подключите плату, которая ведёт себя странно, и medic её прочитает: что это, какая на ней прошивка, отвечает ли она вообще.\n\nПосле экскурсии открывайте его со страницы узла: VITALS, нажмите узел, затем «Проверить».\n\nСамодиагностика (в Настройках и на этом экране) обращает то же внимание на сам medic — его собственное радио, GPS, часы, службы — и чинит, что может. Запускайте её, когда странно ведёт себя сам medic.",
+    "sv": "Koppla in ett kort som beter sig konstigt så läser medicen av det: vad det är, vilken firmware det har, om det svarar alls.\n\nEfter rundturen öppnar du det från en nods sida: VITALS, tryck på noden, sedan Sondera.\n\nSjälvdiagnos (under Inställningar, och på den här skärmen) riktar samma uppmärksamhet mot medicen själv — dess egen radio, dess GPS, dess klocka, dess tjänster — och lagar vad den kan. Kör den när det är medicen som beter sig konstigt."
+  },
+  "Self Diagnose is behind the gear: Settings. It is the first thing to try before suspecting a node.": {
+    "de": "Die Selbstdiagnose sitzt hinter dem Zahnrad: Einstellungen. Sie kommt zuerst, bevor du einen Knoten verdächtigst.",
+    "es": "Autodiagnóstico está detrás de la rueda dentada: Ajustes. Es lo primero que probar antes de sospechar de un nodo.",
+    "fr": "Autodiagnostic se trouve derrière l'engrenage : Réglages. C'est la première chose à essayer avant de soupçonner un nœud.",
+    "id": "Diagnosis Mandiri ada di balik ikon roda gigi: Pengaturan. Cobalah itu lebih dulu sebelum mencurigai sebuah node.",
+    "ja": "自己診断は歯車アイコンの先、設定の中にあります。ノードを疑う前に、まず試すべきものです。",
+    "pl": "Autodiagnoza kryje się za kołem zębatym: Ustawienia. Spróbuj jej najpierw, zanim podejrzysz węzeł.",
+    "ru": "Самодиагностика — за шестерёнкой, в Настройках. С неё стоит начинать, прежде чем подозревать узел.",
+    "sv": "Självdiagnos finns bakom kugghjulet: Inställningar. Det är det första att prova innan du misstänker en nod."
+  },
+  "Settings — the medic's own dials": {
+    "de": "Einstellungen — die eigenen Regler des Medic",
+    "es": "Ajustes — los mandos del propio medic",
+    "fr": "Réglages — les commandes du medic",
+    "id": "Pengaturan — setelan milik medic sendiri",
+    "ja": "設定 — メディック自身のつまみ",
+    "pl": "Ustawienia — własne pokrętła medica",
+    "ru": "Настройки — собственные регуляторы medic",
+    "sv": "Inställningar — medicens egna rattar"
+  },
+  "Start  →": {
+    "de": "Los  →",
+    "es": "Empezar  →",
+    "fr": "Commencer  →",
+    "id": "Mulai  →",
+    "ja": "開始  →",
+    "pl": "Zaczynamy  →",
+    "ru": "Начать  →",
+    "sv": "Börja  →"
+  },
+  "THE FIRSTBORN — this medic's own eyes": {
+    "de": "DER ERSTGEBORENE — die eigenen Augen dieses Medic",
+    "es": "EL PRIMOGÉNITO — los ojos de este medic",
+    "fr": "LE PREMIER-NÉ — les yeux de ce medic",
+    "id": "ANAK PERTAMA — mata medic ini sendiri",
+    "ja": "長子 — このメディック自身の目",
+    "pl": "PIERWORODNY — własne oczy tego medica",
+    "ru": "ПЕРВЕНЕЦ — собственные глаза этого medic",
+    "sv": "DEN FÖRSTFÖDDA — denna medics egna ögon"
+  },
+  "Take me to the front page  →": {
+    "de": "Zur Startseite  →",
+    "es": "Llévame a la portada  →",
+    "fr": "Aller à la page d'accueil  →",
+    "id": "Ke halaman depan  →",
+    "ja": "フロントページへ  →",
+    "pl": "Na stronę główną  →",
+    "ru": "На главную страницу  →",
+    "sv": "Ta mig till startsidan  →"
+  },
+  "That is the medic": {
+    "de": "Das ist der Medic",
+    "es": "Así es el medic",
+    "fr": "Voilà le medic",
+    "id": "Itulah medic ini",
+    "ja": "これがメディックです",
+    "pl": "To cały medic",
+    "ru": "Вот и весь medic",
+    "sv": "Det var medicen"
+  },
+  "The clone gets its own identity and its own vault. Trust between medics is set up separately, in Settings ▸ Trusted operators.": {
+    "de": "Der Klon bekommt eine eigene Identität und einen eigenen Tresor. Vertrauen zwischen Medics wird getrennt eingerichtet, unter Einstellungen ▸ Vertrauenswürdige Betreiber.",
+    "es": "El clon recibe su propia identidad y su propia caja fuerte. La confianza entre medics se configura aparte, en Ajustes ▸ Operadores de confianza.",
+    "fr": "Le clone reçoit sa propre identité et son propre coffre. La confiance entre medics se règle à part, dans Réglages ▸ Opérateurs de confiance.",
+    "id": "Medic hasil kloning mendapat identitas dan brankasnya sendiri. Kepercayaan antar-medic diatur terpisah, di Pengaturan ▸ Operator tepercaya.",
+    "ja": "クローンは自分自身のアイデンティティと金庫を持ちます。メディック同士の信頼は、設定 ▸ 信頼できる運用者で別途設定します。",
+    "pl": "Klon dostaje własną tożsamość i własny sejf. Zaufanie między medicami ustawia się osobno, w Ustawienia ▸ Zaufani operatorzy.",
+    "ru": "Клон получает собственную идентичность и собственное хранилище. Доверие между medic настраивается отдельно — в Настройках ▸ Доверенные операторы.",
+    "sv": "Klonen får sin egen identitet och sitt eget valv. Förtroende mellan medicar ställs in separat, under Inställningar ▸ Betrodda operatörer."
+  },
+  "The gear at the top right. Language, screen brightness, the radio parameters every new node is born with, Wi-Fi, and whether this medic acts as a full mesh node at home or stays quiet in a backpack.\n\nThose two modes are the two pictures beside the gear: the cottage is Home, the hiker is Backpack. The one in colour is the mode the medic is in; tap the grey one to switch.\n\nThis walkthrough lives there too, so you can run it again — or hand the medic on and let the next person run it from nothing.": {
+    "de": "Das Zahnrad oben rechts. Sprache, Bildschirmhelligkeit, die Funkparameter, mit denen jeder neue Knoten geboren wird, WLAN — und ob dieser Medic zu Hause als vollwertiger Mesh-Knoten arbeitet oder im Rucksack still bleibt.\n\nDiese beiden Modi sind die zwei Bilder neben dem Zahnrad: das Häuschen ist Zuhause, der Wanderer ist Rucksack. Das farbige zeigt den Modus, in dem der Medic gerade ist; tipp auf das graue, um zu wechseln.\n\nAuch dieser Rundgang wohnt dort, damit du ihn noch einmal starten kannst — oder den Medic weitergibst und die nächste Person ihn von null an durchläuft.",
+    "es": "La rueda dentada de arriba a la derecha. Idioma, brillo de la pantalla, los parámetros de radio con los que nace cada nodo nuevo, Wi-Fi, y si este medic actúa como nodo completo de la malla en casa o se queda callado en una mochila.\n\nEsos dos modos son los dos dibujos junto a la rueda dentada: la casita es Casa, el excursionista es Mochila. El que está en color es el modo en que está el medic; toca el gris para cambiar.\n\nEste recorrido también vive ahí, para que puedas repetirlo — o pasar el medic a otra persona y que lo haga desde cero.",
+    "fr": "L'engrenage en haut à droite. La langue, la luminosité de l'écran, les paramètres radio avec lesquels naît chaque nouveau nœud, le Wi-Fi, et si ce medic agit en nœud complet du maillage à la maison ou reste silencieux dans un sac à dos.\n\nCes deux modes sont les deux images à côté de l'engrenage : la maisonnette, c'est Maison ; le randonneur, c'est Sac à dos. Celle en couleur est le mode où se trouve le medic ; touchez la grise pour changer.\n\nCette visite guidée vit là aussi, pour que vous puissiez la relancer — ou transmettre le medic et laisser la personne suivante la faire en partant de rien.",
+    "id": "Ikon roda gigi di kanan atas. Bahasa, kecerahan layar, parameter radio yang dibawa setiap node baru sejak lahir, Wi-Fi, dan apakah medic ini bertindak sebagai node mesh penuh di rumah atau tetap diam di dalam ransel.\n\nDua mode itu adalah dua gambar di samping ikon roda gigi: gambar rumah adalah Rumah, gambar pendaki adalah Ransel. Yang berwarna adalah mode yang sedang dipakai medic; ketuk yang abu-abu untuk beralih.\n\nTur ini juga ada di sana, jadi Anda bisa menjalankannya lagi — atau menyerahkan medic ini dan membiarkan orang berikutnya menjalankannya dari nol.",
+    "ja": "右上の歯車です。言語、画面の明るさ、新しいノードがみな生まれ持つ無線パラメータ、Wi-Fi、そしてこのメディックが家では完全なメッシュノードとして動くか、バックパックの中では静かにしているか。\n\nその二つのモードが、歯車の隣にある二つの絵です：家はホーム、ハイカーはバックパック。色が付いている方が今のモードで、灰色の方をタップすると切り替わります。\n\nこのツアーもそこにあるので、もう一度実行できます — あるいはメディックを次の人に渡し、その人に最初から実行してもらうこともできます。",
+    "pl": "Koło zębate w prawym górnym rogu. Język, jasność ekranu, parametry radia, z którymi rodzi się każdy nowy węzeł, Wi-Fi, i to, czy ten medic działa w domu jako pełny węzeł sieci mesh, czy siedzi cicho w plecaku.\n\nTe dwa tryby to dwa obrazki obok koła zębatego: domek to Dom, wędrowiec to Plecak. Kolorowy pokazuje tryb, w którym medic jest teraz; dotknij szarego, by przełączyć.\n\nTen przewodnik też tam mieszka, więc możesz go uruchomić ponownie — albo przekazać medica dalej i pozwolić następnej osobie przejść go od zera.",
+    "ru": "Шестерёнка в правом верхнем углу. Язык, яркость экрана, параметры радио, с которыми рождается каждый новый узел, Wi-Fi — и то, работает ли этот medic дома как полноценный узел сети или молчит в рюкзаке.\n\nЭти два режима — две картинки рядом с шестерёнкой: домик — это Дом, путник — это Рюкзак. Цветная показывает, в каком режиме medic сейчас; нажмите серую, чтобы переключиться.\n\nЭта экскурсия тоже живёт там — её можно пройти снова или передать medic дальше, и следующий человек пройдёт её с нуля.",
+    "sv": "Kugghjulet uppe till höger. Språk, skärmens ljusstyrka, radioparametrarna varje ny nod föds med, Wi-Fi, och om den här medicen ska vara en fullständig mesh-nod hemma eller hålla sig tyst i en ryggsäck.\n\nDe två lägena är de två bilderna bredvid kugghjulet: stugan är Hem, vandraren är Ryggsäck. Den i färg är läget medicen är i; tryck på den grå för att byta.\n\nDen här rundturen finns där också, så att du kan köra den igen — eller lämna medicen vidare och låta nästa person köra den från noll."
+  },
+  "The map. Your nodes where they actually stand, the links the medic has heard between them, and the gaps where the mesh does not reach.\n\nIt is also the front door to placing one: pick a spot, and the build starts from there with the position already stamped in.": {
+    "de": "Die Karte. Deine Knoten dort, wo sie wirklich stehen, die Verbindungen, die der Medic zwischen ihnen gehört hat, und die Lücken, wo das Mesh nicht hinreicht.\n\nSie ist auch die Eingangstür zum Platzieren eines neuen Knotens: Wähle einen Punkt, und der Bau startet von dort, mit bereits eingetragener Position.",
+    "es": "El mapa. Tus nodos donde realmente están, los enlaces que el medic ha oído entre ellos y los huecos donde la malla no llega.\n\nTambién es la puerta de entrada para colocar uno: elige un punto y la construcción arranca desde ahí con la posición ya marcada.",
+    "fr": "La carte. Vos nœuds là où ils se trouvent réellement, les liens que le medic a entendus entre eux, et les trous où le maillage ne porte pas.\n\nC'est aussi la porte d'entrée pour en placer un : choisissez un endroit, et la construction démarre de là, avec la position déjà inscrite.",
+    "id": "Peta. Node-node Anda di tempatnya yang sebenarnya, tautan yang didengar medic di antara mereka, dan celah yang tidak terjangkau mesh.\n\nIni juga pintu depan untuk menempatkan node baru: pilih satu titik, dan pembangunan dimulai dari sana dengan posisi yang sudah tercantum.",
+    "ja": "地図です。実際に立っている場所にあるあなたのノード、メディックが受信したノード間のリンク、そしてメッシュが届かない隙間。\n\nノードを配置する入口でもあります：場所を選べば、位置がすでに刻まれた状態でそこからビルドが始まります。",
+    "pl": "Mapa. Twoje węzły tam, gdzie naprawdę stoją, łącza między nimi, które medic usłyszał, i luki, gdzie sieć mesh nie dociera.\n\nTo też główne wejście do rozmieszczania: wybierz miejsce, a budowa zacznie się stamtąd, z położeniem już odnotowanym.",
+    "ru": "Карта. Ваши узлы там, где они стоят на самом деле, связи между ними, которые слышал medic, и разрывы — места, куда сеть не дотягивается.\n\nОтсюда же начинается размещение нового узла: выберите точку, и сборка начнётся оттуда — с уже проставленным местоположением.",
+    "sv": "Kartan. Dina noder där de faktiskt står, länkarna medicen har hört mellan dem, och luckorna där meshen inte når.\n\nDen är också ingången till att placera en ny: välj en plats, så startar bygget därifrån med positionen redan ifylld."
+  },
+  "This medic already carries an area — {n} map tiles{zr} — but no terrain for it yet.": {
+    "de": "Dieser Medic hat schon ein Gebiet an Bord — {n} Kartenkacheln{zr} — aber noch kein Gelände dazu.",
+    "es": "Este medic ya lleva una zona — {n} teselas de mapa{zr} — pero aún sin terreno para ella.",
+    "fr": "Ce medic embarque déjà une zone — {n} tuiles de carte{zr} — mais pas encore son relief.",
+    "id": "Medic ini sudah membawa satu area — {n} tile peta{zr} — tetapi belum ada data medannya.",
+    "ja": "このメディックはすでに地域を一つ持っています — 地図タイル {n} 枚{zr} — ただしその地形はまだありません。",
+    "pl": "Ten medic ma już na pokładzie obszar — {n} kafelków mapy{zr} — ale jeszcze bez terenu.",
+    "ru": "На этом medic уже есть область — {n} тайлов карты{zr} — но рельефа для неё пока нет.",
+    "sv": "Den här medicen har redan ett område med sig — {n} kartrutor{zr} — men ännu ingen terräng för det."
+  },
+  "This medic already carries an area — {n} map tiles{zr}, with terrain.": {
+    "de": "Dieser Medic hat schon ein Gebiet an Bord — {n} Kartenkacheln{zr}, mit Gelände.",
+    "es": "Este medic ya lleva una zona — {n} teselas de mapa{zr}, con terreno.",
+    "fr": "Ce medic embarque déjà une zone — {n} tuiles de carte{zr}, avec le relief.",
+    "id": "Medic ini sudah membawa satu area — {n} tile peta{zr}, dengan data medan.",
+    "ja": "このメディックはすでに地域を一つ持っています — 地図タイル {n} 枚{zr}、地形付き。",
+    "pl": "Ten medic ma już na pokładzie obszar — {n} kafelków mapy{zr}, z terenem.",
+    "ru": "На этом medic уже есть область — {n} тайлов карты{zr}, с рельефом.",
+    "sv": "Den här medicen har redan ett område med sig — {n} kartrutor{zr}, med terräng."
+  },
+  "This medic carries NO maps yet, so the map will be blank until an area is downloaded.": {
+    "de": "Dieser Medic hat noch KEINE Karten an Bord, die Karte bleibt also leer, bis ein Gebiet heruntergeladen ist.",
+    "es": "Este medic aún NO lleva ningún mapa, así que el mapa estará en blanco hasta que se descargue una zona.",
+    "fr": "Ce medic n'embarque encore AUCUNE carte : la carte restera vide tant qu'une zone n'aura pas été téléchargée.",
+    "id": "Medic ini BELUM membawa peta sama sekali, jadi peta akan kosong sampai sebuah area diunduh.",
+    "ja": "このメディックはまだ地図を一つも持っていないため、地域をダウンロードするまで地図は空白です。",
+    "pl": "Ten medic NIE ma jeszcze żadnych map na pokładzie, więc mapa będzie pusta, dopóki nie pobierzesz obszaru.",
+    "ru": "На этом medic пока НЕТ карт, поэтому карта будет пустой, пока не скачана какая-нибудь область.",
+    "sv": "Den här medicen har INGA kartor med sig än, så kartan blir tom tills ett område har laddats ner."
+  },
+  "VITALS — is the fleet alive": {
+    "de": "VITALS — ob die Flotte lebt",
+    "es": "VITALS — ¿está viva la flota?",
+    "fr": "VITALS — la flotte est-elle en vie",
+    "id": "VITALS — apakah armada masih hidup",
+    "ja": "VITALS — ノードたちは生きているか",
+    "pl": "VITALS — czy flota żyje",
+    "ru": "VITALS — жив ли флот",
+    "sv": "VITALS — lever flottan"
+  },
+  "What each front-page card is for": {
+    "de": "Wofür die Karten auf der Startseite da sind",
+    "es": "Para qué sirve cada tarjeta de la portada",
+    "fr": "À quoi sert chaque carte de la page d'accueil",
+    "id": "Untuk apa setiap kartu di halaman depan",
+    "ja": "フロントページの各カードの役割",
+    "pl": "Do czego służy każda karta strony głównej",
+    "ru": "Для чего каждая карточка главной страницы",
+    "sv": "Vad varje kort på startsidan är till för"
+  }
+}

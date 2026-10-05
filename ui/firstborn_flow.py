@@ -126,6 +126,7 @@ def decide(gps_live: bool,
             can_begin=False)
     return FirstbornView(
         READY, tr("Ready to meet the firstborn"),
-        tr("A Tracker is connected. Press begin and the medic flashes it, waits "
-           "for it to see satellites, and adopts it as node number one."),
+        tr("A board that could be the Tracker is plugged in. If it is the Heltec "
+           "Wireless Tracker, press Begin: the medic flashes it, waits for it to "
+           "see satellites, and adopts it as node number one."),
         can_begin=True)

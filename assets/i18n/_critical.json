@@ -103,6 +103,7 @@
   "Visual for now — a banner on VITALS and the affected nodes pushed to the top. (An audible option can be added later.)",
   "Walk the lock screen, recovery key and reset without changing anything",
   "What RNode / transport / propagation nodes are, where to place them, and the radio settings",
+  "What each front-page card is for",
   "What the medic does at HOME (the front-page toggle). Backpack always turns transport OFF so moving it can't disturb the mesh.",
   "Wi-Fi & Network",
   "{n} days",

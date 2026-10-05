@@ -33,6 +33,15 @@ CONCEPTS: List[Tuple[str, str]] = [
      "The answering machine of the network. If someone is offline, it holds their "
      "messages and delivers them when they come back. Without one, a message to an "
      "offline device simply vanishes."),
+    # Two words of the medic's own that reached every screen with no
+    # explanation anywhere (readiness ledger #213).
+    ("Kin",
+     "The nodes this medic built or adopted — the ones it watches on VITALS and "
+     "can repair. A node you can hear but did not build stays a stranger until "
+     "you adopt it."),
+    ("The firstborn",
+     "This medic's own Heltec Wireless Tracker: its GPS and clock, flashed and "
+     "adopted first, as node number one."),
 ]
 
 GOLDEN_RULE_TITLE = "The golden rule"

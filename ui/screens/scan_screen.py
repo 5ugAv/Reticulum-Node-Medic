@@ -1142,8 +1142,13 @@ class MapPlot(Widget):
             for p in pts:
                 sx, sy = view.to_screen(p.lat, p.lon)
                 Color(*theme.status_rgba(p.status))
-                Ellipse(pos=(self.x + sx - r, self.y + sy - r),
-                        size=(2 * r, 2 * r))
+                if getattr(p, "approximate", False):
+                    # The node's own fuzzed claim (readiness ledger #157): a
+                    # ring says "about here", a filled dot would say "here".
+                    Line(circle=(self.x + sx, self.y + sy, r * 1.5), width=dp(1.8))
+                else:
+                    Ellipse(pos=(self.x + sx - r, self.y + sy - r),
+                            size=(2 * r, 2 * r))
             self._draw_suggestions(view)          # 'add a node here' rings over dots
             self._draw_me_marker(view)
         for p in pts:

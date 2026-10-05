@@ -48,6 +48,14 @@ def _ready(level=None):
 # Written down is not the same as shown.
 # --------------------------------------------------------------------------- #
 
+
+@pytest.fixture
+def security_half(monkeypatch):
+    """The lock-your-records half is OFF in v1 (``setup_flow.SECURITY_HALF``,
+    readiness ledger #174); the tests that take this fixture describe it for
+    the release that turns it back on."""
+    monkeypatch.setattr(sf, "SECURITY_HALF", True)
+
 def test_showing_the_key_is_not_enough_to_move_on():
     """The recovery-key ceremony asks three times whether it has been written
     down, and an operator can answer Yes to all three while looking at a screen
@@ -130,7 +138,7 @@ def test_the_pattern_step_vanishes_for_a_level_that_has_no_pattern():
     assert sf.KEYFILE_STEP not in keys
 
 
-def test_the_pattern_step_is_present_before_a_level_has_been_chosen():
+def test_the_pattern_step_is_present_before_a_level_has_been_chosen(security_half):
     """Fail-open. Dropping it while the answer is unknown would leave the flow
     with no way to set the thing the next screen is about to make them pick."""
     keys = [s["key"] for s in sf.setup_steps(SetupState())]
@@ -157,7 +165,7 @@ def test_the_stick_is_asked_for_only_after_the_pattern_is_settled():
                                  advance(st, pattern_set=True))
 
 
-def test_seeing_a_stick_does_not_write_to_it():
+def test_seeing_a_stick_does_not_write_to_it(security_half):
     """The medic notices the stick by itself — it has to, or the operator is
     pressing a button to ask whether their own hardware is plugged in. But this
     is their USB stick and the medic has no idea what else is on it, so the
@@ -168,7 +176,7 @@ def test_seeing_a_stick_does_not_write_to_it():
     assert "Write the key" in step["next"]
 
 
-def test_the_stick_step_warns_that_one_stick_is_not_enough():
+def test_the_stick_step_warns_that_one_stick_is_not_enough(security_half):
     """Lose the only one and the passphrase is carrying the whole vault by
     itself — which is exactly the thing the operator chose the stick to avoid."""
     step = sf.step_for(sf.KEYFILE_STEP, SetupState())
@@ -225,11 +233,11 @@ def test_resume_never_lands_on_a_step_that_will_refuse_it():
     assert seen > 100
 
 
-def test_a_fresh_medic_resumes_at_the_very_beginning():
+def test_a_fresh_medic_resumes_at_the_very_beginning(security_half):
     assert sf.first_incomplete(SetupState()) == sf.WELCOME
 
 
-def test_a_finished_security_half_resumes_into_the_tour():
+def test_a_finished_security_half_resumes_into_the_tour(security_half):
     st = _ready(Policy((PASSPHRASE,)))
     assert sf.first_incomplete(st) == sf.SECURITY_SUMMARY
     # ...and once that has been read there is nothing left but the tour
@@ -329,7 +337,7 @@ def test_the_summary_names_what_was_missed_rather_than_going_quiet():
     assert any("No unlock method chosen" in l for l in lines)
 
 
-def test_the_honesty_step_matches_what_the_vault_actually_moves():
+def test_the_honesty_step_matches_what_the_vault_actually_moves(security_half):
     """Every sentence on that screen is read off provisioning/vault.py's own
     account of the trade the operator chose on 2026-08-02. If the set of
     relocated roots ever changes, the screen is wrong."""
@@ -352,7 +360,7 @@ def test_every_step_has_a_title_and_a_body():
         assert s["body"].strip() or s["key"] == sf.SECURITY_SUMMARY
 
 
-def test_the_summary_body_is_written_from_state_not_from_the_flow():
+def test_the_summary_body_is_written_from_state_not_from_the_flow(security_half):
     """It is the one screen whose words depend on what actually happened."""
     assert sf.step_for(sf.SECURITY_SUMMARY, SetupState())["body"] == ""
 
@@ -379,7 +387,7 @@ def test_the_steps_are_copies():
     assert sf.setup_steps(SetupState())[0]["title"] == "Set up this Node Medic"
 
 
-def test_the_security_half_runs_in_the_order_that_prevents_a_lockout():
+def test_the_security_half_runs_in_the_order_that_prevents_a_lockout(security_half):
     """Left to themselves an operator sets the pattern first: it is the fun one,
     the one phones taught them, and the one that takes ten seconds. Every
     lockout this design exists to prevent starts there."""
@@ -484,3 +492,79 @@ def test_firstborn_warns_to_isolate_the_lookalike_radio():
     step = sf.step_for(sf.TOUR_FIRSTBORN)
     text = (step.get("hint", "") + step.get("body", "")).lower()
     assert "only" in text and ("radio" in text or "look" in text)
+
+
+# --------------------------------------------------------------------------- #
+# v1: the tour alone (readiness ledger #174, the keeper's call 2026-10-05).
+# --------------------------------------------------------------------------- #
+
+def test_v1_walkthrough_is_the_tour_alone():
+    """The lock steps collected secrets the summary never enrolled. Until they
+    are wired to Settings ▸ Encrypt my records they are not shown at all."""
+    assert sf.SECURITY_HALF is False
+    steps = sf.setup_steps()
+    keys = [s["key"] for s in steps]
+    assert keys[0] == sf.WELCOME and keys[-1] == sf.FINISH
+    assert all(s["part"] == sf.TOUR for s in steps)
+    assert len(steps) == 1 + len(sf._TOUR_STEPS)
+    for secret in (sf.RECOVERY_KEY, sf.RECOVERY_KEY_BACK, sf.PASSPHRASE_STEP,
+                   sf.LEVEL, sf.PATTERN_STEP, sf.KEYFILE_STEP, sf.SECURITY_SUMMARY):
+        assert secret not in keys
+
+
+def test_v1_welcome_promises_only_what_follows():
+    body = sf.setup_steps()[0]["body"].lower()
+    assert "tour" in body
+    for promise in ("recovery key", "passphrase", "lock"):
+        assert promise not in body, promise
+
+
+def test_the_lock_half_is_still_there_for_the_next_release(security_half):
+    keys = [s["key"] for s in sf.setup_steps()]
+    assert keys[:2] == [sf.WELCOME, sf.WHAT_IS_LOCKED]
+    assert sf.SECURITY_SUMMARY in keys
+
+
+def test_steps_are_translated_before_the_maps_sentence_is_filled_in():
+    """The catalog key is the template with its {summary} placeholder, so the
+    translation must run first and the carried-maps sentence go through the
+    same translator."""
+    steps = sf.setup_steps(translate=lambda text: "T:" + text)
+    maps = sf.step_for(sf.TOUR_MAPS_DOWNLOAD)
+    body = next(s["body"] for s in steps if s["key"] == sf.TOUR_MAPS_DOWNLOAD)
+    assert body.startswith("T:")
+    assert "T:This medic" in body, body          # the summary sentence, translated too
+    assert "{summary}" not in body
+    assert all(s["title"].startswith("T:") for s in steps)
+    assert "{summary}" in maps["body"] or "{summary}" not in sf.step_for(
+        sf.TOUR_MAPS_DOWNLOAD, SetupState())["body"]
+
+
+def test_the_maps_sentence_keeps_its_placeholders_for_the_catalogs():
+    sent = sf.maps_summary_sentence({"tiles": 12345, "zmin": 8, "zmax": 14, "terrain": False})
+    assert sent == ("This medic already carries an area — 12,345 map tiles (zoom 8–14) "
+                    "— but no terrain for it yet.")
+    assert sf.maps_summary_sentence({"tiles": 0}) == sf._MAPS_NONE
+
+
+def test_the_v1_walkthrough_speaks_every_shipped_language():
+    """The first screens a keeper meets. Until 2026-10-05 none of these words
+    went through tr() at all (readiness ledger #223); now every spoken field of
+    the v1 walkthrough, the carried-maps sentence and the leave-the-tour modal
+    must be in all eight catalogs, and the sentences must not simply be the
+    English handed back."""
+    import json
+    spoken = set()
+    for step in list(sf._TOUR_INTRO) + list(sf._TOUR_STEPS):   # raw templates
+        for field in sf._SPOKEN_FIELDS:
+            if step.get(field):
+                spoken.add(step[field])
+    spoken.update((sf._MAPS_NONE, sf._MAPS_ZOOM, sf._MAPS_TERRAIN, sf._MAPS_NO_TERRAIN))
+    spoken.update(("Leave the tour? You can run it again whenever you like from Settings.",
+                   "No — keep going", "Leave the tour"))
+    for code in ("es", "fr", "de", "ja", "ru", "pl", "id", "sv"):
+        cat = json.load(open(f"assets/i18n/{code}.json", encoding="utf-8"))
+        missing = sorted(s for s in spoken if s not in cat)
+        assert not missing, f"{code}.json lacks {len(missing)} walkthrough strings, e.g. {missing[0][:60]!r}"
+        english = sorted(s for s in spoken if len(s) > 24 and cat[s] == s)
+        assert not english, f"{code}.json hands back English for {english[0][:60]!r}"

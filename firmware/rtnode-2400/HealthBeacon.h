@@ -115,16 +115,21 @@ inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_LOCAL], bool fault
         | ((bt_state != BT_STATE_OFF) ? HB_PWR_BT_UP : 0);
 
 #if HAS_GPS
-    // v3 position tail: the node's OWN live claim about where it stands.
-    // Sentinel when there's no FRESH fix (valid + < 10 s old — the
-    // telemetry-fresh-vs-actual-fix trap) so a stale place is never
-    // announced. fuzzed=false: kin nodes tell their medic the truth; the
-    // wild-node fuzz policy rides the same bit when it lands.
+    // v3 position tail: WHAT THE KEEPER ALLOWED, never the live fix (Node
+    // Medic readiness ledger #157, 2026-10-05). advert_enabled is the answer
+    // given at birth to "Hidden / Show on map"; advert_lat/lon is the point
+    // the medic chose to publish — already privacy-fuzzed, the same point
+    // this node announces — so the beacon carries THAT, fuzzed bit SET.
+    // Hidden (the default) sends the sentinel. The exact live fix stays on
+    // this node's own screen and never goes on air; the satellite count
+    // still says "this node can know where it is".
     int32_t lat_u = HB_POSITION_UNKNOWN, lng_u = HB_POSITION_UNKNOWN;
-    bool gps_fresh = gps.location.isValid() && gps.location.age() < 10000;
-    if (gps_fresh) {
-        lat_u = (int32_t)lround(gps.location.lat() * 1000000.0);
-        lng_u = (int32_t)lround(gps.location.lng() * 1000000.0);
+    bool fuzzed = false;
+    if (firewall_state.advert_enabled
+        && !(firewall_state.advert_lat == 0.0 && firewall_state.advert_lon == 0.0)) {
+        lat_u = (int32_t)lround(firewall_state.advert_lat * 1000000.0);
+        lng_u = (int32_t)lround(firewall_state.advert_lon * 1000000.0);
+        fuzzed = true;
     }
     health_pack_beacon_v3(out,
         uptime_s, heap_kb, rssi, health_reset_reason_code(),
@@ -134,7 +139,7 @@ inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_LOCAL], bool fault
         RTNODE_FW_MAJOR, RTNODE_FW_MINOR, RTNODE_FW_PATCH,
         h.battery_mv, h.battery_pct, power_flags,
         h.lora_snr_db, h.lora_rssi_dbm,
-        lat_u, lng_u, (uint8_t)gps.satellites.value(), false);
+        lat_u, lng_u, (uint8_t)gps.satellites.value(), fuzzed);
 #else
     health_pack_beacon_v2(out,
         uptime_s, heap_kb, rssi, health_reset_reason_code(),
@@ -186,6 +191,22 @@ inline void health_beacon_send() {
 #ifndef HB_REMOTE_BENCH_OPS
 #define HB_REMOTE_BENCH_OPS 0
 #endif
+
+// 0x04 "send full health TO the destination that follows": the medic's reply
+// destination hash (16) and a nonce (8). The reply is a UNICAST packet —
+// node_dest(16) | nonce(8) | beacon(N) | Ed25519 sig(64) over the first
+// three — routed back through the mesh like any message, so a medic that
+// cannot hear this node directly still gets an answer in seconds
+// (docs/HEALTH_REPLY_UNICAST.md in the Node Medic repo, 2026-09-21).
+// Sent by unicast ONLY when this node can recall the medic's identity AND
+// has a path back; otherwise it announces (today's reply) and requests a
+// path so the next poll is unicast. Never blocks in the packet callback.
+#define HB_OPCODE_HEALTH_TO      0x04
+#define HB_REPLY_DEST_LEN        16
+#define HB_REPLY_NONCE_LEN       8
+#define HB_REQUEST_TO_LEN        (1 + HB_REPLY_DEST_LEN + HB_REPLY_NONCE_LEN)
+#define HB_REPLY_APP_NAME        "nodemedic"
+#define HB_REPLY_ASPECTS         "health.reply"
 #ifndef HB_REQUEST_MIN_GAP_MS
 #define HB_REQUEST_MIN_GAP_MS 30000UL
 #endif
@@ -204,13 +225,50 @@ inline bool health_request_allowed() {
     return true;
 }
 
+// The unicast reply. True when sent; false when this node cannot (no
+// recalled identity for the medic, or no path to it) — the caller announces.
+// Reply = our health destination hash | nonce | beacon | signature, the
+// signature by this node's identity over the first three, so the medic can
+// attribute and verify it whatever route it took.
+inline bool health_reply_unicast(const RNS::Bytes& reply_dest, const RNS::Bytes& nonce) {
+    if (!health_destination) return false;
+    RNS::Identity medic = RNS::Identity::recall(reply_dest);
+    if (!medic) return false;
+    if (!RNS::Transport::has_path(reply_dest)) return false;
+
+    uint8_t payload[HEALTH_BEACON_LEN_LOCAL];
+    health_build_beacon(payload, health_fault);
+
+    RNS::Bytes signed_bytes;
+    signed_bytes.append(health_destination.hash());
+    signed_bytes.append(nonce);
+    signed_bytes.append(payload, HEALTH_BEACON_LEN_LOCAL);
+    RNS::Bytes sig = RNS::Transport::identity().sign(signed_bytes);
+
+    RNS::Bytes body = signed_bytes;
+    body.append(sig);
+
+    RNS::Destination out(medic, RNS::Type::Destination::OUT,
+                         RNS::Type::Destination::SINGLE,
+                         HB_REPLY_APP_NAME, HB_REPLY_ASPECTS);
+    RNS::Packet pkt(out, body);
+    pkt.send();
+    Serial.printf("[HealthBeacon] 0x04: unicast health reply sent to %s (%u bytes)\r\n",
+                  reply_dest.toHex().c_str(), (unsigned)body.size());
+    return true;
+}
+
 inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& packet) {
     (void)packet;
     if (data.size() < 1) return;    // empty: no-op (deliberately not a fault)
     if (data[0] != HB_OPCODE_FULL_HEALTH
+        && data[0] != HB_OPCODE_HEALTH_TO
         && data[0] != HB_OPCODE_IDENTIFY
         && data[0] != HB_OPCODE_LED_TEST) {
         return;                     // unknown opcode: the registry can grow
+    }
+    if (data[0] == HB_OPCODE_HEALTH_TO && data.size() != HB_REQUEST_TO_LEN) {
+        return;                     // malformed: ignored, not rate-limited
     }
     if (!health_request_allowed()) {
         Serial.printf("[HealthBeacon] request 0x%02X ignored - within %lu ms "
@@ -218,7 +276,18 @@ inline void health_request_handler(const RNS::Bytes& data, const RNS::Packet& pa
                       (unsigned)data[0], (unsigned long)HB_REQUEST_MIN_GAP_MS);
         return;
     }
-    if (data[0] == HB_OPCODE_FULL_HEALTH) {
+    if (data[0] == HB_OPCODE_HEALTH_TO) {
+        RNS::Bytes reply_dest = data.mid(1, HB_REPLY_DEST_LEN);
+        RNS::Bytes nonce      = data.mid(1 + HB_REPLY_DEST_LEN, HB_REPLY_NONCE_LEN);
+        if (!health_reply_unicast(reply_dest, nonce)) {
+            // No key or no road back: today's reply, and ask for the road.
+            Serial.println("[HealthBeacon] 0x04: no identity/path for the medic -> announcing, requesting path");
+            health_beacon_send();
+            RNS::Transport::request_path(reply_dest);
+        }
+        health_ack_blink();
+    }
+    else if (data[0] == HB_OPCODE_FULL_HEALTH) {
         Serial.println("[HealthBeacon] on-demand poll request (0x01) -> announcing now");
         health_beacon_send();
         // Visible acknowledgement at the node: two green pulses (operator

@@ -55,10 +55,11 @@ at the bench. The front page a stranger can read is done and pinned by tests.
 against the code. Its header line carries the live count (read it, do not
 quote this file); on the evening of 2026-10-04 one **blocker** was left:
 
-- `#174` — the setup walkthrough verifies a recovery key and passphrase and
-  then throws them away; its summary says they will open the vault. The
-  operator was asked to choose: drop those steps for v1 (Settings ▸ Encrypt
-  my records is the one real path) or wire them to the vault.
+- `#174` — the setup walkthrough verified a recovery key and passphrase and
+  then threw them away; its summary said they would open the vault. The
+  keeper chose DROP for v1 (2026-10-05): the walkthrough is the tour alone,
+  the lock steps stay in `ui/setup_flow.py` behind `SECURITY_HALF = False`
+  for Node Medic 2, and Settings ▸ Encrypt my records is the one real path.
 - `#115` (the clone's kiosk `.deb`s) was closed the same evening: a preflight
   before the card is erased, a Field-readiness top-up, and `--reinstall` in
   the deb fetch.

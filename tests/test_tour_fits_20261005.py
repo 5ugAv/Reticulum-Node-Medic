@@ -17,7 +17,7 @@ PICTURE_DP = 120   # WizardStep.PICTURE_STAGE_DP, kept in step by the test below
 def _plain_steps():
     custom = {sf.RECOVERY_KEY, sf.RECOVERY_KEY_BACK, sf.PASSPHRASE_STEP, sf.LEVEL,
               sf.PATTERN_STEP, sf.KEYFILE_STEP, sf.SECURITY_SUMMARY}
-    for s in list(sf._SECURITY_STEPS) + list(sf._TOUR_STEPS):
+    for s in list(sf._TOUR_INTRO) + list(sf._SECURITY_STEPS) + list(sf._TOUR_STEPS):
         if s["key"] not in custom:
             yield s
 

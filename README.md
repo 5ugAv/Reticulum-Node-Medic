@@ -489,9 +489,11 @@ and ticked as it is closed. The largest open items, summarised honestly:
   needs carried `.deb`s, wheels, a Pi OS image and firmware trees that are
   gitignored or outside the repo; a fresh checkout has none of them until it
   has been online (ledger #115, #154).
-- **The setup walkthrough's recovery key and passphrase are verified and then
-  discarded**; the summary says they will open the records vault, and they do
-  not yet (ledger #174, #139).
+- **The first-use walkthrough is the tour alone in v1.** Its lock-your-records
+  half (recovery key, passphrase, pattern, USB key) collected secrets its summary
+  never enrolled, so it is switched off (`ui/setup_flow.SECURITY_HALF`) until a
+  later release wires it to the real path, Settings ▸ Encrypt my records
+  (ledger #174, #139).
 - **Custom-board RNode births** (Wireless Tracker, MeshPocket, EoRa-S3) and the
   **firstborn** (the new medic's own Tracker radio) depend on firmware trees
   that exist only on the developer's medic (ledger #43, #168, #120).
