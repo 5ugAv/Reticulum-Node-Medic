@@ -17,6 +17,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from provisioning import tool_identity as ti
 
 
@@ -50,15 +51,16 @@ class ToolIdentityScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(16)
         self.spacing = dp(10)
-        self.add_widget(_line("Tool identity", bold=True, size="22sp", h=40))
+        self.add_widget(_line(tr("Tool identity"), bold=True, size="22sp", h=40))
 
-        self._name_box, self._name_v = _field("Tool name", "…")
+        self._name_box, self._name_v = _field(tr("Tool name"), "…")
         self.add_widget(self._name_box)
-        self._hash_box, self._hash_v = _field("Reticulum identity", "reading…", mono=True)
+        self._hash_box, self._hash_v = _field(tr("Reticulum identity"), tr("reading…"),
+                                              mono=True)
         self.add_widget(self._hash_box)
-        self._born_box, self._born_v = _field("Born", "…")
+        self._born_box, self._born_v = _field(tr("Born"), "…")
         self.add_widget(self._born_box)
-        self._parent_box, self._parent_v = _field("Lineage", "…")
+        self._parent_box, self._parent_v = _field(tr("Lineage"), "…")
         self.add_widget(self._parent_box)
 
         from kivy.uix.widget import Widget
@@ -73,14 +75,16 @@ class ToolIdentityScreen(BoxLayout):
 
     def _show(self, s):
         self._name_v.text = s["name"]
-        self._hash_v.text = s["identity_hash"] or "(not available — is Reticulum set up?)"
+        self._hash_v.text = (s["identity_hash"]
+                             or tr("(not available — is Reticulum set up?)"))
         if s["born"]:
             self._born_v.text = datetime.fromtimestamp(s["born"]).strftime("%d %b %Y")
         else:
-            self._born_v.text = "unknown"
+            self._born_v.text = tr("unknown")
         par = s["parent"]
         if par:
             h = f"  ({par['hash']})" if par.get("hash") else ""
-            self._parent_v.text = f"Cloned from {par.get('name', 'another unit')}{h}"
+            self._parent_v.text = tr("Cloned from {name}").format(
+                name=par.get('name') or tr("another unit")) + h
         else:
-            self._parent_v.text = "Original unit — not cloned from another"
+            self._parent_v.text = tr("Original unit — not cloned from another")

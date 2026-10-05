@@ -28,6 +28,7 @@ from kivy.uix.widget import Widget
 from provisioning import salvage as sv
 from provisioning import salvage_guide as sg
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 
 
 def _line(text, size="15sp", color="text_primary", bold=False):
@@ -81,9 +82,9 @@ class SalvageScreen(BoxLayout):
     def show_start(self):
         self._found = sv.Found()
         rows = [
-            _line("Show me what you got", "24sp", bold=True, color="accent"),
-            _line("Almost anything with a chip in it can do a job in the "
-                  "network. Tell me what you are holding.", "15sp",
+            _line(tr("Show me what you got"), "24sp", bold=True, color="accent"),
+            _line(tr("Almost anything with a chip in it can do a job in the "
+                     "network. Tell me what you are holding."), "15sp",
                   color="text_secondary"),
         ]
         for key, text in sv.KINDS:
@@ -104,20 +105,20 @@ class SalvageScreen(BoxLayout):
 
     def show_offer_probe(self):
         self._stage(
-            _line("Does it have a USB socket?", "22sp", bold=True),
-            _line("If it does, plug it into the medic now and I will read what "
-                  "I can straight off the chip. It saves you answering "
-                  "questions.", "15sp", color="text_secondary"),
-            _button("It is plugged in — read it", self._probe, color="accent"),
-            _button("No socket, or it will not plug in", self.show_questions),
-            _button("Start again", self.show_start))
+            _line(tr("Does it have a USB socket?"), "22sp", bold=True),
+            _line(tr("If it does, plug it into the medic now and I will read what "
+                     "I can straight off the chip. It saves you answering "
+                     "questions."), "15sp", color="text_secondary"),
+            _button(tr("It is plugged in — read it"), self._probe, color="accent"),
+            _button(tr("No socket, or it will not plug in"), self.show_questions),
+            _button(tr("Start again"), self.show_start))
 
     def _probe(self):
         if self._busy:
             return
         self._busy = True
-        self._stage(_line("Reading the chip…", "22sp", bold=True),
-                    _line("A few seconds.", "15sp", color="text_secondary"))
+        self._stage(_line(tr("Reading the chip…"), "22sp", bold=True),
+                    _line(tr("A few seconds."), "15sp", color="text_secondary"))
 
         def run():
             try:
@@ -147,16 +148,16 @@ class SalvageScreen(BoxLayout):
             has_lora=found.has_lora, has_usb=found.has_usb)
         if not result.get("found"):
             self._stage(
-                _line("I could not read anything.", "22sp", bold=True,
+                _line(tr("I could not read anything."), "22sp", bold=True,
                       color="warning_yellow"),
                 _line(result.get("reason") or
-                      "Nothing answered on the USB. It may need a different "
-                      "cable — a lot of cables only carry power, not data.",
+                      tr("Nothing answered on the USB. It may need a different "
+                         "cable — a lot of cables only carry power, not data."),
                       "15sp", color="text_secondary"),
-                _button("Answer some questions instead", self.show_questions,
+                _button(tr("Answer some questions instead"), self.show_questions,
                         color="accent"),
-                _button("Try again", self._probe),
-                _button("Start again", self.show_start))
+                _button(tr("Try again"), self._probe),
+                _button(tr("Start again"), self.show_start))
             return
         self.show_questions()
 
@@ -171,9 +172,9 @@ class SalvageScreen(BoxLayout):
         if q.look_for:
             rows.append(_line(q.look_for, "15sp", color="text_secondary"))
         rows += [
-            _button("Yes", lambda: self._answer(q.field, True), color="accent"),
-            _button("No", lambda: self._answer(q.field, False)),
-            _button("I cannot tell", lambda: self._answer(q.field, None)),
+            _button(tr("Yes"), lambda: self._answer(q.field, True), color="accent"),
+            _button(tr("No"), lambda: self._answer(q.field, False)),
+            _button(tr("I cannot tell"), lambda: self._answer(q.field, None)),
         ]
         self._stage(*rows)
 
@@ -201,16 +202,16 @@ class SalvageScreen(BoxLayout):
             rows.append(_line(p.title, "18sp", bold=True, color=colour))
             rows.append(_line(p.plain, "14sp", color="text_secondary"))
             if p.needs:
-                rows.append(_line("You will need:  " + " · ".join(p.needs),
+                rows.append(_line(tr("You will need:") + "  " + " · ".join(p.needs),
                                   "14sp", color="amber"))
             if p.caution:
                 rows.append(_line(p.caution, "14sp", color="warning_yellow"))
             if sg.guide_for_path(p.title):
-                rows.append(_button("Show me how",
+                rows.append(_button(tr("Show me how"),
                                     lambda t=p.title: self.show_guide(t),
                                     color="accent", height=58))
             rows.append(Widget(size_hint_y=None, height=dp(6)))
-        rows.append(_button("Start again", self.show_start))
+        rows.append(_button(tr("Start again"), self.show_start))
         self._stage(*rows)
 
     # -- 5. how to do it -----------------------------------------------------
@@ -221,28 +222,28 @@ class SalvageScreen(BoxLayout):
             return self.show_verdict()
         rows = [_line(g.title, "22sp", bold=True, color="accent"),
                 _line(g.opening, "15sp", color="text_secondary"),
-                _line("What you need", "17sp", bold=True)]
+                _line(tr("What you need"), "17sp", bold=True)]
         for n in g.needs:
             rows.append(_line("•  " + n, "14sp", color="text_secondary"))
-        rows.append(_line("What to do", "17sp", bold=True))
+        rows.append(_line(tr("What to do"), "17sp", bold=True))
         for i, s in enumerate(g.steps, 1):
             rows.append(_line(f"{i}.  {s.text}", "15sp", bold=True))
             if s.detail:
                 rows.append(_line("     " + s.detail, "14sp",
                                   color="text_secondary"))
             if s.watch_out:
-                rows.append(_line("     Watch out:  " + s.watch_out, "14sp",
+                rows.append(_line("     " + tr("Watch out:") + "  " + s.watch_out, "14sp",
                                   color="amber"))
         if g.expect:
-            rows += [_line("What to expect", "17sp", bold=True),
+            rows += [_line(tr("What to expect"), "17sp", bold=True),
                      _line(g.expect, "14sp", color="text_secondary")]
         if g.caution:
-            rows += [_line("Before you transmit", "17sp", bold=True,
+            rows += [_line(tr("Before you transmit"), "17sp", bold=True,
                            color="warning_yellow"),
                      _line(g.caution, "14sp", color="warning_yellow")]
         if not g.medic_does_it:
             rows.append(_line(
-                "The medic cannot do this part for you yet — these are "
-                "instructions to follow yourself.", "14sp", color="amber"))
-        rows.append(_button("Back", self.show_verdict))
+                tr("The medic cannot do this part for you yet — these are "
+                   "instructions to follow yourself."), "14sp", color="amber"))
+        rows.append(_button(tr("Back"), self.show_verdict))
         self._stage(*rows)
