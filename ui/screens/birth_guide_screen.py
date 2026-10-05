@@ -158,6 +158,7 @@ class BirthGuideScreen(BoxLayout):
         self._adopt_air_fn = adopt_air_fn     # (key,name,type,board,fw) -> enroll kin
         self._path = None
         self._i = 0
+        self._prelude_shown = 0      # antenna+detect screens shown this lap (#71)
         self._current = None
         self._node_name = ""
         self.reset()
@@ -171,6 +172,7 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self._path = None
         self._i = 0
+        self._prelude_shown = 0      # antenna+detect screens shown this lap (#71)
         self._node_name = ""
         self._pair_checked = False
         self._board_key = ""
@@ -309,6 +311,9 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._render_intro   # antenna -> back to the chooser
+        # Counted into every later step's number: the name screen used to
+        # restart at 'Step 1 of 7' after this pair's 'Step 2 of 2' (ledger #71).
+        self._prelude_shown = 2
         anim = ConnectAntennaAnim()
         # index=0 of 2, paired with _render_detect's index=1 of 2 below. Both
         # used to claim "Step 1 of 1" — a coherent two-screen sequence
@@ -1431,6 +1436,7 @@ class BirthGuideScreen(BoxLayout):
         # (2026-08-30: "asked to select build and attach board twice").
         self._stop_current()
         self.clear_widgets()
+        self._prelude_shown = 0
         self._current = None
         self._back_action = None   # the chooser is the birth root now -> home
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
@@ -1649,6 +1655,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_over_air_list
+        self._prelude_shown = 0
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
         wrap.add_widget(_line(tr("Adopt over LoRa"), "24sp", bold=True, h=36))
         wrap.add_widget(_line(tr("Enrol this node as kin from its mesh beacon — no "
@@ -1982,7 +1989,8 @@ class BirthGuideScreen(BoxLayout):
         # (breaker audit, 2026-09-13).
         warn = getattr(self, "_name_warning", "")
         blocked = getattr(self, "_name_blocked", False)
-        step = WizardStep(index=0, total=total, title=tr("Name this node"),
+        step = WizardStep(index=getattr(self, "_prelude_shown", 0), total=total,
+                          title=tr("Name this node"),
                           body=body, warning=warn,
                           input_widget=ti,
                           next_text=(tr("Use it anyway  →")
@@ -2150,7 +2158,8 @@ class BirthGuideScreen(BoxLayout):
             choices.add_widget(bt_line)
         self._share_show()                   # paint the resting position
 
-        step = WizardStep(index=1, total=total, title=s["title"],
+        step = WizardStep(index=getattr(self, "_prelude_shown", 0) + 1, total=total,
+                          title=s["title"],
                           body="", hint=s["hint"], warning=s["warning"],
                           input_widget=choices,
                           on_next=self._prelude_next,
@@ -2654,7 +2663,11 @@ class BirthGuideScreen(BoxLayout):
         position to publish), and counting it there promised a screen that
         never comes.
         """
-        return 1 + (1 if self._path in ("radio", "pi") else 0)
+        # Plus the antenna/detect pair when this lap showed it: the numbering
+        # then runs on from 'Step 2 of 2' instead of starting again (#71). The
+        # total grows once the path is known, which is the truth of it.
+        return (getattr(self, "_prelude_shown", 0) + 1
+                + (1 if self._path in ("radio", "pi") else 0))
 
     def _counter(self, i=None):
         """``(index, total)`` for the step counter — counting only screens
@@ -3321,6 +3334,9 @@ class BirthGuideScreen(BoxLayout):
             _bd = get_board(key)
             if _bd is not None and board_blocker(_bd):
                 name = name + "\n" + tr("(not yet)")   # tapping it says why
+            elif _bd is not None and not _bd.proven:
+                # never birthed through Node Medic on real hardware (#49)
+                name = name + "\n" + tr("(untested)")
             b = Button(text=name, font_size="17sp", bold=True,
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
