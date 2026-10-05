@@ -1040,7 +1040,7 @@ def test_the_share_screen_says_what_a_stranger_gets():
     from ui.birth_guide_flow import LOCATION_SHARE_STEP as S
     text = " ".join((S["body"], S["hint"], S["warning"])).lower()
     assert "800" in text                       # roughly where, in metres
-    assert "birth certificate" in text         # ...and where the truth stays
+    assert "build certificate" in text         # ...and where the truth stays
     # the announce is not only a position
     assert "name" in text and "radio settings" in text
     # and the one irreversible part, in the heavier style

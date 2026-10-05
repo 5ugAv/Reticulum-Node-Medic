@@ -194,7 +194,7 @@ class TrustedOperatorsScreen(BoxLayout):
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         msg = Label(halign="center", valign="middle", markup=True, text=(
             tr("Revoke trust in [b]{name}[/b]?").format(name=u['name']) + "\n\n"
-            + tr("Nodes birthed by this unit will no longer appear as kin on your VITALS "
+            + tr("Nodes built by this unit will no longer appear as kin on your VITALS "
                  "and MAPS — they drop to neighbour status. You can re-approve it later.")))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)

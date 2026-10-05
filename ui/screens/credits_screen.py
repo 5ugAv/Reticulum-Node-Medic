@@ -64,7 +64,7 @@ SPIEL = (
     "When the weather takes the phone lines, when the power's out, when "
     "you're simply out of range - the mesh keeps talking. Every node "
     "someone adds makes it stronger for everyone else.\n\n"
-    "This tool exists to make that easy: to help anyone birth a node, place "
+    "This tool exists to make that easy: to help anyone build a node, place "
     "it well, keep it healthy, and grow the mesh.\n\n"
     "Think Globally, act Locally."
 )

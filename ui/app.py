@@ -3198,23 +3198,25 @@ class ReticulumNodeMedicApp(App):
         if getattr(self, "_active_popup", None) is not None:
             return                              # never stack a second prompt
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
-        msg = Label(text=(f"No certificate stored for \"{name}\".\n\nThis node wasn't "
-                          "birthed by this Node Medic, so there's nothing saved to "
-                          "open. Birth it here and it will report health back and "
-                          "become remotely repairable."),
+        from ui.i18n import tr
+        msg = Label(text=tr("No certificate stored for \"{name}\".\n\nThis node "
+                            "wasn't built by this Node Medic, so there's nothing "
+                            "saved to open. Build it here and it will report its "
+                            "health back and can be repaired from a distance."
+                            ).format(name=name),
                     halign="center", valign="middle")
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        popup = Popup(title="Not birthed here", content=box,
+        popup = Popup(title=tr("Not built here"), content=box,
                       size_hint=(0.86, 0.5))
         self._active_popup = popup
         popup.bind(on_dismiss=lambda *_: setattr(self, "_active_popup", None))
-        close = Button(text="Close", background_normal="",
+        close = Button(text=tr("Close"), background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         close.bind(on_release=lambda *_: popup.dismiss())
-        birth = Button(text="Birth it here", background_normal="", bold=True,
+        birth = Button(text=tr("Build it here"), background_normal="", bold=True,
                        background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                        color=theme.hex_to_rgba(theme.COLORS["background"]))
 

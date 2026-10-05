@@ -31,7 +31,7 @@ def test_the_report_verdict_is_shown_before_the_certificate_fields():
     text = src("ui/screens/birth_screen.py")
     verdict = text.index("self._add_report_verdict()")
     # The heading is tr()-wrapped since 2026-09-15; the ORDER is the law here.
-    fields = text.index('_line(tr("Birth certificate:")')
+    fields = text.index('_line(tr("Build certificate:")')
     assert verdict < fields
 
 

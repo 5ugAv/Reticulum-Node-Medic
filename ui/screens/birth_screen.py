@@ -120,18 +120,18 @@ _PHASE_LABELS = {
     "verify_beacon": "Verifying… listening for the node's first health beacon "
                      "(up to a minute of quiet is normal — wait for the green "
                      "confirmation).",
-    "install_software_stack": "Installing the software stack… (minutes on a "
+    "install_software_stack": "Installing the mesh software… (minutes on a "
                               "fresh Pi).",
     "configure_services": "Starting the node's services…",
-    "install_health_reporter": "Installing the health reporter…",
+    "install_health_reporter": "Teaching the node to report its health…",
     "install_time_trust": "Telling the node to take the time from this Node Medic…",
     "install_status_server": "Giving the node a status page Node Medic can read…",
     "prove_the_node_reports": "Asking the node to report on itself…",
-    "apply_system_hardening": "Hardening the system…",
-    "set_hostname": "Setting the hostname…",
+    "apply_system_hardening": "Locking the node down…",
+    "set_hostname": "Giving the node its network name…",
     "final_verification": "Verifying the node…",
-    "birth_certificate": "Writing the birth certificate…",
-    "birth_cry": "The birth cry — watch the node's light show.",
+    "birth_certificate": "Writing the build certificate…",
+    "birth_cry": "Watch the node's light show — it is saying hello.",
 }
 
 
@@ -385,10 +385,10 @@ class BirthScreen(BoxLayout):
             self.header.add_widget(_line(tr(
                 "The radio is flashed, the card is written and the Pi is "
                 "answering on the cable. This is the last part: the mesh "
-                "software, and its birth certificate."),
+                "software, and its build certificate."),
                 size="13.5sp", color="text_secondary"))
         else:
-            self.header.add_widget(_line(tr("Birth a new node"), bold=True,
+            self.header.add_widget(_line(tr("Build a new node"), bold=True,
                                          size="22sp"))
 
         # The step-by-step guide entry lives at the BOTTOM as a modest link —
@@ -3194,7 +3194,7 @@ class BirthScreen(BoxLayout):
                 # ago. It stays on the standalone card, where it is true.
                 if more_to_come:
                     view = requirement_popup(
-                        tr("The radio is flashed and verified, and its birth "
+                        tr("The radio is flashed and verified, and its build "
                            "certificate is in the log below.\n\n"
                            "The build carries on behind this card."),
                         tr("Radio flashed"), False, tone=_tone, button_text=_btn)
@@ -3203,7 +3203,7 @@ class BirthScreen(BoxLayout):
                 elif getattr(getattr(self._workflow, "target", None), "verify",
                              "") == "eeprom":
                     view = requirement_popup(
-                        tr("Build finished — details and the birth certificate "
+                        tr("Build finished — details and the build certificate "
                            "are in the build log below. The node was verified "
                            "over USB; when it is heard over LoRa it will appear "
                            "in VITALS."),
@@ -3215,14 +3215,14 @@ class BirthScreen(BoxLayout):
                     # (walkthrough 2026-08-26, Tomas). Say what it's FOR.
                     view = requirement_popup(
                         tr("Build finished — the radio is flashed and verified, "
-                           "and its birth certificate is in the log below.\n\n"
+                           "and its build certificate is in the log below.\n\n"
                            "This is a radio to plug into a phone or computer. It "
                            "won't show up in VITALS on its own — that's normal; "
                            "VITALS is for nodes that run the mesh themselves."),
                         tr("Build finished"), False, tone=_tone, button_text=_btn)
                 else:
                     view = requirement_popup(
-                        tr("Build finished — details and the birth certificate "
+                        tr("Build finished — details and the build certificate "
                            "are in the build log below. Watch VITALS for the "
                            "node's first health beacon."),
                         tr("Build finished"), False, tone=_tone, button_text=_btn)
@@ -3278,7 +3278,7 @@ class BirthScreen(BoxLayout):
         # dismissed popup is no use once your hands are full.
         if getattr(self, "_last_type", "") == "pi_rnode":
             self._handoff_block(board)
-            self.list.add_widget(_line(tr("Birth another with Change at the top, "
+            self.list.add_widget(_line(tr("Build another with Change at the top, "
                                           "or hit BACK."), size="13sp",
                                        color="text_secondary"))
             return
@@ -3291,7 +3291,7 @@ class BirthScreen(BoxLayout):
             nxt = tr("Node provisioned on the standard channel. Give it power and "
                      "its antenna; it will announce and appear in VITALS as kin.")
         self.list.add_widget(_line(nxt, size="15sp"))
-        self.list.add_widget(_line(tr("Birth another with Change at the top, "
+        self.list.add_widget(_line(tr("Build another with Change at the top, "
                                       "or hit BACK."), size="13sp",
                                    color="text_secondary"))
 
@@ -3605,7 +3605,7 @@ class BirthScreen(BoxLayout):
         # that passes every step and then shows as a grey row for days is the
         # failure the operator has hit repeatedly (SkyFinger, 2026-08-11).
         self._add_report_verdict()
-        self.list.add_widget(_line(tr("Birth certificate:"), bold=True,
+        self.list.add_widget(_line(tr("Build certificate:"), bold=True,
                                    size="16sp"))
         self.list.add_widget(_line("    " + tr("(saved on this Node Medic)"),
                                    size="12sp", color="text_secondary"))

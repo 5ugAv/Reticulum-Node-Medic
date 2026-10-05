@@ -58,7 +58,7 @@ class ToolIdentityScreen(BoxLayout):
         self._hash_box, self._hash_v = _field(tr("Reticulum identity"), tr("reading…"),
                                               mono=True)
         self.add_widget(self._hash_box)
-        self._born_box, self._born_v = _field(tr("Born"), "…")
+        self._born_box, self._born_v = _field(tr("Made"), "…")
         self.add_widget(self._born_box)
         self._parent_box, self._parent_v = _field(tr("Lineage"), "…")
         self.add_widget(self._parent_box)

@@ -152,7 +152,7 @@ def test_a_no_token_machine_is_reported_on_the_glass():
     from tests.srcutil import func_source
     watcher = func_source("ui/screens/birth_guide_screen.py",
                           "_start_pi_poll", cls="BirthGuideScreen")
-    assert "answered without a" in watcher and "re-image" in watcher, (
+    assert "not your Pi. Still watching." in watcher and "write its card again" in watcher, (
         "the skyfinger stall, named on screen — calmly (briefing Task 3)")
     assert "Ignoring another node" in watcher
     assert "set_status" in watcher

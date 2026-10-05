@@ -269,7 +269,7 @@ def test_the_existing_node_screen_actually_rebirths():
 def test_it_is_marked_destructive_like_the_rnode_screen():
     """Same wording and same warning colour as the already-an-RNode screen."""
     src = textwrap.dedent(func_source(SCREEN, "_render_adopt"))
-    assert 'tr("Rebirth — wipe this node & build it fresh")' in src, \
+    assert 'tr("Rebuild — wipe this node & build it fresh")' in src, \
         "reuse the RNode screen's exact words (also: already translated)"
     assert 'COLORS["amber"]' in src, "a destructive action must not read as neutral"
 
@@ -277,6 +277,6 @@ def test_it_is_marked_destructive_like_the_rnode_screen():
 def test_the_two_screens_use_the_same_rebirth_control():
     """Pin the mirroring itself: if one screen's control changes, this fails."""
     adopt = textwrap.dedent(func_source(SCREEN, "_render_adopt"))
-    for token in ('tr("Rebirth — wipe this node & build it fresh")',
+    for token in ('tr("Rebuild — wipe this node & build it fresh")',
                   'COLORS["amber"]', "_confirm_rebirth(c)"):
         assert token in adopt, token

@@ -67,8 +67,8 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._entry(tr("Language"), tr("Run Node Medic in your own language"), "language"))
         body.add_widget(self._entry(tr("Default radio parameters"), tr("The radio settings every new node is built with. "
                                     "Keep them the same everywhere, or nodes can't hear each other"), "radio_defaults"))
-        body.add_widget(self._entry(tr("Tool identity"), tr("This medic's Reticulum identity, name, born date "
-                                    "and lineage"), "tool_identity"))
+        body.add_widget(self._entry(tr("Tool identity"), tr("This medic's mesh identity, its name, when it was "
+                                    "made and which medic it was cloned from"), "tool_identity"))
         body.add_widget(self._entry(tr("Storage usage"), tr("SD card space and what's using it"), "storage"))
         body.add_widget(self._entry(tr("Trusted operators"), tr("Trust between cloned Node Medic units — the "
                                     "family tree"), "trusted_operators"))

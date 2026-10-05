@@ -216,7 +216,7 @@ class VaultUnlockScreen(BoxLayout):
                               "15sp", bold=True, color="red", h=26))
         wrap.add_widget(grow_to_text(_line(
             tr("Resetting erases this medic's records for good: every node's "
-               "saved location, its birth certificates and your notes. It "
+               "saved location, its build certificates and your notes. It "
                "does NOT harm your mesh — the nodes keep running, and you can "
                "adopt them again. There is no undo."),
             "13sp", color="text_secondary")))        # grows: six translations need four lines (#210)

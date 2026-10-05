@@ -231,7 +231,7 @@ def test_the_verdict_is_shown_before_the_certificate_fields():
     src = open("ui/screens/birth_screen.py").read()
     verdict = src.index("proof.summary")
     # The heading is tr()-wrapped since 2026-09-15; the ORDER is the law here.
-    fields = src.index('_line(tr("Birth certificate:")')
+    fields = src.index('_line(tr("Build certificate:")')
     assert verdict < fields
 
 
@@ -274,7 +274,7 @@ def test_the_screen_does_not_colour_not_applicable_as_a_problem():
     """Amber would send the operator looking for a fault that does not exist."""
     src = open("ui/screens/birth_screen.py").read()
     blk = src[src.index("proof = getattr(self, \"_radio_proof\""):]
-    blk = blk[:blk.index("Birth certificate:")]
+    blk = blk[:blk.index("Build certificate:")]
     assert "proof.not_applicable" in blk
     assert "text_secondary" in blk
 

@@ -529,7 +529,7 @@ class NodeDetailScreen(BoxLayout):
         # be a repair path that looks one tap from working and isn't.
         if (self._advice is not None and self._advice.offer_rebirth
                 and self._on_rebirth is not None):
-            rb = Button(text=tr("Rebirth this node"),
+            rb = Button(text=tr("Rebuild this node"),
                         font_size=theme.font_sp("18sp"), background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                         color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -592,8 +592,8 @@ class NodeDetailScreen(BoxLayout):
                 out.append(tr("Board named by you from the catalogue — the "
                               "radio was never on Node Medic"))
         else:
-            out.append(tr("Board: not named at birth — the radio was never "
-                          "on Node Medic"))
+            out.append(tr("Board: not named when it was built — the radio was "
+                          "never on Node Medic"))
         kinds = {"rnode": tr("RNode"), "rtnode2400": tr("RTNode-2400"),
                  "pi_rnode": tr("Raspberry Pi + RNode")}
         kind = fact.name or kinds.get(fact.kind)   # the build's own name wins
@@ -610,7 +610,7 @@ class NodeDetailScreen(BoxLayout):
                               version=fact.firmware))
         if fact.born:
             out.append((tr("Adopted: {born}") if cert.get("adopted")
-                        else tr("Born: {born}")).format(born=fact.born))
+                        else tr("Built: {born}")).format(born=fact.born))
         # THE PORT, composed from install_radio_rule's own record of the
         # udev rule it wrote and read back (from 2026-09-22). An older
         # certificate's bare "/dev/ttyUSB0" is the NodeProfile default, a
@@ -664,7 +664,7 @@ class NodeDetailScreen(BoxLayout):
             tr("Delete everything Node Medic knows about {name}?\n\n"
                "Its rows, history, certificates and roster entry all go — "
                "this cannot be undone, and the name becomes free for a new "
-               "birth. The node itself is not touched; if it is still alive "
+               "node. The node itself is not touched; if it is still alive "
                "and announcing, it will reappear as a neighbour.").format(
                    name=name),
             tr("Delete {name}").format(name=name),

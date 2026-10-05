@@ -897,7 +897,7 @@ class BirthGuideScreen(BoxLayout):
             wrap.add_widget(_line(
                 tr("{name} is already flashed as an RNode{by} — a radio for a "
                    "phone, computer or Pi. It has no mesh identity of its own. "
-                   "Keep it as it is, or rebirth it as a different type of "
+                   "Keep it as it is, or rebuild it as a different type of "
                    "node.").format(name=name, by=by),
                 "16sp", color="text_secondary", h=110))
             # Only the LIVE probe branch may claim live proof — recognition
@@ -909,7 +909,7 @@ class BirthGuideScreen(BoxLayout):
                     "13sp", color="green", h=24))
             else:
                 wrap.add_widget(_line(
-                    tr("Recognised by its board ID from a past birth — not "
+                    tr("Recognised by its board ID from a past build — not "
                        "health-checked just now."),
                     "13sp", color="text_secondary", h=34))
         else:
@@ -934,7 +934,7 @@ class BirthGuideScreen(BoxLayout):
                 wrap.add_widget(_line(
                     tr("{name} is enrolled as your kin, but the medic hasn't "
                        "heard its beacon {ago}. It may be failing quietly — a "
-                       "Rebirth gives it a clean start, or check its signal "
+                       "Rebuild gives it a clean start, or check its signal "
                        "and power in ANTENNA.").format(name=name, ago=ago),
                     "16sp", color="text_secondary", h=100))
             else:
@@ -984,7 +984,7 @@ class BirthGuideScreen(BoxLayout):
             wrap.add_widget(cont)
         # REBIRTH (operator request 2026-07-31): wipe + flash fresh — the
         # deliberate path for a RENAME or a hard reset of a misbehaving node.
-        reb = Button(text=tr("Rebirth — wipe this node & build it fresh"),
+        reb = Button(text=tr("Rebuild — wipe this node & build it fresh"),
                      size_hint_y=None, height=dp(46), font_size="14sp",
                      background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -1076,12 +1076,12 @@ class BirthGuideScreen(BoxLayout):
                               bold=True, color="amber", h=28))
         body.add_widget(_line(tr("• its identity is wiped — it becomes a brand-new "
                                  "node (old history detaches)\n• its name, Wi-Fi and "
-                                 "radio settings are wiped\n• then the normal birth "
+                                 "radio settings are wiped\n• then the normal build "
                                  "runs: flash, name it, auto-setup"),
                               "14sp", color="text_secondary", h=96))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(54),
                         spacing=dp(10))
-        go = Button(text=tr("⚠  Wipe & rebirth"), bold=True, font_size="15sp",
+        go = Button(text=tr("⚠  Wipe & rebuild"), bold=True, font_size="15sp",
                     background_normal="",
                     background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                     color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -1092,7 +1092,7 @@ class BirthGuideScreen(BoxLayout):
         row.add_widget(go)
         row.add_widget(cancel)
         body.add_widget(row)
-        pop = Popup(title=tr("Rebirth this node?"), content=body,
+        pop = Popup(title=tr("Rebuild this node?"), content=body,
                     size_hint=(0.9, 0.55),
                     title_color=theme.hex_to_rgba(theme.COLORS["amber"]))
         self._rebirth_pop = pop
@@ -1116,7 +1116,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.widget import Widget
         wrap.add_widget(Widget())
         wrap.add_widget(_line(tr("Wiping the board…"), "24sp", bold=True, h=40))
-        wrap.add_widget(_line(tr("A few seconds — then the normal birth starts."),
+        wrap.add_widget(_line(tr("A few seconds — then the normal build starts."),
                               "14sp", color="text_secondary", h=24))
         wrap.add_widget(Widget())
         self.add_widget(wrap)
@@ -1254,7 +1254,7 @@ class BirthGuideScreen(BoxLayout):
                     from ui.requirement_popup import requirement_popup
                     requirement_popup(
                         tr("Couldn't wipe the board: ") + (msg or tr("unknown")),
-                        tr("Rebirth failed"), False)
+                        tr("Rebuild failed"), False)
                     self._render_detect()
             Clock.schedule_once(done, 0)
         import threading
@@ -1335,7 +1335,7 @@ class BirthGuideScreen(BoxLayout):
         wrap.add_widget(adopt)
         # Same words, same colour, same height as the RNode screen's — one
         # string, so it also needs no new translation.
-        reb = Button(text=tr("Rebirth — wipe this node & build it fresh"),
+        reb = Button(text=tr("Rebuild — wipe this node & build it fresh"),
                      size_hint_y=None, height=dp(46), font_size="14sp",
                      background_normal="",
                      background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -1848,7 +1848,7 @@ class BirthGuideScreen(BoxLayout):
                              "26sp", bold=True, h=44))
         wrap.add_widget(_line(
             tr("A radio has to be flashed with the node software before it can "
-               "join the mesh. If you already have one, or you'll birth one "
+               "join the mesh. If you already have one, or you'll build one "
                "separately, skip that here."),
             "16sp", color="text_secondary"))
 
@@ -1864,7 +1864,7 @@ class BirthGuideScreen(BoxLayout):
             flash_here, height=110))
         wrap.add_widget(self._choice_card(
             tr("I already have a working radio"),
-            tr("Already flashed — yours, or one you'll birth separately and "
+            tr("Already flashed — yours, or one you'll build separately and "
                "bring back. You'll plug it into the finished Pi at the end."),
             self._already_have_one, height=126))
         self.add_widget(wrap)
@@ -1970,7 +1970,7 @@ class BirthGuideScreen(BoxLayout):
         bind_field(ti)
         self._name_input = ti
         body = tr("Give this node a short, memorable name — you'll see it "
-                  "on the map and on its birth certificate.")
+                  "on the map and on its build certificate.")
         # After a wipe, say what the board USED to be — as history, not as the
         # answer. The operator watched a screen announce "wiping rak3" and then
         # offer them "rak3" with nothing marking it as a decision still to make.
@@ -3784,7 +3784,7 @@ class BirthGuideScreen(BoxLayout):
         pi_name = next((n for k, n in PI_HOSTS if k == pi_key), "This Pi")
         c = pi_connectors.get(pi_key)
         why = (c.why_not if c is not None and not c.can_cable
-               else tr("This board cannot do a cable birth."))
+               else tr("This board cannot do a cable build."))
         wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
         wrap.add_widget(Callout(
             tr("{pi} can't be built this way").format(pi=pi_name), why))
@@ -4521,10 +4521,10 @@ class BirthGuideScreen(BoxLayout):
                     # one actionable sentence, because that one can be the
                     # CARD's fault (the stale-writer night, 2026-08-14).
                     if why == "no-token":
-                        msg = tr("A machine at {addr} answered without a "
-                                 "birth token — ignoring it and still "
-                                 "watching. If nothing arrives, re-image "
-                                 "the card.").format(addr=imposter)
+                        msg = tr("A different machine answered at {addr}, "
+                                 "not your Pi. Still watching. If your Pi "
+                                 "never appears, write its card again."
+                                 ).format(addr=imposter)
                     elif why == "wrong-token":
                         msg = tr("Ignoring another node at {addr} — still "
                                  "watching for YOUR Pi.").format(

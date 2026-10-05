@@ -93,7 +93,7 @@
   "The radio settings every new node is built with. Keep them the same everywhere, or nodes can't hear each other",
   "The security setup, and what each mode is for",
   "This can take several minutes. Leave the screen open.",
-  "This medic's Reticulum identity, name, born date and lineage",
+  "This medic's mesh identity, its name, when it was made and which medic it was cloned from",
   "This medic's radio defaults are NON-STANDARD.",
   "Tool identity",
   "Transport node: routes for the mesh only — no message store-and-forward.",

@@ -80,7 +80,7 @@ def advise(status: str, board_attached: bool = False, name: str = "",
             headline=tr("{who} hasn't been heard from yet.").format(who=who),
             steps=[tr("It may still be starting up — give it a few minutes."),
                    tr("Check the antenna is attached at both ends.")],
-            rebirth_note=tr("Too early to consider a rebirth."))
+            rebirth_note=tr("Too early to consider a rebuild."))
 
     if status in ("warn", "amber"):
         # AMBER DOES NOT ALWAYS MEAN "ANSWERING". Registry.status promotes an
@@ -99,12 +99,12 @@ def advise(status: str, board_attached: bool = False, name: str = "",
                        tr("It may still be starting up, switched off, out of "
                           "range, or behind a relay that is asleep."),
                        tr("Check the antenna is attached at both ends.")],
-                rebirth_note=tr("Too early to consider a rebirth."))
+                rebirth_note=tr("Too early to consider a rebuild."))
         return Advice(
             headline=tr("{who} is answering, but not happily.").format(who=who),
             steps=[tr("Try 'Ping node now' — a clean reply clears this."),
                    tr("Check its battery and signal on this page.")],
-            rebirth_note=tr("A rebirth would be premature — it is still "
+            rebirth_note=tr("A rebuild would be premature — it is still "
                             "talking."))
 
     # alert / red / down — the case this task is about.
@@ -129,6 +129,6 @@ def advise(status: str, board_attached: bool = False, name: str = "",
         headline=tr("{who} isn't answering.{quiet}").format(who=who, quiet=quiet),
         steps=steps,
         rebirth_note=tr("If none of that helps and you can physically reach it, "
-                        "bring the board back to Node Medic and rebirth it — "
+                        "bring the board back to Node Medic and rebuild it — "
                         "that wipes the node and builds it fresh. It can't be "
                         "done over the air."))

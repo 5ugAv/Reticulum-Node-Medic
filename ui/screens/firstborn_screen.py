@@ -263,7 +263,7 @@ class FirstbornScreen(BoxLayout):
                 failure = ff.first_failure(results)
         except Exception as exc:       # noqa: BLE001
             ok = False
-            failure = tr("The birth hit a snag: {err}").format(err=exc)
+            failure = tr("Setting up the Tracker hit a snag: {err}").format(err=exc)
         Clock.schedule_once(lambda dt: self._finish(ok, failure), 0)
 
     def _show_progress(self, msg):

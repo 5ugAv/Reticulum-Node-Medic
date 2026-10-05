@@ -379,7 +379,7 @@ def test_the_vitals_page_composes_its_lines_from_the_codes_not_the_prose():
                 "read by Node Medic when it flashed the radio",
                 "read by Node Medic from the radio on its own USB",
                 "Board named by you from the catalogue — the radio was never on Node Medic",
-                "Board: not named at birth — the radio was never on Node Medic"):
+                "Board: not named when it was built — the radio was never on Node Medic"):
         assert key in body, key
     assert "UNKNOWN_BOARD_TEXT" not in body
     assert 'cert.get("serial_port")' not in body, "the sentence is composed, not copied"

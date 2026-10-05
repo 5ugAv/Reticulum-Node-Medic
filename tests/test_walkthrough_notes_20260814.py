@@ -145,7 +145,7 @@ def test_the_led_line_matches_the_firmware_not_the_guess():
     screen must say a pulse means the Pi has NOT opened it yet."""
     s = _step("radio_to_pi")
     body = " ".join(s["body"].lower().split())
-    assert "pulse" in body and "not opened the radio yet" in body
+    assert "pulsing white" in body and "not opened the radio yet" in body
     assert "radio alive" not in body
 
 

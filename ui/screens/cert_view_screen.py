@@ -120,7 +120,7 @@ class CertViewScreen(BoxLayout):
         if saved_at:
             when = datetime.fromtimestamp(saved_at).strftime("%Y-%m-%d %H:%M")
             self.add_widget(_line(
-                tr("Born / saved on this Node Medic — {when}").format(when=when),
+                tr("Built / saved on this Node Medic — {when}").format(when=when),
                 color="text_secondary", size="12sp", h=18))
 
         body = ScrollView()
@@ -174,7 +174,7 @@ class CertViewScreen(BoxLayout):
             edit.bind(on_release=lambda *_: self._on_edit_location(self._cert))
             self.list.add_widget(edit)
 
-        self.list.add_widget(_line(tr("Birth certificate"), bold=True, size="17sp"))
+        self.list.add_widget(_line(tr("Build certificate"), bold=True, size="17sp"))
         shown = set()
         for key, label in _PRETTY:
             if key in self._cert and self._cert[key] not in (None, ""):
