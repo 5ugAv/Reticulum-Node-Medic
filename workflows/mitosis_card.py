@@ -118,6 +118,17 @@ def debs_missing() -> str:
             "then write the card.")
 
 
+def medic_timezone() -> str:
+    """This medic's own IANA timezone, or "" when it cannot be read. The clone
+    boots in the zone of the medic that made it (readiness ledger #130); a
+    stock image is Europe/London and NTP never fixes a zone."""
+    try:
+        from provisioning.tool_datetime import current_timezone
+        return current_timezone() or ""
+    except Exception:                                              # noqa: BLE001
+        return ""
+
+
 def image_medic_card(device_path: str, display_name: str,
                      username: str = "pi",
                      password: Optional[str] = None,
@@ -125,6 +136,7 @@ def image_medic_card(device_path: str, display_name: str,
                      wifi: Optional[Tuple[str, str]] = None,
                      helper_check: Callable = pi_imager.helper_out_of_date,
                      deb_check: Optional[Callable] = None,
+                     timezone: Optional[str] = None,
                      ) -> Tuple[bool, str, str]:
     """Write + configure the new medic's card. Returns (ok, message, password).
 
@@ -148,9 +160,10 @@ def image_medic_card(device_path: str, display_name: str,
         return False, "That name doesn't reduce to a usable hostname.", ""
     pw = password or memorable_password()
     ssid, psk = wifi if wifi is not None else medic_wifi_credentials()
+    tz = timezone if timezone is not None else medic_timezone()
     ok, msg = flash(device_path, hostname, username, pw,
                     wifi_ssid=ssid, wifi_password=psk,
-                    cable_link=False, medic=True)
+                    cable_link=False, medic=True, timezone=tz)
     return ok, msg, pw
 
 

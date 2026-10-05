@@ -101,7 +101,7 @@ _TONE = {"ok": "green", "warn": "amber", "alert": "red", "unknown": "text_second
 
 class NodeDetailScreen(BoxLayout):
     def __init__(self, record, now, on_poll=None,
-                 on_forget=None, on_walk=None,
+                 on_forget=None, on_walk=None, on_probe=None,
                  watch_line=None, activity_text=None, by_hour=None,
                  insights=None, on_rebirth=None, board_attached=False,
                  capabilities=None, clock_entry=None, **kwargs):
@@ -113,6 +113,7 @@ class NodeDetailScreen(BoxLayout):
         self._on_poll = on_poll
         self._on_forget = on_forget
         self._on_walk = on_walk
+        self._on_probe = on_probe
         # A rebirth is an esptool erase over USB, so it needs the board IN HAND.
         # board_attached defaults False on purpose: a caller that cannot tell
         # must not have a repair button appear that quietly does nothing.
@@ -448,6 +449,25 @@ class NodeDetailScreen(BoxLayout):
                 walk_row = col
             self._walk_row = walk_row
 
+        if self._on_probe is not None and not str(
+                getattr(self.record, "node_type", "") or "").startswith("pi"):
+            # PROBE'S DOOR (readiness ledger #144, keeper's call 2026-10-05).
+            # docs/FRONT_PAGE_BRIEF.md says PROBE is reached by tapping a node
+            # in VITALS — and until now this page had no such button, so after
+            # the tour PROBE had no door at all. A Pi node gets none: PROBE
+            # reads a BOARD over USB, and a Pi node is reached over the network.
+            probe_row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                                  height=dp(52), spacing=dp(8))
+            probe = Button(text=tr("Probe this node — plug it into the medic"),
+                           font_size=theme.font_sp("16sp"), bold=True,
+                           background_normal="",
+                           background_color=theme.hex_to_rgba(
+                               theme.COLORS["accent"]),
+                           color=theme.hex_to_rgba(theme.COLORS["background"]))
+            probe.bind(on_release=lambda *_: self._on_probe(self.record))
+            probe_row.add_widget(probe)
+            self._probe_row = probe_row
+
         # NO HEALTH-REPORTER UPDATE HERE AT ALL (operator, 2026-09-29). It was
         # a button; then, briefly, an automatic push. Both are gone, and the
         # reason is that the problem they solved has no future: "any boards that
@@ -497,6 +517,9 @@ class NodeDetailScreen(BoxLayout):
         if getattr(self, "_walk_row", None) is not None:
             self.add_widget(self._walk_row)
             self._walk_row = None
+        if getattr(self, "_probe_row", None) is not None:
+            self.add_widget(self._probe_row)
+            self._probe_row = None
         if getattr(self, "_danger_row", None) is not None:
             self.add_widget(self._danger_row)
             self._danger_row = None

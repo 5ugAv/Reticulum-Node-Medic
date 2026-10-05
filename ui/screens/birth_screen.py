@@ -992,6 +992,12 @@ class BirthScreen(BoxLayout):
                 next_custom += 1
             if board_blocker(board):
                 tag += "  " + tr("(not yet)")       # the gate says why
+            elif not board.proven:
+                # Flashable, but no RNode birth of this board has ever been
+                # proven on real hardware through Node Medic — the picker
+                # showed all seventeen alike while four had (readiness
+                # ledger #49). docs/BOARD_COVERAGE.md is the source of truth.
+                tag += "  " + tr("(untested)")
             # picker_label, not display_name: it carries the silkscreen marking
             # for boards sold under a name that is printed nowhere on them
             # (LoRa32 v2.1 = T3 v1.6.1) — the row IS the moment of choice.

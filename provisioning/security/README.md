@@ -33,6 +33,7 @@ SUPERSEDED by the above):
 | `sshd_config.d/01-nodemedic-hardening.conf` | `/etc/ssh/sshd_config.d/` | key-only auth |
 | `nftables/nodemedic-ssh.nft` | `/etc/nftables.d/` | limit tcp/22 to LAN/private |
 | `apply_sudoers.sh` / `rollback_sudoers.sh` | — | install/revert sudoers |
+| `render_sudoers.sh` | — | called by apply: puts THIS machine's backlight device into the brightness rule |
 | `apply_sshd.sh` / `rollback_sshd.sh` | — | install/revert sshd |
 | `apply_firewall.sh` / `rollback_firewall.sh` | — | load/revert firewall |
 

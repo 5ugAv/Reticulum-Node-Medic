@@ -22,7 +22,11 @@ BACKUP="/root/nodemedic-sudoers-backup-$STAMP"
 
 echo "== 1. validate the repo file on a temp copy =="
 TMP="$(mktemp)"; trap 'rm -f "$TMP"' EXIT
-cp "$SRC" "$TMP"; chmod 0440 "$TMP"
+# THIS machine's backlight device goes into the brightness rule (readiness
+# ledger #16): the repo file pins the developer's panel, and a medic with
+# another display got a slider that did nothing. Rendered before validation.
+bash "$(dirname "$0")/render_sudoers.sh" "$SRC" "$TMP"
+chmod 0440 "$TMP"
 visudo -cf "$TMP" || { echo "REPO FILE INVALID — nothing changed." >&2; exit 1; }
 
 echo "== 2. back up existing sudoers.d to $BACKUP =="

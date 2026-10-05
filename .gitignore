@@ -33,6 +33,10 @@ typescript
 # device, kept out of git like the other carried binaries.
 assets/fonts/*
 !assets/fonts/.gitkeep
+# Noto Sans JP (SIL OFL 1.1) IS carried in git since 2026-10-05: without it a
+# repo-built medic could never offer Japanese (readiness ledger #150).
+!assets/fonts/NotoSansJP-Regular.otf
+!assets/fonts/LICENSE-NotoSansJP-OFL.txt
 
 # Agent scratch: worktrees + local settings. Never belongs in history —
 # a `git add -A` once swept an unreviewed agent worktree into a commit.

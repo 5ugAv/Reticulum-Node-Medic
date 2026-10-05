@@ -22,6 +22,8 @@
 # provisioning/brightness.py  set_brightness() ->
 #   sudo -n tee /sys/class/backlight/panel_backlight@1/brightness   (value on stdin)
 # tee reads stdin only; the path is fixed, so this can write nothing else.
+# panel_backlight@1 is the developer's panel: security/render_sudoers.sh puts
+# the installing machine's own /sys/class/backlight device here at install.
 Cmnd_Alias NM_BACKLIGHT = \
     /usr/bin/tee /sys/class/backlight/panel_backlight@1/brightness
 

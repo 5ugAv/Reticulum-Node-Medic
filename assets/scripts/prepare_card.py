@@ -573,9 +573,44 @@ def _write(path: str, text: str) -> None:
 # Root partition: the gadget service + turning the shipped account back on
 # --------------------------------------------------------------------------- #
 
+def _set_timezone(mnt: str, tz: str) -> bool:
+    """/etc/timezone + /etc/localtime on the mounted rootfs, the way
+    timedatectl would do it on the running system. The name is checked
+    against the CARD'S OWN zoneinfo first: a zone the card does not know, or
+    anything that is not a plain Area/City name, is refused and the image
+    default stands (readiness ledger #130 — custom.toml's [locale] block is
+    inert on this image, like everything else in it)."""
+    plain = (tz == tz.strip("/") and ".." not in tz
+             and all(ch.isalnum() or ch in "/_+-" for ch in tz))
+    zoneinfo = os.path.join(mnt, "usr/share/zoneinfo", tz)
+    if not plain or not os.path.isfile(zoneinfo):
+        print("PREPARE_WARN: unknown timezone " + repr(tz)
+              + " - the card keeps the image's default zone")
+        return False
+    try:
+        _write(os.path.join(mnt, "etc/timezone"), tz + "\n")
+        localtime = os.path.join(mnt, "etc/localtime")
+        if os.path.islink(localtime) or os.path.exists(localtime):
+            os.remove(localtime)
+        # an ABSOLUTE target, as Debian ships it: right once the card boots
+        os.symlink("/usr/share/zoneinfo/" + tz, localtime)
+        say("set the timezone (" + tz + ")")
+        return True
+    except Exception as exc:                            # noqa: BLE001
+        print("PREPARE_WARN: could not set the timezone (" + str(exc)
+              + ") - the card keeps the image's default zone")
+        return False
+
+
 def write_rootfs(mnt: str, cfg: dict) -> None:
     if not os.path.isdir(os.path.join(mnt, "etc")):
         fail(f"{mnt} has no /etc — not a Pi root partition")
+
+    # The medic's own timezone, for node and medic cards alike: NTP fixes a
+    # clock but never its zone, and a stock image is Europe/London.
+    tz = str(cfg.get("timezone") or "").strip()
+    if tz:
+        _set_timezone(mnt, tz)
 
     if cfg.get("cable_link", True):
         try:

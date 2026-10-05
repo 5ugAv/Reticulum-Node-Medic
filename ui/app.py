@@ -2245,6 +2245,9 @@ class ReticulumNodeMedicApp(App):
         scr.add_widget(self._with_back(back_to=origin, widget=NodeDetailScreen(
             rec, now, on_poll=self._ping_node,
             on_forget=self._forget_node, on_walk=self._start_boundary_walk,
+            # PROBE's door (readiness ledger #144): the brief puts PROBE
+            # behind a node in VITALS, so the node page opens it.
+            on_probe=lambda rec: self.switch_mode("probe"),
             watch_line=watch_line, activity_text=activity_text, by_hour=by_hour,
             insights=insights, capabilities=caps, clock_entry=clock_entry)))
         self.switch_mode("node_detail")

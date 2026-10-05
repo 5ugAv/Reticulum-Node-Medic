@@ -76,7 +76,11 @@ class RNodeBoard:
     #: Set -> autoinstall_answers refuses with this reason instead of the
     #: generic "not yet verified" (which reads as a to-do, not a fact).
     band_ambiguity: str = ""
-    experimental: bool = True                # upstream marks dev-board installs so
+    #: HOW an RNode birth of this board was proven on real hardware through
+    #: Node Medic — "" means never (readiness ledger #49: the picker showed 18
+    #: boards identically while four had ever been birthed). The source of
+    #: truth is docs/BOARD_COVERAGE.md; keep the two in step.
+    proven: str = ""
 
     def cannot_flash_reason(self, band_mhz: int = 915) -> str:
         """Why Node Medic must NOT start flashing this board for *band_mhz* —
@@ -190,7 +194,8 @@ class RNodeBoard:
 
 
 def _official(key, name, index, platform, modem, bands, recovery_key="",
-              notes="", bootloader=None, band_map=None, band_ambiguity=""):
+              notes="", bootloader=None, band_map=None, band_ambiguity="",
+              proven=""):
     if bootloader is None:
         bootloader = _NRF52_BOOTLOADER if platform == "nRF52" else _ESP32_BOOTLOADER
     return RNodeBoard(
@@ -198,12 +203,11 @@ def _official(key, name, index, platform, modem, bands, recovery_key="",
         platform=platform, modem=modem, bands=bands, autoinstall_index=index,
         autoinstall_bands=band_map or {}, recovery_key=recovery_key,
         bootloader_instructions=bootloader, notes=notes,
-        band_ambiguity=band_ambiguity)
+        band_ambiguity=band_ambiguity, proven=proven)
 
 
 # Official RNode targets — index = rnodeconf's "What kind of device is this?"
-# device-menu number (1.3.7). Dev-board installs are flagged experimental
-# upstream. Sub-GHz boards cover a 410-525 MHz and an 850-950 MHz variant; the
+# device-menu number (1.3.7). Sub-GHz boards cover a 410-525 MHz and an 850-950 MHz variant; the
 # band is chosen during flashing (AU builds use 850-950 / 915.125 MHz).
 # band_map: band (MHz) -> rnodeconf band-submenu choice, transcribed from the
 # firmware's autoinstall menu. Heltec V4 is HARDWARE-VERIFIED (flashed a real
@@ -223,7 +227,8 @@ _OFFICIAL = [
     # short form because the row has to fit an 800x480 panel.
     _official("lora32_v21", "LilyGO LoRa32 v2.1 (T3 v1.6.1)", 3, "ESP32",
               "SX1276/78", "410-525 / 850-950 MHz",
-              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
+              band_map={433: 1, 868: 2, 915: 2, 923: 2},
+              proven="RNode birth proven on the bench (docs/BOARD_COVERAGE.md)"),
     # v2.0 / v1.0 carry no parenthetical because nobody here has read their
     # silkscreens — a marking we haven't seen is a guess, and a guess printed as
     # instruction is worse than silence (same rule as board_images.HOW_TO_TELL).
@@ -269,7 +274,9 @@ _OFFICIAL = [
               band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("heltec32_v4", "Heltec LoRa32 v4", 9, "ESP32-S3", "SX1262",
               "850-950 MHz", recovery_key="Heltec V4",
-              band_map={868: 1, 915: 2, 923: 3}),          # verified on hardware
+              band_map={868: 1, 915: 2, 923: 3},           # verified on hardware
+              proven="RNode birth proven on the bench, stock and RGB builds, "
+                     "and as the radio of a Pi+RNode node (docs/BOARD_COVERAGE.md)"),
     # Same chip-variant trap as the T-Beam (rnodeconf 2.5.0, read 2026-08-14):
     # the T3S3 menu spans SX1278/SX1276/SX1268/SX1262/SX1280 variants of one
     # product; 868/915/923 is choice 2 or 4 depending on the chip.
@@ -311,19 +318,20 @@ _OFFICIAL = [
               band_map={433: 1, 868: 2, 915: 3, 923: 4}),
     _official("xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)", 16, "ESP32-S3",
               "SX1262", "410-525 / 850-950 MHz",
-              band_map={433: 1, 868: 2, 915: 2, 923: 2}),
+              band_map={433: 1, 868: 2, 915: 2, 923: 2},
+              proven="RNode birth proven on the bench, two-way (docs/BOARD_COVERAGE.md)"),
 ]
 
 
 _CUSTOM = [
     RNodeBoard(
         key="heltec_wireless_tracker",
+        proven="this medic's own radio runs the Tracker RNode build; birth proven (docs/BOARD_COVERAGE.md)",
         display_name="Heltec Wireless Tracker",
         flash_method="arduino_cli",
         platform="ESP32-S3",
         modem="SX1262",
         bands="850-950 MHz",
-        experimental=True,
         # CUSTOM board — user-developed, deliberately NOT in official RNode
         # firmware. Flashed from patched RNode_Firmware via arduino-cli.
         # CAVEAT: board_model 0x52 collides with BOARD_XIAO_NRF upstream, so a
@@ -359,7 +367,6 @@ _CUSTOM = [
         platform="nRF52",
         modem="SX1262",
         bands="863-928 MHz",
-        experimental=True,
         # Not in upstream RNode at all: this is @TheBeadster's port (PR #87 on
         # RNode_Firmware_CE), cleaned up and published at
         # 5ugAv/HELTEC-MeshPocket-RNode. So there is no rnodeconf menu entry to
@@ -397,7 +404,6 @@ _CUSTOM = [
         platform="ESP32-S3",
         modem="SX1262",
         bands="863-928 MHz",
-        experimental=True,
         # CUSTOM board — not in upstream RNode at all. The port lives in
         # ~/EoRa-S3/RNode_Firmware_CE (a clean CE baseline plus a board block).
         #

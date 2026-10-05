@@ -65,6 +65,19 @@ class MapSharingPopup(Popup):
     def __init__(self, record, registry=None, save=None, push=None, **kwargs):
         self.record = record
         self._registry = registry if registry is not None else self._app_registry()
+        # THE NODE PAGE HANDS US A COPY. app._open_node_detail passes the
+        # consolidated (shallow-copied) device record, so anything written onto
+        # self.record alone is gone when the page is next opened — the switch
+        # snapped back and a chosen pin was never stored (readiness ledger
+        # #57). Writes go to the registry's stored record; the copy is kept in
+        # step so this panel shows what was stored.
+        self._live = None
+        try:
+            nodes = getattr(self._registry, "nodes", None)
+            if nodes is not None:
+                self._live = nodes.get(record.dst_hash)
+        except Exception:                                          # noqa: BLE001
+            self._live = None
         self._save = save
         self._push = push or location_share.push_to_node
         self._busy = False
@@ -241,13 +254,30 @@ class MapSharingPopup(Popup):
             lambda: self._location_confirmed(lat, lon),
             tr("Cancel"), tr("Set it"))
 
+    def _mirror(self):
+        """Copy the stored record's decision and place onto the page's copy."""
+        live = self._live
+        if live is None or live is self.record:
+            return
+        for attr in ("lat", "lon", "share_location", "share_applied_at"):
+            setattr(self.record, attr, getattr(live, attr))
+
     def _location_confirmed(self, lat, lon):
         rec = self.record
-        rec.lat, rec.lon = float(lat), float(lon)
-        # A NEW POSITION IS A NEW THING TO PUBLISH. Whatever was written to the
-        # node is now about a different place, so it stops counting as applied
-        # until it has been written again.
-        rec.share_applied_at = None
+        stored = None
+        if self._registry is not None and hasattr(self._registry, "set_location"):
+            stored = self._registry.set_location(rec.dst_hash, lat, lon,
+                                                 now=self._now())
+        if stored is None:
+            rec.lat, rec.lon = float(lat), float(lon)
+            # A NEW POSITION IS A NEW THING TO PUBLISH. Whatever was written
+            # to the node is now about a different place, so it stops counting
+            # as applied until it has been written again.
+            rec.share_applied_at = None
+            if self._live is not None and self._live is not rec:
+                self._live.lat, self._live.lon = rec.lat, rec.lon
+                self._live.share_applied_at = None
+        self._mirror()
         try:
             from monitor import kin_roster
             kin_roster.set_location(rec.dst_hash, rec.lat, rec.lon)
@@ -261,6 +291,7 @@ class MapSharingPopup(Popup):
         if self._registry is not None:
             self._registry.set_share_location(rec.dst_hash, policy,
                                               now=self._now())
+            self._mirror()
         else:
             rec.share_location = location_share.normalise(policy)
             rec.share_applied_at = None
@@ -313,6 +344,7 @@ class MapSharingPopup(Popup):
         self._apply_btn.text = tr("Apply to the node now")
         if ok and self._registry is not None:
             self._registry.mark_share_applied(self.record.dst_hash, self._now())
+            self._mirror()
         elif ok:
             self.record.share_applied_at = self._now()
         self._persist()

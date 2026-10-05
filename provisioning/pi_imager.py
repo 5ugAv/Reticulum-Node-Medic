@@ -860,6 +860,12 @@ def flash(device_path: str, hostname: str, username: str, password: str,
         # passed False by the mitosis driver; a Pi 5's USB-C is power-in).
         "medic": bool(medic),
         "hostname": hostname,
+        # THE TIMEZONE, ONTO THE ROOTFS (readiness ledger #130). The [locale]
+        # block above goes into custom.toml, which this image never reads —
+        # so the 2026-09-23 fix set no zone on any card and every node booted
+        # as Europe/London. The helper writes /etc/timezone and relinks
+        # /etc/localtime, after checking the name against the card's zoneinfo.
+        "timezone": timezone or "",
         # HOW BIG TO MAKE THE ROOT FILESYSTEM. The carried image is a 2.43 GB
         # rootfs with 0.33 GB free and nothing here has ever expanded it
         # (measured 2026-09-06). Left alone, a node has no room for its message

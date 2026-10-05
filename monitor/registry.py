@@ -512,6 +512,24 @@ class NodeRecord:
     last_heard_announce_at = _EpochView("last_heard_announce_at_obs", "announce")
     mesh_heard = _EpochView("mesh_heard_obs", "path-table")
 
+    #: How long a NAMELESS stranger's row outlives its last sighting before it
+    #: leaves VITALS (readiness ledger #136). A phone heard once in a car park
+    #: is not a node to keep watching; the record itself is kept, so the same
+    #: device heard again simply resurfaces with its history.
+    NEIGHBOUR_EXPIRY_H = 7 * 24
+
+    def expired_neighbour(self, now: float) -> bool:
+        """True for a neighbour row with no name of any kind whose freshest
+        sighting is older than NEIGHBOUR_EXPIRY_H. Kin, named neighbours and
+        rows that were never heard (a path-table entry) are never expired
+        here — those are decisions for the operator, not a timer."""
+        if self.provenance != "neighbour" or self.name or self.announced_name:
+            return False
+        age = self._seen_age(now)
+        if age is None or age.impossible:
+            return False
+        return age.hours > self.NEIGHBOUR_EXPIRY_H
+
     def _seen_age(self, now: float):
         """The freshest sighting's :class:`~monitor.observation.Age`, or
         ``None`` when NEVER heard — the ONE place the SEEN age is computed, so
@@ -1137,6 +1155,27 @@ class NodeRegistry:
         return rec
 
     @_locked
+    def set_location(self, dst_hash: str, lat: float, lon: float,
+                     now: float = 0.0,
+                     operator: str = "operator") -> Optional[NodeRecord]:
+        """Give a node a position AFTER birth, on the STORED record — the
+        Location panel used to write it onto the consolidated copy the node
+        page is handed, so the pin was gone at the next open (readiness
+        ledger #57). A new position is a new thing to publish, so whatever was
+        applied to the node stops counting as applied; logged like a sharing
+        change, because moving a node's recorded place is something whoever
+        inherits it deserves to find in the history."""
+        rec = self.nodes.get(dst_hash)
+        if rec is None:
+            return None
+        rec.lat, rec.lon = float(lat), float(lon)
+        rec.share_applied_at = None
+        rec.events.append(CommissionEvent(
+            now, "location", "Recorded position changed on Node Medic",
+            operator))
+        return rec
+
+    @_locked
     def mark_share_applied(self, dst_hash: str, now: float
                            ) -> Optional[NodeRecord]:
         """Record that the decision is now ON THE NODE — called only after a
@@ -1435,7 +1474,8 @@ class NodeRegistry:
         return sorted(
             (r for r in self.nodes.values()
              if not self._is_own_identity(r)
-             and not self._is_own_destination(r.dst_hash)),
+             and not self._is_own_destination(r.dst_hash)
+             and not r.expired_neighbour(now)),
             key=lambda r: (r.provenance != "kin",
                            _STATUS_RANK.get(r.status(now), 3), r.name.lower()))
 
@@ -1501,7 +1541,7 @@ class NodeRegistry:
         return targets[0] if targets else None
 
     @_locked
-    def _device_groups(self) -> List[List[NodeRecord]]:
+    def _device_groups(self, now: Optional[float] = None) -> List[List[NodeRecord]]:
         """Group every record into physical DEVICES: first by announced identity,
         then collapsing identity-groups that resolve to the same non-empty NAME.
 
@@ -1516,6 +1556,11 @@ class NodeRegistry:
         Three passes, weakest evidence last: announced identity, then the roster's
         recorded device (what the medic saw with its own hands at birth), then a
         shared name.
+
+        With *now*, a nameless stranger not heard for NEIGHBOUR_EXPIRY_H is left
+        out (readiness ledger #136) — the dashboard and a tapped row's detail
+        pass it; identity bookkeeping that is not a display passes nothing and
+        sees every record.
         """
         groups: Dict[str, List[NodeRecord]] = {}
         for rec in self.nodes.values():
@@ -1524,6 +1569,8 @@ class NodeRegistry:
             # relay); filtering here cleans it up on the next render, no wipe
             # needed. Kin are a different identity and pass through untouched.
             if self._is_own_identity(rec):
+                continue
+            if now is not None and rec.expired_neighbour(now):
                 continue
             groups.setdefault(rec.identity_hash or rec.dst_hash, []).append(rec)
 
@@ -1689,7 +1736,7 @@ class NodeRegistry:
         agree with it. ``None`` if *key* is unknown."""
         if key not in self.nodes:
             return None
-        for members in self._device_groups():
+        for members in self._device_groups(now):
             if any(m.dst_hash == key for m in members):
                 return self._consolidate(members, now)
         return None
@@ -1708,7 +1755,7 @@ class NodeRegistry:
         not an arbitrary primary that may lack a beacon — so a row and its
         tapped detail read the same device health."""
         return [(self._consolidate(members, now), members)
-                for members in self._device_groups()]
+                for members in self._device_groups(now)]
 
     def devices(self, now: float) -> List[dict]:
         """The CONSOLIDATED dashboard: one row per physical device. Destinations
@@ -1821,7 +1868,7 @@ class NodeRegistry:
     def summary(self, now: float) -> Dict[str, int]:
         counts = {"ok": 0, "warn": 0, "alert": 0, "unknown": 0}
         for rec in self.nodes.values():
-            if self._is_own_identity(rec):
+            if self._is_own_identity(rec) or rec.expired_neighbour(now):
                 continue                     # the medic doesn't count itself
             counts[rec.status(now)] = counts.get(rec.status(now), 0) + 1
         return counts

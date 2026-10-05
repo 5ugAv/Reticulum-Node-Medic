@@ -229,8 +229,11 @@ class MitosisScreen(BoxLayout):
         # The FULL build list (operator, 2026-08-30: "give them the full
         # list of the build... spell it all out") — everything a person
         # needs to make a complete working medic, not just the imaging
-        # parts. The Tracker is the new medic's own radio + GPS (its
-        # firstborn); the antenna items feed it.
+        # parts. The Tracker is the new medic's GPS and clock (its
+        # firstborn). It is NOT its mesh radio: the firstborn flashes the
+        # GPS-only passthrough, and this flow sets up no radio for the clone
+        # — said plainly since 2026-10-05 (readiness ledger #120); the
+        # Tracker-as-RNode build for a clone is a bench job still to come.
         body = _label(tr(
             "This copies this Node Medic onto a second one. Before you start, "
             "have these to hand:\n\n"
@@ -239,13 +242,15 @@ class MitosisScreen(BoxLayout):
             "  •  a memory (SD) card — 32 GB minimum, 64 GB is better\n"
             "  •  a memory card reader\n"
             "  •  an ethernet cable\n"
-            "  •  a Heltec Wireless Tracker — the new medic's own radio\n"
+            "  •  a Heltec Wireless Tracker — the new medic's GPS and clock\n"
             "  •  a USB-A to USB-C cable, for the Tracker\n"
             "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
             "Two halves: this medic writes the card (~5 min), then you move "
             "the card across and the two talk over the cable while the tool "
             "is copied (~20 min). You are NOT finished when the card is "
-            "written. About half an hour in all, mostly waiting."),
+            "written. About half an hour in all, mostly waiting.\n\n"
+            "The new medic's own mesh radio is not set up by this flow yet — "
+            "its Tracker gives it position and time."),
             color="text_primary", size="15sp")
         # SCROLLED, and sized to the wrapped text rather than a fixed dp.
         # The hardcoded dp(330) silently clipped the TOP of the list the moment
@@ -1481,9 +1486,10 @@ class MitosisScreen(BoxLayout):
                    "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
                    "1.  It starts straight into Node Medic and walks you through "
                    "its own setup - no login, nothing to type from here.\n"
-                   "2.  Then it fits its radio - that is the Tracker, its USB "
+                   "2.  Then it fits its GPS - that is the Tracker, its USB "
                    "cable, the aerial and the little pigtail lead from the list "
-                   "at the start.\n\n"
+                   "at the start. Its own mesh radio is a separate job, still "
+                   "to come.\n\n"
                    "Until its screen appears it may show start-up text. That is "
                    "normal, and there is nothing left to do on this screen.").format(
                        name=name, ident=(f" ({ident[:8]})" if ident else "")),

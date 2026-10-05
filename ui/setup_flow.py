@@ -415,6 +415,8 @@ _TOUR_STEPS = [
      "title": "PROBE — find out what is wrong",
      "body": "Plug in a board that is misbehaving and the medic reads it: what "
              "it is, what firmware it carries, whether it answers at all.\n\n"
+             "After this tour, open it from a node's page: VITALS, tap the "
+             "node, then Probe.\n\n"
              "Self Diagnose (in Settings, and on this screen) turns the same "
              "attention on the medic itself — its own radio, its GPS, its "
              "clock, its services — and repairs what it can. Run it when the "
@@ -437,6 +439,9 @@ _TOUR_STEPS = [
              "parameters every new node is born with, Wi-Fi, and whether this "
              "medic acts as a full mesh node at home or stays quiet in a "
              "backpack.\n\n"
+             "Those two modes are the two pictures beside the gear: the cottage "
+             "is Home, the hiker is Backpack. The one in colour is the mode the "
+             "medic is in; tap the grey one to switch.\n\n"
              "This walkthrough lives there too, so you can run it again — or "
              "hand the medic on and let the next person run it from nothing."},
 
