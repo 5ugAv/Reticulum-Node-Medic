@@ -117,3 +117,12 @@ def test_the_deb_cache_can_hold_the_whole_closure_for_an_offline_clone():
     ok, msg = cache_debs(c, packages=("cage",), dest="/tmp/x", closure=True)
     assert any("libwlroots-0.20" in x and "libc6" in x and "--print-uris" in x for x in c.cmds)
     assert "--closure" in _src("scripts/refresh_deb_cache.py")
+
+
+
+def test_the_already_booted_road_asks_the_fleet_question_too():
+    s = _src("ui/screens/mitosis_screen.py")
+    nc = s[s.index("def _name_continue"):s.index("def _show_stage_password")]
+    assert "self._show_stage_fleet()" in nc and "self._show_stage_clone()" not in nc
+    fc = s[s.index("def _fleet_continue"):s.index("def _show_stage_wifi")]
+    assert "self._show_stage_clone()" in fc and "self._show_stage_wifi()" in fc

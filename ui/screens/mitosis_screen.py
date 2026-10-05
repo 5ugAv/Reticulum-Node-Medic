@@ -512,7 +512,9 @@ class MitosisScreen(BoxLayout):
             self._refresh_name_note()          # the refusal is already on screen
             return
         if self._skip_mode:
-            self._show_stage_clone()
+            # the fleet question is asked on this road too (2026-10-06: it
+            # went straight to the copy and brought the fleet unasked)
+            self._show_stage_fleet()
         else:
             self._show_stage_password()
 
@@ -663,14 +665,19 @@ class MitosisScreen(BoxLayout):
         fresh.bind(on_release=lambda *_: self._fleet_continue(True))
         self.add_widget(fresh)
         back = _small_btn(tr("← Back"))
-        back.bind(on_release=lambda *_: self._show_stage_password())
+        back.bind(on_release=lambda *_: (
+            self._show_stage_name(skip_mode=True) if getattr(self, "_skip_mode", False)
+            else self._show_stage_password()))
         self.add_widget(back)
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
 
     def _fleet_continue(self, fresh):
         self._fresh_fleet = bool(fresh)
-        self._show_stage_wifi()
+        if getattr(self, "_skip_mode", False):
+            self._show_stage_clone()     # card already written: no Wi-Fi question
+        else:
+            self._show_stage_wifi()
 
     def _show_stage_wifi(self):
         self._clear()
