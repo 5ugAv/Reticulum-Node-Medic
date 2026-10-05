@@ -48,3 +48,13 @@ def test_the_screen_has_the_switch_and_does_not_scan_while_off():
     assert "self.radio = Switch(" in w and "wifi.set_radio(on" in w
     assert "if self._busy or not self.radio.active:" in w
     assert "Wi-Fi is off. This medic will not join any" in w
+
+
+def test_the_status_line_cannot_loop_the_layout():
+    """The first deploy froze the medic: the status label's height followed its
+    texture while _line tied text_size to the whole size — a redraw loop
+    ("too much iteration done before the next frame"). It must use
+    grow_to_text, which wraps on width only."""
+    w = src("ui/screens/wifi_screen.py")
+    assert "self.status = grow_to_text(" in w
+    assert "bind(texture_size=" not in w

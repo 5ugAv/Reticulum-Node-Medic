@@ -22,6 +22,7 @@ from kivy.uix.textinput import TextInput
 from ui import theme
 from ui.i18n import tr  # i18n: wrapped — WiFi screen labels/status/buttons
 from ui.onscreen_keyboard import bind_field
+from ui.text_fit import grow_to_text
 from provisioning import wifi
 
 
@@ -72,10 +73,11 @@ class WifiScreen(BoxLayout):
         head.add_widget(self.radio)
         self.add_widget(head)
         self._radio_quiet = False          # set while we move the switch ourselves
-        self.status = _line("", size="14sp", color="text_secondary", h=24)
-        self.status.size_hint_y = None
-        self.status.bind(texture_size=lambda i, v: setattr(
-            i, "height", max(dp(24), v[1] + dp(4))))
+        # grow_to_text, NOT a texture_size→height binding: _line ties text_size
+        # to the label's whole size, so height-follows-text looped forever and
+        # froze the medic on this page (2026-10-06, first deploy of the switch).
+        self.status = grow_to_text(_line("", size="14sp", color="text_secondary",
+                                         h=24), extra_dp=4)
         self.add_widget(self.status)
 
         self.scan_btn = Button(text=tr("Search for Wi-Fi networks"), size_hint_y=None,
