@@ -676,6 +676,11 @@ class ReticulumNodeMedicApp(App):
             Window.add_widget(bar)
             _sync()
             self._activity_banner = bar
+            # THE BANNER TAKES ITS OWN SPACE: it floated over the top of the
+            # page and hid each screen's title ("Writing the new medic's card"
+            # sat under it, the keeper's photo, 2026-10-06). The page area
+            # shrinks by the banner's height while it shows.
+            self._reserve_banner_space(bar.height)
         except Exception as e:
             print(f"[activity] banner skipped: {e}")
 
@@ -693,8 +698,30 @@ class ReticulumNodeMedicApp(App):
             if bar is not None:
                 Window.remove_widget(bar)
                 self._activity_banner = None
+            self._reserve_banner_space(0)
         except Exception:
             pass
+
+    def _reserve_banner_space(self, height):
+        """Fit the screens below the activity banner (*height* px), or give the
+        full window back (0)."""
+        try:
+            from kivy.core.window import Window
+            sm = self.sm
+            if height:
+                sm.size_hint = (1, None)
+                sm.height = Window.height - height
+                self._banner_space_sync = lambda *_a: setattr(
+                    sm, "height", Window.height - height)
+                Window.bind(height=self._banner_space_sync)
+            else:
+                sync = getattr(self, "_banner_space_sync", None)
+                if sync is not None:
+                    Window.unbind(height=sync)
+                    self._banner_space_sync = None
+                sm.size_hint = (1, 1)
+        except Exception as e:                                      # noqa: BLE001
+            print(f"[activity] banner space skipped: {e}")
 
     def _dismiss_screensaver(self):
         self._screensaver.hide()

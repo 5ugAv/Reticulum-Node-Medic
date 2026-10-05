@@ -135,3 +135,12 @@ def test_the_retry_road_is_not_called_skip_and_asks_first():
     assert "retry.bind(on_release=lambda *_: self._confirm_retry_road())" in s
     c = s[s.index("def _confirm_retry_road"):s.index("def _start_card_poll")]
     assert "_show_stage_name(skip_mode=True)" in c and 'tr("No — I have a blank card")' in c
+
+
+
+def test_the_activity_banner_takes_its_own_space():
+    a = _src("ui/app.py")
+    show = a[a.index("def _show_activity_banner"):a.index("def _hide_activity_banner")]
+    hide = a[a.index("def _hide_activity_banner"):a.index("def _reserve_banner_space")]
+    assert "self._reserve_banner_space(bar.height)" in show
+    assert "self._reserve_banner_space(0)" in hide
