@@ -13,6 +13,7 @@ from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
 from ui import theme
+from ui.i18n import tr
 from ui.widgets.guide_content import build_guide_content
 from provisioning import network_guide as g
 
@@ -53,12 +54,12 @@ def open_guide_popup():
     """Open the quick-guide in a dismissable popup (also usable standalone)."""
     body = BoxLayout(orientation="vertical", spacing=dp(8), padding=dp(6))
     body.add_widget(build_guide_content())
-    close = Button(text="Close", size_hint_y=None, height=dp(48), bold=True,
+    close = Button(text=tr("Close"), size_hint_y=None, height=dp(48), bold=True,
                    background_normal="",
                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
     body.add_widget(close)
-    popup = Popup(title=g.TITLE, content=body, size_hint=(0.94, 0.9),
+    popup = Popup(title=tr(g.TITLE), content=body, size_hint=(0.94, 0.9),
                   title_size="16sp",
                   separator_color=theme.hex_to_rgba(theme.COLORS["accent"]))
     close.bind(on_release=popup.dismiss)

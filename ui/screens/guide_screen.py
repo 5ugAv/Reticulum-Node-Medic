@@ -13,6 +13,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 
 from ui import theme
+from ui.i18n import tr
 from ui.widgets.guide_content import build_guide_content
 from provisioning import network_guide as g
 
@@ -23,7 +24,7 @@ class GuideScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(16)
         self.spacing = dp(8)
-        title = Label(text=g.TITLE, bold=True, font_size="21sp", halign="left",
+        title = Label(text=tr(g.TITLE), bold=True, font_size="21sp", halign="left",
                       valign="middle", size_hint_y=None, height=dp(52),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         title.bind(size=lambda i, v: setattr(i, "text_size", v))
