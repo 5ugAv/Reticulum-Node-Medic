@@ -3701,7 +3701,8 @@ class BirthGuideScreen(BoxLayout):
                 row.add_widget(img)
             txt = BoxLayout(orientation="vertical")
             txt.add_widget(_line(label, size="13sp", color="text_secondary", h=20))
-            txt.add_widget(_line(name, bold=True, size="19sp", h=32))
+            # the NAME is the answer the keeper is checking: biggest thing in the row
+            txt.add_widget(_line(name, bold=True, size="26sp", h=44))
             row.add_widget(txt)
             col.add_widget(row)
         body.add_widget(col)

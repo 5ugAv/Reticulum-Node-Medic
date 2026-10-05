@@ -117,12 +117,13 @@ class RadioDefaultsScreen(BoxLayout):
                       background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
         save.bind(on_release=lambda *_: self._save())
-        col.add_widget(save)
-        self._status = _line("", size="13sp", color="green", h=24)
-        col.add_widget(self._status)
-
         body.add_widget(col)
         self.add_widget(body)
+        # OUTSIDE the scroll: at the end of the list it opened half hidden
+        # under the bottom bar, caption clipped (glass, 2026-10-06)
+        self.add_widget(save)
+        self._status = _line("", size="13sp", color="green", h=24)
+        self.add_widget(self._status)
 
     def _read_fields(self):
         vals = {}

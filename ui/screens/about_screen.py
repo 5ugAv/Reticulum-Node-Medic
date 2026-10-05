@@ -37,12 +37,12 @@ def _line(text, size="15sp", color="text_primary", bold=False, h=None, mono=Fals
     return lbl
 
 
-def _field(title, value, mono=False, value_color="text_primary"):
+def _field(title, value, mono=False, value_color="text_primary", size="16sp"):
     box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2),
                     padding=[0, dp(4)])
     box.bind(minimum_height=box.setter("height"))
     box.add_widget(_line(title, size="12.5sp", color="accent", bold=True, h=20))
-    v = _line(value, size="16sp", color=value_color, mono=mono)
+    v = _line(value, size=size, color=value_color, mono=mono)
     v.size_hint_y = None
     v.bind(texture_size=lambda i, ts: setattr(i, "height", max(dp(24), ts[1])))
     box.add_widget(v)
@@ -70,7 +70,8 @@ class AboutScreen(BoxLayout):
         col.add_widget(self._uptime_box)
         self._license_box, self._license_v = _field(tr("Licence"), about.LICENSE)
         col.add_widget(self._license_box)
-        self._repo_box, self._repo_v = _field(tr("Repository"), "…", mono=True)
+        # 13sp: at 16sp the URL broke mid-word at the right edge (2026-10-06)
+        self._repo_box, self._repo_v = _field(tr("Repository"), "…", mono=True, size="13sp")
         col.add_widget(self._repo_box)
 
         # The same thanks + support page the front page's cross opens

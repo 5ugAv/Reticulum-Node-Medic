@@ -125,7 +125,7 @@ def test_echo_gates_on_the_last_direct_word_not_last_seen():
     seen, tag = seen_and_echo({"last_seen_hours": 0.1,
                                "last_direct_hours": 5.0,
                                "last_echo_hours": 1.0})
-    assert seen == "SEEN 0.1h"
+    assert seen == "SEEN 6m"
     assert tag == "echo 1.0h"
     # no direct word on record at all -> nothing outranks the echo
     assert seen_and_echo({"last_seen_hours": 3.0,

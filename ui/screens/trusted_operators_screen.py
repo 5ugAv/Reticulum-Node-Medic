@@ -111,7 +111,7 @@ class TrustedOperatorsScreen(BoxLayout):
                 name=u['parent_name'])
         when = ""
         if u.get("established_at"):
-            when = "  ·  " + datetime.fromtimestamp(u["established_at"]).strftime("%d %b %Y")
+            when = "  ·  " + datetime.fromtimestamp(u["established_at"]).strftime("%d\u00a0%b\u00a0%Y")
         card.add_widget(grow_to_text(_line(f"{via}{when}", size="12.5sp",
                                            color="text_secondary")))
 

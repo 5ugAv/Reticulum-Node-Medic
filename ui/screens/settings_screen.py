@@ -370,7 +370,9 @@ class SettingsScreen(BoxLayout):
         box.add_widget(_line(tr("Alerts"), bold=True, size="15sp", color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                         spacing=dp(10))
-        row.add_widget(_line(tr("Alert me when a node goes orange or red"), size="14sp"))
+        row.bind(minimum_height=row.setter("height"))   # the label may wrap
+        row.add_widget(grow_to_text(_line(tr("Alert me when a node goes orange or red"),
+                                          size="14sp"), extra_dp=12))
         sw = Switch(active=alerts.is_enabled(), size_hint_x=None, width=dp(90))
         sw.bind(active=lambda _i, v: alerts.set_enabled(bool(v)))
         row.add_widget(sw)
@@ -490,22 +492,22 @@ class SettingsScreen(BoxLayout):
         except Exception:
             # COULD NOT CHECK is not "encrypted", and it is not a blank row
             # either — say which it is.
-            box.add_widget(_line(tr("Could not check whether your records are "
-                                    "encrypted."), size="12.5sp",
-                                 color="warning_yellow",
-                                 h=theme.line_dp("12.5sp")))
+            box.add_widget(grow_to_text(_line(
+                tr("Could not check whether your records are encrypted."),
+                size="12.5sp", color="warning_yellow")))
             return box
         if on:
             encrypted = (tr("Encrypted — {n} key opens them.") if doors == 1
                          else tr("Encrypted — {n} keys open them."))
-            box.add_widget(_line(
-                encrypted.format(n=doors), size="12.5sp", color="green",
-                h=theme.line_dp("12.5sp")))
+            box.add_widget(grow_to_text(_line(
+                encrypted.format(n=doors), size="12.5sp", color="green")))
         else:
-            box.add_widget(_line(
+            # HEIGHT FOLLOWS THE TEXT: pinned to one line, this wrapped to two
+            # and lost its top and bottom under the cards either side (the
+            # keeper's own sighting, 2026-10-06)
+            box.add_widget(grow_to_text(_line(
                 tr("Not encrypted — anyone who takes this card can read them."),
-                size="12.5sp", color="warning_yellow",
-                h=theme.line_dp("12.5sp")))
+                size="12.5sp", color="warning_yellow")))
         self._encryption_box = box
         return box
 

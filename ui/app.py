@@ -1856,6 +1856,11 @@ class ReticulumNodeMedicApp(App):
         names = [(reg.nodes.get(h).name if (reg.nodes.get(h)
                   and reg.nodes.get(h).name) else f"node {h[:8]}")
                  for h in targets]
+        if len(names) > 2:
+            # five names made a three-line sentence on ANTENNA (2026-10-06)
+            from ui.i18n import tr
+            return tr("{a}, {b} and {n} more").format(a=names[0], b=names[1],
+                                                       n=len(names) - 2)
         return ", ".join(names) if names else "a node"
 
     def _lighthouse(self, active):

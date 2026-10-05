@@ -171,6 +171,8 @@ def format_age_fine(hours) -> str:
 
 
 def seen_and_echo(row):
+    # SEEN in minutes under the hour (format_age_fine): "SEEN 0.0h" on a node
+    # heard a minute ago read as a stopped clock (glass, 2026-10-06).
     """``(seen_text, echo_tag_or_None)`` for one dashboard row dict — THE one
     composer both surfaces render from (the VITALS StatBar strip and the node
     detail line), so the honesty rules live and are tested in exactly one
@@ -209,7 +211,7 @@ def seen_and_echo(row):
     if row.get("seen_impossible"):
         return "SEEN ?", None
     seen_h = row.get("last_seen_hours")
-    seen_text = f"SEEN {format_age(seen_h)}"
+    seen_text = f"SEEN {format_age_fine(seen_h)}"
     echo_h = row.get("last_echo_hours")
     if echo_h is None:
         return seen_text, None
@@ -217,7 +219,7 @@ def seen_and_echo(row):
     if direct_h is not None and echo_h >= direct_h:
         return seen_text, None      # the node itself has spoken since
     tag_age = format_age_fine(echo_h)
-    if tag_age == format_age(seen_h):
+    if tag_age == format_age_fine(seen_h):
         return seen_text, None      # below display resolution: no claim
     return seen_text, f"echo {tag_age}"
 

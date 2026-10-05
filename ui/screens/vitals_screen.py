@@ -155,9 +155,13 @@ class NodeRow(BoxLayout):
             if node.get("aspects", 1) > 1:
                 more = Label(text=tr("x{n} services").format(n=node["aspects"]),
                              font_size="11sp", halign="left", valign="middle",
+                             size_hint_x=None,
                              color=theme.hex_to_rgba(
                                  theme.COLORS["text_secondary"], 0.6))
-                more.bind(size=lambda i, v: setattr(i, "text_size", v))
+                # sized to its words: with size_hint_x it took whatever was
+                # left after four fixed chips — about one character — and
+                # drew as a vertical stack of letters (glass, 2026-10-06)
+                more.bind(texture_size=lambda i, ts: setattr(i, "width", ts[0] + dp(6)))
                 chips.add_widget(more)
             text.add_widget(chips)
         self.add_widget(text)

@@ -78,8 +78,11 @@ class TriageScreen(FloatLayout):
             size_hint=(0.92, None), height=dp(40),
             pos_hint={"center_x": 0.5, "center_y": 0.145},
             color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-        self._guidance.bind(size=lambda *a: setattr(self._guidance, "text_size",
-                                                    self._guidance.size))
+        self._guidance.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+        # three lines of names were clipped top and bottom in a 40 dp box
+        # (glass, 2026-10-06): the height follows the text
+        self._guidance.bind(texture_size=lambda i, ts: setattr(
+            i, "height", max(dp(40), ts[1] + dp(4))))
         self.add_widget(self._guidance)
 
         # Goal glow: a green frame around the screen that BRIGHTENS as the

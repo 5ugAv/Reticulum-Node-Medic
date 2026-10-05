@@ -42,7 +42,12 @@ CREDITS = [
     ("RNode Firmware CE", "Liberated Systems & contributors"),
     ("RTNode for Heltec V4 — the base our fork grew from", "jrl290"),
     ("RTNode-2400 firmware — github.com/GrayHatGuy", "GrayHatGuy"),
-    ("Concept, build, field testing & front page", "5ugAv"),
+    ("Concept and direction. Every bench proof — RNode and RTNode births on "
+     "the Heltec V3, V4 and T114, the RAK4631, the XIAO, the Wireless Tracker, "
+     "the T-Echo and the EoRa-S3; the antenna doctrine; the clone and the "
+     "firstborn; the field rules (offline first, nothing claimed that was not "
+     "measured, names never hashes); the languages it speaks; the front page; "
+     "and every walk-through on the glass", "5ugAv"),
     # Maps: the basemap moved from Carto to Esri on 2026-08-27 (Carto began
     # watermarking keyless tiles); search is OpenStreetMap's Nominatim. The
     # credit must name what the code fetches — tests/test_credits_truth.py
@@ -85,9 +90,11 @@ class CreditsBody(BoxLayout):
             role_hex = theme.COLORS["text_secondary"].lstrip("#")
             row = Label(text=f"[color={role_hex}]{tr(role)}[/color]\n[b]{tr(name)}[/b]",
                         markup=True, halign="center", valign="middle",
-                        size_hint_y=None, height=dp(52),
+                        size_hint_y=None,
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            row.bind(size=lambda i, v: setattr(i, "text_size", v))
+            # height follows the text: the keeper's line is a paragraph (2026-10-06)
+            row.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                     texture_size=lambda i, ts: setattr(i, "height", max(dp(52), ts[1] + dp(8))))
             self.add_widget(row)
         spiel = Label(text=tr(SPIEL), halign="center", valign="top",
                       font_size="15sp", size_hint_y=None,

@@ -925,13 +925,17 @@ class BirthScreen(BoxLayout):
                 # firmware already carries whatever it was set at birth.
                 self.show_params(self._firmware, board=self._sel_board)
             else:
-                self.list.add_widget(_line(tr("Pick a board above to set radio "
-                                              "params and start."), size="13sp",
-                                           color="text_secondary"))
+                hint = _line(tr("Pick a board above to set radio "
+                                "params and start."), size="13sp",
+                             color="text_secondary")
+                hint.padding = (dp(22), 0)          # clear of the back chevron
+                self.list.add_widget(hint)
         else:
-            self.list.add_widget(_line(
+            hint = _line(
                 tr("Detect the connected board, or choose firmware, to begin."),
-                size="13sp", color="text_secondary"))
+                size="13sp", color="text_secondary")
+            hint.padding = (dp(22), 0)              # "begin." sat under the chevron (2026-10-06)
+            self.list.add_widget(hint)
 
     def _option_button(self, num, text, on_tap):
         btn = Button(text=f"{num:>2}.  {text}", size_hint_y=None, height=dp(46),
@@ -2032,21 +2036,29 @@ class BirthScreen(BoxLayout):
         warn_hint = (tr("Check the silkscreen on the board itself.")
                      if key in ("heltec_v3", "heltec_v4")
                      else tr("Check it against the photo below."))
+        # THE BOARD'S NAME FIRST, AND BIGGEST. The keeper (2026-10-06): when
+        # the medic asks "is this a Heltec V4?", "Heltec V4" must stand well
+        # clear of everything else on the card — the name used to sit in a
+        # 16 sp sentence under a 19 sp warning and blurred into it.
+        name_lbl = Label(text=board_images.label(key), bold=True, font_size="34sp", color=dark,
+                         halign="center", valign="middle", size_hint_y=None)
+        name_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                      texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(10)))
+        body.add_widget(name_lbl)
         warn = Label(
             text=(tr("WARNING:  Selecting the wrong board can BRICK the "
                      "hardware.") + "\n" + warn_hint),
-            bold=True, font_size="19sp", color=dark, halign="center",
-            valign="middle", size_hint_y=None, height=dp(92))
+            bold=True, font_size="14.5sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(66))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(warn)
         card = BoardCard(key, name=self._name_in.text.strip(), selected=True,
                          on_select=lambda *_: None, size_hint_y=1)
         body.add_widget(card)
         confirm_lbl = Label(
-            text=tr("Confirm you've selected the correct board:  "
-                    "{board}").format(board=board_images.label(key)),
+            text=tr("Is this the board in your hand?"),
             bold=True, font_size="16sp", color=dark, halign="center",
-            valign="middle", size_hint_y=None, height=dp(44))
+            valign="middle", size_hint_y=None, height=dp(36))
         confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(confirm_lbl)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,
@@ -2119,12 +2131,21 @@ class BirthScreen(BoxLayout):
         yellow = theme.hex_to_rgba(theme.COLORS["warning_yellow"])
         dark = theme.hex_to_rgba(theme.COLORS["background"])
         body = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
+        # THE BOARD'S NAME FIRST, AND BIGGEST. The keeper (2026-10-06): when
+        # the medic asks "is this a Heltec V4?", "Heltec V4" must stand well
+        # clear of everything else on the card — the name used to sit in a
+        # 16 sp sentence under a 19 sp warning and blurred into it.
+        name_lbl = Label(text=board.display_name, bold=True, font_size="34sp", color=dark,
+                         halign="center", valign="middle", size_hint_y=None)
+        name_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                      texture_size=lambda i, ts: setattr(i, "height", ts[1] + dp(10)))
+        body.add_widget(name_lbl)
         warn = Label(
             text=(tr("WARNING:  Selecting the wrong board can BRICK the "
                      "hardware.") + "\n"
                   + tr("Check the silkscreen on the board itself.")),
-            bold=True, font_size="19sp", color=dark, halign="center",
-            valign="middle", size_hint_y=None, height=dp(92))
+            bold=True, font_size="14.5sp", color=dark, halign="center",
+            valign="middle", size_hint_y=None, height=dp(66))
         warn.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(warn)
         if board_images.image_for(board.key):
@@ -2133,17 +2154,12 @@ class BirthScreen(BoxLayout):
                                       selected=True,
                                       on_select=lambda *_: None,
                                       size_hint_y=1))
-        else:                                  # no photo — the name, writ large
-            big = Label(text=board.display_name, bold=True, font_size="26sp",
-                        color=dark, halign="center", valign="middle",
-                        size_hint_y=1)
-            big.bind(size=lambda w, s: setattr(w, "text_size", s))
-            body.add_widget(big)
+        else:                                  # no photo — the name already stands above
+            body.add_widget(Widget(size_hint_y=1))
         confirm_lbl = Label(
-            text=tr("Confirm you've selected the correct board:  "
-                    "{board}").format(board=board.display_name),
+            text=tr("Is this the board in your hand?"),
             bold=True, font_size="16sp", color=dark, halign="center",
-            valign="middle", size_hint_y=None, height=dp(44))
+            valign="middle", size_hint_y=None, height=dp(36))
         confirm_lbl.bind(size=lambda w, s: setattr(w, "text_size", s))
         body.add_widget(confirm_lbl)
         row = BoxLayout(orientation="horizontal", size_hint_y=None,

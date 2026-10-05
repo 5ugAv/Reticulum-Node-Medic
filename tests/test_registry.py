@@ -178,7 +178,7 @@ def test_tiny_backward_skew_stays_green_not_grey():
     assert d["seen_impossible"] is False       # jitter, not a genuine step
     assert d["has_seen"] is True
     assert d["status"] == "ok"                  # still green
-    assert seen_and_echo(d) == ("SEEN 0.0h", None)
+    assert seen_and_echo(d) == ("SEEN 1m", None)   # minutes under the hour (2026-10-06)
     assert seen_is_known(d) is True
 
 

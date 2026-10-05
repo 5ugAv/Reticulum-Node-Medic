@@ -63,7 +63,7 @@ class NotificationsScreen(BoxLayout):
         self.field = TextInput(
             text=load_operator_address(), multiline=False,
             hint_text=tr("32-character address or blank"),
-            size_hint_y=None, height=dp(48), font_size="27sp")
+            size_hint_y=None, height=dp(48), font_size="21sp")   # all 32 characters fit
         bind_field(self.field)
         self.add_widget(self.field)
 
@@ -82,7 +82,7 @@ class NotificationsScreen(BoxLayout):
         row.add_widget(clear)
         self.add_widget(row)
 
-        self.status = _lbl("", size="13sp", h=30)
+        self.status = _lbl("", size="13sp")          # grows: "Saved — …" is two lines
         self.add_widget(self.status)
         self.add_widget(_lbl(tr(
             "Find your address in Sideband/Columba under your identity — the "
