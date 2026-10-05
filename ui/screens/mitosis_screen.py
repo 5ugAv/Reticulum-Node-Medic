@@ -101,6 +101,11 @@ STEP_EST_S = {
 EST_WRITE_S = 240.0
 
 
+def _mmss(seconds):
+    m, s = divmod(int(max(0, seconds)), 60)
+    return f"{m}m {s:02d}s"
+
+
 def _label(text, color="text_primary", bold=False, size="16sp"):
     lbl = Label(text=text, halign="left", valign="middle", bold=bold,
                 font_size=theme.font_sp(size),
@@ -1375,7 +1380,7 @@ class MitosisScreen(BoxLayout):
                 "Node Medic is doing the rest itself. First boot takes up "
                 "to 5 minutes - the search waits that long."),
                 color="text_primary", size="15sp")
-            head.size_hint_y, head.height = None, dp(48)
+            grow_to_text(head, extra_dp=6)     # a fixed 48 dp cut its 3 lines
             self.add_widget(head)
         self.run_btn = Button(
             text=tr("Clone onto the new medic"), size_hint_y=None,
@@ -1419,11 +1424,12 @@ class MitosisScreen(BoxLayout):
         is real preparation, it closes that loop, and it hands them straight
         into the new medic's first job."""
         lbl = _label(tr(
-            "[b]While this runs:[/b] get the Tracker, its USB cable, the aerial "
-            "and the little pigtail lead to hand. Screw the aerial onto the "
-            "pigtail and clip the pigtail onto the Tracker. Never power the "
-            "Tracker up without its aerial attached. The new medic will ask "
-            "for it shortly after it wakes."),
+            "[b]While this runs:[/b] get the Heltec Wireless Tracker, its USB "
+            "cable, the aerial and the little pigtail lead to hand. Screw the "
+            "aerial onto the pigtail and clip the pigtail onto the Heltec "
+            "Wireless Tracker. Never power the Heltec Wireless Tracker up "
+            "without its aerial attached. The new medic will ask for it "
+            "shortly after it wakes."),
             color="text_secondary", size="13sp")
         lbl.markup = True               # _label() takes no markup argument
         return lbl
@@ -1494,13 +1500,18 @@ class MitosisScreen(BoxLayout):
         outer = top.parent if top is not None else None
         if top is not None and outer is not None and not getattr(text, "_grows", False):
             text._grows = True
-            text.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+            # grow_to_text wraps on WIDTH only. The old code let _label's
+            # size→text_size binding feed the row's height back into the text
+            # box, so every pass made the row 10 dp taller, forever: the page
+            # froze on "Searching…" with an empty list while the copy ran
+            # unseen (Wi-Fi-off proof clone, 2026-10-06).
+            grow_to_text(text)
 
-            def _grow(_i, ts, t=top, o=outer):
-                h = max(dp(40), ts[1] + dp(10))
-                t.height = h
-                o.height = h + dp(12)
-            text.bind(texture_size=_grow)
+            def _grow(_i, h, t=top, o=outer):
+                row_h = max(dp(40), h + dp(10))
+                t.height = row_h
+                o.height = row_h + dp(12)
+            text.bind(height=_grow)
 
     # -- run -------------------------------------------------------------------
 
@@ -1532,6 +1543,7 @@ class MitosisScreen(BoxLayout):
             self.run_btn.disabled = False
             self.run_btn.text = orig_label
             return
+        self._clone_t0, self._step_took = None, {}     # a fresh clone: fresh clocks
         self._build_rows(steps=workflow.steps)
         if workflow.steps:
             self._set_row(workflow.steps[0][0], ">", "accent")
@@ -1542,8 +1554,13 @@ class MitosisScreen(BoxLayout):
     def _run(self, workflow):
         import time as _time
         self._step_t0 = _time.monotonic()
+        if not getattr(self, "_clone_t0", None):
+            self._clone_t0 = self._step_t0          # total clock: kept across a retry
+        self._step_took = getattr(self, "_step_took", {})
 
         def _tick(_dt):
+            if self._rows and any(r.success for r in workflow.results):
+                self._say_progress(workflow)       # total clock on the button
             done = {r.name for r in workflow.results}
             elapsed = _time.monotonic() - self._step_t0
             m, sec = divmod(int(elapsed), 60)
@@ -1559,7 +1576,10 @@ class MitosisScreen(BoxLayout):
 
         def _progress(r):
             import time as _t
-            self._step_t0 = _t.monotonic()
+            now = _t.monotonic()
+            # the step's own clock STOPS here and its time stays on its row
+            self._step_took[r.name] = now - self._step_t0
+            self._step_t0 = now
             Clock.schedule_once(lambda dt, res=r: self._on_step(workflow, res), 0)
 
         results = workflow.run_all(on_progress=_progress)
@@ -1567,10 +1587,21 @@ class MitosisScreen(BoxLayout):
         Clock.schedule_once(lambda dt: self._finish(workflow, results), 0)
 
     def _on_step(self, workflow, result):
+        # The big button is the first thing the eye lands on: it must say what
+        # is happening NOW, not "Searching…" for the whole hour (keeper,
+        # 2026-10-06: "I'm like, oh, it's broken").
+        self._say_progress(workflow)
+        # Into ui.log too: on the Wi-Fi-off proof clone the only copy of a
+        # failure's reason was a screen row nobody could see (2026-10-06).
+        print(f"[clone] {result.name}: "
+              f"{'skipped' if result.skipped else 'OK' if result.success else 'FAILED'}"
+              f" - {(result.message or '')[:400]}", flush=True)
+        took = getattr(self, "_step_took", {}).get(result.name)
+        took_s = _mmss(took) if took is not None else None
         if result.skipped:
             self._set_row(result.name, "s", "text_secondary", tr("skipped"))
         elif result.success:
-            self._set_row(result.name, "OK", "green")
+            self._set_row(result.name, "OK", "green", took_s)
         else:
             self._set_row(result.name, "X", "red", result.message)
         done = {r.name for r in workflow.results}
@@ -1578,6 +1609,20 @@ class MitosisScreen(BoxLayout):
             if name not in done:
                 self._set_row(name, ">", "accent")
                 break
+
+    def _say_progress(self, workflow):
+        done = {r.name for r in workflow.results}
+        names = [n for n, _f in workflow.steps]
+        nxt = next((n for n in names if n not in done), None)
+        if nxt is None:
+            return
+        idx = names.index(nxt) + 1
+        title = tr(dict(STEP_TITLES).get(nxt, nxt))
+        import time as _t
+        total = _t.monotonic() - getattr(self, "_clone_t0", _t.monotonic())
+        self.run_btn.text = tr("Step {i} of {n}: {title}").format(
+            i=idx, n=len(names), title=title) + "\n" + tr(
+            "{t} so far").format(t=_mmss(total))
 
     def _finish(self, workflow, results):
         self._cloning = False
@@ -1601,7 +1646,11 @@ class MitosisScreen(BoxLayout):
             # live, so tapping "Clone finished" started a second complete
             # clone, five-minute search and all.
             self.run_btn.disabled = True
-            self.run_btn.text = tr("Clone finished — every step verified")
+            import time as _t
+            self.run_btn.text = tr("Clone finished — every step verified") + (
+                "\n" + tr("{t} in all").format(
+                    t=_mmss(_t.monotonic() - self._clone_t0))
+                if getattr(self, "_clone_t0", None) else "")
             self.run_btn.background_color = theme.hex_to_rgba(theme.COLORS["green"])
             # It worked / here is what you have / here is what to do next.
             # The old text said only that it was restarting - it never said
@@ -1618,7 +1667,8 @@ class MitosisScreen(BoxLayout):
                    "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
                    "1.  It starts straight into Node Medic and walks you through "
                    "its own setup - no login, nothing to type from here.\n"
-                   "2.  Then it fits its GPS - that is the Tracker, its USB "
+                   "2.  Then it fits its GPS - that is the Heltec Wireless "
+                   "Tracker, its USB "
                    "cable, the aerial and the little pigtail lead from the list "
                    "at the start. Its own mesh radio is a separate job, still "
                    "to come.\n\n"

@@ -29,6 +29,7 @@ from kivy.uix.widget import Widget
 
 from ui import firstborn_flow as ff
 from ui import theme
+from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — firstborn ceremony buttons/plate/progress
 
 #: The board the firstborn always is — show it, don't just name it
@@ -170,7 +171,8 @@ class FirstbornScreen(BoxLayout):
                       font_size=theme.font_sp("23sp"),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]),
                       size_hint_y=None, height=dp(40), halign="center")
-        title.bind(size=lambda w, s: setattr(w, "text_size", (s[0], None)))
+        # grows: "Ready to set up the Heltec Wireless Tracker" is two lines
+        grow_to_text(title)
         self.add_widget(title)
 
         # Show the board on the stages that ask the keeper to handle it, and in
@@ -217,12 +219,17 @@ class FirstbornScreen(BoxLayout):
         if view.can_begin:
             begin = Button(
                 text=(tr("Try again  →") if view.stage == ff.FAILED
-                      else tr("Begin — set up the Tracker  →")),
+                      else tr("Begin — set up the Heltec Wireless Tracker  →")),
                 size_hint_y=None, height=dp(58), font_size=theme.font_sp("18sp"),
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
             begin.bind(on_release=lambda *_: self._begin())
+            # the full board name wraps instead of running off both edges
+            begin.halign = "center"
+            begin.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(20), None)))
+            begin.bind(texture_size=lambda i, ts: setattr(
+                i, "height", max(dp(58), ts[1] + dp(16))))
             self.add_widget(begin)
 
         if view.stage == ff.DONE and self._on_home:
@@ -263,7 +270,7 @@ class FirstbornScreen(BoxLayout):
                 failure = ff.first_failure(results)
         except Exception as exc:       # noqa: BLE001
             ok = False
-            failure = tr("Setting up the Tracker hit a snag: {err}").format(err=exc)
+            failure = tr("Setting up the Heltec Wireless Tracker hit a snag: {err}").format(err=exc)
         Clock.schedule_once(lambda dt: self._finish(ok, failure), 0)
 
     def _show_progress(self, msg):

@@ -144,6 +144,72 @@ def _uri_lines(packages) -> str:
             " | grep -E '^https?://'")
 
 
+#: THE CLONE'S OWN STARTING POINT. The package list (/var/lib/dpkg/status) of
+#: a fresh card this medic writes — Pi OS Lite, nothing installed yet — taken
+#: from node-medic-2 before anything ran on it (Wi-Fi-off proof clone,
+#: 2026-10-06). The cache used to be planned against what THIS medic runs,
+#: which is months newer: it carried the newest cage without the graphics
+#: library that cage needs (libwlroots-0.20), and newer system libraries the
+#: card's older util-linux refused, so the screen would not install offline.
+#: Planning against the card's own list makes apt name exactly what that card
+#: needs, upgrades included. Maintainer/description fields are stripped.
+CLONE_BASE_STATUS = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "assets", "clone_base", "dpkg_status")
+#: The image that list came from (/etc/rpi-issue, first line).
+CLONE_BASE_ISSUE = "Raspberry Pi reference 2026-06-18"
+#: One planned list per install step on the clone, written next to the debs.
+PLAN_LISTS = {"display": DISPLAY_PACKAGES, "radio": APT_PACKAGES}
+
+
+def plan_uri_lines(packages, status: str = CLONE_BASE_STATUS) -> str:
+    """``url filename algo hash`` for what a card in *status*'s state needs to
+    install *packages* — new packages AND the upgrades they force, nothing
+    else. No root: --print-uris with apt's lock checks off."""
+    names = " ".join(packages)
+    # An EMPTY archive cache: --print-uris leaves out any .deb already sitting
+    # in this medic's own apt cache, and the plan silently lost
+    # python3-matplotlib and python3-gi-cairo that way (gpsd-clients could
+    # not install on the clone; dry run on node-medic-2, 2026-10-06).
+    return (f"mkdir -p /tmp/nm-noarch/partial && "
+            f"apt-get -o Dir::State::status={status} -o Debug::NoLocking=1 "
+            f"-o Dir::Cache::archives=/tmp/nm-noarch/ "
+            f"install --no-install-recommends --print-uris -qq {names} 2>/dev/null"
+            " | tr -d \"'\""
+            ' | awk \'{split($4, a, ":"); print $1, $2, a[1], a[2]}\''
+            " | grep -E '^https?://'")
+
+
+def planned_download_command(list_name: str, packages, dest: str = DEB_CACHE,
+                             status: str = CLONE_BASE_STATUS) -> str:
+    """Download one planned set, write ``<list_name>.list`` (the filenames the
+    clone installs), and check every file against apt's digest. Fails if apt
+    planned nothing — an unsolvable set prints no URIs at all."""
+    plan = f".plan-{list_name}"
+    return (f"mkdir -p {dest} && cd {dest} && " + plan_uri_lines(packages, status)
+            + f" > {plan}; [ -s {plan} ] || {{ echo 'apt planned nothing for "
+            f"{list_name}' >&2; exit 3; }}; "
+            f"while read -r u f algo h; do [ -s \"$f\" ] || wget -q -O \"$f\" \"$u\"; "
+            f"done < {plan} && awk '{{print $2}}' {plan} > {list_name}.list && "
+            f"awk '{{print $4 \"  \" $2}}' {plan} > .sums-{list_name} && "
+            f"if grep -q MD5Sum {plan}; then md5sum -c --quiet .sums-{list_name}; "
+            f"else sha256sum -c --quiet .sums-{list_name}; fi")
+
+
+def planned_debs(list_name: str, deb_dir: str):
+    """The files ``<list_name>.list`` names, or None when there is no plan.
+    An incomplete plan returns [] so the clone says the cache is short instead
+    of installing half a set."""
+    d = os.path.expanduser(deb_dir)
+    path = os.path.join(d, f"{list_name}.list")
+    try:
+        with open(path) as fh:
+            names = [l.strip() for l in fh if l.strip().endswith(".deb")]
+    except OSError:
+        return None
+    files = [os.path.join(d, n) for n in names]
+    return files if names and all(os.path.isfile(f) for f in files) else []
+
+
 def apt_download_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
     """Fetch *packages* AND THEIR DEPENDENCIES as .deb, WITHOUT root.
 
@@ -194,6 +260,11 @@ def debs_for(packages, deb_dir: str, run=None) -> list:
     import os
     import re
     import subprocess
+    for list_name, members in PLAN_LISTS.items():
+        if tuple(packages) == tuple(members):
+            planned = planned_debs(list_name, deb_dir)
+            if planned is not None:
+                return planned          # planned against the clone's own card
     if run is None:
         # no shell: the two listings are run directly and joined here
         def run(_cmd):
@@ -225,8 +296,13 @@ def offline_install_command(remote_dir: str) -> str:
     """Install the .debs in *remote_dir* and NOTHING from the network: a
     missing dependency fails here, honestly, instead of apt reaching for an
     internet the field does not have."""
-    return (f"apt-get install -y --no-install-recommends --no-download "
-            f"{remote_dir}/*.deb")
+    # The clone's own package lists (from its card, months old) name the same
+    # versions as remote downloads and apt prefers those — "Unable to fetch
+    # some archives" with every file sitting right there. Ignoring the
+    # sources for this one install leaves the carried files as the only road.
+    return ("apt-get -o Dir::Etc::SourceList=/dev/null "
+            "-o Dir::Etc::SourceParts=/nonexistent "
+            f"install -y --no-install-recommends --no-download {remote_dir}/*.deb")
 
 
 def verify_debs_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
@@ -258,6 +334,20 @@ def cache_debs(connection, packages=ALL_PACKAGES, dest: str = DEB_CACHE,
     offline"), not only what this medic happened to lack.
     """
     connection.run(f"mkdir -p {dest}")
+    if os.path.isfile(CLONE_BASE_STATUS) and tuple(packages) == tuple(ALL_PACKAGES):
+        made = []
+        for list_name, members in PLAN_LISTS.items():
+            code, out, err = connection.run(
+                planned_download_command(list_name, members, dest), timeout=timeout)
+            if code != 0:
+                return False, (f"could not plan or fetch the {list_name} set for a "
+                               f"fresh card: {(err or out)[-200:]}")
+            n = connection.run(f"wc -l < {dest}/{list_name}.list")[1].strip()
+            made.append(f"{list_name} {n}")
+        if deb_count(connection, dest) == 0:
+            return False, "apt reported success but no .deb files landed."
+        return True, ("Planned against a fresh card (" + CLONE_BASE_ISSUE + "): "
+                      + ", ".join(made) + " packages, every file checked.")
     if closure:
         code, out, err = connection.run(closure_packages_command(packages), timeout=120)
         names = [l.strip() for l in (out or "").splitlines() if l.strip()]

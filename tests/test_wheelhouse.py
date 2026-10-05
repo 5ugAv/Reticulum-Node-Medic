@@ -4,6 +4,7 @@ The medic downloads wheels for its own (== the clone target's) platform, then a
 --no-index install must resolve the whole stack. These tests pin the commands and
 the success/failure reporting without touching the network.
 """
+import os
 
 import pytest
 
@@ -136,3 +137,40 @@ def test_the_clone_installs_only_what_it_needs_and_never_downloads(tmp_path):
     assert "--no-download" in offline_install_command("/tmp/x")
     for pkg in ("cage", "libgl1", "xwayland", "libsdl2-2.0-0"):
         assert pkg in DISPLAY_PACKAGES
+
+
+# --- planned against the clone's own card (Wi-Fi-off proof clone, 2026-10-06)
+
+def test_the_plan_reads_the_fresh_cards_package_list_not_this_medics():
+    from workflows import wheelhouse as w
+    cmd = w.plan_uri_lines(w.DISPLAY_PACKAGES, "/x/status")
+    assert "Dir::State::status=/x/status" in cmd
+    assert "Dir::Cache::archives=/tmp/nm-noarch/" in cmd      # never skip cached debs
+    assert "--reinstall" not in cmd and "--no-install-recommends" in cmd
+    assert os.path.isfile(w.CLONE_BASE_STATUS)
+    body = open(w.CLONE_BASE_STATUS).read()
+    assert body.count("Package: ") > 500 and "@" not in body     # no maintainer emails
+
+
+def test_each_set_gets_its_own_checked_list():
+    from workflows import wheelhouse as w
+    cmd = w.planned_download_command("display", w.DISPLAY_PACKAGES, "/d", "/s")
+    assert "> display.list" in cmd and "md5sum -c" in cmd and "exit 3" in cmd
+    assert set(w.PLAN_LISTS) == {"display", "radio"}
+
+
+def test_the_clone_installs_exactly_the_planned_files(tmp_path):
+    from workflows import wheelhouse as w
+    for n in ("a_1_arm64.deb", "b_2_arm64.deb", "stale_9_arm64.deb"):
+        (tmp_path / n).write_bytes(b"x")
+    (tmp_path / "display.list").write_text("a_1_arm64.deb\nb_2_arm64.deb\n")
+    got = w.debs_for(w.DISPLAY_PACKAGES, str(tmp_path))
+    assert [os.path.basename(f) for f in got] == ["a_1_arm64.deb", "b_2_arm64.deb"]
+    (tmp_path / "radio.list").write_text("a_1_arm64.deb\nmissing_1_arm64.deb\n")
+    assert w.debs_for(w.APT_PACKAGES, str(tmp_path)) == []        # short cache: say so
+
+
+def test_the_offline_install_ignores_the_cards_stale_sources():
+    from workflows import wheelhouse as w
+    cmd = w.offline_install_command("/tmp/nm-debs")
+    assert "Dir::Etc::SourceList=/dev/null" in cmd and "--no-download" in cmd

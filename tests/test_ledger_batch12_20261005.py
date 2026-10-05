@@ -27,7 +27,7 @@ def test_the_clone_screen_calls_the_tracker_gps_and_clock():
     assert "the new medic's own radio" not in m
     assert "a Heltec Wireless Tracker — the new medic's GPS and clock" in m
     assert "Then it fits its radio" not in m
-    assert "Then it fits its GPS - that is the Tracker" in m
+    assert "Then it fits its GPS - that is the Heltec Wireless" in m
     assert "Its own mesh radio is a separate job" in m
     assert "own mesh radio is not set up by this flow yet" in m
     for code, cat in _catalogs():

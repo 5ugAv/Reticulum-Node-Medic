@@ -69,7 +69,7 @@ def first_failure(results, default: str = "") -> str:
     for r in results or []:
         if not getattr(r, "success", True):
             return getattr(r, "message", tr("A step did not complete."))
-    return default or tr("The Tracker didn't finish coming up.")
+    return default or tr("The Heltec Wireless Tracker didn't finish coming up.")
 
 
 def decide(gps_live: bool,
@@ -83,21 +83,21 @@ def decide(gps_live: bool,
     ESP32-S3 does exactly that when it resets into the bootloader)."""
     if running:
         return FirstbornView(
-            BIRTHING, tr("Setting up the Tracker…"),
-            tr("Flashing the Tracker, then waiting for it to see the sky. This "
+            BIRTHING, tr("Setting up the Heltec Wireless Tracker…"),
+            tr("Flashing the Heltec Wireless Tracker, then waiting for it to see the sky. This "
                "takes a few minutes — leave it plugged in."),
             can_begin=False)
     if result is True:
         return FirstbornView(
-            DONE, tr("The Tracker is set up"),
-            tr("The Tracker is flashed and adopted as this medic's GPS. As soon "
+            DONE, tr("The Heltec Wireless Tracker is set up"),
+            tr("The Heltec Wireless Tracker is flashed and adopted as this medic's GPS. As soon "
                "as it sees the sky, Node Medic knows where it stands, and you can "
                "set the clock from it in Settings ▸ Date & time."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
-            FAILED, tr("The Tracker needs another go"),
-            (failure or tr("The Tracker didn't finish coming up.")) + "\n\n" +
+            FAILED, tr("The Heltec Wireless Tracker needs another go"),
+            (failure or tr("The Heltec Wireless Tracker didn't finish coming up.")) + "\n\n" +
             tr("Check it is the only board plugged in, then try again."),
             can_begin=True)
     if gps_live:
@@ -105,26 +105,28 @@ def decide(gps_live: bool,
             ALREADY, tr("This medic already has its GPS"),
             tr("A GPS source is already streaming a fix, so there's nothing to "
                "set up here. You can move on — or run this again from Settings if "
-               "you want to replace the Tracker."),
+               "you want to replace the Heltec Wireless Tracker."),
             can_begin=False)
     if tracker_candidates <= 0:
         return FirstbornView(
-            NEED_TRACKER, tr("Plug in the Tracker"),
-            tr("No Tracker is connected yet. Plug the Heltec Wireless Tracker into "
+            NEED_TRACKER, tr("Plug in the Heltec Wireless Tracker"),
+            tr("No Heltec Wireless Tracker is connected yet. Plug it into "
                "a free USB socket on this Node Medic with the USB-A to USB-C "
                "cable, its aerial already attached.\n\n"
-               "This page moves on by itself when it sees the Tracker."),
+               "This page moves on by itself when it sees the Heltec Wireless "
+               "Tracker."),
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(
             NEED_TRACKER, tr("One board at a time"),
-            tr("More than one board looks like it could be the Tracker. Unplug the "
-               "others — especially the medic's own radio — and leave just the "
-               "Tracker, so Node Medic sets up the board you mean."),
+            tr("More than one board looks like it could be the Heltec Wireless "
+               "Tracker. Unplug the others — especially the medic's own radio — "
+               "and leave just the Heltec Wireless Tracker, so Node Medic sets "
+               "up the board you mean."),
             can_begin=False)
     return FirstbornView(
-        READY, tr("Ready to set up the Tracker"),
-        tr("A board that could be the Tracker is plugged in. If it is the Heltec "
+        READY, tr("Ready to set up the Heltec Wireless Tracker"),
+        tr("A board that could be the Heltec Wireless Tracker is plugged in. If it is the Heltec "
            "Wireless Tracker, press Begin: the medic flashes it, waits for it to "
            "see satellites, and adopts it as this medic's GPS."),
         can_begin=True)

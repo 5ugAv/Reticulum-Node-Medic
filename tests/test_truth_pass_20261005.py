@@ -44,7 +44,7 @@ def test_the_firstborn_claims_nothing_it_cannot_see_yet():
     assert "Node Medic knows where it stands" in f
     # the plug-in stage has no Begin button: it moves on by itself (review, 2026-10-06)
     assert "then this begins" not in f and "then tap Begin." not in f
-    assert "This page moves on by itself when it sees the Tracker." in f
+    assert "This page moves on by itself when it sees the Heltec Wireless" in f
     assert "adopted as kin over LoRa" not in src("ui/screens/birth_guide_screen.py")
     for code, cat in _catalogs():
         assert not any("reporting real satellites right now" in k for k in cat), code

@@ -290,7 +290,10 @@ def carry_all(connection: Connection, force: bool = False,
 
     try:
         from workflows.wheelhouse import DEB_CACHE, cache_debs, deb_count
-        if deb_count(connection, DEB_CACHE) == 0:
+        planned = all(connection.run(f"test -s {DEB_CACHE}/{n}.list")[0] == 0
+                      for n in ("display", "radio"))
+        # an older cache has debs but no per-card plan: plan it once
+        if deb_count(connection, DEB_CACHE) == 0 or not planned:
             say("Fetching the clone's screen packages (.deb) — a minute or two…")
             ok, msg = cache_debs(connection)
             (rep.topped_up if ok else rep.failed).append(
