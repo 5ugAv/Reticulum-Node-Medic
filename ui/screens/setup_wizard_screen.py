@@ -455,11 +455,18 @@ class SetupWizardScreen(BoxLayout):
         """
         b = Button(text=step.get("opens_label") or tr("Open it now"),
                    size_hint_x=0.75,            # a nav-row button, between Back and Next
-                   bold=True, font_size="15sp", background_normal="",
+                   bold=True, font_size="14sp", background_normal="",
+                   halign="center", valign="middle",
                    # secondary action: the theme's surface plate, not a khaki
                    # of its own (it stayed khaki through the green repaint)
                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        # THE CAPTION WRAPS INSIDE ITS BUTTON. "Open MAPS to download an area"
+        # and "Meet the firstborn →" are longer than the 0.75 share of the row;
+        # unwrapped, Kivy centred the full line and it spilled over Back and
+        # Next on the glass (deploy 79506336, 2026-10-05). Two lines of 14sp
+        # fit the nav row's height.
+        b.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(14), None)))
         b.bind(on_release=lambda *_: self._leave_for(step["opens"]))
         return b
 

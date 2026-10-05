@@ -218,10 +218,15 @@ class WizardStep(BoxLayout):
                 b, "width", max(dp(120), ts[0] + dp(28))))
             self.back_btn.bind(on_release=lambda *_: self._on_back and self._on_back())
         self.next_btn = Button(text=next_text, font_size=theme.font_sp("20sp"),
-                               bold=True,
+                               bold=True, halign="center", valign="middle",
                                background_normal="",
                                background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                                color=theme.hex_to_rgba(theme.COLORS["background"]))
+        # The caption stays INSIDE the green: with a third button in the row
+        # "Passer pour le moment →" (363 px) ran past a 253 px Next on the
+        # firstborn tour step (sandbox, 2026-10-05). A long caption wraps to a
+        # second line rather than spilling over its neighbours.
+        self.next_btn.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(16), None)))
         self.next_btn.bind(on_release=lambda *_: self._on_next and self._on_next())
         if self.back_btn is not None:
             nav.add_widget(self.back_btn)

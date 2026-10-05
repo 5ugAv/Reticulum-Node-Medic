@@ -1067,7 +1067,7 @@
   "Signal strength (RSSI)": "Force du signal (RSSI)",
   "Signal — {n} answered pings carried a reading. Last answer: {rssi} dBm at {m} m": "Signal — {n} pings répondus portaient une mesure. Dernière réponse : {rssi} dBm à {m} m",
   "Signal: not measured": "Signal : non mesuré",
-  "Skip for now  →": "Passer pour le moment  →",
+  "Skip for now  →": "Passer  →",
   "Slide the blank microSD card into the card reader on Node Medic.": "Insérez la carte microSD vierge dans le lecteur de cartes de Node Medic.",
   "So far": "Jusqu'ici",
   "Software version": "Version du logiciel",

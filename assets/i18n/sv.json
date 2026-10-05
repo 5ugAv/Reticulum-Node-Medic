@@ -1067,7 +1067,7 @@
   "Signal strength (RSSI)": "Signalstyrka (RSSI)",
   "Signal — {n} answered pings carried a reading. Last answer: {rssi} dBm at {m} m": "Signal — {n} besvarade pingar bar en avläsning. Senaste svar: {rssi} dBm vid {m} m",
   "Signal: not measured": "Signal: inte mätt",
-  "Skip for now  →": "Hoppa över tills vidare  →",
+  "Skip for now  →": "Hoppa över  →",
   "Slide the blank microSD card into the card reader on Node Medic.": "Skjut in det tomma microSD-kortet i kortläsaren på Node Medic.",
   "So far": "Hittills",
   "Software version": "Programversion",

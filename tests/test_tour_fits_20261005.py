@@ -78,3 +78,14 @@ def test_the_control_socket_can_jump_to_a_wizard_step():
     assert parse_command("wizard 3") == ("wizard", "3")
     assert parse_command("wizard") == ("", None)
     assert "scr._render()" in src("ui/remote.py")
+
+
+def test_the_open_it_now_caption_wraps_inside_its_button():
+    """Deploy 79506336 on the glass: "Open MAPS to download an area" and
+    "Meet the firstborn →" spilled over Back and Next — Kivy centres an
+    unwrapped caption on the button and lets it run past both edges."""
+    import pathlib
+    src = pathlib.Path("ui/screens/setup_wizard_screen.py").read_text()
+    body = src[src.index("def _see_it_button"):src.index("def _leave_for")]
+    assert 'setattr(i, "text_size", (w - dp(14), None))' in body
+    assert 'halign="center"' in body
