@@ -26,7 +26,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 from ui import theme
-from ui.i18n import tr  # i18n: wrapped — the 2026-09-22 zoom / select-here controls
+from ui.i18n import tr  # i18n: wrapped — every literal this popup draws
 from ui.map_pick import centre_of, format_pin, tile_caption
 
 #: Map pane height, by the window's ACTUAL shape (2026-09-22). 190dp is the
@@ -181,11 +181,11 @@ class ConfirmLocationPopup(Popup):
         from ui.onscreen_keyboard import bind_field
         addr_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                              height=dp(50), spacing=dp(6))
-        self._addr_in = TextInput(hint_text="Type an address to place the pin…",
+        self._addr_in = TextInput(hint_text=tr("Type an address to place the pin…"),
                                   multiline=False, font_size="28sp")
         bind_field(self._addr_in)
         self._addr_in.bind(on_text_validate=self._find_address)
-        find = Button(text="Find", size_hint_x=None, width=dp(78), bold=True,
+        find = Button(text=tr("Find"), size_hint_x=None, width=dp(78), bold=True,
                       background_normal="",
                       background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                       color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -199,8 +199,8 @@ class ConfirmLocationPopup(Popup):
         # 2026-08-14: the caption said 'Show address', which lives below the
         # map and is off-view with the keyboard up — a caption must not point
         # at a control the eye cannot find).
-        self._addr = _lbl("Type an address and tap Find to look up the spot "
-                          "online (optional).",
+        self._addr = _lbl(tr("Type an address and tap Find to look up the spot "
+                             "online (optional)."),
                           "12.5sp", color="text_secondary", h=30)
         if self._start_note:
             self._addr.text = self._start_note
@@ -295,7 +295,7 @@ class ConfirmLocationPopup(Popup):
         coord_row = BoxLayout(orientation="horizontal", size_hint_y=None,
                               height=dp(34), spacing=dp(8))
         self._coords = _lbl(self._coord_text(), "14sp", bold=True, h=34)
-        show_addr = Button(text="Show address (online)", size_hint_x=None,
+        show_addr = Button(text=tr("Show address (online)"), size_hint_x=None,
                            width=dp(168), font_size="12.5sp", bold=True,
                            background_normal="",
                            background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -308,14 +308,14 @@ class ConfirmLocationPopup(Popup):
         # controls: Cancel + Use GPS on the left; a small round commit on the right
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(84),
                         spacing=dp(8))
-        cancel = Button(text="Cancel", bold=True, font_size="15sp", size_hint_x=0.3,
+        cancel = Button(text=tr("Cancel"), bold=True, font_size="15sp", size_hint_x=0.3,
                         background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                         color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         cancel.bind(on_release=lambda *_: self._cancel())
         row.add_widget(cancel)
         if gps_reader is not None:
-            usegps = Button(text="Use GPS", bold=True, font_size="14sp",
+            usegps = Button(text=tr("Use GPS"), bold=True, font_size="14sp",
                             size_hint_x=0.3, background_normal="",
                             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                             color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -327,11 +327,11 @@ class ConfirmLocationPopup(Popup):
         holder = AnchorLayout(anchor_x="center", anchor_y="center")
         holder.add_widget(_CircleConfirm(on_press=self._confirm))
         commit.add_widget(holder)
-        commit.add_widget(_lbl("Confirm", "11.5sp", color="text_secondary", h=16))
+        commit.add_widget(_lbl(tr("Confirm"), "11.5sp", color="text_secondary", h=16))
         row.add_widget(commit)
         body.add_widget(row)
 
-        super().__init__(title=f"Confirm this node's location{who}",
+        super().__init__(title=tr("Confirm this node's location") + who,
                          content=body, size_hint=(0.96, 0.94),
                          auto_dismiss=False, **kwargs)
         Clock.schedule_once(lambda *_: self.plot.focus((self._lat, self._lon)), 0)
@@ -383,15 +383,15 @@ class ConfirmLocationPopup(Popup):
         self._coords.text = self._coord_text()
         self.plot._me = (self._lat, self._lon)     # move the pin, keep the view
         self.plot._trigger()
-        self._addr.text = ("Pin placed — coordinates are below the map. "
-                           "'Show address (online)' looks up its street "
-                           "address.")
+        self._addr.text = tr("Pin placed — coordinates are below the map. "
+                             "'Show address (online)' looks up its street "
+                             "address.")
 
     def _find_address(self, *a):
         q = (self._addr_in.text or "").strip()
         if not q:
             return
-        self._addr.text = "Searching…"
+        self._addr.text = tr("Searching…")
         import threading
 
         def work():
@@ -408,8 +408,8 @@ class ConfirmLocationPopup(Popup):
             else:
                 Clock.schedule_once(lambda *_: setattr(
                     self._addr, "text",
-                    "Couldn't look up that address (lookup busy or no match) — "
-                    "tap the map or use GPS instead."), 0)
+                    tr("Couldn't look up that address (lookup busy or no match) — "
+                       "tap the map or use GPS instead.")), 0)
         threading.Thread(target=work, daemon=True).start()
 
     def _use_gps(self):
@@ -423,12 +423,12 @@ class ConfirmLocationPopup(Popup):
             self.plot.focus((fix[0], fix[1]))       # recentre on the live fix
             self._move_pin(fix[0], fix[1])
         else:
-            self._addr.text = "No GPS fix right now — tap the map instead."
+            self._addr.text = tr("No GPS fix right now — tap the map instead.")
 
     def _refresh_address(self):
         import threading
         lat, lon = self._lat, self._lon
-        self._addr.text = "Looking up address…"
+        self._addr.text = tr("Looking up address…")
 
         def work():
             addr = None
@@ -440,7 +440,8 @@ class ConfirmLocationPopup(Popup):
             if (lat, lon) != (self._lat, self._lon):
                 return                              # pin moved again; stale result
             Clock.schedule_once(lambda *_: setattr(
-                self._addr, "text", addr or "(no address — offline; judge by the map)"), 0)
+                self._addr, "text",
+                addr or tr("(no address — offline; judge by the map)")), 0)
         threading.Thread(target=work, daemon=True).start()
 
     # -- back-swipe-to-cancel (a modal captures the screen's edge gesture) --

@@ -25,6 +25,7 @@ from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from ui.text_fit import grow_to_text
 from ui.onscreen_keyboard import bind_field
 from provisioning import tool_datetime as td
@@ -47,7 +48,7 @@ class DateTimeScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(14)
         self.spacing = dp(8)
-        self.add_widget(_line("Date & time", bold=True, size="22sp", h=40))
+        self.add_widget(_line(tr("Date & time"), bold=True, size="22sp", h=40))
 
         body = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
@@ -56,7 +57,7 @@ class DateTimeScreen(BoxLayout):
         # -- auto-sync toggle -------------------------------------------------
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
                         spacing=dp(10))
-        row.add_widget(_line("Keep the clock synced from GPS", size="15sp"))
+        row.add_widget(_line(tr("Keep the clock synced from GPS"), size="15sp"))
         # No gpspipe = nothing to sync from: the switch defaulted ON and greyed
         # the manual fields on a medic with no GPS at all (ledger #19)
         self._has_gps_tools = shutil.which("gpspipe") is not None
@@ -70,10 +71,10 @@ class DateTimeScreen(BoxLayout):
         col.add_widget(self._sync_status)
 
         # -- manual fields ----------------------------------------------------
-        col.add_widget(_line("Set manually", bold=True, size="15sp",
+        col.add_widget(_line(tr("Set manually"), bold=True, size="15sp",
                              color="accent", h=26))
 
-        col.add_widget(_line("Date & time  (YYYY-MM-DD HH:MM:SS)",
+        col.add_widget(_line(tr("Date & time  (YYYY-MM-DD HH:MM:SS)"),
                              size="13sp", color="text_secondary", h=22))
         self._dt_shown = td.now_string()
         self._dt = TextInput(text=self._dt_shown, multiline=False,
@@ -81,14 +82,14 @@ class DateTimeScreen(BoxLayout):
         bind_field(self._dt)
         col.add_widget(self._dt)
 
-        col.add_widget(_line("Timezone  (e.g. Australia/Melbourne)",
+        col.add_widget(_line(tr("Timezone  (e.g. Australia/Melbourne)"),
                              size="13sp", color="text_secondary", h=22))
-        self._tz = TextInput(text="reading…", multiline=False,
+        self._tz = TextInput(text=tr("reading…"), multiline=False,
                              size_hint_y=None, height=dp(46), font_size="26sp")
         bind_field(self._tz)
         col.add_widget(self._tz)
 
-        self._save = Button(text="Save date, time & timezone", size_hint_y=None,
+        self._save = Button(text=tr("Save date, time & timezone"), size_hint_y=None,
                             height=dp(54), bold=True, font_size="17sp",
                             background_normal="",
                             background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -96,7 +97,7 @@ class DateTimeScreen(BoxLayout):
         self._save.bind(on_release=lambda *_: self._do_save())
         col.add_widget(self._save)
 
-        self._sync_now = Button(text="Sync now from GPS", size_hint_y=None,
+        self._sync_now = Button(text=tr("Sync now from GPS"), size_hint_y=None,
                                 height=dp(50), font_size="16sp", background_normal="",
                                 background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                                 color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
@@ -126,7 +127,7 @@ class DateTimeScreen(BoxLayout):
     def _show_loaded(self, tz, ago):
         if tz:
             self._tz.text = tz
-        elif self._tz.text == "reading…":
+        elif self._tz.text == tr("reading…"):
             self._tz.text = ""
         self._refresh_sync_status(ago)
 
@@ -150,12 +151,13 @@ class DateTimeScreen(BoxLayout):
                 ago = ago.replace("synced", "GPS-synced", 1)
             live = ago
         if not getattr(self, "_has_gps_tools", True) and not self._auto.active:
-            self._sync_status.text = ("No GPS tools on this medic (gpspipe is not "
-                                      "installed) — set the clock by hand below.")
+            self._sync_status.text = tr("No GPS tools on this medic (gpspipe is not "
+                                        "installed) — set the clock by hand below.")
         elif self._auto.active:
-            self._sync_status.text = f"Auto-sync ON — {live}. Manual entry is disabled."
+            self._sync_status.text = tr("Auto-sync ON — {status}. Manual entry is "
+                                        "disabled.").format(status=live)
         else:
-            self._sync_status.text = "Auto-sync OFF — set the clock by hand below."
+            self._sync_status.text = tr("Auto-sync OFF — set the clock by hand below.")
 
     # -- mode: auto vs manual ---------------------------------------------
 
@@ -170,8 +172,8 @@ class DateTimeScreen(BoxLayout):
     def _on_autosync(self, on):
         td.set_autosync(on)
         self._apply_mode(on)
-        self._status.text = ("Auto-sync enabled — the medic will keep its clock set "
-                             "from GPS." if on else "Auto-sync disabled.")
+        self._status.text = (tr("Auto-sync enabled — the medic will keep its clock set "
+                                "from GPS.") if on else tr("Auto-sync disabled."))
         if on:
             self._do_sync_now()          # correct the clock immediately
 
@@ -181,7 +183,7 @@ class DateTimeScreen(BoxLayout):
         dt_val = self._dt.text.strip()
         tz_val = self._tz.text.strip()
         self._status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
-        self._status.text = "Applying…"
+        self._status.text = tr("Applying…")
 
         def work():
             msgs = []
@@ -198,7 +200,7 @@ class DateTimeScreen(BoxLayout):
                 ok = ok and dt_ok
                 msgs.append(dt_msg)
             Clock.schedule_once(
-                lambda dt: self._report(ok, "  ".join(msgs) or "Nothing to set."), 0)
+                lambda dt: self._report(ok, "  ".join(msgs) or tr("Nothing to set.")), 0)
         threading.Thread(target=work, daemon=True).start()
 
     def enter(self):
@@ -212,7 +214,7 @@ class DateTimeScreen(BoxLayout):
 
     def _do_sync_now(self):
         self._status.color = theme.hex_to_rgba(theme.COLORS["text_secondary"])
-        self._status.text = "Reading GPS…"
+        self._status.text = tr("Reading GPS…")
         self._sync_now.disabled = True
 
         def work():
