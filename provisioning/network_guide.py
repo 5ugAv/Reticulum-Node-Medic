@@ -39,9 +39,9 @@ CONCEPTS: List[Tuple[str, str]] = [
      "The nodes this medic built or adopted — the ones it watches on VITALS and "
      "can repair. A node you can hear but did not build stays a stranger until "
      "you adopt it."),
-    ("The firstborn",
+    ("The Tracker",
      "This medic's own Heltec Wireless Tracker: its GPS and clock, flashed and "
-     "adopted first, as node number one."),
+     "adopted by Node Medic."),
 ]
 
 GOLDEN_RULE_TITLE = "The golden rule"

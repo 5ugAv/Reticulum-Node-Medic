@@ -44,8 +44,9 @@ def test_screen_shows_the_tracker_board_image_not_just_the_name():
     assert "_tracker_image" in SRC
 
 
-def test_celebration_has_a_firstborn_nameplate_and_honest_proof():
-    assert "firstborn" in SRC and "node #1" in SRC
+def test_celebration_has_a_nameplate_and_honest_proof():
+    # "firstborn" / "node #1" retired from the glass (the keeper, 2026-10-06)
+    assert "this medic\'s GPS" in SRC and "node #1" not in SRC
     # proof is the REAL fix read back, never fabricated coordinates
     assert "_fix_proof" in SRC and "read_splitter_fix" in SRC
 
@@ -68,7 +69,7 @@ def test_tour_button_labels_are_not_a_trap():
     # the green "next" must NOT claim to open the ceremony (that button skips);
     # the muted opens button carries the "meet the firstborn" label instead.
     FLOW = pathlib.Path("ui/setup_flow.py").read_text()
-    assert '"opens_label": "Meet the firstborn' in FLOW
+    assert '"opens_label": "Set up the Tracker' in FLOW
     assert '"next": "Skip for now' in FLOW
 
 

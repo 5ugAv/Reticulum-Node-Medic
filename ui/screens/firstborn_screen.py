@@ -181,7 +181,7 @@ class FirstbornScreen(BoxLayout):
                 self.add_widget(img)
 
         if view.stage == ff.DONE:
-            plate = Label(text=tr("★  node #1  ·  the firstborn  ★"), bold=True,
+            plate = Label(text=tr("★  this medic's GPS  ★"), bold=True,
                           font_size=theme.font_sp("16sp"),
                           color=theme.hex_to_rgba(theme.COLORS["green"]),
                           size_hint_y=None, height=dp(26))
@@ -217,7 +217,7 @@ class FirstbornScreen(BoxLayout):
         if view.can_begin:
             begin = Button(
                 text=(tr("Try again  →") if view.stage == ff.FAILED
-                      else tr("Begin — birth the firstborn  →")),
+                      else tr("Begin — set up the Tracker  →")),
                 size_hint_y=None, height=dp(58), font_size=theme.font_sp("18sp"),
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),

@@ -1129,13 +1129,13 @@ class MitosisScreen(BoxLayout):
         self._clear()
         self._stage_header("written")
         gen = self._stage_gen
-        title = _label(tr("Card written ✓ — move it to the new medic"),
-                       bold=True, size="20sp", color="green")
-        title.size_hint_y, title.height = None, dp(34)
+        title = _label(tr("Card written ✓"), bold=True, size="20sp", color="green")
+        grow_to_text(title)                      # was pinned at 34 dp and clipped
         self.add_widget(title)
         try:
             from ui.widgets.birth_anims import SdHandoverAnim
-            self._anim = SdHandoverAnim()
+            # the NEW medic is a Raspberry Pi 5: draw that board, not a generic one
+            self._anim = SdHandoverAnim(pi_key="pi_5")
             self.add_widget(self._anim)
             self._anim.start()
         except Exception:                                  # noqa: BLE001
@@ -1150,12 +1150,14 @@ class MitosisScreen(BoxLayout):
             mark = "OK   " if _ok else ("?    " if _ok is None else "X    ")
             tone = "green" if _ok else "amber"
             row = _label(mark + f"{tr(_lbl)} - {_detail}", color=tone, size="13sp")
-            row.size_hint_y, row.height = None, dp(19)
+            grow_to_text(row)                    # the last one was clipped at 19 dp
             self.add_widget(row)
 
-        hint = _label(tr("Make sure the new medic is switched OFF first, then push "
-                         "the little card into its slot until it clicks. Node "
-                         "Medic sees the card leave here and carries on by itself."),
+        hint = _label(tr("Take the card out of this Node Medic's card reader and put "
+                         "it into the new Node Medic's Raspberry Pi 5. Make sure the "
+                         "new medic is switched OFF first, then push the card into "
+                         "its slot until it clicks. This Node Medic sees the card "
+                         "leave and carries on by itself."),
                       color="text_secondary", size="14sp")
         # Sized to the wrapped text, never a fixed dp: a hardcoded height
         # clips silently from the top the moment the copy grows.
@@ -1378,6 +1380,12 @@ class MitosisScreen(BoxLayout):
             background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
             color=theme.hex_to_rgba(theme.COLORS["background"]))
         self.run_btn.bind(on_release=lambda *_: self.start())
+        # "Retry from: Installing the screen stack (carried, offline)" was cut
+        # at both edges (first real clone, 2026-10-06): the caption wraps.
+        self.run_btn.halign = "center"
+        self.run_btn.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(20), None)))
+        self.run_btn.bind(texture_size=lambda i, ts: setattr(
+            i, "height", max(dp(56), ts[1] + dp(16))))
         self.add_widget(self.run_btn)
 
         self.scroll = ScrollView()
@@ -1413,7 +1421,7 @@ class MitosisScreen(BoxLayout):
             "pigtail and clip the pigtail onto the Tracker. Never power the "
             "Tracker up without its aerial attached. The new medic will ask "
             "for it shortly after it wakes."),
-            color="text_secondary", size="13sp")
+            color="text_secondary", size="13sp", markup=True)
 
     def _build_rows(self, steps=None):
         titles = dict(STEP_TITLES)
@@ -1451,17 +1459,29 @@ class MitosisScreen(BoxLayout):
         status.text = mark
         status.color = theme.hex_to_rgba(theme.COLORS[color])
         text.color = theme.hex_to_rgba(theme.COLORS["text_primary"])
-        if detail:
-            base = tr(dict(STEP_TITLES).get(name, name))
-            text.text = f"{base}\n[{detail}]"
-            top = text.parent
-            outer = top.parent if top is not None else None
-            if color == "red" and top is not None and outer is not None:
-                def _grow(_i, ts, t=top, o=outer):
-                    h = max(dp(40), ts[1] + dp(10))
-                    t.height = h
-                    o.height = h + dp(12)
-                text.bind(texture_size=_grow)
+        # THE TITLE IS ALWAYS THE FIRST THING IN THE ROW. "title\n[timer]" in
+        # a one-line row showed only the timer — rows read "OK [0m 02s]" with
+        # no step name, and a failure read "[Deb install failed:" with its
+        # reason cut off (first real clone, 2026-10-06). The timer rides on
+        # the same line; a failure's reason wraps underneath and the row grows.
+        base = tr(dict(STEP_TITLES).get(name, name))
+        if color == "red" and detail:
+            text.text = f"{base}\n{detail}"
+        elif detail:
+            text.text = f"{base}  ·  {detail}"
+        else:
+            text.text = base
+        top = text.parent
+        outer = top.parent if top is not None else None
+        if top is not None and outer is not None and not getattr(text, "_grows", False):
+            text._grows = True
+            text.bind(width=lambda i, w: setattr(i, "text_size", (w, None)))
+
+            def _grow(_i, ts, t=top, o=outer):
+                h = max(dp(40), ts[1] + dp(10))
+                t.height = h
+                o.height = h + dp(12)
+            text.bind(texture_size=_grow)
 
     # -- run -------------------------------------------------------------------
 

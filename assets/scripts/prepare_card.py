@@ -612,6 +612,20 @@ def write_rootfs(mnt: str, cfg: dict) -> None:
     if tz:
         _set_timezone(mnt, tz)
 
+    # A NEW MEDIC SAYS WHAT IT IS WAITING FOR. Until Node Medic is copied
+    # across, its screen is a bare console login, which a new keeper reads as
+    # "broken" (first real clone, 2026-10-06). The console prints this above
+    # the login prompt from the first boot until the clone replaces the screen.
+    if cfg.get("medic"):
+        try:
+            os.makedirs(os.path.join(mnt, "etc/issue.d"), exist_ok=True)
+            _write(os.path.join(mnt, "etc/issue.d/zz-nodemedic.issue"),
+                   "\n  NEW NODE MEDIC — waiting to be cloned.\n"
+                   "  Connect the ethernet cable to the Node Medic that wrote\n"
+                   "  this card. Its screen shows the progress; nothing to type here.\n\n")
+        except OSError:
+            pass                       # a message must never fail a card
+
     if cfg.get("cable_link", True):
         try:
             _write(os.path.join(mnt, GADGET_UNIT_PATH.lstrip("/")), GADGET_UNIT)

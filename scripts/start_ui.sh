@@ -2,7 +2,10 @@
 # Launch the Node Medic UI on the touchscreen (used by the desktop autostart).
 # Keeps the display awake — this is a field instrument, not a desktop.
 xset s off -dpms s noblank 2>/dev/null
-cd /home/nodemedic/reticulum-tool || exit 1
+# The tool's own folder, whoever the user is: a clone runs as 'pi', not
+# 'nodemedic', and started the app without this script (no touch switches, no
+# ~/.local/bin) — a pointer arrow floated over its screen (first clone, 2026-10-06).
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 # pip --user tools (pio for RTNode builds, rnodeconf/rnid for RNode flashes) live
 # in ~/.local/bin — the autostart shell doesn't include it, so the flash steps
 # hit "pio: command not found". Put it on PATH for the app + its subprocesses.
@@ -23,10 +26,14 @@ export SDL_MOUSE_TOUCH_EVENTS=0
 # health beacons (the 2026-07-30 inversion incident). Budget 2 min, then launch
 # anyway so a medic whose rnsd is genuinely broken still gets a UI (the in-app
 # attach retry + Self Diagnose can take it from there).
-for _i in $(seq 1 60); do
-    ss -xl 2>/dev/null | grep -q "@rns/default" && break
-    sleep 2
-done
+# Only where rnsd is installed: a new clone has none until it gets a radio,
+# and would otherwise wait two minutes at every boot for nothing.
+if systemctl cat rnsd.service >/dev/null 2>&1; then
+    for _i in $(seq 1 60); do
+        ss -xl 2>/dev/null | grep -q "@rns/default" && break
+        sleep 2
+    done
+fi
 # -u: unbuffered stdout/stderr. ui.log is a pipe/file, so buffered prints (RNS
 # log lines included) can sit invisible in an 8 KB buffer for hours — which hid
 # the 2026-07-30 deaf-listener evidence. Live logs are worth the tiny cost.

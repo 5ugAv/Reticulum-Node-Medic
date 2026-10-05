@@ -476,8 +476,9 @@ def test_the_card_crop_reads_the_same_numbers_the_tap_map_does():
 def test_firstborn_step_follows_birth_and_opens_its_screen():
     keys = [s["key"] for s in sf.setup_steps()]
     assert sf.TOUR_FIRSTBORN in keys
-    # it comes right after BIRTH — build a node, then birth the medic's own
-    assert keys.index(sf.TOUR_FIRSTBORN) == keys.index(sf.TOUR_BIRTH) + 1
+    # FIRST, ahead of the tour: finish building the medic, then learn to use it
+    assert keys.index(sf.TOUR_FIRSTBORN) == keys.index(sf.TOUR_BIRTH) - 1
+    assert keys.index(sf.TOUR_FIRSTBORN) == 1          # straight after the welcome
     step = sf.step_for(sf.TOUR_FIRSTBORN)
     assert step["opens"] == "firstborn"
 

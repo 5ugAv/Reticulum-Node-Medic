@@ -41,7 +41,7 @@ def test_the_firstborn_claims_nothing_it_cannot_see_yet():
     f = src("ui/firstborn_flow.py")
     assert "reporting real satellites right now" not in f
     assert "knows the time at last" not in f
-    assert "As soon as it sees the sky the medic knows where it stands" in f
+    assert "As soon as it sees the sky, Node Medic knows where it stands" in f
     assert "then this begins" not in f and "then tap Begin." in f
     assert "adopted as kin over LoRa" not in src("ui/screens/birth_guide_screen.py")
     for code, cat in _catalogs():

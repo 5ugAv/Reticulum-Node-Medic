@@ -8,7 +8,7 @@ def test_the_core_concepts_are_present_in_order():
     meets on the screens — Kin and the firstborn (readiness ledger #213)."""
     terms = [t for t, _ in g.CONCEPTS]
     assert terms == ["RNode", "Transport node", "Propagation node",
-                     "Kin", "The firstborn"]
+                     "Kin", "The Tracker"]
 
 
 def test_golden_rule_has_the_maxim():

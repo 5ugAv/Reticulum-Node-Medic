@@ -463,8 +463,11 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
         f"WorkingDirectory={home}/reticulum-tool\n"
         # cage does NOT forward its child's stdout to the journal — the first
         # crash-loop on HAWKEYE was invisible until the child got its own log.
-        f"ExecStart=/usr/bin/cage -s -- /bin/sh -c 'exec /usr/bin/python3 "
-        f"{home}/reticulum-tool/main.py >> {home}/ui.log 2>&1'\n"
+        # THE SAME START AS THE PARENT: scripts/start_ui.sh carries the touch
+        # switches (no synthesised mouse → no pointer arrow), ~/.local/bin for
+        # the flashing tools, and the log (first real clone, 2026-10-06).
+        f"ExecStart=/usr/bin/cage -s -- /bin/bash "
+        f"{home}/reticulum-tool/scripts/start_ui.sh\n"
         "Restart=on-failure\n"
         "RestartSec=5\n\n"
         "[Install]\n"
@@ -907,10 +910,45 @@ class CloneWorkflow:
         carries NOPASSWD sudo (written by the card bake)."""
         return f"sudo -n {cmd}"
 
+    #: What the NEW medic's own screen says while it is being filled. Its
+    #: console showed a bare login prompt for the whole copy, which a new
+    #: keeper reads as "nothing is happening" (first real clone, 2026-10-06).
+    STEP_WORDS = {
+        "carry_the_toolchain": "Receiving the firmware tools (the longest part)",
+        "install_dependencies": "Installing the software",
+        "install_display_stack": "Installing the screen",
+        "install_carried_packages": "Installing the radio-modem packages",
+        "copy_monitoring_db": "Receiving the node records",
+        "generate_fresh_identity": "Making this medic's own identity",
+        "configure_autostart": "Setting Node Medic to start at power-on",
+        "final_verification": "Checking everything",
+        "restart_into_tool": "Restarting into Node Medic",
+    }
+
+    def _tell_new_medic(self, step_name: str) -> None:
+        """Write one line onto the new medic's console. Best-effort and quiet:
+        a screen message must never be what fails a clone."""
+        if isinstance(self.connection, _NotYetConnected) or step_name == "find_new_medic":
+            return
+        names = [n for n, _f in self.steps]
+        try:
+            idx = names.index(step_name) + 1
+        except ValueError:
+            return
+        words = self.STEP_WORDS.get(step_name, "Receiving Node Medic")
+        line = (f"\\n  NODE MEDIC — being cloned. Leave both medics plugged in.\\n"
+                f"  Step {idx} of {len(names)}: {words}...\\n")
+        try:
+            self.connection.run(self.priv(f"sh -c 'printf \"{line}\" > /dev/tty1'"),
+                                timeout=10)
+        except Exception:                                          # noqa: BLE001
+            pass
+
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)
         while self.current_index < len(self.steps):
             name, func = self.steps[self.current_index]
+            self._tell_new_medic(name)
             try:
                 result = func(self)
             except Exception as e:                     # noqa: BLE001

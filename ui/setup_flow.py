@@ -327,33 +327,36 @@ _SECURITY_STEPS = [
 # no painted card, so they carry none rather than borrowing someone else's.
 
 _TOUR_STEPS = [
+    {"key": TOUR_FIRSTBORN, "part": TOUR,
+     # FIRST, before the tour: the Tracker is part of BUILDING the medic, and
+     # the tour describes a medic that is ready to use (the keeper, 2026-10-06). "board_image": "heltec_wireless_tracker",
+     "opens": "firstborn", "optional": True,
+     "opens_label": "Set up the Tracker  →",
+     "title": "The Tracker — this medic's GPS",
+     "body": "The Heltec Wireless Tracker is part of Node Medic: it is the "
+             "medic's GPS and clock. Setting it up flashes the Tracker and adopts "
+             "it into this medic, so every node you place gets a real location "
+             "and time.\n\n"
+             "Plug in ONLY the Tracker — Node Medic's LoRa radio looks alike on "
+             "USB and is told apart by the Tracker's satellite stream, not the "
+             "socket.",
+     # One line: the body scrolls, a hint does not, and this step carries the
+     # Tracker's picture too (readiness ledger #146).
+     "hint": "No Tracker on hand? Skip for now — run this again from Settings.",
+     "next": "Skip for now  →"},
+
     {"key": TOUR_BIRTH, "part": TOUR, "poster_card": "birth", "opens": "birth_guide",
      # Titles open with the POSTER's word (POSTER_WORD_FOR, repainted
      # 2026-09-13 per docs/FRONT_PAGE_BRIEF.md) — the screen shows the actual
      # painted card beside them, so any other word would contradict the crop.
      "title": "BUILD — turn a board into a node",
-     "body": "Plug a bare board into Node Medic and it walks you through turning "
-             "it into a node on your mesh: flashed, named, given a birth "
-             "certificate, and placed on the map.\n\n"
+     "body": "Plug any LoRa board or Raspberry Pi on Node Medic's list into Node "
+             "Medic — BUILD shows each one with its picture — and it walks you "
+             "through turning it into a node on your mesh: flashed, named, given "
+             "a birth certificate, and placed on the map.\n\n"
              "A radio for a phone or laptop, a transport node that runs the mesh "
              "on its own, or a Raspberry Pi and radio together. It tells you "
              "which cable, which socket, and which board you are holding."},
-
-    {"key": TOUR_FIRSTBORN, "part": TOUR, "board_image": "heltec_wireless_tracker",
-     "opens": "firstborn", "optional": True,
-     "opens_label": "Meet the firstborn  →",
-     "title": "THE FIRSTBORN — this medic's own eyes",
-     "body": "A Raspberry Pi can't see the sky, so this medic has no position "
-             "or clock of its own. Its first child fixes that: a Heltec "
-             "Wireless Tracker, flashed here and adopted as the medic's GPS and "
-             "time. Every node you place gets a real location and date from "
-             "it.\n\n"
-             "Plug in ONLY the Tracker — the medic's own radio looks alike on "
-             "USB and is told apart by its satellite stream, not the socket.",
-     # One line: the body scrolls, a hint does not, and this step carries the
-     # Tracker's picture too (readiness ledger #146).
-     "hint": "No Tracker on hand? Skip for now — run this again from Settings.",
-     "next": "Skip for now  →"},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",

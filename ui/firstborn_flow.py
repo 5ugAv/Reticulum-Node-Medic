@@ -83,30 +83,30 @@ def decide(gps_live: bool,
     ESP32-S3 does exactly that when it resets into the bootloader)."""
     if running:
         return FirstbornView(
-            BIRTHING, tr("Welcoming the firstborn…"),
+            BIRTHING, tr("Setting up the Tracker…"),
             tr("Flashing the Tracker, then waiting for it to see the sky. This "
                "takes a few minutes — leave it plugged in."),
             can_begin=False)
     if result is True:
         return FirstbornView(
-            DONE, tr("Node number one is alive 🎉"),
-            tr("Meet the firstborn — this medic's own first node, flashed and "
-               "adopted. As soon as it sees the sky the medic knows where it stands "
-               "and what time it is, so every node you build from here carries "
-               "a true place and date. A fine first child."),
+            DONE, tr("The Tracker is set up"),
+            tr("The Tracker is flashed and adopted as this medic's GPS and clock. "
+               "As soon as it sees the sky, Node Medic knows where it stands and "
+               "what time it is, so every node you build from here carries a "
+               "true place and date."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
-            FAILED, tr("The firstborn needs another go"),
+            FAILED, tr("The Tracker needs another go"),
             (failure or tr("The Tracker didn't finish coming up.")) + "\n\n" +
             tr("Check it is the only board plugged in, then try again."),
             can_begin=True)
     if gps_live:
         return FirstbornView(
-            ALREADY, tr("This medic already has its eyes"),
+            ALREADY, tr("This medic already has its GPS"),
             tr("A GPS source is already streaming a fix, so there's nothing to "
-               "birth here. You can move on — or run this again from PROBE if you "
-               "want to replace the Tracker."),
+               "set up here. You can move on — or run this again from Settings if "
+               "you want to replace the Tracker."),
             can_begin=False)
     if tracker_candidates <= 0:
         return FirstbornView(
@@ -122,11 +122,11 @@ def decide(gps_live: bool,
             NEED_TRACKER, tr("One board at a time"),
             tr("More than one board looks like it could be the Tracker. Unplug the "
                "others — especially the medic's own radio — and leave just the "
-               "Tracker, so the firstborn is the board you mean."),
+               "Tracker, so Node Medic sets up the board you mean."),
             can_begin=False)
     return FirstbornView(
-        READY, tr("Ready to meet the firstborn"),
+        READY, tr("Ready to set up the Tracker"),
         tr("A board that could be the Tracker is plugged in. If it is the Heltec "
            "Wireless Tracker, press Begin: the medic flashes it, waits for it to "
-           "see satellites, and adopts it as node number one."),
+           "see satellites, and adopts it as this medic's GPS and clock."),
         can_begin=True)
