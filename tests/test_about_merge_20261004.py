@@ -22,8 +22,8 @@ def test_the_thanks_body_is_one_widget_shared_by_both_doors():
 def test_about_keeps_its_build_facts_above_the_thanks():
     a = src(ABOUT)
     for field in ("Software version", "Test suite", "Uptime", "Licence", "Repository"):
-        assert f'_field("{field}"' in a, field
-    assert a.index('_field("Repository"') < a.index("CreditsBody()")
+        assert f'_field(tr("{field}")' in a, field
+    assert a.index('_field(tr("Repository")') < a.index("CreditsBody()")
     assert 'tr("With thanks")' in a
 
 

@@ -3,9 +3,9 @@
 For now it holds one entry (WiFi & Network); it's built as a menu so more settings
 (radio defaults, display, about, …) drop in as rows without touching navigation.
 
-# i18n: wrapped — the screen title, entry titles and section headers are wrapped
-# in tr(...). The longer descriptive subtitles are NOT yet wrapped (future work);
-# they fall back to English gracefully. See ui/i18n.py for how to wrap more.
+# i18n: wrapped — the screen title, entry titles, section headers, subtitles
+# and the body copy of every section are wrapped in tr(...). Runtime values go
+# through .format() on a tr() template. See ui/i18n.py for how to wrap more.
 """
 
 from __future__ import annotations
@@ -143,9 +143,9 @@ class SettingsScreen(BoxLayout):
             from kivy.app import App
             app = App.get_running_app()
             if app is not None and app.flash_in_progress():
-                from ui.confirm import confirm_power_override, FLASH_POWEROFF_WARNING
-                confirm_power_override(FLASH_POWEROFF_WARNING,
-                                       "Flashing in progress", do_off)
+                from ui.confirm import confirm_power_override, flash_poweroff_warning
+                confirm_power_override(flash_poweroff_warning(),
+                                       tr("Flashing in progress"), do_off)
                 return
         except Exception:
             pass
@@ -162,15 +162,15 @@ class SettingsScreen(BoxLayout):
         box.bind(minimum_height=box.setter("height"))
         box.add_widget(_line(tr("Home mode"), bold=True, size="15sp", color="accent", h=26))
         box.add_widget(grow_to_text(_line(
-            "What the medic does at HOME (the front-page toggle). Backpack always "
-            "turns transport OFF so moving it can't disturb the mesh.",
+            tr("What the medic does at HOME (the front-page toggle). Backpack always "
+               "turns transport OFF so moving it can't disturb the mesh."),
             size="12.5sp", color="text_secondary")))
         current = load_home_profile()
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
         self._hp_buttons = {}
-        for val, label in ((PROPAGATION, "Full propagation node"),
-                           (TRANSPORT, "Transport only")):
+        for val, label in ((PROPAGATION, tr("Full propagation node")),
+                           (TRANSPORT, tr("Transport only"))):
             b = Button(text=label, bold=True, font_size="14.5sp",
                        background_normal="", background_down="")
             b.bind(on_release=lambda _b, v=val: self._set_home_profile(v))
@@ -186,15 +186,15 @@ class SettingsScreen(BoxLayout):
         from workflows.node_mode import load_auto_backpack, save_auto_backpack
         ab_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(40),
                            spacing=dp(8))
-        ab_row.add_widget(_line("Auto-backpack when moving", size="14sp", h=40))
+        ab_row.add_widget(_line(tr("Auto-backpack when moving"), size="14sp", h=40))
         ab_sw = Switch(active=load_auto_backpack(), size_hint_x=None, width=dp(90))
         ab_sw.bind(active=lambda _s, v: save_auto_backpack(v))
         ab_row.add_widget(ab_sw)
         box.add_widget(ab_row)
         box.add_widget(grow_to_text(_line(
-            "Uses the medic's GPS: when it senses it's on the move it switches to "
-            "Backpack automatically. It never switches back on its own — tap the "
-            "home icon to resume Home mode once you've settled.",
+            tr("Uses the medic's GPS: when it senses it's on the move it switches to "
+               "Backpack automatically. It never switches back on its own — tap the "
+               "home icon to resume Home mode once you've settled."),
             size="12sp", color="text_secondary")))
         return box
 
@@ -206,10 +206,10 @@ class SettingsScreen(BoxLayout):
             b.color = theme.hex_to_rgba(
                 theme.COLORS["background" if on else "text_primary"])
         self._hp_note.text = (
-            "Propagation node: routes for the mesh AND stores messages for offline "
-            "users (Columba/Sideband phones sync through it)."
+            tr("Propagation node: routes for the mesh AND stores messages for offline "
+               "users (Columba/Sideband phones sync through it).")
             if current == self._HP[0] else
-            "Transport node: routes for the mesh only — no message store-and-forward.")
+            tr("Transport node: routes for the mesh only — no message store-and-forward."))
 
     def _set_home_profile(self, value):
         from workflows.node_mode import save_home_profile
@@ -226,7 +226,7 @@ class SettingsScreen(BoxLayout):
         box.bind(minimum_height=box.setter("height"))
         box.add_widget(_line(tr("Display"), bold=True, size="15sp", color="accent", h=26))
         if not bright.has_control():
-            box.add_widget(_line("Brightness control isn't available on this display.",
+            box.add_widget(_line(tr("Brightness control isn't available on this display."),
                                  size="12.5sp", color="text_secondary", h=24))
             self._add_screen_fix_row(box)
             return box
@@ -235,7 +235,7 @@ class SettingsScreen(BoxLayout):
             cur = bright.load_pct() or 80
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48),
                         spacing=dp(10))
-        lbl = _line("Brightness", size="15sp", h=48)
+        lbl = _line(tr("Brightness"), size="15sp", h=48)
         lbl.size_hint_x, lbl.width = None, dp(104)
         row.add_widget(lbl)
         self._bright_slider = Slider(min=bright.MIN_PCT, max=100, value=cur, step=1)
@@ -262,15 +262,15 @@ class SettingsScreen(BoxLayout):
         self._fix_btn.bind(on_release=lambda *_: self._fix_screen())
         box.add_widget(self._fix_btn)
         self._fix_status = grow_to_text(_line(
-            "If the screen shifts or shows wrong colours, this re-starts the "
-            "panel (screen blanks ~2 s).",
+            tr("If the screen shifts or shows wrong colours, this re-starts the "
+               "panel (screen blanks ~2 s)."),
             size="12.5sp", color="text_secondary"))
         box.add_widget(self._fix_status)
 
     def _fix_screen(self):
         from provisioning import screen_fix
         self._fix_btn.disabled = True
-        self._fix_status.text = "Re-initialising the panel…"
+        self._fix_status.text = tr("Re-initialising the panel…")
 
         def work():
             ok, msg = screen_fix.reinit_panel()
@@ -309,18 +309,19 @@ class SettingsScreen(BoxLayout):
                              color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                         spacing=dp(10))
-        row.add_widget(_line("Play when idle (protects the panel from burn-in)",
+        row.add_widget(_line(tr("Play when idle (protects the panel from burn-in)"),
                              size="14sp"))
         sw = Switch(active=ss.is_enabled(), size_hint_x=None, width=dp(90))
         sw.bind(active=lambda _i, v: ss.set_enabled(bool(v)))
         row.add_widget(sw)
         box.add_widget(row)
-        box.add_widget(_line(f"Style: {ss.STYLE_LABELS.get(ss.style(), ss.style())}",
+        box.add_widget(_line(tr("Style: {style}").format(
+                                 style=ss.STYLE_LABELS.get(ss.style(), ss.style())),
                              size="12.5sp", color="text_secondary", h=20))
         self._ssv_delay = ss.idle_delay_s()
         drow = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),
                          spacing=dp(8))
-        drow.add_widget(_line("Start after", size="14sp"))
+        drow.add_widget(_line(tr("Start after"), size="14sp"))
         minus = Button(text="–", size_hint_x=None, width=dp(46), bold=True,
                        font_size="22sp", background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -334,7 +335,7 @@ class SettingsScreen(BoxLayout):
                       background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                       color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
         plus.bind(on_release=lambda *_: self._step_ssv(+1))
-        preview = Button(text="See it now", size_hint_x=None, width=dp(110), bold=True,
+        preview = Button(text=tr("See it now"), size_hint_x=None, width=dp(110), bold=True,
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
@@ -361,14 +362,14 @@ class SettingsScreen(BoxLayout):
         box.add_widget(_line(tr("Alerts"), bold=True, size="15sp", color="accent", h=26))
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
                         spacing=dp(10))
-        row.add_widget(_line("Alert me when a node goes orange or red", size="14sp"))
+        row.add_widget(_line(tr("Alert me when a node goes orange or red"), size="14sp"))
         sw = Switch(active=alerts.is_enabled(), size_hint_x=None, width=dp(90))
         sw.bind(active=lambda _i, v: alerts.set_enabled(bool(v)))
         row.add_widget(sw)
         box.add_widget(row)
         box.add_widget(grow_to_text(_line(
-            "Visual for now — a banner on VITALS and the affected nodes pushed to "
-            "the top. (An audible option can be added later.)",
+            tr("Visual for now — a banner on VITALS and the affected nodes pushed to "
+               "the top. (An audible option can be added later.)"),
             size="12sp", color="text_secondary")))
         return box
 
@@ -413,11 +414,12 @@ class SettingsScreen(BoxLayout):
 
     def _refresh_retention(self):
         from monitor import retention
-        self._ret_lbl.text = f"{self._ret_days} days"
+        self._ret_lbl.text = tr("{n} days").format(n=self._ret_days)
         n = self._node_count_provider() if self._node_count_provider else 0
         est = retention.estimate_bytes(self._ret_days, max(n, 1))
-        self._ret_impact.text = (f"Storage impact: ≈ {retention.format_size(est)} "
-                                 f"for {n} node{'s' if n != 1 else ''} (estimate)")
+        impact = (tr("Storage impact: ≈ {size} for {n} node (estimate)") if n == 1
+                  else tr("Storage impact: ≈ {size} for {n} nodes (estimate)"))
+        self._ret_impact.text = impact.format(size=retention.format_size(est), n=n)
 
     def _setup_entry(self):
         """The first-use walkthrough, re-runnable — with a line under it while
@@ -442,7 +444,7 @@ class SettingsScreen(BoxLayout):
         box.bind(minimum_height=box.setter("height"))
         box.add_widget(self._entry(
             tr("Set up this Node Medic"),
-            "The security setup, and what each mode is for", "setup"))
+            tr("The security setup, and what each mode is for"), "setup"))
         try:
             from provisioning.first_use import security_outstanding
             outstanding = security_outstanding()
@@ -450,7 +452,7 @@ class SettingsScreen(BoxLayout):
             outstanding = False
         if outstanding:
             box.add_widget(_line(
-                "Nobody has chosen how this medic locks its own records yet.",
+                tr("Nobody has chosen how this medic locks its own records yet."),
                 size="12.5sp", color="warning_yellow",
                 h=theme.line_dp("12.5sp")))
         return box
@@ -478,19 +480,20 @@ class SettingsScreen(BoxLayout):
         except Exception:
             # COULD NOT CHECK is not "encrypted", and it is not a blank row
             # either — say which it is.
-            box.add_widget(_line("Could not check whether your records are "
-                                 "encrypted.", size="12.5sp",
+            box.add_widget(_line(tr("Could not check whether your records are "
+                                    "encrypted."), size="12.5sp",
                                  color="warning_yellow",
                                  h=theme.line_dp("12.5sp")))
             return box
         if on:
+            encrypted = (tr("Encrypted — {n} key opens them.") if doors == 1
+                         else tr("Encrypted — {n} keys open them."))
             box.add_widget(_line(
-                f"Encrypted — {doors} {'key' if doors == 1 else 'keys'} open "
-                f"them.", size="12.5sp", color="green",
+                encrypted.format(n=doors), size="12.5sp", color="green",
                 h=theme.line_dp("12.5sp")))
         else:
             box.add_widget(_line(
-                "Not encrypted — anyone who takes this card can read them.",
+                tr("Not encrypted — anyone who takes this card can read them."),
                 size="12.5sp", color="warning_yellow",
                 h=theme.line_dp("12.5sp")))
         self._encryption_box = box

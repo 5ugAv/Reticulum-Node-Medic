@@ -31,6 +31,7 @@ from provisioning import encryption_flow as ef
 from provisioning import records_vault as rv
 from provisioning import vault_factors as vf
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from ui.widgets.pattern_pad import PatternPad
 
 
@@ -111,7 +112,7 @@ class EncryptionScreen(BoxLayout):
                       color="green" if st["on"] else "warning_yellow", bold=True)]
 
         for ok, text in st["covered"]:
-            rows.append(_line(("ENCRYPTED  " if ok else "NOT ENCRYPTED  ") + text,
+            rows.append(_line((tr("ENCRYPTED") if ok else tr("NOT ENCRYPTED")) + "  " + text,
                               "14sp", color="text_secondary" if ok else "amber"))
 
         if st["blockers"]:
@@ -119,19 +120,19 @@ class EncryptionScreen(BoxLayout):
                 rows.append(_line(b, "15sp", color="warning_yellow"))
         elif st["on"]:
             rows.append(_line(
-                "Turning it off decrypts every file and removes the keyring. "
-                "You will need one of your keys to do it.", "14sp",
+                tr("Turning it off decrypts every file and removes the keyring. "
+                   "You will need one of your keys to do it."), "14sp",
                 color="text_secondary"))
-            rows.append(_button("Turn encryption off", self._begin_off,
+            rows.append(_button(tr("Turn encryption off"), self._begin_off,
                                 color="surface"))
         else:
             rows.append(_line(
-                "You will set three keys, and any one of them opens your "
-                "records: your daily unlock, your passphrase, and a recovery "
-                "key to write down. Nothing is encrypted until all three are "
-                "set, and you can turn this off again at any time.", "14sp",
+                tr("You will set three keys, and any one of them opens your "
+                   "records: your daily unlock, your passphrase, and a recovery "
+                   "key to write down. Nothing is encrypted until all three are "
+                   "set, and you can turn this off again at any time."), "14sp",
                 color="text_secondary"))
-            rows.append(_button("Turn encryption on", self._begin_on))
+            rows.append(_button(tr("Turn encryption on"), self._begin_on))
 
         rows.append(Widget(size_hint_y=None, height=dp(8)))
         self._stage(*rows)
@@ -166,14 +167,14 @@ class EncryptionScreen(BoxLayout):
         self._status = _line("", "14sp", color="amber")
         pad = PatternPad(on_complete=self._pattern_drawn)
         self._stage(
-            _line("Draw it again to confirm." if again
+            _line(tr("Draw it again to confirm.") if again
                   else self._asking["prompt"], "19sp", bold=True),
-            _line("A pattern is drawn, not read back — there is nothing on "
-                  "screen afterwards to check it against, so you draw it twice."
-                  if not again else "Exactly as you drew it a moment ago.",
+            _line(tr("A pattern is drawn, not read back — there is nothing on "
+                     "screen afterwards to check it against, so you draw it twice.")
+                  if not again else tr("Exactly as you drew it a moment ago."),
                   "14sp", color="text_secondary"),
             self._status, pad,
-            _button("Cancel", self.show_overview, color="surface"))
+            _button(tr("Cancel"), self.show_overview, color="surface"))
 
     def _pattern_drawn(self, path):
         """Twice, and they must agree. This pattern BECOMES the key — a slip
@@ -201,14 +202,14 @@ class EncryptionScreen(BoxLayout):
         Until 2026-10-04 this screen said USB keys were "not wired yet" — a
         dead end for anyone who chose a USB-key level in the walkthrough and
         then came here to switch encryption on (readiness sweep)."""
-        self._kf_status = _line("Looking for the USB key…", "15sp",
+        self._kf_status = _line(tr("Looking for the USB key…"), "15sp",
                                 color="text_secondary")
         self._stage(
-            _line("Plug in your USB key.", "19sp", bold=True),
-            _line("The stick the walkthrough wrote your key to. It becomes one "
-                  "of the doors to your records.", "15sp", color="text_secondary"),
+            _line(tr("Plug in your USB key."), "19sp", bold=True),
+            _line(tr("The stick the walkthrough wrote your key to. It becomes one "
+                     "of the doors to your records."), "15sp", color="text_secondary"),
             self._kf_status,
-            _button("Back", self._cancel_keyfile, color="surface"))
+            _button(tr("Back"), self._cancel_keyfile, color="surface"))
         self._stop_keyfile_poll()
         self._kf_poll = Clock.schedule_interval(self._poll_keyfile, 1.0)
         self._poll_keyfile(0)
@@ -229,18 +230,19 @@ class EncryptionScreen(BoxLayout):
         except Exception:                                          # noqa: BLE001
             path = None
         if not path:
-            self._kf_status.text = ("No key file found yet — plug the stick in "
-                                    "and give it a moment.")
+            self._kf_status.text = tr("No key file found yet — plug the stick in "
+                                      "and give it a moment.")
             return
         try:
             with open(path, "rb") as fh:
                 secret = vf.keyfile_secret(fh.read())
         except Exception as exc:                                   # noqa: BLE001
-            self._kf_status.text = f"That stick's key file can't be used: {exc}"
+            self._kf_status.text = tr("That stick's key file can't be used: {err}").format(
+                err=exc)
             return
         self._stop_keyfile_poll()
         self._parts[vf.KEYFILE] = secret
-        self._kf_status.text = f"Key read from {path}"
+        self._kf_status.text = tr("Key read from {path}").format(path=path)
         Clock.schedule_once(lambda _d: self._ask_next(), 0.6)
 
     def _text_field(self, hint=""):
@@ -253,8 +255,8 @@ class EncryptionScreen(BoxLayout):
     def _ask_passphrase(self):
         """Typed twice. A passphrase set with a typo is a vault nobody can
         open, and unlike the wizard there is no later step that catches it."""
-        first = self._text_field("your passphrase")
-        again = self._text_field("the same again")
+        first = self._text_field(tr("your passphrase"))
+        again = self._text_field(tr("the same again"))
         self._status = _line("", "14sp", color="amber")
 
         def go():
@@ -272,8 +274,8 @@ class EncryptionScreen(BoxLayout):
         self._stage(_line(self._asking["prompt"], "19sp", bold=True),
                     _line(self._asking.get("detail", ""), "14sp",
                           color="text_secondary"),
-                    self._status, first, again, _button("Next", go),
-                    _button("Cancel", self.show_overview, color="surface"))
+                    self._status, first, again, _button(tr("Next"), go),
+                    _button(tr("Cancel"), self.show_overview, color="surface"))
         Clock.schedule_once(lambda _dt: setattr(first, "focus", True), 0.3)
 
     def _show_recovery_key(self):
@@ -289,18 +291,19 @@ class EncryptionScreen(BoxLayout):
             name = tool_name()
         except Exception:
             name = ""
-        head = f"{name} — recovery key" if name else "Your recovery key"
+        head = (tr("{name} — recovery key").format(name=name) if name
+                else tr("Your recovery key"))
         self._stage(
             _line(head, "19sp", bold=True),
-            _line("Write this on paper and keep it away from the medic. It is "
-                  "shown once.", "14sp", color="amber"),
+            _line(tr("Write this on paper and keep it away from the medic. It is "
+                     "shown once."), "14sp", color="amber"),
             _line(self._recovery, "26sp", color="accent", bold=True),
             _line(self._asking.get("detail", ""), "14sp", color="text_secondary"),
-            _button("I have written it down", self._ask_recovery_back),
-            _button("Cancel", self.show_overview, color="surface"))
+            _button(tr("I have written it down"), self._ask_recovery_back),
+            _button(tr("Cancel"), self.show_overview, color="surface"))
 
     def _ask_recovery_back(self):
-        field = self._text_field("type the key")
+        field = self._text_field(tr("type the key"))
         field.password = False
         self._status = _line("", "14sp", color="amber")
 
@@ -311,17 +314,17 @@ class EncryptionScreen(BoxLayout):
                 self._status.text = problem
                 return
             if not ef.recovery_matches(self._recovery, typed):
-                self._status.text = ("That is not the key on the last screen. "
-                                     "Check what you wrote down.")
+                self._status.text = tr("That is not the key on the last screen. "
+                                       "Check what you wrote down.")
                 return
             self._ask_next()
 
         self._stage(
-            _line("Type it back.", "19sp", bold=True),
-            _line("Read it off the paper, not the screen — that is what proves "
-                  "you can do it later.", "14sp", color="text_secondary"),
-            self._status, field, _button("Next", go),
-            _button("Show me the key again", self._show_recovery_key,
+            _line(tr("Type it back."), "19sp", bold=True),
+            _line(tr("Read it off the paper, not the screen — that is what proves "
+                     "you can do it later."), "14sp", color="text_secondary"),
+            self._status, field, _button(tr("Next"), go),
+            _button(tr("Show me the key again"), self._show_recovery_key,
                     color="surface"))
         Clock.schedule_once(lambda _dt: setattr(field, "focus", True), 0.3)
 
@@ -335,21 +338,21 @@ class EncryptionScreen(BoxLayout):
 
         def go():
             if not (field.text or ""):
-                self._status.text = "Type one of your keys."
+                self._status.text = tr("Type one of your keys.")
                 return
-            self._work("Decrypting your records…",
+            self._work(tr("Decrypting your records…"),
                        lambda: ef.turn_off(field.text, home=self._home))
 
         self._stage(
-            _line("Type any one of your keys.", "19sp", bold=True),
-            _line("Your passphrase, or your recovery key. Whichever you have.",
+            _line(tr("Type any one of your keys."), "19sp", bold=True),
+            _line(tr("Your passphrase, or your recovery key. Whichever you have."),
                   "14sp", color="text_secondary"),
-            self._status, field, _button("Turn encryption off", go),
-            _button("Cancel", self.show_overview, color="surface"))
+            self._status, field, _button(tr("Turn encryption off"), go),
+            _button(tr("Cancel"), self.show_overview, color="surface"))
         Clock.schedule_once(lambda _dt: setattr(field, "focus", True), 0.3)
 
     def _run_on(self):
-        self._work("Encrypting your records…", lambda: ef.turn_on(
+        self._work(tr("Encrypting your records…"), lambda: ef.turn_on(
             self._parts, self._passphrase, self._recovery,
             home=self._home, policy=self._policy))
 
@@ -361,8 +364,8 @@ class EncryptionScreen(BoxLayout):
             return
         self._busy = True
         self._stage(_line(message, "19sp", bold=True),
-                    _line("This takes a few seconds. Do not power the medic "
-                          "off.", "15sp", color="amber"))
+                    _line(tr("This takes a few seconds. Do not power the medic "
+                             "off."), "15sp", color="amber"))
 
         def run():
             try:
@@ -377,19 +380,20 @@ class EncryptionScreen(BoxLayout):
         self._busy = False
         if error is not None:
             self._stage(
-                _line("That did not work.", "19sp", bold=True,
+                _line(tr("That did not work."), "19sp", bold=True,
                       color="warning_yellow"),
                 _line(str(error), "15sp", color="text_secondary"),
-                _line("Nothing was left half-done — your records are as they "
-                      "were.", "14sp", color="text_secondary"),
-                _button("Back", self.show_overview, color="surface"))
+                _line(tr("Nothing was left half-done — your records are as they "
+                         "were."), "14sp", color="text_secondary"),
+                _button(tr("Back"), self.show_overview, color="surface"))
             return
         n = result.get("files", 0) if isinstance(result, dict) else 0
+        changed = tr("{n} file changed.") if n == 1 else tr("{n} files changed.")
         self._stage(
-            _line("Done.", "19sp", bold=True, color="green"),
-            _line(f"{n} file{'' if n == 1 else 's'} changed.", "15sp",
+            _line(tr("Done."), "19sp", bold=True, color="green"),
+            _line(changed.format(n=n), "15sp",
                   color="text_secondary"),
-            _button("Back", self.show_overview, color="surface"))
+            _button(tr("Back"), self.show_overview, color="surface"))
         if self._on_done:
             try:
                 self._on_done()

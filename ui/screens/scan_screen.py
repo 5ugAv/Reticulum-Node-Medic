@@ -191,6 +191,13 @@ def recommendation_markers(recs, positions=None):
     return out
 
 
+def _tier_word(tier):
+    """The engine's tier key ("transport" / "propagation") in the medic's
+    language; anything else passes through untouched."""
+    return {"transport": tr("transport"),
+            "propagation": tr("propagation")}.get(tier, tier)
+
+
 def rationale_text(marker):
     """The tap popup's body: the engine's rationale as plain lines — tier and
     why (with "could not check" kept visible), what it fixes, each predicted
@@ -205,12 +212,14 @@ def rationale_text(marker):
         if h is not None and g is not None:
             # metres and decibels on one labelled line each side — a 10 and
             # a 10 must never read as the same number
-            lines.append(f"Mast: +{h:g} m.  Predicted gain: {g:g} dB.")
+            lines.append(tr("Mast: +{h} m.  Predicted gain: {g} dB.").format(
+                h=f"{h:g}", g=f"{g:g}"))
     else:
         if m.get("tier"):
             suffix = "" if m.get("tier_checked", True) \
-                else "  (could not check)"
-            lines.append(f"Tier: {m['tier']}{suffix}")
+                else "  " + tr("(could not check)")
+            lines.append(tr("Tier: {tier}{suffix}").format(
+                tier=_tier_word(m["tier"]), suffix=suffix))
         if m.get("tier_why"):
             lines.append(m["tier_why"])
     if m.get("resolves"):
@@ -219,9 +228,11 @@ def rationale_text(marker):
     if m.get("links"):
         lines.append(tr("Predicted links:"))
         for l in m["links"]:
-            lines.append(f"- {l.get('name')}: {l.get('km'):g} km, margin "
-                         f"{l.get('margin_km'):+g} km ({l.get('source')}, "
-                         f"{l.get('confidence')})")
+            lines.append(tr("- {name}: {km} km, margin {margin} km ({source}, "
+                            "{confidence})").format(
+                name=l.get("name"), km=f"{l.get('km'):g}",
+                margin=f"{l.get('margin_km'):+g}", source=l.get("source"),
+                confidence=l.get("confidence")))
     if m.get("cost_note"):
         lines.append(m["cost_note"])
     if m.get("alternatives"):
@@ -244,14 +255,16 @@ def build_next_lines(markers, limit=3):
             continue
         links = m.get("links") or []
         if links:
-            place = f"near {links[0].get('name')}"
+            place = tr("near {name}").format(name=links[0].get("name"))
         elif m.get("lat") is not None:
-            place = f"at ({m['lat']:.3f}, {m['lon']:.3f})"
+            place = tr("at ({lat}, {lon})").format(lat=f"{m['lat']:.3f}",
+                                                   lon=f"{m['lon']:.3f}")
         else:
             place = tr("(no located spot)")
         why = (m.get("resolves") or [m.get("reason") or ""])[0]
-        tier = m.get("tier") or "transport"
-        out.append(f"New {tier} node {place} - {why}".split("\n")[0])
+        tier = _tier_word(m.get("tier") or "transport")
+        out.append(tr("New {tier} node {place} - {why}").format(
+            tier=tier, place=place, why=why).split("\n")[0])
     return out
 
 
@@ -709,9 +722,9 @@ class MapPlot(Widget):
             body.bind(size=lambda i, v: setattr(i, "text_size", v))
             Popup(title=title, content=body, size_hint=(0.9, 0.7)).open()
             return
-        reason = sugg.get("reason") or "Suggested node location"
+        reason = sugg.get("reason") or tr("Suggested node location")
         kind = (sugg.get("kind") or "").replace("_", " ")
-        title = "Add a node here" + (f"  ·  {kind}" if kind else "")
+        title = tr("Add a node here") + (f"  ·  {kind}" if kind else "")
         body = Label(text=reason, halign="center", valign="middle",
                      padding=(dp(12), dp(12)))
         body.bind(size=lambda i, v: setattr(i, "text_size", v))
@@ -3016,14 +3029,14 @@ class ScanScreen(BoxLayout):
             words, tone = (tr("The GPS reports a fix but its position is "
                               "not usable (not a place on Earth). Wait for "
                               "the next fix; if it stays, run Self Diagnose "
-                              "under VITALS."), "amber")
+                              "from Settings."), "amber")
         elif g["stage"] == "held":
             words, tone = (tr("The GPS is coasting on an old position, not "
                               "tracking. Step into the open and wait."), "amber")
         elif g["stage"] == "slow":
             words, tone = (tr("Still no fix after two minutes. Find open sky "
                               "for the fix, then come back to the node before "
-                              "pressing — or run Self Diagnose under VITALS to "
+                              "pressing — or run Self Diagnose from Settings to "
                               "check the GPS itself."), "amber")
         else:
             words, tone = (tr("Looking for satellites — this can take a couple "

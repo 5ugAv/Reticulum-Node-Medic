@@ -17,10 +17,14 @@ from ui import theme
 from ui.i18n import tr  # i18n: wrapped — danger/power-off confirm dialog copy
 
 #: Shared wording for the power-off-during-flash override (home + settings).
-FLASH_POWEROFF_WARNING = tr(
-    "WARNING - Node Medic is flashing a board.  Do NOT power off.\n\n"
-    "Continuing to power off may brick the connected radio board. Only override "
-    "if the flash is genuinely stuck and you have no other choice.")
+def flash_poweroff_warning() -> str:
+    """Translated when ASKED, not at import: a module-level tr() ran before
+    the operator's language was loaded, so this warning was English in every
+    language (translation agent, 2026-10-05)."""
+    return tr(
+        "WARNING - Node Medic is flashing a board.  Do NOT power off.\n\n"
+        "Continuing to power off may brick the connected radio board. Only override "
+        "if the flash is genuinely stuck and you have no other choice.")
 
 
 def confirm_danger(message, title, on_proceed, proceed_text=None,

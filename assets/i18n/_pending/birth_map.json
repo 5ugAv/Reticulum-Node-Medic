@@ -1,0 +1,682 @@
+{
+  " ({hops} hop(s) away)": {
+    "de": " ({hops} Hop(s) entfernt)",
+    "es": " (a {hops} salto(s))",
+    "fr": " (à {hops} saut(s))",
+    "id": " ({hops} lompatan jauhnya)",
+    "ja": "（{hops} ホップ先）",
+    "pl": " ({hops} skok(ów) stąd)",
+    "ru": " ({hops} переход(ов))",
+    "sv": " ({hops} hopp bort)"
+  },
+  " · {n} satellites": {
+    "de": " · {n} Satelliten",
+    "es": " · {n} satélites",
+    "fr": " · {n} satellites",
+    "id": " · {n} satelit",
+    "ja": " · 衛星 {n} 基",
+    "pl": " · {n} satelit",
+    "ru": " · {n} спутников",
+    "sv": " · {n} satelliter"
+  },
+  " — {hops} hop(s) away": {
+    "de": " — {hops} Hop(s) entfernt",
+    "es": " — a {hops} salto(s)",
+    "fr": " — à {hops} saut(s)",
+    "id": " — {hops} lompatan jauhnya",
+    "ja": " — {hops} ホップ先",
+    "pl": " — {hops} skok(ów) stąd",
+    "ru": " — {hops} переход(ов)",
+    "sv": " — {hops} hopp bort"
+  },
+  "(could not check)": {
+    "de": "(konnte nicht geprüft werden)",
+    "es": "(no se pudo comprobar)",
+    "fr": "(n'a pas pu être vérifié)",
+    "id": "(tidak dapat diperiksa)",
+    "ja": "（確認できませんでした）",
+    "pl": "(nie udało się sprawdzić)",
+    "ru": "(не удалось проверить)",
+    "sv": "(kunde inte kontrolleras)"
+  },
+  "- {name}: {km} km, margin {margin} km ({source}, {confidence})": {
+    "de": "- {name}: {km} km, Reserve {margin} km ({source}, {confidence})",
+    "es": "- {name}: {km} km, margen {margin} km ({source}, {confidence})",
+    "fr": "- {name} : {km} km, marge {margin} km ({source}, {confidence})",
+    "id": "- {name}: {km} km, margin {margin} km ({source}, {confidence})",
+    "ja": "- {name}: {km} km、余裕 {margin} km（{source}、{confidence}）",
+    "pl": "- {name}: {km} km, zapas {margin} km ({source}, {confidence})",
+    "ru": "- {name}: {km} км, запас {margin} км ({source}, {confidence})",
+    "sv": "- {name}: {km} km, marginal {margin} km ({source}, {confidence})"
+  },
+  "A GPS source is already streaming a fix, so there's nothing to birth here. You can move on — or run this again from PROBE if you want to replace the Tracker.": {
+    "de": "Eine GPS-Quelle liefert bereits einen Fix, hier gibt es also nichts zu gebären. Du kannst weitergehen — oder dies später aus PROBE erneut ausführen, wenn du den Tracker ersetzen willst.",
+    "es": "Una fuente GPS ya está emitiendo una posición, así que aquí no hay nada que alumbrar. Puedes seguir adelante — o volver a ejecutar esto desde PROBE si quieres sustituir el Tracker.",
+    "fr": "Une source GPS fournit déjà une position, il n'y a donc rien à faire naître ici. Vous pouvez continuer — ou relancer ceci depuis PROBE si vous voulez remplacer le Tracker.",
+    "id": "Sumber GPS sudah mengalirkan posisi, jadi tidak ada yang perlu dilahirkan di sini. Anda bisa lanjut — atau jalankan ini lagi dari PROBE jika ingin mengganti Tracker.",
+    "ja": "GPS ソースがすでに測位を送っているため、ここで誕生させるものはありません。先へ進んでください — Tracker を交換したい場合は PROBE からもう一度実行できます。",
+    "pl": "Źródło GPS już przesyła pozycję, więc nie ma tu czego rodzić. Możesz iść dalej — albo uruchomić to ponownie z PROBE, jeśli chcesz wymienić Trackera.",
+    "ru": "Источник GPS уже передаёт координаты, так что рождать здесь нечего. Можно идти дальше — или запустить это снова из PROBE, если хотите заменить Tracker.",
+    "sv": "En GPS-källa strömmar redan en position, så det finns inget att föda här. Du kan gå vidare – eller köra detta igen från PROBE om du vill byta ut Trackern."
+  },
+  "A Tracker is connected. Press begin and the medic flashes it, waits for it to see satellites, and adopts it as node number one.": {
+    "de": "Ein Tracker ist angeschlossen. Drücke auf Beginnen: der Medic flasht ihn, wartet, bis er Satelliten sieht, und übernimmt ihn als Knoten Nummer eins.",
+    "es": "Hay un Tracker conectado. Pulsa comenzar y el medic lo flashea, espera a que vea satélites y lo adopta como nodo número uno.",
+    "fr": "Un Tracker est connecté. Appuyez sur commencer : le medic le flashe, attend qu'il voie des satellites et l'adopte comme nœud numéro un.",
+    "id": "Sebuah Tracker terhubung. Tekan mulai dan medic akan mem-flash-nya, menunggu sampai ia melihat satelit, lalu mengadopsinya sebagai node nomor satu.",
+    "ja": "Tracker が接続されています。「開始」を押すと medic が書き込み、衛星が見えるまで待ち、ノード 1 号として引き取ります。",
+    "pl": "Tracker jest podłączony. Naciśnij „rozpocznij” — medic go sflashuje, poczeka, aż zobaczy satelity, i przyjmie go jako węzeł numer jeden.",
+    "ru": "Tracker подключён. Нажмите «начать» — medic прошьёт его, дождётся спутников и примет его как узел номер один.",
+    "sv": "En Tracker är ansluten. Tryck på börja så flashar medicen den, väntar tills den ser satelliter och adopterar den som nod nummer ett."
+  },
+  "A step did not complete.": {
+    "de": "Ein Schritt wurde nicht abgeschlossen.",
+    "es": "Un paso no se completó.",
+    "fr": "Une étape ne s'est pas terminée.",
+    "id": "Sebuah langkah tidak selesai.",
+    "ja": "ステップが完了しませんでした。",
+    "pl": "Jeden z kroków nie został ukończony.",
+    "ru": "Один из шагов не завершился.",
+    "sv": "Ett steg blev inte klart."
+  },
+  "Adoption failed.": {
+    "de": "Übernahme fehlgeschlagen.",
+    "es": "La adopción falló.",
+    "fr": "L'adoption a échoué.",
+    "id": "Adopsi gagal.",
+    "ja": "引き取りに失敗しました。",
+    "pl": "Przyjęcie nie powiodło się.",
+    "ru": "Принять не удалось.",
+    "sv": "Adoptionen misslyckades."
+  },
+  "Adoption failed: {err}": {
+    "de": "Übernahme fehlgeschlagen: {err}",
+    "es": "La adopción falló: {err}",
+    "fr": "L'adoption a échoué : {err}",
+    "id": "Adopsi gagal: {err}",
+    "ja": "引き取りに失敗しました: {err}",
+    "pl": "Przyjęcie nie powiodło się: {err}",
+    "ru": "Принять не удалось: {err}",
+    "sv": "Adoptionen misslyckades: {err}"
+  },
+  "Answered{hops}. Fresh health heard — this page shows the new readings when you open it again.{sig}": {
+    "de": "Geantwortet{hops}. Frischer Zustand gehört — diese Seite zeigt die neuen Werte, wenn du sie wieder öffnest.{sig}",
+    "es": "Respondió{hops}. Estado reciente recibido — esta página muestra las nuevas lecturas cuando la vuelvas a abrir.{sig}",
+    "fr": "A répondu{hops}. État frais entendu — cette page affichera les nouvelles mesures quand vous la rouvrirez.{sig}",
+    "id": "Menjawab{hops}. Kondisi terbaru terdengar — halaman ini menampilkan pembacaan baru saat Anda membukanya lagi.{sig}",
+    "ja": "応答あり{hops}。新しい状態を受信しました — このページを開き直すと新しい値が表示されます。{sig}",
+    "pl": "Odpowiedział{hops}. Odebrano świeży stan — ta strona pokaże nowe odczyty, gdy otworzysz ją ponownie.{sig}",
+    "ru": "Ответил{hops}. Получено свежее состояние — эта страница покажет новые показания, когда вы откроете её снова.{sig}",
+    "sv": "Svarade{hops}. Färsk hälsa hörd – den här sidan visar de nya värdena när du öppnar den igen.{sig}"
+  },
+  "Begin — birth the firstborn  →": {
+    "de": "Beginnen — den Erstgeborenen gebären  →",
+    "es": "Comenzar — alumbrar al primogénito  →",
+    "fr": "Commencer — faire naître le premier-né  →",
+    "id": "Mulai — lahirkan anak pertama  →",
+    "ja": "開始 — 長子を誕生させる  →",
+    "pl": "Rozpocznij — narodziny pierworodnego  →",
+    "ru": "Начать — родить первенца  →",
+    "sv": "Börja – föd den förstfödda  →"
+  },
+  "Check it is the only board plugged in, then try again.": {
+    "de": "Prüfe, dass es das einzige eingesteckte Board ist, und versuche es erneut.",
+    "es": "Comprueba que sea la única placa conectada y vuelve a intentarlo.",
+    "fr": "Vérifiez que c'est la seule carte branchée, puis réessayez.",
+    "id": "Pastikan hanya papan itu yang terpasang, lalu coba lagi.",
+    "ja": "接続されているボードがそれだけであることを確認して、もう一度お試しください。",
+    "pl": "Sprawdź, czy to jedyna podłączona płytka, i spróbuj ponownie.",
+    "ru": "Убедитесь, что это единственная подключённая плата, и попробуйте снова.",
+    "sv": "Kontrollera att det är det enda inkopplade kortet och försök igen."
+  },
+  "Couldn't talk to the board on {port}: {err}. Try another data cable, or hold BOOT while plugging it in.": {
+    "de": "Das Board an {port} antwortet nicht: {err}. Versuche ein anderes Datenkabel, oder halte BOOT gedrückt, während du es einsteckst.",
+    "es": "No se pudo hablar con la placa en {port}: {err}. Prueba otro cable de datos, o mantén pulsado BOOT mientras la conectas.",
+    "fr": "Impossible de dialoguer avec la carte sur {port} : {err}. Essayez un autre câble de données, ou maintenez BOOT enfoncé en la branchant.",
+    "id": "Tidak bisa berbicara dengan papan di {port}: {err}. Coba kabel data lain, atau tahan BOOT saat mencolokkannya.",
+    "ja": "{port} のボードと通信できませんでした: {err}。別のデータケーブルを試すか、BOOT を押したまま接続してください。",
+    "pl": "Nie udało się połączyć z płytką na {port}: {err}. Spróbuj innego kabla do danych albo trzymaj BOOT podczas podłączania.",
+    "ru": "Не удалось связаться с платой на {port}: {err}. Попробуйте другой кабель для данных или держите BOOT нажатой при подключении.",
+    "sv": "Kunde inte prata med kortet på {port}: {err}. Prova en annan datakabel, eller håll BOOT intryckt medan du kopplar in det."
+  },
+  "First fix: {lat}, {lon}{tail}": {
+    "de": "Erster Fix: {lat}, {lon}{tail}",
+    "es": "Primera posición: {lat}, {lon}{tail}",
+    "fr": "Première position : {lat}, {lon}{tail}",
+    "id": "Fix pertama: {lat}, {lon}{tail}",
+    "ja": "最初の測位: {lat}, {lon}{tail}",
+    "pl": "Pierwszy fix: {lat}, {lon}{tail}",
+    "ru": "Первая фиксация: {lat}, {lon}{tail}",
+    "sv": "Första fixen: {lat}, {lon}{tail}"
+  },
+  "Flashing the Tracker, then waiting for it to see the sky. This takes a few minutes — leave it plugged in.": {
+    "de": "Der Tracker wird geflasht, dann warten wir, bis er den Himmel sieht. Das dauert ein paar Minuten — eingesteckt lassen.",
+    "es": "Flasheando el Tracker y esperando a que vea el cielo. Tarda unos minutos — déjalo conectado.",
+    "fr": "Flashage du Tracker, puis attente qu'il voie le ciel. Cela prend quelques minutes — laissez-le branché.",
+    "id": "Mem-flash Tracker, lalu menunggu sampai ia melihat langit. Ini butuh beberapa menit — biarkan tetap terpasang.",
+    "ja": "Tracker に書き込み、空が見えるのを待っています。数分かかります — 接続したままにしてください。",
+    "pl": "Flashowanie Trackera, potem czekanie, aż zobaczy niebo. To potrwa kilka minut — nie odłączaj go.",
+    "ru": "Прошиваем Tracker, затем ждём, пока он увидит небо. Это занимает несколько минут — не отключайте его.",
+    "sv": "Flashar Trackern och väntar sedan på att den ser himlen. Det tar några minuter – låt den sitta i."
+  },
+  "Health requested, but it did not answer. Not proof it is down — nodes throttle repeat replies to save airtime. Amber until it is heard again.": {
+    "de": "Zustand angefragt, aber keine Antwort. Kein Beweis, dass er aus ist — Knoten drosseln wiederholte Antworten, um Sendezeit zu sparen. Gelb, bis er wieder gehört wird.",
+    "es": "Se pidió el estado, pero no respondió. No es prueba de que esté caído — los nodos limitan las respuestas repetidas para ahorrar tiempo de aire. En ámbar hasta que se le vuelva a oír.",
+    "fr": "État demandé, mais pas de réponse. Ce n'est pas la preuve qu'il est hors service — les nœuds limitent les réponses répétées pour économiser le temps d'antenne. Orange jusqu'à ce qu'il soit entendu de nouveau.",
+    "id": "Kondisi diminta, tetapi tidak dijawab. Bukan bukti bahwa ia mati — node membatasi balasan berulang untuk menghemat waktu udara. Kuning sampai terdengar lagi.",
+    "ja": "状態を要求しましたが応答がありません。停止している証拠ではありません — ノードは電波時間を節約するため繰り返しの応答を抑えます。再び受信されるまで黄色です。",
+    "pl": "Zażądano stanu, ale nie odpowiedział. To nie dowód, że padł — węzły ograniczają powtarzane odpowiedzi, by oszczędzać czas antenowy. Pomarańczowy, dopóki znów nie zostanie usłyszany.",
+    "ru": "Состояние запрошено, но ответа нет. Это не доказательство, что узел выключен — узлы ограничивают повторные ответы, чтобы экономить эфир. Жёлтый, пока его снова не услышат.",
+    "sv": "Hälsa begärd, men inget svar. Inget bevis på att den är nere – noder stryper upprepade svar för att spara sändtid. Gul tills den hörs igen."
+  },
+  "Health requested, but the medic did not hear a reply. The road to it runs through another node ({hops} hops), so the medic is not hearing this node directly — too far, or too close: a radio within a couple of metres is too loud to decode. Move it a few metres away and ping once more. Amber until it is heard.": {
+    "de": "Zustand angefragt, aber der Medic hat keine Antwort gehört. Der Weg zu ihm führt über einen anderen Knoten ({hops} Hops), der Medic hört diesen Knoten also nicht direkt — zu weit weg, oder zu nah: ein Funkmodul in ein, zwei Metern Abstand ist zu laut zum Dekodieren. Stell es ein paar Meter weiter weg und pinge noch einmal. Gelb, bis er gehört wird.",
+    "es": "Se pidió el estado, pero el medic no oyó respuesta. El camino hasta él pasa por otro nodo ({hops} saltos), así que el medic no está oyendo este nodo directamente — demasiado lejos, o demasiado cerca: una radio a un par de metros suena demasiado fuerte para decodificarla. Aléjala unos metros y vuelve a hacer ping. En ámbar hasta que se le oiga.",
+    "fr": "État demandé, mais le medic n'a entendu aucune réponse. Le chemin vers lui passe par un autre nœud ({hops} sauts) : le medic n'entend donc pas ce nœud directement — trop loin, ou trop près : une radio à un ou deux mètres est trop forte pour être décodée. Éloignez-la de quelques mètres et relancez un ping. Orange jusqu'à ce qu'il soit entendu.",
+    "id": "Kondisi diminta, tetapi medic tidak mendengar balasan. Jalur ke sana melewati node lain ({hops} lompatan), jadi medic tidak mendengar node ini secara langsung — terlalu jauh, atau terlalu dekat: radio dalam jarak beberapa meter terlalu keras untuk didekode. Jauhkan beberapa meter dan ping sekali lagi. Kuning sampai terdengar.",
+    "ja": "状態を要求しましたが、medic は応答を受信できませんでした。経路は別のノードを経由しています（{hops} ホップ）。つまり medic はこのノードを直接聞いていません — 遠すぎるか、近すぎるかです。数メートル以内の無線機は音が大きすぎて復調できません。数メートル離してもう一度 ping してください。受信されるまで黄色です。",
+    "pl": "Zażądano stanu, ale medic nie usłyszał odpowiedzi. Droga do niego biegnie przez inny węzeł ({hops} skoki), więc medic nie słyszy tego węzła bezpośrednio — za daleko albo za blisko: radio w odległości paru metrów jest zbyt głośne, by je zdekodować. Odsuń je o kilka metrów i pinguj jeszcze raz. Pomarańczowy, dopóki nie zostanie usłyszany.",
+    "ru": "Состояние запрошено, но medic не услышал ответа. Путь к нему идёт через другой узел ({hops} перехода), то есть medic не слышит этот узел напрямую — слишком далеко или слишком близко: радио в паре метров слишком громкое для декодирования. Отодвиньте его на несколько метров и пингуйте ещё раз. Жёлтый, пока его не услышат.",
+    "sv": "Hälsa begärd, men medicen hörde inget svar. Vägen dit går via en annan nod ({hops} hopp), så medicen hör inte den här noden direkt – för långt bort, eller för nära: en radio inom ett par meter är för stark för att avkodas. Flytta den några meter bort och pinga en gång till. Gul tills den hörs."
+  },
+  "Health requested, but the medic did not hear a reply. The road to it runs through {n} other nodes ({hops} hops), so the medic is not hearing this node directly and the reply had to come back the same way — a relay may have dropped or delayed it. Not proof it is down. Amber until it is heard.": {
+    "de": "Zustand angefragt, aber der Medic hat keine Antwort gehört. Der Weg zu ihm führt über {n} andere Knoten ({hops} Hops), der Medic hört diesen Knoten also nicht direkt, und die Antwort musste denselben Weg zurück — ein Relais kann sie verloren oder verzögert haben. Kein Beweis, dass er aus ist. Gelb, bis er gehört wird.",
+    "es": "Se pidió el estado, pero el medic no oyó respuesta. El camino hasta él pasa por {n} nodos más ({hops} saltos), así que el medic no está oyendo este nodo directamente y la respuesta tuvo que volver por el mismo camino — algún repetidor pudo perderla o retrasarla. No es prueba de que esté caído. En ámbar hasta que se le oiga.",
+    "fr": "État demandé, mais le medic n'a entendu aucune réponse. Le chemin vers lui passe par {n} autres nœuds ({hops} sauts) : le medic n'entend donc pas ce nœud directement et la réponse devait revenir par le même chemin — un relais a pu la perdre ou la retarder. Ce n'est pas la preuve qu'il est hors service. Orange jusqu'à ce qu'il soit entendu.",
+    "id": "Kondisi diminta, tetapi medic tidak mendengar balasan. Jalur ke sana melewati {n} node lain ({hops} lompatan), jadi medic tidak mendengar node ini secara langsung dan balasannya harus kembali lewat jalur yang sama — sebuah relay mungkin menjatuhkan atau menundanya. Bukan bukti bahwa ia mati. Kuning sampai terdengar.",
+    "ja": "状態を要求しましたが、medic は応答を受信できませんでした。経路は他の {n} ノードを経由しています（{hops} ホップ）。つまり medic はこのノードを直接聞いておらず、応答も同じ道を戻る必要がありました — 中継ノードが落としたか遅らせた可能性があります。停止している証拠ではありません。受信されるまで黄色です。",
+    "pl": "Zażądano stanu, ale medic nie usłyszał odpowiedzi. Droga do niego biegnie przez {n} innych węzłów ({hops} skoków), więc medic nie słyszy tego węzła bezpośrednio, a odpowiedź musiała wrócić tą samą drogą — przekaźnik mógł ją zgubić albo opóźnić. To nie dowód, że padł. Pomarańczowy, dopóki nie zostanie usłyszany.",
+    "ru": "Состояние запрошено, но medic не услышал ответа. Путь к нему идёт через {n} других узлов ({hops} переходов), то есть medic не слышит этот узел напрямую, и ответ должен был вернуться тем же путём — ретранслятор мог его потерять или задержать. Это не доказательство, что узел выключен. Жёлтый, пока его не услышат.",
+    "sv": "Hälsa begärd, men medicen hörde inget svar. Vägen dit går via {n} andra noder ({hops} hopp), så medicen hör inte den här noden direkt och svaret måste tillbaka samma väg – ett relä kan ha tappat eller fördröjt det. Inget bevis på att den är nere. Gul tills den hörs."
+  },
+  "It answered over Wi-Fi {when}, so it is on — the medic just cannot hear it over the radio from here.": {
+    "de": "Er hat {when} über Wi-Fi geantwortet, ist also an — der Medic hört ihn von hier nur nicht über Funk.",
+    "es": "Respondió por Wi-Fi {when}, así que está encendido — el medic simplemente no lo oye por radio desde aquí.",
+    "fr": "Il a répondu par Wi-Fi {when}, il est donc allumé — le medic ne l'entend simplement pas par radio d'ici.",
+    "id": "Ia menjawab lewat Wi-Fi {when}, jadi ia menyala — medic hanya tidak bisa mendengarnya lewat radio dari sini.",
+    "ja": "{when}に Wi-Fi で応答したので電源は入っています — medic がここから無線で聞き取れないだけです。",
+    "pl": "Odpowiedział przez Wi-Fi {when}, więc jest włączony — medic po prostu nie słyszy go stąd przez radio.",
+    "ru": "Он ответил по Wi-Fi {when}, значит включён — medic просто не слышит его по радио отсюда.",
+    "sv": "Den svarade över Wi-Fi {when}, så den är på – medicen kan bara inte höra den över radion härifrån."
+  },
+  "It last spoke over the mesh {when}.": {
+    "de": "Zuletzt hat er sich {when} über das Mesh gemeldet.",
+    "es": "Habló por última vez por la malla {when}.",
+    "fr": "Il a parlé pour la dernière fois sur le maillage {when}.",
+    "id": "Terakhir ia berbicara di mesh {when}.",
+    "ja": "メッシュ上で最後に発信したのは{when}です。",
+    "pl": "Ostatnio odezwał się w sieci mesh {when}.",
+    "ru": "Последний раз он говорил в mesh-сети {when}.",
+    "sv": "Den talade senast över nätet {when}."
+  },
+  "Mast: +{h} m.  Predicted gain: {g} dB.": {
+    "de": "Mast: +{h} m.  Erwarteter Gewinn: {g} dB.",
+    "es": "Mástil: +{h} m.  Ganancia prevista: {g} dB.",
+    "fr": "Mât : +{h} m.  Gain prévu : {g} dB.",
+    "id": "Tiang: +{h} m.  Perkiraan penguatan: {g} dB.",
+    "ja": "マスト: +{h} m。  予測ゲイン: {g} dB。",
+    "pl": "Maszt: +{h} m.  Przewidywany zysk: {g} dB.",
+    "ru": "Мачта: +{h} м.  Ожидаемый выигрыш: {g} дБ.",
+    "sv": "Mast: +{h} m.  Förväntad vinst: {g} dB."
+  },
+  "Meet the firstborn — this medic's own first node, flashed and adopted. As soon as it sees the sky the medic knows where it stands and what time it is, so every node you build from here carries a true place and date. A fine first child.": {
+    "de": "Das ist der Erstgeborene — der erste eigene Knoten dieses Medic, geflasht und übernommen. Sobald er den Himmel sieht, weiß der Medic, wo er steht und wie spät es ist, also trägt jeder Knoten, den du von hier an baust, einen wahren Ort und ein wahres Datum. Ein feines erstes Kind.",
+    "es": "Te presentamos al primogénito — el primer nodo propio de este medic, flasheado y adoptado. En cuanto vea el cielo, el medic sabrá dónde está y qué hora es, así que cada nodo que construyas desde aquí llevará un lugar y una fecha verdaderos. Un buen primer hijo.",
+    "fr": "Voici le premier-né — le tout premier nœud de ce medic, flashé et adopté. Dès qu'il verra le ciel, le medic saura où il se trouve et quelle heure il est : chaque nœud que vous construirez désormais portera un lieu et une date véritables. Un bel enfant premier-né.",
+    "id": "Inilah anak pertama — node pertama milik medic ini, sudah di-flash dan diadopsi. Begitu melihat langit, medic tahu di mana ia berada dan jam berapa sekarang, sehingga setiap node yang Anda bangun dari sini membawa tempat dan tanggal yang benar. Anak pertama yang baik.",
+    "ja": "長子をご紹介します — この medic 自身の最初のノードで、書き込みと引き取りを終え。空が見えしだい、medic は自分の位置と時刻を知ります。これから作るすべてのノードに、正しい場所と日付が刻まれます。立派な第一子です。",
+    "pl": "Poznaj pierworodnego — pierwszy własny węzeł tego medica, sflashowany i przyjęty. Gdy tylko zobaczy niebo, medic będzie wiedział, gdzie stoi i która godzina, więc każdy węzeł, który odtąd zbudujesz, będzie nosić prawdziwe miejsce i datę. Udane pierwsze dziecko.",
+    "ru": "Знакомьтесь — первенец: первый собственный узел этого medic, прошитый и принятый. Как только он увидит небо, medic узнает, где стоит и который час, так что каждый узел, который вы построите отсюда, будет нести верное место и дату. Отличный первый ребёнок.",
+    "sv": "Möt den förstfödda – denna medics första egna nod, flashad och adopterad. Så snart den ser himlen vet medicen var den står och vad klockan är, så varje nod du bygger härifrån bär en sann plats och ett sant datum. Ett fint första barn."
+  },
+  "More than one board looks like it could be the Tracker. Unplug the others — especially the medic's own radio — and leave just the Tracker, so the firstborn is the board you mean.": {
+    "de": "Mehr als ein Board könnte der Tracker sein. Zieh die anderen ab — vor allem das eigene Funkmodul des Medic — und lass nur den Tracker stecken, damit der Erstgeborene das Board ist, das du meinst.",
+    "es": "Más de una placa parece que podría ser el Tracker. Desconecta las demás — sobre todo la radio propia del medic — y deja solo el Tracker, para que el primogénito sea la placa que quieres.",
+    "fr": "Plus d'une carte pourrait être le Tracker. Débranchez les autres — surtout la radio du medic lui-même — et ne laissez que le Tracker, pour que le premier-né soit bien la carte voulue.",
+    "id": "Lebih dari satu papan tampak seperti Tracker. Cabut yang lain — terutama radio milik medic sendiri — dan sisakan Tracker saja, supaya anak pertama adalah papan yang Anda maksud.",
+    "ja": "Tracker の可能性があるボードが複数あります。他のボード — 特に medic 自身の無線機 — を外し、Tracker だけを残してください。意図したボードが長子になるようにするためです。",
+    "pl": "Więcej niż jedna płytka wygląda na Trackera. Odłącz pozostałe — zwłaszcza własne radio medica — i zostaw sam Tracker, by pierworodnym była ta płytka, o którą ci chodzi.",
+    "ru": "Больше одной платы похожи на Tracker. Отключите остальные — особенно собственное радио medic — и оставьте только Tracker, чтобы первенцем стала именно та плата, которую вы имеете в виду.",
+    "sv": "Mer än ett kort ser ut att kunna vara Trackern. Koppla ur de andra – särskilt medicens egen radio – och lämna bara Trackern, så att den förstfödda är det kort du menar."
+  },
+  "New {tier} node {place} - {why}": {
+    "de": "Neuer {tier}-Knoten {place} - {why}",
+    "es": "Nuevo nodo de {tier} {place} - {why}",
+    "fr": "Nouveau nœud de {tier} {place} - {why}",
+    "id": "Node {tier} baru {place} - {why}",
+    "ja": "新しい{tier}ノード {place} - {why}",
+    "pl": "Nowy węzeł {tier} {place} - {why}",
+    "ru": "Новый узел ({tier}) {place} - {why}",
+    "sv": "Ny nod ({tier}) {place} - {why}"
+  },
+  "No Tracker is connected yet. Plug the Heltec Wireless Tracker into the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to USB-C cable.\n\nPlug in only the Tracker, so the medic doesn't mistake its own radio for it — then tap Begin.": {
+    "de": "Noch ist kein Tracker angeschlossen. Steck den Heltec Wireless Tracker mit dem USB-A-auf-USB-C-Kabel in die USB-Buchse OBEN LINKS am Node Medic (Port 1).\n\nSteck nur den Tracker ein, damit der Medic nicht sein eigenes Funkmodul dafür hält — dann tippe auf Beginnen.",
+    "es": "Aún no hay ningún Tracker conectado. Conecta el Heltec Wireless Tracker al puerto USB SUPERIOR IZQUIERDO de Node Medic (puerto 1) con el cable USB-A a USB-C.\n\nConecta solo el Tracker, para que el medic no confunda su propia radio con él — y luego toca Comenzar.",
+    "fr": "Aucun Tracker n'est encore connecté. Branchez le Heltec Wireless Tracker sur la prise USB EN HAUT À GAUCHE du Node Medic (port 1) avec le câble USB-A vers USB-C.\n\nNe branchez que le Tracker, pour que le medic ne le confonde pas avec sa propre radio — puis touchez Commencer.",
+    "id": "Belum ada Tracker yang terhubung. Colokkan Heltec Wireless Tracker ke soket USB KIRI ATAS di Node Medic (port 1) dengan kabel USB-A ke USB-C.\n\nColokkan hanya Tracker, supaya medic tidak mengira radionya sendiri sebagai Tracker — lalu ketuk Mulai.",
+    "ja": "Tracker はまだ接続されていません。USB-A to USB-C ケーブルで、Heltec Wireless Tracker を Node Medic の左上の USB ポート（ポート 1）に接続してください。\n\nmedic が自身の無線機と取り違えないよう、Tracker だけを接続してください — そのあと「開始」をタップしてください。",
+    "pl": "Żaden Tracker nie jest jeszcze podłączony. Podłącz Heltec Wireless Tracker do LEWEGO GÓRNEGO gniazda USB w Node Medic (port 1) kablem USB-A do USB-C.\n\nPodłącz tylko Trackera, by medic nie pomylił z nim własnego radia — potem stuknij Rozpocznij.",
+    "ru": "Tracker пока не подключён. Подключите Heltec Wireless Tracker к ВЕРХНЕМУ ЛЕВОМУ разъёму USB на Node Medic (порт 1) кабелем USB-A — USB-C.\n\nПодключите только Tracker, чтобы medic не принял за него своё собственное радио — затем нажмите «Начать».",
+    "sv": "Ingen Tracker är ansluten än. Koppla in Heltec Wireless Tracker i USB-uttaget UPPE TILL VÄNSTER på Node Medic (port 1) med USB-A till USB-C-kabeln.\n\nKoppla bara in Trackern, så att medicen inte tar sin egen radio för den – tryck sedan på Börja."
+  },
+  "No answer to the path request in 20 s — asking once more…": {
+    "de": "Keine Antwort auf die Pfadanfrage in 20 s — frage noch einmal…",
+    "es": "Sin respuesta a la petición de ruta en 20 s — preguntando una vez más…",
+    "fr": "Pas de réponse à la demande de chemin en 20 s — nouvelle demande…",
+    "id": "Tidak ada jawaban atas permintaan jalur dalam 20 d — menanya sekali lagi…",
+    "ja": "経路要求に 20 秒応答なし — もう一度問い合わせています…",
+    "pl": "Brak odpowiedzi na żądanie ścieżki w 20 s — pytam jeszcze raz…",
+    "ru": "Нет ответа на запрос пути за 20 с — спрашиваем ещё раз…",
+    "sv": "Inget svar på vägförfrågan inom 20 s – frågar en gång till…"
+  },
+  "No mesh address on record — can't probe this one.": {
+    "de": "Keine Mesh-Adresse bekannt — dieser lässt sich nicht abfragen.",
+    "es": "Sin dirección de malla registrada — no se puede sondear este nodo.",
+    "fr": "Aucune adresse de maillage enregistrée — impossible de sonder celui-ci.",
+    "id": "Tidak ada alamat mesh tercatat — yang ini tidak bisa diperiksa.",
+    "ja": "メッシュアドレスの記録がありません — このノードは探査できません。",
+    "pl": "Brak zapisanego adresu mesh — tego nie da się sprawdzić.",
+    "ru": "Нет записанного mesh-адреса — этот узел не опросить.",
+    "sv": "Ingen mesh-adress registrerad – den här kan inte sonderas."
+  },
+  "No road to it over the mesh right now: two path requests in 40 s went unanswered, so no health request was sent. {context} Amber until it is heard again.": {
+    "de": "Gerade kein Weg zu ihm über das Mesh: zwei Pfadanfragen in 40 s blieben unbeantwortet, also wurde keine Zustandsanfrage gesendet. {context} Gelb, bis er wieder gehört wird.",
+    "es": "Ahora mismo no hay camino hasta él por la malla: dos peticiones de ruta en 40 s quedaron sin respuesta, así que no se envió ninguna petición de estado. {context} En ámbar hasta que se le vuelva a oír.",
+    "fr": "Aucun chemin vers lui sur le maillage pour l'instant : deux demandes de chemin en 40 s sont restées sans réponse, aucune demande d'état n'a donc été envoyée. {context} Orange jusqu'à ce qu'il soit entendu de nouveau.",
+    "id": "Saat ini tidak ada jalur ke sana lewat mesh: dua permintaan jalur dalam 40 d tak terjawab, jadi tidak ada permintaan kondisi yang dikirim. {context} Kuning sampai terdengar lagi.",
+    "ja": "現在メッシュ上にこのノードへの経路がありません: 40 秒間に 2 回の経路要求が無応答だったため、状態要求は送っていません。{context} 再び受信されるまで黄色です。",
+    "pl": "Obecnie brak drogi do niego przez sieć mesh: dwa żądania ścieżki w 40 s pozostały bez odpowiedzi, więc nie wysłano żądania stanu. {context} Pomarańczowy, dopóki znów nie zostanie usłyszany.",
+    "ru": "Сейчас к нему нет пути через mesh-сеть: два запроса пути за 40 с остались без ответа, поэтому запрос состояния не отправлялся. {context} Жёлтый, пока его снова не услышат.",
+    "sv": "Ingen väg dit över nätet just nu: två vägförfrågningar på 40 s blev obesvarade, så ingen hälsoförfrågan skickades. {context} Gul tills den hörs igen."
+  },
+  "No route from this medic's own stack right now — the health request was not sent, so this says nothing new about the node.": {
+    "de": "Gerade keine Route aus dem eigenen Stack dieses Medic — die Zustandsanfrage wurde nicht gesendet, das sagt also nichts Neues über den Knoten.",
+    "es": "Ahora mismo no hay ruta desde la propia pila de este medic — la petición de estado no se envió, así que esto no dice nada nuevo del nodo.",
+    "fr": "Pas de route depuis la pile de ce medic pour l'instant — la demande d'état n'a pas été envoyée, cela ne dit donc rien de nouveau sur le nœud.",
+    "id": "Saat ini tidak ada rute dari stack medic ini sendiri — permintaan kondisi tidak dikirim, jadi ini tidak mengatakan apa pun yang baru tentang node.",
+    "ja": "現在この medic 自身のスタックに経路がありません — 状態要求は送られていないため、ノードについて新しいことは何も分かりません。",
+    "pl": "Obecnie brak trasy z własnego stosu tego medica — żądanie stanu nie zostało wysłane, więc to nic nowego o węźle nie mówi.",
+    "ru": "Сейчас нет маршрута из собственного стека этого medic — запрос состояния не отправлен, так что это ничего нового об узле не говорит.",
+    "sv": "Ingen rutt från den här medicens egen stack just nu – hälsoförfrågan skickades inte, så detta säger inget nytt om noden."
+  },
+  "No unicast reply in {s} s — asking it to announce instead…": {
+    "de": "Keine Unicast-Antwort in {s} s — bitte ihn stattdessen, sich anzukündigen…",
+    "es": "Sin respuesta unicast en {s} s — pidiéndole que se anuncie en su lugar…",
+    "fr": "Pas de réponse unicast en {s} s — on lui demande plutôt de s'annoncer…",
+    "id": "Tidak ada balasan unicast dalam {s} d — memintanya mengumumkan diri saja…",
+    "ja": "{s} 秒間ユニキャスト応答なし — 代わりにアナウンスを要求しています…",
+    "pl": "Brak odpowiedzi unicast w {s} s — proszę go, by zamiast tego się ogłosił…",
+    "ru": "Нет unicast-ответа за {s} с — просим его вместо этого объявить о себе…",
+    "sv": "Inget unicast-svar inom {s} s – ber den annonsera sig i stället…"
+  },
+  "No work board on the medic's USB — plug the board in with a known-good data cable (its own onboard board doesn't count).": {
+    "de": "Kein Arbeits-Board am USB des Medic — steck das Board mit einem sicher funktionierenden Datenkabel ein (sein eigenes eingebautes Board zählt nicht).",
+    "es": "No hay ninguna placa de trabajo en el USB del medic — conecta la placa con un cable de datos que sepas que funciona (su propia placa integrada no cuenta).",
+    "fr": "Aucune carte de travail sur l'USB du medic — branchez la carte avec un câble de données fiable (sa propre carte intégrée ne compte pas).",
+    "id": "Tidak ada papan kerja di USB medic — colokkan papan dengan kabel data yang diketahui bagus (papan bawaan medic sendiri tidak dihitung).",
+    "ja": "medic の USB に作業用ボードがありません — 確実に使えるデータケーブルでボードを接続してください（medic 内蔵のボードは数えません）。",
+    "pl": "Brak płytki roboczej na USB medica — podłącz płytkę sprawdzonym kablem do danych (jego własna wbudowana płytka się nie liczy).",
+    "ru": "На USB medic нет рабочей платы — подключите плату заведомо исправным кабелем для данных (его собственная встроенная плата не считается).",
+    "sv": "Inget arbetskort på medicens USB – koppla in kortet med en datakabel som du vet fungerar (dess eget inbyggda kort räknas inte)."
+  },
+  "Node number one is alive 🎉": {
+    "de": "Knoten Nummer eins lebt 🎉",
+    "es": "El nodo número uno está vivo 🎉",
+    "fr": "Le nœud numéro un est en vie 🎉",
+    "id": "Node nomor satu hidup 🎉",
+    "ja": "ノード 1 号が生きています 🎉",
+    "pl": "Węzeł numer jeden żyje 🎉",
+    "ru": "Узел номер один жив 🎉",
+    "sv": "Nod nummer ett lever 🎉"
+  },
+  "One board at a time": {
+    "de": "Ein Board nach dem anderen",
+    "es": "Una placa a la vez",
+    "fr": "Une carte à la fois",
+    "id": "Satu papan dalam satu waktu",
+    "ja": "ボードは 1 枚ずつ",
+    "pl": "Jedna płytka naraz",
+    "ru": "По одной плате за раз",
+    "sv": "Ett kort i taget"
+  },
+  "Path found{hops}. Health requested — waiting for the reply…": {
+    "de": "Pfad gefunden{hops}. Zustand angefragt — warte auf die Antwort…",
+    "es": "Ruta encontrada{hops}. Estado solicitado — esperando la respuesta…",
+    "fr": "Chemin trouvé{hops}. État demandé — en attente de la réponse…",
+    "id": "Jalur ditemukan{hops}. Kondisi diminta — menunggu balasan…",
+    "ja": "経路が見つかりました{hops}。状態を要求しました — 応答を待っています…",
+    "pl": "Znaleziono ścieżkę{hops}. Zażądano stanu — czekam na odpowiedź…",
+    "ru": "Путь найден{hops}. Состояние запрошено — ждём ответа…",
+    "sv": "Väg hittad{hops}. Hälsa begärd – väntar på svaret…"
+  },
+  "Ping finished with an unrecognised result ({result}) — a Node Medic bug, not a node state.": {
+    "de": "Ping endete mit einem unbekannten Ergebnis ({result}) — ein Fehler in Node Medic, kein Zustand des Knotens.",
+    "es": "El ping terminó con un resultado desconocido ({result}) — un fallo de Node Medic, no un estado del nodo.",
+    "fr": "Le ping s'est terminé avec un résultat inconnu ({result}) — un bug de Node Medic, pas un état du nœud.",
+    "id": "Ping selesai dengan hasil yang tidak dikenali ({result}) — bug Node Medic, bukan keadaan node.",
+    "ja": "ping が未知の結果（{result}）で終了しました — Node Medic のバグであり、ノードの状態ではありません。",
+    "pl": "Ping zakończył się nierozpoznanym wynikiem ({result}) — błąd Node Medic, nie stan węzła.",
+    "ru": "Пинг завершился с нераспознанным результатом ({result}) — ошибка Node Medic, а не состояние узла.",
+    "sv": "Ping avslutades med ett okänt resultat ({result}) – en bugg i Node Medic, inte ett nodtillstånd."
+  },
+  "Plug in the Tracker": {
+    "de": "Tracker einstecken",
+    "es": "Conecta el Tracker",
+    "fr": "Branchez le Tracker",
+    "id": "Colokkan Tracker",
+    "ja": "Tracker を接続してください",
+    "pl": "Podłącz Trackera",
+    "ru": "Подключите Tracker",
+    "sv": "Koppla in Trackern"
+  },
+  "Radio": {
+    "de": "Funkmodul",
+    "es": "Radio",
+    "fr": "Radio",
+    "id": "Radio",
+    "ja": "無線機",
+    "pl": "Radio",
+    "ru": "Радио",
+    "sv": "Radio"
+  },
+  "Reachable now{hops}. Couldn't request health from it (no health destination on record).": {
+    "de": "Jetzt erreichbar{hops}. Zustand konnte nicht angefragt werden (kein Zustandsziel bekannt).",
+    "es": "Alcanzable ahora{hops}. No se le pudo pedir el estado (sin destino de estado registrado).",
+    "fr": "Joignable maintenant{hops}. Impossible de lui demander son état (aucune destination d'état enregistrée).",
+    "id": "Terjangkau sekarang{hops}. Tidak bisa meminta kondisinya (tidak ada tujuan kondisi tercatat).",
+    "ja": "現在到達可能{hops}。状態を要求できませんでした（状態の宛先の記録がありません）。",
+    "pl": "Osiągalny teraz{hops}. Nie udało się zażądać stanu (brak zapisanego celu stanu).",
+    "ru": "Сейчас доступен{hops}. Запросить состояние не удалось (нет записанного адреса состояния).",
+    "sv": "Nåbar nu{hops}. Kunde inte begära hälsa från den (ingen hälsodestination registrerad)."
+  },
+  "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": {
+    "de": "Erreichbar — seine andere Mesh-Adresse hat geantwortet{where}, aber die Adresse, von der seine Zustandssignale kommen, nicht, also wurde kein Zustand angefragt. Der Knoten ist an; sein Zustandsmelder schweigt vielleicht, oder diese Adresse wird nicht dort angekündigt, wo der Medic sie hören kann.",
+    "es": "Alcanzable — su otra dirección de malla respondió{where}, pero la dirección desde la que llegan sus balizas de estado no, así que no se pidió el estado. El nodo está en marcha; su reportero de estado puede estar callado, o esa dirección no se anuncia donde el medic pueda oírla.",
+    "fr": "Joignable — son autre adresse de maillage a répondu{where}, mais pas celle d'où viennent ses balises d'état, aucun état n'a donc été demandé. Le nœud est en marche ; son rapporteur d'état est peut-être silencieux, ou cette adresse n'est pas annoncée là où le medic peut l'entendre.",
+    "id": "Terjangkau — alamat mesh-nya yang lain menjawab{where}, tetapi alamat asal suar kondisinya tidak, jadi kondisi tidak diminta. Node menyala; pelapor kondisinya mungkin diam, atau alamat itu tidak diumumkan di tempat medic bisa mendengarnya.",
+    "ja": "到達可能 — もう一方のメッシュアドレスは応答しました{where}が、状態ビーコンの送信元アドレスは応答しなかったため、状態は要求していません。ノードは稼働中です。状態レポーターが沈黙しているか、そのアドレスが medic の聞こえる範囲でアナウンスされていないのかもしれません。",
+    "pl": "Osiągalny — jego drugi adres mesh odpowiedział{where}, ale adres, z którego nadchodzą jego sygnały stanu, nie, więc nie zażądano stanu. Węzeł działa; jego reporter stanu może milczeć albo ten adres nie jest ogłaszany tam, gdzie medic go słyszy.",
+    "ru": "Доступен — его другой mesh-адрес ответил{where}, но адрес, с которого приходят его маячки состояния, не ответил, поэтому состояние не запрашивалось. Узел работает; его репортёр состояния может молчать, или этот адрес не объявляется там, где medic его слышит.",
+    "sv": "Nåbar – dess andra mesh-adress svarade{where}, men adressen som dess hälsofyrar kommer från gjorde det inte, så ingen hälsa begärdes. Noden är uppe; dess hälsorapportör kan vara tyst, eller så annonseras den adressen inte där medicen kan höra den."
+  },
+  "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": {
+    "de": "Port erreicht, aber der Chip ließ sich nicht lesen — BOOT halten, RST tippen, BOOT loslassen, dann erneut Erkennen (S3-Boards brauchen den Download-Modus).",
+    "es": "Se llegó al puerto pero no se pudo leer el chip — mantén BOOT, pulsa RST, suelta BOOT y vuelve a Detectar (las placas S3 necesitan el modo de descarga).",
+    "fr": "Port atteint mais impossible de lire la puce — maintenez BOOT, appuyez sur RST, relâchez BOOT, puis Détectez à nouveau (les cartes S3 ont besoin du mode téléchargement).",
+    "id": "Port tercapai tetapi chip tidak terbaca — tahan BOOT, tekan RST, lepas BOOT, lalu Deteksi lagi (papan S3 memerlukan mode download).",
+    "ja": "ポートには到達しましたがチップを読めませんでした — BOOT を押したまま RST を押して放し、BOOT を放してから、もう一度「検出」してください（S3 ボードはダウンロードモードが必要です）。",
+    "pl": "Port osiągnięty, ale nie udało się odczytać układu — trzymaj BOOT, stuknij RST, puść BOOT i Wykryj ponownie (płytki S3 wymagają trybu pobierania).",
+    "ru": "Порт доступен, но чип прочитать не удалось — удерживайте BOOT, нажмите RST, отпустите BOOT, затем снова «Обнаружить» (платам S3 нужен режим загрузки).",
+    "sv": "Nådde porten men kunde inte läsa chipet – håll BOOT, tryck RST, släpp BOOT och Upptäck igen (S3-kort behöver nedladdningsläge)."
+  },
+  "Ready to meet the firstborn": {
+    "de": "Bereit, den Erstgeborenen kennenzulernen",
+    "es": "Listo para conocer al primogénito",
+    "fr": "Prêt à rencontrer le premier-né",
+    "id": "Siap bertemu anak pertama",
+    "ja": "長子と出会う準備ができました",
+    "pl": "Gotowy na spotkanie z pierworodnym",
+    "ru": "Готов встретить первенца",
+    "sv": "Redo att möta den förstfödda"
+  },
+  "Skip for now  →": {
+    "de": "Vorerst überspringen  →",
+    "es": "Saltar por ahora  →",
+    "fr": "Passer pour le moment  →",
+    "id": "Lewati dulu  →",
+    "ja": "今はスキップ  →",
+    "pl": "Pomiń na razie  →",
+    "ru": "Пока пропустить  →",
+    "sv": "Hoppa över tills vidare  →"
+  },
+  "Starting…": {
+    "de": "Starte…",
+    "es": "Iniciando…",
+    "fr": "Démarrage…",
+    "id": "Memulai…",
+    "ja": "開始しています…",
+    "pl": "Uruchamianie…",
+    "ru": "Запуск…",
+    "sv": "Startar…"
+  },
+  "The Tracker didn't finish coming up.": {
+    "de": "Der Tracker ist nicht ganz hochgekommen.",
+    "es": "El Tracker no terminó de arrancar.",
+    "fr": "Le Tracker n'a pas fini de démarrer.",
+    "id": "Tracker tidak selesai menyala.",
+    "ja": "Tracker の起動が完了しませんでした。",
+    "pl": "Tracker nie dokończył uruchamiania.",
+    "ru": "Tracker не завершил запуск.",
+    "sv": "Trackern kom inte upp helt."
+  },
+  "The birth hit a snag: {err}": {
+    "de": "Die Geburt ist auf ein Hindernis gestoßen: {err}",
+    "es": "El alumbramiento tuvo un tropiezo: {err}",
+    "fr": "La naissance a rencontré un accroc : {err}",
+    "id": "Kelahiran menemui hambatan: {err}",
+    "ja": "誕生で問題が発生しました: {err}",
+    "pl": "Narodziny napotkały przeszkodę: {err}",
+    "ru": "Рождение споткнулось: {err}",
+    "sv": "Födelsen stötte på ett hinder: {err}"
+  },
+  "The firstborn needs another go": {
+    "de": "Der Erstgeborene braucht einen neuen Versuch",
+    "es": "El primogénito necesita otro intento",
+    "fr": "Le premier-né a besoin d'un nouvel essai",
+    "id": "Anak pertama perlu dicoba lagi",
+    "ja": "長子にはもう一度の挑戦が必要です",
+    "pl": "Pierworodny potrzebuje kolejnej próby",
+    "ru": "Первенцу нужна ещё одна попытка",
+    "sv": "Den förstfödda behöver ett nytt försök"
+  },
+  "The medic has never heard it speak over the mesh — it only knew a route to it, learned from another node.": {
+    "de": "Der Medic hat ihn noch nie über das Mesh sprechen gehört — er kannte nur eine Route zu ihm, gelernt von einem anderen Knoten.",
+    "es": "El medic nunca lo ha oído hablar por la malla — solo conocía una ruta hasta él, aprendida de otro nodo.",
+    "fr": "Le medic ne l'a jamais entendu parler sur le maillage — il ne connaissait qu'une route vers lui, apprise d'un autre nœud.",
+    "id": "Medic belum pernah mendengarnya berbicara di mesh — ia hanya tahu rute ke sana, yang dipelajari dari node lain.",
+    "ja": "medic はこのノードがメッシュ上で発信するのを一度も聞いていません — 別のノードから学んだ経路を知っていただけです。",
+    "pl": "Medic nigdy nie słyszał, by odezwał się w sieci mesh — znał tylko trasę do niego, poznaną od innego węzła.",
+    "ru": "Medic никогда не слышал, чтобы он говорил в mesh-сети — он знал лишь маршрут к нему, полученный от другого узла.",
+    "sv": "Medicen har aldrig hört den tala över nätet – den kände bara till en rutt dit, lärd från en annan nod."
+  },
+  "The medic is not hearing it from here — too far, in a radio shadow, or asleep or off.": {
+    "de": "Der Medic hört ihn von hier nicht — zu weit weg, im Funkschatten, oder schlafend oder aus.",
+    "es": "El medic no lo oye desde aquí — demasiado lejos, en una sombra de radio, o dormido o apagado.",
+    "fr": "Le medic ne l'entend pas d'ici — trop loin, dans une zone d'ombre radio, ou en veille ou éteint.",
+    "id": "Medic tidak mendengarnya dari sini — terlalu jauh, di bayangan radio, atau tertidur atau mati.",
+    "ja": "medic はここからこのノードを聞き取れていません — 遠すぎるか、電波の影にあるか、休止中か電源が切れています。",
+    "pl": "Medic nie słyszy go stąd — za daleko, w cieniu radiowym, albo uśpiony lub wyłączony.",
+    "ru": "Medic не слышит его отсюда — слишком далеко, в радиотени, либо спит или выключен.",
+    "sv": "Medicen hör den inte härifrån – för långt bort, i radioskugga, eller sovande eller av."
+  },
+  "This board keeps disconnecting and reappearing — it is rebooting in a loop, which is what a bad firmware image looks like. Leave it plugged in: flashing it is the repair.": {
+    "de": "Dieses Board verschwindet immer wieder und taucht erneut auf — es startet in einer Schleife neu, so sieht ein defektes Firmware-Image aus. Lass es eingesteckt: das Flashen ist die Reparatur.",
+    "es": "Esta placa no deja de desconectarse y reaparecer — está reiniciándose en bucle, que es el aspecto de una imagen de firmware dañada. Déjala conectada: flashearla es la reparación.",
+    "fr": "Cette carte ne cesse de se déconnecter et de réapparaître — elle redémarre en boucle, ce à quoi ressemble une image de firmware défectueuse. Laissez-la branchée : la flasher est la réparation.",
+    "id": "Papan ini terus terputus dan muncul lagi — ia reboot berulang, dan begitulah tampilan image firmware yang rusak. Biarkan tetap terpasang: mem-flash-nya adalah perbaikannya.",
+    "ja": "このボードは切断と再接続を繰り返しています — 再起動ループに入っており、これは不良なファームウェアイメージの典型的な症状です。接続したままにしてください。書き込みが修理になります。",
+    "pl": "Ta płytka ciągle się odłącza i pojawia z powrotem — restartuje się w pętli, a tak właśnie wygląda zły obraz firmware. Zostaw ją podłączoną: flashowanie jest naprawą.",
+    "ru": "Эта плата всё время отключается и появляется снова — она перезагружается по кругу, так выглядит повреждённый образ прошивки. Не отключайте её: прошивка и есть ремонт.",
+    "sv": "Det här kortet kopplas hela tiden bort och dyker upp igen – det startar om i en loop, vilket är så en dålig firmware-avbild ser ut. Låt det sitta i: att flasha det är reparationen."
+  },
+  "This medic already has its eyes": {
+    "de": "Dieser Medic hat seine Augen schon",
+    "es": "Este medic ya tiene ojos",
+    "fr": "Ce medic a déjà ses yeux",
+    "id": "Medic ini sudah punya mata",
+    "ja": "この medic にはすでに目があります",
+    "pl": "Ten medic już ma oczy",
+    "ru": "У этого medic уже есть глаза",
+    "sv": "Den här medicen har redan sina ögon"
+  },
+  "Tier: {tier}{suffix}": {
+    "de": "Stufe: {tier}{suffix}",
+    "es": "Nivel: {tier}{suffix}",
+    "fr": "Niveau : {tier}{suffix}",
+    "id": "Tingkat: {tier}{suffix}",
+    "ja": "階層: {tier}{suffix}",
+    "pl": "Poziom: {tier}{suffix}",
+    "ru": "Уровень: {tier}{suffix}",
+    "sv": "Nivå: {tier}{suffix}"
+  },
+  "Welcoming the firstborn…": {
+    "de": "Der Erstgeborene wird begrüßt…",
+    "es": "Dando la bienvenida al primogénito…",
+    "fr": "Accueil du premier-né…",
+    "id": "Menyambut anak pertama…",
+    "ja": "長子を迎えています…",
+    "pl": "Witamy pierworodnego…",
+    "ru": "Встречаем первенца…",
+    "sv": "Välkomnar den förstfödda…"
+  },
+  "Wonderful — carry on  →": {
+    "de": "Wunderbar — weiter  →",
+    "es": "Maravilloso — continuar  →",
+    "fr": "Merveilleux — continuer  →",
+    "id": "Luar biasa — lanjutkan  →",
+    "ja": "素晴らしい — 続ける  →",
+    "pl": "Wspaniale — dalej  →",
+    "ru": "Замечательно — продолжить  →",
+    "sv": "Underbart – fortsätt  →"
+  },
+  "a minute ago": {
+    "de": "vor einer Minute",
+    "es": "hace un minuto",
+    "fr": "il y a une minute",
+    "id": "semenit yang lalu",
+    "ja": "1 分前",
+    "pl": "minutę temu",
+    "ru": "минуту назад",
+    "sv": "för en minut sedan"
+  },
+  "at ({lat}, {lon})": {
+    "de": "bei ({lat}, {lon})",
+    "es": "en ({lat}, {lon})",
+    "fr": "à ({lat}, {lon})",
+    "id": "di ({lat}, {lon})",
+    "ja": "({lat}, {lon}) の地点",
+    "pl": "w ({lat}, {lon})",
+    "ru": "в точке ({lat}, {lon})",
+    "sv": "vid ({lat}, {lon})"
+  },
+  "near {name}": {
+    "de": "nahe {name}",
+    "es": "cerca de {name}",
+    "fr": "près de {name}",
+    "id": "di dekat {name}",
+    "ja": "{name} の近く",
+    "pl": "w pobliżu {name}",
+    "ru": "рядом с {name}",
+    "sv": "nära {name}"
+  },
+  "propagation": {
+    "de": "Propagation",
+    "es": "propagación",
+    "fr": "propagation",
+    "id": "propagasi",
+    "ja": "伝播",
+    "pl": "propagacyjny",
+    "ru": "распространение",
+    "sv": "propagering"
+  },
+  "this board": {
+    "de": "dieses Board",
+    "es": "esta placa",
+    "fr": "cette carte",
+    "id": "papan ini",
+    "ja": "このボード",
+    "pl": "ta płytka",
+    "ru": "эта плата",
+    "sv": "det här kortet"
+  },
+  "transport": {
+    "de": "Transport",
+    "es": "transporte",
+    "fr": "transport",
+    "id": "transport",
+    "ja": "トランスポート",
+    "pl": "transportowy",
+    "ru": "транспорт",
+    "sv": "transport"
+  },
+  "your internet location": {
+    "de": "Ihr Internet-Standort",
+    "es": "tu ubicación por internet",
+    "fr": "votre position internet",
+    "id": "lokasi internet Anda",
+    "ja": "あなたのインターネット上の位置",
+    "pl": "Twoja lokalizacja z internetu",
+    "ru": "ваше местоположение по интернету",
+    "sv": "din internetplats"
+  },
+  "{db} dB headroom": {
+    "de": "{db} dB Reserve",
+    "es": "{db} dB de margen",
+    "fr": "{db} dB de marge",
+    "id": "ruang cadang {db} dB",
+    "ja": "余裕 {db} dB",
+    "pl": "zapas {db} dB",
+    "ru": "запас {db} дБ",
+    "sv": "{db} dB marginal"
+  },
+  "{h} h ago": {
+    "de": "vor {h} Std.",
+    "es": "hace {h} h",
+    "fr": "il y a {h} h",
+    "id": "{h} jam yang lalu",
+    "ja": "{h} 時間前",
+    "pl": "{h} godz. temu",
+    "ru": "{h} ч назад",
+    "sv": "för {h} h sedan"
+  },
+  "{name} adopted as kin — now in VITALS.": {
+    "de": "{name} als Kin übernommen — jetzt in VITALS.",
+    "es": "{name} adoptado como Kin — ya está en VITALS.",
+    "fr": "{name} adopté comme Kin — maintenant dans VITALS.",
+    "id": "{name} diadopsi sebagai kin — kini ada di VITALS.",
+    "ja": "{name} を kin として引き取りました — VITALS に表示されます。",
+    "pl": "{name} przyjęty jako kin — jest już w VITALS.",
+    "ru": "{name} принят как kin — теперь в VITALS.",
+    "sv": "{name} adopterad som kin – nu i VITALS."
+  },
+  "{n} days ago": {
+    "de": "vor {n} Tagen",
+    "es": "hace {n} días",
+    "fr": "il y a {n} jours",
+    "id": "{n} hari yang lalu",
+    "ja": "{n} 日前",
+    "pl": "{n} dni temu",
+    "ru": "{n} дн. назад",
+    "sv": "för {n} dagar sedan"
+  },
+  "{n} min ago": {
+    "de": "vor {n} Min.",
+    "es": "hace {n} min",
+    "fr": "il y a {n} min",
+    "id": "{n} mnt yang lalu",
+    "ja": "{n} 分前",
+    "pl": "{n} min temu",
+    "ru": "{n} мин назад",
+    "sv": "för {n} min sedan"
+  },
+  "←  Not right — change": {
+    "de": "←  Stimmt nicht — ändern",
+    "es": "←  No es correcto — cambiar",
+    "fr": "←  Pas ça — changer",
+    "id": "←  Bukan ini — ubah",
+    "ja": "←  違います — 変更",
+    "pl": "←  To nie to — zmień",
+    "ru": "←  Не то — изменить",
+    "sv": "←  Inte rätt – ändra"
+  },
+  "★  node #1  ·  the firstborn  ★": {
+    "de": "★  Knoten Nr. 1  ·  der Erstgeborene  ★",
+    "es": "★  nodo n.º 1  ·  el primogénito  ★",
+    "fr": "★  nœud n° 1  ·  le premier-né  ★",
+    "id": "★  node #1  ·  anak pertama  ★",
+    "ja": "★  ノード 1 号  ·  長子  ★",
+    "pl": "★  węzeł nr 1  ·  pierworodny  ★",
+    "ru": "★  узел № 1  ·  первенец  ★",
+    "sv": "★  nod nr 1  ·  den förstfödda  ★"
+  }
+}

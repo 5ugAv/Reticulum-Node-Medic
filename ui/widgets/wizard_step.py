@@ -25,6 +25,7 @@ from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from ui import theme
@@ -61,10 +62,24 @@ class WizardStep(BoxLayout):
     """One guided step. ``on_next`` / ``on_back`` drive navigation; ``anim`` is an
     optional widget shown in the central stage."""
 
+    #: Height of a picture stage on a scrolling step (dp): tall enough for a
+    #: poster card to be read as the card it is, small enough to leave three
+    #: lines of body under a one-line title on the 480 dp panel.
+    PICTURE_STAGE_DP = 120
+
     def __init__(self, index, total, title, body, anim=None, on_next=None,
                  on_back=None, next_text=None, back_text=None,
                  hint="", warning="", input_widget=None, show_back=True,
+                 scroll_body=False, stage_height=None, extra_nav=None,
                  **kwargs):
+        """``scroll_body`` (the setup tour's shape, readiness ledger #146):
+        the BODY becomes the flexible, scrolling middle and the animation
+        stage — if there is one — takes a FIXED ``stage_height`` dp instead,
+        so a long explanation can never push the picture to nothing or run
+        off the panel. The guided birth keeps the default: a fixed body that
+        the height tests hold under the panel, and a flexible stage.
+        ``extra_nav`` is a widget for the nav row between Back and Next (the
+        tour's "Open it now")."""
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self.padding = dp(20)
@@ -102,9 +117,17 @@ class WizardStep(BoxLayout):
         if input_widget is not None:
             self.add_widget(input_widget)
 
-        # central animation stage (flexes to fill the middle of the screen)
+        # central animation stage (flexes to fill the middle of the screen —
+        # or, on a scrolling step, a fixed-height picture shelf, or nothing)
         self.stage = anim if anim is not None else Widget()
-        self.add_widget(self.stage)
+        if scroll_body:
+            if anim is not None:
+                self.stage.size_hint_y = None
+                self.stage.height = dp(stage_height if stage_height is not None
+                                       else self.PICTURE_STAGE_DP)
+                self.add_widget(self.stage)
+        else:
+            self.add_widget(self.stage)
 
         body_lbl = Label(text=body, font_size=theme.font_sp("19sp"), halign="left",
                          valign="top",
@@ -112,7 +135,15 @@ class WizardStep(BoxLayout):
                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
         body_lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
                       texture_size=lambda i, ts: setattr(i, "height", ts[1]))
-        self.add_widget(body_lbl)
+        self.body_lbl = body_lbl
+        self.body_scroll = None
+        if scroll_body:
+            sv = ScrollView(do_scroll_x=False, bar_width=dp(4), size_hint_y=1)
+            sv.add_widget(body_lbl)
+            self.body_scroll = sv
+            self.add_widget(sv)
+        else:
+            self.add_widget(body_lbl)
 
         if hint:
             # Height FOLLOWS the wrapped text, exactly like the body above.
@@ -180,6 +211,8 @@ class WizardStep(BoxLayout):
         self.next_btn.bind(on_release=lambda *_: self._on_next and self._on_next())
         if self.back_btn is not None:
             nav.add_widget(self.back_btn)
+        if extra_nav is not None:
+            nav.add_widget(extra_nav)
         nav.add_widget(self.next_btn)
         self.add_widget(nav)
         self._nav = nav

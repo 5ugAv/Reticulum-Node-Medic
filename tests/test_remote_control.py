@@ -36,8 +36,11 @@ def test_it_can_only_move_between_screens_or_press_probe():
     deletes; adding such a verb is a security decision, not a convenience.
     "probe" (operator's call, 2026-10-04) presses PROBE's Run button — a
     read-only diagnostic of the board on USB — and nothing more."""
+    # "wizard <n>" (2026-10-05) jumps the setup walkthrough to a step so its
+    # layout can be looked at on the glass; it renders a step and switches
+    # screens, nothing more — no secret lives on a step reached this way.
     assert set(R.VERBS) == {"ping", "list", "open", "node", "home", "current",
-                            "map", "probe"}
+                            "map", "probe", "wizard"}
     src = open("ui/remote.py").read()
     body = src[src.index('if verb == "probe"'):src.index('return "err unreachable"')]
     assert "scr.start()" in body and "already running" in body

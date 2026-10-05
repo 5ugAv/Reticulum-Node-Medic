@@ -23,9 +23,12 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from ui.text_fit import grow_to_text
 from monitor import trust
 
+#: Pill label (an English source string, translated with tr() where it is
+#: drawn — never at import time, the language is chosen at runtime) + colour.
 _STATUS = {
     "self": ("YOU", "accent"),
     "trusted": ("TRUSTED", "green"),
@@ -55,10 +58,10 @@ class TrustedOperatorsScreen(BoxLayout):
         self.padding = dp(14)
         self.spacing = dp(8)
         self._on_change = on_change
-        self.add_widget(_line("Trusted operators", bold=True, size="22sp", h=40))
+        self.add_widget(_line(tr("Trusted operators"), bold=True, size="22sp", h=40))
         self.add_widget(grow_to_text(_line(
-            "Node Medic units and the trust between them. Trust is per-unit and "
-            "never inherited — a clone of a clone must be approved by you.",
+            tr("Node Medic units and the trust between them. Trust is per-unit and "
+               "never inherited — a clone of a clone must be approved by you."),
             size="13sp", color="text_secondary")))
         body = ScrollView()
         self._list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
@@ -72,8 +75,9 @@ class TrustedOperatorsScreen(BoxLayout):
         us = trust.units()
         if not us:
             self._list.add_widget(grow_to_text(_line(
-                "No other units yet. When you clone this medic (the Clone button "
-                "under BUILD), the new unit appears here.", size="13.5sp", color="text_secondary")))
+                tr("No other units yet. When you clone this medic (the Clone button "
+                   "under BUILD), the new unit appears here."),
+                size="13.5sp", color="text_secondary")))
             return
         for u in us:
             self._list.add_widget(self._card(u))
@@ -91,7 +95,7 @@ class TrustedOperatorsScreen(BoxLayout):
 
         head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(28))
         head.add_widget(_line(u["name"], bold=True, size="17sp"))
-        pill = Label(text=label, bold=True, font_size="11sp", size_hint_x=None,
+        pill = Label(text=tr(label), bold=True, font_size="11sp", size_hint_x=None,
                      width=dp(96), color=theme.hex_to_rgba(theme.COLORS[colname]))
         head.add_widget(pill)
         card.add_widget(head)
@@ -101,9 +105,10 @@ class TrustedOperatorsScreen(BoxLayout):
                                   mono=True, h=20))
         via = u.get("via", "")
         if u["status"] == "untrusted" and u.get("revoked"):
-            via = f"trust revoked — was {via or 'known'}"
+            via = tr("trust revoked — was {via}").format(via=via or tr("known"))
         elif u["status"] == "untrusted" and u.get("parent_name"):
-            via = f"descended from {u['parent_name']} — approve to trust"
+            via = tr("descended from {name} — approve to trust").format(
+                name=u['parent_name'])
         when = ""
         if u.get("established_at"):
             when = "  ·  " + datetime.fromtimestamp(u["established_at"]).strftime("%d %b %Y")
@@ -111,7 +116,7 @@ class TrustedOperatorsScreen(BoxLayout):
                                            color="text_secondary")))
 
         if u["status"] == "trusted":
-            card.add_widget(self._btn("Revoke trust", "red",
+            card.add_widget(self._btn(tr("Revoke trust"), "red",
                                       lambda: self._confirm_revoke(u)))
         elif u["status"] == "untrusted":
             # Two answers, not one: approve, or FORGET. A revoked or unknown
@@ -120,9 +125,9 @@ class TrustedOperatorsScreen(BoxLayout):
             # the unit comes back here needing approval.
             row = BoxLayout(orientation="horizontal", size_hint_y=None,
                             height=dp(44), spacing=dp(8))
-            row.add_widget(self._btn("Approve — trust this unit", "green",
+            row.add_widget(self._btn(tr("Approve — trust this unit"), "green",
                                      lambda: self._approve(u)))
-            row.add_widget(self._btn("Forget this unit", "red",
+            row.add_widget(self._btn(tr("Forget this unit"), "red",
                                      lambda: self._confirm_forget(u)))
             card.add_widget(row)
         return card
@@ -142,18 +147,18 @@ class TrustedOperatorsScreen(BoxLayout):
     def _confirm_forget(self, u):
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         box.add_widget(Label(
-            text=(f"Forget [b]{u['name']}[/b]?\n\n"
-                  "It disappears from this list. Nothing is trusted by "
-                  "forgetting: if this unit is ever heard again it comes back "
-                  "here as untrusted, needing your approval."),
+            text=(tr("Forget [b]{name}[/b]?").format(name=u['name']) + "\n\n"
+                  + tr("It disappears from this list. Nothing is trusted by "
+                       "forgetting: if this unit is ever heard again it comes back "
+                       "here as untrusted, needing your approval.")),
             markup=True, halign="center", valign="middle"))
         box.children[0].bind(size=lambda i, v: setattr(i, "text_size", v))
         btns = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
-        popup = Popup(title="Forget this unit", content=box, size_hint=(0.88, 0.5))
-        cancel = Button(text="Cancel", background_normal="",
+        popup = Popup(title=tr("Forget this unit"), content=box, size_hint=(0.88, 0.5))
+        cancel = Button(text=tr("Cancel"), background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         cancel.bind(on_release=popup.dismiss)
-        confirm = Button(text="Forget", bold=True, background_normal="",
+        confirm = Button(text=tr("Forget"), bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
 
@@ -170,18 +175,18 @@ class TrustedOperatorsScreen(BoxLayout):
     def _confirm_revoke(self, u):
         box = BoxLayout(orientation="vertical", spacing=dp(10), padding=dp(12))
         msg = Label(halign="center", valign="middle", markup=True, text=(
-            f"Revoke trust in [b]{u['name']}[/b]?\n\n"
-            "Nodes birthed by this unit will no longer appear as kin on your VITALS "
-            "and MAPS — they drop to neighbour status. You can re-approve it later."))
+            tr("Revoke trust in [b]{name}[/b]?").format(name=u['name']) + "\n\n"
+            + tr("Nodes birthed by this unit will no longer appear as kin on your VITALS "
+                 "and MAPS — they drop to neighbour status. You can re-approve it later.")))
         msg.bind(size=lambda i, v: setattr(i, "text_size", v))
         box.add_widget(msg)
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(52),
                         spacing=dp(8))
-        popup = Popup(title="Revoke trust", content=box, size_hint=(0.88, 0.55))
-        cancel = Button(text="Cancel", background_normal="",
+        popup = Popup(title=tr("Revoke trust"), content=box, size_hint=(0.88, 0.55))
+        cancel = Button(text=tr("Cancel"), background_normal="",
                         background_color=theme.hex_to_rgba(theme.COLORS["surface"]))
         cancel.bind(on_release=popup.dismiss)
-        confirm = Button(text="Revoke", bold=True, background_normal="",
+        confirm = Button(text=tr("Revoke"), bold=True, background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["red"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
 

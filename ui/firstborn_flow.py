@@ -28,6 +28,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+# i18n: wrapped — ui.i18n is pure (no Kivy), so this module stays display-free
+# and unit-testable; every title/body is translated when decide() runs, never
+# at import time.
+from ui.i18n import tr
+
 ALREADY = "already"
 NEED_TRACKER = "need_tracker"
 READY = "ready"
@@ -57,13 +62,14 @@ def succeeded(results) -> bool:
     return bool(results) and all(getattr(r, "success", False) for r in results)
 
 
-def first_failure(results, default: str = "The Tracker didn't finish coming "
-                  "up.") -> str:
-    """Message of the first failed step, for an honest FAILED screen."""
+def first_failure(results, default: str = "") -> str:
+    """Message of the first failed step, for an honest FAILED screen. With no
+    *default* the stock sentence is used — translated at call time, not at
+    import time."""
     for r in results or []:
         if not getattr(r, "success", True):
-            return getattr(r, "message", "A step did not complete.")
-    return default
+            return getattr(r, "message", tr("A step did not complete."))
+    return default or tr("The Tracker didn't finish coming up.")
 
 
 def decide(gps_live: bool,
@@ -77,49 +83,49 @@ def decide(gps_live: bool,
     ESP32-S3 does exactly that when it resets into the bootloader)."""
     if running:
         return FirstbornView(
-            BIRTHING, "Welcoming the firstborn…",
-            "Flashing the Tracker, then waiting for it to see the sky. This "
-            "takes a few minutes — leave it plugged in.",
+            BIRTHING, tr("Welcoming the firstborn…"),
+            tr("Flashing the Tracker, then waiting for it to see the sky. This "
+               "takes a few minutes — leave it plugged in."),
             can_begin=False)
     if result is True:
         return FirstbornView(
-            DONE, "Node number one is alive 🎉",
-            "Meet the firstborn — this medic's own first node, flashed and "
-            "adopted, reporting real satellites right now. The medic can see "
-            "where it stands and knows the time at last, so every node you "
-            "build from here carries a true place and date. A fine first child.",
+            DONE, tr("Node number one is alive 🎉"),
+            tr("Meet the firstborn — this medic's own first node, flashed and "
+               "adopted. As soon as it sees the sky the medic knows where it stands "
+               "and what time it is, so every node you build from here carries "
+               "a true place and date. A fine first child."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
-            FAILED, "The firstborn needs another go",
-            (failure or "The Tracker didn't finish coming up.") +
-            "\n\nCheck it is the only board plugged in, then try again.",
+            FAILED, tr("The firstborn needs another go"),
+            (failure or tr("The Tracker didn't finish coming up.")) + "\n\n" +
+            tr("Check it is the only board plugged in, then try again."),
             can_begin=True)
     if gps_live:
         return FirstbornView(
-            ALREADY, "This medic already has its eyes",
-            "A GPS source is already streaming a fix, so there's nothing to "
-            "birth here. You can move on — or run this again from PROBE if you "
-            "want to replace the Tracker.",
+            ALREADY, tr("This medic already has its eyes"),
+            tr("A GPS source is already streaming a fix, so there's nothing to "
+               "birth here. You can move on — or run this again from PROBE if you "
+               "want to replace the Tracker."),
             can_begin=False)
     if tracker_candidates <= 0:
         return FirstbornView(
-            NEED_TRACKER, "Plug in the Tracker",
-            "No Tracker is connected yet. Plug the Heltec Wireless Tracker into "
-            "the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to "
-            "USB-C cable.\n\n"
-            "Plug in only the Tracker, so the medic doesn't mistake its own "
-            "radio for it — then this begins.",
+            NEED_TRACKER, tr("Plug in the Tracker"),
+            tr("No Tracker is connected yet. Plug the Heltec Wireless Tracker into "
+               "the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to "
+               "USB-C cable.\n\n"
+               "Plug in only the Tracker, so the medic doesn't mistake its own "
+               "radio for it — then tap Begin."),
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(
-            NEED_TRACKER, "One board at a time",
-            "More than one board looks like it could be the Tracker. Unplug the "
-            "others — especially the medic's own radio — and leave just the "
-            "Tracker, so the firstborn is the board you mean.",
+            NEED_TRACKER, tr("One board at a time"),
+            tr("More than one board looks like it could be the Tracker. Unplug the "
+               "others — especially the medic's own radio — and leave just the "
+               "Tracker, so the firstborn is the board you mean."),
             can_begin=False)
     return FirstbornView(
-        READY, "Ready to meet the firstborn",
-        "A Tracker is connected. Press begin and the medic flashes it, waits "
-        "for it to see satellites, and adopts it as node number one.",
+        READY, tr("Ready to meet the firstborn"),
+        tr("A Tracker is connected. Press begin and the medic flashes it, waits "
+           "for it to see satellites, and adopts it as node number one."),
         can_begin=True)

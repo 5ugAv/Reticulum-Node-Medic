@@ -1,0 +1,512 @@
+{
+  "1. The everyday node — as many as you can make": {
+    "de": "1. Der Alltagsknoten — so viele, wie du machen kannst",
+    "es": "1. El nodo de todos los días — tantos como puedas hacer",
+    "fr": "1. Le nœud de tous les jours — autant que vous pouvez en faire",
+    "id": "1. Node sehari-hari — sebanyak yang bisa Anda buat",
+    "ja": "1. 普段使いのノード — 作れるだけ作る",
+    "pl": "1. Węzeł codzienny — tyle, ile zdołasz zrobić",
+    "ru": "1. Повседневный узел — столько, сколько сможете сделать",
+    "sv": "1. Vardagsnoden — så många du kan göra"
+  },
+  "2. The remote node — put it somewhere and leave it": {
+    "de": "2. Der abgelegene Knoten — irgendwo hinstellen und stehen lassen",
+    "es": "2. El nodo remoto — ponlo en algún sitio y olvídalo",
+    "fr": "2. Le nœud isolé — posez-le quelque part et laissez-le",
+    "id": "2. Node jarak jauh — letakkan di suatu tempat dan tinggalkan",
+    "ja": "2. 遠隔ノード — どこかに置いて、そのまま放っておく",
+    "pl": "2. Węzeł oddalony — postaw gdzieś i zostaw",
+    "ru": "2. Удалённый узел — поставьте где-нибудь и оставьте",
+    "sv": "2. Fjärrnoden — ställ den någonstans och lämna den"
+  },
+  "3. The message-holder — for people who are offline": {
+    "de": "3. Der Nachrichtenhalter — für Leute, die offline sind",
+    "es": "3. El guardamensajes — para la gente que está desconectada",
+    "fr": "3. Le gardien de messages — pour les gens hors ligne",
+    "id": "3. Penyimpan pesan — untuk orang-orang yang offline",
+    "ja": "3. メッセージの預かり役 — オフラインの人のために",
+    "pl": "3. Przechowywacz wiadomości — dla ludzi, którzy są offline",
+    "ru": "3. Хранитель сообщений — для тех, кто не в сети",
+    "sv": "3. Meddelandehållaren — för människor som är offline"
+  },
+  "3.3 V to the radio. Never 5 V.": {
+    "de": "3,3 V an den Funk. Niemals 5 V.",
+    "es": "3,3 V a la radio. Nunca 5 V.",
+    "fr": "3,3 V pour la radio. Jamais 5 V.",
+    "id": "3,3 V ke radio. Jangan pernah 5 V.",
+    "ja": "無線には 3.3 V。5 V は絶対にだめです。",
+    "pl": "3,3 V do radia. Nigdy 5 V.",
+    "ru": "3,3 В на радио. Никогда не 5 В.",
+    "sv": "3,3 V till radion. Aldrig 5 V."
+  },
+  "A Raspberry Pi + an nRF52 radio board — the RAK4631 is the pairing Node Medic has proven. The Pi Zero 2 W is the one to use, and it is often sold out; a Pi 4 or 5 works on mains from about AU$230 all up.": {
+    "de": "Ein Raspberry Pi + eine nRF52-Funkplatine — der RAK4631 ist die Paarung, die Node Medic bewährt hat. Der Pi Zero 2 W ist der, den man nimmt, und er ist oft ausverkauft; ein Pi 4 oder 5 läuft am Netz ab etwa AU$230 alles in allem.",
+    "es": "Una Raspberry Pi + una placa de radio nRF52 — la RAK4631 es la pareja que Node Medic ha probado. La Pi Zero 2 W es la que hay que usar, y suele estar agotada; una Pi 4 o 5 funciona con red eléctrica desde unos AU$230 en total.",
+    "fr": "Un Raspberry Pi + une carte radio nRF52 — le RAK4631 est le couple que Node Medic a éprouvé. Le Pi Zero 2 W est celui à utiliser, et il est souvent en rupture ; un Pi 4 ou 5 fonctionne sur secteur à partir d'environ AU$230 tout compris.",
+    "id": "Raspberry Pi + papan radio nRF52 — RAK4631 adalah pasangan yang telah dibuktikan Node Medic. Pi Zero 2 W adalah yang sebaiknya dipakai, dan sering habis terjual; Pi 4 atau 5 bisa dipakai dengan listrik PLN mulai sekitar AU$230 seluruhnya.",
+    "ja": "Raspberry Pi + nRF52 無線ボード — Node Medic で実績のある組み合わせは RAK4631 です。使うべきは Pi Zero 2 W ですが、よく品切れになります。Pi 4 や 5 なら商用電源で、総額およそ AU$230 からです。",
+    "pl": "Raspberry Pi + płytka radiowa nRF52 — RAK4631 to para, którą sprawdził Node Medic. Pi Zero 2 W jest tym do użycia, a często jest wyprzedane; Pi 4 lub 5 działa z sieci od około AU$230 za wszystko.",
+    "ru": "Raspberry Pi + радиоплата nRF52 — RAK4631 это та пара, что проверил Node Medic. Брать стоит Pi Zero 2 W, но его часто нет в наличии; Pi 4 или 5 работает от сети примерно от AU$230 за всё.",
+    "sv": "En Raspberry Pi + ett nRF52-radiokort — RAK4631 är kombinationen Node Medic har bevisat. Pi Zero 2 W är den att använda, och den är ofta slutsåld; en Pi 4 eller 5 fungerar på elnät från ungefär AU$230 allt som allt."
+  },
+  "A network wants a few of these, not many — one in a hall, a shop, a home with power.": {
+    "de": "Ein Netz will ein paar davon, nicht viele — einen in einem Saal, einem Laden, einem Haus mit Strom.",
+    "es": "Una red quiere unos pocos de estos, no muchos — uno en un salón comunitario, una tienda, una casa con electricidad.",
+    "fr": "Un réseau en veut quelques-uns, pas beaucoup — un dans une salle, une boutique, une maison avec du courant.",
+    "id": "Sebuah jaringan hanya butuh beberapa, bukan banyak — satu di balai, di toko, di rumah yang ada listriknya.",
+    "ja": "ネットワークに必要なのは数台で、多くはいりません — 集会所、店、電気のある家に 1 台ずつ。",
+    "pl": "Sieć chce kilku takich, nie wielu — jeden w świetlicy, w sklepie, w domu z prądem.",
+    "ru": "Сети нужно несколько таких, а не много — один в клубе, в магазине, в доме с электричеством.",
+    "sv": "Ett nät vill ha några få av dessa, inte många — en i en samlingslokal, en butik, ett hem med ström."
+  },
+  "About AU$100–155 on mains (Pi Zero 2 W); AU$265–470 done properly on solar": {
+    "de": "Etwa AU$100–155 am Netz (Pi Zero 2 W); AU$265–470 richtig gemacht mit Solar",
+    "es": "Unos AU$100–155 con red eléctrica (Pi Zero 2 W); AU$265–470 bien hecho con solar",
+    "fr": "Environ AU$100–155 sur secteur (Pi Zero 2 W) ; AU$265–470 fait correctement en solaire",
+    "id": "Sekitar AU$100–155 dengan listrik PLN (Pi Zero 2 W); AU$265–470 bila dibuat benar dengan tenaga surya",
+    "ja": "商用電源なら約 AU$100–155（Pi Zero 2 W）；太陽光できちんと作ると AU$265–470",
+    "pl": "Około AU$100–155 z sieci (Pi Zero 2 W); AU$265–470 zrobione porządnie na solarze",
+    "ru": "Около AU$100–155 от сети (Pi Zero 2 W); AU$265–470, если делать на солнце как следует",
+    "sv": "Ungefär AU$100–155 på elnät (Pi Zero 2 W); AU$265–470 ordentligt gjort på sol"
+  },
+  "About AU$21 each (US$11 from the maker, before postage)": {
+    "de": "Etwa AU$21 pro Stück (US$11 beim Hersteller, vor Porto)",
+    "es": "Unos AU$21 cada uno (US$11 del fabricante, sin envío)",
+    "fr": "Environ AU$21 pièce (US$11 chez le fabricant, hors frais de port)",
+    "id": "Sekitar AU$21 per unit (US$11 dari pembuatnya, belum ongkos kirim)",
+    "ja": "1 台あたり約 AU$21（メーカー直販で US$11、送料別）",
+    "pl": "Około AU$21 za sztukę (US$11 u producenta, bez przesyłki)",
+    "ru": "Около AU$21 за штуку (US$11 у производителя, без доставки)",
+    "sv": "Ungefär AU$21 styck (US$11 från tillverkaren, före porto)"
+  },
+  "About AU$40 (AU$26–60 across boards)": {
+    "de": "Etwa AU$40 (AU$26–60 je nach Platine)",
+    "es": "Unos AU$40 (AU$26–60 según la placa)",
+    "fr": "Environ AU$40 (AU$26–60 selon la carte)",
+    "id": "Sekitar AU$40 (AU$26–60 tergantung papan)",
+    "ja": "約 AU$40（ボードにより AU$26–60）",
+    "pl": "Około AU$40 (AU$26–60 zależnie od płytki)",
+    "ru": "Около AU$40 (AU$26–60 в зависимости от платы)",
+    "sv": "Ungefär AU$40 (AU$26–60 beroende på kort)"
+  },
+  "An nRF52840 + SX1262 board ON ITS OWN, as a transport node. The RAK4631 kit (base board and antenna in the box) is the one to buy: an nRF52 — the lowest-power class of board the medic builds — and proven with Node Medic. The Heltec T114 is the other one the medic has built; it is imported.": {
+    "de": "Eine nRF52840-+-SX1262-Platine FÜR SICH ALLEIN, als Transportknoten. Das RAK4631-Kit (Basisplatine und Antenne in der Schachtel) ist das, was man kauft: ein nRF52 — die sparsamste Platinenklasse, die der Medic baut — und mit Node Medic bewährt. Der Heltec T114 ist der andere, den der Medic gebaut hat; er ist ein Import.",
+    "es": "Una placa nRF52840 + SX1262 POR SÍ SOLA, como nodo de transporte. El kit RAK4631 (placa base y antena en la caja) es el que hay que comprar: un nRF52 — la clase de placa de menor consumo que construye el medic — y probado con Node Medic. La Heltec T114 es la otra que el medic ha construido; es de importación.",
+    "fr": "Une carte nRF52840 + SX1262 SEULE, en nœud de transport. Le kit RAK4631 (carte de base et antenne dans la boîte) est celui à acheter : un nRF52 — la classe de carte la plus économe que le medic construit — et éprouvé avec Node Medic. Le Heltec T114 est l'autre que le medic a construit ; c'est un import.",
+    "id": "Papan nRF52840 + SX1262 BERDIRI SENDIRI, sebagai node transport. Kit RAK4631 (papan dasar dan antena di dalam kotak) adalah yang perlu dibeli: sebuah nRF52 — kelas papan berdaya paling rendah yang dibangun medic — dan terbukti dengan Node Medic. Heltec T114 adalah yang lain yang pernah dibangun medic; itu barang impor.",
+    "ja": "nRF52840 + SX1262 ボードを「単体で」トランスポートノードにします。買うべきは RAK4631 キット（ベースボードとアンテナ同梱）：nRF52 — medic が作るボードのうち最も低消費電力のクラス — で、Node Medic での実績があります。Heltec T114 は medic が作ったもう一つのボードで、こちらは輸入品です。",
+    "pl": "Płytka nRF52840 + SX1262 SAMA, jako węzeł transportowy. Zestaw RAK4631 (płytka bazowa i antena w pudełku) to ten do kupienia: nRF52 — klasa płytek o najniższym poborze, jakie buduje medic — i sprawdzony z Node Medic. Heltec T114 to druga, którą medic zbudował; to import.",
+    "ru": "Плата nRF52840 + SX1262 САМА ПО СЕБЕ, как транспортный узел. Покупать стоит набор RAK4631 (базовая плата и антенна в коробке): nRF52 — самый экономичный класс плат из тех, что собирает medic, — и проверенный с Node Medic. Heltec T114 — другая плата, которую medic собирал; она импортная.",
+    "sv": "Ett nRF52840 + SX1262-kort HELT FÖR SIG, som transportnod. RAK4631-kitet (basplatta och antenn i kartongen) är det att köpa: en nRF52 — den snålaste kortklassen medicen bygger — och beprövad med Node Medic. Heltec T114 är det andra medicen har byggt; det är en import."
+  },
+  "Anything that moves — phone, car, backpack — should be an RNode peer only. Transport OFF.": {
+    "de": "Alles, was sich bewegt — Handy, Auto, Rucksack — sollte nur ein RNode-Peer sein. Transport AUS.",
+    "es": "Todo lo que se mueve — teléfono, coche, mochila — debe ser solo un par RNode. Transporte APAGADO.",
+    "fr": "Tout ce qui bouge — téléphone, voiture, sac à dos — ne doit être qu'un pair RNode. Transport DÉSACTIVÉ.",
+    "id": "Apa pun yang bergerak — ponsel, mobil, ransel — sebaiknya hanya menjadi peer RNode. Transport MATI.",
+    "ja": "動くもの — スマホ、車、バックパック — は RNode のピアに留めてください。トランスポートはオフ。",
+    "pl": "Wszystko, co się porusza — telefon, samochód, plecak — powinno być tylko peerem RNode. Transport WYŁĄCZONY.",
+    "ru": "Всё, что движется — телефон, машина, рюкзак — должно быть только пиром RNode. Транспорт ВЫКЛ.",
+    "sv": "Allt som rör sig — telefon, bil, ryggsäck — ska bara vara en RNode-peer. Transport AV."
+  },
+  "Car + RNode": {
+    "de": "Auto + RNode",
+    "es": "Coche + RNode",
+    "fr": "Voiture + RNode",
+    "id": "Mobil + RNode",
+    "ja": "車 + RNode",
+    "pl": "Samochód + RNode",
+    "ru": "Автомобиль + RNode",
+    "sv": "Bil + RNode"
+  },
+  "Coding rate (CR)": {
+    "de": "Coderate (CR)",
+    "es": "Tasa de codificación (CR)",
+    "fr": "Taux de codage (CR)",
+    "id": "Laju pengodean (CR)",
+    "ja": "符号化率 (CR)",
+    "pl": "Współczynnik kodowania (CR)",
+    "ru": "Скорость кодирования (CR)",
+    "sv": "Kodningstakt (CR)"
+  },
+  "Coverage maps and datasheet ranges are guesses. The only honest answer is the one you measure, and a boundary walk is how Node Medic measures it: leave the node where it will live, then walk away from it carrying the medic. It pings the node every 20 seconds and marks every answer on the map at the distance you had reached. When the answers stop, the screen flashes MESH CONNECTION LOST — you are standing on the edge of that node's reach.": {
+    "de": "Abdeckungskarten und Datenblatt-Reichweiten sind Schätzungen. Die einzige ehrliche Antwort ist die, die du misst, und ein Grenzgang ist, wie Node Medic sie misst: lass den Knoten dort, wo er leben wird, und geh dann mit dem Medic von ihm weg. Er pingt den Knoten alle 20 Sekunden an und markiert jede Antwort auf der Karte bei der Entfernung, die du erreicht hattest. Wenn die Antworten ausbleiben, blinkt der Bildschirm MESH-VERBINDUNG VERLOREN — du stehst am Rand der Reichweite dieses Knotens.",
+    "es": "Los mapas de cobertura y los alcances de las hojas de datos son suposiciones. La única respuesta honesta es la que mides, y el recorrido de límite es cómo la mide Node Medic: deja el nodo donde va a vivir y aléjate de él llevando el medic. Hace ping al nodo cada 20 segundos y marca cada respuesta en el mapa a la distancia que habías alcanzado. Cuando las respuestas cesan, la pantalla parpadea CONEXIÓN DE MALLA PERDIDA — estás de pie en el borde del alcance de ese nodo.",
+    "fr": "Les cartes de couverture et les portées des fiches techniques sont des suppositions. La seule réponse honnête est celle que vous mesurez, et la marche de limite est la façon dont Node Medic la mesure : laissez le nœud là où il vivra, puis éloignez-vous en emportant le medic. Il pingue le nœud toutes les 20 secondes et marque chaque réponse sur la carte à la distance que vous aviez atteinte. Quand les réponses cessent, l'écran clignote CONNEXION MESH PERDUE — vous vous tenez au bord de la portée de ce nœud.",
+    "id": "Peta cakupan dan jangkauan di lembar data hanyalah tebakan. Satu-satunya jawaban yang jujur adalah yang Anda ukur, dan jalan batas adalah cara Node Medic mengukurnya: tinggalkan node di tempat ia akan hidup, lalu berjalanlah menjauh sambil membawa medic. Ia me-ping node setiap 20 detik dan menandai setiap jawaban di peta pada jarak yang telah Anda capai. Saat jawaban berhenti, layar berkedip KONEKSI MESH HILANG — Anda sedang berdiri di tepi jangkauan node itu.",
+    "ja": "カバレッジ地図やデータシートの到達距離は推測です。唯一正直な答えは自分で測ったもので、境界ウォークは Node Medic がそれを測る方法です：ノードを実際に置く場所に置いたまま、medic を持ってそこから歩いて離れます。medic は 20 秒ごとにノードに ping を送り、応答があるたびに、その時点で到達していた距離の地点を地図に記録します。応答が止まると画面に「メッシュ接続が切れました」が点滅します — あなたはそのノードの到達範囲の端に立っているのです。",
+    "pl": "Mapy zasięgu i zasięgi z kart katalogowych to zgadywanie. Jedyna uczciwa odpowiedź to ta, którą zmierzysz, a obchód granicy to sposób, w jaki mierzy ją Node Medic: zostaw węzeł tam, gdzie ma żyć, a potem odchodź od niego z medicem w ręku. Pinguje on węzeł co 20 sekund i zaznacza każdą odpowiedź na mapie w odległości, do której doszedłeś. Gdy odpowiedzi ustają, ekran miga UTRACONO POŁĄCZENIE MESH — stoisz na krawędzi zasięgu tego węzła.",
+    "ru": "Карты покрытия и дальности из даташитов — это догадки. Единственный честный ответ — тот, что вы измерили, и обход границы — это то, как его измеряет Node Medic: оставьте узел там, где он будет жить, и уходите от него с medic в руках. Он пингует узел каждые 20 секунд и отмечает каждый ответ на карте на том расстоянии, которого вы достигли. Когда ответы прекращаются, экран мигает СВЯЗЬ С СЕТЬЮ ПОТЕРЯНА — вы стоите на краю дальности этого узла.",
+    "sv": "Täckningskartor och räckvidder ur datablad är gissningar. Det enda ärliga svaret är det du mäter, och en gränsvandring är hur Node Medic mäter det: lämna noden där den ska bo och gå sedan bort från den med medicen i handen. Den pingar noden var 20:e sekund och markerar varje svar på kartan vid det avstånd du hade nått. När svaren upphör blinkar skärmen MESH-ANSLUTNING FÖRLORAD — du står på kanten av den nodens räckvidd."
+  },
+  "DO NOT bolt a Raspberry Pi to one of these to save battery. A Pi draws 10–20× what the radio does — that pairing is the dearest build AND the shortest-lived.": {
+    "de": "Schraube KEINEN Raspberry Pi an einen davon, um Akku zu sparen. Ein Pi zieht 10–20× so viel wie der Funk — diese Paarung ist der teuerste Aufbau UND der kurzlebigste.",
+    "es": "NO atornilles una Raspberry Pi a uno de estos para ahorrar batería. Una Pi consume 10–20× lo que la radio — esa pareja es la construcción más cara Y la de menor duración.",
+    "fr": "NE fixez PAS un Raspberry Pi à l'un d'eux pour économiser la batterie. Un Pi consomme 10–20× ce que consomme la radio — ce couple est l'assemblage le plus cher ET celui qui dure le moins.",
+    "id": "JANGAN memasang Raspberry Pi ke salah satunya untuk menghemat baterai. Pi menyedot 10–20× daya radio — pasangan itu adalah rakitan termahal DAN yang paling pendek umurnya.",
+    "ja": "バッテリーを節約するつもりで Raspberry Pi をこれに付けてはいけません。Pi は無線の 10–20 倍の電力を食います — その組み合わせは最も高価で、しかも最も短命な構成です。",
+    "pl": "NIE przykręcaj Raspberry Pi do jednej z nich, by oszczędzać baterię. Pi pobiera 10–20× tyle, co radio — ta para to najdroższa konstrukcja I najkrócej żyjąca.",
+    "ru": "НЕ прикручивайте Raspberry Pi к такой плате ради экономии батареи. Pi потребляет в 10–20× больше, чем радио, — такая пара и самая дорогая сборка, И самая недолговечная.",
+    "sv": "Skruva INTE fast en Raspberry Pi på en av dessa för att spara batteri. En Pi drar 10–20× vad radion gör — den kombinationen är det dyraste bygget OCH det mest kortlivade."
+  },
+  "Fit an antenna BEFORE powering it — transmitting with none damages the radio.": {
+    "de": "Bring eine Antenne an, BEVOR du Strom gibst — Senden ohne Antenne beschädigt den Funk.",
+    "es": "Coloca una antena ANTES de darle corriente — transmitir sin ninguna daña la radio.",
+    "fr": "Montez une antenne AVANT de l'alimenter — émettre sans antenne endommage la radio.",
+    "id": "Pasang antena SEBELUM menyalakannya — memancar tanpa antena merusak radio.",
+    "ja": "電源を入れる前にアンテナを取り付けてください — アンテナなしで送信すると無線が壊れます。",
+    "pl": "Zamocuj antenę PRZED włączeniem zasilania — nadawanie bez niej uszkadza radio.",
+    "ru": "Подключите антенну ДО подачи питания — передача без антенны повреждает радио.",
+    "sv": "Sätt på en antenn INNAN du slår på strömmen — att sända utan skadar radion."
+  },
+  "For people who solder: a bare ESP32 devkit + RFM95 module is about AU$7 in parts — but Node Medic cannot flash that build for you yet.": {
+    "de": "Für Leute, die löten: ein nacktes ESP32-Devkit + RFM95-Modul kostet etwa AU$7 an Teilen — aber Node Medic kann diesen Aufbau noch nicht für dich flashen.",
+    "es": "Para quien suelda: un devkit ESP32 pelado + un módulo RFM95 cuesta unos AU$7 en piezas — pero Node Medic todavía no puede flashear esa construcción por ti.",
+    "fr": "Pour ceux qui soudent : un devkit ESP32 nu + un module RFM95 coûte environ AU$7 en pièces — mais Node Medic ne peut pas encore flasher cet assemblage pour vous.",
+    "id": "Bagi yang bisa menyolder: devkit ESP32 polos + modul RFM95 sekitar AU$7 dalam komponen — tetapi Node Medic belum bisa mem-flash rakitan itu untuk Anda.",
+    "ja": "はんだ付けができる人向け：素の ESP32 開発ボード + RFM95 モジュールなら部品代は約 AU$7 — ただし Node Medic はまだその構成を書き込めません。",
+    "pl": "Dla tych, którzy lutują: goły devkit ESP32 + moduł RFM95 to około AU$7 w częściach — ale Node Medic nie potrafi jeszcze wgrać tej konstrukcji za ciebie.",
+    "ru": "Для тех, кто паяет: голая отладочная плата ESP32 + модуль RFM95 — это около AU$7 в деталях, но Node Medic пока не может прошить такую сборку за вас.",
+    "sv": "För dem som löder: ett naket ESP32-devkit + RFM95-modul kostar ungefär AU$7 i delar — men Node Medic kan inte flasha det bygget för dig ännu."
+  },
+  "How far does a node actually reach? — the boundary walk": {
+    "de": "Wie weit reicht ein Knoten wirklich? — der Grenzgang",
+    "es": "¿Hasta dónde llega realmente un nodo? — el recorrido de límite",
+    "fr": "Jusqu'où un nœud porte-t-il vraiment ? — la marche de limite",
+    "id": "Seberapa jauh sebenarnya jangkauan node? — jalan batas",
+    "ja": "ノードは実際どこまで届く？ — 境界ウォーク",
+    "pl": "Jak daleko naprawdę sięga węzeł? — obchód granicy",
+    "ru": "Как далеко на самом деле достаёт узел? — обход границы",
+    "sv": "Hur långt når en nod egentligen? — gränsvandringen"
+  },
+  "If it moves, it's a passenger. If it's bolted down and always on, it can be part of the road.": {
+    "de": "Was sich bewegt, ist Passagier. Was festgeschraubt und immer an ist, kann Teil der Straße sein.",
+    "es": "Si se mueve, es un pasajero. Si está fijo y siempre encendido, puede ser parte del camino.",
+    "fr": "Si ça bouge, c'est un passager. Si c'est fixé et toujours allumé, ça peut faire partie de la route.",
+    "id": "Jika bergerak, ia penumpang. Jika terpasang mati dan selalu menyala, ia bisa menjadi bagian dari jalan.",
+    "ja": "動くものは乗客です。固定されて常時オンなら、道路の一部になれます。",
+    "pl": "Jeśli się porusza, jest pasażerem. Jeśli jest przykręcone i zawsze włączone, może być częścią drogi.",
+    "ru": "Если оно движется — это пассажир. Если оно прикручено и всегда включено — оно может быть частью дороги.",
+    "sv": "Rör det sig är det en passagerare. Sitter det fastskruvat och är alltid på kan det vara en del av vägen."
+  },
+  "If mains power is anywhere nearby, use it — the money is better spent on more everyday nodes.": {
+    "de": "Gibt es irgendwo in der Nähe Netzstrom, nimm ihn — das Geld ist in mehr Alltagsknoten besser angelegt.",
+    "es": "Si hay red eléctrica cerca, úsala — el dinero rinde más en más nodos de todos los días.",
+    "fr": "S'il y a du secteur à proximité, utilisez-le — l'argent est mieux dépensé en nœuds de tous les jours supplémentaires.",
+    "id": "Jika ada listrik PLN di dekat situ, pakailah — uangnya lebih berguna untuk menambah node sehari-hari.",
+    "ja": "近くに商用電源があるなら、それを使ってください — お金は普段使いのノードを増やすほうに回したほうが有効です。",
+    "pl": "Jeśli gdziekolwiek w pobliżu jest prąd z sieci, użyj go — pieniądze lepiej wydać na więcej węzłów codziennych.",
+    "ru": "Если где-то рядом есть сеть, используйте её — деньги лучше потратить на дополнительные повседневные узлы.",
+    "sv": "Finns det elnät någonstans i närheten, använd det — pengarna gör mer nytta i fler vardagsnoder."
+  },
+  "Most of a network should be made of these — they route and relay as well as a AU$60 board. What you give up is battery life, a screen, a case and GPS; not networking.": {
+    "de": "Der Großteil eines Netzes sollte aus diesen bestehen — sie routen und relaisen so gut wie eine AU$60-Platine. Was du aufgibst, sind Akkulaufzeit, ein Display, ein Gehäuse und GPS; nicht das Netzwerken.",
+    "es": "La mayor parte de una red debería estar hecha de estos — enrutan y repiten tan bien como una placa de AU$60. Lo que sacrificas es autonomía de batería, pantalla, carcasa y GPS; no la red.",
+    "fr": "L'essentiel d'un réseau devrait être fait de ceux-ci — ils routent et relaient aussi bien qu'une carte à AU$60. Ce que vous perdez, c'est l'autonomie, un écran, un boîtier et le GPS ; pas le réseau.",
+    "id": "Sebagian besar jaringan sebaiknya terbuat dari ini — ia merutekan dan merelai sebaik papan AU$60. Yang Anda korbankan adalah daya tahan baterai, layar, casing dan GPS; bukan kemampuan jaringannya.",
+    "ja": "ネットワークの大半はこれで作るべきです — AU$60 のボードと同じようにルーティングと中継をこなします。失うのはバッテリー持ち、画面、ケース、GPS であって、ネットワーク機能ではありません。",
+    "pl": "Większość sieci powinna składać się z nich — routują i przekazują równie dobrze jak płytka za AU$60. Oddajesz czas pracy na baterii, ekran, obudowę i GPS; nie sieć.",
+    "ru": "Большая часть сети должна состоять из них — они маршрутизируют и ретранслируют не хуже платы за AU$60. Вы теряете время работы от батареи, экран, корпус и GPS; но не сетевые функции.",
+    "sv": "Större delen av ett nät bör bestå av dessa — de routar och reläar lika bra som ett AU$60-kort. Det du ger upp är batteritid, en skärm, en låda och GPS; inte nätverkandet."
+  },
+  "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 17 Wh a day, measured), a 20 W panel minimum (40 W in Sampleton or Hobart), about 60 Wh of USABLE battery for three cloudy days (a 10–12 Ah sealed lead-acid, or 6 Ah of LiFePO4), and a proper charge controller. A 5 W panel matches a perfect day and dies on the first cloudy one.": {
+    "de": "AN SOLAR braucht ein Pi ECHTE Hardware: einen Pi Zero 2 W (etwa 17 Wh am Tag, gemessen), mindestens ein 20-W-Panel (40 W in Sampleton oder Hobart), etwa 60 Wh NUTZBARE Batterie für drei bewölkte Tage (ein 10–12-Ah-Bleigel-Akku oder 6 Ah LiFePO4) und einen ordentlichen Laderegler. Ein 5-W-Panel reicht für einen perfekten Tag und stirbt am ersten bewölkten.",
+    "es": "CON SOLAR una Pi necesita hardware DE VERDAD: una Pi Zero 2 W (unos 17 Wh al día, medidos), un panel de 20 W como mínimo (40 W en Sampleton o Hobart), unos 60 Wh de batería ÚTIL para tres días nublados (una de plomo-ácido sellada de 10–12 Ah, o 6 Ah de LiFePO4), y un controlador de carga en condiciones. Un panel de 5 W cubre un día perfecto y muere el primer día nublado.",
+    "fr": "EN SOLAIRE un Pi exige du VRAI matériel : un Pi Zero 2 W (environ 17 Wh par jour, mesurés), un panneau de 20 W minimum (40 W à Sampleton ou Hobart), environ 60 Wh de batterie UTILISABLE pour trois jours couverts (un plomb-acide scellé de 10–12 Ah, ou 6 Ah de LiFePO4), et un vrai régulateur de charge. Un panneau de 5 W suffit pour une journée parfaite et meurt au premier jour couvert.",
+    "id": "DENGAN TENAGA SURYA sebuah Pi butuh perangkat SUNGGUHAN: Pi Zero 2 W (sekitar 17 Wh sehari, terukur), panel minimum 20 W (40 W di Sampleton atau Hobart), sekitar 60 Wh baterai yang BENAR-BENAR TERPAKAI untuk tiga hari mendung (aki kering 10–12 Ah, atau 6 Ah LiFePO4), dan pengendali pengisian yang layak. Panel 5 W pas untuk hari yang sempurna dan mati di hari mendung pertama.",
+    "ja": "太陽光で Pi を動かすには「本物の」機材が必要です：Pi Zero 2 W（実測で 1 日約 17 Wh）、最低 20 W のパネル（キャンベラやホバートでは 40 W）、曇りの日 3 日分として約 60 Wh の「実際に使える」バッテリー容量（10–12 Ah の密閉型鉛蓄電池、または 6 Ah の LiFePO4）、そしてきちんとした充電コントローラー。5 W パネルは完璧な晴天の日にだけ釣り合い、最初の曇りの日に死にます。",
+    "pl": "NA SOLARZE Pi potrzebuje PRAWDZIWEGO sprzętu: Pi Zero 2 W (około 17 Wh dziennie, zmierzone), panelu minimum 20 W (40 W w Sampleton czy Hobart), około 60 Wh UŻYTECZNEJ baterii na trzy pochmurne dni (szczelny akumulator kwasowo-ołowiowy 10–12 Ah albo 6 Ah LiFePO4) i porządnego regulatora ładowania. Panel 5 W wystarcza na idealny dzień i umiera pierwszego pochmurnego.",
+    "ru": "НА СОЛНЦЕ Pi требует НАСТОЯЩЕГО оборудования: Pi Zero 2 W (около 17 Вт·ч в сутки, измерено), панель минимум 20 Вт (40 Вт в Канберре или Хобарте), около 60 Вт·ч ПОЛЕЗНОЙ ёмкости батареи на три облачных дня (герметичный свинцово-кислотный 10–12 А·ч или 6 А·ч LiFePO4) и нормальный контроллер заряда. Панели 5 Вт хватает на идеальный день, и она умирает в первый же облачный.",
+    "sv": "PÅ SOL behöver en Pi RIKTIG hårdvara: en Pi Zero 2 W (ungefär 17 Wh om dagen, uppmätt), en 20 W-panel minst (40 W i Sampleton eller Hobart), ungefär 60 Wh ANVÄNDBART batteri för tre molniga dagar (ett 10–12 Ah slutet blybatteri, eller 6 Ah LiFePO4), och en ordentlig laddregulator. En 5 W-panel räcker en perfekt dag och dör den första molniga."
+  },
+  "ONLY this kind of node can hold messages for someone whose device is switched off. A transport node cannot.": {
+    "de": "NUR diese Art Knoten kann Nachrichten für jemanden aufbewahren, dessen Gerät ausgeschaltet ist. Ein Transportknoten kann das nicht.",
+    "es": "SOLO este tipo de nodo puede guardar mensajes para alguien cuyo dispositivo está apagado. Un nodo de transporte no puede.",
+    "fr": "SEUL ce type de nœud peut garder des messages pour quelqu'un dont l'appareil est éteint. Un nœud de transport ne peut pas.",
+    "id": "HANYA jenis node ini yang bisa menyimpan pesan untuk seseorang yang perangkatnya dimatikan. Node transport tidak bisa.",
+    "ja": "電源の切れた機器の持ち主のためにメッセージを預かれるのは、この種類のノードだけです。トランスポートノードにはできません。",
+    "pl": "TYLKO ten rodzaj węzła może przechowywać wiadomości dla kogoś, kto ma wyłączone urządzenie. Węzeł transportowy nie może.",
+    "ru": "ТОЛЬКО такой узел может хранить сообщения для того, чьё устройство выключено. Транспортный узел этого не может.",
+    "sv": "BARA den här sortens nod kan hålla meddelanden åt någon vars enhet är avstängd. En transportnod kan inte."
+  },
+  "Peer with a great antenna. Transport OFF.": {
+    "de": "Peer mit einer großartigen Antenne. Transport AUS.",
+    "es": "Par con una gran antena. Transporte APAGADO.",
+    "fr": "Pair avec une excellente antenne. Transport DÉSACTIVÉ.",
+    "id": "Peer dengan antena yang bagus. Transport MATI.",
+    "ja": "良いアンテナを持つピア。トランスポートはオフ。",
+    "pl": "Peer ze świetną anteną. Transport WYŁĄCZONY.",
+    "ru": "Пир с отличной антенной. Транспорт ВЫКЛ.",
+    "sv": "Peer med en utmärkt antenn. Transport AV."
+  },
+  "Peer. Transport OFF.": {
+    "de": "Peer. Transport AUS.",
+    "es": "Par. Transporte APAGADO.",
+    "fr": "Pair. Transport DÉSACTIVÉ.",
+    "id": "Peer. Transport MATI.",
+    "ja": "ピア。トランスポートはオフ。",
+    "pl": "Peer. Transport WYŁĄCZONY.",
+    "ru": "Пир. Транспорт ВЫКЛ.",
+    "sv": "Peer. Transport AV."
+  },
+  "Phone + RNode": {
+    "de": "Handy + RNode",
+    "es": "Teléfono + RNode",
+    "fr": "Téléphone + RNode",
+    "id": "Ponsel + RNode",
+    "ja": "スマホ + RNode",
+    "pl": "Telefon + RNode",
+    "ru": "Телефон + RNode",
+    "sv": "Telefon + RNode"
+  },
+  "Power: mains, a USB power bank, or solar with a real panel — the ESP32 is not a low-power part.": {
+    "de": "Strom: Netz, eine USB-Powerbank oder Solar mit einem richtigen Panel — der ESP32 ist kein Stromspar-Bauteil.",
+    "es": "Alimentación: red eléctrica, una batería externa USB, o solar con un panel de verdad — el ESP32 no es un componente de bajo consumo.",
+    "fr": "Alimentation : secteur, une batterie externe USB, ou du solaire avec un vrai panneau — l'ESP32 n'est pas un composant basse consommation.",
+    "id": "Daya: listrik PLN, power bank USB, atau surya dengan panel sungguhan — ESP32 bukan komponen hemat daya.",
+    "ja": "電源：商用電源、USB モバイルバッテリー、またはちゃんとしたパネルを使った太陽光 — ESP32 は低消費電力の部品ではありません。",
+    "pl": "Zasilanie: sieć, powerbank USB albo solar z prawdziwym panelem — ESP32 nie jest układem niskiego poboru.",
+    "ru": "Питание: сеть, USB-пауэрбанк или солнце с настоящей панелью — ESP32 не относится к маломощным компонентам.",
+    "sv": "Ström: elnät, en USB-powerbank eller sol med en riktig panel — ESP32 är ingen lågenergikomponent."
+  },
+  "Prices are Australian dollars before postage, checked October 2026. Raspberry Pi prices are rising and stock is patchy — check before you plan.": {
+    "de": "Preise in australischen Dollar vor Porto, geprüft im Oktober 2026. Raspberry-Pi-Preise steigen und die Verfügbarkeit ist lückenhaft — prüfe, bevor du planst.",
+    "es": "Los precios son en dólares australianos sin envío, comprobados en octubre de 2026. Los precios de Raspberry Pi están subiendo y el stock es irregular — comprueba antes de planificar.",
+    "fr": "Les prix sont en dollars australiens hors port, vérifiés en octobre 2026. Les prix des Raspberry Pi montent et le stock est irrégulier — vérifiez avant de planifier.",
+    "id": "Harga dalam dolar Australia belum termasuk ongkos kirim, dicek Oktober 2026. Harga Raspberry Pi sedang naik dan stoknya tidak menentu — cek dahulu sebelum merencanakan.",
+    "ja": "価格はオーストラリアドル、送料別で、2026 年 10 月に確認したものです。Raspberry Pi の価格は上昇中で在庫もまばらです — 計画を立てる前に確認してください。",
+    "pl": "Ceny w dolarach australijskich bez przesyłki, sprawdzone w październiku 2026. Ceny Raspberry Pi rosną, a dostępność jest nierówna — sprawdź, zanim zaplanujesz.",
+    "ru": "Цены в австралийских долларах без доставки, проверены в октябре 2026 года. Цены на Raspberry Pi растут, а наличие нестабильно — проверьте, прежде чем планировать.",
+    "sv": "Priserna är i australiska dollar före porto, kontrollerade i oktober 2026. Raspberry Pi-priserna stiger och lagret är ojämnt — kolla innan du planerar."
+  },
+  "Propagation node": {
+    "de": "Propagationsknoten",
+    "es": "Nodo de propagación",
+    "fr": "Nœud de propagation",
+    "id": "Node propagasi",
+    "ja": "伝播ノード",
+    "pl": "Węzeł propagacyjny",
+    "ru": "Узел распространения",
+    "sv": "Propageringsnod"
+  },
+  "Propagation node. The answering machine.": {
+    "de": "Propagationsknoten. Der Anrufbeantworter.",
+    "es": "Nodo de propagación. El contestador.",
+    "fr": "Nœud de propagation. Le répondeur.",
+    "id": "Node propagasi. Mesin penjawab.",
+    "ja": "伝播ノード。留守番電話です。",
+    "pl": "Węzeł propagacyjny. Automatyczna sekretarka.",
+    "ru": "Узел распространения. Автоответчик.",
+    "sv": "Propageringsnod. Telefonsvararen."
+  },
+  "Radio board attached to a Pi or other computer with storage, always on": {
+    "de": "Funkplatine an einem Pi oder anderen Rechner mit Speicher, immer an",
+    "es": "Placa de radio conectada a una Pi u otro ordenador con almacenamiento, siempre encendido",
+    "fr": "Carte radio reliée à un Pi ou à un autre ordinateur avec stockage, toujours allumé",
+    "id": "Papan radio yang terpasang ke Pi atau komputer lain dengan penyimpanan, selalu menyala",
+    "ja": "ストレージのある Pi などのコンピューターに接続した無線ボード、常時オン",
+    "pl": "Płytka radiowa podłączona do Pi lub innego komputera z pamięcią masową, zawsze włączony",
+    "ru": "Радиоплата, подключённая к Pi или другому компьютеру с накопителем, всегда включён",
+    "sv": "Radiokort kopplat till en Pi eller annan dator med lagring, alltid på"
+  },
+  "Radio parameters (every node, same mesh)": {
+    "de": "Funkparameter (jeder Knoten, dasselbe Mesh)",
+    "es": "Parámetros de radio (todos los nodos, la misma malla)",
+    "fr": "Paramètres radio (chaque nœud, le même maillage)",
+    "id": "Parameter radio (setiap node, mesh yang sama)",
+    "ja": "無線パラメータ（全ノード共通、同じメッシュ）",
+    "pl": "Parametry radia (każdy węzeł, ta sama sieć mesh)",
+    "ru": "Параметры радио (каждый узел, одна и та же mesh-сеть)",
+    "sv": "Radioparametrar (varje nod, samma mesh)"
+  },
+  "Reticulum Nodes — the quick guide": {
+    "de": "Reticulum-Knoten — der Kurzleitfaden",
+    "es": "Nodos Reticulum — la guía rápida",
+    "fr": "Nœuds Reticulum — le guide rapide",
+    "id": "Node Reticulum — panduan singkat",
+    "ja": "Reticulum ノード — クイックガイド",
+    "pl": "Węzły Reticulum — krótki przewodnik",
+    "ru": "Узлы Reticulum — краткое руководство",
+    "sv": "Reticulum-noder — snabbguiden"
+  },
+  "Right band: 915 MHz for Australia, NZ and the US; 868 for Europe. A 433 MHz module looks identical and will never join your network.": {
+    "de": "Richtiges Band: 915 MHz für Australien, NZ und die USA; 868 für Europa. Ein 433-MHz-Modul sieht identisch aus und wird deinem Netz nie beitreten.",
+    "es": "Banda correcta: 915 MHz para Australia, NZ y EE. UU.; 868 para Europa. Un módulo de 433 MHz se ve idéntico y jamás se unirá a tu red.",
+    "fr": "La bonne bande : 915 MHz pour l'Australie, la NZ et les États-Unis ; 868 pour l'Europe. Un module 433 MHz a l'air identique et ne rejoindra jamais votre réseau.",
+    "id": "Pita yang benar: 915 MHz untuk Australia, NZ dan AS; 868 untuk Eropa. Modul 433 MHz terlihat sama persis dan tidak akan pernah bergabung ke jaringan Anda.",
+    "ja": "正しいバンド：オーストラリア、NZ、米国は 915 MHz、欧州は 868。433 MHz のモジュールは見た目がそっくりですが、あなたのネットワークには決して参加できません。",
+    "pl": "Właściwe pasmo: 915 MHz dla Australii, NZ i USA; 868 dla Europy. Moduł 433 MHz wygląda identycznie i nigdy nie dołączy do twojej sieci.",
+    "ru": "Правильный диапазон: 915 МГц для Австралии, НЗ и США; 868 для Европы. Модуль на 433 МГц выглядит точно так же и никогда не войдёт в вашу сеть.",
+    "sv": "Rätt band: 915 MHz för Australien, NZ och USA; 868 för Europa. En 433 MHz-modul ser identisk ut och kommer aldrig att gå med i ditt nät."
+  },
+  "Rooftop node — radio board on its own (e.g. RTNode-2400), powered, never moves": {
+    "de": "Dachknoten — Funkplatine für sich allein (z. B. RTNode-2400), mit Strom, bewegt sich nie",
+    "es": "Nodo de tejado — placa de radio sola (p. ej. RTNode-2400), con alimentación, nunca se mueve",
+    "fr": "Nœud de toit — carte radio seule (p. ex. RTNode-2400), alimentée, ne bouge jamais",
+    "id": "Node atap — papan radio sendiri (mis. RTNode-2400), bertenaga, tidak pernah berpindah",
+    "ja": "屋上ノード — 無線ボード単体（例：RTNode-2400）、給電あり、動かさない",
+    "pl": "Węzeł na dachu — sama płytka radiowa (np. RTNode-2400), zasilana, nigdy się nie rusza",
+    "ru": "Узел на крыше — радиоплата сама по себе (например, RTNode-2400), с питанием, никогда не перемещается",
+    "sv": "Taknod — radiokort för sig självt (t.ex. RTNode-2400), med ström, flyttar aldrig"
+  },
+  "Spreading factor (SF)": {
+    "de": "Spreading-Faktor (SF)",
+    "es": "Factor de ensanchamiento (SF)",
+    "fr": "Facteur d'étalement (SF)",
+    "id": "Faktor sebar (SF)",
+    "ja": "拡散率 (SF)",
+    "pl": "Współczynnik rozpraszania (SF)",
+    "ru": "Коэффициент расширения (SF)",
+    "sv": "Spridningsfaktor (SF)"
+  },
+  "Start it from the node's own page in VITALS, or from ANTENNA ▸ Range test if you are on site thinking about placement. Take the walk in as straight a line as the ground allows — a loop back towards the node measures the same short distance twice.": {
+    "de": "Starte ihn von der eigenen Seite des Knotens in VITALS oder über ANTENNA ▸ Reichweitentest, wenn du vor Ort über die Platzierung nachdenkst. Geh so geradeaus, wie der Boden es erlaubt — eine Schleife zurück zum Knoten misst dieselbe kurze Entfernung zweimal.",
+    "es": "Inícialo desde la página propia del nodo en VITALS, o desde ANTENNA ▸ Prueba de alcance si estás en el sitio pensando en la ubicación. Haz el recorrido en una línea tan recta como permita el terreno — un bucle de vuelta hacia el nodo mide dos veces la misma distancia corta.",
+    "fr": "Lancez-la depuis la page du nœud dans VITALS, ou depuis ANTENNA ▸ Test de portée si vous êtes sur place à réfléchir au placement. Marchez en ligne aussi droite que le terrain le permet — une boucle qui revient vers le nœud mesure deux fois la même courte distance.",
+    "id": "Mulai dari halaman node itu sendiri di VITALS, atau dari ANTENNA ▸ Uji jangkauan jika Anda di lokasi sambil memikirkan penempatan. Berjalanlah selurus yang diizinkan medan — berputar kembali ke arah node mengukur jarak pendek yang sama dua kali.",
+    "ja": "VITALS のノード自身のページから、または現地で設置場所を考えているなら ANTENNA ▸ 到達距離テストから開始します。地形が許す限りまっすぐ歩いてください — ノードへ戻るように回ると、同じ短い距離を 2 回測ることになります。",
+    "pl": "Uruchom go ze strony węzła w VITALS lub z ANTENNA ▸ Test zasięgu, jeśli jesteś na miejscu i myślisz o rozmieszczeniu. Idź po linii tak prostej, jak pozwala teren — pętla z powrotem ku węzłowi mierzy dwa razy tę samą krótką odległość.",
+    "ru": "Запускайте его со страницы самого узла в VITALS или из ANTENNA ▸ Тест дальности, если вы на месте и думаете о размещении. Идите как можно прямее, насколько позволяет местность — петля обратно к узлу дважды измеряет одно и то же короткое расстояние.",
+    "sv": "Starta den från nodens egen sida i VITALS, eller från ANTENNA ▸ Räckviddstest om du är på plats och funderar på placeringen. Gå så rakt som marken tillåter — en slinga tillbaka mot noden mäter samma korta avstånd två gånger."
+  },
+  "The answering machine of the network. If someone is offline, it holds their messages and delivers them when they come back. Without one, a message to an offline device simply vanishes.": {
+    "de": "Der Anrufbeantworter des Netzes. Ist jemand offline, bewahrt er dessen Nachrichten auf und liefert sie aus, wenn die Person zurück ist. Ohne ihn verschwindet eine Nachricht an ein Offline-Gerät einfach.",
+    "es": "El contestador de la red. Si alguien está desconectado, guarda sus mensajes y los entrega cuando vuelve. Sin uno, un mensaje a un dispositivo desconectado simplemente se pierde.",
+    "fr": "Le répondeur du réseau. Si quelqu'un est hors ligne, il garde ses messages et les livre à son retour. Sans lui, un message vers un appareil hors ligne disparaît tout simplement.",
+    "id": "Mesin penjawab jaringan. Jika seseorang offline, ia menyimpan pesan untuknya dan mengantarkannya saat orang itu kembali. Tanpanya, pesan ke perangkat yang offline hilang begitu saja.",
+    "ja": "ネットワークの留守番電話です。相手がオフラインなら、そのメッセージを預かり、戻ってきたときに届けます。これがないと、オフラインの機器へのメッセージはただ消えてしまいます。",
+    "pl": "Automatyczna sekretarka sieci. Jeśli ktoś jest offline, przechowuje jego wiadomości i doręcza je, gdy wróci. Bez niej wiadomość do urządzenia offline po prostu znika.",
+    "ru": "Автоответчик сети. Если кто-то не в сети, он хранит сообщения для него и доставляет их, когда тот возвращается. Без него сообщение на устройство вне сети просто исчезает.",
+    "sv": "Nätets telefonsvarare. Om någon är offline håller den deras meddelanden och levererar dem när de kommer tillbaka. Utan en försvinner ett meddelande till en offline-enhet helt enkelt."
+  },
+  "The antenna is FREE: 8.2 cm of wire is a quarter-wave at 915 MHz. On the bench an 8 cm stub beat a 40 cm whip by a decibel and tied the best bought whip — 8 cm simply IS the right length for this band. What you pay for is weatherproofing, not reach.": {
+    "de": "Die Antenne ist KOSTENLOS: 8,2 cm Draht sind eine Viertelwelle bei 915 MHz. Auf dem Prüftisch schlug ein 8-cm-Stummel eine 40-cm-Peitsche um ein Dezibel und zog mit der besten gekauften Peitsche gleich — 8 cm IST einfach die richtige Länge für dieses Band. Was du bezahlst, ist Wetterfestigkeit, nicht Reichweite.",
+    "es": "La antena es GRATIS: 8,2 cm de alambre son un cuarto de onda a 915 MHz. En el banco de pruebas un tramo de 8 cm superó en un decibelio a un látigo de 40 cm e igualó al mejor látigo comprado — 8 cm simplemente ES la longitud correcta para esta banda. Lo que pagas es la protección contra la intemperie, no el alcance.",
+    "fr": "L'antenne est GRATUITE : 8,2 cm de fil font un quart d'onde à 915 MHz. Sur le banc d'essai, un bout de 8 cm a battu un fouet de 40 cm d'un décibel et égalé le meilleur fouet acheté — 8 cm EST tout simplement la bonne longueur pour cette bande. Ce que vous payez, c'est l'étanchéité, pas la portée.",
+    "id": "Antenanya GRATIS: kawat 8,2 cm adalah seperempat gelombang pada 915 MHz. Di meja uji, potongan 8 cm mengalahkan whip 40 cm sebesar satu desibel dan menyamai whip terbaik yang dibeli — 8 cm memang ADALAH panjang yang tepat untuk pita ini. Yang Anda bayar adalah ketahanan cuaca, bukan jangkauan.",
+    "ja": "アンテナは無料です：8.2 cm の針金が 915 MHz の 1/4 波長になります。ベンチ試験では 8 cm の切れ端が 40 cm のホイップを 1 dB 上回り、市販の最良のホイップと同等でした — 8 cm がこのバンドの正しい長さそのものなのです。お金を払って買うのは耐候性であって、到達距離ではありません。",
+    "pl": "Antena jest DARMOWA: 8,2 cm drutu to ćwierć fali na 915 MHz. Na stole pomiarowym 8-cm odcinek pobił 40-cm bat o decybel i zremisował z najlepszym kupnym batem — 8 cm po prostu JEST właściwą długością dla tego pasma. Płacisz za odporność na pogodę, nie za zasięg.",
+    "ru": "Антенна БЕСПЛАТНА: 8,2 см провода — это четверть волны на 915 МГц. На стенде 8-см отрезок обошёл 40-см штырь на децибел и сравнялся с лучшим покупным штырём — 8 см просто И ЕСТЬ правильная длина для этого диапазона. Платите вы за защиту от погоды, а не за дальность.",
+    "sv": "Antennen är GRATIS: 8,2 cm tråd är en kvartsvåg vid 915 MHz. På bänken slog en 8 cm-stump en 40 cm-spröt med en decibel och gick jämnt med det bästa köpta sprötet — 8 cm ÄR helt enkelt rätt längd för det här bandet. Det du betalar för är väderskydd, inte räckvidd."
+  },
+  "The golden rule": {
+    "de": "Die goldene Regel",
+    "es": "La regla de oro",
+    "fr": "La règle d'or",
+    "id": "Aturan emas",
+    "ja": "黄金律",
+    "pl": "Złota zasada",
+    "ru": "Золотое правило",
+    "sv": "Den gyllene regeln"
+  },
+  "The network builds maps: \"to reach that node, go through the node on the water tower.\" When a node moves, every map that mentions it breaks — and the network wastes precious radio time rebuilding them.": {
+    "de": "Das Netz baut Karten: „um diesen Knoten zu erreichen, geh über den Knoten auf dem Wasserturm.“ Bewegt sich ein Knoten, bricht jede Karte, die ihn nennt — und das Netz verschwendet kostbare Funkzeit darauf, sie neu zu bauen.",
+    "es": "La red construye mapas: «para llegar a ese nodo, pasa por el nodo del depósito de agua». Cuando un nodo se mueve, todos los mapas que lo mencionan se rompen — y la red gasta un valioso tiempo de radio en reconstruirlos.",
+    "fr": "Le réseau construit des cartes : « pour atteindre ce nœud, passe par le nœud du château d'eau ». Quand un nœud se déplace, toutes les cartes qui le mentionnent se cassent — et le réseau gaspille un précieux temps radio à les reconstruire.",
+    "id": "Jaringan membangun peta: \"untuk mencapai node itu, lewati node di menara air.\" Saat sebuah node berpindah, setiap peta yang menyebutnya rusak — dan jaringan membuang waktu radio yang berharga untuk membangunnya kembali.",
+    "ja": "ネットワークは地図を作ります：「あのノードへは、給水塔のノードを経由して行く」。ノードが動くと、それを載せた地図はすべて壊れ — ネットワークは貴重な電波の時間を地図の作り直しに浪費します。",
+    "pl": "Sieć buduje mapy: „aby dotrzeć do tamtego węzła, idź przez węzeł na wieży ciśnień”. Gdy węzeł się przemieszcza, każda mapa, która go wymienia, się psuje — a sieć marnuje cenny czas radiowy na ich odbudowę.",
+    "ru": "Сеть строит карты: «чтобы дойти до того узла, иди через узел на водонапорной башне». Когда узел перемещается, каждая карта, где он упомянут, ломается — и сеть тратит драгоценное эфирное время на то, чтобы построить их заново.",
+    "sv": "Nätet bygger kartor: \"för att nå den noden, gå via noden på vattentornet.\" När en nod flyttar går varje karta som nämner den sönder — och nätet slösar dyrbar radiotid på att bygga om dem."
+  },
+  "The purpose-built solar ones (Heltec Mesh Solar, Seeed SenseCAP Solar Node) arrive with panel, battery and weatherproofing already solved — the medic has not built either yet.": {
+    "de": "Die eigens gebauten Solarmodelle (Heltec Mesh Solar, Seeed SenseCAP Solar Node) kommen mit Panel, Akku und Wetterfestigkeit bereits gelöst — der Medic hat noch keines von beiden gebaut.",
+    "es": "Las solares de fábrica (Heltec Mesh Solar, Seeed SenseCAP Solar Node) llegan con panel, batería y protección contra la intemperie ya resueltos — el medic todavía no ha construido ninguna de las dos.",
+    "fr": "Les modèles solaires dédiés (Heltec Mesh Solar, Seeed SenseCAP Solar Node) arrivent avec panneau, batterie et étanchéité déjà réglés — le medic n'a encore construit ni l'un ni l'autre.",
+    "id": "Yang dirancang khusus bertenaga surya (Heltec Mesh Solar, Seeed SenseCAP Solar Node) datang dengan panel, baterai dan ketahanan cuaca yang sudah terselesaikan — medic belum pernah membangun keduanya.",
+    "ja": "太陽光専用に作られたもの（Heltec Mesh Solar、Seeed SenseCAP Solar Node）はパネル、バッテリー、耐候性が解決済みの状態で届きます — medic はまだどちらも作ったことがありません。",
+    "pl": "Te zbudowane z myślą o solarze (Heltec Mesh Solar, Seeed SenseCAP Solar Node) przychodzą z panelem, baterią i odpornością na pogodę już rozwiązanymi — medic nie zbudował jeszcze żadnej z nich.",
+    "ru": "Специально солнечные модели (Heltec Mesh Solar, Seeed SenseCAP Solar Node) приходят с уже решёнными панелью, батареей и защитой от погоды — medic пока не собирал ни одну из них.",
+    "sv": "De specialbyggda solmodellerna (Heltec Mesh Solar, Seeed SenseCAP Solar Node) kommer med panel, batteri och väderskydd redan löst — medicen har inte byggt någon av dem än."
+  },
+  "The radio board IS the node — it needs no computer attached. It sleeps at microamps and wakes for packets; listening costs about 5–10 mA. Weeks on one 18650, indefinitely with a small panel: an 18650 and holder are about AU$14, a 6 W panel and a 1S solar charger about AU$43.": {
+    "de": "Die Funkplatine IST der Knoten — sie braucht keinen angeschlossenen Rechner. Sie schläft bei Mikroampere und wacht für Pakete auf; Zuhören kostet etwa 5–10 mA. Wochen mit einer 18650, unbegrenzt mit einem kleinen Panel: eine 18650 mit Halter kostet etwa AU$14, ein 6-W-Panel und ein 1S-Solarlader etwa AU$43.",
+    "es": "La placa de radio ES el nodo — no necesita ningún ordenador conectado. Dormita a microamperios y despierta para los paquetes; escuchar cuesta unos 5–10 mA. Semanas con una 18650, indefinidamente con un panel pequeño: una 18650 y su portapilas cuestan unos AU$14, un panel de 6 W y un cargador solar 1S unos AU$43.",
+    "fr": "La carte radio EST le nœud — elle n'a besoin d'aucun ordinateur. Elle dort à quelques microampères et se réveille pour les paquets ; écouter coûte environ 5–10 mA. Des semaines sur une 18650, indéfiniment avec un petit panneau : une 18650 et son support coûtent environ AU$14, un panneau 6 W et un chargeur solaire 1S environ AU$43.",
+    "id": "Papan radio ADALAH node-nya — tidak perlu komputer terpasang. Ia tidur pada mikroampere dan bangun untuk paket; mendengarkan memakan sekitar 5–10 mA. Berminggu-minggu dengan satu 18650, tanpa batas dengan panel kecil: 18650 dan holder-nya sekitar AU$14, panel 6 W dan pengisi daya surya 1S sekitar AU$43.",
+    "ja": "無線ボードそのものがノードです — コンピューターを接続する必要はありません。マイクロアンペアで眠り、パケットが来ると起きます。受信待ちの消費は約 5–10 mA。18650 電池 1 本で数週間、小さなパネルがあれば無期限に動きます：18650 とホルダーで約 AU$14、6 W パネルと 1S ソーラー充電器で約 AU$43 です。",
+    "pl": "Płytka radiowa JEST węzłem — nie potrzebuje podłączonego komputera. Śpi na mikroamperach i budzi się na pakiety; słuchanie kosztuje około 5–10 mA. Tygodnie na jednym 18650, bez końca z małym panelem: 18650 z koszykiem to około AU$14, panel 6 W i ładowarka solarna 1S około AU$43.",
+    "ru": "Радиоплата И ЕСТЬ узел — компьютер к ней не нужен. Она спит на микроамперах и просыпается на пакеты; слушать стоит около 5–10 мА. Недели на одном 18650, бесконечно — с небольшой панелью: 18650 с держателем около AU$14, панель 6 Вт и солнечный зарядник 1S около AU$43.",
+    "sv": "Radiokortet ÄR noden — det behöver ingen ansluten dator. Det sover på mikroampere och vaknar för paket; att lyssna kostar ungefär 5–10 mA. Veckor på en 18650, obegränsat med en liten panel: en 18650 med hållare kostar ungefär AU$14, en 6 W-panel och en 1S-solladdare ungefär AU$43."
+  },
+  "The radio hardware. Every device needs one to talk over LoRa. It's just the mouth and ears — it doesn't decide anything.": {
+    "de": "Die Funk-Hardware. Jedes Gerät braucht einen, um über LoRa zu sprechen. Er ist nur Mund und Ohren — er entscheidet nichts.",
+    "es": "El hardware de radio. Todo dispositivo necesita uno para hablar por LoRa. Es solo la boca y los oídos — no decide nada.",
+    "fr": "Le matériel radio. Chaque appareil en a besoin d'un pour parler en LoRa. Ce n'est que la bouche et les oreilles — il ne décide de rien.",
+    "id": "Perangkat keras radio. Setiap perangkat memerlukannya untuk berbicara lewat LoRa. Ia hanya mulut dan telinga — tidak memutuskan apa pun.",
+    "ja": "無線のハードウェアです。LoRa で話すには、どの機器にも 1 台必要です。口と耳にあたるだけで — 何も判断しません。",
+    "pl": "Sprzęt radiowy. Każde urządzenie potrzebuje go, by mówić przez LoRa. To tylko usta i uszy — nic nie decyduje.",
+    "ru": "Радиооборудование. Оно нужно каждому устройству, чтобы говорить по LoRa. Это только рот и уши — оно ничего не решает.",
+    "sv": "Radiohårdvaran. Varje enhet behöver en för att prata över LoRa. Den är bara munnen och öronen — den bestämmer ingenting."
+  },
+  "The relay tower of the network. It passes messages along, live, between other devices — you don't talk through it yourself; for that you need your own RNode. If the person on the other end isn't there to pick up, the message doesn't get through.": {
+    "de": "Der Relaisturm des Netzes. Er reicht Nachrichten live zwischen anderen Geräten weiter — du selbst sprichst nicht durch ihn; dafür brauchst du deinen eigenen RNode. Ist die Person am anderen Ende nicht da, um abzunehmen, kommt die Nachricht nicht durch.",
+    "es": "La torre repetidora de la red. Pasa los mensajes, en vivo, entre otros dispositivos — tú no hablas a través de ella; para eso necesitas tu propio RNode. Si la persona al otro lado no está para atender, el mensaje no llega.",
+    "fr": "Le pylône relais du réseau. Il fait passer les messages, en direct, entre d'autres appareils — vous ne parlez pas à travers lui vous-même ; pour cela il vous faut votre propre RNode. Si la personne à l'autre bout n'est pas là pour répondre, le message ne passe pas.",
+    "id": "Menara relai jaringan. Ia meneruskan pesan, secara langsung, antara perangkat lain — Anda sendiri tidak berbicara melaluinya; untuk itu Anda perlu RNode sendiri. Jika orang di ujung sana tidak ada untuk menerima, pesan tidak sampai.",
+    "ja": "ネットワークの中継塔です。他の機器どうしのメッセージを、その場でリレーして渡します — 自分がこれを通して話すわけではなく、話すには自分の RNode が必要です。相手がその場にいて受け取れなければ、メッセージは届きません。",
+    "pl": "Wieża przekaźnikowa sieci. Przekazuje wiadomości na żywo między innymi urządzeniami — sam przez nią nie rozmawiasz; do tego potrzebujesz własnego RNode. Jeśli osoby po drugiej stronie nie ma, by odebrać, wiadomość nie dociera.",
+    "ru": "Ретрансляционная вышка сети. Он передаёт сообщения дальше, в реальном времени, между другими устройствами — сами вы через него не говорите; для этого нужен собственный RNode. Если человека на другом конце нет на месте, чтобы ответить, сообщение не доходит.",
+    "sv": "Nätets relämast. Den skickar meddelanden vidare, live, mellan andra enheter — du pratar inte genom den själv; för det behöver du en egen RNode. Om personen i andra änden inte är där och tar emot kommer meddelandet inte fram."
+  },
+  "The tiny XIAO ESP32-S3 + Wio-SX1262 kit. The medic builds it (RTNode-2400). A small antenna is in the box; a case is not.": {
+    "de": "Das winzige Kit XIAO ESP32-S3 + Wio-SX1262. Der Medic baut es (RTNode-2400). Eine kleine Antenne liegt bei, ein Gehäuse nicht.",
+    "es": "El diminuto kit XIAO ESP32-S3 + Wio-SX1262. El medic lo construye (RTNode-2400). La caja trae una antena pequeña; carcasa no.",
+    "fr": "Le minuscule kit XIAO ESP32-S3 + Wio-SX1262. Le medic le construit (RTNode-2400). Une petite antenne est dans la boîte ; pas de boîtier.",
+    "id": "Kit mungil XIAO ESP32-S3 + Wio-SX1262. Medic yang membangunnya (RTNode-2400). Ada antena kecil di dalam kotak; casing tidak ada.",
+    "ja": "小さな XIAO ESP32-S3 + Wio-SX1262 キット。medic がこれを作ります（RTNode-2400）。箱には小さなアンテナが入っていますが、ケースは入っていません。",
+    "pl": "Malutki zestaw XIAO ESP32-S3 + Wio-SX1262. Medic go buduje (RTNode-2400). W pudełku jest mała antena; obudowy nie ma.",
+    "ru": "Крошечный набор XIAO ESP32-S3 + Wio-SX1262. Medic его собирает (RTNode-2400). В коробке есть небольшая антенна, корпуса нет.",
+    "sv": "Det pyttelilla kitet XIAO ESP32-S3 + Wio-SX1262. Medicen bygger det (RTNode-2400). En liten antenn följer med i kartongen; någon låda gör det inte."
+  },
+  "Transport node": {
+    "de": "Transportknoten",
+    "es": "Nodo de transporte",
+    "fr": "Nœud de transport",
+    "id": "Node transport",
+    "ja": "トランスポートノード",
+    "pl": "Węzeł transportowy",
+    "ru": "Транспортный узел",
+    "sv": "Transportnod"
+  },
+  "Transport node. The backbone.": {
+    "de": "Transportknoten. Das Rückgrat.",
+    "es": "Nodo de transporte. La columna vertebral.",
+    "fr": "Nœud de transport. L'ossature.",
+    "id": "Node transport. Tulang punggung.",
+    "ja": "トランスポートノード。幹線です。",
+    "pl": "Węzeł transportowy. Szkielet sieci.",
+    "ru": "Транспортный узел. Основа сети.",
+    "sv": "Transportnod. Ryggraden."
+  },
+  "Two things are checked before it will start, and it says which it is waiting on. FIRST the node itself: Node Medic pings it, and if it does not answer it says so and goes no further — there is nothing to be learned by walking away from a box that is already silent. THEN a satellite fix, because distance is the whole measurement and with no GPS the walk would ping away for an hour and record nothing. Stand at the node, in the open, and wait for the start button to appear.": {
+    "de": "Zwei Dinge werden geprüft, bevor er startet, und er sagt, auf welches er wartet. ZUERST der Knoten selbst: Node Medic pingt ihn an, und antwortet er nicht, sagt er das und geht nicht weiter — es gibt nichts zu lernen, wenn man sich von einer Kiste entfernt, die schon still ist. DANN ein Satellitenfix, denn die Entfernung ist die ganze Messung, und ohne GPS würde der Gang eine Stunde lang pingen und nichts aufzeichnen. Stell dich an den Knoten, im Freien, und warte, bis die Start-Taste erscheint.",
+    "es": "Antes de empezar se comprueban dos cosas, y te dice cuál está esperando. PRIMERO el propio nodo: Node Medic le hace ping y, si no responde, lo dice y no sigue — no hay nada que aprender alejándose de una caja que ya está muda. DESPUÉS una fijación satelital, porque la distancia es toda la medición y sin GPS el recorrido haría ping durante una hora sin registrar nada. Quédate junto al nodo, a cielo abierto, y espera a que aparezca el botón de inicio.",
+    "fr": "Deux choses sont vérifiées avant le départ, et il indique laquelle il attend. D'ABORD le nœud lui-même : Node Medic le pingue et, s'il ne répond pas, il le dit et n'ira pas plus loin — il n'y a rien à apprendre en s'éloignant d'un boîtier déjà muet. ENSUITE un fix satellite, car la distance est toute la mesure et sans GPS la marche pinguerait pendant une heure sans rien enregistrer. Tenez-vous près du nœud, à découvert, et attendez que le bouton de départ apparaisse.",
+    "id": "Dua hal diperiksa sebelum ia mulai, dan ia memberi tahu mana yang ditunggu. PERTAMA node itu sendiri: Node Medic me-ping-nya, dan jika tidak menjawab ia mengatakannya dan tidak melangkah lebih jauh — tidak ada yang bisa dipelajari dengan berjalan menjauh dari kotak yang sudah bisu. LALU fix satelit, karena jarak adalah seluruh pengukurannya dan tanpa GPS jalan ini akan terus me-ping selama satu jam tanpa mencatat apa pun. Berdirilah di dekat node, di tempat terbuka, dan tunggu tombol mulai muncul.",
+    "ja": "開始前に 2 つのことを確認し、どちらを待っているかを表示します。「まず」ノードそのもの：Node Medic が ping を送り、応答がなければそう告げて先へ進みません — すでに黙っている箱から歩いて離れても、学べることは何もないからです。「次に」衛星フィックス：距離こそが測定のすべてで、GPS がなければ 1 時間 ping を打ち続けて何も記録できないからです。ノードのそばの開けた場所に立ち、開始ボタンが現れるのを待ってください。",
+    "pl": "Przed startem sprawdzane są dwie rzeczy i widać, na którą czeka. NAJPIERW sam węzeł: Node Medic go pinguje, a jeśli nie odpowiada, mówi o tym i nie idzie dalej — nie ma czego się uczyć, odchodząc od pudełka, które już milczy. POTEM fiks satelitarny, bo odległość to cały pomiar, a bez GPS obchód pingowałby godzinę i nic nie zapisał. Stań przy węźle, na otwartej przestrzeni, i poczekaj, aż pojawi się przycisk startu.",
+    "ru": "Перед стартом проверяются две вещи, и он говорит, какой из них ждёт. СНАЧАЛА сам узел: Node Medic пингует его, и если ответа нет, сообщает об этом и дальше не идёт — нечему учиться, уходя от коробки, которая уже молчит. ЗАТЕМ спутниковая фиксация, потому что расстояние — это всё измерение, и без GPS обход час посылал бы пинги и ничего не записал. Встаньте у узла, на открытом месте, и дождитесь появления кнопки старта.",
+    "sv": "Två saker kontrolleras innan den startar, och den säger vilken den väntar på. FÖRST noden själv: Node Medic pingar den, och svarar den inte säger den det och går inte vidare — det finns inget att lära av att gå bort från en låda som redan är tyst. SEDAN en satellitfix, för avståndet är hela mätningen och utan GPS skulle vandringen pinga i en timme och inte registrera något. Stå vid noden, i det fria, och vänta på att startknappen dyker upp."
+  },
+  "Use it BEFORE you commit to a site: to find out whether a spot you like can hear the node you already have, to check what a new antenna really bought you, or to prove a gap is real before building a node to fill it. Every ping it banks — the answers and the silences both — feeds the medic's own range model, so the next walk you do makes the advice on the map better.": {
+    "de": "Nutze ihn, BEVOR du dich auf einen Standort festlegst: um herauszufinden, ob ein Platz, der dir gefällt, den Knoten hört, den du schon hast, um zu prüfen, was eine neue Antenne dir wirklich gebracht hat, oder um zu beweisen, dass eine Lücke echt ist, bevor du einen Knoten baust, der sie füllt. Jeder Ping, den er verbucht — Antworten wie Schweigen — speist das eigene Reichweitenmodell des Medic, sodass dein nächster Gang die Ratschläge auf der Karte besser macht.",
+    "es": "Úsalo ANTES de comprometerte con un sitio: para saber si un lugar que te gusta puede oír el nodo que ya tienes, para comprobar qué te dio realmente una antena nueva, o para demostrar que un hueco es real antes de construir un nodo que lo cubra. Cada ping que registra — las respuestas y los silencios por igual — alimenta el modelo de alcance propio del medic, así que el siguiente recorrido que hagas mejora los consejos del mapa.",
+    "fr": "Utilisez-la AVANT de vous engager sur un site : pour savoir si un endroit qui vous plaît entend le nœud que vous avez déjà, pour vérifier ce qu'une nouvelle antenne vous a vraiment apporté, ou pour prouver qu'un trou est réel avant de construire un nœud pour le combler. Chaque ping qu'elle enregistre — les réponses comme les silences — nourrit le modèle de portée du medic, de sorte que la prochaine marche améliore les conseils affichés sur la carte.",
+    "id": "Gunakan SEBELUM Anda memutuskan sebuah lokasi: untuk mengetahui apakah tempat yang Anda sukai bisa mendengar node yang sudah Anda punya, untuk memeriksa apa yang benar-benar diberikan antena baru, atau untuk membuktikan bahwa sebuah celah itu nyata sebelum membangun node untuk mengisinya. Setiap ping yang dicatatnya — jawaban maupun kesunyian — mengisi model jangkauan milik medic sendiri, sehingga jalan berikutnya membuat saran di peta lebih baik.",
+    "ja": "設置場所を決める「前」に使ってください：気に入った場所から既存のノードが聞こえるかを知るため、新しいアンテナが実際にどれだけ効いたかを確かめるため、あるいは穴を埋めるノードを作る前にその穴が本物だと証明するためです。記録された ping の一つひとつ — 応答も沈黙も — が medic 自身の到達距離モデルに蓄えられ、次に歩くときには地図上の助言がより良くなります。",
+    "pl": "Użyj go, ZANIM zdecydujesz się na miejsce: by sprawdzić, czy miejsce, które ci się podoba, słyszy węzeł, który już masz, by zobaczyć, co naprawdę dała nowa antena, albo by udowodnić, że dziura w zasięgu jest prawdziwa, zanim zbudujesz węzeł, który ją wypełni. Każdy zapisany ping — odpowiedzi i cisza jednakowo — zasila własny model zasięgu medica, więc kolejny obchód poprawia wskazówki na mapie.",
+    "ru": "Используйте его ДО того, как остановитесь на месте: чтобы узнать, слышит ли понравившаяся точка узел, который у вас уже есть, проверить, что реально дала новая антенна, или доказать, что дыра в покрытии настоящая, прежде чем строить узел, который её закроет. Каждый записанный пинг — и ответы, и молчание — пополняет собственную модель дальности medic, так что следующий ваш обход делает подсказки на карте лучше.",
+    "sv": "Använd den INNAN du binder dig till en plats: för att ta reda på om ett ställe du gillar kan höra noden du redan har, för att kolla vad en ny antenn verkligen gav dig, eller för att bevisa att en lucka är verklig innan du bygger en nod för att fylla den. Varje ping den bokför — både svaren och tystnaderna — matar medicens egen räckviddsmodell, så nästa vandring du gör förbättrar råden på kartan."
+  },
+  "Which device does which job?": {
+    "de": "Welches Gerät macht welche Aufgabe?",
+    "es": "¿Qué dispositivo hace qué trabajo?",
+    "fr": "Quel appareil fait quel travail ?",
+    "id": "Perangkat mana mengerjakan apa?",
+    "ja": "どの機器がどの役割？",
+    "pl": "Które urządzenie robi co?",
+    "ru": "Какое устройство что делает?",
+    "sv": "Vilken enhet gör vilket jobb?"
+  }
+}

@@ -39,7 +39,7 @@ SOCKET_PATH = "/tmp/nodemedic-control.sock"
 #: you go?") presses PROBE's Run button: a READ-ONLY diagnostic of the board
 #: on USB — it never fixes, flashes or wipes, and it refuses while a run is
 #: already going.
-VERBS = ("ping", "list", "open", "node", "home", "current", "map", "probe")
+VERBS = ("ping", "list", "open", "node", "home", "current", "map", "probe", "wizard")
 REPLY_TIMEOUT_S = 8.0
 
 
@@ -52,9 +52,9 @@ def parse_command(line: str) -> Tuple[str, Optional[str]]:
     if verb not in VERBS:
         return "", None
     arg = parts[1].strip() if len(parts) > 1 else None
-    if verb in ("open", "node") and not arg:
+    if verb in ("open", "node", "wizard") and not arg:
         return "", None
-    if verb not in ("open", "node") and arg:
+    if verb not in ("open", "node", "wizard") and arg:
         return "", None
     return verb, arg
 
@@ -147,7 +147,7 @@ class ControlServer:
         verb, arg = parse_command(line)
         if not verb:
             return ("err usage: ping | list | open <screen> | node <hash-prefix> | "
-                    "home | current | map | probe")
+                    "home | current | map | probe | wizard <step-index>")
         if verb == "ping":
             return "ok"
         return self._on_main(verb, arg)
@@ -211,6 +211,25 @@ class ControlServer:
                 return "err " + why
             app._open_node_detail({"identity": h})
             return f"ok node {h}"
+        if verb == "wizard":
+            # Jump the setup walkthrough to one step, for looking at it on the
+            # glass (tour layout, 2026-10-05). The wizard's own navigation
+            # stays the only path an operator has; this bypasses nothing it
+            # protects — there are no secrets on a step reached this way.
+            scr = getattr(app, "setup_screen", None)
+            if scr is None:
+                return "err no setup screen"
+            try:
+                index = int(arg or "0")
+            except ValueError:
+                return f"err wizard wants a step index, not {arg!r}"
+            steps = scr._steps()
+            if not 0 <= index < len(steps):
+                return f"err step index out of range 0..{len(steps) - 1}"
+            scr._i = index
+            scr._render()
+            app.switch_mode("setup")
+            return f"ok wizard {index} {steps[index]['key']}"
         if verb == "probe":
             scr = getattr(app, "probe_screen", None)
             if scr is None:

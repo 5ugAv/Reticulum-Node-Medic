@@ -19,6 +19,7 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from provisioning import storage
 from ui.map_tiles import MAPS_DIR
 from workflows.updater import RNODE_UPDATE_DIR
@@ -75,16 +76,16 @@ class StorageScreen(BoxLayout):
         self.padding = dp(16)
         self.spacing = dp(8)
         self._history_bytes = history_bytes
-        self.add_widget(_line("Storage usage", bold=True, size="22sp", h=40))
+        self.add_widget(_line(tr("Storage usage"), bold=True, size="22sp", h=40))
 
-        self._summary = _line("Reading…", size="15sp", color="text_secondary", h=24)
+        self._summary = _line(tr("Reading…"), size="15sp", color="text_secondary", h=24)
         self.add_widget(self._summary)
         self._disk_bar = _Bar(0.0, color="accent")
         self.add_widget(self._disk_bar)
         self._free = _line("", size="14sp", color="green", h=24)
         self.add_widget(self._free)
 
-        self.add_widget(_line("What's using space", bold=True, size="15sp",
+        self.add_widget(_line(tr("What's using space"), bold=True, size="15sp",
                               color="accent", h=28))
         self._rows = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
         self._rows.bind(minimum_height=self._rows.setter("height"))
@@ -101,26 +102,26 @@ class StorageScreen(BoxLayout):
             except Exception:
                 hist = 0
             cats = [
-                ("Map tiles", storage.path_size(MAPS_DIR)),
-                ("Beacon history", hist),
-                ("Firmware assets",
+                (tr("Map tiles"), storage.path_size(MAPS_DIR)),
+                (tr("Beacon history"), hist),
+                (tr("Firmware assets"),
                  storage.paths_size([_FIRMWARE_ASSETS, RNODE_UPDATE_DIR])),
                 # the maps live INSIDE the medic dir and have their own row
                 # above — counted twice, "Registry & fleet" was the biggest bar
                 # on every medic with an offline map (readiness sweep, 2026-10-03)
-                ("Registry & fleet", max(0, storage.path_size(_MEDIC_DIR)
-                                         - storage.path_size(MAPS_DIR))),
-                ("Logs", storage.path_size(_KIVY_LOGS)),
+                (tr("Registry & fleet"), max(0, storage.path_size(_MEDIC_DIR)
+                                             - storage.path_size(MAPS_DIR))),
+                (tr("Logs"), storage.path_size(_KIVY_LOGS)),
             ]
             Clock.schedule_once(lambda dt: self._show(disk, cats), 0)
         threading.Thread(target=work, daemon=True).start()
 
     def _show(self, disk, cats):
         fs = storage.format_size
-        self._summary.text = (f"{fs(disk['used'])} of {fs(disk['total'])} used "
-                              f"({disk['percent']}%)")
+        self._summary.text = tr("{used} of {total} used ({percent}%)").format(
+            used=fs(disk['used']), total=fs(disk['total']), percent=disk['percent'])
         self._disk_bar.set_frac(disk["percent"] / 100.0)
-        self._free.text = f"{fs(disk['free'])} free"
+        self._free.text = tr("{free} free").format(free=fs(disk['free']))
         self._rows.clear_widgets()
         biggest = max((b for _, b in cats), default=1) or 1
         for label, nbytes in sorted(cats, key=lambda c: -c[1]):

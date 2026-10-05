@@ -21,7 +21,7 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
-from ui.i18n import tr  # i18n: wrapped — the shared "With thanks" heading
+from ui.i18n import tr  # i18n: wrapped — every literal this screen draws
 from provisioning import about
 
 
@@ -55,22 +55,22 @@ class AboutScreen(BoxLayout):
         self.orientation = "vertical"
         self.padding = dp(16)
         self.spacing = dp(10)
-        self.add_widget(_line("About", bold=True, size="22sp", h=40))
+        self.add_widget(_line(tr("About"), bold=True, size="22sp", h=40))
 
         scroll = ScrollView()
         col = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(10))
         col.bind(minimum_height=col.setter("height"))
 
-        self._version_box, self._version_v = _field("Software version", "reading…",
-                                                     mono=True)
+        self._version_box, self._version_v = _field(tr("Software version"),
+                                                     tr("reading…"), mono=True)
         col.add_widget(self._version_box)
-        self._tests_box, self._tests_v = _field("Test suite", "…")
+        self._tests_box, self._tests_v = _field(tr("Test suite"), "…")
         col.add_widget(self._tests_box)
-        self._uptime_box, self._uptime_v = _field("Uptime", "…")
+        self._uptime_box, self._uptime_v = _field(tr("Uptime"), "…")
         col.add_widget(self._uptime_box)
-        self._license_box, self._license_v = _field("Licence", about.LICENSE)
+        self._license_box, self._license_v = _field(tr("Licence"), about.LICENSE)
         col.add_widget(self._license_box)
-        self._repo_box, self._repo_v = _field("Repository", "…", mono=True)
+        self._repo_box, self._repo_v = _field(tr("Repository"), "…", mono=True)
         col.add_widget(self._repo_box)
 
         # The same thanks + support page the front page's cross opens

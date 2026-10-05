@@ -158,6 +158,7 @@ class BirthGuideScreen(BoxLayout):
         self._adopt_air_fn = adopt_air_fn     # (key,name,type,board,fw) -> enroll kin
         self._path = None
         self._i = 0
+        self._prelude_shown = 0      # antenna+detect screens shown this lap (#71)
         self._current = None
         self._node_name = ""
         self.reset()
@@ -171,6 +172,7 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self._path = None
         self._i = 0
+        self._prelude_shown = 0      # antenna+detect screens shown this lap (#71)
         self._node_name = ""
         self._pair_checked = False
         self._board_key = ""
@@ -309,6 +311,9 @@ class BirthGuideScreen(BoxLayout):
         self._stop_current()
         self.clear_widgets()
         self._back_action = self._render_intro   # antenna -> back to the chooser
+        # Counted into every later step's number: the name screen used to
+        # restart at 'Step 1 of 7' after this pair's 'Step 2 of 2' (ledger #71).
+        self._prelude_shown = 2
         anim = ConnectAntennaAnim()
         # index=0 of 2, paired with _render_detect's index=1 of 2 below. Both
         # used to claim "Step 1 of 1" — a coherent two-screen sequence
@@ -1381,7 +1386,7 @@ class BirthGuideScreen(BoxLayout):
         import threading
 
         def work():
-            ok, msg = False, "Adoption failed."
+            ok, msg = False, tr("Adoption failed.")
             try:
                 from ui.adopt_live import make_adopt_workflow
                 wf = make_adopt_workflow(board_port=c.get("_port"),
@@ -1390,7 +1395,7 @@ class BirthGuideScreen(BoxLayout):
                 ok = wf.succeeded
                 msg = wf.results[-1].message if wf.results else msg
             except Exception as e:      # noqa: BLE001
-                ok, msg = False, f"Adoption failed: {e}"
+                ok, msg = False, tr("Adoption failed: {err}").format(err=e)
             from kivy.clock import Clock
             Clock.schedule_once(lambda _d: self._render_adopt_done(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
@@ -1431,6 +1436,7 @@ class BirthGuideScreen(BoxLayout):
         # (2026-08-30: "asked to select build and attach board twice").
         self._stop_current()
         self.clear_widgets()
+        self._prelude_shown = 0
         self._current = None
         self._back_action = None   # the chooser is the birth root now -> home
         wrap = BoxLayout(orientation="vertical", padding=dp(22), spacing=dp(16))
@@ -1546,7 +1552,7 @@ class BirthGuideScreen(BoxLayout):
             if not why:
                 return paths, ""
             boards = det.get("boards") or []
-            name = boards[0].display_name if len(boards) == 1 else "this board"
+            name = boards[0].display_name if len(boards) == 1 else tr("this board")
             if chip == "nrf52840" and not det.get("board_key"):
                 # The medic could not tell WHICH nRF52 this is — that is not
                 # the same as knowing it has no build, and a T-Echo running
@@ -1649,6 +1655,7 @@ class BirthGuideScreen(BoxLayout):
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
         self._back_action = self._render_over_air_list
+        self._prelude_shown = 0
         wrap = BoxLayout(orientation="vertical", padding=dp(20), spacing=dp(12))
         wrap.add_widget(_line(tr("Adopt over LoRa"), "24sp", bold=True, h=36))
         wrap.add_widget(_line(tr("Enrol this node as kin from its mesh beacon — no "
@@ -1718,14 +1725,15 @@ class BirthGuideScreen(BoxLayout):
             self._run_over_air(c, name, start)
 
     def _run_over_air(self, c, name, location):
-        ok, msg = False, "Adoption failed."
+        ok, msg = False, tr("Adoption failed.")
         try:
             if self._adopt_air_fn is not None:
                 self._adopt_air_fn(c.get("key"), name, c.get("node_type", "rtnode2400"),
                                    c.get("board"), c.get("firmware"), location)
-                ok, msg = True, f"{name} adopted as kin over LoRa — now in VITALS."
+                ok, msg = True, tr("{name} adopted as kin — now in "
+                                   "VITALS.").format(name=name)
         except Exception as e:      # noqa: BLE001
-            ok, msg = False, f"Adoption failed: {e}"
+            ok, msg = False, tr("Adoption failed: {err}").format(err=e)
         self._render_adopt_done(ok, msg)
 
     def _mitosis_button(self):
@@ -1981,7 +1989,8 @@ class BirthGuideScreen(BoxLayout):
         # (breaker audit, 2026-09-13).
         warn = getattr(self, "_name_warning", "")
         blocked = getattr(self, "_name_blocked", False)
-        step = WizardStep(index=0, total=total, title=tr("Name this node"),
+        step = WizardStep(index=getattr(self, "_prelude_shown", 0), total=total,
+                          title=tr("Name this node"),
                           body=body, warning=warn,
                           input_widget=ti,
                           next_text=(tr("Use it anyway  →")
@@ -2149,7 +2158,8 @@ class BirthGuideScreen(BoxLayout):
             choices.add_widget(bt_line)
         self._share_show()                   # paint the resting position
 
-        step = WizardStep(index=1, total=total, title=s["title"],
+        step = WizardStep(index=getattr(self, "_prelude_shown", 0) + 1, total=total,
+                          title=s["title"],
                           body="", hint=s["hint"], warning=s["warning"],
                           input_widget=choices,
                           on_next=self._prelude_next,
@@ -2653,7 +2663,11 @@ class BirthGuideScreen(BoxLayout):
         position to publish), and counting it there promised a screen that
         never comes.
         """
-        return 1 + (1 if self._path in ("radio", "pi") else 0)
+        # Plus the antenna/detect pair when this lap showed it: the numbering
+        # then runs on from 'Step 2 of 2' instead of starting again (#71). The
+        # total grows once the path is known, which is the truth of it.
+        return (getattr(self, "_prelude_shown", 0) + 1
+                + (1 if self._path in ("radio", "pi") else 0))
 
     def _counter(self, i=None):
         """``(index, total)`` for the step counter — counting only screens
@@ -3320,6 +3334,9 @@ class BirthGuideScreen(BoxLayout):
             _bd = get_board(key)
             if _bd is not None and board_blocker(_bd):
                 name = name + "\n" + tr("(not yet)")   # tapping it says why
+            elif _bd is not None and not _bd.proven:
+                # never birthed through Node Medic on real hardware (#49)
+                name = name + "\n" + tr("(untested)")
             b = Button(text=name, font_size="17sp", bold=True,
                        background_normal="",
                        background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
@@ -3644,7 +3661,7 @@ class BirthGuideScreen(BoxLayout):
         board_name = (self._board_display_name(getattr(self, "_board_key", ""))
                       if getattr(self, "_board_key", "") else "")
         pi_name = next((n for k, n in PI_HOSTS
-                        if k == getattr(self, "_pi_key", "")), "this Pi")
+                        if k == getattr(self, "_pi_key", "")), tr("this Pi"))
 
         wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
         # WRAPPED FOR TRANSLATION. This screen and the "recognised from a
@@ -3668,7 +3685,7 @@ class BirthGuideScreen(BoxLayout):
         col.bind(minimum_height=col.setter("height"))
         rows = []
         if board_name:
-            rows.append(("Radio", board_name,
+            rows.append((tr("Radio"), board_name,
                          board_images.image_for(
                              getattr(self, "_board_key", "")) or ""))
         rows.append(("Raspberry Pi", pi_name,
@@ -3693,7 +3710,7 @@ class BirthGuideScreen(BoxLayout):
         # "Not right — change" IS the way back, so it is the back control
         # itself, named for this screen. One exit per screen, always the same
         # one — see _back_row.
-        btns = self._back_row(label="←  Not right — change", height=56)
+        btns = self._back_row(label=tr("←  Not right — change"), height=56)
         btns.spacing = dp(10)
         # _back_row pads with a stretchy spacer so Back sits alone on the left.
         # Here the primary action takes that room instead — left in, it halved
@@ -3816,7 +3833,7 @@ class BirthGuideScreen(BoxLayout):
         from workflows.power_compat import warning_lines
         from ui.screens.birth_screen import PI_HOSTS
         pi_name = next((n for k, n in PI_HOSTS
-                        if k == getattr(self, "_pi_key", "")), "this Pi")
+                        if k == getattr(self, "_pi_key", "")), tr("this Pi"))
         board_name = self._board_display_name(getattr(self, "_board_key", ""))
         lines = warning_lines(verdict, pi_name, board_name,
                               getattr(self, "_pi_key", ""),
