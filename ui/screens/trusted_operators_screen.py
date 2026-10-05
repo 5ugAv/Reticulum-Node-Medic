@@ -123,22 +123,40 @@ class TrustedOperatorsScreen(BoxLayout):
             # unit used to offer only the green button — no way to say no
             # (operator, 2026-09-21). Forgetting is not trusting: heard again,
             # the unit comes back here needing approval.
-            row = BoxLayout(orientation="horizontal", size_hint_y=None,
-                            height=dp(44), spacing=dp(8))
-            row.add_widget(self._btn(tr("Approve — trust this unit"), "green",
-                                     lambda: self._approve(u)))
-            row.add_widget(self._btn(tr("Forget this unit"), "red",
-                                     lambda: self._confirm_forget(u)))
-            card.add_widget(row)
+            card.add_widget(self._pair_row(
+                self._btn(tr("Approve — trust this unit"), "green",
+                          lambda: self._approve(u)),
+                self._btn(tr("Forget this unit"), "red",
+                          lambda: self._confirm_forget(u))))
         return card
 
     def _btn(self, text, color, on_tap):
         b = Button(text=text, size_hint_y=None, height=dp(44), bold=True,
-                   font_size="14sp", background_normal="",
+                   font_size="14sp", background_normal="", halign="center",
+                   valign="middle",
                    background_color=theme.hex_to_rgba(theme.COLORS[color]),
                    color=theme.hex_to_rgba(theme.COLORS["background"]))
+        # The caption wraps inside the button and the button grows to it: in
+        # French, German, Russian and Swedish "Approve — trust this unit" ran
+        # past the edges of a half-row button (2026-10-05).
+        b.bind(width=lambda i, w: setattr(i, "text_size", (max(0, w - dp(16)), None)),
+               texture_size=lambda i, ts: setattr(i, "height", max(dp(44), ts[1] + dp(16))))
         b.bind(on_release=lambda *_: on_tap())
         return b
+
+    @staticmethod
+    def _pair_row(left, right):
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(44), spacing=dp(8))
+        row.add_widget(left)
+        row.add_widget(right)
+
+        def _grow(*_):
+            row.height = max(left.height, right.height)
+        left.bind(height=_grow)
+        right.bind(height=_grow)
+        _grow()
+        return row
 
     def _approve(self, u):
         trust.trust(u["hash"])

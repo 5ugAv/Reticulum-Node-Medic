@@ -52,10 +52,19 @@ class _Dots(BoxLayout):
                 # top of the "Step 4 of 10" text above it.
                 e = Ellipse(size=(dp(10), dp(10)))
             w._e = e
-            w.bind(pos=lambda wi, *_: setattr(wi._e, "pos",
-                   (wi.center_x - dp(5), wi.center_y - dp(5))),
-                   size=lambda wi, *_: setattr(wi._e, "size", (dp(10), dp(10))))
+            w.bind(pos=self._place, size=self._place)
             self.add_widget(w)
+
+    @staticmethod
+    def _place(wi, *_):
+        # Re-centred on BOTH events, from the raw x/y/width/height - never
+        # center_x/center_y. Inside the size dispatch those aliases still hold
+        # the value cached for the default 100 px height, so the ellipse landed
+        # a full row too high, over the counter, and nothing moved it again
+        # unless the screen happened to slide in (glass, 2026-10-05).
+        wi._e.size = (dp(10), dp(10))
+        wi._e.pos = (wi.x + (wi.width - dp(10)) / 2.0,
+                     wi.y + (wi.height - dp(10)) / 2.0)
 
 
 class WizardStep(BoxLayout):
@@ -199,9 +208,14 @@ class WizardStep(BoxLayout):
         if show_back:
             self.back_btn = Button(text=back_text, font_size=theme.font_sp("18sp"),
                                    bold=True,
-                                   size_hint_x=0.4, background_normal="",
+                                   size_hint_x=None, width=dp(120), background_normal="",
                                    background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
                                    color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+            # Sized to its caption, never under 120 dp: with the tour's third
+            # button in the row a 0.4 share shrank to 116 px and "←  Kembali"
+            # / "←  Tillbaka" ran past the button's edges (2026-10-05).
+            self.back_btn.bind(texture_size=lambda b, ts: setattr(
+                b, "width", max(dp(120), ts[0] + dp(28))))
             self.back_btn.bind(on_release=lambda *_: self._on_back and self._on_back())
         self.next_btn = Button(text=next_text, font_size=theme.font_sp("20sp"),
                                bold=True,

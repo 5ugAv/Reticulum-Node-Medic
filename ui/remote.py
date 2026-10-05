@@ -226,9 +226,11 @@ class ControlServer:
             steps = scr._steps()
             if not 0 <= index < len(steps):
                 return f"err step index out of range 0..{len(steps) - 1}"
+            # switch_mode("setup") resets the walkthrough to step 1 on every
+            # entry, so the jump has to come AFTER it or it is undone at once.
+            app.switch_mode("setup")
             scr._i = index
             scr._render()
-            app.switch_mode("setup")
             return f"ok wizard {index} {steps[index]['key']}"
         if verb == "probe":
             scr = getattr(app, "probe_screen", None)

@@ -339,6 +339,9 @@ class SettingsScreen(BoxLayout):
                          background_normal="",
                          background_color=theme.hex_to_rgba(theme.COLORS["accent"]),
                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+        # Wide enough for its caption in every language (Russian ran past the
+        # 110 dp box, 2026-10-05); never narrower than the English width.
+        preview.bind(texture_size=lambda b, ts: setattr(b, "width", max(dp(110), ts[0] + dp(24))))
         preview.bind(on_release=lambda *_: (self._on_preview_screensaver
                                             and self._on_preview_screensaver()))
         drow.add_widget(minus)

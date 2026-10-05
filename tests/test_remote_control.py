@@ -89,3 +89,43 @@ def test_a_socket_navigation_wakes_the_screensaver_first():
     i = src.index("def _apply")
     body = src[i:src.index('if verb == "list"')]
     assert "_dismiss_screensaver()" in body and "_reset_idle()" in body
+
+
+def test_wizard_verb_jump_survives_the_reset_on_entry():
+    """switch_mode("setup") resets the walkthrough to step 1 on EVERY entry
+    (a medic handed on must never show the last operator's choices). The
+    socket's jump therefore has to land AFTER that reset — on the glass,
+    2026-10-05, every "wizard 9..18" shot came back as step 1 of 20."""
+    import types
+    calls = []
+    steps = [{"key": f"s{i}"} for i in range(20)]
+
+    class Setup:
+        _i = 0
+
+        def _steps(self):
+            return steps
+
+        def reset(self):
+            self._i = 0
+            calls.append("reset")
+
+        def _render(self):
+            calls.append(f"render:{self._i}")
+
+    scr = Setup()
+
+    def switch_mode(mode):
+        calls.append(mode)
+        if mode == "setup":
+            scr.reset()
+
+    app = types.SimpleNamespace(sm=types.SimpleNamespace(screens=[], current="home"),
+                                setup_screen=scr, switch_mode=switch_mode,
+                                _reset_idle=lambda: None)
+    sock = R.ControlServer.__new__(R.ControlServer)
+    sock.app = app
+    assert sock._apply("wizard", "9") == "ok wizard 9 s9"
+    assert scr._i == 9, calls
+    assert calls[-1] == "render:9" and "setup" in calls and calls.index("setup") < calls.index("render:9")
+    assert sock._apply("wizard", "20").startswith("err step index out of range")
