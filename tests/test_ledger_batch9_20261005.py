@@ -76,7 +76,7 @@ def test_clone_buttons_and_the_language_toast():
     m = src("ui/screens/mitosis_screen.py")
     assert 'self.pw_btn.text = tr("Next →")' in m
     wifi = m[m.index("def _show_stage_wifi"):m.index("def _wifi_continue")]
-    assert 'tr("← Back")' in wifi and "self._show_stage_password()" in wifi
+    assert 'tr("← Back")' in wifi and "self._show_stage_fleet()" in wifi   # Back = the fleet question (2026-10-06)
     l = src("ui/screens/language_screen.py")
     assert "p.dismiss(), 3.5)" not in l
 

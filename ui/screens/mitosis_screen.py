@@ -157,8 +157,8 @@ def _small_btn(text):
 #: than no counter at all. The band also carries the fact the flow never said
 #: out loud: writing the card is not the end.
 _STAGE_POS = {
-    "preflight": (1, 1, 6), "insert": (1, 2, 6), "name": (1, 3, 6),
-    "password": (1, 4, 6), "wifi": (1, 5, 6), "write": (1, 6, 6),
+    "preflight": (1, 1, 7), "insert": (1, 2, 7), "name": (1, 3, 7),
+    "password": (1, 4, 7), "fleet": (1, 5, 7), "wifi": (1, 6, 7), "write": (1, 7, 7),
     "written": (2, 1, 4), "power": (2, 2, 4), "cable": (2, 3, 4),
     "clone": (2, 4, 4),
 }
@@ -621,7 +621,7 @@ class MitosisScreen(BoxLayout):
         if self.pw_btn.disabled:
             return
         self._chosen_password = self.pw1.text
-        self._show_stage_wifi()
+        self._show_stage_fleet()
 
     # -- stage 3b: the WiFi gift (typed, never silently read) ----------------
     # The first clone shipped an EMPTY WiFi password: NetworkManager refuses
@@ -629,10 +629,53 @@ class MitosisScreen(BoxLayout):
     # later as a clone that joined nothing ("no-secrets", HAWKEYE 2026-08-25).
     # Assume nothing: ASK the keeper.
 
+    def _show_stage_fleet(self):
+        """Bring the fleet along, or start fresh? (the keeper, 2026-10-06:
+        "there should be an option for that"). The registry and the roster
+        are the fleet; the maps and the lineage travel either way."""
+        self._clear()
+        self._stage_header("fleet")
+        title = _label(tr("Bring your fleet along?"), bold=True, size="22sp")
+        title.size_hint_y, title.height = None, dp(34)
+        self.add_widget(title)
+        try:
+            from monitor.kin_roster import load_roster
+            n = len(load_roster())
+        except Exception:                                  # noqa: BLE001
+            n = 0
+        body = _label(
+            tr("Copy this medic's nodes — their names, locations and history — "
+               "so the new medic's VITALS and map show them from its first boot. "
+               "Or start fresh: an empty fleet for a medic going to someone "
+               "else. Maps and the family tree travel either way.")
+            + (("\n\n" + tr("This medic knows {n} node(s).").format(n=n)) if n else ""),
+            color="text_secondary", size="14sp")
+        grow_to_text(body)
+        self.add_widget(body)
+        copy_btn = Button(text=tr("Bring my fleet →"),
+                          size_hint_y=None, height=dp(56), font_size="19sp",
+                          background_normal="",
+                          background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                          color=theme.hex_to_rgba(theme.COLORS["background"]))
+        copy_btn.bind(on_release=lambda *_: self._fleet_continue(False))
+        self.add_widget(copy_btn)
+        fresh = _small_btn(tr("Start fresh — an empty fleet →"))
+        fresh.bind(on_release=lambda *_: self._fleet_continue(True))
+        self.add_widget(fresh)
+        back = _small_btn(tr("← Back"))
+        back.bind(on_release=lambda *_: self._show_stage_password())
+        self.add_widget(back)
+        from kivy.uix.widget import Widget
+        self.add_widget(Widget())
+
+    def _fleet_continue(self, fresh):
+        self._fresh_fleet = bool(fresh)
+        self._show_stage_wifi()
+
     def _show_stage_wifi(self):
         self._clear()
         self._stage_header("wifi")
-        title = _label(tr("Share your Wi-Fi with it?"), bold=True, size="22sp")
+        title = _label(tr("Which Wi-Fi should it join?"), bold=True, size="22sp")
         title.size_hint_y, title.height = None, dp(34)
         self.add_widget(title)
         from workflows.mitosis_card import medic_wifi_credentials
@@ -643,15 +686,39 @@ class MitosisScreen(BoxLayout):
             pass
         body = _label(
             (tr("This medic is on '{ssid}'. Type that network's password and "
-                "the new medic joins it by itself — or skip, and it lives on "
-                "the cable.").format(ssid=ssid)) if ssid else
-            tr("Type your Wi-Fi network's name and password, or skip and the "
-               "new medic lives on the cable."),
+                "the new medic joins it by itself. Or change the name to any "
+                "other network — a phone hotspot works — or skip, and it lives "
+                "on the cable.").format(ssid=ssid)) if ssid else
+            tr("Type the name and password of the Wi-Fi the new medic should "
+               "join — a phone hotspot works — or skip, and it lives on the "
+               "cable."),
             color="text_secondary", size="14sp")
         grow_to_text(body)
         self.add_widget(body)
         from kivy.uix.textinput import TextInput
         from ui.onscreen_keyboard import bind_field
+        if ssid:
+            # TWO PLAIN CHOICES (the keeper, 2026-10-06): this medic's own
+            # network, or another one typed in — the fields below follow.
+            pick = BoxLayout(orientation="horizontal", size_hint_y=None,
+                             height=dp(48), spacing=dp(8))
+            same = _small_btn(tr("Use this medic's Wi-Fi"))
+            other = _small_btn(tr("A different network or a hotspot"))
+
+            def _same(*_a):
+                self._wifi_ssid_input.text = ssid
+                self._wifi_psk_input.hint_text = tr("Password for '{ssid}'").format(ssid=ssid)
+                self._wifi_psk_input.focus = True
+
+            def _other(*_a):
+                self._wifi_ssid_input.text = ""
+                self._wifi_psk_input.hint_text = tr("Wi-Fi password")
+                self._wifi_ssid_input.focus = True
+            same.bind(on_release=_same)
+            other.bind(on_release=_other)
+            pick.add_widget(same)
+            pick.add_widget(other)
+            self.add_widget(pick)
         self._wifi_ssid_input = TextInput(text=ssid, hint_text=tr("Network name"),
                                           multiline=False,
                                           font_size=theme.font_sp("18sp"),
@@ -687,7 +754,7 @@ class MitosisScreen(BoxLayout):
         skip.bind(on_release=lambda *_: self._wifi_continue(False))
         self.add_widget(skip)
         back = _small_btn(tr("← Back"))                       # (#131)
-        back.bind(on_release=lambda *_: self._show_stage_password())
+        back.bind(on_release=lambda *_: self._show_stage_fleet())
         self.add_widget(back)
         from kivy.uix.widget import Widget
         self.add_widget(Widget())
@@ -1388,7 +1455,8 @@ class MitosisScreen(BoxLayout):
                              daemon=True).start()
             return
         try:
-            workflow = self._workflow_factory(hostname=self._name)
+            workflow = self._workflow_factory(
+                hostname=self._name, fresh_fleet=getattr(self, "_fresh_fleet", False))
         except TypeError:                       # demo/legacy factory
             workflow = self._workflow_factory()
         if getattr(workflow, "is_blocked", False):

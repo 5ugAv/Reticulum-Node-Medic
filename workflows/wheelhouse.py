@@ -159,6 +159,24 @@ def apt_download_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
             '[ -s "$f" ] || wget -q -O "$f" "$u"; done < .uris')
 
 
+def closure_packages_command(packages=ALL_PACKAGES) -> str:
+    """Every package *packages* depend on, recursively — installed here or
+    not. ``--print-uris`` alone lists only what THIS medic lacks (7 debs on
+    2026-10-05), so a clone made with no internet could not finish its screen.
+    Fed to ``apt_download_command`` with ``--reinstall`` this names the whole
+    closure, and the clone's screen step installs from the cache alone."""
+    pk = " ".join(packages)
+    # apt-cache lists EVERY alternative of an either/or dependency (dbus-broker
+    # AND dbus-daemon), and asking apt for both at once is a conflict, so the
+    # tree is cut down to what this medic actually runs — a set that is known
+    # to install together — plus the packages themselves.
+    return (f"apt-cache depends --recurse --no-recommends --no-suggests "
+            f"--no-conflicts --no-breaks --no-replaces --no-enhances {pk} "
+            f"| grep -E '^[a-z0-9][a-z0-9.+-]*$' | sort -u > /tmp/nm-closure && "
+            f"dpkg-query -W -f='${{Package}}\\n' | sort -u | comm -12 /tmp/nm-closure - ; "
+            f"printf '%s\\n' {pk}")
+
+
 def verify_debs_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
     """Check every cached .deb against the digest apt published for it.
 
@@ -179,13 +197,21 @@ def deb_count(connection: Connection, dest: str = DEB_CACHE) -> int:
 
 
 def cache_debs(connection, packages=ALL_PACKAGES, dest: str = DEB_CACHE,
-               timeout: int = 900):
+               timeout: int = 900, closure: bool = False):
     """Cache the apt packages a clone cannot fetch for itself.
 
     Returns ``(ok, message)``. Requires internet. Needs NO root — see
-    ``apt_download_command``.
+    ``apt_download_command``. *closure* fetches the packages' whole
+    dependency tree (the keeper, 2026-10-06: "we should be able to do this
+    offline"), not only what this medic happened to lack.
     """
     connection.run(f"mkdir -p {dest}")
+    if closure:
+        code, out, err = connection.run(closure_packages_command(packages), timeout=120)
+        names = [l.strip() for l in (out or "").splitlines() if l.strip()]
+        if code != 0 or not names:
+            return False, f"could not list the dependency closure: {(err or out)[-200:]}"
+        packages = tuple(sorted(set(names) | set(packages)))
     code, out, err = connection.run(apt_download_command(packages, dest),
                                     timeout=timeout)
     if code != 0:

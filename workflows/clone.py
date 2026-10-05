@@ -261,6 +261,10 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     read), moved by scp rather than a shell heredoc (a fleet-scale registry
     overflows the kernel's single-argv ceiling and killed the whole thread
     — both found by adversarial review, 2026-08-25)."""
+    if getattr(wf, "fresh_fleet", False):
+        return StepResult("copy_monitoring_db", True,
+                          "Fresh fleet — the keeper chose to start the new medic "
+                          "without the monitoring records.", skipped=True)
     import tempfile
     payload = json.dumps(wf.registry.to_dict())
     wf.monitoring_db_json = payload
@@ -317,6 +321,10 @@ def copy_kin_roster(wf: "CloneWorkflow") -> StepResult:
     DEPLOYED LOCATION and interface links) to the clone, so the clone's VITALS +
     SCAN map show the same kin from first boot. The map TILES themselves ride the
     tool tree (assets/maps); this is the who-and-where that populates them."""
+    if getattr(wf, "fresh_fleet", False):
+        return StepResult("copy_kin_roster", True,
+                          "Fresh fleet — the keeper chose to start the new medic "
+                          "without the fleet roster.", skipped=True)
     import tempfile
     from monitor.kin_roster import load_roster
     roster = load_roster()
@@ -817,9 +825,15 @@ _CLONE_STEPS.insert(
 
 
 class CloneWorkflow:
-    def __init__(self, connection: Connection, registry: NodeRegistry):
+    def __init__(self, connection: Connection, registry: NodeRegistry,
+                 fresh_fleet: bool = False):
         self.connection = connection
         self.registry = registry
+        #: The keeper's answer to "bring your fleet along?" (Clone screen,
+        #: 2026-10-06). True = the new medic starts with an empty VITALS and
+        #: roster — for a medic going to another keeper; the maps and the
+        #: lineage still travel.
+        self.fresh_fleet = bool(fresh_fleet)
         self.steps: List[Tuple[str, Callable]] = list(_CLONE_STEPS)
         self.current_index = 0
         self.results: List[StepResult] = []
@@ -868,7 +882,7 @@ class _NotYetConnected:
         raise RuntimeError("clone step ran before find_new_medic connected")
 
 
-def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
+def make_discovering_workflow(registry: NodeRegistry, hostname: str = "", fresh_fleet: bool = False,
                               username: str = "pi") -> "CloneWorkflow":
     """A CloneWorkflow whose FIRST step finds the new medic and connects.
 
@@ -879,7 +893,7 @@ def make_discovering_workflow(registry: NodeRegistry, hostname: str = "",
     the stale-key trap that has burned every flow before this one, so the old
     pin is dropped first and the new machine's key trusted on first contact.
     """
-    wf = CloneWorkflow(_NotYetConnected(), registry)
+    wf = CloneWorkflow(_NotYetConnected(), registry, fresh_fleet=fresh_fleet)
 
     def find_new_medic(wf: "CloneWorkflow") -> StepResult:
         from provisioning.direct_link import discover_peer

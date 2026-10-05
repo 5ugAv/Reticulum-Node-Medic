@@ -79,3 +79,41 @@ def test_the_beacon_list_names_a_nameless_device_like_vitals_does():
     a = _src("ui/app.py")
     body = a[a.index("def _target_names"):a.index("def _lighthouse")]
     assert "rec._nameless_label()" in body and 'f"node {h[:8]}"' in body
+
+
+def test_the_clone_asks_about_the_fleet_and_honours_the_answer():
+    """The keeper (2026-10-06): a choice to bring the fleet or start fresh,
+    and a Wi-Fi stage that says any network or a hotspot can be typed."""
+    from workflows.clone import CloneWorkflow, copy_monitoring_db, copy_kin_roster
+    from monitor.registry import NodeRegistry
+    class _C:
+        def run(self, *a, **k): return (0, "", "")
+        def push_file(self, *a, **k): return True
+    wf = CloneWorkflow(_C(), NodeRegistry(), fresh_fleet=True)
+    for step in (copy_monitoring_db, copy_kin_roster):
+        r = step(wf)
+        assert r.success and r.skipped and "Fresh fleet" in r.message, step.__name__
+    assert CloneWorkflow(_C(), NodeRegistry()).fresh_fleet is False
+    s = _src("ui/screens/mitosis_screen.py")
+    assert '"fleet": (1, 5, 7)' in s and '"wifi": (1, 6, 7)' in s and '"write": (1, 7, 7)' in s
+    assert "def _show_stage_fleet" in s and 'fresh_fleet=getattr(self, "_fresh_fleet", False)' in s
+    assert "a phone hotspot works" in s
+    a = _src("ui/app.py")
+    assert "def _mitosis_factory(hostname: str = \"\", fresh_fleet: bool = False)" in a
+    assert "fresh_fleet=fresh_fleet" in a
+
+
+def test_the_deb_cache_can_hold_the_whole_closure_for_an_offline_clone():
+    from workflows.wheelhouse import closure_packages_command, cache_debs
+    cmd = closure_packages_command(("cage",))
+    assert "apt-cache depends --recurse" in cmd and "--no-recommends" in cmd and "cage" in cmd
+    class _C:
+        def __init__(self): self.cmds = []
+        def run(self, c, timeout=None):
+            self.cmds.append(c)
+            if "apt-cache depends" in c: return (0, "cage\nlibwlroots-0.20\nlibc6\n", "")
+            return (0, "", "")
+    c = _C()
+    ok, msg = cache_debs(c, packages=("cage",), dest="/tmp/x", closure=True)
+    assert any("libwlroots-0.20" in x and "libc6" in x and "--print-uris" in x for x in c.cmds)
+    assert "--closure" in _src("scripts/refresh_deb_cache.py")

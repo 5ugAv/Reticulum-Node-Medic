@@ -149,7 +149,7 @@ def _pi_rnode_factory(address: str = "", user: str = "pi", node_name: str = ""):
     return BuildWorkflow(conn, profile)
 
 
-def _mitosis_factory(hostname: str = ""):
+def _mitosis_factory(hostname: str = "", fresh_fleet: bool = False):
     """Clone THIS medic onto a fresh Pi — the REAL flow (wired 2026-08-25).
 
     The workflow's own first step discovers the new medic (<hostname>.local
@@ -170,7 +170,7 @@ def _mitosis_factory(hostname: str = ""):
     except Exception:                                          # noqa: BLE001
         reg = NodeRegistry()
     return make_discovering_workflow(reg, hostname=hostnameify(hostname),
-                                     username="pi")
+                                     fresh_fleet=fresh_fleet, username="pi")
 
 
 def _demo_rnode_flash(board):

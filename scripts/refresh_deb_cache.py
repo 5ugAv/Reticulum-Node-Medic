@@ -19,9 +19,10 @@ from workflows.wheelhouse import ALL_PACKAGES, DEB_CACHE, cache_debs, deb_count 
 
 
 def main() -> int:
+    closure = "--closure" in sys.argv[1:]      # the whole dependency tree, for an offline clone
     conn = LocalConnection()
     before = deb_count(conn)
-    res = cache_debs(conn)
+    res = cache_debs(conn, closure=closure, timeout=1800)
     after = deb_count(conn)
     print("[debs] packages:", ", ".join(ALL_PACKAGES))
     print("[debs] result:", res)
