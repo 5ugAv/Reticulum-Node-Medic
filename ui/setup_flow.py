@@ -379,7 +379,7 @@ _TOUR_STEPS = [
     # The body's {summary} is filled in by setup_steps() from the SQLite the
     # map actually draws from, so the sentence can never disagree with the map.
     {"key": TOUR_MAPS_DOWNLOAD, "part": TOUR, "poster_card": "scan", "opens": "scan",
-     "opens_label": "Open MAPS to download an area",
+     "opens_label": "Open MAPS  →",
      "title": "MAPS — carried, not fetched",
      "body": "Node Medic keeps its maps on the SD card so the mesh can be built "
              "with no internet at all.\n\n"

@@ -271,7 +271,10 @@ class NodeDetailScreen(BoxLayout):
                                ("bluetooth", tr("Bluetooth")),
                                ("internet", tr("Internet"))):
                 st = caps.get(key)
+                why = (caps.get("why") or {}).get(key)
                 word = (tr("working") if st is True
+                        else tr("not answering the medic's probe — nothing heard "
+                                "over the mesh since") if st is False and why == "probe_unanswered"
                         else tr("down — the node says so") if st is False
                         else tr("not reported by the node"))
                 self.add_widget(_line(
@@ -292,6 +295,16 @@ class NodeDetailScreen(BoxLayout):
         col.bind(minimum_height=col.setter("height"))
 
         col.add_widget(_line(tr("Health"), bold=True, size="17sp"))
+        # DATE THE REPORT. "LoRa: up" below is what the node said in its last
+        # health report; twelve days later it sat under a Connections line
+        # saying the radio was down, two ages shown as one truth (#222).
+        _age_h = record.last_seen_hours(now)
+        if _age_h is not None and record.latest_beacon is not None:
+            from monitor.formatting import format_duration
+            col.add_widget(_line(
+                "  " + tr("As the node last reported it, {ago} ago:").format(
+                    ago=format_duration(int(_age_h * 3600))),
+                size="13sp", color="text_secondary"))
         for ln in beacon_lines(record):
             col.add_widget(_line("  " + ln, size="14sp"))
 
@@ -607,11 +620,11 @@ class NodeDetailScreen(BoxLayout):
                 "medic_usb": tr("read by Node Medic from the radio on its "
                                 "own USB"),
             }.get(str(rule.get("source") or ""), str(rule.get("source") or ""))
-            out.append(tr("Radio port: /dev/rnode, by the radio's serial "
+            out.append(tr("Radio found by its serial number "
                           "{serial} ({source})").format(
                               serial=rule["serial"], source=source))
         elif rule.get("by") == "vendor":
-            out.append(tr("Radio port: /dev/rnode, by USB maker — no serial "
+            out.append(tr("Radio found by its USB maker — no serial number "
                           "was read"))
         return out
 

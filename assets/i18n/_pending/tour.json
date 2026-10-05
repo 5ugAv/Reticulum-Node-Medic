@@ -179,15 +179,15 @@
     "ru": "Одним чтением здесь ничего не сделаешь. Подключите плату и нажмите BUILD — пошаговое руководство не даст ничего испортить и говорит, что собирается сделать, прежде чем сделать это.\n\nКогда захотите запереть собственные записи этого medic — это Настройки ▸ Зашифровать мои записи.",
     "sv": "Inget här blir gjort av att läsa om det. Koppla in ett kort och tryck på BUILD — guiden låter dig inte skada något, och den säger vad den ska göra innan den gör det.\n\nNär du vill låsa den här medicens egna uppgifter är det Inställningar ▸ Kryptera mina uppgifter."
   },
-  "Open MAPS to download an area": {
-    "de": "MAPS öffnen, Gebiet laden",
-    "es": "Abrir MAPS para descargar una zona",
-    "fr": "MAPS : télécharger une zone",
-    "id": "Buka MAPS, unduh area",
-    "ja": "MAPS を開いて地域をダウンロード",
-    "pl": "Otwórz MAPS, by pobrać obszar",
-    "ru": "Скачать область в MAPS",
-    "sv": "Öppna MAPS, ladda ner ett område"
+  "Open MAPS  →": {
+    "de": "MAPS öffnen  →",
+    "es": "Abrir MAPS  →",
+    "fr": "Ouvrir MAPS  →",
+    "id": "Buka MAPS  →",
+    "ja": "MAPS を開く  →",
+    "pl": "Otwórz MAPS  →",
+    "ru": "Открыть MAPS  →",
+    "sv": "Öppna MAPS  →"
   },
   "PROBE — find out what is wrong": {
     "de": "PROBE — herausfinden, was nicht stimmt",

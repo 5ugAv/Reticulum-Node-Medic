@@ -454,7 +454,8 @@ class SetupWizardScreen(BoxLayout):
         the main button would end the tour at its first screen.
         """
         b = Button(text=step.get("opens_label") or tr("Open it now"),
-                   size_hint_x=0.75,            # a nav-row button, between Back and Next
+                   size_hint_x=0.6,             # a nav-row button, between Back and Next;
+                                                # 0.6 so Next keeps "Skip for now →" on one line
                    bold=True, font_size="14sp", background_normal="",
                    halign="center", valign="middle",
                    # secondary action: the theme's surface plate, not a khaki

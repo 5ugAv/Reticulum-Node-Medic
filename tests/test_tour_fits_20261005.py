@@ -60,7 +60,7 @@ def test_plain_steps_scroll_their_body_under_a_fixed_picture_shelf():
     assert "stage_h += WizardStep.PICTURE_STAGE_DP" in plain
     see = func_source("ui/screens/setup_wizard_screen.py", "_see_it_button",
                       cls="SetupWizardScreen")
-    assert "size_hint_x=0.75" in see and "height=dp(48)" not in see
+    assert "size_hint_x=0.6" in see and "height=dp(48)" not in see
 
 
 def test_the_birth_walkthrough_keeps_its_fixed_body():

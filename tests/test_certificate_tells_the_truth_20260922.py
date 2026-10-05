@@ -373,8 +373,8 @@ def test_the_vitals_page_composes_its_lines_from_the_codes_not_the_prose():
     assert 'tr("Radio port: {port}")' not in body, \
         "English certificate prose inside a translated frame"
     assert '"radio_rule"' in body and '"board_source"' in body
-    for key in ("Radio port: /dev/rnode, by the radio's serial {serial} ({source})",
-                "Radio port: /dev/rnode, by USB maker — no serial was read",
+    for key in ("Radio found by its serial number {serial} ({source})",
+                "Radio found by its USB maker — no serial number was read",
                 "read from the radio on the node",
                 "read by Node Medic when it flashed the radio",
                 "read by Node Medic from the radio on its own USB",

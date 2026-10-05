@@ -90,8 +90,14 @@ def _capabilities(members) -> dict:
             # stay honestly grey instead of falsely amber (SolarLove rule).
             if bluetooth is None and getattr(beacon, "bt_up", None) is not None:
                 bluetooth = beacon.bt_up
+    why = {}
     if mesh_silent:
         lora = False                          # not answering over the mesh
+        # SAY WHOSE VERDICT IT IS. This amber is the MEDIC's: its probe went
+        # unanswered and nothing has been heard since. The node page used
+        # to caption it "the node says so" (readiness ledger #222).
+        why["lora"] = "probe_unanswered"
+
     # NOTHING IS ADDED HERE. Everything above came from the node itself — heard
     # over an interface, or self-reported in its own health beacon or /status.
     #
@@ -109,7 +115,10 @@ def _capabilities(members) -> dict:
     #
     # A board's datasheet is not a node's state. An interface the node has not
     # mentioned stays None and renders as unknown, which is the truth.
-    return {"lora": lora, "wifi": wifi, "bluetooth": bluetooth, "internet": internet}
+    out = {"lora": lora, "wifi": wifi, "bluetooth": bluetooth, "internet": internet}
+    if why:
+        out["why"] = why
+    return out
 
 
 def name_key(name: str) -> str:
