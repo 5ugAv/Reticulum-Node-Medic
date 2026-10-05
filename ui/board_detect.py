@@ -17,6 +17,11 @@ from __future__ import annotations
 import re
 from typing import Callable, List, Optional
 
+# i18n: wrapped — the detection reasons are shown verbatim on the birth
+# screens, so they are translated here, where they are composed. ui.i18n is
+# pure (no Kivy); every tr() call is inside detect_board, none at import time.
+from ui.i18n import tr
+
 #: esptool bundled with the rnodeconf firmware cache on the medic (same as the
 #: flash workflows use). ``chip_id`` with ``--chip auto`` prints "Chip is <X>".
 from workflows.rnode_flash import esptool_cmd as _esptool_cmd
@@ -546,8 +551,8 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     ports, flapping = sample_ports(ports_fn or _default_ports, attempts, sleep_fn)
     if not ports:
         return {"found": False, "reason":
-                "No work board on the medic's USB — plug the board in with a "
-                "known-good data cable (its own onboard board doesn't count)."}
+                tr("No work board on the medic's USB — plug the board in with a "
+                   "known-good data cable (its own onboard board doesn't count).")}
     port = ports[0]
 
     def _out(res: dict) -> dict:
@@ -556,7 +561,9 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
         # must not be sent hunting for another cable.
         if flapping:
             res["unstable"] = True
-            res["unstable_reason"] = FLAPPING_REASON
+            # The English constant is the catalog key; translated here, at
+            # detect time, never at import.
+            res["unstable_reason"] = tr(FLAPPING_REASON)
         return res
 
     # nRF52 boards FIRST, before esptool is ever reached. esptool cannot read an
@@ -615,14 +622,15 @@ def detect_board(boards, ports_fn: Optional[Callable[[], List[str]]] = None,
     try:
         out = (reader or _default_reader)(port)
     except Exception as e:
-        return _out({"found": False, "port": port, "reason": f"Couldn't talk to the "
-                f"board on {port}: {e}. Try another data cable, or hold BOOT while "
-                "plugging it in."})
+        return _out({"found": False, "port": port, "reason":
+                tr("Couldn't talk to the board on {port}: {err}. Try another data "
+                   "cable, or hold BOOT while plugging it in.").format(
+                       port=port, err=e)})
     chip = parse_chip(out)
     if not chip:
         return _out({"found": False, "port": port, "raw": out, "reason":
-                "Reached the port but couldn't read the chip — hold BOOT, tap RST, "
-                "release BOOT, then Detect again (S3 boards need download mode)."})
+                tr("Reached the port but couldn't read the chip — hold BOOT, tap RST, "
+                   "release BOOT, then Detect again (S3 boards need download mode).")})
     platform = _PLATFORM_BY_CHIP.get(chip)
     shortlist = [b for b in boards
                  if _platform_key(getattr(b, "platform", "")) == _platform_key(platform)]

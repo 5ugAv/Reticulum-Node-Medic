@@ -1381,7 +1381,7 @@ class BirthGuideScreen(BoxLayout):
         import threading
 
         def work():
-            ok, msg = False, "Adoption failed."
+            ok, msg = False, tr("Adoption failed.")
             try:
                 from ui.adopt_live import make_adopt_workflow
                 wf = make_adopt_workflow(board_port=c.get("_port"),
@@ -1390,7 +1390,7 @@ class BirthGuideScreen(BoxLayout):
                 ok = wf.succeeded
                 msg = wf.results[-1].message if wf.results else msg
             except Exception as e:      # noqa: BLE001
-                ok, msg = False, f"Adoption failed: {e}"
+                ok, msg = False, tr("Adoption failed: {err}").format(err=e)
             from kivy.clock import Clock
             Clock.schedule_once(lambda _d: self._render_adopt_done(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
@@ -1546,7 +1546,7 @@ class BirthGuideScreen(BoxLayout):
             if not why:
                 return paths, ""
             boards = det.get("boards") or []
-            name = boards[0].display_name if len(boards) == 1 else "this board"
+            name = boards[0].display_name if len(boards) == 1 else tr("this board")
             if chip == "nrf52840" and not det.get("board_key"):
                 # The medic could not tell WHICH nRF52 this is — that is not
                 # the same as knowing it has no build, and a T-Echo running
@@ -1718,14 +1718,15 @@ class BirthGuideScreen(BoxLayout):
             self._run_over_air(c, name, start)
 
     def _run_over_air(self, c, name, location):
-        ok, msg = False, "Adoption failed."
+        ok, msg = False, tr("Adoption failed.")
         try:
             if self._adopt_air_fn is not None:
                 self._adopt_air_fn(c.get("key"), name, c.get("node_type", "rtnode2400"),
                                    c.get("board"), c.get("firmware"), location)
-                ok, msg = True, f"{name} adopted as kin over LoRa — now in VITALS."
+                ok, msg = True, tr("{name} adopted as kin over LoRa — now in "
+                                   "VITALS.").format(name=name)
         except Exception as e:      # noqa: BLE001
-            ok, msg = False, f"Adoption failed: {e}"
+            ok, msg = False, tr("Adoption failed: {err}").format(err=e)
         self._render_adopt_done(ok, msg)
 
     def _mitosis_button(self):
@@ -3644,7 +3645,7 @@ class BirthGuideScreen(BoxLayout):
         board_name = (self._board_display_name(getattr(self, "_board_key", ""))
                       if getattr(self, "_board_key", "") else "")
         pi_name = next((n for k, n in PI_HOSTS
-                        if k == getattr(self, "_pi_key", "")), "this Pi")
+                        if k == getattr(self, "_pi_key", "")), tr("this Pi"))
 
         wrap = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(10))
         # WRAPPED FOR TRANSLATION. This screen and the "recognised from a
@@ -3668,7 +3669,7 @@ class BirthGuideScreen(BoxLayout):
         col.bind(minimum_height=col.setter("height"))
         rows = []
         if board_name:
-            rows.append(("Radio", board_name,
+            rows.append((tr("Radio"), board_name,
                          board_images.image_for(
                              getattr(self, "_board_key", "")) or ""))
         rows.append(("Raspberry Pi", pi_name,
@@ -3693,7 +3694,7 @@ class BirthGuideScreen(BoxLayout):
         # "Not right — change" IS the way back, so it is the back control
         # itself, named for this screen. One exit per screen, always the same
         # one — see _back_row.
-        btns = self._back_row(label="←  Not right — change", height=56)
+        btns = self._back_row(label=tr("←  Not right — change"), height=56)
         btns.spacing = dp(10)
         # _back_row pads with a stretchy spacer so Back sits alone on the left.
         # Here the primary action takes that room instead — left in, it halved
@@ -3816,7 +3817,7 @@ class BirthGuideScreen(BoxLayout):
         from workflows.power_compat import warning_lines
         from ui.screens.birth_screen import PI_HOSTS
         pi_name = next((n for k, n in PI_HOSTS
-                        if k == getattr(self, "_pi_key", "")), "this Pi")
+                        if k == getattr(self, "_pi_key", "")), tr("this Pi"))
         board_name = self._board_display_name(getattr(self, "_board_key", ""))
         lines = warning_lines(verdict, pi_name, board_name,
                               getattr(self, "_pi_key", ""),
