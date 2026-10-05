@@ -3029,14 +3029,14 @@ class ScanScreen(BoxLayout):
             words, tone = (tr("The GPS reports a fix but its position is "
                               "not usable (not a place on Earth). Wait for "
                               "the next fix; if it stays, run Self Diagnose "
-                              "under VITALS."), "amber")
+                              "from Settings."), "amber")
         elif g["stage"] == "held":
             words, tone = (tr("The GPS is coasting on an old position, not "
                               "tracking. Step into the open and wait."), "amber")
         elif g["stage"] == "slow":
             words, tone = (tr("Still no fix after two minutes. Find open sky "
                               "for the fix, then come back to the node before "
-                              "pressing — or run Self Diagnose under VITALS to "
+                              "pressing — or run Self Diagnose from Settings to "
                               "check the GPS itself."), "amber")
         else:
             words, tone = (tr("Looking for satellites — this can take a couple "

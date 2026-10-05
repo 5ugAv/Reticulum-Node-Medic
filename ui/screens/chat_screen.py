@@ -270,7 +270,7 @@ class ChatScreen(BoxLayout):
             self._body.add_widget(row)
         if convs:
             # the only way to delete is a hold, and nothing said so (ledger #82)
-            self._body.add_widget(_lbl(tr("Hold a chat to delete it"), size="11.5sp",
+            self._body.add_widget(_lbl(tr("Hold a conversation to delete it"), size="11.5sp",
                                        color="text_secondary"))
         svc = self._svc() if self._svc else None
         checked = getattr(svc, "last_sync_at", 0.0) if svc else 0.0

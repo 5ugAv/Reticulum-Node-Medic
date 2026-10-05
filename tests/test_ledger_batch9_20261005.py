@@ -51,7 +51,7 @@ def test_a_finished_handoff_never_yanks_the_operator_off_another_screen():
 
 
 def test_chat_says_how_to_delete_and_the_doc_names_the_real_button():
-    assert 'tr("Hold a chat to delete it")' in src("ui/screens/chat_screen.py")
+    assert 'tr("Hold a conversation to delete it")' in src("ui/screens/chat_screen.py")
     d = src("docs/CHAT.md")
     assert '"Phone apps", top right' not in d and "Put Columba or Sideband on a phone" in d
     assert "hold its row in the list" in d
@@ -88,6 +88,6 @@ def test_probe_refusals_are_translated():
     for code in SHIPPED:
         with open(os.path.join(ROOT, "assets", "i18n", f"{code}.json"), encoding="utf-8") as f:
             cat = json.load(f)
-        for k in ("Which board?", "No board to PROBE", "Hold a chat to delete it",
+        for k in ("Which board?", "No board to PROBE", "Hold a conversation to delete it",
                   "Two boards are plugged in — unplug one and read again."):
             assert k in cat, (code, k)
