@@ -23,6 +23,7 @@ import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
 
+from ui.i18n import tr  # i18n: wrapped — the one place-name fallback the screen shows
 from ui.map_tiles import tile_of
 
 #: 1 degree of latitude in km (mean); longitude scales by cos(latitude).
@@ -242,7 +243,7 @@ def ip_geolocate(fetch: Optional[Callable[[str], str]] = None,
         data = _json.loads(fetch("https://ipinfo.io/json"))
         loc = parse_latlon(data.get("loc", ""))
         if loc:
-            return (loc[0], loc[1], data.get("city") or "your internet location")
+            return (loc[0], loc[1], data.get("city") or tr("your internet location"))
     except Exception:
         pass
     return None

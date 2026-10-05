@@ -29,6 +29,7 @@ from kivy.uix.widget import Widget
 
 from ui import firstborn_flow as ff
 from ui import theme
+from ui.i18n import tr  # i18n: wrapped — firstborn ceremony buttons/plate/progress
 
 #: The board the firstborn always is — show it, don't just name it
 #: ([[show-dont-tell-ux]]).
@@ -180,7 +181,7 @@ class FirstbornScreen(BoxLayout):
                 self.add_widget(img)
 
         if view.stage == ff.DONE:
-            plate = Label(text="★  node #1  ·  the firstborn  ★", bold=True,
+            plate = Label(text=tr("★  node #1  ·  the firstborn  ★"), bold=True,
                           font_size=theme.font_sp("16sp"),
                           color=theme.hex_to_rgba(theme.COLORS["green"]),
                           size_hint_y=None, height=dp(26))
@@ -204,7 +205,7 @@ class FirstbornScreen(BoxLayout):
         # A keeper with no Tracker (or one that already has GPS) needs an
         # obvious way onward from the screen itself, not just the back-swipe.
         if view.stage in (ff.NEED_TRACKER, ff.ALREADY) and self._on_home:
-            skip = Button(text="Skip for now  →", size_hint_y=None,
+            skip = Button(text=tr("Skip for now  →"), size_hint_y=None,
                           height=dp(48), font_size=theme.font_sp("16sp"),
                           background_normal="",
                           background_color=theme.hex_to_rgba(
@@ -215,8 +216,8 @@ class FirstbornScreen(BoxLayout):
 
         if view.can_begin:
             begin = Button(
-                text=("Try again  →" if view.stage == ff.FAILED
-                      else "Begin — birth the firstborn  →"),
+                text=(tr("Try again  →") if view.stage == ff.FAILED
+                      else tr("Begin — birth the firstborn  →")),
                 size_hint_y=None, height=dp(58), font_size=theme.font_sp("18sp"),
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -225,7 +226,7 @@ class FirstbornScreen(BoxLayout):
             self.add_widget(begin)
 
         if view.stage == ff.DONE and self._on_home:
-            done = Button(text="Wonderful — carry on  →", size_hint_y=None,
+            done = Button(text=tr("Wonderful — carry on  →"), size_hint_y=None,
                           height=dp(50), font_size=theme.font_sp("16sp"),
                           background_normal="",
                           background_color=theme.hex_to_rgba(
@@ -241,7 +242,7 @@ class FirstbornScreen(BoxLayout):
         self._running = True
         self._result = None
         self._failure = ""
-        self._progress = "Starting…"
+        self._progress = tr("Starting…")
         self._render(force=True)
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -262,7 +263,7 @@ class FirstbornScreen(BoxLayout):
                 failure = ff.first_failure(results)
         except Exception as exc:       # noqa: BLE001
             ok = False
-            failure = f"The birth hit a snag: {exc}"
+            failure = tr("The birth hit a snag: {err}").format(err=exc)
         Clock.schedule_once(lambda dt: self._finish(ok, failure), 0)
 
     def _show_progress(self, msg):
@@ -300,8 +301,9 @@ def _fix_proof() -> str:
         sats = getattr(fix, "sats", None)
         if lat is None or lon is None:
             return ""
-        tail = f" · {sats} satellites" if sats else ""
-        return f"First fix: {lat:.4f}, {lon:.4f}{tail}"
+        tail = tr(" · {n} satellites").format(n=sats) if sats else ""
+        return tr("First fix: {lat}, {lon}{tail}").format(
+            lat=f"{lat:.4f}", lon=f"{lon:.4f}", tail=tail)
     except Exception:                  # noqa: BLE001
         return ""
 

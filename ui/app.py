@@ -2736,16 +2736,17 @@ class ReticulumNodeMedicApp(App):
         import threading
         import time
         from monitor.mesh import parse_path_probe
+        from ui.i18n import tr  # i18n: wrapped — every report() sentence below
 
         def _ago(seconds):
             s = max(0.0, float(seconds))
             if s < 90:
-                return "a minute ago"
+                return tr("a minute ago")
             if s < 7200:
-                return "%d min ago" % round(s / 60)
+                return tr("{n} min ago").format(n=round(s / 60))
             if s < 172800:
-                return "%.1f h ago" % (s / 3600)
-            return "%d days ago" % round(s / 86400)
+                return tr("{h} h ago").format(h="%.1f" % (s / 3600))
+            return tr("{n} days ago").format(n=round(s / 86400))
 
         def _silence_context(now):
             """What the medic DOES know about a node it cannot raise: when it
@@ -2759,8 +2760,8 @@ class ReticulumNodeMedicApp(App):
                        or reg.get(dst_hash or ""))
             except Exception:                                      # noqa: BLE001
                 rec = None
-            silent = ("The medic is not hearing it from here — too far, in a "
-                      "radio shadow, or asleep or off.")
+            silent = tr("The medic is not hearing it from here — too far, in a "
+                        "radio shadow, or asleep or off.")
             if rec is None:
                 return silent
             spoke = []
@@ -2769,18 +2770,18 @@ class ReticulumNodeMedicApp(App):
                 if o is not None and getattr(o, "source", "") != "http":
                     spoke.append(o.observed_at)
             if spoke:
-                parts = ["It last spoke over the mesh %s."
-                         % _ago(now - max(spoke))]
+                parts = [tr("It last spoke over the mesh {when}.").format(
+                    when=_ago(now - max(spoke)))]
             else:
-                parts = ["The medic has never heard it speak over the mesh — "
-                         "it only knew a route to it, learned from another "
-                         "node."]
+                parts = [tr("The medic has never heard it speak over the mesh — "
+                            "it only knew a route to it, learned from another "
+                            "node.")]
             seen = getattr(rec, "seen", None)
             if (seen is not None and getattr(seen, "source", "") == "http"
                     and now - seen.observed_at < 900):
-                parts.append("It answered over Wi-Fi %s, so it is on — the "
-                             "medic just cannot hear it over the radio from "
-                             "here." % _ago(now - seen.observed_at))
+                parts.append(tr("It answered over Wi-Fi {when}, so it is on — the "
+                                "medic just cannot hear it over the radio from "
+                                "here.").format(when=_ago(now - seen.observed_at)))
             else:
                 parts.append(silent)
             return " ".join(parts)
@@ -2801,7 +2802,8 @@ class ReticulumNodeMedicApp(App):
             probe = targets[0] if targets else None
             if not probe:
                 Clock.schedule_once(lambda dt: report(
-                    "No mesh address on record — can't probe this one.", False), 0)
+                    tr("No mesh address on record — can't probe this one."),
+                    False), 0)
                 return
             _local_run(f"rnpath --drop {probe} 2>/dev/null")
             out = _local_run(f"rnpath -w 20 {probe} 2>/dev/null")
@@ -2814,8 +2816,8 @@ class ReticulumNodeMedicApp(App):
                 # its rnsd still answers; either answer is worth knowing).
                 others = [t for t in targets if t != probe][:1]
                 Clock.schedule_once(lambda dt: report(
-                    "No answer to the path request in 20 s — asking once "
-                    "more…", None), 0)
+                    tr("No answer to the path request in 20 s — asking once "
+                       "more…"), None), 0)
                 answers = {}
 
                 def _ask(t):
@@ -2846,7 +2848,8 @@ class ReticulumNodeMedicApp(App):
                 # own first), and the firmware THROTTLES repeat replies to save
                 # airtime — so nothing green is claimed until the reply is
                 # actually HEARD by the listener.
-                hops_txt = f" — {hops} hop(s) away" if hops else ""
+                hops_txt = (tr(" — {hops} hop(s) away").format(hops=hops)
+                            if hops else "")
                 outcome = None
                 try:
                     import RNS
@@ -2885,8 +2888,9 @@ class ReticulumNodeMedicApp(App):
                             else:
                                 RNS.Packet(dest, build_request()).send()
                             Clock.schedule_once(lambda dt: report(
-                                "Path found%s. Health requested — waiting "
-                                "for the reply…" % hops_txt, None), 0)
+                                tr("Path found{hops}. Health requested — waiting "
+                                   "for the reply…").format(hops=hops_txt),
+                                None), 0)
 
                         def _answered_unicast():
                             return (nonce[0] is not None
@@ -2912,8 +2916,9 @@ class ReticulumNodeMedicApp(App):
                             if nonce[0] is None:
                                 return False        # already sent 0x01
                             Clock.schedule_once(lambda dt: report(
-                                "No unicast reply in %.0f s — asking it to "
-                                "announce instead…" % w1, None), 0)
+                                tr("No unicast reply in {s} s — asking it to "
+                                   "announce instead…").format(s="%.0f" % w1),
+                                None), 0)
                             RNS.Packet(dest, build_fallback_request()).send()
                             w2 = announce_wait_s(hops)
                             if heard_since(registry.nodes.get, watch,
@@ -2939,7 +2944,6 @@ class ReticulumNodeMedicApp(App):
                     lm = link_margin(sent_at[0]) if sent_at[0] else None
                     sig = ""
                     if lm is not None:
-                        from ui.i18n import tr
                         words = {
                             "strong": tr("strong link"),
                             "ok": tr("workable link"),
@@ -2952,7 +2956,8 @@ class ReticulumNodeMedicApp(App):
                         if lm.snr_db is not None:
                             parts.append("SNR %g dB" % lm.snr_db)
                         if lm.headroom_db is not None:
-                            parts.append("%g dB headroom" % lm.headroom_db)
+                            parts.append(tr("{db} dB headroom").format(
+                                db="%g" % lm.headroom_db))
                         # Relayed: the RF the medic heard is the RELAY's
                         # transmission, not this node's — say so, or the
                         # operator re-aims the wrong antenna (review, 2026-09-21).
@@ -2962,8 +2967,9 @@ class ReticulumNodeMedicApp(App):
                         sig = ("\n" + whose + ", ".join(parts) + " — "
                                + words[lm.verdict] + ".")
                     Clock.schedule_once(lambda dt: report(
-                        "Answered%s. Fresh health heard — this page shows the "
-                        "new readings when you open it again.%s" % (hops_txt, sig),
+                        tr("Answered{hops}. Fresh health heard — this page shows "
+                           "the new readings when you open it again.{sig}"
+                           ).format(hops=hops_txt, sig=sig),
                         True), 0)
                 elif outcome == DELIVERY_NO_ROUTE:
                     # rnpath saw a path but OUR stack never resolved one, so
@@ -2973,9 +2979,9 @@ class ReticulumNodeMedicApp(App):
                     # untouched: nothing reached the node, so this measured
                     # the medic's own stack, not the node.
                     Clock.schedule_once(lambda dt: report(
-                        "No route from this medic's own stack right now — "
-                        "the health request was not sent, so this says "
-                        "nothing new about the node.", False), 0)
+                        tr("No route from this medic's own stack right now — "
+                           "the health request was not sent, so this says "
+                           "nothing new about the node."), False), 0)
                 elif outcome is None:
                     # Couldn't attempt the 0x01 at all (no RNS lib on a dev
                     # box, or no identity on record for the health dest). The
@@ -2985,8 +2991,9 @@ class ReticulumNodeMedicApp(App):
                     self.monitor_service.registry.record_probe(
                         probe, ok=True, now=time.time())
                     Clock.schedule_once(lambda dt: report(
-                        "Reachable now%s. Couldn't request health from it "
-                        "(no health destination on record)." % hops_txt,
+                        tr("Reachable now{hops}. Couldn't request health from it "
+                           "(no health destination on record).").format(
+                               hops=hops_txt),
                         True), 0)
                 elif outcome == DELIVERY_UNANSWERED:
                     # Sent, then silence. NOT proof it is down: the firmware
@@ -3001,13 +3008,13 @@ class ReticulumNodeMedicApp(App):
                         # the two-hop bench hint below (a radio within a
                         # couple of metres) is not a sensible thing to say
                         # about it (ELSEWHERE at 3 hops, 2026-10-04).
-                        why = ("Health requested, but the medic did not hear "
-                               "a reply. The road to it runs through %d other "
-                               "nodes (%d hops), so the medic is not hearing "
-                               "this node directly and the reply had to come "
-                               "back the same way — a relay may have dropped "
-                               "or delayed it. Not proof it is down. Amber "
-                               "until it is heard." % (hops - 1, hops))
+                        why = tr("Health requested, but the medic did not hear "
+                                 "a reply. The road to it runs through {n} other "
+                                 "nodes ({hops} hops), so the medic is not hearing "
+                                 "this node directly and the reply had to come "
+                                 "back the same way — a relay may have dropped "
+                                 "or delayed it. Not proof it is down. Amber "
+                                 "until it is heard.").format(n=hops - 1, hops=hops)
                     elif hops and hops >= 2:
                         # The road ran through a relay and the reply never
                         # reached us: the medic is not hearing this node
@@ -3015,18 +3022,18 @@ class ReticulumNodeMedicApp(App):
                         # (2026-09-21, ROOFRAK a foot from the medic) a radio
                         # that near is too loud to decode, and the mesh
                         # routed around the link via another node.
-                        why = ("Health requested, but the medic did not hear "
-                               "a reply. The road to it runs through another "
-                               "node (%d hops), so the medic is not hearing "
-                               "this node directly — too far, or too close: a "
-                               "radio within a couple of metres is too loud to "
-                               "decode. Move it a few metres away and ping once "
-                               "more. Amber until it is heard." % hops)
+                        why = tr("Health requested, but the medic did not hear "
+                                 "a reply. The road to it runs through another "
+                                 "node ({hops} hops), so the medic is not hearing "
+                                 "this node directly — too far, or too close: a "
+                                 "radio within a couple of metres is too loud to "
+                                 "decode. Move it a few metres away and ping once "
+                                 "more. Amber until it is heard.").format(hops=hops)
                     else:
-                        why = ("Health requested, but it did not answer. Not "
-                               "proof it is down — nodes throttle repeat "
-                               "replies to save airtime. Amber until it is "
-                               "heard again.")
+                        why = tr("Health requested, but it did not answer. Not "
+                                 "proof it is down — nodes throttle repeat "
+                                 "replies to save airtime. Amber until it is "
+                                 "heard again.")
                     Clock.schedule_once(lambda dt: report(why, False), 0)
                 else:
                     # A value warm_and_send does not return today. Matched
@@ -3034,8 +3041,9 @@ class ReticulumNodeMedicApp(App):
                     # and is refused a verdict, instead of silently reading
                     # as "did not answer". Nothing is recorded.
                     Clock.schedule_once(lambda dt: report(
-                        "Ping finished with an unrecognised result (%r) — "
-                        "a Node Medic bug, not a node state." % (outcome,),
+                        tr("Ping finished with an unrecognised result ({result}) "
+                           "— a Node Medic bug, not a node state.").format(
+                               result=repr(outcome)),
                         None), 0)
             elif other_answered is not None:
                 # The node's OTHER destination answered — the machine is on
@@ -3045,13 +3053,15 @@ class ReticulumNodeMedicApp(App):
                 # that; the answering destination is recorded as live.
                 other, other_hops = other_answered
                 registry.record_probe(other, ok=True, now=time.time())
-                where = (" (%d hop(s) away)" % other_hops) if other_hops else ""
+                where = (tr(" ({hops} hop(s) away)").format(hops=other_hops)
+                         if other_hops else "")
                 Clock.schedule_once(lambda dt: report(
-                    "Reachable — its other mesh address answered%s, but the "
-                    "address its health beacons come from did not, so no "
-                    "health was requested. The node is up; its health "
-                    "reporter may be quiet, or that address is not announced "
-                    "where the medic can hear it." % where, True), 0)
+                    tr("Reachable — its other mesh address answered{where}, but "
+                       "the address its health beacons come from did not, so no "
+                       "health was requested. The node is up; its health "
+                       "reporter may be quiet, or that address is not announced "
+                       "where the medic can hear it.").format(where=where),
+                    True), 0)
             else:
                 # The registry hears about the SILENCE too — an unanswered
                 # probe is the freshest evidence there is, and it demotes the
@@ -3063,9 +3073,10 @@ class ReticulumNodeMedicApp(App):
                 registry.record_probe(probe, ok=False, now=now)
                 context = _silence_context(now)
                 Clock.schedule_once(lambda dt: report(
-                    "No road to it over the mesh right now: two path requests "
-                    "in 40 s went unanswered, so no health request was sent. "
-                    "%s Amber until it is heard again." % context, False), 0)
+                    tr("No road to it over the mesh right now: two path requests "
+                       "in 40 s went unanswered, so no health request was sent. "
+                       "{context} Amber until it is heard again.").format(
+                           context=context), False), 0)
 
         threading.Thread(target=work, daemon=True).start()
 
