@@ -125,12 +125,19 @@ inline void health_build_beacon(uint8_t out[HEALTH_BEACON_LEN_LOCAL], bool fault
     // still says "this node can know where it is".
     int32_t lat_u = HB_POSITION_UNKNOWN, lng_u = HB_POSITION_UNKNOWN;
     bool fuzzed = false;
+#ifdef FIREWALL_MODE
+    // The allowed point lives in the Wi-Fi portal's config (firewall_state).
+    // A pure RNS build (the nRF52 T114, which has no portal) never has one,
+    // so it sends the sentinel: hidden until a keeper can say otherwise.
+    // First compiled for the T114 on 2026-10-05 — the block had only ever
+    // been built on boards without GPS.
     if (firewall_state.advert_enabled
         && !(firewall_state.advert_lat == 0.0 && firewall_state.advert_lon == 0.0)) {
         lat_u = (int32_t)lround(firewall_state.advert_lat * 1000000.0);
         lng_u = (int32_t)lround(firewall_state.advert_lon * 1000000.0);
         fuzzed = true;
     }
+#endif
     health_pack_beacon_v3(out,
         uptime_s, heap_kb, rssi, health_reset_reason_code(),
         h.wifi_connected, h.lora_online, h.tcp_backbone_connected,

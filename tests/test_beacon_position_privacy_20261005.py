@@ -69,3 +69,16 @@ def test_the_firmware_beacons_the_allowed_point_not_the_live_fix():
     assert "firewall_state.advert_lat" in block and "firewall_state.advert_lon" in block
     assert "gps.location.lat()" not in block and "gps.location.lng()" not in block
     assert "(uint8_t)gps.satellites.value(), fuzzed);" in block
+
+
+def test_the_allowed_position_is_read_only_where_a_portal_exists():
+    """First T114 compile of the GPS block (2026-10-05): 'firewall_state' was
+    not declared — it exists only under FIREWALL_MODE (Wi-Fi boards with the
+    portal). A pure RNS build such as the nRF52 T114 has no policy to read,
+    so it sends the sentinel: hidden. The guard keeps that build compiling."""
+    import pathlib
+    src = pathlib.Path("firmware/rtnode-2400/HealthBeacon.h").read_text()
+    gps = src[src.index("#if HAS_GPS"):src.index("health_pack_beacon_v3(out,")]
+    assert "#ifdef FIREWALL_MODE" in gps and gps.count("#endif") >= 1
+    assert gps.index("#ifdef FIREWALL_MODE") < gps.index("firewall_state.advert_enabled")
+    assert "int32_t lat_u = HB_POSITION_UNKNOWN" in gps   # the default is hidden
