@@ -73,3 +73,9 @@ def test_the_keepers_credit_names_the_work():
     for word in ("bench", "RNode", "RTNode", "antenna", "clone", "firstborn", "front page"):
         assert word in me, word
     assert 'max(dp(52), ts[1] + dp(8))' in s      # rows grow to a paragraph
+
+
+def test_the_beacon_list_names_a_nameless_device_like_vitals_does():
+    a = _src("ui/app.py")
+    body = a[a.index("def _target_names"):a.index("def _lighthouse")]
+    assert "rec._nameless_label()" in body and 'f"node {h[:8]}"' in body

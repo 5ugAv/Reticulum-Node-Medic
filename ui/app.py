@@ -1853,9 +1853,16 @@ class ReticulumNodeMedicApp(App):
 
     def _target_names(self, targets):
         reg = self.monitor_service.registry
-        names = [(reg.nodes.get(h).name if (reg.nodes.get(h)
-                  and reg.nodes.get(h).name) else f"node {h[:8]}")
-                 for h in targets]
+        # NAMES, NEVER HASHES (the keeper's rule, 2026-10-04): a nameless
+        # device gets the same "RAK4631 · 5a110011" label VITALS gives it,
+        # not "node 5a110011"
+        names = []
+        for h in targets:
+            rec = reg.nodes.get(h)
+            if rec is None:
+                names.append(f"node {h[:8]}")
+            else:
+                names.append(rec.name or rec._nameless_label())
         if len(names) > 2:
             # five names made a three-line sentence on ANTENNA (2026-10-06)
             from ui.i18n import tr
