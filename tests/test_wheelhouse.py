@@ -122,9 +122,17 @@ def test_every_cached_deb_is_verified_before_it_is_trusted():
     assert "-c" in verify_debs_command()
 
 
-def test_the_install_command_settles_dependency_order():
-    """A single dpkg pass trips over install order; the configure pass after
-    it settles them."""
-    from workflows.wheelhouse import install_debs_command
-    cmd = install_debs_command()
-    assert "dpkg -i" in cmd and "dpkg --configure -a" in cmd
+
+
+def test_the_clone_installs_only_what_it_needs_and_never_downloads(tmp_path):
+    """First real clone (2026-10-06): installing the whole cache dragged in extras
+    whose dependencies were not carried, and apt went online (404)."""
+    from workflows.wheelhouse import debs_for, offline_install_command, DISPLAY_PACKAGES
+    for f in ("cage_1_arm64.deb", "libgl1_1_arm64.deb", "gpsd-clients_3_arm64.deb", "libc6_2_arm64.deb"):
+        (tmp_path / f).write_text("x")
+    picked = debs_for(("cage", "libgl1"), str(tmp_path), run=lambda c: (0, "cage\nlibgl1\nlibc6\n"))
+    names = sorted(p.rsplit("/", 1)[1] for p in picked)
+    assert names == ["cage_1_arm64.deb", "libc6_2_arm64.deb", "libgl1_1_arm64.deb"]
+    assert "--no-download" in offline_install_command("/tmp/x")
+    for pkg in ("cage", "libgl1", "xwayland", "libsdl2-2.0-0"):
+        assert pkg in DISPLAY_PACKAGES

@@ -67,6 +67,7 @@ STEP_TITLES = [
     ("bake_recovery_bootorder", "Teaching its boot chip to ask for help"),
     ("final_verification", "Final check-over"),
     ("restart_into_tool", "Waking the new medic into the tool"),
+    ("confirm_tool_running", "Checking Node Medic is running on the new medic"),
 ]
 
 #: Expected seconds per step — drives each row's progress bar. Estimates from
@@ -92,6 +93,7 @@ STEP_EST_S = {
     "install_display_stack": 180, "copy_offline_maps": 30,
     "final_verification": 12,
     "restart_into_tool": 4,
+    "confirm_tool_running": 90,
 }
 
 #: Rough dd+config seconds for the write's fill estimate — the same model the

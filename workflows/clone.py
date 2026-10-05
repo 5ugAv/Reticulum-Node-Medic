@@ -230,8 +230,17 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
     populate it still makes a working clone; it just makes one that cannot yet
     talk to a voice radio, and the salvage screen already says so.
     """
-    from workflows.wheelhouse import install_debs_command
-    cache = f"{REMOTE_TOOL_DIR}/assets/packages/debs"
+    from workflows.wheelhouse import APT_PACKAGES, offline_install_command, debs_for, DEB_CACHE
+    cache = "/tmp/nm-radio-debs"
+    picked = debs_for(APT_PACKAGES, DEB_CACHE)
+    if not picked:
+        return StepResult("install_carried_packages", True,
+                          "No radio-modem packages carried — skipping (the clone "
+                          "works without them; refresh the package cache while "
+                          "online to carry Dire Wolf for radio work).", skipped=True)
+    wf.connection.run(f"rm -rf {cache} && mkdir -p {cache}")
+    for f in picked:
+        wf.connection.push_file(f, f"{cache}/")
     code, out, _err = wf.connection.run(f"ls {cache}/*.deb 2>/dev/null | wc -l")
     try:
         count = int((out or "0").strip())
@@ -243,7 +252,7 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
                           "without them; run the package cache while online to "
                           "carry Dire Wolf for radio work).")
     icode, iout, ierr = wf.connection.run(
-        wf.priv(install_debs_command(cache)), timeout=300)
+        wf.priv(offline_install_command(cache)), timeout=600)
     have = wf.connection.run("command -v direwolf")[0] == 0
     if not have:
         return StepResult("install_carried_packages", False,
@@ -587,6 +596,14 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
         problems.append("card-writing helper missing")
     if wf.connection.run("test -f ~/.ssh/id_ed25519.pub")[0] != 0:
         problems.append("SSH keypair missing")
+    # THE APP MUST BE ABLE TO OPEN ITS WINDOW. "Every step verified" sat over a
+    # clone that crash-looped on a missing libGL (first real clone, 2026-10-06).
+    from workflows.wheelhouse import DISPLAY_PACKAGES
+    if wf.connection.run("dpkg -s " + " ".join(DISPLAY_PACKAGES)
+                         + " >/dev/null 2>&1")[0] != 0:
+        problems.append("screen packages incomplete")
+    if wf.connection.run("ldconfig -p | grep -q 'libGL.so.1 '")[0] != 0:
+        problems.append("graphics library (libGL) missing")
     ok = not problems
     return StepResult("final_verification", ok,
                       "Clone verified — a fresh medic is ready." if ok
@@ -613,6 +630,41 @@ def restart_into_tool(wf: "CloneWorkflow") -> StepResult:
         "Restarting the new medic — in about a minute its own screen opens the "
         "tool's setup. (Its screen may show start-up text until then; that's "
         "normal.)")
+
+
+@clone_step
+def confirm_tool_running(wf: "CloneWorkflow") -> StepResult:
+    """After the restart, the new medic's app is running and STAYS running.
+
+    The first real clone said "every step verified" while its app crash-looped
+    every five seconds (2026-10-06). This waits for the new medic to come back
+    (up to ~3 minutes), then watches the service for 20 seconds: active, and
+    not restarting."""
+    import time as _time
+    _sleep = getattr(wf, "sleep", _time.sleep)          # tests pass a no-op
+    deadline = _time.time() + 180
+    while _time.time() < deadline:
+        if wf.connection.run("true", timeout=10)[0] == 0:
+            break
+        _sleep(6)
+    else:
+        return StepResult("confirm_tool_running", False,
+                          "The new medic did not come back after its restart. Check "
+                          "its power and screen; the copy itself is complete.")
+    _sleep(25)
+    first = wf.connection.run("systemctl show -p NRestarts --value reticulum-node-medic")
+    _sleep(20)
+    code, state, _e = wf.connection.run("systemctl is-active reticulum-node-medic")
+    again = wf.connection.run("systemctl show -p NRestarts --value reticulum-node-medic")
+    restarting = (first[1] or "").strip() != (again[1] or "").strip()
+    if (state or "").strip() == "active" and not restarting:
+        return StepResult("confirm_tool_running", True,
+                          "The new medic is running Node Medic on its own screen.")
+    _c, tail, _e = wf.connection.run(
+        "grep -aE 'CRITICAL|Error|rror:' ~/ui.log | tail -2")
+    return StepResult("confirm_tool_running", False,
+                      "The new medic's app keeps stopping: "
+                      + " ".join((tail or "").split())[-200:])
 
 
 def carry_the_time(wf: "CloneWorkflow") -> StepResult:
@@ -723,17 +775,25 @@ def install_display_stack(wf: "CloneWorkflow") -> StepResult:
             "No carried display debs and the clone has no cage. On an "
             "online medic run: python3 scripts/refresh_deb_cache.py — then "
             "retry.")
-    wf.connection.run("mkdir -p /tmp/nm-debs")
-    ok = wf.connection.push_tree(debs_local, "/tmp/nm-debs")
+    from workflows.wheelhouse import DISPLAY_PACKAGES, debs_for, offline_install_command
+    picked = debs_for(DISPLAY_PACKAGES, debs_local)
+    if not picked:
+        return StepResult("install_display_stack", False,
+                          "The carried packages do not include the screen set. On "
+                          "an online medic run: python3 scripts/refresh_deb_cache.py "
+                          "--closure — then retry.")
+    wf.connection.run("rm -rf /tmp/nm-debs && mkdir -p /tmp/nm-debs")
+    ok = all(wf.connection.push_file(f, "/tmp/nm-debs/") for f in picked)
     if not ok:
         return StepResult("install_display_stack", False,
-                          "Could not copy the display debs to the clone.")
+                          "Could not copy the display packages to the new medic.")
     code, out, err = wf.connection.run(
-        wf.priv("apt-get install -y --no-install-recommends /tmp/nm-debs/*.deb"),
-        timeout=600)
+        wf.priv(offline_install_command("/tmp/nm-debs")), timeout=900)
     if code != 0:
+        # the LAST lines of apt's own words, so the ladder says what is missing
         return StepResult("install_display_stack", False,
-                          f"Deb install failed: {(err or out)[-160:]}")
+                          "The screen packages would not install without the "
+                          "internet: " + " ".join((err or out or "").strip().splitlines()[-3:])[-220:])
     return StepResult("install_display_stack", True,
                       "Installed the display stack (cage kiosk) from "
                       "carried debs — no internet needed.")

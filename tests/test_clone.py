@@ -37,6 +37,7 @@ EXPECTED_STEPS = [
     "ensure_ssh_keypair",
     "final_verification",
     "restart_into_tool",
+    "confirm_tool_running",
 ]
 
 IDENTITY_OUT = "New identity <2233445566778899aabbccddeeff0011> written to ..."
@@ -59,11 +60,31 @@ def conn(cpuinfo=PI5_CPUINFO):
     c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
     c.rules.insert(0, ("rnid --generate", 0, IDENTITY_OUT, ""))
     c.rules.insert(0, ("test -f ~/.reticulum/storage/identity", 1, "", ""))
+    c.rules.insert(0, ("systemctl is-active reticulum-node-medic", 0, "active", ""))
+    c.rules.insert(0, ("NRestarts", 0, "0", ""))
     return c
 
 
 def wf(c=None, registry=None):
-    return CloneWorkflow(c or conn(), registry or registry_with_node())
+    w = CloneWorkflow(c or conn(), registry or registry_with_node())
+    w.sleep = lambda _s: None                  # confirm_tool_running waits for real otherwise
+    return w
+
+
+def test_the_last_step_fails_when_the_app_keeps_restarting():
+    """The first real clone said "verified" over a crash-looping app (2026-10-06)."""
+    c = conn()
+    counts = iter(["3", "5"])
+    c.rules.insert(0, ("NRestarts", 0, "3", ""))
+    w = CloneWorkflow(c, registry_with_node()); w.sleep = lambda _s: None
+    real_run = c.run
+    def run(cmd, *a, **k):
+        if "NRestarts" in cmd:
+            return (0, next(counts, "5"), "")
+        return real_run(cmd, *a, **k)
+    c.run = run
+    r = _run(w, "confirm_tool_running")
+    assert not r.success and "keeps stopping" in r.message
 
 
 def _run(w, name):

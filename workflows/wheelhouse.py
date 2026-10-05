@@ -104,7 +104,10 @@ APT_PACKAGES = (
 #: Those debs lived in a gitignored assets/debs that a medic built from
 #: GitHub never has — so MITOSIS could not finish on such a medic (readiness
 #: sweep, 2026-10-03). They are part of the one deb cache now.
-DISPLAY_PACKAGES = ("cage",)
+#: NOT ONLY cage (first real clone, 2026-10-06): the app draws through libGL,
+#: Xwayland and SDL2, and a clone without them crash-looped behind a "verified"
+#: ladder. The whole screen set travels.
+DISPLAY_PACKAGES = ("cage", "libgl1", "xwayland", "libsdl2-2.0-0")
 ALL_PACKAGES = APT_PACKAGES + DISPLAY_PACKAGES
 
 DEB_CACHE = "~/reticulum-tool/assets/packages/debs"
@@ -177,6 +180,50 @@ def closure_packages_command(packages=ALL_PACKAGES) -> str:
             f"printf '%s\\n' {pk}")
 
 
+def debs_for(packages, deb_dir: str, run=None) -> list:
+    """The carried .deb FILES a clone needs for *packages*: their dependency
+    closure (as this medic runs it), matched by package name. Installing the
+    WHOLE cache dragged in stale extras whose own dependencies were not carried,
+    and apt went to the internet for them (404s, first real clone, 2026-10-06).
+    Runs on THIS medic, which has the apt metadata. Pure listing — no root."""
+    import os
+    import re
+    import subprocess
+    if run is None:
+        # no shell: the two listings are run directly and joined here
+        def run(_cmd):
+            dep = subprocess.run(
+                ["apt-cache", "depends", "--recurse", "--no-recommends",
+                 "--no-suggests", "--no-conflicts", "--no-breaks",
+                 "--no-replaces", "--no-enhances", *packages],
+                capture_output=True, text=True)
+            inst = subprocess.run(["dpkg-query", "-W", "-f=${Package}\n"],
+                                  capture_output=True, text=True)
+            tree = {l.strip() for l in dep.stdout.splitlines()
+                    if re.fullmatch(r"[a-z0-9][a-z0-9.+-]*", l.strip())}
+            have = {l.strip() for l in inst.stdout.splitlines() if l.strip()}
+            return dep.returncode, "\n".join(sorted(tree & have))
+    try:
+        code, out = run(closure_packages_command(packages))
+    except OSError:                       # no apt here (a dev machine): names only
+        code, out = 1, ""
+    names = {l.strip() for l in (out or "").splitlines() if l.strip()} | set(packages)
+    d = os.path.expanduser(deb_dir)
+    try:
+        files = sorted(f for f in os.listdir(d) if f.endswith(".deb"))
+    except OSError:
+        return []
+    return [os.path.join(d, f) for f in files if f.split("_", 1)[0] in names]
+
+
+def offline_install_command(remote_dir: str) -> str:
+    """Install the .debs in *remote_dir* and NOTHING from the network: a
+    missing dependency fails here, honestly, instead of apt reaching for an
+    internet the field does not have."""
+    return (f"apt-get install -y --no-install-recommends --no-download "
+            f"{remote_dir}/*.deb")
+
+
 def verify_debs_command(packages=ALL_PACKAGES, dest: str = DEB_CACHE) -> str:
     """Check every cached .deb against the digest apt published for it.
 
@@ -224,8 +271,3 @@ def cache_debs(connection, packages=ALL_PACKAGES, dest: str = DEB_CACHE,
                   f"their dependencies) for offline install.")
 
 
-def install_debs_command(dest: str = DEB_CACHE) -> str:
-    """Install everything cached, offline. ``|| true`` then a fix-up, because a
-    bare dpkg run trips over install order and the second pass settles it."""
-    return (f"dpkg -i {dest}/*.deb || true; "
-            f"dpkg --configure -a || true")
