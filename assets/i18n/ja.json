@@ -389,6 +389,8 @@
   "Delete it all": "すべて削除",
   "Delete the chat with {name}? The messages go from this medic. {name} stays on the mesh and can write again.": "{name} とのチャットを削除しますか？メッセージはこのメディックから消えます。{name} はメッシュに残り、また書けます。",
   "Delete this chat": "このチャットを削除",
+  "Delete this message": "メッセージを削除",
+  "Delete this message? It goes from this medic only — the other person still has their copy.": "このメッセージを削除しますか？このメディックからのみ消えます。相手側のコピーは残ります。",
   "Delete this node…": "このノードを削除…",
   "Delete {name}": "{name} を削除",
   "Detect connected board": "接続中のボードを検出",

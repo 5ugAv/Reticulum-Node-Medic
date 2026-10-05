@@ -389,6 +389,20 @@ class MessageStore:
                 self._save_messages()
             return n
 
+    def delete_message(self, msg_id: str) -> bool:
+        """Remove one message (press-and-hold a bubble → Delete, the keeper
+        2026-10-06). Local only: the other side keeps its copy. True if it
+        was there."""
+        with self._lock:
+            self._ensure_loaded()
+            before = len(self._messages)
+            self._messages = [m for m in self._messages
+                              if m["id"] != msg_id and m.get("lxmf") != msg_id]
+            if len(self._messages) == before:
+                return False
+            self._save_messages()
+            return True
+
     def thread(self, peer: str) -> List[dict]:
         with self._lock:
             self._ensure_loaded()

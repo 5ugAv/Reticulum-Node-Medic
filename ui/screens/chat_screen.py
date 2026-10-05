@@ -115,9 +115,11 @@ def _state_words(rec: dict) -> str:
 class _Bubble(BoxLayout):
     """One message. Ours: accent ground, dark ink, right. Theirs: surface, left."""
 
-    def __init__(self, rec: dict, **kw):
+    def __init__(self, rec: dict, on_hold=None, **kw):
         super().__init__(orientation="vertical", size_hint=(None, None),
                          padding=(dp(12), dp(8)), spacing=dp(2), **kw)
+        self._on_hold = on_hold
+        self._hold_ev = None
         ours = rec.get("dir") == lc.OUT
         ground = theme.COLORS["accent" if ours else "surface"]
         ink = "background" if ours else "text_primary"
@@ -137,6 +139,33 @@ class _Bubble(BoxLayout):
 
     def _paint(self, *_):
         self._bg.pos, self._bg.size = self.pos, self.size
+
+    # PRESS AND HOLD = delete this message (the keeper, 2026-10-06). Any
+    # movement cancels, so scrolling the thread never deletes anything.
+    def on_touch_down(self, touch):
+        if self._on_hold is not None and self.collide_point(*touch.pos):
+            self._cancel_hold()
+            self._hold_ev = Clock.schedule_once(lambda dt: self._fire_hold(), HOLD_S)
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._hold_ev is not None and (abs(touch.x - touch.ox) + abs(touch.y - touch.oy)) > dp(10):
+            self._cancel_hold()
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        self._cancel_hold()
+        return super().on_touch_up(touch)
+
+    def _cancel_hold(self):
+        if self._hold_ev is not None:
+            self._hold_ev.cancel()
+            self._hold_ev = None
+
+    def _fire_hold(self):
+        self._hold_ev = None
+        if self._on_hold is not None:
+            self._on_hold()
 
 
 class ChatScreen(BoxLayout):
@@ -301,6 +330,19 @@ class ChatScreen(BoxLayout):
             on_leave=lambda *_: self._delete(peer),
             stay_text=tr("Keep it"), leave_text=tr("Delete"), leave_color="red")
 
+    def _ask_delete_message(self, rec):
+        from ui.confirm import confirm_leave
+        confirm_leave(
+            tr("Delete this message? It goes from this medic only — the other "
+               "person still has their copy."),
+            tr("Delete this message"),
+            on_leave=lambda *_: self._delete_message(rec),
+            stay_text=tr("Cancel"), leave_text=tr("Delete"), leave_color="red")
+
+    def _delete_message(self, rec):
+        self._store.delete_message(rec.get("id", ""))
+        self._show(THREAD, peer=self._peer)
+
     def _delete(self, peer):
         self._store.delete_conversation(peer)
         if self._peer == peer:
@@ -329,7 +371,7 @@ class ChatScreen(BoxLayout):
             ours = rec.get("dir") == lc.OUT
             wrap = AnchorLayout(anchor_x="right" if ours else "left",
                                 size_hint_y=None)
-            b = _Bubble(rec)
+            b = _Bubble(rec, on_hold=lambda r=rec: self._ask_delete_message(r))
             wrap.bind(width=lambda i, w, bb=b: setattr(bb, "width", w * 0.82))
             b.bind(height=lambda bb, h, ww=wrap: setattr(ww, "height", h))
             wrap.add_widget(b)

@@ -389,6 +389,8 @@
   "Delete it all": "Hapus semuanya",
   "Delete the chat with {name}? The messages go from this medic. {name} stays on the mesh and can write again.": "Hapus obrolan dengan {name}? Pesan hilang dari medic ini. {name} tetap di mesh dan bisa menulis lagi.",
   "Delete this chat": "Hapus obrolan ini",
+  "Delete this message": "Hapus pesan ini",
+  "Delete this message? It goes from this medic only — the other person still has their copy.": "Hapus pesan ini? Pesan hanya hilang dari medic ini — orang lain tetap menyimpan salinannya.",
   "Delete this node…": "Hapus node ini…",
   "Delete {name}": "Hapus {name}",
   "Detect connected board": "Deteksi papan yang tersambung",

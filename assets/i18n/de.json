@@ -389,6 +389,8 @@
   "Delete it all": "Alles löschen",
   "Delete the chat with {name}? The messages go from this medic. {name} stays on the mesh and can write again.": "Chat mit {name} löschen? Die Nachrichten verschwinden von diesem Medic. {name} bleibt im Mesh und kann wieder schreiben.",
   "Delete this chat": "Diesen Chat löschen",
+  "Delete this message": "Nachricht löschen",
+  "Delete this message? It goes from this medic only — the other person still has their copy.": "Diese Nachricht löschen? Sie verschwindet nur von diesem Medic — die andere Person behält ihre Kopie.",
   "Delete this node…": "Diesen Knoten löschen…",
   "Delete {name}": "{name} löschen",
   "Detect connected board": "Angeschlossenes Board erkennen",

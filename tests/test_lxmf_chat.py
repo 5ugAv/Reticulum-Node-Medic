@@ -193,3 +193,18 @@ def test_a_columba_reaction_names_the_emoji_and_the_message_it_was_on():
 def test_store_text_of(store):
     store.add_outgoing(PEER, "hello", msg_id="ab" * 32)
     assert store.text_of("ab" * 32) == "hello" and store.text_of("ff" * 32) is None
+
+
+
+def test_one_message_can_be_deleted_and_the_rest_stay(tmp_path):
+    """Press-and-hold a bubble → Delete (the keeper, 2026-10-06)."""
+    from monitor.lxmf_chat import MessageStore
+    st = MessageStore(str(tmp_path / "chat"))
+    a = st.add_incoming("a" * 32, "first")
+    b = st.add_incoming("a" * 32, "second")
+    assert st.delete_message(a["id"]) is True
+    assert [m["text"] for m in st.thread("a" * 32)] == ["second"]
+    assert st.delete_message("nope") is False
+    src = open("ui/screens/chat_screen.py").read()
+    assert "on_hold=lambda r=rec: self._ask_delete_message(r)" in src
+    assert 'stay_text=tr("Cancel"), leave_text=tr("Delete"), leave_color="red"' in src

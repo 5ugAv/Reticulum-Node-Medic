@@ -389,6 +389,8 @@
   "Delete it all": "Ta bort allt",
   "Delete the chat with {name}? The messages go from this medic. {name} stays on the mesh and can write again.": "Ta bort chatten med {name}? Meddelandena försvinner från den här medicen. {name} finns kvar på meshen och kan skriva igen.",
   "Delete this chat": "Ta bort den här chatten",
+  "Delete this message": "Ta bort meddelandet",
+  "Delete this message? It goes from this medic only — the other person still has their copy.": "Ta bort det här meddelandet? Det försvinner bara från den här medicen — den andra personen behåller sin kopia.",
   "Delete this node…": "Ta bort den här noden…",
   "Delete {name}": "Ta bort {name}",
   "Detect connected board": "Identifiera anslutet kort",

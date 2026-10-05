@@ -389,6 +389,8 @@
   "Delete it all": "Удалить всё",
   "Delete the chat with {name}? The messages go from this medic. {name} stays on the mesh and can write again.": "Удалить чат с {name}? Сообщения исчезнут с этого medic. {name} остаётся в mesh-сети и может написать снова.",
   "Delete this chat": "Удалить этот чат",
+  "Delete this message": "Удалить сообщение",
+  "Delete this message? It goes from this medic only — the other person still has their copy.": "Удалить это сообщение? Оно исчезнет только с этого медика — у собеседника копия останется.",
   "Delete this node…": "Удалить этот узел…",
   "Delete {name}": "Удалить {name}",
   "Detect connected board": "Определить подключённую плату",
