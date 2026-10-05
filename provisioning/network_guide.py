@@ -65,10 +65,11 @@ ROLES: List[Tuple[str, str]] = [
 #: It sits here, after the roles table, because that table is where the
 #: question arises: you have just been told which box is the backbone, and the
 #: next thing you want to know is whether it can hear the next one.
-#: Same i18n decision as the rest of this module: not wrapped. Every catalog
-#: under assets/i18n must carry the same key set, so wrapping this would ship
-#: machine translations into eight languages nobody here can read back — and
-#: this page's whole job is to be trusted. English until a speaker checks it.
+#: i18n (2026-10-05, readiness #205): like every other string in this module
+#: it stays English HERE and is translated at render time by
+#: ui.widgets.guide_content (tr() on each title, paragraph and line), so the
+#: catalogs under assets/i18n key on these exact sentences. Keep the two in
+#: step: a reworded sentence here is a new catalog key.
 REACH_TITLE = "How far does a node actually reach? — the boundary walk"
 REACH_BODY: List[str] = [
     "Coverage maps and datasheet ranges are guesses. The only honest answer "
@@ -188,8 +189,14 @@ def radio_params() -> Dict[str, float]:
     return dict(radio_defaults.DEFAULT_PARAMS)
 
 
-def radio_lines() -> List[str]:
-    """The radio params as ready-to-read lines, e.g. 'Frequency — 915.125 MHz'."""
+def radio_lines(translate=None) -> List[str]:
+    """The radio params as ready-to-read lines, e.g. 'Frequency — 915.125 MHz'.
+
+    ``translate`` (optional) is applied to each label — the renderer passes
+    ``ui.i18n.tr`` so the words come out in the operator's language while the
+    numbers and units stay as they are. This module itself stays pure and
+    English: the language is chosen at runtime, never at import.
+    """
     p = radio_params()
     vals = {
         "Frequency": f"{p['freq']:g}",
@@ -201,5 +208,6 @@ def radio_lines() -> List[str]:
     out = []
     for label, unit in RADIO_ROWS:
         v = vals[label]
-        out.append(f"{label} — {v}{(' ' + unit) if unit else ''}".rstrip())
+        name = translate(label) if translate is not None else label
+        out.append(f"{name} — {v}{(' ' + unit) if unit else ''}".rstrip())
     return out

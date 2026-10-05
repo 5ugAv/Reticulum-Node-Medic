@@ -3,6 +3,11 @@
 Shared by the full-screen Settings entry (ui.screens.guide_screen) and the inline
 "?" help popup (ui.widgets.help_button) so both always show identical, in-sync
 content. Pure presentation — all wording lives in the pure content module.
+
+i18n: wrapped. The English lives in provisioning.network_guide (module-level
+data, never translated there — the language is chosen at runtime); every string
+is passed through ``tr()`` HERE, at render time, so the catalogs under
+assets/i18n key on the exact English sentences of that module.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from ui import theme
+from ui.i18n import tr
 from provisioning import network_guide as g
 
 
@@ -63,38 +69,43 @@ def build_guide_content():
                     padding=[dp(4), dp(4)])
     col.bind(minimum_height=col.setter("height"))
 
+    # Every string is translated at this point — the data module keeps the
+    # English keys; tr() looks each one up in the catalog of the language the
+    # operator chose (and hands the English back when a catalog lacks it).
     for term, body in g.CONCEPTS:
-        col.add_widget(_concept(term, body))
+        col.add_widget(_concept(tr(term), tr(body)))
 
     col.add_widget(_divider())
-    col.add_widget(_section_title(g.GOLDEN_RULE_TITLE))
+    col.add_widget(_section_title(tr(g.GOLDEN_RULE_TITLE)))
     for para in g.GOLDEN_RULE_BODY:
-        col.add_widget(_wrap(para, size="14.5sp", color="text_secondary"))
+        col.add_widget(_wrap(tr(para), size="14.5sp", color="text_secondary"))
 
     col.add_widget(_divider())
-    col.add_widget(_section_title("Which device does which job?"))
+    col.add_widget(_section_title(tr("Which device does which job?")))
     for device, role in g.ROLES:
-        col.add_widget(_role_row(device, role))
+        col.add_widget(_role_row(tr(device), tr(role)))
 
     col.add_widget(_divider())
-    col.add_widget(_section_title(g.REACH_TITLE))
+    col.add_widget(_section_title(tr(g.REACH_TITLE)))
     for para in g.REACH_BODY:
-        col.add_widget(_wrap(para, size="14.5sp", color="text_secondary"))
+        col.add_widget(_wrap(tr(para), size="14.5sp", color="text_secondary"))
 
     col.add_widget(_divider())
-    col.add_widget(_section_title(g.BUILD_TITLE))
+    col.add_widget(_section_title(tr(g.BUILD_TITLE)))
     for head, cost, lines in g.BUILD_SECTIONS:
-        col.add_widget(_wrap(head, size="16sp", color="accent", bold=True))
-        col.add_widget(_wrap(cost, size="14sp", color="green", bold=True))
+        col.add_widget(_wrap(tr(head), size="16sp", color="accent", bold=True))
+        col.add_widget(_wrap(tr(cost), size="14sp", color="green", bold=True))
         for ln in lines:
-            col.add_widget(_wrap("  •  " + ln, size="14sp",
+            col.add_widget(_wrap("  •  " + tr(ln), size="14sp",
                                  color="text_secondary"))
     for ln in g.BUILD_ALWAYS:
-        col.add_widget(_wrap("  •  " + ln, size="14sp", color="amber"))
+        col.add_widget(_wrap("  •  " + tr(ln), size="14sp", color="amber"))
 
     col.add_widget(_divider())
-    col.add_widget(_section_title(g.RADIO_TITLE))
-    for line in g.radio_lines():
+    col.add_widget(_section_title(tr(g.RADIO_TITLE)))
+    # The labels ("Frequency", "Spreading factor (SF)"…) are translated inside
+    # radio_lines; the values and units are numbers and SI units, left alone.
+    for line in g.radio_lines(translate=tr):
         col.add_widget(_wrap(line, size="15sp", color="text_primary"))
 
     col.add_widget(Widget(size_hint_y=None, height=dp(8)))
