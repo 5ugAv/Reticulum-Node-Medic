@@ -79,6 +79,26 @@ def connected_ssid(run: Runner = _default_run, iface: Optional[str] = None) -> s
     return ""
 
 
+def radio_enabled(run: Runner = _default_run) -> bool:
+    """Is the medic's Wi-Fi radio switched on? Reading needs no privilege.
+    Unknown (no nmcli) reads as on, so the screen never shows a false 'off'."""
+    code, out = run(["nmcli", "radio", "wifi"])
+    return not (code == 0 and (out or "").strip().lower().startswith("disabled"))
+
+
+def set_radio(on: bool, run: Runner = _default_run) -> Tuple[bool, str]:
+    """Switch the Wi-Fi radio on or off. NetworkManager's polkit refuses the
+    login user, so this goes through the scoped sudo rule NM_RADIO. NM keeps
+    the state across reboots: off stays off until switched back on."""
+    state = "on" if on else "off"
+    code, out = run(["sudo", "-n", "nmcli", "radio", "wifi", state])
+    if code == 0:
+        return True, ""
+    if "password is required" in (out or "") or "not allowed" in (out or ""):
+        return False, "permission"
+    return False, (out or "").strip()[-160:]
+
+
 def is_hidden_ssid(ssid: str) -> bool:
     """A hidden AP's name comes through as nothing, or as a run of NUL
     escapes (``\\x00\\x00…``, as ``iw`` prints them) — which the picker once

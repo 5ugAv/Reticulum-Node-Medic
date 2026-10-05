@@ -58,8 +58,24 @@ class WifiScreen(BoxLayout):
         self._busy = False
         self._selected = None
 
+        # Title row with the radio switch (keeper, 2026-10-06): one place to
+        # turn the medic's Wi-Fi off — for an offline clone test or a quiet
+        # site — and back on. NetworkManager keeps it off across reboots.
+        # Same switch and row as Settings' screen saver / auto-backpack rows:
+        # words on the left, the standard Switch (blue on, grey off) on the right.
         self.add_widget(_line(tr("Wi-Fi"), bold=True, size="22sp"))
+        head = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44),
+                         spacing=dp(10))
+        head.add_widget(_line(tr("Turn Wi-Fi on or off"), size="14sp", h=44))
+        self.radio = Switch(active=True, size_hint_x=None, width=dp(90))
+        self.radio.bind(active=lambda _w, v: self._radio_changed(v))
+        head.add_widget(self.radio)
+        self.add_widget(head)
+        self._radio_quiet = False          # set while we move the switch ourselves
         self.status = _line("", size="14sp", color="text_secondary", h=24)
+        self.status.size_hint_y = None
+        self.status.bind(texture_size=lambda i, v: setattr(
+            i, "height", max(dp(24), v[1] + dp(4))))
         self.add_widget(self.status)
 
         self.scan_btn = Button(text=tr("Search for Wi-Fi networks"), size_hint_y=None,
@@ -129,9 +145,58 @@ class WifiScreen(BoxLayout):
 
     def _refresh_status(self):
         def work():
-            cur = wifi.current_connection(**self._kw())
-            Clock.schedule_once(lambda dt: self._show_status(cur), 0)
+            on = wifi.radio_enabled(**self._kw())
+            cur = wifi.current_connection(**self._kw()) if on else None
+            Clock.schedule_once(lambda dt: self._show_radio(on, cur), 0)
         threading.Thread(target=work, daemon=True).start()
+
+    # -- radio on/off ---------------------------------------------------------
+
+    def _set_switch(self, on):
+        self._radio_quiet = True
+        self.radio.active = on
+        self._radio_quiet = False
+
+    def _show_radio(self, on, cur):
+        self._set_switch(on)
+        self.scan_btn.disabled = not on
+        self.scan_btn.opacity = 1 if on else 0.4
+        if on:
+            self._show_status(cur)
+        else:
+            self.list.clear_widgets()
+            self.status.text = tr("Wi-Fi is off. This medic will not join any "
+                                  "network until you switch it back on here.")
+            self.status.color = theme.hex_to_rgba(theme.COLORS["amber"])
+
+    def _radio_changed(self, on):
+        if self._radio_quiet or self._busy:
+            return
+        self._busy = True
+        self.status.text = tr("Switching Wi-Fi on…") if on else tr("Switching Wi-Fi off…")
+
+        def work():
+            ok, why = wifi.set_radio(on, **self._kw())
+            Clock.schedule_once(lambda dt: self._radio_done(on, ok, why), 0)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _radio_done(self, on, ok, why):
+        self._busy = False
+        if not ok:
+            self._set_switch(not on)
+            self.status.text = (
+                tr("This medic needs a one-time permission update before it "
+                   "can switch its own Wi-Fi.")
+                if why == "permission" else
+                tr("Could not switch the Wi-Fi: {why}").format(why=why))
+            self.status.color = theme.hex_to_rgba(theme.COLORS["amber"])
+            return
+        if on:
+            Clock.schedule_once(lambda dt: self.enter(), 4)   # let it rejoin, then scan
+            self._show_radio(True, None)
+            self.status.text = tr("Wi-Fi is on. Rejoining your saved network…")
+        else:
+            self._show_radio(False, None)
 
     def _kw(self):
         return {"run": self._run} if self._run else {}
@@ -148,7 +213,7 @@ class WifiScreen(BoxLayout):
     # -- scan ---------------------------------------------------------------
 
     def _scan(self):
-        if self._busy:
+        if self._busy or not self.radio.active:      # nothing to find with it off
             return
         self._busy = True
         self.scan_btn.text = tr("Searching…")

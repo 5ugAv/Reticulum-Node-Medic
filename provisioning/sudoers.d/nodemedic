@@ -51,6 +51,13 @@ Cmnd_Alias NM_PORTAL = \
     /usr/bin/nmcli device wifi connect *, \
     /usr/bin/nmcli -s -g 802-11-wireless-security.psk connection show *
 
+# --- Wi-Fi radio on/off (Settings ▸ Wi-Fi switch, keeper 2026-10-06) --------
+# provisioning/wifi.py set_radio(): the operator turns the medic's Wi-Fi off
+# (an offline clone test, a quiet site) and back on. Exact argv, no wildcard.
+Cmnd_Alias NM_RADIO = \
+    /usr/bin/nmcli radio wifi off, \
+    /usr/bin/nmcli radio wifi on
+
 # --- System clock / timezone ------------------------------------------------
 # provisioning/tool_datetime.py  set_datetime()/set_timezone()/sync_from_gps()
 # monitor/gps_clock.py           apply_clock()  -> set-ntp false, set-time, and
@@ -181,6 +188,6 @@ Cmnd_Alias NM_DIAG = \
 # no password. Anything else falls through to the default (denied / requires a
 # password that this login has no way to supply).
 # ---------------------------------------------------------------------------
-nodemedic ALL=(root) NOPASSWD: NM_BACKLIGHT, NM_WIFI, NM_PORTAL, NM_CLOCK, \
+nodemedic ALL=(root) NOPASSWD: NM_BACKLIGHT, NM_WIFI, NM_PORTAL, NM_RADIO, NM_CLOCK, \
     NM_SERVICES, NM_UHUBCTL, NM_SD_EDIT, NM_IMAGING, NM_PIBOOT, NM_USBLINK, \
     NM_GPS, NM_DIAG
