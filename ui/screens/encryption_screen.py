@@ -107,8 +107,8 @@ class EncryptionScreen(BoxLayout):
 
     def show_overview(self):
         self._stop_keyfile_poll()        # leaving the key screen by any road
-        st = ef.state(self._home)
-        rows = [_line(ef.headline(st), "19sp",
+        st = ef.state(self._home, translate=tr)
+        rows = [_line(ef.headline(st, translate=tr), "19sp",
                       color="green" if st["on"] else "warning_yellow", bold=True)]
 
         for ok, text in st["covered"]:
@@ -141,7 +141,7 @@ class EncryptionScreen(BoxLayout):
 
     def _begin_on(self):
         self._policy = vf.load_policy()
-        self._todo = ef.doors_to_set(self._policy)
+        self._todo = ef.doors_to_set(self._policy, translate=tr)
         self._parts = {}
         self._passphrase = ""
         self._recovery = ""
@@ -261,8 +261,8 @@ class EncryptionScreen(BoxLayout):
 
         def go():
             text = first.text or ""
-            problem = (ef.passphrase_problem(text)
-                       or ef.confirm_problem(text, again.text or ""))
+            problem = (ef.passphrase_problem(text, translate=tr)
+                       or ef.confirm_problem(text, again.text or "", translate=tr))
             if problem:
                 self._status.text = problem
                 return
@@ -309,7 +309,7 @@ class EncryptionScreen(BoxLayout):
 
         def go():
             typed = field.text or ""
-            problem = ef.recovery_problem(typed)
+            problem = ef.recovery_problem(typed, translate=tr)
             if problem:
                 self._status.text = problem
                 return

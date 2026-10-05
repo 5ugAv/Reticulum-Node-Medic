@@ -166,31 +166,33 @@ def _fmt_settime(value: Union[datetime, str]) -> str:
 
 
 def set_datetime(value: Union[datetime, str],
-                 run: Optional[ShellRunner] = None) -> Tuple[bool, str]:
+                 run: Optional[ShellRunner] = None, translate=None) -> Tuple[bool, str]:
     """Set the system clock to *value* (a datetime or ``"YYYY-MM-DD HH:MM:SS"``
     string, interpreted as LOCAL wall-clock — this is the operator's manual entry).
 
     NTP auto-sync is turned off first, otherwise ``timedatectl`` refuses a manual
     set. Returns ``(ok, message)``."""
     run = run or _default_run
+    t = translate or (lambda text: text)      # the screen passes tr (ledger #215)
     stamp = _fmt_settime(value)
     run("sudo -n timedatectl set-ntp false")
     code, out = run(f'sudo -n timedatectl set-time "{stamp}"')
     if code == 0:
-        return True, f"Clock set to {stamp}."
-    return False, f"Could not set the clock: {out.strip()[-160:]}"
+        return True, t("Clock set to {stamp}.").format(stamp=stamp)
+    return False, t("Could not set the clock: {why}").format(why=out.strip()[-160:])
 
 
-def set_timezone(tz: str, run: Optional[ShellRunner] = None) -> Tuple[bool, str]:
+def set_timezone(tz: str, run: Optional[ShellRunner] = None, translate=None) -> Tuple[bool, str]:
     """Set the system timezone (an IANA name, e.g. ``America/New_York``)."""
     run = run or _default_run
+    t = translate or (lambda text: text)
     tz = (tz or "").strip()
     if not tz:
-        return False, "No timezone given."
+        return False, t("No timezone given.")
     code, out = run(f'sudo -n timedatectl set-timezone "{tz}"')
     if code == 0:
-        return True, f"Timezone set to {tz}."
-    return False, f"Could not set the timezone: {out.strip()[-160:]}"
+        return True, t("Timezone set to {tz}.").format(tz=tz)
+    return False, t("Could not set the timezone: {why}").format(why=out.strip()[-160:])
 
 
 # --- GPS time ---------------------------------------------------------------
@@ -238,31 +240,32 @@ def parse_gps_time(text: str) -> Optional[datetime]:
 GPS_TIME_CMD = "gpspipe -w -n 5 2>/dev/null"
 
 
-def gps_time_or_reason(run: Optional[ShellRunner] = None):
+def gps_time_or_reason(run: Optional[ShellRunner] = None, translate=None):
     """``(datetime, "")`` on a fix, else ``(None, reason)`` — and the reason
     tells the three failures apart. A missing gpspipe, a gpsd that never
     answered and a sky with no satellites all used to collapse into "take the
     medic outside" (readiness sweep, 2026-10-03)."""
     run = run or _default_run
+    t = translate or (lambda text: text)
     try:
         code, out = run(GPS_TIME_CMD)
     except Exception as exc:                                       # noqa: BLE001
-        return None, f"GPS could not be read: {exc}"
+        return None, t("GPS could not be read: {why}").format(why=exc)
     low = (out or "").lower()
     if code == 127 or "not found" in low or "no such file" in low:
-        return None, ("GPS tools aren't installed on this medic (gpspipe is "
-                      "missing), so the clock can't be set from GPS.")
+        return None, t("GPS tools aren't installed on this medic (gpspipe is "
+                       "missing), so the clock can't be set from GPS.")
     if "timed out" in low or "timeout" in low:
-        return None, ("GPS didn't answer within 15 seconds — is gpsd running and "
-                      "the GPS plugged in? Try again, or set the time manually.")
+        return None, t("GPS didn't answer within 15 seconds — is gpsd running and "
+                       "the GPS plugged in? Try again, or set the time manually.")
     if code not in (0, None) and not out:
-        return None, ("GPS gave no answer (exit code %s) — is gpsd running? Set "
-                      "the time manually if this persists." % code)
+        return None, t("GPS gave no answer (exit code {code}) — is gpsd running? Set "
+                       "the time manually if this persists.").format(code=code)
     dt = parse_gps_time(out or "")
     if dt is None:
-        return None, ("No GPS fix — the clock was left unchanged. Take the medic "
-                      "outside for clear sky, then try again (or set the time "
-                      "manually).")
+        return None, t("No GPS fix — the clock was left unchanged. Take the medic "
+                       "outside for clear sky, then try again (or set the time "
+                       "manually).")
     return dt, ""
 
 
@@ -274,14 +277,15 @@ def gps_time(run: Optional[ShellRunner] = None) -> Optional[datetime]:
 
 def sync_from_gps(run: Optional[ShellRunner] = None,
                   now: Callable[[], float] = None,
-                  path: str = CONFIG) -> Tuple[bool, str]:
+                  path: str = CONFIG, translate=None) -> Tuple[bool, str]:
     """Set the system clock from GPS time (sudo). Graceful no-op with a clear
     message when there's no fix — NO clock command is issued in that case.
 
     Returns ``(ok, message)`` and stamps the last-sync time on success.
     GPS time is UTC; ``timedatectl set-time`` receives it as ``UTC`` below."""
     run = run or _default_run
-    dt, why = gps_time_or_reason(run)
+    t = translate or (lambda text: text)
+    dt, why = gps_time_or_reason(run, translate=translate)
     if dt is None:
         return False, why
     stamp = dt.strftime(FMT)  # UTC wall-clock
@@ -290,24 +294,34 @@ def sync_from_gps(run: Optional[ShellRunner] = None,
     if code == 0:
         import time as _time
         _stamp_sync((now or _time.time)(), path)
-        return True, f"Clock synced from GPS: {stamp} UTC."
-    return False, f"GPS fix found but the clock could not be set: {out.strip()[-160:]}"
+        return True, t("Clock synced from GPS: {stamp} UTC.").format(stamp=stamp)
+    return False, t("GPS fix found but the clock could not be set: {why}").format(
+        why=out.strip()[-160:])
 
 
 # --- display helpers --------------------------------------------------------
 
-def format_synced_ago(last_epoch: Optional[float], now: float) -> str:
-    """A human "synced N ago" phrase for the last GPS sync (or 'never synced')."""
+def format_synced_ago(last_epoch: Optional[float], now: float, translate=None,
+                      source: str = "") -> str:
+    """A human "synced N ago" phrase for the last GPS sync (or 'never synced').
+
+    *source* "GPS" says "GPS-synced …" — the screen used to patch the word in
+    with str.replace, which no translation survives (ledger #215)."""
+    t = translate or (lambda text: text)
     if not last_epoch:
-        return "never synced"
+        return t("never synced")
+    verb = t("GPS-synced") if source == "GPS" else t("synced")
     secs = max(0, int(now - last_epoch))
     if secs < 45:
-        return "synced just now"
+        return t("{verb} just now").format(verb=verb)
     mins = secs // 60
     if mins < 60:
-        return f"synced {mins} minute{'s' if mins != 1 else ''} ago"
+        return (t("{verb} 1 minute ago") if mins == 1
+                else t("{verb} {n} minutes ago")).format(verb=verb, n=mins)
     hrs = mins // 60
     if hrs < 24:
-        return f"synced {hrs} hour{'s' if hrs != 1 else ''} ago"
+        return (t("{verb} 1 hour ago") if hrs == 1
+                else t("{verb} {n} hours ago")).format(verb=verb, n=hrs)
     days = hrs // 24
-    return f"synced {days} day{'s' if days != 1 else ''} ago"
+    return (t("{verb} 1 day ago") if days == 1
+            else t("{verb} {n} days ago")).format(verb=verb, n=days)

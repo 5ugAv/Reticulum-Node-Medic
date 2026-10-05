@@ -123,18 +123,19 @@ def _is_straight_line(seq: Sequence[int]) -> bool:
 MIN_PASSPHRASE_LEN = 8
 
 
-def passphrase_problem(text: str) -> Optional[str]:
+def passphrase_problem(text: str, translate=None) -> Optional[str]:
     """Why *text* is too weak to be the vault's fallback key, or None if it is
     acceptable. The copy promises "a real passphrase, not a word"; this is what
     makes that true instead of decorative (walkthrough 2026-08-26)."""
+    say = translate or (lambda text: text)   # the screen passes tr (ledger #215)
     t = text or ""
     if len(t) < MIN_PASSPHRASE_LEN:
-        return (f"too short — use at least {MIN_PASSPHRASE_LEN} characters "
-                "(a few words together is easiest to remember)")
+        return say("too short — use at least {n} characters "
+                   "(a few words together is easiest to remember)").format(n=MIN_PASSPHRASE_LEN)
     if len(set(t)) < 4:
-        return "too repetitive — mix in more different characters or words"
+        return say("too repetitive — mix in more different characters or words")
     if t.isdigit():
-        return "all numbers is weak — add words or letters"
+        return say("all numbers is weak — add words or letters")
     return None
 
 

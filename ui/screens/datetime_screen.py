@@ -120,7 +120,8 @@ class DateTimeScreen(BoxLayout):
         def work():
             tz = td.current_timezone()
             ls = td.last_sync()
-            ago = td.format_synced_ago(ls, time.time())
+            ago = td.format_synced_ago(ls, time.time(), translate=tr,
+                                       source=td.last_sync_source() or "")
             Clock.schedule_once(lambda dt: self._show_loaded(tz, ago), 0)
         threading.Thread(target=work, daemon=True).start()
 
@@ -146,9 +147,8 @@ class DateTimeScreen(BoxLayout):
             live = None
         if live is None:
             if ago is None:
-                ago = td.format_synced_ago(td.last_sync(), time.time())
-            if td.last_sync_source() == "GPS" and td.last_sync():
-                ago = ago.replace("synced", "GPS-synced", 1)
+                ago = td.format_synced_ago(td.last_sync(), time.time(), translate=tr,
+                                           source=td.last_sync_source() or "")
             live = ago
         if not getattr(self, "_has_gps_tools", True) and not self._auto.active:
             self._sync_status.text = tr("No GPS tools on this medic (gpspipe is not "
@@ -189,14 +189,14 @@ class DateTimeScreen(BoxLayout):
             msgs = []
             ok = True
             if tz_val:
-                tz_ok, tz_msg = td.set_timezone(tz_val)
+                tz_ok, tz_msg = td.set_timezone(tz_val, translate=tr)
                 ok = ok and tz_ok
                 msgs.append(tz_msg)
             # only a date the operator actually EDITED sets the clock: the
             # field held the app-start time, so saving a timezone two days
             # later wound the clock back two days (readiness sweep, 2026-10-03)
             if dt_val and dt_val != getattr(self, "_dt_shown", None):
-                dt_ok, dt_msg = td.set_datetime(dt_val)
+                dt_ok, dt_msg = td.set_datetime(dt_val, translate=tr)
                 ok = ok and dt_ok
                 msgs.append(dt_msg)
             Clock.schedule_once(
@@ -218,7 +218,7 @@ class DateTimeScreen(BoxLayout):
         self._sync_now.disabled = True
 
         def work():
-            ok, msg = td.sync_from_gps()
+            ok, msg = td.sync_from_gps(translate=tr)
             Clock.schedule_once(lambda dt: self._after_sync(ok, msg), 0)
         threading.Thread(target=work, daemon=True).start()
 

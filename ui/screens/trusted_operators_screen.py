@@ -103,7 +103,7 @@ class TrustedOperatorsScreen(BoxLayout):
         if u["hash"]:
             card.add_widget(_line(u["hash"], size="12sp", color="text_secondary",
                                   mono=True, h=20))
-        via = u.get("via", "")
+        via = tr(u["via"]) if u.get("via") else ""   # "this unit", "cloned from this unit"
         if u["status"] == "untrusted" and u.get("revoked"):
             via = tr("trust revoked — was {via}").format(via=via or tr("known"))
         elif u["status"] == "untrusted" and u.get("parent_name"):

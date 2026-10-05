@@ -358,7 +358,7 @@ def is_unidentified(found: Found) -> bool:
     return found.kind == "unknown" and not (found.chip or found.board_key)
 
 
-def summary(found: Found) -> str:
+def summary(found: Found, translate=None) -> str:
     """One sentence for the top of the screen. Says what was decided, not what
     was looked at.
 
@@ -366,18 +366,24 @@ def summary(found: Found) -> str:
     said it over the not-identified-yet answer, which is the tool congratulating
     someone on having told it nothing.
     """
+    t = translate or (lambda text: text)      # the screen passes tr (ledger #215)
     if is_unidentified(found):
-        return ("Let's find out what this is. If it has a USB socket, plug it "
-                "into the medic.")
+        return t("Let's find out what this is. If it has a USB socket, plug it "
+                 "into the medic.")
     paths = paths_for(found)
     ready = [p for p in paths if p.ready_now and p.role != "parts"]
     if ready:
-        return f"Good news — {ready[0].title.lower().rstrip('.')}."
+        title = t(ready[0].title).rstrip(".")
+        # mid-sentence after the dash, in every language — but never a name
+        # or an acronym (two capitals in a row stay as they are)
+        if len(title) > 1 and title[1].islower():
+            title = title[:1].lower() + title[1:]
+        return t("Good news — {title}.").format(title=title)
     workable = [p for p in paths if p.role != "parts"]
     if workable:
-        return ("This can be part of the network. You will need to find a "
-                "thing or two first — here is what.")
-    return "This cannot be a node on its own, but do not throw it away."
+        return t("This can be part of the network. You will need to find a "
+                 "thing or two first — here is what.")
+    return t("This cannot be a node on its own, but do not throw it away.")
 
 
 # --------------------------------------------------------------------------- #

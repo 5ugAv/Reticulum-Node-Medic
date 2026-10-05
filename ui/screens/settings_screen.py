@@ -321,7 +321,7 @@ class SettingsScreen(BoxLayout):
         row.add_widget(sw)
         box.add_widget(row)
         box.add_widget(_line(tr("Style: {style}").format(
-                                 style=ss.STYLE_LABELS.get(ss.style(), ss.style())),
+                                 style=tr(ss.STYLE_LABELS.get(ss.style(), ss.style()))),
                              size="12.5sp", color="text_secondary", h=20))
         self._ssv_delay = ss.idle_delay_s()
         drow = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(46),

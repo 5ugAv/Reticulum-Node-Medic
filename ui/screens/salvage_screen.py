@@ -88,7 +88,7 @@ class SalvageScreen(BoxLayout):
                   color="text_secondary"),
         ]
         for key, text in sv.KINDS:
-            rows.append(_button(text, lambda k=key: self._picked_kind(k)))
+            rows.append(_button(tr(text), lambda k=key: self._picked_kind(k)))
         self._stage(*rows)
 
     def _picked_kind(self, kind):
@@ -168,9 +168,9 @@ class SalvageScreen(BoxLayout):
         if not pending:
             return self.show_verdict()
         q = pending[0]
-        rows = [_line(q.text, "22sp", bold=True)]
+        rows = [_line(tr(q.text), "22sp", bold=True)]
         if q.look_for:
-            rows.append(_line(q.look_for, "15sp", color="text_secondary"))
+            rows.append(_line(tr(q.look_for), "15sp", color="text_secondary"))
         rows += [
             _button(tr("Yes"), lambda: self._answer(q.field, True), color="accent"),
             _button(tr("No"), lambda: self._answer(q.field, False)),
@@ -195,17 +195,20 @@ class SalvageScreen(BoxLayout):
 
     def show_verdict(self):
         paths = sv.paths_for(self._found)
-        rows = [_line(sv.summary(self._found), "20sp", bold=True,
+        # EVERY SENTENCE THROUGH THE CATALOG: the paths, guides and verdicts
+        # are composed in provisioning/salvage*.py and reached the glass in
+        # English in every language (readiness ledger #215).
+        rows = [_line(sv.summary(self._found, translate=tr), "20sp", bold=True,
                       color="accent")]
         for p in paths:
             colour = "green" if p.ready_now else "text_primary"
-            rows.append(_line(p.title, "18sp", bold=True, color=colour))
-            rows.append(_line(p.plain, "14sp", color="text_secondary"))
+            rows.append(_line(tr(p.title), "18sp", bold=True, color=colour))
+            rows.append(_line(tr(p.plain), "14sp", color="text_secondary"))
             if p.needs:
-                rows.append(_line(tr("You will need:") + "  " + " · ".join(p.needs),
+                rows.append(_line(tr("You will need:") + "  " + " · ".join(tr(n) for n in p.needs),
                                   "14sp", color="amber"))
             if p.caution:
-                rows.append(_line(p.caution, "14sp", color="warning_yellow"))
+                rows.append(_line(tr(p.caution), "14sp", color="warning_yellow"))
             if sg.guide_for_path(p.title):
                 rows.append(_button(tr("Show me how"),
                                     lambda t=p.title: self.show_guide(t),
@@ -220,27 +223,27 @@ class SalvageScreen(BoxLayout):
         g = sg.guide_for_path(path_title)
         if g is None:
             return self.show_verdict()
-        rows = [_line(g.title, "22sp", bold=True, color="accent"),
-                _line(g.opening, "15sp", color="text_secondary"),
+        rows = [_line(tr(g.title), "22sp", bold=True, color="accent"),
+                _line(tr(g.opening), "15sp", color="text_secondary"),
                 _line(tr("What you need"), "17sp", bold=True)]
         for n in g.needs:
-            rows.append(_line("•  " + n, "14sp", color="text_secondary"))
+            rows.append(_line("•  " + tr(n), "14sp", color="text_secondary"))
         rows.append(_line(tr("What to do"), "17sp", bold=True))
         for i, s in enumerate(g.steps, 1):
-            rows.append(_line(f"{i}.  {s.text}", "15sp", bold=True))
+            rows.append(_line(f"{i}.  {tr(s.text)}", "15sp", bold=True))
             if s.detail:
-                rows.append(_line("     " + s.detail, "14sp",
+                rows.append(_line("     " + tr(s.detail), "14sp",
                                   color="text_secondary"))
             if s.watch_out:
-                rows.append(_line("     " + tr("Watch out:") + "  " + s.watch_out, "14sp",
+                rows.append(_line("     " + tr("Watch out:") + "  " + tr(s.watch_out), "14sp",
                                   color="amber"))
         if g.expect:
             rows += [_line(tr("What to expect"), "17sp", bold=True),
-                     _line(g.expect, "14sp", color="text_secondary")]
+                     _line(tr(g.expect), "14sp", color="text_secondary")]
         if g.caution:
             rows += [_line(tr("Before you transmit"), "17sp", bold=True,
                            color="warning_yellow"),
-                     _line(g.caution, "14sp", color="warning_yellow")]
+                     _line(tr(g.caution), "14sp", color="warning_yellow")]
         if not g.medic_does_it:
             rows.append(_line(
                 tr("The medic cannot do this part for you yet — these are "

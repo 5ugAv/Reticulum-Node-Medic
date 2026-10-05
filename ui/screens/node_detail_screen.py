@@ -151,8 +151,11 @@ class NodeDetailScreen(BoxLayout):
         self.add_widget(head)
 
         seen = record.last_seen_hours(now)
+        # minutes under the hour: "0.0h ago" on a node heard two minutes ago
+        # read as a clock that had stopped (glass, 2026-10-05)
+        from monitor.formatting import format_age_fine
         when = (tr("never") if seen is None
-                else tr("{age} ago").format(age=format_age(seen)))
+                else tr("{age} ago").format(age=format_age_fine(seen)))
         # TWO ROADS, TWO NUMBERS (2026-09-24): when the freshest sighting came
         # over Wi-Fi, say so, and say when the mesh last heard it — "0.0h ago"
         # alone hid a roof node whose mesh ping had just gone unanswered.
@@ -162,7 +165,7 @@ class NodeDetailScreen(BoxLayout):
             text = tr("Last heard: {when} over Wi-Fi · never over the mesh").format(when=when)
         elif src == "http" and seen is not None and mesh - seen > 0.05:
             text = tr("Last heard: {when} over Wi-Fi · over the mesh {mesh} ago").format(
-                when=when, mesh=format_age(mesh))
+                when=when, mesh=format_age_fine(mesh))
         else:
             text = tr("Last heard: {when}").format(when=when)
         self.add_widget(_para(text, color="text_secondary", size="15sp"))

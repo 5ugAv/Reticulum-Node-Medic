@@ -31,7 +31,7 @@ from provisioning import records_vault as rv
 from provisioning import vault_factors as vf
 
 
-def covered_lines(home: Optional[str] = None) -> List[Tuple[bool, str]]:
+def covered_lines(home: Optional[str] = None, translate=None) -> List[Tuple[bool, str]]:
     """``(covered, sentence)`` for what encryption does and does not reach.
 
     Both halves, always, and the NOT-covered half is not a footnote. An operator
@@ -41,27 +41,29 @@ def covered_lines(home: Optional[str] = None) -> List[Tuple[bool, str]]:
     """
     from provisioning.vault import RECORDS_ROOTS
     root = RECORDS_ROOTS[0]
+    t = translate or (lambda text: text)      # the screen passes tr (ledger #215)
     return [
-        (True, f"Your fleet records in ~/{root} — the registry, who you trust, "
-               f"certificates, your LXMF messages, the beacon history."),
-        (False, "NOT your mesh identity (~/.reticulum, ~/.lxmd). It stays "
-                "readable on purpose, so this node comes back on the air by "
-                "itself after a power cut instead of waiting for you."),
-        (False, "NOT the offline map. It is public map data — encrypting it "
-                "would protect nothing."),
+        (True, t("Your fleet records in ~/{root} — the registry, who you trust, "
+                 "certificates, your LXMF messages, the beacon history.").format(root=root)),
+        (False, t("NOT your mesh identity (~/.reticulum, ~/.lxmd). It stays "
+                  "readable on purpose, so this node comes back on the air by "
+                  "itself after a power cut instead of waiting for you.")),
+        (False, t("NOT the offline map. It is public map data — encrypting it "
+                  "would protect nothing.")),
     ]
 
 
-def blockers(home: Optional[str] = None) -> List[str]:
+def blockers(home: Optional[str] = None, translate=None) -> List[str]:
     """Why encryption cannot be turned on yet — empty when it can.
 
     Read off the disk rather than off a wizard's in-memory state, because this
     screen is reachable long after that wizard closed.
     """
     out: List[str] = []
+    t = translate or (lambda text: text)
     root = rv.records_root(home)
     if not os.path.isdir(root):
-        out.append(f"There are no records at {root} yet — nothing to encrypt.")
+        out.append(t("There are no records at {root} yet — nothing to encrypt.").format(root=root))
     try:
         rv._aesgcm(b"\0" * 32)
     except rv.VaultError as exc:
@@ -69,7 +71,7 @@ def blockers(home: Optional[str] = None) -> List[str]:
     return out
 
 
-def doors_to_set(policy: Optional[vf.Policy] = None) -> List[Dict[str, str]]:
+def doors_to_set(policy: Optional[vf.Policy] = None, translate=None) -> List[Dict[str, str]]:
     """Every door to set, in the order to ask for it.
 
     The daily door is asked for factor by factor, because that is how it is
@@ -77,13 +79,14 @@ def doors_to_set(policy: Optional[vf.Policy] = None) -> List[Dict[str, str]]:
     into the same box as a passphrase.
     """
     pol = policy or vf.load_policy()
+    t = translate or (lambda text: text)
     spec = {
-        vf.PATTERN: ("pattern", "Draw your unlock pattern.",
-                     "This is the pattern you will draw to open your records."),
-        vf.PASSPHRASE: ("passphrase", "Choose your passphrase.",
-                        "You will type this to open your records."),
-        vf.KEYFILE: ("keyfile", "Plug in your USB key.",
-                     "This stick becomes a key to your records."),
+        vf.PATTERN: ("pattern", t("Draw your unlock pattern."),
+                     t("This is the pattern you will draw to open your records.")),
+        vf.PASSPHRASE: ("passphrase", t("Choose your passphrase."),
+                        t("You will type this to open your records.")),
+        vf.KEYFILE: ("keyfile", t("Plug in your USB key."),
+                     t("This stick becomes a key to your records.")),
     }
     out = [{"factor": f, "kind": spec[f][0], "prompt": spec[f][1],
             "detail": spec[f][2], "door": "daily"} for f in pol.ordered]
@@ -92,15 +95,15 @@ def doors_to_set(policy: Optional[vf.Policy] = None) -> List[Dict[str, str]]:
         # so it is a slot that has to be set even when the daily unlock is
         # something else entirely.
         out.append({"factor": vf.PASSPHRASE, "kind": "passphrase", "door": "vault",
-                    "prompt": "Choose your passphrase.",
-                    "detail": "This is enrolled behind your daily unlock, so a "
-                              "lost stick or a forgotten pattern cannot shut "
-                              "you out. It is also what your records are worth "
-                              "— make it a real passphrase."})
+                    "prompt": t("Choose your passphrase."),
+                    "detail": t("This is enrolled behind your daily unlock, so a "
+                                "lost stick or a forgotten pattern cannot shut "
+                                "you out. It is also what your records are worth "
+                                "— make it a real passphrase.")})
     out.append({"factor": "recovery", "kind": "recovery", "door": "vault",
-                "prompt": "Write down your recovery key.",
-                "detail": "The last resort behind everything else. Nothing on "
-                          "this medic can rescue you without it."})
+                "prompt": t("Write down your recovery key."),
+                "detail": t("The last resort behind everything else. Nothing on "
+                            "this medic can rescue you without it.")})
     return out
 
 
@@ -119,44 +122,46 @@ def recovery_matches(shown: str, typed: str) -> bool:
     return bool(shown) and rk.normalize(shown) == rk.normalize(typed)
 
 
-def passphrase_problem(text: str) -> Optional[str]:
+def passphrase_problem(text: str, translate=None) -> Optional[str]:
     """Why *text* is too weak to be the vault's fallback key, or None.
 
     Same rule the wizard applies — spelled once, in ``vault_factors``, so the
     two screens cannot drift into accepting different passphrases.
     """
-    return vf.passphrase_problem(text)
+    return vf.passphrase_problem(text, translate=translate)
 
 
-def confirm_problem(first: str, second: str) -> Optional[str]:
+def confirm_problem(first: str, second: str, translate=None) -> Optional[str]:
     """Why the two typings do not match, or None.
 
     A passphrase set with a typo is a vault nobody can open, and unlike the
     wizard's there is no later step that would catch it.
     """
     if first != second:
-        return "Those two do not match. Type it again."
+        return (translate or (lambda text: text))("Those two do not match. Type it again.")
     return None
 
 
-def recovery_problem(text: str) -> Optional[str]:
+def recovery_problem(text: str, translate=None) -> Optional[str]:
     """Why *text* cannot be the recovery key, or None.
 
     Checked for SHAPE here and for correctness by the vault. Catching a
     mistyped key at the keyboard is worth doing, because the alternative is
     encrypting the records behind a recovery key that does not exist.
     """
+    t = translate or (lambda text: text)
     if not (text or "").strip():
-        return "Type the recovery key you wrote down."
+        return t("Type the recovery key you wrote down.")
     if not rk.is_wellformed(text):
         n, want = len(rk.normalize(text)), rk.GROUPS * rk.GROUP_LEN
         if n != want:
-            return (f"That is {n} characters, and a recovery key is {want} "
-                    f"({rk.GROUPS} groups of {rk.GROUP_LEN}). Check for a "
-                    f"missed or repeated group.")
-        return ("That has a character a recovery key never uses. They are "
-                "written without I, L, O or U — if you wrote one of those, it "
-                "was meant to be 1, 1, 0 or V.")
+            return t("That is {n} characters, and a recovery key is {want} "
+                     "({groups} groups of {group_len}). Check for a "
+                     "missed or repeated group.").format(
+                         n=n, want=want, groups=rk.GROUPS, group_len=rk.GROUP_LEN)
+        return t("That has a character a recovery key never uses. They are "
+                 "written without I, L, O or U — if you wrote one of those, it "
+                 "was meant to be 1, 1, 0 or V.")
     return None
 
 
@@ -189,7 +194,7 @@ def turn_off(secret: str, home: Optional[str] = None,
     return rv.disable_vault(rv.records_root(home), secret)
 
 
-def state(home: Optional[str] = None) -> Dict[str, object]:
+def state(home: Optional[str] = None, translate=None) -> Dict[str, object]:
     """Everything the screen needs to draw itself, asked of the disk."""
     root = rv.records_root(home)
     on = rv.is_vault(root)
@@ -200,15 +205,22 @@ def state(home: Optional[str] = None) -> Dict[str, object]:
         except rv.VaultError:
             doors = []
     return {"on": on, "root": root, "doors": doors,
-            "blockers": blockers(home), "covered": covered_lines(home)}
+            "blockers": blockers(home, translate=translate),
+            "covered": covered_lines(home, translate=translate)}
 
 
-def headline(st: Dict[str, object]) -> str:
+def headline(st: Dict[str, object], translate=None) -> str:
     """The one sentence at the top. Says the state, not a reassurance."""
+    t = translate or (lambda text: text)
     if st["on"]:
-        n = len(st["doors"]) or "no"
-        return (f"Your records on this card are encrypted. {n} "
-                f"{'way' if n == 1 else 'ways'} in: "
-                f"{', '.join(st['doors']) or 'none readable'}.")
-    return ("Your records on this card are NOT encrypted. Anyone who takes the "
-            "card can read them.")
+        n = len(st["doors"])
+        if n == 0:
+            return t("Your records on this card are encrypted, but no key on it "
+                     "can be read — only the recovery key opens them.")
+        doors = ", ".join(t(d) for d in st["doors"])
+        if n == 1:
+            return t("Your records on this card are encrypted. 1 way in: {doors}.").format(doors=doors)
+        return t("Your records on this card are encrypted. {n} ways in: {doors}.").format(
+            n=n, doors=doors)
+    return t("Your records on this card are NOT encrypted. Anyone who takes the "
+             "card can read them.")
