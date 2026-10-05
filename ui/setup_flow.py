@@ -339,11 +339,13 @@ _TOUR_STEPS = [
      "body": "A Raspberry Pi can't see the sky, so this medic has no position "
              "or clock of its own. Its first child fixes that: a Heltec "
              "Wireless Tracker, flashed here and adopted as the medic's GPS and "
-             "time. Every node you place gets a real location and date from it.",
-     "hint": "Plug in ONLY the Tracker — the medic's own radio looks alike on "
-             "USB and is told apart by its satellite stream, not the socket. No "
-             "Tracker on hand? Skip for now — run 'Set up this Node Medic' "
-             "again from Settings when you have it.",
+             "time. Every node you place gets a real location and date from "
+             "it.\n\n"
+             "Plug in ONLY the Tracker — the medic's own radio looks alike on "
+             "USB and is told apart by its satellite stream, not the socket.",
+     # One line: the body scrolls, a hint does not, and this step carries the
+     # Tracker's picture too (readiness ledger #146).
+     "hint": "No Tracker on hand? Skip for now — run this again from Settings.",
      "next": "Skip for now  →"},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",

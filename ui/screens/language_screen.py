@@ -27,7 +27,9 @@ from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 
 from ui import theme
-from ui.i18n import available_languages, current_language, set_language, tr, coverage
+from ui.i18n import (available_languages, current_language, set_language, tr,
+                     coverage, japanese_font_path)
+from ui.text_fit import grow_to_text
 
 
 def _line(text, bold=False, size="15sp", color="text_primary", h=30):
@@ -72,6 +74,14 @@ class LanguageScreen(BoxLayout):
             row = Button(text=label, size_hint_y=None, height=dp(60), halign="left",
                          valign="middle", font_size="18sp", bold=True,
                          background_normal="", background_down="")
+            if code == "ja":
+                # The row is drawn in the app's Latin face unless Japanese is
+                # already chosen — which would paint 日本語 as three boxes on
+                # the one row meant to show it (readiness ledger #150). Noto
+                # Sans JP draws the Latin half of the label too.
+                ja_font = japanese_font_path()
+                if ja_font:
+                    row.font_name = ja_font
             row.bind(size=lambda i, v: setattr(i, "text_size", (v[0] - dp(24), v[1])))
             row.bind(on_release=lambda _b, c=code: self._select(c))
             self._rows[code] = row
@@ -82,11 +92,13 @@ class LanguageScreen(BoxLayout):
         # TRUE of the list above it, whatever it holds: the old footer named
         # Italian (not offered), omitted four languages that are, and claimed
         # Latin-only under a Russian row (readiness sweep, 2026-10-03).
-        self.add_widget(_line(
+        # Grows to its text: pinned at 52 dp its four lines ran up under the
+        # last row and off the bottom (seen on the glass 2026-10-05).
+        self.add_widget(grow_to_text(_line(
             tr("Listed here: every language the display font can draw. A row "
                "that names a percentage is partly translated — the rest shows "
                "in English. More follow as translations land."),
-            size="12sp", color="text_secondary", h=52))
+            size="12sp", color="text_secondary", h=52), extra_dp=6))
 
         self._paint(current)
 

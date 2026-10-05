@@ -335,7 +335,8 @@ class SetupWizardScreen(BoxLayout):
         self._current = None
 
     def _wizard(self, step, anim=None, on_next=None, next_text=None,
-                input_widget=None):
+                input_widget=None, scroll_body=False, stage_height=None,
+                extra_nav=None):
         """A WizardStep for *step*, with this flow's shared decisions applied.
 
         In one place so they cannot drift apart between nine renderers: the
@@ -350,7 +351,9 @@ class SetupWizardScreen(BoxLayout):
                        warning=step.get("warning", ""),
                        input_widget=input_widget,
                        next_text=next_text or step.get("next"),
-                       on_next=on_next or self._next, on_back=self._back)
+                       on_next=on_next or self._next, on_back=self._back,
+                       scroll_body=scroll_body, stage_height=stage_height,
+                       extra_nav=extra_nav)
         if step.get("self_advancing"):
             # No "keeping watch" pulse: these steps advance when the OPERATOR
             # types, chooses or draws — nothing is being waited on (ledger #175).
@@ -373,25 +376,38 @@ class SetupWizardScreen(BoxLayout):
         return lbl
 
     def _render_plain(self, step):
-        """A talking step — welcome, what-is-locked, or one screen of the tour."""
+        """A talking step — welcome, what-is-locked, or one screen of the tour.
+
+        THE WORDS SCROLL, THE PICTURE STAYS (readiness ledger #146). Eight of
+        these steps stacked more text than the 480 dp panel holds; with a
+        flexible picture stage the overflow came out of the picture first,
+        which is the part that survives not reading English. Now the poster
+        card sits on a fixed shelf, the body scrolls under it, and "Open it
+        now" lives in the nav row instead of eating stage height.
+        """
         stage = BoxLayout(orientation="vertical", spacing=dp(8))
+        stage_h = 0
         note = self._notice_widget()
         if note is not None:
+            note.size_hint_y = None
+            note.height = dp(44)
             stage.add_widget(note)
+            stage_h += 44 + 8
+        img = None
         card = step.get("poster_card")
         if card:
             img = poster_card_image(card)
-            if img is not None:
-                stage.add_widget(img)
         board = step.get("board_image")
-        if board:
-            bimg = _board_image_widget(board)
-            if bimg is not None:
-                stage.add_widget(bimg)
-        if step.get("opens"):
-            stage.add_widget(Widget())
-            stage.add_widget(self._see_it_button(step))
-        self._wizard(step, anim=stage)
+        if img is None and board:
+            img = _board_image_widget(board)
+            if img is not None:
+                img.size_hint_y = 1          # fills the shelf, not its own 150 dp
+        if img is not None:
+            stage.add_widget(img)
+            stage_h += WizardStep.PICTURE_STAGE_DP
+        extra = self._see_it_button(step) if step.get("opens") else None
+        self._wizard(step, anim=stage if stage_h else None, scroll_body=True,
+                     stage_height=stage_h or None, extra_nav=extra)
 
     def _see_it_button(self, step):
         """"Open it now" from a tour screen.
@@ -402,7 +418,7 @@ class SetupWizardScreen(BoxLayout):
         the main button would end the tour at its first screen.
         """
         b = Button(text=step.get("opens_label") or tr("Open it now"),
-                   size_hint_y=None, height=dp(48),
+                   size_hint_x=0.75,            # a nav-row button, between Back and Next
                    bold=True, font_size="15sp", background_normal="",
                    # secondary action: the theme's surface plate, not a khaki
                    # of its own (it stayed khaki through the green repaint)

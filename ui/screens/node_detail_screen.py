@@ -441,10 +441,16 @@ class NodeDetailScreen(BoxLayout):
                 col = BoxLayout(orientation="vertical", size_hint_y=None,
                                 height=dp(52) + dp(24), spacing=dp(2))
                 col.add_widget(walk_row)
+                # HEIGHT FOLLOWS THE TEXT (seen on the glass 2026-10-05: pinned
+                # at 22 dp a two-line verdict showed only its second line,
+                # "answer -104 dBm"). The column grows with it.
                 lbl = Label(text=note, font_size=theme.font_sp("13sp"),
-                            size_hint_y=None, height=dp(22), halign="left",
+                            size_hint_y=None, halign="left", valign="top",
                             color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
-                lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+                lbl.bind(width=lambda i, w: setattr(i, "text_size", (w, None)),
+                         texture_size=lambda i, ts, c=col: (
+                             setattr(i, "height", ts[1] + dp(4)),
+                             setattr(c, "height", dp(52) + dp(2) + ts[1] + dp(4))))
                 col.add_widget(lbl)
                 walk_row = col
             self._walk_row = walk_row
