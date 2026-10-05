@@ -135,7 +135,7 @@ def passphrase_problem(text: str, translate=None) -> Optional[str]:
     if len(set(t)) < 4:
         return say("too repetitive — mix in more different characters or words")
     if t.isdigit():
-        return say("all numbers is weak — add words or letters")
+        return say("numbers alone are weak — add words or letters")
     return None
 
 

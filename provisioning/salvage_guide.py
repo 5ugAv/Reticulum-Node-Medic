@@ -103,7 +103,7 @@ HANDHELD = Guide(
              "carries it — you do not need the internet. It listens on the "
              "microphone socket and writes out messages, and the other way "
              "round."),
-        Step("Point Reticulum at it.",
+        Step("Tell Reticulum where it is.",
              "Dire Wolf offers what is called a KISS connection on the "
              "computer itself. Reticulum has been able to talk to those for "
              "years — it is four lines in its settings file."),

@@ -217,7 +217,9 @@ def headline(st: Dict[str, object], translate=None) -> str:
         if n == 0:
             return t("Your records on this card are encrypted, but no key on it "
                      "can be read — only the recovery key opens them.")
-        doors = ", ".join(t(d) for d in st["doors"])
+        # slot names are keys, not words: say what each door IS
+        words = {"daily": "daily unlock", "passphrase": "passphrase", "recovery": "recovery key"}
+        doors = ", ".join(t(words.get(d, d)) for d in st["doors"])
         if n == 1:
             return t("Your records on this card are encrypted. 1 way in: {doors}.").format(doors=doors)
         return t("Your records on this card are encrypted. {n} ways in: {doors}.").format(

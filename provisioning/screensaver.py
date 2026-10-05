@@ -16,7 +16,7 @@ CONFIG = os.path.expanduser("~/.reticulum-node-medic/screensaver.json")
 
 #: Available styles (registry mirrored in ui.widgets.screensaver). Extend both.
 STYLES: List[str] = ["swirl"]
-STYLE_LABELS = {"swirl": "Hypnotic swirl (50's)"}
+STYLE_LABELS = {"swirl": "Hypnotic swirl (1950s)"}
 
 #: Idle delay choices, seconds.
 IDLE_STEPS = [60, 120, 180, 300, 600, 1800]
