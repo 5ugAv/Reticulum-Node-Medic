@@ -92,7 +92,7 @@ REACH_BODY: List[str] = [
     "satellite fix, because distance is the whole measurement and with no "
     "GPS the walk would ping away for an hour and record nothing. Stand at "
     "the node, in the open, and wait for the start button to appear.",
-    "Start it from the node's own page in VITALS, or from ANTENNA ▸ Boundary "
+    "Start it from the node's own page in VITALS, or from ANTENNA ▸ Range "
     "test if you are on site thinking about placement. Take the walk in as "
     "straight a line as the ground allows — a loop back towards the node "
     "measures the same short distance twice.",
@@ -110,26 +110,25 @@ BUILD_SECTIONS: List[Tuple[str, str, List[str]]] = [
     ("1. The everyday node — as many as you can make",
      "About AU$21 each (US$11 from the maker, before postage)",
      ["The tiny XIAO ESP32-S3 + Wio-SX1262 kit. The medic builds it "
-      "(RTNode-2400). No antenna or case in the box.",
+      "(RTNode-2400). A small antenna is in the box; a case is not.",
       "Most of a network should be made of these — they route and relay "
       "as well as a AU$60 board. What you give up is battery life, a "
       "screen, a case and GPS; not networking.",
       "The antenna is FREE: 8.2 cm of wire is a quarter-wave at 915 MHz. "
-      "On our own bench an 8 cm stub beat a 40 cm whip by a decibel and "
+      "On the bench an 8 cm stub beat a 40 cm whip by a decibel and "
       "tied the best bought whip — 8 cm simply IS the right length for "
       "this band. What you pay for is weatherproofing, not reach.",
       "Power: mains, a USB power bank, or solar with a real panel — the "
       "ESP32 is not a low-power part.",
       "For people who solder: a bare ESP32 devkit + RFM95 module is about "
-      "AU$7 in parts (docs/CHEAPEST_NODE.md) — but the medic cannot flash "
-      "that build for you today."]),
+      "AU$7 in parts — but Node Medic cannot flash that build for you yet."]),
     ("2. The remote node — put it somewhere and leave it",
      "About AU$40 (AU$26–60 across boards)",
      ["An nRF52840 + SX1262 board ON ITS OWN, as a transport node. The "
       "RAK4631 kit (base board and antenna in the box) is the one to buy: "
       "an nRF52 — the lowest-power class of board the medic builds — and "
-      "proven here. The Heltec T114 is the other one the medic has built; "
-      "it is an import.",
+      "proven with Node Medic. The Heltec T114 is the other one the medic "
+      "has built; it is imported.",
       "The radio board IS the node — it needs no computer attached. It "
       "sleeps at microamps and wakes for packets; listening costs about "
       "5–10 mA. Weeks on one 18650, indefinitely with a small panel: an "
@@ -145,7 +144,7 @@ BUILD_SECTIONS: List[Tuple[str, str, List[str]]] = [
      "About AU$100–155 on mains (Pi Zero 2 W); AU$265–470 done properly "
      "on solar",
      ["A Raspberry Pi + an nRF52 radio board — the RAK4631 is the pairing "
-      "we have proven. The Pi Zero 2 W is the one to use, and it is often "
+      "Node Medic has proven. The Pi Zero 2 W is the one to use, and it is often "
       "sold out; a Pi 4 or 5 works on mains from about AU$230 all up.",
       "ONLY this kind of node can hold messages for someone whose device "
       "is switched off. A transport node cannot.",

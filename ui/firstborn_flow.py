@@ -91,9 +91,9 @@ def decide(gps_live: bool,
         return FirstbornView(
             DONE, tr("Node number one is alive 🎉"),
             tr("Meet the firstborn — this medic's own first node, flashed and "
-               "adopted, reporting real satellites right now. The medic can see "
-               "where it stands and knows the time at last, so every node you "
-               "build from here carries a true place and date. A fine first child."),
+               "adopted. As soon as it sees the sky the medic knows where it stands "
+               "and what time it is, so every node you build from here carries "
+               "a true place and date. A fine first child."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
@@ -115,7 +115,7 @@ def decide(gps_live: bool,
                "the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to "
                "USB-C cable.\n\n"
                "Plug in only the Tracker, so the medic doesn't mistake its own "
-               "radio for it — then this begins."),
+               "radio for it — then tap Begin."),
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(

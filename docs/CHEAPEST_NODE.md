@@ -59,8 +59,10 @@ into pins. Fiddly but entirely doable with a fine tip.
 ## Flashing it
 
 The Node Medic already carries the firmware offline — `rnode_firmware_esp32_generic.zip`
-is in its cache, so **no internet is needed at the point of use**. Plug the
-board in, birth it as an RNode, and provision it as a homebrew board.
+is in its cache, so **no internet is needed at the point of use**. Node Medic's
+BUILD screen has no entry for a bare ESP32 yet, so this build is flashed by hand
+from the medic's shell: `rnodeconf --autoinstall` on the board's port, pick the
+generic ESP32 target, then provision it as a homebrew board.
 
 ⚠ The homebrew profile caps transmit power at 17 dBm on `MODEL_FE`
 (`MODEL_FF` caps at 14) — pick the right one or the radio stays quiet. This

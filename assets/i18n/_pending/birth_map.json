@@ -219,15 +219,15 @@
     "ru": "Мачта: +{h} м.  Ожидаемый выигрыш: {g} дБ.",
     "sv": "Mast: +{h} m.  Förväntad vinst: {g} dB."
   },
-  "Meet the firstborn — this medic's own first node, flashed and adopted, reporting real satellites right now. The medic can see where it stands and knows the time at last, so every node you build from here carries a true place and date. A fine first child.": {
-    "de": "Das ist der Erstgeborene — der erste eigene Knoten dieses Medic, geflasht und übernommen, der gerade echte Satelliten meldet. Der Medic weiß endlich, wo er steht und wie spät es ist, also trägt jeder Knoten, den du von hier an baust, einen wahren Ort und ein wahres Datum. Ein feines erstes Kind.",
-    "es": "Te presentamos al primogénito — el primer nodo propio de este medic, flasheado y adoptado, que ahora mismo reporta satélites reales. El medic por fin sabe dónde está y qué hora es, así que cada nodo que construyas desde aquí llevará un lugar y una fecha verdaderos. Un buen primer hijo.",
-    "fr": "Voici le premier-né — le tout premier nœud de ce medic, flashé et adopté, qui rapporte de vrais satellites en ce moment même. Le medic sait enfin où il se trouve et quelle heure il est : chaque nœud que vous construirez désormais portera un lieu et une date véritables. Un bel enfant premier-né.",
-    "id": "Inilah anak pertama — node pertama milik medic ini, sudah di-flash dan diadopsi, melaporkan satelit sungguhan saat ini juga. Medic akhirnya tahu di mana ia berada dan jam berapa sekarang, sehingga setiap node yang Anda bangun dari sini membawa tempat dan tanggal yang benar. Anak pertama yang baik.",
-    "ja": "長子をご紹介します — この medic 自身の最初のノードで、書き込みと引き取りを終え、今まさに本物の衛星を報告しています。medic はついに自分の位置と時刻を知りました。これから作るすべてのノードに、正しい場所と日付が刻まれます。立派な第一子です。",
-    "pl": "Poznaj pierworodnego — pierwszy własny węzeł tego medica, sflashowany i przyjęty, właśnie teraz raportujący prawdziwe satelity. Medic w końcu wie, gdzie stoi i jaki jest czas, więc każdy węzeł, który odtąd zbudujesz, będzie nosić prawdziwe miejsce i datę. Udane pierwsze dziecko.",
-    "ru": "Знакомьтесь — первенец: первый собственный узел этого medic, прошитый и принятый, прямо сейчас сообщающий о настоящих спутниках. Medic наконец знает, где стоит и какое сейчас время, так что каждый узел, который вы построите отсюда, будет нести верное место и дату. Отличный первый ребёнок.",
-    "sv": "Möt den förstfödda – denna medics första egna nod, flashad och adopterad, som just nu rapporterar riktiga satelliter. Medicen vet äntligen var den står och vad klockan är, så varje nod du bygger härifrån bär en sann plats och ett sant datum. Ett fint första barn."
+  "Meet the firstborn — this medic's own first node, flashed and adopted. As soon as it sees the sky the medic knows where it stands and what time it is, so every node you build from here carries a true place and date. A fine first child.": {
+    "de": "Das ist der Erstgeborene — der erste eigene Knoten dieses Medic, geflasht und übernommen. Sobald er den Himmel sieht, weiß der Medic, wo er steht und wie spät es ist, also trägt jeder Knoten, den du von hier an baust, einen wahren Ort und ein wahres Datum. Ein feines erstes Kind.",
+    "es": "Te presentamos al primogénito — el primer nodo propio de este medic, flasheado y adoptado. En cuanto vea el cielo, el medic sabrá dónde está y qué hora es, así que cada nodo que construyas desde aquí llevará un lugar y una fecha verdaderos. Un buen primer hijo.",
+    "fr": "Voici le premier-né — le tout premier nœud de ce medic, flashé et adopté. Dès qu'il verra le ciel, le medic saura où il se trouve et quelle heure il est : chaque nœud que vous construirez désormais portera un lieu et une date véritables. Un bel enfant premier-né.",
+    "id": "Inilah anak pertama — node pertama milik medic ini, sudah di-flash dan diadopsi. Begitu melihat langit, medic tahu di mana ia berada dan jam berapa sekarang, sehingga setiap node yang Anda bangun dari sini membawa tempat dan tanggal yang benar. Anak pertama yang baik.",
+    "ja": "長子をご紹介します — この medic 自身の最初のノードで、書き込みと引き取りを終え。空が見えしだい、medic は自分の位置と時刻を知ります。これから作るすべてのノードに、正しい場所と日付が刻まれます。立派な第一子です。",
+    "pl": "Poznaj pierworodnego — pierwszy własny węzeł tego medica, sflashowany i przyjęty. Gdy tylko zobaczy niebo, medic będzie wiedział, gdzie stoi i która godzina, więc każdy węzeł, który odtąd zbudujesz, będzie nosić prawdziwe miejsce i datę. Udane pierwsze dziecko.",
+    "ru": "Знакомьтесь — первенец: первый собственный узел этого medic, прошитый и принятый. Как только он увидит небо, medic узнает, где стоит и который час, так что каждый узел, который вы построите отсюда, будет нести верное место и дату. Отличный первый ребёнок.",
+    "sv": "Möt den förstfödda – denna medics första egna nod, flashad och adopterad. Så snart den ser himlen vet medicen var den står och vad klockan är, så varje nod du bygger härifrån bär en sann plats och ett sant datum. Ett fint första barn."
   },
   "More than one board looks like it could be the Tracker. Unplug the others — especially the medic's own radio — and leave just the Tracker, so the firstborn is the board you mean.": {
     "de": "Mehr als ein Board könnte der Tracker sein. Zieh die anderen ab — vor allem das eigene Funkmodul des Medic — und lass nur den Tracker stecken, damit der Erstgeborene das Board ist, das du meinst.",
@@ -249,15 +249,15 @@
     "ru": "Новый узел ({tier}) {place} - {why}",
     "sv": "Ny nod ({tier}) {place} - {why}"
   },
-  "No Tracker is connected yet. Plug the Heltec Wireless Tracker into the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to USB-C cable.\n\nPlug in only the Tracker, so the medic doesn't mistake its own radio for it — then this begins.": {
-    "de": "Noch ist kein Tracker angeschlossen. Steck den Heltec Wireless Tracker mit dem USB-A-auf-USB-C-Kabel in die USB-Buchse OBEN LINKS am Node Medic (Port 1).\n\nSteck nur den Tracker ein, damit der Medic nicht sein eigenes Funkmodul dafür hält — dann geht es hier los.",
-    "es": "Aún no hay ningún Tracker conectado. Conecta el Heltec Wireless Tracker al puerto USB SUPERIOR IZQUIERDO de Node Medic (puerto 1) con el cable USB-A a USB-C.\n\nConecta solo el Tracker, para que el medic no confunda su propia radio con él — entonces esto empieza.",
-    "fr": "Aucun Tracker n'est encore connecté. Branchez le Heltec Wireless Tracker sur la prise USB EN HAUT À GAUCHE du Node Medic (port 1) avec le câble USB-A vers USB-C.\n\nNe branchez que le Tracker, pour que le medic ne le confonde pas avec sa propre radio — alors ceci commence.",
-    "id": "Belum ada Tracker yang terhubung. Colokkan Heltec Wireless Tracker ke soket USB KIRI ATAS di Node Medic (port 1) dengan kabel USB-A ke USB-C.\n\nColokkan hanya Tracker, supaya medic tidak mengira radionya sendiri sebagai Tracker — lalu ini dimulai.",
-    "ja": "Tracker はまだ接続されていません。USB-A to USB-C ケーブルで、Heltec Wireless Tracker を Node Medic の左上の USB ポート（ポート 1）に接続してください。\n\nmedic が自身の無線機と取り違えないよう、Tracker だけを接続してください — そうすればここから始まります。",
-    "pl": "Żaden Tracker nie jest jeszcze podłączony. Podłącz Heltec Wireless Tracker do LEWEGO GÓRNEGO gniazda USB w Node Medic (port 1) kablem USB-A do USB-C.\n\nPodłącz tylko Trackera, by medic nie pomylił z nim własnego radia — wtedy to się zacznie.",
-    "ru": "Tracker пока не подключён. Подключите Heltec Wireless Tracker к ВЕРХНЕМУ ЛЕВОМУ разъёму USB на Node Medic (порт 1) кабелем USB-A — USB-C.\n\nПодключите только Tracker, чтобы medic не принял за него своё собственное радио — тогда всё начнётся.",
-    "sv": "Ingen Tracker är ansluten än. Koppla in Heltec Wireless Tracker i USB-uttaget UPPE TILL VÄNSTER på Node Medic (port 1) med USB-A till USB-C-kabeln.\n\nKoppla bara in Trackern, så att medicen inte tar sin egen radio för den – då börjar detta."
+  "No Tracker is connected yet. Plug the Heltec Wireless Tracker into the TOP-LEFT USB socket on Node Medic (port 1) using the USB-A to USB-C cable.\n\nPlug in only the Tracker, so the medic doesn't mistake its own radio for it — then tap Begin.": {
+    "de": "Noch ist kein Tracker angeschlossen. Steck den Heltec Wireless Tracker mit dem USB-A-auf-USB-C-Kabel in die USB-Buchse OBEN LINKS am Node Medic (Port 1).\n\nSteck nur den Tracker ein, damit der Medic nicht sein eigenes Funkmodul dafür hält — dann tippe auf Beginnen.",
+    "es": "Aún no hay ningún Tracker conectado. Conecta el Heltec Wireless Tracker al puerto USB SUPERIOR IZQUIERDO de Node Medic (puerto 1) con el cable USB-A a USB-C.\n\nConecta solo el Tracker, para que el medic no confunda su propia radio con él — y luego toca Comenzar.",
+    "fr": "Aucun Tracker n'est encore connecté. Branchez le Heltec Wireless Tracker sur la prise USB EN HAUT À GAUCHE du Node Medic (port 1) avec le câble USB-A vers USB-C.\n\nNe branchez que le Tracker, pour que le medic ne le confonde pas avec sa propre radio — puis touchez Commencer.",
+    "id": "Belum ada Tracker yang terhubung. Colokkan Heltec Wireless Tracker ke soket USB KIRI ATAS di Node Medic (port 1) dengan kabel USB-A ke USB-C.\n\nColokkan hanya Tracker, supaya medic tidak mengira radionya sendiri sebagai Tracker — lalu ketuk Mulai.",
+    "ja": "Tracker はまだ接続されていません。USB-A to USB-C ケーブルで、Heltec Wireless Tracker を Node Medic の左上の USB ポート（ポート 1）に接続してください。\n\nmedic が自身の無線機と取り違えないよう、Tracker だけを接続してください — そのあと「開始」をタップしてください。",
+    "pl": "Żaden Tracker nie jest jeszcze podłączony. Podłącz Heltec Wireless Tracker do LEWEGO GÓRNEGO gniazda USB w Node Medic (port 1) kablem USB-A do USB-C.\n\nPodłącz tylko Trackera, by medic nie pomylił z nim własnego radia — potem stuknij Rozpocznij.",
+    "ru": "Tracker пока не подключён. Подключите Heltec Wireless Tracker к ВЕРХНЕМУ ЛЕВОМУ разъёму USB на Node Medic (порт 1) кабелем USB-A — USB-C.\n\nПодключите только Tracker, чтобы medic не принял за него своё собственное радио — затем нажмите «Начать».",
+    "sv": "Ingen Tracker är ansluten än. Koppla in Heltec Wireless Tracker i USB-uttaget UPPE TILL VÄNSTER på Node Medic (port 1) med USB-A till USB-C-kabeln.\n\nKoppla bara in Trackern, så att medicen inte tar sin egen radio för den – tryck sedan på Börja."
   },
   "No answer to the path request in 20 s — asking once more…": {
     "de": "Keine Antwort auf die Pfadanfrage in 20 s — frage noch einmal…",
@@ -629,15 +629,15 @@
     "ru": "{h} ч назад",
     "sv": "för {h} h sedan"
   },
-  "{name} adopted as kin over LoRa — now in VITALS.": {
-    "de": "{name} über LoRa als Kin übernommen — jetzt in VITALS.",
-    "es": "{name} adoptado como Kin por LoRa — ya está en VITALS.",
-    "fr": "{name} adopté comme Kin par LoRa — maintenant dans VITALS.",
-    "id": "{name} diadopsi sebagai kin lewat LoRa — kini ada di VITALS.",
-    "ja": "{name} を LoRa で kin として引き取りました — VITALS に表示されます。",
-    "pl": "{name} przyjęty jako kin przez LoRa — jest już w VITALS.",
-    "ru": "{name} принят как kin через LoRa — теперь в VITALS.",
-    "sv": "{name} adopterad som kin via LoRa – nu i VITALS."
+  "{name} adopted as kin — now in VITALS.": {
+    "de": "{name} als Kin übernommen — jetzt in VITALS.",
+    "es": "{name} adoptado como Kin — ya está en VITALS.",
+    "fr": "{name} adopté comme Kin — maintenant dans VITALS.",
+    "id": "{name} diadopsi sebagai kin — kini ada di VITALS.",
+    "ja": "{name} を kin として引き取りました — VITALS に表示されます。",
+    "pl": "{name} przyjęty jako kin — jest już w VITALS.",
+    "ru": "{name} принят как kin — теперь в VITALS.",
+    "sv": "{name} adopterad som kin – nu i VITALS."
   },
   "{n} days ago": {
     "de": "vor {n} Tagen",

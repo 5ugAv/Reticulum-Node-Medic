@@ -1723,7 +1723,7 @@ class BirthGuideScreen(BoxLayout):
             if self._adopt_air_fn is not None:
                 self._adopt_air_fn(c.get("key"), name, c.get("node_type", "rtnode2400"),
                                    c.get("board"), c.get("firmware"), location)
-                ok, msg = True, tr("{name} adopted as kin over LoRa — now in "
+                ok, msg = True, tr("{name} adopted as kin — now in "
                                    "VITALS.").format(name=name)
         except Exception as e:      # noqa: BLE001
             ok, msg = False, tr("Adoption failed: {err}").format(err=e)
