@@ -846,15 +846,25 @@ class RNodeFlashWorkflow:
         # the booted firmware instead (--eeprom-wipe, below), so a board
         # re-used from an earlier build is provisioned fresh under THIS medic.
         self._say("Writing the radio software (two to three minutes)…")
-        code, out, err = self.connection.run(
+        # IN PIECES, WITH RETRIES. A Tracker's power dips under a sustained
+        # write: the board dropped off USB at the first big flash region on
+        # three cables and two sockets, with and without the stub (Node Medic
+        # 2, 2026-10-06). 64 KB pieces, each erased and written in a short
+        # burst, each retried after the board comes back, landed the whole
+        # image first time. The small parts go first in one call.
+        head = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
-            f"--baud 115200 --no-stub --before default_reset --after hard_reset "
+            f"--baud 115200 --no-stub --before default_reset --after no_reset "
             f"write_flash -z --flash_size detect "
             f"0x0 {fork_image_for(self.board, 'bootloader.bin')} "
             f"0x8000 {fork_image_for(self.board, 'partitions.bin')} "
-            f"0xe000 {TRACKER_BOOT_APP0} "
-            f"0x10000 {fork_image_for(self.board, 'bin')}",
+            f"0xe000 {TRACKER_BOOT_APP0}",
             timeout=self.flash_timeout)
+        code, out, err = head
+        low = ((out or "") + (err or "")).lower()
+        if code == 0 and "hash of data verified" in low:
+            code, out, err = self._write_app_in_pieces(fork_image_for(self.board, "bin"),
+                                                       pre_serial)
         low = ((out or "") + (err or "")).lower()
         if "input/output error" in low or "could not configure port" in low:
             # the board vanished from USB MID-WRITE: a half-written image
@@ -933,6 +943,62 @@ class RNodeFlashWorkflow:
             "flash", True,
             f"Flashed the medic's proven Tracker fork image and provisioned "
             f"as {self.board.display_name}.")
+
+    def _write_app_in_pieces(self, image: str, serial, piece: int = 64 * 1024,
+                             tries: int = 3):
+        """Write *image* at 0x10000 in *piece*-sized parts, each with esptool's
+        own reset into download mode and up to *tries* goes, re-resolving the
+        port by USB serial when the board re-enumerates. Returns the usual
+        (code, out, err) with the LAST esptool output, code 0 on success."""
+        import os as _os
+        total = 0
+        try:                      # the medic flashes its own USB: the image is local
+            total = _os.path.getsize(_os.path.expanduser(image))
+        except OSError:
+            size_out = self.connection.run(f"stat -c %s {image}")[1]
+            try:
+                total = int((size_out or "0").strip())
+            except ValueError:
+                total = 0
+        if total <= 0:
+            # size unknown (a remote or emulated target): one whole write
+            return self.connection.run(
+                f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
+                f"--baud 115200 --no-stub --before default_reset --after hard_reset "
+                f"write_flash -z --flash_size detect 0x10000 {image}",
+                timeout=self.flash_timeout)
+        n_pieces = (total + piece - 1) // piece
+        last = (1, "", "")
+        for i in range(n_pieces):
+            off = 0x10000 + i * piece
+            self._say(f"Writing the radio software… part {i + 1} of {n_pieces}")
+            part = f"/tmp/nm-part-{i}.bin"
+            self.connection.run(f"dd if={image} of={part} bs={piece} skip={i} count=1 "
+                                f"status=none", timeout=30)
+            ok = False
+            for attempt in range(tries):
+                if attempt:
+                    found = find_port_by_usb_serial(self.connection, serial, tries=15,
+                                                    delay=1.0)
+                    if found:
+                        self.port = found
+                last = self.connection.run(
+                    f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
+                    f"--baud 115200 --no-stub --before default_reset --after no_reset "
+                    f"write_flash --flash_size detect {hex(off)} {part}",
+                    timeout=180)
+                low = ((last[1] or "") + (last[2] or "")).lower()
+                if last[0] == 0 and "hash of data verified" in low:
+                    ok = True
+                    break
+            self.connection.run(f"rm -f {part}")
+            if not ok:
+                return last
+        # all parts in: leave download mode and boot the app
+        self.connection.run(
+            f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} --no-stub "
+            f"--before no_reset --after hard_reset read_mac", timeout=60)
+        return 0, "Hash of data verified. (written in pieces)", ""
 
     def _flash_serial_dfu(self) -> StepResult:
         """Flash an nRF52 board over its serial DFU bootloader.
@@ -1042,8 +1108,15 @@ class RNodeFlashWorkflow:
 
     def _verify(self) -> StepResult:
         self._reacquire_port()          # ditto — the board may have moved
-        out = self.connection.run(f"rnodeconf {self.port} --info")[1]
+        code, out, err = self.connection.run(f"rnodeconf {self.port} --info")
         ok = "Device signature" in out and "Firmware version" in out
+        if not ok and "Device info" in (out or "") and "KeyError" in (err or "") + (out or ""):
+            # the board ANSWERED (its product/model came back) but this medic's
+            # stock rnodeconf has no name for the medic's custom product code
+            # 0xcb and crashes while printing it. Node Medic 1's tool was
+            # patched by hand; a clone's is not (Node Medic 2, 2026-10-06).
+            # The firmware hash check below is the real validation.
+            ok = True
         hash_note = ""
         if ok:
             hash_note = self._check_and_cure_firmware_hash()

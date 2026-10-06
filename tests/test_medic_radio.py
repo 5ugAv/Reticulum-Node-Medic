@@ -180,7 +180,8 @@ def test_a_mid_write_usb_drop_is_named_and_the_identity_is_wiped_first():
     assert "dropped off USB part-way through the write" in joined
     assert "--eeprom-wipe" in joined
     assert 'f"erase_flash"' not in joined and "erase_flash, timeout" not in joined
-    assert "--before default_reset --after hard_reset" in joined
+    assert "--before default_reset --after no_reset" in joined     # pieces; hard_reset at the end
+    assert "--after hard_reset read_mac" in joined
     assert "--flash_size detect" in joined
     code_only = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
     assert "push" not in code_only.lower()                 # fragile ports: never
@@ -227,3 +228,31 @@ def test_a_board_the_detector_is_sure_is_not_a_tracker_is_refused():
     res = _setup(_conn(), other="Heltec V4").run_all()
     assert len(res) == 1 and not res[0].success
     assert "looks like a Heltec V4" in res[0].message and "Try again" in res[0].message
+
+
+def test_the_tracker_app_image_is_written_in_retried_pieces():
+    """Node Medic 2's Tracker dropped off USB at the first big flash region on
+    three cables, two sockets, with and without the stub; 64 KB pieces with a
+    retry each landed the whole image. The flasher now writes that way."""
+    from workflows.rnode_flash import RNodeFlashWorkflow
+    from workflows.rnode_boards import get_board
+    seen = []
+
+    class C(EmulatedConnection):
+        def run(self, cmd, timeout=30, **k):
+            seen.append(cmd)
+            if cmd.startswith("stat -c %s"):
+                return 0, str(3 * 65536 + 10), ""
+            if "write_flash" in cmd:
+                # the second part fails once, then succeeds
+                if "0x20000" in cmd and sum("0x20000" in c for c in seen) == 1:
+                    return 1, "", "A serial exception error occurred: write failed"
+                return 0, "Hash of data verified.", ""
+            return 0, "", ""
+    wf = RNodeFlashWorkflow(C(), get_board("heltec_wireless_tracker"), port="/dev/ttyACM0")
+    code, out, _e = wf._write_app_in_pieces("/x/app.bin", "AA:BB", tries=3)
+    assert code == 0
+    writes = [c for c in seen if "write_flash" in c]
+    assert [c.split()[-2] for c in writes] == ["0x10000", "0x20000", "0x20000", "0x30000", "0x40000"]
+    assert all("--before default_reset --after no_reset" in c for c in writes)
+    assert any("--after hard_reset read_mac" in c for c in seen)      # boots the app at the end
