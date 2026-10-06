@@ -124,3 +124,16 @@ def test_pieces_end_with_a_real_reset_not_esptools_ignored_one():
     fork = func_source("workflows/rnode_flash.py", "_flash_custom_fork")
     assert fork.index("_wait_for_rnode(") < fork.index("sleep 4 && rnodeconf {self.port} --eeprom-wipe")
     assert "--after hard_reset " not in fork
+
+
+def test_the_software_stamp_is_checked_not_fired_and_forgotten():
+    """After the naming the board resets; the hash step re-finds it by USB
+    serial and reads the tool's "Firmware hash set" — a skipped stamp shows
+    FIRMWARE CORRUPT on the board while the medic would have said done."""
+    from tests.srcutil import func_source
+    fork = func_source("workflows/rnode_flash.py", "_flash_custom_fork")
+    naming = fork.index("_identity_ok(")
+    hashing = fork.index("embedded_hash_command(self.port")
+    assert naming < fork.index("find_port_by_usb_serial(self.connection, pre_serial, tries=15", naming) < hashing
+    assert "firmware hash set" in fork
+    assert "stamping its software didn't" in fork

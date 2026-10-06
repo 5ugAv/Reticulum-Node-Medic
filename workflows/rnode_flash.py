@@ -954,11 +954,31 @@ class RNodeFlashWorkflow:
                               "The radio software is on the Tracker; giving it "
                               "its name didn't finish. Press Try again — Node "
                               "Medic resets the Tracker itself.")
-        # firmware hash = the app image's embedded SHA (validates, not corrupt)
+        # firmware hash = the app image's embedded SHA (validates, not corrupt).
+        # The naming resets the board, so re-find it by USB serial first, and
+        # READ the tool's answer: a skipped stamp leaves FIRMWARE CORRUPT on the
+        # board's own screen while the medic would have said "done".
         from workflows.rnode_v4_rgb import embedded_hash_command
-        self.connection.run(
-            embedded_hash_command(self.port, fork_image_for(self.board, "bin")),
-            timeout=120)
+        self._say("Stamping the Tracker's software…")
+        stamped = False
+        for _attempt in range(2):
+            found = find_port_by_usb_serial(self.connection, pre_serial, tries=15, delay=1.0)
+            if found:
+                self.port = found
+            hcode, hout, herr = self.connection.run(
+                "sleep 3 && " + embedded_hash_command(self.port, fork_image_for(self.board, "bin")),
+                timeout=120)
+            hlow = ((hout or "") + (herr or "")).lower()
+            print("[flash] firmware-hash:", hcode, " ".join(hlow.split())[-200:], flush=True)
+            if "firmware hash set" in hlow:
+                stamped = True
+                break
+        if not stamped:
+            return StepResult(
+                "flash", False,
+                "The Tracker has its name, but stamping its software didn't "
+                "finish — its own screen may say the software is corrupt. "
+                "Press Try again.")
         return StepResult(
             "flash", True,
             f"Flashed the medic's proven Tracker fork image and provisioned "
