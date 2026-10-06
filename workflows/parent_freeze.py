@@ -107,10 +107,14 @@ def repack_pure(dist, dest_dir: str) -> str:
     return out
 
 
-def wheel_version(path: str) -> Tuple[str, str]:
-    """``(normalised name, version)`` from a wheel filename."""
+def wheel_version(path: str) -> Optional[Tuple[str, str]]:
+    """``(normalised name, version)`` from a wheel filename, or None for a
+    file that is not a conforming wheel (a stray ``dummy_test.whl`` must not
+    abort the freeze)."""
     base = os.path.basename(path)[:-4]
     parts = base.split("-")
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return None
     return norm_name(parts[0]), parts[1]
 
 
@@ -120,7 +124,7 @@ def plan(installed: Dict[str, Tuple[str, bool]], wheels: Iterable[str]):
     from the tree (a repack overwrites any downloaded copy of the same
     version — patches included), compiled wheel paths already matching, and
     compiled names whose version has no wheel (need an online download)."""
-    wheels = list(wheels)
+    wheels = [w for w in wheels if wheel_version(w)]
     by_name: Dict[str, List[str]] = {}
     for w in wheels:
         n, _v = wheel_version(w)
@@ -136,6 +140,26 @@ def plan(installed: Dict[str, Tuple[str, bool]], wheels: Iterable[str]):
         else:
             missing.append(f"{name}=={version}")
     return repack, keep, missing
+
+
+def fallback_versions(missing: Iterable[str], wheels: Iterable[str]) -> Tuple[Dict[str, str], List[str]]:
+    """For compiled packages whose installed version has no wheel: the
+    version the wheelhouse DOES hold (``name -> version``), and the names
+    with no wheel at all. One mismatched compiled package must never cost
+    the clone every other pin (it would get stock rns again)."""
+    have: Dict[str, str] = {}
+    for w in wheels:
+        wv = wheel_version(w)
+        if wv:
+            have.setdefault(wv[0], wv[1])
+    fallback, none = {}, []
+    for item in missing:
+        name = item.split("==", 1)[0]
+        if norm_name(name) in have:
+            fallback[name] = have[norm_name(name)]
+        else:
+            none.append(item)
+    return fallback, none
 
 
 def requirements_text(installed: Dict[str, Tuple[str, bool]],
@@ -202,9 +226,12 @@ def in_user_site(dist) -> bool:
     1) stay the OS's business: their egg-info has no wheel metadata and the
     clone's card carries the same packages."""
     try:
-        return "/.local/" in str(dist.locate_file(""))
+        where = str(dist.locate_file(""))
     except Exception:                                      # noqa: BLE001
         return False
+    # the OS's own trees; everything else (user site, /usr/local) is the
+    # medic's doing and travels
+    return not (where.startswith("/usr/lib/python3") or where.startswith("/lib/python3"))
 
 
 def installed_versions(names: Iterable[str], lookup=None) -> Dict[str, Tuple[str, bool]]:
@@ -276,7 +303,7 @@ def unmet_requirements(installed_dists: Iterable, frozen: Iterable[str],
     manifest. Node Medic 1 takes PyYAML (esptool) from its OS; a clone's pip
     would stop on it."""
     have = {norm_name(n) for n in frozen}
-    have |= {wheel_version(w)[0] for w in wheels}
+    have |= {wheel_version(w)[0] for w in wheels if wheel_version(w)}
     have |= {norm_name(re.split(r"[=<>!~ \[]", m, maxsplit=1)[0]) for m in manifest}
     unmet = []
     for dist in installed_dists:
@@ -300,6 +327,11 @@ def freeze(wheelhouse: str, requirements_path: str,
     installed = installed_versions(names)
     wheels = [os.path.join(wheelhouse, w) for w in os.listdir(wheelhouse) if w.endswith(".whl")]
     repack, _keep, missing = plan(installed, wheels)
+    # a compiled package at a version with no wheel: pin the wheelhouse's
+    # version for the clone rather than lose every pin
+    fallback, missing = fallback_versions(missing, wheels)
+    for name, ver in fallback.items():
+        installed[name] = (ver, False)
     dists = []
     for name in installed:
         try:
@@ -318,6 +350,9 @@ def freeze(wheelhouse: str, requirements_path: str,
     msg = (f"Froze {len(installed)} packages as this medic runs them: "
            f"{len(made)} re-packed from the installed tree, "
            f"{len(installed) - len(made)} compiled wheels kept.")
+    if fallback:
+        msg += (" Carried at the wheelhouse's version instead of this medic's: "
+                + ", ".join(f"{k}=={v}" for k, v in fallback.items()) + ".")
     if missing:
         # no pins a clone cannot satisfy offline: it falls back to the manifest
         try:

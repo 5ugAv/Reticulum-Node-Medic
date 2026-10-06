@@ -99,9 +99,10 @@ def test_os_packages_are_left_to_the_manifest(tmp_path):
             self.metadata = {"Name": name}; self.version = ver; self._w = where; self.files = []
         def locate_file(self, _p): return self._w
     dists = {"rns": _D("rns", "1.3.7", "/home/pi/.local/lib/python3.13/site-packages/"),
-             "pyserial": _D("pyserial", "3.5", "/usr/lib/python3/dist-packages/")}
-    got = pf.installed_versions(["rns", "pyserial"], lookup=lambda n: dists[n])
-    assert got == {"rns": ("1.3.7", True)}
+             "pyserial": _D("pyserial", "3.5", "/usr/lib/python3/dist-packages/"),
+             "x": _D("x", "1.0", "/usr/local/lib/python3.13/dist-packages/")}
+    got = pf.installed_versions(["rns", "pyserial", "x"], lookup=lambda n: dists[n])
+    assert got == {"rns": ("1.3.7", True), "x": ("1.0", True)}   # /usr/local is the medic's doing
     txt = pf.requirements_text(got, ["rns==1.3.8", "Pillow==12.2.0", "smbus2==0.6.1"])
     assert "rns==1.3.7" in txt and "rns==1.3.8" not in txt
     assert "Pillow==12.2.0" in txt and "smbus2==0.6.1" in txt
@@ -118,3 +119,16 @@ def test_a_requirement_only_the_os_provides_blocks_the_pins():
     assert unmet == ["pyyaml"]        # extras, Windows-only and Python<3.8 entries don't count here
     assert pf.unmet_requirements([esptool], ["esptool", "intelhex"],
                                  ["/w/pyserial-3.5-py3-none-any.whl", "/w/PyYAML-6.0-cp313-abi3-linux_aarch64.whl"], []) == []
+
+
+def test_a_stray_file_in_the_wheelhouse_does_not_abort_the_freeze():
+    assert pf.wheel_version("/x/dummy_test.whl") is None
+    repack, keep, missing = pf.plan({"rns": ("1.3.7", True)}, ["/x/dummy_test.whl", "/x/rns-1.3.8-py3-none-any.whl"])
+    assert repack == ["rns"] and missing == []
+
+
+def test_one_mismatched_compiled_package_costs_one_pin_not_all():
+    fallback, none = pf.fallback_versions(
+        ["cryptography==43.0.0", "weird==9"],
+        ["/w/cryptography-42.0.8-cp39-abi3-manylinux_2_28_aarch64.whl", "/w/rns-1.3.7-py3-none-any.whl"])
+    assert fallback == {"cryptography": "42.0.8"} and none == ["weird==9"]

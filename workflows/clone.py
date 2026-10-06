@@ -65,6 +65,10 @@ CARRIED_TREES = (
     ("~/.arduino15", "the ESP32 and nRF52 toolchains arduino-cli installs", False),
     ("~/.platformio", "the PlatformIO toolchain and package cache, so pio builds offline", False),
     ("~/.local/bin", "arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio", False),
+    # the medic's OWN Python packages, exactly as installed — pio and
+    # esptool.py in ~/.local/bin are dead scripts without them (Node Medic 2:
+    # "No module named 'platformio'", 2026-10-06); same Pi 5 / Python 3.13
+    ("~/.local/lib", "this medic's own Python packages (platformio, esptool, patched rns)", False),
     ("~/Arduino", "Arduino libraries the firmware builds include", False),
     ("~/pi_os_lite.img.xz", "the Pi OS image, so the clone can image the NEXT card", True),
     ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", False),
@@ -306,6 +310,45 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
                       f"(Dire Wolf is available for radio work).")
 
 
+#: Settings that travel to EVERY clone: the band the fleet is on (a clone
+#: on the standard 915.125 MHz would be deaf to an 868 MHz fleet and births
+#: nodes into a different mesh) and the keeper's language.
+SETTINGS_ALWAYS = ("radio_defaults.json", "language")
+#: Settings that travel only when the fleet does (same keeper): the
+#: tombstones that keep retired radios from reappearing, certificates,
+#: alert/watch choices and screen habits. Identity, trust, salt, first-use
+#: and the board picker's memory (it holds boards' chip MACs — a MAC never
+#: leaves the medic; the guard test enforces it) stay behind.
+SETTINGS_WITH_FLEET = ("forgotten.json", "certificates", "beacon_targets.json",
+                       "node_watch.json", "operator_address", "datetime.json",
+                       "screensaver.json", "brightness", "auto_backpack", "home_profile")
+
+
+def _carry_settings(wf: "CloneWorkflow") -> str:
+    """Copy this medic's settings files into the clone's CLONE_DIR; a short
+    note for the step, "" when nothing was there to copy."""
+    names = list(SETTINGS_ALWAYS)
+    if not getattr(wf, "fresh_fleet", False):
+        names += list(SETTINGS_WITH_FLEET)
+    local_dir = os.path.expanduser(CLONE_DIR)
+    carried = 0
+    wf.connection.run(f"mkdir -p {CLONE_DIR}")
+    for name in names:
+        src = os.path.join(local_dir, name)
+        try:
+            if os.path.isdir(src):
+                ok = wf.connection.push_tree(src, f"{CLONE_DIR}/{name}")
+            elif os.path.isfile(src):
+                ok = wf.connection.push_file(src, f"{CLONE_DIR}/{name}")
+            else:
+                continue
+        except Exception as exc:                                 # noqa: BLE001
+            print("[clone] setting not carried:", name, exc, flush=True)
+            continue
+        carried += 1 if ok else 0
+    return f" Carried {carried} settings." if carried else ""
+
+
 @clone_step
 def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     """The registry, to the filename the app actually LOADS (registry.json
@@ -313,6 +356,7 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     read), moved by scp rather than a shell heredoc (a fleet-scale registry
     overflows the kernel's single-argv ceiling and killed the whole thread
     — both found by adversarial review, 2026-08-25)."""
+    settings_note = _carry_settings(wf)
     if getattr(wf, "fresh_fleet", False):
         # an EMPTY registry, not none: final_verification and the app both
         # look for the file (a fresh clone failed verification forever)
@@ -320,7 +364,7 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
                           f"[ -f {CLONE_DIR}/registry.json ] || "
                           f"echo '{{}}' > {CLONE_DIR}/registry.json")
         return StepResult("copy_monitoring_db", True,
-                          "Fresh fleet — the new medic starts with no nodes.",
+                          f"Fresh fleet — the new medic starts with no nodes.{settings_note}",
                           skipped=True)
     import tempfile
     payload = json.dumps(wf.registry.to_dict())
@@ -336,7 +380,7 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
         os.unlink(tmp)
     return StepResult("copy_monitoring_db", ok,
                       f"Copied the monitoring records ({len(wf.registry.nodes)} "
-                      f"nodes)." if ok else
+                      f"nodes).{settings_note}" if ok else
                       "Copying the records of your radios did not finish. Press Retry.")
 
 
@@ -476,7 +520,9 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
     # medic's public signing key. Write the file rnodeconf --trust-key would.
     trusted = ""
     try:
-        from workflows.signing_key import public_key_file
+        from workflows.signing_key import ensure_signing_key, public_key_file
+        from transport.connection import LocalConnection
+        ensure_signing_key(LocalConnection())        # a parent that never named a board
         pk = public_key_file()
         if pk:
             name, data = pk
@@ -487,6 +533,12 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
                 wf.connection.run("mkdir -p ~/.config/rnodeconf/trusted_keys && "
                                   f"mv /tmp/{name} ~/.config/rnodeconf/trusted_keys/{name}")
                 trusted = " It trusts the boards this medic has named."
+        if not getattr(wf, "fresh_fleet", False):
+            # and the keys THIS medic trusts (its own parent's), so the fleet
+            # it inherits verifies on the grandchild too
+            tk = os.path.expanduser("~/.config/rnodeconf/trusted_keys")
+            if os.path.isdir(tk) and os.listdir(tk):
+                wf.connection.push_tree(tk, "~/.config/rnodeconf/trusted_keys")
             try:
                 os.remove(local)
             except OSError:
@@ -520,6 +572,17 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     panel's Goodix chip isn't awake when the driver first probes (~3s,
     I2C -121); a warm rebind moments later binds instantly."""
     user = wf.connection.run("id -un")[1].strip() or "pi"
+    # the cable-birth cure travels too: without this drop-in NetworkManager
+    # runs DHCP on usb0 and wedges the clone's first cable birth of a Pi node
+    # (the parent has it by hand; Self Diagnose could only say "ask whoever
+    # set up this medic")
+    try:
+        usb0 = os.path.join(TOOL_ROOT, "scripts", "nodemedic-usb0-unmanaged.conf")
+        if os.path.isfile(usb0) and wf.connection.push_file(usb0, "/tmp/nm-usb0.conf"):
+            wf.connection.run("sudo -n install -m 644 /tmp/nm-usb0.conf "
+                              "/etc/NetworkManager/conf.d/99-nodemedic-usb0.conf")
+    except Exception as exc:                                     # noqa: BLE001
+        print("[clone] usb0 drop-in not carried:", exc, flush=True)
     home = f"/home/{user}" if user != "root" else "/root"
     unit = (
         "[Unit]\n"

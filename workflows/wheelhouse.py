@@ -88,6 +88,10 @@ def cache_wheels(connection: Connection, requirements: str = REQUIREMENTS,
 #: Reticulum traffic, it is in Debian, and it is not carried. A keeper in a
 #: remote community cannot apt-get it.
 APT_PACKAGES = (
+    # the PTY driver behind every stock-RNode flash (transport/connection.py
+    # run_interactive); the parent has Debian's copy, a clone had none and
+    # BUILD failed — erasing the board on the way (reviewer, 2026-10-06)
+    "python3-pexpect", "python3-ptyprocess",
     # Software TNC. Turns a voice radio's audio into packets and back, and
     # presents KISS on TCP 8001 — which is exactly what Reticulum's
     # TCPClientInterface with kiss_framing connects to (upstream's own
@@ -116,7 +120,9 @@ APT_PACKAGES = (
 #: NOT ONLY cage (first real clone, 2026-10-06): the app draws through libGL,
 #: Xwayland and SDL2, and a clone without them crash-looped behind a "verified"
 #: ladder. The whole screen set travels.
-DISPLAY_PACKAGES = ("cage", "libgl1", "xwayland", "libsdl2-2.0-0")
+DISPLAY_PACKAGES = ("cage", "libgl1", "xwayland", "libsdl2-2.0-0",
+                    # Settings ▸ Fix colours (the DSI-scramble cure) shells it
+                    "wlr-randr")
 ALL_PACKAGES = APT_PACKAGES + DISPLAY_PACKAGES
 
 DEB_CACHE = "~/reticulum-tool/assets/packages/debs"

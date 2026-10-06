@@ -437,3 +437,33 @@ def test_the_carried_install_is_judged_by_dpkg_not_path():
     body = func_source("workflows/clone.py", "install_carried_packages")
     assert "command -v gpsd" not in body and "command -v direwolf" not in body
     assert "dpkg-query -W" in body and "install ok installed" in body
+
+
+def test_the_clone_carries_the_medics_own_python_packages_and_settings():
+    """~/.local/bin without ~/.local/lib left pio and esptool.py as dead
+    scripts on Node Medic 2 (2026-10-06); and the band the fleet is on must
+    travel or the clone is deaf to it."""
+    from workflows import clone as cl
+    paths = [p for p, _why, _req in cl.CARRIED_TREES]
+    assert "~/.local/lib" in paths and paths.index("~/.local/bin") < paths.index("~/.local/lib")
+    assert "radio_defaults.json" in cl.SETTINGS_ALWAYS and "language" in cl.SETTINGS_ALWAYS
+    assert "forgotten.json" in cl.SETTINGS_WITH_FLEET
+    # the board picker's memory holds chip MACs: a MAC never leaves the medic
+    picker = "board_" + "memory.json"
+    for never in ("trust.json", "location_salt", "onboard.json", "first_use.json",
+                  "tool_identity.json", picker, "board_traits.json"):
+        assert never not in cl.SETTINGS_ALWAYS + cl.SETTINGS_WITH_FLEET
+    from tests.srcutil import func_source
+    assert "_carry_settings(wf)" in func_source("workflows/clone.py", "copy_monitoring_db")
+    auto = func_source("workflows/clone.py", "configure_autostart")
+    assert "99-nodemedic-usb0.conf" in auto
+    trust = func_source("workflows/clone.py", "record_child_trust")
+    assert "ensure_signing_key(" in trust and "trusted_keys" in trust
+
+
+def test_a_missing_pty_driver_refuses_before_the_write_and_never_erases():
+    from workflows.rnode_flash import refused_before_write
+    from tests.srcutil import func_source
+    body = func_source("workflows/rnode_flash.py", "birth_flash")
+    assert "import pexpect" in body
+    assert refused_before_write("Node Medic can't flash this board here: its PTY driver (python3-pexpect) is not installed on this medic. Nothing was written.")

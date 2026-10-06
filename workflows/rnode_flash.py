@@ -225,6 +225,13 @@ def birth_flash(connection: Connection, board: RNodeBoard, port: str,
         port, _touch_note = _esp32_hw_cdc_touch(connection, port)
 
     if hasattr(connection, "run_interactive"):
+        # the PTY driver needs pexpect; without it the flash would "fail"
+        # before touching the board and the caller would then ERASE a working
+        # board as "foreign firmware". Refuse before the write instead.
+        if connection.run("python3 -c 'import pexpect'")[0] != 0:
+            return (False, "Node Medic can't flash this board here: its PTY "
+                           "driver (python3-pexpect) is not installed on this medic. "
+                           "Nothing was written.", False)
         cmd = board.autoinstall_command(port, version=version, offline=True)
         code, out, _ = connection.run_interactive(cmd, interactions, timeout)
         if ALREADY_PROVISIONED_MARKER in out.lower():
