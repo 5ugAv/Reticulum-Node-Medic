@@ -209,6 +209,16 @@ class CarryReport:
         return [s for s in self.statuses if not s.carried]
 
 
+def _freeze_parent(rep) -> None:
+    """Pin this medic's OWN package versions for its clones (parent_freeze)."""
+    from workflows.parent_freeze import freeze
+    from workflows.wheelhouse import REQUIREMENTS, WHEELHOUSE
+    f_ok, f_msg = freeze(WHEELHOUSE, REQUIREMENTS)
+    (rep.checked if f_ok else rep.failed).append(
+        "this medic's package versions" if f_ok
+        else f"this medic's package versions ({f_msg})")
+
+
 def carry_all(connection: Connection, force: bool = False,
               progress: Optional[Callable[[str], None]] = None) -> CarryReport:
     """Fill every cache that can be filled unattended, then re-audit.
@@ -285,6 +295,7 @@ def carry_all(connection: Connection, force: bool = False,
                 "Python wheels" if ok else f"Python wheels ({msg})")
         else:
             rep.checked.append("Python wheels")
+        _freeze_parent(rep)
     except Exception as exc:                                      # noqa: BLE001
         rep.failed.append(f"Python wheels ({exc})")
 

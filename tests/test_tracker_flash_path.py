@@ -107,3 +107,20 @@ def test_gate_would_block_the_medics_own_radio():
         ob.serial_for_port, ob.onboard_serials, ob.guard_is_active = orig
     assert not r.success
     assert "refusing" in r.message.lower()
+
+
+def test_pieces_end_with_a_real_reset_not_esptools_ignored_one():
+    """esptool's --after hard_reset pulses RTS with DTR asserted; a native-USB
+    ESP32-S3 (USB-Serial/JTAG) ignores that and stays in download mode — the
+    Tracker sat dark and "not responding" through every attempt of
+    2026-10-06. The medic drops DTR first, then pulses RTS, then waits for
+    the board to speak RNode before naming it."""
+    from tests.srcutil import func_source
+    pieces = func_source("workflows/rnode_flash.py", "_write_app_in_pieces")
+    assert "--after hard_reset read_mac" not in pieces   # the ignored reset is gone
+    assert "_reset_into_app(" in pieces
+    reset = func_source("workflows/rnode_flash.py", "_reset_into_app")
+    assert "s.dtr=False; s.rts=True" in reset and "s.rts=False" in reset
+    fork = func_source("workflows/rnode_flash.py", "_flash_custom_fork")
+    assert fork.index("_wait_for_rnode(") < fork.index("sleep 4 && rnodeconf {self.port} --eeprom-wipe")
+    assert "--after hard_reset " not in fork

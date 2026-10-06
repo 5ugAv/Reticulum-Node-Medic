@@ -711,6 +711,16 @@ class RNodeFlashWorkflow:
         return self.port
 
     def _flash(self) -> StepResult:
+        # EVERY road signs the board's EEPROM with this medic's own key; a
+        # fresh clone has none and rnodeconf stops at "No signing key found"
+        # (Node Medic 2, 2026-10-06). Make it first, once.
+        from workflows.signing_key import ensure_signing_key
+        if not (hasattr(self.connection, "run") and self.connection.run(
+                "test -f ~/.config/rnodeconf/firmware/signing.key")[0] == 0):
+            self._say("Making this medic's own signing key — first time only")
+        k_ok, k_note = ensure_signing_key(self.connection)
+        if not k_ok:
+            return StepResult("flash", False, k_note)
         if self.board.flash_method == "serial_dfu":
             return self._flash_serial_dfu()
         if self.board.flash_method != "autoinstall":
@@ -887,6 +897,10 @@ class RNodeFlashWorkflow:
                                           tries=25, delay=1.0)
         if settled:
             self.port = settled
+        if not self._wait_for_rnode(self.port):
+            # still in download mode (or slow): one more proper reset, one more wait
+            self._reset_into_app(self.port)
+            self._wait_for_rnode(self.port)
         # boot, then ROM-bootstrap as the custom product (cb/ca for the
         # Tracker) — signed with the medic's project key. One retry after a
         # fresh settle: the first attempt can still land inside the app's
@@ -894,8 +908,12 @@ class RNodeFlashWorkflow:
         # a board re-used from an earlier build still carries that identity;
         # "-r" then changes nothing. Wipe it first so this medic's own
         # identity goes on (best-effort: a blank board answers "no EEPROM").
-        self.connection.run(f"sleep 4 && rnodeconf {self.port} --eeprom-wipe",
-                            timeout=90)
+        wcode, wout, werr = self.connection.run(
+            f"sleep 4 && rnodeconf {self.port} --eeprom-wipe", timeout=90)
+        # the tool's own words go to ui.log (never the screen): the Node Medic 2
+        # naming failure of 2026-10-06 was undiagnosable without them
+        print("[flash] eeprom-wipe:", wcode, " ".join(((wout or "") + (werr or "")).split())[-300:],
+              flush=True)
         p = self.board.provision or {}
         boot_cmd = (f"sleep 4 && rnodeconf {self.port} -r "
                     f"--product {p.get('product', 'cb')} "
@@ -918,6 +936,7 @@ class RNodeFlashWorkflow:
             code, out, err = self.connection.run(boot_cmd,
                                                  timeout=self.flash_timeout)
             low = ((out or "") + (err or "")).lower()
+        print("[flash] bootstrap:", code, " ".join(low.split())[-300:], flush=True)
         if not _identity_ok(low):
             # NO LIES THROUGH THE UI (operator, 2026-08-30): the firmware IS
             # on the board — only its papers failed. Reporting this as a
@@ -965,8 +984,8 @@ class RNodeFlashWorkflow:
             # size unknown (a remote or emulated target): one whole write
             return self.connection.run(
                 f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
-                f"--baud 115200 --no-stub --before default_reset --after hard_reset "
-                f"write_flash -z --flash_size detect 0x10000 {image}",
+                f"--baud 115200 --no-stub --before default_reset --after no_reset "
+                f"write_flash --flash_size detect 0x10000 {image}",
                 timeout=self.flash_timeout)
         n_pieces = (total + piece - 1) // piece
         last = (1, "", "")
@@ -995,11 +1014,41 @@ class RNodeFlashWorkflow:
             self.connection.run(f"rm -f {part}")
             if not ok:
                 return last
-        # all parts in: leave download mode and boot the app
-        self.connection.run(
-            f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} --no-stub "
-            f"--before no_reset --after hard_reset read_mac", timeout=60)
+        # all parts in: leave download mode and boot the app. NOT esptool's
+        # "--after hard_reset": on a native-USB ESP32-S3 (USB-Serial/JTAG) it
+        # pulses RTS with DTR still asserted, which the chip ignores — the
+        # Tracker sat in download mode, dark, "not responding", through every
+        # attempt of 2026-10-06. Drop DTR first, then pulse RTS.
+        self._reset_into_app(self.port)
         return 0, "Hash of data verified. (written in pieces)", ""
+
+    def _wait_for_rnode(self, port: str, tries: int = 6) -> bool:
+        """Poll until the board speaks RNode (KISS) — ``rnodeconf --info``
+        answers — so the naming step never talks to a board still booting or
+        still in download mode. ~5 s per try."""
+        for _ in range(tries):
+            code, out, err = self.connection.run(
+                f"sleep 3 && rnodeconf {port} --info", timeout=60)
+            low = ((out or "") + (err or "")).lower()
+            if "firmware version" in low or "device signature" in low or "not provisioned" in low \
+                    or "no eeprom" in low or "eeprom bootstrap" in low:
+                return True
+        print("[flash] board never answered KISS after flashing", flush=True)
+        return False
+
+    def _reset_into_app(self, port: str) -> bool:
+        """Reset a native-USB ESP32-S3 out of download mode into its program:
+        DTR low, then an RTS pulse (the only sequence the USB-Serial/JTAG
+        peripheral treats as a plain reset). Returns True when the port
+        answered to the pulse."""
+        code, out, err = self.connection.run(
+            "python3 -c \"import serial,time\n"
+            "s=serial.Serial(); s.port=%r; s.baudrate=115200; s.dtr=False; s.rts=False; s.open()\n"
+            "s.dtr=False; s.rts=True; time.sleep(0.15); s.rts=False; s.close(); print('pulsed')\""
+            % port, timeout=30)
+        print("[flash] reset into app:", code, " ".join(((out or "") + (err or "")).split())[-120:],
+              flush=True)
+        return code == 0 and "pulsed" in (out or "")
 
     def _flash_serial_dfu(self) -> StepResult:
         """Flash an nRF52 board over its serial DFU bootloader.

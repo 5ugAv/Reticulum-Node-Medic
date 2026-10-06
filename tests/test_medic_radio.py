@@ -180,8 +180,12 @@ def test_a_mid_write_usb_drop_is_named_and_the_identity_is_wiped_first():
     assert "dropped off USB part-way through the write" in joined
     assert "--eeprom-wipe" in joined
     assert 'f"erase_flash"' not in joined and "erase_flash, timeout" not in joined
-    assert "--before default_reset --after no_reset" in joined     # pieces; hard_reset at the end
-    assert "--after hard_reset read_mac" in joined
+    assert "--before default_reset --after no_reset" in joined     # pieces
+    # the app is booted by a DTR-low RTS pulse, NOT esptool's --after
+    # hard_reset, which a native-USB S3 ignores (left the Tracker in download
+    # mode, dark, 2026-10-06)
+    assert "--after hard_reset read_mac" not in joined
+    assert "_reset_into_app(" in joined and "_wait_for_rnode(" in joined
     assert "--flash_size detect" in joined
     code_only = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
     assert "push" not in code_only.lower()                 # fragile ports: never
@@ -255,4 +259,6 @@ def test_the_tracker_app_image_is_written_in_retried_pieces():
     writes = [c for c in seen if "write_flash" in c]
     assert [c.split()[-2] for c in writes] == ["0x10000", "0x20000", "0x20000", "0x30000", "0x40000"]
     assert all("--before default_reset --after no_reset" in c for c in writes)
-    assert any("--after hard_reset read_mac" in c for c in seen)      # boots the app at the end
+    boots = [c for c in seen if "s.dtr=False; s.rts=True" in c]     # boots the app at the end
+    assert len(boots) == 1 and "--after hard_reset" not in " ".join(seen)
+    assert seen.index(boots[0]) > seen.index(writes[-1])

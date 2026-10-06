@@ -100,10 +100,30 @@ def verify_target_pi5(wf: "CloneWorkflow") -> StepResult:
     return StepResult("verify_target_pi5", True, "Target Pi 5 confirmed.")
 
 
+def _freeze_parent() -> str:
+    """Freeze this medic's packages for the clone; a sentence for the step."""
+    try:
+        from workflows.parent_freeze import freeze
+        from workflows.wheelhouse import REQUIREMENTS, WHEELHOUSE
+        f_ok, f_msg = freeze(WHEELHOUSE, REQUIREMENTS)
+        print("[clone] parent freeze:", f_ok, f_msg, flush=True)
+        return (" Its software goes across exactly as this medic runs it."
+                if f_ok else " (This medic's own package versions could not all "
+                "be carried; the clone gets the standard set.)")
+    except Exception as exc:                                     # noqa: BLE001
+        print("[clone] parent freeze failed:", exc, flush=True)
+        return ""
+
+
 @clone_step
 def transfer_tool(wf: "CloneWorkflow") -> StepResult:
     # rsync the whole tool tree (code + carried assets: configs, scripts,
     # sketches, packages, maps), minus history/caches.
+    # FIRST, freeze this medic's Python packages exactly as it runs them, so
+    # the wheelhouse that travels holds the parent's versions (patches
+    # included) and the clone installs those — not the latest downloads.
+    # Node Medic 2 got a stock rns that did not know the Tracker (2026-10-06).
+    frozen = _freeze_parent()
     wf.connection.run(f"mkdir -p {REMOTE_TOOL_DIR}")
     ok = wf.connection.push_tree(TOOL_ROOT, REMOTE_TOOL_DIR, exclude=TOOL_EXCLUDES)
     if not ok:
@@ -113,7 +133,7 @@ def transfer_tool(wf: "CloneWorkflow") -> StepResult:
                           "Retry.")
     present = wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] == 0
     return StepResult("transfer_tool", present,
-                      "Copied the tool code + asset store." if present
+                      f"Copied the tool code + asset store.{frozen}" if present
                       else "Copying Node Medic did not finish. Press Retry — it starts again from this step.")
 
 
@@ -187,10 +207,18 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
     # Install the pinned stack (assets/requirements.txt). Prefer the carried
     # wheelhouse (offline field clone); fall back to online pip if it's absent.
     have_wheels = wf.connection.run(f"ls {REMOTE_WHEELS}/*.whl")[0] == 0
+    # THE PARENT'S OWN VERSIONS, when it froze them (workflows.parent_freeze):
+    # a clone must run what its parent runs — rns 1.3.8 from the downloads
+    # could not name the Tracker that the parent's patched 1.3.7 could
+    # (Node Medic 2, 2026-10-06)
+    from workflows.parent_freeze import PARENT_REQUIREMENTS
+    parent_pins = f"{REMOTE_WHEELS}/{PARENT_REQUIREMENTS}"
+    pins = parent_pins if wf.connection.run(f"test -s {parent_pins}")[0] == 0 else REMOTE_REQUIREMENTS
     if have_wheels:
         cmd = (f"{pip} install --no-index --find-links {REMOTE_WHEELS} "
-               f"--break-system-packages --user -r {REMOTE_REQUIREMENTS}")
-        source = f"carried wheelhouse (offline){pip_note}"
+               f"--break-system-packages --user -r {pins}")
+        source = (f"carried wheelhouse (offline, the parent's own versions){pip_note}"
+                  if pins == parent_pins else f"carried wheelhouse (offline){pip_note}")
     elif wf.connection.run("curl -fsI -m 5 https://pypi.org")[0] == 0:
         cmd = (f"{pip} install --break-system-packages --user "
                f"-r {REMOTE_REQUIREMENTS}")
@@ -443,10 +471,32 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
     """Record the new clone in THIS (source) medic's trust store as a trusted
     DIRECT child unit — you made it, so you trust it. Its own future clones are
     NOT covered (trust is non-transitive; grandchildren need manual approval)."""
+    # The other direction, at the board level: boards THIS medic has named
+    # carry its signature; the clone validates them only if it trusts this
+    # medic's public signing key. Write the file rnodeconf --trust-key would.
+    trusted = ""
+    try:
+        from workflows.signing_key import public_key_file
+        pk = public_key_file()
+        if pk:
+            name, data = pk
+            local = f"/tmp/nm-trust-{name}"
+            with open(local, "wb") as fh:
+                fh.write(data)
+            if wf.connection.push_file(local, f"/tmp/{name}"):
+                wf.connection.run("mkdir -p ~/.config/rnodeconf/trusted_keys && "
+                                  f"mv /tmp/{name} ~/.config/rnodeconf/trusted_keys/{name}")
+                trusted = " It trusts the boards this medic has named."
+            try:
+                os.remove(local)
+            except OSError:
+                pass
+    except Exception as exc:                                     # noqa: BLE001
+        print("[clone] trusted key not handed over:", exc, flush=True)
     child = getattr(wf, "fresh_identity_hash", None)
     if not child:
         return StepResult("record_child_trust", True,
-                          "No child identity hash captured — skipped.", skipped=True)
+                          f"No child identity hash captured — skipped.{trusted}", skipped=True)
     try:
         from monitor import trust
         from provisioning import tool_identity as ti
@@ -457,7 +507,7 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
     except Exception as e:
         return StepResult("record_child_trust", False, f"Could not record trust: {e}")
     return StepResult("record_child_trust", True,
-                      f"Recorded clone {child[:8]} as a trusted child unit.")
+                      f"Recorded clone {child[:8]} as a trusted child unit.{trusted}")
 
 
 @clone_step

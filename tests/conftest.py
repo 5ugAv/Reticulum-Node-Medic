@@ -186,3 +186,16 @@ def _hermetic_language(monkeypatch, tmp_path):
     monkeypatch.setattr(i18n, "_current", i18n.DEFAULT_LANGUAGE, raising=False)
     yield
     i18n._current = None
+
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _no_real_parent_freeze(monkeypatch):
+    """The parent freeze re-packs THIS machine's packages into the wheelhouse;
+    no unit test may do that for real (workflows.parent_freeze has its own)."""
+    import workflows.carry as _carry
+    import workflows.clone as _clone
+    monkeypatch.setattr(_carry, "_freeze_parent", lambda rep: None)
+    monkeypatch.setattr(_clone, "_freeze_parent", lambda: "")
