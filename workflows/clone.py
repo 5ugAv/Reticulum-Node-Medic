@@ -964,20 +964,30 @@ class CloneWorkflow:
         "restart_into_tool": "Restarting into Node Medic",
     }
 
-    def _tell_new_medic(self, step_name: str) -> None:
-        """Write one line onto the new medic's console. Best-effort and quiet:
-        a screen message must never be what fails a clone."""
+    def _tell_new_medic(self, step_name: str, failed: bool = False) -> None:
+        """Show the new medic what is happening, on ITS OWN screen. Best-effort
+        and quiet: a screen message must never be what fails a clone.
+
+        A full-screen picture when its console framebuffer is the medic's
+        720x1280 32-bit panel (workflows.clone_screen: the home page
+        sharpening behind a readable step list — keeper, 2026-10-06), else the
+        old line of console text."""
         if isinstance(self.connection, _NotYetConnected) or step_name == "find_new_medic":
             return
         names = [n for n, _f in self.steps]
         try:
-            idx = names.index(step_name) + 1
+            idx = names.index(step_name)
         except ValueError:
             return
+        try:
+            if self._draw_on_new_medic(names, idx, failed):
+                return
+        except Exception:                                          # noqa: BLE001
+            pass
         words = self.STEP_WORDS.get(step_name, "Receiving Node Medic")
         import shlex
         line = (f"\n  NODE MEDIC - being cloned. Leave both medics plugged in.\n"
-                f"  Step {idx} of {len(names)}: {words}...\n")
+                f"  Step {idx + 1} of {len(names)}: {words}...\n")
         try:
             # shlex.quote: an apostrophe ("medic's") ended the old quoting
             self.connection.run(self.priv(
@@ -985,6 +995,40 @@ class CloneWorkflow:
                 timeout=10)
         except Exception:                                          # noqa: BLE001
             pass
+
+    def _draw_on_new_medic(self, names, idx: int, failed: bool) -> bool:
+        if getattr(self, "_fb_ok", None) is None:
+            code, out, _e = self.connection.run(
+                "cat /sys/class/graphics/fb0/virtual_size "
+                "/sys/class/graphics/fb0/bits_per_pixel", timeout=10)
+            self._fb_ok = code == 0 and (out or "").split() == ["720,1280", "32"]
+            if self._fb_ok:
+                # a quiet console of its own: no login prompt or cursor drawn
+                # over the picture
+                # (setterm needs a TERM the sudo shell lacks; the raw escape
+                # and fbcon's own switch are what actually hid the flashing
+                # cursor on node-medic-2, 2026-10-06)
+                self.connection.run(self.priv(
+                    "sh -c 'chvt 8; printf \"\\033[?25l\" > /dev/tty8; "
+                    "echo 0 > /sys/class/graphics/fbcon/cursor_blink'"),
+                    timeout=10)
+        if not self._fb_ok:
+            return False
+        import tempfile
+        from workflows.clone_screen import render_frame, framebuffer_bytes
+        raw = framebuffer_bytes(render_frame(names, idx, failed=failed))
+        with tempfile.NamedTemporaryFile(prefix="nm-frame-", suffix=".raw",
+                                         delete=False) as fh:
+            fh.write(raw)
+            local = fh.name
+        try:
+            if not self.connection.push_file(local, "/tmp/nm-frame.raw"):
+                return False
+        finally:
+            os.unlink(local)
+        code = self.connection.run(self.priv(
+            "dd if=/tmp/nm-frame.raw of=/dev/fb0 bs=1M status=none"), timeout=20)[0]
+        return code == 0
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         emit = on_progress or (lambda r: None)
@@ -1003,6 +1047,7 @@ class CloneWorkflow:
             self.results.append(result)
             emit(result)
             if not result.success and not result.skipped:
+                self._tell_new_medic(name, failed=True)   # red on its own screen too
                 break
             self.current_index += 1
         return self.results
