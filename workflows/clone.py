@@ -252,8 +252,15 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
                           "carry Dire Wolf for radio work).")
     icode, iout, ierr = wf.connection.run(
         wf.priv(offline_install_command(cache)), timeout=600)
-    have = wf.connection.run("command -v direwolf")[0] == 0
-    gps = wf.connection.run("command -v gpsd")[0] == 0
+    # Ask dpkg, not PATH: gpsd lives in /usr/sbin, which a normal user's PATH
+    # does not include — the Wi-Fi-off proof clone called a perfect offline
+    # install a failure that way (2026-10-06).
+    def _installed(pkg):
+        code, out, _e = wf.connection.run(
+            f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null")
+        return code == 0 and "install ok installed" in (out or "")
+    have = _installed("direwolf")
+    gps = _installed("gpsd") and _installed("gpsd-clients")
     if not gps:
         return StepResult("install_carried_packages", False,
                           "The GPS software would not install from the carried "

@@ -428,3 +428,12 @@ def test_scratch_is_not_carried():
     passes this medic's mess on as if it were the tool."""
     assert "imgwork" in clone.CARRY_SKIP
     assert not any("imgwork" in p for p, _w, _r in clone.CARRIED_TREES)
+
+
+def test_the_carried_install_is_judged_by_dpkg_not_path():
+    """gpsd lives in /usr/sbin, off a normal user's PATH: `command -v gpsd`
+    failed a perfect offline install on the Wi-Fi-off proof clone."""
+    from tests.srcutil import func_source
+    body = func_source("workflows/clone.py", "install_carried_packages")
+    assert "command -v gpsd" not in body and "command -v direwolf" not in body
+    assert "dpkg-query -W" in body and "install ok installed" in body
