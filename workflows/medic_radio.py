@@ -194,9 +194,11 @@ class MedicRadioSetup:
                 self.by_id = f"/dev/serial/by-id/{pick[0]}"
                 return StepResult("find_its_port", True, "Found the radio's plug.")
             self.sleep(1)
-        return StepResult("find_its_port", False,
+        from workflows.own_supply import with_supply_note
+        return StepResult("find_its_port", False, with_supply_note(
                           "The Heltec Wireless Tracker did not come back after "
-                          "flashing. Unplug it, plug it back in, and press Try again.")
+                          "flashing. Unplug it, plug it back in, and press Try again.",
+                          self.connection.run))
 
     def _write(self, path: str, text: str, root: bool) -> bool:
         import shlex
@@ -473,10 +475,11 @@ class MedicRadioCheck:
                               f"The radio is not on yet: {why} did not start. "
                               "Press Try again; if it fails again, choose 'Set it "
                               f"up again from the start'. ({tail})")
-        return StepResult("hear_radio", False,
+        from workflows.own_supply import with_supply_note
+        return StepResult("hear_radio", False, with_supply_note(
                           "The radio services are running but the radio has not "
                           "answered yet. Check the Tracker is still plugged in, "
-                          "then press Try again.")
+                          "then press Try again.", self.connection.run))
 
     def _hear_gps(self) -> StepResult:
         """The board's GPS reports, counted by the splitter — not a satellite

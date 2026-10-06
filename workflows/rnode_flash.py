@@ -869,12 +869,13 @@ class RNodeFlashWorkflow:
         if "input/output error" in low or "could not configure port" in low:
             # the board vanished from USB MID-WRITE: a half-written image
             # boot-loops with a dark screen. Say what happened, not "failed".
-            return StepResult("flash", False,
+            from workflows.own_supply import with_supply_note
+            return StepResult("flash", False, with_supply_note(
                               "The board dropped off USB part-way through the "
                               "write, so its radio software is incomplete. Check the "
                               "cable, or try another cable or another USB "
                               "socket, then press Try again — Node Medic "
-                              "rewrites it from the start.")
+                              "rewrites it from the start.", self.connection.run))
         if code != 0 and "hash of data verified" not in low:
             return StepResult("flash", False,
                               f"esptool write failed: {(err or out)[-200:]}")
