@@ -51,6 +51,9 @@ class FirstbornView:
     can_begin: bool
     #: True only on DONE — the screen fires confetti/anim on this.
     celebrate: bool = False
+    #: FAILED after the post-restart check: the screen offers "Set it up again
+    #: from the start" and "Not now" as well as Try again.
+    after_check: bool = False
 
 
 def succeeded(results) -> bool:
@@ -77,7 +80,10 @@ def decide(gps_live: bool,
            running: bool = False,
            result: Optional[bool] = None,
            failure: str = "",
-           checking: bool = False) -> FirstbornView:
+           checking: bool = False,
+           owns_radio: bool = False,
+           after_check: bool = False,
+           no_image: bool = False) -> FirstbornView:
     """Pick the stage. Order matters: a run in progress and a finished result
     outrank the plug state, so the screen doesn't snap back to "plug it in"
     mid-flash if a USB re-enumeration briefly drops the candidate count (an
@@ -86,57 +92,73 @@ def decide(gps_live: bool,
         return FirstbornView(
             BIRTHING, tr("Checking the Heltec Wireless Tracker…"),
             tr("Node Medic restarted to join its new radio. Now it checks the "
-               "radio is up on the mesh and the GPS is reporting — about a "
+               "radio is on and the position finder is reporting — about a "
                "minute."),
             can_begin=False)
     if running:
         return FirstbornView(
             BIRTHING, tr("Setting up the Heltec Wireless Tracker…"),
-            tr("Flashing the Heltec Wireless Tracker as this medic's radio and "
-               "GPS, starting the mesh services around it, then checking it hears "
-               "both. This takes a few minutes — leave it plugged in."),
+            tr("Writing Node Medic's radio software onto the Heltec Wireless "
+               "Tracker, switching the medic's radio on, then checking it hears "
+               "both the radio and the satellites. About five minutes — leave it "
+               "plugged in."),
             can_begin=False)
     if result is True:
         return FirstbornView(
             DONE, tr("The Heltec Wireless Tracker is set up"),
-            tr("The Heltec Wireless Tracker is this medic's LoRa radio and GPS, "
-               "and its mesh services are running. As soon as it sees the sky, "
-               "Node Medic knows where it stands, and you can set the clock from "
+            tr("The Heltec Wireless Tracker is now this medic's radio and "
+               "position finder, and the radio is on. As soon as it can see the "
+               "sky, Node Medic knows where it is, and you can set the clock from "
                "it in Settings ▸ Date & time."),
             can_begin=False, celebrate=True)
     if result is False:
+        text = failure or tr("The Heltec Wireless Tracker didn't finish coming up.")
+        # the one-board sentence ONLY when the plug count is the problem — it
+        # used to follow every failure, blaming the bench for software faults
+        if "plugged in" in text.lower() and "unplug" not in text.lower():
+            text += "\n\n" + tr("Unplug everything except the Heltec Wireless "
+                                 "Tracker, then try again.")
         return FirstbornView(
-            FAILED, tr("The Heltec Wireless Tracker needs another go"),
-            (failure or tr("The Heltec Wireless Tracker didn't finish coming up.")) + "\n\n" +
-            tr("Check it is the only board plugged in, then try again."),
-            can_begin=True)
-    if gps_live:
+            FAILED, tr("The Heltec Wireless Tracker needs another go"), text,
+            can_begin=True, after_check=after_check)
+    if no_image and not (gps_live or owns_radio):
+        # a medic cloned from one that never had the Tracker's radio software
+        # (~/overlay_test is an optional carried tree): say so, offer the way on
         return FirstbornView(
-            ALREADY, tr("This medic already has its radio and GPS"),
-            tr("Its Heltec Wireless Tracker is already reporting, so there's "
-               "nothing to set up here. You can move on — or run this again from "
-               "Settings if you want to replace it."),
+            NEED_TRACKER, tr("This medic cannot set up a radio yet"),
+            tr("It did not receive the Heltec Wireless Tracker's radio software "
+               "when it was made. On the medic that made it, open BUILD ▸ Clone "
+               "this device ▸ Retry a clone, and it copies the missing part. "
+               "Everything else works meanwhile."),
+            can_begin=False)
+    if gps_live or owns_radio:
+        # the medic OWNS a radio (its roster names one, or its services are
+        # bound to one) — a satellite fix is not required to know that
+        return FirstbornView(
+            ALREADY, tr("This medic already has its radio and position finder"),
+            tr("Its Heltec Wireless Tracker is set up, so there's nothing to do "
+               "here. A position needs a view of the sky."),
             can_begin=False)
     if tracker_candidates <= 0:
         return FirstbornView(
             NEED_TRACKER, tr("Plug in the Heltec Wireless Tracker"),
-            tr("No Heltec Wireless Tracker is connected yet. Plug it into "
-               "a free USB socket on this Node Medic with the USB-A to USB-C "
-               "cable, its aerial already attached.\n\n"
+            tr("No Heltec Wireless Tracker is connected yet. Screw its aerial on "
+               "first. Then plug it into any free USB socket on this Node Medic "
+               "with a short USB-A to USB-C cable that carries data, not just "
+               "power.\n\n"
                "This page moves on by itself when it sees the Heltec Wireless "
                "Tracker."),
             can_begin=False)
     if tracker_candidates > 1:
         return FirstbornView(
             NEED_TRACKER, tr("One board at a time"),
-            tr("More than one board looks like it could be the Heltec Wireless "
-               "Tracker. Unplug the others — especially the medic's own radio — "
-               "and leave just the Heltec Wireless Tracker, so Node Medic sets "
-               "up the board you mean."),
+            tr("Two things are plugged in that could be the Heltec Wireless "
+               "Tracker. Unplug everything except the Heltec Wireless Tracker."),
             can_begin=False)
     return FirstbornView(
         READY, tr("Ready to set up the Heltec Wireless Tracker"),
-        tr("A board that could be the Heltec Wireless Tracker is plugged in. If it is the Heltec "
-           "Wireless Tracker, press Begin: the medic flashes it as its own radio "
-           "and GPS, starts its mesh services, and checks it hears both."),
+        tr("Something that looks like the Heltec Wireless Tracker is plugged in. "
+           "Check the board says 'Wireless Tracker' on it, like the picture, then "
+           "press Begin. Node Medic writes its radio software onto it and checks "
+           "it works. About five minutes."),
         can_begin=True)

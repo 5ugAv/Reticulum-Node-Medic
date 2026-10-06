@@ -334,16 +334,18 @@ _TOUR_STEPS = [
     {"key": TOUR_FIRSTBORN, "part": TOUR,
      "board_image": "heltec_wireless_tracker",
      "opens": "firstborn", "optional": True, "setup_first": True,
-     "opens_label": "Set up its radio and GPS  →",
+     "opens_label": "Set up its radio  →",
      "title": "Heltec Wireless Tracker",
      "body": "The Heltec Wireless Tracker is part of Node Medic: it is this "
-             "medic's own LoRa radio and its GPS, on one board. Setting it up "
-             "flashes it, starts the medic's mesh services around it, and checks "
-             "it can hear the mesh and the satellites.\n\n"
-             "Plug in only the Heltec Wireless Tracker, with its aerial on.",
+             "medic's radio and its position finder, on one small board. Setting "
+             "it up writes Node Medic's radio software onto it, switches the "
+             "medic's radio on, and checks it can hear other radios and the "
+             "satellites.\n\n"
+             "Screw the aerial on first, then plug it in with its USB cable — "
+             "and plug in nothing else.",
      # One line: the body scrolls, a hint does not, and this step carries the
      # Tracker's picture too (readiness ledger #146).
-     "hint": "Not on hand? Skip for now — run this again from Settings.",
+     "hint": "No Tracker yet? You can do this later from Settings.",
      "next": "Skip for now  →"},
 
     {"key": TOUR_BIRTH, "part": TOUR, "poster_card": "birth", "opens": "birth_guide",
@@ -406,8 +408,8 @@ _TOUR_STEPS = [
      "title": "ANTENNA — aim it on site",
      "body": "For when you are standing at the node with it in your hands. "
              "Signal strength, clarity and background noise update each time "
-             "the medic hears a packet; while this screen is open it asks your "
-             "RTNodes to send one every couple of seconds.\n\n"
+             "the medic hears the node; while this screen is open it asks your "
+             "nodes to call out every couple of seconds.\n\n"
              "A node in the right place with a badly aimed antenna and a node in "
              "the wrong place look the same in VITALS. This is how you tell them "
              "apart, on site.\n\n"
@@ -439,7 +441,7 @@ _TOUR_STEPS = [
     {"key": TOUR_PROBE, "part": TOUR, "opens": "probe",
      "title": "PROBE — find out what is wrong",
      "body": "Plug in a board that is misbehaving and the medic reads it: what "
-             "it is, what firmware it carries, whether it answers at all.\n\n"
+             "it is, what software is on it, whether it answers at all.\n\n"
              "After this tour, open it from a node's page: VITALS, tap the "
              "node, then Probe.\n\n"
              "Self Diagnose (on VITALS, and in Settings) turns the same "
@@ -455,9 +457,9 @@ _TOUR_STEPS = [
              "person can build and repair nodes without you.\n\n"
              "That is the point of the whole tool. A mesh that only one person "
              "can maintain lasts exactly as long as that person stays.",
-     "hint": "The clone gets its own identity. Its records are not locked until "
-             "you turn on Encrypt my records on the clone. Trust between medics "
-             "is set up in Settings ▸ Trusted operators."},
+     "hint": "The clone is its own medic, with its own address. Its records are "
+             "not locked until you turn on Encrypt my records on the clone. Trust "
+             "between medics is set up in Settings ▸ Trusted operators."},
 
     {"key": TOUR_SETTINGS, "part": TOUR, "opens": "settings",
      "title": "Settings — the medic's own dials",
@@ -473,8 +475,9 @@ _TOUR_STEPS = [
 
     {"key": FINISH, "part": TOUR,
      "title": "That is the medic",
-     "body": "Nothing here is finished by reading about it. Plug a board in and "
-             "press BUILD — Node Medic walks you through the whole setup.\n\n"
+     "body": "Nothing here is finished by reading about it. When you have a "
+             "radio board to set up, plug it in and press BUILD — Node Medic walks "
+             "you through it. Until then, VITALS and MAPS work straight away.\n\n"
              "When you want this medic's own records locked, that is Settings ▸ "
              "Encrypt my records.",
      "next": "Take me to the front page  →"},

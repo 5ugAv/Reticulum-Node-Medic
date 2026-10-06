@@ -89,6 +89,9 @@ class SettingsScreen(BoxLayout):
         body.add_widget(self._retention_section())
         body.add_widget(self._entry(tr("Reticulum & radio guide"), tr("What RNode / transport / propagation nodes are, "
                                     "where to place them, and the radio settings"), "guide"))
+        body.add_widget(self._entry(tr("This medic's radio and position finder"),
+                                    tr("Set up, check or replace the Heltec Wireless "
+                                       "Tracker that is this medic's own radio"), "firstborn"))
         body.add_widget(self._entry(tr("Self Diagnose — check this medic itself"), tr("Its radio, clock, services, disk, touch and "
                                     "power — live checks and automatic fixes"), "self_diagnose"))
         # THE WAY BACK TO THE FIRST-USE WALKTHROUGH, and the way to hand this

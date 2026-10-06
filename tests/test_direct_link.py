@@ -112,7 +112,7 @@ def test_discover_returns_the_target_that_answered():
                            sleep=lambda s: None, now=lambda: 0.0, timeout=1.0)
     assert got == "nodemedic-b.local"
     # it claimed our end of the /29 on the wired NIC (not on enx*/wlan0)
-    addr = [c for c in calls if "addr" in c]
+    addr = [c for c in calls if "addr" in c and "add" in c]   # (the "del" of our own 10.55.0.1 comes first)
     assert addr and addr[0][-1] == "eth0"
     assert f"{dl.MEDIC_ETH_IP}/{dl.ETH_PREFIX}" in addr[0]
 

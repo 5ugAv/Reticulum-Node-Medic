@@ -96,7 +96,7 @@ def verify_target_pi5(wf: "CloneWorkflow") -> StepResult:
     cpuinfo = wf.connection.run("cat /proc/cpuinfo")[1]
     if "Raspberry Pi 5" not in cpuinfo:
         return StepResult("verify_target_pi5", False,
-                          "Target is not a Raspberry Pi 5 — clone targets Pi 5.")
+                          "The machine on the cable is not a Raspberry Pi 5. Node Medic only makes medics on a Raspberry Pi 5.")
     return StepResult("verify_target_pi5", True, "Target Pi 5 confirmed.")
 
 
@@ -108,14 +108,13 @@ def transfer_tool(wf: "CloneWorkflow") -> StepResult:
     ok = wf.connection.push_tree(TOOL_ROOT, REMOTE_TOOL_DIR, exclude=TOOL_EXCLUDES)
     if not ok:
         return StepResult("transfer_tool", False,
-                          "Couldn't copy the tool across to the new medic. "
-                          "Check the cable between the two medics is firmly in "
-                          "both, then press Retry. (rsync of the tool tree "
-                          "failed.)")
+                          "Couldn't copy Node Medic across. Check the network "
+                          "cable at both ends, or try another cable, then press "
+                          "Retry.")
     present = wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] == 0
     return StepResult("transfer_tool", present,
                       "Copied the tool code + asset store." if present
-                      else "Tool tree copied but main.py is missing.")
+                      else "Copying Node Medic did not finish. Press Retry — it starts again from this step.")
 
 
 @clone_step
@@ -262,11 +261,12 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
     have = _installed("direwolf")
     gps = _installed("gpsd") and _installed("gpsd-clients")
     if not gps:
-        return StepResult("install_carried_packages", False,
-                          "The GPS software would not install from the carried "
-                          "packages, so the new medic could not use its Tracker. "
-                          "Press Retry; if it fails again, this medic needs "
-                          "Settings ▸ Field readiness while online.")
+        # gpsd is no longer what the new medic's radio set-up uses (the
+        # splitter reads the Tracker's GPS directly); a miss is a note
+        return StepResult("install_carried_packages", True,
+                          "Some optional packages did not install (GPS tools, "
+                          "voice-radio support). The clone works without them.",
+                          skipped=True)
     if not have:
         # optional: the clone works; only voice-radio packet support is missing
         return StepResult("install_carried_packages", True,
@@ -309,7 +309,7 @@ def copy_monitoring_db(wf: "CloneWorkflow") -> StepResult:
     return StepResult("copy_monitoring_db", ok,
                       f"Copied the monitoring records ({len(wf.registry.nodes)} "
                       f"nodes)." if ok else
-                      "Could not copy the registry to the clone (scp).")
+                      "Copying the records of your radios did not finish. Press Retry.")
 
 
 @clone_step
@@ -389,6 +389,14 @@ def generate_fresh_identity(wf: "CloneWorkflow") -> StepResult:
     # on the clone was made by THIS flow — keep it.
     if wf.connection.run("test -f ~/.reticulum/storage/identity")[0] == 0:
         wf.fresh_identity_generated = True
+        # read the kept identity back, so lineage and trust still record it
+        code, out, _e = wf.connection.run(
+            "python3 -c \"import RNS,sys; i=RNS.Identity.from_file(sys.argv[1]); "
+            "print(i.hash.hex() if i else '')\" "
+            f"{CLONE_DIR}/identity 2>/dev/null", timeout=60)
+        kept = (out or "").strip().split()[-1] if (out or "").strip() else ""
+        if code == 0 and len(kept) == 32:
+            wf.fresh_identity_hash = kept
         return StepResult("generate_fresh_identity", True,
                           "The clone already has its own identity from an "
                           "earlier run — kept (never regenerated).")
@@ -438,7 +446,7 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
     child = getattr(wf, "fresh_identity_hash", None)
     if not child:
         return StepResult("record_child_trust", True,
-                          "No child identity hash captured — skipped.")
+                          "No child identity hash captured — skipped.", skipped=True)
     try:
         from monitor import trust
         from provisioning import tool_identity as ti
@@ -563,7 +571,7 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     return StepResult("configure_autostart", code == 0,
                       "Kiosk autostart + touch retry enabled — the clone "
                       "boots into the tool on its own screen." if code == 0
-                      else "Could not enable the autostart units.")
+                      else "Starting Node Medic at power-on did not finish. Press Retry.")
 
 
 @clone_step
@@ -603,7 +611,7 @@ def ensure_ssh_keypair(wf: "CloneWorkflow") -> StepResult:
     wf.connection.run("ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519 -C nodemedic")
     if wf.connection.run("test -f ~/.ssh/id_ed25519.pub")[0] != 0:
         return StepResult("ensure_ssh_keypair", False,
-                          "Could not create the clone's SSH key.")
+                          "Giving it its own door key did not finish. Press Retry.")
     return StepResult("ensure_ssh_keypair", True, "SSH key created for the clone.")
 
 
@@ -783,7 +791,7 @@ def carry_touch_cure(wf: "CloneWorkflow") -> StepResult:
     return StepResult("carry_touch_cure", ok,
                       "Carried the touch settings (the doubled-tap cure "
                       "rides along)." if ok else
-                      "Could not copy the Kivy config to the clone.")
+                      "Setting up the touchscreen did not finish. Press Retry.")
 
 
 _CLONE_STEPS.insert(
@@ -952,17 +960,13 @@ class CloneWorkflow:
     #: What the NEW medic's own screen says while it is being filled. Its
     #: console showed a bare login prompt for the whole copy, which a new
     #: keeper reads as "nothing is happening" (first real clone, 2026-10-06).
-    STEP_WORDS = {
-        "carry_the_toolchain": "Receiving the firmware tools (the longest part)",
-        "install_dependencies": "Installing the software",
-        "install_display_stack": "Installing the screen",
-        "install_carried_packages": "Installing the radio-modem packages",
-        "copy_monitoring_db": "Receiving the node records",
-        "generate_fresh_identity": "Making this medic's own identity",
-        "configure_autostart": "Setting Node Medic to start at power-on",
-        "final_verification": "Checking everything",
-        "restart_into_tool": "Restarting into Node Medic",
-    }
+    # the SAME words the picture uses (workflows.clone_screen) — the console
+    # fallback and the clone page must never disagree
+    @property
+    def STEP_WORDS(self):
+        from workflows.clone_screen import STEP_WORDS as _W
+        return _W
+
 
     def _tell_new_medic(self, step_name: str, failed: bool = False) -> None:
         """Show the new medic what is happening, on ITS OWN screen. Best-effort
@@ -1016,7 +1020,11 @@ class CloneWorkflow:
             return False
         import tempfile
         from workflows.clone_screen import render_frame, framebuffer_bytes
-        raw = framebuffer_bytes(render_frame(names, idx, failed=failed))
+        import time as _t
+        t0 = getattr(self, "_clone_t0", None) or _t.monotonic()
+        self._clone_t0 = t0
+        raw = framebuffer_bytes(render_frame(names, idx, failed=failed,
+                                             elapsed_s=int(_t.monotonic() - t0)))
         with tempfile.NamedTemporaryFile(prefix="nm-frame-", suffix=".raw",
                                          delete=False) as fh:
             fh.write(raw)
@@ -1028,6 +1036,9 @@ class CloneWorkflow:
             os.unlink(local)
         code = self.connection.run(self.priv(
             "dd if=/tmp/nm-frame.raw of=/dev/fb0 bs=1M status=none"), timeout=20)[0]
+        if failed:
+            # a failed clone left on tty8 hid the console login: hand it back
+            self.connection.run(self.priv("chvt 1"), timeout=10)
         return code == 0
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):

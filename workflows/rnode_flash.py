@@ -270,8 +270,7 @@ def _identity_ok(low: str) -> bool:
     are being made", which is success, not failure (Node Medic 2's own radio
     set-up stopped on exactly this, 2026-10-06, and told the keeper to press
     RST for nothing)."""
-    return ("bootstrapping successful" in low or "signature validated" in low
-            or "valid eeprom was already present" in low)
+    return "bootstrapping successful" in low or "signature validated" in low
 
 
 def refused_before_write(message: str) -> bool:
@@ -846,7 +845,7 @@ class RNodeFlashWorkflow:
         # native USB-JTAG is driven --no-stub. The old identity is wiped by
         # the booted firmware instead (--eeprom-wipe, below), so a board
         # re-used from an earlier build is provisioned fresh under THIS medic.
-        self._say("Writing the firmware (two to three minutes)…")
+        self._say("Writing the radio software (two to three minutes)…")
         code, out, err = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
             f"--baud 115200 --no-stub --before default_reset --after hard_reset "
@@ -862,14 +861,14 @@ class RNodeFlashWorkflow:
             # boot-loops with a dark screen. Say what happened, not "failed".
             return StepResult("flash", False,
                               "The board dropped off USB part-way through the "
-                              "write, so its firmware is incomplete. Check the "
+                              "write, so its radio software is incomplete. Check the "
                               "cable, or try another cable or another USB "
                               "socket, then press Try again — Node Medic "
                               "rewrites it from the start.")
         if code != 0 and "hash of data verified" not in low:
             return StepResult("flash", False,
                               f"esptool write failed: {(err or out)[-200:]}")
-        self._say("Writing the board's identity…")
+        self._say("Giving the Tracker its name…")
         # SETTLE: wait for the SAME board (by USB serial) to re-appear and
         # re-resolve its port — never trust the pre-flash path. Then give the
         # fresh app a breath before speaking KISS to it.
@@ -915,11 +914,16 @@ class RNodeFlashWorkflow:
             # ritual (hold PRG, press RST) for a problem that isn't flashing,
             # three laps in a row. Say what actually happened, and give the
             # advice that fits THIS act.
+            if "already present" in low:
+                return StepResult("flash", False,
+                                  "The radio software is on the Tracker, but it "
+                                  "kept its old name and Node Medic could not "
+                                  "replace it. Unplug the Tracker, plug it back "
+                                  "in, then press Try again.")
             return StepResult("flash", False,
-                              "The firmware IS on the board — writing its "
-                              "identity (EEPROM) is what didn't finish. "
-                              "Press Try again; Node Medic resets the board "
-                              "itself. Detail: " + f"{(err or out)[-160:]}")
+                              "The radio software is on the Tracker; giving it "
+                              "its name didn't finish. Press Try again — Node "
+                              "Medic resets the Tracker itself.")
         # firmware hash = the app image's embedded SHA (validates, not corrupt)
         from workflows.rnode_v4_rgb import embedded_hash_command
         self.connection.run(

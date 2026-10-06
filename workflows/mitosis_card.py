@@ -102,20 +102,22 @@ def holds_vault_key(device_path: str, mounts: Optional[Callable] = None,
 
 
 def debs_missing() -> str:
-    """'' when the clone's screen packages (.deb) are cached on this medic,
-    else the sentence that stops the write before the card is erased: a new
-    medic without them cannot finish its install (readiness ledger #115)."""
+    """'' when the clone's carried packages are complete on this medic, else
+    the sentence that stops the write before the card is erased: a new medic
+    without them cannot finish (readiness ledger #115). Checks the PLANNED
+    lists (screen and radio sets, planned against the fresh card), not just
+    that some .deb files exist — a half cache failed mid-clone and told a
+    touchscreen user to run a terminal command (adversarial review, 2026-10-06)."""
     try:
-        from transport.connection import LocalConnection
-        from workflows.wheelhouse import DEB_CACHE, deb_count
-        if deb_count(LocalConnection(), DEB_CACHE) > 0:
+        from workflows.wheelhouse import (DEB_CACHE, DISPLAY_PACKAGES, APT_PACKAGES,
+                                          debs_for)
+        if debs_for(DISPLAY_PACKAGES, DEB_CACHE) and debs_for(APT_PACKAGES, DEB_CACHE):
             return ""
     except Exception:                                              # noqa: BLE001
         return ""                       # cannot tell — never refuse on a guess
-    return ("The clone's screen packages (.deb) are not carried on this medic, "
-            "so the new medic could not finish its install. Settings > Field "
-            "readiness > Prepare for the field fetches them while on Wi-Fi; "
-            "then write the card.")
+    return ("This medic is missing a piece the new medic needs. Connect this "
+            "medic to Wi-Fi, open Settings ▸ Field readiness ▸ Prepare for the "
+            "field, wait for it to finish, then come back here.")
 
 
 def medic_timezone() -> str:

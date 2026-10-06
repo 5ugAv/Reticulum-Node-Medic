@@ -492,7 +492,7 @@ def test_firstborn_warns_to_isolate_the_lookalike_radio():
     # the medic's own RNode is a look-alike ESP32-S3; the step must say so
     step = sf.step_for(sf.TOUR_FIRSTBORN)
     text = (step.get("hint", "") + step.get("body", "")).lower()
-    assert "only" in text and ("radio" in text or "look" in text)
+    assert ("nothing else" in text or "only" in text) and "radio" in text
 
 
 # --------------------------------------------------------------------------- #

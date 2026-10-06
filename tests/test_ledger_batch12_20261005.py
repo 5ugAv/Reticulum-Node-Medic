@@ -31,7 +31,7 @@ def test_the_clone_screen_calls_the_tracker_gps_and_clock():
     assert "Its own mesh radio is a separate job" not in m
     assert "own mesh radio is not set up by this flow yet" not in m
     assert "Unplug the ethernet cable" in m
-    assert "first its own LoRa radio and GPS" in m
+    assert "first its own radio and position finder" in m
 
 
 # --- #144: PROBE's door -----------------------------------------------------

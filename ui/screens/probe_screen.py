@@ -96,7 +96,7 @@ class ProbeScreen(BoxLayout):
         # reachable here so the tour's "run it later from PROBE" is a real route.
         if on_birth_tracker is not None:
             self.tracker_btn = Button(
-                text=tr("Set up the GPS Tracker  —  this medic's own GPS"),
+                text=tr("Set up the Heltec Wireless Tracker  —  this medic's radio and position finder"),
                 size_hint_y=None, height=dp(46), font_size="15sp", bold=True,
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["surface"]),

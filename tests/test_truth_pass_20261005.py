@@ -41,7 +41,7 @@ def test_the_firstborn_claims_nothing_it_cannot_see_yet():
     f = src("ui/firstborn_flow.py")
     assert "reporting real satellites right now" not in f
     assert "knows the time at last" not in f
-    assert "Node Medic knows where it stands" in f
+    assert "Node Medic knows where it is" in f
     # the plug-in stage has no Begin button: it moves on by itself (review, 2026-10-06)
     assert "then this begins" not in f and "then tap Begin." not in f
     assert "This page moves on by itself when it sees the Heltec Wireless" in f

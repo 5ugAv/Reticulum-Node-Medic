@@ -79,9 +79,9 @@ def show_clone_cheer(new_name: str = "", on_close=None) -> ModalView:
     bubble.add_widget(_words(
         tr("[b]1.[/b]  Unplug the ethernet cable."), "18sp", markup=True))
     bubble.add_widget(_words(
-        tr("[b]2.[/b]  Go to {name}. It walks you through setting up its Heltec "
-           "Wireless Tracker as its LoRa radio and GPS, then shows you around."
-           ).format(name=name), "18sp", markup=True))
+        tr("[b]2.[/b]  Go to {name}. Its screen walks you through plugging in its "
+           "Heltec Wireless Tracker — its radio and position finder — then shows "
+           "you around.").format(name=name), "18sp", markup=True))
     ok = Button(text=tr("Got it  →"), bold=True, size_hint_y=None, height=dp(56),
                 font_size=theme.font_sp("19sp"), background_normal="",
                 background_color=theme.hex_to_rgba(INK),

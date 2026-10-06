@@ -227,6 +227,7 @@ def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
             # through sudo's secure_path to /usr/sbin/ip, which does not match
             # the sudoers rule naming /usr/bin/ip, so the call is refused and
             # the medic silently never claims its end of the link.
+            release_own_peer_address(runner, [ifc])
             runner(["sudo", "-n", IP_BIN, "addr", "add",
                     f"{MEDIC_ETH_IP}/{ETH_PREFIX}", "dev", ifc], timeout=5)
             runner(["sudo", "-n", IP_BIN, "link", "set", ifc, "up"], timeout=5)
@@ -240,11 +241,34 @@ def discover_peer(hostname: str = "", runner: Optional[Runner] = None,
                    timeout=5)
             runner(["ping", "-c", "1", "-W", "1", "-b", _eth_broadcast()],
                    timeout=5)
+        mine = _local_addresses(runner)
         for target in _all_targets(hostname, wired, runner):
+            if target in mine:
+                continue          # a clone keeps 10.55.0.1 for life; never "find" ourselves
             if probe(target, 22):
                 return target
         sleep(poll)
     return None
+
+
+def _local_addresses(runner: Runner) -> set:
+    """Every IPv4 address this medic holds. A cloned medic carries the cable
+    address 10.55.0.1 permanently (its own card's nodemedic-cable-ip unit), so
+    when IT clones the next medic the sweep would reach its own sshd first and
+    fail with "login as 'pi' failed" (adversarial review, 2026-10-06)."""
+    import re
+    _rc, out, _e = runner([IP_BIN, "-4", "-o", "addr", "show"], timeout=5)
+    return set(re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out or ""))
+
+
+def release_own_peer_address(runner: Runner, wired) -> None:
+    """On a cloned medic acting as PARENT: give up its own 10.55.0.1 on the
+    cable for the duration of a clone, so the new medic (which claims that
+    same address) is the only one holding it. Best-effort; refused on the
+    scoped original medic, which never holds that address anyway."""
+    for ifc in wired:
+        runner(["sudo", "-n", IP_BIN, "addr", "del", f"{PEER_ETH_IP}/{ETH_PREFIX}",
+                "dev", ifc], timeout=5)
 
 
 def _eth_broadcast() -> str:

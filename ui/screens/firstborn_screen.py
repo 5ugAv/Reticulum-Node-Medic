@@ -134,6 +134,27 @@ class FirstbornScreen(BoxLayout):
         if self._poll is not None:
             self._poll.cancel()
             self._poll = None
+        # leaving without finishing: the walkthrough must not jump ahead next
+        # time it opens (a stale "come back here" marker)
+        if not self._running and self._result is not True:
+            try:
+                from ui import setup_flow as _sf
+                _sf.take_resume()
+            except Exception:                              # noqa: BLE001
+                pass
+
+    def handle_back(self):
+        """Back/Home are refused while the set-up runs: a flash or the hand-over
+        restart must not be left running behind another screen (clicker
+        review, 2026-10-06)."""
+        if self._running:
+            from ui.confirm import confirm_leave
+            confirm_leave(tr("Not yet"), tr("The Heltec Wireless Tracker is being "
+                                            "set up. Wait for it to finish."))
+            return True
+        return False
+
+    handle_home = handle_back
 
     def _check_gps_once(self):
         try:
@@ -162,7 +183,10 @@ class FirstbornScreen(BoxLayout):
                          running=self._running,
                          result=self._result,
                          failure=self._failure,
-                         checking=getattr(self, "_check_only", False))
+                         checking=getattr(self, "_check_only", False),
+                         owns_radio=_medic_owns_radio(),
+                         after_check=getattr(self, "_check_only", False),
+                         no_image=_tracker_image_missing())
 
     def _render(self, force=False):
         view = self._view()
@@ -188,7 +212,7 @@ class FirstbornScreen(BoxLayout):
                 self.add_widget(img)
 
         if view.stage == ff.DONE:
-            plate = Label(text=tr("★  this medic's radio and GPS  ★"), bold=True,
+            plate = Label(text=tr("★  this medic's radio and position finder  ★"), bold=True,
                           font_size=theme.font_sp("16sp"),
                           color=theme.hex_to_rgba(theme.COLORS["green"]),
                           size_hint_y=None, height=dp(26))
@@ -204,22 +228,70 @@ class FirstbornScreen(BoxLayout):
         self.add_widget(body)
 
         if self._running and self._progress:
-            self.add_widget(_label(self._progress, color="text_primary",
-                                   size="14sp"))
+            import time as _t
+            m, sec = divmod(int(_t.monotonic() - getattr(self, "_t0", _t.monotonic())), 60)
+            self.add_widget(_label(f"{self._progress}   {m}m {sec:02d}s",
+                                   color="text_primary", size="14sp"))
+            pulse = _label(tr("●  working — you don't need to press anything"),
+                           color="accent", size="13sp")
+            self.add_widget(pulse)
+            from kivy.animation import Animation
+            anim = Animation(opacity=0.25, duration=0.8) + Animation(opacity=1, duration=0.8)
+            anim.repeat = True
+            anim.start(pulse)
 
         self.add_widget(Widget())      # spring
 
         # A keeper with no Tracker (or one that already has GPS) needs an
         # obvious way onward from the screen itself, not just the back-swipe.
-        if view.stage in (ff.NEED_TRACKER, ff.ALREADY) and self._on_home:
-            skip = Button(text=tr("Skip for now  →"), size_hint_y=None,
-                          height=dp(48), font_size=theme.font_sp("16sp"),
-                          background_normal="",
+        if view.stage == ff.ALREADY and self._on_home:
+            on = Button(text=tr("Carry on  →"), size_hint_y=None,
+                        height=dp(52), font_size=theme.font_sp("17sp"), bold=True,
+                        background_normal="",
+                        background_color=theme.hex_to_rgba(theme.COLORS["green"]),
+                        color=theme.hex_to_rgba(theme.COLORS["background"]))
+            on.bind(on_release=lambda *_: self._on_home())
+            self.add_widget(on)
+        if view.stage == ff.NEED_TRACKER and self._on_home:
+            # the quiet road: small text, never the prominent button (keeper)
+            skip = Button(text=tr("Do this later"), size_hint_y=None,
+                          height=dp(40), font_size=theme.font_sp("14sp"),
+                          background_normal="", opacity=0.75,
                           background_color=theme.hex_to_rgba(
                               theme.COLORS["surface"]),
-                          color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+                          color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
             skip.bind(on_release=lambda *_: self._on_home())
             self.add_widget(skip)
+        if view.stage == ff.FAILED and getattr(view, "after_check", False):
+            # the check after the restart failed: never a trap (a pending check
+            # used to send every power-up back here with Try again only)
+            from workflows import medic_radio as _mr
+            again = Button(text=tr("Set it up again from the start"),
+                           size_hint_y=None, height=dp(46),
+                           font_size=theme.font_sp("15sp"), background_normal="",
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+
+            def _again(*_):
+                _mr.clear_check_pending()
+                _mr.unlock_own_radio()
+                self._check_only = False
+                self._result = None
+                self._render(force=True)
+            again.bind(on_release=_again)
+            self.add_widget(again)
+            later = Button(text=tr("Not now"), size_hint_y=None, height=dp(40),
+                           font_size=theme.font_sp("14sp"), background_normal="",
+                           opacity=0.75,
+                           background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                           color=theme.hex_to_rgba(theme.COLORS["text_secondary"]))
+
+            def _later(*_):
+                _mr.clear_check_pending()
+                if self._on_home:
+                    self._on_home()
+            later.bind(on_release=_later)
+            self.add_widget(later)
 
         if view.can_begin:
             begin = Button(
@@ -230,6 +302,16 @@ class FirstbornScreen(BoxLayout):
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),
                 color=theme.hex_to_rgba(theme.COLORS["background"]))
             begin.bind(on_release=lambda *_: self._begin())
+            # a yellow border: the "go" action stands out (keeper, 2026-10-06)
+            from kivy.graphics import Color, Line
+            with begin.canvas.after:
+                Color(*theme.hex_to_rgba("#ffd600"))
+                _border = Line(rounded_rectangle=(0, 0, 1, 1, dp(8)), width=dp(2))
+
+            def _redraw(i, *_a, _b=_border):
+                _b.rounded_rectangle = (i.x + dp(1), i.y + dp(1), i.width - dp(2),
+                                        i.height - dp(2), dp(8))
+            begin.bind(pos=_redraw, size=_redraw)
             # the full board name wraps instead of running off both edges
             begin.halign = "center"
             begin.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(20), None)))
@@ -261,8 +343,16 @@ class FirstbornScreen(BoxLayout):
         self._result = None
         self._failure = ""
         self._check_only = check_only
-        self._progress = (tr("Checking the radio and GPS…") if check_only
+        self._progress = (tr("Checking the radio and position finder…") if check_only
                           else tr("Starting…"))
+        import time as _t
+        self._t0 = _t.monotonic()
+        try:
+            from kivy.app import App
+            App.get_running_app().begin_activity(
+                tr("Setting up the radio — keep the Tracker plugged in"))
+        except Exception:                                  # noqa: BLE001
+            pass
         self._render(force=True)
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -297,13 +387,19 @@ class FirstbornScreen(BoxLayout):
 
     def _finish(self, ok, failure):
         from workflows import medic_radio as _mr
+        try:
+            from kivy.app import App
+            App.get_running_app().end_activity()
+        except Exception:                                  # noqa: BLE001
+            pass
         if getattr(self, "_check_only", False):
             if ok:
                 _mr.clear_check_pending()      # proven: never re-check at boot
         elif ok and _mr.check_pending():
             # the hand-over restart is seconds away: say so, keep the spinner
-            self._progress = tr("Restarting Node Medic so it joins its new "
-                                "radio — this page comes back by itself.")
+            self._progress = tr("The screen goes dark for about half a minute "
+                                "while Node Medic restarts with its new radio. "
+                                "Unplug nothing — this page comes back by itself.")
             self._render(force=True)
             return
         self._running = False
@@ -350,6 +446,36 @@ def _medic_has_gps() -> bool:
     try:
         from monitor.geo import read_splitter_fix
         return read_splitter_fix() is not None
+    except Exception:                  # noqa: BLE001
+        return False
+
+
+def _tracker_image_missing() -> bool:
+    """True when this medic has no Tracker radio-software image to write
+    (a clone from a GitHub-built parent). Checked once; it cannot change
+    while the page is open."""
+    global _IMG_MISSING
+    if _IMG_MISSING is None:
+        try:
+            import os
+            from workflows.rnode_boards import get_board
+            from workflows.rnode_flash import fork_image_for
+            _IMG_MISSING = not os.path.isfile(os.path.expanduser(
+                fork_image_for(get_board("heltec_wireless_tracker"), "bin")))
+        except Exception:                  # noqa: BLE001
+            _IMG_MISSING = False
+    return _IMG_MISSING
+
+
+_IMG_MISSING = None
+
+
+def _medic_owns_radio() -> bool:
+    """Does this medic already have its own radio? Its roster names one, or
+    its radio service is bound to one — no satellite fix needed to know that."""
+    try:
+        from ui.onboard_roster import onboard_serials, service_bound_serials
+        return bool(onboard_serials()) or bool(service_bound_serials())
     except Exception:                  # noqa: BLE001
         return False
 

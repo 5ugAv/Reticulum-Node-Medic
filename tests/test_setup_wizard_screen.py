@@ -713,7 +713,7 @@ def test_the_walkthrough_is_reset_when_it_is_opened(monkeypatch):
     src = func_source("ui/app.py", "switch_mode")
     block = src[src.index('if mode_name == "setup":'):]
     block = block[:block.index("self.sm.current = mode_name")]
-    assert "reset()" in block
+    assert "reset(" in block             # reset(resume=...) since the radio hand-off
     assert src.index('if mode_name == "setup":') < src.index("self.sm.current = mode_name")
 
 

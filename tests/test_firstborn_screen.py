@@ -46,13 +46,16 @@ def test_screen_shows_the_tracker_board_image_not_just_the_name():
 
 def test_celebration_has_a_nameplate_and_honest_proof():
     # "firstborn" / "node #1" retired from the glass (the keeper, 2026-10-06)
-    assert "this medic's radio and GPS" in SRC and "node #1" not in SRC
+    assert "this medic's radio and position finder" in SRC and "node #1" not in SRC
     # proof is the REAL fix read back, never fabricated coordinates
     assert "_fix_proof" in SRC and "read_splitter_fix" in SRC
 
 
 def test_non_terminal_stages_offer_an_on_screen_skip():
-    assert "Skip for now" in SRC
+    # the quiet road is small text ("Do this later"), never the prominent
+    # button; a medic that already owns its radio gets "Carry on" (keeper)
+    assert 'tr("Do this later")' in SRC and 'tr("Carry on  →")' in SRC
+    assert "Skip for now" not in SRC
 
 
 def test_a_birth_in_flight_is_not_double_started_on_re_entry():
@@ -71,7 +74,7 @@ def test_the_tracker_step_sets_up_first_and_skipping_is_the_quiet_road():
     in full and promises nothing about a radio the medic does not have yet."""
     FLOW = pathlib.Path("ui/setup_flow.py").read_text()
     assert '"setup_first": True' in FLOW
-    assert '"opens_label": "Set up its radio and GPS' in FLOW
+    assert '"opens_label": "Set up its radio' in FLOW
     assert '"next": "Skip for now' in FLOW
     assert "recognises its own radio and" not in FLOW
     WIZ = pathlib.Path("ui/screens/setup_wizard_screen.py").read_text()

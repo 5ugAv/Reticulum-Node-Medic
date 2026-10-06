@@ -136,6 +136,7 @@ class MedicRadioSetup:
             ("find_its_port", self._find_by_id),
             ("wire_services", self._wire),
             ("start_mesh", self._start),
+            ("lock_off", self._lock_off),
             ("hand_over", self._hand_over),
         ]
 
@@ -145,9 +146,28 @@ class MedicRadioSetup:
     # -- steps ---------------------------------------------------------------
 
     def _flash(self) -> StepResult:
+        # A retry after the board was already locked off as this medic's own:
+        # it is flashed and named, so go straight on (the flasher would
+        # otherwise refuse it as "the medic's own radio" — adversarial review,
+        # 2026-10-06).
+        own = self._attached_own_radio()
+        if own:
+            self.by_id = own
+            return StepResult("flash_radio", True,
+                              "The Heltec Wireless Tracker is already this medic's radio.",
+                              skipped=True)
+        other = self._looks_like_another_board()
+        if other:
+            return StepResult("flash_radio", False,
+                              f"The board plugged in looks like a {other}, not a "
+                              "Heltec Wireless Tracker. Node Medic will not write "
+                              "the Tracker's radio software onto it. Unplug it, plug "
+                              "in the Heltec Wireless Tracker, then press Try again.")
         wf = self.flash_factory()
         if getattr(wf, "is_blocked", False):
-            return StepResult("flash_radio", False, getattr(wf, "message", "Cannot flash."))
+            return StepResult("flash_radio", False, getattr(wf, "message",
+                              "Node Medic can't write to this board right now. Unplug "
+                              "it, plug it back in, then press Try again."))
         # every act reaches the screen: the page sat on "Starting…" for the
         # whole flash (keeper, 2026-10-06)
         say = getattr(self, "_say", None)
@@ -159,7 +179,7 @@ class MedicRadioSetup:
             return StepResult("flash_radio", False, bad.message)
         self._flashed = wf
         return StepResult("flash_radio", True,
-                          "The Heltec Wireless Tracker is flashed as this medic's radio and GPS.")
+                          "The Tracker now carries this medic's radio software.")
 
     def _find_by_id(self) -> StepResult:
         """The splitter must own the board by its permanent by-id name: the
@@ -172,7 +192,7 @@ class MedicRadioSetup:
                 names if len(names) == 1 else [])
             if len(pick) == 1:
                 self.by_id = f"/dev/serial/by-id/{pick[0]}"
-                return StepResult("find_its_port", True, f"Radio found at {self.by_id}.")
+                return StepResult("find_its_port", True, "Found the radio's plug.")
             self.sleep(1)
         return StepResult("find_its_port", False,
                           "The Heltec Wireless Tracker did not come back after "
@@ -213,17 +233,9 @@ class MedicRadioSetup:
         ])
         if self.connection.run(f"test -s {h}/.lxmd/config")[0] != 0:
             ok = ok and self._write(f"{h}/.lxmd/config", LXMD_CONFIG, root=False)
-        # LOCK IT OFF (keeper, 2026-10-06): from here this board is the medic's
-        # own radio. Its USB serial goes into the onboard roster, so BUILD,
-        # PROBE and any flash refuse it for good (ui.onboard_roster).
-        serial = by_id_to_serial(self.by_id)
-        if serial:
-            ok = ok and self._write(f"{h}/.reticulum-node-medic/onboard.json",
-                                    json.dumps({"jonesey_lora": serial}, indent=2) + "\n",
-                                    root=False)
         return StepResult("wire_services", ok,
-                          "Radio, mesh and message services written." if ok else
-                          "Could not write the radio's service files.")
+                          "Radio set up." if ok else
+                          "Setting the radio up did not finish. Press Try again.")
 
     def _start(self) -> StepResult:
         """Enable all three, start ONLY the splitter now. rnsd must not start
@@ -235,30 +247,121 @@ class MedicRadioSetup:
             "rnode-splitter.service rnsd.service lxmd.service && "
             "systemctl restart rnode-splitter.service'"), timeout=90)
         return StepResult("start_mesh", code == 0,
-                          "Radio services installed." if code == 0 else
-                          "The radio services would not install: "
-                          + " ".join((err or out or "").split())[-200:])
+                          "Radio switched on." if code == 0 else
+                          "Switching the radio on did not finish. Press Try again. ("
+                          + " ".join((err or out or "").split())[-120:] + ")")
+
+    def _lock_off(self) -> StepResult:
+        """LOCK IT OFF (keeper, 2026-10-06): from here this board is the medic's
+        own radio. Its USB serial goes into the onboard roster, so BUILD, PROBE
+        and any flash refuse it for good, in whichever socket it sits. LAST
+        among the writes, so a failure before this point leaves the board
+        flashable for a retry (adversarial review, 2026-10-06)."""
+        serial = by_id_to_serial(self.by_id)
+        if not serial:
+            return StepResult("lock_off", False,
+                              "Could not read the Tracker's serial number to "
+                              "record it as this medic's radio. Press Try again.")
+        h = self.home
+        code, out, _e = self.connection.run(f"cat {h}/.reticulum-node-medic/onboard.json")
+        try:
+            roster = json.loads(out) if code == 0 and (out or "").strip() else {}
+        except ValueError:
+            roster = {}
+        roster["jonesey_lora"] = serial                     # merge, never replace
+        ok = self._write(f"{h}/.reticulum-node-medic/onboard.json",
+                         json.dumps(roster, indent=2) + "\n", root=False)
+        return StepResult("lock_off", ok,
+                          "The Tracker is now this medic's own radio: Node Medic "
+                          "will never flash it again." if ok else
+                          "Could not record the Tracker as this medic's radio. "
+                          "Press Try again.")
+
+    def _unlock(self) -> None:
+        """Undo _lock_off when the hand-over could not be queued, so a retry can
+        run the whole set-up again."""
+        h = self.home
+        code, out, _e = self.connection.run(f"cat {h}/.reticulum-node-medic/onboard.json")
+        try:
+            roster = json.loads(out) if code == 0 and (out or "").strip() else {}
+        except ValueError:
+            roster = {}
+        if roster.pop("jonesey_lora", None) is not None:
+            self._write(f"{h}/.reticulum-node-medic/onboard.json",
+                        json.dumps(roster, indent=2) + "\n", root=False)
+
+    def _looks_like_another_board(self) -> str:
+        """The display name of a board the detector is SURE is not a Tracker,
+        else "" (unknown is allowed: the keeper checks the label). Any ESP32-S3
+        with native USB enumerates like a Tracker; a V4 or XIAO would have been
+        written the Tracker's image on say-so (adversarial review, 2026-10-06)."""
+        try:
+            from ui.board_detect import detect_board
+            from workflows.rnode_boards import available_boards, get_board
+            res = detect_board(available_boards()) or {}
+            key = res.get("board_key") or ""
+            if res.get("found") and key and key != "heltec_wireless_tracker":
+                b = get_board(key)
+                return getattr(b, "display_name", key) if b else key
+        except Exception:                                      # noqa: BLE001
+            pass
+        return ""
+
+    def _attached_own_radio(self) -> str:
+        """The by-id path of an attached board the roster already names as this
+        medic's radio, or ""."""
+        h = self.home
+        code, out, _e = self.connection.run(f"cat {h}/.reticulum-node-medic/onboard.json")
+        try:
+            serial = (json.loads(out) if code == 0 and (out or "").strip() else {}).get(
+                "jonesey_lora", "")
+        except ValueError:
+            serial = ""
+        if not serial:
+            return ""
+        code, out, _e = self.connection.run("ls -1 /dev/serial/by-id/ 2>/dev/null")
+        for name in (out or "").splitlines():
+            if serial in name:
+                return f"/dev/serial/by-id/{name.strip()}"
+        return ""
 
     def _hand_over(self) -> StepResult:
         """Stop this app, start rnsd (now the shared instance, with the radio),
         start the app again — from a transient unit, so it outlives the app.
-        The radio and GPS are checked after that (MedicRadioCheck)."""
-        mark_check_pending(self.connection)
+        The radio and GPS are checked after that (MedicRadioCheck). The
+        "check pending" mark is set ONLY once the restart is queued; if it
+        cannot be, the lock-off is undone so Try again runs the whole set-up."""
         if self.connection.run(f"systemctl cat {KIOSK_UNIT}")[0] == 0:
-            cmd = ("systemd-run --no-block --unit=nm-radio-handover sh -c "
+            import time as _t
+            unit = f"nm-radio-handover-{int(_t.time())}"      # never collides
+            cmd = (f"systemd-run --no-block --collect --unit={unit} sh -c "
                    f"'sleep 3; systemctl stop {KIOSK_UNIT}; "
                    "systemctl restart rnsd.service lxmd.service; sleep 5; "
                    f"systemctl start {KIOSK_UNIT}'")
             code, out, err = self.connection.run(self._priv(cmd), timeout=30)
-            return StepResult("hand_over", code == 0,
-                              "Restarting Node Medic so it joins its new radio…"
-                              if code == 0 else "Could not restart into the radio: "
-                              + " ".join((err or out or "").split())[-160:])
-        code = self.connection.run(self._priv(
-            "systemctl restart rnsd.service lxmd.service"), timeout=60)[0]
-        return StepResult("hand_over", code == 0,
-                          "Radio services started. Restart this medic to bring "
-                          "its radio up.")
+            if code == 0:
+                mark_check_pending(self.connection)
+                return StepResult("hand_over", True,
+                                  "The screen goes dark for about half a minute "
+                                  "while Node Medic restarts with its new radio. "
+                                  "Unplug nothing — this page comes back by itself.")
+            self._unlock()
+            return StepResult("hand_over", False,
+                              "Node Medic could not restart itself to switch the "
+                              "radio on. Press Try again.")
+        # no kiosk unit (a medic not started by the clone's unit): start the
+        # services and say plainly that a restart is needed — no mark, no
+        # promise of a restart that never comes
+        code, out, err = self.connection.run(self._priv(
+            "systemctl restart rnsd.service lxmd.service"), timeout=60)
+        if code != 0:
+            self._unlock()
+            return StepResult("hand_over", False,
+                              "The radio services would not start. Press Try again.")
+        self.needs_manual_restart = True
+        return StepResult("hand_over", True,
+                          "Radio set up. Unplug this medic's power lead, wait five "
+                          "seconds, and plug it back in to bring the radio up.")
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
         if on_progress:
@@ -283,6 +386,21 @@ def mark_check_pending(connection) -> None:
 
 def check_pending() -> bool:
     return os.path.exists(os.path.expanduser(CHECK_PENDING))
+
+
+def unlock_own_radio(home: Optional[str] = None) -> None:
+    """Forget the roster's radio (the keeper chose "Set it up again from the
+    start"), so the board is flashable once more."""
+    path = os.path.join(home or os.path.expanduser("~"), ".reticulum-node-medic",
+                        "onboard.json")
+    try:
+        with open(path) as fh:
+            roster = json.load(fh)
+    except Exception:                                      # noqa: BLE001
+        return
+    if roster.pop("jonesey_lora", None) is not None:
+        with open(path, "w") as fh:
+            json.dump(roster, fh, indent=2)
 
 
 def clear_check_pending() -> None:
@@ -319,18 +437,46 @@ class MedicRadioCheck:
         self.steps = [("hear_radio", self._hear_radio), ("hear_gps", self._hear_gps)]
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
+        if on_progress:
+            self._say = lambda words: on_progress(StepResult("progress", True, words))
         return _run_steps(self, on_progress)
 
     def _hear_radio(self) -> StepResult:
-        for _ in range(30):
+        """Is the LoRa radio up? The medic checks ITS OWN side first (keeper:
+        never blame the hardware before the software is proven), then asks
+        rnstatus. About 90 s at most."""
+        say = getattr(self, "_say", None)
+        for i in range(9):
+            code, out, _e = self.connection.run(
+                "systemctl is-active rnode-splitter.service rnsd.service", timeout=10)
+            states = (out or "").split()
+            if len(states) == 2 and states[0] != "active":
+                why = "the radio's port service"
+            elif len(states) == 2 and states[1] != "active":
+                why = "the mesh service"
+            elif self.connection.run(f"test -e {SPLIT_PORT}")[0] != 0:
+                why = "the radio's port"
+            else:
+                why = ""
             code, out, _e = self.connection.run(f"{self.home}/.local/bin/rnstatus",
-                                                timeout=20)
+                                                timeout=10)
             if code == 0 and lora_up(out):
-                return StepResult("hear_radio", True, "The LoRa radio is up on the mesh.")
-            self.sleep(3)
+                return StepResult("hear_radio", True, "The radio is on and listening.")
+            if say:
+                say(f"Checking the radio… {10 * (i + 1)}s")
+            self.sleep(10)
+        if why:
+            _c, j, _e = self.connection.run(
+                "journalctl -u rnode-splitter -u rnsd -n 3 --no-pager -o cat", timeout=10)
+            tail = " ".join((j or "").split())[-160:]
+            return StepResult("hear_radio", False,
+                              f"The radio is not on yet: {why} did not start. "
+                              "Press Try again; if it fails again, choose 'Set it "
+                              f"up again from the start'. ({tail})")
         return StepResult("hear_radio", False,
-                          "The mesh service started but the LoRa radio did not come "
-                          "up. Check the aerial is attached, then press Try again.")
+                          "The radio services are running but the radio has not "
+                          "answered yet. Check the Tracker is still plugged in, "
+                          "then press Try again.")
 
     def _hear_gps(self) -> StepResult:
         """The board's GPS reports, counted by the splitter — not a satellite
@@ -344,8 +490,10 @@ class MedicRadioCheck:
                 frames = 0
             if code == 0 and frames > 0:
                 return StepResult("hear_gps", True,
-                                  "The GPS is reporting. A position needs a view of the sky.")
+                                  "The position finder is reporting. A position "
+                                  "needs a view of the sky.")
             self.sleep(3)
         return StepResult("hear_gps", False,
-                          "The radio is up but no GPS report has arrived yet. Check "
-                          "the board is the Heltec Wireless Tracker, then press Try again.")
+                          "The radio is on, but no position reports have arrived "
+                          "yet. Check the board really is a Heltec Wireless "
+                          "Tracker, then press Try again.")

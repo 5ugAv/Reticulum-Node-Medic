@@ -36,22 +36,22 @@ STEP_WORDS = {
     "verify_target_pi5": "Checking it is a Raspberry Pi 5",
     "carry_the_time": "Setting its clock",
     "transfer_tool": "Copying Node Medic",
-    "transfer_firmware_cache": "Copying the radio firmware",
-    "carry_the_toolchain": "Copying the build tools (the longest part)",
+    "transfer_firmware_cache": "Copying the radio software",
+    "carry_the_toolchain": "Copying the build tools (longest step)",
     "install_dependencies": "Installing the software",
     "carry_touch_cure": "Setting up the touchscreen",
     "install_display_stack": "Installing the screen",
-    "install_carried_packages": "Installing the GPS and radio software",
-    "copy_monitoring_db": "Copying the node records",
+    "install_carried_packages": "Installing the position-finder and radio software",
+    "copy_monitoring_db": "Copying the records of your radios",
     "copy_offline_maps": "Copying the offline maps",
-    "copy_kin_roster": "Copying the list of your nodes",
-    "generate_fresh_identity": "Giving it its own mesh address",
+    "copy_kin_roster": "Copying the list of your radios",
+    "generate_fresh_identity": "Giving it its own address",
     "stamp_lineage": "Recording which medic made it",
     "record_child_trust": "Linking it to this medic",
     "configure_autostart": "Starting Node Medic at power-on",
-    "bake_recovery_bootorder": "Setting up recovery start-up",
-    "install_card_helper": "So it can make medics too",
-    "ensure_ssh_keypair": "Giving it its own key",
+    "bake_recovery_bootorder": "Setting up a rescue path",
+    "install_card_helper": "Letting it make medics too",
+    "ensure_ssh_keypair": "Giving it its own door key (for repairs)",
     "final_verification": "Checking everything",
     "restart_into_tool": "Restarting into Node Medic",
     "confirm_tool_running": "Making sure Node Medic stays open",
@@ -100,7 +100,7 @@ def _backdrop(done: int, total: int, path: Optional[str]):
 
 
 def render_frame(steps: Sequence[str], current: int, backdrop: Optional[str] = None,
-                 failed: bool = False):
+                 failed: bool = False, elapsed_s: Optional[int] = None):
     """One picture: *steps* in order, *current* = index of the step running
     now (len(steps) when all are done)."""
     from PIL import Image, ImageDraw
@@ -134,7 +134,11 @@ def render_frame(steps: Sequence[str], current: int, backdrop: Optional[str] = N
                             fill=(red if failed else green) + (255,))
     y += bh + 12
     shown = min(done + 1, total)
-    d.text((WIDTH // 2, y), f"Step {shown} of {total}", font=_font(26, True),
+    stepline = f"Step {shown} of {total}"
+    if elapsed_s is not None:
+        m, sec = divmod(int(elapsed_s), 60)
+        stepline += f"   ·   {m}m {sec:02d}s"        # it moves: not a frozen picture
+    d.text((WIDTH // 2, y), stepline, font=_font(26, True),
            fill=(230, 250, 230), anchor="mt")
     y += 50
 

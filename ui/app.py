@@ -1365,7 +1365,10 @@ class ReticulumNodeMedicApp(App):
             pass
         try:
             from provisioning.first_use import is_first_use
-            return "setup" if is_first_use() else "home"
+            from ui import setup_flow as _sf
+            if is_first_use() or _sf.peek_resume():
+                return "setup"
+            return "home"
         except Exception:
             return "home"
 
@@ -3971,7 +3974,10 @@ class ReticulumNodeMedicApp(App):
                 # screen for a beat mid-slide.
                 scr = getattr(self, "setup_screen", None)
                 if scr is not None and hasattr(scr, "reset"):
-                    scr.reset()
+                    # back from a set-up that sent us away (the radio): carry
+                    # on at the step after it; otherwise a fresh walkthrough
+                    from ui import setup_flow as _sf
+                    scr.reset(resume=bool(_sf.peek_resume()))
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest

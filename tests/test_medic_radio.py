@@ -24,13 +24,17 @@ def _conn(rnstatus="RNodeInterface[RNode LoRa Interface]\n    Status    : Up\n")
     c.rule("ls -1 /dev/serial/by-id/", 0,
            "usb-Espressif_USB_JTAG_serial_debug_unit_3C:0F:02:AA:BB:CC-if00\n", "")
     c.rule("rnstatus", 0, rnstatus, "")
+    c.rule("systemctl is-active rnode-splitter.service rnsd.service", 0, "active\nactive\n", "")
+    c.rule("cat /home/pi/.reticulum-node-medic/onboard.json", 1, "", "")
     c.push_file = lambda local, remote: True
     return c
 
 
-def _setup(conn, flash=None):
-    return mr.MedicRadioSetup(conn, lambda: flash or _Flash(), radio=RADIO,
-                              user="pi", home="/home/pi", sleep=lambda s: None)
+def _setup(conn, flash=None, other=""):
+    s = mr.MedicRadioSetup(conn, lambda: flash or _Flash(), radio=RADIO,
+                           user="pi", home="/home/pi", sleep=lambda s: None)
+    s._looks_like_another_board = lambda: other        # no real detector in tests
+    return s
 
 
 def test_the_setup_installs_then_hands_over_to_a_restart(tmp_path, monkeypatch):
@@ -46,7 +50,7 @@ def test_the_setup_installs_then_hands_over_to_a_restart(tmp_path, monkeypatch):
     s = _setup(c)
     res = s.run_all()
     assert [r.name for r in res] == ["flash_radio", "find_its_port", "wire_services",
-                                     "start_mesh", "hand_over"]
+                                     "start_mesh", "lock_off", "hand_over"]
     assert all(r.success for r in res), [r.message for r in res]
     assert s.by_id.endswith("3C:0F:02:AA:BB:CC-if00")
     joined = "\n".join(seen)
@@ -57,6 +61,11 @@ def test_the_setup_installs_then_hands_over_to_a_restart(tmp_path, monkeypatch):
     hand = [x for x in seen if "systemd-run" in x][0]
     assert hand.index("systemctl stop") < hand.index("restart rnsd") < hand.index("systemctl start")
     assert f"touch {tmp_path / 'pending'}" in joined     # the check runs after the restart
+    # the lock-off comes AFTER the services are written and enabled, and the
+    # pending mark only after the restart was queued (adversarial review)
+    assert joined.rindex("onboard.json") > joined.index("systemctl enable")
+    assert joined.index("touch ") > joined.index("systemd-run")
+    assert "--collect --unit=nm-radio-handover-" in hand
 
 
 def test_after_the_restart_the_check_hears_radio_and_gps():
@@ -98,7 +107,8 @@ def test_a_radio_that_never_comes_up_is_said_plainly():
     c = _conn(rnstatus="Shared Instance[37428]\n    Status    : Up\n")
     res = mr.MedicRadioCheck(c, home="/home/pi", sleep=lambda s: None).run_all()
     assert res[-1].name == "hear_radio" and not res[-1].success
-    assert "aerial" in res[-1].message
+    assert "aerial" not in res[-1].message            # never blame the hardware first
+    assert "Try again" in res[-1].message
 
 
 def test_lora_up_reads_rnstatus():
@@ -128,13 +138,15 @@ def test_writing_a_file_works_with_the_real_local_copy(tmp_path, monkeypatch):
 
 
 def test_an_already_valid_identity_is_success_not_a_failure():
-    """A Tracker re-used from an earlier RNode build already has its identity:
-    rnodeconf says so and changes nothing. Node Medic 2's set-up called that a
-    failure and told the keeper to press RST (2026-10-06)."""
+    """A Tracker re-used from an earlier RNode build already has its identity.
+    The set-up wipes it first and provisions fresh under THIS medic; if the
+    wipe did not take, "already present" means the OLD identity stayed."""
     from workflows.rnode_flash import _identity_ok
     already = ("[16:29:14] eeprom bootstrap was requested, but a valid eeprom "
                "was already present.\n[16:29:14] no changes are being made.")
-    assert _identity_ok(already)
+    # after --eeprom-wipe an identity that is STILL "already present" is the
+    # OLD owner's: a failure with its own plain sentence, never success
+    assert not _identity_ok(already)
     assert _identity_ok("... bootstrapping successful ...")
     assert not _identity_ok("serial port opened, but rnode did not respond")
     src = open("workflows/rnode_flash.py", encoding="utf-8").read()
@@ -172,3 +184,46 @@ def test_a_mid_write_usb_drop_is_named_and_the_identity_is_wiped_first():
     assert "--flash_size detect" in joined
     code_only = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
     assert "push" not in code_only.lower()                 # fragile ports: never
+
+
+def test_a_failed_hand_over_unlocks_the_board_so_try_again_can_flash(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
+    c = _conn()
+    c.rule("systemd-run", 1, "", "Failed to start transient service unit")
+    seen = []
+    real = c.run
+
+    def run(cmd, *a, **k):
+        seen.append(cmd)
+        return real(cmd, *a, **k)
+    c.run = run
+    res = _setup(c).run_all()
+    assert res[-1].name == "hand_over" and not res[-1].success
+    assert "touch " not in "\n".join(seen)                 # no pending mark
+    assert "Try again" in res[-1].message
+
+
+def test_a_retry_after_lock_off_skips_the_flash():
+    c = _conn()
+    c.rules.insert(0, ("cat /home/pi/.reticulum-node-medic/onboard.json", 0,
+                       '{"jonesey_lora": "3C:0F:02:AA:BB:CC"}', ""))
+    s = _setup(c, flash=_Flash(ok=False))              # a flash WOULD fail
+    res = s.run_all()
+    assert res[0].name == "flash_radio" and res[0].success and res[0].skipped
+    assert s.by_id.endswith("3C:0F:02:AA:BB:CC-if00")
+
+
+def test_the_radio_check_names_the_medics_own_failing_service_not_the_aerial():
+    c = _conn(rnstatus="Shared Instance[37428]\n    Status    : Up\n")
+    c.rules.insert(0, ("systemctl is-active rnode-splitter.service rnsd.service", 3,
+                       "active\ninactive\n", ""))
+    c.rules.insert(0, ("journalctl", 0, "rnsd: splitter port never appeared", ""))
+    res = mr.MedicRadioCheck(c, home="/home/pi", sleep=lambda s: None).run_all()
+    assert not res[-1].success and "the mesh service did not start" in res[-1].message
+    assert "aerial" not in res[-1].message
+
+
+def test_a_board_the_detector_is_sure_is_not_a_tracker_is_refused():
+    res = _setup(_conn(), other="Heltec V4").run_all()
+    assert len(res) == 1 and not res[0].success
+    assert "looks like a Heltec V4" in res[0].message and "Try again" in res[0].message

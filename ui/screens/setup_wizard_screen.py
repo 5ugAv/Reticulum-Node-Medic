@@ -170,8 +170,10 @@ class SetupWizardScreen(BoxLayout):
 
     # -- lifecycle ---------------------------------------------------------
 
-    def reset(self):
-        """Start the walkthrough from nothing.
+    def reset(self, resume: bool = False):
+        """Start the walkthrough from nothing — or, when *resume* is asked for,
+        from the step after a set-up that sent us away (the radio set-up and
+        its app restart).
 
         Called on every entry, including a re-run from Settings. A wizard that
         carried the last run's state would show the next operator — the one this
@@ -191,12 +193,15 @@ class SetupWizardScreen(BoxLayout):
         self._applied = False
         self._applied_msg = ""
         self._stick_status = None
-        # back from the radio set-up (and its app restart): pick up after it
-        key = sf.take_resume()
-        if key:
-            keys = [s["key"] for s in self._steps()]
-            if key in keys:
-                self._i = keys.index(key)
+        # back from the radio set-up (and its app restart): pick up after it.
+        # ONLY when asked: __init__ at app start used to eat the marker before
+        # the Tracker page had even run (adversarial review, 2026-10-06).
+        if resume:
+            key = sf.take_resume()
+            if key:
+                keys = [s["key"] for s in self._steps()]
+                if key in keys:
+                    self._i = keys.index(key)
         self._render()
 
     def _forget_secrets(self):
