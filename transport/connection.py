@@ -245,14 +245,34 @@ class SSHConnection(Connection):
 
 def _default_local_runner(argv: List[str], timeout: int,
                           stdin: Optional[str] = None) -> Result:
+    """Run locally; on timeout kill the WHOLE process group.
+
+    subprocess.run's timeout killed only the bash wrapper and orphaned what it
+    had started: a hung ``rnodeconf`` kept the Tracker's USB port open for
+    eight minutes while the retry queued behind it, and two tools then wrote
+    to the board at once (Node Medic 2's radio set-up, 2026-10-06)."""
+    import os
+    import signal
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True,
-                              timeout=timeout, input=stdin)
-        return (proc.returncode, proc.stdout, proc.stderr)
-    except subprocess.TimeoutExpired:
-        return (255, "", "command timed out")
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin is not None
+                                else subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
     except FileNotFoundError:
         return (255, "", f"{argv[0]}: command not found")
+    try:
+        out, err = proc.communicate(input=stdin, timeout=timeout)
+        return (proc.returncode, out, err)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except Exception:                                  # noqa: BLE001
+            proc.kill()
+        try:
+            proc.communicate(timeout=5)
+        except Exception:                                  # noqa: BLE001
+            pass
+        return (255, "", "command timed out")
 
 
 def _pexpect_interactive(command: str, interactions, timeout: int) -> Result:

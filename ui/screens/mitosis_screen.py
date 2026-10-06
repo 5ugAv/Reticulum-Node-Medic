@@ -1709,6 +1709,14 @@ class MitosisScreen(BoxLayout):
             home = _small_btn(tr("← Back to home"))
             home.bind(on_release=lambda *_: self._leave_home())
             self.add_widget(home)
+            # THE MOMENT (keeper, 2026-10-06): small text at the foot of the
+            # list "doesn't look like anything's changed" — a big congratulation
+            # pops over the page and says what to do next.
+            try:
+                from ui.widgets.clone_cheer import show_clone_cheer
+                Clock.schedule_once(lambda dt: show_clone_cheer(name), 0.4)
+            except Exception:                                  # noqa: BLE001
+                pass
         else:
             self.run_btn.disabled = False
             failed = next((r for r in final

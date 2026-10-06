@@ -125,3 +125,50 @@ def test_writing_a_file_works_with_the_real_local_copy(tmp_path, monkeypatch):
     target = tmp_path / "written.conf"
     assert s._write(str(target), "hello\n", root=False)
     assert target.read_text() == "hello\n"
+
+
+def test_an_already_valid_identity_is_success_not_a_failure():
+    """A Tracker re-used from an earlier RNode build already has its identity:
+    rnodeconf says so and changes nothing. Node Medic 2's set-up called that a
+    failure and told the keeper to press RST (2026-10-06)."""
+    from workflows.rnode_flash import _identity_ok
+    already = ("[16:29:14] eeprom bootstrap was requested, but a valid eeprom "
+               "was already present.\n[16:29:14] no changes are being made.")
+    assert _identity_ok(already)
+    assert _identity_ok("... bootstrapping successful ...")
+    assert not _identity_ok("serial port opened, but rnode did not respond")
+    src = open("workflows/rnode_flash.py", encoding="utf-8").read()
+    assert "Press RST on the board once" not in src
+
+
+def test_a_timed_out_local_command_leaves_no_orphan_holding_the_port():
+    """subprocess.run's timeout killed only the bash wrapper: a hung rnodeconf
+    kept the Tracker's port for eight minutes while the retry queued behind it
+    (Node Medic 2, 2026-10-06). The runner now kills the whole process group."""
+    import subprocess
+    import time
+    from transport.connection import _default_local_runner
+    marker = f"nm-orphan-test-{time.time_ns()}"
+    code, _o, err = _default_local_runner(
+        ["bash", "-c", f"sleep 300 & echo {marker} > /dev/null; wait"], timeout=1)
+    assert code == 255 and "timed out" in err
+    time.sleep(0.5)
+    left = subprocess.run(["pgrep", "-f", "sleep 300"], capture_output=True, text=True)
+    # any 'sleep 300' still alive is not ours unless it is in a dead group;
+    # ours was killed with its group, so the bash's children are gone too
+    assert marker not in subprocess.run(["ps", "-eo", "args"], capture_output=True,
+                                        text=True).stdout
+
+
+def test_a_mid_write_usb_drop_is_named_and_the_identity_is_wiped_first():
+    import re
+    src = open("workflows/rnode_flash.py", encoding="utf-8").read()
+    body = src[src.index("def _flash_custom_fork"):src.index("def _flash_serial_dfu")]
+    joined = re.sub(r'"\s*\n\s*f?"', "", body)        # strings split across lines
+    assert "dropped off USB part-way through the write" in joined
+    assert "--eeprom-wipe" in joined
+    assert 'f"erase_flash"' not in joined and "erase_flash, timeout" not in joined
+    assert "--before default_reset --after hard_reset" in joined
+    assert "--flash_size detect" in joined
+    code_only = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
+    assert "push" not in code_only.lower()                 # fragile ports: never

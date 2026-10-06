@@ -263,6 +263,17 @@ TRACKER_BOOT_APP0 = ("~/.arduino15/packages/esp32/hardware/esp32/2.0.17/"
 TRACKER_ESPTOOL = "~/.arduino15/packages/esp32/tools/esptool_py/4.5.1/esptool.py"
 
 
+def _identity_ok(low: str) -> bool:
+    """Did the ROM-bootstrap leave the board with a valid identity? Written
+    now, already validated — OR already there: a Tracker re-used from an
+    earlier RNode build answers "a valid EEPROM was already present. No changes
+    are being made", which is success, not failure (Node Medic 2's own radio
+    set-up stopped on exactly this, 2026-10-06, and told the keeper to press
+    RST for nothing)."""
+    return ("bootstrapping successful" in low or "signature validated" in low
+            or "valid eeprom was already present" in low)
+
+
 def refused_before_write(message: str) -> bool:
     """Did birth_flash refuse BEFORE touching the board? Such a message means
     nothing was written and nothing foreign is in the way — so a chip erase
@@ -533,6 +544,16 @@ class RNodeFlashWorkflow:
         self.results: List[StepResult] = []
 
     # -- steps -------------------------------------------------------------
+
+    def _say(self, words: str) -> None:
+        """Sub-step words for the screen (a flash is one step, three acts):
+        the keeper's rule — every running process shows movement."""
+        cb = getattr(self, "say", None)
+        if cb:
+            try:
+                cb(words)
+            except Exception:                                  # noqa: BLE001
+                pass
 
     def _detect_port(self) -> StepResult:
         why = self.board.cannot_flash_reason(self.band_mhz)
@@ -818,18 +839,37 @@ class RNodeFlashWorkflow:
         # the nRF family learned on 2026-08-05; this path never got it.
         pre_byid = usb_id_for_port(self.connection, self.port)
         pre_serial = by_id_serial(pre_byid) if pre_byid else None
+        # esptool's own reset into download mode before the write
+        # (--before default_reset): the S3's USB goes quiet unless it is
+        # freshly reset for each command (Node Medic 2's Tracker, 2026-10-06).
+        # No erase_flash here: the S3 ROM has no erase without the stub, and
+        # native USB-JTAG is driven --no-stub. The old identity is wiped by
+        # the booted firmware instead (--eeprom-wipe, below), so a board
+        # re-used from an earlier build is provisioned fresh under THIS medic.
+        self._say("Writing the firmware (two to three minutes)…")
         code, out, err = self.connection.run(
             f"python3 {TRACKER_ESPTOOL} --chip esp32s3 --port {self.port} "
-            f"--baud 115200 --no-stub write_flash -z --flash_size {size} "
+            f"--baud 115200 --no-stub --before default_reset --after hard_reset "
+            f"write_flash -z --flash_size detect "
             f"0x0 {fork_image_for(self.board, 'bootloader.bin')} "
             f"0x8000 {fork_image_for(self.board, 'partitions.bin')} "
             f"0xe000 {TRACKER_BOOT_APP0} "
             f"0x10000 {fork_image_for(self.board, 'bin')}",
             timeout=self.flash_timeout)
-        low = (out or "").lower()
+        low = ((out or "") + (err or "")).lower()
+        if "input/output error" in low or "could not configure port" in low:
+            # the board vanished from USB MID-WRITE: a half-written image
+            # boot-loops with a dark screen. Say what happened, not "failed".
+            return StepResult("flash", False,
+                              "The board dropped off USB part-way through the "
+                              "write, so its firmware is incomplete. Check the "
+                              "cable, or try another cable or another USB "
+                              "socket, then press Try again — Node Medic "
+                              "rewrites it from the start.")
         if code != 0 and "hash of data verified" not in low:
             return StepResult("flash", False,
                               f"esptool write failed: {(err or out)[-200:]}")
+        self._say("Writing the board's identity…")
         # SETTLE: wait for the SAME board (by USB serial) to re-appear and
         # re-resolve its port — never trust the pre-flash path. Then give the
         # fresh app a breath before speaking KISS to it.
@@ -841,6 +881,11 @@ class RNodeFlashWorkflow:
         # Tracker) — signed with the medic's project key. One retry after a
         # fresh settle: the first attempt can still land inside the app's
         # own boot window.
+        # a board re-used from an earlier build still carries that identity;
+        # "-r" then changes nothing. Wipe it first so this medic's own
+        # identity goes on (best-effort: a blank board answers "no EEPROM").
+        self.connection.run(f"sleep 4 && rnodeconf {self.port} --eeprom-wipe",
+                            timeout=90)
         p = self.board.provision or {}
         boot_cmd = (f"sleep 4 && rnodeconf {self.port} -r "
                     f"--product {p.get('product', 'cb')} "
@@ -850,8 +895,7 @@ class RNodeFlashWorkflow:
         code, out, err = self.connection.run(boot_cmd,
                                              timeout=self.flash_timeout)
         low = ((out or "") + (err or "")).lower()
-        if ("bootstrapping successful" not in low
-                and "signature validated" not in low):
+        if not _identity_ok(low):
             settled = find_port_by_usb_serial(self.connection, pre_serial,
                                               tries=15, delay=1.0)
             if settled:
@@ -864,8 +908,7 @@ class RNodeFlashWorkflow:
             code, out, err = self.connection.run(boot_cmd,
                                                  timeout=self.flash_timeout)
             low = ((out or "") + (err or "")).lower()
-        if ("bootstrapping successful" not in low
-                and "signature validated" not in low):
+        if not _identity_ok(low):
             # NO LIES THROUGH THE UI (operator, 2026-08-30): the firmware IS
             # on the board — only its papers failed. Reporting this as a
             # failed "flash" sent the operator into the won't-flash recovery
@@ -875,9 +918,8 @@ class RNodeFlashWorkflow:
             return StepResult("flash", False,
                               "The firmware IS on the board — writing its "
                               "identity (EEPROM) is what didn't finish. "
-                              "Press RST on the board once, then run this "
-                              "again; no button-holding needed. Detail: "
-                              + f"{(err or out)[-160:]}")
+                              "Press Try again; Node Medic resets the board "
+                              "itself. Detail: " + f"{(err or out)[-160:]}")
         # firmware hash = the app image's embedded SHA (validates, not corrupt)
         from workflows.rnode_v4_rgb import embedded_hash_command
         self.connection.run(

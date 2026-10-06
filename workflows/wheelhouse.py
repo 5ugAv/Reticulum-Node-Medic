@@ -101,6 +101,10 @@ APT_PACKAGES = (
     # the internet (clone review, 2026-10-06).
     "gpsd",
     "gpsd-clients",
+    # Cuts power to one USB port: the only way to revive a hung board without
+    # touching the plug (fragile ports). Node Medic 1 has it; a clone did not
+    # (Node Medic 2, 2026-10-06).
+    "uhubctl",
 )
 
 #: The clone's display stack. A Lite image cannot open a window (the Kivy

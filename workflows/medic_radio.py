@@ -25,6 +25,7 @@ so it is never stored in the repository).
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Callable, List, Optional
 
@@ -147,7 +148,12 @@ class MedicRadioSetup:
         wf = self.flash_factory()
         if getattr(wf, "is_blocked", False):
             return StepResult("flash_radio", False, getattr(wf, "message", "Cannot flash."))
-        results = wf.run_all()
+        # every act reaches the screen: the page sat on "Starting…" for the
+        # whole flash (keeper, 2026-10-06)
+        say = getattr(self, "_say", None)
+        if say:
+            wf.say = say
+        results = wf.run_all(on_progress=(lambda r: say(r.message)) if say else None)
         bad = next((r for r in results if not r.success and not r.skipped), None)
         if bad is not None:
             return StepResult("flash_radio", False, bad.message)
@@ -193,7 +199,7 @@ class MedicRadioSetup:
 
     def _wire(self) -> StepResult:
         h, u = self.home, self.user
-        self.connection.run(f"mkdir -p {h}/.reticulum {h}/.lxmd")
+        self.connection.run(f"mkdir -p {h}/.reticulum {h}/.lxmd {h}/.reticulum-node-medic")
         # keep whatever config was there, once
         self.connection.run(f"[ -f {h}/.reticulum/config ] && [ ! -f "
                             f"{h}/.reticulum/config.pre-radio.bak ] && cp "
@@ -207,6 +213,14 @@ class MedicRadioSetup:
         ])
         if self.connection.run(f"test -s {h}/.lxmd/config")[0] != 0:
             ok = ok and self._write(f"{h}/.lxmd/config", LXMD_CONFIG, root=False)
+        # LOCK IT OFF (keeper, 2026-10-06): from here this board is the medic's
+        # own radio. Its USB serial goes into the onboard roster, so BUILD,
+        # PROBE and any flash refuse it for good (ui.onboard_roster).
+        serial = by_id_to_serial(self.by_id)
+        if serial:
+            ok = ok and self._write(f"{h}/.reticulum-node-medic/onboard.json",
+                                    json.dumps({"jonesey_lora": serial}, indent=2) + "\n",
+                                    root=False)
         return StepResult("wire_services", ok,
                           "Radio, mesh and message services written." if ok else
                           "Could not write the radio's service files.")
@@ -247,7 +261,16 @@ class MedicRadioSetup:
                           "its radio up.")
 
     def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
+        if on_progress:
+            self._say = lambda words: on_progress(StepResult("progress", True, words))
         return _run_steps(self, on_progress)
+
+
+def by_id_to_serial(by_id: str) -> str:
+    """``…_02:00:00:02:00:06-if00`` → ``02:00:00:02:00:06``."""
+    import re
+    m = re.search(r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})", by_id or "")
+    return m.group(1).upper() if m else ""
 
 
 KIOSK_UNIT = "reticulum-node-medic.service"
