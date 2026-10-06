@@ -1559,6 +1559,8 @@ class MitosisScreen(BoxLayout):
         self._step_took = getattr(self, "_step_took", {})
 
         def _tick(_dt):
+            if any(not r.success and not r.skipped for r in workflow.results):
+                return          # stopped on a failure: nothing is running now
             if self._rows and any(r.success for r in workflow.results):
                 self._say_progress(workflow)       # total clock on the button
             done = {r.name for r in workflow.results}
@@ -1604,6 +1606,8 @@ class MitosisScreen(BoxLayout):
             self._set_row(result.name, "OK", "green", took_s)
         else:
             self._set_row(result.name, "X", "red", result.message)
+        if not result.success and not result.skipped:
+            return                       # the clone stops here: no next row lights up
         done = {r.name for r in workflow.results}
         for name, _f in workflow.steps:
             if name not in done:
@@ -1611,6 +1615,12 @@ class MitosisScreen(BoxLayout):
                 break
 
     def _say_progress(self, workflow):
+        # a stopped clone must never look like it is still running: after a
+        # failure the button showed "Step 11 … so far" in red while nothing ran
+        # (Wi-Fi-off proof clone, 2026-10-06)
+        if not getattr(self, "_cloning", False) or any(
+                not r.success and not r.skipped for r in workflow.results):
+            return
         done = {r.name for r in workflow.results}
         names = [n for n, _f in workflow.steps]
         nxt = next((n for n in names if n not in done), None)
