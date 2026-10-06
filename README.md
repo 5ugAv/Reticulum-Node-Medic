@@ -20,6 +20,11 @@ Download offline map), the **Raspberry Pi OS image** used for SD imaging (copied
 onto the medic as `~/pi_os_lite.img.xz`), and the **firmware build toolchain**
 (fetched by the first RTNode build done with Wi-Fi on).
 
+**Build one yourself:** the 3D-printed case, its parts list and the assembly
+steps are on Cults 3D —
+[Node Medic case](https://cults3d.com/en/3d-model/gadget/node-medic-case). The
+software side is [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md).
+
 > This is the **tool**. It is kept separate from the node firmware (RNode, and
 > the RTNode-2400 fork the medic builds as **RTNode-2400-NM**) that it inspects
 > and repairs. Only the health-beacon wire format is vendored here, so the two

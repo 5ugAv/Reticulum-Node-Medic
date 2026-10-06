@@ -13,6 +13,11 @@ must carry for that is at the end.
 
 ## What the code assumes about the hardware
 
+The case these parts fit in — a 3D print, with the parts list and assembly
+steps (Pi 5, Active Cooler, Touch Display 2, Waveshare UPS Module 3S, Heltec
+Wireless Tracker) — is on Cults 3D:
+[Node Medic case](https://cults3d.com/en/3d-model/gadget/node-medic-case).
+
 - **Raspberry Pi 5.** The clone ladder refuses anything else
   (`workflows/clone.py` `verify_target_pi5`); the boot script writes
   `/boot/firmware/config.txt`, the current Raspberry Pi OS layout.
