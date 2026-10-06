@@ -135,8 +135,7 @@ class MedicRadioSetup:
             ("find_its_port", self._find_by_id),
             ("wire_services", self._wire),
             ("start_mesh", self._start),
-            ("hear_radio", self._hear_radio),
-            ("hear_gps", self._hear_gps),
+            ("hand_over", self._hand_over),
         ]
 
     def _priv(self, cmd: str) -> str:
@@ -180,7 +179,10 @@ class MedicRadioSetup:
             fh.write(text)
             local = fh.name
         try:
-            tmp = f"/tmp/{os.path.basename(local)}"
+            # a DIFFERENT name: on the medic itself the temp file is already in
+            # /tmp, and copying it onto itself fails (shutil.SameFileError) —
+            # found by tracing before the first bench run, 2026-10-06
+            tmp = f"/tmp/nm-push-{os.path.basename(local)}"
             if not self.connection.push_file(local, tmp):
                 return False
         finally:
@@ -210,13 +212,91 @@ class MedicRadioSetup:
                           "Could not write the radio's service files.")
 
     def _start(self) -> StepResult:
+        """Enable all three, start ONLY the splitter now. rnsd must not start
+        while this app is still running: an app that came up before any mesh
+        service made ITSELF the shared instance, and an rnsd started now would
+        join it as a client and never open the radio (traced 2026-10-06)."""
         code, out, err = self.connection.run(self._priv(
-            "sh -c 'systemctl daemon-reload && systemctl enable --now "
-            "rnode-splitter.service rnsd.service lxmd.service'"), timeout=90)
+            "sh -c 'systemctl daemon-reload && systemctl enable "
+            "rnode-splitter.service rnsd.service lxmd.service && "
+            "systemctl restart rnode-splitter.service'"), timeout=90)
         return StepResult("start_mesh", code == 0,
-                          "Radio and mesh services started." if code == 0 else
-                          "The mesh services would not start: "
+                          "Radio services installed." if code == 0 else
+                          "The radio services would not install: "
                           + " ".join((err or out or "").split())[-200:])
+
+    def _hand_over(self) -> StepResult:
+        """Stop this app, start rnsd (now the shared instance, with the radio),
+        start the app again — from a transient unit, so it outlives the app.
+        The radio and GPS are checked after that (MedicRadioCheck)."""
+        mark_check_pending(self.connection)
+        if self.connection.run(f"systemctl cat {KIOSK_UNIT}")[0] == 0:
+            cmd = ("systemd-run --no-block --unit=nm-radio-handover sh -c "
+                   f"'sleep 3; systemctl stop {KIOSK_UNIT}; "
+                   "systemctl restart rnsd.service lxmd.service; sleep 5; "
+                   f"systemctl start {KIOSK_UNIT}'")
+            code, out, err = self.connection.run(self._priv(cmd), timeout=30)
+            return StepResult("hand_over", code == 0,
+                              "Restarting Node Medic so it joins its new radio…"
+                              if code == 0 else "Could not restart into the radio: "
+                              + " ".join((err or out or "").split())[-160:])
+        code = self.connection.run(self._priv(
+            "systemctl restart rnsd.service lxmd.service"), timeout=60)[0]
+        return StepResult("hand_over", code == 0,
+                          "Radio services started. Restart this medic to bring "
+                          "its radio up.")
+
+    def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
+        return _run_steps(self, on_progress)
+
+
+KIOSK_UNIT = "reticulum-node-medic.service"
+CHECK_PENDING = "~/.config/nodemedic/radio_check_pending"
+
+
+def mark_check_pending(connection) -> None:
+    connection.run(f"mkdir -p ~/.config/nodemedic && touch {CHECK_PENDING}")
+
+
+def check_pending() -> bool:
+    return os.path.exists(os.path.expanduser(CHECK_PENDING))
+
+
+def clear_check_pending() -> None:
+    try:
+        os.remove(os.path.expanduser(CHECK_PENDING))
+    except OSError:
+        pass
+
+
+def _run_steps(wf, on_progress):
+    for name, fn in wf.steps:
+        try:
+            r = fn()
+        except Exception as e:                                     # noqa: BLE001
+            r = StepResult(name, False, f"{type(e).__name__}: {e}")
+        wf.results.append(r)
+        if on_progress:
+            on_progress(r)
+        if not r.success:
+            break
+    return wf.results
+
+
+class MedicRadioCheck:
+    """After the hand-over restart: is the LoRa radio up, is GPS reporting?"""
+
+    def __init__(self, connection, home: Optional[str] = None,
+                 sleep: Callable[[float], None] = None):
+        import time
+        self.connection = connection
+        self.home = home or os.path.expanduser("~")
+        self.sleep = sleep or time.sleep
+        self.results: List[StepResult] = []
+        self.steps = [("hear_radio", self._hear_radio), ("hear_gps", self._hear_gps)]
+
+    def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
+        return _run_steps(self, on_progress)
 
     def _hear_radio(self) -> StepResult:
         for _ in range(30):
@@ -230,24 +310,19 @@ class MedicRadioSetup:
                           "up. Check the aerial is attached, then press Try again.")
 
     def _hear_gps(self) -> StepResult:
+        """The board's GPS reports, counted by the splitter — not a satellite
+        fix, which needs the sky and can take minutes."""
+        import json
         for _ in range(20):
-            if self.connection.run(f"test -s {GPS_STATE}")[0] == 0:
+            code, out, _e = self.connection.run(f"cat {GPS_STATE}")
+            try:
+                frames = int(json.loads(out or "{}").get("gps_frames") or 0)
+            except ValueError:
+                frames = 0
+            if code == 0 and frames > 0:
                 return StepResult("hear_gps", True,
                                   "The GPS is reporting. A position needs a view of the sky.")
             self.sleep(3)
         return StepResult("hear_gps", False,
                           "The radio is up but no GPS report has arrived yet. Check "
-                          "the GPS aerial, then press Try again.")
-
-    def run_all(self, on_progress: Optional[Callable[[StepResult], None]] = None):
-        for name, fn in self.steps:
-            try:
-                r = fn()
-            except Exception as e:                                 # noqa: BLE001
-                r = StepResult(name, False, f"{type(e).__name__}: {e}")
-            self.results.append(r)
-            if on_progress:
-                on_progress(r)
-            if not r.success:
-                break
-        return self.results
+                          "the board is the Heltec Wireless Tracker, then press Try again.")

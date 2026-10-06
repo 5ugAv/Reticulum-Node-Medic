@@ -76,11 +76,19 @@ def decide(gps_live: bool,
            tracker_candidates: int,
            running: bool = False,
            result: Optional[bool] = None,
-           failure: str = "") -> FirstbornView:
+           failure: str = "",
+           checking: bool = False) -> FirstbornView:
     """Pick the stage. Order matters: a run in progress and a finished result
     outrank the plug state, so the screen doesn't snap back to "plug it in"
     mid-flash if a USB re-enumeration briefly drops the candidate count (an
     ESP32-S3 does exactly that when it resets into the bootloader)."""
+    if running and checking:
+        return FirstbornView(
+            BIRTHING, tr("Checking the Heltec Wireless Tracker…"),
+            tr("Node Medic restarted to join its new radio. Now it checks the "
+               "radio is up on the mesh and the GPS is reporting — about a "
+               "minute."),
+            can_begin=False)
     if running:
         return FirstbornView(
             BIRTHING, tr("Setting up the Heltec Wireless Tracker…"),

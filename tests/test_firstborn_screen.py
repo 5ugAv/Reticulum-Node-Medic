@@ -46,7 +46,7 @@ def test_screen_shows_the_tracker_board_image_not_just_the_name():
 
 def test_celebration_has_a_nameplate_and_honest_proof():
     # "firstborn" / "node #1" retired from the glass (the keeper, 2026-10-06)
-    assert "this medic\'s GPS" in SRC and "node #1" not in SRC
+    assert "this medic's radio and GPS" in SRC and "node #1" not in SRC
     # proof is the REAL fix read back, never fabricated coordinates
     assert "_fix_proof" in SRC and "read_splitter_fix" in SRC
 
@@ -85,5 +85,10 @@ def test_after_the_set_up_the_walkthrough_carries_on_where_it_was():
     app goes back to the walkthrough ONLY when the walkthrough sent it."""
     assert "FirstbornScreen(on_home=self._after_medic_setup)" in APP
     body = APP[APP.index("def _after_medic_setup"):APP.index("def _no_cert_popup")]
-    assert "_sf.peek_resume()" in body and 'self.switch_mode("home")' in body
-    assert "reticulum-node-medic.service" in body     # kiosk: restart to join rnsd
+    assert "_sf.peek_resume()" in body and '"setup" if _sf.peek_resume() else "home"' in body
+    # the restart rnsd needs happens INSIDE the set-up (hand-over), and the app
+    # opens on the Tracker page afterwards to check the radio and GPS
+    assert 'return "firstborn"' in APP and "check_pending()" in APP
+    FB = pathlib.Path("ui/screens/firstborn_screen.py").read_text()
+    assert "self._begin(check_only=True)" in FB
+    assert "check_only = check_only or _mr.check_pending()" in FB   # Try again = re-check

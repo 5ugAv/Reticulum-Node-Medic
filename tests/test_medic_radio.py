@@ -33,14 +33,45 @@ def _setup(conn, flash=None):
                               user="pi", home="/home/pi", sleep=lambda s: None)
 
 
-def test_the_whole_setup_passes_and_writes_the_original_medics_wiring():
+def test_the_setup_installs_then_hands_over_to_a_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
     c = _conn()
+    seen = []
+    real = c.run
+
+    def run(cmd, *a, **k):
+        seen.append(cmd)
+        return real(cmd, *a, **k)
+    c.run = run
     s = _setup(c)
     res = s.run_all()
     assert [r.name for r in res] == ["flash_radio", "find_its_port", "wire_services",
-                                     "start_mesh", "hear_radio", "hear_gps"]
+                                     "start_mesh", "hand_over"]
     assert all(r.success for r in res), [r.message for r in res]
     assert s.by_id.endswith("3C:0F:02:AA:BB:CC-if00")
+    joined = "\n".join(seen)
+    # rnsd is ENABLED but not started while this app holds the shared instance
+    assert "systemctl enable rnode-splitter.service rnsd.service lxmd.service" in joined
+    assert "enable --now" not in joined
+    # the hand-over stops the app, starts rnsd, starts the app — from its own unit
+    hand = [x for x in seen if "systemd-run" in x][0]
+    assert hand.index("systemctl stop") < hand.index("restart rnsd") < hand.index("systemctl start")
+    assert f"touch {tmp_path / 'pending'}" in joined     # the check runs after the restart
+
+
+def test_after_the_restart_the_check_hears_radio_and_gps():
+    c = _conn()
+    c.rule("cat /dev/shm/nodemedic-gps.json", 0, '{"gps_frames": 12, "has_fix": false}', "")
+    res = mr.MedicRadioCheck(c, home="/home/pi", sleep=lambda s: None).run_all()
+    assert [r.name for r in res] == ["hear_radio", "hear_gps"]
+    assert all(r.success for r in res)
+
+
+def test_no_gps_reports_is_said_plainly():
+    c = _conn()
+    c.rule("cat /dev/shm/nodemedic-gps.json", 0, '{"gps_frames": 0}', "")
+    res = mr.MedicRadioCheck(c, home="/home/pi", sleep=lambda s: None).run_all()
+    assert res[-1].name == "hear_gps" and not res[-1].success
 
 
 def test_the_units_name_this_user_and_board_and_the_config_the_standard_radio():
@@ -64,7 +95,8 @@ def test_a_failed_flash_stops_before_anything_is_wired():
 
 
 def test_a_radio_that_never_comes_up_is_said_plainly():
-    res = _setup(_conn(rnstatus="Shared Instance[37428]\n    Status    : Up\n")).run_all()
+    c = _conn(rnstatus="Shared Instance[37428]\n    Status    : Up\n")
+    res = mr.MedicRadioCheck(c, home="/home/pi", sleep=lambda s: None).run_all()
     assert res[-1].name == "hear_radio" and not res[-1].success
     assert "aerial" in res[-1].message
 
@@ -80,3 +112,16 @@ def test_the_tracker_screen_runs_this_not_the_gps_only_sketch():
     body = src[src.index("def _default_setup_factory"):]
     assert "MedicRadioSetup" in body and "GpsTrackerSetup" not in body
     assert 'get_board("heltec_wireless_tracker")' in body
+
+
+def test_writing_a_file_works_with_the_real_local_copy(tmp_path, monkeypatch):
+    """On the medic the temp file is ALREADY in /tmp; pushing it to the same
+    path raised SameFileError and the wiring step failed. Run the real copy."""
+    import tempfile
+    from transport.connection import LocalConnection
+    monkeypatch.setattr(tempfile, "tempdir", "/tmp")
+    s = mr.MedicRadioSetup(LocalConnection(), lambda: _Flash(), radio=RADIO,
+                           user="pi", home=str(tmp_path), sleep=lambda x: None)
+    target = tmp_path / "written.conf"
+    assert s._write(str(target), "hello\n", root=False)
+    assert target.read_text() == "hello\n"

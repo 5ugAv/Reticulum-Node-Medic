@@ -118,7 +118,11 @@ class FirstbornScreen(BoxLayout):
         is left ALONE — resetting _running/_result here would orphan the worker
         and let a second _begin launch a concurrent flash (adversarial review
         2026-08-25)."""
-        if not self._running:
+        from workflows import medic_radio as _mr
+        if not self._running and _mr.check_pending():
+            # back from the hand-over restart: check the radio and GPS now
+            self._begin(check_only=True)
+        elif not self._running:
             self._result = None
             self._last_stage = None
             threading.Thread(target=self._check_gps_once, daemon=True).start()
@@ -157,7 +161,8 @@ class FirstbornScreen(BoxLayout):
                          tracker_candidates=candidates,
                          running=self._running,
                          result=self._result,
-                         failure=self._failure)
+                         failure=self._failure,
+                         checking=getattr(self, "_check_only", False))
 
     def _render(self, force=False):
         view = self._view()
@@ -183,7 +188,7 @@ class FirstbornScreen(BoxLayout):
                 self.add_widget(img)
 
         if view.stage == ff.DONE:
-            plate = Label(text=tr("★  this medic's GPS  ★"), bold=True,
+            plate = Label(text=tr("★  this medic's radio and GPS  ★"), bold=True,
                           font_size=theme.font_sp("16sp"),
                           color=theme.hex_to_rgba(theme.COLORS["green"]),
                           size_hint_y=None, height=dp(26))
@@ -245,13 +250,19 @@ class FirstbornScreen(BoxLayout):
             self.add_widget(done)
 
     # -- the birth -----------------------------------------------------------
-    def _begin(self):
+    def _begin(self, check_only=False):
         if self._running:
             return
+        from workflows import medic_radio as _mr
+        # after the hand-over the board IS this medic's radio (and guarded):
+        # Try again re-runs the check, never a second flash
+        check_only = check_only or _mr.check_pending()
         self._running = True
         self._result = None
         self._failure = ""
-        self._progress = tr("Starting…")
+        self._check_only = check_only
+        self._progress = (tr("Checking the radio and GPS…") if check_only
+                          else tr("Starting…"))
         self._render(force=True)
         threading.Thread(target=self._run, daemon=True).start()
 
@@ -262,7 +273,12 @@ class FirstbornScreen(BoxLayout):
         ok = False
         failure = ""
         try:
-            workflow = self._setup_factory()
+            if getattr(self, "_check_only", False):
+                from transport.connection import LocalConnection
+                from workflows.medic_radio import MedicRadioCheck
+                workflow = MedicRadioCheck(LocalConnection())
+            else:
+                workflow = self._setup_factory()
             # GpsTrackerSetup.run_all returns the LIST of StepResults (it stops
             # at the first failure). Success = a non-empty run whose every step
             # passed — a non-empty list is NOT itself a win.
@@ -280,6 +296,16 @@ class FirstbornScreen(BoxLayout):
         self._render(force=True)
 
     def _finish(self, ok, failure):
+        from workflows import medic_radio as _mr
+        if getattr(self, "_check_only", False):
+            if ok:
+                _mr.clear_check_pending()      # proven: never re-check at boot
+        elif ok and _mr.check_pending():
+            # the hand-over restart is seconds away: say so, keep the spinner
+            self._progress = tr("Restarting Node Medic so it joins its new "
+                                "radio — this page comes back by itself.")
+            self._render(force=True)
+            return
         self._running = False
         self._result = ok
         self._failure = failure

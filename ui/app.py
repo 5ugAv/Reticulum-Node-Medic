@@ -1358,6 +1358,12 @@ class ReticulumNodeMedicApp(App):
         if forced:
             return forced
         try:
+            from workflows.medic_radio import check_pending
+            if check_pending():
+                return "firstborn"          # back from the radio hand-over: check it
+        except Exception:                   # noqa: BLE001
+            pass
+        try:
             from provisioning.first_use import is_first_use
             return "setup" if is_first_use() else "home"
         except Exception:
@@ -3189,25 +3195,11 @@ class ReticulumNodeMedicApp(App):
         self.switch_mode("scan")
 
     def _after_medic_setup(self):
-        """Leaving the radio + GPS set-up. From the walkthrough (a resume is
-        waiting): carry on with it — and on a kiosk medic restart the app first,
-        so it joins the mesh service the set-up just started instead of having
-        become the mesh's shared instance itself. Otherwise: home."""
+        """Leaving the radio + GPS set-up: back into the walkthrough when it
+        sent us (it resumes at the step after), otherwise home. The app restart
+        the radio needs happened during the set-up (workflows.medic_radio)."""
         from ui import setup_flow as _sf
-        if not _sf.peek_resume():
-            self.switch_mode("home")
-            return
-        import subprocess
-        try:
-            unit = subprocess.run(["systemctl", "cat", "reticulum-node-medic.service"],
-                                  capture_output=True, timeout=10).returncode == 0
-            if unit:
-                subprocess.Popen(["sudo", "-n", "systemctl", "restart",
-                                  "reticulum-node-medic.service"])
-                return
-        except Exception:                                  # noqa: BLE001
-            pass
-        self.switch_mode("setup")
+        self.switch_mode("setup" if _sf.peek_resume() else "home")
 
     def _no_cert_popup(self, name):
         """No stored certificate — it wasn't birthed by this medic. Offer to birth
