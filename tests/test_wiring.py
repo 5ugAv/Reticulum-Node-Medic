@@ -35,6 +35,11 @@ ACTION_PACKAGES = ["workflows", "monitor", "provisioning", "diagnostics"]
 #: Modules nothing imports, each with the reason it is allowed to stay that way.
 #: Verified 2026-08-16. Two kinds only: RUNS ELSEWHERE, or DORMANT.
 UNIMPORTED_WITH_REASON = {
+    # The GPS-only Tracker set-up, superseded 2026-10-06 by workflows.medic_radio
+    # (radio AND GPS, as the original medic's Jonesey). Kept until the new set-up
+    # is proven on node-medic-2, then deleted.
+    "workflows.gps_setup":
+        "DORMANT: superseded by workflows.medic_radio; kept until that is bench-proven",
     # --- runs elsewhere: imported by something that is not Python source here ---
     # (monitor.serial_splitter used to live here — systemd-only — until the
     # antenna test began importing its KISS constants, 2026-08-27.)

@@ -233,7 +233,9 @@ class FirstbornScreen(BoxLayout):
             self.add_widget(begin)
 
         if view.stage == ff.DONE and self._on_home:
-            done = Button(text=tr("Wonderful — carry on  →"), size_hint_y=None,
+            from ui import setup_flow as _sf
+            done = Button(text=(tr("Continue the walkthrough  →") if _sf.peek_resume()
+                                else tr("Wonderful — carry on  →")), size_hint_y=None,
                           height=dp(50), font_size=theme.font_sp("16sp"),
                           background_normal="",
                           background_color=theme.hex_to_rgba(
@@ -327,6 +329,17 @@ def _medic_has_gps() -> bool:
 
 
 def _default_setup_factory():
+    """The medic's OWN radio and GPS, on one Heltec Wireless Tracker — the same
+    firmware and wiring as the original medic's Jonesey (workflows.medic_radio).
+    The old GPS-only sketch left a clone with no LoRa radio at all."""
     from transport.connection import LocalConnection
-    from workflows.gps_setup import GpsTrackerSetup
-    return GpsTrackerSetup(LocalConnection())
+    from workflows.medic_radio import MedicRadioSetup
+    from workflows.rnode_boards import get_board
+    from ui.hw_factories import make_rnode_flash, local_board_ports
+    conn = LocalConnection()
+    board = get_board("heltec_wireless_tracker")
+
+    def flash():
+        return make_rnode_flash(board, lambda _b: None, connection=conn,
+                                ports_fn=local_board_ports)
+    return MedicRadioSetup(conn, flash)

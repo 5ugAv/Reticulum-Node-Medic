@@ -327,21 +327,23 @@ _SECURITY_STEPS = [
 # no painted card, so they carry none rather than borrowing someone else's.
 
 _TOUR_STEPS = [
+    # FIRST, before the tour: the Tracker is part of BUILDING the medic, and
+    # the tour describes a medic that is ready to use (the keeper, 2026-10-06).
+    # "setup_first": the big green button SETS IT UP, skipping is the quiet one,
+    # and setting up is not leaving — the walkthrough carries on afterwards.
     {"key": TOUR_FIRSTBORN, "part": TOUR,
-     # FIRST, before the tour: the Tracker is part of BUILDING the medic, and
-     # the tour describes a medic that is ready to use (the keeper, 2026-10-06). "board_image": "heltec_wireless_tracker",
-     "opens": "firstborn", "optional": True,
-     "opens_label": "Set up the Tracker  →",
-     "title": "The Tracker — this medic's GPS",
-     "body": "The Heltec Wireless Tracker is part of Node Medic: it is the "
-             "medic's GPS. Setting it up flashes the Tracker and adopts it into "
-             "this medic. With a fix, you can stamp a node's position from it, "
-             "and set the medic's clock from it in Settings ▸ Date & time.\n\n"
-             "Plug in only the Tracker. Node Medic recognises its own radio and "
-             "leaves it alone.",
+     "board_image": "heltec_wireless_tracker",
+     "opens": "firstborn", "optional": True, "setup_first": True,
+     "opens_label": "Set up its radio and GPS  →",
+     "title": "Heltec Wireless Tracker",
+     "body": "The Heltec Wireless Tracker is part of Node Medic: it is this "
+             "medic's own LoRa radio and its GPS, on one board. Setting it up "
+             "flashes it, starts the medic's mesh services around it, and checks "
+             "it can hear the mesh and the satellites.\n\n"
+             "Plug in only the Heltec Wireless Tracker, with its aerial on.",
      # One line: the body scrolls, a hint does not, and this step carries the
      # Tracker's picture too (readiness ledger #146).
-     "hint": "No Tracker on hand? Skip for now — run this again from Settings.",
+     "hint": "Not on hand? Skip for now — run this again from Settings.",
      "next": "Skip for now  →"},
 
     {"key": TOUR_BIRTH, "part": TOUR, "poster_card": "birth", "opens": "birth_guide",
@@ -670,6 +672,41 @@ def offered_levels(state: SetupState) -> List[tuple]:
     that a stronger option existed.
     """
     return [(p,) + can_choose(p, state) for p in LEVELS]
+
+
+#: Where the walkthrough picks up after a hand-off it must survive — the
+#: radio set-up restarts the app so it joins the new mesh service.
+RESUME_PATH = "~/.config/nodemedic/tour_resume"
+
+
+def save_resume(key: str, path: str = RESUME_PATH) -> None:
+    import os
+    p = os.path.expanduser(path)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as fh:
+            fh.write(key)
+    except OSError:
+        pass
+
+
+def peek_resume(path: str = RESUME_PATH) -> str:
+    import os
+    try:
+        with open(os.path.expanduser(path)) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def take_resume(path: str = RESUME_PATH) -> str:
+    import os
+    key = peek_resume(path)
+    try:
+        os.remove(os.path.expanduser(path))
+    except OSError:
+        pass
+    return key
 
 
 def first_incomplete(state: SetupState) -> str:

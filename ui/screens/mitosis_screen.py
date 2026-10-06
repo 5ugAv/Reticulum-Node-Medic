@@ -43,31 +43,32 @@ from ui.i18n import tr  # i18n: wrapped — stage titles/bodies/buttons; step ro
 #: step name -> plain-English row title. Rows are rebuilt from the workflow's
 #: OWN ladder at run time, so an unknown step still gets a row (its raw name).
 STEP_TITLES = [
-    ("find_new_medic", "Finding the new medic (cable or WiFi) and logging in"),
-    ("verify_target_pi5", "Checking the new computer is a Raspberry Pi 5"),
-    ("carry_the_time", "Carrying the time across (it has no clock yet)"),
-    ("transfer_tool", "Copying the Node Medic tool across"),
-    ("transfer_firmware_cache", "Copying the offline firmware cache"),
-    ("carry_the_toolchain",
-     "Carrying the toolchains, firmware and OS image (several GB - slow)"),
-    ("install_dependencies", "Installing the software stack (offline, from carried wheels)"),
-    ("carry_touch_cure", "Carrying the touch settings across"),
-    ("install_display_stack", "Installing the screen stack (carried, offline)"),
-    ("install_carried_packages",
-     "Installing the carried radio-modem packages (offline)"),
-    ("copy_monitoring_db", "Copying the monitoring records"),
-    ("copy_offline_maps", "Handing down the offline maps"),
-    ("copy_kin_roster", "Carrying the fleet roster (who and where)"),
-    ("generate_fresh_identity", "Giving it its own fresh mesh identity"),
-    ("stamp_lineage", "Stamping the family line (child knows its parent)"),
-    ("record_child_trust", "Trusting the new medic as this unit's child"),
-    ("configure_autostart", "Setting the tool to start on boot"),
-    ("install_card_helper", "Installing the card-writing helper (so it can clone itself)"),
-    ("ensure_ssh_keypair", "Giving it its own SSH key"),
-    ("bake_recovery_bootorder", "Teaching its boot chip to ask for help"),
-    ("final_verification", "Final check-over"),
-    ("restart_into_tool", "Waking the new medic into the tool"),
-    ("confirm_tool_running", "Checking Node Medic is running on the new medic"),
+    # THE SAME WORDS on both screens: these are workflows.clone_screen.STEP_WORDS,
+    # which the new medic draws on its own panel (keeper, 2026-10-06). A test
+    # holds them equal.
+    ("find_new_medic", "Finding the new medic"),
+    ("verify_target_pi5", "Checking it is a Raspberry Pi 5"),
+    ("carry_the_time", "Setting its clock"),
+    ("transfer_tool", "Copying Node Medic"),
+    ("transfer_firmware_cache", "Copying the radio firmware"),
+    ("carry_the_toolchain", "Copying the build tools (the longest part)"),
+    ("install_dependencies", "Installing the software"),
+    ("carry_touch_cure", "Setting up the touchscreen"),
+    ("install_display_stack", "Installing the screen"),
+    ("install_carried_packages", "Installing the GPS and radio software"),
+    ("copy_monitoring_db", "Copying the node records"),
+    ("copy_offline_maps", "Copying the offline maps"),
+    ("copy_kin_roster", "Copying the list of your nodes"),
+    ("generate_fresh_identity", "Giving it its own mesh address"),
+    ("stamp_lineage", "Recording which medic made it"),
+    ("record_child_trust", "Linking it to this medic"),
+    ("configure_autostart", "Starting Node Medic at power-on"),
+    ("install_card_helper", "So it can make medics too"),
+    ("ensure_ssh_keypair", "Giving it its own key"),
+    ("bake_recovery_bootorder", "Setting up recovery start-up"),
+    ("final_verification", "Checking everything"),
+    ("restart_into_tool", "Restarting into Node Medic"),
+    ("confirm_tool_running", "Making sure Node Medic stays open"),
 ]
 
 #: Expected seconds per step — drives each row's progress bar. Estimates from
@@ -249,15 +250,16 @@ class MitosisScreen(BoxLayout):
             "  •  a memory (SD) card — 32 GB minimum, 64 GB is better\n"
             "  •  a memory card reader\n"
             "  •  an ethernet cable\n"
-            "  •  a Heltec Wireless Tracker — the new medic's GPS and clock\n"
+            "  •  a Heltec Wireless Tracker — the new medic's own LoRa radio and GPS\n"
             "  •  a USB-A to USB-C cable, for the Tracker\n"
             "  •  a 915 MHz antenna and its u.FL-to-SMA pigtail\n\n"
             "Two halves: this medic writes the card (about 10 min), then you "
             "move the card across and the two talk over the cable while the "
-            "tool is copied (about 40 min). You are NOT finished when the card "
-            "is written. About an hour in all, mostly waiting.\n\n"
-            "The new medic's own mesh radio is not set up by this flow yet — "
-            "its Tracker gives it position and time."),
+            "tool is copied (about 10 min — 8½ on the proof clone). You are NOT "
+            "finished when the card is written.\n\n"
+            "After the copy, the new medic's own screen sets up its Heltec "
+            "Wireless Tracker as its LoRa radio and GPS, then walks you through "
+            "what each part does."),
             color="text_primary", size="15sp")
         # SCROLLED, and sized to the wrapped text rather than a fixed dp.
         # The hardcoded dp(330) silently clipped the TOP of the list the moment
@@ -1382,6 +1384,7 @@ class MitosisScreen(BoxLayout):
                 color="text_primary", size="15sp")
             grow_to_text(head, extra_dp=6)     # a fixed 48 dp cut its 3 lines
             self.add_widget(head)
+            self._clone_head = head
         self.run_btn = Button(
             text=tr("Clone onto the new medic"), size_hint_y=None,
             height=dp(56), font_size="20sp", background_normal="",
@@ -1408,6 +1411,7 @@ class MitosisScreen(BoxLayout):
         # clips silently from the top the moment the copy grows.
         grow_to_text(_wait)
         self.add_widget(_wait)
+        self._wait_lbl = _wait
 
         self._rows = {}
         self._build_rows()
@@ -1669,21 +1673,25 @@ class MitosisScreen(BoxLayout):
             # then never spoke of again.
             name = self._name or tr("The new medic")
             ident = getattr(workflow, "fresh_identity_hash", "") or ""
+            # The jobs left are on the OTHER medic now (keeper, 2026-10-06):
+            # unplug the cable here, then the new medic sets up its own radio
+            # and GPS first and walks through the functions after that.
+            for stale in (getattr(self, "_clone_head", None),
+                          getattr(self, "_wait_lbl", None)):
+                if stale is not None and stale.parent is not None:
+                    stale.parent.remove_widget(stale)
             done = _label(
                 tr("[b]Done - you have made a Node Medic.[/b]\n\n"
-                   "{name} is restarting now. It has its own place on the mesh"
-                   "{ident} - a new one, not a copy of this medic's - along "
-                   "with the whole tool{carried}.\n\n"
-                   "[b]Next, on the NEW medic's own screen[/b] (about a minute):\n"
-                   "1.  It starts straight into Node Medic and walks you through "
-                   "its own setup - no login, nothing to type from here.\n"
-                   "2.  Then it fits its GPS - that is the Heltec Wireless "
-                   "Tracker, its USB "
-                   "cable, the aerial and the little pigtail lead from the list "
-                   "at the start. Its own mesh radio is a separate job, still "
-                   "to come.\n\n"
-                   "Until its screen appears it may show start-up text. That is "
-                   "normal, and there is nothing left to do on this screen.").format(
+                   "{name} has its own place on the mesh{ident} - a new one, not "
+                   "a copy of this medic's - along with the whole tool{carried}.\n\n"
+                   "[b]1.  Unplug the ethernet cable[/b] from both medics. This "
+                   "medic's part is finished.\n\n"
+                   "[b]2.  Go to the new medic.[/b] Its own screen walks you "
+                   "through the rest:\n"
+                   "  -  first its own LoRa radio and GPS: the Heltec Wireless "
+                   "Tracker, its USB cable, the aerials and the little pigtail "
+                   "lead from the list at the start;\n"
+                   "  -  then what each part of Node Medic does.").format(
                        name=name, ident=(f" ({ident[:8]})" if ident else ""),
                        carried=self._carried_words(workflow)),
                 color="text_primary", size="15sp")

@@ -191,6 +191,12 @@ class SetupWizardScreen(BoxLayout):
         self._applied = False
         self._applied_msg = ""
         self._stick_status = None
+        # back from the radio set-up (and its app restart): pick up after it
+        key = sf.take_resume()
+        if key:
+            keys = [s["key"] for s in self._steps()]
+            if key in keys:
+                self._i = keys.index(key)
         self._render()
 
     def _forget_secrets(self):
@@ -441,9 +447,37 @@ class SetupWizardScreen(BoxLayout):
         if img is not None:
             stage.add_widget(img)
             stage_h += WizardStep.PICTURE_STAGE_DP
+        if step.get("setup_first"):
+            # SET IT UP is the main road: green Next does it; skipping is muted
+            skip = self._muted_button(step.get("next") or tr("Skip for now"),
+                                      self._next)
+            self._wizard(step, anim=stage if stage_h else None, scroll_body=True,
+                         stage_height=stage_h or None, extra_nav=skip,
+                         on_next=lambda *_: self._set_up_then_return(step),
+                         next_text=step.get("opens_label"))
+            return
         extra = self._see_it_button(step) if step.get("opens") else None
         self._wizard(step, anim=stage if stage_h else None, scroll_body=True,
                      stage_height=stage_h or None, extra_nav=extra)
+
+    def _muted_button(self, text, on_press):
+        b = Button(text=text, size_hint_x=0.6, bold=True, font_size="14sp",
+                   background_normal="", halign="center", valign="middle",
+                   background_color=theme.hex_to_rgba(theme.COLORS["surface"]),
+                   color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
+        b.bind(width=lambda i, w: setattr(i, "text_size", (w - dp(14), None)))
+        b.bind(on_release=lambda *_: on_press())
+        return b
+
+    def _set_up_then_return(self, step):
+        """Set the medic up WITHOUT ending the walkthrough: note the next step,
+        then open the set-up screen. It comes back here when it is done."""
+        steps = self._steps()
+        nxt = steps[self._i + 1]["key"] if self._i + 1 < len(steps) else ""
+        if nxt:
+            sf.save_resume(nxt)
+        if self._on_navigate:
+            self._on_navigate(step["opens"])
 
     def _see_it_button(self, step):
         """"Open it now" from a tour screen.

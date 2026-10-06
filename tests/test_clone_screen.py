@@ -57,3 +57,14 @@ def test_the_clone_draws_only_on_the_known_panel_and_falls_back_to_text():
     assert "cursor_blink" in body and "\\033[?25l" in body
     tell = func_source("workflows/clone.py", "_tell_new_medic")
     assert "/dev/tty1" in tell                    # the old text road stays as fallback
+
+
+def test_both_medics_say_the_same_words_for_each_step():
+    """The original said "Carrying the toolchains, firmware and OS image" while
+    the new medic said "Copying the build tools" for the same step."""
+    import ast
+    src = open("ui/screens/mitosis_screen.py", encoding="utf-8").read()
+    start = src.index("STEP_TITLES = [")
+    tree = ast.parse(src[start:src.index("]\n", start) + 1])
+    titles = dict(ast.literal_eval(tree.body[0].value))
+    assert titles == cs.STEP_WORDS

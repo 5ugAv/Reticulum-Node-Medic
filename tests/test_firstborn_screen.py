@@ -65,17 +65,25 @@ def test_probe_offers_an_honest_route_to_birth_the_tracker():
     assert "on_birth_tracker=lambda: self.switch_mode(\"firstborn\")" in APP
 
 
-def test_tour_button_labels_are_not_a_trap():
-    # the green "next" must NOT claim to open the ceremony (that button skips);
-    # the muted opens button carries the "meet the firstborn" label instead.
+def test_the_tracker_step_sets_up_first_and_skipping_is_the_quiet_road():
+    """Keeper, 2026-10-06: set up its own radio and GPS FIRST. The green button
+    does the set-up; "Skip for now" is the muted one; the step names the board
+    in full and promises nothing about a radio the medic does not have yet."""
     FLOW = pathlib.Path("ui/setup_flow.py").read_text()
-    assert '"opens_label": "Set up the Tracker' in FLOW
+    assert '"setup_first": True' in FLOW
+    assert '"opens_label": "Set up its radio and GPS' in FLOW
     assert '"next": "Skip for now' in FLOW
+    assert "recognises its own radio and" not in FLOW
+    WIZ = pathlib.Path("ui/screens/setup_wizard_screen.py").read_text()
+    assert "on_next=lambda *_: self._set_up_then_return(step)" in WIZ
+    assert "sf.save_resume(nxt)" in WIZ and "sf.take_resume()" in WIZ
 
 
-def test_firstborn_returns_home_not_into_a_setup_restart():
-    # on_home must NOT be switch_mode("setup") — that re-runs the wizard reset()
-    # and dumps a keeper who just finished the firstborn back at the security
-    # welcome screen (loop bug, 2026-08-27). Home is where tour opens land.
-    assert 'FirstbornScreen(on_home=lambda: self.switch_mode("home"))' in APP
-    assert 'FirstbornScreen(on_home=lambda: self.switch_mode("setup"))' not in APP
+def test_after_the_set_up_the_walkthrough_carries_on_where_it_was():
+    """The 2026-08-27 loop (the wizard reset dumped the keeper back at its first
+    screen) cannot return: reset() resumes at the step after the set-up, and the
+    app goes back to the walkthrough ONLY when the walkthrough sent it."""
+    assert "FirstbornScreen(on_home=self._after_medic_setup)" in APP
+    body = APP[APP.index("def _after_medic_setup"):APP.index("def _no_cert_popup")]
+    assert "_sf.peek_resume()" in body and 'self.switch_mode("home")' in body
+    assert "reticulum-node-medic.service" in body     # kiosk: restart to join rnsd

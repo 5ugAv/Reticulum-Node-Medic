@@ -23,20 +23,15 @@ def _catalogs():
 # --- #120: the Tracker is the clone's GPS and clock, not its radio -----------
 
 def test_the_clone_screen_calls_the_tracker_gps_and_clock():
+    """Updated 2026-10-06: the new medic now sets up its Tracker as its own LoRa
+    radio AND GPS (workflows.medic_radio), so the "separate job, still to come"
+    wording is retired; the parts list and the finish say so."""
     m = src("ui/screens/mitosis_screen.py")
-    assert "the new medic's own radio" not in m
-    assert "a Heltec Wireless Tracker — the new medic's GPS and clock" in m
-    assert "Then it fits its radio" not in m
-    assert "Then it fits its GPS - that is the Heltec Wireless" in m
-    assert "Its own mesh radio is a separate job" in m
-    assert "own mesh radio is not set up by this flow yet" in m
-    for code, cat in _catalogs():
-        parts = [k for k in cat if k.startswith("This copies this Node Medic onto a second one")]
-        done = [k for k in cat if k.startswith("[b]Done - you have made a Node Medic.[/b]")]
-        assert len(parts) == 1 and len(done) == 1, code
-        assert "GPS and clock" in parts[0] and "radio" not in cat[parts[0]].split("\n")[7].lower() \
-            or "GPS" in cat[parts[0]].split("\n")[7], code
-        assert "Its own mesh radio is a separate job" in done[0], code
+    assert "a Heltec Wireless Tracker — the new medic's own LoRa radio and GPS" in m
+    assert "Its own mesh radio is a separate job" not in m
+    assert "own mesh radio is not set up by this flow yet" not in m
+    assert "Unplug the ethernet cable" in m
+    assert "first its own LoRa radio and GPS" in m
 
 
 # --- #144: PROBE's door -----------------------------------------------------

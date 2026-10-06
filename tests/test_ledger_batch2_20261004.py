@@ -135,7 +135,7 @@ def test_the_clone_name_is_checked_where_it_is_typed():
 def test_the_clone_screen_no_longer_promises_a_login():
     m = src("ui/screens/mitosis_screen.py")
     assert "log in as 'pi'" not in m and "type this to log in" not in m
-    assert "no login, nothing to type from here" in m
+    assert "Its own screen walks you" in m          # no login: the screen leads
     assert "never asks for this on its own screen" in m
     for code in SHIPPED:
         c = _catalog(code)

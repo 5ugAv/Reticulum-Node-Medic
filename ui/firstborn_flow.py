@@ -84,15 +84,17 @@ def decide(gps_live: bool,
     if running:
         return FirstbornView(
             BIRTHING, tr("Setting up the Heltec Wireless Tracker…"),
-            tr("Flashing the Heltec Wireless Tracker, then waiting for it to see the sky. This "
-               "takes a few minutes — leave it plugged in."),
+            tr("Flashing the Heltec Wireless Tracker as this medic's radio and "
+               "GPS, starting the mesh services around it, then checking it hears "
+               "both. This takes a few minutes — leave it plugged in."),
             can_begin=False)
     if result is True:
         return FirstbornView(
             DONE, tr("The Heltec Wireless Tracker is set up"),
-            tr("The Heltec Wireless Tracker is flashed and adopted as this medic's GPS. As soon "
-               "as it sees the sky, Node Medic knows where it stands, and you can "
-               "set the clock from it in Settings ▸ Date & time."),
+            tr("The Heltec Wireless Tracker is this medic's LoRa radio and GPS, "
+               "and its mesh services are running. As soon as it sees the sky, "
+               "Node Medic knows where it stands, and you can set the clock from "
+               "it in Settings ▸ Date & time."),
             can_begin=False, celebrate=True)
     if result is False:
         return FirstbornView(
@@ -102,10 +104,10 @@ def decide(gps_live: bool,
             can_begin=True)
     if gps_live:
         return FirstbornView(
-            ALREADY, tr("This medic already has its GPS"),
-            tr("A GPS source is already streaming a fix, so there's nothing to "
-               "set up here. You can move on — or run this again from Settings if "
-               "you want to replace the Heltec Wireless Tracker."),
+            ALREADY, tr("This medic already has its radio and GPS"),
+            tr("Its Heltec Wireless Tracker is already reporting, so there's "
+               "nothing to set up here. You can move on — or run this again from "
+               "Settings if you want to replace it."),
             can_begin=False)
     if tracker_candidates <= 0:
         return FirstbornView(
@@ -127,6 +129,6 @@ def decide(gps_live: bool,
     return FirstbornView(
         READY, tr("Ready to set up the Heltec Wireless Tracker"),
         tr("A board that could be the Heltec Wireless Tracker is plugged in. If it is the Heltec "
-           "Wireless Tracker, press Begin: the medic flashes it, waits for it to "
-           "see satellites, and adopts it as this medic's GPS."),
+           "Wireless Tracker, press Begin: the medic flashes it as its own radio "
+           "and GPS, starts its mesh services, and checks it hears both."),
         can_begin=True)

@@ -1313,7 +1313,7 @@ class ReticulumNodeMedicApp(App):
         # re-runs reset() — which would dump a new keeper who JUST finished the
         # firstborn back at the security-welcome screen, re-running all of setup
         # (2026-08-27). Home is where every other tour "open" lands.
-        _fb = FirstbornScreen(on_home=lambda: self.switch_mode("home"))
+        _fb = FirstbornScreen(on_home=self._after_medic_setup)
         firstborn.add_widget(self._with_back(_fb))
         firstborn.bind(on_pre_enter=lambda *_: _fb.begin_screen(),
                        on_leave=lambda *_: _fb.sleep())
@@ -3187,6 +3187,27 @@ class ReticulumNodeMedicApp(App):
         if sc is not None:
             sc.show_location(lat, lon)
         self.switch_mode("scan")
+
+    def _after_medic_setup(self):
+        """Leaving the radio + GPS set-up. From the walkthrough (a resume is
+        waiting): carry on with it — and on a kiosk medic restart the app first,
+        so it joins the mesh service the set-up just started instead of having
+        become the mesh's shared instance itself. Otherwise: home."""
+        from ui import setup_flow as _sf
+        if not _sf.peek_resume():
+            self.switch_mode("home")
+            return
+        import subprocess
+        try:
+            unit = subprocess.run(["systemctl", "cat", "reticulum-node-medic.service"],
+                                  capture_output=True, timeout=10).returncode == 0
+            if unit:
+                subprocess.Popen(["sudo", "-n", "systemctl", "restart",
+                                  "reticulum-node-medic.service"])
+                return
+        except Exception:                                  # noqa: BLE001
+            pass
+        self.switch_mode("setup")
 
     def _no_cert_popup(self, name):
         """No stored certificate — it wasn't birthed by this medic. Offer to birth
