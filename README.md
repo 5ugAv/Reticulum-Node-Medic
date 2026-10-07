@@ -18,7 +18,10 @@ the disk and says what is still missing rather than calling the medic ready.
 Three things it cannot fetch for you: the **offline map** for your area (MAPS ▸
 Download offline map), the **Raspberry Pi OS image** used for SD imaging (copied
 onto the medic as `~/pi_os_lite.img.xz`), and the **firmware build toolchain**
-(fetched by the first RTNode build done with Wi-Fi on).
+(fetched by the first RTNode build done with Wi-Fi on). A medic set up from
+this repository with `scripts/setup_medic.py` gets the pinned OS image, the
+whole toolchain and the world-overview map from that script; the map of your
+own area is still yours to choose.
 
 **Build one yourself:** the 3D-printed case, its parts list and the assembly
 steps are on Cults 3D —
@@ -144,10 +147,14 @@ Counted from the code on 2026-10-04 (commands under *Counts* below):
 
 Caveat, stated plainly: the three built-here boards and all eight RTNode-2400
 boards build from firmware folders kept in a medic's home directory, not in
-this repository. A medic cloned from one that has them carries every one of
-those folders and can birth all of them. A medic set up from this repository
-alone cannot birth them yet, because nothing downloads those folders today
-(ledger #43, #168).
+this repository. Those folders are published, and pinned by commit in
+[`assets/medic_manifest.json`](assets/medic_manifest.json). A medic cloned from
+one that has them carries every one of them. A medic set up from this
+repository gets them from `scripts/setup_medic.py`, which fetches each at its
+pinned commit, builds the Tracker, EoRa-S3, MeshPocket and Heltec V4 colour
+images BUILD flashes, and compiles RTNode-2400 once on each toolchain
+([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)). That script was written and
+tested off the Pi on 2026-10-08; it has not yet been run end-to-end on a Pi 5.
 
 ## Deployment defaults (all overridable)
 
@@ -243,8 +250,9 @@ rest of the app runs.
   filesystem and grows it — because `custom.toml` and cloud-init are both
   inert on the carried image. It refuses any target that is not a present,
   removable USB disk, and requires a typed confirmation. The image is expected
-  at `~/pi_os_lite.img.xz`; there is no download path, and it fails with that
-  message if absent.
+  at `~/pi_os_lite.img.xz`; the app has no download path, and it fails with that
+  message if absent (`scripts/setup_medic.py` fetches the pinned image, checked
+  against its published SHA-256, when a medic is set up from this repository).
 - **Guided birth** walks the operator one instruction per screen: antenna
   first (never power a radio without one), then detect the board, read and
   classify it, then either adopt it or choose a path. The Pi path hands off to
@@ -358,13 +366,26 @@ so coverage cannot silently regress.
 
 The full path from a blank Pi 5 to a running medic, with what each step
 actually installs and what the repository does **not** yet provide, is in
-**[`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)**. In short: Raspberry Pi OS
-(64-bit, with desktop) with a user named `nodemedic`; this repository cloned to
-`/home/nodemedic/reticulum-tool` (the path is hard-coded by the boot scripts);
-the Python stack from `assets/requirements.txt`; the root card helper and the
-scoped sudoers; `sudo bash scripts/setup_boot.sh` with the medic's own radio
-plugged in; reboot into the setup walkthrough; then Settings ▸ Field readiness
-while on Wi-Fi.
+**[`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)**. In short: write
+Raspberry Pi OS Lite (64-bit) to the card with any user name, clone this
+repository to `~/reticulum-tool`, and run
+
+    python3 ~/reticulum-tool/scripts/setup_medic.py
+
+as that user. It runs the clone's own ladder on the Pi, with the internet
+standing in for a parent medic, installing what Node Medic 1 has at Node Medic
+1's versions from [`assets/medic_manifest.json`](assets/medic_manifest.json):
+the `cage` kiosk, the packages, Python with the medic's Reticulum patch, the
+board cores and libraries, the firmware sources at their pinned commits and the
+images built from them, PlatformIO, the OS image, the field caches and the
+world map. One line per step; run it again after any failure and it carries
+on; `--check` only reports what is missing. Then reboot, and set up the
+medic's own radio (its Heltec Wireless Tracker) on the first page of the
+walkthrough's tour. Security hardening (scoped sudo, key-only SSH, the
+firewall) stays a separate step by hand
+([`provisioning/security/README.md`](provisioning/security/README.md)). The
+script has not yet been run end-to-end on a Pi 5 — the Known gaps in that file
+say what was checked instead.
 
 ## If something goes wrong
 
@@ -387,6 +408,11 @@ while on Wi-Fi.
   upload — or while the UI's own busy marker is fresh (a birth over SSH, a
   download, a self-check); wait, or re-run with `FORCE=1` only when the running
   instance is the thing that is broken. `STOP_ONLY=1` stops without restarting.
+  That script was written for Node Medic 1's desktop session. A medic that
+  boots through the `cage` kiosk unit (every clone, and every medic set up with
+  `scripts/setup_medic.py`) is restarted through its unit, after the same busy
+  check:
+  `cd ~/reticulum-tool && bash scripts/ui_busy_guard.sh && sudo systemctl restart reticulum-node-medic`.
 - **Read the logs**: `~/ui.log` (every launch road appends here, unbuffered)
   and `~/ui_crash.log` (`faulthandler` output for native crashes in Kivy / SDL /
   GL / serial code, which otherwise leave no traceback).
@@ -396,7 +422,13 @@ while on Wi-Fi.
 
 ## Updating the tool
 
-- **On the medic**: `cd ~/reticulum-tool && git pull && bash scripts/restart_ui.sh`.
+- **On the medic**: `cd ~/reticulum-tool && git pull && bash scripts/restart_ui.sh`
+  (a kiosk medic: restart its unit, as above). On a medic set up with
+  `scripts/setup_medic.py`, run that script again after a pull: it installs
+  packages, cores and libraries at any pin that moved in
+  `assets/medic_manifest.json` and builds any image that is missing; a firmware
+  folder or OS image at an older pin is named, not replaced
+  ([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) ▸ *Updating a medic*).
 - **From a laptop**, when the medic's checkout is not what runs: copy exactly
   the tracked files and nothing else, e.g.
   `cd <repo> && rsync -a --files-from=<(git ls-files) . nodemedic@<medic-hostname>.local:~/reticulum-tool/`,
@@ -495,8 +527,9 @@ and ticked as it is closed. The largest open items, summarised honestly:
 
 - **The clone test has not been passed from a GitHub checkout.** The clone
   needs carried `.deb`s, wheels, a Pi OS image and firmware trees that are
-  gitignored or outside the repo; a fresh checkout has none of them until it
-  has been online (ledger #115, #154).
+  gitignored or outside the repo; a fresh checkout gets them from
+  `scripts/setup_medic.py`, which has not yet been run end-to-end on a Pi 5
+  (ledger #115, #154).
 - **The first-use walkthrough is the tour alone in v1.** Its lock-your-records
   half (recovery key, passphrase, pattern, USB key) collected secrets its summary
   never enrolled, so it is switched off (`ui/setup_flow.SECURITY_HALF`) until a
@@ -505,8 +538,10 @@ and ticked as it is closed. The largest open items, summarised honestly:
 - **Custom-board RNode births** (Wireless Tracker, MeshPocket, EoRa-S3), the
   **eight RTNode-2400 builds** and the **firstborn** (the new medic's own
   Tracker radio) depend on firmware folders in a medic's home directory. A
-  clone carries them; a medic set up from GitHub alone does not have them yet
-  (ledger #43, #168, #120).
+  clone carries them; a medic set up from GitHub gets them from
+  `scripts/setup_medic.py`, at the commits pinned in
+  `assets/medic_manifest.json`, with the three custom images built — a route
+  not yet run end-to-end on a Pi 5 (ledger #43, #168, #120).
 - **A medic with no map carried shows a black pane** with inert controls
   rather than saying a map is missing (ledger #2, #178, #177).
 - **GPS-fitted RTNodes beacon their exact position** unfuzzed (ledger #157).
@@ -522,7 +557,7 @@ and ticked as it is closed. The largest open items, summarised honestly:
 
 Start here if you are new:
 
-- [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) — blank Pi 5 to running medic, and the known gaps in that path.
+- [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) — blank Pi 5 to running medic with `scripts/setup_medic.py` (pins in [`assets/medic_manifest.json`](assets/medic_manifest.json)), and the known gaps in that path.
 - [`docs/HANDOVER_NEXT_SESSION.md`](docs/HANDOVER_NEXT_SESSION.md) — read-this-first for whoever picks the project up: state, deploy and test mechanics, method.
 - [`docs/HANDOVER.md`](docs/HANDOVER.md) — the durable reference: architecture, the firmware contracts, the testing model.
 - [`docs/WORKING_METHOD.md`](docs/WORKING_METHOD.md) — the working rules that were paid for.
