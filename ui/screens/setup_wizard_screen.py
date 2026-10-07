@@ -486,7 +486,9 @@ class SetupWizardScreen(BoxLayout):
                 # the buttons, since there is one. The resume marker is not
                 # touched: only a set-up that leaves the walkthrough needs it.
                 done = dict(step)
-                done["body"] = (step["body"] + "\n\n" + tr(
+                # the body's second paragraph tells the keeper to plug the
+                # Tracker in — false here; keep what the Tracker IS, then the line
+                done["body"] = (step["body"].split("\n\n", 1)[0] + "\n\n" + tr(
                     "This medic's radio and position finder are already set up."))
                 done["hint"] = ""
                 self._wizard(done, anim=stage if stage_h else None,

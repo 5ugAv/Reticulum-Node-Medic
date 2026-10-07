@@ -417,8 +417,7 @@ _TOUR_STEPS = [
      # CARD (2026-09-21): a boundary walk is a thing two modes DO, not a
      # mode, but ANTENNA carries the button, so the card that owns the
      # button names it, and the "?" guide carries the explanation.
-     "hint": "A badly aimed antenna and a badly placed node look the same in "
-             "VITALS. Here, on site, you can tell them apart."},
+     "hint": "Bad aim and bad placement look the same in VITALS."},
 
     # The fifth painted card. The tour never mentioned it, and it is the one
     # a stranger taps first (readiness ledger #151).
@@ -462,8 +461,8 @@ _TOUR_STEPS = [
              "the radio parameters every new node is born with, and whether this "
              "medic routes for the mesh (Home) or stops routing and holding "
              "messages (Backpack).\n\n"
-             "Those modes are the two pictures beside the gear: the cottage is "
-             "Home, the hiker is Backpack. The one in colour is the mode you "
+             "Those modes are the two pictures beside the gear: "
+             "the cottage is Home, the hiker is Backpack. The one in colour is the mode you "
              "are in; tap the grey one to switch.\n\n"
              "This walkthrough lives there too, for you or whoever gets the "
              "medic next."},
