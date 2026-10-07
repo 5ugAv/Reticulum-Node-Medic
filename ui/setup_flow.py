@@ -353,15 +353,13 @@ _TOUR_STEPS = [
      # 2026-09-13 per docs/FRONT_PAGE_BRIEF.md) — the screen shows the actual
      # painted card beside them, so any other word would contradict the crop.
      "title": "BUILD — turn a board into a node",
-     "body": "Plug any LoRa board or Raspberry Pi on Node Medic's list into Node "
-             "Medic — BUILD shows each one with its picture — and it walks you "
-             "through turning it into a node on your mesh: flashed, named, given "
-             "a birth certificate, and placed on the map.\n\n"
-             "A radio for a phone or laptop, a transport node that runs the mesh "
-             "on its own, or a Raspberry Pi and radio together. It tells you "
-             "which cable and which socket. Some boards it recognises; for "
-             "others it asks you to pick — check the label, because the wrong "
-             "pick can leave a board unusable."},
+     "body": "Plug a LoRa board or Raspberry Pi from Node Medic's list into the "
+             "medic. BUILD shows it with its picture and walks you through "
+             "making it a node on your mesh: flashed, named, given a birth "
+             "certificate, placed on the map.\n\n"
+             "It tells you which cable and which socket. Where it cannot "
+             "recognise a board it asks you to pick — check the label, because "
+             "the wrong pick can leave a board unusable."},
 
     {"key": TOUR_VITALS, "part": TOUR, "poster_card": "vitals", "opens": "vitals",
      "title": "VITALS — is the fleet alive",
@@ -398,32 +396,29 @@ _TOUR_STEPS = [
      "body": "Node Medic keeps its maps on the SD card so the mesh can be built "
              "with no internet at all.\n\n"
              "{summary}\n\n"
-             "To add an area you need Wi-Fi once: open MAPS, look at the place, "
-             "and the Offline maps control appears — it only shows itself when "
-             "the map is looking at somewhere this medic does not carry. "
-             "Terrain for that area downloads in the same pass, so the map can "
-             "shade high and low ground."},
+             "To add an area (Wi-Fi needed once):\n"
+             "• Open MAPS\n"
+             "• Look at the place\n"
+             "• Tap Offline maps when it appears\n\n"
+             "It appears only for places this medic does not carry; terrain for "
+             "the area downloads in the same pass."},
 
     {"key": TOUR_TRIAGE, "part": TOUR, "poster_card": "triage", "opens": "triage",
      "title": "ANTENNA — aim it on site",
-     "body": "For when you are standing at the node with it in your hands. "
-             "Signal strength, clarity and background noise update each time "
-             "the medic hears the node; while this screen is open it asks your "
-             "nodes to call out every couple of seconds.\n\n"
-             "A node in the right place with a badly aimed antenna and a node in "
-             "the wrong place look the same in VITALS. This is how you tell them "
-             "apart, on site.\n\n"
-             # ONE SENTENCE, NOT A NINTH CARD (2026-09-21). The tour is one
-             # screen per mode and a boundary walk is a thing two modes DO,
-             # not a mode; and a stranger on this screen owns no nodes yet, so
-             # a card about measuring their reach would teach nothing it could
-             # use. But ANTENNA carries the button, so the card that owns the
-             # button names it, and the "?" guide carries the explanation.
-             "It is also where a RANGE TEST starts. Stand next to a node and "
-             "press Range test: the medic pins the node's position. Then walk "
-             "away. The medic keeps asking the node to answer and records where "
-             "its signal reaches you and where it stops. The result is drawn on "
-             "MAPS as that node's reach."},
+     "body": "Stand at the node with it in your hands. Signal strength, clarity "
+             "and background noise update each time the medic hears it; while "
+             "this screen is open it asks your nodes to call out every couple "
+             "of seconds.\n\n"
+             "Range test starts here too: press it beside a node, then walk "
+             "away. The medic records where the node's signal reaches you and "
+             "where it stops, and draws that on MAPS as the node's reach.",
+     # The VITALS contrast is the reasoning, so it rides in the hint
+     # (bare action first; reasoning after). ONE SENTENCE, NOT A NINTH
+     # CARD (2026-09-21): a boundary walk is a thing two modes DO, not a
+     # mode, but ANTENNA carries the button, so the card that owns the
+     # button names it, and the "?" guide carries the explanation.
+     "hint": "A badly aimed antenna and a badly placed node look the same in "
+             "VITALS. Here, on site, you can tell them apart."},
 
     # The fifth painted card. The tour never mentioned it, and it is the one
     # a stranger taps first (readiness ledger #151).
@@ -444,10 +439,10 @@ _TOUR_STEPS = [
              "it is, what software is on it, whether it answers at all.\n\n"
              "After this tour, open it from a node's page: VITALS, tap the "
              "node, then Probe.\n\n"
-             "Self Diagnose (on VITALS, and in Settings) turns the same "
-             "attention on the medic itself — its own radio, its clock, its "
-             "services, its disk and touch — and repairs what it can. Run it when the "
-             "medic is the thing behaving oddly.",
+             "Self Diagnose turns the same attention on the medic itself — its "
+             "own radio, its clock, its services, its disk and touch — and "
+             "repairs what it can. Run it when the medic is the thing behaving "
+             "oddly.",
      "hint": "Self Diagnose is on the VITALS screen and in Settings. It is the "
              "first thing to try before suspecting a node."},
 
@@ -463,15 +458,15 @@ _TOUR_STEPS = [
 
     {"key": TOUR_SETTINGS, "part": TOUR, "opens": "settings",
      "title": "Settings — the medic's own dials",
-     "body": "The gear at the top right. Language, screen brightness, the radio "
-             "parameters every new node is born with, Wi-Fi, and whether this "
-             "medic routes for the mesh at home, or stops routing and holding "
-             "messages for others in a backpack.\n\n"
-             "Those two modes are the two pictures beside the gear: the cottage "
-             "is Home, the hiker is Backpack. The one in colour is the mode the "
-             "medic is in; tap the grey one to switch.\n\n"
-             "This walkthrough lives there too, so you can run it again — or "
-             "hand the medic on and let the next person run it from nothing."},
+     "body": "The gear at the top right: language, screen brightness, Wi-Fi, "
+             "the radio parameters every new node is born with, and whether this "
+             "medic routes for the mesh (Home) or stops routing and holding "
+             "messages (Backpack).\n\n"
+             "Those modes are the two pictures beside the gear: the cottage is "
+             "Home, the hiker is Backpack. The one in colour is the mode you "
+             "are in; tap the grey one to switch.\n\n"
+             "This walkthrough lives there too, for you or whoever gets the "
+             "medic next."},
 
     {"key": FINISH, "part": TOUR,
      "title": "That is the medic",
