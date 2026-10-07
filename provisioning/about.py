@@ -17,6 +17,8 @@ Runner + paths are injectable so it's unit-testable off-hardware (macOS has no
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from typing import Callable, Dict, Optional, Tuple
 
@@ -30,6 +32,12 @@ ShellRunner = Callable[[str], Tuple[int, str]]
 _HASH_CMD = "git rev-parse --short HEAD"
 _BRANCH_CMD = "git rev-parse --abbrev-ref HEAD"
 _REMOTE_CMD = "git remote get-url origin"
+#: A clone carries no .git (workflows/clone.TOOL_EXCLUDES), so git cannot name
+#: its build. The parent writes this stamp into the clone's tool root instead
+#: (workflows/clone._stamp_release); it is read only when git has no answer.
+RELEASE_STAMP_NAME = ".release.json"
+RELEASE_STAMP = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), RELEASE_STAMP_NAME)
 #: Collect (not run) the suite; ``parse_test_count`` reads the "N tests
 #: collected" tally off the last non-empty line, so no shell ``| tail -1`` is
 #: needed — we filter in Python (audit C5). ``2>/dev/null`` keeps collection
@@ -55,32 +63,53 @@ def _one_line(run: ShellRunner, cmd: str) -> str:
     return lines[-1] if lines else ""
 
 
-def git_hash(run: Optional[ShellRunner] = None) -> str:
-    """Short commit hash of the running build, or "" if git is unavailable."""
-    return _one_line(run or _default_run, _HASH_CMD)
+def release_stamp(path: Optional[str] = None) -> Dict[str, str]:
+    """The carried ``{hash, branch, remote}`` of a cloned medic, or {} when
+    there is no stamp (every git checkout) or it cannot be read."""
+    try:
+        with open(path or RELEASE_STAMP, encoding="utf-8") as f:
+            data = json.load(f)
+        return {k: str(v) for k, v in data.items()
+                if k in ("hash", "branch", "remote") and v}
+    except (OSError, ValueError, AttributeError):
+        return {}
 
 
-def git_branch(run: Optional[ShellRunner] = None) -> str:
-    """Current branch name, or "" if unavailable / detached."""
-    b = _one_line(run or _default_run, _BRANCH_CMD)
+def _stamp(stamp: Optional[Dict[str, str]]) -> Dict[str, str]:
+    return release_stamp() if stamp is None else stamp
+
+
+def git_hash(run: Optional[ShellRunner] = None,
+             stamp: Optional[Dict[str, str]] = None) -> str:
+    """Short commit hash of the running build: git's answer, else the stamp a
+    clone carries, else ""."""
+    return _one_line(run or _default_run, _HASH_CMD) or _stamp(stamp).get("hash", "")
+
+
+def git_branch(run: Optional[ShellRunner] = None,
+               stamp: Optional[Dict[str, str]] = None) -> str:
+    """Current branch name (git, else a clone's stamp), or "" if unavailable / detached."""
+    b = _one_line(run or _default_run, _BRANCH_CMD) or _stamp(stamp).get("branch", "")
     return "" if b == "HEAD" else b        # detached checkout -> no branch name
 
 
-def software_version(run: Optional[ShellRunner] = None) -> str:
+def software_version(run: Optional[ShellRunner] = None,
+                     stamp: Optional[Dict[str, str]] = None) -> str:
     """A human string like ``"a1b2c3d (main)"``, ``"a1b2c3d"`` (detached), or
-    ``"unknown"`` when git can't be reached."""
+    ``"unknown"`` when neither git nor a clone's stamp can name the build."""
     run = run or _default_run
-    h = git_hash(run)
+    h = git_hash(run, stamp)
     if not h:
         return "unknown"
-    b = git_branch(run)
+    b = git_branch(run, stamp)
     return f"{h} ({b})" if b else h
 
 
-def repo_link(run: Optional[ShellRunner] = None) -> str:
+def repo_link(run: Optional[ShellRunner] = None,
+              stamp: Optional[Dict[str, str]] = None) -> str:
     """The origin remote as a browsable https URL (ssh remotes are normalised;
-    a trailing ``.git`` is dropped). "" when there's no origin."""
-    url = _one_line(run or _default_run, _REMOTE_CMD)
+    a trailing ``.git`` is dropped). "" when there's no origin and no stamp."""
+    url = _one_line(run or _default_run, _REMOTE_CMD) or _stamp(stamp).get("remote", "")
     if not url:
         return ""
     # git@github.com:owner/repo(.git) -> https://github.com/owner/repo

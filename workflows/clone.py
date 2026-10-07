@@ -74,6 +74,10 @@ CARRIED_TREES = (
     ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", False),
     ("~/RNode_Firmware", "the RNode firmware fork", False),
     ("~/MeshPocket", "the MeshPocket RNode port", False),
+    # the EoRa-S3 RNode port builds from its own CE tree (rnode_boards
+    # build_dir). It was never on this list, so no clone could birth an
+    # EoRa-S3 (parity sweep against Node Medic 2, 2026-10-08).
+    ("~/EoRa-S3", "the EoRa-S3 RNode port", False),
     ("~/RTNode-2400", "the RTNode-2400 firmware", False),
     ("~/rnm-assets", "RTNode-2400 build assets", False),
 )
@@ -85,6 +89,14 @@ CARRIED_TREES = (
 CARRY_SKIP = ("imgwork", "techo-test", "tracker_build", "supreme_build",
               "upstream_pr", "pr115_alt", "dev_pristine", "pr126_dev",
               "upstream_baseline")
+
+#: Firmware SOURCE trees travel without their git history. No firmware build
+#: reads it (checked 2026-10-08: no Makefile, platformio.ini or build script
+#: calls git), and history is where unpublished commits keep the address they
+#: were made under: two on Node Medic 1 carried a personal e-mail that the
+#: next clone would have handed to another community (parity sweep).
+HISTORY_FREE_TREES = ("~/overlay_test", "~/RNode_Firmware", "~/MeshPocket",
+                      "~/EoRa-S3", "~/RTNode-2400", "~/rnm-assets")
 
 
 _CLONE_STEPS: List[Tuple[str, Callable]] = []
@@ -119,6 +131,21 @@ def _freeze_parent() -> str:
         return ""
 
 
+def _stamp_release(wf: "CloneWorkflow") -> None:
+    """A clone carries no git history (TOOL_EXCLUDES drops .git), so its
+    About screen read "unknown". Hand it this medic's version as a stamp that
+    provisioning/about.py reads when git has no answer (parity sweep,
+    2026-10-08). A parent that is itself a clone passes its own stamp on."""
+    from provisioning import about
+    stamp = {"hash": about.git_hash(), "branch": about.git_branch(),
+             "remote": about.repo_link()}
+    if not stamp["hash"]:
+        return
+    payload = json.dumps(stamp, sort_keys=True)
+    wf.connection.run(f"cat > {REMOTE_TOOL_DIR}/{about.RELEASE_STAMP_NAME} "
+                      f"<<'RNMEOF'\n{payload}\nRNMEOF")
+
+
 @clone_step
 def transfer_tool(wf: "CloneWorkflow") -> StepResult:
     # rsync the whole tool tree (code + carried assets: configs, scripts,
@@ -136,6 +163,8 @@ def transfer_tool(wf: "CloneWorkflow") -> StepResult:
                           "cable at both ends, or try another cable, then press "
                           "Retry.")
     present = wf.connection.run(f"test -f {REMOTE_TOOL_DIR}/main.py")[0] == 0
+    if present:
+        _stamp_release(wf)
     return StepResult("transfer_tool", present,
                       f"Copied the tool code + asset store.{frozen}" if present
                       else "Copying Node Medic did not finish. Press Retry — it starts again from this step.")
@@ -179,7 +208,8 @@ def carry_the_toolchain(wf: "CloneWorkflow") -> StepResult:
         remote = path
         if os.path.isdir(local):
             wf.connection.run(f"mkdir -p {remote}")
-            ok = wf.connection.push_tree(local, remote, exclude=CARRY_SKIP)
+            skip = CARRY_SKIP + ((".git",) if path in HISTORY_FREE_TREES else ())
+            ok = wf.connection.push_tree(local, remote, exclude=skip)
         else:
             ok = wf.connection.push_file(local, remote) if hasattr(
                 wf.connection, "push_file") else wf.connection.push_tree(

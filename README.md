@@ -142,9 +142,12 @@ Counted from the code on 2026-10-04 (commands under *Counts* below):
   [`workflows/updater.py`](workflows/updater.py)); a newer upstream release is
   reported by Field readiness, never fetched.
 
-Caveat, stated plainly: the three built-here boards compile from firmware trees
-that live in the developer's home directory, not in this repository (ledger
-#43, #168). A medic built from this repo alone cannot birth them yet.
+Caveat, stated plainly: the three built-here boards and all eight RTNode-2400
+boards build from firmware folders kept in a medic's home directory, not in
+this repository. A medic cloned from one that has them carries every one of
+those folders and can birth all of them. A medic set up from this repository
+alone cannot birth them yet, because nothing downloads those folders today
+(ledger #43, #168).
 
 ## Deployment defaults (all overridable)
 
@@ -499,9 +502,11 @@ and ticked as it is closed. The largest open items, summarised honestly:
   never enrolled, so it is switched off (`ui/setup_flow.SECURITY_HALF`) until a
   later release wires it to the real path, Settings ▸ Encrypt my records
   (ledger #174, #139).
-- **Custom-board RNode births** (Wireless Tracker, MeshPocket, EoRa-S3) and the
-  **firstborn** (the new medic's own Tracker radio) depend on firmware trees
-  that exist only on the developer's medic (ledger #43, #168, #120).
+- **Custom-board RNode births** (Wireless Tracker, MeshPocket, EoRa-S3), the
+  **eight RTNode-2400 builds** and the **firstborn** (the new medic's own
+  Tracker radio) depend on firmware folders in a medic's home directory. A
+  clone carries them; a medic set up from GitHub alone does not have them yet
+  (ledger #43, #168, #120).
 - **A medic with no map carried shows a black pane** with inert controls
   rather than saying a map is missing (ledger #2, #178, #177).
 - **GPS-fitted RTNodes beacon their exact position** unfuzzed (ledger #157).

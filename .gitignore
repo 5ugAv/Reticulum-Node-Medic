@@ -51,3 +51,6 @@ assets/debs/
 
 # Local firmware backups - irreplaceable device images, kept out of git
 .local-backups/
+
+# a clone's carried version stamp (workflows/clone._stamp_release)
+.release.json

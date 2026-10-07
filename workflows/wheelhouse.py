@@ -109,6 +109,16 @@ APT_PACKAGES = (
     # touching the plug (fragile ports). Node Medic 1 has it; a clone did not
     # (Node Medic 2, 2026-10-06).
     "uhubctl",
+    # Programs the code runs that a fresh card lacks. Node Medic 1 had each
+    # and Node Medic 2 (a clone) had none (parity sweep, 2026-10-08):
+    # provisioning/link.py installs a new Pi node's key through sshpass;
+    "sshpass",
+    # provisioning/pi_usbboot.py boots a Pi as a USB card reader;
+    "rpiboot",
+    # diagnostics/reticulum_software.py reads a serial port's ACL;
+    "acl",
+    # diagnostics/system_health.py checks pip3, and git names a checkout's build.
+    "python3-pip", "git",
 )
 
 #: The clone's display stack. A Lite image cannot open a window (the Kivy
@@ -124,6 +134,18 @@ DISPLAY_PACKAGES = ("cage", "libgl1", "xwayland", "libsdl2-2.0-0",
                     # Settings ▸ Fix colours (the DSI-scramble cure) shells it
                     "wlr-randr")
 ALL_PACKAGES = APT_PACKAGES + DISPLAY_PACKAGES
+
+#: Program -> the package that provides it, for every program the code runs
+#: that a fresh Pi OS Lite card (assets/clone_base/dpkg_status) does not have.
+#: tests/test_clone_parity.py holds the code to this list, so a tool the medic
+#: starts calling cannot be left behind by the clone again.
+PROGRAM_PACKAGES = {
+    "sshpass": "sshpass", "rpiboot": "rpiboot", "getfacl": "acl",
+    "setfacl": "acl", "pip3": "python3-pip", "git": "git",
+    "wlr-randr": "wlr-randr", "uhubctl": "uhubctl", "direwolf": "direwolf",
+    "gpsd": "gpsd", "gpspipe": "gpsd-clients", "cage": "cage",
+    "aplay": "alsa-utils", "arecord": "alsa-utils", "amixer": "alsa-utils",
+}
 
 DEB_CACHE = "~/reticulum-tool/assets/packages/debs"
 
