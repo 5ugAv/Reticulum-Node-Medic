@@ -57,17 +57,19 @@ piece of a network they now co-own.
 > source on media at no more than the cost of posting it. **That offer stands
 > for three years** from the date you bought this.
 >
-> **Built on the work of others**, and licensed **GPL-3.0**:
+> **Built on the work of others:**
 >
-> - **Reticulum** and **RNode Firmware** — Mark Qvist
+> - **Reticulum** — Mark Qvist (Reticulum License)
+> - **RNode Firmware** — Mark Qvist (GPL-3.0)
 > - **microReticulum** (Reticulum in C++, small enough for this chip) —
->   Chris Attermann
-> - **RNode Firmware CE** — Liberated Systems & contributors
+>   Chris Attermann (under its own licence)
+> - **RNode Firmware CE** — Liberated Systems & contributors (GPL-3.0)
 > - **RTNode for Heltec V4** — jrl290
-> - **RTNode-2400** — GrayHatGuy
+> - **RTNode-2400** — GrayHatGuy (GPL-3.0)
 > - Assembled, cased and tested by **<YOUR_NAME>**
 >
-> A full copy of the GNU General Public License v3 is included with the source
+> A full copy of the GNU General Public License v3, which covers the firmware, is
+> included with the source
 > at the link above, and on the card insert overleaf / at `<LICENCE_URL>`.
 >
 > If this is useful to you, consider supporting the upstream authors — they gave

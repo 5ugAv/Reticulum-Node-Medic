@@ -1,4 +1,4 @@
-# Antenna A/B bench — T114 (1114000000000001), indoors at the medic, 2026-08-27
+# Antenna A/B bench — a T114, indoors at the medic, 2026-08-27
 # Method: CMD_STAT_CHTM poll over USB serial (/tmp/antenna_read.py), read-only.
 # Lesson baked in: higher floor != worse antenna — a good antenna hears more of
 # everything; ranking needs the known-signal SNR leg.

@@ -207,7 +207,7 @@ Cheap to write down, expensive to rediscover:
 
 ---
 
-## Part 4 — What is open
+## Part 4 — What is open (dated snapshot)
 
 - Two agent worktrees behind the airlock: the first-use setup wizard, and the
   location-sharing toggle. Both committed and tested, neither reviewed.
@@ -310,7 +310,7 @@ almost never where you first look.*
 
 ---
 
-## Appendix — the state at handover, 2026-08-12
+## Appendix — the state at handover, 2026-08-12 (dated snapshot)
 
 **On `main`, tested, deployed to the medic:**
 - `/status` server for Pi nodes, build steps that prove a node reports, one
@@ -349,7 +349,7 @@ agree, which makes that easier than it sounds.
 ## Update — 2026-08-12, end of the second day
 
 Written after the first complete, honest birth (node **ttt**, certificate
-5a040004). Of the morning's "do first" list: all four done. The wording
+<cert>). Of the morning's "do first" list: all four done. The wording
 worktrees are merged, the radio's serial now travels flash → hand-back →
 udev rule (verified on the glass: "this radio only, serial <that radio's own>"),
 final_verification cannot pass on a mute node, and the false sentence is off
@@ -391,7 +391,7 @@ New paid-for facts, same currency as Part 3:
   identity-grouping exists; the roster placeholder and the aspect rows never
   merge. OPEN.
 
-**The first complete birth: node ttt, certificate 5a040004, 2026-08-13
+**The first complete birth: node ttt, certificate <cert>, 2026-08-13
 00:0x.** Radio pinned by its own serial, hardening and Bluetooth-off
 verified on-node, health beacons observed landing over BOTH roads, and
 RNodeInterface Up/Full read from the node itself. The goal the operator set
@@ -402,7 +402,7 @@ reports its health to the medic — exists and is proven.
 ## Update — 2026-08-14, the overnight run
 
 EVERYWHERE reborn headlessly on the bench: 16/16 steps green, certificate
-5a050005, health beacon observed landing over the LAN (announce 5a060006
+<cert>, health beacon observed landing over the LAN (announce <dst>
 len=20 beacon=yes). One operator action remains: the radio onto the Pi.
 
 Paid-for facts, new tonight:
@@ -460,7 +460,7 @@ Suite: 3237 passed, 11 skipped. Deployed f36742c; UI restarted while idle.
 One clean end-to-end walkthrough birth, operator at the glass, log watched
 live: one flash (no rewind), pairing check in its right place, stale pin
 rotated on birth-token proof at first contact, all 17 build steps green,
-certificate skyfinger @ 5a070007, and the health beacon (dst 5a080008)
+certificate skyfinger @ <cert>, and the health beacon (dst <dst>)
 landed on VITALS ~a minute after the radio went on. The operator's twelve
 task briefing (tasks 0-7, 9-12) shipped the same evening; Task 8 (OLED
 name preview on the board photo) remains open by choice — it needs
@@ -528,9 +528,10 @@ apostrophes in it. The failure is silent, which is what makes it dangerous.
 
 ### Check the identity of the repository you are committing to
 
-`reticulum-tool` commits as `285661567+5ugAv@users.noreply.github.com`. The
-other repository on the same machine once committed under a personal address. Same
-operator, same day, two different exposure levels — and nothing warns you.
+`reticulum-tool` commits as `285661567+5ugAv@users.noreply.github.com`. Another
+repository on the same machine once committed under a personal address — check
+per repository. Same operator, same day, two different exposure levels — and
+nothing warns you.
 
 **Protocol.** `git log -1 --format='%an <%ae>'` in the target repository before
 the first commit of a session. Per-repo, not per-machine: a global default is
