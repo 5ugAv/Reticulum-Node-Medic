@@ -16,7 +16,20 @@ much text").
 Bigger type only fits because the copy was cut in the same edit — see
 ``ui.birth_guide_flow``. The stacked height of every step is asserted against
 the panel by ``tests/test_birth_guide.py::test_no_guided_step_overflows_the_panel``:
-this layout has NO ScrollView, so text that does not fit is text nobody reads.
+the guided birth's layout has NO ScrollView, so text that does not fit is text
+nobody reads.
+
+THE BUTTON BAR IS A FIXED BAR ON THE BOTTOM EDGE. On a scrolling step (the
+first-use tour, ``scroll_body=True``) the body is the ONE part of the page
+with a ``size_hint_y``; everything else — counter, title, picture shelf, hint,
+warning and the Back / Next bar — is a fixed height, and the bar is the last
+child, which in a vertical BoxLayout is the bottom edge. So the words take
+whatever height is left and scroll inside it; they cannot grow the page. The
+walkthrough photographed on a fresh clone (2026-10-07) had four pages whose
+body ran past the bottom of the glass and two whose buttons went with it, and
+``_keep_bar_on_glass`` is the second lock: if the fixed parts ever stack
+taller than the page, the picture shelf gives way before the bar can.
+``tests/test_setup_wizard_layout.py`` pins both.
 """
 
 from __future__ import annotations
@@ -76,6 +89,12 @@ class WizardStep(BoxLayout):
     #: lines of body under a one-line title on the 480 dp panel.
     PICTURE_STAGE_DP = 120
 
+    #: Height of the Back / Next bar (dp). FIXED: the bar never takes a share
+    #: of the page, so nothing above it can make it shorter or move it. It is
+    #: the last child added, which in a vertical BoxLayout is the bottom edge.
+    #: tests/test_birth_guide.py mirrors this as _NAV_H — keep them in step.
+    NAV_H = 62
+
     def __init__(self, index, total, title, body, anim=None, on_next=None,
                  on_back=None, next_text=None, back_text=None,
                  hint="", warning="", input_widget=None, show_back=True,
@@ -129,11 +148,15 @@ class WizardStep(BoxLayout):
         # central animation stage (flexes to fill the middle of the screen —
         # or, on a scrolling step, a fixed-height picture shelf, or nothing)
         self.stage = anim if anim is not None else Widget()
+        #: The picture shelf's full height on a scrolling step (px); what
+        #: _keep_bar_on_glass gives back once there is room again.
+        self._shelf_px = 0.0
         if scroll_body:
             if anim is not None:
                 self.stage.size_hint_y = None
                 self.stage.height = dp(stage_height if stage_height is not None
                                        else self.PICTURE_STAGE_DP)
+                self._shelf_px = float(self.stage.height)
                 self.add_widget(self.stage)
         else:
             self.add_widget(self.stage)
@@ -198,8 +221,10 @@ class WizardStep(BoxLayout):
                 pos=_fit, size=_fit)
             self.add_widget(warn_lbl)
 
-        nav = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(62),
-                        spacing=dp(12))
+        # THE BAR: a fixed height, never a share, always the last child — the
+        # bottom edge of the page on every step (see the module docstring).
+        nav = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(self.NAV_H), spacing=dp(12))
         # show_back=False: the screen lives under the bottom bar, whose '←'
         # already does on_back (operator, 2026-09-22: "that little back
         # button can be removed now"). The setup wizard has no bar and
@@ -235,6 +260,41 @@ class WizardStep(BoxLayout):
         nav.add_widget(self.next_btn)
         self.add_widget(nav)
         self._nav = nav
+        if scroll_body:
+            # The second lock on the bar (the first is the fixed heights
+            # above): re-checked whenever the page is resized or any fixed
+            # part changes height — a title that wraps, a hint that grows.
+            self.bind(size=self._keep_bar_on_glass,
+                      minimum_height=self._keep_bar_on_glass)
+            self._keep_bar_on_glass()
+
+    def _keep_bar_on_glass(self, *_):
+        """Scrolling steps only: the fixed parts must never stack taller than
+        the page, because the bar is the last of them.
+
+        A vertical BoxLayout gives its one flexible child (here the body's
+        ScrollView) whatever is left after the fixed children, and that is
+        clamped at zero — so if the fixed children alone outgrow the page the
+        stack spills over the edge. The body cannot cause that (it scrolls),
+        but a three-line title over a six-line hint could. When it happens the
+        PICTURE SHELF gives way, down to nothing: the words and the buttons
+        are what the operator acts on, the card is a reminder of where to tap.
+        It grows back the moment there is room again (a resize, a shorter
+        hint). On a page that fits — every tour page on the 853 dp panel —
+        this changes nothing.
+        """
+        stage = self.stage
+        if stage.parent is not self or stage.size_hint_y is not None:
+            return                      # no shelf on this step
+        if self.height <= 0:
+            return                      # not laid out yet
+        # minimum_height counts every fixed child plus padding and spacing;
+        # take the shelf's own share out to see what the REST needs.
+        others = self.minimum_height - stage.height
+        room = max(0.0, self.height - others)
+        want = min(self._shelf_px, room)
+        if abs(stage.height - want) > 0.5:
+            stage.height = want
 
     def set_status(self, text: str):
         """A live one-line narration under the body: what the medic is seeing

@@ -127,6 +127,19 @@ def poster_card_image(zone: str):
 
 
 
+def _medic_radio_is_set_up() -> bool:
+    """Does this medic already have its own radio? THE FIRSTBORN PAGE'S OWN
+    CHECK, reused — its roster names a board, or its radio service is bound
+    to one. A second copy of that rule here would be the copy that stops
+    matching. Any failure answers False: "could not check" is not "yes", and
+    the worst that follows is a set-up offer on a medic that has one."""
+    try:
+        from ui.screens.firstborn_screen import _medic_owns_radio
+        return bool(_medic_owns_radio())
+    except Exception:                  # noqa: BLE001
+        return False
+
+
 def _records_are_encrypted() -> bool:
     """Ask the disk whether this medic's records are actually encrypted.
 
@@ -153,17 +166,21 @@ class SetupWizardScreen(BoxLayout):
     ``enrol_fn(parts, policy, recovery_key) -> (ok, message)`` does the real
     vault work when there is any to do — see the module docstring for why it is
     injected. ``vault_exists_fn()`` answers the disk for the summary.
+    ``owns_radio_fn()`` answers whether this medic's own radio is already set
+    up (the Tracker page offers the set-up only when it is not); the default
+    is the firstborn page's check.
     """
 
     def __init__(self, on_finish=None, on_navigate=None, enrol_fn=None,
                  vault_exists_fn=None, marker_path=None,
-                 mount_lister=None, **kwargs):
+                 mount_lister=None, owns_radio_fn=None, **kwargs):
         kwargs.setdefault("orientation", "vertical")
         super().__init__(**kwargs)
         self._on_finish = on_finish
         self._on_navigate = on_navigate
         self._enrol_fn = enrol_fn
         self._vault_exists_fn = vault_exists_fn or _records_are_encrypted
+        self._owns_radio_fn = owns_radio_fn or _medic_radio_is_set_up
         self._marker_path = marker_path or first_use.MARKER_PATH
         self._mount_lister = mount_lister
         self.reset()
@@ -431,6 +448,13 @@ class SetupWizardScreen(BoxLayout):
         which is the part that survives not reading English. Now the poster
         card sits on a fixed shelf, the body scrolls under it, and "Open it
         now" lives in the nav row instead of eating stage height.
+
+        EVERY call here is ``scroll_body=True``: the body's ScrollView is the
+        one flexible part of the page and the Back / Next bar is a fixed bar
+        on the bottom edge (WizardStep's module docstring; pinned by
+        tests/test_setup_wizard_layout.py). Four tour pages ran past the
+        bottom of a fresh clone's glass on 2026-10-07; the text is not what
+        this fixes, the layout is.
         """
         stage = BoxLayout(orientation="vertical", spacing=dp(8))
         stage_h = 0
@@ -453,6 +477,22 @@ class SetupWizardScreen(BoxLayout):
             stage.add_widget(img)
             stage_h += WizardStep.PICTURE_STAGE_DP
         if step.get("setup_first"):
+            if self._radio_already_set_up():
+                # NOTHING TO SET UP, NOTHING TO SKIP. A medic whose own radio
+                # is on its roster (the keeper's clone, 2026-10-07) was still
+                # offering "Set up its radio" and "Skip for now" — a set-up
+                # it had already done and a skip of nothing. One true line,
+                # Back and a green Next; the "No Tracker yet?" hint goes with
+                # the buttons, since there is one. The resume marker is not
+                # touched: only a set-up that leaves the walkthrough needs it.
+                done = dict(step)
+                done["body"] = (step["body"] + "\n\n" + tr(
+                    "This medic's radio and position finder are already set up."))
+                done["hint"] = ""
+                self._wizard(done, anim=stage if stage_h else None,
+                             scroll_body=True, stage_height=stage_h or None,
+                             next_text=tr("Next  →"))
+                return
             # SET IT UP is the main road: green Next does it; skipping is muted
             skip = self._muted_button(step.get("next") or tr("Skip for now"),
                                       self._next)
@@ -464,6 +504,15 @@ class SetupWizardScreen(BoxLayout):
         extra = self._see_it_button(step) if step.get("opens") else None
         self._wizard(step, anim=stage if stage_h else None, scroll_body=True,
                      stage_height=stage_h or None, extra_nav=extra)
+
+    def _radio_already_set_up(self) -> bool:
+        """The injected check, with "could not check" read as "not set up":
+        a wrong set-up offer costs a tap; a wrong "already set up" costs a
+        medic its radio."""
+        try:
+            return bool(self._owns_radio_fn())
+        except Exception:              # noqa: BLE001
+            return False
 
     def _muted_button(self, text, on_press):
         b = Button(text=text, size_hint_x=0.6, bold=True, font_size="14sp",
