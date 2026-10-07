@@ -34,10 +34,15 @@ EXPECTED_STEPS = [
     "configure_autostart",
     "bake_recovery_bootorder",
     "install_card_helper",
+    "install_radio_helper",
     "ensure_ssh_keypair",
     "final_verification",
     "restart_into_tool",
     "confirm_tool_running",
+    # every clone ends locked like its parent; a new community's clone then
+    # loses this medic's key, as the very last thing done to it (2026-10-08)
+    "harden_new_medic",
+    "remove_parent_key",
 ]
 
 IDENTITY_OUT = "New identity <2233445566778899aabbccddeeff0011> written to ..."
@@ -64,10 +69,43 @@ def conn(cpuinfo=PI5_CPUINFO):
     c.rules.insert(0, ("NRestarts", 0, "0", ""))
     boots = iter(["boot-a"] + ["boot-b"] * 50)   # the reboot changes the boot id
     real = c.run
+    # The new medic as harden_new_medic meets it: full sudo until its root
+    # supervisor (security/apply_all.sh) has applied the locks, scoped after,
+    # full again if it rolled back; and once this medic's key is removed, every
+    # login refused. c.child lets a test start it in another state.
+    c.child = {"supervisor": "", "keys": True}
 
     def run(cmd, *a, **k):
+        child = c.child
         if "boot_id" in cmd:
             return (0, next(boots, "boot-b"), "")
+        if not child["keys"]:
+            c.history.append(cmd)
+            return (255, "", "pi@10.55.0.1: Permission denied (publickey).")
+        scoped = child["supervisor"] in ("applied", "confirmed")
+        if "systemd-run" in cmd and "apply_all.sh" in cmd:
+            child["supervisor"] = "applied"
+        elif cmd.startswith("touch ~/.nodemedic-harden-confirm") and child["supervisor"] == "applied":
+            child["supervisor"] = "confirmed"
+        elif cmd.startswith("touch ~/.nodemedic-harden-rollback") and child["supervisor"] == "applied":
+            child["supervisor"] = "rolled-back: the checking medic found a problem"
+        elif cmd.startswith("cat /run/nodemedic-harden/status"):
+            c.history.append(cmd)
+            state = child["supervisor"]
+            return (0, state + "\n", "") if state else (1, "", "No such file or directory")
+        elif cmd.startswith("sudo -n /usr/bin/true"):
+            c.history.append(cmd)
+            return (1, "", "sudo: a password is required") if scoped else (0, "", "")
+        elif cmd.startswith("test -f /etc/ssh/sshd_config.d/01-nodemedic-hardening.conf"):
+            c.history.append(cmd)
+            return (0, "", "") if scoped else (1, "", "")
+        elif cmd.startswith("test -f /etc/nftables.d/nodemedic-ssh.nft"):
+            c.history.append(cmd)
+            return (0, "", "") if child["supervisor"] == "confirmed" else (1, "", "")
+        elif cmd.startswith("rm -f ~/.ssh/authorized_keys"):
+            c.history.append(cmd)
+            child["keys"] = False
+            return (0, "nm-no-keys-left\n", "")
         return real(cmd, *a, **k)
     c.run = run
     return c
@@ -467,3 +505,240 @@ def test_a_missing_pty_driver_refuses_before_the_write_and_never_erases():
     body = func_source("workflows/rnode_flash.py", "birth_flash")
     assert "import pexpect" in body
     assert refused_before_write("Node Medic can't flash this board here: its PTY driver (python3-pexpect) is not installed on this medic. Nothing was written.")
+
+
+# ---------------------------------------------------------------------------
+# Locked like its parent (keeper, 2026-10-08): EVERY clone ends with the
+# parent's hardening — scoped sudo, key-only SSH, the SSH firewall. A clone for
+# the keeper's own fleet keeps this medic's key; one for a NEW community has it
+# removed as the very last action, leaving no key at all.
+# ---------------------------------------------------------------------------
+
+def _started(c):
+    return next(i for i, h in enumerate(c.history) if "systemd-run" in h)
+
+
+def test_the_lock_steps_are_the_very_last_two():
+    assert [n for n, _ in wf().steps][-3:] == [
+        "confirm_tool_running", "harden_new_medic", "remove_parent_key"]
+
+
+def test_harden_installs_the_kit_root_owned_then_checks_then_confirms():
+    c = conn()
+    r = _run(wf(c), "harden_new_medic")
+    assert r.success, r.message
+    # the whole kit goes across and lands root-owned in one place, so the root
+    # supervisor never runs a file the app account could edit
+    pushed = {remote for _l, remote in c.pushed}
+    for _rel, dest, mode in clone.HARDENING_KIT:
+        assert f"/tmp/nm-security/{dest}" in pushed, dest
+        assert (f"sudo -n install -m {mode} -o root -g root /tmp/nm-security/{dest} "
+                f"{clone.HARDENING_DIR}/{dest}") in c.history, dest
+    start = _started(c)
+    assert (f"/bin/bash {clone.HARDENING_DIR}/apply_all.sh --user nodemedic "
+            "--window 600") in c.history[start]
+    # the keeper's checks — a fresh login, an allowed and an unlisted sudo —
+    # come AFTER the locks went on and BEFORE anything is confirmed
+    confirm = c.history.index("touch ~/.nodemedic-harden-confirm")
+    between = c.history[start:confirm]
+    for check in ("true", clone.HARDEN_ALLOWED_PROBE, clone.HARDEN_REFUSED_PROBE,
+                  "test -f /etc/ssh/sshd_config.d/01-nodemedic-hardening.conf"):
+        assert check in between, check
+    assert "touch ~/.nodemedic-harden-rollback" not in c.history
+    assert c.child["supervisor"] == "confirmed"
+    # and once more after: still in, and the firewall survives a restart
+    after = c.history[confirm:]
+    assert "true" in after and "test -f /etc/nftables.d/nodemedic-ssh.nft" in after
+
+
+def test_harden_rolls_back_when_an_allowed_admin_job_is_refused():
+    c = conn()
+    c.rules.insert(0, (clone.HARDEN_ALLOWED_PROBE, 1, "", "sudo: a password is required"))
+    r = _run(wf(c), "harden_new_medic")
+    assert not r.success
+    assert "touch ~/.nodemedic-harden-rollback" in c.history[_started(c):]
+    assert "touch ~/.nodemedic-harden-confirm" not in c.history
+    assert c.child["supervisor"].startswith("rolled-back")
+    assert "allowed admin jobs" in r.message and "undid every change" in r.message
+
+
+def test_harden_rolls_back_when_the_app_can_still_do_anything():
+    c = conn()
+    real = c.run
+
+    def run(cmd, *a, **k):
+        if cmd.startswith("sudo -n /usr/bin/true"):        # the scoping did not take
+            c.history.append(cmd)
+            return (0, "", "")
+        return real(cmd, *a, **k)
+    c.run = run
+    r = _run(wf(c), "harden_new_medic")
+    assert not r.success and "can still do anything" in r.message
+    assert "touch ~/.nodemedic-harden-confirm" not in c.history
+    assert c.child["supervisor"].startswith("rolled-back")
+
+
+def test_harden_reports_the_new_medics_own_rollback_and_confirms_nothing():
+    c = conn()
+    real = c.run
+
+    def run(cmd, *a, **k):
+        if "systemd-run" in cmd and "apply_all.sh" in cmd:
+            c.history.append(cmd)
+            c.child["supervisor"] = "rolled-back: the SSH firewall did not go in"
+            return (0, "", "")
+        return real(cmd, *a, **k)
+    c.run = run
+    r = _run(wf(c), "harden_new_medic")
+    assert not r.success
+    assert "the SSH firewall did not go in" in r.message and "as it was" in r.message
+    assert not any(h.startswith("touch ~/.nodemedic-harden") for h in c.history)
+
+
+def test_harden_that_loses_sight_of_the_new_medic_confirms_nothing():
+    """Locked out after the change (or the cable pulled): nothing can be
+    confirmed, so the new medic undoes the change itself — and says when."""
+    c = conn()
+    real = c.run
+
+    def run(cmd, *a, **k):
+        if c.child["supervisor"] == "applied":
+            c.history.append(cmd)
+            return (255, "", "ssh: connect to host 10.55.0.1 port 22: Connection timed out")
+        return real(cmd, *a, **k)
+    c.run = run
+    r = _run(wf(c), "harden_new_medic")
+    assert not r.success
+    assert "touch ~/.nodemedic-harden-confirm" not in c.history
+    assert f"within {clone.HARDEN_UNDO_WITHIN_MIN} minutes" in r.message
+
+
+def test_harden_refuses_without_a_key_for_this_medic_and_changes_nothing():
+    c = conn()
+    c.rules.insert(0, ("test -s ~/.ssh/authorized_keys", 1, "", ""))
+    r = _run(wf(c), "harden_new_medic")
+    assert not r.success and "Nothing was changed" in r.message
+    assert not any("systemd-run" in h or "install -m" in h for h in c.history)
+    assert not c.pushed
+
+
+def test_harden_on_a_retry_after_it_finished_is_a_clean_success():
+    c = conn()
+    c.child["supervisor"] = "confirmed"           # this medic lost sight of a run that finished
+    r = _run(wf(c), "harden_new_medic")
+    assert r.success and "already locked" in r.message
+    assert not any("systemd-run" in h for h in c.history) and not c.pushed
+
+
+def test_harden_stops_an_earlier_supervisor_before_starting_again():
+    c = conn()
+    c.child["supervisor"] = "applied"             # an earlier attempt still waiting
+    r = _run(wf(c), "harden_new_medic")
+    assert r.success, r.message
+    assert c.history.index("touch ~/.nodemedic-harden-rollback") < _started(c)
+    assert c.child["supervisor"] == "confirmed"
+
+
+def test_a_same_fleet_clone_keeps_this_medics_key():
+    c = conn()
+    r = _run(wf(c), "remove_parent_key")
+    assert r.success and r.skipped and "keeps its key" in r.message
+    assert not any("authorized_keys" in h for h in c.history)
+    assert c.child["keys"]
+
+
+def _fresh(c):
+    w = CloneWorkflow(c, registry_with_node(), fresh_fleet=True)
+    w.sleep = lambda _s: None
+    return w
+
+
+def test_a_new_communitys_clone_loses_this_medics_key_and_the_door_is_proven_shut():
+    c = conn()
+    r = _run(_fresh(c), "remove_parent_key")
+    assert r.success and not r.skipped and "Nobody can log in" in r.message
+    rm = next(h for h in c.history if h.startswith("rm -f ~/.ssh/authorized_keys"))
+    assert "~/.ssh/authorized_keys2" in rm            # sshd's second default file too
+    assert c.history[-1] == "true"                   # last of all: a login, refused
+    assert not c.child["keys"]
+
+
+def test_the_key_step_fails_if_this_medic_can_still_get_in():
+    c = conn()
+    real = c.run
+
+    def run(cmd, *a, **k):
+        if cmd.startswith("rm -f ~/.ssh/authorized_keys"):    # says gone, is not
+            c.history.append(cmd)
+            return (0, "nm-no-keys-left\n", "")
+        return real(cmd, *a, **k)
+    c.run = run
+    r = _run(_fresh(c), "remove_parent_key")
+    assert not r.success and "can still log in" in r.message
+
+
+def test_a_whole_clone_for_a_new_community_ends_with_the_key_gone(monkeypatch):
+    monkeypatch.setattr("os.path.isdir", lambda p: True)
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+    c = conn()
+    w = _fresh(c)
+    w.run_all()
+    assert all(r.success for r in w.results), [
+        (r.name, r.message) for r in w.results if not r.success]
+    assert [r.name for r in w.results][-2:] == ["harden_new_medic", "remove_parent_key"]
+    assert not w.results[-1].skipped
+    # nothing reached the new medic after its key went, but the proof the door is shut
+    rm = max(i for i, h in enumerate(c.history) if h.startswith("rm -f ~/.ssh/authorized_keys"))
+    assert c.history[rm + 1:] == ["true"]
+
+
+def test_the_new_medics_screen_is_left_alone_for_the_lock_steps():
+    c = conn()
+    w = wf(c)
+    before = len(c.history)
+    w._tell_new_medic("harden_new_medic")
+    w._tell_new_medic("remove_parent_key", failed=True)
+    assert len(c.history) == before and not c.pushed
+
+
+def test_every_file_of_the_kit_is_in_the_tool_and_beside_apply_all():
+    import os
+    names = {dest for _rel, dest, _mode in clone.HARDENING_KIT}
+    for rel, _dest, _mode in clone.HARDENING_KIT:
+        assert os.path.isfile(os.path.join(TOOL_ROOT, rel)), rel
+    for needed in ("apply_all.sh", "apply_sshd.sh", "rollback_sshd.sh", "apply_firewall.sh",
+                   "rollback_firewall.sh", "apply_sudoers.sh", "rollback_sudoers.sh",
+                   "render_sudoers.sh", "sshd_config.d/01-nodemedic-hardening.conf",
+                   "nftables/nodemedic-ssh.nft", "sudoers.nodemedic"):
+        assert needed in names, needed
+
+
+def test_the_promise_of_when_it_undoes_itself_matches_the_script():
+    import os
+    with open(os.path.join(TOOL_ROOT, "provisioning", "security", "apply_all.sh")) as fh:
+        src = fh.read()
+    assert "REVERT_MIN=$(( WINDOW / 60 + 10 ))" in src
+    assert clone.HARDEN_UNDO_WITHIN_MIN == clone.HARDEN_WINDOW_S // 60 + 10
+
+
+def test_the_radio_helper_is_installed_root_owned_and_read_back():
+    from workflows.medic_radio import RADIO_HELPER, RADIO_HELPER_SOURCE
+    c = conn()
+    r = _run(wf(c), "install_radio_helper")
+    assert r.success, r.message
+    assert (RADIO_HELPER_SOURCE, "/tmp/nm-radio-units") in c.pushed
+    assert (f"sudo -n install -D -m 755 -o root -g root /tmp/nm-radio-units "
+            f"{RADIO_HELPER}") in c.history
+    c2 = conn()
+    c2.rules.insert(0, (f"test -x {RADIO_HELPER}", 1, "", ""))
+    assert not _run(wf(c2), "install_radio_helper").success
+
+
+def test_final_verification_names_a_missing_radio_helper():
+    from workflows.medic_radio import RADIO_HELPER
+    c = conn()
+    c.rules.insert(0, (f"test -x {RADIO_HELPER}", 1, "", ""))
+    w = wf(c)
+    w.fresh_identity_generated = True
+    r = _run(w, "final_verification")
+    assert not r.success and "radio set-up helper missing" in r.message

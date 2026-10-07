@@ -4,8 +4,10 @@ A working medic is the tool code + its carried asset store + the offline RNode
 firmware cache + its Python environment + a place on the mesh. Cloning images all
 of that onto a fresh Pi 5 over SSH, then gives the new unit a **fresh** Reticulum
 identity — the source identity is deliberately never copied, so the two medics
-are distinct nodes. Ends by installing an autostart service so the clone boots
-straight into the tool.
+are distinct nodes. Installs an autostart service so the clone boots straight
+into the tool, and ENDS by locking it the way its parent is locked (scoped
+sudo, key-only SSH, the SSH firewall — provisioning/security/), removing this
+medic's own key last when the clone goes to a new community.
 
 Runs over a Connection to the target Pi and is testable against an
 EmulatedConnection, mirroring the build workflows. Large payloads (tool tree,
@@ -751,6 +753,33 @@ def install_card_helper(wf: "CloneWorkflow") -> StepResult:
 
 
 @clone_step
+def install_radio_helper(wf: "CloneWorkflow") -> StepResult:
+    """The root helper the new medic's OWN radio set-up needs. That set-up
+    (workflows/medic_radio.py, its first job on its own screen) runs AFTER
+    the last steps here have scoped its sudo, and the units it writes can
+    only be written by fixed text in a root-owned program — a unit the app
+    composed could carry any User= and ExecStart= (2026-10-08). Installed
+    now, while the new medic still has its card's full sudo; read back."""
+    from workflows.medic_radio import RADIO_HELPER, RADIO_HELPER_SOURCE
+    if not os.path.isfile(RADIO_HELPER_SOURCE):
+        return StepResult("install_radio_helper", False,
+                          "The tool's own radio_units.py is missing — the new "
+                          "medic could not be given its radio set-up helper.")
+    if not wf.connection.push_file(RADIO_HELPER_SOURCE, "/tmp/nm-radio-units"):
+        return StepResult("install_radio_helper", False,
+                          "Could not copy the radio set-up helper to the new "
+                          "medic. Check the cable, then press Retry.")
+    wf.connection.run(wf.priv(f"install -D -m 755 -o root -g root "
+                              f"/tmp/nm-radio-units {RADIO_HELPER}"))
+    if wf.connection.run(f"test -x {RADIO_HELPER}")[0] != 0:
+        return StepResult("install_radio_helper", False,
+                          "The radio set-up helper did not land on the new "
+                          "medic. Press Retry.")
+    return StepResult("install_radio_helper", True,
+                      "Radio set-up helper installed and read back.")
+
+
+@clone_step
 def ensure_ssh_keypair(wf: "CloneWorkflow") -> StepResult:
     """Pi births reach the new node over SSH with the medic's own key. A
     fresh clone has none, so its first Pi birth would fail at the first
@@ -786,6 +815,10 @@ def final_verification(wf: "CloneWorkflow") -> StepResult:
     from provisioning.pi_imager import PREPARE_CARD
     if wf.connection.run(f"test -x {PREPARE_CARD}")[0] != 0:
         problems.append("card-writing helper missing")
+    # ...and to set up its own radio once its sudo is scoped (2026-10-08)
+    from workflows.medic_radio import RADIO_HELPER
+    if wf.connection.run(f"test -x {RADIO_HELPER}")[0] != 0:
+        problems.append("radio set-up helper missing")
     if wf.connection.run("test -f ~/.ssh/id_ed25519.pub")[0] != 0:
         problems.append("SSH keypair missing")
     # THE APP MUST BE ABLE TO OPEN ITS WINDOW. "Every step verified" sat over a
@@ -1086,6 +1119,288 @@ _CLONE_STEPS.insert(
     ("bake_recovery_bootorder", bake_recovery_bootorder))
 
 
+# --------------------------------------------------------------------------- #
+# THE LAST TWO STEPS: lock the new medic the way its parent is locked.
+#
+# The keeper's policy (2026-10-08): EVERY clone ends with its parent's
+# hardening — scoped sudo for its own app user, key-only SSH, SSH only from
+# private networks (provisioning/security/). A clone for the keeper's OWN fleet
+# keeps this medic's key, so the keeper can look after it remotely. A clone for
+# a NEW community has this medic's key removed as the very last thing this
+# medic does to it, leaving no key at all: nobody can log in to it from another
+# machine. Its own screen is unaffected.
+#
+# They come after confirm_tool_running on purpose: every step before them needs
+# the new medic's full sudo (the card bake's NOPASSWD:ALL), and the app is
+# proven to stay open before anything is locked.
+# --------------------------------------------------------------------------- #
+
+#: The new medic's own copy of the hardening kit. Root-owned, because the root
+#: process that later confirms or rolls back (security/apply_all.sh) must never
+#: run a file the app account could have edited once its sudo is scoped.
+HARDENING_DIR = "/usr/local/lib/nodemedic/security"
+#: (path in this tool, path under HARDENING_DIR, mode)
+HARDENING_KIT = (
+    ("provisioning/security/apply_all.sh", "apply_all.sh", "755"),
+    ("provisioning/security/apply_sshd.sh", "apply_sshd.sh", "755"),
+    ("provisioning/security/rollback_sshd.sh", "rollback_sshd.sh", "755"),
+    ("provisioning/security/apply_firewall.sh", "apply_firewall.sh", "755"),
+    ("provisioning/security/rollback_firewall.sh", "rollback_firewall.sh", "755"),
+    ("provisioning/security/apply_sudoers.sh", "apply_sudoers.sh", "755"),
+    ("provisioning/security/rollback_sudoers.sh", "rollback_sudoers.sh", "755"),
+    ("provisioning/security/render_sudoers.sh", "render_sudoers.sh", "755"),
+    ("provisioning/security/sshd_config.d/01-nodemedic-hardening.conf",
+     "sshd_config.d/01-nodemedic-hardening.conf", "644"),
+    ("provisioning/security/nftables/nodemedic-ssh.nft",
+     "nftables/nodemedic-ssh.nft", "644"),
+    ("provisioning/sudoers.d/nodemedic", "sudoers.nodemedic", "644"),
+)
+#: One line from apply_all.sh: running | applied | confirmed | rolled-back: why
+HARDEN_STATUS = "/run/nodemedic-harden/status"
+#: How long apply_all.sh waits for this medic's verdict before it rolls every
+#: change back by itself.
+HARDEN_WINDOW_S = 600
+#: The latest the new medic undoes an unconfirmed change on its own, even if
+#: apply_all.sh itself died: its scripts' own self-reverts are armed for
+#: WINDOW/60 + 10 minutes (apply_all.sh, REVERT_MIN).
+HARDEN_UNDO_WITHIN_MIN = HARDEN_WINDOW_S // 60 + 10
+#: The verdict files apply_all.sh watches. Plain files in the app user's home:
+#: once its sudo is scoped, that is all this medic can still write there.
+HARDEN_CONFIRM = "~/.nodemedic-harden-confirm"
+HARDEN_ROLLBACK = "~/.nodemedic-harden-rollback"
+#: The keeper's two sudo checks, run on the new medic AFTER it is scoped
+#: (tests/test_privileged_commands.py proves each against the policy):
+#: a whitelisted, read-only command that must still RUN (NM_DIAG)...
+HARDEN_ALLOWED_PROBE = "sudo -n /usr/bin/ss -tlnp"
+#: ...and a command no rule grants, which must be REFUSED.
+HARDEN_REFUSED_PROBE = "sudo -n /usr/bin/true"
+
+
+def _harden_status(wf: "CloneWorkflow") -> str:
+    code, out, _e = wf.connection.run(f"cat {HARDEN_STATUS} 2>/dev/null", timeout=15)
+    return (out or "").strip() if code == 0 else ""
+
+
+def _harden_wait(wf: "CloneWorkflow", wanted, seconds: int, sleep) -> str:
+    """Poll apply_all.sh's status until it reaches one of *wanted* or rolls
+    back; "" if it never does. Bounded twice: by turns, so a test's no-op
+    sleep cannot spin for real minutes, and by the monotonic clock, because
+    against a new medic that has stopped answering one poll is an ssh that
+    retries its connection timeout three times (~40 s each)."""
+    import time as _time
+    deadline = _time.monotonic() + seconds
+    for _ in range(max(1, seconds // 3)):
+        state = _harden_status(wf)
+        if state.startswith("rolled-back") or state in wanted:
+            return state
+        if _time.monotonic() >= deadline:
+            break
+        sleep(3)
+    return ""
+
+
+def _lock_problems(wf: "CloneWorkflow") -> List[str]:
+    """What is NOT right about the new medic's locks, checked from here.
+
+    Every run() over the real connection is a NEW login — SSHConnection starts
+    a fresh `ssh -o BatchMode=yes` for each command, with no shared master — so
+    a pass means this medic's key is accepted AFTER the change, not that an
+    old session survived it. [] when all is well."""
+    if wf.connection.run("true", timeout=20)[0] != 0:
+        return ["this medic could not log in to it again"]
+    problems = []
+    if wf.connection.run(
+            "test -f /etc/ssh/sshd_config.d/01-nodemedic-hardening.conf")[0] != 0:
+        problems.append("its key-only login setting is not in place")
+    if wf.connection.run(HARDEN_ALLOWED_PROBE, timeout=20)[0] != 0:
+        problems.append("it refused one of its own allowed admin jobs")
+    code = wf.connection.run(HARDEN_REFUSED_PROBE, timeout=20)[0]
+    if code == 0:
+        problems.append("its app can still do anything as administrator")
+    elif code in (124, 255):
+        problems.append("it could not be asked whether its admin rights are limited")
+    return problems
+
+
+def _install_hardening_kit(wf: "CloneWorkflow") -> bool:
+    stage = "/tmp/nm-security"
+    wf.connection.run(f"rm -rf {stage} && mkdir -p {stage}/sshd_config.d {stage}/nftables")
+    for rel, dest, _mode in HARDENING_KIT:
+        if not wf.connection.push_file(os.path.join(TOOL_ROOT, rel), f"{stage}/{dest}"):
+            return False
+    if wf.connection.run(wf.priv(
+            f"install -d -m 755 -o root -g root {HARDENING_DIR} "
+            f"{HARDENING_DIR}/sshd_config.d {HARDENING_DIR}/nftables"))[0] != 0:
+        return False
+    for _rel, dest, mode in HARDENING_KIT:
+        if wf.connection.run(wf.priv(
+                f"install -m {mode} -o root -g root {stage}/{dest} "
+                f"{HARDENING_DIR}/{dest}"))[0] != 0:
+            return False
+    return wf.connection.run(f"test -x {HARDENING_DIR}/apply_all.sh")[0] == 0
+
+
+def harden_new_medic(wf: "CloneWorkflow") -> StepResult:
+    """Lock the new medic the way this one is locked, without ever shutting
+    this medic (or anyone) out.
+
+    The anti-lockout, in order:
+      1. refuse unless the new medic holds a key for this medic — every command
+         here IS a key login, so this medic's key is proven by being here;
+      2. install the kit root-owned, then start security/apply_all.sh as a
+         root process of its own (systemd-run): it applies key-only SSH, the
+         SSH firewall and the scoped sudo, each with its own self-revert
+         armed, and then WAITS for a verdict;
+      3. check from here, every check a NEW login: this medic gets back in,
+         a whitelisted `sudo -n` command runs, a non-whitelisted one is
+         refused, key-only login is in place;
+      4. only then write the confirm verdict (a plain file the scoped account
+         can still make); on any problem, the rollback verdict instead, and
+         apply_all.sh runs the three rollback scripts;
+      5. if this medic loses sight of it, nothing is confirmed: apply_all.sh
+         rolls back at its deadline, and failing that each script's own
+         self-revert fires (at the latest HARDEN_UNDO_WITHIN_MIN minutes,
+         and at every restart until then)."""
+    import shlex
+    import time as _time
+    name = "harden_new_medic"
+    sleep = getattr(wf, "sleep", _time.sleep)
+    later = (f"Left unconfirmed, the new medic undoes the change by itself "
+             f"within {HARDEN_UNDO_WITHIN_MIN} minutes. Wait that long, then "
+             f"press Retry.")
+
+    # A Retry after a run that DID finish (this medic lost sight of it, or the
+    # new medic restarted and forgot the status): it is locked already, and
+    # its sudo would refuse a second install anyway.
+    if not _lock_problems(wf) and \
+            wf.connection.run("test -f /etc/nftables.d/nodemedic-ssh.nft")[0] == 0:
+        return StepResult(name, True,
+                          "The new medic was already locked like this one — "
+                          "checked again from here.")
+
+    if wf.connection.run("test -s ~/.ssh/authorized_keys")[0] != 0:
+        return StepResult(name, False,
+                          "The new medic holds no key for this medic, so locking "
+                          "it could shut everyone out. Nothing was changed. "
+                          "Write its card again with this medic, then clone again.")
+    user = (wf.connection.run("id -un")[1] or "").strip() or "pi"
+
+    # An earlier attempt's supervisor may still be waiting: one at a time.
+    if _harden_status(wf) in ("running", "applied"):
+        wf.connection.run(f"touch {HARDEN_ROLLBACK}")
+        _harden_wait(wf, (), 120, sleep)
+
+    if not _install_hardening_kit(wf):
+        return StepResult(name, False,
+                          "Could not copy the locks to the new medic. Nothing "
+                          "was changed. Check the cable, then press Retry.")
+
+    wf.connection.run(f"rm -f {HARDEN_CONFIRM} {HARDEN_ROLLBACK}")
+    unit = f"nodemedic-harden-{int(_time.time())}"
+    code, out, err = wf.connection.run(wf.priv(
+        f"systemd-run --unit={unit} --collect --quiet /bin/bash "
+        f"{HARDENING_DIR}/apply_all.sh --user {shlex.quote(user)} "
+        f"--window {HARDEN_WINDOW_S}"), timeout=30)
+    if code != 0:
+        return StepResult(name, False,
+                          "The new medic would not start locking itself. Nothing "
+                          "was changed. Press Retry. ("
+                          + " ".join((err or out or "").split())[-120:] + ")")
+
+    state = _harden_wait(wf, ("applied", "confirmed"), 180, sleep)
+    if state.startswith("rolled-back"):
+        why = state.split(":", 1)[1].strip() if ":" in state else ""
+        return StepResult(name, False,
+                          "The new medic could not be locked"
+                          + (f" ({why})" if why else "")
+                          + ", so it undid every change and is as it was. "
+                          "Press Retry.")
+    if not state:
+        wf.connection.run(f"touch {HARDEN_ROLLBACK}")
+        return StepResult(name, False,
+                          "The new medic did not say it had locked itself. "
+                          "This medic told it to undo the change. " + later)
+
+    problems = _lock_problems(wf)
+    verdict = HARDEN_ROLLBACK if problems else HARDEN_CONFIRM
+    told = wf.connection.run(f"touch {verdict}")[0] == 0
+    state = _harden_wait(wf, ("confirmed",), 120, sleep)
+    if problems:
+        what = "The locks did not check out from here (" + "; ".join(problems) + ")"
+        if state.startswith("rolled-back"):
+            return StepResult(name, False,
+                              what + ", so the new medic undid every change and "
+                              "is as it was. Press Retry.")
+        return StepResult(name, False,
+                          what + ". This medic told it to undo them. " + later)
+    if state != "confirmed":
+        return StepResult(name, False,
+                          "The locks checked out, but the new medic did not make "
+                          "them permanent"
+                          + ("" if told else " (this medic could not reach it)")
+                          + ". " + later)
+
+    # Once more, now that it is permanent and the revert timers are gone.
+    problems = _lock_problems(wf)
+    if wf.connection.run("test -f /etc/nftables.d/nodemedic-ssh.nft")[0] != 0:
+        problems.append("its SSH firewall would not survive a restart")
+    if problems:
+        return StepResult(name, False,
+                          "The new medic says it is locked, but the last check "
+                          "from here found: " + "; ".join(problems)
+                          + ". Look at it before you hand it over.")
+    return StepResult(name, True,
+                      "Locked like this medic: its app can do only its own "
+                      "admin jobs, and it takes remote logins only with a key, "
+                      "only from nearby networks. Checked from here with a "
+                      "fresh login.")
+
+
+def remove_parent_key(wf: "CloneWorkflow") -> StepResult:
+    """THE LAST THING THIS MEDIC DOES to a medic going to a new community: take
+    its own key away. The new medic is then left with no authorized key at all
+    — with key-only SSH from harden_new_medic, nobody can log in to it from
+    another machine. Its own screen works as before; its keeper can still add a
+    key from there. A clone for this keeper's own fleet keeps the key."""
+    name = "remove_parent_key"
+    if not getattr(wf, "fresh_fleet", False):
+        return StepResult(name, True,
+                          "Same keeper: this medic keeps its key to the new one, "
+                          "so you can look after it from here.", skipped=True)
+    code, out, _e = wf.connection.run(
+        "rm -f ~/.ssh/authorized_keys ~/.ssh/authorized_keys2 && "
+        "test ! -e ~/.ssh/authorized_keys && test ! -e ~/.ssh/authorized_keys2 "
+        "&& echo nm-no-keys-left", timeout=20)
+    if code != 0 or "nm-no-keys-left" not in (out or ""):
+        return StepResult(name, False,
+                          "Could not take this medic's key off the new medic. "
+                          "Press Retry. (If this medic can no longer reach it, "
+                          "the key is already gone.)")
+    # The door must now be shut to this medic too: a fresh login is refused.
+    if wf.connection.run("true", timeout=20)[0] == 0:
+        return StepResult(name, False,
+                          "This medic's key file is gone from the new medic, yet "
+                          "this medic can still log in to it. Look at it before "
+                          "you hand it over.")
+    return StepResult(name, True,
+                      "This medic's key is gone from the new medic. Nobody can "
+                      "log in to it from another machine now; its own screen "
+                      "works as normal.")
+
+
+# The very end of the list, in this order (tests pin it): nothing may run after
+# the parent's key is gone — this medic can no longer reach the new one.
+_CLONE_STEPS.append(("harden_new_medic", harden_new_medic))
+_CLONE_STEPS.append(("remove_parent_key", remove_parent_key))
+
+
+#: Steps that draw nothing on the new medic's screen. By then its own app has
+#: owned that screen since restart_into_tool, and once harden_new_medic has
+#: scoped its sudo, the framebuffer and VT writes below are refused (and would
+#: only fill its log with refusals). This medic's screen still shows them.
+_QUIET_ON_NEW_MEDIC = ("harden_new_medic", "remove_parent_key")
+
+
 class CloneWorkflow:
     def __init__(self, connection: Connection, registry: NodeRegistry,
                  fresh_fleet: bool = False):
@@ -1129,6 +1444,8 @@ class CloneWorkflow:
         sharpening behind a readable step list — keeper, 2026-10-06), else the
         old line of console text."""
         if isinstance(self.connection, _NotYetConnected) or step_name == "find_new_medic":
+            return
+        if step_name in _QUIET_ON_NEW_MEDIC:
             return
         names = [n for n, _f in self.steps]
         try:

@@ -19,8 +19,13 @@ class _Flash:
         return [StepResult("flash", self.ok, "" if self.ok else "flash failed: no board")]
 
 
-def _conn(rnstatus="RNodeInterface[RNode LoRa Interface]\n    Status    : Up\n"):
+def _conn(rnstatus="RNodeInterface[RNode LoRa Interface]\n    Status    : Up\n",
+          helper=False):
+    """A medic WITHOUT the root radio helper by default (one cloned before
+    2026-10-08: full sudo, the old road); helper=True is a clone from now on,
+    whose sudo is scoped and whose radio set-up goes through the helper."""
     c = EmulatedConnection(default_code=0, default_stdout="")
+    c.rule(f"test -x {mr.RADIO_HELPER}", 0 if helper else 1, "", "")
     c.rule("ls -1 /dev/serial/by-id/", 0,
            "usb-Espressif_USB_JTAG_serial_debug_unit_3C:0F:02:AA:BB:CC-if00\n", "")
     c.rule("rnstatus", 0, rnstatus, "")
@@ -262,3 +267,141 @@ def test_the_tracker_app_image_is_written_in_retried_pieces():
     boots = [c for c in seen if "s.dtr=False; s.rts=True" in c]     # boots the app at the end
     assert len(boots) == 1 and "--after hard_reset" not in " ".join(seen)
     assert seen.index(boots[0]) > seen.index(writes[-1])
+
+
+# ---------------------------------------------------------------------------
+# The root radio helper (2026-10-08). A new medic sets up its own radio AFTER
+# its clone flow has scoped its sudo, so every privileged step must be one
+# exact, whitelisted command — never a unit the app wrote, a `sh -c`, or a
+# systemd-run (provisioning/sudoers.d/nodemedic, NM_RADIO_SETUP).
+# ---------------------------------------------------------------------------
+
+_BY_ID = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_3C:0F:02:AA:BB:CC-if00"
+
+
+def _watched(c):
+    seen = []
+    real = c.run
+
+    def run(cmd, *a, **k):
+        seen.append(cmd)
+        return real(cmd, *a, **k)
+    c.run = run
+    return seen
+
+
+def test_with_the_helper_every_privileged_step_is_an_exact_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
+    c = _conn(helper=True)
+    seen = _watched(c)
+    res = _setup(c).run_all()
+    assert all(r.success for r in res), [r.message for r in res]
+    assert [x for x in seen if x.startswith("sudo ")] == [
+        f"sudo -n {mr.RADIO_HELPER} --port {_BY_ID}",
+        "sudo -n systemctl enable rnode-splitter.service rnsd.service lxmd.service",
+        "sudo -n systemctl restart rnode-splitter.service",
+        f"sudo -n systemctl start --no-block {mr.HANDOVER_UNIT}",
+    ]
+    joined = "\n".join(seen)
+    assert "/etc/systemd/system" not in joined          # the helper writes the units
+    assert "sh -c" not in joined and "systemd-run" not in joined
+    # still: the pending mark only once the restart is queued
+    assert joined.index("touch ") > joined.index(mr.HANDOVER_UNIT)
+    # and the lock-off after the services are enabled
+    assert joined.rindex("onboard.json") > joined.index("systemctl enable")
+
+
+def test_with_the_helper_and_no_kiosk_the_mesh_restart_is_exact_too(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
+    c = _conn(helper=True)
+    c.rules.insert(0, (f"systemctl cat {mr.KIOSK_UNIT}", 1, "", "No files found"))
+    seen = _watched(c)
+    res = _setup(c).run_all()
+    assert res[-1].name == "hand_over" and res[-1].success
+    assert "sudo -n systemctl restart rnsd.service lxmd.service" in seen
+
+
+def test_with_the_helper_a_failed_hand_over_still_unlocks_the_board(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
+    c = _conn(helper=True)
+    c.rules.insert(0, (f"start --no-block {mr.HANDOVER_UNIT}", 1, "", "Access denied"))
+    seen = _watched(c)
+    res = _setup(c).run_all()
+    assert res[-1].name == "hand_over" and not res[-1].success
+    assert "touch " not in "\n".join(seen)                 # no pending mark
+    assert "Try again" in res[-1].message
+
+
+def test_a_helper_that_refuses_stops_before_anything_is_enabled():
+    c = _conn(helper=True)
+    c.rules.insert(0, (f"{mr.RADIO_HELPER} --port", 2, "RADIO_FAIL: not plugged in", ""))
+    seen = _watched(c)
+    res = _setup(c).run_all()
+    assert res[-1].name == "wire_services" and not res[-1].success
+    assert not any("systemctl enable" in x for x in seen)
+
+
+def _helper_module():
+    import importlib.util
+    import os
+    spec = importlib.util.spec_from_file_location("radio_units_helper",
+                                                  mr.RADIO_HELPER_SOURCE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_helper_writes_exactly_the_units_the_set_up_would_have_written():
+    """The helper runs as root and imports nothing from the user-writable tree,
+    so it carries a COPY of the unit text. The copy must not drift."""
+    h = _helper_module()
+    for user, home in (("pi", "/home/pi"), ("nodemedic", "/home/nodemedic")):
+        assert h.splitter_unit(_BY_ID, user, home) == mr.splitter_unit(_BY_ID, user, home)
+        assert h.rnsd_unit(user, home) == mr.rnsd_unit(user, home)
+        assert h.lxmd_unit(user, home) == mr.lxmd_unit(user, home)
+    assert (h.SPLIT_PORT, h.GPS_STATE, h.KIOSK_UNIT, h.HANDOVER_UNIT) == \
+        (mr.SPLIT_PORT, mr.GPS_STATE, mr.KIOSK_UNIT, mr.HANDOVER_UNIT)
+
+
+def test_the_hand_over_unit_stops_the_app_restarts_the_mesh_then_starts_the_app():
+    unit = _helper_module().handover_unit()
+    assert unit.index("systemctl stop reticulum-node-medic.service") \
+        < unit.index("restart rnsd.service lxmd.service") \
+        < unit.index("systemctl start reticulum-node-medic.service")
+    assert "Type=oneshot" in unit and "[Install]" not in unit      # started, never enabled
+    assert "User=" not in unit
+
+
+def test_the_helper_refuses_anything_but_one_plugged_in_by_id_port(monkeypatch):
+    """sudo matches the rule's trailing `*` across arguments, so the helper —
+    not sudo — is what refuses extra arguments and odd ports."""
+    import pytest
+    h = _helper_module()
+    monkeypatch.setattr(h.os.path, "islink", lambda p: True)
+    monkeypatch.setattr(h.os.path, "realpath", lambda p: "/dev/ttyACM0")
+    assert h.checked_port(["--port", _BY_ID]) == _BY_ID
+    for argv in ([], ["--port"], ["--port", _BY_ID, "--port", _BY_ID],
+                 ["--port", _BY_ID, "x"], ["--device", _BY_ID],
+                 ["--port", "/dev/sda"], ["--port", "/dev/serial/by-id/../../sda"],
+                 ["--port", "/dev/serial/by-id/x'y"], ["--port", "/dev/serial/by-id/a\nUser=root"],
+                 ["--port", "/dev/serial/by-id/a b"]):
+        with pytest.raises(SystemExit):
+            h.checked_port(argv)
+    monkeypatch.setattr(h.os.path, "realpath", lambda p: "/dev/mmcblk0")
+    with pytest.raises(SystemExit):
+        h.checked_port(["--port", _BY_ID])                  # must point at a USB tty
+    monkeypatch.setattr(h.os.path, "islink", lambda p: False)
+    with pytest.raises(SystemExit):
+        h.checked_port(["--port", _BY_ID])                  # must be plugged in
+
+
+def test_the_helper_takes_its_user_from_sudo_only(monkeypatch):
+    import pytest
+    h = _helper_module()
+    for bad in ("", "root", "../etc", "Pi"):
+        monkeypatch.setenv("SUDO_USER", bad)
+        with pytest.raises(SystemExit):
+            h.calling_user()
+    monkeypatch.delenv("SUDO_USER", raising=False)
+    with pytest.raises(SystemExit):
+        h.calling_user()

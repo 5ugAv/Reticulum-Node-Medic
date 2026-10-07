@@ -22,6 +22,21 @@ def test_every_clone_step_has_plain_words():
             assert jargon not in words, words
 
 
+def test_every_step_title_is_in_all_eight_catalogs():
+    """The parent's clone page shows each step as tr(title) (mitosis_screen
+    STEP_TITLES, held equal to STEP_WORDS), so — like the birth screen's phase
+    labels — a title missing from a catalog shows in English. The two lock
+    steps added 2026-10-08 are held to it like the rest."""
+    import json
+    from tests.srcutil import ROOT
+    for code in ("de", "es", "fr", "id", "ja", "pl", "ru", "sv"):
+        with open(os.path.join(ROOT, "assets", "i18n", f"{code}.json"),
+                  encoding="utf-8") as fh:
+            catalog = json.load(fh)
+        missing = [t for t in cs.STEP_WORDS.values() if t not in catalog]
+        assert not missing, f"{code}.json lacks clone step titles: {missing}"
+
+
 def test_the_picture_fills_the_panel_and_converts_to_its_framebuffer():
     img = cs.render_frame(STEPS, 5)
     assert img.size == (cs.WIDTH, cs.HEIGHT)

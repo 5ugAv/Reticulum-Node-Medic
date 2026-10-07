@@ -1,7 +1,12 @@
 # Node Medic — security hardening (sudo scoping + SSH lock-down)
 
-Human-run runbook. **Nothing here is applied automatically.** Review the files,
-then run the apply scripts **on the medic** over your existing SSH session.
+Human-run runbook for the ORIGINAL medic: review the files, then run the apply
+scripts **on the medic** over your existing SSH session.
+
+**CLONES are hardened automatically (keeper's policy, 2026-10-08):** every
+clone ends with this same hardening — see "Clones" at the end. The scripts take
+the app account as a parameter for that (`--user NAME`); with no `--user` they
+mean `nodemedic`, the original medic's account, and behave exactly as before.
 
 **STATUS (re-verified live on the medic 2026-07-27): steps 1 and 2 are ALREADY
 APPLIED.** Probed read-only from the LAN:
@@ -32,10 +37,16 @@ SUPERSEDED by the above):
 | `../sudoers.d/nodemedic` | `/etc/sudoers.d/010-nodemedic` (0440) | scoped NOPASSWD whitelist |
 | `sshd_config.d/01-nodemedic-hardening.conf` | `/etc/ssh/sshd_config.d/` | key-only auth |
 | `nftables/nodemedic-ssh.nft` | `/etc/nftables.d/` | limit tcp/22 to LAN/private |
-| `apply_sudoers.sh` / `rollback_sudoers.sh` | — | install/revert sudoers |
-| `render_sudoers.sh` | — | called by apply: puts THIS machine's backlight device into the brightness rule |
-| `apply_sshd.sh` / `rollback_sshd.sh` | — | install/revert sshd |
+| `apply_sudoers.sh` / `rollback_sudoers.sh` | — | install/revert sudoers (`--user`, optional `--self-revert MIN`) |
+| `render_sudoers.sh` | — | called by apply: puts THIS machine's backlight device and app user into the policy |
+| `apply_sshd.sh` / `rollback_sshd.sh` | — | install/revert sshd (`--user`) |
 | `apply_firewall.sh` / `rollback_firewall.sh` | — | load/revert firewall |
+| `apply_all.sh` | — | clones only: all three under one root supervisor that confirms or rolls back on a verdict from the parent |
+
+Every privileged command the app runs on the medic itself must be granted in
+`../sudoers.d/nodemedic` with exact arguments; `tests/test_privileged_commands.py`
+finds them in the code and fails on any that is not classified (on the medic,
+on a node, on a clone during its clone flow ...) or not granted.
 
 Recommended order: **1) sudoers → 2) sshd → 3) firewall.** Do each, verify, then
 move on. Keep your current SSH session open throughout all three.
@@ -124,3 +135,46 @@ uncomment a `ListenAddress` in the sshd drop-in.
    hostnamectl, dpkg/log2ram, clone.py, gadget/uart over an SSH connection) run
    against the **target** node's sudoers, not the medic's, so they are out of
    scope for this file. They were refactored off `sudo bash -c` regardless.
+
+## Clones (automatic, 2026-10-08)
+
+The keeper's policy: **every clone ends with this hardening** — scoped sudo for
+the clone's own app account (`pi`), key-only SSH, the SSH firewall. A clone for
+the keeper's own fleet keeps the parent medic's key so the keeper can look after
+it; a clone for a **new community** has the parent's key removed as the very last
+action, leaving no authorized key at all (nobody can log in remotely; its own
+screen is unaffected). `workflows/clone.py` does it in its last two steps,
+`harden_new_medic` and `remove_parent_key`.
+
+Why a supervisor (`apply_all.sh`) and not the three scripts in the runbook
+order: confirming the SSH and firewall changes needs root, and the scoped
+sudoers takes root away from the app account — so after the "a non-whitelisted
+`sudo -n` is refused" check, the parent could never send `... confirm`. Instead:
+
+1. The parent copies this kit (and the policy, as `sudoers.nodemedic`) into
+   `/usr/local/lib/nodemedic/security/`, **root-owned** — the supervisor later
+   runs confirm/rollback as root and must never run a file the app account
+   could have edited.
+2. It starts `apply_all.sh --user pi` as a root unit of its own (`systemd-run`),
+   while the clone still has its card's full sudo. The supervisor applies sshd
+   (`--caller-proved-key-login`: the parent's own fresh BatchMode login is the
+   proof — a clone's own key is not in its authorized_keys, so the loopback test
+   cannot pass there), then the firewall, then the scoped sudoers
+   (`--self-revert`). Each keeps its own self-revert armed, set to outlast the
+   supervisor's window.
+3. The parent checks from outside, every check a NEW `ssh -o BatchMode=yes`
+   login: it gets back in; `sudo -n /usr/bin/ss -tlnp` (whitelisted) runs;
+   `sudo -n /usr/bin/true` (granted by nothing) is refused; the sshd drop-in is
+   in place.
+4. Only then does it write the verdict `~pi/.nodemedic-harden-confirm` — a plain
+   file the scoped account can still create — and the supervisor runs the three
+   `confirm`s as root. Any problem: `~pi/.nodemedic-harden-rollback`, and the
+   supervisor runs the three rollback scripts. Any failure inside (an apply, a
+   confirm) rolls back all three. No verdict within the window: it rolls back
+   by itself. If the supervisor dies, each script's own self-revert fires at the
+   next boot or its deadline.
+5. Status for the parent: `/run/nodemedic-harden/status`; full output:
+   `/var/log/nodemedic-harden.log`.
+
+The keeper can still use `sudo` on a clone **with the written-down password**
+(the account stays in the `sudo` group; only the passwordless grant is scoped).
