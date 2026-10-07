@@ -26,10 +26,10 @@ from tests.srcutil import func_source, src
 NOW = 1_755_000_000.0
 
 # One Pi, three genuinely different identities/destinations.
-HEALTH = "5a030003" + "00" * 12          # health-reporter destination (device id)
+HEALTH = "dd44dd44" + "00" * 12          # health-reporter destination (device id)
 TRANSPORT = "a1" * 16                     # rnsd transport destination
-LXMD = "5a0a000a" + "11" * 12            # lxmd lxmf.propagation destination
-I_HEALTH, I_TRANSPORT, I_LXMD = "e1" * 16, "e2" * 16, "5a180018" + "22" * 12
+LXMD = "bb22bb22" + "11" * 12            # lxmd lxmf.propagation destination
+I_HEALTH, I_TRANSPORT, I_LXMD = "e1" * 16, "e2" * 16, "cc33cc33" + "22" * 12
 
 
 def beacon(**over):

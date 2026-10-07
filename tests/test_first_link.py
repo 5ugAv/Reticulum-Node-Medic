@@ -4,7 +4,7 @@ import pytest
 
 from monitor.first_link import FirstLinkSession, MAX_START_KM, MIN_LINK_SNR_DB
 
-HOME = (-37.790, 144.960)
+HOME = (-37.512345, 145.523456)
 KM_LAT = 1 / 111.0                      # ~1 km of latitude
 
 

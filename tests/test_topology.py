@@ -292,7 +292,7 @@ def _multi_aspect_registry():
         r.register(h, name="ELSEWHERE")
         r.nodes[h].device_id = "dev-pi"
     # only one aspect carries the coordinates, as on the real medic
-    r.nodes["a2"].lat, r.nodes["a2"].lon = -37.512, 145.523
+    r.nodes["a2"].lat, r.nodes["a2"].lon = -37.512345, 145.523456
     r.register("zzzz", name="Faraway", lat=-37.700, lon=145.100)
     return r
 
@@ -352,11 +352,11 @@ def test_a_node_with_no_device_id_stands_for_itself():
 # than nodes: "im guessing the extras on the table are multiple identities from
 # single nodes, this has been an issue."
 #
-# Confirmed live. 5a190019 and 5a1a001a both carry identity 5a1b001b (one
-# RTNode); 5a1c001c and 5a1d001d both carry 5a1e001e (that same board before
-# its rebirth). device_id cannot fold these — it exists only for nodes the kin
-# roster names, so a stranger's aspects, or our own before the paperwork lands,
-# have none. identity_hash needs no roster.
+# Confirmed live (stand-in prefixes here). aa11aa11 and bb22bb22 both carry
+# identity cc33cc33 (one RTNode); dd44dd44 and ee55ee55 both carry ff66ff66
+# (that same board before its rebirth). device_id cannot fold these — it
+# exists only for nodes the kin roster names, so a stranger's aspects, or our
+# own before the paperwork lands, have none. identity_hash needs no roster.
 
 def _identity_registry():
     r = NodeRegistry()
@@ -384,7 +384,7 @@ def test_device_beats_identity_when_both_are_known():
         r.register(h, name="ELSEWHERE")
         r.nodes[h].identity_hash = ident
         r.nodes[h].device_id = "one-pi"
-    r.nodes["e2"].lat, r.nodes["e2"].lon = -37.512, 145.523
+    r.nodes["e2"].lat, r.nodes["e2"].lon = -37.512345, 145.523456
     topo = build_topology(r, paths=[], now=NOW)
     assert len([n for n in topo.nodes if n.name == "ELSEWHERE"]) == 1
     n = next(n for n in topo.nodes if n.name == "ELSEWHERE")
@@ -392,12 +392,13 @@ def test_device_beats_identity_when_both_are_known():
 
 
 def test_an_identity_that_is_also_a_destination_lands_on_one_node():
-    """Seen live: 5a020002's identity_hash IS 5a010001's destination hash. A
-    single fold pass would leave a two-link chain and two dots."""
+    """Seen live: one record's identity_hash IS another record's destination
+    hash (synthetic prefixes below). A single fold pass would leave a
+    two-link chain and two dots."""
     r = NodeRegistry()
-    r.register("5a010001", name="ELSEWHERE", lat=-37.512, lon=145.523)
-    r.register("5a020002", name="ELSEWHERE")
-    r.nodes["5a020002"].identity_hash = "5a010001"
+    r.register("aa11aa11", name="ELSEWHERE", lat=-37.512345, lon=145.523456)
+    r.register("bb22bb22", name="ELSEWHERE")
+    r.nodes["bb22bb22"].identity_hash = "aa11aa11"
     topo = build_topology(r, paths=[], now=NOW)
     assert len([n for n in topo.nodes if n.name == "ELSEWHERE"]) == 1
 

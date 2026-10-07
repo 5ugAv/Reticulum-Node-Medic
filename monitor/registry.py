@@ -859,7 +859,7 @@ class NodeRegistry:
         #: THIS medic's OWN identity hashes (full lowercase hex) — its rnsd
         #: transport identity and its lxmd/LXMF-propagation identity. An announce
         #: whose identity is in here is the medic HEARING ITSELF, not a neighbour:
-        #: on 2026-08-22 the medic's own lxmd destination (identity 5a180018)
+        #: on 2026-08-22 the medic's own lxmd destination (its lxmd identity)
         #: surfaced in VITALS as an anonymous "Propagation relay". Populated at
         #: startup from provisioning.tool_identity.own_identity_hashes(); empty by
         #: default so an un-wired registry (and every test that doesn't set it)
@@ -1262,7 +1262,7 @@ class NodeRegistry:
             return None                       # tombstoned: nothing may re-create it
         # THE MEDIC IS NOT ITS OWN NEIGHBOUR. 2026-08-22 (live): the medic heard
         # its OWN lxmd propagation announce and listed its own destination
-        # 5a0a000a (identity 5a180018) as an anonymous "Propagation relay". An
+        # (its lxmd identity) as an anonymous "Propagation relay". An
         # announce whose identity is one of THIS medic's own destinations is the
         # medic talking to itself — drop it before any record is created. Keyed
         # by IDENTITY: a node the medic BUILT carries a DIFFERENT identity, so
@@ -1334,7 +1334,7 @@ class NodeRegistry:
     def set_peer_names(self, names: Dict[str, str]) -> int:
         """Names CHAT heard — LXMF announces carry the display name in a
         msgpack array, which _printable_name rightly refuses (the "j(" ghosts
-        of 2026-08-14), so a phone sat in VITALS as "Neighbour 5a150015"
+        of 2026-08-14), so a phone sat in VITALS as "Neighbour <hash8>"
         while the chat screen called it 5ugAv (operator, 2026-10-02: "transfer
         that name to the node it refers to"). The chat service decodes the
         name with LXMF's own function; this hands it across, keyed by the
@@ -1853,7 +1853,7 @@ class NodeRegistry:
         # ONE DOT PER NAME. A node the roster could not fold (births before
         # the roster recorded every address) is three devices here — rnsd,
         # beacon, lxmd — and drew three stacked dots with three stacked
-        # labels; at the house, four labels stacked under ELSEWHERE's and
+        # labels; at one site, four labels stacked under ELSEWHERE's and
         # skyfinger's name was the one that fell off (operator, 2026-10-01:
         # "Skyfinger isn't on the map anymore"). VITALS keeps the groups
         # apart on purpose (a dead namesake must not hide); the map wants the
