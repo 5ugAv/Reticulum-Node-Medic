@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // RTNode-2400 — Health Status
 //
 // Exposes board health data for the field diagnostic/repair tool
