@@ -14,8 +14,8 @@ from monitor.mesh import parse_path_probe, path_interface
 SCAN = "ui/screens/scan_screen.py"
 APP = "ui/app.py"
 
-RNPATH_OK = ("Path found, destination <5a0e000e00000000000000000000000c> is 1 hop "
-             "away via <5a0e000e00000000000000000000000c> on "
+RNPATH_OK = ("Path found, destination <aabbccddeeff00112233445566778899> is 1 hop "
+             "away via <aabbccddeeff00112233445566778899> on "
              "RNodeInterface[RNode LoRa Interface]")
 
 

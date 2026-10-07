@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // RTNode-2400 — Birth Cry (first-boot-after-flash LED celebration)
 //
 // Operator-specified choreography (2026-07-30): a faint BUBBLING RAINBOW that

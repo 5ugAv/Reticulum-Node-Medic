@@ -121,11 +121,11 @@ def test_one_dot_per_name_when_the_roster_could_not_fold():
     now = time.time()
     for h in ("aa" * 16, "bb" * 16, "cc" * 16):
         reg.ingest_announce(bytes.fromhex(h), b"", now)
-        reg.set_location(h, -37.512, 145.523) if hasattr(reg, "set_location") else None
+        reg.set_location(h, -37.512345, 145.523456) if hasattr(reg, "set_location") else None
     for h in ("aa" * 16, "bb" * 16, "cc" * 16):
         rec = reg.nodes[h]
         rec.name = "skyfinger"
-        rec.lat, rec.lon = -37.512, 145.523
+        rec.lat, rec.lon = -37.512345, 145.523456
         rec.identity_hash = h
     dots = reg.located_nodes(now)
     assert [d["name"] for d in dots] == ["skyfinger"]

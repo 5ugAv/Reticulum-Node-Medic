@@ -33,7 +33,7 @@ from monitor.geo import maps_url
 
 def cert_latlon(cert):
     """Pull (lat, lon) out of a stored certificate. Location is saved as a string
-    like "-37.790000, 144.960000 (map)"; also accept raw lat/lon keys. None if the
+    like "-37.512345, 145.523456 (map)"; also accept raw lat/lon keys. None if the
     cert has no usable coordinate."""
     loc = cert.get("location")
     if loc:

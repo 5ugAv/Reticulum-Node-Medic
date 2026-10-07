@@ -66,7 +66,7 @@ def own_identity_hashes(paths=None) -> set:
     ``RNS.Identity.from_file`` (no networking, no clash with the running rnsd).
 
     Why it exists: VITALS was showing the medic's OWN lxmd destination
-    (destination 5a0a000a, identity 5a180018) as an anonymous "Propagation
+    (its own lxmd destination and identity) as an anonymous "Propagation
     relay" neighbour. An announce whose identity is one of these is the medic
     hearing itself — it must be neither recorded as a node nor displayed. The
     hashes are resolved at runtime, never hardcoded.

@@ -2,8 +2,9 @@
 
 After three births in one evening the operator's own newborn nodes sat in
 VITALS as grey strangers. Node ``3a-v3-test`` — birth-certificate hash
-5a0d000d…, heard beaconing on health destination 5a030003… — appeared as BOTH
-"Neighbour 5a030003" and "Neighbour 5a0d000d" while its named row was nowhere.
+aabbccdd…, heard beaconing on health destination dd44dd44… (synthetic
+stand-ins throughout this file) — appeared as BOTH "Neighbour dd44dd44" and
+"Neighbour aabbccdd" while its named row was nowhere.
 Three more grey rows carried garbled names like "j(" and "j-(" — binary
 announce app_data (msgpack LXMF payloads) pushed through a lossy decode until
 only punctuation residue was left, and that residue shown as a NAME.
@@ -26,11 +27,10 @@ Two laws these tests pin down:
 from monitor.registry import NodeRegistry, _printable_name, name_key
 from tests.srcutil import func_source
 
-#: The real hashes off the operator's screen. Only the first 8 hex digits of
-#: the health destination were recorded in the field; the tail is padding (any
-#: 32-hex value exercises the same paths).
-IDENT = "5a0d000d000000000000000000000011"
-HEALTH = "5a030003" + "00" * 12
+#: Synthetic hashes. VITALS shows only the first 8 hex digits of a destination;
+#: the tail is padding (any 32-hex value exercises the same paths).
+IDENT = "aabbccddeeff00112233445566778899"
+HEALTH = "dd44dd44" + "00" * 12
 NOW = 1_755_000_000.0
 
 

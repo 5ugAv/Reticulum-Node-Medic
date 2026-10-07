@@ -596,7 +596,7 @@ def _pi_guide(env, clock, *, pi, board, state, reach=CABLE_ADDR):
     g.sc_board, g.sc_pi, g.sc_reach = board, pi, reach
     env["ports"] = (["/dev/ttyACM2"]
                     if state in ("blank_present", "certified") else [])
-    env["cert"] = ({"name": "PriorLife", "cert": "5a040004"}
+    env["cert"] = ({"name": "PriorLife", "cert": "ee55ee55"}
                    if state == "certified" else None)
     g._path = "pi"
     g._node_name = "MatrixNode"

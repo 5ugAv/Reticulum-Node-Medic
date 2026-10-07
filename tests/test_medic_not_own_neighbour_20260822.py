@@ -2,8 +2,8 @@
 
 Two bugs seen on VITALS, photo-confirmed:
 
-BUG 2 — the medic listed its OWN destinations as neighbours. Destination
-5a0a000a carried identity 5a180018, which IS the medic's own lxmd identity, and
+BUG 2 — the medic listed its OWN destinations as neighbours. A destination
+carried an identity which IS the medic's own lxmd identity, and
 it surfaced as an anonymous "Propagation relay". An announce whose identity is
 one of THIS medic's own destinations is the medic hearing itself — it must be
 neither recorded nor displayed. The match is by IDENTITY hash, so a node the
@@ -23,8 +23,8 @@ from provisioning import tool_identity
 from tests.srcutil import func_source
 
 NOW = 1_000_000.0
-OWN_TRANSPORT = "5a160016" + "00" * 12      # 32-hex, stands in for the rnsd id
-OWN_LXMD = "5a180018" + "11" * 12           # 32-hex, the live lxmd identity
+OWN_TRANSPORT = "aa11aa11" + "00" * 12      # 32-hex, stands in for the rnsd id
+OWN_LXMD = "cc33cc33" + "11" * 12           # 32-hex, stands in for the lxmd id
 KIN = "cafebabe" + "22" * 12                # a node the medic BUILT — different id
 
 # Real captured propagation app_data (same bytes the registry tests use).
