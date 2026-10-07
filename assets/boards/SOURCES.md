@@ -12,18 +12,18 @@ Date = the commit that introduced the file (`git log --diff-filter=A --format=%a
 | File | Provenance | Added | Licence |
 |---|---|---|---|
 | eora_s3.png | operator-supplied illustration/render (background cut, screen blanked) | 2026-09-08 | MIT |
-| heltec32_v2.png | operator-supplied illustration/render (background cut) | 2026-08-02 | MIT |
-| heltec_meshpocket.png | operator-supplied illustration/render (screen blanked) | 2026-09-29 | MIT |
-| heltec_t114.png | operator-supplied illustration/render (background cut) | 2026-08-02 | MIT |
+| heltec32_v2.png | operator-supplied photo (background cut) | 2026-08-02 | MIT |
+| heltec_meshpocket.png | operator-supplied photo (screen blanked) | 2026-09-29 | MIT |
+| heltec_t114.png | operator-supplied photo (background cut) | 2026-08-02 | MIT |
 | heltec_v3.png | operator-supplied illustration/render | 2026-07-24 | MIT |
 | heltec_v4.png | operator-supplied illustration/render | 2026-07-24 | MIT |
 | heltec_wireless_tracker.png | operator-supplied illustration/render | 2026-08-01 | MIT |
 | lora32_v21.png | operator-supplied illustration/render | 2026-08-01 | MIT |
-| pi_3a_plus.png | operator-supplied illustration/render | 2026-08-02 | MIT |
-| pi_4b.png | operator-supplied illustration/render | 2026-08-02 | MIT |
-| pi_5.png | operator-supplied illustration/render | 2026-08-02 | MIT |
+| pi_3a_plus.png | operator-supplied photo | 2026-08-02 | MIT |
+| pi_4b.png | operator-supplied photo | 2026-08-02 | MIT |
+| pi_5.png | operator-supplied photo | 2026-08-02 | MIT |
 | rak4631.png | operator-supplied illustration/render | 2026-08-01 | MIT |
-| t3s3.png | operator-supplied illustration/render (screen blanked) | 2026-09-29 | MIT |
+| t3s3.png | operator-supplied photo (screen blanked) | 2026-09-29 | MIT |
 | tbeam.png | operator-supplied illustration/render | 2026-08-01 | MIT |
 | tbeam_supreme.png | operator-supplied illustration/render | 2026-08-01 | MIT |
 | tdeck.png | operator-supplied illustration/render | 2026-08-01 | MIT |

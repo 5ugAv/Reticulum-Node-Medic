@@ -191,7 +191,7 @@ def test_storage_summary_budget_fraction_respected():
     assert storage_summary(510, 1000)["ok"] is False        # 51% of free
 
 
-def test_parse_latlon_accepts_sampleton_and_rejects_junk():
+def test_parse_latlon_accepts_a_city_point_and_rejects_junk():
     assert parse_latlon("-37.79, 144.96") == (-37.79, 144.96)
     assert parse_latlon(" -37.79 ; 144.96 ") == (-37.79, 144.96)
     assert parse_latlon("") is None

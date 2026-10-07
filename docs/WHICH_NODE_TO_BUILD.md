@@ -65,7 +65,7 @@ the first fortnight.
 * **Pi Zero 2 W** — the only Pi to use for solar. Measured with a RAK4631:
   0.142 A at 5.06 V = 0.72 W, about 17 Wh per day (19–20 Wh drawn from the
   battery once the 12→5 V converter's losses are counted).
-* **Panel: 20 W minimum** — 40 W in Sampleton or Hobart. A 5 W panel matches a
+* **Panel: 20 W minimum** — 40 W in Canberra or Hobart. A 5 W panel matches a
   *perfect* day and fails the first cloudy one. 20 W buys the margin that keeps
   it alive through winter and dust.
 * **Battery: 3 days of autonomy — about 60 Wh USABLE.** A 10–12 Ah 12 V sealed

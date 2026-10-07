@@ -25,7 +25,7 @@ class _Rec:
 A = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 B = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
 C = "0f1eaaaa000000000000000000000000"       # shares B's 16-bit prefix
-SELF = "5a0a000a00000000000000000000000e"
+SELF = "05a5a00000000000000000000000000e"
 
 
 def test_a_short_hash_resolves_to_exactly_one_known_node():

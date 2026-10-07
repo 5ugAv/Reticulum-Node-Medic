@@ -13,7 +13,7 @@ from monitor import trust
 from monitor.registry import NodeRegistry
 from monitor.mesh import MeshNode
 
-NODE = "5a090009000000000000000000000001"
+NODE = "05a5a000000000000000000000000001"
 SELF_UNIT = "aaaaselfunit"
 FRIEND_UNIT = "bbbbfriendunit"
 

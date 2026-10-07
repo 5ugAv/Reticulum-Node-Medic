@@ -162,7 +162,7 @@ BUILD_SECTIONS: List[Tuple[str, str, List[str]]] = [
       "A network wants a few of these, not many — one in a hall, a shop, "
       "a home with power.",
       "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 17 Wh a "
-      "day, measured), a 20 W panel minimum (40 W in Sampleton or Hobart), "
+      "day, measured), a 20 W panel minimum (40 W in Canberra or Hobart), "
       "about 60 Wh of USABLE battery for three cloudy days (a 10–12 Ah "
       "sealed lead-acid, or 6 Ah of LiFePO4), and a proper charge "
       "controller. A 5 W panel matches a perfect day and dies on the first "

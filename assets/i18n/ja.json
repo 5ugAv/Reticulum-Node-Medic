@@ -875,7 +875,7 @@
   "OK  Done!": "OK  完了！",
   "OK — go home": "OK — ホームへ",
   "OK — start": "OK — 開始",
-  "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 17 Wh a day, measured), a 20 W panel minimum (40 W in Sampleton or Hobart), about 60 Wh of USABLE battery for three cloudy days (a 10–12 Ah sealed lead-acid, or 6 Ah of LiFePO4), and a proper charge controller. A 5 W panel matches a perfect day and dies on the first cloudy one.": "太陽光で Pi を動かすには「本物の」機材が必要です：Pi Zero 2 W（実測で 1 日約 17 Wh）、最低 20 W のパネル（キャンベラやホバートでは 40 W）、曇りの日 3 日分として約 60 Wh の「実際に使える」バッテリー容量（10–12 Ah の密閉型鉛蓄電池、または 6 Ah の LiFePO4）、そしてきちんとした充電コントローラー。5 W パネルは完璧な晴天の日にだけ釣り合い、最初の曇りの日に死にます。",
+  "ON SOLAR a Pi needs REAL hardware: a Pi Zero 2 W (about 17 Wh a day, measured), a 20 W panel minimum (40 W in Canberra or Hobart), about 60 Wh of USABLE battery for three cloudy days (a 10–12 Ah sealed lead-acid, or 6 Ah of LiFePO4), and a proper charge controller. A 5 W panel matches a perfect day and dies on the first cloudy one.": "太陽光で Pi を動かすには「本物の」機材が必要です：Pi Zero 2 W（実測で 1 日約 17 Wh）、最低 20 W のパネル（キャンベラやホバートでは 40 W）、曇りの日 3 日分として約 60 Wh の「実際に使える」バッテリー容量（10–12 Ah の密閉型鉛蓄電池、または 6 Ah の LiFePO4）、そしてきちんとした充電コントローラー。5 W パネルは完璧な晴天の日にだけ釣り合い、最初の曇りの日に死にます。",
   "ONLY this kind of node can hold messages for someone whose device is switched off. A transport node cannot.": "電源の切れた機器の持ち主のためにメッセージを預かれるのは、この種類のノードだけです。トランスポートノードにはできません。",
   "Off": "オフ",
   "Offline map ready — {got} tiles cached.": "オフライン地図の準備完了 — {got} タイルをキャッシュしました。",
