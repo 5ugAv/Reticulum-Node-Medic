@@ -1,0 +1,196 @@
+{
+  "manifest": 1,
+  "captured": "2026-10-08",
+  "about": "Everything a Node Medic set up from GitHub installs so it can do what Node Medic 1 does: each pin is Node Medic 1's own version, read on that medic on 2026-10-08, with the public source it comes from. scripts/setup_medic.py (workflows/medic_setup.py) reads this file and installs from it; tests/test_medic_setup.py checks it against the code.",
+  "system": {
+    "board": "Raspberry Pi 5",
+    "image": "Raspberry Pi OS Lite (64-bit)",
+    "os_codename": "trixie",
+    "arch": "aarch64",
+    "python": "3.13",
+    "tool_dir": "~/reticulum-tool"
+  },
+  "pi_os_image": {
+    "path": "~/pi_os_lite.img.xz",
+    "url": "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz",
+    "sha256": "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3",
+    "bytes": 524875608,
+    "release": "2026-06-18",
+    "note": "The official .sha256 file published beside the image names this hash (read 2026-10-08), and it is the hash of Node Medic 1's own copy. The .deb plan a clone installs offline is made against this release's package list (assets/clone_base/dpkg_status)."
+  },
+  "python": {
+    "pip": "pip3 install --user --break-system-packages",
+    "packages": {
+      "adafruit-nrfutil": "0.5.3.post16",
+      "ajsonrpc": "1.2.0",
+      "anyio": "4.14.1",
+      "bitarray": "3.10.1",
+      "bitstring": "4.4.0",
+      "bottle": "0.13.4",
+      "click": "8.3.3",
+      "colorama": "0.4.6",
+      "ecdsa": "0.19.2",
+      "esptool": "4.7.0",
+      "filetype": "1.2.0",
+      "h11": "0.16.0",
+      "intelhex": "2.3.0",
+      "Kivy": "2.3.1",
+      "Kivy-Garden": "0.1.5",
+      "lxmf": "1.0.1",
+      "marshmallow": "3.26.2",
+      "platformio": "6.1.19",
+      "py-spy": "0.4.2",
+      "pyelftools": "0.33",
+      "reedsolo": "1.7.0",
+      "rns": "1.3.7",
+      "segno": "1.6.6",
+      "semantic-version": "2.10.0",
+      "six": "1.17.0",
+      "starlette": "0.52.1",
+      "tabulate": "0.10.0",
+      "tibs": "0.5.7",
+      "uvicorn": "0.40.0",
+      "wsproto": "1.3.2"
+    },
+    "note": "These are the packages in Node Medic 1's own user site (~/.local); it takes the rest of what they need from Debian. The setup adds the lines of assets/requirements.txt for packages not pinned here (Pillow, smbus2, cryptography), exactly as a clone of Node Medic 1 installs them (workflows/parent_freeze.requirements_text). Anything else they need comes from Debian where a Lite card has it (cryptography, PyYAML, requests, certifi) and from PyPI where it does not (pyserial, docutils, packaging). All 30 pins exist on PyPI for Python 3.13 on aarch64 (checked 2026-10-08): 28 as wheels, adafruit-nrfutil and esptool as pure-Python source.",
+    "patch": {
+      "package": "rns",
+      "version": "1.3.7",
+      "file": "assets/patches/rns-1.3.7-medic.patch",
+      "sha256": "a91af1b8cc867c4a7eca17e0399cc2b192af66d741247993381be3571a113de0",
+      "strip": 1,
+      "what": "rnodeconf learns the Heltec Wireless Tracker (product 0xCB, board 0x52), the Heltec MeshPocket (0xD2, models 0xCD/0xCE) and the Ebyte EoRa-S3 (0xD3, model 0xCF); RNodeInterface polls up to 5 s for a serial RNode to answer instead of sleeping 0.2 s, because opening the port resets an ESP32-S3 on USB-JTAG. PyPI's rns 1.3.7 with this patch applied is byte-identical to Node Medic 1's RNS package (all 100 .py files compared, 2026-10-08)."
+    }
+  },
+  "arduino": {
+    "cli": {
+      "version": "1.5.1",
+      "url": "https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Linux_ARM64.tar.gz",
+      "sha256": "1e69e077479f300614d4551334e0a33f08ee40b04315d83b8e7e0e94f0d0ee62",
+      "bytes": 16155457,
+      "install_to": "~/.local/bin/arduino-cli"
+    },
+    "board_manager_urls": [
+      "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
+      "https://raw.githubusercontent.com/RAKwireless/RAKwireless-Arduino-BSP-Index/main/package_rakwireless_index.json",
+      "https://github.com/HelTecAutomation/Heltec_nRF52/releases/download/1.7.0/package_heltec_nrf_index.json",
+      "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+    ],
+    "board_manager_urls_source": "arduino-cli.yaml in the RNode_Firmware and RTNode-2400 trees (their Makefiles install the cores with --config-file arduino-cli.yaml). Node Medic 1's own arduino-cli config names no URLs, so the setup passes these on the command line and writes none.",
+    "cores": {
+      "esp32:esp32": "2.0.17",
+      "adafruit:nrf52": "1.7.0",
+      "Heltec_nRF52:Heltec_nRF52": "1.6.0",
+      "rakwireless:nrf52": "1.3.3"
+    },
+    "aarch64_tool_standins": {
+      "rakwireless:nrfjprog@9.4.0": "adafruit:nrfjprog@9.4.0"
+    },
+    "aarch64_note": "RAKwireless publishes no aarch64 build of nrfjprog 9.4.0, so arduino-cli refuses to install rakwireless:nrf52 on a Pi. The setup installs it from a copy of RAK's index that borrows Adafruit's aarch64 entry for the same tool (nrfjprog-10.15.0-arm, which is what the Adafruit and Heltec indexes already serve for aarch64). nrfjprog is a J-Link flasher; no Node Medic build uses it.",
+    "platform_local": {
+      "Heltec_nRF52:Heltec_nRF52": ["recipe.objcopy.uf2.pattern="]
+    },
+    "platform_local_note": "Heltec_nRF52 1.6.0's platform.txt runs its UF2 step as \"{tools.uf2conv.cmd}\", which quotes `python .../uf2conv.py` into one word: on Linux and macOS every HT-n5262 compile (the MeshPocket RNode, the T114 RTNode) stops there, before the DFU .zip BUILD flashes is made. The core's own platform_board_manager.txt has that step commented out; the setup does the same through platform.local.txt (an empty recipe is skipped by arduino-cli). Checked 2026-10-08 by compiling the MeshPocket tree off the Pi with and without it. Node Medic 1's own fix for this was not recorded.",
+    "config": {
+      "library.enable_unsafe_install": "true"
+    },
+    "libraries": {
+      "Adafruit BusIO": "1.17.4",
+      "Adafruit GFX Library": "1.12.6",
+      "Adafruit NeoPixel": "1.15.5",
+      "Adafruit SH110X": "2.1.14",
+      "Adafruit SSD1306": "2.5.17",
+      "Adafruit ST7735 and ST7789 Library": "1.11.0",
+      "Adafruit seesaw Library": "1.7.9",
+      "ArduinoJson": "7.4.3",
+      "ArxContainer": "0.7.0",
+      "ArxTypeTraits": "0.3.2",
+      "Crypto": "0.4.0",
+      "DebugLog": "0.8.4",
+      "ESP8266 and ESP32 OLED driver for SSD1306 displays": "4.4.1",
+      "GxEPD2": "1.6.9",
+      "MsgPack": "0.4.2",
+      "SD": "1.3.0",
+      "TinyGPSPlus": "1.0.3",
+      "XPowersLib": "0.3.3"
+    },
+    "library_git_sources": {
+      "ESP8266 and ESP32 OLED driver for SSD1306 displays": "https://github.com/liamcottle/esp8266-oled-ssd1306#e16cee124fe26490cb14880c679321ad8ac89c95"
+    },
+    "library_notes": {
+      "Crypto": "Node Medic 1's Crypto version was not captured. Its source is the Library Manager's 'Crypto' (Rhys Weatherley's library, packaged at github.com/OperatorFoundation/Crypto), installed by the firmware Makefiles' `arduino-cli lib install \"Crypto\"`; 0.4.0 is the newest of the two versions the Library Manager has (released 2022), so it is what that command installs.",
+      "ESP8266 and ESP32 OLED driver for SSD1306 displays": "Installed the way the firmware Makefiles' prep-nrf does it: from liamcottle's fork at a fixed commit, whose library.properties says 4.4.1 (the version Node Medic 1 reports)."
+    }
+  },
+  "firmware_trees": [
+    {
+      "path": "~/RNode_Firmware",
+      "repo": "https://github.com/5ugAv/RNode_Firmware.git",
+      "branch": "medic-cross",
+      "commit": "2da8bc38e792dd947c2bf40a54bff446859ce786",
+      "for": "the Heltec V4 colour (RGB) image BUILD flashes (workflows/rnode_v4_rgb.py); upstream RNode firmware plus the NODE MEDIC header strip"
+    },
+    {
+      "path": "~/overlay_test/RNode_Firmware",
+      "repo": "https://github.com/5ugAv/RNode_Firmware.git",
+      "branch": "jonesey",
+      "commit": "eb861d735078d8ec6e134a0faa70bf9912b5fbc4",
+      "for": "the Heltec Wireless Tracker image: this medic's own radio and every Tracker it builds (workflows/rnode_flash.py TRACKER_BUILD_DIR)"
+    },
+    {
+      "path": "~/EoRa-S3/RNode_Firmware_CE",
+      "repo": "https://github.com/5ugAv/RNode_Firmware.git",
+      "branch": "eora-s3",
+      "commit": "b574a82cafdfa7ac3efbf50dbbbce7e8a9569b62",
+      "for": "the Ebyte EoRa-S3 RNode image (workflows/rnode_boards.py eora_s3 build_dir)"
+    },
+    {
+      "path": "~/MeshPocket/RNode_Firmware_CE",
+      "repo": "https://github.com/5ugAv/HELTEC-MeshPocket-RNode.git",
+      "branch": "main",
+      "commit": "acee20c6b5c2e1ada8155baf9236aba561884b8b",
+      "for": "the Heltec MeshPocket RNode image (workflows/rnode_boards.py heltec_meshpocket build_dir)"
+    },
+    {
+      "path": "~/RTNode-2400",
+      "repo": "https://github.com/5ugAv/RTNode-2400.git",
+      "branch": "techo-support",
+      "commit": "3a09717c6e1fe143cf3c5f2a6e9e9d2d5871029c",
+      "for": "RTNode-2400-NM for the nRF52 boards, T-Echo, RAK4631 and T114, built with arduino-cli through its Makefile (workflows/rtnode_build.py TECHO_PROJECT_DIR)"
+    },
+    {
+      "path": "~/rnm-assets/RTNode2400",
+      "repo": "https://github.com/5ugAv/RTNode-2400.git",
+      "branch": "feature/neopixel-status-led",
+      "commit": "8cccdeaf466919acdc56d986c8d3b0910ae2d205",
+      "for": "RTNode-2400-NM for the ESP32-S3 boards, built with PlatformIO (workflows/rtnode_build.py RTNODE_PROJECT_DIR)"
+    }
+  ],
+  "prebuilt": {
+    "rnode_boards": ["heltec_wireless_tracker", "eora_s3", "heltec_meshpocket"],
+    "v4_colour": true,
+    "rtnode_proof_env": "heltec_V4_boundary-local",
+    "note": "BUILD flashes the three custom RNode boards from images already built on the medic, and the Heltec V4 colour image too once it exists. The setup builds all four with the code's own recipes (RNodeBoard.compile_command; HeltecV4RGBWorkflow's source patches and compile). The RTNode-2400-NM builds compile at birth; the setup compiles the PlatformIO proof env and the three nRF52 Makefile targets once so the toolchains are proven and cached before a board is on the bench."
+  },
+  "platformio": {
+    "settings": {
+      "enable_telemetry": "No",
+      "check_platformio_interval": "4294967"
+    },
+    "platforms": {
+      "espressif32": "6.13.0"
+    },
+    "not_installed": {
+      "nordicnrf52": {
+        "source": "https://github.com/maxgerhardt/platform-nordicnrf52",
+        "why": "Installed on Node Medic 1 from this URL, which only the seeed_xiao_nrf_sx1262 env of the RTNode-2400 platformio.ini names. No build Node Medic runs selects that env (workflows/rtnode_build.py RTNODE_TARGETS), so the setup does not install an unpinned git platform for it."
+      }
+    },
+    "libdeps_note": "Each RTNode-2400 env's own libraries (platformio.ini lib_deps: ArduinoJson@^7.4.2, MsgPack@^0.4.2, Adafruit SSD1306@^2.5.9, attermann/Crypto from git, XPowersLib@^0.2.1, ...) are resolved by PlatformIO from platformio.ini when the setup prefetches each env; they are pinned no tighter than platformio.ini pins them."
+  },
+  "field": {
+    "rnode_firmware": "1.86",
+    "world_map_tiles": 87381,
+    "note": "Fetched the way Node Medic 1 fetched them: Settings > Field readiness > Prepare for the field (workflows/carry.carry_all: the pinned RNode firmware bundle, the phone messenger APKs, the Python wheelhouse, this medic's frozen package versions and the planned .deb cache) and the resumable world map (scripts/world_map_fill.py, run by scripts/world-map-fill.service)."
+  }
+}
