@@ -34,7 +34,7 @@ Five things. Nothing else blocks the handover, and no more get added.
 - [ ] **Maps** — placement and the node map
 - [ ] **Antenna guide** — the choosing and testing path
 - [x] **Chat / communication** — messages actually move
-  _Ticked 2026-10-01._ First live exchange, over LoRa: the operator's phone (Columba, Heltec MeshPocket over Bluetooth) announced as `5a150015…` and the medic listed it by name under Heard on the mesh; medic → phone "your node medic pal" 23:28:28 `delivered` (double tick on the phone); phone → medic "It works!" 23:29:27 on the medic's own screen and in its store (`~/.reticulum-node-medic/chat/messages.json`). 1 hop via the RNode. Both directions read back from disk, not from the photo.
+  _Ticked 2026-10-01._ First live exchange, over LoRa: the operator's phone (Columba, Heltec MeshPocket over Bluetooth) announced as `aa11aa11…` and the medic listed it by name under Heard on the mesh; medic → phone "your node medic pal" 23:28:28 `delivered` (double tick on the phone); phone → medic "It works!" 23:29:27 on the medic's own screen and in its store (`~/.reticulum-node-medic/chat/messages.json`). 1 hop via the RNode. Both directions read back from disk, not from the photo.
 
 ### What the two ticks rest on (checked 2026-09-27, not remembered)
 
@@ -46,7 +46,7 @@ solved, and planning off it wasted a session.
   both answer. skyfinger was built after 2026-09-11, i.e. through the flow as
   it now stands.
 * **Monitoring.** Health beacons arriving OVER THE AIR on cadence —
-  `announce 5a1f001f len=20 beacon=yes` at 07:24 and `5a170017 … beacon=yes`
+  `announce bb22bb22 len=20 beacon=yes` at 07:24 and `dd44dd44 … beacon=yes`
   at 03:30 on 2026-09-27 — ingested, and folded to one row per device
   (14 raw records -> 4 VITALS rows; ELSEWHERE's five destinations are one
   row). The LoRa interface shows ↓424 KB received while the LAN AutoInterface

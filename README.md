@@ -273,11 +273,11 @@ rest of the app runs.
 MAPS renders Web Mercator raster tiles from a local MBTiles file in
 `~/.reticulum-node-medic/maps/` (outside the repo tree, so a deploy cannot
 delete a downloaded map). Tiles are **not shipped**; they are downloaded
-per-region while online from Esri's keyless World Street Map tile service
-([`ui/map_download.py`](ui/map_download.py) — never by bulk-fetching
-`tile.openstreetmap.org`), with attribution drawn on the screen, after which the
-map is fully offline. A resumable world-overview download can run as a systemd
-unit ([`scripts/world-map-fill.service`](scripts/world-map-fill.service)).
+per-region while online ([`ui/map_download.py`](ui/map_download.py) — never by
+bulk-fetching `tile.openstreetmap.org`), with attribution drawn on the screen,
+after which the map is fully offline. The current basemap source (Esri World
+Street Map) is a stop-gap: its provider terms do not cover bulk offline caching,
+so a source whose terms allow offline storage is still to be chosen.
 
 Placement suggestions ([`monitor/placement.py`](monitor/placement.py)) mark
 where a node would extend the mesh, from an `rnpath`-derived topology and a
@@ -470,7 +470,7 @@ python3 -c "from workflows.rtnode_build import RTNODE_TARGETS as t; print(len(t)
 ls assets/boards/*.png | wc -l                                       # board + Pi photographs (18)
 grep -c '^    ("' ui/i18n.py                                         # declared languages (14, the _LANGUAGES rows)
 ls assets/i18n/*.json | grep -v _critical | wc -l                    # catalogues (11)
-ls diagnostics/*.py | grep -v 'base\|__init__' | wc -l               # diagnostic modules (8)
+ls diagnostics/*.py | grep -v 'base\|__init__\|labels' | wc -l      # diagnostic modules (8)
 ```
 
 ## Status
@@ -552,3 +552,10 @@ a node on a roof. The firmware forks are GPL-3.0 and this tool is downstream of
 all of them.
 
 The tool itself is MIT — see [LICENSE](LICENSE).
+
+MIT covers the tool's own code. The patch files under
+[`assets/firmware-ports/`](assets/firmware-ports/) and the headers under
+[`firmware/rtnode-2400/`](firmware/rtnode-2400/) are modifications of GPL-3.0
+firmware (RNode_Firmware_CE and RTNode-2400) and carry that licence; the patches
+to RNS-derived code (`rns-serial-detect.patch`, `eora-s3-rnodeconf.patch`) are
+under the Reticulum License.
