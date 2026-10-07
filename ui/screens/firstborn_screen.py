@@ -321,14 +321,18 @@ class FirstbornScreen(BoxLayout):
 
         if view.stage == ff.DONE and self._on_home:
             from ui import setup_flow as _sf
-            done = Button(text=(tr("Continue the walkthrough  →") if _sf.peek_resume()
+            resume_now = bool(_sf.peek_resume())
+            done = Button(text=(tr("Continue the walkthrough  →") if resume_now
                                 else tr("Wonderful — carry on  →")), size_hint_y=None,
                           height=dp(50), font_size=theme.font_sp("16sp"),
                           background_normal="",
                           background_color=theme.hex_to_rgba(
                               theme.COLORS["surface"]),
                           color=theme.hex_to_rgba(theme.COLORS["text_primary"]))
-            done.bind(on_release=lambda *_: self._on_home())
+            # the button does what its label says, even when the marker cannot
+            # be re-read at press time (Node Medic 2 went home instead, 2026-10-07)
+            done.bind(on_release=lambda *_: (self._on_home(resume=True) if resume_now
+                                             else self._on_home()))
             self.add_widget(done)
 
     # -- the birth -----------------------------------------------------------

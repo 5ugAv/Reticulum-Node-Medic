@@ -88,7 +88,13 @@ def test_after_the_set_up_the_walkthrough_carries_on_where_it_was():
     app goes back to the walkthrough ONLY when the walkthrough sent it."""
     assert "FirstbornScreen(on_home=self._after_medic_setup)" in APP
     body = APP[APP.index("def _after_medic_setup"):APP.index("def _no_cert_popup")]
-    assert "_sf.peek_resume()" in body and '"setup" if _sf.peek_resume() else "home"' in body
+    assert "_sf.peek_resume()" in body and 'self.switch_mode("setup", resume=True)' in body
+    # the Continue button carries its own intent: a marker that cannot be
+    # re-read at press time (the I2C descriptor leak, 2026-10-07) sent the
+    # keeper home instead of on
+    FB0 = pathlib.Path("ui/screens/firstborn_screen.py").read_text()
+    assert "self._on_home(resume=True) if resume_now" in FB0
+    assert "scr.reset(resume=resume or bool(_sf.peek_resume()))" in APP
     # the restart rnsd needs happens INSIDE the set-up (hand-over), and the app
     # opens on the Tracker page afterwards to check the radio and GPS
     assert 'return "firstborn"' in APP and "check_pending()" in APP

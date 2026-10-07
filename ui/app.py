@@ -1320,6 +1320,16 @@ class ReticulumNodeMedicApp(App):
         self.sm.add_widget(firstborn)
 
         self.sm.current = self._opening_screen()
+        if self.sm.current == "setup":
+            # a restart with the walkthrough's resume marker set (the radio
+            # hand-over) lands on the step after the set-up, not the first screen
+            try:
+                from ui import setup_flow as _sf
+                scr = getattr(self, "setup_screen", None)
+                if scr is not None and hasattr(scr, "reset") and _sf.peek_resume():
+                    scr.reset(resume=True)
+            except Exception:                                      # noqa: BLE001
+                pass
         self._install_screensaver()
 
         # The on-screen keyboard floats above every screen (the touchscreen has
@@ -3197,12 +3207,17 @@ class ReticulumNodeMedicApp(App):
             sc.show_location(lat, lon)
         self.switch_mode("scan")
 
-    def _after_medic_setup(self):
+    def _after_medic_setup(self, resume: bool = False):
         """Leaving the radio + GPS set-up: back into the walkthrough when it
         sent us (it resumes at the step after), otherwise home. The app restart
-        the radio needs happened during the set-up (workflows.medic_radio)."""
+        the radio needs happened during the set-up (workflows.medic_radio).
+        *resume* is the caller's own knowledge (the button that said
+        "Continue the walkthrough"); the marker is only the fallback."""
         from ui import setup_flow as _sf
-        self.switch_mode("setup" if _sf.peek_resume() else "home")
+        if resume or _sf.peek_resume():
+            self.switch_mode("setup", resume=True)
+        else:
+            self.switch_mode("home")
 
     def _no_cert_popup(self, name):
         """No stored certificate — it wasn't birthed by this medic. Offer to birth
@@ -3936,7 +3951,7 @@ class ReticulumNodeMedicApp(App):
 
         host.add_widget(RecoveryKeyScreen(on_done=to_unlock))
 
-    def switch_mode(self, mode_name):
+    def switch_mode(self, mode_name, resume: bool = False):
         kb = getattr(self, "keyboard", None)
         if kb is not None:
             kb.hide()                     # dismiss the keyboard when leaving a screen
@@ -3977,7 +3992,7 @@ class ReticulumNodeMedicApp(App):
                     # back from a set-up that sent us away (the radio): carry
                     # on at the step after it; otherwise a fresh walkthrough
                     from ui import setup_flow as _sf
-                    scr.reset(resume=bool(_sf.peek_resume()))
+                    scr.reset(resume=resume or bool(_sf.peek_resume()))
             self.sm.current = mode_name
             if mode_name == "home":
                 self.refresh_radio_badge()   # keep the changed-params badge honest

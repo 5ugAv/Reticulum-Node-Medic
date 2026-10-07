@@ -23,6 +23,7 @@ nicer charging indicator.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -118,10 +119,47 @@ _CHARGE_MA = 50.0
 
 # ---- transport (lazy smbus2; no-op when absent) -----------------------------
 
+#: ONE bus handle per process. Opening /dev/i2c-1 on every read and never
+#: closing it bled Node Medic 2's app dry: 943 of its 1024 descriptors were
+#: the I2C bus after eleven hours, and from then on every file read in the
+#: app failed (2026-10-07). The handle is shared, guarded, and dropped (closed)
+#: on the first I/O error so the next read reopens cleanly.
+_shared_reader: Optional[Reader] = None
+_shared_bus = None
+_shared_lock = threading.Lock()
+
+
+def _drop_shared() -> None:
+    global _shared_reader, _shared_bus
+    with _shared_lock:
+        b, _shared_reader, _shared_bus = _shared_bus, None, None
+    if b is not None:
+        try:
+            b.close()
+        except Exception:
+            pass
+
+
 def _open_reader(bus: int = I2C_BUS, addr: int = None) -> Optional[Reader]:
-    """A reader(reg)->word for the INA219, or None when I2C/the device is absent
-    (no HAT, bus not enabled). Writes the calibration once so current reads work.
-    With no *addr* given, probes INA219_CANDIDATES and remembers the answer."""
+    """The process's shared INA219 reader, opened on first use; None when
+    I2C/the device is absent (no HAT, bus not enabled)."""
+    global _shared_reader, _shared_bus
+    with _shared_lock:
+        if _shared_reader is not None:
+            return _shared_reader
+        opened = _open_reader_fresh(bus, addr)
+        if opened is None:
+            return None
+        _shared_reader, _shared_bus = opened
+        return _shared_reader
+
+
+def _open_reader_fresh(bus: int = I2C_BUS, addr: int = None):
+    """Open the bus and build a reader(reg)->word for the INA219 — returns
+    ``(reader, bus_handle)`` or None when I2C/the device is absent (the bus
+    handle is CLOSED on every failure path). Writes the calibration once so
+    current reads work. With no *addr* given, probes INA219_CANDIDATES and
+    remembers the answer."""
     global _found_addr
     try:
         import smbus2
@@ -163,7 +201,7 @@ def _open_reader(bus: int = I2C_BUS, addr: int = None) -> Optional[Reader]:
     def read(reg: int) -> int:
         return _swap(b.read_word_data(addr, reg))
 
-    return read
+    return read, b
 
 
 def read_ups(reader: Optional[Reader] = None) -> UpsState:
@@ -173,9 +211,12 @@ def read_ups(reader: Optional[Reader] = None) -> UpsState:
     if r is None:
         return UpsState(present=False)
     try:
-        v_raw = r(_REG_BUSVOLT)
-        i_raw = r(_REG_CURRENT)
+        with _shared_lock:
+            v_raw = r(_REG_BUSVOLT)
+            i_raw = r(_REG_CURRENT)
     except Exception:
+        if reader is None:
+            _drop_shared()          # a dead handle is closed, never kept
         return UpsState(present=False)
     return interpret(v_raw, i_raw)
 
