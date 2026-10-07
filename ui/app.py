@@ -211,6 +211,22 @@ def _demo_clone_workflow():
     conn.rules.insert(0, ("id -un", 0, "nodemedic", ""))
     conn.rules.insert(0, ("rnid --generate", 0,
                           "New identity <2233445566778899aabbccddeeff0011> written", ""))
+    # The last two steps lock the new medic (workflows/clone.py,
+    # harden_new_medic). Emulate a real one: once the root supervisor has run
+    # it reports "confirmed", and the new medic's sudo then refuses a command
+    # no rule grants — before that, it still has full sudo.
+    locked = {"yes": False}
+    plain_run = conn.run
+
+    def _run(cmd, *a, **k):
+        if "systemd-run" in cmd and "apply_all.sh" in cmd:
+            locked["yes"] = True
+        if "/run/nodemedic-harden/status" in cmd:
+            return (0, "confirmed" if locked["yes"] else "", "")
+        if cmd.startswith("sudo -n /usr/bin/true") and locked["yes"]:
+            return (1, "", "sudo: a password is required")
+        return plain_run(cmd, *a, **k)
+    conn.run = _run
     wf = CloneWorkflow(conn, NodeRegistry())
     # pace the emulated steps so the streaming UI is visible in the demo
     real_run_all = wf.run_all

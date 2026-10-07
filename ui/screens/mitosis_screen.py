@@ -64,11 +64,16 @@ STEP_TITLES = [
     ("record_child_trust", "Linking it to this medic"),
     ("configure_autostart", "Starting Node Medic at power-on"),
     ("install_card_helper", "Letting it make medics too"),
+    ("install_radio_helper", "Letting it set up its own radio"),
     ("ensure_ssh_keypair", "Giving it its own door key (for repairs)"),
     ("bake_recovery_bootorder", "Setting up a rescue path"),
     ("final_verification", "Checking everything"),
     ("restart_into_tool", "Restarting into Node Medic"),
     ("confirm_tool_running", "Making sure Node Medic stays open"),
+    # the clone's last two steps: locked like its parent, then (for a new
+    # community) this medic's key taken back (2026-10-08)
+    ("harden_new_medic", "Locking its doors"),
+    ("remove_parent_key", "Settling who keeps a key"),
 ]
 
 #: Expected seconds per step — drives each row's progress bar. Estimates from
@@ -95,6 +100,10 @@ STEP_EST_S = {
     "final_verification": 12,
     "restart_into_tool": 4,
     "confirm_tool_running": 90,
+    "install_radio_helper": 8,
+    # copy the kit, apply three changes, check them with fresh logins, confirm
+    "harden_new_medic": 60,
+    "remove_parent_key": 20,
 }
 
 #: Rough dd+config seconds for the write's fill estimate — the same model the

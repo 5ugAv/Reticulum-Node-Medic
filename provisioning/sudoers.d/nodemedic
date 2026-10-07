@@ -1,13 +1,41 @@
 # ---------------------------------------------------------------------------
-# Node Medic — SCOPED passwordless sudo for the `nodemedic` app user.
+# Node Medic — SCOPED passwordless sudo for the medic's app user.
 #
 # Installs to:  /etc/sudoers.d/010-nodemedic   (mode 0440, root:root)
-# REPLACES the blanket:  nodemedic ALL=(ALL) NOPASSWD:ALL
+# REPLACES the blanket:  <user> ALL=(ALL) NOPASSWD:ALL
+#
+# THE USER. This file names `nodemedic`, the original medic's account. A CLONE
+# runs as `pi`: security/render_sudoers.sh renders the account into the grant
+# line and the two rules that carry a user name (setfacl u:<user>:rw, usermod
+# dialout <user>) at install time, together with the machine's backlight. With
+# the default user the file installs exactly as written. Every clone gets this
+# file from its parent's clone flow (workflows/clone.py, harden_new_medic).
 #
 # Every alias below maps to a specific privileged call the Kivy app makes on the
-# medic ITSELF (grep-verified against the repo, 2026-07). Commands are pinned to
-# absolute paths (merged-usr canonical) and, where safe, to fixed arguments so
-# `nodemedic` can run ONLY these exact operations without a password.
+# medic ITSELF (grep-verified against the repo, 2026-07; re-swept 2026-10-08 for
+# what a CLONE runs). Commands are pinned to absolute paths (merged-usr
+# canonical) and, where safe, to fixed arguments so the user can run ONLY these
+# exact operations without a password.
+#
+# WHICH COMMANDS BELONG HERE — and which deliberately do not:
+#   * HERE: what the app runs on the medic itself (original or clone), and what
+#     a medic runs on itself while cloning ANOTHER medic (discovery, imaging).
+#   * NOT HERE: commands run on a NODE over that node's own connection
+#     (workflows/build.py wf.priv, provisioning/link.py, node_sudoers.py,
+#     gadget.py, uart_console.py ...) — they meet the NODE's sudoers.
+#   * NOT HERE: what a parent sends to a NEW medic during a clone, before the
+#     clone's last steps harden it (workflows/clone.py wf.priv / "sudo -n ...")
+#     — the new medic still has its card's full sudo at that point.
+# tests/test_privileged_commands.py finds every privileged call in the code and
+# fails until each one is classified — and, if it runs on the medic, granted
+# here. Its sudo matcher follows sudoers(5), not intuition (see WILDCARDS).
+#
+# WILDCARDS SPAN ARGUMENTS. sudo matches the arguments as ONE string, and `*`
+# matches spaces too (sudoers(5), "Wildcards"): `cat /var/log/messages*` also
+# allows `cat /var/log/messages /etc/shadow`. So a trailing `*` lets the caller
+# append arguments of their own. New rules use exact arguments or single-
+# character classes ([a-z], [0-9]); the test lists every rule that still has a
+# `*` and why each is harmless — a new one fails until it is reviewed there.
 #
 # VALIDATE before installing:   visudo -cf provisioning/sudoers.d/nodemedic
 # NEVER hand-edit /etc/sudoers.d on the live medic — use the apply script, which
@@ -73,13 +101,19 @@ Cmnd_Alias NM_CLOCK = \
 # workflows/node_mode.py          set_mode()           -> systemctl restart rnsd|lxmd
 # monitor/self_diagnose_runtime.py restart_splitter    -> systemctl restart rnode-splitter
 # workflows/gps_setup.py          _configure_gpsd()    -> systemctl enable|restart gpsd*
+# A CLONE's app runs as the kiosk unit reticulum-node-medic.service
+# (workflows/clone.py configure_autostart); its keeper restarts the app with
+#   sudo -n systemctl restart reticulum-node-medic.service
+# The original medic starts its UI another way (scripts/restart_ui.sh) and has
+# no unit of that name, so there the line grants nothing.
 Cmnd_Alias NM_SERVICES = \
     /usr/bin/systemctl poweroff, \
     /usr/bin/systemctl restart rnsd, \
     /usr/bin/systemctl restart lxmd, \
     /usr/bin/systemctl restart rnode-splitter, \
     /usr/bin/systemctl enable gpsd.socket gpsd, \
-    /usr/bin/systemctl restart gpsd.socket gpsd
+    /usr/bin/systemctl restart gpsd.socket gpsd, \
+    /usr/bin/systemctl restart reticulum-node-medic.service
 
 # --- USB hub power-cycle (autonomous board recovery during flashing) --------
 # workflows/robust_flash.py  find_hub_port() -> sudo -n uhubctl (list)
@@ -103,9 +137,10 @@ Cmnd_Alias NM_UHUBCTL = \
 # accident is not a control.
 #
 # So: USB card readers (/dev/sd*) and a second MMC controller (/dev/mmcblk1*,
-# a built-in reader) only. The medic's own system disk is mmcblk0 on this
-# build — a clone that boots from something else MUST re-derive this line
-# rather than widen it. The Python guard (medic_root_disk) still refuses the
+# a built-in reader) only. (The `*` still spans — see WILDCARDS above; these
+# rules are on the reviewed list in tests/test_privileged_commands.py.) The
+# medic's own system disk is mmcblk0 on this build — a clone that boots from
+# something else MUST re-derive this line rather than widen it. The Python guard (medic_root_disk) still refuses the
 # medic's own disk; this is the layer that holds when Python is bypassed.
 Cmnd_Alias NM_SD_EDIT = \
     /usr/bin/mount /dev/sd* /tmp/nm_sd_boot, \
@@ -125,8 +160,12 @@ Cmnd_Alias NM_SD_EDIT = \
 # what a USB card reader enumerates as; the medic's own disk is mmcblk0. A
 # clone that boots from a different device must re-derive these, never widen
 # them.
+# dd's target is ONE character class, not `*`: a `*` there spans arguments
+# (WILDCARDS above) and would let a caller add dd operands of their own
+# (2026-10-08). provisioning/pi_imager.py write_image_command() writes the
+# whole card, /dev/sdX, exactly in this form.
 Cmnd_Alias NM_IMAGING = \
-    /usr/bin/dd of=/dev/sd* bs=4M conv=fsync status=progress, \
+    /usr/bin/dd of=/dev/sd[a-z] bs=4M conv=fsync status=progress, \
     /usr/sbin/partprobe /dev/sd*, \
     /usr/bin/mkdir -p /tmp/rnm-piboot, \
     /usr/bin/mount /dev/sd* /tmp/rnm-piboot, \
@@ -154,9 +193,42 @@ Cmnd_Alias NM_PIBOOT = \
 # --- USB-gadget link bring-up (claim host end of the /29 to a plugged node) --
 # provisioning/link.py  discover_peer() -> sudo -n ip addr add 10.55.0.2/29 dev <if>
 #                                          sudo -n ip link set <if> up
+# provisioning/direct_link.py discover_peer() does the same on the clone CABLE,
+# and first release_own_peer_address():
+#                         sudo -n ip addr del 10.55.0.1/29 dev <if>
+# A CLONE holds the cable address 10.55.0.1 for life (its card's
+# nodemedic-cable-ip unit). When it clones the NEXT medic it must let go of it,
+# or both ends of the cable claim the new medic's address. The original medic
+# never holds 10.55.0.1, so there the rule is inert. Only that one address can
+# be deleted; `ip` writes no files and runs nothing.
 Cmnd_Alias NM_USBLINK = \
     /usr/bin/ip addr add 10.55.0.2/29 dev *, \
+    /usr/bin/ip addr del 10.55.0.1/29 dev *, \
     /usr/bin/ip link set * up
+
+# --- The medic's OWN radio set-up (first run on a clone: workflows/medic_radio.py)
+# A new medic sets up its own Heltec Wireless Tracker AFTER the clone flow has
+# scoped its sudo, so every privileged step of MedicRadioSetup must be here:
+#   sudo -n /usr/local/lib/nodemedic/radio-units --port /dev/serial/by-id/<board>
+#       the root-owned helper (assets/scripts/radio_units.py, installed by the
+#       clone flow) writes rnode-splitter, rnsd, lxmd and the hand-over unit
+#       from FIXED text for the calling user, then daemon-reloads. It refuses
+#       any other argument list and any port that is not a serial by-id link,
+#       so the `*` (which spans) cannot smuggle anything in.
+#   sudo -n systemctl enable rnode-splitter.service rnsd.service lxmd.service
+#   sudo -n systemctl restart rnode-splitter.service
+#   sudo -n systemctl start --no-block nm-radio-handover.service
+#   sudo -n systemctl restart rnsd.service lxmd.service   (no kiosk unit)
+# The OLD route — `install` a user-written temp file into /etc/systemd/system,
+# `sh -c`, `systemd-run sh -c` — can never be argument-pinned (whoever writes a
+# unit chooses its User= and ExecStart=), so it is NOT here: it remains only as
+# the fallback for a medic that still has full sudo and no helper.
+Cmnd_Alias NM_RADIO_SETUP = \
+    /usr/local/lib/nodemedic/radio-units --port /dev/serial/by-id/*, \
+    /usr/bin/systemctl enable rnode-splitter.service rnsd.service lxmd.service, \
+    /usr/bin/systemctl restart rnode-splitter.service, \
+    /usr/bin/systemctl start --no-block nm-radio-handover.service, \
+    /usr/bin/systemctl restart rnsd.service lxmd.service
 
 # --- GPS (gpsd wiring for the Tracker feeding the medic's clock/position) ----
 # workflows/gps_setup.py  _configure_gpsd() writes /etc/default/gpsd + installs gpsd.
@@ -172,22 +244,34 @@ Cmnd_Alias NM_GPS = \
 #                                      sudo usermod -aG dialout <user>
 # setfacl is pinned to SERIAL ports only. The old `/dev/*` also matched block
 # devices and /dev/mem — letting a compromised app grant itself rw on the medic's
-# own root disk (a full-root escalation, verified in the sandbox). Serial ports
-# take two forms the code uses: /dev/tty{ACM,USB,AMA,S}* and the stable
-# /dev/serial/by-id|by-path symlinks (which setfacl follows to their tty target,
-# and that dir is udev/root-owned so it can't be pointed at a block device).
+# own root disk (a full-root escalation, verified in the sandbox).
+# 2026-10-08, the same lesson one level down: a TRAILING `*` spans arguments
+# (WILDCARDS above), and setfacl, usermod and dmesg all accept more arguments
+# than the app passes. So each rule is now exact: the ACL names THIS medic's
+# user (rendered at install), the port is a tty name of fixed shape
+# (character classes, no `*`), usermod adds THIS user to dialout and nobody
+# else, and dmesg is the one level list the diagnostics read. A by-id port
+# (/dev/serial/by-id/...) is resolved to its tty by the caller first
+# (diagnostics/reticulum_software.py _fix_acl) — setfacl followed the link to
+# that tty anyway.
 Cmnd_Alias NM_DIAG = \
-    /usr/bin/dmesg --level=*, \
+    /usr/bin/dmesg --level=emerg\,alert\,crit\,err\,warn, \
     /usr/bin/ss -tlnp, \
-    /usr/bin/setfacl -m u\:*\:rw /dev/tty*, \
-    /usr/bin/setfacl -m u\:*\:rw /dev/serial/*, \
-    /usr/sbin/usermod -aG dialout *
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyACM[0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyACM[0-9][0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyUSB[0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyUSB[0-9][0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyAMA[0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyAMA[0-9][0-9], \
+    /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyS[0-9], \
+    /usr/sbin/usermod -aG dialout nodemedic
 
 # ---------------------------------------------------------------------------
-# The single grant. `nodemedic` may run ONLY the above, only as root, no TTY,
-# no password. Anything else falls through to the default (denied / requires a
-# password that this login has no way to supply).
+# The single grant. The app user (`nodemedic` here; rendered as `pi` on a
+# clone) may run ONLY the above, only as root, no TTY, no password. Anything
+# else falls through to the default (denied / requires a password that this
+# login has no way to supply).
 # ---------------------------------------------------------------------------
 nodemedic ALL=(root) NOPASSWD: NM_BACKLIGHT, NM_WIFI, NM_PORTAL, NM_RADIO, NM_CLOCK, \
     NM_SERVICES, NM_UHUBCTL, NM_SD_EDIT, NM_IMAGING, NM_PIBOOT, NM_USBLINK, \
-    NM_GPS, NM_DIAG
+    NM_RADIO_SETUP, NM_GPS, NM_DIAG
