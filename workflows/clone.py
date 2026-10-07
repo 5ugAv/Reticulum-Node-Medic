@@ -410,6 +410,15 @@ def copy_offline_maps(wf: "CloneWorkflow") -> StepResult:
             break
         copied.append(name)
     mb = sum(os.path.getsize(os.path.join(src, n)) for n in copied) / 1e6
+    if ok and copied:
+        # the files must not say where they came from: metadata names and
+        # centres go to the coarse grid; a clone for someone else also loses
+        # the node-detail zooms (the patches around THIS keeper's nodes)
+        drop = bool(getattr(wf, "fresh_fleet", False))
+        wf.connection.run(
+            f"cd {REMOTE_TOOL_DIR} && python3 -c \"import glob,os\nfrom ui.map_download import sanitise_carried_maps\n"
+            f"[sanitise_carried_maps(p, drop_detail={drop}) for p in glob.glob(os.path.expanduser('{CLONE_DIR}/maps/*.mbtiles'))]\"",
+            timeout=900)
     return StepResult("copy_offline_maps", ok,
                       f"Handed down the offline maps ({len(copied)} file(s), "
                       f"{mb:.0f} MB)." if ok else

@@ -17,6 +17,7 @@ learned live). A same-bytes circuit breaker aborts rather than cache those.
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 import subprocess
 import time
@@ -99,6 +100,33 @@ def _tile_center(x: int, y: int, z: int) -> Tuple[float, float]:
     lon = (x + 0.5) / n * 360.0 - 180.0
     lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 0.5) / n))))
     return lat, lon
+
+
+#: Carried areas are centred on a point of THIS grid, never on the real point:
+#: a 0.5° cell is ~55 km, so the centre of a carried area says "this region",
+#: not "this house". Node Medic 1's region and terrain tiers were centred on
+#: the keeper's first fix and the terrain file's metadata NAMED it
+#: ("terrain 200km @ <the point>"); every clone carried that (2026-10-07).
+COARSE_STEP_DEG = 0.5
+
+
+def coarse_centre(lat: float, lon: float, step: float = COARSE_STEP_DEG) -> Tuple[float, float]:
+    """The nearest grid point to (lat, lon) on a *step*-degree grid."""
+    return (round(lat / step) * step, round(lon / step) * step)
+
+
+def anonymised_circle(lat: float, lon: float, radius_km: float,
+                      step: float = COARSE_STEP_DEG) -> Tuple[float, float, float]:
+    """``(centre_lat, centre_lon, radius_km)`` for a carried area: the circle
+    is moved onto the coarse grid and widened so the requested circle still
+    fits inside it — the real point is somewhere in the area, not its centre."""
+    clat, clon = coarse_centre(lat, lon, step)
+    return clat, clon, radius_km + _km_between(lat, lon, clat, clon)
+
+
+def area_name(kind: str, radius_km: float) -> str:
+    """A metadata name that describes the area's size, never its place."""
+    return f"{kind} {radius_km:g}km"
 
 
 def radius_bounds(lat: float, lon: float,
@@ -370,10 +398,11 @@ def download_terrain(lat: float, lon: float, map_dest: str,
     thousands.
     """
     fetch = fetch or terrain_fetch
+    lat, lon, radius_km = anonymised_circle(lat, lon, radius_km)
     tiles = tiles_in_radius(lat, lon, radius_km,
                             zmin=TERRAIN_ZOOM, zmax=TERRAIN_ZOOM)
     writer = MBTilesWriter(
-        terrain_dest(map_dest), f"terrain {radius_km:g}km @ {lat:.3f},{lon:.3f}",
+        terrain_dest(map_dest), area_name("terrain", radius_km),
         radius_bounds(lat, lon, radius_km), TERRAIN_ZOOM, TERRAIN_ZOOM,
         center=f"{lon},{lat},{TERRAIN_ZOOM}")
     return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
@@ -394,6 +423,9 @@ def download_region(lat: float, lon: float, dest_path: str,
     summary ``{total, fetched, skipped, failed, done, cancelled, blocked}``.
     """
     fetch = fetch or osm_fetch
+    if zmin < DETAIL_MIN_ZOOM:
+        # a regional carry is centred on the grid, not on the keeper
+        lat, lon, radius_km = anonymised_circle(lat, lon, radius_km)
     tiles = tiles_in_radius(lat, lon, radius_km, zmin, zmax)
     # MERGE with what the file already covers. A second region used to
     # REPLACE the metadata bounds, so the first region's tiles stayed on disk
@@ -407,8 +439,8 @@ def download_region(lat: float, lon: float, dest_path: str,
     except (TypeError, ValueError):
         minz, maxz = zmin, zmax
     writer = MBTilesWriter(
-        dest_path, prev.get("name") or name or f"offline {radius_km:g}km @ {lat:.3f},{lon:.3f}",
-        bounds, minz, maxz, center=prev.get("center") or f"{lon},{lat},{zmin}")
+        dest_path, name or area_name("offline", radius_km),
+        bounds, minz, maxz, center="{},{},{}".format(*coarse_centre(lat, lon)[::-1], zmin))
     return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
 
 
@@ -533,9 +565,9 @@ def add_point_detail(lat: float, lon: float, dest_path: str,
     except (TypeError, ValueError):
         minz, maxz = zmin, zmax
     writer = MBTilesWriter(
-        dest_path, prev.get("name") or f"offline detail @ {lat:.3f},{lon:.3f}",
+        dest_path, prev.get("name") or "offline detail",
         bounds, minz, maxz,
-        center=prev.get("center") or f"{lon},{lat},{zmax}")
+        center=prev.get("center") or "{},{},{}".format(*coarse_centre(lat, lon)[::-1], zmax))
     return _fetch_tiles(tiles, writer, fetch, on_progress, rate_limit_s, stop)
 
 
@@ -647,3 +679,42 @@ def carried_summary(dest_path: Optional[str] = None) -> dict:
         return out
     out.update(tiles=int(n or 0), zmin=zmin, zmax=zmax)
     return out
+
+
+def sanitise_carried_maps(path: str, drop_detail: bool = False) -> Dict[str, str]:
+    """Scrub an existing MBTiles file of anything that names a place: the
+    metadata ``name`` and ``center`` are rewritten to the coarse grid, and with
+    *drop_detail* every tile at DETAIL_MIN_ZOOM or above (the patches around
+    placed nodes) is removed — a clone made for someone else must not carry
+    where this keeper's nodes stand. Returns the metadata afterwards."""
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        meta = dict(conn.execute("SELECT name, value FROM metadata").fetchall())
+        kind = "terrain" if "terrain" in (meta.get("name") or "") else "offline"
+        m = re.search(r"(\d+(?:\.\d+)?)km", meta.get("name") or "")
+        new_name = f"{kind} {m.group(1)}km" if m else kind
+        centre = meta.get("center")
+        if centre:
+            try:
+                lon, lat, z = centre.split(",")[:3]
+                clat, clon = coarse_centre(float(lat), float(lon))
+                centre = f"{clon},{clat},{z}"
+            except ValueError:
+                centre = None
+        conn.execute("INSERT OR REPLACE INTO metadata VALUES ('name', ?)", (new_name,))
+        if centre:
+            conn.execute("INSERT OR REPLACE INTO metadata VALUES ('center', ?)", (centre,))
+        else:
+            conn.execute("DELETE FROM metadata WHERE name = 'center'")
+        if drop_detail:
+            conn.execute("DELETE FROM tiles WHERE zoom_level >= ?", (DETAIL_MIN_ZOOM,))
+            top = conn.execute("SELECT MAX(zoom_level) FROM tiles").fetchone()[0]
+            if top is not None:
+                conn.execute("INSERT OR REPLACE INTO metadata VALUES ('maxzoom', ?)", (str(top),))
+        conn.commit()
+        if drop_detail:
+            conn.execute("VACUUM")
+        return dict(conn.execute("SELECT name, value FROM metadata").fetchall())
+    finally:
+        conn.close()

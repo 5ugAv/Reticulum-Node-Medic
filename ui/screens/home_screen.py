@@ -102,12 +102,9 @@ class HomeScreen(FloatLayout):
             pos_hint={"x": 0.02, "top": 0.985})
         self.add_widget(self.power_slider)
 
-        # Battery gauge (top, left of the gear) — Medic 2.0's UPS pack, drawn
-        # only while a UPS actually answers on the bus (Medic 1 has no HAT and
-        # honestly shows nothing). Green fill = charge, pulsing bolt = charging.
-        from ui.widgets.battery_icon import BatteryIcon
-        self.battery_icon = BatteryIcon(pos_hint={"right": 0.90, "top": 0.965})
-        self.add_widget(self.battery_icon)
+        # One battery readout on the front page: the gauge under the power
+        # switch (below). The small icon by the gear sat hidden behind the
+        # Home picture on a UPS medic and doubled the gauge (2026-10-07).
 
         # Home / Backpack mode toggle (top-centre, between the power slide and the
         # gear) — flips the medic's network role: HOME = propagation node (routing +
