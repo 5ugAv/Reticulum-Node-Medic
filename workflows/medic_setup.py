@@ -962,6 +962,13 @@ def _check_card_helper(s: MedicSetup) -> Tuple[bool, str]:
                   "missing, or older than the repository's copy")
 
 
+def _check_radio_helper(s: MedicSetup) -> Tuple[bool, str]:
+    from workflows.medic_radio import RADIO_HELPER, RADIO_HELPER_SOURCE
+    same = s.conn.run(f"cmp -s {_q(RADIO_HELPER_SOURCE)} {RADIO_HELPER}")[0] == 0
+    return same, ("installed, same as the repository's" if same else
+                  "missing, or older than the repository's copy")
+
+
 def _check_ssh_key(s: MedicSetup) -> Tuple[bool, str]:
     have = s.conn.run("test -f ~/.ssh/id_ed25519 && test -f ~/.ssh/id_ed25519.pub")[0] == 0
     return have, ("present" if have else "none yet")
@@ -1554,6 +1561,9 @@ SETUP_STEPS: List[SetupStep] = [
     SetupStep("install_card_helper", "Install the root card-writing helper",
               _check_card_helper, clone.install_card_helper,
               clone_fn=clone.install_card_helper, root=True),
+    SetupStep("install_radio_helper", "Install the root radio set-up helper",
+              _check_radio_helper, clone.install_radio_helper,
+              clone_fn=clone.install_radio_helper, root=True),
     SetupStep("ensure_ssh_keypair", "Give the medic its own SSH key", _check_ssh_key,
               clone.ensure_ssh_keypair, clone_fn=clone.ensure_ssh_keypair),
     SetupStep("install_arduino_cli", "Install arduino-cli (pinned, checksum checked)",
@@ -1642,6 +1652,13 @@ CLONE_ROUTE: Dict[str, Route] = {
     "configure_autostart": Route("same", ("configure_autostart",)),
     "bake_recovery_bootorder": Route("same", ("bake_recovery_bootorder",)),
     "install_card_helper": Route("same", ("install_card_helper",)),
+    "install_radio_helper": Route("same", ("install_radio_helper",)),
+    "harden_new_medic": Route("not_here", why="a clone's lock-down is proved from "
+                              "OUTSIDE, by the parent's fresh logins; a medic set up "
+                              "from GitHub has no parent, so its keeper applies the "
+                              "same scripts by hand (provisioning/security/README.md)"),
+    "remove_parent_key": Route("not_here", why="no parent ever held a key to this "
+                               "medic"),
     "ensure_ssh_keypair": Route("same", ("ensure_ssh_keypair",)),
     "final_verification": Route("same", ("final_verification",)),
     "restart_into_tool": Route("stands_in", ("restart",),

@@ -378,9 +378,9 @@ def test_the_arduino_listings_parse_in_both_shapes():
 
 def test_the_world_map_unit_is_written_for_whoever_runs_the_setup():
     src = open(os.path.join(ROOT, "scripts", "world-map-fill.service")).read()
-    unit = ms.render_world_map_unit(src, "keeper", "/home/keeper")
-    assert "User=keeper" in unit and "nodemedic" not in unit.split("[Unit]", 1)[1]
-    assert "ExecStart=/usr/bin/python3 /home/keeper/reticulum-tool/scripts/world_map_fill.py" in unit
+    unit = ms.render_world_map_unit(src, "tester", "/home/tester")
+    assert "User=tester" in unit and "nodemedic" not in unit.split("[Unit]", 1)[1]
+    assert "ExecStart=/usr/bin/python3 /home/tester/reticulum-tool/scripts/world_map_fill.py" in unit
 
 
 def test_a_clone_step_message_reads_right_on_the_medic_itself():

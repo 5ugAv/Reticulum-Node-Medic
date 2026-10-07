@@ -273,6 +273,23 @@ CLONE_CHECKS = {
 # --------------------------------------------------------------------------- #
 
 ELSEWHERE = [
+    ("github setup",
+     "scripts/setup_medic.py configures a fresh Pi OS Lite card from the "
+     "repository before anything on it is locked down. It refuses to start "
+     "without the card's full sudo, the position the clone's own steps are in "
+     "before harden_new_medic; a keeper who has since locked the medic re-runs "
+     "it with their password.",
+     {("workflows/medic_setup.py", s) for s in (
+         '"sudo -n true"',
+         's.priv("apt-get -o DPkg::Lock::Timeout=300 update")',
+         's.priv("env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 " "install -y --no-install-recommends " + " ".join(missing))',
+         's.priv("rpi-eeprom-config")',
+         's.priv("sh -c \'systemctl daemon-reload && " "systemctl enable --now world-map-fill\'")',
+         's.priv("timedatectl set-ntp true")',
+         's.priv(f"tee -a {BOOT_CONFIG}")',
+         's.priv(f"tee {WORLD_MAP_UNIT}")',
+         'self.wf.priv(command)',
+     )}),
     ("node",
      "BuildWorkflow, the reporter push and node scoping run on the NODE being "
      "born or looked after, over that node's SSH connection: the node's sudoers.",

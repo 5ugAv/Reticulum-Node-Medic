@@ -288,10 +288,17 @@ downloading); one that stopped part-way carries what it has.
   tools);
 - the medic's Kivy config (the doubled-tap cure), its offline maps, its
   monitoring records and its fleet roster;
-- the card helper source (`assets/scripts/prepare_card.py`), installed on the
-  child, and a fresh SSH keypair generated **on** the child;
+- the card helper source (`assets/scripts/prepare_card.py`) and the radio
+  set-up helper (`assets/scripts/radio_units.py`), both installed root-owned on
+  the child, and a fresh SSH keypair generated **on** the child;
 - a **fresh Reticulum identity** generated on the child — the parent's is never
-  copied — plus a lineage stamp and a trust record for the child.
+  copied — plus a lineage stamp and a trust record for the child;
+- last, the parent's own locks: scoped sudo for the child's user, key-only SSH
+  and the SSH firewall (`provisioning/security/apply_all.sh`), confirmed only
+  after the parent has logged back in from outside and rolled back on any
+  doubt. A clone made for a new community then keeps no one's key, so nobody
+  can log in to it remotely; a clone for the parent's own fleet keeps the
+  parent's key.
 
 ## Updating a medic
 

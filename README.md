@@ -273,11 +273,17 @@ rest of the app runs.
   install the Python stack from carried wheels and the screen stack from
   carried `.deb`s; hand down the maps, records and fleet roster; give the new
   medic its **own fresh identity** (never a key copy), stamp its lineage,
-  install its card helper and SSH key, and set it to boot into the tool. What
-  the parent must carry for all that is listed in
-  [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). The readiness ledger's
-  first section lists what stood in the way of the clone test; all of it was
-  closed on 2026-10-04, and the test itself is still to be run.
+  install its card helper, radio helper and SSH key, and set it to boot into
+  the tool. Last, it locks the new medic the way the parent is locked —
+  narrowed admin rights, key-only SSH, an SSH firewall — checking from outside
+  with fresh logins and undoing everything on any doubt; a clone made for a new
+  community then keeps no one's key. What the parent must carry for all that is
+  listed in [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). A full clone,
+  Node Medic 2, was made on 2026-10-06 and set up its own radio. On 2026-10-08
+  a side-by-side comparison with its parent found what the clone could not do;
+  those gaps were closed in the clone itself that day, and
+  [`tests/test_clone_parity.py`](tests/test_clone_parity.py) now fails if the
+  code comes to need something a clone would not get.
 
 ## Map and placement
 
@@ -530,6 +536,10 @@ and ticked as it is closed. The largest open items, summarised honestly:
   gitignored or outside the repo; a fresh checkout gets them from
   `scripts/setup_medic.py`, which has not yet been run end-to-end on a Pi 5
   (ledger #115, #154).
+- **The clone's automatic lock-down has run only on a stand-in.** On
+  2026-10-08 it locked a stand-in clone in a test machine, held after a
+  restart, and left a new community's clone with no key; no real clone has
+  run it yet.
 - **The first-use walkthrough is the tour alone in v1.** Its lock-your-records
   half (recovery key, passphrase, pattern, USB key) collected secrets its summary
   never enrolled, so it is switched off (`ui/setup_flow.SECURITY_HALF`) until a
