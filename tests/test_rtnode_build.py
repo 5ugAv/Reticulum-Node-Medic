@@ -412,7 +412,7 @@ def test_wifi_onboarding_manual_fallback_when_not_auto():
 
 CONFIGURED_STATUS = '{"fork":"RTNode","fw_version":"0.7.0","node_name":"FAITH B"}'
 BY_ID_LINE = ("lrwxrwxrwx 1 root root 13 Jul 30 18:00 "
-              "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:07:00:07-if00 "
+              "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00 "
               "-> ../../ttyACM1")
 
 
@@ -423,7 +423,7 @@ def _quiet_sleep(monkeypatch):
 
 def test_helpers_derive_lan_host_from_usb_serial():
     from workflows.rtnode_build import default_lan_host
-    assert default_lan_host("02:00:00:07:00:07") == "rtnode0007.local"
+    assert default_lan_host("A1:B2:C3:D4:E5:F6") == "rtnodee5f6.local"
     assert default_lan_host("") == ""
 
 
@@ -473,7 +473,7 @@ def _auto_wf(c, provision, monkeypatch, creds=("HomeNet", "pw")):
 def test_onboarding_skips_portal_when_board_already_configured(monkeypatch):
     c = conn(port="/dev/ttyACM1")
     c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
-    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0,
+    c.rules.insert(0, ("curl -s -m 6 http://rtnodee5f6.local/status", 0,
                        CONFIGURED_STATUS, ""))
     never = {"called": False}
 
@@ -497,7 +497,7 @@ def test_onboarding_trusts_outcome_when_provision_tail_fails(monkeypatch):
     orig = c.run
 
     def run(cmd, timeout=30):
-        if "curl -s -m 6 http://rtnode0007.local/status" in cmd:
+        if "curl -s -m 6 http://rtnodee5f6.local/status" in cmd:
             probe["n"] += 1
             # not configured on the pre-check; configured after provision "failed"
             return (0, "" if probe["n"] == 1 else CONFIGURED_STATUS, "")
@@ -514,7 +514,7 @@ def test_onboarding_trusts_outcome_when_provision_tail_fails(monkeypatch):
 def test_onboarding_retries_provision_then_fails_honestly(monkeypatch):
     c = conn(port="/dev/ttyACM1")
     c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
-    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0, "", ""))
+    c.rules.insert(0, ("curl -s -m 6 http://rtnodee5f6.local/status", 0, "", ""))
     tries = {"n": 0}
 
     def provision(*a, **k):
@@ -540,7 +540,7 @@ def test_verify_accepts_init_banner_without_announce():
 def test_verify_falls_back_to_lan_probe_when_serial_quiet():
     c = conn(port="/dev/ttyACM1", beacon="")
     c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0, BY_ID_LINE, ""))
-    c.rules.insert(0, ("curl -s -m 6 http://rtnode0007.local/status", 0,
+    c.rules.insert(0, ("curl -s -m 6 http://rtnodee5f6.local/status", 0,
                        CONFIGURED_STATUS, ""))
     w = wf(c)
     w.steps[0][1](w)
@@ -1149,11 +1149,11 @@ def test_hw_serial_from_port_reads_esp32_mac_style():
     c = conn(port="/dev/ttyACM0")
     c.rules.insert(0, ("ls -l /dev/serial/by-id/", 0,
         "lrwxrwxrwx 1 root root 13 Aug 21 10:00 "
-        "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:02:00:02-if00 "
+        "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00 "
         "-> ../../ttyACM0", ""))
     w = wf(c)
     w.profile.connection_port = "/dev/ttyACM0"
-    assert hw_serial_from_port(w) == "02:00:00:02:00:02"
+    assert hw_serial_from_port(w) == "A1:B2:C3:D4:E5:F6"
 
 
 def test_hw_serial_from_port_empty_when_no_by_id():

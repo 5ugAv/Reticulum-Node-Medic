@@ -29,7 +29,7 @@ def _stub_serial(monkeypatch, mapping):
 
 
 def test_work_board_passes(monkeypatch, roster_file):
-    _stub_serial(monkeypatch, {"/dev/ttyACM0": "02:00:00:04:00:04"})   # FAITH
+    _stub_serial(monkeypatch, {"/dev/ttyACM0": "A1:B2:C3:D4:E5:F7"})   # a work board
     assert assert_flashable("/dev/ttyACM0", path=roster_file,
                             service_serials=set()) is True
 

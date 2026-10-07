@@ -69,10 +69,10 @@ def test_payload_carries_the_identity_lite_tier():
 def test_payload_board_id_matches_the_glass():
     cert = {"node_type": "rnode", "board": "Heltec Wireless Tracker",
             "usb_serial": ("usb-Espressif_USB_JTAG_serial_debug_unit_"
-                           "02:00:00:02:00:06-if00"),
+                           "A1:B2:C3:D4:E5:F6-if00"),
             "radio": "915.125 MHz / BW125 / SF9 / CR5 / 17 dBm"}
     text = birth_cert_payload(cert)
-    assert "Board ID: 02:00:00:02:00:06  (screen ID 0006)" in text
+    assert "Board ID: A1:B2:C3:D4:E5:F6  (screen ID E5F6)" in text
     assert "Radio: 915.125 MHz / BW125 / SF9 / CR5 / 17 dBm" in text
     assert "Type: RNode (radio for a host)" in text
 

@@ -132,28 +132,28 @@ from ui.board_traits import learn_mac_prefix, likely_from_mac, rank_by_mac
 
 def test_prefix_is_learned_and_points_at_the_model(tmp_path):
     p = store(tmp_path)
-    # both Heltec Trackers on this bench read 3c:0f:02:eb:* (2026-08-30)
-    learn_mac_prefix("heltec_wireless_tracker", "02:00:00:02:00:02", p)
+    # two Trackers on one bench shared their first four octets (2026-08-30)
+    learn_mac_prefix("heltec_wireless_tracker", "02:AA:BB:CC:00:01", p)
     hit = likely_from_mac([B("xiao_esp32s3"), B("heltec_wireless_tracker")],
-                          "02:00:00:02:00:06", p)
+                          "02:aa:bb:cc:00:02", p)
     assert hit.key == "heltec_wireless_tracker"
 
 
 def test_ranking_never_removes_a_candidate(tmp_path):
     p = store(tmp_path)
-    learn_mac_prefix("heltec_wireless_tracker", "02:00:00:02:00:02", p)
+    learn_mac_prefix("heltec_wireless_tracker", "02:AA:BB:CC:00:01", p)
     boards = [B("xiao_esp32s3"), B("t3s3"), B("heltec_wireless_tracker")]
-    ranked = rank_by_mac(boards, "02:00:00:02:00:06", p)
+    ranked = rank_by_mac(boards, "02:aa:bb:cc:00:02", p)
     assert ranked[0].key == "heltec_wireless_tracker"     # suggested first
     assert sorted(b.key for b in ranked) == sorted(b.key for b in boards)
 
 
 def test_an_unknown_prefix_suggests_nothing(tmp_path):
     p = store(tmp_path)
-    learn_mac_prefix("heltec_wireless_tracker", "02:00:00:02:00:02", p)
+    learn_mac_prefix("heltec_wireless_tracker", "02:AA:BB:CC:00:01", p)
     boards = [B("xiao_esp32s3"), B("heltec_wireless_tracker")]
-    assert likely_from_mac(boards, "02:00:00:0b:00:0b", p) is None
-    assert [b.key for b in rank_by_mac(boards, "02:00:00:0b:00:0b", p)] == \
+    assert likely_from_mac(boards, "02:dd:ee:ff:00:01", p) is None
+    assert [b.key for b in rank_by_mac(boards, "02:dd:ee:ff:00:01", p)] == \
         ["xiao_esp32s3", "heltec_wireless_tracker"]       # order untouched
 
 
@@ -161,10 +161,10 @@ def test_an_ambiguous_prefix_suggests_nothing(tmp_path):
     # two models in one Espressif block: evidence that points both ways is
     # no evidence — the blocks belong to Espressif, not to a board maker
     p = store(tmp_path)
-    learn_mac_prefix("heltec_wireless_tracker", "02:00:00:02:00:02", p)
-    learn_mac_prefix("t3s3", "02:00:00:02:99:01", p)
+    learn_mac_prefix("heltec_wireless_tracker", "02:AA:BB:CC:00:01", p)
+    learn_mac_prefix("t3s3", "02:AA:BB:CC:00:03", p)
     boards = [B("t3s3"), B("heltec_wireless_tracker")]
-    assert likely_from_mac(boards, "02:00:00:02:00:06", p) is None
+    assert likely_from_mac(boards, "02:aa:bb:cc:00:02", p) is None
 
 
 def test_prefixes_accumulate_per_model_and_are_bounded(tmp_path):

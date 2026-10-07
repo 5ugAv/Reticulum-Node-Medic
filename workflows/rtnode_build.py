@@ -299,7 +299,7 @@ def hw_serial_from_port(wf) -> str:
 
 def default_lan_host(mac: str) -> str:
     """The firmware's default mDNS hostname: ``rtnode`` + last two MAC octets
-    (verified live: MAC 02:00:00:07:00:07 -> rtnode0007.local)."""
+    (verified live on a bench board; e.g. MAC a1:b2:c3:d4:e5:f6 -> rtnodee5f6.local)."""
     if not mac:
         return ""
     return "rtnode" + mac.replace(":", "").lower()[-4:] + ".local"

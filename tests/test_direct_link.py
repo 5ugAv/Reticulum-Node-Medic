@@ -58,10 +58,10 @@ def test_candidates_have_no_name_but_still_sweep_subnet():
 
 def test_neighbour_parse_finds_any_live_address_and_scopes_v6():
     out = (
-        "10.55.0.4 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
-        "169.254.7.9 dev eth0 lladdr 02:00:00:08:00:08 STALE\n"       # link-local v4
+        "10.55.0.4 dev eth0 lladdr a1:b2:c3:d4:e5:f6 REACHABLE\n"
+        "169.254.7.9 dev eth0 lladdr a1:b2:c3:d4:e5:f6 STALE\n"       # link-local v4
         "10.55.0.9 dev eth0 FAILED\n"                                  # nothing there
-        "fe80::a3b2:c3ff:fed4:e5f6 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
+        "fe80::a3b2:c3ff:fed4:e5f6 dev eth0 lladdr a1:b2:c3:d4:e5:f6 REACHABLE\n"
     )
     got = dl.parse_neighbour_targets(out, iface="eth0")
     assert "10.55.0.4" in got
@@ -78,7 +78,7 @@ def test_neighbour_parse_ignores_junk():
 def test_discover_finds_a_neighbour_at_an_unknown_address():
     # B came up at an address we never chose (not mdns-resolvable, not .1). It
     # only becomes reachable because it shows up in `ip neigh`.
-    neigh = "10.55.0.5 dev eth0 lladdr 02:00:00:08:00:08 REACHABLE\n"
+    neigh = "10.55.0.5 dev eth0 lladdr a1:b2:c3:d4:e5:f6 REACHABLE\n"
 
     def runner(argv, input=None, timeout=30):
         if argv[:2] == ["ip", "-o"]:

@@ -96,7 +96,7 @@ def test_detect_rnode_port_by_id_resolves_ttyacm():
     from workflows.build import detect_rnode_port
     conn = EmulatedConnection()
     conn.rule("ls /dev/serial/by-id/", 0,
-              "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:03:00:03-if00")
+              "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00")
     conn.rule("readlink -f", 0, "/dev/ttyACM0")
     assert detect_rnode_port(conn) == "/dev/ttyACM0"
 
@@ -119,7 +119,7 @@ def test_detect_rnode_port_none_when_no_serial():
 def test_detect_hardware_sets_ttyacm_port():
     conn = build_conn(rnode=True)
     conn.rules.insert(0, ("ls /dev/serial/by-id/", 0,
-        "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:03:00:03-if00", ""))
+        "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00", ""))
     conn.rules.insert(0, ("readlink -f", 0, "/dev/ttyACM0", ""))
     w = wf(conn)
     w.steps[0][1](w)

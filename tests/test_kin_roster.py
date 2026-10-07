@@ -140,7 +140,7 @@ def test_service_reloads_roster_from_disk_on_rediscover(tmp_path, monkeypatch):
     svc = MonitorService(registry=reg, run=lambda c: "[]", now=lambda: 1.0)
     assert reg.get(EVERYWHERE) is None                 # roster empty at start
     kin_roster.register(EVERYWHERE, "EVERYWHERE", "pi_propagation",
-                        lat=-37.70, lon=145.00, path=path)   # birthed mid-run
+                        lat=-37.512345, lon=145.523456, path=path)   # birthed mid-run
     svc.cycle(rediscover=True)
     rec = reg.get(EVERYWHERE)
     assert rec is not None and rec.name == "EVERYWHERE" and rec.has_location()

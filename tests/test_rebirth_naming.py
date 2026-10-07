@@ -35,7 +35,7 @@ def _save(certs, name, serial="", **extra):
 # --- one board, one record --------------------------------------------------
 
 def test_saving_a_board_retires_its_older_record():
-    """Measured live 2026-08-07: serial ...4631000000000001 had THREE
+    """Measured live 2026-08-07: one RAK4631 serial had THREE
     certificates — rak4, zerorak, zerorak1 — for one physical board."""
     import tempfile
     d = tempfile.mkdtemp()

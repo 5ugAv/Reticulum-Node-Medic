@@ -372,7 +372,7 @@ class MedicRadioSetup:
 
 
 def by_id_to_serial(by_id: str) -> str:
-    """``…_02:00:00:02:00:06-if00`` → ``02:00:00:02:00:06``."""
+    """``…_A1:B2:C3:D4:E5:F6-if00`` → ``A1:B2:C3:D4:E5:F6``."""
     import re
     m = re.search(r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})", by_id or "")
     return m.group(1).upper() if m else ""

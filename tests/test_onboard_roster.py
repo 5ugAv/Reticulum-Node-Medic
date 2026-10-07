@@ -43,7 +43,7 @@ def test_is_onboard_matches_by_identity(tmp_path):
     roster.register("jonesey_lora", "A1:B2:C3:D4:E5:F6", path=p)
     with patch.object(roster, "serial_for_port",
                       side_effect=lambda port: "A1:B2:C3:D4:E5:F6"
-                      if port == "/dev/ttyACM0" else "02:00:00:01:00:01"):
+                      if port == "/dev/ttyACM0" else "A1:B2:C3:D4:E5:F7"):
         assert roster.is_onboard("/dev/ttyACM0", path=p) is True    # Jonesey
         assert roster.is_onboard("/dev/ttyACM1", path=p) is False   # a work board
 

@@ -415,10 +415,10 @@ def test_detect_port_fingerprints_the_board_for_the_hand_back():
     from workflows.rnode_v4_rgb import HeltecV4RGBWorkflow
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("/dev/serial/by-id", 0,
-                       "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:02:00:02-if00", ""))
+                       "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00", ""))
     w = HeltecV4RGBWorkflow(c, port="/dev/ttyACM1")
     w._detect_port()
-    assert w._usb_serial == "02:00:00:02:00:02"
+    assert w._usb_serial == "A1:B2:C3:D4:E5:F6"
 
 
 def test_staleness_compares_the_commit_time_with_the_image(tmp_path):

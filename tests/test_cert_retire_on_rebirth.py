@@ -4,8 +4,10 @@ Live 2026-08-05. The operator rebirthed a RAK4631 that had been born as "rak2",
 renamed it "rak3", and ended up with TWO certificates pointing at the SAME
 physical board::
 
-    rak2.json  usb_serial ...4631000000000001  born 23:25
-    rak3.json  usb_serial ...4631000000000001  born 23:39
+    rak2.json  usb_serial ...<same serial>  born 23:25
+    rak3.json  usb_serial ...<same serial>  born 23:39
+
+(The hardware serial itself stays on the medic; the tests use a stand-in.)
 
 The wipe path already calls delete_by_usb_serial for exactly this reason, but it
 compared the WHOLE /dev/serial/by-id basename with ==. That string is not stable
@@ -88,7 +90,7 @@ def test_a_cert_with_no_fingerprint_is_left_alone(tmp_path):
 def test_the_esp32_style_serial_still_matches(tmp_path):
     """Jonesey-style by-id names carry a MAC with colons. Don't regress them."""
     d = str(tmp_path)
-    esp = "usb-Espressif_USB_JTAG_serial_debug_unit_02:00:00:04:00:04-if00"
+    esp = "usb-Espressif_USB_JTAG_serial_debug_unit_A1:B2:C3:D4:E5:F6-if00"
     save_cert(_cert("rnode-5a59", esp), cert_dir=d)
     assert delete_by_usb_serial(esp, cert_dir=d) == 1
 

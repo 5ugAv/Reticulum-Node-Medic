@@ -50,7 +50,7 @@ def save_cert(cert: Dict, cert_dir: str = CERT_DIR, now: Optional[float] = None)
     and that was not enough. ``delete_by_usb_serial`` was called from exactly one
     place — the wipe flow — so any ordinary birth or adopt of a board that
     already had a certificate simply added another. Measured on the live medic
-    2026-08-07: serial ...4631000000000001 had THREE certificates (rak4,
+    2026-08-07: one RAK4631 serial had THREE certificates (rak4,
     zerorak, zerorak1) and one Tracker had two (newt, track). save_cert is the
     single choke point every path goes through, so the rule holds wherever a
     certificate comes from.

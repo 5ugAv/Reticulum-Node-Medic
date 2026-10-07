@@ -8,7 +8,7 @@ from workflows.robust_flash import (
 UHUBCTL_OUT = """Current status for hub 4 [1d6b:0003 xhci-hcd.1, USB 3.00, 1 ports, ppps]
   Port 1: 02a0 power 5gbps Rx.Detect
 Current status for hub 3 [1d6b:0002 xhci-hcd.1, USB 2.00, 2 ports, ppps]
-  Port 1: 0103 power enable connect [303a:1001 Espressif USB JTAG/serial debug unit 02:00:00:03:00:03]
+  Port 1: 0103 power enable connect [303a:1001 Espressif USB JTAG/serial debug unit A1:B2:C3:D4:E5:F6]
   Port 2: 0100 power
 """
 
@@ -16,7 +16,7 @@ Current status for hub 3 [1d6b:0002 xhci-hcd.1, USB 2.00, 2 ports, ppps]
 def test_find_hub_port_locates_board():
     conn = EmulatedConnection(default_code=0, default_stdout="").rule(
         "uhubctl", 0, UHUBCTL_OUT)
-    assert find_hub_port(conn, "02:00:00:03:00:03") == ("3", 1)
+    assert find_hub_port(conn, "A1:B2:C3:D4:E5:F6") == ("3", 1)
 
 
 def test_find_hub_port_absent_board():

@@ -135,7 +135,7 @@ def _blank_build(board_key, monkeypatch):
     # what separates "blank (will flash)" from "none".
     conn.rules.insert(0, ("ls /dev/serial/by-id/", 0,
                           "usb-Espressif_USB_JTAG_serial_debug_unit_"
-                          "02:00:00:03:00:03-if00", ""))
+                          "A1:B2:C3:D4:E5:F6-if00", ""))
     conn.rules.insert(0, ("readlink -f", 0, "/dev/ttyACM0", ""))
     conn.rules.insert(0, ("--autoinstall", 0,
                           "RNode Firmware autoinstallation complete!", ""))

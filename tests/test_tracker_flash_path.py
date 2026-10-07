@@ -80,13 +80,13 @@ def test_certificate_carries_the_usb_fingerprint():
     conn = tracker_conn()
     conn.rules.insert(0, ("for l in /dev/serial/by-id", 0,
                           "usb-Espressif_USB_JTAG_serial_debug_unit_"
-                          "02:00:00:02:00:06-if00", ""))
+                          "A1:B2:C3:D4:E5:F7-if00", ""))
     w = wf(conn)
     w.run_all()
     cert = w.birth_certificate
     assert cert["node_type"] == "rnode"
     assert cert["board"] == "Heltec Wireless Tracker"
-    assert "02:00:00:02:00:06" in (cert.get("usb_serial") or "")
+    assert "A1:B2:C3:D4:E5:F7" in (cert.get("usb_serial") or "")
 
 
 @pytest.mark.onboard_guard   # drives the guard; needs the real lookups

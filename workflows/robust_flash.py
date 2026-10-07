@@ -60,7 +60,7 @@ def find_hub_port(connection: Connection,
                   serial: str) -> Tuple[Optional[str], Optional[int]]:
     """Locate the ``(hub, port)`` the USB device with *serial* sits on by parsing
     ``uhubctl``, so the flasher can power-cycle exactly that port autonomously
-    (verified: a Heltec V4 with serial 02:00:00:03:00:03 was found on hub 3,
+    (verified on a bench Heltec V4: it was found on hub 3,
     port 1). Returns ``(None, None)`` if the device or a power-switchable port
     isn't found."""
     out = connection.run("sudo -n uhubctl")[1]
