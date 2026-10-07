@@ -33,7 +33,7 @@ def _write_tile(directory, name, n=1201, height_fn=lambda r, c: 0):
 # --- naming and format ----------------------------------------------------
 
 def test_tiles_are_named_for_their_south_west_corner():
-    """Sampleton (-37.7, 145.0) lives in S38E145 — the FLOOR, not the round."""
+    """Sampleton (-37.5, 145.5) lives in S38E145 — the FLOOR, not the round."""
     assert tile_name(-37.50, 145.50) == "S38E145.hgt"
     assert tile_name(37.73, -122.4) == "N37W123.hgt"
     assert tile_name(0.5, 0.5) == "N00E000.hgt"

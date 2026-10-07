@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // RTNode-2400 — Health Beacon (Phase 2)
 //
 // Periodically announces node health over the LoRa mesh to "home base" (the

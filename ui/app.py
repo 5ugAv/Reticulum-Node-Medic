@@ -1900,8 +1900,8 @@ class ReticulumNodeMedicApp(App):
     def _target_names(self, targets):
         reg = self.monitor_service.registry
         # NAMES, NEVER HASHES (the keeper's rule, 2026-10-04): a nameless
-        # device gets the same "RAK4631 · 5a110011" label VITALS gives it,
-        # not "node 5a110011"
+        # device gets the same "RAK4631 · aa11aa11" label VITALS gives it,
+        # not "node aa11aa11"
         names = []
         for h in targets:
             rec = reg.nodes.get(h)
