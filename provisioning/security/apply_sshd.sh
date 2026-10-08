@@ -5,20 +5,51 @@
 #   sudo bash provisioning/security/apply_sshd.sh          # apply + arm self-revert
 #   sudo bash provisioning/security/apply_sshd.sh confirm  # after a NEW key login works
 #
+# Options (before `confirm`):
+#   --user NAME   the account whose key must work. Default: the sudo caller, else
+#                 nodemedic (the original medic). A clone's account is pi.
+#   --caller-proved-key-login
+#                 skip the loopback login test because the CALLER has just
+#                 logged in with a key, non-interactively, from outside — the
+#                 parent medic's clone flow (apply_all.sh), where every command
+#                 arrives over a fresh `ssh -o BatchMode=yes` login. A clone's
+#                 own key is not in its own authorized_keys, so the loopback
+#                 test cannot pass there; the parent's login proves more (the
+#                 real road works). authorized_keys must still exist and hold
+#                 a key sshd can parse. Not for use by hand.
+#
 # Anti-lockout design:
-#   * REFUSE to proceed unless ~nodemedic/.ssh/authorized_keys exists AND a fresh
-#     key-only login (ssh -o BatchMode=yes ... true) actually succeeds.
+#   * REFUSE to proceed unless ~USER/.ssh/authorized_keys exists AND a fresh
+#     key-only login (ssh -o BatchMode=yes ... true) actually succeeds
+#     (or the caller proved one, above).
 #   * validate with `sshd -t`, then confirm `sshd -T` reports passwordauth = no.
 #   * `reload` (not restart) sshd so THIS session is never dropped.
 #   * arm a self-revert: in REVERT_MIN minutes the drop-in is removed + sshd
 #     reloaded UNLESS you have run `... confirm`. So a mistake fixes itself.
 set -euo pipefail
 
+USER_NAME="${SUDO_USER:-nodemedic}"
+CALLER_PROVED=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) USER_NAME="${2:?--user needs a name}"; shift 2;;
+        --caller-proved-key-login) CALLER_PROVED=1; shift;;
+        --) shift; break;;
+        -*) echo "unknown option: $1" >&2; exit 1;;
+        *) break;;
+    esac
+done
+# A login name: lower case, digits, _ and -, not starting with a digit or -.
+case "$USER_NAME" in
+    ""|-*|[0123456789]*|*[!abcdefghijklmnopqrstuvwxyz0123456789_-]*)
+        echo "refusing an odd user name: $USER_NAME" >&2; exit 1;;
+esac
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/sshd_config.d/01-nodemedic-hardening.conf"
 DST="/etc/ssh/sshd_config.d/01-nodemedic-hardening.conf"
-USER_NAME="${SUDO_USER:-nodemedic}"
 USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
+[ -n "$USER_HOME" ] || { echo "no such user: $USER_NAME" >&2; exit 1; }
 AK="$USER_HOME/.ssh/authorized_keys"
 # The sentinel MUST survive a reboot and MUST be writable by the (possibly
 # sudo-scoped) operator — /run is tmpfs AND root-only, so a reboot inside the
@@ -34,7 +65,7 @@ BACKUP="/root/nodemedic-sshd-backup-$STAMP"
 
 # ---- confirm subcommand: cancel the pending self-revert --------------------
 if [ "${1:-}" = "confirm" ]; then
-    install -o "$USER_NAME" -g "$USER_NAME" -m 0644 /dev/null "$CONFIRM_SENTINEL"
+    install -o "$USER_NAME" -g "$(id -gn "$USER_NAME")" -m 0644 /dev/null "$CONFIRM_SENTINEL"
     # Disable BOTH the deadline timer and the boot-time check, then clean up.
     systemctl disable --now nodemedic-ssh-revert.timer 2>/dev/null || true
     systemctl disable --now nodemedic-ssh-revert.service 2>/dev/null || true
@@ -52,12 +83,21 @@ echo "== pre-flight: key auth MUST work before we disable passwords =="
 [ -s "$AK" ]  || { echo "REFUSING: $AK is missing/empty — install a key first." >&2; exit 1; }
 echo "   authorized_keys present ($(wc -l <"$AK") key line(s))"
 
+if [ "$CALLER_PROVED" = 1 ]; then
+    # The caller's own fresh BatchMode login is the proof (see the header).
+    # Still refuse a file sshd could not use: ssh-keygen -l lists the keys an
+    # authorized_keys holds and fails when there is none it can parse.
+    if ! ssh-keygen -l -f "$AK" >/dev/null 2>&1; then
+        echo "REFUSING: $AK holds no key sshd can use — install a key first." >&2
+        exit 1
+    fi
+    echo "   key-only login proven by the caller (a fresh BatchMode login from outside)"
 # Prove key-only auth succeeds RIGHT NOW (BatchMode disables any password prompt,
 # so success means a key was accepted). Loopback keeps it local + fast.
 # -n is REQUIRED: without it ssh inherits and consumes this script's stdin, so
 # driving apply_sshd.sh from a heredoc/pipe (e.g. a scripted clone bring-up)
 # silently eats every remaining command.
-if sudo -u "$USER_NAME" ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+elif sudo -u "$USER_NAME" ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         -o ConnectTimeout=8 "$USER_NAME@localhost" true 2>/dev/null; then
     echo "   key-only login to localhost SUCCEEDED"
 else
@@ -148,8 +188,8 @@ Key-only SSH is LIVE but NOT YET permanent.
   * NOW, from another terminal, open a FRESH session:
         ssh $USER_NAME@$(hostname).local
     It must succeed with your key (no password prompt).
-  * If it works:   sudo bash provisioning/security/apply_sshd.sh confirm
+  * If it works:   sudo bash $HERE/apply_sshd.sh --user $USER_NAME confirm
   * If it FAILS / you do nothing: password auth auto-restores in $REVERT_MIN min
     — AND on every reboot until you confirm, so a power cut can't strand you.
-Manual rollback anytime:  sudo bash provisioning/security/rollback_sshd.sh
+Manual rollback anytime:  sudo bash $HERE/rollback_sshd.sh
 EOF

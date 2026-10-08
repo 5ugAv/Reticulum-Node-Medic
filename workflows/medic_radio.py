@@ -34,6 +34,22 @@ from workflows.build import StepResult
 SPLIT_PORT = "/tmp/rnode-jonesey"          # the name the tool and Self Diagnose read
 GPS_STATE = "/dev/shm/nodemedic-gps.json"
 
+#: The root-owned helper that writes the three radio units (and the hand-over
+#: unit) from FIXED text — assets/scripts/radio_units.py, installed by the
+#: parent's clone flow (workflows/clone.py, install_radio_helper). A clone sets
+#: up its radio AFTER its sudo has been scoped, and writing a unit the app
+#: composed can never be a scoped rule (whoever writes a unit chooses its
+#: User= and ExecStart=), so on a medic that has the helper every privileged
+#: step below is one exact, whitelisted command (sudoers NM_RADIO_SETUP).
+#: A medic without it (one cloned before 2026-10-08) still has full sudo and
+#: takes the old road.
+RADIO_HELPER = "/usr/local/lib/nodemedic/radio-units"
+RADIO_HELPER_SOURCE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "assets", "scripts", "radio_units.py")
+#: Written by the helper; started (never enabled) to hand the radio over.
+HANDOVER_UNIT = "nm-radio-handover.service"
+
 
 def splitter_unit(by_id: str, user: str, home: str) -> str:
     return (
@@ -143,6 +159,14 @@ class MedicRadioSetup:
     def _priv(self, cmd: str) -> str:
         return f"sudo -n {cmd}"
 
+    def _has_helper(self) -> bool:
+        """Is the root radio helper installed (every clone since 2026-10-08)?
+        Asked once per set-up: the answer picks the road for all three
+        privileged steps, so they never mix."""
+        if getattr(self, "_helper", None) is None:
+            self._helper = self.connection.run(f"test -x {RADIO_HELPER}")[0] == 0
+        return self._helper
+
     # -- steps ---------------------------------------------------------------
 
     def _flash(self) -> StepResult:
@@ -226,13 +250,25 @@ class MedicRadioSetup:
         self.connection.run(f"[ -f {h}/.reticulum/config ] && [ ! -f "
                             f"{h}/.reticulum/config.pre-radio.bak ] && cp "
                             f"{h}/.reticulum/config {h}/.reticulum/config.pre-radio.bak")
-        ok = all([
-            self._write("/etc/systemd/system/rnode-splitter.service",
-                        splitter_unit(self.by_id, u, h), root=True),
-            self._write("/etc/systemd/system/rnsd.service", rnsd_unit(u, h), root=True),
-            self._write("/etc/systemd/system/lxmd.service", lxmd_unit(u, h), root=True),
-            self._write(f"{h}/.reticulum/config", reticulum_config(self.radio), root=False),
-        ])
+        if self._has_helper():
+            # the root helper writes the units from its own fixed text for the
+            # user sudo names, then daemon-reloads: the one argument is which
+            # board (sudoers NM_RADIO_SETUP)
+            import shlex
+            units = self.connection.run(self._priv(
+                f"{RADIO_HELPER} --port {shlex.quote(self.by_id)}"), timeout=60)[0] == 0
+        else:
+            # a medic cloned before the helper existed: full sudo, the old road
+            units = all([
+                self._write("/etc/systemd/system/rnode-splitter.service",
+                            splitter_unit(self.by_id, u, h), root=True),
+                self._write("/etc/systemd/system/rnsd.service", rnsd_unit(u, h), root=True),
+                self._write("/etc/systemd/system/lxmd.service", lxmd_unit(u, h), root=True),
+            ])
+        # written either way, as before (the old list ran every write)
+        config = self._write(f"{h}/.reticulum/config",
+                             reticulum_config(self.radio), root=False)
+        ok = units and config
         if self.connection.run(f"test -s {h}/.lxmd/config")[0] != 0:
             ok = ok and self._write(f"{h}/.lxmd/config", LXMD_CONFIG, root=False)
         return StepResult("wire_services", ok,
@@ -244,10 +280,20 @@ class MedicRadioSetup:
         while this app is still running: an app that came up before any mesh
         service made ITSELF the shared instance, and an rnsd started now would
         join it as a client and never open the radio (traced 2026-10-06)."""
-        code, out, err = self.connection.run(self._priv(
-            "sh -c 'systemctl daemon-reload && systemctl enable "
-            "rnode-splitter.service rnsd.service lxmd.service && "
-            "systemctl restart rnode-splitter.service'"), timeout=90)
+        if self._has_helper():
+            # two exact commands (the helper already daemon-reloaded) — each a
+            # whitelisted rule on a scoped medic, where `sh -c` never can be
+            code, out, err = self.connection.run(self._priv(
+                "systemctl enable rnode-splitter.service rnsd.service "
+                "lxmd.service"), timeout=60)
+            if code == 0:
+                code, out, err = self.connection.run(self._priv(
+                    "systemctl restart rnode-splitter.service"), timeout=60)
+        else:
+            code, out, err = self.connection.run(self._priv(
+                "sh -c 'systemctl daemon-reload && systemctl enable "
+                "rnode-splitter.service rnsd.service lxmd.service && "
+                "systemctl restart rnode-splitter.service'"), timeout=90)
         return StepResult("start_mesh", code == 0,
                           "Radio switched on." if code == 0 else
                           "Switching the radio on did not finish. Press Try again. ("
@@ -329,18 +375,27 @@ class MedicRadioSetup:
 
     def _hand_over(self) -> StepResult:
         """Stop this app, start rnsd (now the shared instance, with the radio),
-        start the app again — from a transient unit, so it outlives the app.
+        start the app again — from a unit of its own, so it outlives the app
+        (the helper's fixed nm-radio-handover.service, or on a medic without the
+        helper a transient one).
         The radio and GPS are checked after that (MedicRadioCheck). The
         "check pending" mark is set ONLY once the restart is queued; if it
         cannot be, the lock-off is undone so Try again runs the whole set-up."""
         if self.connection.run(f"systemctl cat {KIOSK_UNIT}")[0] == 0:
-            import time as _t
-            unit = f"nm-radio-handover-{int(_t.time())}"      # never collides
-            cmd = (f"systemd-run --no-block --collect --unit={unit} sh -c "
-                   f"'sleep 3; systemctl stop {KIOSK_UNIT}; "
-                   "systemctl restart rnsd.service lxmd.service; sleep 5; "
-                   f"systemctl start {KIOSK_UNIT}'")
-            code, out, err = self.connection.run(self._priv(cmd), timeout=30)
+            if self._has_helper():
+                # the same sequence, as the fixed unit the helper wrote:
+                # starting it is one exact command (sudoers NM_RADIO_SETUP),
+                # and --no-block returns before the unit stops this app
+                code, out, err = self.connection.run(self._priv(
+                    f"systemctl start --no-block {HANDOVER_UNIT}"), timeout=30)
+            else:
+                import time as _t
+                unit = f"nm-radio-handover-{int(_t.time())}"      # never collides
+                cmd = (f"systemd-run --no-block --collect --unit={unit} sh -c "
+                       f"'sleep 3; systemctl stop {KIOSK_UNIT}; "
+                       "systemctl restart rnsd.service lxmd.service; sleep 5; "
+                       f"systemctl start {KIOSK_UNIT}'")
+                code, out, err = self.connection.run(self._priv(cmd), timeout=30)
             if code == 0:
                 mark_check_pending(self.connection)
                 return StepResult("hand_over", True,

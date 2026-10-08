@@ -51,10 +51,13 @@ STEP_WORDS = {
     "configure_autostart": "Starting Node Medic at power-on",
     "bake_recovery_bootorder": "Setting up a rescue path",
     "install_card_helper": "Letting it make medics too",
+    "install_radio_helper": "Letting it set up its own radio",
     "ensure_ssh_keypair": "Giving it its own door key (for repairs)",
     "final_verification": "Checking everything",
     "restart_into_tool": "Restarting into Node Medic",
     "confirm_tool_running": "Making sure Node Medic stays open",
+    "harden_new_medic": "Locking its doors",
+    "remove_parent_key": "Settling who keeps a key",
 }
 
 

@@ -281,8 +281,15 @@ class ReticulumSoftwareCheck(DiagnosticCheck):
     def _fix_acl(self, issue: Issue) -> Fix:
         port = self.profile.radio.serial_port
         user = self.profile.ssh_user
+        # The ACL lands on the tty device either way (setfacl follows a
+        # /dev/serial/by-id link), so name the tty itself: the medic's scoped
+        # sudoers pins setfacl to tty names of a fixed shape, because a rule
+        # ending in `*` would also accept extra, caller-chosen paths
+        # (provisioning/sudoers.d/nodemedic, NM_DIAG; 2026-10-08).
+        real = (self._cmd_output(f"readlink -f {port}") or "").strip()
+        target = real if real.startswith("/dev/") else port
         return self._simple_fix(
-            issue, f"sudo setfacl -m u:{user}:rw {port}",
+            issue, f"sudo setfacl -m u:{user}:rw {target}",
             f"Granted {user} rw on {port}.")
 
     def _fix_startup_race(self, issue: Issue) -> Fix:

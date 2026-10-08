@@ -67,9 +67,11 @@ def test_no_passwordless_rule_can_touch_a_block_device_by_wildcard():
         for wide in ("mount * ", "of=/dev/* ", "partprobe /dev/*",
                      "--device /dev/* "):
             assert wide not in rule, f"wildcard block-device rule survives: {rule}"
-    # and the narrow forms are actually there
+    # and the narrow forms are actually there. dd's target is narrower still
+    # since 2026-10-08: one character class, because a `*` in sudo's arguments
+    # spans into extra arguments (tests/test_privileged_commands.py)
     assert "/usr/bin/mount /dev/sd* /tmp/nm_sd_boot" in policy
-    assert "/usr/bin/dd of=/dev/sd* bs=4M conv=fsync status=progress" in policy
+    assert "/usr/bin/dd of=/dev/sd[a-z] bs=4M conv=fsync status=progress" in policy
     # never the medic's own disk, which is mmcblk0 on this build (the comments
     # name it; no RULE may)
     for rule in rules:

@@ -8,7 +8,6 @@ Two guarantees:
      a new call site or a narrowed alias can't silently drift apart.
 """
 
-import fnmatch
 import os
 import re
 
@@ -58,7 +57,9 @@ def test_no_sudo_bash_or_sh_dash_c_in_runtime_modules():
 # --------------------------------------------------------------------------- #
 
 def _parse_sudoers_cmnds(path):
-    """Return the list of Cmnd strings from every Cmnd_Alias in the file."""
+    """Return the list of Cmnd strings from every Cmnd_Alias in the file.
+    Splits on UNESCAPED commas only (`dmesg --level=emerg\\,alert...`)."""
+    from tests.sudoersutil import split_unescaped
     text = open(path).read()
     text = text.replace("\\\n", " ")                 # join line continuations
     cmnds = []
@@ -67,30 +68,19 @@ def _parse_sudoers_cmnds(path):
         m = re.match(r"Cmnd_Alias\s+\w+\s*=\s*(.+)$", line)
         if not m:
             continue
-        for c in m.group(1).split(","):
-            c = c.strip()
-            if c:
-                cmnds.append(c)
+        cmnds += split_unescaped(m.group(1))
     return cmnds
 
 
-def _tokens(s):
-    return s.split()
-
-
 def _covered(argv, cmnds):
-    """True if some sudoers Cmnd matches *argv* the way sudo would: identical
-    executable path, equal argument count, each arg fnmatch-ing its pattern.
-    (`\\:` in a pattern is sudo's escaped literal colon.)"""
-    for c in cmnds:
-        pt = _tokens(c.replace("\\:", ":"))
-        if len(pt) != len(argv):
-            continue
-        if pt[0] != argv[0]:
-            continue
-        if all(fnmatch.fnmatch(a, p) for a, p in zip(argv[1:], pt[1:])):
-            return True
-    return False
+    """True if some sudoers Cmnd matches *argv* the way sudo DOES (2026-10-08:
+    the old per-argument comparison was kinder than sudo). sudo matches the
+    arguments as ONE string and `*` spans spaces, so `/dev/tty*` also matched
+    `/dev/tty1 /dev/mmcblk0`; and a command with no arguments allows any.
+    tests/sudoersutil.py holds the matcher; tests/test_privileged_commands.py
+    the full inventory it now guards."""
+    from tests.sudoersutil import Cmnd
+    return any(Cmnd(c).matches(argv) for c in cmnds)
 
 
 # Each entry: (call site, the argv sudo receives after secure_path resolution).
@@ -182,18 +172,50 @@ def test_setfacl_is_pinned_to_serial_ports_not_block_devices():
     """setfacl must reach SERIAL ports only. A wildcard like /dev/* also matches
     block devices and /dev/mem, letting the app grant itself rw on the medic's own
     root disk — a full-root escalation. It must be denied for those, allowed for
-    the serial forms the code actually uses (ttyACM/USB and /dev/serial by-id)."""
+    the serial forms the code actually uses.
+
+    2026-10-08: `/dev/tty*` and `/dev/serial/*` had the same hole one level
+    down — sudo's `*` spans arguments, so a SECOND path after the tty was
+    granted too. The rule now names tty shapes with character classes and the
+    app's user; a /dev/serial/by-id link is resolved to its tty by the caller
+    (diagnostics/reticulum_software.py _fix_acl), as setfacl did anyway."""
     cmnds = _parse_sudoers_cmnds(SUDOERS)
 
-    def setfacl(path):
-        return ["/usr/bin/setfacl", "-m", "u:nodemedic:rw", path]
+    def setfacl(*paths, user="nodemedic"):
+        return ["/usr/bin/setfacl", "-m", f"u:{user}:rw", *paths]
 
     # MUST be allowed — the legitimate serial-port targets.
-    for ok in ("/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyAMA10",
-               "/dev/serial/by-id/usb-Espressif_USB_JTAG-if00"):
+    for ok in ("/dev/ttyACM0", "/dev/ttyUSB0", "/dev/ttyAMA10", "/dev/ttyACM12",
+               "/dev/ttyS0"):
         assert _covered(setfacl(ok), cmnds), f"serial port wrongly denied: {ok}"
 
     # MUST be denied — block devices, memory, and arbitrary paths (escalation).
     for bad in ("/dev/mmcblk0", "/dev/sda", "/dev/vda", "/dev/nvme0n1",
-                "/dev/mem", "/dev/kmem", "/etc/shadow", "/dev/loop0"):
+                "/dev/mem", "/dev/kmem", "/etc/shadow", "/dev/loop0",
+                "/dev/serial/by-id/usb-Espressif_USB_JTAG-if00"):
         assert not _covered(setfacl(bad), cmnds), f"escalation path allowed: {bad}"
+    # ...and never a second path riding behind a good one, or another user
+    assert not _covered(setfacl("/dev/ttyACM0", "/dev/mmcblk0"), cmnds)
+    assert not _covered(setfacl("/dev/ttyACM0", user="root"), cmnds)
+
+
+def test_the_acl_fix_names_the_tty_a_by_id_link_points_at():
+    """The by-id form left the policy, so the fix must resolve it first."""
+    from diagnostics.reticulum_software import ReticulumSoftwareCheck
+    from node_profile import NodeProfile
+    from transport.connection import EmulatedConnection
+    by_id = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit-if00"
+    conn = EmulatedConnection(default_code=0, default_stdout="")
+    conn.rule(f"readlink -f {by_id}", 0, "/dev/ttyACM0\n", "")
+    profile = NodeProfile()
+    profile.radio.serial_port = by_id
+    check = ReticulumSoftwareCheck(conn, profile)
+    fix = check._fix_acl(None)
+    assert fix.success
+    assert f"sudo setfacl -m u:{profile.ssh_user}:rw /dev/ttyACM0" in conn.history
+    # an answer that is not a device keeps the configured port
+    conn2 = EmulatedConnection(default_code=0, default_stdout="")
+    conn2.rule("readlink -f", 1, "", "")
+    check2 = ReticulumSoftwareCheck(conn2, profile)
+    check2._fix_acl(None)
+    assert f"sudo setfacl -m u:{profile.ssh_user}:rw {by_id}" in conn2.history

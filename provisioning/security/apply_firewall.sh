@@ -5,11 +5,29 @@
 #   sudo bash provisioning/security/apply_firewall.sh          # load + arm self-revert
 #   sudo bash provisioning/security/apply_firewall.sh confirm  # after a NEW login works
 #
+# Option (before `confirm`): --user NAME — the account named in the "log in
+# again" hint (default: your login name, else nodemedic). The rules themselves
+# name no user.
+#
 # Loads ONLY the nodemedic_ssh table (see nftables/nodemedic-ssh.nft) — it never
 # touches any other firewall rules. Because the ruleset ACCEPTS established/related
 # first, your current session survives the load. A self-revert (flush our table)
 # fires in REVERT_MIN minutes unless you `... confirm`. `confirm` also persists it.
 set -euo pipefail
+
+NM_USER=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) NM_USER="${2:?--user needs a name}"; shift 2;;
+        --) shift; break;;
+        -*) echo "unknown option: $1" >&2; exit 1;;
+        *) break;;
+    esac
+done
+case "$NM_USER" in
+    -*|[0123456789]*|*[!abcdefghijklmnopqrstuvwxyz0123456789_-]*)
+        echo "refusing an odd user name: $NM_USER" >&2; exit 1;;
+esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/nftables/nodemedic-ssh.nft"
@@ -47,6 +65,12 @@ echo "   loaded. current SSH sources allowed: loopback, RFC1918, 10.55.0.0/29."
 
 echo "== arm self-revert (T-$REVERT_MIN min) =="
 rm -f "$CONFIRM_SENTINEL"
+# An earlier, unconfirmed apply may still have its revert pending. Its unit name
+# is this one's, so systemd-run would refuse and leave THIS load with no revert
+# armed at all; stop it first (the table was just reloaded, so re-arming from
+# now is exactly right).
+systemctl stop nodemedic-fw-revert.timer 2>/dev/null || true
+systemctl reset-failed nodemedic-fw-revert.timer nodemedic-fw-revert.service 2>/dev/null || true
 systemd-run --unit=nodemedic-fw-revert --on-active="${REVERT_MIN}min" \
     /usr/bin/env bash -c \
     "[ -e '$CONFIRM_SENTINEL' ] || { nft delete table inet nodemedic_ssh 2>/dev/null; logger -t nodemedic 'ssh firewall self-reverted (never confirmed)'; }" \
@@ -56,8 +80,8 @@ cat <<EOF
 
 Firewall LIVE but NOT persistent yet (gone on reboot / or in $REVERT_MIN min).
   * From another machine ON THE SAME LAN, open a FRESH session:
-        ssh $(logname 2>/dev/null || echo nodemedic)@$(hostname).local
-  * If it works:  sudo bash provisioning/security/apply_firewall.sh confirm
+        ssh ${NM_USER:-$(logname 2>/dev/null || echo nodemedic)}@$(hostname).local
+  * If it works:  sudo bash $HERE/apply_firewall.sh confirm
   * If it fails / you do nothing: the rule auto-flushes in $REVERT_MIN min.
-Manual rollback:  sudo bash provisioning/security/rollback_firewall.sh
+Manual rollback:  sudo bash $HERE/rollback_firewall.sh
 EOF
