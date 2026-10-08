@@ -69,6 +69,29 @@ sudo -n /usr/bin/systemctl restart rnode-splitter
 sudo bash provisioning/security/rollback_sudoers.sh    # restores newest backup
 ```
 
+Two promises the policy keeps (2026-10-08), held to the code by
+`tests/test_card_mounts.py`:
+
+- **Card mounts live in root-owned folders, are pinned, and never follow the
+  card's own links.** Every card the app mounts goes to a folder under
+  `/run/nodemedic` (`sd_boot`, `piboot`), which root creates with one exact
+  `install -d` rule; `/run` is root's, so the app account cannot put anything
+  of its own there. Each mount rule pins the device pattern, the folder and one
+  option string, `nosymfollow,nodev,nosuid,noexec`: a link stored on the card
+  is never followed, a device file on it opens nothing, and nothing on it runs
+  or gains privilege, so what root writes into one of these folders lands on
+  the card. `tee`, `touch` and `umount` name exact files and folders.
+  `nosymfollow` needs Linux 5.10 and util-linux 2.38 (Debian 12 or later).
+  `provisioning/card_mount.py` builds the commands.
+- **sudo never remembers the keeper's password for the app account.**
+  `Defaults:<user> timestamp_timeout=0` (rendered for the account like the
+  grant line): a password typed for it is asked for again every time, so only
+  the exact passwordless rules ever run without one.
+
+The code and the policy move together: a medic running code from 2026-10-08 on
+needs this policy re-applied (this step, with the password), or its card
+mounts are refused.
+
 ## 2. Key-only SSH (anti-lockout)
 
 `apply_sshd.sh` **refuses** unless `authorized_keys` exists **and** a fresh
@@ -122,8 +145,9 @@ uncomment a `ListenAddress` in the sshd drop-in.
    it is the recommended next step (kept out of this pass to avoid changing the
    provisioning flow untested).
 2. **`dd` / `mount` in `NM_IMAGING` are inherently powerful.** They are pinned to
-   `of=/dev/*` / fixed mountpoints, but raw block-device writes can't be fully
-   constrained by sudoers. The real guard is `pi_imager.is_safe_target()` /
+   `of=/dev/sd[a-z]` and to root-owned mount folders with pinned options, but
+   raw block-device writes can't be fully constrained by sudoers. The real
+   guard is `pi_imager.is_safe_target()` /
    `sd_edit.medic_root_disk()` in Python (both refuse the medic's own disk). If
    you want defence-in-depth, wrap these in a root helper that re-checks the
    target and whitelist only the helper.
@@ -177,4 +201,5 @@ sudoers takes root away from the app account — so after the "a non-whitelisted
    `/var/log/nodemedic-harden.log`.
 
 The keeper can still use `sudo` on a clone **with the written-down password**
-(the account stays in the `sudo` group; only the passwordless grant is scoped).
+(the account stays in the `sudo` group; only the passwordless grant is scoped)
+— typed each time, since sudo never remembers it for the app account.

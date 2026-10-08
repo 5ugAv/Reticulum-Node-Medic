@@ -39,6 +39,7 @@ import shlex
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from provisioning import card_mount
 from provisioning.by_id import (          # the ONE serial reader, shared
     PLACEHOLDER_SERIALS, by_id_serial, is_uniquely_identified)
 from provisioning.gadget import (GADGET_USB_IP, HOST_USB_IP, USB_PREFIX,
@@ -137,24 +138,27 @@ def repo_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def bake_commands(device_path: str, boot_mnt: str = "/tmp/rnm-piboot",
-                  root_mnt: str = "/tmp/rnm-piroot") -> List[str]:
+def bake_commands(device_path: str, boot_mnt: str = card_mount.PIBOOT,
+                  root_mnt: str = card_mount.PIROOT) -> List[str]:
     """The full mount → bake → unmount plan for a card at *device_path*.
 
     Partition naming follows the imager's convention: ``p1``/``p2`` for
     mmcblk-style devices, ``1``/``2`` for ``sdX``. The caller is responsible for
     having checked the device is a safe removable target — this only builds
-    strings.
+    strings. Both mount points are root-owned folders, mounted with the
+    policy's pinned options (provisioning.card_mount).
     """
     suffix = "p" if device_path[-1].isdigit() else ""
-    boot = shlex.quote(f"{device_path}{suffix}1")
-    root = shlex.quote(f"{device_path}{suffix}2")
+    boot = f"{device_path}{suffix}1"
+    root = f"{device_path}{suffix}2"
     bq, rq = shlex.quote(boot_mnt), shlex.quote(root_mnt)
     cmds = [f"sudo partprobe {shlex.quote(device_path)} 2>/dev/null; sleep 1",
-            f"sudo mkdir -p {bq} && sudo mount {boot} {bq}"]
+            f"sudo {card_mount.make_dir(boot_mnt)} && "
+            f"sudo {card_mount.mount(boot, boot_mnt)}"]
     cmds += boot_partition_commands(boot_mnt)
     cmds += [f"sudo sync && sudo umount {bq}",
-             f"sudo mkdir -p {rq} && sudo mount {root} {rq}"]
+             f"sudo {card_mount.make_dir(root_mnt)} && "
+             f"sudo {card_mount.mount(root, root_mnt)}"]
     cmds += rootfs_commands(root_mnt)
     cmds += [f"sudo sync && sudo umount {rq}"]
     return cmds

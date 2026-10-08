@@ -47,10 +47,17 @@ Runner = Callable[[str], str]
 #: Where a boot partition is mounted to be read, when it is not already.
 #:
 #: THE MEDIC'S SUDO IS SCOPED, and it whitelists mount by its FULL COMMAND LINE
-#: — "/usr/bin/mount * /tmp/nm_sd_boot" and nothing else. This module invented
-#: its own mount point, so every mount was silently refused and the report came
-#: back "couldn't look" against a perfectly good card (live, 2026-08-09).
-#: Reusing sd_edit's path is not tidiness; it is the only path that is allowed.
+#: — a root-owned folder under /run/nodemedic, one pinned option string, and
+#: nothing else (provisioning.card_mount). This module once invented its own
+#: mount point, so every mount was silently refused and the report came back
+#: "couldn't look" against a perfectly good card (live, 2026-08-09). Reusing
+#: sd_edit's folder is not tidiness; it is the only kind of place allowed.
+#:
+#: STILL DORMANT (tests/test_wiring.py): this module mounts READ-ONLY, adding
+#: ``ro`` to the pinned options, and the policy grants no read-only mount — so
+#: on a scoped medic it reports "couldn't look". Grant that exact line before
+#: wiring it to a screen.
+from provisioning import card_mount
 from provisioning.sd_edit import SD_MOUNT as INSPECT_MOUNT
 
 #: The marker Raspberry Pi OS puts in cmdline.txt and removes once first boot
@@ -238,8 +245,8 @@ def diagnose(run: Runner = _default_run, pi_key: str = "") -> CardReport:
     mnt = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
     mounted_here = False
     if not mnt:
-        run(f"mkdir -p {INSPECT_MOUNT}")
-        run(f"sudo -n mount -o ro {part} {INSPECT_MOUNT} 2>/dev/null")
+        run(f"sudo -n {card_mount.make_dir(INSPECT_MOUNT)}")
+        run(f"sudo -n mount -o ro,{card_mount.OPTIONS} {part} {INSPECT_MOUNT} 2>/dev/null")
         chk = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
         if chk:
             mnt, mounted_here = chk, True
@@ -398,8 +405,8 @@ def _check_rootfs(run: Runner, rep: CardReport, disk: Optional[str]) -> None:
     mnt = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
     mounted_here = False
     if not mnt:
-        run(f"mkdir -p {INSPECT_MOUNT}")
-        run(f"sudo -n mount -o ro {part} {INSPECT_MOUNT} 2>/dev/null")
+        run(f"sudo -n {card_mount.make_dir(INSPECT_MOUNT)}")
+        run(f"sudo -n mount -o ro,{card_mount.OPTIONS} {part} {INSPECT_MOUNT} 2>/dev/null")
         chk = (run(f"findmnt -n -o TARGET {part} 2>/dev/null | head -1") or "").strip()
         if chk:
             mnt, mounted_here = chk, True

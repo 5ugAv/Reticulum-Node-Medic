@@ -109,6 +109,20 @@ _TEE_BACKLIGHT = ["/usr/bin/tee", "/sys/class/backlight/panel_backlight@1/bright
 _TIMEDATECTL = "/usr/bin/timedatectl"
 _SYSTEMCTL = "/usr/bin/systemctl"
 _NMCLI = "/usr/bin/nmcli"
+#: A card mount, as provisioning/card_mount.py builds it: a root-owned folder
+#: under /run/nodemedic, made by `install -d`, mounted with the pinned options.
+_RUN = "/run/nodemedic"
+_OPTS = "nosymfollow,nodev,nosuid,noexec"
+
+
+def _make_dir(name):
+    return ["/usr/bin/install", "-d", "-m", "0755", "-o", "root", "-g", "root",
+            _RUN, f"{_RUN}/{name}"]
+
+
+def _mount(part, name):
+    return ["/usr/bin/mount", "-o", _OPTS, part, f"{_RUN}/{name}"]
+
 
 MEDIC = {
     # the screen's brightness slider (the device is rendered per machine)
@@ -175,14 +189,16 @@ MEDIC = {
      'f"sudo -n uhubctl -l {self.hub} -p {self.hub_port} -a on"'): [
         ["/usr/sbin/uhubctl", "-l", "3", "-p", "1", "-a", "on"]],
     # a node's card in the medic's reader: baking the wired link
-    ("provisioning/sd_edit.py", 'f"mkdir -p {mount} && sudo -n mount {part} {mount}"'): [
-        ["/usr/bin/mount", "/dev/sda1", "/tmp/nm_sd_boot"],
-        ["/usr/bin/mount", "/dev/mmcblk1p1", "/tmp/nm_sd_boot"]],
+    ("provisioning/sd_edit.py",
+     'f"sudo -n {card_mount.make_dir(mount)} && " '
+     'f"sudo -n {card_mount.mount(part, mount)}"'): [
+        _make_dir("sd_boot"), _mount("/dev/sda1", "sd_boot"),
+        _mount("/dev/mmcblk1p1", "sd_boot")],
     ("provisioning/sd_edit.py", 'f"sudo -n umount {mount}"'): [
-        ["/usr/bin/umount", "/tmp/nm_sd_boot"]],
+        ["/usr/bin/umount", f"{_RUN}/sd_boot"]],
     ("provisioning/sd_edit.py", 'f"echo {b64} | base64 -d | sudo -n tee {path} > /dev/null"'): [
-        ["/usr/bin/tee", "/tmp/nm_sd_boot/config.txt"],
-        ["/usr/bin/tee", "/tmp/nm_sd_boot/cmdline.txt"]],
+        ["/usr/bin/tee", f"{_RUN}/sd_boot/config.txt"],
+        ["/usr/bin/tee", f"{_RUN}/sd_boot/cmdline.txt"]],
     # imaging a card (a node's — or the NEXT medic's, when this one clones)
     ("provisioning/pi_imager.py",
      'f"xzcat {img} | sudo dd of={dev} bs=4M conv=fsync status=progress " f"&& sync"'): [
@@ -192,13 +208,13 @@ MEDIC = {
         ["/usr/local/lib/nodemedic/prepare-card", "--device", "/dev/sda",
          "--config", "/tmp/nm-card-config.json"]],
     ("workflows/mitosis_card.py",
-     'f"mkdir -p {mnt} && sudo -n mount {shlex.quote(dev)} {mnt} " f"&& {{ {reads} ; }} ; '
-     'rc=$? ; sudo -n sync ; " f"sudo -n umount {mnt} && echo \'{marker}__UMOUNT_OK__\' ; '
-     'exit $rc"'): [
-        ["/usr/bin/mount", "/dev/sda1", "/tmp/nm_sd_boot"],
-        ["/usr/bin/mount", "/dev/sda2", "/tmp/rnm-piboot"],
+     'f"sudo -n {card_mount.make_dir(mnt)} && sudo -n {card_mount.mount(dev, mnt)} " '
+     'f"&& {{ {reads} ; }} ; rc=$? ; sudo -n sync ; " '
+     'f"sudo -n umount {mnt} && echo \'{marker}__UMOUNT_OK__\' ; exit $rc"'): [
+        _make_dir("sd_boot"), _make_dir("piboot"),
+        _mount("/dev/sda1", "sd_boot"), _mount("/dev/sda2", "piboot"),
         ["/usr/bin/sync"],
-        ["/usr/bin/umount", "/tmp/nm_sd_boot"], ["/usr/bin/umount", "/tmp/rnm-piboot"]],
+        ["/usr/bin/umount", f"{_RUN}/sd_boot"], ["/usr/bin/umount", f"{_RUN}/piboot"]],
     ("provisioning/pi_usbboot.py", '["sudo", "-n", "rpiboot", "-d", MSD_PAYLOAD_64]'): [
         ["/usr/bin/rpiboot", "-d", "mass-storage-gadget64"]],
     ("provisioning/pi_usbboot.py", '["sudo", "-n", "rpiboot"]'): [["/usr/bin/rpiboot"]],
@@ -277,8 +293,10 @@ ELSEWHERE = [
      "scripts/setup_medic.py configures a fresh Pi OS Lite card from the "
      "repository before anything on it is locked down. It refuses to start "
      "without the card's full sudo, the position the clone's own steps are in "
-     "before harden_new_medic; a keeper who has since locked the medic re-runs "
-     "it with their password.",
+     "before harden_new_medic. On a medic that has since been locked, typing "
+     "the password first does not help: sudo never remembers it for the app "
+     "account (timestamp_timeout=0), so the keeper lifts the lock "
+     "(rollback_sudoers.sh) for the run and applies it again after.",
      {("workflows/medic_setup.py", s) for s in (
          '"sudo -n true"',
          's.priv("apt-get -o DPkg::Lock::Timeout=300 update")',
@@ -392,22 +410,22 @@ ELSEWHERE = [
          'f"{shlex.quote(repo_root())} {shlex.quote(mnt)}"',
          'f"echo {shlex.quote(b64)} | base64 -d | sudo tee {shlex.quote(path)} >/dev/null"',
          'f"sudo ln -sf {shlex.quote(GADGET_SERVICE_PATH)} " f"{shlex.quote(mnt + _WANTS_LINK)}"',
-         'f"sudo mkdir -p {bq} && sudo mount {boot} {bq}"',
-         'f"sudo mkdir -p {rq} && sudo mount {root} {rq}"',
+         'f"sudo {card_mount.make_dir(boot_mnt)} && " f"sudo {card_mount.mount(boot, boot_mnt)}"',
+         'f"sudo {card_mount.make_dir(root_mnt)} && " f"sudo {card_mount.mount(root, root_mnt)}"',
          'f"sudo mkdir -p {shlex.quote(mnt + nm_dir)}"',
          'f"sudo mkdir -p {shlex.quote(mnt)}{_WANTS_DIR}"',
          'f"sudo partprobe {shlex.quote(device_path)} 2>/dev/null; sleep 1"',
          'f"sudo sync && sudo umount {bq}"', 'f"sudo sync && sudo umount {rq}"')}
      | {("provisioning/card_forensics.py", s) for s in (
-         'f"sudo -n mount -o ro {part} {INSPECT_MOUNT} 2>/dev/null"',
+         'f"sudo -n {card_mount.make_dir(INSPECT_MOUNT)}"',
+         'f"sudo -n mount -o ro,{card_mount.OPTIONS} {part} {INSPECT_MOUNT} 2>/dev/null"',
          'f"sudo -n umount {INSPECT_MOUNT} 2>/dev/null"')}
      | {("provisioning/pi_imager.py", s) for s in (
          '"sudo partprobe "',
          'f"echo {shlex.quote(b64)} | base64 -d | sudo tee " f"{mnt}/{name} >/dev/null"',
          'f"echo {shlex.quote(b64)} | base64 -d | sudo tee " f"{q}/{name} >/dev/null"',
          'f"echo {shlex.quote(toml_b64)} | base64 -d | sudo tee {mnt}/custom.toml >/dev/null"',
-         'f"sudo mkdir -p {mnt} && sudo mount {part} {mnt}"',
-         'f"sudo mkdir -p {q} && sudo mount {shlex.quote(part)} {q}"',
+         'f"sudo {card_mount.make_dir(mnt)} && sudo {card_mount.mount(part, mnt)}"',
          'f"sudo partprobe {shlex.quote(device_path)} 2>/dev/null; sleep 1"',
          'f"sudo sync && sudo umount {mnt}"', 'f"sudo sync && sudo umount {q}"',
          'f"sudo touch {mnt}/ssh"', 'f"sudo touch {q}/ssh"')}
@@ -508,6 +526,7 @@ _MUST_REFUSE = [
     ["/usr/bin/true"],
     ["/usr/bin/tee", "/etc/sudoers.d/zz"], ["/usr/bin/tee", "/etc/shadow"],
     ["/usr/bin/tee", "/tmp/nm_sd_boot/../../etc/sudoers.d/zz"],
+    ["/usr/bin/tee", f"{_RUN}/sd_boot/../../../etc/sudoers.d/zz"],
     ["/usr/bin/systemctl", "restart", "ssh"],
     ["/usr/bin/systemctl", "restart", "reticulum-node-medic.service", "ssh"],
     ["/usr/bin/systemctl", "stop", "reticulum-node-medic.service"],
@@ -538,6 +557,11 @@ _MUST_REFUSE = [
     ["/usr/local/lib/nodemedic/radio-units", "--handover"],
     # the medic's own disk, by any rule
     ["/usr/bin/mount", "/dev/mmcblk0p1", "/tmp/nm_sd_boot"],
+    _mount("/dev/mmcblk0p1", "sd_boot"), _mount("/dev/mmcblk0p2", "piboot"),
+    # nothing in /tmp any more (tests/test_card_mounts.py has the full set)
+    ["/usr/bin/mount", "/dev/sda1", "/tmp/nm_sd_boot"],
+    ["/usr/bin/mkdir", "-p", "/tmp/rnm-piboot"],
+    ["/usr/bin/tee", "/tmp/rnm-piboot/custom.toml"], ["/usr/bin/touch", "/tmp/rnm-piboot/ssh"],
 ]
 
 
@@ -568,11 +592,6 @@ REVIEWED_WILDCARDS = {
     "/usr/bin/timedatectl set-timezone *": "sets the zone",
     "/usr/sbin/uhubctl": "USB port power only (no arguments = any; uhubctl writes no file)",
     "/usr/sbin/uhubctl -l * -p * -a *": "the same",
-    "/usr/bin/mount /dev/sd* /tmp/nm_sd_boot":
-        "a card reader at a fixed point; without the caller's own physical media "
-        "an extra option buys nothing",
-    "/usr/bin/mount /dev/mmcblk1* /tmp/nm_sd_boot": "the same, built-in reader",
-    "/usr/bin/mount /dev/sd* /tmp/rnm-piboot": "the same",
     "/usr/bin/sync": "flushes buffers (no arguments = any)",
     "/usr/sbin/partprobe /dev/sd*": "re-reads partition tables",
     "/usr/local/lib/nodemedic/prepare-card --device /dev/sd* --config /tmp/*":
@@ -600,9 +619,10 @@ def test_every_spanning_wildcard_is_a_reviewed_one(policies):
 
 
 def test_rendering_for_a_clone_moves_only_the_user(policies):
-    """Only three things name a user in a rule: the grant line, the setfacl
-    ACL and the usermod group add. Nothing else may change — in particular not
-    the paths that merely contain the word (/usr/local/lib/nodemedic/...)."""
+    """Only four lines name a user: the grant line, the account's Defaults,
+    the setfacl ACL and the usermod group add. Nothing else may change — in
+    particular not the paths that merely contain the word
+    (/usr/local/lib/nodemedic/..., /run/nodemedic/...)."""
     original = policies["nodemedic"][0].splitlines()
     clone = policies["pi"][0].splitlines()
     assert len(original) == len(clone)
@@ -610,10 +630,12 @@ def test_rendering_for_a_clone_moves_only_the_user(policies):
     assert changed
     for a, b in changed:
         assert (a.startswith("nodemedic ALL=(root) NOPASSWD:")
+                or a == "Defaults:nodemedic timestamp_timeout=0"
                 or "setfacl -m u\\:nodemedic\\:rw" in a
                 or a.strip() == "/usr/sbin/usermod -aG dialout nodemedic"), (a, b)
         assert a.replace("nodemedic", "pi") == b, (a, b)
     assert "/usr/local/lib/nodemedic/prepare-card" in policies["pi"][0]
+    assert "/run/nodemedic/sd_boot" in policies["pi"][0]
     assert not any(ln.startswith("nodemedic ") for ln in clone)
 
 

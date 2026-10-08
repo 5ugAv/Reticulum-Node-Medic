@@ -25,12 +25,15 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from node_profile import NodeHardware
+from provisioning import card_mount
 from provisioning.reachability import link_kind
 from provisioning.uart_console import config_txt_with_uart, cmdline_with_uart
 from provisioning.gadget import config_txt_with_gadget, cmdline_with_gadget
 
-#: Where we mount a candidate boot partition to inspect/edit it.
-SD_MOUNT = "/tmp/nm_sd_boot"
+#: Where we mount a candidate boot partition to inspect/edit it: a root-owned
+#: folder, mounted with the policy's pinned options (provisioning.card_mount),
+#: so the tee below writes onto the card and nowhere else.
+SD_MOUNT = card_mount.SD_BOOT
 
 Runner = Callable[[str], str]
 
@@ -149,7 +152,10 @@ def bake_reachability_via_sd(hardware: NodeHardware,
     if existing and existing[0]:
         mount_dir, ours = existing[0], False
     else:
-        code, out = run_code(run, f"mkdir -p {mount} && sudo -n mount {part} {mount}")
+        # root makes the folder (/run is root's), then mounts with the options
+        # the policy pins; each is one exact rule in sudoers.d/nodemedic
+        code, out = run_code(run, f"sudo -n {card_mount.make_dir(mount)} && "
+                                  f"sudo -n {card_mount.mount(part, mount)}")
         if code != 0:
             return SdEditResult(False, f"Could not mount {part}: {out[-160:]}",
                                 device=disk)
