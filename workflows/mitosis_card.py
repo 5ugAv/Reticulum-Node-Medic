@@ -23,7 +23,7 @@ import secrets
 import subprocess
 from typing import Callable, Optional, Tuple
 
-from provisioning import pi_imager
+from provisioning import card_mount, pi_imager
 
 #: Small, unambiguous word pool for the write-it-down password. All lowercase,
 #: no homoglyphs (no l/1, O/0 confusion), 5-6 letters each.
@@ -177,8 +177,18 @@ def image_medic_card(device_path: str, display_name: str,
 #: top of it and the single umount popped only the upper one, leaving a
 #: filesystem mounted while the next screen told the operator to pull the card
 #: out.
-_MNT_ROOT = "/tmp/rnm-piboot"
-_MNT_BOOT = "/tmp/nm_sd_boot"
+#:
+#: Both are root-owned folders under /run/nodemedic, mounted with the pinned
+#: options (provisioning.card_mount), nosymfollow among them: a link stored on
+#: the card is not followed, by root or by these reads. So every path read
+#: below must be a plain file under plain folders: config.txt sits on FAT,
+#: which cannot hold a link; the .ssh folder and its key file are created by
+#: the root helper itself (prepare_card.activate_account); /etc/hostname is a
+#: plain file as Raspberry Pi OS builds it (pi-gen writes it with `echo >`),
+#: rewritten in place by the helper. Not yet seen on a real card: if it were
+#: ever a link it would read back empty and the Name check would say "bad".
+_MNT_ROOT = card_mount.PIBOOT
+_MNT_BOOT = card_mount.SD_BOOT
 
 
 def _read_card(device_path: str, part: int, paths, mnt: str, run_shell=None):
@@ -191,8 +201,9 @@ def _read_card(device_path: str, part: int, paths, mnt: str, run_shell=None):
     condemned to a nine-minute rewrite for an environmental reason.
 
     NOT read-only, and the docstring no longer pretends otherwise: the sudo
-    policy allows `mount <dev> <point>` and nothing else, so `-o ro` is refused
-    outright. Mounting ext4 read-write replays the journal, which is a write.
+    policy allows one mount option string (card_mount.OPTIONS) and nothing
+    else, and `ro` is not in it. Mounting ext4 read-write replays the journal,
+    which is a write.
     Hence the explicit sync and the checked unmount below - the card must be
     genuinely quiescent before the next screen invites the operator to pull it.
     """
@@ -208,11 +219,11 @@ def _read_card(device_path: str, part: int, paths, mnt: str, run_shell=None):
         f'echo "{marker}{p}"; cat {shlex.quote(mnt + p)} 2>/dev/null'
         for p in paths)
     code, out = run_shell(
-        # mkdir WITHOUT sudo: /tmp is user-writable, and only ONE of the two
-        # allowlisted mountpoints has a matching sudo mkdir rule - so the
-        # sudo form silently failed the && chain for the other one and
-        # reported a present, perfectly good card as unreadable.
-        f"mkdir -p {mnt} && sudo -n mount {shlex.quote(dev)} {mnt} "
+        # root makes the folder (/run is root's) and mounts with the pinned
+        # options: one exact rule each, for BOTH mountpoints. (The old /tmp
+        # folders were made by this account, and only one of the two had a
+        # sudo mkdir rule, which once reported a good card as unreadable.)
+        f"sudo -n {card_mount.make_dir(mnt)} && sudo -n {card_mount.mount(dev, mnt)} "
         f"&& {{ {reads} ; }} ; rc=$? ; sudo -n sync ; "
         f"sudo -n umount {mnt} && echo '{marker}__UMOUNT_OK__' ; exit $rc")
     found = {}

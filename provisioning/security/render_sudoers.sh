@@ -13,11 +13,13 @@
 #
 # The source also names the app user `nodemedic` (the original medic's
 # account). A CLONE runs as `pi`, so the user is rendered too: the grant line,
-# the setfacl rule (u:<user>:rw) and the usermod rule (dialout <user>) — the
-# only three places a user name appears in a rule. Paths that merely contain
-# the word (/usr/local/lib/nodemedic/...) are never touched. With the default
-# user the source passes through unchanged, so the original medic's file and
-# any re-run on it are exactly what they always were.
+# the account's Defaults line (timestamp_timeout=0: sudo never remembers a
+# password for it), the setfacl rule (u:<user>:rw) and the usermod rule
+# (dialout <user>) — the only four places a user name appears outside a
+# comment. Paths that merely contain the word (/usr/local/lib/nodemedic/...,
+# /run/nodemedic/...) are never touched. With the default user the source
+# passes through unchanged, so the original medic's file and any re-run on it
+# are exactly what they always were.
 #
 # usage: render_sudoers.sh <source> <output> [backlight-device] [user]
 #   backlight-device defaults to the first entry of /sys/class/backlight on
@@ -66,9 +68,10 @@ if [ -n "$DEV" ] && [ "$DEV" != "$PINNED" ]; then
 fi
 
 if [ "$NM_USER" != "$DEFAULT_USER" ]; then
-    # Three anchored substitutions, each in the one context a user name can
+    # Four anchored substitutions, each in the one context a user name can
     # take in this file. Portable BRE (the tests run this on macOS too).
     sed -e "s#^${DEFAULT_USER} ALL=(root) NOPASSWD:#${NM_USER} ALL=(root) NOPASSWD:#" \
+        -e "s#^Defaults:${DEFAULT_USER} #Defaults:${NM_USER} #" \
         -e "s#u\\\\:${DEFAULT_USER}\\\\:rw#u\\\\:${NM_USER}\\\\:rw#g" \
         -e "s#usermod -aG dialout ${DEFAULT_USER}\$#usermod -aG dialout ${NM_USER}#" \
         -e "s#usermod -aG dialout ${DEFAULT_USER}\\([^a-z0-9_-]\\)#usermod -aG dialout ${NM_USER}\\1#" \
@@ -79,12 +82,21 @@ if [ "$NM_USER" != "$DEFAULT_USER" ]; then
     rules="$(grep -v '^[[:space:]]*#' "$TMP_OUT")"
     if [ "$(printf '%s\n' "$rules" | grep -c "^${NM_USER} ALL=(root) NOPASSWD:")" != 1 ] || \
             printf '%s\n' "$rules" | grep -q "^${DEFAULT_USER} ALL=" || \
+            printf '%s\n' "$rules" | grep -q "^Defaults:${DEFAULT_USER}[^a-z0-9_-]" || \
             printf '%s\n' "$rules" | grep -q "u\\\\:${DEFAULT_USER}\\\\:" || \
             printf '%s\n' "$rules" | grep -Eq "dialout ${DEFAULT_USER}([^a-z0-9_-]|\$)"; then
         echo "render_sudoers: the user did not render cleanly — refusing" >&2
         exit 1
     fi
     echo "render_sudoers: rules rendered for the app user $NM_USER"
+fi
+
+# For every user, the default included: sudo must never remember a password
+# for the app account (the medic's sudo shares one time stamp across all of an
+# account's sessions). A policy without exactly this one line is refused.
+if [ "$(grep -c "^Defaults:${NM_USER} timestamp_timeout=0\$" "$TMP_OUT")" != 1 ]; then
+    echo "render_sudoers: no 'Defaults:${NM_USER} timestamp_timeout=0' line — refusing" >&2
+    exit 1
 fi
 
 cp "$TMP_OUT" "$OUT"

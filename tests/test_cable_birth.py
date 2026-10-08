@@ -121,9 +121,11 @@ def test_the_unit_content_survives_transport_unmangled():
     ("/dev/mmcblk0", "/dev/mmcblk0p1", "/dev/mmcblk0p2"),
 ])
 def test_partition_naming_for_both_device_styles(dev, boot, root):
+    from provisioning.card_mount import OPTIONS
     joined = " ".join(cb.bake_commands(dev))
-    assert f"mount {boot} " in joined
-    assert f"mount {root} " in joined
+    # every card mount carries the pinned options (provisioning/card_mount.py)
+    assert f"mount -o {OPTIONS} {boot} " in joined
+    assert f"mount -o {OPTIONS} {root} " in joined
 
 
 def test_every_mount_is_unmounted_again():

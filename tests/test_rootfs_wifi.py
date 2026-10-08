@@ -65,9 +65,9 @@ def test_secrets_never_ride_in_a_heredoc():
 
 
 def test_it_writes_under_the_mount_never_the_medics_own_root():
-    cmds = rw.activate_commands("/tmp/rnm-piroot", "Home_5g", "hunter2")
+    cmds = rw.activate_commands("/run/nodemedic/piroot", "Home_5g", "hunter2")
     for c in cmds:
-        assert "/tmp/rnm-piroot" in c, f"escaped the mount: {c}"
+        assert "/run/nodemedic/piroot" in c, f"escaped the mount: {c}"
 
 
 def test_a_slash_in_an_ssid_cannot_become_a_path():

