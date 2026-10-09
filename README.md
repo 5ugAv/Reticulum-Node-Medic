@@ -15,13 +15,17 @@ Firmware, Python wheels, Debian packages, Reticulum config templates, board
 photographs and map tiles are all carried on disk. What has to be fetched while
 online is fetched from one screen (Settings ▸ **Field readiness**), which reads
 the disk and says what is still missing rather than calling the medic ready.
-Three things it cannot fetch for you: the **offline map** for your area (MAPS ▸
-Download offline map), the **Raspberry Pi OS image** used for SD imaging (copied
-onto the medic as `~/pi_os_lite.img.xz`), and the **firmware build toolchain**
-(fetched by the first RTNode build done with Wi-Fi on). A medic set up from
-this repository with `scripts/setup_medic.py` gets the pinned OS image, the
-whole toolchain and the world-overview map from that script; the map of your
-own area is still yours to choose.
+Field readiness cannot fetch three things itself: the **offline map** for your
+area (MAPS ▸ Download offline map), the **Raspberry Pi OS image** used for SD
+imaging (`~/pi_os_lite.img.xz`), and the **firmware build toolchain**. A clone
+receives all three from its parent: the OS image and the toolchain always, and
+the map with street-level detail when the clone stays in the parent's fleet (a
+clone made for a new community gets the overview and downloads its own area).
+A medic set up from this repository with `scripts/setup_medic.py` gets the
+pinned OS image, the whole toolchain and the world-overview map from that
+script, a route not yet run end-to-end on a Pi 5. On a medic built entirely by
+hand, the first RTNode build done with Wi-Fi on fetches the toolchain. Either
+way, the detailed map of your own area is yours to choose.
 
 **Build one yourself:** the 3D-printed case, its parts list and the assembly
 steps are on Cults 3D —

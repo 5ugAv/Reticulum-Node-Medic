@@ -134,3 +134,43 @@ def test_the_carry_step_drops_git_history_from_firmware_trees(monkeypatch):
     assert w.steps[idx][1](w).success
     assert ".git" in sent["~/EoRa-S3"] and ".git" in sent["~/rnm-assets"]
     assert ".git" not in sent["~/.platformio"]
+
+
+def _records_the_code_writes():
+    """Every record name the code reaches under ~/.reticulum-node-medic: a
+    path written out in full, or a *_FILE constant in a module whose *_DIR
+    constant is that folder (the boundary-walk modules)."""
+    out = subprocess.run(["git", "ls-files", "*.py"], capture_output=True,
+                         text=True, cwd=ROOT).stdout.split()
+    names = set()
+    for rel in out:
+        if rel.startswith("tests/"):
+            continue
+        with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as f:
+            src = f.read()
+        names |= set(re.findall(r"~/\.reticulum-node-medic/([A-Za-z0-9_.-]+)", src))
+        if re.search(r"^\s*_?[A-Z_]*DIR\s*=\s*[\"']~/\.reticulum-node-medic[\"']", src, re.M):
+            names |= set(re.findall(r"^\s*_?[A-Z][A-Z_]*_FILE\s*=\s*[\"']([A-Za-z0-9_.-]+)[\"']",
+                                    src, re.M))
+    return {n for n in names if n not in ("", ".", "..")}
+
+
+def test_every_record_the_code_writes_is_classified_for_the_clone():
+    """Node Medic 2 showed a walked node with no range ring: the walk files
+    were in no carry list (keeper, 2026-10-09). Every record must be carried,
+    carried by its own step, or named as staying behind with a reason."""
+    names = _records_the_code_writes()
+    assert {"walk_observations.jsonl", "walk_anchors.json", "registry.json"} <= names, names
+    known = (set(clone.SETTINGS_ALWAYS) | set(clone.SETTINGS_WITH_FLEET)
+             | set(clone.RECORDS_OWN_STEP) | set(clone.RECORDS_NEVER))
+    unclassified = sorted(names - known)
+    assert not unclassified, f"records the clone does not know about: {unclassified}"
+
+
+def test_what_the_fleet_has_learned_travels_and_identity_never_does():
+    fleet = set(clone.SETTINGS_WITH_FLEET)
+    assert {"walk_anchors.json", "walk_observations.jsonl", "walk_failures.jsonl",
+            "walk_diagnoses.jsonl", "certificates", "firmware_backups",
+            "known_hosts"} <= fleet
+    carried = set(clone.SETTINGS_ALWAYS) | fleet | set(clone.RECORDS_OWN_STEP)
+    assert not carried & set(clone.RECORDS_NEVER), carried & set(clone.RECORDS_NEVER)

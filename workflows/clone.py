@@ -353,7 +353,56 @@ SETTINGS_ALWAYS = ("radio_defaults.json", "language")
 #: leaves the medic; the guard test enforces it) stay behind.
 SETTINGS_WITH_FLEET = ("forgotten.json", "certificates", "beacon_targets.json",
                        "node_watch.json", "operator_address", "datetime.json",
-                       "screensaver.json", "brightness", "auto_backpack", "home_profile")
+                       "screensaver.json", "brightness", "auto_backpack", "home_profile",
+                       # What this medic has LEARNED about the fleet's nodes also
+                       # travels, so the next keeper does not repeat the work. The
+                       # boundary walks were never carried: Node Medic 2 showed
+                       # Skyfinger with no range ring although Node Medic 1 had
+                       # walked it (keeper, 2026-10-09).
+                       "walk_anchors.json", "walk_observations.jsonl",
+                       "walk_failures.jsonl", "walk_diagnoses.jsonl",
+                       "relay_census.json", "synapse_links.json",
+                       # the nodes' SSH host keys this medic pinned, so the clone
+                       # checks the same keys rather than trusting on first use
+                       "known_hosts",
+                       "alerts.json", "retention.json",
+                       # a board's original firmware, saved before it was reflashed
+                       "firmware_backups")
+
+#: Records the clone carries through a step of their own.
+RECORDS_OWN_STEP = {"registry.json": "copy_monitoring_db",
+                    "kin.json": "copy_kin_roster",
+                    "maps": "copy_offline_maps"}
+
+#: Records that never leave this medic, and why. tests/test_clone_parity.py
+#: fails when the code writes a record this file does not classify, so a new
+#: kind of record is never left behind by accident again.
+RECORDS_NEVER = {
+    # spelled in halves: the chip-MAC guard test refuses the whole name
+    # anywhere in the clone's code, so it can never slip into a carry list
+    "board_" + "memory.json": "the board picker's memory holds boards' chip MACs",
+    "board_" + "traits.json": "the board picker's memory holds boards' chip MACs",
+    "trust.json": "trust is per unit and never transitive",
+    "trust_hmac_key": "trust is per unit and never transitive",
+    "location_salt": "this medic's own secret for fuzzing positions",
+    "tool_identity.json": "this medic's identity; the clone is stamped with its lineage instead",
+    "health_ping_identity": "this medic's own Reticulum identity",
+    "health_reply_identity": "this medic's own Reticulum identity",
+    "pi_health_identity": "this medic's own Reticulum identity",
+    "lxmf_identity": "this medic's own messaging identity",
+    "lxmf": "this medic's own messaging store",
+    "chat": "the keeper's personal messages",
+    "onboard.json": "this medic's own setup state",
+    "first_use.json": "this medic's own setup state",
+    "vault_policy.json": "this medic's own choice to encrypt its records",
+    "node_mode": "this medic's own role on the mesh",
+    "last_imaged_pi.json": "this medic's own imaging history",
+    "health_ping_state.json": "this medic's own pings, rebuilt by pinging",
+    "time_ledger.json": "the time pushes this medic itself sent",
+    "apps_last_sync": "this medic's own download stamp",
+    "construction.log": "this medic's own log",
+    "ui_busy": "a marker the running app keeps fresh",
+}
 
 
 def _carry_settings(wf: "CloneWorkflow") -> str:
