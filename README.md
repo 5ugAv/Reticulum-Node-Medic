@@ -536,10 +536,12 @@ and ticked as it is closed. The largest open items, summarised honestly:
   gitignored or outside the repo; a fresh checkout gets them from
   `scripts/setup_medic.py`, which has not yet been run end-to-end on a Pi 5
   (ledger #115, #154).
-- **The clone's automatic lock-down has run only on a stand-in.** On
-  2026-10-08 it locked a stand-in clone in a test machine, held after a
-  restart, and left a new community's clone with no key; no real clone has
-  run it yet.
+- **The clone's automatic lock-down is proven on one real clone, for one of
+  its two cases.** On 2026-10-09 it locked Node Medic 2, a clone in its
+  parent's own fleet that keeps the parent's key: narrowed admin rights,
+  key-only SSH and the SSH firewall, with the app restarting cleanly
+  afterwards. The other case, a clone made for a new community that ends with
+  no key at all, has so far run only on a stand-in clone in a test machine.
 - **The first-use walkthrough is the tour alone in v1.** Its lock-your-records
   half (recovery key, passphrase, pattern, USB key) collected secrets its summary
   never enrolled, so it is switched off (`ui/setup_flow.SECURITY_HALF`) until a
